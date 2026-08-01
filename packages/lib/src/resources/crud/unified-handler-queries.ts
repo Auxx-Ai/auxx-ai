@@ -20,9 +20,12 @@ import {
   getOrgCache,
 } from '../../cache'
 import type { ConditionGroup } from '../../conditions'
+import { ForbiddenError } from '../../errors'
 import { FieldValueService, formatToRawValue } from '../../field-values'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
+import { textSearchPredicate, textSearchRank } from '../../search/text-search-sql'
 import { BaseType } from '../../workflow-engine/core/types'
+import { isMailLensTableId, MAIL_LENS_REFUSAL } from '../picker/mail-lens-tables'
 import type { DroppedCondition } from '../query-builder/base-condition-builder'
 import {
   type EntityQueryContext,
@@ -39,6 +42,7 @@ import type { TableId } from '../registry/field-registry'
 import type { ResourceRegistryService } from '../registry/resource-registry-service'
 import { type RecordId, toRecordId } from '../resource-id'
 import { recordSearchPredicate, recordSearchRank } from '../search/record-search-sql'
+import { getSystemSearchBinding } from '../search/system-search-bindings'
 
 const logger = createScopedLogger('unified-handler-queries')
 
@@ -56,8 +60,13 @@ export interface ListFilteredInput {
   /**
    * Free-text search from the search bar — a separate axis from {@link filters},
    * not a condition (plan decision 0.3). Conditions narrow the search; this IS
-   * the search. Ranked + typo-tolerant; only meaningful for EntityInstance-backed
-   * definitions (system tables have no `searchText` corpus).
+   * the search. Ranked + typo-tolerant.
+   *
+   * Honoured on the `EntityInstance` path, and on the system-resource path for
+   * the tables that have a ranked binding in
+   * `resources/search/system-search-bindings.ts` (today: `article`). A system
+   * table without a binding ignores it — filters still apply, ordering is
+   * unchanged.
    */
   search?: string
   /** Sort configuration (optional) */
@@ -530,8 +539,38 @@ export async function countEntityInstances(params: {
 }
 
 /**
+ * **The mail-lens refusal for the generic system-table read path** (step 0.1).
+ *
+ * `thread` and `message` are registered system resources, so every `TableId`-keyed
+ * helper below would happily serve them — and none of them can, because the
+ * metadata / identity / read gradation lives only in `mail-query/`
+ * (`buildMailVisibilityPredicate` + the per-tier search scopes). The record lane
+ * has no equivalent: `UnifiedCrudHandler.recordScope` answers `{ arm: 'all' }` for
+ * any system table, so a thread query here is org-wide by construction and its
+ * `COUNT(*)` reports the whole organization's mailbox.
+ *
+ * Refusing rather than teaching this path a second lens implementation is the
+ * decision recorded in `plans/search/2026-07-31-retrieval-execution-sequence.md`
+ * step 0.1 — the same one behind the picker's guards
+ * (`resources/picker/record-picker-service.ts`), the AI entity tools' `blocked`
+ * resolution, and `thread`/`message`'s absence from the system search bindings.
+ * A row predicate alone would not close it: this path's consumers hydrate a
+ * thread's SUBJECT (`RESOURCE_DISPLAY_CONFIG.thread.primaryDisplayFieldId`)
+ * through `FieldValueService`, which applies no lens, so a member holding only
+ * `metadata` on a mailbox would still read subjects off rows the predicate
+ * legitimately admits.
+ *
+ * Callers that legitimately need threads go through `mail-query/`.
+ */
+function assertNotMailLensTable(tableId: TableId): void {
+  if (isMailLensTableId(tableId)) throw new ForbiddenError(MAIL_LENS_REFUSAL)
+}
+
+/**
  * System-resource twin of {@link queryEntityInstanceIdsPaged}: `SELECT id ... LIMIT n + 1
  * OFFSET m`, optional parallel `COUNT(*)`, `id ASC` as a deterministic tie-break.
+ *
+ * Refuses `thread` / `message` — see {@link assertNotMailLensTable}.
  */
 export async function querySystemResourceIdsPaged(params: {
   db: Database
@@ -541,10 +580,23 @@ export async function querySystemResourceIdsPaged(params: {
   sorting: Array<{ id: string; desc: boolean }>
   limit: number
   offset: number
+  /**
+   * Free-text search. ANDed into `baseWhere` — which the page query AND the
+   * `COUNT(*)` share, so `total` describes the searched set — and, absent an
+   * explicit `sorting`, orders by relevance.
+   *
+   * **Only for tables with a binding** in
+   * `resources/search/system-search-bindings.ts`. For every other system table
+   * this argument is ignored and the query is byte-identical to the one that ran
+   * before search existed here; see {@link buildSystemSearchParts}.
+   */
+  search?: string
   /** Run the parallel `COUNT(*)`. Callers pay for it on the first page only. */
   includeTotal?: boolean
 }): Promise<{ ids: string[]; total?: number; hasMore: boolean }> {
   const { db, tableId, organizationId, filters, sorting, limit, offset } = params
+
+  assertNotMailLensTable(tableId)
 
   const tableSchema = getTableSchema(tableId)
   if (!tableSchema) {
@@ -552,7 +604,8 @@ export async function querySystemResourceIdsPaged(params: {
   }
 
   const whereClause = buildSystemWhereClause(tableId, organizationId, filters)
-  const baseWhere = and(eq(tableSchema.organizationId, organizationId), whereClause)
+  const { searchWhere, searchOrderBy } = buildSystemSearchParts(tableId, params.search)
+  const baseWhere = and(eq(tableSchema.organizationId, organizationId), whereClause, searchWhere)
 
   const orderByClauses =
     sorting.length > 0
@@ -561,7 +614,7 @@ export async function querySystemResourceIdsPaged(params: {
           sorting[0].desc ? 'desc' : 'asc',
           tableId
         )
-      : undefined
+      : searchOrderBy
 
   const finalOrderBy = orderByClauses
     ? [...orderByClauses, asc(tableSchema.id)]
@@ -591,14 +644,26 @@ export async function querySystemResourceIdsPaged(params: {
 
 /**
  * Count-only variant for system resources. Skips the id fetch entirely.
+ *
+ * Takes the same `search` as {@link querySystemResourceIdsPaged} so a caller
+ * counting "how many rows would this list show" cannot silently count the
+ * unsearched set.
+ *
+ * Refuses `thread` / `message` for the same reason the paged query does — a bare
+ * count is still a disclosure: "how many threads mention X" answered over the
+ * whole org is exactly what the lens exists to prevent.
  */
 export async function countSystemResource(params: {
   db: Database
   tableId: TableId
   organizationId: string
   filters: ConditionGroup[]
+  /** Free-text search, ANDed into the WHERE clause exactly as the page query does. */
+  search?: string
 }): Promise<number> {
   const { db, tableId, organizationId, filters } = params
+
+  assertNotMailLensTable(tableId)
 
   const tableSchema = getTableSchema(tableId)
   if (!tableSchema) {
@@ -606,13 +671,55 @@ export async function countSystemResource(params: {
   }
 
   const whereClause = buildSystemWhereClause(tableId, organizationId, filters)
+  const { searchWhere } = buildSystemSearchParts(tableId, params.search)
 
   const result = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(tableSchema)
-    .where(and(eq(tableSchema.organizationId, organizationId), whereClause))
+    .where(and(eq(tableSchema.organizationId, organizationId), whereClause, searchWhere))
 
   return Number(result[0]?.count ?? 0)
+}
+
+/**
+ * Turn a free-text `search` into the WHERE fragment and the default ordering for
+ * a system table — or into nothing at all when the table has no ranked binding.
+ *
+ * Three properties this has to hold, all of them mirroring the `EntityInstance`
+ * path in {@link buildEntityInstanceQueryParts} so the two axes behave the same
+ * wherever a user types:
+ *
+ * 1. **Search narrows, never ORs.** The predicate is returned as a WHERE
+ *    fragment for `and()`, so a filter-less search and a search-less filter fall
+ *    out of the same expression.
+ * 2. **An explicit column sort beats relevance.** Relevance is returned as the
+ *    *default* ordering; the caller only uses it when `sorting` is empty.
+ *    Sorting by title and watching rows reorder by score would read as a bug.
+ * 3. **No binding ⇒ no change.** A table absent from
+ *    `system-search-bindings.ts` gets `{ undefined, undefined }`, which `and()`
+ *    drops and the caller falls back through — the query is byte-identical to
+ *    the pre-search one. That is what lets the remaining ~10 system tables adopt
+ *    ranked search one at a time.
+ *
+ * Note the `EntityInstance` path puts `updatedAt DESC` between rank and the id
+ * tie-break. That is deliberately not replicated: system tables share no common
+ * recency column, so the middle tier would have to be per-table. Ties therefore
+ * fall straight through to `id ASC` — deterministic, just not recency-ordered.
+ */
+function buildSystemSearchParts(
+  tableId: TableId,
+  rawSearch: string | undefined
+): { searchWhere: SQL | undefined; searchOrderBy: SQL[] | undefined } {
+  const search = rawSearch?.trim() || undefined
+  if (!search) return { searchWhere: undefined, searchOrderBy: undefined }
+
+  const columns = getSystemSearchBinding(tableId)
+  if (!columns) return { searchWhere: undefined, searchOrderBy: undefined }
+
+  return {
+    searchWhere: textSearchPredicate(search, columns),
+    searchOrderBy: [desc(textSearchRank(search, columns))],
+  }
 }
 
 /**

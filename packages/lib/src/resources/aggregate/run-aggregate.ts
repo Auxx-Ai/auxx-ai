@@ -27,9 +27,10 @@ import {
   MAX_GROUP_LIMIT,
   type WidgetFieldRef,
 } from '../../dashboards/client'
-import { UnprocessableEntityError } from '../../errors'
+import { ForbiddenError, UnprocessableEntityError } from '../../errors'
 import { BaseType } from '../../workflow-engine/core/types'
 import { extractRequiredRelatedEntities } from '../crud/unified-handler-queries'
+import { isMailLensTableId, MAIL_LENS_REFUSAL } from '../picker/mail-lens-tables'
 import {
   type EntityQueryContext,
   entityConditionBuilder,
@@ -41,7 +42,11 @@ import { aggregateCacheKey } from './cache-key'
 import { enumerateBuckets, isCyclicGranularity } from './date-buckets'
 import { type AggregateRow, buildEntityAggregateSql } from './entity-aggregate-builder'
 import { EMPTY_LABEL, resolveGroupLabels } from './group-labels'
-import { buildSystemAggregateSql, isSystemAggregateTable } from './system-aggregate-builder'
+import {
+  buildSystemAggregateSql,
+  isSystemAggregateTable,
+  type SystemAggregateTableId,
+} from './system-aggregate-builder'
 import { deriveTrendWindows } from './trend'
 import type {
   AggregateGroup,
@@ -260,6 +265,16 @@ async function prepareAggregate(
   const rootDefId =
     query.source.kind === 'entity' ? query.source.entityDefinitionId : query.source.tableId
 
+  // 🔴 THE mail-content gate for the whole aggregate surface — `runAggregate`
+  // and `runKpi` both land here, and this runs before the first read of any
+  // kind (no field cache, no DB, no result-cache write). Refused rather than
+  // filtered: see the comment on `SYSTEM_AGGREGATE_TABLE_IDS`. Checked for BOTH
+  // source kinds, not just `system` — `{kind:'entity', entityDefinitionId:'thread'}`
+  // is a shape a client can post, and it must not become a probe either.
+  if (isMailLensTableId(rootDefId)) {
+    return err(new ForbiddenError(MAIL_LENS_REFUSAL))
+  }
+
   if (systemSource && !isSystemAggregateTable(rootDefId)) {
     return err(
       new UnprocessableEntityError(`System table '${rootDefId}' is not an aggregate source`)
@@ -360,10 +375,26 @@ async function prepareAggregate(
         droppedConditions: built.droppedConditions,
       })
     }
-  } else {
-    conditionsWhere = filters.length
-      ? systemConditionBuilder.buildGroupedQuery(filters, rootDefId as TableId)
-      : undefined
+  } else if (filters.length) {
+    const built = systemConditionBuilder.buildGroupedQueryWithDiagnostics(
+      filters,
+      rootDefId as TableId
+    )
+    conditionsWhere = built.sql
+    if (built.droppedConditions.length > 0) {
+      // Same shape as the entity branch above — a dropped widget filter makes a
+      // KPI/chart number too HIGH, so "how often is a widget filter silently
+      // ignored" has to be answerable from the logs rather than from a user
+      // noticing. The widget still renders (wider) rather than erroring.
+      logger.warn('Dropped widget filter conditions', {
+        organizationId,
+        entityDefinitionId: rootDefId,
+        droppedCount: built.droppedConditions.length,
+        requestedConditions: built.requestedConditions,
+        allConditionsDropped: built.allConditionsDropped,
+        droppedConditions: built.droppedConditions,
+      })
+    }
   }
 
   const fetchCap = secondaryGroupBy ? FETCH_CAP_MATRIX : FETCH_CAP_SINGLE
@@ -388,7 +419,7 @@ async function prepareAggregate(
     }
     return buildSystemAggregateSql({
       organizationId,
-      tableId: rootDefId as 'thread' | 'message' | 'article',
+      tableId: rootDefId as SystemAggregateTableId,
       metric,
       groupBy,
       secondaryGroupBy,
@@ -502,6 +533,27 @@ function sortGroups(groups: AggregateGroup[], groupBy: ResolvedGroupBy): Aggrega
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /**
+ * The source id a query names, whichever kind it is. Both kinds are checked for
+ * mail content — see the gate in `prepareAggregate`.
+ */
+function sourceIdOf(query: AggregateQuery): string {
+  return query.source.kind === 'entity' ? query.source.entityDefinitionId : query.source.tableId
+}
+
+/**
+ * Refuse mail-content sources at the OUTERMOST edge, ahead of the aggregate
+ * result cache.
+ *
+ * `prepareAggregate` holds the same gate, but it runs *after* the cache read —
+ * and the cache was populated by the same query shape before this refusal
+ * existed, so a gate below the read would keep serving a warm thread aggregate
+ * until its TTL expired. Nothing here touches Redis or the DB.
+ */
+function refuseMailLensSource(query: AggregateQuery): ForbiddenError | undefined {
+  return isMailLensTableId(sourceIdOf(query)) ? new ForbiddenError(MAIL_LENS_REFUSAL) : undefined
+}
+
+/**
  * Run a grouped aggregate query. Group keys stay RAW (drill-down rebuilds
  * segment conditions from them); labels are display-only. Without a `groupBy`
  * the result carries the single value in `totalValue` with no groups.
@@ -518,6 +570,9 @@ export async function runAggregate(
   query: AggregateQuery,
   opts?: AggregateRunOptions
 ): Promise<Result<AggregateResult, Error>> {
+  const refusal = refuseMailLensSource(query)
+  if (refusal) return err(refusal)
+
   try {
     const resolvedFilters = resolveConditionContext(query.filters ?? [], {
       currentUserId: userId,
@@ -679,6 +734,9 @@ export async function runKpi(
   params: { base: AggregateQuery; trend?: TrendSpec },
   opts?: AggregateRunOptions
 ): Promise<Result<KpiResult, Error>> {
+  const refusal = refuseMailLensSource(params.base)
+  if (refusal) return err(refusal)
+
   try {
     const base: AggregateQuery = { ...params.base, groupBy: undefined, secondaryGroupBy: undefined }
     const resolvedFilters = resolveConditionContext(base.filters ?? [], {

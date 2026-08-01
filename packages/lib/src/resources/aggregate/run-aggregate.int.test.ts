@@ -12,7 +12,7 @@ import { type FieldPath, toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
 import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { UnprocessableEntityError } from '../../errors'
+import { ForbiddenError, UnprocessableEntityError } from '../../errors'
 import { BaseType } from '../../workflow-engine/core/types'
 import type { ResourceField } from '../registry/field-types'
 import { runAggregate, runKpi } from './run-aggregate'
@@ -850,29 +850,39 @@ describe('aggregate result cache', () => {
 })
 
 describe('runAggregate — system source', () => {
-  it('aggregates threads by status via direct columns', async () => {
+  it('aggregates articles by status via direct columns', async () => {
     const org = await createTestOrganization()
-    const integrationRows = await db()
-      .insert(schema.Integration)
-      .values({ organizationId: org.id, updatedAt: new Date() })
-      .returning()
-    const integration = integrationRows[0]!
-
-    for (const [subject, status] of [
-      ['a', 'OPEN'],
-      ['b', 'OPEN'],
-      ['c', 'CLOSED'],
-    ] as const) {
-      await db().insert(schema.Thread).values({
-        subject,
+    // `User` has no `organizationId` column — the row is only needed for
+    // `createdById` below.
+    const user = await createTestUser()
+    const kbRows = await db()
+      .insert(schema.KnowledgeBase)
+      .values({
         organizationId: org.id,
-        integrationId: integration.id,
+        name: 'kb',
+        slug: `kb-${generateId().slice(0, 8)}`,
+        createdById: user.id,
+        updatedAt: new Date(),
+      })
+      .returning()
+    const kb = kbRows[0]!
+
+    for (const [title, status] of [
+      ['a', 'PUBLISHED'],
+      ['b', 'PUBLISHED'],
+      ['c', 'DRAFT'],
+    ] as const) {
+      await db().insert(schema.Article).values({
+        title,
+        organizationId: org.id,
+        homeKnowledgeBaseId: kb.id,
         status,
+        updatedAt: new Date(),
       })
     }
 
-    h.fieldsByDef.set('thread', [
-      makeField('thread', {
+    h.fieldsByDef.set('article', [
+      makeField('article', {
         id: 'status',
         key: 'status',
         type: BaseType.ENUM,
@@ -881,22 +891,22 @@ describe('runAggregate — system source', () => {
         isSystem: true,
         options: {
           options: [
-            { id: 'OPEN', value: 'OPEN', label: 'Open' },
-            { id: 'CLOSED', value: 'CLOSED', label: 'Closed' },
+            { id: 'PUBLISHED', value: 'PUBLISHED', label: 'Published' },
+            { id: 'DRAFT', value: 'DRAFT', label: 'Draft' },
           ],
         },
       }),
     ])
 
     const result = await runAggregate(db(), org.id, undefined, {
-      source: { kind: 'system', tableId: 'thread' },
+      source: { kind: 'system', tableId: 'article' },
       metric: { op: 'count' },
-      groupBy: { fieldRef: toResourceFieldId('thread', 'status') },
+      groupBy: { fieldRef: toResourceFieldId('article', 'status') },
       timezone: 'UTC',
     })
     expect(result._unsafeUnwrap().groups).toEqual([
-      { key: 'OPEN', label: 'Open', value: 2 },
-      { key: 'CLOSED', label: 'Closed', value: 1 },
+      { key: 'PUBLISHED', label: 'Published', value: 2 },
+      { key: 'DRAFT', label: 'Draft', value: 1 },
     ])
   })
 
@@ -908,5 +918,36 @@ describe('runAggregate — system source', () => {
       timezone: 'UTC',
     })
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(UnprocessableEntityError)
+  })
+
+  // The one that used to live here aggregated THREADS by status and passed —
+  // which was the bug. `buildSystemAggregateSql` scopes by `organizationId` and
+  // nothing else, so that green test was measuring the whole org's mailbox. The
+  // unit-level proof (no DB touched at all) is in `mail-lens-refusal.test.ts`;
+  // this one pins the refusal with a real database underneath.
+  it('refuses thread and message even with rows present in the table', async () => {
+    const org = await createTestOrganization()
+    const integrationRows = await db()
+      .insert(schema.Integration)
+      .values({ organizationId: org.id, updatedAt: new Date() })
+      .returning()
+    const integration = integrationRows[0]!
+    await db()
+      .insert(schema.Thread)
+      .values({ subject: 'a', organizationId: org.id, integrationId: integration.id })
+
+    for (const tableId of ['thread', 'message'] as const) {
+      const result = await runAggregate(db(), org.id, undefined, {
+        source: { kind: 'system', tableId },
+        metric: { op: 'count' },
+        timezone: 'UTC',
+      })
+      expect(result._unsafeUnwrapErr()).toBeInstanceOf(ForbiddenError)
+
+      const kpi = await runKpi(db(), org.id, undefined, {
+        base: { source: { kind: 'system', tableId }, metric: { op: 'count' }, timezone: 'UTC' },
+      })
+      expect(kpi._unsafeUnwrapErr()).toBeInstanceOf(ForbiddenError)
+    }
   })
 })

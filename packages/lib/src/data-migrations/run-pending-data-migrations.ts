@@ -3,6 +3,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { DATA_MIGRATION_LOCK_KEY, withAdvisoryLock } from './advisory-lock'
+import { describeMigrationError } from './describe-migration-error'
 import { planDataMigrations } from './plan'
 import { ALL_DATA_MIGRATIONS } from './registry'
 import type { RunSummary } from './types'
@@ -56,11 +57,18 @@ export async function runPendingDataMigrations(
         summary.applied.push(migration.id)
         logger.info(`Data migration ${migration.id} applied`, { durationMs })
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
+        // `error.message` alone is undiagnosable: Drizzle wraps the pg error, so the
+        // message is just `Failed query: …` and the SQLSTATE code, constraint, table
+        // and column live on `.cause`. Walk the chain and store the useful fields.
+        const { summary: errorSummary, pg } = describeMigrationError(error)
         const durationMs = Date.now() - start
-        await recordOutcome(db, migration.id, 'failed', message, durationMs)
+        await recordOutcome(db, migration.id, 'failed', errorSummary, durationMs)
         summary.failed = migration.id
-        logger.error(`Data migration ${migration.id} failed`, { error: message })
+        logger.error(`Data migration ${migration.id} failed`, {
+          error: errorSummary,
+          durationMs,
+          ...pg,
+        })
         break // fail-stop: later migrations may depend on this one
       }
     }

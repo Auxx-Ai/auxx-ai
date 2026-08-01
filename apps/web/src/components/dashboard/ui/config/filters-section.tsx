@@ -21,6 +21,7 @@ import {
   useConditionActions,
 } from '~/components/conditions'
 import { useResourceFields } from '~/components/resources'
+import { isWidgetFilterableField } from '../../lib/widget-filter-fields'
 import { sourceResourceId } from '../../lib/widget-source'
 
 const EMPTY_CONDITIONS: Condition[] = []
@@ -37,18 +38,25 @@ export function FiltersSection({
   const entityDefinitionId = sourceResourceId(source)
   const { fields } = useResourceFields(entityDefinitionId)
 
+  // Only fields the source's query builder can actually turn into SQL. A
+  // condition on anything else is DROPPED server-side and widens the result set
+  // silently, so offering it here would let an author build a filter that lies —
+  // `from is customer@x.com` on a thread widget returning the unfiltered list.
+  // See `widget-filter-fields.ts`.
   const fieldDefinitions = useMemo(
     () =>
-      fields.map((field) => ({
-        id: field.resourceFieldId ?? String(field.id),
-        label: field.label,
-        type: field.type,
-        fieldType: field.fieldType,
-        fieldKey: field.key,
-        operators: field.operatorOverrides || getFieldOperators(field),
-        options: field.options,
-      })),
-    [fields]
+      fields
+        .filter((field) => isWidgetFilterableField(field, source))
+        .map((field) => ({
+          id: field.resourceFieldId ?? String(field.id),
+          label: field.label,
+          type: field.type,
+          fieldType: field.fieldType,
+          fieldKey: field.key,
+          operators: field.operatorOverrides || getFieldOperators(field),
+          options: field.options,
+        })),
+    [fields, source]
   )
 
   const conditionConfig: ConditionSystemConfig = useMemo(

@@ -3,6 +3,7 @@
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { getInstanceId, isRecordId, type RecordId } from '@auxx/types/resource'
 import {
   type AnyColumn,
   and,
@@ -27,11 +28,86 @@ import {
 import type { Operator } from '../../conditions/operator-definitions'
 import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_MAP } from '../registry'
 import type { TableId } from '../registry/field-registry'
+import type { ResourceField } from '../registry/field-types'
 import { type FieldOptionItem, getFieldOptions } from '../registry/option-helpers'
+import { BaseType } from '../types'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
 import { resolveOlderThanCutoff, resolveRelativeDateRange } from './relative-date-range'
 
 const logger = createScopedLogger('system-condition-builder')
+
+/**
+ * Does this registry field store its values in `FieldValue` rather than in a
+ * column on the resource's own table?
+ *
+ * The test is what the field *declares*, not how its key is spelled. A
+ * relationship that owns its side of the link (`isInverse !== true`) and has no
+ * `dbColumn` has nowhere else to put its value: the rows are written by
+ * `FieldValueService` against the org's materialized `CustomField` row and
+ * found again by `systemAttribute` (`ArticleTagMutationService`,
+ * `field-values/relationship-queries.ts`). `article:tags` is the case that made
+ * this visible — it is not `custom_`-prefixed, so the prefix escape hatch never
+ * saw it and every Tag filter fell through to "unresolved field" and widened
+ * the result set to the full baseline.
+ *
+ * This is deliberately narrower than the entity builder's "any column-less
+ * field is FieldValue-backed" rule (`entity-condition-builder.ts`). System
+ * tables also carry column-less fields that are *not* in `FieldValue`:
+ *
+ * - virtual/computed fields resolved by another builder entirely — thread
+ *   `from` / `to` / `body` / `free_text` are mail-query predicates, and the
+ *   seeder refuses to materialize them at all (`shouldCreateField`);
+ * - the inverse side of an FK column — `article:children`, `thread:messages`.
+ *   The value lives in the *other* row's column, so no FieldValue row exists.
+ *
+ * Routing those into a FieldValue subquery would swap today's fail-open drop
+ * for a silent fail-closed wrong answer, which is strictly worse.
+ *
+ * Not covered yet: column-less *scalar* system fields that the seeder does
+ * materialize (thread `visit_ip` / `visit_url` — no `dbColumn` key at all, so
+ * `shouldCreateField` keeps them). Those need typed-column (`valueText`, …)
+ * comparisons rather than `relatedEntityId`; they still drop, which is the
+ * safe direction.
+ */
+function isFieldValueBackedRelation(field: ResourceField): boolean {
+  return (
+    !field.dbColumn &&
+    Boolean(field.systemAttribute) &&
+    field.capabilities.filterable &&
+    !field.capabilities.hidden &&
+    field.type === BaseType.RELATION &&
+    Boolean(field.relationship) &&
+    field.relationship?.isInverse !== true
+  )
+}
+
+/**
+ * Normalize a relationship condition value to bare related-entity ids.
+ *
+ * Accepts every shape the filter surfaces produce: a `RecordId`
+ * (`"<entityDefId>:<instanceId>"`), a bare id, `{ recordId }` (what
+ * `FieldValueService` writes), `{ referenceId }` (the RELATION picker), or an
+ * array of any of those. `FieldValue.relatedEntityId` stores the bare instance
+ * id, so the definition prefix has to come off.
+ */
+function normalizeRelatedIds(value: unknown): string[] {
+  const items = Array.isArray(value) ? value : [value]
+  const ids: string[] = []
+
+  for (const item of items) {
+    const raw =
+      item && typeof item === 'object'
+        ? ((item as Record<string, unknown>).recordId ??
+          (item as Record<string, unknown>).referenceId ??
+          (item as Record<string, unknown>).id)
+        : item
+    if (typeof raw !== 'string' || raw.length === 0) continue
+    const id = isRecordId(raw) ? getInstanceId(raw as RecordId) : raw
+    if (id) ids.push(id)
+  }
+
+  return ids
+}
 
 /**
  * Condition builder for system resources (Contact, Ticket, etc.)
@@ -68,6 +144,14 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
 
     // Strip resource prefix for registry lookups (e.g., "message:from" → "from")
     const fieldId = this.stripFieldPrefix(rawFieldId)
+
+    // FieldValue-backed relationships (article:tags) have no column to compare
+    // against — route them to the FieldValue subquery before the column lookup
+    // drops them and widens the query. See isFieldValueBackedRelation.
+    const field = RESOURCE_FIELD_REGISTRY[resourceType]?.[fieldId]
+    if (field && isFieldValueBackedRelation(field)) {
+      return this.buildRelationFieldValueSubquery(resourceType, field, condition)
+    }
 
     const fieldMeta = this.resolveFieldMetadata(resourceType, fieldId)
     if (!fieldMeta) {
@@ -299,13 +383,47 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
         return this.combineColumnPredicates(columns, (col) => lt(col, cutoff), 'and')
       }
 
+      // ===== DATE (open-ended) =====
+      // The generic condition UI offers these for every DATE/DATETIME/TIME
+      // field (`operator-definitions.ts`), and `EntityConditionBuilder` has
+      // always compiled them. Without these cases "Published At after X"
+      // reached the default arm and compiled to `publishedAt = X`.
+      case 'before':
+      case 'after': {
+        const value = this.toDateValue(rawValue, normalizedType)
+        if (!value) return undefined
+        return this.combineColumnPredicates(columns, (col) =>
+          operator === 'before' ? lt(col, value) : gt(col, value)
+        )
+      }
+
       default: {
-        logger.warn(`Unknown operator '${operator}' for field`)
-        if (rawValue === null || rawValue === undefined) return undefined
-        const value = this.convertValue(rawValue, normalizedType)
-        return this.combineColumnPredicates(columns, (col) => eq(col, value))
+        // Return NO SQL, never a guess. An `eq(col, value)` fallback here is
+        // invisible to every diagnostic: it produces a clause, so the condition
+        // is not recorded as a `DroppedCondition`, `allConditionsDropped` stays
+        // false, and the AI tool boundary passes the wrong answer through. A
+        // recorded drop widens the result set — wrong SQL answers a different
+        // question and says nothing. Operators with no case here (`length =`,
+        // `has key`, `key equals`, the file-inspection set) have no column
+        // semantics on a system table.
+        logger.warn(`Unknown operator '${operator}' for field '${fieldId}' on ${resourceType}`)
+        return undefined
       }
     }
+  }
+
+  /**
+   * Coerce a condition value to a `Date` for date-column comparison.
+   *
+   * Returns undefined for a non-date column or an unparseable value: Drizzle
+   * calls `.toISOString()` on whatever it is handed for a timestamp column, so
+   * passing a raw string through throws at query build time instead of
+   * producing a drop.
+   */
+  private toDateValue(rawValue: any, normalizedType: string): Date | undefined {
+    if (normalizedType !== 'date' || rawValue === null || rawValue === undefined) return undefined
+    const value = this.convertValue(rawValue, 'date')
+    return value instanceof Date && !Number.isNaN(value.getTime()) ? value : undefined
   }
 
   /**
@@ -390,6 +508,82 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
         return this.convertValue(item, expectedType === 'enum' ? 'string' : expectedType)
       })
       .filter((item): item is string | number | boolean | Date => item !== undefined)
+  }
+
+  /**
+   * Build the EXISTS subquery for a FieldValue-backed system *relationship*
+   * (`article:tags`, `thread:tags`).
+   *
+   * Keyed on `CustomField.systemAttribute` rather than a field id, because the
+   * id is the org's materialized `CustomField` row and the registry only knows
+   * the attribute. Same shape as `threadHasTags` in
+   * `field-values/relationship-queries.ts`. Org scoping comes from the outer
+   * query: `fv."entityId"` is correlated to the already org-scoped row, and a
+   * FieldValue row can only point at a CustomField in its own org.
+   *
+   * Multi-value semantics, which is where this differs from the entity
+   * builder's scalar `is not`: a record can hold many tags, so "Tag is not X"
+   * means "does not carry X" (`NOT EXISTS`), not "carries something ≠ X".
+   */
+  private buildRelationFieldValueSubquery(
+    resourceType: TableId,
+    field: ResourceField,
+    condition: GenericCondition
+  ): SQL<unknown> | undefined {
+    const systemAttribute = field.systemAttribute
+    const tableInfo = RESOURCE_TABLE_MAP[resourceType]
+    const resourceTable = tableInfo ? (schema as Record<string, any>)[tableInfo.dbName] : undefined
+    const outerId = resourceTable?.id
+    if (!systemAttribute || !outerId) return undefined
+
+    const hasAnyRelated = sql`EXISTS (
+      SELECT 1 FROM ${schema.FieldValue} fv
+      INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf."id"
+      WHERE cf."systemAttribute" = ${systemAttribute}
+        AND fv."entityId" = ${outerId}
+        AND fv."relatedEntityId" IS NOT NULL
+    )`
+
+    const hasOneOf = (ids: string[]): SQL<unknown> => sql`EXISTS (
+      SELECT 1 FROM ${schema.FieldValue} fv
+      INNER JOIN ${schema.CustomField} cf ON fv."fieldId" = cf."id"
+      WHERE cf."systemAttribute" = ${systemAttribute}
+        AND fv."entityId" = ${outerId}
+        AND fv."relatedEntityId" IN (${sql.join(
+          ids.map((id) => sql`${id}`),
+          sql`, `
+        )})
+    )`
+
+    switch (condition.operator) {
+      case 'empty':
+        return sql`NOT ${hasAnyRelated}`
+
+      case 'not empty':
+        return hasAnyRelated
+
+      // `contains` is what the UI offers for a multi-value relationship, and it
+      // means the same thing as `is` here: the record carries this related row.
+      case 'is':
+      case 'in':
+      case 'contains': {
+        const ids = normalizeRelatedIds(condition.value)
+        return ids.length ? hasOneOf(ids) : undefined
+      }
+
+      case 'is not':
+      case 'not in':
+      case 'not contains': {
+        const ids = normalizeRelatedIds(condition.value)
+        return ids.length ? sql`NOT ${hasOneOf(ids)}` : undefined
+      }
+
+      default:
+        logger.warn(
+          `Operator '${condition.operator}' not supported for FieldValue-backed relationship '${field.key}' on ${resourceType}`
+        )
+        return undefined
+    }
   }
 
   /**

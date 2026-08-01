@@ -53,17 +53,17 @@ function formatIsoDate(now: Date, timeZone: string): string {
  * cached across calls, so the date would be frozen at whatever it was when the
  * cache entry was written.
  *
- * **Timezone `[?]` — resolved to UTC for now.** There is no org-level zone to
- * read: `SETTINGS_CATALOG` (`lib/settings/catalog.ts`) has no timezone key and
- * the `Organization` table has no timezone column, so the org cache's
- * `orgSettings`/`orgProfile` keys cannot carry one. A per-user zone *does*
- * exist — `User.preferredTimezone` (`database/src/db/schema/user.ts`, surfaced
- * on the `userProfile` user-cache key) — but it does not reach this layer: the
- * prompt's `currentUser` is hydrated from the org `members` cache, whose
- * projection selects only id/name/email/image/userType. Populating
- * `PromptCtx.timezone` therefore needs a call-site change (or the column added
- * to the members projection); until then every turn renders UTC. No column was
- * invented for this.
+ * **Zone resolution is org → user → UTC, and the org tier is a documented
+ * no-op.** Nothing stores an org zone: `SETTINGS_CATALOG`
+ * (`lib/settings/catalog.ts`) has no timezone key and the `Organization` table
+ * has no timezone column, so the `orgSettings`/`orgProfile` cache keys have
+ * nothing to carry. No column or setting was invented to fill the tier — when
+ * one is added, it slots in ahead of the user value at the `PromptCtx.timezone`
+ * call site (`agents/agent.ts`), not here.
+ *
+ * The user tier is live: `User.preferredTimezone` rides the org `members` cache
+ * projection and is threaded by `hydrateCaller` in `agents/agent.ts`. A caller
+ * with no member row, no saved preference, or an unparseable zone renders UTC.
  */
 export const nowSection: PromptSection = {
   id: 'now',

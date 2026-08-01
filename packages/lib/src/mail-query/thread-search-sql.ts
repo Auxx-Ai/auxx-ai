@@ -116,12 +116,22 @@ export function threadBodySearchPredicate(query: string): SQL {
 /**
  * The thread relevance score over the body corpus.
  *
- * Exported ahead of its consumer: the mail list still orders by
- * `lastMessageAt DESC, id DESC` (`threads/thread-query.service.ts`), whose keyset
- * cursor is built from those two columns and cannot be reordered without
- * reworking pagination. When that wiring lands it must call this rather than
- * restate the formula — the reason the shared module exists at all is that the
- * expression was written out six times on the records side before it did.
+ * Consumed by `threads/thread-query.service.ts`, which orders by
+ * `relevance DESC, id DESC` when a free-text term is present and falls back to
+ * `lastMessageAt DESC, id DESC` otherwise. Its keyset cursor pairs this score
+ * with the id — note the ordering is exactly `(rank, id)` with no
+ * `lastMessageAt` between them, because a keyset that disagrees with its own
+ * ORDER BY silently skips or duplicates rows across pages.
+ *
+ * Anything else needing a thread score must call this rather than restate the
+ * formula — the reason the shared module exists is that the expression was
+ * written out six times on the records side before it did.
+ *
+ * Known limitation: `document` is the body corpus (subject is excluded from it
+ * for the identity/read lens split) and `rank` scores `Thread.subject` by
+ * whole-string `similarity()`, so a short query against a long subject scores
+ * low and can sink below body matches. An exact subject match scores ~2.0 and
+ * dominates as intended; a subject `ts_rank_cd` arm would be the real fix.
  */
 export function threadSearchRank(query: string): SQL<number> {
   return textSearchRank(query, threadBodySearchColumns())

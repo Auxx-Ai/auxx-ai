@@ -40,9 +40,10 @@ export interface BuildKopilotPromptArgs {
   integrations: IntegrationCatalogEntry[]
   toolsetPromptAdditions: string
   /**
-   * IANA zone for the `now` section's clock (e.g. `Europe/Berlin`). Omit ⇒
-   * `UTC`. See `sections/now.ts` — no org-level zone is stored today, and the
-   * per-user `User.preferredTimezone` doesn't reach this layer yet.
+   * IANA zone for the `now` section's clock (e.g. `Europe/Berlin`). Omit, or
+   * pass an unparseable zone, ⇒ `UTC`. Production resolves it from the caller's
+   * `User.preferredTimezone` in `agents/agent.ts`; there is no org-level zone to
+   * override it with (see `sections/now.ts`).
    */
   timezone?: string | null
   /** Master sentinel or undefined → master persona; agent → agent persona. */

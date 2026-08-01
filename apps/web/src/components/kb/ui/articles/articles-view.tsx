@@ -28,10 +28,7 @@ import type { ExtendedColumnDef } from '~/components/dynamic-table/types'
 import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { EmptyState } from '~/components/global/empty-state'
-import {
-  searchConditionsToGroup,
-  useRecordsSearchStore,
-} from '~/components/records/records-search-store'
+import { splitRecordSearch, useRecordsSearchStore } from '~/components/records/records-search-store'
 import { RecordsSearchBar } from '~/components/records/records-searchbar'
 import { type RecordMeta, toRecordId, useResource } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
@@ -101,12 +98,26 @@ export function ArticlesView() {
   // Search-bar conditions are shared with RecordsView's search store; the
   // store auto-resets via setContext(entityDefinitionId) on mount, so
   // switching between pages clears stale filters.
+  //
+  // `splitRecordSearch` separates the bar's two axes (plan decision 0.3): the
+  // narrowing conditions, and the free-standing typed text. Both surfaces now
+  // send that text on as the ranked `search` param — `article` is a system
+  // resource, but `Article` has a binding of the shared search builder
+  // (`resources/search/article-search-sql.ts`) and
+  // `querySystemResourceIdsPaged` honours `search` for the tables that do.
   const searchConditions = useRecordsSearchStore((s) => s.conditions)
-  const searchGroup = useMemo(() => searchConditionsToGroup(searchConditions), [searchConditions])
+  const { search, group: searchGroup } = useMemo(
+    () => splitRecordSearch(searchConditions),
+    [searchConditions]
+  )
 
-  // ARTICLES_BASELINE_FILTER pins kind/archivedAt; the searchGroup adds
-  // user filters. Both are AND, so we flatten their conditions into one
-  // group (ConditionGroup.conditions is Condition[], not nested groups).
+  // ARTICLES_BASELINE_FILTER pins kind/archivedAt; the searchGroup adds the
+  // bar's non-free-text conditions. All are AND, so we flatten them into one
+  // group (ConditionGroup.conditions is Condition[], not nested groups) — search
+  // NARROWS the baseline, it never ORs around it.
+  //
+  // The typed text is deliberately NOT merged in here: merging is what compiled
+  // it to `ILIKE '%q%'` instead of the ranked predicate. It travels as `search`.
   const baselineFilter = useMemo<ConditionGroup>(() => {
     if (!searchGroup) return ARTICLES_BASELINE_FILTER
     return {
@@ -413,6 +424,7 @@ export function ArticlesView() {
         slug={ARTICLE_SLUG}
         tableId={ARTICLE_TABLE_ID}
         baselineFilter={baselineFilter}
+        search={search}
         primaryCellRender={primaryCellRender}
         columnOverrides={columnOverrides}
         cellSelection={cellSelectionConfig}

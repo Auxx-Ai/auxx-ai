@@ -1,5 +1,11 @@
 // @auxx/lib/kb/index.ts
 
+export {
+  ARTICLE_SEARCH_TOTAL_LIMIT,
+  articleSearchTextAssignmentSql,
+  articleSearchTextExpressionSql,
+  updateArticleSearchText,
+} from './article-search-text'
 export type { AddPlacementInput } from './articles/add-placement'
 export { addPlacement } from './articles/add-placement'
 export { archiveArticle, unarchiveArticle } from './articles/archive-article'

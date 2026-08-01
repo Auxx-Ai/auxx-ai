@@ -16,7 +16,7 @@ import { type AnyColumn, and, eq, type SQL } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { findCachedResource, getCachedCustomFields, getCachedFieldMap } from '../../cache'
 import { type ConditionGroup, resolveConditionContext } from '../../conditions'
-import { BadRequestError } from '../../errors'
+import { BadRequestError, ForbiddenError } from '../../errors'
 import { publisher } from '../../events/publisher'
 import { FieldValueService } from '../../field-values'
 import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
@@ -33,6 +33,7 @@ import {
 import { resolveResourceAccessGrantees } from '../../resource-access/grantee-resolution'
 import { getCommonHooks, getSystemHooks } from '../hooks'
 import { RecordPickerService } from '../picker'
+import { isMailLensTableId, MAIL_LENS_REFUSAL } from '../picker/mail-lens-tables'
 import type { RecordPickerItem } from '../picker/types'
 import { isSystemResourceId } from '../registry'
 import type { TableId } from '../registry/field-registry'
@@ -279,11 +280,18 @@ export class UnifiedCrudHandler {
    * correlate the subquery against rows that do not exist, i.e. hide everything.
    */
   private async recordScope(entityDefinitionId: string): Promise<RecordVisibilityScope> {
-    // System-table resources (`thread`, `message`, `inbox`, …) have no
-    // `EntityInstance` rows and are governed by mail visibility, not by record
-    // grants. There is nothing for this predicate to correlate against, so they
-    // short-circuit to arm 1 — the same answer `canViewEntity`'s mail-infra
-    // pass-through already gives them.
+    // System-table resources (`user`, `inbox`, `dataset`, …) have no
+    // `EntityInstance` rows, so there is nothing for this predicate to correlate
+    // against and they short-circuit to arm 1 — the same answer
+    // `canViewEntity`'s mail-infra pass-through already gives them.
+    //
+    // ⚠ Arm 1 here is "the record lane has no per-row policy for this table",
+    // NOT "the caller may read every row". For `thread` / `message` that
+    // distinction is the whole bug: their policy is the mail lens, which lives
+    // in `mail-query/` and cannot be expressed as a record-grant predicate. The
+    // read entry points refuse them outright instead of relying on this answer —
+    // see `listFiltered` above and `assertNotMailLensTable` in
+    // `unified-handler-queries.ts`.
     if (isSystemResource(entityDefinitionId)) return { arm: 'all' }
 
     // ARMS 1 AND 4 COST NOTHING, and that ordering is the point (§5.1): the arm
@@ -976,10 +984,17 @@ export class UnifiedCrudHandler {
      * conditions narrow, the typed text IS the search. Ranked and typo-tolerant
      * on the EntityInstance path.
      *
-     * **Ignored on the system-resource path** (`thread`, `message`, `user`, …):
-     * those tables have no `searchText` corpus and no ranked binding yet, so a
-     * `search` passed with a `TableId` narrows nothing. Step 3.1 gives mail its
-     * own binding; until then, do not pass it for system resources.
+     * **On the system-resource path it is honoured only for tables that have a
+     * ranked binding** in `resources/search/system-search-bindings.ts` — today
+     * `article`, and nothing else. For every other `TableId` (`user`, `inbox`,
+     * `dataset`, …) it is silently ignored: the filters still apply and the
+     * ordering is unchanged, so a table can be adopted by adding a corpus
+     * column, two GIN indexes and one registry entry, without a flag day.
+     *
+     * `thread` / `message` are excluded on purpose rather than pending — mail
+     * content is governed by the member lens and is blocked from this path
+     * entirely (`resources/picker/mail-lens-tables.ts`); it binds the same
+     * builder under its own scopes in `mail-query/thread-search-sql.ts`.
      */
     search?: string
     sorting?: Array<{ id: string; desc: boolean }>
@@ -992,13 +1007,24 @@ export class UnifiedCrudHandler {
   }): Promise<ListFilteredResult> {
     const { entityDefinitionId, sorting = [], limit = 100, cursor } = params
 
+    // 🔴 Step 0.1 — the mail-content tables are refused BEFORE anything else on
+    // this path. `recordScope` answers `{ arm: 'all' }` for every system table
+    // and `querySystemResourceIdsPaged` scopes on `organizationId` alone, so a
+    // `thread` list here returned every thread id in the org — and a `total`
+    // counting the whole org's mailbox — to anyone who could reach the caller
+    // (a dashboard `recordList` widget with `source: {kind:'system',
+    // tableId:'thread'}` is exactly that). The lens lives in `mail-query/` and
+    // nowhere else, so this lane refuses rather than growing a second copy of
+    // it; `assertNotMailLensTable` carries the full reasoning.
+    if (isMailLensTableId(entityDefinitionId)) throw new ForbiddenError(MAIL_LENS_REFUSAL)
+
     // Read enforcement (§5.1). Arm 4 returns an empty page WITHOUT querying;
     // arms 2/3 join their predicate into `baseWhere`, which the page query and
     // the `COUNT(*)` share — so `total` describes the visible set.
     //
-    // System resources (`thread`, `message`, …) are not EntityInstance-backed
-    // and are governed by mail visibility, so the record scope does not apply to
-    // them; that branch is taken below, before `visibilityWhere` is used.
+    // Other system resources (`user`, `inbox`, `dataset`, …) are not
+    // EntityInstance-backed, so the record scope does not apply to them; that
+    // branch is taken below, before `visibilityWhere` is used.
     const scope = await this.recordScope(entityDefinitionId)
     if (scope.arm === 'none') {
       return { ids: [], total: 0, hasMore: false }
@@ -1019,6 +1045,7 @@ export class UnifiedCrudHandler {
         tableId: entityDefinitionId as TableId,
         organizationId: this.organizationId,
         filters: filters as ConditionGroup[],
+        search: params.search,
         sorting,
         limit,
         offset,

@@ -11,6 +11,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  sql,
   text,
   timestamp,
 } from './_shared'
@@ -94,6 +95,22 @@ export const Article = pgTable(
      * dedupe lives on `Thread.learnedExtractedAt`.
      */
     learnedProvenance: jsonb(),
+    /**
+     * Ranked free-text search corpus: the article's title, excerpt and the
+     * plain text of its draft revision's body — tags stripped,
+     * `<script>`/`<style>` blocks removed, whitespace collapsed and **bounded**.
+     *
+     * Maintained by `kb/article-search-text.ts`, which is the single definition
+     * of the expression; `kb/sync-article-denormalized-fields.ts` (the one hook
+     * every revision-write path already calls) splices it into the same UPDATE
+     * that denormalizes `title`/`excerpt`/`emoji`/`color`, and migration
+     * `070-backfill-article-search-text` fills in the existing rows.
+     *
+     * The bound is not optional: `to_tsvector` **errors** past 1 MB of input
+     * ("string is too long for tsvector"), which fails the write rather than
+     * degrading the search.
+     */
+    searchText: text(),
   },
   (table) => [
     index('Article_articleKind_idx').using('btree', table.articleKind.asc().nullsLast()),
@@ -107,6 +124,31 @@ export const Article = pgTable(
       'btree',
       table.sourceId.asc().nullsLast(),
       table.sourceExternalId.asc().nullsLast()
+    ),
+    // ── Ranked free-text search ───────────────────────────────────────────────
+    // Org-scoped composite GIN, the same strategy migration 0058 uses for
+    // EntityInstance and 0320 for Thread. `organizationId` leads because the
+    // system-resource list query always filters on it, which is what lets one
+    // index serve both the scope and the match.
+    //
+    // ⚠️ The `to_tsvector(...)` expression must stay byte-identical to the one
+    // `search/text-search-sql.ts` emits (`'english'::regconfig`, `COALESCE(x,'')`)
+    // — a differing config or a dropped COALESCE silently stops matching the
+    // index expression and forces a sequential scan.
+    index('Article_org_searchText_gin_idx').using(
+      'gin',
+      table.organizationId,
+      sql`to_tsvector('english'::regconfig, COALESCE("searchText", ''))`
+    ),
+    // Backs BOTH remaining arms of the OR block: the trigram (typo-tolerance)
+    // `title % q` arm and the `title ILIKE '%q%'` fallback. `gin_trgm_ops` serves
+    // `~~*` as well as `%`, never a bare `similarity(a,b) > k` call. Without it
+    // the ILIKE arm has no index condition and Postgres abandons the GIN index
+    // above too — an OR block is only as indexable as its worst arm.
+    index('Article_org_title_trgm_idx').using(
+      'gin',
+      table.organizationId,
+      table.title.op('gin_trgm_ops')
     ),
   ]
 )

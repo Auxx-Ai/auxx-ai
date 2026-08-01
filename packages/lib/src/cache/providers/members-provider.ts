@@ -25,6 +25,12 @@ export const membersProvider: CacheProvider<OrgMemberInfo[]> = {
           email: schema.User.email,
           image: schema.User.image,
           userType: schema.User.userType,
+          // The caller's IANA zone, for the Kopilot `now` prompt clock. Carried
+          // here rather than read from the `userProfile` USER cache because the
+          // agent already loads this blob to resolve the caller's member row —
+          // sourcing the zone anywhere else costs a second roundtrip per turn.
+          // See the staleness note on `members` in `../org-cache-keys.ts`.
+          preferredTimezone: schema.User.preferredTimezone,
         },
       })
       .from(schema.OrganizationMember)

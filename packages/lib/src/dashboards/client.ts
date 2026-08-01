@@ -553,10 +553,42 @@ export function toChartQueryInput(config: ChartWidgetConfig): ChartQueryInput {
 /** Chart kinds that carry a `groupBy` dimension. */
 const GROUP_BY_KINDS: WidgetKind[] = ['barChart', 'lineChart', 'pieChart']
 
-/** A view over any data widget's fields, all optional — presence gates carry-over. */
-type AnyDataConfig = Partial<
-  BarChartConfig & LineChartConfig & PieChartConfig & KpiConfig & GaugeConfig & RecordListConfig
->
+/**
+ * A view over the optional fields that may be carried between data widgets.
+ *
+ * This must not be an intersection of the config variants: their discriminant
+ * `kind` values are mutually exclusive, so intersecting them reduces the whole
+ * type to `never`. Keeping the carry-over surface explicit also ensures every
+ * property retains the type it has in the configuration that defines it.
+ */
+type AnyDataConfig = {
+  source?: WidgetSource
+  filters?: ConditionGroup[]
+  globalDateFieldRef?: WidgetFieldRef | null
+  description?: string
+  valueFormat?: FieldOptions
+  metric?: Metric
+  groupBy?: GroupBy
+  labelFormat?: DateLabelFormat
+  secondaryGroupBy?: GroupBy
+  layout?: 'vertical' | 'horizontal'
+  stacked?: boolean
+  cumulative?: boolean
+  area?: boolean
+  showDataLabels?: boolean
+  showLegend?: boolean
+  color?: ChartPaletteId
+  rangeMin?: number
+  rangeMax?: number
+  donut?: boolean
+  showCenterTotal?: boolean
+  prefix?: string
+  suffix?: string
+  trend?: { dateFieldRef: WidgetFieldRef; compare: TrendCompare }
+  columns?: WidgetFieldRef[]
+  sort?: { fieldRef: WidgetFieldRef; desc: boolean }
+  pageSize?: number
+}
 
 /** Copy only the defined keys from `obj` (so we never write `undefined` fields). */
 function pickDefined<T extends object, K extends keyof T>(obj: T, keys: K[]): Partial<Pick<T, K>> {
@@ -587,7 +619,10 @@ export function convertWidgetConfiguration(
 
   const f = from as AnyDataConfig
   // Shared spine — present on every data widget.
-  const spine = pickDefined(f, ['source', 'filters', 'globalDateFieldRef'])
+  const spine = {
+    source: from.source,
+    ...pickDefined(f, ['filters', 'globalDateFieldRef']),
+  }
   const metric: Metric = f.metric ?? { op: 'count' }
   const groupBy = GROUP_BY_KINDS.includes(from.kind) ? f.groupBy : undefined
 
