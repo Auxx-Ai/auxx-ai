@@ -50,6 +50,8 @@ const SUPPORTED_PARAMS = new Set([
  *   isn't wired up yet — `thinkingBudget` params are dropped for now.
  */
 export class GoogleLLMClient extends OpenAILLMClient {
+  protected static override clientName = 'Google-LLM'
+
   /**
    * Translate camelCase rule names (topP/maxOutputTokens) to their OpenAI
    * field names and drop everything the compat endpoint would 400 on

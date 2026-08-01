@@ -31,6 +31,8 @@ function findLastAssistantWithReasoningIndex(messages: Message[]): number {
  * - Within a single turn's tool-calling cycle, reasoning_content MUST be preserved on the last assistant
  */
 export class DeepSeekLLMClient extends OpenAILLMClient {
+  protected static override clientName = 'DeepSeek-LLM'
+
   /**
    * DeepSeek's OpenAI-compatible endpoint only supports legacy JSON mode
    * (`response_format: { type: 'json_object' }`), not strict Structured Outputs
