@@ -4,18 +4,20 @@
 // per-record path (batch-of-1 ≡ single). Boundaries (actions, store, cache, db) mocked.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { executeRuleAction, NativeRuleHandler } from './actions'
 import { legacyActionTextToDoc } from './client'
+import type { insertRecordRuleRun, insertRecordRuleRuns } from './store'
 import type { CachedRecordRule, RecordRuleBatchEvent } from './types'
 
 const h = vi.hoisted(() => {
-  const handlers = new Map<string, (e: unknown) => Promise<void>>()
+  const handlers = new Map<string, NativeRuleHandler>()
   return {
-    executeRuleAction: vi.fn(async () => 'ok' as const),
-    insertRecordRuleRun: vi.fn(async () => {}),
-    insertRecordRuleRuns: vi.fn(async () => {}),
+    executeRuleAction: vi.fn<typeof executeRuleAction>(async () => 'ok'),
+    insertRecordRuleRun: vi.fn<typeof insertRecordRuleRun>(async () => undefined),
+    insertRecordRuleRuns: vi.fn<typeof insertRecordRuleRuns>(async () => undefined),
     fetchResourceById: vi.fn(),
     getCachedResourceFields: vi.fn(async () => []),
-    nativeHandler: vi.fn(async () => {}),
+    nativeHandler: vi.fn<NativeRuleHandler>(async () => undefined),
     handlers,
     getNativeRuleHandler: vi.fn((key: string) => handlers.get(key)),
   }
@@ -60,6 +62,14 @@ function fieldEvent(instance: string, o: unknown, n: unknown): RecordRuleBatchEv
   return { entityInstanceId: instance, fieldId: 'fld_status', oldValue: o, newValue: n }
 }
 
+/** Assert a mock was called before safely returning its first typed argument tuple. */
+function firstMockCall<TArgs extends unknown[]>(calls: TArgs[]): TArgs {
+  const call = calls[0]
+  expect(call).toBeDefined()
+  if (!call) throw new Error('Expected mock to have been called')
+  return call
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   h.handlers.clear()
@@ -83,7 +93,7 @@ describe('fireRecordRulesBatch — native actions', () => {
     })
     // Per D11: one run row PER record, written as ONE batch insert.
     expect(h.insertRecordRuleRuns).toHaveBeenCalledTimes(1)
-    expect(h.insertRecordRuleRuns.mock.calls[0][1]).toHaveLength(3)
+    expect(firstMockCall(h.insertRecordRuleRuns.mock.calls)[1]).toHaveLength(3)
     // Native path bypasses the per-record executor.
     expect(h.executeRuleAction).not.toHaveBeenCalled()
   })
@@ -102,9 +112,9 @@ describe('fireRecordRulesBatch — native actions', () => {
       ],
     })
     expect(h.nativeHandler).toHaveBeenCalledTimes(1)
-    expect(h.nativeHandler.mock.calls[0][0]).toMatchObject({ recordIds: ['def_1:i1'] })
+    expect(firstMockCall(h.nativeHandler.mock.calls)[0]).toMatchObject({ recordIds: ['def_1:i1'] })
     expect(h.insertRecordRuleRuns).toHaveBeenCalledTimes(1)
-    expect(h.insertRecordRuleRuns.mock.calls[0][1]).toHaveLength(1)
+    expect(firstMockCall(h.insertRecordRuleRuns.mock.calls)[1]).toHaveLength(1)
   })
 
   it('unknown handler key → outcome failed, logged run row, never throws', async () => {
@@ -113,7 +123,9 @@ describe('fireRecordRulesBatch — native actions', () => {
 
     expect(h.nativeHandler).not.toHaveBeenCalled()
     expect(h.insertRecordRuleRuns).toHaveBeenCalledTimes(1)
-    expect(h.insertRecordRuleRuns.mock.calls[0][1][0]).toMatchObject({ status: 'failed' })
+    expect(firstMockCall(h.insertRecordRuleRuns.mock.calls)[1][0]).toMatchObject({
+      status: 'failed',
+    })
   })
 
   it('propagates userId to the native handler', async () => {
@@ -123,7 +135,7 @@ describe('fireRecordRulesBatch — native actions', () => {
       userId: 'user_9',
       events: [fieldEvent('i1', 'a', 'b')],
     })
-    expect(h.nativeHandler.mock.calls[0][0]).toMatchObject({ userId: 'user_9' })
+    expect(firstMockCall(h.nativeHandler.mock.calls)[0]).toMatchObject({ userId: 'user_9' })
   })
 
   // Phase 9 / Option A: lifecycle native rules receive the per-record raw values + the
@@ -143,7 +155,7 @@ describe('fireRecordRulesBatch — native actions', () => {
       ],
     })
     expect(h.nativeHandler).toHaveBeenCalledTimes(1)
-    expect(h.nativeHandler.mock.calls[0][0]).toMatchObject({
+    expect(firstMockCall(h.nativeHandler.mock.calls)[0]).toMatchObject({
       recordIds: ['def_1:i1', 'def_1:i2'],
       action: 'created',
       eventDataByRecordId: {
@@ -164,10 +176,7 @@ describe('fireRecordRulesBatch — native actions', () => {
       ...baseCtx,
       events: [{ entityInstanceId: 'i1' }],
     })
-    const arg = h.nativeHandler.mock.calls[0][0] as {
-      action?: string
-      eventDataByRecordId?: unknown
-    }
+    const [arg] = firstMockCall(h.nativeHandler.mock.calls)
     expect(arg.action).toBe('deleted')
     expect(arg.eventDataByRecordId).toBeUndefined()
   })
@@ -185,7 +194,7 @@ describe('fireRecordRulesBatch — non-native (batch-of-1 ≡ single)', () => {
     const r = rule()
     await fireRecordRulesBatch([r], { ...baseCtx, events: [fieldEvent('i1', 'a', 'b')] })
     const batchExecCalls = h.executeRuleAction.mock.calls.length
-    const batchRunRow = h.insertRecordRuleRun.mock.calls[0][1]
+    const [, batchRunRow] = firstMockCall(h.insertRecordRuleRun.mock.calls)
 
     vi.clearAllMocks()
     h.executeRuleAction.mockResolvedValue('ok')
@@ -200,7 +209,7 @@ describe('fireRecordRulesBatch — non-native (batch-of-1 ≡ single)', () => {
       newValue: 'b',
     })
     expect(h.executeRuleAction.mock.calls.length).toBe(batchExecCalls)
-    expect(h.insertRecordRuleRun.mock.calls[0][1]).toMatchObject({
+    expect(firstMockCall(h.insertRecordRuleRun.mock.calls)[1]).toMatchObject({
       ruleId: batchRunRow.ruleId,
       entityInstanceId: batchRunRow.entityInstanceId,
       source: batchRunRow.source,
