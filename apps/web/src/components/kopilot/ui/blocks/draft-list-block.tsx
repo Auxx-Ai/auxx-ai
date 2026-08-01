@@ -13,6 +13,7 @@ import { useThread } from '~/components/threads/hooks'
 import type { ThreadMeta } from '~/components/threads/store'
 import { useCompose } from '~/hooks/use-compose'
 import { BlockCard } from './block-card'
+import { parseBlockDate } from './block-date'
 import type { BlockRendererProps } from './block-registry'
 import type { DraftListData, DraftSnapshotData } from './block-schemas'
 import { useStreamSafeIds } from './use-stream-safe-ids'
@@ -114,8 +115,8 @@ function DraftListRow({ id, snapshot: serverSnapshot }: DraftListRowProps) {
 
   const subject = snapshot.subject ?? '(no subject)'
   const recipientSummary = snapshot.recipientSummary
-  const updatedAt = snapshot.updatedAt
-  const scheduledAt = snapshot.scheduledAt
+  const updatedAt = parseBlockDate(snapshot.updatedAt)
+  const scheduledAt = parseBlockDate(snapshot.scheduledAt)
   const kindLabel = snapshot.kind === 'reply' ? 'Reply' : 'New'
 
   return (
@@ -141,14 +142,14 @@ function DraftListRow({ id, snapshot: serverSnapshot }: DraftListRowProps) {
             <>
               {recipientSummary && <span>·</span>}
               <span className='shrink-0 text-amber-600 dark:text-amber-400'>
-                Scheduled {formatDistanceToNowStrict(new Date(scheduledAt), { addSuffix: true })}
+                Scheduled {formatDistanceToNowStrict(scheduledAt, { addSuffix: true })}
               </span>
             </>
           ) : updatedAt ? (
             <>
               {recipientSummary && <span>·</span>}
               <span className='shrink-0'>
-                {formatDistanceToNowStrict(new Date(updatedAt), { addSuffix: true })}
+                {formatDistanceToNowStrict(updatedAt, { addSuffix: true })}
               </span>
             </>
           ) : null}

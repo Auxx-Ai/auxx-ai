@@ -9,6 +9,11 @@ import type { ApprovalCardProps } from './approval-card-registry'
 import { BlockCard, type BlockCardAction, StatusIndicator } from './block-card'
 import { RecipientChip } from './recipient-chip'
 
+/** Keep only the string entries of a model-authored list — the rest can't be rendered. */
+function toStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []
+}
+
 export function DraftApprovalCard({
   args,
   status,
@@ -37,43 +42,26 @@ export function DraftApprovalCard({
   const threadId =
     (typeof d.threadId === 'string' && d.threadId) ||
     (typeof args.threadId === 'string' ? args.threadId : undefined)
-  const body = typeof d.body === 'string' ? d.body : ((args.body as string) ?? '')
-  const argTo = Array.isArray(args.to) ? (args.to as string[]) : []
-  const argCc = Array.isArray(args.cc) ? (args.cc as string[]) : []
+  // Tool args reaching an approval card are only presence-checked, never type
+  // validated (zod runs after approval), so every field here is raw model
+  // output — a non-string rendered as a React child throws.
+  const body = typeof d.body === 'string' ? d.body : typeof args.body === 'string' ? args.body : ''
+  const argTo = toStringList(args.to)
+  const argCc = toStringList(args.cc)
 
   // Post-execution: prefer resolved labels from the digest (real emails / phones).
-  const resolvedLabels =
-    d.recipients ?? resolvedRecipients?.map((r) => r.displayName ?? r.identifier)
+  const resolvedLabels = Array.isArray(d.recipients)
+    ? toStringList(d.recipients)
+    : resolvedRecipients?.map((r) => r.displayName ?? r.identifier)
 
   const handleEditInThread = () => {
+    if (!threadId) return
     const currentSearch = searchParams.toString()
-    console.log('[DraftApprovalCard] edit-in-thread clicked', {
-      threadId,
-      digestThreadId: d.threadId,
-      argsThreadId: args.threadId,
-      status,
-      pathname,
-      currentSearch,
-    })
-    if (!threadId) {
-      console.warn('[DraftApprovalCard] edit-in-thread aborted: no threadId', {
-        digest: d,
-        args,
-      })
-      return
-    }
     const onMailRoute = pathname?.startsWith('/app/mail/') ?? false
     const basePath = onMailRoute ? pathname : '/app/mail/inboxes/all/unassigned'
     const params = new URLSearchParams(onMailRoute ? currentSearch : '')
     params.set('tid', threadId)
-    const target = `${basePath}?${params.toString()}`
-    console.log('[DraftApprovalCard] edit-in-thread navigating', {
-      from: `${pathname}${currentSearch ? `?${currentSearch}` : ''}`,
-      to: target,
-      threadId,
-      onMailRoute,
-    })
-    router.push(target)
+    router.push(`${basePath}?${params.toString()}`)
   }
 
   const isPending = status === 'pending'

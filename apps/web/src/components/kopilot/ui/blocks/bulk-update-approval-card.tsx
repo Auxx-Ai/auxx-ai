@@ -2,8 +2,7 @@
 
 'use client'
 
-import type { RecordId } from '@auxx/lib/resources/client'
-import { getDefinitionId } from '@auxx/lib/resources/client'
+import { getDefinitionId, isRecordId } from '@auxx/lib/resources/client'
 import { useState } from 'react'
 import { useResource } from '~/components/resources'
 import type { ApprovalCardProps } from './approval-card-registry'
@@ -12,8 +11,14 @@ import { EntityCardItem } from './entity-card-item'
 import { KopilotFieldRow } from './kopilot-field-row'
 
 export function BulkUpdateApprovalCard({ args, status, onApprove, onReject }: ApprovalCardProps) {
-  const recordIds = (args.recordIds ?? []) as RecordId[]
-  const values = (args.values ?? []) as Array<{ fieldId: string; value: unknown }>
+  // Approval-card args are raw model output — only required-key presence is
+  // checked before the card renders, so a wrong-typed `recordIds` would throw
+  // in `getDefinitionId` and a non-array `values` in `.map`.
+  const recordIds = (Array.isArray(args.recordIds) ? args.recordIds : []).filter(isRecordId)
+  const values = (Array.isArray(args.values) ? args.values : []) as Array<{
+    fieldId: string
+    value: unknown
+  }>
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(recordIds))
 
   const firstRecordId = recordIds[0]
