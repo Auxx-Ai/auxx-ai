@@ -3,6 +3,18 @@
 import type { RedisClient } from '@auxx/redis'
 import type { AnyImportEvent } from './event-types'
 
+/**
+ * An import event before the publisher attaches its job metadata.
+ *
+ * `Omit<AnyImportEvent, ...>` collapses the discriminated union to its shared
+ * keys. Distributing the omit keeps each event's type-specific payload fields.
+ */
+type PublishableImportEvent = AnyImportEvent extends infer Event
+  ? Event extends AnyImportEvent
+    ? Omit<Event, 'timestamp' | 'jobId'>
+    : never
+  : never
+
 /** Redis channel for import events */
 const IMPORT_EVENTS_CHANNEL = 'import:events'
 
@@ -48,7 +60,7 @@ export class ImportEventPublisher {
 export function createEventPublisher(
   redis: RedisClient,
   jobId: string
-): (event: Omit<AnyImportEvent, 'timestamp' | 'jobId'>) => Promise<void> {
+): (event: PublishableImportEvent) => Promise<void> {
   const publisher = new ImportEventPublisher(redis)
 
   return async (event) => {
@@ -56,6 +68,6 @@ export function createEventPublisher(
       ...event,
       timestamp: Date.now(),
       jobId,
-    } as AnyImportEvent)
+    })
   }
 }

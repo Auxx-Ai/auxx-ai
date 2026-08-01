@@ -125,7 +125,7 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
       }
 
       // Use UnifiedCrudHandler with skipEvents
-      const instance = await crudHandler.create(entityDefinitionId, mergedData, {
+      const created = await crudHandler.create(entityDefinitionId, mergedData, {
         skipEvents: true,
       })
 
@@ -133,7 +133,7 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
       if (manifest.enabled) {
         const subs = manifest.subscriptionsFor(entityDefinitionId)
         if (subs) {
-          const rid = toRecordId(entityDefinitionId, instance.id)
+          const rid = created.recordId
           const { captureCreateFieldChanges, captureCreatedValues } = await import(
             '../../record-rules/capture-field-changes'
           )
@@ -157,8 +157,8 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
         }
       }
 
-      logger.debug('Created record', { id: instance.id, entityDefinitionId })
-      return { id: instance.id }
+      logger.debug('Created record', { id: created.instance.id, entityDefinitionId })
+      return { id: created.instance.id }
     }
 
     const updateRecord = async (
