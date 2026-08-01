@@ -37,6 +37,26 @@ import type { EmailType, SendEmailJobData } from './types'
 
 const logger = createScopedLogger('job:send-email')
 
+/**
+ * Render an approval expiry for display in an email.
+ *
+ * The payload type says `Date`, and that is true at ENQUEUE time — but the job
+ * round-trips through Redis as JSON, so what arrives here is an ISO string. The
+ * templates take a preformatted `string` precisely because they cannot render a
+ * `Date` (React throws "Objects are not valid as a React child"), and without
+ * this the emails showed a raw `2026-08-02T10:00:00.000Z`.
+ *
+ * `new Date(value)` accepts either form, so this is correct whichever side of
+ * the queue it is called from.
+ */
+function formatExpiry(value: Date | string): string {
+  return `${new Date(value).toLocaleString('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'UTC',
+  })} UTC`
+}
+
 const handlers: {
   [K in EmailType]: (payload: SendEmailJobData<K>['payload']) => Promise<boolean>
 } = {
@@ -89,7 +109,7 @@ const handlers: {
       workflowName: p.workflowName,
       message: p.message,
       approvalUrl: p.approvalUrl,
-      expiresAt: p.expiresAt,
+      expiresAt: formatExpiry(p.expiresAt),
     }),
   'approval-reminder': (p) =>
     sendApprovalReminderEmail({
@@ -100,7 +120,7 @@ const handlers: {
       approvalUrl: p.approvalUrl,
       reminderNumber: p.reminderNumber,
       timeRemaining: p.timeRemaining,
-      expiresAt: p.expiresAt,
+      expiresAt: formatExpiry(p.expiresAt),
     }),
   'getting-started': (p) =>
     sendGettingStartedEmail({

@@ -29,11 +29,14 @@ export interface MailgunTransportOptions {
  * Extended mail options with Mailgun-specific fields
  */
 interface ExtendedMailOptions extends Mail.Options {
+  /** `null` is meaningful, not merely absent: `renderTemplate` sets it to clear a
+   *  locally-rendered Handlebars template so the HTML is sent instead of asking
+   *  Mailgun to resolve a template by name. */
   template?: {
     name: string
     engine: 'handlebars'
     context?: Record<string, any>
-  }
+  } | null
   'o:tag'?: string | string[]
   'o:campaign'?: string
   'o:dkim'?: boolean | 'yes' | 'no'
@@ -188,12 +191,15 @@ function makeMailgunAttachments(attachments: Mail.Attachment[] = []): {
 function makeAllTextAddresses(mail: ExtendedMailOptions): Record<string, string> {
   const keys = ['from', 'to', 'cc', 'bcc', 'replyTo'] as const
 
-  const makeTextAddresses = (addresses: any): string => {
-    const validAddresses = [].concat(addresses).filter(Boolean)
+  const makeTextAddresses = (addresses: unknown): string => {
+    // Was `[].concat(addresses)`, whose `[]` is `never[]` — so every element typed
+    // as `never` and each property read on it was an error. Same one-level flatten.
+    const validAddresses = (Array.isArray(addresses) ? addresses : [addresses]).filter(Boolean)
 
     const textAddresses = validAddresses.map((item) => {
-      if (typeof item === 'object' && item.address) {
-        return item.name ? `${item.name} <${item.address}>` : item.address
+      if (typeof item === 'object' && item !== null && 'address' in item) {
+        const { address, name } = item as { address: string; name?: string }
+        return name ? `${name} <${address}>` : address
       } else if (typeof item === 'string') {
         return item
       }

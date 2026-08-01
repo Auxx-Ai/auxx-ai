@@ -90,8 +90,19 @@ export class TransportFactory {
       throw new Error('Invalid SYSTEM_FROM_EMAIL: must contain a valid domain')
     }
 
+    // Unreachable: the `missingVars` check above already throws when this is unset.
+    // It is here only to NARROW the type — TypeScript cannot see through
+    // `Object.entries(requiredVars).filter(...)`, so the key still reads as
+    // `string | undefined` while `MailgunTransportOptions.auth.api_key` wants a
+    // `string`. Re-reading and re-checking beats asserting non-null: if the
+    // validation above is ever reordered or dropped, this still fails loudly.
+    const apiKey = configService.get<string>('MAILGUN_API_KEY')
+    if (!apiKey) {
+      throw new Error('MAILGUN_API_KEY is not configured')
+    }
+
     const auth = {
-      api_key: configService.get<string>('MAILGUN_API_KEY'),
+      api_key: apiKey,
       domain: sendingDomain,
     }
 

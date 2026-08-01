@@ -76,6 +76,8 @@ export {
   toGraphRecipients,
   validateSendAsAddress,
 } from './email'
+// Error utilities
+export { getErrorMessage, toError } from './errors'
 
 // File utilities
 export {

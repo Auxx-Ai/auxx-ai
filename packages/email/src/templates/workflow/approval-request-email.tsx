@@ -13,7 +13,7 @@ interface ApprovalRequestEmailProps {
   workflowName: string
   message?: string
   approvalUrl: string
-  expiresAt: Date
+  expiresAt: string
 }
 
 export async function ApprovalRequestEmail({
