@@ -21,7 +21,8 @@ export type { RuntimeConnectionData }
 export async function resolveAppConnectionForRuntime(input: {
   appId: string
   organizationId: string
-  userId: string
+  /** Absent for runs with no user context (e.g. polling triggers). */
+  userId: string | undefined
   connectionId?: string
   ensureFresh?: boolean
 }) {

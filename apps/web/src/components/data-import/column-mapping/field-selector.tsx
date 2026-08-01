@@ -15,7 +15,15 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { cn } from '@auxx/ui/lib/utils'
 import { Check, ChevronsUpDown, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import type { ImportableField } from '../types'
+import type { FieldGroup, ImportableField } from '../types'
+
+/** Headings for the combobox's `CommandGroup`s, keyed by `ImportableField.group`. */
+const GROUP_LABELS: Record<FieldGroup, string> = {
+  identifier: 'Identifier',
+  system: 'Fields',
+  custom: 'Custom fields',
+  relationship: 'Relationships',
+}
 
 interface FieldSelectorProps {
   value: string | null
@@ -32,12 +40,13 @@ export function FieldSelector({ value, fields, usedFieldKeys, onChange }: FieldS
 
   const selectedField = fields.find((f) => f.key === value)
 
-  // Group fields by category
+  // Group fields by their `FieldGroup` (identifier / system / custom / relationship).
   const groupedFields = fields.reduce(
     (acc, field) => {
-      const group = field.category ?? 'Other'
-      if (!acc[group]) acc[group] = []
-      acc[group].push(field)
+      const group = GROUP_LABELS[field.group] ?? 'Other'
+      const bucket = acc[group] ?? []
+      bucket.push(field)
+      acc[group] = bucket
       return acc
     },
     {} as Record<string, ImportableField[]>

@@ -242,6 +242,7 @@ async function upsertIntegration(args: {
       updatedAt: new Date(),
     })
     .returning({ id: schema.Integration.id })
+  if (!created) throw new Error('Integration insert returned no row')
   return { id: created.id, isNew: true }
 }
 

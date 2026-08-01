@@ -4,7 +4,7 @@
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import * as React from 'react'
-import { parseRecordId } from '~/components/resources'
+import { parseRecordId, type RecordId } from '~/components/resources'
 import { getDetailViewTabComponent } from './detail-view-tab-registry'
 import type { DetailViewMainTabsProps, DetailViewTabProps } from './types'
 import { getIconComponent } from './utils'
@@ -78,7 +78,7 @@ function LazyTabComponent({
   entityType: string
   tabValue: string
   entityInstanceId: string
-  recordId: string
+  recordId: RecordId
   record?: Record<string, unknown>
 }) {
   const componentLoader = getDetailViewTabComponent(entityType, tabValue)

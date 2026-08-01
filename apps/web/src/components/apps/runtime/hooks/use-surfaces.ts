@@ -4,7 +4,12 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { useInternalAppsContext } from '~/components/apps/providers/internal-apps-context'
-import type { Surface } from '../app-store'
+import type { AppStore, Surface } from '../app-store'
+
+/** Surfaces only exist once an app bundle has loaded in the browser, so the
+ *  server snapshot is always empty. Must be a stable reference — React re-reads
+ *  `getServerSnapshot` on every render. */
+const EMPTY_SURFACES: ReturnType<AppStore['getAllSurfaces']> = new Map()
 
 /**
  * Options for useSurfaces hook.
@@ -93,7 +98,7 @@ export function useSurfaces(
     return store.getAllSurfaces()
   }, [store])
 
-  const allSurfaces = useSyncExternalStore(subscribe, getSnapshot, () => null)
+  const allSurfaces = useSyncExternalStore(subscribe, getSnapshot, () => EMPTY_SURFACES)
 
   // Calculate success state
   const isSuccess = !isLoading && !isError

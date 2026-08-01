@@ -3,11 +3,11 @@
 import type {
   BatchUploadResult,
   EntityType,
-  FileUploadEvent,
   ProcessingStage,
   SessionStatus,
   UploadProgress,
 } from '@auxx/lib/files/types'
+import type { UploadSseEvent } from '../types/upload-events'
 
 /**
  * Core store state types
@@ -206,7 +206,7 @@ export interface UploadActions {
   updateSessionProgress: (sessionId: string, progress: number) => void
   connectSSE: (sessionId: string) => void
   disconnectSSE: (sessionId: string) => void
-  handleSSEEvent: (sessionId: string, event: FileUploadEvent) => void
+  handleSSEEvent: (sessionId: string, event: UploadSseEvent) => void
 
   // File Actions
   addFiles: (files: File[], sessionId?: string, entityType?: EntityType) => string[] // Return created IDs

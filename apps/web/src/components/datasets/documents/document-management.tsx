@@ -7,6 +7,7 @@ import { toastError, toastInfo, toastSuccess } from '@auxx/ui/components/toast'
 import { CircleDot, CircleSlash, FileText, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useDatasetDetail } from '~/app/(protected)/app/datasets/[datasetId]/_components/dataset-detail-provider'
+import type { BulkAction } from '~/components/dynamic-table'
 import { DynamicTable } from '~/components/dynamic-table'
 import { useFileUpload } from '~/components/file-upload/hooks/use-file-upload'
 import { FileDropZone } from '~/components/files/file-drop-zone'
@@ -289,7 +290,7 @@ export function DocumentManagement({ datasetId, onDocumentSelect }: DocumentMana
     [handleViewDetails, handleDownload, handleDelete, handleArchive, handleUnarchive, canEdit]
   )
   // Bulk actions — all mutate documents (same edit-instance gate as the row menu).
-  const bulkActions = useMemo(
+  const bulkActions = useMemo<BulkAction<Document>[]>(
     () =>
       canEdit
         ? [

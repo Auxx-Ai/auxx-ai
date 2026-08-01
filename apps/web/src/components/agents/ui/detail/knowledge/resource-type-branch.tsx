@@ -1,13 +1,14 @@
 // apps/web/src/components/agents/ui/detail/knowledge/resource-type-branch.tsx
 'use client'
 
+import type { AgentScopeMode } from '@auxx/lib/agents/client'
 import type { Resource } from '@auxx/lib/resources/client'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { useState } from 'react'
 import type { AgentDetail } from '../../../store/agent-store'
 import { AgentScopeActions } from './agent-scope-actions'
-import { deriveEffectiveMode, type EffectiveScopeMode } from './derive-scope-mode'
+import { deriveEffectiveMode } from './derive-scope-mode'
 import { FlatRecordList } from './flat-record-list'
 import { KbBranch } from './kb-branch'
 import type { useScopeMutations } from './use-scope-mutations'
@@ -41,7 +42,7 @@ export function ResourceTypeBranch({ resource, agent, mutations }: ResourceTypeB
   const entry = agent.knowledge.find((k) => k.recordId === recordId)
   const isMentionLocked = entry?.source === 'mention'
 
-  const defaultAddMode: EffectiveScopeMode = HAS_DESCENDANTS.has(resource.id)
+  const defaultAddMode: AgentScopeMode = HAS_DESCENDANTS.has(resource.id)
     ? 'include_descendants'
     : 'include_one'
 

@@ -24,7 +24,9 @@ export function DisplayNumber() {
   // Use the converter to format the display value
   const typedValue = { type: 'number' as const, value: num }
 
-  const formatted = converters.NUMBER.toDisplayValue(typedValue, opts)
+  // `FieldValueConverter.toDisplayValue` is declared `unknown` (RELATIONSHIP
+  // returns an object); the number converter always returns a string.
+  const formatted = String(converters.NUMBER.toDisplayValue(typedValue, opts))
 
   return <DisplayWrapper copyValue={String(value)}>{formatted}</DisplayWrapper>
 }

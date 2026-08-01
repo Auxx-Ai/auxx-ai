@@ -891,7 +891,10 @@ export function mapFieldTypeToBaseType(fieldType: string): BaseType {
  * Uses supportedFieldTypes if defined, otherwise falls back to BaseType mapping
  */
 export function getOperatorsForFieldType(fieldType: string): OperatorDefinition[] {
-  return Object.values(OPERATOR_DEFINITIONS).filter((op) => {
+  // Widened: the `as const` literal type is a union whose members don't all
+  // carry the optional `supportedFieldTypes` key.
+  const definitions: OperatorDefinition[] = Object.values(OPERATOR_DEFINITIONS)
+  return definitions.filter((op) => {
     // If supportedFieldTypes is defined and non-empty, use it directly
     if (op.supportedFieldTypes && op.supportedFieldTypes.length > 0) {
       return op.supportedFieldTypes.includes(fieldType)
@@ -907,7 +910,7 @@ export function getOperatorsForFieldType(fieldType: string): OperatorDefinition[
  * Check if operator supports a specific FieldType
  */
 export function isOperatorValidForFieldType(operator: Operator, fieldType: string): boolean {
-  const def = OPERATOR_DEFINITIONS[operator]
+  const def = getOperatorDefinition(operator)
   if (!def) return false
 
   // If supportedFieldTypes is defined and non-empty, use it directly

@@ -64,7 +64,7 @@ export function formatMetricValue(value: number, op: MetricOp, meta?: MetricFiel
     // Counts have no underlying field, so they default to a grouped integer —
     // but honor a per-widget `valueFormat` override (e.g. compact `1.2K`) when set.
     return meta?.options
-      ? converters.NUMBER.toDisplayValue({ type: 'number', value }, meta.options)
+      ? String(converters.NUMBER.toDisplayValue({ type: 'number', value }, meta.options) ?? '')
       : new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value)
   }
 
@@ -75,7 +75,7 @@ export function formatMetricValue(value: number, op: MetricOp, meta?: MetricFiel
     return formatCurrency(value, options as CurrencyDisplayOptions | undefined)
   }
   if (fieldType === 'NUMBER') {
-    return converters.NUMBER.toDisplayValue({ type: 'number', value }, options)
+    return String(converters.NUMBER.toDisplayValue({ type: 'number', value }, options) ?? '')
   }
   if (fieldType === 'DATE' || fieldType === 'DATETIME') {
     // min/max on a date field come back as epoch millis.

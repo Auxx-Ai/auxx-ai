@@ -5,6 +5,7 @@ import type { FileValue } from '@auxx/lib/field-values/client'
 import type { FileTypeCategory } from '@auxx/lib/files/client'
 import { getMimePatternsForCategories } from '@auxx/lib/files/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import type { FieldReference } from '@auxx/types/field'
 import type { JsonFieldValue, TypedFieldValue } from '@auxx/types/field-value'
 import { type FileRef, getFileRefDownloadUrl } from '@auxx/types/file-ref'
 import { toastError } from '@auxx/ui/components/toast'
@@ -77,7 +78,9 @@ function initGlobalSubscription() {
       const session = state.sessions[sessionId]
       if (!session) continue
 
-      const files = session.fileIds.map((id) => state.files[id]).filter(Boolean)
+      const files = session.fileIds
+        .map((id) => state.files[id])
+        .filter((f): f is FileState => f !== undefined)
       if (files.length === 0) continue
       if (session.uploading) continue
 
@@ -118,7 +121,9 @@ function initGlobalSubscription() {
  */
 interface PendingAvatarState {
   recordId: string
-  priorAvatarUrl: string | undefined
+  /** `null` is a real stored state (avatar explicitly cleared) — keep it distinct
+   *  from `undefined` so a rollback restores exactly what was there. */
+  priorAvatarUrl: string | null | undefined
   blobUrl?: string
 }
 const pendingAvatarByKey = new Map<string, PendingAvatarState>()
@@ -138,7 +143,7 @@ function isAvatarField(recordId: string, fieldRef: string): boolean {
 function optimisticallyWriteAvatar(
   recordId: string,
   newAvatarUrl: string | undefined
-): { rollback: () => void; priorAvatarUrl: string | undefined } {
+): { rollback: () => void; priorAvatarUrl: string | null | undefined } {
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId as RecordId)
   const store = useRecordStore.getState()
   const current = store.records[entityDefinitionId]?.get(entityInstanceId)
@@ -403,9 +408,12 @@ export function useFieldFileUpload({
   // Deterministic uploaderId — same across mount/unmount cycles
   const uploaderId = `field-upload:${recordId}:${fieldRef}`
 
-  // Pre-compute store key
+  // Pre-compute store key.
+  // `fieldRef` arrives as a plain string (a bare FieldId or an already-scoped
+  // ResourceFieldId); `buildFieldValueKey` re-discriminates it at runtime via
+  // `normalizeFieldRef`, so the brand is only a compile-time marker here.
   const storeKey = useMemo(
-    () => buildFieldValueKey(recordId as RecordId, fieldRef),
+    () => buildFieldValueKey(recordId as RecordId, fieldRef as FieldReference),
     [recordId, fieldRef]
   )
 
@@ -539,7 +547,7 @@ export function useFieldFileUpload({
 
     return session.fileIds
       .map((id) => state.files[id])
-      .filter(Boolean)
+      .filter((f): f is FileState => f !== undefined)
       .filter((f) => {
         if (f.status === 'failed') return false
         // Keep completed files visible until displayFiles absorbs them

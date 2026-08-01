@@ -24,6 +24,11 @@ export const DocumentEventType = {
 
   // Generic
   ERROR: 'error',
+  /**
+   * Stream-level failure. Named separately from `ERROR` so the SSE frame does
+   * not collide with `EventSource`'s native `error` event.
+   */
+  CONNECTION_ERROR: 'connection_error',
 } as const
 
 export type DocumentEventType = (typeof DocumentEventType)[keyof typeof DocumentEventType]

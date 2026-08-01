@@ -49,7 +49,8 @@ function approverSummary(
  * nothing in the body is common, so what is shared is the CHROME and the tier
  * vocabulary: the popover shell, the footer guide link, and `AccessLevelsGuide`.
  *
- * There is no lens picker — thread requests are hardcoded `full` (§0.2), which is
+ * There is no lens picker — thread requests are hardcoded at the top lens, `read`
+ * (spelled `full` before the permissions-v3 rename) (§0.2), which is
  * also what removes the Enterprise refusal case (§5.2). If a picker ever arrives it
  * goes through `LensSelect`, "the one tier picker every mail-permission surface
  * uses", rather than a second select. (The record lane's rung is likewise derived

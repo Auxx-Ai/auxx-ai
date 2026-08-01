@@ -38,7 +38,8 @@ export class ThreadManagerService {
    */
   async getOrCreateThreadForSending(input: {
     threadId?: string
-    subject: string
+    /** Chat sends carry no subject; `Thread.subject` is NOT NULL so it stores `''`. */
+    subject?: string | null
     integrationId: string
     organizationId: string
   }): Promise<ThreadContext> {
@@ -94,7 +95,7 @@ export class ThreadManagerService {
    * Creates a pending thread that will be reconciled after provider response
    */
   private async createPendingThread(input: {
-    subject: string
+    subject?: string | null
     integrationId: string
     organizationId: string
   }): Promise<Thread> {
@@ -135,7 +136,9 @@ export class ThreadManagerService {
       .insert(schema.Thread)
       .values({
         externalId: null,
-        subject: input.subject,
+        // `Thread.subject` is NOT NULL — a subject-less send (chat) stores an
+        // empty string. `Message.subject` keeps the true nullish value.
+        subject: input.subject ?? '',
         organizationId: input.organizationId,
         integrationId: input.integrationId,
         inboxId,

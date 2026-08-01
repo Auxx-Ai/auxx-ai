@@ -52,14 +52,14 @@ export function AiProviderPicker({
   const isOpen = internalOpen
   const setIsOpen = setInternalOpen
 
-  // Transform providers data for compatibility with the existing component structure
+  // Surface `provider` under a stable `id` for the list/selection plumbing.
+  // The rest of the record is carried through untouched — `ProviderIcon` takes
+  // the whole `ProviderData`, so stripping it down would break the icon.
   const allProviders = useMemo(() => {
     return providers.map((provider) => ({
+      ...provider,
       id: provider.provider,
-      displayName: provider.displayName,
       description: provider.description || '',
-      icon: provider.icon,
-      color: provider.color,
     }))
   }, [providers])
 

@@ -9,7 +9,12 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { createFieldValueContext } from '../field-values/field-value-helpers'
 import { setValueWithType } from '../field-values/field-value-mutations'
-import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
+import { toFieldType } from '../field-values/stored-field-type'
+import {
+  type FieldValueUpdateEntry,
+  getRealtimeService,
+  publishFieldValueUpdates,
+} from '../realtime'
 
 const logger = createScopedLogger('bom:cost-calculator')
 
@@ -482,7 +487,7 @@ async function persistCosts(
             setValueWithType(ctx, {
               recordId,
               fieldId: costField.id,
-              fieldType: costField.type,
+              fieldType: toFieldType(costField.type),
               value: { type: 'number', value: entry.cost },
             })
           )
@@ -493,7 +498,7 @@ async function persistCosts(
             setValueWithType(ctx, {
               recordId,
               fieldId: unitPriceField.id,
-              fieldType: unitPriceField.type,
+              fieldType: toFieldType(unitPriceField.type),
               value: { type: 'number', value: entry.unitPrice },
             })
           )
@@ -518,7 +523,7 @@ async function persistCosts(
 
   // Publish cascaded changes to all clients
   if (changedPartIds.length > 0) {
-    const entries: Array<{ key: string; value: { type: 'number'; value: number } }> = []
+    const entries: FieldValueUpdateEntry[] = []
     for (const entry of changedEntries) {
       if (!changedPartIds.includes(entry.partId)) continue
       const recordId = toRecordId(partDefId, entry.partId) as RecordId

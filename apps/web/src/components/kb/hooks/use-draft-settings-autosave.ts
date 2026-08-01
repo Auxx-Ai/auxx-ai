@@ -1,13 +1,12 @@
 // apps/web/src/components/kb/hooks/use-draft-settings-autosave.ts
 'use client'
 
-import type { KBDraftSettings } from '@auxx/lib/kb/client'
 import { deepEqual } from '@auxx/utils/objects'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { registerSettingsSubmit } from '../ui/settings/settings-submit-registry'
-import { useKnowledgeBaseMutations } from './use-knowledge-base-mutations'
+import { type KBDraftPatch, useKnowledgeBaseMutations } from './use-knowledge-base-mutations'
 
-type SubsetOfDraft = Partial<KBDraftSettings>
+type SubsetOfDraft = Partial<KBDraftPatch>
 
 interface AutosaveOptions {
   delayMs?: number
@@ -81,7 +80,7 @@ export function useDraftSettingsAutosave(
     baselineRef.current = optimisticBaseline
     setIsSaving(true)
     try {
-      await updateDraftSettings(kbId, patch as KBDraftSettings)
+      await updateDraftSettings(kbId, patch as KBDraftPatch)
       setLastSavedAt(new Date())
     } catch {
       // Roll back the local baseline so the next watch tick re-detects the diff.
@@ -126,7 +125,7 @@ export function useDraftSettingsAutosave(
       if (!kbId) return
       const patch = diffPatch(baselineRef.current, watchRef.current)
       if (Object.keys(patch).length === 0) return
-      void updateDraftSettings(kbId, patch as KBDraftSettings)
+      void updateDraftSettings(kbId, patch as KBDraftPatch)
     }
   }, [kbId])
 

@@ -178,7 +178,7 @@ export function GuideColumns({
   className,
   children,
 }: {
-  cols?: 2 | 3 | 4
+  cols?: 1 | 2 | 3 | 4
   className?: string
   children: ReactNode
 }) {

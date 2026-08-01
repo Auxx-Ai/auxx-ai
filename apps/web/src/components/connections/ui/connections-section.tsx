@@ -244,6 +244,7 @@ export function ConnectionsSection() {
   // section the group sits in. App groups target the installation; provider groups the provider.
   const handleAddToGroup = (group: ConnectionGroup) => {
     const first = group.rows[0]
+    if (!first) return
     if (first.kind === 'app') {
       const inst = appInstallations.find((i) => i.app.id === first.appId)
       if (inst) flow.start({ target: appTarget(inst), scope: group.scope })
@@ -282,7 +283,8 @@ export function ConnectionsSection() {
         <div className='w-full @container'>
           <div className='grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3'>
             {groups.map((group) => {
-              if (group.rows.length === 1) return renderCard(group.rows[0])
+              const onlyRow = group.rows.length === 1 ? group.rows[0] : undefined
+              if (onlyRow) return renderCard(onlyRow)
               const isOpen = expandedKey === group.key
               const toggle = () => setExpandedKey((k) => (k === group.key ? null : group.key))
               if (!isOpen) {

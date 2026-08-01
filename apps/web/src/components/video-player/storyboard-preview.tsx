@@ -52,8 +52,7 @@ export function StoryboardPreview() {
   const { thumbnailStoryboardUrl, chapters } = usePlayerContext()
   const hoveredPct = useVideoPlayerStore((s) => s.hoveredTimePercentage)
   const duration = useVideoPlayerStore((s) => s.duration)
-  const totalDuration =
-    duration > 0 ? duration : chapters?.length ? chapters[chapters.length - 1].end : 0
+  const totalDuration = duration > 0 ? duration : (chapters?.at(-1)?.end ?? 0)
 
   const rows = useMemo(() => getRowCount(thumbnailStoryboardUrl), [thumbnailStoryboardUrl])
 

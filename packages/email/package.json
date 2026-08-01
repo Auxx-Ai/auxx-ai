@@ -15,7 +15,8 @@
     "build": "tsdown",
     "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo",
     "dev": "email dev --dir ./src/templates -p 3003",
-    "export": "email export"
+    "export": "email export",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "catalog:",

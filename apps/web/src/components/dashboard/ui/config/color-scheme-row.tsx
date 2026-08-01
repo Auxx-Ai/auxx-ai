@@ -22,7 +22,7 @@ import { Check } from 'lucide-react'
 import { useState } from 'react'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
-import { CHART_PALETTES, previewSwatches } from '../../lib/chart-palettes'
+import { CHART_PALETTES, paletteDef, previewSwatches } from '../../lib/chart-palettes'
 import { SwatchStack } from './swatch-stack'
 
 export function ColorRow({
@@ -34,7 +34,7 @@ export function ColorRow({
 }) {
   const [open, setOpen] = useState(false)
   const selected = normalizePaletteId(value)
-  const current = CHART_PALETTES.find((p) => p.id === selected) ?? CHART_PALETTES[0]
+  const current = paletteDef(selected)
 
   return (
     <FieldPanelRow

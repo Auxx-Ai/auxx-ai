@@ -807,7 +807,10 @@ export class InboxService {
     // Helper to get text value from field values map
     const getValue = (fieldId: string): unknown => {
       const entry = values.get(fieldId)
-      return entry?.value ?? null
+      // Multi-value reads and ACTOR values carry no scalar `value`; none of the
+      // inbox system fields are either, so those read as null.
+      if (!entry || Array.isArray(entry) || !('value' in entry)) return null
+      return entry.value ?? null
     }
 
     return {

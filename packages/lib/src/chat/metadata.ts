@@ -37,8 +37,5 @@ export async function patchChatThreadMetadata(
     ...patch,
     visit: { ...(current.visit ?? {}), ...(patch.visit ?? {}) },
   }
-  await ctx.db
-    .update(schema.Thread)
-    .set({ metadata: merged, updatedAt: new Date() })
-    .where(eq(schema.Thread.id, threadId))
+  await ctx.db.update(schema.Thread).set({ metadata: merged }).where(eq(schema.Thread.id, threadId))
 }

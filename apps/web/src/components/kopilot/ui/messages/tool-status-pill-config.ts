@@ -6,7 +6,7 @@ export interface ToolPillLabels {
     args: Record<string, unknown>,
     summary?: string
   ) => { label: string; secondary?: string }
-  error: () => { label: string }
+  error: () => { label: string; secondary?: string }
 }
 
 export interface ToolPillConfig {

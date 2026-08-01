@@ -844,7 +844,9 @@ export async function setInstanceAccess(
   await assertCanonicalMailKey(organizationId, recordId)
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
-  const removed = await db.transaction(async (tx: typeof db) => {
+  // `ResourceAccessContext.db` is `any`, so the transaction's result type is lost — name what
+  // `.returning({ granteeId })` actually yields so the fan-out below stays checked.
+  const removed: Array<{ granteeId: string }> = await db.transaction(async (tx: typeof db) => {
     // Remove existing grants of this type for this instance
     const deleted = await tx
       .delete(schema.ResourceAccess)
@@ -895,7 +897,9 @@ export async function setTypeAccess(
 ): Promise<void> {
   const { db, organizationId, userId } = ctx
 
-  const removed = await db.transaction(async (tx: typeof db) => {
+  // `ResourceAccessContext.db` is `any`, so the transaction's result type is lost — name what
+  // `.returning({ granteeId })` actually yields so the fan-out below stays checked.
+  const removed: Array<{ granteeId: string }> = await db.transaction(async (tx: typeof db) => {
     // Remove existing type-level grants of this type
     const deleted = await tx
       .delete(schema.ResourceAccess)

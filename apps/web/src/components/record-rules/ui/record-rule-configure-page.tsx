@@ -28,6 +28,8 @@ import {
   ConditionContainer,
   ConditionProvider,
   type ConditionSystemConfig,
+  isOperator,
+  type Operator,
   useConditionActions,
 } from '~/components/conditions'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -84,9 +86,11 @@ const SIGNAL_PSEUDO_FIELD_TYPE: Record<
 
 /** Same operator lookup the field-definition memo uses below, for a bare `BaseType` — a
  * rollup pseudo-field isn't a real `ResourceField`, so only `type` (the only property
- * `getFieldOperators` reads) is provided. */
-function operatorsForBaseType(type: BaseType): string[] {
-  return getFieldOperators({ type } as unknown as ResourceField)
+ * `getFieldOperators` reads) is provided. `getFieldOperators` is typed `string[]`; the
+ * condition builder only renders keys it has an `OPERATOR_DEFINITIONS` entry for, so
+ * anything else is dropped rather than passed through as an unrenderable option. */
+function operatorsForBaseType(type: BaseType): Operator[] {
+  return getFieldOperators({ type } as unknown as ResourceField).filter(isOperator)
 }
 
 interface RecordRuleConfigurePageProps {
@@ -157,7 +161,7 @@ export function RecordRuleConfigurePage({
       type: field.type,
       fieldType: field.fieldType,
       fieldKey: field.key,
-      operators: field.operatorOverrides || getFieldOperators(field),
+      operators: (field.operatorOverrides || getFieldOperators(field)).filter(isOperator),
       options: field.options,
     }))
     if (on !== 'signal') return recordFieldDefs

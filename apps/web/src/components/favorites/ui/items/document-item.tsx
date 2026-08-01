@@ -24,7 +24,7 @@ export function DocumentItem({ favorite }: { favorite: FavoriteEntity<'DOCUMENT'
     <FavoriteItemRow
       favoriteId={favorite.id}
       icon={<FileText />}
-      title={document.name ?? 'Untitled document'}
+      title={document.title || document.filename || 'Untitled document'}
       subtitle='Document'
       href={href}
     />

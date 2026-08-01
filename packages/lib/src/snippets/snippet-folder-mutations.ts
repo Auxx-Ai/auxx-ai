@@ -131,10 +131,13 @@ export async function updateSnippetFolder(
             throw new BadRequestError('Circular reference detected in folder hierarchy')
           }
           visited.add(currentParentId)
-          const parentFolder = await db.query.SnippetFolder.findFirst({
-            where: eq(schema.SnippetFolder.id, currentParentId),
-            columns: { parentId: true },
-          })
+          // Explicit annotation: without it the inferred row type feeds back
+          // into `currentParentId` and TS reports a circular initializer.
+          const parentFolder: { parentId: string | null } | undefined =
+            await db.query.SnippetFolder.findFirst({
+              where: eq(schema.SnippetFolder.id, currentParentId),
+              columns: { parentId: true },
+            })
           if (!parentFolder) break
           currentParentId = parentFolder.parentId
         }

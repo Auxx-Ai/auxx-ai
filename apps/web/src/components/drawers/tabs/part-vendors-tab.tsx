@@ -2,7 +2,7 @@
 'use client'
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { parseRecordId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
@@ -24,7 +24,7 @@ import { VendorPartRow } from './part-vendors-tab-row'
 /** Vendors tab content for parts drawer */
 export function PartVendorsTab({ recordId }: DrawerTabProps) {
   const [isVendorDialogOpen, setIsVendorDialogOpen] = useState(false)
-  const [editingRecordId, setEditingRecordId] = useState<string | null>(null)
+  const [editingRecordId, setEditingRecordId] = useState<RecordId | null>(null)
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
   // Extract partId from recordId

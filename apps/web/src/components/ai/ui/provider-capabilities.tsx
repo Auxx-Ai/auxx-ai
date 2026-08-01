@@ -25,7 +25,7 @@ export const ProviderCapabilities: React.FC<ProviderCapabilitiesProps> = ({
   const visibleCapabilities = capabilities.slice(0, maxCapabilities)
   const remainingCount = Math.max(0, capabilities.length - maxCapabilities)
 
-  const formatCapabilityName = (capability: string, index: number): string => {
+  const formatCapabilityName = (capability: string, index: number): React.ReactElement => {
     const config = FEATURE_BADGES[capability as keyof typeof FEATURE_BADGES]
     const cap = config?.label || capability.charAt(0).toUpperCase() + capability.slice(1)
 

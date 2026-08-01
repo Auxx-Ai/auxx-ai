@@ -732,7 +732,7 @@ export class FolderService extends BaseService<
       throw new Error('A folder with this name already exists in the target parent')
     }
 
-    return this.update(id, { parentId: normalizedNewParentId! })
+    return this.update(id, { parentId: normalizedNewParentId })
   }
 
   /**

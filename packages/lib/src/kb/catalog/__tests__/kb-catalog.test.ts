@@ -47,7 +47,7 @@ describe('buildKbCatalog', () => {
       row({ placementId: 'p1a', parentPlacementId: 'p1', sortOrder: 'a0' }),
     ]
     const [entry] = buildKbCatalog([kb('kb1')], rows)
-    expect(entry.articles.map((a) => [a.id, a.depth])).toEqual([
+    expect(entry?.articles.map((a) => [a.id, a.depth])).toEqual([
       ['art-p1', 0],
       ['art-p1a', 1],
       ['art-p2', 0],
@@ -62,7 +62,7 @@ describe('buildKbCatalog', () => {
       row({ placementId: 'gone', archived: true, sortOrder: 'a2' }),
     ]
     const [entry] = buildKbCatalog([kb('kb1')], rows)
-    expect(entry.articles.map((a) => [a.id, a.depth])).toEqual([['art-child', 0]])
+    expect(entry?.articles.map((a) => [a.id, a.depth])).toEqual([['art-child', 0]])
   })
 
   it('drops container nodes with no included descendants', () => {
@@ -72,13 +72,13 @@ describe('buildKbCatalog', () => {
       row({ placementId: 'page', parentPlacementId: 'full', sortOrder: 'a0' }),
     ]
     const [entry] = buildKbCatalog([kb('kb1')], rows)
-    expect(entry.articles.map((a) => a.id)).toEqual(['art-full', 'art-page'])
+    expect(entry?.articles.map((a) => a.id)).toEqual(['art-full', 'art-page'])
   })
 
   it('keeps orphans whose parent placement is not in the row set', () => {
     const rows = [row({ placementId: 'lost', parentPlacementId: 'unpublished-parent' })]
     const [entry] = buildKbCatalog([kb('kb1')], rows)
-    expect(entry.articles.map((a) => [a.id, a.depth])).toEqual([['art-lost', 0]])
+    expect(entry?.articles.map((a) => [a.id, a.depth])).toEqual([['art-lost', 0]])
   })
 
   it('gates on isPublished for standard KBs but not for source KBs', () => {
@@ -87,15 +87,15 @@ describe('buildKbCatalog', () => {
       row({ placementId: 'live', sortOrder: 'a1' }),
     ]
     const [standard] = buildKbCatalog([kb('kb1')], rows)
-    expect(standard.articles.map((a) => a.id)).toEqual(['art-live'])
+    expect(standard?.articles.map((a) => a.id)).toEqual(['art-live'])
     const [source] = buildKbCatalog([kb('kb1', { kind: 'source' })], rows)
-    expect(source.articles.map((a) => a.id)).toEqual(['art-draft', 'art-live'])
+    expect(source?.articles.map((a) => a.id)).toEqual(['art-draft', 'art-live'])
   })
 
   it('falls back to excerpt when description is empty', () => {
     const rows = [row({ placementId: 'p1', description: '  ', excerpt: 'From the excerpt' })]
     const [entry] = buildKbCatalog([kb('kb1')], rows)
-    expect(entry.articles[0].description).toBe('From the excerpt')
+    expect(entry?.articles[0]?.description).toBe('From the excerpt')
   })
 })
 

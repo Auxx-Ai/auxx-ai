@@ -9,7 +9,7 @@ import { Check, Mail } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { PROVIDER_ICONS } from '~/constants/icons'
+import { OutlookIcon } from '~/constants/icons'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 import { OnboardingNavigation } from '../_components/onboarding-navigation'
@@ -36,8 +36,6 @@ const GoogleIcon = () => (
     />
   </svg>
 )
-
-const OutlookIcon = PROVIDER_ICONS.outlook
 
 export default function ConnectionsOnboardingPage() {
   const router = useRouter()

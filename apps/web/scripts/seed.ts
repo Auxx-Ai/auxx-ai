@@ -65,7 +65,6 @@ async function createUsers() {
         email: 'm4rkuskk@gmail.com',
         password: 'Klooth1234',
         name: 'Markus Klooth',
-        completedOnboarding: false,
       },
     })
   } catch (_error) {

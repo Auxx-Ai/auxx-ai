@@ -7,8 +7,8 @@ import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
 import { useMemo } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
-import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
+import { VisualIcon } from '~/components/icons/ui/visual-icon'
 
 interface ConnectorSourceBadgeProps {
   /**
@@ -53,7 +53,13 @@ export function ConnectorSourceBadge({ sources, variant, className }: ConnectorS
   if (variant === 'icon') {
     return (
       <Tooltip content={`Synced from ${label}`} side='top'>
-        <AppIcon iconId={iconId} fallbackIconId='plug' size='xs' className={className} />
+        <VisualIcon
+          value={iconId}
+          fallbackIconId='plug'
+          fit='contain'
+          size='xs'
+          className={className}
+        />
       </Tooltip>
     )
   }
@@ -61,7 +67,7 @@ export function ConnectorSourceBadge({ sources, variant, className }: ConnectorS
   return (
     <Tooltip content={`Synced from ${label}`} side='top'>
       <Badge variant='gray' size='sm' className={cn('gap-1', className)}>
-        <AppIcon iconId={iconId} fallbackIconId='plug' size='xs' />
+        <VisualIcon value={iconId} fallbackIconId='plug' fit='contain' size='xs' />
         {label}
       </Badge>
     </Tooltip>

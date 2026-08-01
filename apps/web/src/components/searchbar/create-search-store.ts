@@ -125,11 +125,10 @@ export function createSearchStore(
     addCondition: (fieldId, operator, value, displayLabel) =>
       set((state) => {
         // Check if condition with same fieldId already exists
-        const existingIndex = state.conditions.findIndex((c) => c.fieldId === fieldId)
+        const existing = state.conditions.find((c) => c.fieldId === fieldId)
 
-        if (existingIndex !== -1) {
+        if (existing) {
           // Update existing condition value (merge for arrays)
-          const existing = state.conditions[existingIndex]
           if (Array.isArray(existing.value) && !Array.isArray(value)) {
             if (!existing.value.includes(value)) {
               existing.value.push(value)

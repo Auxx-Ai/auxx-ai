@@ -105,7 +105,7 @@ export function useRecordListColumns({
         accessorFn: () => undefined,
         header: field?.label ?? '—',
         fieldType: field?.fieldType,
-        icon: field ? getIconForFieldType(field.fieldType) : undefined,
+        icon: field?.fieldType ? getIconForFieldType(field.fieldType) : undefined,
         enableSorting: false,
         enableFiltering: false,
         enableHiding: false,

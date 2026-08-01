@@ -1,7 +1,7 @@
 // apps/web/src/components/dynamic-table/context/view-metadata-context.tsx
 'use client'
 
-import { createContext, useContext } from 'react'
+import { createContext, type Dispatch, type SetStateAction, useContext } from 'react'
 import type { CustomField } from '../types'
 
 // ============================================================================
@@ -40,8 +40,11 @@ export interface ViewMetadataContextValue<TData = any> {
   /** Selected kanban card IDs (controlled) */
   selectedKanbanCardIds: Set<string>
 
-  /** Callback when kanban card selection changes */
-  onSelectedKanbanCardIdsChange: (ids: Set<string>) => void
+  /**
+   * Kanban selection setter. Must accept the `SetStateAction` updater form —
+   * toggling a single card reads the previous set.
+   */
+  onSelectedKanbanCardIdsChange: Dispatch<SetStateAction<Set<string>>>
 
   /** Active drag items (for drag and drop) */
   activeDragItems: TData[] | null

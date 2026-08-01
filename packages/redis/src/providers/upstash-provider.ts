@@ -42,20 +42,23 @@ export function createUpstashClient(): RedisClient {
         return await upstashClient.set(key, value)
       }
 
-      // Parse all options from args (handles NX, EX combinations)
-      const options: { nx?: boolean; ex?: number } = {}
+      // Parse all options from args (handles NX, EX combinations). `SetCommandOptions`
+      // is a discriminated union, so the flags have to be spelled out per combination
+      // rather than accumulated into one partial object.
+      let nx = false
+      let ex: number | undefined
       for (let i = 0; i < args.length; i++) {
-        if (args[i] === 'NX') options.nx = true
+        if (args[i] === 'NX') nx = true
         if (args[i] === 'EX' && typeof args[i + 1] === 'number') {
-          options.ex = args[i + 1]
+          ex = args[i + 1]
           i++ // Skip the number
         }
       }
 
-      if (Object.keys(options).length > 0) {
-        // NX returns null if key exists, 'OK' if set
-        return await upstashClient.set(key, value, options)
-      }
+      // NX returns null if key exists, 'OK' if set
+      if (nx && ex !== undefined) return await upstashClient.set(key, value, { nx: true, ex })
+      if (nx) return await upstashClient.set(key, value, { nx: true })
+      if (ex !== undefined) return await upstashClient.set(key, value, { ex })
 
       return await upstashClient.set(key, value)
     },
@@ -240,7 +243,9 @@ export function createUpstashClient(): RedisClient {
     // Set operations
     sadd: async (key: string, ...members: string[]) => {
       try {
-        return await upstashClient.sadd(key, ...members)
+        const [first, ...rest] = members
+        if (first === undefined) return 0
+        return await upstashClient.sadd(key, first, ...rest)
       } catch (error) {
         logger.error('Error adding to set in Upstash', { key, error: (error as Error).message })
         throw error
@@ -297,7 +302,7 @@ export function createUpstashClient(): RedisClient {
       try {
         if (args.length === 2 && typeof args[0] === 'number' && typeof args[1] === 'string') {
           // Simple case: zadd(key, score, member)
-          return await upstashClient.zadd(key, { score: args[0], member: args[1] })
+          return (await upstashClient.zadd(key, { score: args[0], member: args[1] })) ?? 0
         } else {
           // Complex case: zadd(key, score1, member1, score2, member2, ...)
           const members: { score: number; member: string }[] = []
@@ -306,7 +311,9 @@ export function createUpstashClient(): RedisClient {
               members.push({ score: args[i], member: args[i + 1] })
             }
           }
-          return await upstashClient.zadd(key, ...members)
+          const [first, ...rest] = members
+          if (first === undefined) return 0
+          return (await upstashClient.zadd(key, first, ...rest)) ?? 0
         }
       } catch (error) {
         logger.error('Error adding to sorted set in Upstash', {
@@ -331,7 +338,8 @@ export function createUpstashClient(): RedisClient {
 
     zrevrange: async (key: string, start: number, stop: number) => {
       try {
-        return await upstashClient.zrevrange(key, start, stop)
+        // The Upstash REST client has no `zrevrange`; ZRANGE ... REV is the equivalent.
+        return await upstashClient.zrange<string[]>(key, start, stop, { rev: true })
       } catch (error) {
         logger.error('Error getting reverse range from sorted set in Upstash', {
           key,

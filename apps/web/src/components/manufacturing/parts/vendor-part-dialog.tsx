@@ -193,15 +193,39 @@ export function VendorPartDialog({
 
     if (isEditMode && recordId) {
       // Edit mode: use saveMultipleAsync for optimistic updates
-      const fieldValues: Array<{ fieldId: string; value: unknown; fieldType: string }> = [
-        { fieldId: 'vendor_part_vendor_sku', value: values.vendorSku, fieldType: 'TEXT' },
-        { fieldId: 'vendor_part_unit_price', value: values.unitPrice, fieldType: 'CURRENCY' },
-        { fieldId: 'vendor_part_shipping_cost', value: values.shippingCost, fieldType: 'CURRENCY' },
-        { fieldId: 'vendor_part_tariff_rate', value: values.tariffRate, fieldType: 'NUMBER' },
-        { fieldId: 'vendor_part_other_cost', value: values.otherCost, fieldType: 'CURRENCY' },
-        { fieldId: 'vendor_part_lead_time', value: values.leadTime, fieldType: 'NUMBER' },
-        { fieldId: 'vendor_part_min_order_qty', value: values.minOrderQty, fieldType: 'NUMBER' },
-        { fieldId: 'vendor_part_is_preferred', value: values.isPreferred, fieldType: 'CHECKBOX' },
+      const fieldValues = [
+        { fieldId: 'vendor_part_vendor_sku', value: values.vendorSku, fieldType: FieldType.TEXT },
+        {
+          fieldId: 'vendor_part_unit_price',
+          value: values.unitPrice,
+          fieldType: FieldType.CURRENCY,
+        },
+        {
+          fieldId: 'vendor_part_shipping_cost',
+          value: values.shippingCost,
+          fieldType: FieldType.CURRENCY,
+        },
+        {
+          fieldId: 'vendor_part_tariff_rate',
+          value: values.tariffRate,
+          fieldType: FieldType.NUMBER,
+        },
+        {
+          fieldId: 'vendor_part_other_cost',
+          value: values.otherCost,
+          fieldType: FieldType.CURRENCY,
+        },
+        { fieldId: 'vendor_part_lead_time', value: values.leadTime, fieldType: FieldType.NUMBER },
+        {
+          fieldId: 'vendor_part_min_order_qty',
+          value: values.minOrderQty,
+          fieldType: FieldType.NUMBER,
+        },
+        {
+          fieldId: 'vendor_part_is_preferred',
+          value: values.isPreferred,
+          fieldType: FieldType.CHECKBOX,
+        },
       ]
 
       const success = await saveMultipleAsync(recordId, fieldValues)

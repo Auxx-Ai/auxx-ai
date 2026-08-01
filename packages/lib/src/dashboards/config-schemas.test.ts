@@ -108,19 +108,23 @@ describe('dashboardLayoutDocSchema', () => {
 
 describe('draftLayoutDocSchema (permissive)', () => {
   // The unconfigured shells the store mints on add (widget-config-defaults.ts).
+  // They are deliberately NOT valid strict `WidgetConfiguration`s (no `source`
+  // yet) — accepting them is the whole point of the draft schema — so the cast
+  // has to go through `unknown`.
+  const shell = (config: object) => config as unknown as LayoutWidget['configuration']
   const barShell = (): LayoutWidget => ({
     id: 'w1',
     title: 'Bar chart',
     type: 'barChart',
     gridPosition: { column: 0, row: 0, columnSpan: 6, rowSpan: 4 },
-    configuration: { kind: 'barChart', metric: { op: 'count' } } as LayoutWidget['configuration'],
+    configuration: shell({ kind: 'barChart', metric: { op: 'count' } }),
   })
   const recordListShell = (): LayoutWidget => ({
     id: 'w2',
     title: 'Record list',
     type: 'recordList',
     gridPosition: { column: 0, row: 0, columnSpan: 6, rowSpan: 5 },
-    configuration: { kind: 'recordList', columns: [] } as LayoutWidget['configuration'],
+    configuration: shell({ kind: 'recordList', columns: [] }),
   })
 
   it('accepts an unconfigured chart shell (no source / group-by)', () => {

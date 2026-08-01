@@ -2,7 +2,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { ConditionGroup, Operator } from '@auxx/lib/conditions/client'
 import { getFieldOperators } from '@auxx/lib/resources/client'
 import {
   SEQUENCE_TRIGGER_LABELS,
@@ -25,6 +25,8 @@ import {
   ConditionContainer,
   ConditionProvider,
   type ConditionSystemConfig,
+  type FieldDefinition,
+  STANDARD_OPERATORS,
   useConditionActions,
 } from '~/components/conditions'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -61,6 +63,11 @@ function filterEntityTypeForSubject(subjectKind: string | null): 'work_order' | 
   if (subjectKind === 'visit' || subjectKind === 'work_order') return 'work_order'
   if (subjectKind === 'invoice') return 'invoice'
   return null
+}
+
+/** Narrow lib's `string[]` operator names to the ones the condition system renders. */
+function isOperator(name: string): name is Operator {
+  return Object.hasOwn(STANDARD_OPERATORS, name)
 }
 
 /**
@@ -157,14 +164,16 @@ export function SequenceSettingsDrawer({
   }
 
   const filterFieldDefinitions = useMemo(
-    () =>
+    (): FieldDefinition[] =>
       subjectFields.map((field) => ({
         id: field.resourceFieldId ?? String(field.id),
         label: field.label,
         type: field.type,
         fieldType: field.fieldType,
         fieldKey: field.key,
-        operators: field.operatorOverrides || getFieldOperators(field),
+        // `getFieldOperators` and `ResourceField.operatorOverrides` are both `string[]` in lib —
+        // keep only the names the condition system actually knows.
+        operators: (field.operatorOverrides || getFieldOperators(field)).filter(isOperator),
         options: field.options,
       })),
     [subjectFields]

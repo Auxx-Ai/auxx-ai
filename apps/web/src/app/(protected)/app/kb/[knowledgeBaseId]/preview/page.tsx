@@ -75,7 +75,7 @@ export default async function KnowledgeBasePreviewPage({ params }: KBPreviewPara
           {/* Publish button */}
           <Button
             onClick={handlePublish}
-            disabled={publishMutation.isLoading || knowledgeBase?.publishStatus === 'PUBLISHED'}>
+            disabled={publishMutation.isPending || knowledgeBase?.publishStatus === 'PUBLISHED'}>
             {knowledgeBase?.publishStatus === 'PUBLISHED' ? 'Published' : 'Publish'}
           </Button>
         </div>

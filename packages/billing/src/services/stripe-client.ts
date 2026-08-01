@@ -23,7 +23,9 @@ class StripeClientService {
       }
 
       this.client = new Stripe(apiKey, {
-        apiVersion: '2025-09-30.clover',
+        // Must track the SDK's own pinned version — the generated response types
+        // describe this version, so a stale pin makes them lie about the payloads.
+        apiVersion: '2025-10-29.clover',
         typescript: true,
       })
       logger.info('Stripe client initialized')

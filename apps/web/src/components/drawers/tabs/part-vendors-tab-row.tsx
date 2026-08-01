@@ -54,7 +54,7 @@ export function VendorPartRow({ recordId, onEdit, onDelete, onSetPreferred }: Ve
   const leadTime = values.vendor_part_lead_time as number | null | undefined
   const isPreferred = values.vendor_part_is_preferred as boolean | undefined
   // Supplier RecordId (encodes the company entity def); RecordBadge resolves it.
-  const supplierRecordId = (values.vendor_part_contact as string[] | undefined)?.[0]
+  const supplierRecordId = (values.vendor_part_contact as RecordId[] | undefined)?.[0]
 
   // Compute landed cost inline: unit_price + shipping + (unit_price * tariff / 100) + other
   const landedCost =

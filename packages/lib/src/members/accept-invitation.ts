@@ -162,7 +162,9 @@ async function processInvitationAcceptance(
       return { newMember, updatedInvite, subUpdate }
     })
 
-    newSeatCount = result.subUpdate.seats
+    // No row back = the org has no PlanSubscription; the Stripe block below
+    // short-circuits on that, so 0 is never actually sent as a seat count.
+    newSeatCount = result.subUpdate?.seats ?? 0
     logger.info('Helper: DB transaction successful', {
       userId: acceptingUserId,
       organizationId,

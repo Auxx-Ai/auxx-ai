@@ -23,6 +23,7 @@ import {
   sendTrialEndingEmail,
   sendTrialExpiredEmail,
   sendTrialStartedEmail,
+  sendTwoFactorOtpEmail,
   sendVerificationEmail,
   sendVisitCanceledEmail,
   sendVisitDailyDigestEmail,
@@ -84,6 +85,12 @@ const handlers: {
     sendPasswordResetNotifyEmail({
       email: p.recipient.email,
       name: p.recipient.name,
+    }),
+  'two-factor-otp': (p) =>
+    sendTwoFactorOtpEmail({
+      email: p.recipient.email,
+      name: p.recipient.name,
+      otp: p.otp,
     }),
   invite: (p) =>
     sendInviteEmail({

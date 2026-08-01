@@ -44,8 +44,8 @@ export function BulkUpdateEntityInstanceDialog({
   onSaved,
 }: BulkUpdateEntityInstanceDialogProps) {
   // Derive entityDefinitionId from first recordId
-  const entityDefinitionId =
-    recordIds.length > 0 ? parseRecordId(recordIds[0]).entityDefinitionId : ''
+  const firstRecordId = recordIds[0]
+  const entityDefinitionId = firstRecordId ? parseRecordId(firstRecordId).entityDefinitionId : ''
   const instanceCount = recordIds.length
 
   // Get resource definition with fields
@@ -181,7 +181,6 @@ export function BulkUpdateEntityInstanceDialog({
       onOpenChange(false)
       return
     }
-    console.log(recordIds, fieldValues)
     // Fire-and-forget bulk update
     saveBulkMultipleFields(recordIds, fieldValues)
 

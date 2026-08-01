@@ -4,6 +4,7 @@
 // IDENTICAL ChartQueryInput (→ same query key → no re-fetch), while data edits
 // project differently.
 
+import { toResourceFieldId } from '@auxx/types/field'
 import { describe, expect, it } from 'vitest'
 import type { BarChartConfig, KpiConfig } from './client'
 import { toChartQueryInput } from './client'
@@ -11,8 +12,8 @@ import { toChartQueryInput } from './client'
 const baseBar: BarChartConfig = {
   kind: 'barChart',
   source: { kind: 'entity', entityDefinitionId: 'def1' },
-  metric: { op: 'sum', fieldRef: 'def1:amount' },
-  groupBy: { fieldRef: 'def1:created', dateGranularity: 'month' },
+  metric: { op: 'sum', fieldRef: toResourceFieldId('def1', 'amount') },
+  groupBy: { fieldRef: toResourceFieldId('def1', 'created'), dateGranularity: 'month' },
 }
 
 describe('toChartQueryInput', () => {
@@ -20,15 +21,15 @@ describe('toChartQueryInput', () => {
     expect(toChartQueryInput(baseBar)).toEqual({
       kind: 'barChart',
       source: { kind: 'entity', entityDefinitionId: 'def1' },
-      metric: { op: 'sum', fieldRef: 'def1:amount' },
-      groupBy: { fieldRef: 'def1:created', dateGranularity: 'month' },
+      metric: { op: 'sum', fieldRef: toResourceFieldId('def1', 'amount') },
+      groupBy: { fieldRef: toResourceFieldId('def1', 'created'), dateGranularity: 'month' },
     })
   })
 
   it('display-only edits produce an IDENTICAL projection', () => {
     const styled: BarChartConfig = {
       ...baseBar,
-      color: 'var(--chart-3)',
+      color: 'violet',
       showLegend: false,
       showDataLabels: true,
       layout: 'horizontal',
@@ -65,13 +66,13 @@ describe('toChartQueryInput', () => {
       prefix: '$',
       suffix: 'hrs',
       valueFormat: { decimals: 2 },
-      trend: { dateFieldRef: 'def1:created', compare: 'previousPeriod' },
+      trend: { dateFieldRef: toResourceFieldId('def1', 'created'), compare: 'previousPeriod' },
     }
     expect(toChartQueryInput(kpi)).toEqual({
       kind: 'kpi',
       source: { kind: 'entity', entityDefinitionId: 'def1' },
       metric: { op: 'count' },
-      trend: { dateFieldRef: 'def1:created', compare: 'previousPeriod' },
+      trend: { dateFieldRef: toResourceFieldId('def1', 'created'), compare: 'previousPeriod' },
     })
   })
 

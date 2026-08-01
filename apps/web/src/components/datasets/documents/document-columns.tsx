@@ -55,7 +55,7 @@ export function createDocumentColumns({
       ),
       enableHiding: false,
       defaultVisible: true,
-      columnType: 'text',
+      fieldType: 'TEXT',
       icon: FileText,
       minSize: 200,
       maxSize: 400,
@@ -74,7 +74,7 @@ export function createDocumentColumns({
           />
         )
       },
-      columnType: 'select',
+      fieldType: 'SINGLE_SELECT',
       defaultVisible: true,
       icon: FileType,
       size: 120,
@@ -97,7 +97,7 @@ export function createDocumentColumns({
           />
         )
       },
-      columnType: 'select',
+      fieldType: 'SINGLE_SELECT',
       defaultVisible: true,
       icon: ToggleLeft,
       size: 110,
@@ -113,7 +113,6 @@ export function createDocumentColumns({
           formatting={{ type: 'number', decimalPlaces: 0 }}
         />
       ),
-      columnType: 'number',
       fieldType: 'NUMBER',
       defaultVisible: true,
       icon: Hash,
@@ -130,7 +129,6 @@ export function createDocumentColumns({
           formatting={{ type: 'number', displayAs: 'bytes', decimalPlaces: 2 }}
         />
       ),
-      columnType: 'number',
       fieldType: 'NUMBER',
       defaultVisible: true,
       icon: HardDrive,
@@ -140,14 +138,8 @@ export function createDocumentColumns({
       accessorKey: 'mimeType',
       header: 'Type',
       cell: ({ getValue }) => (
-        <FormattedCell
-          value={getValue()}
-          fieldType='TEXT'
-          columnId='mimeType'
-          className='font-mono'
-        />
+        <FormattedCell value={getValue()} fieldType='TEXT' columnId='mimeType' />
       ),
-      columnType: 'text',
       fieldType: 'TEXT',
       defaultVisible: true,
       icon: FileType,
@@ -159,7 +151,6 @@ export function createDocumentColumns({
       cell: ({ getValue }) => (
         <FormattedCell value={getValue()} fieldType='DATE' columnId='createdAt' />
       ),
-      columnType: 'date',
       fieldType: 'DATE',
       defaultVisible: true,
       icon: Calendar,

@@ -8,8 +8,14 @@ import { getCrawlProvider } from '../crawl'
 import { normalizeUrl } from '../crawl/url'
 import type { SourceConnector } from './types'
 
-/** Shape of a website source's `config` JSON. */
-interface WebsiteConfig {
+/**
+ * Shape of a website source's `config` JSON.
+ *
+ * A type alias, not an interface: `source.config` is a `Record<string, unknown>`
+ * jsonb column, and only aliases get the implicit index signature that makes the
+ * narrowing cast below legal.
+ */
+type WebsiteConfig = {
   url: string
   selectedPaths?: string[]
   includeUrls?: string[]

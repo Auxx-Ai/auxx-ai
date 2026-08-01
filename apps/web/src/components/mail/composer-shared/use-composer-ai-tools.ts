@@ -8,7 +8,9 @@ import { useCallback, useRef } from 'react'
 import { api } from '~/trpc/react'
 import {
   AI_OPERATION,
+  AI_TONE_TYPE,
   type AIOperation,
+  type AIToneType,
   COMPOSE_ENTITY_TYPE,
   OUTPUT_FORMAT,
   type OutputFormat,
@@ -34,6 +36,16 @@ interface UseComposerAIToolsOptions {
     onComposeFailed?: (error: string) => void
     onToolUsed?: (op: string, tone?: string, language?: string) => void
   }
+}
+
+const AI_TONE_VALUES: readonly string[] = Object.values(AI_TONE_TYPE)
+
+/**
+ * Narrows a free-form selector value to one of the compose API's named tones.
+ * The tone pickers render `AI_TONE_TYPE` but hand back a bare `string`.
+ */
+export function isAiToneType(value: string | undefined): value is AIToneType {
+  return !!value && AI_TONE_VALUES.includes(value)
 }
 
 /**
@@ -88,7 +100,7 @@ export function useComposerAITools({
   const handleAIOperation = useCallback(
     async (
       operation: AIOperation,
-      options?: { tone?: string; language?: string; instruction?: string }
+      options?: { tone?: AIToneType; language?: string; instruction?: string }
     ) => {
       if (!editor || state.isProcessing) return
       const currentContent = editor.getHTML()

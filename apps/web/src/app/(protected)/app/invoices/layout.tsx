@@ -12,7 +12,7 @@ import { usePathname } from 'next/navigation'
 import { RecordRouteGuard } from '~/components/records'
 import { useResource } from '~/components/resources'
 
-type Props = { children: React.ReactNode; modal: React.ReactNode }
+type Props = { children: React.ReactNode }
 
 const BASE_PATH = '/app/invoices'
 
@@ -24,7 +24,7 @@ const BASE_PATH = '/app/invoices'
  * The import (`import/[jobId]`) route owns its own `MainPage` and bypasses
  * the shell.
  */
-export default function InvoicesLayout({ children, modal }: Props) {
+export default function InvoicesLayout({ children }: Props) {
   const pathname = usePathname()
   const { resource } = useResource('invoices')
   const isDetailOrSpecialPage = pathname !== BASE_PATH
@@ -32,10 +32,7 @@ export default function InvoicesLayout({ children, modal }: Props) {
   return (
     <RecordRouteGuard slug='invoices'>
       {isDetailOrSpecialPage ? (
-        <>
-          {children}
-          {modal}
-        </>
+        <>{children}</>
       ) : (
         <MainPage>
           <MainPageHeader>
@@ -44,7 +41,6 @@ export default function InvoicesLayout({ children, modal }: Props) {
             </MainPageBreadcrumb>
           </MainPageHeader>
           {children}
-          {modal}
         </MainPage>
       )}
     </RecordRouteGuard>

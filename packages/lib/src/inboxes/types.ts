@@ -134,7 +134,8 @@ export interface InboxIntegration {
   settings: Record<string, unknown>
   integration: {
     id: string
-    name: string
+    /** `Integration.name` is nullable — callers fall back to email/provider. */
+    name: string | null
     email: string | null
     provider: string
   }

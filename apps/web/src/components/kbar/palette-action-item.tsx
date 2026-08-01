@@ -14,7 +14,7 @@ function ShortcutHint({ keys }: { keys: string[] }) {
         <kbd
           key={i}
           className='flex items-center rounded-md border border-border/50 bg-muted/50 px-1.5 py-0.5 text-xs font-medium text-muted-foreground dark:border-[#323842]/80'>
-          {key}
+          {key.toLowerCase()}
         </kbd>
       ))}
     </div>

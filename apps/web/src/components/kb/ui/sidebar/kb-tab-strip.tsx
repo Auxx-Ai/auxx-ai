@@ -104,8 +104,10 @@ export function KBTabStrip({ knowledgeBaseId, activeTabId, onTabChange }: KBTabS
       const newIndex = reordered.findIndex((t) => t.id === movedId)
       if (newIndex === -1) return
 
-      const lo = newIndex > 0 ? reordered[newIndex - 1].sortOrder : null
-      const hi = newIndex < reordered.length - 1 ? reordered[newIndex + 1].sortOrder : null
+      const prev = newIndex > 0 ? reordered[newIndex - 1] : undefined
+      const next = reordered[newIndex + 1]
+      const lo = prev?.sortOrder ?? null
+      const hi = next?.sortOrder ?? null
 
       let sortOrder: string
       try {
@@ -114,8 +116,8 @@ export function KBTabStrip({ knowledgeBaseId, activeTabId, onTabChange }: KBTabS
         return
       }
 
-      const adjacentId = newIndex > 0 ? reordered[newIndex - 1].id : reordered[newIndex + 1]?.id
-      const position = newIndex > 0 ? 'after' : 'before'
+      const adjacentId = prev ? prev.id : next?.id
+      const position = prev ? 'after' : 'before'
 
       const store = getArticleStoreState()
       store.applyOptimisticMove({ id: movedId, parentId: null, sortOrder })

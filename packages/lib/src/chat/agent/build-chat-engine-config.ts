@@ -11,6 +11,7 @@ import { ALL_SURFACES } from '../../agents/client'
 import { PROCEDURE_CONTROL_TOOLS } from '../../agents/procedures/control-tools'
 import { resolveAgentKnowledgeScope } from '../../agents/resolve-knowledge-scope'
 import {
+  type AgentDomainConfig,
   type AgentEngineConfig,
   createCallModel,
   resolveAgentRunCapabilities,
@@ -222,7 +223,11 @@ export async function buildChatEngineConfig(
     userId: agentUserId,
     sessionId,
     db,
-    domainConfig,
+    // The engine treats domain state as opaque `Record<string, unknown>`, but
+    // `AgentDomainConfig` is invariant in its state generic — widen the concrete
+    // `KopilotDomainState` config at this single boundary (same conversion
+    // `buildEffectiveAgentRuntime` performs).
+    domainConfig: domainConfig as unknown as AgentDomainConfig,
     callModel,
     signal,
     approvalMode: 'auto',

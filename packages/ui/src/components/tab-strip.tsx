@@ -159,6 +159,7 @@ export function TabStrip<T extends TabStripItem>({
 
       const reordered = tabs.slice()
       const [moving] = reordered.splice(fromIndex, 1)
+      if (!moving) return
       reordered.splice(toIndex, 0, moving)
       onReorder?.(
         reordered.map((t) => t.id),
@@ -219,7 +220,7 @@ export function TabStrip<T extends TabStripItem>({
           )}
           {addEnabled &&
             (renderAddButton ? (
-              renderAddButton({ onClick: handleAddClick, disabled: pending || addDisabled })
+              renderAddButton({ onClick: handleAddClick, disabled: pending || !!addDisabled })
             ) : (
               <div className='sticky right-0 z-10 ml-auto shrink-0 bg-primary-50 pl-2 [mask-image:linear-gradient(to_right,transparent_0,black_8px,black_100%)]'>
                 <button

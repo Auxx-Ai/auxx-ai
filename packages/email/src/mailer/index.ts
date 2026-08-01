@@ -47,6 +47,8 @@ import {
   TrialExpiredText,
   TrialStartedEmail,
   TrialStartedText,
+  TwoFactorOtpEmail,
+  TwoFactorOtpText,
   VerificationEmail,
   VerificationText,
   VisitCanceledEmail,
@@ -253,6 +255,31 @@ export const sendPasswordResetNotifyEmail = async ({
     })
   } catch (error) {
     logger.error('Error in sendPasswordResetNotifyEmail', { error })
+    throw error
+  }
+}
+
+export const sendTwoFactorOtpEmail = async ({
+  email,
+  name,
+  otp,
+}: {
+  email: UserEmail
+  name?: string
+  otp: string
+}): Promise<boolean> => {
+  try {
+    const html = await render(await TwoFactorOtpEmail({ name, otp }))
+    const text = TwoFactorOtpText({ name, otp })
+
+    return await sendEmail({
+      to: email,
+      subject: formatSubject('Your verification code'),
+      html,
+      text,
+    })
+  } catch (error) {
+    logger.error('Error in sendTwoFactorOtpEmail', { error })
     throw error
   }
 }

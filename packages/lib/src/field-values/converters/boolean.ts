@@ -100,6 +100,10 @@ export const booleanConverter: FieldValueConverter = {
       return boolValue ? '✓' : '✗'
     }
 
-    return boolValue ? opts.trueLabel : opts.falseLabel
+    // Both labels are optional on `FieldOptions`, and a caller passing an explicit `undefined`
+    // would out-spread the default — so fall back again at the read rather than trusting `opts`.
+    return boolValue
+      ? (opts.trueLabel ?? DEFAULT_BOOLEAN_OPTIONS.trueLabel ?? 'Yes')
+      : (opts.falseLabel ?? DEFAULT_BOOLEAN_OPTIONS.falseLabel ?? 'No')
   },
 }

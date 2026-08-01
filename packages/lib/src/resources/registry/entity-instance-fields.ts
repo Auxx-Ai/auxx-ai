@@ -24,7 +24,7 @@ export const ENTITY_INSTANCE_FIELDS: Record<string, ResourceField> = {
     showInPanel: false, // Never show ID in property panel
     dbColumn: 'id',
     nullable: false,
-    operatorOverrides: ['is', 'is not', 'in', 'not in', 'exists', 'not exists'],
+    operatorOverrides: ['is', 'is not', 'in', 'not in'],
     capabilities: {
       filterable: true,
       sortable: false,

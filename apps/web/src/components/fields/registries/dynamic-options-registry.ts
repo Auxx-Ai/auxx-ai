@@ -1,5 +1,6 @@
 // apps/web/src/components/fields/registries/dynamic-options-registry.ts
 
+import { SELECT_OPTION_COLORS, type SelectOptionColor } from '@auxx/types/custom-field'
 import { useMemo } from 'react'
 import { useAllRecords } from '~/components/resources/hooks/use-all-records'
 import { api } from '~/trpc/react'
@@ -10,7 +11,13 @@ import { api } from '~/trpc/react'
 export interface DynamicOption {
   value: string
   label: string
-  color?: string
+  /** Must be a `SelectOptionColor` — these options are merged into `FieldOptions.options`. */
+  color?: SelectOptionColor
+}
+
+/** Narrow a stored color string to the select-option palette; unknown values drop out. */
+function toOptionColor(color: string | null | undefined): SelectOptionColor | undefined {
+  return SELECT_OPTION_COLORS.find((c) => c === color)
 }
 
 /**
@@ -42,7 +49,12 @@ export const DYNAMIC_OPTIONS_REGISTRY: Record<string, DynamicOptionsEntry> = {
         staleTime: 5 * 60 * 1000,
       })
       return {
-        data: data?.map((u) => ({ value: u.id, label: u.name ?? u.email })),
+        // `user.teamMembers` nulls out id/name/email for memberships whose User
+        // row is missing. A `value: null` option is unselectable (and throws in
+        // Radix Select), so drop those rows instead of listing them blank.
+        data: data
+          ?.filter((u): u is typeof u & { id: string } => u.id !== null)
+          .map((u) => ({ value: u.id, label: u.name ?? u.email ?? 'Unknown' })),
         isLoading,
       }
     },
@@ -97,7 +109,11 @@ export const DYNAMIC_OPTIONS_REGISTRY: Record<string, DynamicOptionsEntry> = {
         staleTime: 5 * 60 * 1000,
       })
       return {
-        data: data?.map((t) => ({ value: t.id, label: t.title, color: t.color ?? undefined })),
+        data: data?.map((t) => ({
+          value: t.id,
+          label: t.title,
+          color: toOptionColor(t.tag_color),
+        })),
         isLoading,
       }
     },

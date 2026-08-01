@@ -3,7 +3,7 @@
 // class — same cache + invalidation behavior, no class. See
 // plans/settings/v2/README.md §Service refactor.
 
-import { type Database, database as defaultDb, schema } from '@auxx/database'
+import { type Database, database as defaultDb, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
 import { SETTINGS_CATALOG, type SettingConfig, type SettingKey } from './catalog'
@@ -39,7 +39,7 @@ const INVOICE_TIMING_SYSTEM_ATTRIBUTES = ['quote_invoice_timing', 'work_order_in
 async function writeInvoiceDefaultTimingCustomFields(params: {
   organizationId: string
   value: SettingValue
-  db: Database
+  db: Database | Transaction
 }): Promise<boolean> {
   const { organizationId, value, db } = params
   if (typeof value !== 'string') return false
@@ -78,7 +78,7 @@ async function bustInvoiceDefaultTimingCache(organizationId: string): Promise<vo
 async function applyInvoiceDefaultTimingWriteThrough(params: {
   organizationId: string
   value: SettingValue
-  db: Database
+  db: Database | Transaction
 }): Promise<void> {
   const wrote = await writeInvoiceDefaultTimingCustomFields(params)
   if (wrote) await bustInvoiceDefaultTimingCache(params.organizationId)
@@ -90,7 +90,7 @@ async function applyInvoiceDefaultTimingWriteThrough(params: {
 export async function getOrganizationSetting(params: {
   organizationId: string
   key: SettingKey
-  db?: Database
+  db?: Database | Transaction
 }): Promise<SettingValue> {
   const { organizationId, key, db = defaultDb } = params
 
@@ -126,7 +126,7 @@ export async function getOrganizationSetting(params: {
 export async function getAllOrganizationSettings(params: {
   organizationId: string
   scope?: SettingScope
-  db?: Database
+  db?: Database | Transaction
 }): Promise<Record<string, SettingValue>> {
   const { organizationId, scope, db = defaultDb } = params
 
@@ -168,7 +168,7 @@ export async function getUserSetting(params: {
   userId: string
   organizationId: string
   key: string
-  db?: Database
+  db?: Database | Transaction
 }): Promise<SettingValue> {
   const { userId, organizationId, key, db = defaultDb } = params
 
@@ -233,7 +233,7 @@ export async function getAllUserSettings(params: {
   userId: string
   organizationId: string
   scope?: SettingScope
-  db?: Database
+  db?: Database | Transaction
 }): Promise<Record<string, SettingValue>> {
   const { userId, organizationId, scope, db = defaultDb } = params
 
@@ -292,7 +292,7 @@ export async function updateOrganizationSetting(params: {
   organizationId: string
   key: SettingKey
   value: SettingValue
-  db?: Database
+  db?: Database | Transaction
 }): Promise<void> {
   const { organizationId, key, value, db = defaultDb } = params
 
@@ -333,7 +333,7 @@ export async function updateUserSetting(params: {
   organizationId: string
   key: SettingKey
   value: SettingValue
-  db?: Database
+  db?: Database | Transaction
 }): Promise<void> {
   const { userId, organizationId, key, value, db = defaultDb } = params
 
@@ -374,7 +374,7 @@ export async function resetUserSetting(params: {
   userId: string
   organizationId: string
   key: SettingKey
-  db?: Database
+  db?: Database | Transaction
 }): Promise<void> {
   const { userId, organizationId, key, db = defaultDb } = params
 
@@ -395,7 +395,7 @@ export async function resetUserSetting(params: {
 export async function batchUpdateOrganizationSettings(params: {
   organizationId: string
   settings: Array<{ key: SettingKey; value: SettingValue }>
-  db?: Database
+  db?: Database | Transaction
 }): Promise<void> {
   const { organizationId, settings, db = defaultDb } = params
   let touchedInvoiceDefaultTiming = false
@@ -454,7 +454,7 @@ export interface OrganizationSettingWithMetadata {
 export async function getOrganizationSettingsWithMetadata(params: {
   organizationId: string
   scope?: SettingScope
-  db?: Database
+  db?: Database | Transaction
 }): Promise<OrganizationSettingWithMetadata[]> {
   const { organizationId, scope, db = defaultDb } = params
 

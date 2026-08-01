@@ -1,9 +1,8 @@
 // apps/web/src/components/merge/use-merge-preview.ts
 'use client'
 
-import type { FieldType } from '@auxx/database/types'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
-import type { RecordId } from '@auxx/lib/resources/client'
+import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
 import { mergeFieldValue } from '@auxx/lib/resources/merge/client'
 import { useMemo } from 'react'
 import {
@@ -26,13 +25,7 @@ export function useMergePreview({
 }: {
   targetRecordId: RecordId
   sourceRecordIds: RecordId[]
-  fields: Array<{
-    id: string
-    label: string
-    fieldType: FieldType
-    options?: Record<string, unknown>
-    isSystem?: boolean
-  }>
+  fields: ResourceField[]
 }) {
   // Canonicalize prefixes — the store is keyed by EntityDefinition-UUID
   // RecordIds, and this hook builds keys directly (not via the base hooks).
@@ -47,14 +40,18 @@ export function useMergePreview({
 
     for (const field of fields) {
       // Only merge fields that can be updated
-      if (!field.capabilities?.updatable) continue
+      if (!field.capabilities.updatable) continue
+      // `fieldType` drives both the value decode and the merge strategy — a
+      // field without one (system resource columns) can't be merged.
+      const fieldType = field.fieldType
+      if (!fieldType) continue
 
       // Get target value from store (TypedFieldValue format)
       const targetStoreKey = buildFieldValueKey(targetRecordId, field.id)
       const targetStoreValue = storeValues[targetStoreKey]
 
       // EXPLICIT CONVERSION: TypedFieldValue → raw value
-      const targetValue = formatToRawValue(targetStoreValue, field.fieldType)
+      const targetValue = formatToRawValue(targetStoreValue, fieldType)
 
       // Get source values from store (TypedFieldValue format)
       const sourceValues = sourceRecordIds.map((recordId) => {
@@ -62,7 +59,7 @@ export function useMergePreview({
         const sourceStoreValue = storeValues[sourceStoreKey]
 
         // EXPLICIT CONVERSION: TypedFieldValue → raw value
-        return formatToRawValue(sourceStoreValue, field.fieldType)
+        return formatToRawValue(sourceStoreValue, fieldType)
       })
 
       // Skip fields that have no data in target or any sources
@@ -79,8 +76,8 @@ export function useMergePreview({
       const result = mergeFieldValue({
         targetValue,
         sourceValues,
-        fieldType: field.fieldType,
-        fieldOptions: field.options,
+        fieldType,
+        fieldOptions: field.options as Record<string, unknown> | undefined,
       })
 
       mergedFields[field.id] = result

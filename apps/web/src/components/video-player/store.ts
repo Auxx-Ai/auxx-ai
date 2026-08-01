@@ -157,9 +157,11 @@ export function createVideoPlayerStore() {
         return
       }
       const sorted = [...ranges].sort((a, b) => a.start - b.start)
-      sorted[0] = { ...sorted[0], start: Math.max(0, sorted[0].start) }
-      const last = sorted.length - 1
-      sorted[last] = { ...sorted[last], end: Math.min(sorted[last].end, duration) }
+      const first = sorted[0]
+      const lastIndex = sorted.length - 1
+      const last = sorted[lastIndex]
+      if (first) sorted[0] = { ...first, start: Math.max(0, first.start) }
+      if (last) sorted[lastIndex] = { ...last, end: Math.min(last.end, duration) }
       set({ highlightedRanges: sorted })
     },
 

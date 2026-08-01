@@ -68,8 +68,8 @@ describe('PlanService', () => {
       const plans = await service.getPlans()
 
       expect(plans).toHaveLength(2)
-      expect(plans[0].name).toBe('starter')
-      expect(plans[1].name).toBe('pro')
+      expect(plans[0]?.name).toBe('starter')
+      expect(plans[1]?.name).toBe('pro')
       expect(findManyMock).toHaveBeenCalledTimes(1)
     })
 
@@ -77,22 +77,23 @@ describe('PlanService', () => {
       const service = new PlanService(db)
       const plans = await service.getPlans()
 
-      expect(plans[0].trial).toEqual({ days: 14 })
+      expect(plans[0]?.trial).toEqual({ days: 14 })
     })
 
     it('transforms plan without trial info when hasTrial is false', async () => {
       const service = new PlanService(db)
       const plans = await service.getPlans()
 
-      expect(plans[1].trial).toBeUndefined()
+      expect(plans).toHaveLength(2)
+      expect(plans[1]?.trial).toBeUndefined()
     })
 
     it('maps feature limits correctly', async () => {
       const service = new PlanService(db)
       const plans = await service.getPlans()
 
-      expect(plans[0].limits).toEqual({ emails: 100, users: 2 })
-      expect(plans[1].limits).toEqual({ emails: 1000, users: 10 })
+      expect(plans[0]?.limits).toEqual({ emails: 100, users: 2 })
+      expect(plans[1]?.limits).toEqual({ emails: 1000, users: 10 })
     })
   })
 

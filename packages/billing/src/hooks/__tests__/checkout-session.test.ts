@@ -1,10 +1,10 @@
 // packages/billing/src/hooks/__tests__/checkout-session.test.ts
 
-import { handleCheckoutSessionCompleted } from '@auxx/billing/hooks/checkout-session'
-import { handleSubscriptionCreated } from '@auxx/billing/hooks/subscription-updated'
 import type { Database } from '@auxx/database'
 import type Stripe from 'stripe'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { handleCheckoutSessionCompleted } from '../checkout-session'
+import { handleSubscriptionCreated } from '../subscription-updated'
 
 const { retrieveMock, getClientMock } = vi.hoisted(() => {
   const retrieve = vi.fn()
@@ -128,7 +128,7 @@ describe('Stripe subscription synchronization', () => {
     await handleCheckoutSessionCompleted(db, event)
 
     expect(setMock).toHaveBeenCalledTimes(1)
-    const updateArgs = setMock.mock.calls[0][0] as Record<string, unknown>
+    const updateArgs = setMock.mock.calls[0]?.[0] as Record<string, unknown>
     expect(updateArgs.stripeSubscriptionId).toBe('sub_123')
     expect(updateArgs.stripeCustomerId).toBe('cus_123')
     expect(updateArgs.plan).toBeUndefined()
@@ -197,7 +197,7 @@ describe('Stripe subscription synchronization', () => {
     expect(planSubscriptionFindFirstMock).toHaveBeenCalledTimes(1)
     expect(planSubscriptionFindManyMock).toHaveBeenCalledTimes(2)
     expect(setMock).toHaveBeenCalledTimes(1)
-    const updateArgs = setMock.mock.calls[0][0] as Record<string, unknown>
+    const updateArgs = setMock.mock.calls[0]?.[0] as Record<string, unknown>
     expect(updateArgs.stripeSubscriptionId).toBe('sub_created')
     expect(updateArgs.stripeCustomerId).toBe('cus_org')
   })

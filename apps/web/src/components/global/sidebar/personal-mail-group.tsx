@@ -32,7 +32,12 @@ import { useMailCountsStore } from '~/components/mail/store'
 export interface PersonalMenuItem {
   id: string
   name: string
-  icon: React.ReactNode
+  /**
+   * Absent on the persisted copy — a React node can't be serialized into user
+   * settings, so it is stripped before every `onUpdateSettings` call and
+   * restored from {@link DEFAULT_PERSONAL_ITEMS} when the settings come back.
+   */
+  icon?: React.ReactNode
   visible: boolean
   order: number
   count?: number

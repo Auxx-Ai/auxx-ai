@@ -35,7 +35,7 @@ const SORT_OPTIONS: SelectOption[] = [
 ]
 
 const leaf = (ref: GroupBy['fieldRef']): ResourceFieldId =>
-  isFieldPath(ref) ? ref[ref.length - 1] : ref
+  isFieldPath(ref) ? (ref[ref.length - 1] ?? ref[0]) : ref
 
 export function GroupBySection({
   source,

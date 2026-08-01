@@ -21,7 +21,7 @@ import { Controller, useForm } from 'react-hook-form'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { getStripePromise } from '~/lib/stripe'
 import { useDehydratedSubscription } from '~/providers/dehydrated-state-provider'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import { type Plan, PlanComparison } from './plan-comparison'
 
 /** Initialize Stripe */
@@ -143,7 +143,7 @@ interface PlanChangeSummaryContentProps {
   selectedPlan: Plan | null
   currentSubscription: any
   billingDetails: any
-  paymentMethods: any
+  paymentMethods: RouterOutputs['billing']['getPaymentMethods'] | undefined
   billingCycle: 'MONTHLY' | 'ANNUAL'
   setBillingCycle: (cycle: 'MONTHLY' | 'ANNUAL') => void
   seats: number
@@ -783,11 +783,13 @@ function PlanChangeSummaryContent({
             </div>
 
             {/* Action-specific messaging */}
-            {isDowngrade && preview?.renewal?.date && (
+            {/* A downgrade takes effect at the end of the paid period — that's
+                `period_end`, not anything on `renewal`. */}
+            {isDowngrade && preview?.period_end && (
               <Alert className='p-2' variant='comparison'>
                 <AlertDescription className='text-xs'>
                   Your plan will downgrade to {selectedPlan.name} on{' '}
-                  {new Date(preview.renewal.date).toLocaleDateString()}. You'll retain your current
+                  {new Date(preview.period_end).toLocaleDateString()}. You'll retain your current
                   plan access until then. You can cancel this change anytime.
                 </AlertDescription>
               </Alert>

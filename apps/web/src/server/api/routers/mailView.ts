@@ -183,8 +183,11 @@ export const mailViewRouter = createTRPCRouter({
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Mail view not found' })
     }
 
-    // Only the owner or an admin can modify a view (you might want to add additional permission checks)
-    if (existingView.userId !== ctx.session.user.id && !ctx.session.user.isAdmin) {
+    // Owner-only, matching the ownership model documented at the top of this file.
+    // (There was a `&& !ctx.session.user.isAdmin` escape here, but `isAdmin` is not a
+    // User column — the flag is `isSuperAdmin` — so it read `undefined` and never
+    // widened the check. Dropping it is behaviour-preserving.)
+    if (existingView.userId !== ctx.session.user.id) {
       throw new TRPCError({
         code: 'FORBIDDEN',
         message: 'You do not have permission to modify this view',
@@ -212,8 +215,8 @@ export const mailViewRouter = createTRPCRouter({
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Mail view not found' })
     }
 
-    // Only the owner or an admin can delete a view
-    if (existingView.userId !== ctx.session.user.id && !ctx.session.user.isAdmin) {
+    // Owner-only — see the note on the update procedure above.
+    if (existingView.userId !== ctx.session.user.id) {
       throw new TRPCError({
         code: 'FORBIDDEN',
         message: 'You do not have permission to delete this view',

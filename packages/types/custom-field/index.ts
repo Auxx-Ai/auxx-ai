@@ -105,7 +105,7 @@ export const calcOptionsSchema = z.object({
   /** Maps placeholder names to field IDs */
   sourceFields: z.record(z.string(), z.string()),
   /** Field type for formatting the result */
-  resultFieldType: z.string(),
+  resultFieldType: z.enum(FieldTypeEnum),
   /** Whether this field is disabled due to missing dependencies */
   disabled: z.boolean().optional(),
   /** Reason why the field is disabled */

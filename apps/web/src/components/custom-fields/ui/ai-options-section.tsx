@@ -3,7 +3,12 @@
 'use client'
 
 import type { FieldType } from '@auxx/database/types'
-import type { AiOptions, AiTriggerOn, RichReferencePrompt } from '@auxx/types/custom-field'
+import type {
+  AiOptions,
+  AiTriggerOn,
+  RichReferencePrompt,
+  SelectOption,
+} from '@auxx/types/custom-field'
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import { ToggleCard } from '@auxx/ui/components/toggle-card'
@@ -57,8 +62,8 @@ interface AiOptionsSectionProps {
   aiSiblingFieldIds?: string[]
   /** Selected field type — forwarded to the preview panel for json-schema generation. */
   fieldType: FieldType
-  /** Native options for the selected type (e.g. SELECT option list). */
-  fieldOptions?: unknown
+  /** Native options for the selected type (only SELECT/MULTI_SELECT supply any). */
+  fieldOptions?: { options: SelectOption[] }
   /** Field display name, threaded into the preview's system prompt. */
   fieldName?: string
 }

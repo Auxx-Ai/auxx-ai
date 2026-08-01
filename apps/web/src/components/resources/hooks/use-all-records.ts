@@ -3,7 +3,7 @@
 import type { FieldType } from '@auxx/database/types'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { toRecordId } from '@auxx/lib/resources/client'
-import type { FieldId } from '@auxx/types/field'
+import { type FieldId, toFieldId } from '@auxx/types/field'
 import { useCallback, useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { api, type RouterOutputs } from '~/trpc/react'
@@ -165,8 +165,8 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
   // System fields use systemAttribute as key (e.g., 'inbox_name') but save uses UUID
   // Custom fields already use UUID as key, so resolution is a no-op for them
   const resolveFieldId = useCallback(
-    (fieldKey: string): string => {
-      return data?.fields[fieldKey]?.id ?? fieldKey
+    (fieldKey: string): FieldId => {
+      return toFieldId(data?.fields[fieldKey]?.id ?? fieldKey)
     },
     [data?.fields]
   )
@@ -346,11 +346,17 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
   ])
 
   return {
-    records: records as T[],
+    // `T` is the caller's assertion about which columns this entity carries.
+    // The composed rows are `RecordMeta`; the extra columns ride the index
+    // signature, so the narrowing can only be checked by the caller.
+    records: records as RecordMeta[] as T[],
     entityDefinitionId: resolvedEntityDefId,
     fields: data?.fields ?? {},
     isLoading: shouldFetch && isLoading,
-    error: error ?? null,
+    // react-query types the error as `TRPCClientErrorLike`, a structural alias
+    // that drops the `Error` members; the runtime value is always a
+    // `TRPCClientError`, which extends `Error`.
+    error: (error as Error | null) ?? null,
     refresh,
     appendRecord,
     removeRecord,

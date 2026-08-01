@@ -1,5 +1,6 @@
 // packages/lib/src/mail-query/__tests__/client.test.ts
 
+import { toActorId } from '@auxx/types/actor'
 import { describe, expect, it } from 'vitest'
 import {
   buildConditionGroups,
@@ -138,34 +139,30 @@ describe('threadMatchesFilter', () => {
       expect(threadMatchesFilter(baseThread, { hasAssignee: true })).toBe(false)
     })
 
-    it('matches assigned threads with ActorIdObject', () => {
-      const assigned = { ...baseThread, assigneeId: { type: 'user' as const, id: 'user-1' } }
+    it('matches assigned threads with an ActorId', () => {
+      const assigned = { ...baseThread, assigneeId: toActorId('user', 'user-1') }
       expect(threadMatchesFilter(assigned, { hasAssignee: true })).toBe(true)
       expect(threadMatchesFilter(assigned, { hasAssignee: false })).toBe(false)
     })
   })
 
   describe('assigneeId filter', () => {
-    it('matches specific assignee with ActorIdObject (type and id match)', () => {
-      const assigned = { ...baseThread, assigneeId: { type: 'user' as const, id: 'user-1' } }
-      expect(threadMatchesFilter(assigned, { assigneeId: { type: 'user', id: 'user-1' } })).toBe(
-        true
-      )
-      expect(threadMatchesFilter(assigned, { assigneeId: { type: 'user', id: 'user-2' } })).toBe(
-        false
-      )
+    it('matches specific assignee by ActorId', () => {
+      const assigned = { ...baseThread, assigneeId: toActorId('user', 'user-1') }
+      expect(threadMatchesFilter(assigned, { assigneeId: toActorId('user', 'user-1') })).toBe(true)
+      expect(threadMatchesFilter(assigned, { assigneeId: toActorId('user', 'user-2') })).toBe(false)
     })
 
-    it('does not match when type differs', () => {
-      const assigned = { ...baseThread, assigneeId: { type: 'user' as const, id: 'user-1' } }
-      expect(threadMatchesFilter(assigned, { assigneeId: { type: 'contact', id: 'user-1' } })).toBe(
+    it('does not match when the actor kind differs', () => {
+      const assigned = { ...baseThread, assigneeId: toActorId('user', 'user-1') }
+      expect(threadMatchesFilter(assigned, { assigneeId: toActorId('group', 'user-1') })).toBe(
         false
       )
     })
 
     it('matches null assigneeId filter for unassigned', () => {
       expect(threadMatchesFilter(baseThread, { assigneeId: null })).toBe(true)
-      const assigned = { ...baseThread, assigneeId: { type: 'user' as const, id: 'user-1' } }
+      const assigned = { ...baseThread, assigneeId: toActorId('user', 'user-1') }
       expect(threadMatchesFilter(assigned, { assigneeId: null })).toBe(false)
     })
   })
@@ -225,7 +222,7 @@ describe('threadMatchesFilter', () => {
     it('handles complex filter combinations', () => {
       const assigned = {
         ...baseThread,
-        assigneeId: { type: 'user' as const, id: 'user-1' },
+        assigneeId: toActorId('user', 'user-1'),
         isUnread: false,
         tagIds: ['priority', 'bug'],
       }
@@ -234,7 +231,7 @@ describe('threadMatchesFilter', () => {
         threadMatchesFilter(assigned, {
           status: 'OPEN',
           hasAssignee: true,
-          assigneeId: { type: 'user', id: 'user-1' },
+          assigneeId: toActorId('user', 'user-1'),
           isUnread: false,
           tagIds: ['priority'],
           inboxId: 'inbox-1',
@@ -251,9 +248,9 @@ describe('threadMatchesFilter', () => {
 describe('filterThreads', () => {
   const threads = [
     { id: '1', status: 'OPEN', assigneeId: null },
-    { id: '2', status: 'OPEN', assigneeId: { type: 'user' as const, id: 'user-1' } },
+    { id: '2', status: 'OPEN', assigneeId: toActorId('user', 'user-1') },
     { id: '3', status: 'ARCHIVED', assigneeId: null },
-    { id: '4', status: 'ARCHIVED', assigneeId: { type: 'user' as const, id: 'user-2' } },
+    { id: '4', status: 'ARCHIVED', assigneeId: toActorId('user', 'user-2') },
     { id: '5', status: 'TRASH', assigneeId: null },
   ]
 

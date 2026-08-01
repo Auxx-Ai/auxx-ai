@@ -157,7 +157,7 @@ function CommandNavigation<T extends NavigationItem>({
   const pop = React.useCallback(() => {
     setStack((prev) => {
       const newStack = prev.slice(0, -1)
-      const newCurrent = newStack.length > 0 ? newStack[newStack.length - 1] : null
+      const newCurrent = newStack.at(-1) ?? null
       onNavigationChange?.(newStack, newCurrent)
       return newStack
     })
@@ -167,7 +167,7 @@ function CommandNavigation<T extends NavigationItem>({
     (index: number) => {
       setStack((prev) => {
         const newStack = prev.slice(0, index + 1)
-        const newCurrent = newStack.length > 0 ? newStack[newStack.length - 1] : null
+        const newCurrent = newStack.at(-1) ?? null
         onNavigationChange?.(newStack, newCurrent)
         return newStack
       })

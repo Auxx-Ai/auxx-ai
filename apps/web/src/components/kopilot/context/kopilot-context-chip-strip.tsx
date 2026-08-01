@@ -77,11 +77,11 @@ export function KopilotContextChipStrip() {
     setSelectedKey(null)
   }
 
-  useHotkey('delete', handleDelete, {
+  useHotkey('Delete', handleDelete, {
     enabled: !!selectedKey,
     conflictBehavior: 'allow',
   })
-  useHotkey('backspace', handleDelete, {
+  useHotkey('Backspace', handleDelete, {
     enabled: !!selectedKey,
     conflictBehavior: 'allow',
   })

@@ -35,7 +35,7 @@ export function LineChartWidget({
 }) {
   const chartConfig = toChartConfig(series, config.color)
   const showLegend = config.showLegend !== false && series.length > 1
-  const stacked = Boolean(config.secondaryGroupBy) && config.stacked
+  const stacked = Boolean(config.secondaryGroupBy && config.stacked)
   const axisFormat = formatAxisValue ?? formatValue
   const tickFormatter = axisFormat ? (v: number) => axisFormat(v) : undefined
   const valueFormatter = formatValue ? (v: number | string) => formatValue(Number(v)) : undefined

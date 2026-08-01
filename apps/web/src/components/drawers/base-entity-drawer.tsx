@@ -86,12 +86,12 @@ interface BaseEntityDrawerProps {
   onClose?: () => void
   /** Optional counter to trigger focus on comments composer */
   focusComposerTrigger?: number
-  /** Optional isDocked state */
-  isDocked?: boolean
-  /** Optional docked width */
-  dockedWidth?: number
-  /** Optional callback when docked width changes */
-  onWidthChange?: (width: number) => void
+  /** Docked state (from `useDockStore`) — forwarded to `DockableDrawer`. */
+  isDocked: boolean
+  /** Docked width (from `useDockStore`) — forwarded to `DockableDrawer`. */
+  dockedWidth: number
+  /** Callback when docked width changes — forwarded to `DockableDrawer`. */
+  onWidthChange: (width: number) => void
   /** Optional minWidth for dockable drawer */
   minWidth?: number
   /** Optional maxWidth for dockable drawer */

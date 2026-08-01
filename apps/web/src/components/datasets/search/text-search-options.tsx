@@ -40,7 +40,7 @@ export function TextSearchOptions({ topK, onTopKChange, disabled }: TextSearchOp
         </div>
         <Slider
           value={[topK]}
-          onValueChange={([value]) => onTopKChange(value)}
+          onValueChange={([value = topK]) => onTopKChange(value)}
           min={1}
           max={50}
           step={1}

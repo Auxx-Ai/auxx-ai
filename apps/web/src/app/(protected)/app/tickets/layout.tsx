@@ -14,13 +14,7 @@ import { EntityRouteLayout } from '~/components/records'
  *
  * Note: TicketProvider has been removed - data is now managed by useRecordList
  */
-export default function TicketsLayout({
-  children,
-  modal,
-}: {
-  children: React.ReactNode
-  modal: React.ReactNode
-}) {
+export default function TicketsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
 
   // Check if we're on a ticket detail page, create page, or import page
@@ -33,12 +27,7 @@ export default function TicketsLayout({
 
   // For detail/create/import pages, just render children (they have their own layout)
   if (isDetailOrSpecialPage) {
-    return (
-      <>
-        {children}
-        {modal}
-      </>
-    )
+    return <>{children}</>
   }
 
   // For tabbed pages, render with the shared entity route shell
@@ -50,7 +39,6 @@ export default function TicketsLayout({
         { value: 'settings', label: 'Settings', icon: <Settings />, href: '/app/tickets/settings' },
       ]}>
       {children}
-      {modal}
     </EntityRouteLayout>
   )
 }

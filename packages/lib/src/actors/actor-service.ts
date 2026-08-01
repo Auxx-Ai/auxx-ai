@@ -1,5 +1,6 @@
 // packages/lib/src/actors/actor-service.ts
 
+import type { Database } from '@auxx/database'
 import type {
   Actor,
   ActorContext,
@@ -78,12 +79,15 @@ export interface SearchActorsOptions extends ListActorsOptions {
  * Provides methods to list, search, and batch resolve actors.
  */
 export class ActorService {
-  private db: ActorContext['db']
+  private db: Database
   private organizationId: string
   private userId: string
 
   constructor(ctx: ActorContext) {
-    this.db = ctx.db
+    // `ActorContext.db` is declared `unknown` in `@auxx/types/actor` even though its sibling
+    // `GroupContext` names `Database`. Narrow once here; every construction site passes the
+    // real Drizzle client.
+    this.db = ctx.db as Database
     this.organizationId = ctx.organizationId
     this.userId = ctx.userId
   }

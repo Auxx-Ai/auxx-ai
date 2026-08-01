@@ -112,6 +112,9 @@ export function useSidebarItemActions(): SidebarItemActionsResult {
           <AgentTemplateDialog
             open={agentTemplateDialogOpen}
             onOpenChange={setAgentTemplateDialogOpen}
+            // Matches the sibling "Create blank" item, which uses
+            // `createAgent()`'s `internal` default.
+            kind='internal'
           />
         )}
       </>

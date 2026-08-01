@@ -15,7 +15,7 @@ import {
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@auxx/ui/components/form'
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, Headset, Search, Users, X } from 'lucide-react'
+import { Check, Headset, Users, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import type { Control } from 'react-hook-form'
 import { useDebounce } from '~/hooks/use-debounced-value'
@@ -105,7 +105,14 @@ export function AssigneePicker({
   const onDutySet = onDutyUserIds ? new Set(onDutyUserIds) : null
   const dutyFilterActive = onlyOnDuty && !showAllOverride && !!onDutySet
 
-  const teamMembers = providedMembers || fetchedMembers || []
+  // `user.teamMembers` left-joins the user row, so a membership whose user was
+  // deleted comes back with `id: null`. Those rows must never reach the list —
+  // they render as a nameless entry that would assign a null id.
+  const teamMembers: TeamMember[] =
+    providedMembers ??
+    (fetchedMembers ?? []).flatMap((m) =>
+      m.id ? [{ id: m.id, name: m.name, email: m.email }] : []
+    )
 
   // Helper function to normalize the selected value into TeamMember[] format
   const normalizeSelected = (value: any): TeamMember[] => {
@@ -278,6 +285,8 @@ export function AssigneePicker({
     return name
   }
 
+  const firstSelected = selectedMembers[0]
+
   // Custom trigger or default button
   const triggerElement = children ? (
     children
@@ -291,18 +300,16 @@ export function AssigneePicker({
       className={cn('justify-between rounded-full h-7 px-1.5 shrink-0', className)}>
       {selectedMembers && selectedMembers.length > 0 ? (
         <div className='flex items-center gap-2'>
-          {selectedMembers.length === 1 ? (
+          {selectedMembers.length === 1 && firstSelected ? (
             <>
               <Avatar className='size-6'>
                 <AvatarImage
-                  src={selectedMembers[0].image || undefined}
-                  alt={selectedMembers[0].name || 'Assignee'}
+                  src={firstSelected.image || undefined}
+                  alt={firstSelected.name || 'Assignee'}
                 />
-                <AvatarFallback>{getInitials(selectedMembers[0].name)}</AvatarFallback>
+                <AvatarFallback>{getInitials(firstSelected.name)}</AvatarFallback>
               </Avatar>
-              <span className='truncate pe-1.5'>
-                {selectedMembers[0].name || selectedMembers[0].email}
-              </span>
+              <span className='truncate pe-1.5'>{firstSelected.name || firstSelected.email}</span>
             </>
           ) : (
             <div className='flex items-center gap-2'>
@@ -346,7 +353,6 @@ export function AssigneePicker({
             value={searchValue}
             onValueChange={setSearchValue}
             className='h-9'
-            icon={Search}
           />
 
           <CommandList>

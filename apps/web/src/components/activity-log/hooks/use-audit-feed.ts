@@ -79,6 +79,12 @@ export function useAuditFeed({ scope, filters, search, enabled = true }: UseAudi
     if (q.hasNextPage && !q.isFetchingNextPage) q.fetchNextPage()
   }, [q])
 
+  // Swallow the argument: consumers wire this straight to `onClick`, and passing a MouseEvent
+  // where `refetch` expects `RefetchOptions` is meaningless.
+  const refresh = useCallback(() => {
+    void q.refetch()
+  }, [q.refetch])
+
   // Client-side text filter over loaded rows only (see plan §4 "Search semantics").
   const filteredRows = useMemo(() => {
     const term = search?.trim().toLowerCase()
@@ -97,7 +103,7 @@ export function useAuditFeed({ scope, filters, search, enabled = true }: UseAudi
     isLoadingMore: q.isFetchingNextPage,
     hasMore: !!q.hasNextPage,
     loadMore,
-    refresh: q.refetch,
+    refresh,
     error: q.error ?? null,
   }
 }

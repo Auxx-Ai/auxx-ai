@@ -98,10 +98,7 @@ export function ProcessingMenu({
 
   const addExcludedSender = api.channel.addExcludedSender.useMutation({
     onSuccess: () => {
-      // `IGNORED` is a valid backend status that the client `ThreadStatus`
-      // union omits; the store + mutation accept it at runtime (previously
-      // bridged by a widened `update` prop type on this menu).
-      update(threadId, { status: 'IGNORED' } as unknown as Parameters<typeof update>[1])
+      update(threadId, { status: 'IGNORED' })
     },
   })
 

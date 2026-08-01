@@ -21,20 +21,19 @@ import {
   FileText,
 } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'
 import { ShopifyInvoicesLink } from './shopify-invoices-link'
 
 export function InvoiceList() {
-  const [cursor, setCursor] = useState<string | undefined>(undefined)
-
   const { data: subscription } = api.billing.getCurrentSubscription.useQuery()
   const noInvoiceLedger = subscription && !subscription.capabilities?.invoiceLedger
 
+  // `cursor` is the infinite-query page param — tRPC injects it from
+  // `getNextPageParam`, so it must not appear in the input.
   const { data, isLoading, isFetching, hasNextPage, fetchNextPage } =
     api.billing.getInvoices.useInfiniteQuery(
-      { limit: 10, cursor },
+      { limit: 10 },
       {
         getNextPageParam: (lastPage) => lastPage.nextCursor,
         // Skip invoice fetching for providers that don't expose a ledger.

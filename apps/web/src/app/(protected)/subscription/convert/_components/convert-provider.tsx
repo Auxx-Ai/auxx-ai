@@ -74,7 +74,7 @@ const pathToStep: Record<string, 1 | 2 | 3> = {
 /**
  * Maps step numbers to route paths
  */
-const stepToPath: Record<number, string> = {
+const stepToPath: Record<1 | 2 | 3, string> = {
   1: '/subscription/convert/explore',
   2: '/subscription/convert/addons',
   3: '/subscription/convert/summary',
@@ -142,9 +142,16 @@ export function ConvertProvider({ children }: ConvertProviderProps) {
         cycle: billingCycle,
         seats: seats,
       })
+      // `Plan.features` is a jsonb column, so the cached plan carries it as
+      // `unknown` — narrow it here rather than trusting the shape downstream
+      // (same normalization as `plan-comparison.tsx`).
+      const selectedPlan: Plan = {
+        ...planToSelect,
+        features: Array.isArray(planToSelect.features) ? (planToSelect.features as string[]) : [],
+      }
       setState((prev) => ({
         ...prev,
-        selectedPlan: planToSelect,
+        selectedPlan,
         billingCycle: billingCycle,
         addons: {
           seats: seats,

@@ -237,7 +237,6 @@ export function FileSelect({
                   allowMultiple={allowMultiple}
                   disabled={disabled}
                   variant='inline'
-                  size='sm'
                 />
               )}
 

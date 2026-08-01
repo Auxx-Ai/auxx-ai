@@ -23,7 +23,7 @@ const DETAIL_BASE = '/app/settings/channels'
 const CONNECTED_STATUS: ListCardStatus = { tone: 'good', label: 'Connected' }
 
 /** Display name for an integration — its name, else the capitalized provider. */
-function getIntegrationName(integration: { name: string; provider: string }): string {
+function getIntegrationName(integration: { name: string | null; provider: string }): string {
   if (integration.name) return integration.name
   return integration.provider.charAt(0).toUpperCase() + integration.provider.slice(1)
 }

@@ -807,7 +807,7 @@ async function readAuthoredState(
   // AND the honest one for an "after" it cannot enumerate.
   if (!profileId) return { levels: {}, baseLevel: null, ceiling: null }
 
-  const [row] = await tx
+  const rows = await tx
     .select({
       baseLevel: schema.PermissionProfile.baseLevel,
       ceiling: schema.PermissionProfile.ceiling,
@@ -821,9 +821,14 @@ async function readAuthoredState(
     )
     .limit(1)
 
+  // `tx` is a `Database | Transaction` union, so the projection's row type collapses; name the
+  // two selected columns back (same trick as `loadProfileRow`'s `as ProfileRow`) instead of
+  // reading through a row TypeScript believes is always `undefined`.
+  const row = rows[0] as { baseLevel: number | null; ceiling: unknown } | undefined
+
   return {
     levels: await readProfileLevels(tx, organizationId, profileId),
-    baseLevel: ((row?.baseLevel ?? null) as Level | null) ?? null,
+    baseLevel: (row?.baseLevel ?? null) as Level | null,
     ceiling: (row ? parseProfileCeiling(row.ceiling) : null) as ProfileCeiling | null,
   }
 }

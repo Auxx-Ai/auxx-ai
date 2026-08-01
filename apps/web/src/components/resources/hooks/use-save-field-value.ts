@@ -432,7 +432,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       const requestedAt = ai ? new Date().toISOString() : undefined
 
       // Build keys, capture versions, and apply optimistic updates
-      const keyVersions: Array<{ key: string; version: number }> = []
+      const keyVersions: Array<{ key: FieldValueKey; version: number }> = []
       for (const { fieldId, value, fieldType } of fieldValues) {
         const key = buildFieldValueKey(
           normalizedRecordId,
@@ -585,7 +585,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
   const saveBulkMultipleFields = useCallback(
     (
       recordIds: RecordId[],
-      fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>,
+      fieldValues: Array<{ fieldId: string; value: unknown; fieldType?: FieldType }>,
       saveOpts?: SaveOptions
     ): void => {
       const normalizedRecordIds = recordIds.map(getNormalizedRecordId)
@@ -594,7 +594,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       const requestedAt = ai ? new Date().toISOString() : undefined
 
       // Build all keys, capture versions, and apply optimistic updates
-      const keyVersions: Array<{ key: string; version: number }> = []
+      const keyVersions: Array<{ key: FieldValueKey; version: number }> = []
 
       for (const recordId of normalizedRecordIds) {
         for (const { fieldId, value, fieldType } of fieldValues) {

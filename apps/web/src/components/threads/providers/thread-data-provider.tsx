@@ -2,6 +2,8 @@
 'use client'
 
 import { rooms } from '@auxx/lib/realtime/client'
+import type { TaskWithRelations } from '@auxx/lib/tasks'
+import type { StandaloneDraftMeta } from '@auxx/types/draft'
 import type React from 'react'
 import { useEffect, useRef } from 'react'
 import { useMailCountsStore } from '~/components/mail/store'
@@ -9,6 +11,7 @@ import { useTaskStore } from '~/components/tasks/stores/task-store'
 import { useUser } from '~/hooks/use-user'
 import { useRealtimeRoom } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
+import type { MessageMeta, ParticipantMeta, ThreadMeta } from '../store'
 import { useMessageStore, useParticipantStore, useThreadStore } from '../store'
 import { useBatchDrain } from './use-batch-drain'
 
@@ -27,7 +30,7 @@ interface ThreadDataProviderProps {
  */
 export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
   const { mutateAsync: fetchThreads } = api.thread.getByIds.useMutation()
-  useBatchDrain({
+  useBatchDrain<ThreadMeta>({
     subscribePending: (cb) => useThreadStore.subscribe((s) => s.pendingIds.size, cb),
     getPendingSize: () => useThreadStore.getState().pendingIds.size,
     startBatch: () => useThreadStore.getState().startBatch(),
@@ -39,7 +42,7 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
   })
 
   const { mutateAsync: fetchMessages } = api.message.getByIds.useMutation()
-  useBatchDrain({
+  useBatchDrain<MessageMeta>({
     subscribePending: (cb) => useMessageStore.subscribe((s) => s.pendingIds.size, cb),
     getPendingSize: () => useMessageStore.getState().pendingIds.size,
     startBatch: () => useMessageStore.getState().startBatch(),
@@ -50,7 +53,7 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
   })
 
   const { mutateAsync: fetchParticipants } = api.participant.getByIds.useMutation()
-  useBatchDrain({
+  useBatchDrain<ParticipantMeta>({
     subscribePending: (cb) => useParticipantStore.subscribe((s) => s.pendingIds.size, cb),
     getPendingSize: () => useParticipantStore.getState().pendingIds.size,
     startBatch: () => useParticipantStore.getState().startBatch(),
@@ -61,7 +64,7 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
   })
 
   const { mutateAsync: fetchTasks } = api.task.getByIds.useMutation()
-  useBatchDrain({
+  useBatchDrain<TaskWithRelations>({
     subscribePending: (cb) => useTaskStore.subscribe((s) => s.pendingFetchIds.size, cb),
     getPendingSize: () => useTaskStore.getState().pendingFetchIds.size,
     startBatch: () => useTaskStore.getState().startBatch(),
@@ -72,7 +75,7 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
   })
 
   const { mutateAsync: fetchDrafts } = api.draft.getByIds.useMutation()
-  useBatchDrain({
+  useBatchDrain<StandaloneDraftMeta>({
     subscribePending: (cb) => useThreadStore.subscribe((s) => s.pendingDraftIds.size, cb),
     getPendingSize: () => useThreadStore.getState().pendingDraftIds.size,
     startBatch: () => useThreadStore.getState().startDraftBatch(),

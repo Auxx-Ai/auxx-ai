@@ -142,74 +142,6 @@ export class AiDomain {
     }
   }
 
-  /** buildRefinements returns drizzle-seed refinements for AI entities (DEPRECATED - use insertDirectly). */
-  buildRefinements(): (helpers: unknown) => Record<string, unknown> {
-    return (helpers: any) => {
-      if (!this.scenario.features.aiAnalysis) {
-        return {}
-      }
-      const ids = this.generateUsageIds()
-      const organizationIds = this.generateOrganizationAssignments()
-      const userIds = this.generateUserAssignments()
-      const providers = this.generateProviders()
-      const models = this.generateAiModels()
-      const modelTypes = this.generateModelTypes()
-      const totalTokens = this.generateTokenCounts()
-      const inputTokens = this.generateInputTokens()
-      const outputTokens = this.generateOutputTokens()
-      const costs = this.generateCosts()
-      const endpoints = this.generateEndpoints()
-      const createdAt = this.generateUsageTimestamps()
-      const requestIds = this.generateRequestIds()
-      const responseTimes = this.generateResponseTimes()
-
-      const debugMap = {
-        id: ids,
-        organizationId: organizationIds,
-        userId: userIds,
-        provider: providers,
-        model: models,
-        modelType: modelTypes,
-        totalTokens,
-        inputTokens,
-        outputTokens,
-        cost: costs,
-        endpoint: endpoints,
-        createdAt,
-        requestId: requestIds,
-        responseTime: responseTimes,
-      }
-
-      Object.entries(debugMap).forEach(([key, value]) => {
-        console.log(`   ↳ AiUsage.${key}: ${value.length}`)
-      })
-
-      const result = {
-        AiUsage: {
-          count: this.calculateAiUsageCount(),
-          columns: {
-            id: helpers.valuesFromArray({ values: ids }),
-            organizationId: helpers.valuesFromArray({ values: organizationIds }),
-            userId: helpers.valuesFromArray({ values: userIds }),
-            provider: helpers.valuesFromArray({ values: providers }),
-            model: helpers.valuesFromArray({ values: models }),
-            modelType: helpers.valuesFromArray({ values: modelTypes }),
-            totalTokens: helpers.valuesFromArray({ values: totalTokens }),
-            inputTokens: helpers.valuesFromArray({ values: inputTokens }),
-            outputTokens: helpers.valuesFromArray({ values: outputTokens }),
-            cost: helpers.valuesFromArray({ values: costs }),
-            endpoint: helpers.valuesFromArray({ values: endpoints }),
-            createdAt: helpers.valuesFromArray({ values: createdAt }),
-            requestId: helpers.valuesFromArray({ values: requestIds }),
-            responseTime: helpers.valuesFromArray({ values: responseTimes }),
-          },
-        },
-      }
-      console.log('🤖 AI refinements prepared: AiUsage', this.calculateAiUsageCount())
-      return result
-    }
-  }
-
   // ---- AI Generator Methods ----
 
   /** calculateAiUsageCount determines total AI usage records needed. */
@@ -276,7 +208,6 @@ export class AiDomain {
 
   /** generateProviders creates AI provider distribution. */
   private generateProviders(): string[] {
-    const providers = ['openai', 'anthropic', 'azure']
     const result: string[] = []
     const count = this.calculateAiUsageCount()
     for (let i = 0; i < count; i++) {

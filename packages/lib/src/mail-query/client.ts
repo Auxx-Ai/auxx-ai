@@ -7,6 +7,7 @@ export {
   type SearchToken,
 } from './search-query-parser'
 
+import type { ActorId } from '@auxx/types/actor'
 import { getInstanceId, isRecordId, type RecordId } from '@auxx/types/resource'
 
 // Context to conditions converter
@@ -22,15 +23,6 @@ export type { FilterRef, SearchCondition } from './search-filters'
 // ═══════════════════════════════════════════════════════════════════════════
 // Thread Client Filter Types and Utilities
 // ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Actor ID object format for client-side filtering.
- * Matches the thread store's ActorId interface.
- */
-export interface ActorIdObject {
-  type: 'user' | 'contact'
-  id: string
-}
 
 /**
  * Supported thread status values.
@@ -57,8 +49,8 @@ export interface ThreadClientFilter {
   /** Filter by assignment presence: true = has assignee, false = unassigned */
   hasAssignee?: boolean
 
-  /** Filter by specific assignee (ActorIdObject for type+id matching) */
-  assigneeId?: ActorIdObject | null
+  /** Filter by specific assignee — a branded `ActorId` (e.g. `"user:abc123"`). */
+  assigneeId?: ActorId | null
 
   /** Filter by unread status */
   isUnread?: boolean
@@ -143,7 +135,7 @@ export function mapStatusSlugToClientFilter(slug?: string): Partial<ThreadClient
 export interface FilterableThread {
   id: string
   status: string
-  assigneeId: ActorIdObject | null
+  assigneeId: ActorId | null
   isUnread?: boolean
   /** Tag RecordIds (format: "entityDefinitionId:instanceId") */
   tagIds?: string[]
@@ -215,24 +207,12 @@ export function threadMatchesFilter(thread: FilterableThread, filter: ThreadClie
 
   // ─────────────────────────────────────────────────────────────────
   // Specific assignee filter (for personal_inbox/personal_assigned contexts)
-  // Compares ActorIdObject (type and id must both match)
+  // `ActorId` is a branded string ("user:abc123") carrying both kind and id, so
+  // a direct comparison is the whole match.
   // ─────────────────────────────────────────────────────────────────
   if (filter.assigneeId !== undefined) {
-    if (filter.assigneeId === null) {
-      // Filter for unassigned threads
-      if (thread.assigneeId !== null) {
-        return false
-      }
-    } else {
-      // Filter for specific assignee - compare both type and id
-      const threadActorId = thread.assigneeId
-      if (
-        !threadActorId ||
-        threadActorId.type !== filter.assigneeId.type ||
-        threadActorId.id !== filter.assigneeId.id
-      ) {
-        return false
-      }
+    if (thread.assigneeId !== filter.assigneeId) {
+      return false
     }
   }
 

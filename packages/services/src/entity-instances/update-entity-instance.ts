@@ -10,7 +10,8 @@ export interface UpdateEntityInstanceParams {
   id: string
   organizationId: string
   data: {
-    archivedAt?: string | null
+    /** `EntityInstance.archivedAt` is a `timestamp` column — a `Date`, never a string. */
+    archivedAt?: Date | null
   }
 }
 

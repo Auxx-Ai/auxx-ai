@@ -104,7 +104,7 @@ describe('handleInvoicePaymentFailed', () => {
     await handleInvoicePaymentFailed(db, event)
 
     expect(setMock).toHaveBeenCalledTimes(1)
-    const payload = setMock.mock.calls[0][0]
+    const payload = setMock.mock.calls[0]?.[0]
     expect(payload.status).toBe('PENDING')
     expect(payload.updatedAt).toBeInstanceOf(Date)
   })
@@ -123,7 +123,7 @@ describe('handleInvoicePaymentFailed', () => {
     await handleInvoicePaymentFailed(db, event)
 
     expect(valuesMock).toHaveBeenCalledTimes(1)
-    const record = valuesMock.mock.calls[0][0]
+    const record = valuesMock.mock.calls[0]?.[0]
     expect(record.status).toBe('PENDING')
     expect(record.organizationId).toBe('org_1')
     expect(record.subscriptionId).toBe('local_sub')

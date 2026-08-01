@@ -1,6 +1,7 @@
 // apps/web/src/hooks/use-members-groups.ts
 import { keepPreviousData } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import type { TRPCClientErrorLike } from '@trpc/client'
+import type { AppRouter } from '~/server/api/root'
 import { api } from '~/trpc/react'
 
 /** Result interface for the useMembersGroups hook */
@@ -8,7 +9,7 @@ interface UseMembersAndGroupsResult {
   members: Member[]
   groups: Group[]
   isLoading: boolean
-  error: Error | null
+  error: TRPCClientErrorLike<AppRouter> | null
 }
 
 /** Member data structure */
@@ -33,8 +34,6 @@ export interface Group {
  * @returns Object containing members and groups data, loading state, and any error
  */
 export function useMembersGroups(searchQuery?: string): UseMembersAndGroupsResult {
-  const [error, setError] = useState<Error | null>(null)
-
   // Fetch members
   const {
     data: membersData,
@@ -59,11 +58,7 @@ export function useMembersGroups(searchQuery?: string): UseMembersAndGroupsResul
     }
   )
 
-  useEffect(() => {
-    // Set error if either query fails
-    if (membersError) setError(membersError)
-    if (groupsError) setError(groupsError)
-  }, [membersError, groupsError])
+  const error = membersError ?? groupsError ?? null
 
   // Map API data to component props format
   const members: Member[] =

@@ -41,7 +41,6 @@ export interface McpServerEditTarget {
   serverId: string
   name: string
   endpoint: string
-  connectionType: 'oauth2-code' | 'secret' | 'none' | null
   /** Derived server-side — distinguishes bearer from custom headers (both `'secret'`). */
   authPosture: 'oauth' | 'bearer' | 'headers' | 'none' | null
   /** Custom bearer header name (e.g. `X-API-Key`), from the credential metadata. */

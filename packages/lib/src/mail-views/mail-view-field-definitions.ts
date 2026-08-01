@@ -1,6 +1,7 @@
 // packages/lib/src/mail-views/mail-view-field-definitions.ts
 
 import { FieldType } from '@auxx/database/enums'
+import { toResourceFieldId } from '@auxx/types/field'
 import { getOperatorsForFieldType, type Operator } from '../conditions/operator-definitions'
 import type { FieldOptions } from '../custom-fields/field-options'
 // NOTE: This file is used on both client and server.
@@ -63,7 +64,7 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     fieldType: FieldType.RELATIONSHIP,
     options: {
       relationship: {
-        inverseResourceFieldId: 'tag:threads',
+        inverseResourceFieldId: toResourceFieldId('tag', 'threads'),
         relationshipType: 'has_many',
         isInverse: false,
       },
@@ -109,7 +110,7 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
         // once data migration 060 moves them — `MailViewFieldDefinition` has no
         // `dynamicOptionsKey`, which is how the thread field's picker unions
         // both definitions.
-        inverseResourceFieldId: 'inbox:inbox_threads',
+        inverseResourceFieldId: toResourceFieldId('inbox', 'inbox_threads'),
         relationshipType: 'has_many',
         isInverse: false,
       },
@@ -275,5 +276,5 @@ export function getDefaultOperatorForField(fieldId: string): Operator {
   if (operators.length === 0) {
     return 'is'
   }
-  return operators[0].key as Operator
+  return (operators[0]?.key ?? 'is') as Operator
 }

@@ -31,8 +31,12 @@ const TEXT_BLOCK_TYPES = new Set([
 ])
 
 export interface DiffRenderResult {
-  /** One render node per top-level diff entry (containers reconstructed with inner diffs baked in). */
-  nodes: ArticleNodeJSON[]
+  /**
+   * One entry per top-level diff entry, each pairing the diff with the node to
+   * render for it (containers reconstructed with inner diffs baked in). Paired
+   * rather than two parallel arrays so the 1:1 relation holds by construction.
+   */
+  entries: Array<{ diff: BlockDiff; node: ArticleNodeJSON }>
   /** Container-nested leaf id → status, consumed by the renderer for border decoration. */
   decorations: Map<string, DiffStatus>
 }
@@ -40,8 +44,8 @@ export interface DiffRenderResult {
 /** Build the render plan for a top-level article diff. */
 export function buildDiffRender(blocks: BlockDiff[]): DiffRenderResult {
   const decorations = new Map<string, DiffStatus>()
-  const nodes = blocks.map((d) => toRenderNode(d, decorations))
-  return { nodes, decorations }
+  const entries = blocks.map((diff) => ({ diff, node: toRenderNode(diff, decorations) }))
+  return { entries, decorations }
 }
 
 /**
@@ -142,8 +146,7 @@ function mergeRows(
   })
 
   // Rows removed on the new side (old table had more rows): reinsert, all removed.
-  for (let ri = newRows.length; ri < oldRows.length; ri++) {
-    const oldRow = oldRows[ri]
+  for (const oldRow of oldRows.slice(newRows.length)) {
     result.push({
       ...oldRow,
       content: oldRow.content.map((cell) => ({

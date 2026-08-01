@@ -25,6 +25,7 @@ import { useMemo } from 'react'
 import { StockAdjustmentPopover } from '~/components/manufacturing/parts/stock-adjustment-popover'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { useFieldValueStore } from '~/components/resources/store/field-value-store'
 import { useAccess } from '~/providers/capabilities-provider'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
@@ -64,11 +65,12 @@ const MOVEMENT_ATTRIBUTES = [
 /** Inventory tab for the part detail view */
 export function PartInventoryTab({ recordId }: DrawerTabProps) {
   const { entityInstanceId: partId } = parseRecordId(recordId)
-  const {
-    values,
-    isLoading: isLoadingPart,
-    refetch,
-  } = useSystemValues(recordId, [...PART_ATTRIBUTES], { autoFetch: true })
+  const { values, isLoading: isLoadingPart } = useSystemValues(recordId, [...PART_ATTRIBUTES], {
+    autoFetch: true,
+  })
+  // `useSystemValues` has no refetch — drop the cached values for this record and
+  // its `autoFetch` re-pulls the recalculated on-hand quantity.
+  const invalidateResource = useFieldValueStore((s) => s.invalidateResource)
   const stockMovementDefId = useResourceProperty('stock_movement', 'id')
   const subpartDefId = useResourceProperty('subpart', 'id')
   // The tab itself is NOT `recordResource`-gated — it leads with the part's own
@@ -144,7 +146,7 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
 
   const handleAdjustSuccess = () => {
     refresh()
-    refetch()
+    invalidateResource(recordId)
   }
 
   if (isLoading) {
@@ -227,7 +229,7 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
 
 // ─── Row Component ──────────────────────────────────────────────────────
 
-function MovementRow({ recordId, createdAt }: { recordId: RecordId; createdAt?: string }) {
+function MovementRow({ recordId, createdAt }: { recordId: RecordId; createdAt?: string | Date }) {
   const { values } = useSystemValues(recordId, MOVEMENT_ATTRIBUTES, { autoFetch: true })
 
   const type = values.stock_movement_type as string | undefined

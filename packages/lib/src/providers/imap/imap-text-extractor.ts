@@ -1,5 +1,7 @@
 // packages/lib/src/providers/imap/imap-text-extractor.ts
 
+/// <reference path="../vendor-modules.d.ts" />
+
 import { convert as htmlToText } from 'html-to-text'
 import planer from 'planer'
 

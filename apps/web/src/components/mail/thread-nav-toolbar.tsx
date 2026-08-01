@@ -37,19 +37,19 @@ export function ThreadNavToolbar({
   const hasNext = currentIndex >= 0 && currentIndex < listThreadIds.length - 1
 
   const goToPrevious = useCallback(() => {
-    if (hasPrevious) {
-      const prevId = listThreadIds[currentIndex - 1]
-      useThreadSelectionStore.getState().setActiveThread(prevId)
-      onNavigate(prevId)
-    }
+    if (!hasPrevious) return
+    const prevId = listThreadIds[currentIndex - 1]
+    if (!prevId) return
+    useThreadSelectionStore.getState().setActiveThread(prevId)
+    onNavigate(prevId)
   }, [hasPrevious, listThreadIds, currentIndex, onNavigate])
 
   const goToNext = useCallback(() => {
-    if (hasNext) {
-      const nextId = listThreadIds[currentIndex + 1]
-      useThreadSelectionStore.getState().setActiveThread(nextId)
-      onNavigate(nextId)
-    }
+    if (!hasNext) return
+    const nextId = listThreadIds[currentIndex + 1]
+    if (!nextId) return
+    useThreadSelectionStore.getState().setActiveThread(nextId)
+    onNavigate(nextId)
   }, [hasNext, listThreadIds, currentIndex, onNavigate])
 
   useHotkey('Q', onBack, { enabled: hotkeysEnabled, conflictBehavior: 'allow' })

@@ -2,10 +2,9 @@
 
 'use client'
 
-import type { TableId } from '@auxx/lib/workflow-engine/client'
 import { Popover, PopoverContentDialogAware, PopoverTrigger } from '@auxx/ui/components/popover'
 import React, { useCallback, useMemo, useState } from 'react'
-import type { BaseType, UnifiedVariable } from '~/components/workflow/types'
+import type { AllowedVarType, UnifiedVariable } from '~/components/workflow/types'
 import { VariableExplorerEnhanced } from './variable-explorer-enhanced'
 
 // import { useAvailableVariables } from '~/components/workflow/hooks/use-available-variables'
@@ -56,7 +55,7 @@ interface VariablePickerProps {
   /** Show footer with variable count */
   showFooter?: boolean
 
-  allowedTypes?: (BaseType | TableId)[] // Array of allowed BaseType values (e.g., [BaseType.STRING])
+  allowedTypes?: AllowedVarType[] // BaseType, or a resource id for relation filtering
 }
 
 /**

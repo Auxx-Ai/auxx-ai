@@ -96,7 +96,8 @@ export function ResourcePicker({
   const hasValue = value.length > 0
 
   // Resolve the selected resource for display in the trigger
-  const selectedResource = hasValue ? getResourceById(value[0]) : undefined
+  const firstValue = value[0]
+  const selectedResource = firstValue ? getResourceById(firstValue) : undefined
 
   // Custom trigger or default button using PickerTrigger
   const triggerElement = children ? (

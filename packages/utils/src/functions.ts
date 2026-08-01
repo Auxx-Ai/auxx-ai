@@ -38,8 +38,11 @@ export function debounce<T extends (...args: never[]) => unknown>(
 /**
  * Creates a throttled version of a function that limits execution
  * to at most once per the specified interval.
+ *
+ * The constraint uses `never[]` for the same contravariance reason as
+ * `debounce` above — `unknown[]` would only accept zero-arg callbacks.
  */
-export function throttle<T extends (...args: unknown[]) => void>(
+export function throttle<T extends (...args: never[]) => void>(
   fn: T,
   ms: number
 ): (...args: Parameters<T>) => void {

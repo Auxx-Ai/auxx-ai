@@ -19,11 +19,28 @@ interface PendingFieldUpdate {
 }
 
 /**
+ * Attributes an optimistic entity-definition update may change.
+ *
+ * `display` is deliberately only the three display-field slots: they are the
+ * only part of the display config an entity-def update can touch, and they are
+ * the subset that is identical on both `SystemResource` and `CustomResource`
+ * (the two arms disagree on `defaultSortField` / `orgScopingStrategy`, so a
+ * whole-`display` payload could not be merged into either arm type-safely).
+ */
+export type ResourceOptimisticUpdate = Partial<
+  Pick<Resource, 'label' | 'plural' | 'icon' | 'color' | 'isVisible'>
+> & {
+  display?: Partial<
+    Pick<CustomResource['display'], 'primaryDisplayField' | 'secondaryDisplayField' | 'avatarField'>
+  >
+}
+
+/**
  * Pending optimistic resource update state
  */
 interface PendingResourceUpdate {
   /** Optimistic updates to apply */
-  optimistic: Partial<Resource>
+  optimistic: ResourceOptimisticUpdate
   /** Original resource for rollback */
   original: Resource
 }
@@ -215,7 +232,7 @@ interface ResourceStoreState {
   // ─────────────────────────────────────────────────────────────────
 
   /** Apply optimistic resource update (stores original for rollback) */
-  setResourceOptimistic: (entityDefinitionId: string, updates: Partial<Resource>) => void
+  setResourceOptimistic: (entityDefinitionId: string, updates: ResourceOptimisticUpdate) => void
 
   /** Confirm resource update succeeded - clears pending state */
   confirmResourceUpdate: (entityDefinitionId: string, serverResource?: Resource) => void
@@ -625,7 +642,9 @@ export const useResourceStore = create<ResourceStoreState>()(
         )
         if (serverResource) {
           // Check if server has caught up with optimistic changes
-          const optimisticKeys = Object.keys(pending.optimistic) as Array<keyof Resource>
+          const optimisticKeys = Object.keys(pending.optimistic) as Array<
+            keyof ResourceOptimisticUpdate
+          >
           const serverMatchesOptimistic = optimisticKeys.every((key) => {
             const optimisticValue = pending.optimistic[key]
             const serverValue = serverResource[key]
@@ -641,6 +660,7 @@ export const useResourceStore = create<ResourceStoreState>()(
       const newOptimisticNewResources = { ...state.optimisticNewResources }
       for (const tempId of Object.keys(newOptimisticNewResources)) {
         const optimistic = newOptimisticNewResources[tempId]
+        if (!optimistic) continue
         // Check if a resource with matching apiSlug exists on server
         const exists = resources.some((r) => r.apiSlug === optimistic.apiSlug)
         if (exists) {
@@ -1124,8 +1144,12 @@ export const useResourceStore = create<ResourceStoreState>()(
           [entityDefinitionId]: { optimistic: updates, original },
         }
 
-        // Apply optimistic update to resource
-        const updatedResource = { ...resource, ...updates }
+        // Apply optimistic update to resource. Narrowed per arm so the merged
+        // `display` keeps the arm's own required keys instead of collapsing to
+        // the union.
+        const updatedResource: Resource = isCustomResource(resource)
+          ? { ...resource, ...updates, display: { ...resource.display, ...updates.display } }
+          : { ...resource, ...updates, display: { ...resource.display, ...updates.display } }
 
         // Update resourceMap
         const newResourceMap = new Map(state.resourceMap)

@@ -3,7 +3,7 @@
 'use client'
 
 import type { PromptTemplateItem } from '@auxx/lib/prompt-templates'
-import type { SelectOption } from '@auxx/types/custom-field'
+import { SELECT_OPTION_COLORS, type SelectOption } from '@auxx/types/custom-field'
 import { useMemo } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { usePromptTemplateMutations } from '../../../hooks/use-prompt-template-mutations'
@@ -42,7 +42,9 @@ export function PromptTemplatePickerContent({
         value: t.id,
         label: t.name,
         icon: t.icon?.iconId,
-        color: t.icon?.color,
+        // The stored icon color is a free-form string; keep it only when it is
+        // one of the palette ids `SelectOption.color` accepts.
+        color: SELECT_OPTION_COLORS.find((c) => c === t.icon?.color),
       })),
     [templates]
   )

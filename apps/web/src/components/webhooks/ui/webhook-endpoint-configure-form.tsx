@@ -21,6 +21,7 @@ import {
   endpointVars,
   seedValuesFromEndpoint,
   seedValuesFromTemplate,
+  type WebhookEndpointFormValues,
 } from './webhook-endpoint-fields'
 
 interface WebhookEndpointConfigureFormProps {
@@ -75,7 +76,7 @@ export function WebhookEndpointConfigureForm({
     return blankSeedValues()
   }
 
-  const [values, setValues] = useState<Record<string, string>>(seed)
+  const [values, setValues] = useState<WebhookEndpointFormValues>(seed)
   const [errors, setErrors] = useState<Record<string, string>>({})
   /** Stripe edit: the inline "paste a new whsec_" input is open. */
   const [replacingSecret, setReplacingSecret] = useState(false)

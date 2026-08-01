@@ -114,7 +114,7 @@ export function extractFieldIdsFromString(text: string): string[] {
   let match: RegExpExecArray | null = fieldPattern.exec(text)
 
   while (match !== null) {
-    const fieldId = match[1].trim()
+    const fieldId = match[1]?.trim()
     if (fieldId) {
       fieldIds.push(fieldId)
     }

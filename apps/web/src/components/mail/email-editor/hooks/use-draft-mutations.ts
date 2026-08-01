@@ -2,10 +2,13 @@
 'use client'
 
 import type { StandaloneDraftMeta } from '@auxx/types/draft'
+import { toRecordId } from '@auxx/types/resource'
 import { toastError } from '@auxx/ui/components/toast'
+import type { TRPCClientErrorLike } from '@trpc/client'
 import { useCallback, useRef } from 'react'
 import { useCountUpdates } from '~/components/mail/hooks'
 import { getThreadStoreState, useThreadStore } from '~/components/threads/store/thread-store'
+import type { AppRouter } from '~/server/api/root'
 import { api } from '~/trpc/react'
 import type { DraftMessage, DraftPayload } from '../types'
 
@@ -18,13 +21,13 @@ export interface UseDraftMutationsOptions {
   /** Callback when upsert succeeds */
   onUpsertSuccess?: (result: DraftMessage) => void
   /** Callback when upsert fails */
-  onUpsertError?: (error: Error) => void
+  onUpsertError?: (error: TRPCClientErrorLike<AppRouter>) => void
   /** Callback when delete is about to start (optimistic update) */
   onDeleteMutate?: (draftId: string) => void
   /** Callback when delete succeeds */
   onDeleteSuccess?: (draftId: string) => void
   /** Callback when delete fails (for rollback) */
-  onDeleteError?: (error: Error, draftId: string) => void
+  onDeleteError?: (error: TRPCClientErrorLike<AppRouter>, draftId: string) => void
 }
 
 /**
@@ -90,7 +93,7 @@ export function useDraftMutations(options?: UseDraftMutationsOptions): UseDraftM
         // Thread-attached draft: add draftId to thread's draftIds if not already present
         const thread = getThreadStoreState().getThread(result.threadId)
         if (thread) {
-          const recordId = `draft:${result.id}`
+          const recordId = toRecordId('draft', result.id)
           if (!thread.draftIds.includes(recordId)) {
             updateThread(result.threadId, {
               draftIds: [...thread.draftIds, recordId],
@@ -108,6 +111,9 @@ export function useDraftMutations(options?: UseDraftMutationsOptions): UseDraftM
           recipientSummary: buildRecipientSummary(result.participants),
           updatedAt: result.updatedAt,
           createdAt: result.createdAt,
+          // The upsert result carries no schedule (it comes from a separate
+          // `ScheduledMessage` join), so keep whatever the store already knows.
+          scheduledAt: getThreadStoreState().getDraft(result.id)?.scheduledAt ?? null,
         }
         setDrafts([meta])
       }
@@ -129,7 +135,7 @@ export function useDraftMutations(options?: UseDraftMutationsOptions): UseDraftM
       if (options?.threadId) {
         const thread = getThreadStoreState().getThread(options.threadId)
         if (thread) {
-          const recordId = `draft:${draftId}`
+          const recordId = toRecordId('draft', draftId)
           updateThread(options.threadId, {
             draftIds: thread.draftIds.filter((id) => id !== recordId),
           })

@@ -1,6 +1,7 @@
 // apps/web/src/hooks/use-turnstile.ts
 'use client'
 
+import type { TurnstileInstance } from '@marsidev/react-turnstile'
 import { useCallback, useRef, useState } from 'react'
 
 /**
@@ -15,7 +16,7 @@ import { useCallback, useRef, useState } from 'react'
  */
 export function useTurnstile() {
   const [token, setToken] = useState<string | null>(null)
-  const widgetRef = useRef<{ reset: () => void } | null>(null)
+  const widgetRef = useRef<TurnstileInstance | undefined>(undefined)
 
   const onSuccess = useCallback((t: string) => setToken(t), [])
 

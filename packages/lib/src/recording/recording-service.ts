@@ -233,7 +233,7 @@ const logger = createScopedLogger('recording:create-meeting')
 export async function createMeeting(
   params: CreateMeetingParams
 ): Promise<Result<CreateMeetingResult, Error>> {
-  const { organizationId, userId, startTime, contactRecordIds } = params
+  const { organizationId, userId, startTime, durationMinutes, contactRecordIds } = params
   const orgDomains = await getOrganizationDomains(organizationId)
 
   // Resolve emails from contact entity instances

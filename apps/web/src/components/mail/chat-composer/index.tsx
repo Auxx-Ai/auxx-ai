@@ -13,6 +13,7 @@ import {
   AttachmentStrip,
   ComposerBody,
   INTERACTIVE_ELEMENT_SELECTORS,
+  isAiToneType,
   isContentEmpty,
   useComposerAITools,
   useComposerAttachments,
@@ -184,7 +185,14 @@ function ChatComposerInner({
                 hasContent,
                 hasPreviousMessages: (thread.messageCount ?? thread.messages?.length ?? 0) > 0,
                 state: aiToolsState,
-                onOperation: handleAIOperation,
+                onOperation: (operation, options) => {
+                  // `EditorButton` declares `tone?: string`; narrow back to the
+                  // compose API's named tones (see `isAiToneType`).
+                  void handleAIOperation(operation, {
+                    ...options,
+                    tone: isAiToneType(options?.tone) ? options.tone : undefined,
+                  })
+                },
               }}
             />
           </div>

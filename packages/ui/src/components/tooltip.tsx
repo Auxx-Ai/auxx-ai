@@ -53,11 +53,15 @@ const isTouchDevice =
 
 /** Props for the SimpleTooltip convenience wrapper */
 interface SimpleTooltipProps {
-  children: React.ReactElement
+  /** Trigger element. Cloned with pointer/click handlers, so it must accept DOM props. */
+  children: React.ReactElement<React.HTMLAttributes<HTMLElement>>
   content?: string
   contentComponent?: React.ReactNode
-  /** Optional keyboard shortcut rendered next to the content. */
-  shortcut?: string | string[]
+  /**
+   * Optional keyboard shortcut rendered next to the content. An array renders
+   * one key chip per entry; anything else is rendered as-is in a single chip.
+   */
+  shortcut?: React.ReactNode | React.ReactNode[]
   delayDuration?: number
   sideOffset?: number
   side?: 'top' | 'right' | 'bottom' | 'left'
@@ -130,11 +134,11 @@ function SimpleTooltip({
 
   // Clone the child element and merge our handlers directly onto it
   const trigger = React.cloneElement(children, {
-    onPointerDown: (e: React.PointerEvent) => {
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
       handlePointerDown(e)
       children.props.onPointerDown?.(e)
     },
-    onClick: (e: React.MouseEvent) => {
+    onClick: (e: React.MouseEvent<HTMLElement>) => {
       handleClick(e)
       children.props.onClick?.(e)
     },

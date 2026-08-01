@@ -168,16 +168,12 @@ export interface SeedingScenarioDefinition {
   }
 }
 
-/** DomainRefinementMap is the shape expected by drizzle-seed refine operations. */
-export type DomainRefinementMap =
-  | Record<string, unknown>
-  | ((helpers: unknown) => Record<string, unknown>)
-
-/** SeedingScenario extends the base definition with refinement builders. */
-export interface SeedingScenario extends SeedingScenarioDefinition {
-  /** buildRefinements returns drizzle-seed refinements for the scenario. */
-  buildRefinements(context: SeedingContext): DomainRefinementMap
-}
+/**
+ * SeedingScenario is a resolved scenario definition (scales already merged with any
+ * CLI overrides). Kept distinct from {@link SeedingScenarioDefinition} so call sites
+ * can tell "as authored" from "as resolved".
+ */
+export type SeedingScenario = SeedingScenarioDefinition
 
 /** SeedingConfig describes CLI/runtime configuration for the seeder. */
 export interface SeedingConfig {
@@ -188,7 +184,7 @@ export interface SeedingConfig {
   /** validate toggles post-seed validation routines. */
   validate: boolean
   /** progress toggles visual progress output. */
-  progress: boolean | 'verbose'
+  progress: boolean
   /** seedValue provides deterministic randomness when set. */
   seedValue?: number
   /** overrides allows ad-hoc scale overrides from CLI flags. */

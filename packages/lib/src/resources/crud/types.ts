@@ -10,8 +10,10 @@ import type { Database, Transaction } from '@auxx/database'
  */
 export interface ResolvedEntityDefinition {
   id: string
+  /** `null` for custom entities — only the built-in resources carry one. */
   entityType: string | null
-  apiSlug: string | null
+  /** Never null: `EntityDefinition.apiSlug` is `NOT NULL` and `Resource.apiSlug` is required. */
+  apiSlug: string
 }
 
 /** Context passed to all CRUD operations */

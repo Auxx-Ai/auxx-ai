@@ -13,7 +13,7 @@ export interface SSEConfig {
   /** The URL to connect to */
   url: string
   /** Specific event types to listen for (optional, listens to all if not specified) */
-  events?: string[]
+  events?: readonly string[]
   /** Whether to automatically reconnect on connection loss */
   reconnect?: boolean
   /** Initial reconnection delay in ms */
@@ -145,7 +145,7 @@ export function useSSE(
   /**
    * Handle EventSource-based SSE (for GET requests)
    */
-  const connectEventSource = useCallback((url: string, events?: string[]) => {
+  const connectEventSource = useCallback((url: string, events?: readonly string[]) => {
     logger.info('Connecting via EventSource', { url, events })
 
     const eventSource = new EventSource(url)

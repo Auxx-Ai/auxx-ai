@@ -418,7 +418,11 @@ export function AgentTriggerDialog({
     const triggerInput = buildTriggerInput()
     if (!triggerInput) return
 
-    const instructionsPayload = isNonEmptyDoc(instructions) ? instructions : null
+    // The router persists instructions as an opaque JSON record; `TiptapDoc` is
+    // an interface (no implicit index signature), so spread it to a plain object.
+    const instructionsPayload: Record<string, unknown> | null = isNonEmptyDoc(instructions)
+      ? { ...instructions }
+      : null
 
     if (isEditMode && trigger) {
       update.mutate({

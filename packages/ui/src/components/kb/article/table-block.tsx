@@ -28,6 +28,7 @@ export function TableBlock({ node, resolveAuxxHref, decorations }: TableBlockPro
   if (!Array.isArray(node.content) || node.content.length === 0) return null
 
   const [firstRow, ...restRows] = node.content
+  if (!firstRow) return null
   const firstRowIsHeader =
     firstRow.content.length > 0 && firstRow.content.every((c) => c.type === 'tableHeader')
 

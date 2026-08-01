@@ -255,7 +255,9 @@ export function KopilotChat({
   const handleRetryMessage = useCallback(
     (userMessageId: string) => {
       const userMsg = messageMap[userMessageId]
-      if (!userMsg || userMsg.role !== 'user') return
+      // `content` is optional on `KopilotMessage` (assistant turns use `parts`);
+      // there is nothing to resend for a user message without it.
+      if (!userMsg || userMsg.role !== 'user' || !userMsg.content) return
 
       const text = userMsg.content.replace(/<[^>]*>/g, '')
       const store = useKopilotStore.getState()

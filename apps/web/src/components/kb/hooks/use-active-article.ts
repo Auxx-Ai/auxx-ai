@@ -24,9 +24,9 @@ export function useActiveArticle(knowledgeBaseId: string): ArticleMeta | undefin
     const articlesPrefix = `${basePath}/articles/`
     let slug = ''
     if (pathname.startsWith(editorPrefix)) {
-      slug = pathname.slice(editorPrefix.length).split('?')[0]
+      slug = pathname.slice(editorPrefix.length).split('?')[0] ?? ''
     } else if (pathname.startsWith(articlesPrefix)) {
-      slug = pathname.slice(articlesPrefix.length).split('?')[0]
+      slug = pathname.slice(articlesPrefix.length).split('?')[0] ?? ''
     }
     if (!slug) return undefined
     return findArticleBySlugPath(articles, slug.split('/'))

@@ -29,7 +29,8 @@ interface SearchResult {
         name: string
       }
     }
-    metadata?: Record<string, any>
+    /** Free-form per-segment metadata as stored in the DB (jsonb). */
+    metadata?: unknown
     searchMetadata?: Record<string, any>
   }
   score: number
@@ -132,7 +133,13 @@ export function SearchResultItem({
     }
 
     // Add custom metadata
-    const customMetadata = { ...segment?.metadata, ...segment?.searchMetadata }
+    const customMetadata: Record<string, unknown> = {
+      // `metadata` is jsonb — only spread it when it really is an object.
+      ...(typeof segment?.metadata === 'object' && segment.metadata !== null
+        ? segment.metadata
+        : {}),
+      ...segment?.searchMetadata,
+    }
     const customKeys = Object.keys(customMetadata).filter(
       (key) => !['documentId', 'documentTitle', 'filename', 'datasetName', 'position'].includes(key)
     )

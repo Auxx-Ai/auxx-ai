@@ -17,5 +17,5 @@ export function columnId(ref: WidgetFieldRef): string {
 
 /** The terminal (last-hop) `ResourceFieldId` of a ref, for header-label + icon lookup. */
 export function terminalFieldId(ref: WidgetFieldRef): ResourceFieldId {
-  return isFieldPath(ref) ? ref[ref.length - 1] : ref
+  return isFieldPath(ref) ? (ref[ref.length - 1] ?? ref[0]) : ref
 }

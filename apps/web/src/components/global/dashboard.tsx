@@ -64,7 +64,7 @@ export const Dashboard = ({
   const orgCompletedOnboarding = currentOrg?.completedOnboarding ?? false
   const userCompletedOnboarding = dehydratedUser?.completedOnboarding ?? false
   const needsOnboarding = !orgCompletedOnboarding || !userCompletedOnboarding
-  const overages = useOverages(organizationId)
+  const overages = useOverages(organizationId ?? undefined)
 
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
   const [activeDndItem, setActiveDndItem] = useState<Active | null>(null)

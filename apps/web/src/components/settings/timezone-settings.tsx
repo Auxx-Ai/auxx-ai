@@ -68,12 +68,7 @@ export function TimezoneSettings({ currentTimezone }: TimezoneSettingsProps) {
                 <Globe className='size-4' />
                 {selectedTimezone || 'Select timezone...'}
               </div>
-              <Button
-                type='button'
-                size='xs'
-                variant='outline'
-                onClick={handleDetectTimezone}
-                type='button'>
+              <Button type='button' size='xs' variant='outline' onClick={handleDetectTimezone}>
                 Auto-detect
               </Button>
             </div>

@@ -178,7 +178,11 @@ export function MailSearchBar({
         showGrouping: false,
         compactMode: true,
       }}
-      getFieldDefinition={(fieldId) => getMailViewFieldDefinition(fieldId) as any}
+      // Mail search has no drill-down, so a FieldPath (`string[]`) never
+      // resolves here — let the provider fall through to its own resolution.
+      getFieldDefinition={(fieldId) =>
+        Array.isArray(fieldId) ? undefined : getMailViewFieldDefinition(fieldId)
+      }
       onConditionsChange={handleConditionsChange}>
       <SearchBarShell
         conditions={conditions}

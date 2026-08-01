@@ -17,7 +17,7 @@ export type Nullish<T> = T | null | undefined
 export type EntityType =
   | 'MESSAGE'
   | 'COMMENT'
-  | 'CUSTOM_FIELD_VALUE'
+  | 'FIELD_VALUE'
   | 'TASK'
   | 'ORDER'
   | 'PRODUCT'
@@ -99,7 +99,8 @@ export interface CreateFolderRequest {
  */
 export interface UpdateFolderRequest {
   name?: string
-  parentId?: string
+  /** `null` moves the folder to the root; `undefined` leaves the parent unchanged. */
+  parentId?: string | null
 }
 /**
  * Request to create a new Attachment
@@ -150,6 +151,8 @@ export interface CreateAssetRequest {
   storageLocationId?: string // Optional - only required for createWithVersion
   organizationId: string
   createdById?: string
+  /** Automatic-cleanup deadline for temporary assets. */
+  expiresAt?: Date
 }
 /**
  * Request to update an existing MediaAsset

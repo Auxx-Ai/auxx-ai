@@ -41,7 +41,8 @@ const STRIPE_CONNECT_START_URL =
   '/api/connections/stripeConnect/hosted-provision/start?returnTo=/app/dispatch/settings/payments'
 
 /** `acct_1AbCdEfGh...` → `acct_…wXyZ` — never show the full id in the UI. */
-function maskAccountId(stripeAccountId: string): string {
+function maskAccountId(stripeAccountId: string | null): string {
+  if (!stripeAccountId) return '—'
   const last4 = stripeAccountId.slice(-4)
   return `acct_…${last4}`
 }
@@ -96,7 +97,8 @@ function PaymentsSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }[
     onSave: (next) => {
       const changed = DRAFT_KEYS.filter((key) => next[key] !== settingsServer[key]).map((key) => ({
         key,
-        value: next[key],
+        // Every DRAFT_KEY is seeded from `getSetting`, which never returns undefined.
+        value: next[key] ?? null,
       }))
       if (changed.length > 0) batchUpdateOrganizationSettings(changed)
     },

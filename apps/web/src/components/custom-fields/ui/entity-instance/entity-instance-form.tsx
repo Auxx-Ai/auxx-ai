@@ -295,7 +295,11 @@ export function EntityInstanceForm({
           const views = state.viewsByTableId[entityDefinitionId]
           if (!views) return
           const view = views.find((v) => v.id === configOrgFieldView.id)
-          if (view) view.config = draftConfig
+          // Panel/dialog views persist a `FieldViewConfig` in the same `config`
+          // column that table views use for `ViewConfig` (the router accepts
+          // either), but `TableView.config` only models the table shape — hence
+          // the widening hop. See the burndown referral on `TableView.config`.
+          if (view) view.config = draftConfig as unknown as typeof view.config
         })
       } else {
         // Create new view (addView called via onSuccess)

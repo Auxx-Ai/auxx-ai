@@ -115,7 +115,7 @@ export function AssertionsSection({ agentId, assertions, onChange }: AssertionsS
         ) : (
           <FieldPanel className='p-0'>
             {assertions.map((a) => {
-              const meta = ASSERTION_META[a.type]
+              const meta = ASSERTION_META_BY_TYPE[a.type]
               return (
                 <FieldPanelRow
                   key={a.id}
@@ -139,8 +139,20 @@ export function AssertionsSection({ agentId, assertions, onChange }: AssertionsS
   )
 }
 
-/** Label, icon, and hover description for each assertion type in the editor. */
-const ASSERTION_META: Record<string, { label: string; description: string; icon: ReactNode }> = {
+type AssertionType = AgentEvalAssertion['type']
+
+interface AssertionMeta {
+  label: string
+  description: string
+  icon: ReactNode
+}
+
+/**
+ * Label, icon, and hover description for each assertion type the editor can
+ * author. Deliberately partial — `crm_field`, `local_variable`, and
+ * `procedure_selected` exist in the model but have no "Add assertion" entry.
+ */
+const ASSERTION_META = {
   terminal_outcome: {
     label: 'Terminal outcome',
     description:
@@ -162,7 +174,13 @@ const ASSERTION_META: Record<string, { label: string; description: string; icon:
     description: 'The agent must never call this tool during the run.',
     icon: <Ban className='size-3.5 text-muted-foreground' />,
   },
-}
+} satisfies Partial<Record<AssertionType, AssertionMeta>>
+
+/**
+ * Widened view of {@link ASSERTION_META} for lookups keyed by a stored
+ * `assertion.type`, which may be a kind the editor doesn't author.
+ */
+const ASSERTION_META_BY_TYPE: Partial<Record<AssertionType, AssertionMeta>> = ASSERTION_META
 
 function AssertionEditor({
   assertion,

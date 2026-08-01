@@ -161,16 +161,16 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
     try {
       if (isEditMode && recordId) {
         // Edit mode: use saveMultipleAsync for optimistic updates
-        const fieldValues: Array<{ fieldId: string; value: unknown; fieldType: string }> = [
-          { fieldId: 'part_title', value: values.title, fieldType: 'TEXT' },
-          { fieldId: 'part_sku', value: values.sku, fieldType: 'TEXT' },
+        const fieldValues = [
+          { fieldId: 'part_title', value: values.title, fieldType: FieldType.TEXT },
+          { fieldId: 'part_sku', value: values.sku, fieldType: FieldType.TEXT },
           {
             fieldId: 'part_description',
             value: values.description || undefined,
-            fieldType: 'TEXT',
+            fieldType: FieldType.TEXT,
           },
-          { fieldId: 'category', value: values.category, fieldType: 'TAGS' },
-          { fieldId: 'hs_code', value: values.hsCode || undefined, fieldType: 'TEXT' },
+          { fieldId: 'category', value: values.category, fieldType: FieldType.TAGS },
+          { fieldId: 'hs_code', value: values.hsCode || undefined, fieldType: FieldType.TEXT },
         ]
 
         const success = await saveMultipleAsync(recordId, fieldValues)
@@ -266,7 +266,6 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             title='SKU'
             description='This must be unique across all parts'
             type={BaseType.STRING}
-            orientation='responsive'
             showIcon
             isRequired
             validationError={errors.sku}
@@ -281,7 +280,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           </FieldPanelRow>
 
           {/* Category — inline TAGS (free-form, multi-value) */}
-          <FieldPanelRow title='Category' type={BaseType.TAGS} showIcon orientation='responsive'>
+          <FieldPanelRow title='Category' type={BaseType.TAGS} showIcon>
             <FieldInputAdapter
               fieldType={FieldType.TAGS}
               fieldOptions={categoryField?.options}
@@ -298,7 +297,6 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             title='HS Code'
             description='Harmonized System Code for customs'
             type={BaseType.STRING}
-            orientation='responsive'
             showIcon>
             <FieldInputAdapter
               fieldType={FieldType.TEXT}
@@ -310,11 +308,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           </FieldPanelRow>
 
           {/* Description */}
-          <FieldPanelRow
-            title='Description'
-            type={BaseType.STRING}
-            orientation='responsive'
-            showIcon>
+          <FieldPanelRow title='Description' type={BaseType.STRING} showIcon>
             <FieldInputAdapter
               fieldType={FieldType.TEXT}
               value={values.description}

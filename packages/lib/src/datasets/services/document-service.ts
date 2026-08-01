@@ -1,5 +1,5 @@
 // packages/lib/src/datasets/services/document-service.ts
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { DocumentStatus, DocumentType as DocumentTypeEnum } from '@auxx/database/enums'
 import type {
   ChunkSettings,
@@ -26,7 +26,7 @@ const logger = createScopedLogger('document-service')
  * Service for managing documents within datasets
  */
 export class DocumentService {
-  constructor(private db: Database) {}
+  constructor(private db: Database | Transaction) {}
   /**
    * Create document from file upload
    */

@@ -3,6 +3,7 @@
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { ResourceFieldId } from '@auxx/types/field'
+import type { RecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
@@ -27,7 +28,7 @@ import { ContactVendorPartRow } from './contact-parts-tab-row'
  */
 export function CompanyPartsTab({ entityInstanceId }: DrawerTabProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [editingRecordId, setEditingRecordId] = useState<string | null>(null)
+  const [editingRecordId, setEditingRecordId] = useState<RecordId | null>(null)
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
   // Resolve vendor_part entity definition ID

@@ -3,7 +3,6 @@
 'use client'
 
 import { collectVariableIds, docToText, type TiptapDoc, textToDoc } from '@auxx/lib/tiptap'
-import type { TableId } from '@auxx/lib/workflow-engine/client'
 import type { Extension, JSONContent } from '@tiptap/core'
 import Placeholder from '@tiptap/extension-placeholder'
 import { type Editor, useEditor } from '@tiptap/react'
@@ -17,7 +16,7 @@ import {
 } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { buildReferencePickerExtensions } from '~/components/editor/rich-text/reference-picker-extensions'
-import type { BaseType } from '~/components/workflow/types'
+import type { AllowedVarType } from '~/components/workflow/types'
 import { validateTagPattern } from '../tiptap-converters'
 
 /** Initial closed state for picker */
@@ -55,7 +54,7 @@ export interface UseWorkflowVariableEditorOptions {
   /** Current node ID for variable context */
   nodeId: string
   /** Expected types for variable filtering */
-  expectedTypes?: (BaseType | TableId)[]
+  expectedTypes?: AllowedVarType[]
   /** Whether editor is editable */
   editable?: boolean
   /** Tab index for keyboard navigation */
@@ -116,7 +115,7 @@ export interface UseWorkflowVariableEditorReturn {
   /** Node ID for context */
   nodeId: string
   /** Expected types for filtering */
-  expectedTypes: (BaseType | TableId)[]
+  expectedTypes: AllowedVarType[]
 }
 
 /**

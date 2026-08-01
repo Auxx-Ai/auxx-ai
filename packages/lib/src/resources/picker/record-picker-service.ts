@@ -10,7 +10,7 @@ import {
   getCachedResources,
   getOrgCache,
 } from '../../cache'
-import { ForbiddenError } from '../../errors'
+import { BadRequestError, ForbiddenError } from '../../errors'
 import { getRecordIdentitiesForRecords } from '../../identity'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import { isDeclaredInstanceDomain } from '../../permissions/capabilities/instance-access'
@@ -257,6 +257,8 @@ export class RecordPickerService {
     if (isMailLensTableId(tableId)) throw new ForbiddenError(MAIL_LENS_REFUSAL)
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
+    // Def-backed types carry no static display config — the picker cannot query them by hand.
+    if (!displayConfig) throw new BadRequestError(`Resource ${tableId} is not statically pickable`)
     const tableName = tableConfig.dbName
 
     // Determine organization scoping strategy
@@ -508,6 +510,8 @@ export class RecordPickerService {
     if (isMailLensTableId(tableId)) throw new ForbiddenError(MAIL_LENS_REFUSAL)
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
+    // Def-backed types carry no static display config — the picker cannot query them by hand.
+    if (!displayConfig) throw new BadRequestError(`Resource ${tableId} is not statically pickable`)
     const tableName = tableConfig.dbName
 
     const scopingStrategy = displayConfig.orgScopingStrategy || 'direct'
@@ -573,6 +577,7 @@ export class RecordPickerService {
    */
   private transformToPickerItem(tableId: TableId, row: any): RecordPickerItem {
     const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
+    if (!displayConfig) throw new BadRequestError(`Resource ${tableId} is not statically pickable`)
 
     const entityInstanceId = row[displayConfig.identifierField]
 

@@ -254,7 +254,11 @@ type OwnerInput =
 export async function resolveConnectionForRuntime(
   input: OwnerInput & {
     organizationId: string
-    userId: string
+    /**
+     * Absent for runs with no user context (e.g. polling triggers). Only
+     * user-scoped definitions need it; `findCredential` accepts nullish.
+     */
+    userId: string | undefined
     /** Skip the lazy OAuth refresh (default `true`). */
     ensureFresh?: boolean
   }
@@ -316,7 +320,12 @@ export async function resolveConnectionForRuntime(
   // The credential's FK names the exact method, and the org-scoped lookup prefers the primary
   // when an app has >1 connection (method or account) — see resolveAppCredential / §4a.
   if (appId) {
-    const userResolved = await resolveAppCredential(appId, organizationId, userId, ensureFresh)
+    const userResolved = await resolveAppCredential(
+      appId,
+      organizationId,
+      userId ?? null,
+      ensureFresh
+    )
     if (userResolved.isErr()) return err(userResolved.error)
     const orgResolved = await resolveAppCredential(appId, organizationId, null, ensureFresh)
     if (orgResolved.isErr()) return err(orgResolved.error)

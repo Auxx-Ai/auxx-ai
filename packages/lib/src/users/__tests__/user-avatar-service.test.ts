@@ -7,7 +7,7 @@ import { UserAvatarService } from '../user-avatar-service'
 const mockLimit = vi.fn()
 const mockWhere = vi.fn(() => ({ limit: mockLimit }))
 const mockFrom = vi.fn(() => ({ where: mockWhere }))
-const mockSelect = vi.fn(() => ({ from: mockFrom }))
+const mockSelect = vi.fn((..._args: unknown[]) => ({ from: mockFrom }))
 const mockInsertReturning = vi
   .fn()
   .mockResolvedValue([{ id: 'storage-loc-1', provider: 'S3', key: 'test-key' }])

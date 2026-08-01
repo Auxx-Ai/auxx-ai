@@ -129,7 +129,9 @@ export function computeDependentCalcValues(
 
   for (const changedKey of changedKeys) {
     const { recordId, fieldRef } = parseFieldValueKey(changedKey)
-    const fieldRefStr = typeof fieldRef === 'string' ? fieldRef : fieldRef[fieldRef.length - 1]
+    // A FieldPath is a non-empty tuple, so `[0]` is the guaranteed fallback for
+    // the dynamically-indexed last segment.
+    const fieldRefStr = typeof fieldRef === 'string' ? fieldRef : (fieldRef.at(-1) ?? fieldRef[0])
     // Extract plain FieldId (UUID) from ResourceFieldId for dependency graph lookup.
     // The dependency graph stores plain UUIDs as keys (from sourceFields config),
     // but parseFieldValueKey returns ResourceFieldId format ("entityDef:fieldId").

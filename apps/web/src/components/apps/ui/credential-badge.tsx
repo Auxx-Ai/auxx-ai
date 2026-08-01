@@ -27,9 +27,7 @@ interface CredentialBadgeProps {
 export function CredentialBadge({ credId, onPick }: CredentialBadgeProps) {
   const bound = useBoundCredential(credId)
   const { status } = bound
-  const textColor =
-    appConnectionStatusOptions[status === 'none' ? 'unbound' : status].textColor ??
-    'text-muted-foreground'
+  const textColor = appConnectionStatusOptions[status].textColor ?? 'text-muted-foreground'
 
   const label = renderLabel(bound.status, bound.label)
   const tooltip = renderTooltip(bound)

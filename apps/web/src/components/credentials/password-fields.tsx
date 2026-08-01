@@ -7,6 +7,7 @@ import {
 } from '@auxx/ui/components/input-group'
 import { cn } from '@auxx/ui/lib/utils'
 import { CheckIcon, EyeIcon, EyeOffIcon, XIcon } from 'lucide-react'
+import type { JSX } from 'react'
 import { useId, useMemo, useState } from 'react'
 
 export function PasswordInput({

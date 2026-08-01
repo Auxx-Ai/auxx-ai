@@ -2,23 +2,32 @@
 'use client'
 
 import { Loader2, Lock, Phone } from 'lucide-react'
+import type { JSX } from 'react'
 import { useMemo } from 'react'
 import { client } from '~/auth/auth-client'
 import { GithubIcon, GoogleIcon } from '~/constants/icons'
+import { useUser } from '~/hooks/use-user'
 
 /**
  * Component to display how the user registered (OAuth providers and/or email/password)
  */
 export function UserRegistrationInfo(): JSX.Element | null {
   const { data: session, isPending } = client.useSession()
+  // `providers` / `hasPassword` / `registrationMethod` are Auxx columns on the User row. They
+  // are NOT part of better-auth's inferred client session type, so they must come off the
+  // dehydrated `useUser()` payload — reading them off `session.user` yields `undefined`.
+  const { user } = useUser()
+  const providers = user?.providers ?? []
+  const hasPassword = user?.hasPassword ?? false
+  const registrationMethod = user?.registrationMethod
 
   /**
    * Memoized unique providers list to prevent duplicates and unnecessary re-renders
    */
+  const phoneNumberVerified = session?.user?.phoneNumberVerified
   const uniqueProviders = useMemo(() => {
     if (isPending || !session?.user) return ['loading']
 
-    const { providers = [], hasPassword, phoneNumberVerified } = session.user
     const allProviders = [...providers]
 
     // Add password authentication if available
@@ -32,14 +41,12 @@ export function UserRegistrationInfo(): JSX.Element | null {
     }
 
     return [...new Set(allProviders)]
-  }, [session?.user, isPending])
+  }, [session?.user, isPending, providers, hasPassword, phoneNumberVerified])
 
   // Don't render anything if there's no session and not loading
   if (!isPending && !session?.user) {
     return null
   }
-
-  const { registrationMethod, hasPassword } = session?.user || {}
 
   /**
    * Get display name for OAuth provider

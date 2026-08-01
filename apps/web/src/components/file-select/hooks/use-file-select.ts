@@ -252,9 +252,11 @@ export function useFileSelect(options: UseFileSelectOptions = {}): UseFileSelect
       // Add to upload queue and track mapping deterministically using returned IDs
       const addedIds = await upload.addFiles(validFiles)
       addedIds.forEach((uploadFileId, index) => {
-        uploadToSelectIdMap.current.set(uploadFileId, newItems[index].id)
+        const item = newItems[index]
+        if (!item) return
+        uploadToSelectIdMap.current.set(uploadFileId, item.id)
         // Store the upload file ID for real-time subscription
-        newItems[index].uploadFileId = uploadFileId
+        item.uploadFileId = uploadFileId
       })
 
       // Update state
@@ -315,8 +317,9 @@ export function useFileSelect(options: UseFileSelectOptions = {}): UseFileSelect
         }
       }
 
-      if (!allowMultiple && itemsToAdd.length > 0) {
-        itemsToAdd = [itemsToAdd[0]] // Keep only first item
+      const firstToAdd = itemsToAdd[0]
+      if (!allowMultiple && firstToAdd) {
+        itemsToAdd = [firstToAdd] // Keep only first item
       }
 
       if (itemsToAdd.length === 0) return
@@ -342,9 +345,10 @@ export function useFileSelect(options: UseFileSelectOptions = {}): UseFileSelect
   // Add items directly
   const addItems = useCallback(
     (items: FileItem[]) => {
-      if (!allowMultiple && items.length > 0) {
-        setSelectedItems([items[0]])
-        onChange?.([items[0]])
+      const first = items[0]
+      if (!allowMultiple && first) {
+        setSelectedItems([first])
+        onChange?.([first])
       } else {
         setSelectedItems((prev) => [...prev, ...items])
         onChange?.([...selectedItems, ...items])

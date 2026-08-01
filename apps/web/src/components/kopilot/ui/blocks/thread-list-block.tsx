@@ -69,10 +69,8 @@ function ThreadListRow({ threadId, snapshot }: ThreadListRowProps) {
   const subject = thread?.subject ?? snapshot?.subject ?? null
   const status = thread?.status
   const sender = snapshot?.sender
-  const lastMessageAt =
-    (thread?.lastMessageAt instanceof Date
-      ? thread.lastMessageAt.toISOString()
-      : thread?.lastMessageAt) ?? snapshot?.lastMessageAt
+  // `ThreadMeta.lastMessageAt` is already an ISO string in the store.
+  const lastMessageAt = thread?.lastMessageAt ?? snapshot?.lastMessageAt
   const isUnread = thread?.isUnread ?? snapshot?.isUnread
   const messageCount = thread?.messageCount
   const showDeleted = !thread && !!snapshot && isNotFound

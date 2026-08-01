@@ -74,6 +74,17 @@ const REDACTED_THREAD_DEFAULTS: Partial<ThreadMeta> = {
   latestMessageId: null,
 }
 
+/**
+ * Blank one field in place. Written as a generic so the key and the value stay
+ * correlated: assigning through a plain `keyof ThreadMeta` union narrows the write
+ * target to `never`. The `as ThreadMeta[K]` covers the fact that
+ * `REDACTED_THREAD_DEFAULTS` is a `Partial` — every key the tier lists name is
+ * present in it, which the type can't express.
+ */
+function blankThreadField<K extends keyof ThreadMeta>(out: ThreadMeta, field: K): void {
+  out[field] = REDACTED_THREAD_DEFAULTS[field] as ThreadMeta[K]
+}
+
 /** The set of ThreadMeta keys a viewer at `lens` may see. `read` sees everything. */
 function allowedThreadKeys(lens: Lens): Set<string> {
   const keys = new Set<string>(THREAD_METADATA_FIELDS as readonly string[])
@@ -92,11 +103,11 @@ export function redactThreadMeta(meta: ThreadMeta, lens: Lens): ThreadMeta {
   if (lens === 'read') return meta
   const out: ThreadMeta = { ...meta }
   for (const field of READ_TIER_THREAD_FIELDS) {
-    ;(out as Record<string, unknown>)[field] = REDACTED_THREAD_DEFAULTS[field]
+    blankThreadField(out, field)
   }
   if (!satisfiesRung(lens, 'identity')) {
     for (const field of IDENTITY_TIER_THREAD_FIELDS) {
-      ;(out as Record<string, unknown>)[field] = REDACTED_THREAD_DEFAULTS[field]
+      blankThreadField(out, field)
     }
   }
   return out

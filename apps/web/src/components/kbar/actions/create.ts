@@ -3,7 +3,7 @@
 
 import { useMemo } from 'react'
 import { useCreateEntityStore } from '~/components/global-create/create-entity-store'
-import { SYSTEM_CREATE_HOTKEYS } from '~/components/global-create/system-hotkeys'
+import { getCreateHotkey } from '~/components/global-create/system-hotkeys'
 import { useViewableResources } from '~/components/resources/hooks/use-viewable-resources'
 import { useSignatureAccess } from '~/components/signatures/hooks'
 import { useSnippetAccess } from '~/components/snippets/hooks/use-snippet-access'
@@ -15,7 +15,7 @@ import type { PaletteAction } from '../types'
  * "Create <Entity>" actions, one per visible resource (system + custom). Inside
  * the palette these drill into the embedded `create` page; the create chords
  * themselves (`c,c` etc.) stay owned by global-create — here they're only shown
- * as hints (sourced from {@link SYSTEM_CREATE_HOTKEYS}).
+ * as hints (sourced from {@link getCreateHotkey}).
  */
 export function useCreateActions(): PaletteAction[] {
   const { resources } = useViewableResources()
@@ -32,7 +32,7 @@ export function useCreateActions(): PaletteAction[] {
         subtitle: `Create a new ${r.label.toLowerCase()}`,
         icon: r.icon,
         keywords: `create new ${r.label} ${r.plural}`.toLowerCase(),
-        shortcut: SYSTEM_CREATE_HOTKEYS[r.apiSlug],
+        shortcut: getCreateHotkey(r.apiSlug),
         // Inside the palette, render the create form as a step (Phase 3).
         perform: () => useCommandPaletteStore.getState().openCreate(r.id),
       }))

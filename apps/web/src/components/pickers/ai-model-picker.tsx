@@ -229,10 +229,7 @@ export function AiModelPicker({
   const groupedModels = useMemo(() => {
     const groups: Record<string, ModelPickerItem[]> = {}
     searchFilteredModels.forEach((model) => {
-      if (!groups[model.provider]) {
-        groups[model.provider] = []
-      }
-      groups[model.provider].push(model)
+      ;(groups[model.provider] ??= []).push(model)
     })
     return groups
   }, [searchFilteredModels])

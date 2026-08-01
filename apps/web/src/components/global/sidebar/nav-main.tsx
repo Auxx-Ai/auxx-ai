@@ -74,7 +74,7 @@ export function NavMain({ menu, itemActions }: Props) {
           // Explicit `url` on the entry wins (navigable group homes like
           // /app/dispatch); else fall back to the first child. preventNavigation
           // still decides whether clicking the row navigates at all.
-          return { ...item, items: subItems, url: item.url ?? subItems[0].url }
+          return { ...item, items: subItems, url: item.url ?? subItems[0]?.url }
         }
         return { ...item, items: subItems, url: getUrl(menu.route, item.slug) }
       })

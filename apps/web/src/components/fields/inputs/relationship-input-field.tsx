@@ -209,8 +209,15 @@ export function RelationshipInputField() {
    * Requests hydration and selects the new item.
    */
   const handleCreatedInstance = useCallback(
-    (instanceId: string) => {
+    (instanceId?: string) => {
       if (!relatedEntityDefinitionId) return
+      // The custom editors behind `RecordEditorDialog` (Parts, Work Orders)
+      // still report saves without an id; selecting `"<def>:undefined"` would
+      // pin a phantom record, so just close the dialog.
+      if (!instanceId) {
+        setIsCreateDialogOpen(false)
+        return
+      }
 
       const newRecordId = toRecordId(relatedEntityDefinitionId, instanceId)
 

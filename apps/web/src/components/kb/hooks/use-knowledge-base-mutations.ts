@@ -1,16 +1,23 @@
 // apps/web/src/components/kb/hooks/use-knowledge-base-mutations.ts
 'use client'
 
-import type { KBDraftSettings } from '@auxx/lib/kb/client'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
-import { api } from '~/trpc/react'
+import { api, type RouterInputs } from '~/trpc/react'
 import { getKnowledgeBaseStoreState, type KnowledgeBase } from '../store/knowledge-base-store'
 
 interface CreateKBInput {
   name: string
   slug: string
 }
+
+/**
+ * The draft patch the `kb.updateDraftSettings` router accepts. Derived from the
+ * router input rather than `KBDraftSettings`, which types `theme`, `cornerStyle`
+ * and friends as plain `string` and so lets values the server would reject
+ * through at compile time.
+ */
+export type KBDraftPatch = RouterInputs['kb']['updateDraftSettings']['patch']
 
 /** Live-only fields. Draftable presentation fields go through `updateDraftSettings`. */
 export interface KBLiveUpdateInput {
@@ -23,7 +30,7 @@ export interface KBLiveUpdateInput {
 interface UseKBMutationsResult {
   createKnowledgeBase: (input: CreateKBInput) => Promise<KnowledgeBase | undefined>
   updateKnowledgeBase: (id: string, data: KBLiveUpdateInput) => Promise<KnowledgeBase | undefined>
-  updateDraftSettings: (id: string, patch: KBDraftSettings) => Promise<KnowledgeBase | undefined>
+  updateDraftSettings: (id: string, patch: KBDraftPatch) => Promise<KnowledgeBase | undefined>
   publishPendingSettings: (id: string) => Promise<KnowledgeBase | undefined>
   discardSettingsDraft: (id: string) => Promise<KnowledgeBase | undefined>
   deleteKnowledgeBase: (id: string) => Promise<boolean>

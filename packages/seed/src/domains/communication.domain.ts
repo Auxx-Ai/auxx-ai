@@ -18,6 +18,47 @@ import type {
 import { BusinessDistributions } from '../utils/business-distributions'
 import { RelationshipEngine } from '../utils/relationship-engine'
 
+/** SeededParticipant is the Participant projection the thread/message seeders read. */
+interface SeededParticipant {
+  /** id is the Participant row identifier. */
+  id: string
+  /** entityInstanceId links a customer participant to its contact record (null for agents). */
+  entityInstanceId: string | null
+  /** identifier is the participant's email address. */
+  identifier: string
+  /** name is the participant's display name. */
+  name: string | null
+}
+
+/** SeededMessage is a Message row assembled by the message seeder. */
+interface SeededMessage {
+  id: string
+  threadId: string
+  integrationId: string | null
+  isInbound: boolean
+  isFirstInThread: boolean
+  subject: string | null
+  textPlain: string
+  snippet: string
+  organizationId: string
+  fromId: string
+  createdById: string | null
+  isReply: boolean
+  createdAt: Date
+  updatedAt: Date
+  sentAt: Date
+  /** Only set on inbound messages — outbound rows have no receive timestamp. */
+  receivedAt?: Date
+}
+
+/** SeededMessageParticipant links a seeded message to one of its participants. */
+interface SeededMessageParticipant {
+  messageId: string
+  participantId: string
+  entityInstanceId: string | null
+  role: 'FROM' | 'TO'
+}
+
 /** CommunicationDomain encapsulates support thread and message refinements. */
 export class CommunicationDomain {
   /** scenario stores the resolved scenario definition. */
@@ -125,17 +166,20 @@ export class CommunicationDomain {
     await this.seedSupportParticipants(db, schema, organizationId)
 
     // Get all participants (customer + support) for thread creation
-    const allParticipants = await db
+    // `name` is part of the projection because seedThreadParticipants writes it onto
+    // every ThreadParticipant row — without it those rows land with a null display name.
+    const allParticipants: SeededParticipant[] = await db
       .select({
         id: schema.Participant.id,
         entityInstanceId: schema.Participant.entityInstanceId,
         identifier: schema.Participant.identifier,
+        name: schema.Participant.name,
       })
       .from(schema.Participant)
       .where(sql`${schema.Participant.organizationId} = ${organizationId}`)
 
-    const customerParticipants = allParticipants.filter((p: any) => p.entityInstanceId !== null)
-    const supportParticipants = allParticipants.filter((p: any) => p.entityInstanceId === null)
+    const customerParticipants = allParticipants.filter((p) => p.entityInstanceId !== null)
+    const supportParticipants = allParticipants.filter((p) => p.entityInstanceId === null)
 
     console.log(
       `  📊 Participants: ${customerParticipants.length} customers, ${supportParticipants.length} support agents`
@@ -259,7 +303,7 @@ export class CommunicationDomain {
     }
 
     // Build participantMap for thread participant and message generation
-    const participantMap = new Map(allParticipants.map((p: any) => [p.id, p]))
+    const participantMap = new Map(allParticipants.map((p) => [p.id, p]))
 
     // Insert ThreadParticipant records
     await this.seedThreadParticipants(db, schema, participantMap)
@@ -350,7 +394,7 @@ export class CommunicationDomain {
   private async seedThreadParticipants(
     db: any,
     schema: any,
-    participantMap: Map<string, any>
+    participantMap: Map<string, SeededParticipant>
   ): Promise<void> {
     console.log('🔗 Generating thread participants...')
 
@@ -614,8 +658,13 @@ export class CommunicationDomain {
     const threadIdToIndex = new Map(threadIds.map((id, index) => [id, index]))
 
     // Get all participants with contact info
-    const participants = await db
-      .select()
+    const participants: SeededParticipant[] = await db
+      .select({
+        id: schema.Participant.id,
+        entityInstanceId: schema.Participant.entityInstanceId,
+        identifier: schema.Participant.identifier,
+        name: schema.Participant.name,
+      })
       .from(schema.Participant)
       .where(sql`${schema.Participant.organizationId} = ${organizationId}`)
 
@@ -625,7 +674,7 @@ export class CommunicationDomain {
     }
 
     // Create participant lookup map
-    const participantMap = new Map(participants.map((p: any) => [p.id, p]))
+    const participantMap = new Map(participants.map((p) => [p.id, p]))
 
     // Get users for createdById
     const users = await db
@@ -635,8 +684,8 @@ export class CommunicationDomain {
         sql`${dbSchema.User.id} = ANY(${sql.raw(`ARRAY[${this.users.map((id) => `'${id}'`).join(',')}]`)})`
       )
 
-    const messages = []
-    const messageParticipants = []
+    const messages: SeededMessage[] = []
+    const messageParticipants: SeededMessageParticipant[] = []
 
     // Calculate messages per thread (distribute total messages across threads, max 5 per thread)
     const totalMessages = this.scenario.scales.messages
@@ -806,75 +855,6 @@ export class CommunicationDomain {
       }
 
       console.log(`✅ Upserted ${messageParticipants.length} message participants`)
-    }
-  }
-
-  /**
-   * generateMessageContent creates realistic message content.
-   * @param index - Message index for variation
-   * @param isInbound - Whether the message is inbound or outbound
-   */
-  private generateMessageContent(index: number, isInbound: boolean): string {
-    if (isInbound) {
-      const inboundMessages = [
-        'Hello, I have a question about my recent order. Can you help me?',
-        "I'd like to inquire about the shipping status of order #12345.",
-        'I need to process a refund for my recent purchase. Please advise.',
-        'Can you provide more information about your products?',
-        "I'm experiencing an issue with my account. Please help.",
-      ]
-      return inboundMessages[index % inboundMessages.length]!
-    } else {
-      const outboundMessages = [
-        "Thank you for contacting us! We're here to help.",
-        "I've checked on your order status. Here's what I found...",
-        "I'd be happy to assist you with that refund.",
-        "Here's the information you requested about our products.",
-        'Let me help you resolve that account issue.',
-      ]
-      return outboundMessages[index % outboundMessages.length]!
-    }
-  }
-
-  /** buildRefinements returns drizzle-seed refinements for communication entities (DEPRECATED - use insertDirectly). */
-  buildRefinements(): (helpers: unknown) => Record<string, unknown> {
-    return (helpers: any) => {
-      const ids = this.generateThreadIds()
-      const subjects = this.generateThreadSubjects()
-      const organizationIds = this.generateThreadOrganizationIds()
-      const integrationIds = this.generateThreadIntegrationIds()
-      const assigneeIds = this.generateThreadAssigneeIds()
-      const statuses = this.generateThreadStatuses()
-      const messageCounts = this.generateMessageCounts()
-      const participantCounts = this.generateParticipantCounts()
-      const createdAt = this.generateThreadCreatedAt()
-      const firstMessageAt = this.generateThreadFirstMessageAt()
-      const lastMessageAt = this.generateThreadLastMessageAt()
-      const inboxIds = this.generateThreadInboxIds()
-      const metadata = this.generateThreadMetadata()
-
-      const result = {
-        Thread: {
-          count: this.scenario.scales.threads,
-          columns: {
-            id: helpers.valuesFromArray({ values: ids }),
-            subject: helpers.valuesFromArray({ values: subjects }),
-            organizationId: helpers.valuesFromArray({ values: organizationIds }),
-            integrationId: helpers.valuesFromArray({ values: integrationIds }),
-            assigneeId: helpers.valuesFromArray({ values: assigneeIds }),
-            status: helpers.valuesFromArray({ values: statuses }),
-            messageCount: helpers.valuesFromArray({ values: messageCounts }),
-            participantCount: helpers.valuesFromArray({ values: participantCounts }),
-            createdAt: helpers.valuesFromArray({ values: createdAt }),
-            firstMessageAt: helpers.valuesFromArray({ values: firstMessageAt }),
-            lastMessageAt: helpers.valuesFromArray({ values: lastMessageAt }),
-            inboxId: helpers.valuesFromArray({ values: inboxIds }),
-            metadata: helpers.valuesFromArray({ values: metadata }),
-          },
-        },
-      }
-      console.log('💬 Communication refinements prepared: Thread', this.scenario.scales.threads)
-      return result
     }
   }
 
@@ -1109,6 +1089,33 @@ export class CommunicationDomain {
   private getSeededStartDate(): Date {
     const now = new Date()
     return new Date(now.getFullYear() - 1, 0, 1) // One year ago
+  }
+
+  /**
+   * generateMessageContent creates realistic message content.
+   * @param index - Message index for variation
+   * @param isInbound - Whether the message is inbound or outbound
+   */
+  private generateMessageContent(index: number, isInbound: boolean): string {
+    if (isInbound) {
+      const inboundMessages = [
+        'Hello, I have a question about my recent order. Can you help me?',
+        "I'd like to inquire about the shipping status of order #12345.",
+        'I need to process a refund for my recent purchase. Please advise.',
+        'Can you provide more information about your products?',
+        "I'm experiencing an issue with my account. Please help.",
+      ]
+      return inboundMessages[index % inboundMessages.length]!
+    } else {
+      const outboundMessages = [
+        "Thank you for contacting us! We're here to help.",
+        "I've checked on your order status. Here's what I found...",
+        "I'd be happy to assist you with that refund.",
+        "Here's the information you requested about our products.",
+        'Let me help you resolve that account issue.',
+      ]
+      return outboundMessages[index % outboundMessages.length]!
+    }
   }
 
   /** generateThreadIds produces deterministic cuid-based thread identifiers. */

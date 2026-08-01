@@ -140,8 +140,11 @@ export interface KBFields {
   name?: string
   slug?: string
   description?: string
-  /** 'standard' = user-facing KB; 'source' = a KnowledgeSource's hidden container. */
-  kind?: 'standard' | 'source'
+  /**
+   * 'standard' = user-facing KB; 'source' = a KnowledgeSource's hidden
+   * container; 'learned' = the one-per-org AI memory KB (see ensureLearnedKb).
+   */
+  kind?: 'standard' | 'source' | 'learned'
   publishStatus?: KBPublishStatus
   visibility?: 'PUBLIC' | 'INTERNAL'
   customDomain?: string

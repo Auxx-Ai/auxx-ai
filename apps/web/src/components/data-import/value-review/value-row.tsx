@@ -31,10 +31,11 @@ function deriveEffectiveStatus(
   isOverridden: boolean,
   overrideValues: OverrideValue[] | null
 ): EffectiveStatus {
-  if (!isOverridden || !overrideValues?.length) {
+  const first = overrideValues?.[0]
+  if (!isOverridden || !first) {
     return originalStatus
   }
-  if (overrideValues[0].type === 'skip') {
+  if (first.type === 'skip') {
     return 'skip'
   }
   return 'valid'

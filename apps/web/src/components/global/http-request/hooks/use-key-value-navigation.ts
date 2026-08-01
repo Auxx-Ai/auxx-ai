@@ -120,7 +120,7 @@ export function useKeyValueNavigation({
         // Element node — check if all children before offset have no text
         const children = startContainer.childNodes
         for (let i = 0; i < range.startOffset; i++) {
-          if ((children[i].textContent?.length ?? 0) > 0) return false
+          if ((children[i]?.textContent?.length ?? 0) > 0) return false
         }
         let node: Node | null = startContainer
         while (node && node !== editable) {
@@ -160,7 +160,7 @@ export function useKeyValueNavigation({
       // For element nodes (cursor between child nodes), check remaining children have no text
       const children = endContainer.childNodes
       for (let i = endOffset; i < children.length; i++) {
-        if ((children[i].textContent?.length ?? 0) > 0) return false
+        if ((children[i]?.textContent?.length ?? 0) > 0) return false
       }
       // Walk up and check remaining siblings
       let node: Node | null = endContainer

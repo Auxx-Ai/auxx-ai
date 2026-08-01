@@ -1,6 +1,7 @@
 // packages/lib/src/export/csv/csv.test.ts
 
 import { FieldType } from '@auxx/database/enums'
+import { toResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { describe, expect, it } from 'vitest'
 import type { TypedFieldValueResult } from '../../field-values/types'
@@ -21,11 +22,13 @@ function result(over: Partial<TypedFieldValueResult>): TypedFieldValueResult {
 
 describe('fieldRefKey', () => {
   it('keeps a direct ResourceFieldId as-is', () => {
-    expect(fieldRefKey('contact:email')).toBe('contact:email')
+    expect(fieldRefKey(toResourceFieldId('contact', 'email'))).toBe('contact:email')
   })
 
   it('joins a FieldPath with ::', () => {
-    expect(fieldRefKey(['product:vendor', 'vendor:name'])).toBe('product:vendor::vendor:name')
+    expect(
+      fieldRefKey([toResourceFieldId('product', 'vendor'), toResourceFieldId('vendor', 'name')])
+    ).toBe('product:vendor::vendor:name')
   })
 })
 
@@ -104,15 +107,15 @@ describe('formatCell', () => {
 
 describe('indexByRecord + buildRow', () => {
   const columns: ExportColumn[] = [
-    { label: 'Name', fieldRef: 'contact:name' },
-    { label: 'Email', fieldRef: 'contact:email' },
+    { label: 'Name', fieldRef: toResourceFieldId('contact', 'name') },
+    { label: 'Email', fieldRef: toResourceFieldId('contact', 'email') },
   ]
 
   it('builds cells in column order, empty for missing cells', () => {
     const results = [
       result({
         recordId: 'contact:1' as RecordId,
-        fieldRef: 'contact:name',
+        fieldRef: toResourceFieldId('contact', 'name'),
         value: { type: 'text', value: 'Ann' } as never,
       }),
       // no email cell for contact:1

@@ -3,16 +3,20 @@
 import { FieldType } from '@auxx/database/enums'
 import type { CalcOptions, NameFieldOptions } from '@auxx/lib/custom-fields/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
-import type { ResourceFieldId } from '@auxx/types/field'
+import type { FieldId, ResourceFieldId } from '@auxx/types/field'
 
 /**
  * Configuration for a computed (CALC) field.
  */
 interface ComputedFieldConfig {
   fieldId: ResourceFieldId
+  /**
+   * Map of placeholder name -> source field reference. Persisted calc options
+   * hold either a plain field id (`<uuid>`) or an already-scoped
+   * `<entityDefId>:<uuid>`; consumers normalize with `normalizeFieldRef`.
+   */
+  sourceFields: Record<string, FieldId | ResourceFieldId>
   expression: string
-  /** Map of placeholder name -> source field ID */
-  sourceFields: Record<string, string>
   resultFieldType: string
   disabled?: boolean
   disabledReason?: string
@@ -39,7 +43,9 @@ class ComputedFieldRegistry {
     const config: ComputedFieldConfig = {
       fieldId,
       expression: calcOptions.expression,
-      sourceFields: calcOptions.sourceFields ?? {},
+      // Branding boundary: persisted calc options are plain strings, and every
+      // one of them is a field id (plain or `<defId>:<fieldId>`) by construction.
+      sourceFields: (calcOptions.sourceFields ?? {}) as Record<string, FieldId | ResourceFieldId>,
       resultFieldType: calcOptions.resultFieldType ?? 'TEXT',
       disabled: calcOptions.disabled,
       disabledReason: calcOptions.disabledReason,

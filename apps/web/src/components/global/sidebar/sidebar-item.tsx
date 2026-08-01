@@ -5,10 +5,17 @@ import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/
 import { SidebarMenuButton, SidebarMenuSubButton } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
 import Link from 'next/link'
-import { type ComponentPropsWithoutRef, type ReactNode, type Ref, useEffect, useRef } from 'react'
+import { type HTMLAttributes, type ReactNode, type Ref, useEffect, useRef } from 'react'
 
+/**
+ * Rest props are spread onto EITHER an `<a>` (when `href` is set) or a
+ * `<button>`, so the base has to be the element-agnostic attribute set — a
+ * `<button>`-specific one (`type`, `disabled`, `form`, …) doesn't fit the
+ * anchor branch. Callers only ever spread dnd-kit `attributes`/`listeners`,
+ * which are plain DOM/ARIA attributes.
+ */
 interface SidebarItemProps
-  extends Omit<ComponentPropsWithoutRef<'button'>, 'id' | 'color' | 'onClick' | 'className'> {
+  extends Omit<HTMLAttributes<HTMLElement>, 'id' | 'color' | 'onClick' | 'className'> {
   id: string
   name: string
   /** Present → renders a `<Link>`. Absent → renders a `<button onClick>` (e.g. for dnd rows). */

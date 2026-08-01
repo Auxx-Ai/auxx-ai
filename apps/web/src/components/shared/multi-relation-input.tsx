@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { RecordId } from '@auxx/lib/resources/client'
+import { isRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
@@ -156,7 +156,9 @@ export function MultiRelationInput({
    */
   const handleSelectionChange = useCallback(
     (recordIds: string[]) => {
-      onChange(recordIds)
+      // The picker's option values are the search hits' `recordId`s, but it hands them back as
+      // plain strings — keep only the ones that really are record ids.
+      onChange(recordIds.filter(isRecordId))
     },
     [onChange]
   )

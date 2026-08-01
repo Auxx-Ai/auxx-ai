@@ -80,11 +80,13 @@ const PALETTE_LABELS: Record<ChartPaletteId, string> = {
   gray: 'Gray',
 }
 
+/** The scheme def for an id — total, since `PALETTE_LABELS` covers every id. */
+export function paletteDef(id: ChartPaletteId): PaletteDef {
+  return { id, label: PALETTE_LABELS[id] }
+}
+
 /** Every scheme, `'default'` first — drives the dropdown list. */
-export const CHART_PALETTES: PaletteDef[] = CHART_PALETTE_IDS.map((id) => ({
-  id,
-  label: PALETTE_LABELS[id],
-}))
+export const CHART_PALETTES: PaletteDef[] = CHART_PALETTE_IDS.map(paletteDef)
 
 // ── Shade selection (the visual-tuning knob — see plan 12) ───────────────────
 
@@ -99,7 +101,7 @@ const MONO_HI = 11
  * shade per hue, cycled by series index. Long enough (> {@link MAX_SERIES}) that a
  * full breakdown never wraps back onto a repeated hue before the `Other` bucket.
  */
-const DEFAULT_HUES: Array<Exclude<ChartPaletteId, 'default'>> = [
+const DEFAULT_HUES = [
   'blue',
   'amber',
   'turquoise',
@@ -112,7 +114,7 @@ const DEFAULT_HUES: Array<Exclude<ChartPaletteId, 'default'>> = [
   'iris',
   'jade',
   'gold',
-]
+] as const satisfies ReadonlyArray<Exclude<ChartPaletteId, 'default'>>
 
 const cssVar = (scale: string, step: number) => `var(--${scale}-${step})`
 
@@ -132,9 +134,11 @@ function monoSteps(count: number): number[] {
 export function seriesColors(id: ChartPaletteId, count: number): string[] {
   if (count <= 0) return []
   if (id === 'default') {
-    return Array.from({ length: count }, (_, i) =>
-      cssVar(RADIX_SCALE[DEFAULT_HUES[i % DEFAULT_HUES.length]], SOLID_STEP)
-    )
+    return Array.from({ length: count }, (_, i) => {
+      // `i % length` is always in range; `[0]` is only there to satisfy the checker.
+      const hue = DEFAULT_HUES[i % DEFAULT_HUES.length] ?? DEFAULT_HUES[0]
+      return cssVar(RADIX_SCALE[hue], SOLID_STEP)
+    })
   }
   const scale = RADIX_SCALE[id]
   return monoSteps(count).map((step) => cssVar(scale, step))

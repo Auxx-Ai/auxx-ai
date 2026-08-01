@@ -11,19 +11,13 @@ import { FavoriteItemRow } from '../favorite-item-row'
 import { FavoriteItemSkeleton } from '../favorite-item-skeleton'
 import { PrivateItem } from '../private-item'
 
-interface RecordMeta {
-  id: string
-  displayName?: string | null
-  avatarUrl?: string | null
-}
-
 export function EntityInstanceItem({ favorite }: { favorite: FavoriteEntity<'ENTITY_INSTANCE'> }) {
   const entityDefinitionId = favorite.targetIds?.entityDefinitionId ?? ''
   const entityInstanceId = favorite.targetIds?.entityInstanceId ?? ''
   const recordId =
     entityDefinitionId && entityInstanceId ? toRecordId(entityDefinitionId, entityInstanceId) : null
 
-  const { record, isLoading, isNotFound } = useRecord<RecordMeta>({ recordId })
+  const { record, isLoading, isNotFound } = useRecord({ recordId })
   const { resource } = useResource(entityDefinitionId || null)
   const href = useRecordLink(recordId)
 

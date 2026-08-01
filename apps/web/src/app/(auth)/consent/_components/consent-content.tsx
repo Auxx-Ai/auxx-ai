@@ -75,30 +75,25 @@ export function ConsentContent({ consentCode, clientId, scopes }: ConsentContent
     setState({ loading: true, error: null })
 
     try {
-      const res = await client.oauth2.consent({
+      const { data, error } = await client.oauth2.consent({
         accept,
         consent_code: consentCode,
       })
 
-      console.log('Consent response:', res)
-
-      if (res.error) {
+      if (error) {
         setState({
           loading: false,
-          error: res.error.message || 'Failed to process consent',
+          error: error.message || 'Failed to process consent',
         })
         return
       }
 
-      // Better-auth should redirect automatically, but if not, check for redirect URL
-      if (res.data) {
-        console.log('Consent data:', res.data)
-
-        if (typeof res.data === 'object' && 'url' in res.data) {
-          window.location.href = res.data.url as string
-        } else if (typeof res.data === 'string') {
-          window.location.href = res.data
-        }
+      // `/oauth2/consent` answers with the URI to continue the flow on — for both
+      // accept and deny. (This used to look for a `url` key, which the endpoint
+      // has never returned, so the redirect never fired.)
+      if (data?.redirectURI) {
+        window.location.href = data.redirectURI
+        return
       }
 
       // If we get here and there's no redirect, better-auth might handle it automatically

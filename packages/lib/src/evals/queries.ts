@@ -52,9 +52,12 @@ function denormalizeTarget(target: AgentEvalTarget): {
  */
 async function emitEvalCaseChanged(
   organizationId: string,
-  agentId: string,
+  agentId: string | null,
   excludeSocketId?: string
 ): Promise<void> {
+  // `EvalCase.agentId` is a denormalized, nullable column — a procedure-only
+  // case has nothing for the Simulations tab to re-list against.
+  if (!agentId) return
   const { getRealtimeService, publishEvalCaseChanged } = await import('../realtime')
   await publishEvalCaseChanged(
     getRealtimeService(),

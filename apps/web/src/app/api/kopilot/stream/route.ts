@@ -84,8 +84,14 @@ interface SessionRefLike {
  * system prompt. Mirrors the worker-path conversion in
  * `process-agent-job.ts:resolveTriggerContext` but kept inline to avoid
  * pulling the heavier reference-resolver dependency on every DM send.
+ *
+ * `AgentTrigger.instructions` is a jsonb column declared as a Tiptap doc, but
+ * jsonb can hold a bare string, so the plain-string case stays handled — the
+ * parameter type says so instead of the guard narrowing to `never`.
  */
-function renderDmInstructions(instructions: Record<string, unknown> | null): string | null {
+function renderDmInstructions(
+  instructions: Record<string, unknown> | string | null
+): string | null {
   if (!instructions) return null
   if (typeof instructions === 'string') {
     return instructions.length > 0 ? instructions : null

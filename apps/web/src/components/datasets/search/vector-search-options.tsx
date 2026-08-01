@@ -48,7 +48,7 @@ export function VectorSearchOptions({
         </div>
         <Slider
           value={[topK]}
-          onValueChange={([value]) => onTopKChange(value)}
+          onValueChange={([value = topK]) => onTopKChange(value)}
           min={1}
           max={50}
           step={1}
@@ -72,7 +72,7 @@ export function VectorSearchOptions({
         </div>
         <Slider
           value={[scoreThreshold * 100]}
-          onValueChange={([value]) => onThresholdChange(value / 100)}
+          onValueChange={([value = scoreThreshold * 100]) => onThresholdChange(value / 100)}
           min={0}
           max={100}
           step={5}

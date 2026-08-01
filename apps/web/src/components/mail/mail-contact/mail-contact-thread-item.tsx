@@ -6,6 +6,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
 import type React from 'react'
 import { useCallback, useMemo } from 'react'
+import { TagBadge } from '~/components/tags/ui/tag-badge'
 import { useThread } from '~/components/threads/hooks/use-thread'
 import type { ThreadMeta } from '~/components/threads/store'
 import { getIntegrationIcon } from '../mail-status-config'
@@ -89,7 +90,9 @@ function MailContactThreadItemContent({
           <div className={cn('truncate text-xs font-medium')}>{item.subject || '(no subject)'}</div>
           <div>
             <div className='flex items-center justify-end gap-1 overflow-hidden'>
-              {item.tags?.length > 0 && item.tags.map((tag) => getTagForThread(tag))}
+              {item.tagIds?.map((tagId) => (
+                <TagBadge key={tagId} recordId={tagId} size='sm' />
+              ))}
             </div>
           </div>
         </div>
@@ -106,17 +109,6 @@ function MailContactThreadItemSkeleton() {
         <Skeleton className='h-3 w-12' />
       </div>
       <Skeleton className='h-3 w-2/3' />
-    </div>
-  )
-}
-
-/** Renders a tag badge for thread display. */
-function getTagForThread(tag: ThreadMeta['tags'][number]): React.ReactNode {
-  return (
-    <div
-      key={tag.id}
-      className='flex items-center gap-1 overflow-hidden whitespace-nowrap rounded-[5px] border px-[3px] py-px text-xs text-[#4B5563] group-aria-selected:text-background/80'>
-      {tag.tag_emoji} {tag.title}
     </div>
   )
 }

@@ -11,6 +11,7 @@ import {
   getInverseFieldId,
   type RelationshipConfig,
   type SelectOption,
+  type SelectOptionColor,
   type TargetTimeInStatus,
 } from '@auxx/types/custom-field'
 import type { ResourceFieldId } from '@auxx/types/field'
@@ -88,6 +89,10 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       // keys (e.g. 'z9', 'b0'); skip those when picking the anchor so
       // `generateKeyBetween` doesn't throw on unseeded-upgrade orgs.
       const existingFields = Object.values(store.fieldMap).filter((field) => {
+        // `resourceFieldId` is optional on `ResourceField` (it can be derived);
+        // `parseResourceFieldId` would throw on undefined, and a field without
+        // one can't be attributed to an entity def anyway.
+        if (!field.resourceFieldId) return false
         const { entityDefinitionId: fieldEntityDefId } = parseResourceFieldId(field.resourceFieldId)
         return fieldEntityDefId === effectiveEntityDefId
       })
@@ -314,7 +319,11 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       if (!entityDefinitionId) return
 
       const store = getResourceStoreState()
-      const key = variables.resourceFieldId
+      // `resourceFieldIdSchema` is `z.ZodType<ResourceFieldId>`; zod v4 leaves the
+      // schema's *input* generic at `unknown`, so tRPC infers this variable as
+      // `unknown`. The schema's `.refine` validates the `defId:fieldId` format at
+      // runtime. (Proper fix: give the schema its Input generic — see referral.)
+      const key = variables.resourceFieldId as ResourceFieldId
 
       // Increment version for race condition handling
       const version = store.incrementFieldVersion(key)
@@ -412,7 +421,9 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       if (!entityDefinitionId) return
 
       const store = getResourceStoreState()
-      const key = variables.resourceFieldId
+      // See the `update` handler above: the branded zod schema's input generic
+      // degrades to `unknown`, but the value is a validated ResourceFieldId.
+      const key = variables.resourceFieldId as ResourceFieldId
 
       // Mark field as deleted optimistically
       store.markFieldDeleted(key)
@@ -546,7 +557,7 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
 /** Changes that can be applied to a select option */
 export interface SelectOptionChanges {
   label?: string
-  color?: string
+  color?: SelectOptionColor
   targetTimeInStatus?: TargetTimeInStatus | null
   celebration?: boolean
 }

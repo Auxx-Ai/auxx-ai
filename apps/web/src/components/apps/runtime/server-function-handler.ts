@@ -86,7 +86,14 @@ export function setupServerFunctionHandler(
               const scope = errorData.error.scope || 'user'
               const isExpired = errorData.error.message?.toLowerCase().includes('expired')
 
-              if (context.connectionDefinition) {
+              // `connectionType: 'none'` means the app declares no connection to
+              // re-authorize, so there is nothing the reconnect dialog could do —
+              // fall through to the toast below.
+              if (
+                context.connectionDefinition &&
+                context.connectionDefinition.connectionType !== 'none'
+              ) {
+                const { connectionType, label: connectionLabel } = context.connectionDefinition
                 // Suppressed surfaces (e.g. the workflow builder editing an app
                 // node) auto-load options via server functions — an expired
                 // connection there shouldn't pop an unprompted modal. The App
@@ -103,8 +110,8 @@ export function setupServerFunctionHandler(
                   appName: context.appTitle,
                   installationId: context.appInstallationId,
                   scope,
-                  connectionType: context.connectionDefinition.connectionType,
-                  connectionLabel: context.connectionDefinition.label,
+                  connectionType,
+                  connectionLabel,
                   reason: isExpired ? 'expired' : 'missing',
                   pendingCall: {
                     moduleHash: data.moduleHash,

@@ -1,6 +1,6 @@
 // apps/web/src/components/datasets/documents/document-utils.tsx
 
-import type { DocumentStatusType } from '@auxx/database/types'
+import type { DocumentStatus as DocumentStatusType } from '@auxx/database/types'
 import { Badge, type BadgeProps, type Variant } from '@auxx/ui/components/badge'
 import { AlertCircle, Archive, CheckCircle, Clock, FileText, Upload } from 'lucide-react'
 

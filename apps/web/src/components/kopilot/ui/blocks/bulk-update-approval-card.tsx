@@ -16,7 +16,8 @@ export function BulkUpdateApprovalCard({ args, status, onApprove, onReject }: Ap
   const values = (args.values ?? []) as Array<{ fieldId: string; value: unknown }>
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(recordIds))
 
-  const entityDefId = recordIds.length > 0 ? getDefinitionId(recordIds[0]) : null
+  const firstRecordId = recordIds[0]
+  const entityDefId = firstRecordId ? getDefinitionId(firstRecordId) : null
   const { resource } = useResource(entityDefId)
 
   const selectedCount = selectedIds.size

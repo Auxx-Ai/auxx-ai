@@ -9,6 +9,7 @@
 // normalized value (boolean / number / string / undefined) matching that type.
 
 import { FieldType } from '@auxx/database/enums'
+import type { FieldType as FieldTypeName } from '@auxx/database/types'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -16,14 +17,14 @@ import { FieldPanelRow } from '~/components/global/forms/field-panel'
 export type ConfigFieldValue = string | number | boolean | undefined
 
 /** Stored value → the native value FieldInputAdapter expects for this FieldType. */
-function toNative(fieldType: FieldType, value: ConfigFieldValue): unknown {
+function toNative(fieldType: FieldTypeName, value: ConfigFieldValue): unknown {
   if (fieldType === FieldType.CHECKBOX) return Boolean(value)
   if (fieldType === FieldType.NUMBER) return value ?? null
   return value ?? ''
 }
 
 /** FieldInputAdapter's native onChange value → the typed value we store. */
-function fromNative(fieldType: FieldType, next: unknown): ConfigFieldValue {
+function fromNative(fieldType: FieldTypeName, next: unknown): ConfigFieldValue {
   switch (fieldType) {
     case FieldType.CHECKBOX:
       return Boolean(next)
@@ -49,7 +50,7 @@ export function ConfigFieldRow({
 }: {
   title: string
   description?: string
-  fieldType: FieldType
+  fieldType: FieldTypeName
   fieldOptions?: FieldOptions
   value: ConfigFieldValue
   onChange: (value: ConfigFieldValue) => void

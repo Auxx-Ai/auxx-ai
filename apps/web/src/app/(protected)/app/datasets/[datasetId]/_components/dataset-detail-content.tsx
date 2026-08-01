@@ -24,7 +24,7 @@ import { DatasetBreadcrumbSwitcher } from '~/components/datasets/ui/dataset-brea
 import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { useAccess } from '~/providers/capabilities-provider'
 import { DatasetActions } from './dataset-actions'
-import { useDatasetDetail } from './dataset-detail-provider'
+import { DATASET_TABS, useDatasetDetail } from './dataset-detail-provider'
 import { DatasetHeader } from './dataset-header'
 
 /**
@@ -100,7 +100,10 @@ export function DatasetDetailContent() {
       <MainPageContent dockedPanels={dockedPanels}>
         <Tabs
           value={currentTab}
-          onValueChange={setCurrentTab}
+          onValueChange={(value) => {
+            const next = DATASET_TABS.find((tab) => tab === value)
+            if (next) setCurrentTab(next)
+          }}
           className='flex-1 h-full flex flex-col'>
           <TabsList className='border-b w-full justify-start rounded-b-none bg-primary-150'>
             <TabsTrigger value='documents' variant='outline' size='sm'>

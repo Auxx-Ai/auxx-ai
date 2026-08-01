@@ -9,7 +9,7 @@
 /** `'cool-shop.myshopify.com'` → `'cool-shop'`. Returns null for non-myshopify domains. */
 function storeHandle(shopDomain: string): string | null {
   const m = shopDomain.match(/^([^.]+)\.myshopify\.com$/)
-  return m ? m[1] : null
+  return m?.[1] ?? null
 }
 
 /**

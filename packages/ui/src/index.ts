@@ -257,7 +257,7 @@ export {
   type RandomGradientProps,
 } from './components/random-gradient'
 export { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/resizable'
-export { ScrollArea, ScrollBar } from './components/scroll-area'
+export { ScrollArea } from './components/scroll-area'
 export { Field, type FieldProps, Section, type SectionProps } from './components/section'
 export { SegmentedControl } from './components/segmented-control'
 export {

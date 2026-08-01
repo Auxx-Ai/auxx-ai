@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/email-editor/recipient-input.tsx
 'use client'
 import { IdentifierType } from '@auxx/database/enums'
+import type { IdentifierType as IdentifierTypeType } from '@auxx/database/types'
 import type { RecordPickerItem } from '@auxx/lib/resources/client'
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Badge } from '@auxx/ui/components/badge'
@@ -25,7 +26,7 @@ export type RecipientField = 'TO' | 'CC' | 'BCC'
 interface RecipientState {
   id: string
   identifier: string
-  identifierType: IdentifierType
+  identifierType: IdentifierTypeType
   name?: string | null
 }
 
@@ -45,7 +46,7 @@ interface RecipientInputProps {
   onContactSelect: (contact: {
     id: string
     identifier: string
-    identifierType: IdentifierType
+    identifierType: IdentifierTypeType
     name?: string | null
   }) => void
   placeholder: string
@@ -298,7 +299,8 @@ export function RecipientInput({
           if (highlightedIndex === null) {
             setHighlightedIndex(recipients.length - 1)
           } else {
-            onRemove(recipients[highlightedIndex].id)
+            const highlighted = recipients[highlightedIndex]
+            if (highlighted) onRemove(highlighted.id)
             setHighlightedIndex(highlightedIndex > 0 ? highlightedIndex - 1 : null)
           }
         }

@@ -1,5 +1,6 @@
 // packages/lib/src/custom-fields/defaults.ts
 
+import type { FieldType } from '@auxx/database/types'
 import type {
   BooleanFieldOptions,
   CurrencyFieldOptions,
@@ -79,31 +80,6 @@ export const DEFAULT_FILE_OPTIONS = {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * FieldType enum values as string union
- * Matches FieldTypeValues from @auxx/database/enums
- */
-type FieldType =
-  | 'EMAIL'
-  | 'ADDRESS'
-  | 'URL'
-  | 'TAGS'
-  | 'DATE'
-  | 'DATETIME'
-  | 'TIME'
-  | 'CHECKBOX'
-  | 'TEXT'
-  | 'NUMBER'
-  | 'CURRENCY'
-  | 'MULTI_SELECT'
-  | 'SINGLE_SELECT'
-  | 'RICH_TEXT'
-  | 'PHONE_INTL'
-  | 'ADDRESS_STRUCT'
-  | 'FILE'
-  | 'NAME'
-  | 'RELATIONSHIP'
-
-/**
  * Default display options for each FieldType.
  * Used by:
  * - EntitySeeder to set initial CustomField.options
@@ -149,4 +125,9 @@ export const fieldTypeDisplayDefaults: Record<FieldType, Partial<FieldOptions>> 
 
   // Relationship (config comes from field definition)
   RELATIONSHIP: {},
+
+  // Computed / structural — no display defaults
+  CALC: {},
+  ACTOR: {},
+  JSON: {},
 }

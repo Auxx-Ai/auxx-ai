@@ -12,7 +12,7 @@ import {
 } from '@auxx/lib/custom-fields/types'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
-import { canFieldBeUnique } from '@auxx/types/custom-field'
+import { canFieldBeUnique, supportsDisplayOptions } from '@auxx/types/custom-field'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { Button, buttonVariants } from '@auxx/ui/components/button'
 import { AnimatedCollapsibleContent, CollapsibleChevron } from '@auxx/ui/components/collapsible'
@@ -369,7 +369,8 @@ export function CustomFieldForm({
           description: editingField.description || '',
           required: editingField.required || false,
           isUnique: editingField.isUnique || false,
-          defaultValue: editingField.defaultValue || '',
+          // `ResourceField.defaultValue` is `unknown`; the form field is a string input.
+          defaultValue: editingField.defaultValue ? String(editingField.defaultValue) : '',
           icon: editingField.options?.icon || '',
           isCustom: !editingField.isSystem,
         })
@@ -704,21 +705,6 @@ export function CustomFieldForm({
       default:
         return null
     }
-  }
-
-  /** Check if field type supports display options */
-  const supportsDisplayOptions = (type: FieldTypeType): boolean => {
-    return [
-      FieldType.TEXT,
-      FieldType.NUMBER,
-      FieldType.CURRENCY,
-      FieldType.DATE,
-      FieldType.DATETIME,
-      FieldType.TIME,
-      FieldType.CHECKBOX,
-      FieldType.PHONE_INTL,
-      FieldType.URL,
-    ].includes(type)
   }
 
   /** Render the actual display options editor content */

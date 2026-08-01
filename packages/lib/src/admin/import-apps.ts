@@ -223,6 +223,7 @@ export async function importApps(
               userId: adminUserId,
             })
             .returning({ id: schema.oauthApplication.id })
+          if (!insertedOauth) throw new Error('OAuth application insert returned no row')
           oauthApplicationId = insertedOauth.id
           oauthResult = { clientId: appData.oauthApplication.clientId, action: 'created' }
         }
@@ -284,6 +285,7 @@ export async function importApps(
             ...appFields,
           })
           .returning({ id: schema.App.id })
+        if (!insertedApp) throw new Error('App insert returned no row')
         appId = insertedApp.id
         appAction = 'created'
       }

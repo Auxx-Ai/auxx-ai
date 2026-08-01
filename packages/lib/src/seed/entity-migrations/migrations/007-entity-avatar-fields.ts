@@ -38,13 +38,14 @@ export const migration007EntityAvatarFields: EntityMigration = {
 
     // ── Step 1: Seed contact avatar CustomField (if missing) ──
     const contactDef = existing.entityDefs.get('contact')
-    if (contactDef) {
+    const contactAvatarField = CONTACT_FIELDS.avatarUrl
+    if (contactDef && contactAvatarField) {
       await ensureCustomFields(
         db,
         organizationId,
         'contact',
         contactDef.id,
-        { avatarUrl: CONTACT_FIELDS.avatarUrl },
+        { avatarUrl: contactAvatarField },
         existing,
         state
       )

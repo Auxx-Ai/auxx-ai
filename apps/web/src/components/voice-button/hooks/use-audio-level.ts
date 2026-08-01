@@ -40,8 +40,8 @@ export function useAudioLevel(stream: MediaStream | null) {
     const tick = () => {
       analyser.getByteTimeDomainData(data)
       let sumSquares = 0
-      for (let i = 0; i < data.length; i++) {
-        const v = (data[i] - 128) / 128
+      for (const sample of data) {
+        const v = (sample - 128) / 128
         sumSquares += v * v
       }
       const rms = Math.sqrt(sumSquares / data.length)

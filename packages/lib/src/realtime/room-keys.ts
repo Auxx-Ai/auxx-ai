@@ -59,7 +59,9 @@ export interface InboxRoomKey {
 export function parseInboxRoomKey(roomKey: string): InboxRoomKey | null {
   const match = INBOX_ROOM_RE.exec(roomKey)
   if (!match) return null
-  return { organizationId: match[1], inboxSlug: match[2], lens: match[3] as ChannelLens }
+  const [, organizationId, inboxSlug, lens] = match
+  if (!organizationId || !inboxSlug || !lens) return null
+  return { organizationId, inboxSlug, lens: lens as ChannelLens }
 }
 
 /**

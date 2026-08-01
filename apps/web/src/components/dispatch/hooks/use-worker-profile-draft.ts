@@ -88,7 +88,9 @@ export function useWorkerProfileDraft(worker: DispatchWorkerRow | null, onRemove
       const routeFlagsChanged =
         next.routeStartAtHome !== server.routeStartAtHome ||
         next.routeEndAtHome !== server.routeEndAtHome
-      if (next.color !== server.color || addressChanged || routeFlagsChanged) {
+      // `upsertWorker` is keyed on the User (individuals only); team rows have no `userId` and
+      // are edited through the team dialog, so their profile fields never route through here.
+      if (worker.userId && (next.color !== server.color || addressChanged || routeFlagsChanged)) {
         upsertWorker.mutate({
           userId: worker.userId,
           color: next.color,

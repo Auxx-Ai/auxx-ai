@@ -328,8 +328,11 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
     setValue: (key, value) => {
       set((state) => {
         const now = Date.now()
-        const newValues = { ...state.values, [key]: value }
-        const newUpdatedAt = { ...state.updatedAt, [key]: now }
+        const newValues: Record<FieldValueKey, StoredFieldValue> = {
+          ...state.values,
+          [key]: value,
+        }
+        const newUpdatedAt: Record<FieldValueKey, number> = { ...state.updatedAt, [key]: now }
 
         // Compute dependent CALC values
         const calcValues = computeDependentCalcValues([key], newValues)
@@ -346,8 +349,11 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
       set((state) => {
         const now = Date.now()
         const original = state.values[key]
-        const newValues = { ...state.values, [key]: newValue }
-        const newUpdatedAt = { ...state.updatedAt, [key]: now }
+        const newValues: Record<FieldValueKey, StoredFieldValue> = {
+          ...state.values,
+          [key]: newValue,
+        }
+        const newUpdatedAt: Record<FieldValueKey, number> = { ...state.updatedAt, [key]: now }
 
         // Compute dependent CALC values
         const calcValues = computeDependentCalcValues([key], newValues)

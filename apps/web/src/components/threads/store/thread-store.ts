@@ -25,8 +25,8 @@ export type { StandaloneDraftMeta }
 const BATCH_DELAY = 50
 const MAX_BATCH_SIZE = 100
 
-/** Thread status enum */
-export type ThreadStatus = 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH'
+/** Thread status enum. Mirrors `ThreadStatus` in packages/lib/src/threads/types.ts. */
+export type ThreadStatus = 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH' | 'IGNORED'
 
 /** Integration provider enum */
 export type ChannelProvider = 'GMAIL' | 'OUTLOOK' | 'FACEBOOK' | 'INSTAGRAM' | 'OPENPHONE'

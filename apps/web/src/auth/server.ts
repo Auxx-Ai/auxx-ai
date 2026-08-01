@@ -48,6 +48,20 @@ const isProduction = configService.get<string>('NODE_ENV') === 'production'
 const loginThrottleLocal = new Map<string, number>()
 const LOGIN_THROTTLE_WINDOW_SECONDS = 3600
 
+/**
+ * Return value that revokes the session from inside the `customSession` callback.
+ *
+ * better-auth constrains that callback to `Promise<Record<string, any>>`, but the
+ * endpoint it generates is declared `Returns | null` and its handler does a bare
+ * `ctx.json(fnResult)` — so `null` IS the supported "this session is no longer
+ * valid" signal, and `getSession()` already models a null session on both sides.
+ * Verified against better-auth 1.4.19, `dist/plugins/custom-session/index.mjs`.
+ *
+ * Typed `never` so it contributes nothing to the inferred `Returns` union and
+ * leaves `$Infer.Session` — the shape every session consumer reads — intact.
+ */
+const REVOKE_SESSION = null as never
+
 // async function sendViaOpenPhone(to: string, text: string) {
 //   const res = await fetch('https://api.openphone.com/v1/messages', {
 //     method: 'POST',
@@ -574,16 +588,26 @@ export const auth = betterAuth({
       },
     },
 
+    // `input: false` is load-bearing, not cosmetic. better-auth's
+    // `parseInputData` copies ANY declared additional field straight out of the
+    // request body into the User insert unless the field opts out — so without
+    // it, `POST /api/auth/sign-up/email` with `{ isSuperAdmin: true }` (or
+    // `banned: false`, or an arbitrary `defaultOrganizationId`) writes that
+    // value verbatim. Every one of these columns is server-owned; the app
+    // writes them through the `user.updateProfile` tRPC procedure, never
+    // through better-auth's `updateUser`, so nothing legitimate regresses.
     additionalFields: {
-      completedOnboarding: { type: 'boolean' },
-      isSuperAdmin: { type: 'boolean' },
-      defaultOrganizationId: { type: 'string' },
-      avatarAssetId: { type: 'string' },
-      lastLoginAt: { type: 'date' },
-      preferredTimezone: { type: 'string' },
-      banned: { type: 'boolean' },
-      forcePasswordChange: { type: 'boolean' },
-      signupSource: { type: 'string' },
+      completedOnboarding: { type: 'boolean', input: false },
+      isSuperAdmin: { type: 'boolean', input: false },
+      defaultOrganizationId: { type: 'string', input: false },
+      avatarAssetId: { type: 'string', input: false },
+      lastLoginAt: { type: 'date', input: false },
+      preferredTimezone: { type: 'string', input: false },
+      banned: { type: 'boolean', input: false },
+      forcePasswordChange: { type: 'boolean', input: false },
+      // The only client-settable one: the signup form reports which surface the
+      // account came from. Column is `default('web').notNull()`, so optional.
+      signupSource: { type: 'string', required: false },
     },
   },
   session: {
@@ -647,6 +671,10 @@ export const auth = betterAuth({
       const extendedUser = user as typeof user & {
         defaultOrganizationId?: string | null
         avatarAssetId?: string | null
+        // Undeclared User columns that better-auth's `parseOutputData` passes
+        // through verbatim (it only filters fields it knows about).
+        firstName?: string | null
+        lastName?: string | null
         phoneNumberVerified?: boolean
         isSuperAdmin: boolean
         banned?: boolean
@@ -670,7 +698,7 @@ export const auth = betterAuth({
           userId: extendedUser.id,
           error: error instanceof Error ? error.message : String(error),
         })
-        return null
+        return REVOKE_SESSION
       }
 
       // Agents never have sessions. If a session was somehow created against
@@ -679,7 +707,7 @@ export const auth = betterAuth({
         logger.warn('Session references AGENT user, invalidating', {
           userId: extendedUser.id,
         })
-        return null
+        return REVOKE_SESSION
       }
 
       // `userProfile` (Redis-backed, invalidated on every default-org change via

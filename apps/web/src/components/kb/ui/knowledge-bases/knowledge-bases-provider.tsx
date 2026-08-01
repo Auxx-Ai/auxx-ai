@@ -7,7 +7,7 @@
 // and filters client-side. Each row is merged draft-over-live so an unpublished
 // name/description edit shows immediately, matching kb-switcher.tsx.
 
-import { mergeDraftOverLive } from '@auxx/lib/kb/client'
+import { type KBDraftSettings, mergeDraftOverLive } from '@auxx/lib/kb/client'
 import { createContext, useContext, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
@@ -27,7 +27,14 @@ export function KnowledgeBasesProvider({ children }: { children: React.ReactNode
   const { data, isLoading, refetch } = api.kb.list.useQuery()
 
   const knowledgeBases = useMemo(() => {
-    const all = (data ?? []).map((kb) => mergeDraftOverLive(kb) as KnowledgeBase)
+    const all = (data ?? []).map(
+      (kb) =>
+        mergeDraftOverLive({
+          ...kb,
+          // `draftSettings` is a jsonb column, so Drizzle hands it back as `unknown`.
+          draftSettings: kb.draftSettings as KBDraftSettings | null,
+        }) as KnowledgeBase
+    )
     const q = searchQuery.trim().toLowerCase()
     if (!q) return all
     return all.filter(

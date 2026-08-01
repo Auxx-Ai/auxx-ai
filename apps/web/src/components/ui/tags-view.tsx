@@ -73,11 +73,19 @@ export function TagsView({ value, options, variant = 'pill', className }: TagsVi
   return (
     <ItemsListView
       items={tags}
-      renderItem={(tag) => (
-        <Badge variant={tag.color ?? variant} shape='tag'>
-          {tag.label}
-        </Badge>
-      )}
+      // `ItemsListView` widens each item to `TagItem | string | number`; `tags` only ever holds
+      // `TagItem`s, but a primitive still renders as its own label rather than crashing.
+      renderItem={(tag) =>
+        typeof tag === 'object' ? (
+          <Badge variant={tag.color ?? variant} shape='tag'>
+            {tag.label}
+          </Badge>
+        ) : (
+          <Badge variant={variant} shape='tag'>
+            {tag}
+          </Badge>
+        )
+      }
       className={className}
     />
   )

@@ -5,7 +5,6 @@ import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { cn } from '@auxx/ui/lib/utils'
 import { Link2, Mail, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
@@ -29,15 +28,17 @@ export function TicketConversationTab({ entityInstanceId, recordId, record }: De
 
   // Auto-select first thread when loaded
   useEffect(() => {
-    if (threads.length > 0 && !selectedThreadId) {
-      setSelectedThreadId(threads[0].id)
+    const first = threads[0]
+    if (first && !selectedThreadId) {
+      setSelectedThreadId(first.id)
     }
   }, [threads, selectedThreadId])
 
   // Reset selection if selected thread is no longer in list
   useEffect(() => {
-    if (selectedThreadId && threads.length > 0 && !threads.find((t) => t.id === selectedThreadId)) {
-      setSelectedThreadId(threads[0].id)
+    const first = threads[0]
+    if (selectedThreadId && first && !threads.find((t) => t.id === selectedThreadId)) {
+      setSelectedThreadId(first.id)
     }
   }, [threads, selectedThreadId])
 
@@ -168,6 +169,9 @@ function TicketThreadScroller({
 
   const filterConditions: ConditionGroup[] = useMemo(() => [], [])
 
+  // Display order, needed by MailThreadItem for shift+click range selection.
+  const threadIds = useMemo(() => threads.map((t) => t.id), [threads])
+
   return (
     <MailFilterProvider
       value={{
@@ -192,6 +196,7 @@ function TicketThreadScroller({
                   basePath=''
                   isSelected={thread.id === selectedThreadId}
                   handleThreadClick={(id) => onSelect(id)}
+                  threadIds={threadIds}
                 />
                 <Button
                   variant='ghost'

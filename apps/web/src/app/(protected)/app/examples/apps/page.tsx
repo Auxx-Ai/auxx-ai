@@ -153,7 +153,7 @@ export default function AppsExamplePage() {
                           <Button
                             key={action.id}
                             variant='outline'
-                            onClick={() => handleTriggerAction(action, appId)}
+                            onClick={() => handleTriggerAction(action, appId, appInstallationId)}
                             className='justify-start'>
                             {action.label || action.id}
                           </Button>

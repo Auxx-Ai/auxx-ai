@@ -238,7 +238,6 @@ export function EmbeddingSettingsSection({
                   <FormField
                     control={form.control}
                     name='vectorDimension'
-                    className='space-y-0'
                     render={({ field }) => (
                       <FormItem className='flex-1 mb-0 space-y-0!'>
                         <Select

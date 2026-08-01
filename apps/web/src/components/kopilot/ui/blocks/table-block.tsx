@@ -3,7 +3,8 @@
 'use client'
 
 import { getOptionColor } from '@auxx/lib/custom-fields/client'
-import type { RecordId } from '@auxx/lib/resources/client'
+import { isRecordId } from '@auxx/lib/resources/client'
+import { isActorId } from '@auxx/types/actor'
 import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { Dialog, DialogContent, DialogTitle } from '@auxx/ui/components/dialog'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
@@ -22,20 +23,22 @@ import type { TableBlockData, TableCellData, TableColumnData } from './block-sch
 import { tableBodyCellClass, tableClass, tableHeaderCellClass, tableRowClass } from './table-styles'
 
 function CellContent({ cell }: { cell: TableCellData }) {
-  // Entity record link
-  if (cell.recordId) {
+  // Entity record link. Cell ids are model-authored, so a malformed id falls
+  // through to the plain-text branch rather than rendering a badge that can
+  // never resolve.
+  if (isRecordId(cell.recordId)) {
     return (
       <div className='inline-flex'>
-        <RecordBadge recordId={cell.recordId as RecordId} variant='link' link />
+        <RecordBadge recordId={cell.recordId} variant='link' link />
       </div>
     )
   }
 
   // Actor badge
-  if (cell.actorId) {
+  if (isActorId(cell.actorId)) {
     return (
       <div className='inline-flex'>
-        <ActorBadge actorId={cell.actorId as `${string}:${string}`} size='sm' />
+        <ActorBadge actorId={cell.actorId} size='sm' />
       </div>
     )
   }
@@ -136,8 +139,9 @@ function getColumnAlign(
   columns: TableColumnData[],
   rows: TableCellData[][],
   colIdx: number
-): string {
-  if (columns[colIdx]?.align) return columns[colIdx].align!
+): NonNullable<TableColumnData['align']> {
+  const explicit = columns[colIdx]?.align
+  if (explicit) return explicit
   const allNumeric = rows.every((row) => {
     const cell = row[colIdx]
     return cell?.type === 'currency' || cell?.type === 'number'

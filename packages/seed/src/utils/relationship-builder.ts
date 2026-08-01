@@ -39,7 +39,9 @@ export class RelationshipBuilder {
 
     for (let i = 0; i < count; i++) {
       const index = Math.floor(this.rng() * pool.length)
-      selected.push(pool.splice(index, 1)[0])
+      const [picked] = pool.splice(index, 1)
+      if (picked === undefined) break
+      selected.push(picked)
     }
 
     return selected

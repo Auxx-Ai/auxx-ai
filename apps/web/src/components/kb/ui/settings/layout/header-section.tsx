@@ -31,8 +31,7 @@ function buildDefaults(kb: KnowledgeBase): HeaderFormValues {
   const merged = mergeDraftOverLive(kb as any) as KnowledgeBase
   return {
     headerEnabled: merged.headerEnabled ?? true,
-    headerNavigation:
-      ((merged.headerNavigation ?? []) as HeaderFormValues['headerNavigation']) ?? [],
+    headerNavigation: (merged.headerNavigation ?? []) as HeaderFormValues['headerNavigation'],
   }
 }
 

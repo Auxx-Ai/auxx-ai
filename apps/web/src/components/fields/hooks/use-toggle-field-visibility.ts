@@ -33,40 +33,12 @@ export function useToggleFieldVisibility({
   const setInitialized = useDynamicTableStore((s) => s.setInitialized)
   const utils = api.useUtils()
 
-  // Mutation for updating existing view
-  const updateView = api.tableView.update.useMutation({
-    onMutate: async ({
-      resourceFieldId,
-      visible,
-    }: {
-      resourceFieldId: string
-      visible: boolean
-    }) => {
-      // Save previous state for rollback
-      const config = view?.config as FieldViewConfig | undefined
-      const previousVisible = config?.fieldVisibility?.[resourceFieldId] ?? true
-
-      // Optimistic update
-      toggleFieldVisibility(entityDefinitionId, contextType, resourceFieldId, visible)
-
-      return { resourceFieldId, previousVisible }
-    },
-    onError: (error, _variables, context) => {
-      // Rollback
-      if (context) {
-        toggleFieldVisibility(
-          entityDefinitionId,
-          contextType,
-          context.resourceFieldId,
-          context.previousVisible
-        )
-      }
-      toastError({
-        title: 'Failed to update visibility',
-        description: error.message,
-      })
-    },
-  })
+  // Mutation for updating an existing view. The optimistic update and its
+  // rollback live in `toggle` (below) rather than in `onMutate`/`onError`:
+  // `tableView.update` has no `resourceFieldId`/`visible` input — they were
+  // being smuggled through the router's `.passthrough()` and ignored server-side
+  // purely to carry rollback state. `toggle` already has both in scope.
+  const updateView = api.tableView.update.useMutation()
 
   // Mutation for creating new view (lazy creation when no view exists)
   const createView = api.tableView.create.useMutation({
@@ -95,20 +67,38 @@ export function useToggleFieldVisibility({
   const toggle = useCallback(
     (resourceFieldId: string, visible: boolean) => {
       if (view) {
-        // View exists - update it
-        const config = view.config as FieldViewConfig
-        updateView.mutate({
-          id: view.id,
-          resourceFieldId,
-          visible,
-          config: {
-            ...config,
-            fieldVisibility: {
-              ...config.fieldVisibility,
-              [resourceFieldId]: visible,
+        // View exists - update it. `TableView.config` is typed as the table
+        // `ViewConfig`, but panel/dialog views store a `FieldViewConfig` in the
+        // same column (the router's input accepts either) — hence the widening
+        // hop. See the burndown referral on `TableView.config`.
+        const config = view.config as unknown as FieldViewConfig | undefined
+        const previousVisible = config?.fieldVisibility?.[resourceFieldId] ?? true
+
+        toggleFieldVisibility(entityDefinitionId, contextType, resourceFieldId, visible)
+
+        // `fieldOrder`/`showLabels` are required by `fieldViewConfigSchema`; fall
+        // back rather than sending a config the router would reject outright.
+        const nextConfig: FieldViewConfig = {
+          ...config,
+          fieldVisibility: { ...config?.fieldVisibility, [resourceFieldId]: visible },
+          fieldOrder: config?.fieldOrder ?? fieldIds,
+          showLabels: config?.showLabels ?? true,
+        }
+
+        updateView.mutate(
+          { id: view.id, config: nextConfig },
+          {
+            onError: (error) => {
+              toggleFieldVisibility(
+                entityDefinitionId,
+                contextType,
+                resourceFieldId,
+                previousVisible
+              )
+              toastError({ title: 'Failed to update visibility', description: error.message })
             },
-          },
-        })
+          }
+        )
       } else {
         // No view exists - create one storing ONLY this field's choice.
         // The config is sparse: every other field keeps resolving to its
@@ -130,7 +120,7 @@ export function useToggleFieldVisibility({
         })
       }
     },
-    [view, fieldIds, entityDefinitionId, contextType, updateView, createView]
+    [view, fieldIds, entityDefinitionId, contextType, updateView, createView, toggleFieldVisibility]
   )
 
   return { toggle, isPending: updateView.isPending || createView.isPending }

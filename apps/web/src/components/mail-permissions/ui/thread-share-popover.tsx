@@ -25,7 +25,7 @@ function MiniActorAvatar({ actorId }: { actorId: ActorId }) {
   const name = actor?.name ?? '?'
   return (
     <Avatar className='size-5 border-2 border-background'>
-      <AvatarImage src={actor?.image || undefined} alt={name} />
+      <AvatarImage src={actor?.avatarUrl ?? undefined} alt={name} />
       <AvatarFallback className='text-[9px]'>
         {name
           .split(' ')

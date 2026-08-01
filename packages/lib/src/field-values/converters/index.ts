@@ -56,10 +56,12 @@ export interface FieldValueConverter {
    * Returns human-readable formatted string for most types.
    * For RELATIONSHIP: returns raw relationship object for frontend hydration.
    *
-   * @param value - The typed field value
+   * @param value - The typed field value. Accepts an unpersisted
+   *   `TypedFieldValueInput` too — converters only read `.type`/`.value`, never
+   *   the DB-row fields — so callers can format a value they just built.
    * @param options - Field options from CustomField.options (merged with converter defaults)
    */
-  toDisplayValue(value: TypedFieldValue, options?: FieldOptions): unknown
+  toDisplayValue(value: TypedFieldValue | TypedFieldValueInput, options?: FieldOptions): unknown
 }
 
 import { actorConverter } from './actor'

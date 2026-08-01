@@ -179,7 +179,7 @@ export async function getOrganizationMembers(organizationId: string, db: Databas
           image: true,
         },
         // Exclude system users from member lists
-        where: (user: typeof schema.User, { eq }) => eq(user.userType, 'USER'),
+        where: eq(schema.User.userType, 'USER'),
       },
     },
     orderBy: [asc(schema.OrganizationMember.role)],

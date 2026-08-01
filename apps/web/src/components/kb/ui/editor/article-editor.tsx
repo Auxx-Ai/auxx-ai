@@ -2,6 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import type { ArticleNodeJSON } from '@auxx/ui/components/kb'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useHotkey } from '@tanstack/react-hotkeys'
@@ -69,7 +70,10 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
 
   const persist = useCallback(
     async (payload: { json: JSONContent; getHTML: () => string }) => {
-      const body = (payload.json.content ?? []) as JSONContent[]
+      // The editor is configured with the KB block extensions, so its serialized
+      // top-level nodes are KB blocks — TipTap's `JSONContent` just can't say so
+      // statically. Same boundary cast `use-article-content.ts` makes on the way in.
+      const body = (payload.json.content ?? []) as ArticleNodeJSON[]
       await updateArticleContent(article.id, {
         content: payload.getHTML(),
         contentJson: body,

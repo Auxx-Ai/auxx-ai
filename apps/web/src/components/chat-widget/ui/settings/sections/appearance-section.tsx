@@ -2,6 +2,7 @@
 'use client'
 import { FieldType } from '@auxx/database/enums'
 import type { ChatWidgetWithIntegration } from '@auxx/lib/chat-widget/config'
+import { WidgetPosition } from '@auxx/lib/widgets/types'
 import { Button } from '@auxx/ui/components/button'
 import { Form, FormControl, FormDescription, FormField, FormItem } from '@auxx/ui/components/form'
 import { toastError } from '@auxx/ui/components/toast'
@@ -55,7 +56,7 @@ const appearanceSchema = z.object({
     .string()
     .refine((v) => !v || HEX_RE.test(v), 'Use a valid hex color (#fff or #ffffff)')
     .nullish(),
-  position: z.enum(['BOTTOM_RIGHT', 'BOTTOM_LEFT', 'TOP_RIGHT', 'TOP_LEFT']),
+  position: z.enum(WidgetPosition),
   logoLight: z.string().nullish(),
   logoDark: z.string().nullish(),
   mobileFullScreen: z.boolean(),

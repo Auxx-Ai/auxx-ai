@@ -71,10 +71,15 @@ export interface ResourceDisplayConfig {
 }
 
 /**
- * Display configuration for each resource type
- * Maps TableId → Display Configuration
+ * Display configuration per resource type. Maps TableId → Display Configuration.
+ *
+ * **Partial on purpose.** `TableId` spans every `ModelType`, including the def-backed types
+ * (`company`, `invoice`, `quote`, `work_order`, …) that resolve their display fields from their
+ * `EntityDefinition` instead of from this static map. Declaring it total said those entries
+ * existed; every read site therefore skipped its undefined check and would have thrown
+ * "cannot read properties of undefined" on the first def-backed lookup.
  */
-export const RESOURCE_DISPLAY_CONFIG: Record<TableId, ResourceDisplayConfig> = {
+export const RESOURCE_DISPLAY_CONFIG: Partial<Record<TableId, ResourceDisplayConfig>> = {
   ticket: {
     identifierField: 'number',
     primaryDisplayFieldId: 'title',

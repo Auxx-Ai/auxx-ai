@@ -13,14 +13,14 @@ interface TrialEndingEmailProps {
   name: string
   planName: string
   daysRemaining: number
-  billingUrl?: string
+  upgradeUrl?: string
 }
 
 export async function TrialEndingEmail({
   name,
   planName,
   daysRemaining,
-  billingUrl = `${WEBAPP_URL}/settings/plans`,
+  upgradeUrl = `${WEBAPP_URL}/settings/plans`,
 }: TrialEndingEmailProps): Promise<React.JSX.Element> {
   return (
     <EmailTemplate>
@@ -60,7 +60,7 @@ export async function TrialEndingEmail({
 
         <Text>If you'd like to review your plan or make changes, visit your billing settings:</Text>
 
-        <EmailButton href={billingUrl} label='Manage Subscription' />
+        <EmailButton href={upgradeUrl} label='Manage Subscription' />
 
         <Text>
           Questions? Our support team is available to help you make the most of {planName}.
@@ -76,7 +76,7 @@ export function TrialEndingText({
   name,
   planName,
   daysRemaining,
-  billingUrl = `${WEBAPP_URL}/settings/plans`,
+  upgradeUrl = `${WEBAPP_URL}/settings/plans`,
 }: TrialEndingEmailProps): string {
   return `
 Your Trial is Ending Soon
@@ -94,7 +94,7 @@ Want to continue enjoying ${planName}? No action needed - your subscription will
 
 If you'd like to review your plan or make changes, visit your billing settings:
 
-${billingUrl}
+${upgradeUrl}
 
 Questions? Our support team is available to help you make the most of ${planName}.
 
@@ -110,5 +110,5 @@ TrialEndingEmail.PreviewProps = {
   name: 'John Doe',
   planName: 'Growth',
   daysRemaining: 3,
-  billingUrl: 'https://app.auxx.ai/settings/plans',
+  upgradeUrl: 'https://app.auxx.ai/settings/plans',
 }

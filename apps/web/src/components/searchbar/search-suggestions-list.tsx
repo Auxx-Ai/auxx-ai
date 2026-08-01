@@ -18,6 +18,12 @@ import type { SearchSuggestion, SearchSuggestionType } from './types'
 /** Default icon for unknown types */
 const DEFAULT_ICON = 'filter'
 
+/**
+ * `SearchFieldDefinition.type` is a free-form string (each consumer supplies its
+ * own field vocabulary), so the `BaseType`-keyed map is read as a loose lookup.
+ */
+const FIELD_TYPE_ICONS: Record<string, string | undefined> = VAR_TYPE_ICON_MAP
+
 /** Group labels for suggestion types */
 const GROUP_LABELS: Record<SearchSuggestionType, string> = {
   recent: 'Recent Searches',
@@ -28,7 +34,7 @@ const GROUP_LABELS: Record<SearchSuggestionType, string> = {
 function getSuggestionIcon(suggestion: SearchSuggestion): string {
   if (suggestion.type === 'recent') return 'history'
   if (suggestion.type === 'field' && suggestion.fieldDefinition) {
-    return VAR_TYPE_ICON_MAP[suggestion.fieldDefinition.type] ?? DEFAULT_ICON
+    return FIELD_TYPE_ICONS[suggestion.fieldDefinition.type] ?? DEFAULT_ICON
   }
   return DEFAULT_ICON
 }

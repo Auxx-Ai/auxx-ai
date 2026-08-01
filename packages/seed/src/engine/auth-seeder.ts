@@ -110,12 +110,14 @@ export class AuthSeeder {
             updatedAt: now,
           },
         })
-        .returning({ id: schema.User.id, email: schema.User.email })
+        .returning({ id: schema.User.id })
 
       if (!user) continue
 
       await this.ensurePrimaryAccount(user.id, hashed.value, now)
-      created.push({ ...user, role: definition.role })
+      // `User.email` is nullable in the schema, but this row was just upserted with
+      // `definition.email` as the conflict target — reuse it rather than the nullable column.
+      created.push({ id: user.id, email: definition.email, role: definition.role })
     }
 
     return created
@@ -176,11 +178,11 @@ export class AuthSeeder {
           updatedAt: now,
         })
         .onConflictDoNothing()
-        .returning({ id: schema.User.id, email: schema.User.email })
+        .returning({ id: schema.User.id })
 
       if (user) {
         await this.ensurePrimaryAccount(user.id, hashed.value, now)
-        created.push(user)
+        created.push({ id: user.id, email })
       }
     }
 

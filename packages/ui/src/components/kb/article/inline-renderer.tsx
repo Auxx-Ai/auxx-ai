@@ -36,6 +36,10 @@ interface InlineNodeProps {
 }
 
 function InlineNode({ node, resolveAuxxHref }: InlineNodeProps) {
+  // Markdown import emits `hardBreak` for a soft line break; matches the
+  // `<br />` produced by `renderArticleHtml` in @auxx/lib.
+  if (node.type === 'hardBreak') return <br />
+
   if (node.type === 'placeholder') {
     const label = (node.attrs?.label as string | undefined) ?? ''
     return (

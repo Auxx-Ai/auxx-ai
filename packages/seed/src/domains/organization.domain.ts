@@ -411,14 +411,6 @@ export class OrganizationDomain {
     return `Thanks for reaching out!\n\n--\n${email}`
   }
 
-  /** buildRefinements returns drizzle-seed refinements for organization entities. */
-  buildRefinements(): (helpers: unknown) => Record<string, unknown> {
-    return () => {
-      console.log('🏢 Organization domain refinements skipped (handled by ServiceIntegrator)')
-      return {}
-    }
-  }
-
   /** generateOrganizationIds creates unique organization identifiers. */
   private generateOrganizationIds(): string[] {
     const ids: string[] = []

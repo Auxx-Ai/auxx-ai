@@ -7,8 +7,6 @@ export {
   type FileRefDetail,
   // Per-definition read gate for `recordResource` surfaces (tabs, cards)
   useCanViewRecordResource,
-  // Entity field values
-  useEntityValues,
   useField,
   useFieldByKey,
   useFields,

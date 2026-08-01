@@ -23,7 +23,7 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     dbColumn: 'id',
     nullable: false,
     isIdentifier: true,
-    operatorOverrides: ['is', 'is not', 'in', 'not in', 'exists', 'not exists'],
+    operatorOverrides: ['is', 'is not', 'in', 'not in'],
     capabilities: {
       filterable: true,
       sortable: false,

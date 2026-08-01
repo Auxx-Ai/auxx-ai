@@ -2,7 +2,7 @@
 
 'use client'
 
-import { getDefinitionId } from '@auxx/lib/resources/client'
+import { getDefinitionId, type RecordId } from '@auxx/lib/resources/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -13,7 +13,7 @@ import { useRecord, useRecordLink, useResource } from '~/components/resources'
 import type { EntitySnapshotData } from './block-schemas'
 
 interface EntityCardItemProps {
-  recordId: string
+  recordId: RecordId
   /** Snapshot written at turn time — rendered when live data is pending or deleted */
   snapshot?: EntitySnapshotData
   /** Show a checkbox on the right. When provided, the card is not wrapped in a Link. */
@@ -123,7 +123,7 @@ function EntityCardItemSkeleton() {
   )
 }
 
-function EntityCardUnavailable({ recordId }: { recordId: string }) {
+function EntityCardUnavailable({ recordId }: { recordId: RecordId }) {
   return (
     <div className='flex items-center gap-3 rounded-2xl bg-muted/30 p-2 text-xs text-muted-foreground ring-1 ring-border'>
       <span className='truncate'>Record unavailable</span>

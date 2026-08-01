@@ -7,7 +7,8 @@
 // layer), stored on `config.filters` and merged into the aggregate/record query
 // per source (plan 03). Field definitions come from the source's resource fields.
 
-import type { ConditionGroup, WidgetSource } from '@auxx/lib/dashboards/client'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { WidgetSource } from '@auxx/lib/dashboards/client'
 import { getFieldOperators } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
@@ -18,6 +19,7 @@ import {
   ConditionContainer,
   ConditionProvider,
   type ConditionSystemConfig,
+  isOperator,
   useConditionActions,
 } from '~/components/conditions'
 import { useResourceFields } from '~/components/resources'
@@ -53,7 +55,10 @@ export function FiltersSection({
           type: field.type,
           fieldType: field.fieldType,
           fieldKey: field.key,
-          operators: field.operatorOverrides || getFieldOperators(field),
+          // Registry `operatorOverrides` are plain strings and some still list
+          // operators that were retired from OPERATOR_DEFINITIONS — offering one
+          // would build a filter the query builder cannot translate.
+          operators: (field.operatorOverrides || getFieldOperators(field)).filter(isOperator),
           options: field.options,
         })),
     [fields, source]

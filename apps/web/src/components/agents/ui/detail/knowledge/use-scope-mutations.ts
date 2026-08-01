@@ -28,7 +28,7 @@ export function useScopeMutations(
   const utils = api.useUtils()
   const upsertRow = api.agentScope.upsertRow.useMutation()
   const removeRow = api.agentScope.removeRow.useMutation()
-  const savingTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const savingTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   // Invalidate without a key so both slug-keyed and id-keyed entries refetch.
   const reconcile = useCallback(async () => {

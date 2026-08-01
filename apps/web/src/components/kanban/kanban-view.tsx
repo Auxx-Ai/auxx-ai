@@ -4,9 +4,9 @@
 import { FieldType } from '@auxx/database/enums'
 import type { SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
-import { getModelType, toRecordId } from '@auxx/lib/resources/client'
+import { toRecordId } from '@auxx/lib/resources/client'
 import type { SelectOption as RawSelectOption, RelationshipConfig } from '@auxx/types/custom-field'
-import { toResourceFieldId } from '@auxx/types/field'
+import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import {
@@ -24,7 +24,7 @@ import {
 } from '@dnd-kit/core'
 import { arrayMove, horizontalListSortingStrategy, SortableContext } from '@dnd-kit/sortable'
 import { Plus } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { type Dispatch, type SetStateAction, useCallback, useMemo, useRef, useState } from 'react'
 import { useFieldSelectOptionMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import {
@@ -89,8 +89,11 @@ interface KanbanViewProps<TData extends KanbanRow> {
 
   /** Selected card IDs (controlled mode - state lives in parent) */
   selectedCardIds?: Set<string>
-  /** Callback when selected card IDs change */
-  onSelectedCardIdsChange?: (ids: Set<string>) => void
+  /**
+   * Selection setter for controlled mode. Must accept the `SetStateAction`
+   * updater form — toggling a single card reads the previous set.
+   */
+  onSelectedCardIdsChange?: Dispatch<SetStateAction<Set<string>>>
 }
 
 /** Props for KanbanDragOverlay component */
@@ -199,8 +202,6 @@ export function KanbanView<TData extends KanbanRow>({
     return toResourceFieldId(entityDefinitionId, config.groupByFieldId)
   }, [entityDefinitionId, config.groupByFieldId])
 
-  // Derive modelType from entityDefinitionId
-  const modelType = getModelType(entityDefinitionId)
   const [activeItem, setActiveItem] = useState<{
     type: KanbanDragItemType
     id: string
@@ -226,7 +227,7 @@ export function KanbanView<TData extends KanbanRow>({
   const getValue = useCallback(
     (rowId: string, fieldId: string): unknown => {
       const recordId = toRecordIdForKey(entityDefinitionId, rowId)
-      const key = buildFieldValueKey(recordId, fieldId)
+      const key = buildFieldValueKey(recordId, toFieldId(fieldId))
       return storeValues[key]
     },
     [storeValues, entityDefinitionId]
@@ -256,7 +257,7 @@ export function KanbanView<TData extends KanbanRow>({
 
   /** Handle creating a new column */
   const handleColumnCreate = useCallback(
-    (option: { label: string; color: string }) => {
+    (option: { label: string; color: SelectOptionColor }) => {
       createOption({ label: option.label, color: option.color })
     },
     [createOption]

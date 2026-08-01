@@ -81,7 +81,7 @@ const KeyValueItem: FC<Props> = ({
   onChangeRef.current = onChange
 
   // Sync timer ref
-  const syncTimerRef = useRef<NodeJS.Timeout>()
+  const syncTimerRef = useRef<NodeJS.Timeout | undefined>(undefined)
 
   // Update local state when payload changes from outside
   useEffect(() => {

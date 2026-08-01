@@ -136,6 +136,9 @@ export function LinkInventorySourceDialog({
                   entityDefinitionId={sourceDefId}
                   multi={false}
                   value={variantRecordId ? [variantRecordId] : []}
+                  // Single-select still routes through `onChange` (with a 0- or
+                  // 1-element array) before `onSelectSingle` fires.
+                  onChange={(selected) => setVariantRecordId(selected[0] ?? null)}
                   onSelectSingle={(recordId) => setVariantRecordId(recordId)}
                   emptyLabel='Choose a record'
                   triggerClassName='w-full'

@@ -51,6 +51,9 @@ export function MergePreviewPanel({
   })
   // Get target record info
   const targetRecord = useMemo(() => records[0], [records])
+  // `RecordMeta` carries extra resource columns through an index signature, so
+  // this arrives untyped; the store only ever writes it as a string or null.
+  const targetSecondary = targetRecord?.secondaryDisplayValue as string | null | undefined
 
   return (
     <div className='flex-1 flex flex-col border rounded-2xl bg-muted max-h-[400px]'>
@@ -76,10 +79,8 @@ export function MergePreviewPanel({
                   <span className='font-medium text-sm truncate'>
                     {targetRecord.displayName ?? 'Untitled'}
                   </span>
-                  {targetRecord.secondaryDisplayValue && (
-                    <p className='text-sm text-muted-foreground truncate'>
-                      {String(targetRecord.secondaryDisplayValue)}
-                    </p>
+                  {targetSecondary && (
+                    <p className='text-sm text-muted-foreground truncate'>{targetSecondary}</p>
                   )}
                 </div>
               </div>

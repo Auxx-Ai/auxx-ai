@@ -31,7 +31,10 @@ export function WizardWorkersPage() {
     onError: (error) => toastError({ title: 'Error adding worker', description: error.message }),
   })
 
-  const excludeIds = (workers ?? []).map((worker) => toActorId('user', worker.userId))
+  // Team rows carry no `userId` — only individuals map onto a user actor id.
+  const excludeIds = (workers ?? []).flatMap((worker) =>
+    worker.userId ? [toActorId('user', worker.userId)] : []
+  )
 
   return (
     <div className='flex flex-col gap-4 p-4'>

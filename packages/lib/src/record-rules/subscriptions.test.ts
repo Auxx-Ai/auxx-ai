@@ -27,9 +27,9 @@ describe('getSyncRuleSubscriptions', () => {
       rule({ id: 'r2', fieldId: 'fld_b', on: 'increased' }),
       rule({ id: 'r3', entityDefinitionId: 'def_2', fieldId: 'fld_c', on: 'set' }),
     ])
-    expect([...subs.def_1.fieldIds].sort()).toEqual(['fld_a', 'fld_b'])
-    expect([...subs.def_2.fieldIds]).toEqual(['fld_c'])
-    expect(subs.def_1.lifecycle).toEqual({ created: false, deleted: false })
+    expect([...(subs.def_1?.fieldIds ?? [])].sort()).toEqual(['fld_a', 'fld_b'])
+    expect([...(subs.def_2?.fieldIds ?? [])]).toEqual(['fld_c'])
+    expect(subs.def_1?.lifecycle).toEqual({ created: false, deleted: false })
   })
 
   it('buckets lifecycle rules (fieldId null) by transition', () => {
@@ -37,8 +37,8 @@ describe('getSyncRuleSubscriptions', () => {
       rule({ id: 'r1', fieldId: null, on: 'created' }),
       rule({ id: 'r2', fieldId: null, on: 'deleted' }),
     ])
-    expect(subs.def_1.lifecycle).toEqual({ created: true, deleted: true })
-    expect(subs.def_1.fieldIds.size).toBe(0)
+    expect(subs.def_1?.lifecycle).toEqual({ created: true, deleted: true })
+    expect(subs.def_1?.fieldIds.size).toBe(0)
   })
 
   it('excludes disabled rules', () => {

@@ -7,6 +7,7 @@ import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRunEvents } from '~/components/workflow/hooks/run-hooks/use-run-events'
 import { type ExecutionEvent, useRunStore } from '~/components/workflow/store/run-store'
+import type { FlowEdge, FlowNode } from '~/components/workflow/types'
 import { type SSEConfig, useSSE } from '~/hooks/use-sse'
 
 /**
@@ -63,7 +64,9 @@ const WORKFLOW_EVENTS = [
  */
 export function useWorkflowRun(): WorkflowRunHookReturn {
   // Get ReactFlow store for accessing nodes and edges
-  const reactFlowStore = useStoreApi()
+  // Supply the concrete node/edge types: left at their defaults the store yields
+  // `Node`/`Edge` with an untyped `data`, which `resetForNewRun` cannot accept.
+  const reactFlowStore = useStoreApi<FlowNode, FlowEdge>()
 
   // Clear any deep-linked historical run when a fresh run starts
   const [, setRunId] = useQueryState('runId', { history: 'replace' })
@@ -117,8 +120,10 @@ export function useWorkflowRun(): WorkflowRunHookReturn {
         data: resp.data,
       }
 
-      // Get the appropriate handler and call it directly
-      const handler = eventHandlers[event.eventType as WorkflowEventType]
+      // `useRunEvents` only implements a subset of the event types, and the wire
+      // carries a raw string — hence the partial view and the miss branch below.
+      const handlers: Partial<Record<string, (event: ExecutionEvent) => void>> = eventHandlers
+      const handler = handlers[event.eventType]
       if (handler) {
         console.log(`[Workflow Run] Executing handler for event: ${event.eventType}`)
         handler(event)

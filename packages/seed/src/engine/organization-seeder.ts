@@ -4,7 +4,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
-import type { SeedingResult } from '../types'
+import type { SeedingContext, SeedingResult } from '../types'
 import { OrganizationWebhookCoordinator } from '../utils/organization-webhook-coordinator'
 
 const logger = createScopedLogger('organization-seeder')
@@ -332,10 +332,12 @@ export class OrganizationSeeder {
 
       // Build seeding context
       logger.info('seedOrganizationDirectly: Building context')
-      const context = {
+      const context: SeedingContext = {
         auth: {
           testUsers: users.map((u) => ({ id: u.id, email: u.email || '' })),
           randomUsers: [],
+          // Org-scoped reseeding never mints new logins, so there is nothing to report.
+          credentials: { message: '', password: '', accounts: [] },
         },
         services: {
           organizations: [{ id: org.id, ownerId: org.ownerId }],
@@ -457,16 +459,10 @@ export class OrganizationSeeder {
       const { AiDomain } = await import('../domains/ai.domain')
       logger.info('seedOrganizationDirectly: Domain classes loaded')
 
-      // Cast scenario to SeedingScenario with empty buildRefinements
-      const scenarioWithRefinements = {
-        ...scenario,
-        buildRefinements: () => ({}),
-      }
-
       // CRM
       logger.info('seedOrganizationDirectly: Seeding CRM domain')
       console.log('💾 Inserting CRM data...')
-      const crm = new CrmDomain(scenarioWithRefinements, context, domainOptions)
+      const crm = new CrmDomain(scenario, context, domainOptions)
       await crm.insertDirectly(db)
       logger.info('seedOrganizationDirectly: CRM domain complete')
 
@@ -475,7 +471,7 @@ export class OrganizationSeeder {
       if (scenarioName !== 'shopify-review') {
         logger.info('seedOrganizationDirectly: Seeding organization domain')
         console.log('💾 Inserting organization data...')
-        const organization = new OrganizationDomain(scenarioWithRefinements, context, domainOptions)
+        const organization = new OrganizationDomain(scenario, context, domainOptions)
         await organization.insertDirectly(db)
         logger.info('seedOrganizationDirectly: Organization domain complete')
       }
@@ -484,7 +480,7 @@ export class OrganizationSeeder {
       if (scenario.scales.tickets > 0) {
         logger.info('seedOrganizationDirectly: Seeding ticket domain')
         console.log('💾 Inserting ticket data...')
-        const ticket = new TicketDomain(scenarioWithRefinements, context, domainOptions)
+        const ticket = new TicketDomain(scenario, context, domainOptions)
         await ticket.insertDirectly(db)
         logger.info('seedOrganizationDirectly: Ticket domain complete')
       }
@@ -493,11 +489,7 @@ export class OrganizationSeeder {
       if (context.services.integrations.length > 0 && scenario.scales.threads > 0) {
         logger.info('seedOrganizationDirectly: Seeding communication domain')
         console.log('💾 Inserting communication data...')
-        const communication = new CommunicationDomain(
-          scenarioWithRefinements,
-          context,
-          domainOptions
-        )
+        const communication = new CommunicationDomain(scenario, context, domainOptions)
         await communication.insertDirectly(db)
         logger.info('seedOrganizationDirectly: Communication domain complete')
       }
@@ -507,7 +499,7 @@ export class OrganizationSeeder {
         logger.info('seedOrganizationDirectly: Seeding workflow domain')
         console.log('💾 Inserting workflow data...')
         const { WorkflowDomain } = await import('../domains/workflow.domain')
-        const workflow = new WorkflowDomain(scenarioWithRefinements, organizationId, ownerId)
+        const workflow = new WorkflowDomain(scenario, organizationId, ownerId)
         try {
           await workflow.insertDirectly(db)
           logger.info('seedOrganizationDirectly: Workflow domain complete')
@@ -521,7 +513,7 @@ export class OrganizationSeeder {
       if (scenario.features.aiAnalysis) {
         logger.info('seedOrganizationDirectly: Seeding AI domain')
         console.log('💾 Inserting AI usage data...')
-        const ai = new AiDomain(scenarioWithRefinements, context, domainOptions)
+        const ai = new AiDomain(scenario, context, domainOptions)
         await ai.insertDirectly(db)
         logger.info('seedOrganizationDirectly: AI domain complete')
       }

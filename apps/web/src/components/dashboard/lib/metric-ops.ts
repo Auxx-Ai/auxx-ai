@@ -7,7 +7,7 @@
 // `packages/lib/src/resources/aggregate/run-aggregate.ts` — offering an op the
 // aggregate engine rejects would 422 on the first chartData fetch. Pure + tested.
 
-import type { FieldType } from '@auxx/database/enums'
+import type { FieldType } from '@auxx/database/types'
 import type { MetricOp } from '@auxx/lib/dashboards/client'
 
 export type MetricOpOption = { op: MetricOp; label: string }

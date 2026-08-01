@@ -82,7 +82,6 @@ function MinimalUploadExample({
       onComplete={onComplete}
       onError={onError}
       fileItemComponent={MinimalFileItem}
-      showHeader={false}
       showDropZone={true}
       compact={true}
       maxFiles={10}

@@ -15,7 +15,12 @@ export interface SendMessageInput {
   threadId?: string // Optional: If sending creates a new thread
   // Message content
   messageId?: string // RFC Message-ID if pre-generated
-  subject: string
+  /**
+   * Optional — `MessageSenderService.validateInput` enforces it only when the
+   * provider's `capabilities.requiresSubject` is set, so chat sends legitimately
+   * carry no subject. `Message.subject` is nullable and keeps the real value.
+   */
+  subject?: string | null
   textHtml?: string | null
   textPlain?: string | null
   signatureId?: string | null
@@ -67,7 +72,8 @@ export interface ComposedMessage {
   messageId: string // Internet Message-ID
   sendToken: string
   threadId: string
-  subject: string
+  /** Nullish for subject-less channels (chat); `Message.subject` is nullable. */
+  subject?: string | null
   textHtml?: string | null
   textPlain?: string | null
   references?: string | null

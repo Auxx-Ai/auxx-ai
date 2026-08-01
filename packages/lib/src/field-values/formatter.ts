@@ -160,7 +160,7 @@ export function formatToRawValue(
  * // (frontend then uses useRelationship hook to fetch display names)
  */
 export function formatToDisplayValue(
-  value: TypedFieldValue | TypedFieldValue[] | null,
+  value: TypedFieldValue | TypedFieldValueInput | (TypedFieldValue | TypedFieldValueInput)[] | null,
   fieldType: FieldType,
   options?: FieldOptions
 ): unknown {

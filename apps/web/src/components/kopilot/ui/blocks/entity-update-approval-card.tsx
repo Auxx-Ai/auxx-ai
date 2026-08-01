@@ -2,18 +2,20 @@
 
 'use client'
 
-import { getDefinitionId } from '@auxx/lib/resources/client'
+import { getDefinitionId, isRecordId } from '@auxx/lib/resources/client'
 import { useRecord, useResource } from '~/components/resources'
 import type { ApprovalCardProps } from './approval-card-registry'
 import { BlockCard, type BlockCardAction, StatusIndicator } from './block-card'
 import { KopilotFieldRow } from './kopilot-field-row'
 
 export function EntityUpdateApprovalCard({ args, status, onApprove, onReject }: ApprovalCardProps) {
-  const recordId = args.recordId as string
+  // Tool args are model-authored — only a well-formed `entityDef:instance` id
+  // can be resolved; anything else renders the generic "Record" heading.
+  const recordId = isRecordId(args.recordId) ? args.recordId : null
   const values = (args.values as Record<string, unknown>) ?? {}
 
   const { record } = useRecord({ recordId })
-  const entityDefId = getDefinitionId(recordId)
+  const entityDefId = recordId ? getDefinitionId(recordId) : null
   const { resource } = useResource(entityDefId)
 
   const isPending = status === 'pending'

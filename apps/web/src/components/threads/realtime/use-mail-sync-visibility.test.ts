@@ -30,7 +30,7 @@ const h = vi.hoisted(() => ({
 vi.mock('~/hooks/use-user', () => ({ useUser: () => ({ user: { id: 'usr_me' } }) }))
 
 vi.mock('../hooks', () => ({
-  useMyInboxLenses: () => ({ lenses: { support: 'full' }, isAdmin: false, isLoaded: true }),
+  useMyInboxLenses: () => ({ lenses: { support: 'read' }, isAdmin: false, isLoaded: true }),
 }))
 
 vi.mock('./use-message-arrival-cue', () => ({ useMessageArrivalCue: () => vi.fn() }))

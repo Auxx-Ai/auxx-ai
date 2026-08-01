@@ -1,6 +1,7 @@
 // apps/web/src/components/datasets/documents/document-filter-bar.tsx
 'use client'
-import type { DocumentEntity } from '@auxx/database/types'
+import { DocumentStatusValues } from '@auxx/database/enums'
+import type { DocumentEntity, DocumentStatus } from '@auxx/database/types'
 import {
   Select,
   SelectContent,
@@ -9,9 +10,15 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 
+/** Status filter value — a concrete document status or the "all" sentinel. */
+export type DocumentStatusFilter = DocumentStatus | 'all'
+
+const isDocumentStatusFilter = (value: string): value is DocumentStatusFilter =>
+  value === 'all' || (DocumentStatusValues as readonly string[]).includes(value)
+
 interface DocumentFilterBarProps {
-  filterValue: string
-  onFilterChange: (value: string) => void
+  filterValue: DocumentStatusFilter
+  onFilterChange: (value: DocumentStatusFilter) => void
   documents: DocumentEntity[]
   totalDocuments: number
 }
@@ -32,7 +39,11 @@ export function DocumentFilterBar({
   return (
     <div className='flex'>
       {/* Status Filter */}
-      <Select value={filterValue} onValueChange={onFilterChange}>
+      <Select
+        value={filterValue}
+        onValueChange={(value) => {
+          if (isDocumentStatusFilter(value)) onFilterChange(value)
+        }}>
         <SelectTrigger className='w-[120px]' variant='ghost' size='sm'>
           <SelectValue placeholder='Filter by status' />
         </SelectTrigger>

@@ -35,6 +35,7 @@ function profile(over: Partial<CachedPermissionProfile>): CachedPermissionProfil
     icon: null,
     seat: 'full',
     appliesTo: 'agent',
+    role: 'USER',
     baseLevel: null,
     ceiling: null,
     agentPolicy: null,

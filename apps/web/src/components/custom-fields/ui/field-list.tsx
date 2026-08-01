@@ -80,8 +80,8 @@ export function CustomFieldRow({
           {field.required && <span className='ml-2 text-orange-500 text-xs'>Required</span>}
           {field.isUnique && <span className='ml-2 text-purple-500 text-xs'>Unique</span>}
         </div>
-        {field.defaultValue && (
-          <div className='text-xs text-muted-foreground'>Default: {field.defaultValue}</div>
+        {field.defaultValue != null && field.defaultValue !== '' && (
+          <div className='text-xs text-muted-foreground'>Default: {String(field.defaultValue)}</div>
         )}
       </TableCell>
       <TableCell className='py-1'>

@@ -1,5 +1,6 @@
 // packages/lib/src/conditions/collect-field-ids.test.ts
 
+import { toResourceFieldId } from '@auxx/types/field'
 import { describe, expect, it } from 'vitest'
 import { collectConditionFieldIds } from './collect-field-ids'
 import type { ConditionGroup } from './types'
@@ -39,7 +40,12 @@ describe('collectConditionFieldIds', () => {
   it('flags relationship-path (array) fieldIds', () => {
     const result = collectConditionFieldIds([
       group([
-        { id: 'c1', fieldId: ['product:vendor', 'vendor:name'], operator: 'is', value: 'Acme' },
+        {
+          id: 'c1',
+          fieldId: [toResourceFieldId('product', 'vendor'), toResourceFieldId('vendor', 'name')],
+          operator: 'is',
+          value: 'Acme',
+        },
         { id: 'c2', fieldId: 'fld_direct', operator: 'is', value: 1 },
       ]),
     ])

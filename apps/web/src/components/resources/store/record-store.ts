@@ -33,9 +33,10 @@ const MAX_BATCH_SIZE = 100 // max records per batch request
 export interface RecordMeta {
   id: string
   recordId?: RecordId
-  displayName?: string
-  secondaryInfo?: string
-  avatarUrl?: string
+  /** Nullable, not just optional — server payloads send `null` for an unset display field. */
+  displayName?: string | null
+  secondaryInfo?: string | null
+  avatarUrl?: string | null
   createdAt: string | Date
   updatedAt: string | Date
   /**

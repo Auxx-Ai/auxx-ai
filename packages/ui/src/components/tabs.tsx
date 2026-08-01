@@ -43,7 +43,7 @@ const tabsListVariants = cva('inline-flex items-center justify-center text-muted
 })
 
 export interface TabsListProps
-  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>,
+  extends React.ComponentProps<typeof TabsPrimitive.List>,
     VariantProps<typeof tabsListVariants> {}
 
 function TabsList({ className, variant, ...props }: TabsListProps) {
@@ -69,7 +69,7 @@ const tabsTriggerVariants = cva(
 )
 
 export interface TabsTriggerProps
-  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>,
+  extends React.ComponentProps<typeof TabsPrimitive.Trigger>,
     VariantProps<typeof tabsTriggerVariants> {}
 
 function TabsTrigger({ className, variant, size, ...props }: TabsTriggerProps) {
@@ -98,7 +98,12 @@ function TabsContent({
 }
 TabsContent.displayName = TabsPrimitive.Content.displayName
 
-function TabsBadge({ className, count, ...props }: React.ComponentPropsWithoutRef<'span'>) {
+export interface TabsBadgeProps extends React.ComponentProps<'span'> {
+  /** Numeric badge value rendered inside the span */
+  count?: number
+}
+
+function TabsBadge({ className, count, ...props }: TabsBadgeProps) {
   return (
     <span className={cn('', className)} {...props}>
       {count}

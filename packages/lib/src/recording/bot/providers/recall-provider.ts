@@ -348,10 +348,10 @@ export function createRecallProvider(config: RecallApiClientConfig): BotProvider
           const words = entry.words ?? []
           const text = words.map((w) => w.text).join(' ')
           // Timestamps are in seconds (relative), convert to milliseconds
-          const startMs = words[0] ? Math.round(words[0].start_timestamp.relative * 1000) : 0
-          const endMs = words[words.length - 1]
-            ? Math.round(words[words.length - 1].end_timestamp.relative * 1000)
-            : 0
+          const firstWord = words[0]
+          const lastWord = words[words.length - 1]
+          const startMs = firstWord ? Math.round(firstWord.start_timestamp.relative * 1000) : 0
+          const endMs = lastWord ? Math.round(lastWord.end_timestamp.relative * 1000) : 0
 
           return {
             speakerName: entry.participant.name,

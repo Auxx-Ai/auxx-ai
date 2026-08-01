@@ -3,6 +3,7 @@
 'use client'
 
 import { toastError } from '@auxx/ui/components/toast'
+import type { ReactElement } from 'react'
 import { useCallback } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -11,7 +12,7 @@ interface UseConnectionRowActions {
   /** Resolves true on success, false when the trimmed label is empty or the mutation fails. */
   rename: (connectionId: string, label: string) => Promise<boolean>
   disconnect: (connectionId: string, currentLabel: string | null) => Promise<void>
-  ConfirmDialog: () => JSX.Element
+  ConfirmDialog: () => ReactElement
   isRenaming: boolean
   isDisconnecting: boolean
 }

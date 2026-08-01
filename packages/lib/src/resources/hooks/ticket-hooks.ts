@@ -2,6 +2,7 @@
 
 import { publisher } from '../../events/publisher'
 import { recordNumbering } from '../../records/record-numbering'
+import { toRecordId } from '../resource-id'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -174,13 +175,15 @@ const publishStatusChangeEvent: SystemHook = async ({
     publisher.publishLater({
       type: 'ticket:status:changed',
       data: {
+        recordId: toRecordId(entityDef.id, existingInstance.id),
         organizationId,
         userId,
-        ticketId: existingInstance.id,
-        ticket_status: newStatus as string,
-        old_ticket_status: previousStatus,
-        ...(ticketContact && { ticket_contact: ticketContact }),
-        ...(ticketNumber && { ticket_number: ticketNumber }),
+        eventData: {
+          ticket_status: newStatus,
+          old_ticket_status: previousStatus,
+          ...(ticketContact !== undefined && { ticket_contact: ticketContact }),
+          ...(ticketNumber !== undefined && { ticket_number: ticketNumber }),
+        },
       },
     })
   }
@@ -198,6 +201,7 @@ const publishStatusChangeEvent: SystemHook = async ({
 const publishAssigneeChangeEvent: SystemHook = async ({
   field,
   values,
+  entityDef,
   existingInstance,
   organizationId,
   userId,
@@ -227,12 +231,14 @@ const publishAssigneeChangeEvent: SystemHook = async ({
     publisher.publishLater({
       type: 'ticket:assignee:added',
       data: {
+        recordId: toRecordId(entityDef.id, existingInstance.id),
         organizationId,
         userId,
-        ticketId: existingInstance.id,
-        assigneeIds: addedAssignees,
-        ...(ticketContact && { ticket_contact: ticketContact }),
-        ...(ticketNumber && { ticket_number: ticketNumber }),
+        eventData: {
+          assigneeIds: addedAssignees,
+          ...(ticketContact !== undefined && { ticket_contact: ticketContact }),
+          ...(ticketNumber !== undefined && { ticket_number: ticketNumber }),
+        },
       },
     })
   }
@@ -241,12 +247,14 @@ const publishAssigneeChangeEvent: SystemHook = async ({
     publisher.publishLater({
       type: 'ticket:assignee:removed',
       data: {
+        recordId: toRecordId(entityDef.id, existingInstance.id),
         organizationId,
         userId,
-        ticketId: existingInstance.id,
-        assigneeIds: removedAssignees,
-        ...(ticketContact && { ticket_contact: ticketContact }),
-        ...(ticketNumber && { ticket_number: ticketNumber }),
+        eventData: {
+          assigneeIds: removedAssignees,
+          ...(ticketContact !== undefined && { ticket_contact: ticketContact }),
+          ...(ticketNumber !== undefined && { ticket_number: ticketNumber }),
+        },
       },
     })
   }

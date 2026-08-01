@@ -73,10 +73,10 @@ describe('decorateRecordIdentities', () => {
       row({ id: 'ri_chat', source: 'chat', externalId: 'visitor_1' }),
     ])
 
-    expect(view.appName).toBe('Chat')
-    expect(view.appIconKey).toBeNull()
-    expect(view.fieldLabel).toBeNull()
-    expect(view.appFieldKey).toBeNull()
+    expect(view?.appName).toBe('Chat')
+    expect(view?.appIconKey).toBeNull()
+    expect(view?.fieldLabel).toBeNull()
+    expect(view?.appFieldKey).toBeNull()
   })
 
   it('sorts by source then externalId for a stable card order', async () => {
@@ -98,7 +98,7 @@ describe('decorateRecordIdentities', () => {
     const [view] = await decorateRecordIdentities('org_1', [
       row({ id: 'ri_gone', source: 'hubspot', appInstallationId: 'inst_missing' }),
     ])
-    expect(view.appName).toBeNull()
-    expect(view.appIconKey).toBeNull()
+    expect(view?.appName).toBeNull()
+    expect(view?.appIconKey).toBeNull()
   })
 })

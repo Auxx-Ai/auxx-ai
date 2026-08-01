@@ -28,15 +28,16 @@ export interface StripePlanIds {
 }
 
 interface PlanDef {
+  key: keyof StripePlanIds
   name: string
   monthly: number
   annual: number
 }
 
 const PLAN_DEFS: PlanDef[] = [
-  { name: 'billing_test_starter', monthly: 2900, annual: 29000 },
-  { name: 'billing_test_pro', monthly: 7900, annual: 79000 },
-  { name: 'billing_test_enterprise', monthly: 19900, annual: 199000 },
+  { key: 'starter', name: 'billing_test_starter', monthly: 2900, annual: 29000 },
+  { key: 'pro', name: 'billing_test_pro', monthly: 7900, annual: 79000 },
+  { key: 'enterprise', name: 'billing_test_enterprise', monthly: 19900, annual: 199000 },
 ]
 
 /**
@@ -44,10 +45,7 @@ const PLAN_DEFS: PlanDef[] = [
  * Looks up by metadata before creating. Returns price IDs for DB seeding.
  */
 export async function createTestStripePlans(stripe: Stripe): Promise<StripePlanIds> {
-  const result: Record<
-    string,
-    { productId: string; monthlyPriceId: string; annualPriceId: string }
-  > = {}
+  const result: Partial<StripePlanIds> = {}
 
   for (const plan of PLAN_DEFS) {
     // Find or create product by metadata
@@ -81,15 +79,19 @@ export async function createTestStripePlans(stripe: Stripe): Promise<StripePlanI
       plan.annual
     )
 
-    const key = plan.name.replace('billing_test_', '')
-    result[key] = {
+    result[plan.key] = {
       productId: product.id,
       monthlyPriceId,
       annualPriceId,
     }
   }
 
-  return result as StripePlanIds
+  const { starter, pro, enterprise } = result
+  if (!starter || !pro || !enterprise) {
+    throw new Error('createTestStripePlans did not produce all three test plans')
+  }
+
+  return { starter, pro, enterprise }
 }
 
 async function findOrCreatePrice(

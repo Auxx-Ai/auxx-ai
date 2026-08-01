@@ -21,7 +21,7 @@ interface User {
   name: string
   email: string
   emailVerified: boolean | null
-  image: boolean | null
+  image: string | null
 }
 
 /**

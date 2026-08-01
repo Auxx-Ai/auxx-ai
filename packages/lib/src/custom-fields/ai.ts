@@ -6,6 +6,7 @@ import {
   isAiEligibleFieldType,
   type RichReferencePrompt,
 } from '@auxx/types/custom-field'
+import { toFieldType } from '../field-values/stored-field-type'
 
 /**
  * Whether a field type is in the AI-generatable whitelist.
@@ -24,7 +25,7 @@ export function isAiEligible(type: FieldType): boolean {
  * type-level eligibility gate with the per-field `options.ai.enabled` flag.
  */
 export function isAiField(field: CustomFieldEntity): boolean {
-  if (!isAiEligible(field.type)) return false
+  if (!isAiEligible(toFieldType(field.type))) return false
   const ai = (field.options as { ai?: AiOptions } | null | undefined)?.ai
   return ai?.enabled === true
 }

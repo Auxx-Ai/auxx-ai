@@ -38,7 +38,7 @@ export function BarChartWidget({
 }) {
   const chartConfig = toChartConfig(series, config.color)
   const isHorizontal = config.layout === 'horizontal'
-  const stacked = Boolean(config.secondaryGroupBy) && config.stacked
+  const stacked = Boolean(config.secondaryGroupBy && config.stacked)
   const showLegend = config.showLegend !== false && series.length > 1
   const axisFormat = formatAxisValue ?? formatValue
   const tickFormatter = axisFormat ? (v: number) => axisFormat(v) : undefined

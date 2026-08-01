@@ -27,7 +27,7 @@ const logger = createScopedLogger('task-service')
 /**
  * Convert a relative or absolute deadline to a concrete Date
  */
-function resolveDeadline(deadline: Deadline): Date {
+function resolveDeadline(deadline: NonNullable<Deadline>): Date {
   if ('type' in deadline && deadline.type === 'static') {
     // Ensure we return a Date object, not a string
     return deadline.value instanceof Date ? deadline.value : new Date(deadline.value)

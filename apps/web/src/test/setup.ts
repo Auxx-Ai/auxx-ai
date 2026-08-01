@@ -75,8 +75,7 @@ vi.mock('next/dynamic', () => ({
   },
 }))
 
-// Mock environment variables
-process.env.NODE_ENV = 'test'
+// Mock environment variables (NODE_ENV is already set to 'test' by Vitest)
 process.env.APP_URL = 'http://localhost:3000'
 process.env.NEXT_PUBLIC_ENV = 'development'
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test'

@@ -3,7 +3,14 @@
 
 import { useSyncExternalStore } from 'react'
 import { useInternalAppsContext } from '~/components/apps/providers/internal-apps-context'
-import { SurfaceInstanceExternalStore } from '../surface-instance-external-store'
+import {
+  type SnapshotResult,
+  SurfaceInstanceExternalStore,
+} from '../surface-instance-external-store'
+
+/** Widgets only ever render in the browser, so the server snapshot is always
+ *  pending. Must be a stable reference — React re-reads it every render. */
+const SERVER_SNAPSHOT: SnapshotResult = { status: 'pending' }
 
 /**
  * Options for the useWidget hook.
@@ -56,7 +63,7 @@ export function useWidget({ appId, appInstallationId, widgetId, surfaceProps }: 
   const snapshot = useSyncExternalStore(
     externalStore.addListener,
     externalStore.getSnapshot,
-    () => null
+    () => SERVER_SNAPSHOT
   )
 
   // Suspend if not ready

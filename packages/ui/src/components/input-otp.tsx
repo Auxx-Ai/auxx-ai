@@ -29,18 +29,18 @@ function InputOTPSlot({
   ...props
 }: React.ComponentProps<'div'> & { index: number }) {
   const inputOTPContext = React.useContext(OTPInputContext)
-  const { char, hasFakeCaret, isActive } = inputOTPContext.slots[index]
+  const slot = inputOTPContext.slots[index]
 
   return (
     <div
       className={cn(
         'relative flex h-9 w-9 items-center justify-center border-y border-r border-input text-sm shadow-xs transition-all first:rounded-l-md first:border-l last:rounded-r-md',
-        isActive && 'z-10 ring-1 ring-ring',
+        slot?.isActive && 'z-10 ring-1 ring-ring',
         className
       )}
       {...props}>
-      {char}
-      {hasFakeCaret && (
+      {slot?.char}
+      {slot?.hasFakeCaret && (
         <div className='pointer-events-none absolute inset-0 flex items-center justify-center'>
           <div className='h-4 w-px animate-caret-blink bg-foreground duration-1000' />
         </div>

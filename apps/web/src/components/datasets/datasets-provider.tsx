@@ -32,8 +32,6 @@ interface DatasetsContextValue {
 
   // Loading states
   isLoading: boolean
-  isError: boolean
-  error: Error | null
 
   // Filters and search
   searchQuery: string
@@ -87,13 +85,12 @@ export function DatasetsProvider({ children }: DatasetsProviderProps) {
   const {
     data: datasetsData,
     isLoading: isDatasetsLoading,
-    error: datasetsError,
     refetch: refetchDatasets,
   } = api.dataset.list.useQuery({
     search: debouncedSearch || undefined,
     status: selectedStatus === 'all' ? undefined : selectedStatus,
     page: 1,
-    pageSize: 50,
+    limit: 50,
   })
 
   // Fetch organization-level stats
@@ -147,8 +144,6 @@ export function DatasetsProvider({ children }: DatasetsProviderProps) {
 
     // Loading states
     isLoading: isDatasetsLoading || isStatsLoading,
-    isError: !!datasetsError,
-    error: datasetsError,
 
     // Filters and search
     searchQuery,

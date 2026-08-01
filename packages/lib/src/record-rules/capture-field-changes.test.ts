@@ -98,7 +98,7 @@ describe('captureUpdateFieldChanges', () => {
     })
     // Only the two subscribed row ids were read.
     expect(h.batchGetExistingFieldValues).toHaveBeenCalledTimes(1)
-    expect(h.batchGetExistingFieldValues.mock.calls[0][2].sort()).toEqual(['fld_a', 'fld_email'])
+    expect(h.batchGetExistingFieldValues.mock.calls[0]?.[2].sort()).toEqual(['fld_a', 'fld_email'])
   })
 
   // F1 regression: the connector sink keys its writeSet by the CustomField UUID even

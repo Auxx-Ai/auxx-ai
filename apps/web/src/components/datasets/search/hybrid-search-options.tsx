@@ -50,7 +50,7 @@ export function HybridSearchOptions({
         </div>
         <Slider
           value={[semanticWeight]}
-          onValueChange={([value]) => onSemanticWeightChange(value)}
+          onValueChange={([value = semanticWeight]) => onSemanticWeightChange(value)}
           min={0}
           max={100}
           step={5}
@@ -89,7 +89,7 @@ export function HybridSearchOptions({
         </div>
         <Slider
           value={[topK]}
-          onValueChange={([value]) => onTopKChange(value)}
+          onValueChange={([value = topK]) => onTopKChange(value)}
           min={1}
           max={50}
           step={1}
@@ -108,7 +108,7 @@ export function HybridSearchOptions({
         </div>
         <Slider
           value={[scoreThreshold * 100]}
-          onValueChange={([value]) => onThresholdChange(value / 100)}
+          onValueChange={([value = scoreThreshold * 100]) => onThresholdChange(value / 100)}
           min={0}
           max={100}
           step={5}

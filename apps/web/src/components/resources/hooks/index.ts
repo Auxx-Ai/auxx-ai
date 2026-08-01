@@ -13,8 +13,6 @@ export {
 export { type FieldInfo, useAllRecords } from './use-all-records'
 // export { useEntityDefinition, useEntityDefinitionById } from './use-entity-definition'
 export { useEntityDefinitionMutations } from './use-entity-definition-mutations'
-// Entity field values hook
-export { useEntityValues } from './use-entity-values'
 export {
   useField,
   useFieldByKey,

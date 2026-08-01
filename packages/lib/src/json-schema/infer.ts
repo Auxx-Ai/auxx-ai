@@ -121,8 +121,8 @@ function mergeNodes(nodes: JsonSchema[]): JsonSchema {
   // Same single scalar type sharing the same `format` → keep it (so an array of
   // record objects preserves `{ type: 'string', format: 'email' }` per field
   // after the merge, not just single-object responses).
-  const firstType = nonNull[0].type
-  const firstFormat = nonNull[0].format
+  const firstType = nonNull[0]?.type
+  const firstFormat = nonNull[0]?.format
   if (
     typeof firstType === 'string' &&
     firstFormat !== undefined &&

@@ -27,6 +27,6 @@ describe('the unified `handoff` tool', () => {
   it('does not require a thread anchor (works in evals / with no subject)', async () => {
     const { ctx } = makeCtx()
     const r = await createHandoffTool().execute({}, ctx)
-    expect(r.success).toBe(true)
+    expect(r).toMatchObject({ success: true })
   })
 })
