@@ -852,7 +852,9 @@ export const threadRouter = createTRPCRouter({
   updateBulk: mailProcedure
     .input(
       z.object({
-        recordIds: z.array(recordIdSchema).max(50),
+        recordIds: z
+          .array(recordIdSchema)
+          .max(500, 'You can update up to 500 conversations at once.'),
         updates: z.object({
           status: z.enum(['OPEN', 'ARCHIVED', 'SPAM', 'TRASH', 'IGNORED']).optional(),
           assigneeId: z.string().nullable().optional(),

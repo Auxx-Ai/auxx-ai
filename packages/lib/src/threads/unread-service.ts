@@ -136,55 +136,57 @@ export class UnreadService {
       )
     const previousReadMap = new Map(previousReadRows.map((r) => [r.threadId, r.isRead]))
 
-    // Get latest message IDs only when marking as read
+    // Get latest message IDs only when marking as read. DISTINCT ON returns one
+    // row per thread instead of every message of every selected thread — the
+    // `(threadId, sentAt)` index covers the ordering. Unsent messages (null
+    // `sentAt`) sort last so a real message always wins the watermark; `id`
+    // breaks ties deterministically.
     const threadMessageMap = new Map<string, string | null>()
     if (isRead) {
       const messages = await db
-        .select({
+        .selectDistinctOn([schema.Message.threadId], {
           threadId: schema.Message.threadId,
           id: schema.Message.id,
         })
         .from(schema.Message)
         .where(inArray(schema.Message.threadId, threadIds))
-        .orderBy(sql`${schema.Message.sentAt} DESC`)
+        .orderBy(
+          schema.Message.threadId,
+          sql`${schema.Message.sentAt} DESC NULLS LAST`,
+          sql`${schema.Message.id} DESC`
+        )
 
-      // Keep only the first (latest) message per thread
       for (const msg of messages) {
-        if (!threadMessageMap.has(msg.threadId)) {
-          threadMessageMap.set(msg.threadId, msg.id)
-        }
+        threadMessageMap.set(msg.threadId, msg.id)
       }
     }
 
     const now = new Date()
 
-    await db.transaction(async (tx) => {
-      // Upsert read status for each thread
-      await Promise.all(
-        threads.map(async (thread) => {
-          const latestMessageId = threadMessageMap.get(thread.id) ?? null
-
-          await tx
-            .insert(schema.ThreadReadStatus)
-            .values({
-              threadId: thread.id,
-              userId: targetUserId,
-              organizationId: this.organizationId,
-              isRead,
-              lastReadAt: isRead ? now : null,
-              lastSeenMessageId: isRead ? latestMessageId : null,
-            })
-            .onConflictDoUpdate({
-              target: [schema.ThreadReadStatus.threadId, schema.ThreadReadStatus.userId],
-              set: {
-                isRead,
-                lastReadAt: isRead ? now : null,
-                ...(isRead && { lastSeenMessageId: latestMessageId }),
-              },
-            })
-        })
+    // One multi-row upsert, not one statement per thread — a bulk mark-read of
+    // a full selection would otherwise hold hundreds of round trips open in a
+    // single transaction. `lastSeenMessageId` is per-row, so the update side
+    // reads it back off `excluded`.
+    await db
+      .insert(schema.ThreadReadStatus)
+      .values(
+        threads.map((thread) => ({
+          threadId: thread.id,
+          userId: targetUserId,
+          organizationId: this.organizationId,
+          isRead,
+          lastReadAt: isRead ? now : null,
+          lastSeenMessageId: isRead ? (threadMessageMap.get(thread.id) ?? null) : null,
+        }))
       )
-    })
+      .onConflictDoUpdate({
+        target: [schema.ThreadReadStatus.threadId, schema.ThreadReadStatus.userId],
+        set: {
+          isRead,
+          lastReadAt: isRead ? now : null,
+          ...(isRead && { lastSeenMessageId: sql`excluded."lastSeenMessageId"` }),
+        },
+      })
 
     // Counter deltas (post-commit): ±1 per thread that actually flipped, only
     // while the thread is OPEN (counts include only OPEN threads). Marking an
@@ -215,21 +217,25 @@ export class UnreadService {
     // Publish per-thread `thread:updated` with `{ isUnread, userId }`. The FE
     // filters by userId so only the affected user's tabs apply the patch.
     const realtime = getRealtimeService()
-    await Promise.allSettled(
-      threads.map((thread) =>
-        publishThreadUpdated(
-          realtime,
-          this.organizationId,
-          {
-            threadId: thread.id,
-            inboxId: thread.inboxId ?? null,
-            assigneeId: thread.assigneeId ?? null,
-            patch: { isUnread: !isRead, userId: targetUserId },
-          },
-          { excludeSocketId: this.socketId }
+    // Chunked so a bulk mark-read doesn't open one publish per selected thread
+    // all at once.
+    for (let i = 0; i < threads.length; i += 50) {
+      await Promise.allSettled(
+        threads.slice(i, i + 50).map((thread) =>
+          publishThreadUpdated(
+            realtime,
+            this.organizationId,
+            {
+              threadId: thread.id,
+              inboxId: thread.inboxId ?? null,
+              assigneeId: thread.assigneeId ?? null,
+              patch: { isUnread: !isRead, userId: targetUserId },
+            },
+            { excludeSocketId: this.socketId }
+          )
         )
       )
-    )
+    }
 
     // Mirror the read state to Gmail for personal channels — only the mailbox
     // owner's read state pushes (it's their mailbox; requireOwnerUserId filters

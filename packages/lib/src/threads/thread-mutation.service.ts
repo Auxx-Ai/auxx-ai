@@ -700,22 +700,26 @@ export class ThreadMutationService {
       }
       if (Object.keys(patch).length > 0) {
         const realtime = getRealtimeService()
-        await Promise.allSettled(
-          result.map((row) =>
-            publishThreadUpdated(
-              realtime,
-              this.organizationId,
-              {
-                threadId: row.id,
-                inboxId: row.inboxId ?? null,
-                previousInboxId: prevInboxIdById.get(row.id) ?? null,
-                assigneeId: row.assigneeId ?? null,
-                patch,
-              },
-              { excludeSocketId: this.socketId }
+        // The fan-out is one publish per thread; a 500-thread selection would
+        // otherwise open 500 concurrent publishes. Chunk to keep it bounded.
+        for (let i = 0; i < result.length; i += 50) {
+          await Promise.allSettled(
+            result.slice(i, i + 50).map((row) =>
+              publishThreadUpdated(
+                realtime,
+                this.organizationId,
+                {
+                  threadId: row.id,
+                  inboxId: row.inboxId ?? null,
+                  previousInboxId: prevInboxIdById.get(row.id) ?? null,
+                  assigneeId: row.assigneeId ?? null,
+                  patch,
+                },
+                { excludeSocketId: this.socketId }
+              )
             )
           )
-        )
+        }
       }
 
       if ('status' in dbUpdates || 'assigneeId' in dbUpdates || 'inboxId' in dbUpdates) {
