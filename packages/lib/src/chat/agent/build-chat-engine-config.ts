@@ -211,7 +211,9 @@ export async function buildChatEngineConfig(
   const callModel = createCallModel({
     organizationId,
     userId: agentUserId,
-    source: 'kopilot',
+    // Visitor-facing widget turns bill under their own label, not 'kopilot' —
+    // customer chat is the one surface an org cannot rate-limit by hand.
+    source: 'chat',
     sourceId: sessionId,
   })
 

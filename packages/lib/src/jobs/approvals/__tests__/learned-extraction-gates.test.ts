@@ -1,7 +1,7 @@
 // packages/lib/src/jobs/approvals/__tests__/learned-extraction-gates.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { learnedExtractionSkipReason } from '../learned-extraction-gates'
+import { hasHumanOutbound, learnedExtractionSkipReason } from '../learned-extraction-gates'
 
 function thread(
   overrides: Partial<Parameters<typeof learnedExtractionSkipReason>[0]> = {}
@@ -67,5 +67,23 @@ describe('learnedExtractionSkipReason', () => {
         })
       )
     ).toBe('already_extracted')
+  })
+})
+
+describe('hasHumanOutbound', () => {
+  it('is false when nobody replied', () => {
+    expect(hasHumanOutbound([])).toBe(false)
+  })
+
+  it('is false when every outbound message came from an agent', () => {
+    expect(hasHumanOutbound([{ authorUserType: 'AGENT' }, { authorUserType: 'AGENT' }])).toBe(false)
+  })
+
+  it('is true when a human replied alongside the agent', () => {
+    expect(hasHumanOutbound([{ authorUserType: 'AGENT' }, { authorUserType: 'USER' }])).toBe(true)
+  })
+
+  it('treats a provider-synced send (null author) as human', () => {
+    expect(hasHumanOutbound([{ authorUserType: null }])).toBe(true)
   })
 })

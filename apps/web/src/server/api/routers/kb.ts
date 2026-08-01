@@ -6,7 +6,14 @@ import { ArticleStatus } from '@auxx/database/enums'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
 import { NotFoundError } from '@auxx/lib/errors'
-import { articleToMarkdown, ensureLearnedKb, KBService, linkArticlesIntoKb } from '@auxx/lib/kb'
+import {
+  articleToMarkdown,
+  ensureLearnedKb,
+  getLearnedArticleDiff,
+  getLearnedProvenance,
+  KBService,
+  linkArticlesIntoKb,
+} from '@auxx/lib/kb'
 import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { and, count, eq } from 'drizzle-orm'
@@ -195,10 +202,13 @@ export const knowledgeBaseRouter = createTRPCRouter({
     if (!organizationId) {
       throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User organization context not found' })
     }
-    // Full — provisioning the org's AI Memory KB is a settings-adjacent action
-    // (doc 12 §3.1). No instance exists yet to key on, so gate on the coarse
-    // `knowledgeBase` Full rung (mirrors `create`).
-    ctx.capabilities.assert(PermissionKey.knowledgeBaseManage)
+    // Edit, not Full: this provisions ONE fixed, system-owned KB per org — it
+    // is not KB management, and AI Memory is org knowledge every teammate can
+    // read and correct (learned bundles likewise land unassigned in Today).
+    // Full would lock the entry point to admins while the Member baseline
+    // (`knowledgeBase: Edit`) is exactly the rung `upsert_learned_article`
+    // asserts to write a memory.
+    ctx.capabilities.assert(PermissionKey.knowledgeBaseEdit)
     await new FeaturePermissionService(ctx.db).requireAccess(
       organizationId,
       FeatureKey.learnedMemory
@@ -206,6 +216,51 @@ export const knowledgeBaseRouter = createTRPCRouter({
     const { kb } = await ensureLearnedKb({ db: ctx.db, organizationId })
     return { id: kb.id }
   }),
+
+  /**
+   * Diff a proposed AI-memory rewrite against the article as published, for the
+   * approval surfaces (Today card + in-chat card). A memory update replaces the
+   * whole body, so the reviewer needs to see what the merge DROPS — a rendered
+   * preview of the proposal alone cannot show that.
+   */
+  learnedArticleDiff: capabilityProcedure
+    .input(z.object({ articleId: z.string(), markdown: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const organizationId = getUserOrganizationId(ctx.session)
+      if (!organizationId) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'User organization context not found',
+        })
+      }
+      // Read-only over an article the viewer can already see in the memory
+      // editor; the Read rung is the right bar.
+      ctx.capabilities.assert(PermissionKey.knowledgeBaseView)
+      return getLearnedArticleDiff(ctx.db, {
+        organizationId,
+        articleId: input.articleId,
+        markdown: input.markdown,
+      })
+    }),
+
+  /**
+   * The conversations a memory article was learned from — the reader for
+   * `Article.learnedProvenance`. Answers "why does the AI believe this?", which
+   * is the question anyone asks before deleting a memory.
+   */
+  learnedProvenance: capabilityProcedure
+    .input(z.object({ articleId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const organizationId = getUserOrganizationId(ctx.session)
+      if (!organizationId) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'User organization context not found',
+        })
+      }
+      ctx.capabilities.assert(PermissionKey.knowledgeBaseView)
+      return getLearnedProvenance(ctx.db, { organizationId, articleId: input.articleId })
+    }),
 
   create: capabilityProcedure.input(kbCreateSchema).mutation(async ({ ctx, input }) => {
     const organizationId = getUserOrganizationId(ctx.session)

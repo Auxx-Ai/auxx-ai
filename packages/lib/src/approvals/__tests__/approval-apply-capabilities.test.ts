@@ -22,10 +22,12 @@ vi.mock('../../permissions/capabilities/get-capabilities', () => ({
  * exists to ask: does the tool body see a `CapabilityView`, and does that view
  * decide the outcome?
  */
-const { seenDeps, probeCapability, emptyCapability } = vi.hoisted(() => {
+const { seenDeps, probeCapability, emptyCapability, probeState } = vi.hoisted(() => {
   const seen: unknown[] = []
+  const state = { throwForbidden: false }
   return {
     seenDeps: seen,
+    probeState: state,
     emptyCapability: () => ({ page: '__global__', tools: [] }),
     probeCapability: (getDeps: () => { capabilities?: unknown }) => ({
       page: '__global__',
@@ -37,6 +39,12 @@ const { seenDeps, probeCapability, emptyCapability } = vi.hoisted(() => {
           execute: async () => {
             const deps = getDeps()
             seen.push(deps)
+            // How the real instance gates throw: `assertEditInstance` raises a
+            // ForbiddenError rather than returning success=false.
+            if (state.throwForbidden) {
+              const { ForbiddenError } = await import('../../errors')
+              throw new ForbiddenError('You do not have permission to edit this knowledge base.')
+            }
             const view = deps.capabilities as CapabilityView | undefined
             if (!view) return { success: false, error: 'no_capability_view' }
             if (!view.canEditEntity('def-a')) return { success: false, error: 'denied' }
@@ -113,13 +121,16 @@ function bundleRow() {
   }
 }
 
-function fakeDb() {
+function fakeDb(updateSpy?: () => void) {
   return {
     query: {
       AiSuggestion: { findFirst: async () => bundleRow() },
       EntityInstance: { findFirst: async () => undefined },
     },
-    update: () => chain([]),
+    update: () => {
+      updateSpy?.()
+      return chain([])
+    },
   } as any
 }
 
@@ -127,6 +138,7 @@ beforeEach(() => {
   capsByUser.clear()
   seenDeps.length = 0
   getCapabilitiesSpy.mockClear()
+  probeState.throwForbidden = false
 })
 
 describe('approveBundle — apply-time replay is bound by the APPROVER', () => {
@@ -168,5 +180,26 @@ describe('approveBundle — apply-time replay is bound by the APPROVER', () => {
     }
     // And it was denied by a real view, not by the absence of one.
     expect((seenDeps[0] as ToolDeps).capabilities).toBe(NONE_VIEW)
+  })
+
+  it('leaves the bundle FRESH when every action is blocked by permissions', async () => {
+    capsByUser.set(APPROVER, ALLOW_VIEW)
+    probeState.throwForbidden = true
+    const updateSpy = vi.fn()
+
+    const out = await approveBundle(fakeDb(updateSpy), {
+      bundleId: 'sug-1',
+      organizationId: ORG,
+      userId: APPROVER,
+    })
+
+    // A 403 says something about the approver, not the proposal — resolving the
+    // bundle here would let anyone without the rung destroy it by clicking
+    // Approve, with no way to get it back.
+    expect(Result.isOk(out)).toBe(false)
+    if (!Result.isOk(out)) {
+      expect(out.error.name).toBe('ForbiddenError')
+    }
+    expect(updateSpy).not.toHaveBeenCalled()
   })
 })

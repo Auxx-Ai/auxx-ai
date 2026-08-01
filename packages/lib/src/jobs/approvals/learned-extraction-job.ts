@@ -10,12 +10,26 @@ import { runLearnedExtraction } from '../../approvals/learned-extraction-runner'
 import { getCachedDefaultModel } from '../../cache/org-cache-helpers'
 import { FeaturePermissionService } from '../../permissions/feature-permission-service'
 import { FeatureKey } from '../../permissions/types'
+import { checkFixedWindowLimit } from '../../utils/rate-limiter/fixed-window'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
 import type { JobContext } from '../types'
-import { learnedExtractionSkipReason } from './learned-extraction-gates'
+import { hasHumanOutbound, learnedExtractionSkipReason } from './learned-extraction-gates'
+import { resolveLearnedRunPrincipal } from './learned-run-principal'
 
 const logger = createScopedLogger('job:learned-extraction')
+
+/**
+ * Extraction runs an org may spend per day. A guardrail against an inbox that
+ * archives hundreds of threads a day, not a billing control (credits are
+ * metered per call in `llm-adapter.ts`). Forced runs count toward the window
+ * but are never blocked by it — a human asking is worth a slot.
+ */
+export const LEARNED_EXTRACTION_DAILY_LIMIT = 100
+
+const DAY_MS = 24 * 60 * 60 * 1000
+/** Outbound messages sampled for the authorship gate. */
+const OUTBOUND_SAMPLE = 20
 
 export interface LearnedExtractionJobData {
   organizationId: string
@@ -25,6 +39,12 @@ export interface LearnedExtractionJobData {
    * `learnedExtractedAt` dedupe — an explicit ask always runs.
    */
   force?: boolean
+  /**
+   * The member who asked. Forced runs carry it so the run binds to THEIR
+   * capabilities and the proposal lands in THEIR Today feed, instead of being
+   * re-derived from a thread they may not be assigned to.
+   */
+  requestedByUserId?: string
 }
 
 /**
@@ -52,83 +72,124 @@ export async function enqueueLearnedExtraction(data: LearnedExtractionJobData): 
 
 /**
  * Learned-KB extraction — runs once per thread resolve (enqueued by
- * `ThreadMutationService` on transition to ARCHIVED). Cheap noise gates run
- * before any LLM call; most threads are skipped. A surviving thread gets one
- * capture-mode kopilot run whose proposed `upsert_learned_article` calls land
- * as a `triggerSource: 'learned-extraction'` AiSuggestion bundle in Today.
+ * `ThreadMutationService`) or on demand from "Remember this thread". Cheap
+ * row-local gates run before any LLM call; most threads are skipped. A
+ * surviving thread gets one capture-mode kopilot run whose proposed
+ * `upsert_learned_article` calls land as a `triggerSource: 'learned-extraction'`
+ * AiSuggestion bundle in Today.
  *
- * `Thread.learnedExtractedAt` is stamped after every successful run —
- * including [noop] — so a reopen→re-close with no new messages is skipped,
- * while a thread that accrues new conversation becomes eligible again. A
- * failed run does NOT stamp, so BullMQ's retry gets a clean slate.
+ * `Thread.learnedExtractedAt` is stamped ONLY after the model actually looked
+ * at the thread — including a `[noop]` verdict, since a thread that taught
+ * nothing shouldn't be re-read. Every pre-LLM exit (no principal, no anchor,
+ * daily cap) leaves the stamp alone: those are conditions that change, and a
+ * stamp would exclude the thread forever. A failed run doesn't stamp either, so
+ * BullMQ's retry gets a clean slate.
+ *
+ * Every exit funnels through `finish` so one structured line per invocation
+ * lands in the log — a dead pipeline and an idle one look identical otherwise.
  */
 export async function learnedExtractionJob(ctx: JobContext<LearnedExtractionJobData>) {
-  const { organizationId, threadId, force } = ctx.job.data
+  const { organizationId, threadId, force, requestedByUserId } = ctx.job.data
+  const startedAt = Date.now()
+
+  const finish = <T extends Record<string, unknown>>(outcome: string, result: T): T => {
+    logger.info('Learned extraction finished', {
+      organizationId,
+      threadId,
+      force: force ?? false,
+      outcome,
+      durationMs: Date.now() - startedAt,
+    })
+    return result
+  }
+  const skip = (reason: string) => finish(reason, { skipped: reason })
 
   const features = new FeaturePermissionService()
   const enabled = await features.hasAccess(organizationId, FeatureKey.learnedMemory)
-  if (!enabled) return { skipped: 'feature_disabled' }
+  if (!enabled) return skip('feature_disabled')
 
   const thread = await database.query.Thread.findFirst({
     where: and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, organizationId)),
   })
-  if (!thread) return { skipped: 'thread_not_found' }
+  if (!thread) return skip('thread_not_found')
 
   // Noise gates — all row-local; no LLM call unless they pass. A forced run
   // (explicit "remember this thread") bypasses them: the human is the gate.
   if (!force) {
     const skipReason = learnedExtractionSkipReason(thread)
-    if (skipReason) return { skipped: skipReason }
+    if (skipReason) return skip(skipReason)
 
-    // Require at least one outbound reply — a thread nobody answered teaches
-    // nothing about how we answer. (Human vs AI authorship isn't recorded on
-    // Message rows, so outbound presence is the v1 proxy.)
-    const outbound = await database.query.Message.findFirst({
-      where: and(
-        eq(schema.Message.threadId, threadId),
-        eq(schema.Message.organizationId, organizationId),
-        eq(schema.Message.isInbound, false)
-      ),
-      columns: { id: true },
+    // A thread nobody answered teaches nothing about how we answer — and one
+    // only an AI answered would teach us our own words back.
+    const outbound = await database
+      .select({ authorUserType: schema.User.userType })
+      .from(schema.Message)
+      .leftJoin(schema.User, eq(schema.User.id, schema.Message.createdById))
+      .where(
+        and(
+          eq(schema.Message.threadId, threadId),
+          eq(schema.Message.organizationId, organizationId),
+          eq(schema.Message.isInbound, false)
+        )
+      )
+      .limit(OUTBOUND_SAMPLE)
+    if (outbound.length === 0) return skip('no_outbound_reply')
+    if (!hasHumanOutbound(outbound)) return skip('ai_only')
+  }
+
+  // Per-org daily ceiling. Forced runs consume a slot but are never refused.
+  const window = await checkFixedWindowLimit({
+    key: `learned-extraction:${organizationId}:${new Date().toISOString().slice(0, 10)}`,
+    limit: LEARNED_EXTRACTION_DAILY_LIMIT,
+    windowMs: DAY_MS,
+  })
+  if (!window.allowed && !force) {
+    logger.warn('Learned extraction daily limit reached', {
+      organizationId,
+      threadId,
+      count: window.count,
+      limit: LEARNED_EXTRACTION_DAILY_LIMIT,
     })
-    if (!outbound) return { skipped: 'no_outbound_reply' }
+    return skip('daily_limit_reached')
   }
 
   const modelDefault = await getCachedDefaultModel(organizationId, ModelType.LLM)
-  if (!modelDefault) return { skipped: 'no_default_model' }
+  if (!modelDefault) return skip('no_default_model')
   const modelId = `${modelDefault.provider}:${modelDefault.model}`
 
-  const org = await database.query.Organization.findFirst({
-    where: eq(schema.Organization.id, organizationId),
-    columns: { systemUserId: true, createdById: true },
+  // Capture runs bind to a human member and refuse to run for anyone else, so
+  // the principal decides whether this thread can be learned from at all.
+  const principal = await resolveLearnedRunPrincipal({
+    db: database,
+    organizationId,
+    threadId,
+    assigneeId: thread.assigneeId,
+    requestedByUserId,
   })
-  // Bundle owner must be a HUMAN — threads are often assigned to AI agent
-  // pseudo-users (userType 'AGENT'), and Today only lists a member's own +
-  // unassigned bundles. Non-human assignee → unassigned (visible to all).
-  const humanAssigneeId = await resolveHumanUserId(thread.assigneeId)
-  const ownerUserId = humanAssigneeId ?? null
-  // The engine/LLM attribution user just needs to exist; system user is fine.
-  const runAsUserId = humanAssigneeId ?? org?.systemUserId ?? org?.createdById
-  if (!runAsUserId) return { skipped: 'no_owner' }
+  if (!principal) {
+    logger.warn('Learned extraction has no human principal', { organizationId, threadId })
+    return skip('no_human_principal')
+  }
 
   const anchor = await resolveAnchor(thread, organizationId)
-  if (!anchor) {
-    // No linked record to hang the bundle on — stamp so we don't re-evaluate
-    // this thread every reopen, and move on.
-    await stampExtractedAt(threadId)
-    return { skipped: 'no_anchor_record' }
-  }
+  if (!anchor) return skip('no_anchor_record')
 
   const callModel = createCallModel({
     organizationId,
-    userId: runAsUserId,
-    source: 'kopilot',
-    sourceId: 'headless-learned-extraction',
+    userId: principal.runAsUserId,
+    source: 'learned_extraction',
+    sourceId: threadId,
   })
 
   const result = await runLearnedExtraction(
     { db: database, callModel },
-    { organizationId, ownerUserId: runAsUserId, threadId, anchor, modelId }
+    {
+      organizationId,
+      ownerUserId: principal.runAsUserId,
+      threadId,
+      anchor,
+      modelId,
+    }
   )
   if (!result.ok) {
     logger.warn('Learned extraction run failed', {
@@ -142,18 +203,14 @@ export async function learnedExtractionJob(ctx: JobContext<LearnedExtractionJobD
   await stampExtractedAt(threadId)
 
   if (result.value.actions.length === 0) {
-    logger.info('Learned extraction noop', {
-      organizationId,
-      threadId,
-      noopReason: result.value.noopReason,
-    })
-    return { extracted: false, noopReason: result.value.noopReason }
+    await notifyForcedNoop({ organizationId, threadId, requestedByUserId, force })
+    return finish('noop', { extracted: false, noopReason: result.value.noopReason })
   }
 
   const insert = await createBundleFromHeadlessRun(database, {
     result: result.value,
     organizationId,
-    ownerUserId,
+    ownerUserId: principal.ownerUserId,
     entityInstanceId: anchor.entityInstanceId,
     entityDefinitionId: anchor.entityDefinitionId,
     threadId,
@@ -166,7 +223,7 @@ export async function learnedExtractionJob(ctx: JobContext<LearnedExtractionJobD
       threadId,
       error: insert.error.message,
     })
-    return { extracted: true, inserted: false }
+    return finish('bundle_conflict', { extracted: true, inserted: false })
   }
 
   logger.info('Learned extraction bundle created', {
@@ -175,10 +232,45 @@ export async function learnedExtractionJob(ctx: JobContext<LearnedExtractionJobD
     bundleId: insert.value?.id,
     actionCount: result.value.actions.length,
   })
-  return { extracted: true, inserted: insert.value !== undefined }
+  return finish('bundle_created', { extracted: true, inserted: insert.value !== undefined })
 }
 
 // ===== HELPERS =====
+
+/**
+ * Tell the requester when their explicit "Remember this thread" found nothing.
+ * A forced run feels like a foreground action but resolves in the background;
+ * without this it is indistinguishable from a broken pipeline — which is
+ * exactly how the dead-principal bug stayed invisible.
+ */
+async function notifyForcedNoop(params: {
+  organizationId: string
+  threadId: string
+  requestedByUserId?: string
+  force?: boolean
+}): Promise<void> {
+  const { organizationId, threadId, requestedByUserId, force } = params
+  if (!force || !requestedByUserId) return
+  try {
+    // Lazy: the notification service pulls the realtime barrel, which breaks
+    // module mocking for anything that imports this job statically.
+    const { NotificationService } = await import('../../notifications')
+    await new NotificationService(database).sendNotification({
+      type: 'SYSTEM_MESSAGE',
+      userId: requestedByUserId,
+      organizationId,
+      targetType: 'THREAD',
+      targetIds: { threadId },
+      message: 'Nothing new to remember from this conversation.',
+    })
+  } catch (error) {
+    logger.warn('Failed to notify forced-extraction noop', {
+      organizationId,
+      threadId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
 
 /**
  * Pick the record the bundle anchors to: the thread's primary entity when
@@ -219,16 +311,6 @@ async function resolveAnchor(
   })
   if (!instance || instance.archivedAt) return undefined
   return { entityInstanceId: instance.id, entityDefinitionId: instance.entityDefinitionId }
-}
-
-/** Resolve a user id to itself only when it belongs to a real human (userType 'USER'). */
-async function resolveHumanUserId(userId: string | null): Promise<string | null> {
-  if (!userId) return null
-  const user = await database.query.User.findFirst({
-    where: eq(schema.User.id, userId),
-    columns: { userType: true },
-  })
-  return user?.userType === 'USER' ? userId : null
 }
 
 async function stampExtractedAt(threadId: string): Promise<void> {

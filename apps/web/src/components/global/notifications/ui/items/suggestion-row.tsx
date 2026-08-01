@@ -106,11 +106,19 @@ export function SuggestionRow({
       setOpen(false)
     },
     onError: (error) => {
+      // FORBIDDEN = the approver lacks a permission the actions need. The
+      // bundle stayed FRESH server-side, so the row must stay too — someone
+      // with the rung can still approve it.
+      const blocked = error.data?.code === 'FORBIDDEN'
       toastError({
-        title: error.data?.code === 'CONFLICT' ? 'Out of date' : 'Approve failed',
+        title: blocked
+          ? 'You cannot approve this'
+          : error.data?.code === 'CONFLICT'
+            ? 'Out of date'
+            : 'Approve failed',
         description: error.message,
       })
-      resolve()
+      if (!blocked) resolve()
     },
   })
 

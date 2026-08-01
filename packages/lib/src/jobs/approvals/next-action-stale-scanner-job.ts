@@ -79,8 +79,7 @@ export async function nextActionStaleScannerJob(ctx: JobContext<NextActionStaleS
     const callModel = createCallModel({
       organizationId: org.id,
       userId: org.systemUserId ?? org.createdById ?? '',
-      source: 'kopilot',
-      sourceId: 'headless-stale-scanner',
+      source: 'stale_scanner',
     })
 
     for (const slug of SCANNED_ENTITY_SLUGS) {

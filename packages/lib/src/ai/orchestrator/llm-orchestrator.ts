@@ -225,14 +225,16 @@ export class LLMOrchestrator {
    * method does NOT call `UsageTrackingService.trackUsage` internally — the
    * generator's return value (`LLMInvocationResponse`) carries `usage`,
    * `providerType`, and `credentialSource`, and the caller must forward those
-   * to `UsageTrackingService.trackUsage` or `trackUsageBatch` to (a) record
-   * the `AiUsage` row and (b) deduct SYSTEM credits via `QuotaService`.
+   * to `UsageTrackingService.trackUsage` to (a) record the `AiUsage` row and
+   * (b) deduct SYSTEM credits via `QuotaService`.
    *
-   * The current callers (`agent-framework/llm-adapter.ts` → kopilot route +
-   * `process-agent-job.ts`) batch usage per turn, which is cheaper than
-   * per-chunk tracking inside the orchestrator. If you add a new direct
-   * `streamInvoke` caller, do not skip this step or SYSTEM credits won't be
-   * deducted.
+   * There is exactly ONE caller — `agent-framework/llm-adapter.ts` — and it
+   * meters every call as the call completes (including aborted and failed
+   * ones). That single choke point is deliberate: it is what keeps every agent
+   * surface billed without each runner remembering to drain usage, which is
+   * how the chat widget and the headless capture runs went unbilled before.
+   * Do not add a second direct `streamInvoke` caller without metering it, and
+   * do not re-add per-turn drains in the runners — they would double-bill.
    */
   async *streamInvoke(
     request: LLMInvocationRequest
@@ -255,6 +257,20 @@ export class LLMOrchestrator {
     } = await this.enforceQuotaGate(provider, model, organizationId, userId, {
       forceSystem: request.forceSystem ?? false,
     })
+
+    // Credential metadata up front, as a synthetic zero-length chunk
+    // (`chunkIndex: -1`). The gate already resolved it, but it would otherwise
+    // only reach the caller on the generator's RETURN value — which an aborted
+    // stream never sees, leaving `llm-adapter`'s abort-path billing unable to
+    // tell a SYSTEM call from a BYO one and charging 0 credits for tokens that
+    // were really spent. Empty `delta`, so chunk consumers are unaffected.
+    yield {
+      id: 'gate',
+      model,
+      content: '',
+      delta: '',
+      metadata: { chunkIndex: -1, totalLength: 0, providerType, credentialSource },
+    }
 
     try {
       // Build invocation parameters

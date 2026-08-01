@@ -15,8 +15,6 @@ import type { JobContext } from '../../jobs/types'
 import { docToText } from '../../tiptap'
 import { buildInstructionReferenceResolver } from '../kopilot/prompts/resolve-instruction-references'
 import type { TriggerContext, TriggerKind } from '../kopilot/prompts/trigger-context'
-import type { UsageTrackingRequest } from '../orchestrator/types'
-import { UsageTrackingService } from '../usage/usage-tracking-service'
 import { resolveAgentRunCapabilities } from './agent-run-capabilities'
 import { KopilotContextStore, readContextSlice } from './context'
 import { type AgentRuntimeDomain, buildEffectiveAgentRuntime } from './effective-runtime'
@@ -150,7 +148,9 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   const callModel = createCallModel({
     organizationId,
     userId,
-    source: domain,
+    // `domain` is narrowed to 'kopilot' | 'builder' above; spelled out because
+    // `AiUsage.source` is a fixed vocabulary, not a passthrough of job data.
+    source: domain === 'builder' ? 'builder' : 'kopilot',
     sourceId: sessionId,
     forceSystem: domain === 'builder',
   })
@@ -190,45 +190,18 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   // over any stale `context.page` the caller carried in. See the matching order
   // in `apps/web/src/app/api/kopilot/stream/route.ts`.
   const sessionContext = { ...(context ?? {}), page }
-  const usageEntries: UsageTrackingRequest[] = []
 
-  // Drain one engine pass: publish every event, accumulate per-call usage, and
-  // return the final assistant text. Called once for a plain turn, or once per
-  // stepper phase by `runProcedureTurn` (each re-drain bills its own iterations).
+  // Drain one engine pass: publish every event and return the final assistant
+  // text. Called once for a plain turn, or once per stepper phase by
+  // `runProcedureTurn`. Usage is NOT drained here — `createCallModel` bills each
+  // LLM call as it completes (see `llm-adapter.ts`); draining `event.iterations`
+  // for billing again would double-charge.
   const drain = async (gen: AsyncGenerator<AgentEvent>): Promise<string> => {
     let text = ''
     for await (const event of gen) {
       if (signal?.aborted) {
         engine.interrupt()
         break
-      }
-
-      // Per-LLM-call billing breakdown lives on `event.iterations` (one entry
-      // per agent iteration). Iterate to push one usage record per call with
-      // correct SYSTEM-vs-CUSTOM credit gating — BYOK customers consume no
-      // credits. Drain on both `paused` and `finished`: pre-pause iterations
-      // ride on `paused`, post-resume iterations on `finished`. Each event
-      // carries only segment-fresh iterations so no double-billing.
-      if (
-        (event.type === 'assistant-message-finished' ||
-          event.type === 'assistant-message-paused') &&
-        event.iterations?.length
-      ) {
-        for (const it of event.iterations) {
-          usageEntries.push({
-            organizationId,
-            userId,
-            provider: it.provider,
-            model: it.model,
-            usage: it.usage,
-            timestamp: new Date(),
-            source: 'agent',
-            sourceId: sessionId,
-            providerType: it.providerType,
-            credentialSource: it.credentialSource,
-            // creditsUsed omitted: metered from USD COGS per call (0 for BYO).
-          })
-        }
       }
 
       if (event.type === 'assistant-message-finished') {
@@ -320,26 +293,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     domainState: finalState.domainState as Record<string, unknown>,
   })
 
-  // 8. Batch usage tracking
-  if (usageEntries.length > 0) {
-    logger.info('Tracking agent usage batch', {
-      sessionId,
-      entries: usageEntries.length,
-      totalTokens: usageEntries.reduce((sum, e) => sum + (e.usage.total_tokens || 0), 0),
-    })
-    try {
-      const usageService = new UsageTrackingService()
-      await usageService.trackUsageBatch(usageEntries)
-    } catch (err) {
-      logger.error('Failed to track usage batch', {
-        sessionId,
-        entries: usageEntries.length,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
-  }
-
-  // 9. Publish terminal event
+  // 8. Publish terminal event
   await publisher.publish({ type: 'done' })
 
   // 10. If this run was kicked off by a trigger, record a fire on the row.
