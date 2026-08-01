@@ -562,8 +562,8 @@ writeFileSync(
       raw: raws.map((c) => ({ ...c, list: c.list })),
     },
     (k, v) => (k === 'key' ? undefined : v),
-    1,
-  ),
+    1
+  )
 )
 
 console.log(`files scanned:        ${files.length}`)
