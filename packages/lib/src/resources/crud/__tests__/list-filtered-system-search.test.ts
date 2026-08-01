@@ -229,7 +229,7 @@ describe('countSystemResource — free-text search', () => {
       search: 'mcp attio',
     })
 
-    expect(n).toBe(7)
+    expect(n.count).toBe(7)
     expect(render(captured.wheres[0])).toContain('to_tsvector(')
   })
 
@@ -243,7 +243,7 @@ describe('countSystemResource — free-text search', () => {
       search: 'mcp attio',
     })
 
-    expect(n).toBe(7)
+    expect(n.count).toBe(7)
     expect(render(captured.wheres[0])).not.toContain('to_tsvector(')
   })
 })

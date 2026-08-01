@@ -29,8 +29,12 @@ import {
 } from '../../dashboards/client'
 import { ForbiddenError, UnprocessableEntityError } from '../../errors'
 import { BaseType } from '../../workflow-engine/core/types'
-import { extractRequiredRelatedEntities } from '../crud/unified-handler-queries'
+import {
+  extractRequiredRelatedEntities,
+  reportDroppedConditions,
+} from '../crud/unified-handler-queries'
 import { isMailLensTableId, MAIL_LENS_REFUSAL } from '../picker/mail-lens-tables'
+import type { DroppedCondition } from '../query-builder/base-condition-builder'
 import { canonicalizeSystemConditions } from '../query-builder/canonicalize-system-fields'
 import {
   type EntityQueryContext,
@@ -251,6 +255,13 @@ type PreparedAggregate = {
   fetchCap: number
   timezone: string
   limit: number
+  /**
+   * Filter conditions that produced no SQL. Returned rather than only logged:
+   * a dropped widget filter makes the rendered number too HIGH, and a log line
+   * cannot tell the person looking at the chart. Projected onto the result by
+   * `computeAggregate` / `computeKpi`.
+   */
+  dropped: DroppedCondition[]
 }
 
 async function prepareAggregate(
@@ -349,6 +360,7 @@ async function prepareAggregate(
   const filters = resolvedFilters
 
   let conditionsWhere: SQL | undefined
+  let dropped: DroppedCondition[] = []
   if (query.source.kind === 'entity') {
     const relatedEntityFields: Record<string, ResourceField[]> = {}
     for (const relatedDefId of extractRequiredRelatedEntities(filters, rootFields)) {
@@ -364,6 +376,7 @@ async function prepareAggregate(
     }
     const built = entityConditionBuilder.buildGroupedQueryWithDiagnostics(filters, context)
     conditionsWhere = built.sql
+    dropped = built.droppedConditions
     if (built.droppedConditions.length > 0) {
       // Structured so "how often is a widget filter silently ignored" is a query.
       // A widget deliberately still renders (wider) rather than erroring.
@@ -394,6 +407,7 @@ async function prepareAggregate(
       rootDefId as TableId
     )
     conditionsWhere = built.sql
+    dropped = built.droppedConditions
     if (built.droppedConditions.length > 0) {
       // Same shape as the entity branch above — a dropped widget filter makes a
       // KPI/chart number too HIGH, so "how often is a widget filter silently
@@ -452,6 +466,7 @@ async function prepareAggregate(
     fetchCap,
     timezone,
     limit: groupBy?.limit ?? limit,
+    dropped,
   })
 }
 
@@ -633,13 +648,19 @@ async function computeAggregate(
     fetchCap,
     timezone,
     limit,
+    dropped,
   } = prepared.value
+
+  // Every value below describes a set the widget's filters did NOT narrow as
+  // asked when this is non-empty. Reported, not thrown — the widget still
+  // renders, as it did before.
+  const droppedReport = reportDroppedConditions(dropped)
 
   const rows = await executeAggregate(db, buildSql(windowBounds))
 
   if (!groupBy) {
     const value = toNumber(rows[0]?.value)
-    return ok({ groups: [], totalValue: value, hasMoreGroups: false })
+    return ok({ groups: [], totalValue: value, hasMoreGroups: false, ...droppedReport })
   }
 
   const overflow = rows.length > fetchCap
@@ -730,7 +751,7 @@ async function computeAggregate(
   const totalValue = sorted.reduce((sum, g) => sum + g.value, 0)
   const hasMoreGroups = overflow || sorted.length > limit
 
-  return ok({ groups: sorted.slice(0, limit), totalValue, hasMoreGroups })
+  return ok({ groups: sorted.slice(0, limit), totalValue, hasMoreGroups, ...droppedReport })
 }
 
 /**
@@ -791,7 +812,11 @@ async function computeKpi(
 ): Promise<Result<KpiResult, Error>> {
   const prepared = await prepareAggregate(organizationId, resolvedFilters, base)
   if (prepared.isErr()) return err(prepared.error)
-  const { buildSql, windowBounds, timezone } = prepared.value
+  const { buildSql, windowBounds, timezone, dropped } = prepared.value
+
+  // A KPI is the worst case for a silently dropped filter: one big number, no
+  // rows to eyeball, and a trend arrow computed from the same widened set.
+  const droppedReport = reportDroppedConditions(dropped)
 
   const trendWindows = trend
     ? deriveTrendWindows(windowBounds ?? {}, trend.compare, timezone)
@@ -799,7 +824,7 @@ async function computeKpi(
 
   if (!trendWindows) {
     const rows = await executeAggregate(db, buildSql(windowBounds))
-    return ok({ value: toNumber(rows[0]?.value) })
+    return ok({ value: toNumber(rows[0]?.value), ...droppedReport })
   }
 
   const [currentRows, previousRows] = await Promise.all([
@@ -809,5 +834,6 @@ async function computeKpi(
   return ok({
     value: toNumber(currentRows[0]?.value),
     previousValue: toNumber(previousRows[0]?.value),
+    ...droppedReport,
   })
 }

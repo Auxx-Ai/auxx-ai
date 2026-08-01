@@ -31,6 +31,7 @@ vi.mock('../target', () => ({
   })),
 }))
 
+import { UnprocessableEntityError } from '../../../../../errors'
 import type { CapabilityView } from '../../../../../permissions/capabilities/capability-view'
 import { Level } from '../../../../../permissions/capabilities/registry'
 import type { ToolContext } from '../../../../agent-framework/tool-context'
@@ -118,5 +119,33 @@ describe('preview_table_view — read enforcement', () => {
 
     expect(JSON.stringify(result)).not.toContain('_kopilotRecordView')
     expect(JSON.stringify(result)).not.toContain('matched')
+  })
+})
+
+// The count is best-effort here — a failed `COUNT(*)` has always degraded to
+// "no match count" and still previewed. An ALL-DROPPED filter set is a
+// different animal: it is not a missing number, it is the tool being told that
+// the view it is about to push onto the user's table narrows nothing, and that
+// the count it would print is the definition's full row count.
+describe('preview_table_view — an all-dropped filter set is a refusal, not a missing count', () => {
+  it('refuses rather than previewing a filter set that narrows nothing', async () => {
+    countSpy.mockRejectedValue(new UnprocessableEntityError('None of the 2 filter condition(s)…'))
+
+    const result = await runTool(makeCapabilities())
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('filter condition')
+    // No preview side-channel: applying it would leave the user looking at an
+    // unfiltered table the assistant just called filtered.
+    expect(JSON.stringify(result)).not.toContain('_kopilotRecordView')
+  })
+
+  it('still degrades to a countless preview for any OTHER count failure', async () => {
+    countSpy.mockRejectedValue(new Error('statement timeout'))
+
+    const result = await runTool(makeCapabilities())
+
+    expect(result.success).toBe(true)
+    expect(JSON.stringify(result)).toContain('_kopilotRecordView')
   })
 })

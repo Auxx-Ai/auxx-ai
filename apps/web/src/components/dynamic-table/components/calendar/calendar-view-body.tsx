@@ -7,10 +7,12 @@ import type { EventCalendarItem, SlotCreateIntent } from '@auxx/ui/components/ev
 import { EventCalendar } from '@auxx/ui/components/event-calendar'
 import { useCallback } from 'react'
 import { useCalendarRange } from '~/components/calendar/core/use-calendar-range'
+import { useResourceFields } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useTableConfig } from '../../context/table-config-context'
 import { useViewMetadata } from '../../context/view-metadata-context'
 import { useCalendarConfig, useTableFilters } from '../../stores/store-selectors'
+import { DroppedFiltersNotice } from '../dropped-filters-notice'
 import { useCalendarEvents } from './use-calendar-events'
 
 /**
@@ -31,12 +33,10 @@ export function CalendarViewBody() {
   // quantizes the week stream), so the hook's Monday default is fine unwired.
   const { date, setDate, range, handleRangeChange } = useCalendarRange('month')
 
-  const { events, dateField, endField } = useCalendarEvents(
-    entityDefinitionId,
-    calendarConfig,
-    range,
-    viewFilters
-  )
+  const { events, dateField, endField, droppedConditions, droppedConditionCount } =
+    useCalendarEvents(entityDefinitionId, calendarConfig, range, viewFilters)
+
+  const { fields } = useResourceFields(entityDefinitionId)
 
   // Drag to reschedule (plan §3.3) — `event` is the pre-drag original item (its
   // `start`/`end` are untouched), `newStart`/`newEnd` are the drop's computed,
@@ -117,6 +117,19 @@ export function CalendarViewBody() {
         hideToolbar
         className='flex-1 min-h-0'
       />
+      {/* The calendar branch of `DynamicView` renders no `DynamicTableFooter`,
+          so this is its own strip — present only when something was dropped,
+          which is the overwhelmingly uncommon case. A widened calendar has no
+          count to sit beside; the tell is chips outside the month window. */}
+      {droppedConditionCount > 0 && (
+        <div className='shrink-0 border-t px-4 py-1.5 text-sm'>
+          <DroppedFiltersNotice
+            droppedConditions={droppedConditions}
+            droppedConditionCount={droppedConditionCount}
+            fields={fields}
+          />
+        </div>
+      )}
     </div>
   )
 }

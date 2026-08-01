@@ -78,6 +78,8 @@ vi.mock('../../query-builder/system-condition-builder', () => ({
 import { systemConditionBuilder } from '../../query-builder/system-condition-builder'
 import { RESOURCE_FIELD_REGISTRY } from '../../registry/field-registry'
 import {
+  countEntityInstances,
+  countSystemResource,
   inspectFilterConditions,
   MAX_REPORTED_DROPPED_CONDITIONS,
   queryEntityInstanceIdsPaged,
@@ -279,6 +281,158 @@ describe('reporting does not change the query', () => {
 
     expect(r.total).toBe(6470)
     expect(r.droppedConditionCount).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE COUNT LANE
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The counts build their WHERE through the same dropping path as the list and
+// used to return a bare `number`, which is the worse half of the same failure:
+// a widened LIST shows the extra rows, a widened COUNT is one number that reads
+// exactly as authoritative when it is the unfiltered total. Unread badges,
+// "matches N records" previews and every `countOnly` AI answer come out of here.
+//
+// Same projection, same cap, same exact count as the list lane — asserted
+// against it rather than restated, because two shapes is one more than a UI can
+// absorb. Plus the one field the list does NOT carry: `allConditionsDropped`,
+// the discriminant the AI boundary refuses on.
+
+const countEntityBase = {
+  entityDefinitionId: 'edf000000000000000000001',
+  organizationId: 'org_1',
+  filters: [],
+}
+const countSystemBase = {
+  tableId: 'article' as const,
+  organizationId: 'org_1',
+  filters: [],
+}
+
+/** The single `[{ count: n }]` row a `SELECT count(*)` resolves to. */
+const counted = (n: number) => [{ count: n }]
+
+describe('the count lane reports what it could not apply', () => {
+  it('stays byte-identical on a clean count — no drop key appears at all', async () => {
+    const { db } = fakeDb(counted(42))
+    const r = await countEntityInstances({ ...countEntityBase, db })
+
+    expect(r.count).toBe(42)
+    // `allConditionsDropped` is always present (the shape is new, there is no
+    // additive contract to keep); the two drop keys are absent, not undefined.
+    expect(Object.keys(r).sort()).toEqual(['allConditionsDropped', 'count'])
+    expect(r.allConditionsDropped).toBe(false)
+  })
+
+  it('omits both keys on a clean system count too', async () => {
+    const { db } = fakeDb(counted(3))
+    const r = await countSystemResource({ ...countSystemBase, db })
+
+    expect(Object.keys(r).sort()).toEqual(['allConditionsDropped', 'count'])
+  })
+
+  it('reports drops on countEntityInstances', async () => {
+    setDrops(entityBuild, [drop(1)])
+    const { db } = fakeDb(counted(6470))
+    const r = await countEntityInstances({ ...countEntityBase, db })
+
+    // The number is still the widened one — the count fails OPEN exactly like
+    // the list. It just no longer does it silently.
+    expect(r.count).toBe(6470)
+    expect(r.droppedConditionCount).toBe(1)
+    expect(r.droppedConditions).toEqual([
+      {
+        conditionId: 'cond_1',
+        fieldRef: 'article:field_1',
+        operator: 'equals',
+        reason: 'unresolved-field-or-operator',
+      },
+    ])
+  })
+
+  it('reports drops on countSystemResource', async () => {
+    setDrops(systemBuild, [drop(1)])
+    const { db } = fakeDb(counted(9))
+    const r = await countSystemResource({ ...countSystemBase, db })
+
+    expect(r.count).toBe(9)
+    expect(r.droppedConditionCount).toBe(1)
+  })
+
+  it('produces the SAME notice a list would for the same drop', async () => {
+    setDrops(entityBuild, [drop(4)])
+    setDrops(systemBuild, [drop(4)])
+
+    const listed = await queryEntityInstanceIdsPaged({ ...entityBase, db: fakeDb(ids('i0')).db })
+    const entityCount = await countEntityInstances({
+      ...countEntityBase,
+      db: fakeDb(counted(1)).db,
+    })
+    const systemCount = await countSystemResource({
+      ...countSystemBase,
+      db: fakeDb(counted(1)).db,
+    })
+
+    // Four call sites, one payload shape. A UI annotating "12 unread" must not
+    // have to reshape what it renders under a table.
+    expect(entityCount.droppedConditions).toEqual(listed.droppedConditions)
+    expect(systemCount.droppedConditions).toEqual(listed.droppedConditions)
+    expect(entityCount.droppedConditionCount).toBe(listed.droppedConditionCount)
+  })
+
+  it('strips `detail` — builder internals never ride a count either', async () => {
+    setDrops(systemBuild, [drop(1)])
+    const { db } = fakeDb(counted(5))
+    const r = await countSystemResource({ ...countSystemBase, db })
+
+    expect(Object.keys(r.droppedConditions?.[0] as object).sort()).toEqual([
+      'conditionId',
+      'fieldRef',
+      'operator',
+      'reason',
+    ])
+    expect(JSON.stringify(r)).not.toContain('SystemConditionBuilder')
+  })
+
+  it(`caps the array at ${MAX_REPORTED_DROPPED_CONDITIONS} but keeps the count EXACT`, async () => {
+    const many = Array.from({ length: MAX_REPORTED_DROPPED_CONDITIONS + 9 }, (_, i) => drop(i))
+    setDrops(entityBuild, many)
+    const { db } = fakeDb(counted(100))
+    const r = await countEntityInstances({ ...countEntityBase, db })
+
+    expect(r.droppedConditions).toHaveLength(MAX_REPORTED_DROPPED_CONDITIONS)
+    // Counting the truncated array would understate a warning about a number
+    // that is already overstated. Twice wrong, in the same direction.
+    expect(r.droppedConditionCount).toBe(MAX_REPORTED_DROPPED_CONDITIONS + 9)
+  })
+
+  it('carries `allConditionsDropped` — and it is FALSE for the genuine no-filter count', async () => {
+    // The whole point of the flag: `sql: undefined` looks identical for "no
+    // filters" and "every filter dropped", and only the second may refuse.
+    const { db } = fakeDb(counted(6470))
+    const unfiltered = await countEntityInstances({ ...countEntityBase, db })
+    expect(unfiltered.allConditionsDropped).toBe(false)
+
+    setDrops(entityBuild, [drop(1)])
+    const dropped = await countEntityInstances({
+      ...countEntityBase,
+      db: fakeDb(counted(6470)).db,
+    })
+    expect(dropped.allConditionsDropped).toBe(true)
+  })
+
+  it('is FALSE when some conditions survived — a partial drop still answers', async () => {
+    setDrops(entityBuild, [drop(1)])
+    entityBuild.requestedConditions = 3
+    entityBuild.allConditionsDropped = false
+
+    const { db } = fakeDb(counted(88))
+    const r = await countEntityInstances({ ...countEntityBase, db })
+
+    expect(r.allConditionsDropped).toBe(false)
+    expect(r.droppedConditionCount).toBe(1)
+    expect(r.count).toBe(88)
   })
 })
 

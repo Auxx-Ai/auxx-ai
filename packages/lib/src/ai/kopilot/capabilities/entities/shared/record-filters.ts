@@ -10,6 +10,8 @@ import {
   OPERATOR_DEFINITIONS,
   type Operator,
 } from '../../../../../conditions/operator-definitions'
+import { UnprocessableEntityError } from '../../../../../errors'
+import type { CountFilteredResult } from '../../../../../resources/crud'
 import { getFieldOptions } from '../../../../../resources/registry/option-helpers'
 import type { Resource } from '../../../../../resources/registry/types'
 import { isAiBlockedResource } from './ai-entity-visibility'
@@ -59,6 +61,13 @@ export type QueryWarning =
   | { kind: 'multi_hop_dot_notation'; field: string; hint: string }
   | { kind: 'entity_name_normalized'; from: string; to: string; hint: string }
   | { kind: 'invalid_value'; field: string; operator: string; value: unknown; hint: string }
+  /**
+   * A filter that passed {@link validateFilters} and then produced no SQL in the
+   * query builder. Distinct from every other kind here: those are front-door
+   * rejections the LLM can fix from the hint alone, this one means the number
+   * the tool is about to report counts MORE records than were asked for.
+   */
+  | { kind: 'filter_not_applied'; field: string; operator: string; hint: string }
 
 /** Zod mirror of {@link QueryWarning} for tool output schemas. */
 export const QueryWarningSchema = z.object({
@@ -292,6 +301,62 @@ export function validateFilters(
   }
 
   return { valid, warnings }
+}
+
+/** A dropped condition's field reference as one readable token. */
+function describeFieldRef(fieldRef: string | string[]): string {
+  return Array.isArray(fieldRef) ? fieldRef.join('.') : fieldRef
+}
+
+/**
+ * The AI boundary's verdict on a count whose filters did not all compile.
+ *
+ * `validateFilters` is the front door and catches malformed input; this is the
+ * back door, where a filter that looked fine produced no SQL anyway (a retired
+ * field, an operator the field's builder cannot express, an unresolvable
+ * `valueSource`). The list lane treats that as "wider, and said so" — correct
+ * there, because the extra rows are visible on screen. A count has no such tell:
+ * it is one number that reads exactly as authoritative when it is the unfiltered
+ * total, and an agent will state it as fact.
+ *
+ * So the rule is asymmetric, and deliberately so:
+ *
+ * - **Every** condition dropped ⇒ throw. The answer would not be a wider answer
+ *   to the question asked, it would be the answer to a different question
+ *   ("how many tickets exist" for "how many open tickets"). This is the same
+ *   line `inspectFilterConditions` draws, and `allConditionsDropped` is the
+ *   same discriminant — `false` for the genuine no-filter case, so an unfiltered
+ *   `countOnly: true` still answers.
+ * - **Some** conditions dropped ⇒ answer, with a warning per drop. The count is
+ *   still too high, but the surviving conditions did narrow it, and the model
+ *   can see exactly which one to fix.
+ *
+ * @param resourceLabel - Human label of the counted resource, for the message.
+ * @returns One `filter_not_applied` warning per reported drop; empty when clean.
+ * @throws UnprocessableEntityError when every requested condition was dropped.
+ */
+export function assertCountFiltersApplied(
+  count: CountFilteredResult,
+  resourceLabel: string
+): QueryWarning[] {
+  const notices = count.droppedConditions ?? []
+  const named = notices.map((d) => `'${describeFieldRef(d.fieldRef)}' ${d.operator}`).join(', ')
+
+  if (count.allConditionsDropped) {
+    throw new UnprocessableEntityError(
+      `None of the ${count.droppedConditionCount ?? notices.length} filter condition(s) could be applied${
+        named ? ` (${named})` : ''
+      }, so this count would be the UNFILTERED total for "${resourceLabel}" reported as a filtered one. ` +
+        'Call list_entity_fields to check field ids and operators, then retry.'
+    )
+  }
+
+  return notices.map((d) => ({
+    kind: 'filter_not_applied' as const,
+    field: describeFieldRef(d.fieldRef),
+    operator: d.operator,
+    hint: `Filter "${describeFieldRef(d.fieldRef)} ${d.operator}" could not be applied (${d.reason}) and was ignored — the count above is HIGHER than the filters ask for. Call list_entity_fields to check the field id and operator.`,
+  }))
 }
 
 /**
