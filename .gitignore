@@ -82,3 +82,11 @@ cdk.out
 
 # dev workflow run logs
 .logs/
+
+# Root deno.lock — an artifact, not a project lockfile. There is no root
+# deno.json; the only Deno project is apps/lambda, which has its own config and
+# is checked with `deno check`. Deno writes a lockfile into the CWD, so running
+# any deno command from the repo root regenerates this and it shows up as a
+# spurious dependency diff. Anchored to `/` on purpose: a real
+# apps/lambda/deno.lock would be worth tracking.
+/deno.lock
