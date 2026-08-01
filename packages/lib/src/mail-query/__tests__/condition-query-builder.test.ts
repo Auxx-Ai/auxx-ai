@@ -170,6 +170,48 @@ describe('buildConditionGroupsQuery — UI callers keep the old contract', () =>
 })
 
 // ═══════════════════════════════════════════════════════════════════════════
+// `tags` — the key every registry-driven surface sends
+//
+// `THREAD_FIELDS` declares the field as `tags`; this builder's own older name
+// is `tag`, still emitted by `context-to-conditions`. Until 2026-08-01 only
+// `tag` had a case, so a registry-driven filter — the workflow Find node's
+// panel among them — silently dropped and returned the whole visible mailbox.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('tag / tags', () => {
+  const tagCondition = (fieldId: string) =>
+    group([{ id: 'c1', fieldId, operator: 'is', value: 't1' }])
+
+  it('builds `tags` identically to `tag`', () => {
+    const byNewName = buildConditionGroupsQueryWithDiagnostics(
+      tagCondition('tags'),
+      'organization-1',
+      viewer()
+    )
+    const byOldName = buildConditionGroupsQueryWithDiagnostics(
+      tagCondition('tag'),
+      'organization-1',
+      viewer()
+    )
+
+    expect(byNewName.droppedConditions).toEqual([])
+    expect(toSql(byNewName.sql)).toBe(toSql(byOldName.sql))
+    expect(toParams(byNewName.sql)).toEqual(toParams(byOldName.sql))
+  })
+
+  it('narrows rather than falling back to the whole mailbox', () => {
+    const result = buildConditionGroupsQueryWithDiagnostics(
+      tagCondition('tags'),
+      'organization-1',
+      viewer()
+    )
+
+    expect(result.allConditionsDropped).toBe(false)
+    expect(toSql(result.sql)).not.toBe(baseScopeSql())
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Free text: tokenization (step 2.2 / R2a) over the ranked builder (step 3.1 / R2b)
 //
 // The tokenization guarantees from 2.2 are unchanged — one clause per term,
