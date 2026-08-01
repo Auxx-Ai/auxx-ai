@@ -326,13 +326,6 @@ export class MetricsCollector {
       })
     }
 
-    if (metrics.errorRate > 0.1) {
-      this.logger.warn('High error rate detected', {
-        errorRate: metrics.errorRate,
-        failedRequests: metrics.failedRequests,
-      })
-    }
-
     // Check error rate
     const errorRate = this.getErrorRate()
     if (errorRate > 0.1) {

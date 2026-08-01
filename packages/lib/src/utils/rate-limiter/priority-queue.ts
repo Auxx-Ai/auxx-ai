@@ -27,7 +27,8 @@ export class PriorityQueue<T = any> {
     if (this.heap.length === 0) return undefined
 
     const result = this.heap[0]
-    const end = this.heap.pop()!
+    const end = this.heap.pop()
+    if (!result || !end) return undefined
 
     if (this.heap.length > 0) {
       this.heap[0] = end
@@ -43,10 +44,12 @@ export class PriorityQueue<T = any> {
    */
   private bubbleUp(index: number): void {
     const element = this.heap[index]
+    if (!element) return
 
     while (index > 0) {
       const parentIndex = Math.floor((index - 1) / 2)
       const parent = this.heap[parentIndex]
+      if (!parent) return
 
       if (this.compare(element, parent) >= 0) break
 
@@ -63,6 +66,7 @@ export class PriorityQueue<T = any> {
   private bubbleDown(index: number): void {
     const length = this.heap.length
     const element = this.heap[index]
+    if (!element) return
 
     while (true) {
       const leftChildIndex = 2 * index + 1
@@ -70,21 +74,25 @@ export class PriorityQueue<T = any> {
       let swapIndex = -1
 
       if (leftChildIndex < length) {
-        if (this.compare(this.heap[leftChildIndex], element) < 0) {
+        const leftChild = this.heap[leftChildIndex]
+        if (leftChild && this.compare(leftChild, element) < 0) {
           swapIndex = leftChildIndex
         }
       }
 
       if (rightChildIndex < length) {
+        const rightChild = this.heap[rightChildIndex]
         const compareWith = swapIndex === -1 ? element : this.heap[swapIndex]
-        if (this.compare(this.heap[rightChildIndex], compareWith) < 0) {
+        if (rightChild && compareWith && this.compare(rightChild, compareWith) < 0) {
           swapIndex = rightChildIndex
         }
       }
 
       if (swapIndex === -1) break
 
-      this.heap[index] = this.heap[swapIndex]
+      const swap = this.heap[swapIndex]
+      if (!swap) return
+      this.heap[index] = swap
       this.heap[swapIndex] = element
       index = swapIndex
     }
@@ -151,10 +159,12 @@ export class PriorityQueue<T = any> {
     if (index === -1) return false
 
     const request = this.heap[index]
+    if (!request) return false
     request.reject(new Error('Request cancelled'))
 
     // Remove the element and reheapify
-    const end = this.heap.pop()!
+    const end = this.heap.pop()
+    if (!end) return false
     if (index < this.heap.length) {
       this.heap[index] = end
       // Try both bubble up and down to maintain heap property
@@ -209,8 +219,11 @@ export class PriorityQueue<T = any> {
     const index = this.heap.findIndex((req) => req.id === id)
     if (index === -1) return false
 
-    const oldPriority = this.heap[index].priority
-    this.heap[index].priority = newPriority
+    const request = this.heap[index]
+    if (!request) return false
+
+    const oldPriority = request.priority
+    request.priority = newPriority
 
     // Reheapify based on whether priority increased or decreased
     if (newPriority < oldPriority) {
