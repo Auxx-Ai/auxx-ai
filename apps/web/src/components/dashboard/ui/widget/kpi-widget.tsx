@@ -18,6 +18,7 @@ import { Info, Minus, TrendingDown, TrendingUp } from 'lucide-react'
 import { useKpiData } from '../../hooks/use-kpi-data'
 import { useMetricFieldMeta } from '../../hooks/use-metric-field'
 import { computeTrendDelta, formatMetricValue, formatTrendPercent } from '../../lib/format-value'
+import { WidgetDroppedFilters } from './widget-dropped-filters'
 import { WidgetError, WidgetSkeleton, WidgetUnconfigured } from './widget-states'
 
 export function KpiWidget({
@@ -70,6 +71,14 @@ export function KpiWidget({
           </SimpleTooltip>
         )
       )}
+
+      {/* The single-number case: nothing on this tile hints that a filter was
+          ignored, and the trend arrow is computed off the same widened set. */}
+      <WidgetDroppedFilters
+        source={config.source}
+        droppedConditions={data.droppedConditions}
+        droppedConditionCount={data.droppedConditionCount}
+      />
     </div>
   )
 }

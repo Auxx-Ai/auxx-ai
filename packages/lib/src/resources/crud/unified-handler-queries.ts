@@ -174,6 +174,47 @@ export interface ListFilteredResult {
   droppedConditionCount?: number
 }
 
+/**
+ * Result of a count-only query — {@link countEntityInstances} /
+ * {@link countSystemResource}.
+ *
+ * These used to return a bare `number`, and that was the last blind spot in the
+ * fail-open: both build their `WHERE` clause through the *same* dropping path as
+ * the list, so an unread badge or a "how many match" answer could silently widen
+ * with nothing anywhere able to tell. A count is in fact the worse case — a list
+ * that widens shows the extra rows, a count that widens is a single number that
+ * looks exactly as authoritative as a correct one.
+ *
+ * `droppedConditions` / `droppedConditionCount` carry the same caller-facing
+ * projection, under the same cap and the same exact-count rule, as
+ * {@link ListFilteredResult}: a UI must not have to branch on whether it counted
+ * or listed.
+ */
+export interface CountFilteredResult {
+  /** Rows matching the WHERE clause that actually ran. */
+  count: number
+  /**
+   * Conditions the builder could not compile, and therefore did not apply.
+   * Present only when at least one was dropped — **a non-empty list means
+   * {@link count} is HIGHER than the caller asked for.** Capped at
+   * {@link MAX_REPORTED_DROPPED_CONDITIONS}.
+   */
+  droppedConditions?: DroppedFilterNotice[]
+  /** Uncapped total behind {@link droppedConditions}. Present exactly when it is. */
+  droppedConditionCount?: number
+  /**
+   * `true` only when conditions were requested and **none** of them produced
+   * SQL — i.e. {@link count} is the unfiltered total wearing a filtered label.
+   * `false` for the genuine no-filter case, so a caller can refuse on this alone
+   * (see {@link import('../../ai/kopilot/capabilities/entities/shared/record-filters').assertCountFiltersApplied}).
+   *
+   * Deliberately absent from {@link ListFilteredResult}: the list lane reports
+   * and renders, the AI count lane refuses, and only the latter needs the
+   * discriminant.
+   */
+  allConditionsDropped: boolean
+}
+
 /** The caller-facing projection of a build's drop diagnostics, or `{}` when clean. */
 type DroppedConditionReport = Pick<
   ListFilteredResult,
@@ -186,8 +227,13 @@ type DroppedConditionReport = Pick<
  * Spread into a list result: `{ ids, hasMore, ...reportDroppedConditions(dropped) }`.
  * An empty input yields `{}`, so the two absent keys never appear on a clean
  * response and no existing consumer sees a shape change.
+ *
+ * Exported for the aggregate engine (`resources/aggregate/run-aggregate.ts`),
+ * which has its own builder call sites and must report drops in the SAME shape
+ * under the SAME cap — a second, hand-rolled projection there is how the cap and
+ * the exact-count rule drift apart.
  */
-function reportDroppedConditions(dropped: DroppedCondition[]): DroppedConditionReport {
+export function reportDroppedConditions(dropped: DroppedCondition[]): DroppedConditionReport {
   if (dropped.length === 0) return {}
   return {
     droppedConditionCount: dropped.length,
@@ -284,6 +330,13 @@ async function buildEntityInstanceQueryParts(params: {
    * {@link ListFilteredResult.droppedConditions}.
    */
   dropped: DroppedCondition[]
+  /**
+   * `true` only when conditions were requested and none survived. Forwarded from
+   * the builder rather than re-derived from `dropped.length`, which cannot tell
+   * "no filters" from "every filter dropped" — the two produce the same empty
+   * WHERE. Only the count path reads it; see {@link CountFilteredResult}.
+   */
+  allConditionsDropped: boolean
 }> {
   const { organizationId, entityDefinitionId, filters, sorting } = params
   const search = params.search?.trim() || undefined
@@ -332,7 +385,12 @@ async function buildEntityInstanceQueryParts(params: {
         ? [desc(recordSearchRank(search)), desc(schema.EntityInstance.updatedAt)]
         : undefined
 
-  return { whereClause, orderByClauses, dropped: built.droppedConditions }
+  return {
+    whereClause,
+    orderByClauses,
+    dropped: built.droppedConditions,
+    allConditionsDropped: built.allConditionsDropped,
+  }
 }
 
 /**
@@ -626,6 +684,11 @@ export async function queryEntityInstanceIdsPaged(params: {
  * Takes the same `search` as {@link queryEntityInstanceIdsPaged} so a caller
  * counting "how many rows would this list show" cannot silently count the
  * unsearched set.
+ *
+ * Reports dropped conditions exactly as the paged query does — see
+ * {@link CountFilteredResult}. Like the paged query it **fails open**: a count
+ * behind a retired field still answers, just wider, and says so. Callers that
+ * must not answer wider (the AI tools) refuse on `allConditionsDropped`.
  */
 export async function countEntityInstances(params: {
   db: Database
@@ -634,10 +697,10 @@ export async function countEntityInstances(params: {
   filters: ConditionGroup[]
   /** Free-text search, ANDed into the WHERE clause exactly as the page query does. */
   search?: string
-}): Promise<number> {
+}): Promise<CountFilteredResult> {
   const { db, entityDefinitionId, organizationId, filters } = params
 
-  const { whereClause } = await buildEntityInstanceQueryParts({
+  const { whereClause, dropped, allConditionsDropped } = await buildEntityInstanceQueryParts({
     organizationId,
     entityDefinitionId,
     filters,
@@ -657,7 +720,13 @@ export async function countEntityInstances(params: {
       )
     )
 
-  return Number(result[0]?.count ?? 0)
+  return {
+    count: Number(result[0]?.count ?? 0),
+    allConditionsDropped,
+    // Same projection, same cap, same exact count as the list lane — a dropped
+    // condition makes this number too HIGH and that must be sayable.
+    ...reportDroppedConditions(dropped),
+  }
 }
 
 /**
@@ -801,7 +870,7 @@ export async function countSystemResource(params: {
   filters: ConditionGroup[]
   /** Free-text search, ANDed into the WHERE clause exactly as the page query does. */
   search?: string
-}): Promise<number> {
+}): Promise<CountFilteredResult> {
   const { db, tableId, organizationId, filters } = params
 
   assertNotMailLensTable(tableId)
@@ -815,7 +884,11 @@ export async function countSystemResource(params: {
   // would report the WIDER set the page no longer shows.
   const fields = await getCachedResourceFields(organizationId, tableId)
 
-  const { sql: whereClause } = buildSystemWhereClause(tableId, organizationId, filters, fields)
+  const {
+    sql: whereClause,
+    dropped,
+    allConditionsDropped,
+  } = buildSystemWhereClause(tableId, organizationId, filters, fields)
   const { searchWhere } = buildSystemSearchParts(tableId, params.search)
 
   const result = await db
@@ -823,7 +896,14 @@ export async function countSystemResource(params: {
     .from(tableSchema)
     .where(and(eq(tableSchema.organizationId, organizationId), whereClause, searchWhere))
 
-  return Number(result[0]?.count ?? 0)
+  return {
+    count: Number(result[0]?.count ?? 0),
+    allConditionsDropped,
+    // Identical shape to the EntityInstance twin — the KB articles table's
+    // cuid-addressed filters drop on THIS lane, so a widened count here is not
+    // hypothetical.
+    ...reportDroppedConditions(dropped),
+  }
 }
 
 /**
@@ -895,7 +975,12 @@ function buildSystemWhereClause(
   organizationId: string,
   filters: ConditionGroup[],
   fields: ResourceField[]
-): { sql: SQL<unknown> | undefined; dropped: DroppedCondition[] } {
+): {
+  sql: SQL<unknown> | undefined
+  dropped: DroppedCondition[]
+  /** See {@link CountFilteredResult.allConditionsDropped} — only the count path reads it. */
+  allConditionsDropped: boolean
+} {
   const canonicalFilters = canonicalizeSystemConditions(filters, tableId, fields)
   const built = systemConditionBuilder.buildGroupedQueryWithDiagnostics(canonicalFilters, tableId)
 
@@ -910,7 +995,11 @@ function buildSystemWhereClause(
     })
   }
 
-  return { sql: built.sql, dropped: built.droppedConditions }
+  return {
+    sql: built.sql,
+    dropped: built.droppedConditions,
+    allConditionsDropped: built.allConditionsDropped,
+  }
 }
 
 /**

@@ -25,6 +25,7 @@ import { formatMetricValue, formatMetricValueCompact } from '../../lib/format-va
 import { BarChartWidget } from './bar-chart-widget'
 import { LineChartWidget } from './line-chart-widget'
 import { PieChartWidget } from './pie-chart-widget'
+import { WidgetDroppedFilters } from './widget-dropped-filters'
 import { WidgetEmpty, WidgetError, WidgetSkeleton, WidgetUnconfigured } from './widget-states'
 
 type GroupedChartConfig = BarChartConfig | LineChartConfig | PieChartConfig
@@ -118,6 +119,13 @@ export function ChartWidget({
           Top {rows.length} shown
         </p>
       )}
+      {/* A dropped widget filter does not add visible rows here — it inflates
+          every bar. This strip is the only tell. */}
+      <WidgetDroppedFilters
+        source={config.source}
+        droppedConditions={data.droppedConditions}
+        droppedConditionCount={data.droppedConditionCount}
+      />
     </div>
   )
 }

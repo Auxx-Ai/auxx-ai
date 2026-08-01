@@ -1,5 +1,6 @@
 // packages/lib/src/ai/kopilot/capabilities/record-views/tools/preview-record-view.ts
 
+import { UnprocessableEntityError } from '../../../../../errors'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 import { buildViewConfig, type ViewSpec } from '../build-view-config'
@@ -66,7 +67,15 @@ Examples:
           filters: built.validFilters,
           logicalOperator: built.logicalOperator,
         })
-      } catch {
+      } catch (error) {
+        // An all-dropped filter set is a REFUSAL, not a missing count: the
+        // preview would push filters onto the user's table that narrow nothing
+        // and report the definition's full row count as the match. Every other
+        // failure keeps the pre-existing best-effort behaviour — the count is a
+        // nicety, the preview is the tool's actual job.
+        if (error instanceof UnprocessableEntityError) {
+          return { success: false, output: null, error: error.message }
+        }
         matched = undefined
       }
 

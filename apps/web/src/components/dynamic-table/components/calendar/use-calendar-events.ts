@@ -4,7 +4,7 @@
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { getOptionColorHex } from '@auxx/lib/custom-fields/client'
 import { formatToDisplayValue, formatToRawValue } from '@auxx/lib/field-values/client'
-import type { ResourceField } from '@auxx/lib/resources/client'
+import type { DroppedFilterNotice, ResourceField } from '@auxx/lib/resources/client'
 import { toRecordId } from '@auxx/lib/resources/client'
 import { toResourceFieldId } from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
@@ -48,6 +48,46 @@ function buildRangeFilterGroup(dateFieldId: string, range: DateRange): Condition
   }
 }
 
+/** Stable empty array — a fresh `[]` per render would churn every consumer's memo. */
+const NO_DROPPED_CONDITIONS: DroppedFilterNotice[] = []
+
+/** One page's slice of the dropped-filter report, as `record.listFiltered` returns it. */
+type DroppedFilterPage = {
+  droppedConditions?: DroppedFilterNotice[]
+  droppedConditionCount?: number
+}
+
+/**
+ * Fold the per-page dropped-filter reports the drain loop collects into one.
+ *
+ * Every page compiles the SAME filters against the same fields, so every page
+ * reports the same drops — but this does not *assume* that. Concatenating would
+ * turn one ignored filter into "10 filters ignored" purely as a function of how
+ * many pages the month needed, which is the same class of wrong number the
+ * notice exists to stop, so notices are deduped by `conditionId`.
+ *
+ * The count is the MAX rather than a sum for the matching reason: each page's
+ * `droppedConditionCount` is already that page's UNCAPPED total, so summing
+ * would multiply it — and the max still exceeds the deduped array whenever the
+ * server cap truncated the notices.
+ */
+export function mergeDroppedFilterPages(pages: DroppedFilterPage[]): {
+  droppedConditions: DroppedFilterNotice[]
+  droppedConditionCount: number
+} {
+  const byConditionId = new Map<string, DroppedFilterNotice>()
+  let droppedConditionCount = 0
+
+  for (const page of pages) {
+    for (const dropped of page.droppedConditions ?? []) {
+      if (!byConditionId.has(dropped.conditionId)) byConditionId.set(dropped.conditionId, dropped)
+    }
+    droppedConditionCount = Math.max(droppedConditionCount, page.droppedConditionCount ?? 0)
+  }
+
+  return { droppedConditions: [...byConditionId.values()], droppedConditionCount }
+}
+
 /**
  * Record ids on the calendar's date axis within `range`, honoring the view's own saved
  * filters (`viewFilters`) plus an injected range condition group. Pure `(entityDefinitionId,
@@ -55,14 +95,25 @@ function buildRangeFilterGroup(dateFieldId: string, range: DateRange): Condition
  * "source" for the personal calendar would reuse this shape unchanged).
  *
  * A range query doesn't fit `useRecordList`'s infinite-query shape (the range itself changes
- * under the cursor), so this drains `record.listFiltered` offset pages directly.
+ * under the cursor), so this drains `record.listFiltered` offset pages directly — which is
+ * also why the dropped-filter report has to be **aggregated** here rather than read off one
+ * page; see the drain loop.
+ *
+ * The injected range group matters for the report: if `after`/`before` on the configured date
+ * field ever fail to compile, every record on the axis shows regardless of the month being
+ * viewed. That is the one drop on this surface a user would otherwise read as a data bug.
  */
 export function useCalendarRecordIds(
   entityDefinitionId: string | undefined,
   config: CalendarViewConfig | undefined,
   range: DateRange,
   viewFilters: ConditionGroup[]
-): { ids: string[]; isLoading: boolean } {
+): {
+  ids: string[]
+  isLoading: boolean
+  droppedConditions: DroppedFilterNotice[]
+  droppedConditionCount: number
+} {
   const utils = api.useUtils()
   const dateFieldId = config?.dateFieldId
 
@@ -83,6 +134,9 @@ export function useCalendarRecordIds(
     ],
     queryFn: async () => {
       const ids: string[] = []
+      // Collected per page and folded once — see `mergeDroppedFilterPages` for
+      // why this dedupes rather than concatenates.
+      const droppedPages: DroppedFilterPage[] = []
       let offset = 0
       for (let page = 0; page < MAX_PAGES; page++) {
         const result = await utils.record.listFiltered.fetch({
@@ -92,16 +146,22 @@ export function useCalendarRecordIds(
           offset,
         })
         ids.push(...result.ids)
+        droppedPages.push(result)
         if (!result.hasMore) break
         offset += result.ids.length
       }
-      return ids
+      return { ids, ...mergeDroppedFilterPages(droppedPages) }
     },
     enabled: Boolean(entityDefinitionId && dateFieldId),
     staleTime: 30_000,
   })
 
-  return { ids: query.data ?? [], isLoading: query.isFetching }
+  return {
+    ids: query.data?.ids ?? [],
+    isLoading: query.isFetching,
+    droppedConditions: query.data?.droppedConditions ?? NO_DROPPED_CONDITIONS,
+    droppedConditionCount: query.data?.droppedConditionCount ?? 0,
+  }
 }
 
 /**
@@ -125,11 +185,24 @@ export function useCalendarEvents(
   dateField: ResourceField | undefined
   /** The resolved end-date field, if `config.endDateFieldId` is set. */
   endField: ResourceField | undefined
+  /**
+   * Filter conditions the server could not compile, deduped across the drained
+   * pages. Non-empty ⇒ the calendar is showing MORE than the view's filters (or
+   * the month window) ask for.
+   */
+  droppedConditions: DroppedFilterNotice[]
+  /** Uncapped total behind {@link droppedConditions}. */
+  droppedConditionCount: number
 } {
   const { fields } = useResourceFields(entityDefinitionId)
   const { resource } = useResource(entityDefinitionId)
 
-  const { ids, isLoading } = useCalendarRecordIds(entityDefinitionId, config, range, viewFilters)
+  const { ids, isLoading, droppedConditions, droppedConditionCount } = useCalendarRecordIds(
+    entityDefinitionId,
+    config,
+    range,
+    viewFilters
+  )
 
   const dateField = useMemo(
     () => fields?.find((f) => f.id === config?.dateFieldId),
@@ -271,5 +344,5 @@ export function useCalendarEvents(
     primaryField,
   ])
 
-  return { events, isLoading, dateField, endField }
+  return { events, isLoading, dateField, endField, droppedConditions, droppedConditionCount }
 }

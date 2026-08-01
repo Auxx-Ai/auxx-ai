@@ -17,6 +17,7 @@ import type {
   WidgetFieldRef,
   WidgetSource,
 } from '../../dashboards/client'
+import type { DroppedFilterNotice } from '../crud/unified-handler-queries'
 import type { ResourceField } from '../registry/field-types'
 
 // ── Query contract (input) ──────────────────────────────────────────────────
@@ -66,16 +67,34 @@ export type AggregateGroup = {
   series?: Array<{ key: string | null; label: string; value: number }>
 }
 
+/**
+ * Widget filter conditions the builder could not compile, and therefore did not
+ * apply. Present only when at least one dropped.
+ *
+ * **On an aggregate a dropped filter does not widen a list, it inflates a
+ * number** — the chart bar or KPI reads too HIGH, with nothing on screen to say
+ * so. The engine still renders (a stored widget naming a retired field must not
+ * blank out the dashboard), so this is the only channel that can tell a viewer.
+ *
+ * Same caller-facing projection, same cap, same exact `droppedConditionCount`
+ * past the cap as `ListFilteredResult` — a UI must not branch on which engine
+ * produced the number it is annotating.
+ */
+type WidgetDroppedFilters = {
+  droppedConditions?: DroppedFilterNotice[]
+  droppedConditionCount?: number
+}
+
 export type AggregateResult = {
   groups: AggregateGroup[]
   /** Sum of all group values (before the limit slice). Not meaningful for avg/percent ops. */
   totalValue: number
   /** True when more groups existed than the requested limit. */
   hasMoreGroups: boolean
-}
+} & WidgetDroppedFilters
 
 /** `previousValue` filled by the trend run; absent when the window is unbounded. */
-export type KpiResult = { value: number; previousValue?: number }
+export type KpiResult = { value: number; previousValue?: number } & WidgetDroppedFilters
 
 // ── Resolved shapes (internal — builders consume these) ─────────────────────
 

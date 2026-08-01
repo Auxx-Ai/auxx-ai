@@ -191,7 +191,7 @@ describe('every other system table is unaffected', () => {
     const { db, select } = leakyDb()
     await expect(
       countSystemResource({ db, tableId: 'article', organizationId: 'org_1', filters: [] })
-    ).resolves.toBe(3)
+    ).resolves.toMatchObject({ count: 3 })
     expect(select).toHaveBeenCalled()
   })
 })

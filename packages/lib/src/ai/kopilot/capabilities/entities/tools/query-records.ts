@@ -16,6 +16,7 @@ import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { blockedEntityError } from '../shared/ai-entity-visibility'
 import {
+  assertCountFiltersApplied,
   convertToConditionGroup,
   type QueryWarning,
   QueryWarningSchema,
@@ -123,6 +124,7 @@ Response shape:
 - returned_count: number of items in this page
 - total_matching: total records that match the filters
 - warnings[]: present only when a filter was dropped (unknown field/operator, invalid option value, etc.). Read the hint and retry with the fix.
+- countOnly: if NONE of your filters could be applied the tool errors instead of returning the unfiltered total; if only some were dropped you get the count plus a warning per ignored filter.
 
 Operator notes:
 - "is not X" matches records without a value too (including unset). To exclude only set values ≠ X, combine "not empty" AND "is not X".
@@ -293,7 +295,7 @@ Examples:
 
       // Count-only mode — short-circuit: run just `SELECT COUNT(*)`, skip id fetch + hydration.
       if (countOnly) {
-        const total = isSystemResource(entityDefId)
+        const counted = isSystemResource(entityDefId)
           ? await countSystemResource({
               db,
               tableId: entityDefId as TableId,
@@ -307,11 +309,28 @@ Examples:
               filters: conditionGroups,
             })
 
+        // The query lane fails OPEN and reports; this boundary refuses when
+        // nothing survived — "6,470" for "how many open tickets" is worse than
+        // an error, because the model states it as fact. A partial drop still
+        // answers, with one warning per ignored condition. `assertCountFiltersApplied`
+        // throws an `AuxxError`; the tool's own idiom for a refusal the caller
+        // caused is `success: false`, same as the branches above, so it is
+        // translated rather than allowed to surface as a thrown tool.
+        try {
+          warnings.push(...assertCountFiltersApplied(counted, resource.label))
+        } catch (error) {
+          return {
+            success: false,
+            output: { warnings },
+            error: error instanceof Error ? error.message : String(error),
+          }
+        }
+
         return {
           success: true,
           output: {
             entityType: resource.label,
-            total_matching: total,
+            total_matching: counted.count,
             warnings: warnings.length > 0 ? warnings : undefined,
           },
         }

@@ -191,7 +191,7 @@ describe('countEntityInstances — free-text search', () => {
     const { db, captured } = fakeDb(total(7))
     const n = await countEntityInstances({ ...base, db, search: 'acme' })
 
-    expect(n).toBe(7)
+    expect(n.count).toBe(7)
     expect(render(captured.wheres[0])).toContain('to_tsvector(')
   })
 
@@ -199,7 +199,7 @@ describe('countEntityInstances — free-text search', () => {
     const { db, captured } = fakeDb(total(42))
     const n = await countEntityInstances({ ...base, db })
 
-    expect(n).toBe(42)
+    expect(n.count).toBe(42)
     expect(render(captured.wheres[0])).not.toContain('to_tsvector(')
   })
 })

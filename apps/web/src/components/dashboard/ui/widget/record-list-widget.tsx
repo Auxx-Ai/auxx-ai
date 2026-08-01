@@ -19,6 +19,8 @@ import { toRecordId } from '@auxx/lib/resources/client'
 import type { RecordId } from '@auxx/types/resource'
 import { useCallback, useMemo } from 'react'
 import { DynamicTable } from '~/components/dynamic-table'
+import { DroppedFiltersNotice } from '~/components/dynamic-table/components/dropped-filters-notice'
+import { useResourceFields } from '~/components/resources'
 import { type RecordListRow, useRecordListColumns } from '../../hooks/use-record-list-columns'
 import { useRecordListData } from '../../hooks/use-record-list-data'
 import { WidgetEmpty, WidgetError, WidgetSkeleton, WidgetUnconfigured } from './widget-states'
@@ -37,10 +39,21 @@ export function RecordListWidget({
   /** Opens the record in the dashboard's page-level docked/overlay drawer. */
   onOpenRecord?: (recordId: RecordId) => void
 }) {
-  const { ids, entityDefinitionId, total, isLoading, isError, error } = useRecordListData(
-    config,
-    widgetId
-  )
+  const {
+    ids,
+    entityDefinitionId,
+    total,
+    droppedConditions,
+    droppedConditionCount,
+    isLoading,
+    isError,
+    error,
+  } = useRecordListData(config, widgetId)
+
+  // Only to name the offending field in the notice's tooltip — the fields are
+  // already loaded for this def by the column builder below, so this is a cache
+  // read, not a second fetch.
+  const { fields } = useResourceFields(entityDefinitionId)
 
   const openRecord = useCallback(
     (instanceId: string) => onOpenRecord?.(toRecordId(entityDefinitionId, instanceId)),
@@ -92,6 +105,14 @@ export function RecordListWidget({
 
       <p className='shrink-0 border-t pt-1.5 text-muted-foreground text-xs'>
         Showing {rows.length} of {total}
+        {/* Beside the count on purpose — `total` is exactly what a stored
+            widget filter naming a retired field inflates. Renders nothing in
+            the normal case. */}
+        <DroppedFiltersNotice
+          droppedConditions={droppedConditions}
+          droppedConditionCount={droppedConditionCount}
+          fields={fields}
+        />
       </p>
     </div>
   )

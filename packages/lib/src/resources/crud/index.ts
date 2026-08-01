@@ -23,6 +23,7 @@ export { UnifiedCrudHandler } from './unified-handler'
 // Mutation utilities (for advanced use cases)
 export type { CreateEntityResult, MutationContext } from './unified-handler-mutations'
 export type {
+  CountFilteredResult,
   DroppedFilterNotice,
   ListAllFieldInfo,
   ListAllInput,
