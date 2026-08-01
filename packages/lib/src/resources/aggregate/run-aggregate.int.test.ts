@@ -26,7 +26,35 @@ const h = vi.hoisted(() => ({
   agents: [] as unknown[],
   groups: [] as unknown[],
   aggCache: new Map<string, { result: unknown; computedAt: number }>(),
+  /** `logger.warn` calls made by the `aggregate-engine` scope only. */
+  warnings: [] as Array<{ message: string; meta: Record<string, unknown> | undefined }>,
 }))
+
+// Partial mock: `@auxx/logger`'s barrel registers sinks at module load, so a full
+// replacement breaks whichever file loads it first. Every other scope keeps the
+// real logger — only `aggregate-engine`'s `warn` is teed into `h.warnings`,
+// because "a dropped widget filter is still REPORTED" is a behaviour under test
+// (a silently ignored filter makes a KPI number too high).
+vi.mock('@auxx/logger', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@auxx/logger')>()
+  return {
+    ...actual,
+    createScopedLogger: (
+      scope: string,
+      options?: Parameters<typeof actual.createScopedLogger>[1]
+    ) => {
+      const real = actual.createScopedLogger(scope, options)
+      if (scope !== 'aggregate-engine') return real
+      return {
+        ...real,
+        warn: (message: string, ...args: unknown[]) => {
+          h.warnings.push({ message, meta: args[0] as Record<string, unknown> | undefined })
+          real.warn(message, ...args)
+        },
+      }
+    },
+  }
+})
 
 vi.mock('../../cache', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
@@ -68,6 +96,7 @@ function makeField(
     relationship?: Record<string, unknown>
     isSystem?: boolean
     dbColumn?: string
+    systemAttribute?: string
   }
 ): ResourceField {
   return {
@@ -81,6 +110,7 @@ function makeField(
     relationship: args.relationship,
     isSystem: args.isSystem,
     dbColumn: args.dbColumn,
+    systemAttribute: args.systemAttribute,
     capabilities: caps,
   } as ResourceField
 }
@@ -949,5 +979,159 @@ describe('runAggregate — system source', () => {
       })
       expect(kpi._unsafeUnwrapErr()).toBeInstanceOf(ForbiddenError)
     }
+  })
+})
+
+// ── System-source filters addressed by the merged CustomField cuid ───────────
+//
+// The filter surfaces address a field on a system resource by the org's merged
+// `CustomField` cuid, while `SystemConditionBuilder` resolves against
+// `RESOURCE_FIELD_REGISTRY['article']`, which is keyed by the STATIC key
+// ('status'). Untranslated, the condition never resolved and was DROPPED — and a
+// dropped filter does not narrow, so the widget answered with the unfiltered
+// total. `prepareAggregate` now runs `canonicalizeSystemConditions` over the
+// filters first, against the same merged `rootFields` it already loaded.
+//
+// Asserted through counts against real rows, never through SQL strings: 3
+// articles exist, 2 are PUBLISHED, so "did the filter apply" is the difference
+// between 2 and 3 and the pre-fix behaviour is a failing 3.
+
+describe('runAggregate — system-source filters addressed by CustomField cuid', () => {
+  /** The org's materialized `CustomField` row id for the static `article:status` field. */
+  const STATUS_CUID = 'cf_article_status_00000001'
+  /** A cuid that matches no merged field — e.g. a widget saved against a retired one. */
+  const UNKNOWN_CUID = 'cf_retired_field_000000001'
+
+  /**
+   * 3 articles (2 PUBLISHED, 1 DRAFT) plus the merged field shape
+   * `mergeSystemAndCustomFields` produces for a system resource: `id` is the DB
+   * `CustomField.id`, `key` stays the static registry key.
+   */
+  async function seedArticles() {
+    h.aggCache.clear()
+    h.warnings.length = 0
+    h.fieldsByDef.clear()
+
+    const org = await createTestOrganization()
+    const user = await createTestUser()
+    const kbRows = await db()
+      .insert(schema.KnowledgeBase)
+      .values({
+        organizationId: org.id,
+        name: 'kb',
+        slug: `kb-${generateId().slice(0, 8)}`,
+        createdById: user.id,
+        updatedAt: new Date(),
+      })
+      .returning()
+    const kb = kbRows[0]!
+
+    for (const [title, status] of [
+      ['a', 'PUBLISHED'],
+      ['b', 'PUBLISHED'],
+      ['c', 'DRAFT'],
+    ] as const) {
+      await db().insert(schema.Article).values({
+        title,
+        organizationId: org.id,
+        homeKnowledgeBaseId: kb.id,
+        status,
+        updatedAt: new Date(),
+      })
+    }
+
+    h.fieldsByDef.set('article', [
+      makeField('article', {
+        id: STATUS_CUID,
+        key: 'status',
+        type: BaseType.ENUM,
+        fieldType: 'SINGLE_SELECT',
+        dbColumn: 'status',
+        systemAttribute: 'article_status',
+        isSystem: true,
+      }),
+    ])
+
+    return org
+  }
+
+  const statusFilter = (fieldRef: string): AggregateQuery['filters'] => [
+    {
+      id: 'g1',
+      logicalOperator: 'AND',
+      conditions: [{ id: 'c1', fieldId: fieldRef, operator: 'is', value: 'PUBLISHED' }],
+    },
+  ]
+
+  const countArticles = (orgId: string, filters?: AggregateQuery['filters']) =>
+    runAggregate(db(), orgId, undefined, {
+      source: { kind: 'system', tableId: 'article' },
+      metric: { op: 'count' },
+      timezone: 'UTC',
+      filters,
+    })
+
+  it('narrows on a `<defId>:<cuid>` filter — the table filter builder shape', async () => {
+    const org = await seedArticles()
+
+    expect((await countArticles(org.id))._unsafeUnwrap().totalValue).toBe(3)
+    const filtered = await countArticles(
+      org.id,
+      statusFilter(toResourceFieldId('article', STATUS_CUID))
+    )
+    expect(filtered._unsafeUnwrap().totalValue).toBe(2)
+    expect(h.warnings).toEqual([])
+  })
+
+  it('narrows on a bare cuid too — the records searchbar shape', async () => {
+    const org = await seedArticles()
+
+    const filtered = await countArticles(org.id, statusFilter(STATUS_CUID))
+    expect(filtered._unsafeUnwrap().totalValue).toBe(2)
+    expect(h.warnings).toEqual([])
+  })
+
+  it('still narrows when the filter already names the static key', async () => {
+    const org = await seedArticles()
+
+    // Idempotence where it matters: stored widgets hold both shapes.
+    expect((await countArticles(org.id, statusFilter('status')))._unsafeUnwrap().totalValue).toBe(2)
+    expect(
+      (await countArticles(org.id, statusFilter('article:status')))._unsafeUnwrap().totalValue
+    ).toBe(2)
+    expect(h.warnings).toEqual([])
+  })
+
+  it('narrows a KPI the same way — runKpi shares prepareAggregate', async () => {
+    const org = await seedArticles()
+
+    const kpi = await runKpi(db(), org.id, undefined, {
+      base: {
+        source: { kind: 'system', tableId: 'article' },
+        metric: { op: 'count' },
+        timezone: 'UTC',
+        filters: statusFilter(STATUS_CUID),
+      },
+    })
+    expect(kpi._unsafeUnwrap().value).toBe(2)
+  })
+
+  it('an unresolvable cuid still fails open, and says so', async () => {
+    const org = await seedArticles()
+
+    // Deliberate contract for a widget: render WIDER rather than error. The
+    // canonicalizer returns an unknown ref unchanged precisely so the builder
+    // keeps dropping it visibly instead of compiling a confident guess.
+    const result = await countArticles(org.id, statusFilter(UNKNOWN_CUID))
+    expect(result._unsafeUnwrap().totalValue).toBe(3)
+
+    expect(h.warnings).toHaveLength(1)
+    expect(h.warnings[0]?.message).toBe('Dropped widget filter conditions')
+    expect(h.warnings[0]?.meta).toMatchObject({
+      entityDefinitionId: 'article',
+      droppedCount: 1,
+      requestedConditions: 1,
+      allConditionsDropped: true,
+    })
   })
 })

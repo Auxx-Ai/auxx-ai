@@ -30,6 +30,13 @@ import type {
   DroppedCondition,
   DroppedConditionReason,
 } from '../query-builder/base-condition-builder'
+// Imported from the module, NOT the `query-builder` barrel: the barrel also
+// pulls in `condition-query-builder`, and this module is already the hub every
+// crud test mocks piecemeal.
+import {
+  canonicalizeSystemConditions,
+  canonicalizeSystemFieldRef,
+} from '../query-builder/canonicalize-system-fields'
 import {
   type EntityQueryContext,
   entityConditionBuilder,
@@ -115,7 +122,12 @@ export const MAX_REPORTED_DROPPED_CONDITIONS = 25
 export interface DroppedFilterNotice {
   /** The condition's `id`, exactly as the caller sent it. */
   conditionId: string
-  /** The condition's `fieldId` — an array for relationship paths. Caller-supplied. */
+  /**
+   * The condition's `fieldId` — an array for relationship paths. Caller-supplied
+   * for an unresolvable reference, which is the case a UI needs to name; a
+   * reference that resolved to a field and dropped for another reason (an
+   * operator the field does not support) reports its canonical key instead.
+   */
   fieldRef: string | string[]
   /** The condition's operator, as sent. */
   operator: string
@@ -433,6 +445,18 @@ export interface FilterConditionReport {
  * Dispatches on {@link isSystemResource}, so the same call covers entity
  * definitions and system tables.
  *
+ * **Answers identically to the query lane, by construction.** On the system-table
+ * branch this runs the *same* `canonicalizeSystemConditions` over the *same*
+ * merged fields as {@link buildSystemWhereClause}, because the two diverging is a
+ * bug in both directions: preflight missing a drop the query makes would let a
+ * widened answer through, and preflight inventing one the query does not make
+ * would refuse a filter that works. Canonicalization feeds `validateConditionGroups`
+ * too — its `Unknown field:` errors reach `message`, so validating the raw shape
+ * would refuse a cuid the build resolved.
+ *
+ * A genuinely unresolvable reference is untouched by all of this: it canonicalizes
+ * to itself, drops, and is still reported.
+ *
  * @param params.entityDefinitionId - Entity definition id, or a system `TableId`
  */
 export async function inspectFilterConditions(params: {
@@ -443,16 +467,15 @@ export async function inspectFilterConditions(params: {
   const { organizationId, entityDefinitionId, filters } = params
 
   const { built, validation } = isSystemResource(entityDefinitionId)
-    ? {
-        built: systemConditionBuilder.buildGroupedQueryWithDiagnostics(
-          filters,
-          entityDefinitionId as TableId
-        ),
-        validation: systemConditionBuilder.validateConditionGroups(
-          filters,
-          entityDefinitionId as TableId
-        ),
-      }
+    ? await (async () => {
+        const tableId = entityDefinitionId as TableId
+        const fields = await getCachedResourceFields(organizationId, tableId)
+        const canonicalFilters = canonicalizeSystemConditions(filters, tableId, fields)
+        return {
+          built: systemConditionBuilder.buildGroupedQueryWithDiagnostics(canonicalFilters, tableId),
+          validation: systemConditionBuilder.validateConditionGroups(canonicalFilters, tableId),
+        }
+      })()
     : await (async () => {
         const context = await buildEntityQueryContext(organizationId, entityDefinitionId, filters)
         return {
@@ -702,14 +725,28 @@ export async function querySystemResourceIdsPaged(params: {
     throw new Error(`Unknown table: ${tableId}`)
   }
 
-  const { sql: whereClause, dropped } = buildSystemWhereClause(tableId, organizationId, filters)
+  // For a system resource the `tableId` IS the resource key, so this is the same
+  // hydrated per-org cache entry the rest of the request already read.
+  const fields = await getCachedResourceFields(organizationId, tableId)
+
+  const { sql: whereClause, dropped } = buildSystemWhereClause(
+    tableId,
+    organizationId,
+    filters,
+    fields
+  )
   const { searchWhere, searchOrderBy } = buildSystemSearchParts(tableId, params.search)
   const baseWhere = and(eq(tableSchema.organizationId, organizationId), whereClause, searchWhere)
 
+  // The sort column arrives from the same UIs as the filters and carries the
+  // same cuid, so `buildOrderBySql` resolved nothing and returned `undefined` —
+  // clicking a column header on a system table silently did nothing. There is
+  // deliberately no drop reporting for sorts: an unsorted list is visibly odd,
+  // unlike a widened one.
   const orderByClauses =
     sorting.length > 0
       ? systemConditionBuilder.buildOrderBySql(
-          sorting[0].id,
+          canonicalizeSystemFieldRef(sorting[0].id, tableId, fields),
           sorting[0].desc ? 'desc' : 'asc',
           tableId
         )
@@ -774,7 +811,11 @@ export async function countSystemResource(params: {
     throw new Error(`Unknown table: ${tableId}`)
   }
 
-  const { sql: whereClause } = buildSystemWhereClause(tableId, organizationId, filters)
+  // Same merged-field resolution as the paged query — a count that skipped it
+  // would report the WIDER set the page no longer shows.
+  const fields = await getCachedResourceFields(organizationId, tableId)
+
+  const { sql: whereClause } = buildSystemWhereClause(tableId, organizationId, filters, fields)
   const { searchWhere } = buildSystemSearchParts(tableId, params.search)
 
   const result = await db
@@ -835,13 +876,28 @@ function buildSystemSearchParts(
  * old signature computed the full drop list, logged it, and then returned only
  * `.sql`, which is precisely why every fail-open on this lane had to be found by
  * accident. Callers surface it as {@link ListFilteredResult.droppedConditions}.
+ *
+ * Conditions are canonicalized first: the filter UIs address a system field by
+ * the org's merged `CustomField` **cuid**, while `SystemConditionBuilder`
+ * resolves against `RESOURCE_FIELD_REGISTRY[tableId]`, which is keyed by the
+ * STATIC key — so every such condition dropped and the list widened. The
+ * pre-pass is pure, synchronous and idempotent, which is why it lives here
+ * rather than inside the builder, and why `fields` is a **parameter**: this
+ * function must stay sync, so the (cached) field read belongs to the async
+ * callers.
+ *
+ * @param fields - The org's merged fields for `tableId`. Pass `[]` only when the
+ *   caller genuinely has none; an empty list restores the old cuid-drops-silently
+ *   behaviour for merged fields, reported as usual via `dropped`.
  */
 function buildSystemWhereClause(
   tableId: TableId,
   organizationId: string,
-  filters: ConditionGroup[]
+  filters: ConditionGroup[],
+  fields: ResourceField[]
 ): { sql: SQL<unknown> | undefined; dropped: DroppedCondition[] } {
-  const built = systemConditionBuilder.buildGroupedQueryWithDiagnostics(filters, tableId)
+  const canonicalFilters = canonicalizeSystemConditions(filters, tableId, fields)
+  const built = systemConditionBuilder.buildGroupedQueryWithDiagnostics(canonicalFilters, tableId)
 
   if (built.droppedConditions.length > 0) {
     logger.warn('Dropped filter conditions', {

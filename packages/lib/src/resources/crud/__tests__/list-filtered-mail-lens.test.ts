@@ -31,13 +31,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const DEF_ID = vi.hoisted(() => 'edf000000000000000000001')
 
-vi.mock('../../../cache', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../cache')>()
-  return {
-    ...actual,
-    findCachedResource: vi.fn(async () => ({ id: DEF_ID, entityDefinitionId: DEF_ID })),
-  }
-})
+// A FULL factory, not `importOriginal` + spread. `importOriginal` loads the real
+// `cache` barrel, whose transitive graph re-enters `unified-handler-queries`
+// *while the factory is still running* — so the module under test binds the REAL
+// helper and the override never takes effect. That was latent until the system
+// path started reading `getCachedResourceFields`; the sibling files in this
+// directory all use the full-factory shape for the same reason.
+vi.mock('../../../cache', () => ({
+  findCachedResource: vi.fn(async () => ({ id: DEF_ID, entityDefinitionId: DEF_ID })),
+  // The system path resolves the org's merged fields to canonicalize filter field
+  // refs. Empty is the honest stub here: this file is about the mail-lens
+  // refusal, and the real helper would reach the DB.
+  getCachedResourceFields: vi.fn(async () => []),
+  getCachedEntityDefId: vi.fn(async () => undefined),
+  getOrgCache: vi.fn(() => ({ get: vi.fn(async () => ({})) })),
+}))
 
 vi.mock('../../query-builder/system-condition-builder', () => ({
   systemConditionBuilder: {
