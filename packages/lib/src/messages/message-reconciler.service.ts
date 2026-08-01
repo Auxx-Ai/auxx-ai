@@ -158,29 +158,50 @@ export class MessageReconcilerService {
       }
     }
 
-    // Strategy 2: Check by subject and time window
+    // Strategy 2: Check by subject and time window.
+    //
+    // This is the fallback for providers whose Sent-folder echo carries neither our
+    // `internetMessageId` nor a usable `externalId` (Outlook: Graph mints its own
+    // Message-ID and returns nothing from `/me/sendMail`). It is a heuristic, so it
+    // is deliberately narrow:
+    //   - same integration — never reconcile an echo onto another channel's message
+    //   - `sendToken IS NOT NULL` — only a message WE sent can have a Sent-folder
+    //     echo, so this is both a correctness guard and the main selectivity win
+    //   - newest candidate first, so two same-subject sends in the window resolve to
+    //     the one nearest in time rather than an arbitrary row
     const recentlySent = await this.db.query.Message.findFirst({
-      where: (messages, { eq, and, inArray, gte }) =>
+      where: (messages, { eq, and, inArray, gte, isNotNull }) =>
         and(
           eq(messages.organizationId, messageData.organizationId),
+          eq(messages.integrationId, messageData.integrationId),
           eq(messages.subject, messageData.subject || ''),
           inArray(messages.sendStatus, [SendStatus.PENDING, SendStatus.SENT]),
+          isNotNull(messages.sendToken),
           gte(messages.createdAt, new Date(Date.now() - 300000)) // Within last 5 minutes
         ),
+      orderBy: (messages, { desc }) => [desc(messages.createdAt)],
       columns: {
         id: true,
         sendToken: true,
         internetMessageId: true,
         threadId: true,
+        createdAt: true,
       },
     })
 
     if (recentlySent) {
-      // Verify it's likely the same message
-      const timeDiff = Math.abs((messageData.sentAt?.getTime() || 0) - new Date().getTime())
+      // Verify it's likely the same message. Compare the echo's `sentAt` against the
+      // candidate row's `createdAt` — NOT against `new Date()`. `new Date()` is the
+      // moment of ingest, and the echo only arrives when the provider is next polled
+      // (~3 minutes for Outlook), so the old comparison missed essentially every real
+      // match. A missing `sentAt` yields a huge diff and simply does not match, which
+      // is the safe direction.
+      const timeDiff = Math.abs(
+        (messageData.sentAt?.getTime() ?? 0) - recentlySent.createdAt.getTime()
+      )
 
       if (timeDiff < 60000) {
-        // Within 1 minute
+        // Within 1 minute of the candidate's creation
         logger.info('Found likely matching message by subject/sender, reconciling', {
           messageId: recentlySent.id,
           subject: messageData.subject,
