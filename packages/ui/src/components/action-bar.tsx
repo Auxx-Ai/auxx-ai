@@ -414,4 +414,3 @@ function ActionBar({
 }
 
 export { ActionBar }
-export type { ActionBarAction, ActionBarProps, PickerComponentProps }

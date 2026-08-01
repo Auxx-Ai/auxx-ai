@@ -41,8 +41,7 @@ export function useTagHierarchy(options?: UseTagHierarchyOptions): UseTagHierarc
     const nodes: TagNode[] = records.map((record) => {
       // Extract parent ID from relationship field (RecordId[] format)
       const parentRecordIds = record.fieldValues.tag_parent ?? []
-      const parentId =
-        parentRecordIds.length > 0 ? (parentRecordIds[0].split(':')[1] ?? null) : null
+      const parentId = parentRecordIds[0]?.split(':')[1] ?? null
 
       // SINGLE_SELECT values come back as an array; treat undefined as 'thread'.
       const scopeRaw = record.fieldValues.tag_scope

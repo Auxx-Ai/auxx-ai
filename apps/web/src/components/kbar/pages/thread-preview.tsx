@@ -14,6 +14,7 @@ const STATUS_VARIANT: Record<ThreadStatus, Variant> = {
   ARCHIVED: 'green',
   SPAM: 'amber',
   TRASH: 'gray',
+  IGNORED: 'gray',
 }
 
 const STATUS_LABEL: Record<ThreadStatus, string> = {
@@ -21,6 +22,7 @@ const STATUS_LABEL: Record<ThreadStatus, string> = {
   ARCHIVED: 'Done',
   SPAM: 'Spam',
   TRASH: 'Trash',
+  IGNORED: 'Ignored',
 }
 
 /**

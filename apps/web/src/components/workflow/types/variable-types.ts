@@ -8,6 +8,17 @@ import type { BaseType, ValidationRules } from './unified-types'
 export { BaseType } from './unified-types'
 
 /**
+ * One entry of a variable picker's `allowedTypes` / `expectedTypes` filter.
+ *
+ * Either a {@link BaseType}, or a **resource identifier** used to filter
+ * relation/reference variables. That identifier is not restricted to the system
+ * `TableId` union — it may equally be an `EntityDefinition` id or a resource
+ * slug, which `isVariableTypeCompatible` cross-resolves through the resource
+ * store. Hence `string` rather than `TableId`.
+ */
+export type AllowedVarType = BaseType | string
+
+/**
  * Unified variable type that merges all legacy variable formats
  * This is the single source of truth for variables across the workflow system
  */

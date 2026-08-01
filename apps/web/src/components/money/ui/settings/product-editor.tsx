@@ -2,6 +2,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import type { FieldType as FieldTypeValue } from '@auxx/database/types'
 import { formatLineItemUnit, type LineItemUnit } from '@auxx/lib/money/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
@@ -350,7 +351,7 @@ function freshProductDraftValues(): ProductDraftValues {
 /** Draft key → wire descriptor. Drives the create seed, the post-create
  *  diff-flush, and live commit routing once the record exists. */
 const PRODUCT_DRAFT_FIELDS: {
-  [K in keyof ProductDraftValues]: { fieldId: string; fieldType: FieldType }
+  [K in keyof ProductDraftValues]: { fieldId: string; fieldType: FieldTypeValue }
 } = {
   name: { fieldId: 'catalog_item_name', fieldType: FieldType.TEXT },
   description: { fieldId: 'catalog_item_description', fieldType: FieldType.TEXT },

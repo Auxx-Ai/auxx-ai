@@ -3,7 +3,7 @@
 'use client'
 
 import type { ResourceField } from '@auxx/lib/resources/client'
-import type { FieldReference } from '@auxx/types/field'
+import { type FieldReference, toFieldId } from '@auxx/types/field'
 import {
   Command,
   CommandBreadcrumb,
@@ -172,7 +172,10 @@ function ProcedureFieldContent({ rootEntities, tempFields, onPick }: ProcedureFi
           <CommandGroup>
             <CommandGroupLabel>Temporary</CommandGroupLabel>
             {tempFields.map((field) => (
-              <CommandItem key={field.id} value={field.id} onSelect={() => onPick(field.id, field)}>
+              <CommandItem
+                key={field.id}
+                value={field.id}
+                onSelect={() => onPick(toFieldId(field.id), field)}>
                 <Variable className='size-4 text-accent-500' />
                 <span>{field.label}</span>
               </CommandItem>
@@ -195,7 +198,7 @@ function EntityRootItem({
   const props = useResourceProperty(entity.entityDefinitionId, ['icon', 'color'])
   return (
     <CommandItem value={entity.entityDefinitionId} onSelect={onSelect}>
-      <EntityIcon iconId={props?.icon} color={props?.color} size='xs' />
+      <EntityIcon iconId={props?.icon ?? 'circle'} color={props?.color} size='xs' />
       <span>{entity.label}</span>
     </CommandItem>
   )

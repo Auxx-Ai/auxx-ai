@@ -22,6 +22,7 @@ function profile(over: Partial<CachedPermissionProfile> = {}): CachedPermissionP
     icon: null,
     seat: 'full' as SeatType,
     appliesTo: 'member',
+    role: 'USER' as OrganizationRole,
     baseLevel: null,
     ceiling: null,
     agentPolicy: null,

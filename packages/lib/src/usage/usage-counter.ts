@@ -210,12 +210,14 @@ export class UsageCounter {
     const redisValues = await this.redis.mget(...redisKeys)
 
     for (let i = 0; i < pairs.length; i++) {
-      const key = `${pairs[i].orgId}:${pairs[i].metric}`
+      const pair = pairs[i]
+      if (!pair) continue
+      const key = `${pair.orgId}:${pair.metric}`
       const val = redisValues[i]
       if (val !== null && val !== undefined) {
         result.set(key, Number.parseInt(String(val), 10))
       } else {
-        misses.push(pairs[i])
+        misses.push(pair)
       }
     }
 

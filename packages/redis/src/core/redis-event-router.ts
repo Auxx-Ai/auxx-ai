@@ -3,6 +3,7 @@ import {
   type EventHandler,
   type EventRouterStats,
   logger,
+  type PubSubAdapter,
   type SubscriptionOptions,
 } from '../types'
 import {
@@ -11,7 +12,7 @@ import {
   generateEventId,
   serializeRedisEvent,
 } from '../utils/event-serializer'
-import { type BasePubSubAdapter, PubSubAdapterFactory } from './pub-sub-adapter'
+import { PubSubAdapterFactory } from './pub-sub-adapter'
 import { RedisClientFactory } from './redis-client-factory'
 
 /**
@@ -21,7 +22,7 @@ import { RedisClientFactory } from './redis-client-factory'
 export class RedisEventRouter {
   private static instances = new Map<string, RedisEventRouter>()
 
-  private adapter: BasePubSubAdapter | null = null
+  private adapter: PubSubAdapter | null = null
   private handlers = new Map<string, EventHandler>()
   private patternHandlers = new Map<string, Set<string>>() // pattern -> handler IDs
   private stats: EventRouterStats

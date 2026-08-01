@@ -2,7 +2,7 @@
 
 'use client'
 
-import { getDefinitionId } from '@auxx/lib/resources/client'
+import { getDefinitionId, isRecordId } from '@auxx/lib/resources/client'
 import { motion } from 'motion/react'
 import { useResource } from '~/components/resources'
 import { BlockCard } from './block-card'
@@ -16,7 +16,9 @@ export function EntityListBlock({
   lastValueTruncated,
   skipEntrance,
 }: BlockRendererProps<EntityListData>) {
-  const recordIds = useStreamSafeIds(data.recordIds ?? [], lastValueTruncated)
+  // Ids are model-authored; drop anything that isn't a well-formed
+  // `entityDef:instance` id, since it could never resolve to a record.
+  const recordIds = useStreamSafeIds(data.recordIds ?? [], lastValueTruncated).filter(isRecordId)
   const snapshot = data.snapshot
   const firstId = recordIds[0]
   const entityDefId = firstId ? getDefinitionId(firstId) : null

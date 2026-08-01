@@ -113,9 +113,10 @@ export function SearchFilterInput({
         if (lastVisibleIndex === -1) return // No visible conditions
 
         e.preventDefault()
-        if (highlightedIndex === lastVisibleIndex) {
+        const highlighted = highlightedIndex === null ? undefined : conditions[highlightedIndex]
+        if (highlightedIndex === lastVisibleIndex && highlighted) {
           // Second backspace: delete highlighted condition
-          onRemoveCondition(conditions[highlightedIndex].id)
+          onRemoveCondition(highlighted.id)
           onHighlightChange(null)
         } else {
           // First backspace: highlight last visible condition
@@ -169,7 +170,17 @@ export function SearchFilterInput({
               lockField={isPinned}
               shouldPreventDismiss={shouldPreventDismiss}
               className={isPinned ? pinnedBadgeClassName : undefined}
-              onUpdate={(updates) => onUpdateCondition(condition.id, updates)}
+              onUpdate={({ fieldId, ...rest }) => {
+                // `Condition.fieldId` also allows a relationship path
+                // (`ResourceFieldId[]`); `ConditionBadge` only ever emits the
+                // string form, and the search store keys on strings. Omit the
+                // key entirely when absent — the store `Object.assign`s the
+                // patch, so an explicit `undefined` would wipe the field.
+                onUpdateCondition(
+                  condition.id,
+                  typeof fieldId === 'string' ? { ...rest, fieldId } : rest
+                )
+              }}
               onRemove={() => {
                 onRemoveCondition(condition.id)
                 inputRef.current?.focus()

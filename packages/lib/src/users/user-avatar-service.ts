@@ -41,7 +41,7 @@ export class UserAvatarService {
       }
 
       // 2. Use UserProfileProcessor to create config
-      const processor = new UserProfileProcessor(organizationId, userId)
+      const processor = new UserProfileProcessor(organizationId)
 
       const init: UploadInitConfig = {
         organizationId,
@@ -98,12 +98,13 @@ export class UserAvatarService {
         })
         .returning()
 
+      if (!storageLocation) {
+        logger.error('StorageLocation insert returned no row', { userId, imageUrl })
+        return null
+      }
+
       // 6. Use processor to complete the process (creates MediaAsset and updates user)
-      const result = await processor.process(uploadSession, {
-        storageKey: config.storageKey,
-        size,
-        mimeType: contentType,
-      })
+      const result = await processor.process(uploadSession, storageLocation.id)
 
       // Clean up session
       await SessionManager.deleteSession(uploadSession.id)
@@ -114,7 +115,7 @@ export class UserAvatarService {
         originalUrl: imageUrl,
       })
 
-      return result.assetId
+      return result.assetId ?? null
     } catch (error) {
       logger.error('Failed to create avatar asset from URL', {
         userId,

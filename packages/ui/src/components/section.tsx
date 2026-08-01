@@ -256,17 +256,17 @@ const emptySectionVariants = cva(
 )
 
 /**
- * Props for EmptySection component
+ * Props for EmptySection component.
+ *
+ * Discriminated on `loading`: a loading placeholder renders only a spinner, so
+ * it needs no `title`; every other state requires one.
  */
-export interface EmptySectionProps extends VariantProps<typeof emptySectionVariants> {
+export type EmptySectionProps = VariantProps<typeof emptySectionVariants> & {
   className?: string
   /** Icon rendered before (horizontal) or above (vertical) the title */
   icon?: React.ReactNode
-  title: React.ReactNode
   description?: React.ReactNode
-  /** When true, replaces icon/title/description with a centered spinner */
-  loading?: boolean
-}
+} & ({ loading: true; title?: React.ReactNode } | { loading?: false; title: React.ReactNode })
 
 /**
  * Empty state placeholder for a Section's body inside a muted card. The

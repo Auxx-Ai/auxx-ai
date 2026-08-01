@@ -51,7 +51,8 @@ export function ContactVendorPartRow({
   const unitPrice = values.vendor_part_unit_price as number | null | undefined
   const leadTime = values.vendor_part_lead_time as number | null | undefined
   const isPreferred = values.vendor_part_is_preferred as boolean | undefined
-  const partId = (values.vendor_part_part as string[] | undefined)?.[0]
+  // RELATIONSHIP values come back as an array of RecordIds.
+  const partId = (values.vendor_part_part as RecordId[] | undefined)?.[0]
 
   return (
     <TableRow>

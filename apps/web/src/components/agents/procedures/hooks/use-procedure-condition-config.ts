@@ -5,12 +5,14 @@ import type { LocalAttribute } from '@auxx/lib/agents/procedures/client'
 import type { Operator } from '@auxx/lib/conditions/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { BaseType } from '@auxx/lib/workflow-engine/client'
+import { toResourceFieldId } from '@auxx/types/field'
 import { useCallback, useMemo } from 'react'
 import type {
   ConditionRootEntity,
   ConditionSystemConfig,
   FieldDefinition,
 } from '~/components/conditions'
+import { STANDARD_OPERATORS } from '~/components/conditions/types'
 import { useResourceProperty } from '~/components/resources'
 import { useResourceFields } from '~/components/resources/hooks/use-resource-fields'
 
@@ -31,17 +33,34 @@ const THREAD_SLUG = 'thread'
  * the ref at a subject anchor — a bare key resolves to `undefined` and the rule never
  * matches.
  */
-function toConditionFields(fields: ResourceField[]): FieldDefinition[] {
-  return fields
-    .filter((f) => f.capabilities?.filterable && !f.capabilities?.hidden)
-    .map((f) => ({
-      id: f.resourceFieldId,
+/** `ResourceField.operatorOverrides` is `string[]` in lib — keep only names the condition system knows. */
+function isOperator(name: string): name is Operator {
+  return Object.hasOwn(STANDARD_OPERATORS, name)
+}
+
+function toConditionFields(
+  fields: ResourceField[],
+  entityDefinitionId: string | undefined
+): FieldDefinition[] {
+  const out: FieldDefinition[] = []
+  for (const f of fields) {
+    if (!f.capabilities?.filterable || f.capabilities?.hidden) continue
+    // `resourceFieldId` is optional on `ResourceField`; recompose it from the
+    // resource's entityDefinitionId when absent. Without the `entityDef:` prefix
+    // the runtime resolver can't root the ref, so such a field is unusable.
+    const id =
+      f.resourceFieldId ?? (entityDefinitionId ? toResourceFieldId(entityDefinitionId, f.id) : null)
+    if (!id) continue
+    out.push({
+      id,
       label: f.label,
       type: f.type,
       fieldType: f.fieldType,
       options: f.options,
-      operators: f.operators as Operator[] | undefined,
-    }))
+      operators: f.operatorOverrides?.filter(isOperator),
+    })
+  }
+  return out
 }
 
 /** Declared local attribute → a `var:*` FieldDefinition (the "Temporary" group). */
@@ -75,11 +94,17 @@ export function useProcedureConditionConfig(
 
   const fields = useMemo<FieldDefinition[]>(
     () => [
-      ...toConditionFields(contact.filterableFields),
-      ...toConditionFields(thread.filterableFields),
+      ...toConditionFields(contact.filterableFields, contactMeta?.entityDefinitionId),
+      ...toConditionFields(thread.filterableFields, threadMeta?.entityDefinitionId),
       ...localAttributes.map(localToField),
     ],
-    [contact.filterableFields, thread.filterableFields, localAttributes]
+    [
+      contact.filterableFields,
+      thread.filterableFields,
+      localAttributes,
+      contactMeta?.entityDefinitionId,
+      threadMeta?.entityDefinitionId,
+    ]
   )
 
   // The drill-down roots: Contact + Thread (whichever resolve from the store). The

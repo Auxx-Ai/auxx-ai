@@ -58,7 +58,7 @@ const ALIGNMENT_WEEK_START = 0
 /** Parse a local ISO date (`YYYY-MM-DD`) into a naive local `Date` (midnight, host-local
  * getters/setters) — the same representation `toZonedTime`/`fromZonedTime` round-trip through. */
 function parseLocalDate(iso: string): Date {
-  const [year, month, day] = iso.split('-').map(Number)
+  const [year = 0, month = 1, day = 1] = iso.split('-').map(Number)
   return new Date(year, month - 1, day)
 }
 
@@ -136,7 +136,11 @@ function candidateDates(
     const weekIndex = differenceInCalendarWeeks(d, anchorLocal, {
       weekStartsOn: ALIGNMENT_WEEK_START,
     })
-    if ((pattern.weekdays ?? []).includes(getDay(d)) && weekIndex % pattern.interval === 0) {
+    const dayOfWeek = getDay(d)
+    if (
+      (pattern.weekdays ?? []).some((w) => w === dayOfWeek) &&
+      weekIndex % pattern.interval === 0
+    ) {
       dates.push(d)
     }
   }

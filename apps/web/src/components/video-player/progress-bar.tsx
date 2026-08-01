@@ -19,8 +19,7 @@ const SEEK_CHANGE_EVENT = 'on-seek-change-custom-event'
 function useChapterSegments(chapters: Chapter[] | undefined): ChapterSegment[] {
   const played = useVideoPlayerStore((s) => s.played)
   const duration = useVideoPlayerStore((s) => s.duration)
-  const totalDuration =
-    duration > 0 ? duration : chapters?.length ? chapters[chapters.length - 1].end : 0
+  const totalDuration = duration > 0 ? duration : (chapters?.at(-1)?.end ?? 0)
 
   return useMemo(() => {
     if (!chapters || chapters.length === 0) {
@@ -56,8 +55,7 @@ export function ProgressBar() {
   const highlightedRanges = useVideoPlayerStore((s) => s.highlightedRanges)
   const store = useVideoPlayerStore()
 
-  const totalDuration =
-    duration > 0 ? duration : chapters?.length ? chapters[chapters.length - 1].end : 0
+  const totalDuration = duration > 0 ? duration : (chapters?.at(-1)?.end ?? 0)
   const segments = useChapterSegments(chapters)
   const progressPct = totalDuration > 0 ? (played / totalDuration) * 100 : 0
   const hasHighlights = highlightedRanges.length > 0
@@ -163,7 +161,7 @@ export function ProgressBar() {
           className='pointer-events-none absolute z-2 size-[9px] -translate-x-1/2 rounded-full border-[1.5px] border-border bg-muted-foreground transition-[left] duration-150 ease-out'
           style={{
             left: `${progressPct}%`,
-            ...(hasHighlights && { background: highlightedRanges[0].color }),
+            ...(highlightedRanges[0] && { background: highlightedRanges[0].color }),
           }}
         />
 

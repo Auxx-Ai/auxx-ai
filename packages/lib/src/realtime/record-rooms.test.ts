@@ -73,7 +73,7 @@ describe('per-def record room keys', () => {
     expect(parseRecordRoomKey(`org-${ORG}-records-`)).toBeNull()
     expect(parseRecordRoomKey(`org-${ORG}`)).toBeNull()
     expect(parseRecordRoomKey(`org-${ORG}-events`)).toBeNull()
-    expect(parseRecordRoomKey(rooms.orgInbox(ORG, 'none', 'full'))).toBeNull()
+    expect(parseRecordRoomKey(rooms.orgInbox(ORG, 'none', 'read'))).toBeNull()
   })
 
   it('is a private (plain) channel, not the presence channel', () => {

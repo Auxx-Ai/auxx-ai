@@ -57,7 +57,7 @@ export function PartLinkedInventorySection({ partId }: PartLinkedInventorySectio
   const busy = applyPending.isPending || setMode.isPending || unlink.isPending
   // A part usually has a single source — surface Unlink in the header; fall back to a per-row
   // button only when several sources are linked and the header can't disambiguate.
-  const single = links.length === 1
+  const soleLink = links.length === 1 ? links[0] : undefined
 
   return (
     <div className='border-t border-border/50 pt-2 mt-1 flex flex-col gap-2'>
@@ -68,12 +68,12 @@ export function PartLinkedInventorySection({ partId }: PartLinkedInventorySectio
             Deducts this part when a linked source sells stock.
           </p>
         </div>
-        {single && (
+        {soleLink && (
           <Button
             variant='ghost'
             size='xs'
             disabled={busy}
-            onClick={() => handleUnlink(links[0].variantInstanceId, links[0].sourceDefId)}>
+            onClick={() => handleUnlink(soleLink.variantInstanceId, soleLink.sourceDefId)}>
             Unlink
           </Button>
         )}
@@ -107,7 +107,7 @@ export function PartLinkedInventorySection({ partId }: PartLinkedInventorySectio
                 <span className='text-sm font-semibold tabular-nums text-foreground'>
                   {link.currentQuantity ?? '—'}
                 </span>
-                {!single && (
+                {!soleLink && (
                   <Button
                     variant='ghost'
                     size='xs'

@@ -8,8 +8,10 @@ import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import Loader from '@auxx/ui/components/loader'
 import { type DockedPanelConfig, MainPageContent } from '@auxx/ui/components/main-page'
 import {
+  type Dispatch,
   type MutableRefObject,
   type ReactNode,
+  type SetStateAction,
   useCallback,
   useEffect,
   useMemo,
@@ -116,7 +118,7 @@ export interface DynamicResourceViewProps<TRow extends RecordMeta = RecordMeta> 
   onAddCard?: (columnId: string) => void
   /** Controlled kanban card selection. */
   selectedKanbanCardIds?: Set<string>
-  onSelectedKanbanCardIdsChange?: (ids: Set<string>) => void
+  onSelectedKanbanCardIdsChange?: Dispatch<SetStateAction<Set<string>>>
   /** Optional import page URL surfaced in the toolbar. */
   importHref?: string
   /**

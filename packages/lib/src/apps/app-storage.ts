@@ -91,7 +91,7 @@ async function ensureNamespaceCapacity(
   collection: string,
   key: string
 ): Promise<Result<true, Error>> {
-  const [{ total }] = await database
+  const [totals] = await database
     .select({ total: count() })
     .from(AppStorage)
     .where(
@@ -102,7 +102,7 @@ async function ensureNamespaceCapacity(
           : eq(AppStorage.connectionId, connectionId)
       )
     )
-  if (total < NAMESPACE_CAP) return ok(true)
+  if ((totals?.total ?? 0) < NAMESPACE_CAP) return ok(true)
 
   const existing = await database
     .select({ id: AppStorage.id })

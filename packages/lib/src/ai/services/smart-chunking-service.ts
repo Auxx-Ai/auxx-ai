@@ -179,8 +179,7 @@ export class SmartChunkingService {
   ): Promise<string[]> {
     const chunkSize = maxTokens * 3.5 // Approximate chars from tokens
 
-    const chunker = new TextChunker()
-    const chunks = await chunker.chunkText(text, {
+    const chunks = await TextChunker.chunkText(text, {
       chunkSize: Math.floor(chunkSize),
       chunkOverlap: options.chunkOverlap || 200,
       preserveParagraphs: true,
@@ -290,7 +289,7 @@ export class SmartChunkingService {
         const segments = Array.from(segmenter.segment(text.slice(0, maxLength)))
         if (segments.length > 1) {
           const lastSegment = segments[segments.length - 1]
-          return lastSegment.index
+          if (lastSegment) return lastSegment.index
         }
       } catch (e) {
         // Fallback if segmenter fails

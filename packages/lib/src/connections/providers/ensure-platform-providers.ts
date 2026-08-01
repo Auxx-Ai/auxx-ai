@@ -89,7 +89,7 @@ export async function ensurePlatformProviders(db: Database = defaultDb): Promise
     }
   }
 
-  logger.info({ count: PLATFORM_PROVIDER_DEFS.length }, 'Ensured platform connection providers')
+  logger.info('Ensured platform connection providers', { count: PLATFORM_PROVIDER_DEFS.length })
 }
 
 /** Convenience predicate: is this a platform built-in provider key? */

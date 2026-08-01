@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { SegmentEditorDialog } from './segment-editor-dialog'
+import { SEGMENTS_PAGE_SIZE } from './use-segments'
 
 interface DocumentSegmentItemProps {
   segment: {
@@ -91,6 +92,9 @@ export function DocumentSegmentItem({
   const [isDeleted, setIsDeleted] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
+  // Must match the input `useSegments` passes to the infinite query verbatim —
+  // the tRPC cache key is built from the whole input (minus `cursor`).
+  const listInput = { documentId, limit: SEGMENTS_PAGE_SIZE }
 
   // Sync local state with prop changes when segment prop changes
   useEffect(() => {
@@ -125,11 +129,11 @@ export function DocumentSegmentItem({
       await utils.document.getById.cancel({ documentId })
 
       // Snapshot the previous values
-      const previousSegments = utils.segment.listByDocument.getData({ documentId })
+      const previousSegments = utils.segment.listByDocument.getInfiniteData(listInput)
       const previousDocument = utils.document.getById.getData({ documentId })
 
       // Optimistically update the cache to remove this segment
-      utils.segment.listByDocument.setInfiniteData({ documentId }, (old) => {
+      utils.segment.listByDocument.setInfiniteData(listInput, (old) => {
         if (!old) return old
         return {
           ...old,
@@ -156,7 +160,7 @@ export function DocumentSegmentItem({
 
       // Restore the previous data if available
       if (context?.previousSegments) {
-        utils.segment.listByDocument.setInfiniteData({ documentId }, context.previousSegments)
+        utils.segment.listByDocument.setInfiniteData(listInput, context.previousSegments)
       }
       if (context?.previousDocument) {
         utils.document.getById.setData({ documentId }, context.previousDocument)

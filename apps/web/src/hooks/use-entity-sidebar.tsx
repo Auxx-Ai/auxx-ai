@@ -121,7 +121,7 @@ export function useEntitySidebar({ scope = 'SIDEBAR' }: UseEntitySidebarOptions 
         plural: resource.plural,
         icon: resource.icon,
         color: resource.color,
-        entityType: resource.entityType,
+        entityType: resource.entityType ?? null,
         isLocked: false,
         isVisible: visibility[resource.id] !== false,
         href: resource.entityType ? `/app/${resource.apiSlug}` : `/app/custom/${resource.apiSlug}`,

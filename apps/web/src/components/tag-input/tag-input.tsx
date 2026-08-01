@@ -56,7 +56,8 @@ export interface TagInputProps extends OmittedInputProps, VariantProps<typeof ta
   onTagClick?: (tag: Tag) => void
   clearAll?: boolean
   onClearAll?: () => void
-  inputProps?: React.InputHTMLAttributes<HTMLInputElement>
+  /** Same omissions as the component's own props: `size` is a variant here, `value` is owned. */
+  inputProps?: OmittedInputProps
   activeTagIndex: number | null
   setActiveTagIndex: React.Dispatch<React.SetStateAction<number | null>>
   styleClasses?: TagInputStyleClassesProps
@@ -102,6 +103,10 @@ function TagInput(props: TagInputProps) {
     readOnly = false,
     addOnPaste = false,
     generateTagId = generateId,
+    // Pulled out of `restInputProps` deliberately: this is the controlled TAG list, not the
+    // native input's value. Leaving it in the rest spread would overwrite `value={inputValue}`
+    // on the `<Input>` below and break typing.
+    value: controlledTags,
     ...restInputProps
   } = props
 
@@ -110,19 +115,14 @@ function TagInput(props: TagInputProps) {
 
   // Effect to handle controlled value prop for tags
   React.useEffect(() => {
-    if (props.value !== undefined && Array.isArray(props.value)) {
-      if (
-        props.value.length > 0 &&
-        typeof props.value[0] === 'object' &&
-        'id' in props.value[0] &&
-        'text' in props.value[0]
-      ) {
-        setTags(props.value as Tag[])
-      } else if (props.value.every((item) => typeof item === 'string')) {
-        setTags(props.value.map((text) => ({ id: generateTagId(), text: text as string })))
-      }
+    if (controlledTags === undefined || !Array.isArray(controlledTags)) return
+    const first = controlledTags[0]
+    if (typeof first === 'object' && 'id' in first && 'text' in first) {
+      setTags(controlledTags as Tag[])
+    } else if (controlledTags.every((item) => typeof item === 'string')) {
+      setTags(controlledTags.map((text) => ({ id: generateTagId(), text: text as string })))
     }
-  }, [props.value, setTags, generateTagId])
+  }, [controlledTags, setTags, generateTagId])
 
   // Check if input should be disabled
   const isInputDisabled = useMemo(

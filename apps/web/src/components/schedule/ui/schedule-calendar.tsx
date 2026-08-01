@@ -88,7 +88,8 @@ interface ScheduleCalendarProps {
   view: CalendarRangeView
   range: DateRange
   onRangeChange: (from: Date, to: Date) => void
-  onViewChange: (view: CalendarRangeView) => void
+  /** Only day/week/month are ever emitted — `handleViewChange` filters the grid's other views. */
+  onViewChange: (view: 'day' | 'week' | 'month') => void
   onVisitClick: (visitId: string) => void
   onMeetingClick: (meetingId: string) => void
   onTaskClick: (task: TaskEvent['task']) => void

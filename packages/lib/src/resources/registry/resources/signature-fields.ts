@@ -22,7 +22,7 @@ export const SIGNATURE_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'a0',
     showInPanel: false,
     nullable: false,
-    operatorOverrides: ['is', 'is not', 'in', 'not in', 'exists', 'not exists'],
+    operatorOverrides: ['is', 'is not', 'in', 'not in'],
     capabilities: {
       filterable: true,
       sortable: false,

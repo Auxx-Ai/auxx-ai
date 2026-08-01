@@ -6,7 +6,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Variable } from 'lucide-react'
 import React, { useCallback, useMemo } from 'react'
 import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
-import type { BaseType, UnifiedVariable } from '~/components/workflow/types/variable-types'
+import type { AllowedVarType, UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { VariablePicker } from './variable-picker'
 import VariableTag from './variable-tag'
 import { VariableTagContextMenu } from './variable-tag-context-menu'
@@ -38,7 +38,7 @@ interface VariableInputProps {
   /** Search placeholder for variable explorer */
   searchPlaceholder?: string
 
-  allowedTypes?: BaseType[] // Array of allowed BaseType values (e.g., [BaseType.STRING])
+  allowedTypes?: AllowedVarType[] // BaseType, or a resource id for relation filtering
   /** Callback for variable ID changes (e.g., array accessor updates via right-click context menu) */
   onVariableIdChange?: (newId: string) => void
 }

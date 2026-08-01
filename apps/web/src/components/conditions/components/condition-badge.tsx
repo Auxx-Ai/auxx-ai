@@ -2,7 +2,11 @@
 
 'use client'
 
-import { FieldInputMode, resolveFieldInputConfig } from '@auxx/lib/conditions/client'
+import {
+  FieldInputMode,
+  operatorRequiresValue,
+  resolveFieldInputConfig,
+} from '@auxx/lib/conditions/client'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { X } from 'lucide-react'
@@ -99,7 +103,7 @@ export const ConditionBadge = ({
       const newFieldDef = getFieldDefinition(fieldId)
       if (!newFieldDef) return
 
-      const firstOperator = newFieldDef.operators?.[0] || 'equals'
+      const firstOperator = newFieldDef.operators?.[0] || 'is'
       handleUpdate({
         fieldId,
         operator: firstOperator,
@@ -118,9 +122,7 @@ export const ConditionBadge = ({
       const oldOperator = condition.operator
       let newValue = condition.value
 
-      if (
-        ['isEmpty', 'isNotEmpty', 'empty', 'not empty', 'exists', 'not exists'].includes(operator)
-      ) {
+      if (!operatorRequiresValue(operator)) {
         newValue = undefined
       } else if (['in', 'not in'].includes(oldOperator) && !['in', 'not in'].includes(operator)) {
         // Keep as array for relationship fields - just limit to first element
@@ -169,7 +171,9 @@ export const ConditionBadge = ({
         </span>
       ) : (
         <ResourceFieldSelector
-          value={condition.fieldId}
+          // This flat selector can only represent a single field id; a FieldPath
+          // (relationship drill-down) has no option to match and reads as unset.
+          value={typeof condition.fieldId === 'string' ? condition.fieldId : ''}
           onChange={handleFieldChange}
           disabled={readOnly}
           placeholder='Field'

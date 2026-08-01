@@ -436,9 +436,9 @@ export function PlannerMap({
       }
       const existingSource = map.getSource(layerId) as maplibregl.GeoJSONSource | undefined
       if (existingSource) {
-        existingSource.setData(geojson as unknown as GeoJSON.Feature)
+        existingSource.setData(geojson)
       } else {
-        map.addSource(layerId, { type: 'geojson', data: geojson as unknown as GeoJSON.Feature })
+        map.addSource(layerId, { type: 'geojson', data: geojson })
         map.addLayer({
           id: layerId,
           type: 'line',

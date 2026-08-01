@@ -116,7 +116,7 @@ type JsonNode = Record<string, unknown>
  */
 export function jsonSchemaToDraft(schema: Record<string, unknown>): SchemaFieldDraft[] {
   if (isObjectNode(schema)) return objectChildren(schema)
-  if (isArrayOfObjectsNode(schema)) return objectChildren(schema.items as JsonNode)
+  if (isArrayOfObjectsNode(schema)) return objectChildren(schema.items)
   return []
 }
 
@@ -415,7 +415,8 @@ function optionValues(options: SelectOption[] | undefined): string[] {
   return (options ?? []).map((o) => o.value)
 }
 
-function isObjectNode(node: unknown): node is JsonNode {
+/** A `{ type: 'object', … }` node — editable as rows. */
+function isObjectNode(node: unknown): node is JsonNode & { type: 'object' } {
   return (
     !!node &&
     typeof node === 'object' &&
@@ -425,7 +426,9 @@ function isObjectNode(node: unknown): node is JsonNode {
 }
 
 /** An `{ type: 'array', items: { type: 'object', … } }` root — editable as rows. */
-function isArrayOfObjectsNode(node: unknown): node is JsonNode {
+function isArrayOfObjectsNode(
+  node: unknown
+): node is JsonNode & { type: 'array'; items: JsonNode } {
   if (!node || typeof node !== 'object' || Array.isArray(node)) return false
   if ((node as JsonNode).type !== 'array') return false
   return isObjectNode((node as JsonNode).items)

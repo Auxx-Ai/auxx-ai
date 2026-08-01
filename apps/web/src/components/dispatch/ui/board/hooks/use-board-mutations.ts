@@ -38,10 +38,18 @@ interface CreateWorkOrderVars {
  * `recordIdSchema` cast) make the CLIENT-side mutation-variables type widen every field to
  * `unknown` (tRPC infers `.mutate()`'s param type from the schema's pre-parse input, not its
  * parsed output); this is what actually lands in `vars.items` at runtime. `scheduleVisit`'s own
- * `onMutate` above has the identical pre-existing `unknown` gap for the same reason — this cast
- * is scoped to the paste-visits temp-row builder only. */
+ * `onMutate` has the identical gap for the same reason (see `ScheduleVisitVars`) — this cast is
+ * scoped to the paste-visits temp-row builder only. */
 interface PasteVisitVars {
   workOrderRecordId: RecordId
+  startTime: Date
+  endTime: Date
+  assigneeWorkerId?: string | null
+}
+
+/** `dispatch.scheduleVisit`'s input, post-coercion — same `z.coerce.date()` widening. */
+interface ScheduleVisitVars {
+  visitId: string
   startTime: Date
   endTime: Date
   assigneeWorkerId?: string | null
@@ -121,7 +129,8 @@ export function useBoardMutations(range: DateRange) {
   }, [range, utils])
 
   const scheduleVisit = api.dispatch.scheduleVisit.useMutation({
-    onMutate: async (vars) => {
+    onMutate: async (rawVars) => {
+      const vars = rawVars as ScheduleVisitVars
       await utils.dispatch.getBoard.cancel(range)
       const patch: Partial<BoardVisit> = {
         startTime: vars.startTime,

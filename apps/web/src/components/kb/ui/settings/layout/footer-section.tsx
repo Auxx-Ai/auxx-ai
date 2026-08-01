@@ -31,8 +31,7 @@ function buildDefaults(kb: KnowledgeBase): FooterFormValues {
   const merged = mergeDraftOverLive(kb as any) as KnowledgeBase
   return {
     footerEnabled: merged.footerEnabled ?? true,
-    footerNavigation:
-      ((merged.footerNavigation ?? []) as FooterFormValues['footerNavigation']) ?? [],
+    footerNavigation: (merged.footerNavigation ?? []) as FooterFormValues['footerNavigation'],
   }
 }
 

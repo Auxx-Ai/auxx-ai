@@ -374,16 +374,16 @@ async function buildEntityInstanceQueryParts(params: {
   // `updatedAt DESC` sits under rank (matching the picker) because rank ties are
   // the common case, not the exception — every row that matches only the ILIKE
   // fallback scores 0. The caller appends `id ASC` as the final tie-break.
-  const orderByClauses =
-    sorting.length > 0
-      ? entityConditionBuilder.buildOrderBySql(
-          sorting[0].id,
-          sorting[0].desc ? 'desc' : 'asc',
-          context
-        )
-      : search
-        ? [desc(recordSearchRank(search)), desc(schema.EntityInstance.updatedAt)]
-        : undefined
+  const [primarySort] = sorting
+  const orderByClauses = primarySort
+    ? entityConditionBuilder.buildOrderBySql(
+        primarySort.id,
+        primarySort.desc ? 'desc' : 'asc',
+        context
+      )
+    : search
+      ? [desc(recordSearchRank(search)), desc(schema.EntityInstance.updatedAt)]
+      : undefined
 
   return {
     whereClause,
@@ -859,14 +859,14 @@ export async function querySystemResourceIdsPaged(params: {
   // clicking a column header on a system table silently did nothing. There is
   // deliberately no drop reporting for sorts: an unsorted list is visibly odd,
   // unlike a widened one.
-  const orderByClauses =
-    sorting.length > 0
-      ? systemConditionBuilder.buildOrderBySql(
-          canonicalizeSystemFieldRef(sorting[0].id, tableId, fields),
-          sorting[0].desc ? 'desc' : 'asc',
-          tableId
-        )
-      : searchOrderBy
+  const [primarySort] = sorting
+  const orderByClauses = primarySort
+    ? systemConditionBuilder.buildOrderBySql(
+        canonicalizeSystemFieldRef(primarySort.id, tableId, fields),
+        primarySort.desc ? 'desc' : 'asc',
+        tableId
+      )
+    : searchOrderBy
 
   const finalOrderBy = orderByClauses
     ? [...orderByClauses, asc(tableSchema.id)]
@@ -1059,8 +1059,9 @@ export function getTableSchema(tableId: TableId) {
   if (!tableInfo) return undefined
 
   // Contact, Ticket, and Part tables have been dropped - they now use EntityInstance.
+  // `Inbox` is absent on purpose: `inbox`/`personal_inbox` are def-backed types, so
+  // `RESOURCE_TABLE_REGISTRY` excludes them and `dbName` can never resolve to it.
   const tableMap: Record<string, any> = {
-    Inbox: schema.Inbox,
     User: schema.User,
     Thread: schema.Thread,
     Message: schema.Message,

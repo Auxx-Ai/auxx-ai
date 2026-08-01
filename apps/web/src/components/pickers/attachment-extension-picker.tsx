@@ -79,8 +79,7 @@ export function AttachmentExtensionPicker({
 
   const extensionsByCategory = COMMON_FILE_EXTENSIONS.reduce(
     (acc, ext) => {
-      if (!acc[ext.category]) acc[ext.category] = []
-      acc[ext.category].push(ext)
+      ;(acc[ext.category] ??= []).push(ext)
       return acc
     },
     {} as Record<string, (typeof COMMON_FILE_EXTENSIONS)[0][]>

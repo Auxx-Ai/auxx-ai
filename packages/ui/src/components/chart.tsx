@@ -125,6 +125,9 @@ function ChartTooltipContent({
     }
 
     const [item] = payload
+    if (!item) {
+      return null
+    }
     const key = `${labelKey || item.dataKey || item.name || 'value'}`
     const itemConfig = getPayloadConfigFromPayload(config, item, key)
     const value =
@@ -163,6 +166,10 @@ function ChartTooltipContent({
           const key = `${nameKey || item.name || item.dataKey || 'value'}`
           const itemConfig = getPayloadConfigFromPayload(config, item, key)
           const indicatorColor = color || item.payload.fill || item.color
+          // Recharts' ValueType allows an array (range series); collapse it to a
+          // scalar so it matches the default `toLocaleString()` rendering.
+          const rawValue = item.value
+          const scalarValue = Array.isArray(rawValue) ? rawValue.toLocaleString() : rawValue
 
           return (
             <div
@@ -210,9 +217,11 @@ function ChartTooltipContent({
                         {itemConfig?.label || item.name}
                       </span>
                     </div>
-                    {item.value != null && (
+                    {scalarValue != null && (
                       <span className='font-mono font-medium tabular-nums text-foreground'>
-                        {valueFormatter ? valueFormatter(item.value) : item.value.toLocaleString()}
+                        {valueFormatter
+                          ? valueFormatter(scalarValue)
+                          : scalarValue.toLocaleString()}
                       </span>
                     )}
                   </div>

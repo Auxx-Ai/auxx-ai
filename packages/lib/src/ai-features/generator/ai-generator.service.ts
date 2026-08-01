@@ -356,20 +356,20 @@ ${request.idealOutput}
     if (generationType === 'prompt') {
       // Handle ```xml ... ``` format for prompts
       const xmlBlockMatch = cleaned.match(/```xml\s*([\s\S]*?)\s*```/)
-      if (xmlBlockMatch) {
+      if (xmlBlockMatch?.[1]) {
         cleaned = xmlBlockMatch[1].trim()
       }
 
       // Handle plain ``` ... ``` format
       const plainBlockMatch = cleaned.match(/```\s*([\s\S]*?)\s*```/)
-      if (plainBlockMatch && !xmlBlockMatch) {
+      if (plainBlockMatch?.[1] && !xmlBlockMatch) {
         cleaned = plainBlockMatch[1].trim()
       }
     } else {
       // Handle code blocks for code generation
       // Remove ```javascript, ```json, or plain ``` wrappers
       const codeBlockMatch = cleaned.match(/```(?:javascript|json|js)?\s*([\s\S]*?)\s*```/)
-      if (codeBlockMatch) {
+      if (codeBlockMatch?.[1]) {
         cleaned = codeBlockMatch[1].trim()
       }
     }

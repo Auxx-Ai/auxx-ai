@@ -18,14 +18,15 @@ export function useActiveTabId(knowledgeBaseId: string): string | null {
   const tabs = articles
     .filter((a) => a.articleKind === ArticleKind.tab)
     .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))
-  if (tabs.length === 0) return null
+  const firstTab = tabs[0]
+  if (!firstTab) return null
 
-  if (!active) return tabs[0].id
+  if (!active) return firstTab.id
   let cursor: ArticleMeta | undefined = active
   while (cursor) {
     if (cursor.articleKind === ArticleKind.tab) return cursor.id
     if (!cursor.parentId) break
     cursor = articles.find((a) => a.id === cursor!.parentId)
   }
-  return tabs[0].id
+  return firstTab.id
 }

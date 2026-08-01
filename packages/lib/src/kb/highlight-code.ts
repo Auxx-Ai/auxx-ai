@@ -1,5 +1,6 @@
 // @auxx/lib/kb/highlight-code.ts
 import { createHighlighter, type Highlighter } from 'shiki'
+import type { ArticleNodeJSON, BlockJSON, InlineJSON } from './markdown/types'
 
 export const SHIKI_LANGUAGES = [
   'ts',
@@ -34,18 +35,13 @@ function getHighlighterCached(): Promise<Highlighter> {
   return highlighterPromise
 }
 
-interface BlockNode {
-  type?: string
-  attrs?: Record<string, unknown> | null
-  content?: InlineNode[]
+/** A top-level `codeBlock` block. Code nested inside tabs/accordions/tables is
+ * not walked — those containers hold their own block lists. */
+function isCodeBlock(node: ArticleNodeJSON): node is BlockJSON {
+  return node?.type === 'block' && node.attrs?.blockType === 'codeBlock'
 }
 
-interface InlineNode {
-  type?: string
-  text?: string
-}
-
-function nodeText(content: InlineNode[] | undefined): string {
+function nodeText(content: InlineJSON[] | undefined): string {
   if (!content) return ''
   return content.map((n) => (typeof n.text === 'string' ? n.text : '')).join('')
 }
@@ -63,12 +59,14 @@ function pickLanguage(raw: unknown): ShikiLanguage | 'plaintext' {
  * Returns the input untouched if the body has no codeBlock children —
  * avoids loading the highlighter for articles that don't need it.
  */
-export async function enrichDocWithHighlighting<T extends BlockNode>(blocks: T[]): Promise<T[]> {
+export async function enrichDocWithHighlighting(
+  blocks: ArticleNodeJSON[]
+): Promise<ArticleNodeJSON[]> {
   if (!Array.isArray(blocks)) return blocks
 
   const codeIndices: number[] = []
   blocks.forEach((node, idx) => {
-    if (node?.attrs?.blockType === 'codeBlock') codeIndices.push(idx)
+    if (isCodeBlock(node)) codeIndices.push(idx)
   })
   if (codeIndices.length === 0) return blocks
 
@@ -77,9 +75,9 @@ export async function enrichDocWithHighlighting<T extends BlockNode>(blocks: T[]
 
   for (const idx of codeIndices) {
     const block = nextBlocks[idx]
-    if (!block) continue
+    if (!block || !isCodeBlock(block)) continue
     const code = nodeText(block.content)
-    const language = pickLanguage(block.attrs?.codeLanguage)
+    const language = pickLanguage(block.attrs.codeLanguage)
     let html: string
     try {
       html = highlighter.codeToHtml(code, { lang: language, theme: SHIKI_THEME })
@@ -89,11 +87,11 @@ export async function enrichDocWithHighlighting<T extends BlockNode>(blocks: T[]
     nextBlocks[idx] = {
       ...block,
       attrs: {
-        ...(block.attrs ?? {}),
+        ...block.attrs,
         codeLanguage: language,
         codeHighlightedHtml: html,
       },
-    } as T
+    }
   }
 
   return nextBlocks

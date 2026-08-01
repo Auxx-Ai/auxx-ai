@@ -2,14 +2,10 @@
 
 import type React from 'react'
 
-type Props = { children: React.ReactNode; modal: React.ReactNode }
+type Props = { children: React.ReactNode }
 
-function layout({ children, modal }: Props) {
-  return (
-    <>
-      {children} {modal}
-    </>
-  )
+function layout({ children }: Props) {
+  return <>{children}</>
 }
 
 export default layout

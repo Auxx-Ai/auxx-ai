@@ -16,7 +16,7 @@ import { addMonths, endOfMonth, isSameDay, startOfMonth } from 'date-fns'
 import { CheckCircle2, Printer, Receipt, XCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { Condition, ConditionSystemConfig } from '~/components/conditions'
-import { ConditionContainer, ConditionProvider } from '~/components/conditions'
+import { ConditionContainer, ConditionProvider, isOperator } from '~/components/conditions'
 import { ExportProgressDialog } from '~/components/data-export/ui/export-progress-dialog'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
@@ -81,7 +81,8 @@ export function BatchScopePage({
         type: field.type,
         fieldType: field.fieldType,
         fieldKey: field.key,
-        operators: field.operatorOverrides || getFieldOperators(field),
+        // Both are typed `string[]` in lib — keep only names the condition system knows.
+        operators: (field.operatorOverrides || getFieldOperators(field)).filter(isOperator),
         options: field.options,
       })),
     [filterableFields]

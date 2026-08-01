@@ -1,5 +1,7 @@
 // packages/ui/src/components/kb/article/types.ts
 
+import type { EmbedProvider } from '../utils/embed'
+
 export type BlockType =
   | 'text'
   | 'heading'
@@ -16,7 +18,7 @@ export type BlockType =
 
 export type ImageAlign = 'left' | 'center' | 'right'
 export type CalloutVariant = 'info' | 'warn' | 'error' | 'tip' | 'success'
-export type EmbedProvider = 'youtube' | 'loom' | 'vimeo'
+export type { EmbedProvider }
 export type EmbedAspect = '16:9' | '4:3' | '1:1'
 
 export interface CardData {
@@ -101,7 +103,7 @@ export interface TableRowJSON {
 
 export interface TableJSON {
   type: 'table'
-  attrs?: Record<string, never>
+  attrs?: { id?: string | null }
   content: TableRowJSON[]
 }
 
@@ -129,7 +131,12 @@ export interface MarkJSON {
 }
 
 export interface InlineJSON {
-  type: 'text' | 'placeholder'
+  /**
+   * Kept in sync with the markdown parser's mirror in
+   * `packages/lib/src/kb/markdown/types.ts` — `mdToBlocks` emits `hardBreak`
+   * and `reference` nodes, so the renderer's type must accept them.
+   */
+  type: 'text' | 'placeholder' | 'hardBreak' | 'reference'
   text?: string
   marks?: MarkJSON[]
   attrs?: Record<string, unknown>

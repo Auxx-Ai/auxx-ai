@@ -44,7 +44,7 @@ function nthLabel(nth: 1 | 2 | 3 | 4 | -1): string {
 }
 
 function formatUntil(until: string): string {
-  const [year, month, day] = until.split('-').map(Number)
+  const [year = 0, month = 1, day = 1] = until.split('-').map(Number)
   return format(new Date(year, month - 1, day), 'MMM d')
 }
 

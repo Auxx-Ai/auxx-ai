@@ -98,6 +98,7 @@ export function NavigationManager({ type, value, onChange, disabled }: Navigatio
       const newIndex = itemIds.indexOf(over.id as string)
       const next = [...items]
       const [moved] = next.splice(oldIndex, 1)
+      if (!moved) return
       next.splice(newIndex, 0, moved)
       onChange(next)
     }
@@ -111,7 +112,9 @@ export function NavigationManager({ type, value, onChange, disabled }: Navigatio
   }
   const handleItemChange = (index: number, field: 'title' | 'link', value: string) => {
     const next = [...items]
-    next[index] = { ...next[index], [field]: value }
+    const current = next[index]
+    if (!current) return
+    next[index] = { ...current, [field]: value }
     onChange(next)
   }
 
@@ -124,16 +127,19 @@ export function NavigationManager({ type, value, onChange, disabled }: Navigatio
         modifiers={[restrictToVerticalAxis]}>
         <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
           <div className='space-y-2'>
-            {items.map((item, index) => (
-              <SortableItem
-                key={itemIds[index]}
-                id={itemIds[index]}
-                item={item}
-                onRemove={() => handleRemove(index)}
-                onChange={(field, value) => handleItemChange(index, field, value)}
-                disabled={disabled}
-              />
-            ))}
+            {items.map((item, index) => {
+              const itemId = `${type}-item-${index}`
+              return (
+                <SortableItem
+                  key={itemId}
+                  id={itemId}
+                  item={item}
+                  onRemove={() => handleRemove(index)}
+                  onChange={(field, value) => handleItemChange(index, field, value)}
+                  disabled={disabled}
+                />
+              )
+            })}
           </div>
         </SortableContext>
       </DndContext>

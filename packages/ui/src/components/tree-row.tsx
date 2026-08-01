@@ -439,10 +439,16 @@ export function TreeRowSkeleton({ depth = 0 }: { depth?: number }) {
  * with no tree awareness, and the three states of one list (loading, empty,
  * populated) must all read the same indent from the same `INDENT_REM` step.
  */
+/**
+ * `Omit` collapses a union into a single object type, which would erase
+ * `EmptySectionProps`' `loading`/`title` discrimination. Distribute it instead.
+ */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
+
 export function TreeRowEmpty({
   depth = 0,
   ...props
-}: { depth?: number } & Omit<EmptySectionProps, 'orientation'>) {
+}: { depth?: number } & DistributiveOmit<EmptySectionProps, 'orientation'>) {
   return (
     <div style={{ paddingLeft: `${depth * INDENT_REM}rem` }}>
       <EmptySection orientation='horizontal' {...props} />

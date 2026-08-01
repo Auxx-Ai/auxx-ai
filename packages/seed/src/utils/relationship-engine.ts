@@ -238,7 +238,7 @@ export class RelationshipEngine {
   private determineCustomerType(
     customerIndex: number
   ): 'occasional' | 'regular' | 'frequent' | 'vip' {
-    const typeDistribution = [0.4, 0.35, 0.2, 0.05] // Realistic customer distribution
+    const typeDistribution = [0.4, 0.35, 0.2, 0.05] as const // Realistic customer distribution
     const random = ((customerIndex * 17) % 100) / 100 // Deterministic but distributed
 
     if (random < typeDistribution[0]) return 'occasional'

@@ -73,8 +73,9 @@ export function useMessageArrivalCue() {
     // One chime per cue (after coalescing), gated on the user preference.
     if (soundEnabledRef.current) playNotificationSound(NEW_MESSAGE_SOUND)
 
-    if (entries.length === 1) {
-      const [threadId, messageId] = entries[0]
+    const only = entries.length === 1 ? entries[0] : undefined
+    if (only) {
+      const [threadId, messageId] = only
       const sender = resolveSender(messageId)
       const snippet = getMessageStoreState().getMessage(messageId)?.snippet ?? undefined
       toastMessage({

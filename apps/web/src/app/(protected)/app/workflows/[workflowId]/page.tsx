@@ -14,7 +14,7 @@ import { MainPageTabs } from '@auxx/ui/components/main-page-tabs'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChartColumn, History, MousePointerClick, Settings, Workflow } from 'lucide-react'
-import { useQueryState } from 'nuqs'
+import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { use, useState } from 'react'
 import { DockedPanelTarget, DockPortalProvider } from '~/components/global/dock-portal-provider'
 import { DockedPanelsContainer } from '~/components/global/docked-panels-container'
@@ -35,12 +35,13 @@ interface EditWorkflowPageProps {
   params: Promise<{ workflowId: string }>
 }
 
+/** Tabs backed by the `?t=` query param. */
+const MODES = ['editor', 'analytics', 'executions'] as const
+
 export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
   const { workflowId } = use(params)
 
-  const [mode, setMode] = useQueryState<'editor' | 'analytics' | 'executions'>('t', {
-    defaultValue: 'editor',
-  })
+  const [mode, setMode] = useQueryState('t', parseAsStringLiteral(MODES).withDefault('editor'))
 
   const [editDialogOpen, setEditDialogOpen] = useState(false)
 
@@ -165,7 +166,10 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
                   { value: 'executions', label: 'Executions', icon: <History /> },
                 ]}
                 value={mode}
-                onValueChange={(v) => setMode(v as 'editor' | 'analytics' | 'executions')}
+                onValueChange={(v) => {
+                  const next = MODES.find((m) => m === v)
+                  if (next) setMode(next)
+                }}
                 className='flex-1 shrink-0'
               />
               {canAdmin && (

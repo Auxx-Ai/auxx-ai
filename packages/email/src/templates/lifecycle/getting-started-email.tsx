@@ -9,16 +9,25 @@ import { EmailTemplate } from '../../components/email-template'
 import { EmailHeading } from '../../components/email-text'
 
 void React
+
+const linkStyle = { color: '#0ea5e9', textDecoration: 'none' }
+
 interface GettingStartedEmailProps {
   name: string
   organizationName?: string
   dashboardUrl?: string
+  integrationsUrl?: string
+  knowledgeBaseUrl?: string
+  shopifyUrl?: string
 }
 
 export async function GettingStartedEmail({
   name,
   organizationName,
   dashboardUrl = `${WEBAPP_URL}/dashboard`,
+  integrationsUrl = `${WEBAPP_URL}/settings/channels`,
+  knowledgeBaseUrl = `${WEBAPP_URL}/knowledge`,
+  shopifyUrl = `${WEBAPP_URL}/settings/channels/shopify`,
 }: GettingStartedEmailProps): Promise<React.JSX.Element> {
   return (
     <EmailTemplate>
@@ -26,8 +35,9 @@ export async function GettingStartedEmail({
         <EmailHeading>Let's Get You Started with Auxx.ai!</EmailHeading>
         <Text>Hi {name},</Text>
         <Text>
-          Welcome to Auxx.ai! Over the next few days, we'll share resources to help you master the
-          platform and transform your customer support.
+          Welcome to Auxx.ai{organizationName ? `, ${organizationName}` : ''}! Over the next few
+          days, we'll share resources to help you master the platform and transform your customer
+          support.
         </Text>
 
         <Text style={{ fontWeight: 'bold', fontSize: '16px', marginTop: '24px' }}>
@@ -81,9 +91,24 @@ export async function GettingStartedEmail({
           <strong>Quick Start Checklist:</strong>
         </Text>
         <ul style={{ paddingLeft: '20px', color: '#64748b' }}>
-          <li>Connect your email account (2 minutes)</li>
-          <li>Import your Shopify store (1 minute)</li>
-          <li>Upload knowledge base documents (5 minutes)</li>
+          <li>
+            <a href={integrationsUrl} style={linkStyle}>
+              Connect your email account
+            </a>{' '}
+            (2 minutes)
+          </li>
+          <li>
+            <a href={shopifyUrl} style={linkStyle}>
+              Import your Shopify store
+            </a>{' '}
+            (1 minute)
+          </li>
+          <li>
+            <a href={knowledgeBaseUrl} style={linkStyle}>
+              Upload knowledge base documents
+            </a>{' '}
+            (5 minutes)
+          </li>
           <li>Test your first AI-powered response (30 seconds)</li>
         </ul>
 
@@ -103,13 +128,16 @@ export function GettingStartedText({
   name,
   organizationName,
   dashboardUrl = `${WEBAPP_URL}/dashboard`,
+  integrationsUrl = `${WEBAPP_URL}/settings/channels`,
+  knowledgeBaseUrl = `${WEBAPP_URL}/knowledge`,
+  shopifyUrl = `${WEBAPP_URL}/settings/channels/shopify`,
 }: GettingStartedEmailProps): string {
   return `
 Let's Get You Started with Auxx.ai!
 
 Hi ${name},
 
-Welcome to Auxx.ai! Over the next few days, we'll share resources to help you master the platform and transform your customer support.
+Welcome to Auxx.ai${organizationName ? `, ${organizationName}` : ''}! Over the next few days, we'll share resources to help you master the platform and transform your customer support.
 
 Here are the 3 most important things to know right now:
 
@@ -126,9 +154,9 @@ Ready to see these features in action?
 ${dashboardUrl}
 
 Quick Start Checklist:
-• Connect your email account (2 minutes)
-• Import your Shopify store (1 minute)
-• Upload knowledge base documents (5 minutes)
+• Connect your email account (2 minutes): ${integrationsUrl}
+• Import your Shopify store (1 minute): ${shopifyUrl}
+• Upload knowledge base documents (5 minutes): ${knowledgeBaseUrl}
 • Test your first AI-powered response (30 seconds)
 
 Questions? Reply to this email or visit our help center. We're here to ensure your success with Auxx.ai.
@@ -146,4 +174,7 @@ GettingStartedEmail.PreviewProps = {
   name: 'Sarah',
   organizationName: 'Acme Store',
   dashboardUrl: 'https://app.auxx.ai/dashboard',
+  integrationsUrl: 'https://app.auxx.ai/settings/channels',
+  knowledgeBaseUrl: 'https://app.auxx.ai/knowledge',
+  shopifyUrl: 'https://app.auxx.ai/settings/channels/shopify',
 }

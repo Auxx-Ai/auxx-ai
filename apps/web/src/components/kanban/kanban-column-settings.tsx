@@ -49,7 +49,7 @@ interface KanbanColumnSettingsProps {
   /** Delete callback */
   onDelete?: () => void
   /** Called when create mode submits (Enter or blur with valid label) */
-  onCreate?: (option: { label: string; color: string }) => void
+  onCreate?: (option: { label: string; color: SelectOptionColor }) => void
   /** Colors already in use by existing columns (for auto-assigning next color) */
   usedColors?: SelectOptionColor[]
   /** Labels already in use by existing columns (to prevent duplicates) */

@@ -9,6 +9,7 @@ import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
 import { useConditionContext } from '../condition-context'
 import type { OperatorSelectorProps } from '../types'
+import { isOperator } from '../utils'
 
 /**
  * Generic operator selector that works with both if-else and find systems
@@ -69,7 +70,12 @@ const ConditionOperator = ({
         <MultiSelectPicker
           options={options}
           value={value}
-          onChange={(selected) => onChange(selected[0] ?? '')}
+          onChange={(selected) => {
+            // Deselecting leaves an empty array — keep the current operator rather
+            // than writing an empty string that matches no operator definition.
+            const next = selected[0]
+            if (next && isOperator(next)) onChange(next)
+          }}
           multi={false}
           canManage={false}
           canAdd={false}

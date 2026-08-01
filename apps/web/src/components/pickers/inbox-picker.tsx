@@ -1,7 +1,11 @@
 // apps/web/src/components/pickers/inbox-picker.tsx
 'use client'
 
-import type { SelectOption } from '@auxx/types/custom-field'
+import {
+  SELECT_OPTION_COLORS,
+  type SelectOption,
+  type SelectOptionColor,
+} from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
@@ -30,6 +34,13 @@ interface InboxPickerProps {
 
 /** Special value for "Select All" option */
 export const INBOX_SELECT_ALL_VALUE = '__all__'
+
+/** `Inbox.color` is a free-form string column; anything off-palette falls back. */
+function toOptionColor(color: string | null | undefined): SelectOptionColor {
+  return typeof color === 'string' && (SELECT_OPTION_COLORS as readonly string[]).includes(color)
+    ? (color as SelectOptionColor)
+    : 'indigo'
+}
 
 /**
  * InboxPicker
@@ -66,7 +77,7 @@ export function InboxPicker({
     const baseOptions = inboxes.map((inbox) => ({
       value: inbox.recordId,
       label: inbox.name,
-      color: inbox.color || 'indigo',
+      color: toOptionColor(inbox.color),
     }))
 
     // Prepend "Select All" option if enabled

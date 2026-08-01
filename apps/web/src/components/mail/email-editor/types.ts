@@ -20,7 +20,7 @@ export interface MessageType {
   from?: {
     id: string
     identifier: string
-    identifierType: string
+    identifierType: IdentifierType
     name: string | null
     displayName?: string | null
   } | null
@@ -29,7 +29,7 @@ export interface MessageType {
     participant: {
       id: string
       identifier: string
-      identifierType: string
+      identifierType: IdentifierType
       name: string | null
     }
   }>
@@ -66,7 +66,7 @@ export interface DraftMessageType {
     participant: {
       id: string
       identifier: string
-      identifierType: string
+      identifierType: IdentifierType
       name: string | null
     }
   }>
@@ -95,7 +95,7 @@ export interface DraftMessageType {
   from?: {
     id: string
     identifier: string
-    identifierType: string
+    identifierType: IdentifierType
     name: string | null
     displayName?: string | null
   } | null

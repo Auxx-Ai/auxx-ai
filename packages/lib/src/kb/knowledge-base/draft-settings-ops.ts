@@ -3,7 +3,7 @@ import { schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import type { KBDraftSettings } from '../draft-settings'
 import { resolveDb } from '../internal/context'
-import { handleError } from '../internal/errors'
+import { createNotFoundError, handleError } from '../internal/errors'
 import { verifyKnowledgeBaseExists } from '../internal/validate-existence'
 import type { KBContext } from '../types'
 
@@ -33,6 +33,7 @@ export async function updateDraftSettings(
       .set({ draftSettings: nextDraft, updatedAt: new Date() })
       .where(eq(schema.KnowledgeBase.id, id))
       .returning()
+    if (!updated) throw createNotFoundError(`Knowledge base with ID '${id}' not found`)
     return updated
   } catch (error) {
     return handleError(error, ctx.organizationId, 'Error updating KB draft settings', { id })
@@ -54,6 +55,7 @@ export async function publishPendingSettings(ctx: KBContext, id: string): Promis
       .set({ ...draft, draftSettings: null, updatedAt: new Date() })
       .where(eq(schema.KnowledgeBase.id, id))
       .returning()
+    if (!updated) throw createNotFoundError(`Knowledge base with ID '${id}' not found`)
     return updated
   } catch (error) {
     return handleError(error, ctx.organizationId, 'Error publishing KB draft settings', { id })
@@ -70,6 +72,7 @@ export async function discardSettingsDraft(ctx: KBContext, id: string): Promise<
       .set({ draftSettings: null, updatedAt: new Date() })
       .where(eq(schema.KnowledgeBase.id, id))
       .returning()
+    if (!updated) throw createNotFoundError(`Knowledge base with ID '${id}' not found`)
     return updated
   } catch (error) {
     return handleError(error, ctx.organizationId, 'Error discarding KB draft settings', { id })

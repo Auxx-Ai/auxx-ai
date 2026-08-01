@@ -48,11 +48,13 @@ export function SequenceStepEditor({ sequenceId, steps, subjectKind }: SequenceS
   /** Swap the step at `index` with its neighbor at `index + direction`. */
   const move = (index: number, direction: -1 | 1) => {
     const target = index + direction
-    if (target < 0 || target >= steps.length) return
-    const stepId = steps[index].id
+    const step = steps[index]
+    const neighbor = steps[target]
+    if (!step || !neighbor) return
+    const stepId = step.id
     // Landing slot: between the neighbor pair the step is moving across.
-    const previousStepId = direction === -1 ? (steps[target - 1]?.id ?? null) : steps[target].id
-    const nextStepId = direction === -1 ? steps[target].id : (steps[target + 1]?.id ?? null)
+    const previousStepId = direction === -1 ? (steps[target - 1]?.id ?? null) : neighbor.id
+    const nextStepId = direction === -1 ? neighbor.id : (steps[target + 1]?.id ?? null)
     reorderStep.mutate({ stepId, sequenceId, previousStepId, nextStepId })
   }
 

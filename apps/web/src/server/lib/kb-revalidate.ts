@@ -49,9 +49,9 @@ export async function fireKBRevalidate(knowledgeBaseId: string, articleSlugPath?
       body: JSON.stringify({ tags }),
     })
     if (!res.ok) {
-      log.warn({ status: res.status, knowledgeBaseId }, 'kb revalidate non-2xx')
+      log.with({ status: res.status, knowledgeBaseId }).warn('kb revalidate non-2xx')
     }
   } catch (err) {
-    log.warn({ err, knowledgeBaseId }, 'kb revalidate failed')
+    log.with({ err, knowledgeBaseId }).warn('kb revalidate failed')
   }
 }

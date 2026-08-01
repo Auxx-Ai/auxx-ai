@@ -1,6 +1,6 @@
 // apps/web/src/components/datasets/settings/sections/vector-db-settings-section.tsx
 'use client'
-import type { DatasetEntity as Dataset, VectorDbType } from '@auxx/database/types'
+import type { DatasetEntity as Dataset } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
 import {
   Form,
@@ -16,6 +16,7 @@ import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
+import type { LucideIcon } from 'lucide-react'
 import { AlertTriangle, Cloud, Code, Database, Server, Settings } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -33,7 +34,22 @@ const vectorDbSettingsSchema = z.object({
   vectorDbConfig: z.string().optional(), // JSON string for form handling
 })
 type VectorDbSettingsForm = z.infer<typeof vectorDbSettingsSchema>
-const VECTOR_DB_INFO = {
+/**
+ * The vector stores this screen can actually configure. `VectorDbType` in the
+ * DB enum is wider (it also has MILVUS/WEAVIATE, which have no implementation
+ * and no card here) — anything outside this set falls back to POSTGRESQL.
+ */
+type SupportedVectorDbType = VectorDbSettingsForm['vectorDbType']
+const VECTOR_DB_INFO: Record<
+  SupportedVectorDbType,
+  {
+    icon: LucideIcon
+    label: string
+    description: string
+    badge: string
+    defaultConfig: Record<string, unknown>
+  }
+> = {
   POSTGRESQL: {
     icon: Database,
     label: 'PostgreSQL (pgvector)',
@@ -80,6 +96,9 @@ const VECTOR_DB_INFO = {
     },
   },
 }
+const isSupportedVectorDbType = (value: string): value is SupportedVectorDbType =>
+  value in VECTOR_DB_INFO
+
 export function VectorDbSettingsSection({
   dataset,
   onUpdate,
@@ -89,7 +108,9 @@ export function VectorDbSettingsSection({
   const form = useForm<VectorDbSettingsForm>({
     resolver: standardSchemaResolver(vectorDbSettingsSchema),
     defaultValues: {
-      vectorDbType: dataset.vectorDbType as VectorDbType,
+      vectorDbType: isSupportedVectorDbType(dataset.vectorDbType)
+        ? dataset.vectorDbType
+        : 'POSTGRESQL',
       vectorDbConfig: dataset.vectorDbConfig ? JSON.stringify(dataset.vectorDbConfig, null, 2) : '',
     },
   })
@@ -131,7 +152,7 @@ export function VectorDbSettingsSection({
       },
     })
   }
-  const handleDbTypeChange = (dbType: VectorDbType) => {
+  const handleDbTypeChange = (dbType: SupportedVectorDbType) => {
     form.setValue('vectorDbType', dbType)
     // Set default configuration for the selected database
     const dbInfo = VECTOR_DB_INFO[dbType]
@@ -173,7 +194,9 @@ export function VectorDbSettingsSection({
                     <FormControl>
                       <RadioGroup
                         value={field.value}
-                        onValueChange={(value) => handleDbTypeChange(value as VectorDbType)}
+                        onValueChange={(value) => {
+                          if (isSupportedVectorDbType(value)) handleDbTypeChange(value)
+                        }}
                         disabled={readOnly || updateDataset.isPending}>
                         {Object.entries(VECTOR_DB_INFO).map(([dbType, info]) => {
                           const Icon = info.icon

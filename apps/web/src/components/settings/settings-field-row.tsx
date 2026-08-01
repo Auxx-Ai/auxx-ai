@@ -2,7 +2,7 @@
 'use client'
 
 import type { SettingConfig, SettingKey, SettingValue } from '@auxx/lib/settings/client'
-import { type ReactElement, type ReactNode, useMemo } from 'react'
+import { type JSX, type ReactElement, useMemo } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { AdminGate } from '~/components/global/admin-gate'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -36,8 +36,12 @@ interface SettingsFieldRowProps {
    */
   value?: unknown
   onChange?: (value: unknown) => void
-  /** Custom input replacing `FieldInputAdapter`, keeping the row chrome. The child owns its own saving. */
-  children?: ReactNode
+  /**
+   * Custom input replacing `FieldInputAdapter`, keeping the row chrome. The child owns its own
+   * saving. Must be a single control element — an org-access row hands it to `AdminGate`, which
+   * `cloneElement`s it with `disabled`/`className`.
+   */
+  children?: ReactElement<{ disabled?: boolean; className?: string }>
 }
 
 /**
@@ -115,7 +119,7 @@ export function SettingsFieldRow({
   const rowTitle = title ?? humanizeKey(settingKey)
   const rowDescription = description ?? entry.description
 
-  const input: ReactNode = children ?? (
+  const input: ReactElement<{ disabled?: boolean; className?: string }> = children ?? (
     <FieldInputAdapter
       fieldType={entry.fieldType}
       fieldOptions={entry.options}
@@ -134,7 +138,7 @@ export function SettingsFieldRow({
       showIcon
       className={className}>
       {isOrgAccess ? (
-        <AdminGate action={`edit ${rowTitle.toLowerCase()}`}>{input as ReactElement}</AdminGate>
+        <AdminGate action={`edit ${rowTitle.toLowerCase()}`}>{input}</AdminGate>
       ) : (
         input
       )}

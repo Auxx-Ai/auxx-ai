@@ -43,7 +43,7 @@ describe('auditLog', () => {
     })
 
     expect(valuesMock).toHaveBeenCalledTimes(1)
-    const record = valuesMock.mock.calls[0][0]
+    const record = valuesMock.mock.calls[0]?.[0]
     expect(record.category).toBe('billing')
     expect(record.visibility).toBe('internal')
     expect(record.actorType).toBe('admin')
@@ -70,7 +70,7 @@ describe('auditLog', () => {
       targetId: 'sub_1',
     })
 
-    const record = valuesMock.mock.calls[0][0]
+    const record = valuesMock.mock.calls[0]?.[0]
     expect(record.organizationId).toBeNull()
     expect(record.metadata).toBeNull()
     expect(record.reason).toBeNull()

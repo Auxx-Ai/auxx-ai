@@ -139,6 +139,8 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
       if (view) {
         sortedViews.push({
           ...view,
+          // Mail views have no colour column; match the sidebar's own fallback.
+          color: 'indigo',
           isVisible: viewsVisibilitySettings[view.id] !== false, // Default true
         })
         processedIds.add(id)
@@ -150,6 +152,8 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
       if (!processedIds.has(view.id)) {
         sortedViews.push({
           ...view,
+          // Mail views have no colour column; match the sidebar's own fallback.
+          color: 'indigo',
           isVisible: viewsVisibilitySettings[view.id] !== false, // Default true
         })
       }

@@ -11,6 +11,7 @@ import type { TargetTimeInStatus } from '@auxx/types/custom-field'
 import type { FieldPath } from '@auxx/types/field'
 import type { ColumnDef, Table as TanstackTable } from '@tanstack/react-table'
 import type { LucideIcon } from 'lucide-react'
+import type { Dispatch, SetStateAction } from 'react'
 
 // Re-export TargetTimeInStatus for backward compatibility
 export type { TargetTimeInStatus }
@@ -475,8 +476,11 @@ export interface DynamicTableProps<TData = any> {
   /** Selected kanban card IDs (controlled) */
   selectedKanbanCardIds?: Set<string>
 
-  /** Callback when kanban card selection changes */
-  onSelectedKanbanCardIdsChange?: (ids: Set<string>) => void
+  /**
+   * Kanban selection setter. Must accept the `SetStateAction` updater form —
+   * toggling a single card reads the previous set.
+   */
+  onSelectedKanbanCardIdsChange?: Dispatch<SetStateAction<Set<string>>>
 
   /** Entity definition ID for field creation */
   entityDefinitionId?: string

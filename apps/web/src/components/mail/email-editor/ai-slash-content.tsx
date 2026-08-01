@@ -17,8 +17,15 @@ import type { Editor } from '@tiptap/react'
 import { ChevronRight } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
-import { AI_LANG_TYPE, AI_OPERATION, AI_TONE_TYPE, type AIOperation } from '~/types/ai-tools'
+import {
+  AI_LANG_TYPE,
+  AI_OPERATION,
+  AI_TONE_TYPE,
+  type AIOperation,
+  type AIToneType,
+} from '~/types/ai-tools'
 import { isBodyEmptyIgnoringChips } from '../composer-shared/content-empty'
+import { isAiToneType } from '../composer-shared/use-composer-ai-tools'
 
 export interface AiSlashContentProps {
   /** Live editor — detects whether the body has content (chip-aware). */
@@ -26,7 +33,7 @@ export interface AiSlashContentProps {
   /** Strips the chip + runs the shared AI entrypoint. */
   onRunAI: (
     operation: AIOperation,
-    options?: { tone?: string; language?: string; instruction?: string }
+    options?: { tone?: AIToneType; language?: string; instruction?: string }
   ) => void
   /** Sync the chip scope label + restore editor focus on nav transitions. */
   onScopeChange: (scope: string | null) => void
@@ -119,7 +126,7 @@ export function AiSlashContent({ editor, onRunAI, onScopeChange, onClose }: AiSl
   const run = useCallback(
     (
       operation: AIOperation,
-      options?: { tone?: string; language?: string; instruction?: string }
+      options?: { tone?: AIToneType; language?: string; instruction?: string }
     ) => {
       onRunAI(operation, options)
       onClose()
@@ -157,12 +164,13 @@ export function AiSlashContent({ editor, onRunAI, onScopeChange, onClose }: AiSl
                 <CommandItem
                   key={opt}
                   value={opt}
-                  onSelect={() =>
-                    run(
-                      isTone ? AI_OPERATION.TONE : AI_OPERATION.TRANSLATE,
-                      isTone ? { tone: opt } : { language: opt }
-                    )
-                  }>
+                  onSelect={() => {
+                    if (!isTone) {
+                      run(AI_OPERATION.TRANSLATE, { language: opt })
+                    } else if (isAiToneType(opt)) {
+                      run(AI_OPERATION.TONE, { tone: opt })
+                    }
+                  }}>
                   {opt}
                 </CommandItem>
               ))}

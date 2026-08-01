@@ -23,7 +23,7 @@ export function getStripeConnectClient(): Stripe {
       throw new Error('STRIPE_SECRET_KEY not configured — cannot create the Stripe Connect client')
     }
     client = new Stripe(apiKey, {
-      apiVersion: '2025-09-30.clover',
+      apiVersion: '2025-10-29.clover',
       typescript: true,
     })
   }

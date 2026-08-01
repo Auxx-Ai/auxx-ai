@@ -76,10 +76,10 @@ const ConditionItem = ({
   /** Handle field change from NavigableFieldSelector */
   const handleNavigableFieldChange = useCallback(
     (fieldReference: FieldReference, fieldDef: FieldDefinition) => {
-      registerFieldDefinition(fieldReference as string | string[], fieldDef)
+      registerFieldDefinition(fieldReference, fieldDef)
       const firstOperator = fieldDef.operators?.[0] || 'is'
       handleUpdate({
-        fieldId: fieldReference as string | string[],
+        fieldId: fieldReference,
         operator: firstOperator,
         value: '',
         valueSource: undefined,
@@ -136,9 +136,7 @@ const ConditionItem = ({
       const oldOperator = condition.operator
       let newValue = condition.value
 
-      if (
-        ['isEmpty', 'isNotEmpty', 'empty', 'not empty', 'exists', 'not exists'].includes(operator)
-      ) {
+      if (!operatorRequiresValue(operator)) {
         newValue = undefined
       } else if (['in', 'not in'].includes(oldOperator) && !['in', 'not in'].includes(operator)) {
         if (Array.isArray(newValue)) {

@@ -177,8 +177,9 @@ export function ProductsServicesPage() {
     const removed = taxRates.find((r) => r.id === id)
     const next = taxRates.filter((r) => r.id !== id)
     // Deleting the default promotes the first remaining rate — one is always default.
-    if (removed?.isDefault && next.length > 0 && !next.some((r) => r.isDefault)) {
-      next[0] = { ...next[0], isDefault: true }
+    const first = next[0]
+    if (removed?.isDefault && first && !next.some((r) => r.isDefault)) {
+      next[0] = { ...first, isDefault: true }
     }
     commitTaxRates(next)
     if (selectedTaxRateId === id) setSelectedTaxRateId(null)

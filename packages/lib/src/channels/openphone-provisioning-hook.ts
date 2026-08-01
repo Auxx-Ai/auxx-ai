@@ -108,6 +108,13 @@ export const openphoneProvisioningHook: PostConnectHook = {
     if (!existingId) await assertChannelLimit(ctx.organizationId)
 
     const metadata = { phoneNumberId: identity.phoneNumberId, phoneNumber: identity.phoneNumber }
+    // Channel settings live under `Integration.metadata.settings` — there is no
+    // top-level `settings` column (see channels/settings.ts and the ingest read
+    // in store-message.ts). Default to selective record-creation on first connect.
+    const newChannelMetadata = {
+      ...metadata,
+      settings: { recordCreation: { mode: 'selective' } },
+    }
     let integrationId: string
 
     if (existingId) {
@@ -129,14 +136,12 @@ export const openphoneProvisioningHook: PostConnectHook = {
           provider: 'openphone',
           credentialId: ctx.credentialId,
           enabled: true,
-          metadata: metadata as any,
-          messageType: 'SMS',
-          // Default to selective record-creation on first connect (matches the bespoke service).
-          settings: { recordCreation: { mode: 'selective' } } as any,
+          metadata: newChannelMetadata,
           updatedAt: new Date(),
         })
         .returning({ id: schema.Integration.id })
-      integrationId = created!.id
+      if (!created) throw new Error('OpenPhone channel insert returned no row')
+      integrationId = created.id
     }
 
     // Inbox-first (channels v2): a new channel REQUIRES a validated shared inbox chosen

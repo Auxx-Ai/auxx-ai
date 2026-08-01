@@ -96,20 +96,6 @@ export { createStorageManager, StorageManager } from './storage/storage-manager'
 
 // ============= UPLOAD SYSTEM =============
 
-import { createFileUploadService } from './upload/upload-service'
-
-// File Upload Service - Modern upload system with StorageManager integration
-export { createFileUploadService, FileUploadService } from './upload/upload-service'
-
-// Import for internal use in fileUploadService
-import type { UploadServiceConfig } from './upload/enhanced-types'
-
-// Default service instance for backward compatibility
-// Note: This requires organization ID to be provided when using
-export const fileUploadService = {
-  create: (organizationId: string, config?: UploadServiceConfig) =>
-    createFileUploadService(organizationId, config),
-}
 export type {
   BatchUploadOptions,
   BatchUploadResult,
@@ -125,14 +111,6 @@ export { FileUploadProgressTracker } from './upload/progress/progress-tracker'
 
 // Upload Session Management
 export { FileUploadSession, SessionManager } from './upload/session-index'
-// Upload strategies
-export {
-  BaseUploadStrategy,
-  DirectUploadStrategy,
-  MultipartUploadStrategy,
-  PresignedUploadStrategy,
-  UploadStrategySelector,
-} from './upload/strategies'
 
 // Legacy Upload Types (for backward compatibility)
 export type { FileUploadParams, FileUploadResult } from './upload/types'

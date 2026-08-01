@@ -142,12 +142,12 @@ export function ThreadHandoffControl() {
       <>
         <ConfirmDialog />
         <Tooltip
-          content={
-            <span>
+          contentComponent={
+            <div className='max-w-xs'>
               Our AI is replying to this chat.{dutyCopy ? ` ${dutyCopy}` : ''}
               <br />
               Click to take over.
-            </span>
+            </div>
           }>
           <button
             type='button'
@@ -231,7 +231,7 @@ export function ThreadHandoffControl() {
               <AvatarWithStatusIcon
                 className='size-4'
                 status='none'
-                src={assignee?.image}
+                src={assignee?.avatarUrl ?? undefined}
                 alt={assigneeName}
                 fallback={assigneeInitials}
               />

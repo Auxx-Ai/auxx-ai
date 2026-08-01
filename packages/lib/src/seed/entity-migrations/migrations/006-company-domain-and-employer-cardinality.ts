@@ -28,7 +28,8 @@ export const migration006CompanyDomainAndEmployerCardinality: EntityMigration = 
 
     // ── 1. Add companyDomain field to the company EntityDefinition ──
     const companyDef = existing.entityDefs.get('company')
-    if (!companyDef) {
+    const companyDomainField = COMPANY_FIELDS.companyDomain
+    if (!companyDef || !companyDomainField) {
       logger.warn('No company entity found, skipping companyDomain field', { organizationId })
     } else {
       await ensureCustomFields(
@@ -36,7 +37,7 @@ export const migration006CompanyDomainAndEmployerCardinality: EntityMigration = 
         organizationId,
         'company',
         companyDef.id,
-        { companyDomain: COMPANY_FIELDS.companyDomain },
+        { companyDomain: companyDomainField },
         existing,
         state
       )

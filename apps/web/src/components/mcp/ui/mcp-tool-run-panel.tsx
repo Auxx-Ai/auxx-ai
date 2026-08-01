@@ -205,6 +205,8 @@ function McpToolResultView({ result }: { result: McpToolRunSuccess }) {
   const plainText = textAsJson ? null : result.text
 
   const views: { value: string; label: string; node: ReactNode }[] = []
+  // At least one view is always pushed below (the text branch fires when
+  // nothing else did), so `views[0]` exists by the time it is read.
   if (json) {
     views.push({
       value: 'json',
@@ -224,6 +226,8 @@ function McpToolResultView({ result }: { result: McpToolRunSuccess }) {
     })
   }
 
+  const primaryView = views[0]
+
   return (
     <div className='mt-1 flex flex-col gap-2 rounded-lg border bg-primary-50/40 p-2'>
       <div className='flex items-center justify-between'>
@@ -241,9 +245,9 @@ function McpToolResultView({ result }: { result: McpToolRunSuccess }) {
       )}
 
       {views.length === 1 ? (
-        views[0].node
+        primaryView?.node
       ) : (
-        <Tabs defaultValue={views[0].value}>
+        <Tabs defaultValue={primaryView?.value}>
           <TabsList>
             {views.map((v) => (
               <TabsTrigger key={v.value} value={v.value} size='sm'>

@@ -48,7 +48,7 @@ void main() {
 }
 `
 
-export interface IridescenceProps extends HTMLAttributes<HTMLDivElement> {
+export interface IridescenceProps extends Omit<HTMLAttributes<HTMLDivElement>, 'color'> {
   /** RGB triplet in 0–1 space. Multiplied into the shader output. */
   color?: [number, number, number]
   /** Animation speed multiplier. */

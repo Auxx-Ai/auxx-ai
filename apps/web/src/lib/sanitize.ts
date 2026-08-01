@@ -1,7 +1,7 @@
 // apps/web/src/lib/sanitize.ts
 'use client'
 
-import DOMPurify from 'dompurify'
+import DOMPurify, { type Config } from 'dompurify'
 
 /**
  * Escapes special HTML characters to prevent XSS and malformed HTML.
@@ -25,7 +25,7 @@ export function escapeHtml(str: string): string {
  * DOMPurify configuration for general HTML content
  * Allows basic formatting while stripping dangerous elements
  */
-const DEFAULT_CONFIG: DOMPurify.Config = {
+const DEFAULT_CONFIG: Config = {
   USE_PROFILES: { html: true },
   ALLOWED_TAGS: [
     'p',
@@ -68,7 +68,7 @@ const DEFAULT_CONFIG: DOMPurify.Config = {
  * Sanitize HTML content for safe rendering
  * Must only be called on client-side (browser environment)
  */
-export function sanitizeHtml(html: string, config?: DOMPurify.Config): string {
+export function sanitizeHtml(html: string, config?: Config): string {
   if (typeof window === 'undefined') {
     // Return stripped content for SSR
     return html.replace(/<[^>]*>/g, '')

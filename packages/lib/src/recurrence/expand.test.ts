@@ -233,7 +233,7 @@ describe('expandOccurrences — DST wall-clock stability (America/New_York)', ()
       expect([local.getHours(), local.getMinutes()]).toEqual([9, 0])
     }
     // EST (UTC-5) before the transition, EDT (UTC-4) on/after it.
-    expect(result[0].start.toISOString()).toBe('2026-03-05T14:00:00.000Z')
+    expect(result[0]?.start.toISOString()).toBe('2026-03-05T14:00:00.000Z')
     expect(result.at(-1)?.start.toISOString()).toBe('2026-03-10T13:00:00.000Z')
   })
 
@@ -261,7 +261,7 @@ describe('expandOccurrences — DST wall-clock stability (America/New_York)', ()
       expect([local.getHours(), local.getMinutes()]).toEqual([9, 0])
     }
     // EDT (UTC-4) before the transition, EST (UTC-5) on/after it.
-    expect(result[0].start.toISOString()).toBe('2026-10-29T13:00:00.000Z')
+    expect(result[0]?.start.toISOString()).toBe('2026-10-29T13:00:00.000Z')
     expect(result.at(-1)?.start.toISOString()).toBe('2026-11-03T14:00:00.000Z')
   })
 })

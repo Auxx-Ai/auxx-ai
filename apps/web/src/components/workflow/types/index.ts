@@ -52,5 +52,5 @@ export { NodeCategory } from './registry'
 // variable types
 export { BaseType } from './unified-types'
 
-export type { UnifiedVariable, VariableGroup, VarMode } from './variable-types'
+export type { AllowedVarType, UnifiedVariable, VariableGroup, VarMode } from './variable-types'
 export { VAR_MODE } from './variable-types'

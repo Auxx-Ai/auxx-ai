@@ -65,7 +65,10 @@ export function useChatSend({ threadId, integrationId, onSendSuccess }: UseChatS
           createdAt: sentAt,
           // Tag ids as `<role>:<id>` so the participant store + grouping render
           // sender/recipient immediately rather than waiting on the realtime echo.
-          participants: (sentMessage.participants ?? []).map((p) =>
+          // `thread.sendMessage` returns `any` (the router widens its
+          // sent/scheduled union), so this shape is stated locally. It mirrors
+          // `SentMessage['participants']` in @auxx/lib.
+          participants: (sentMessage.participants ?? []).map((p: { id: string; role: string }) =>
             toParticipantId(p.role.toLowerCase() as ParticipantRole, p.id)
           ),
           createdById: null,

@@ -1,6 +1,7 @@
 // packages/lib/src/resources/registry/field-utils.ts
 
 import { parseAppFieldRef, type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
+import { OPERATOR_DEFINITIONS, type Operator } from '../../conditions/operator-definitions'
 import type { ExecutionContextManager } from '../../workflow-engine/core/execution-context'
 import { getOperatorsForType } from '../../workflow-engine/operators/type-operator-map'
 import { createResourceReference } from '../../workflow-engine/types/resource-reference'
@@ -62,15 +63,21 @@ export function resolveFieldRef(
  * Get valid operators for a resource field.
  * Uses TYPE_OPERATOR_MAP by default, or field.operatorOverrides if specified.
  */
-export function getFieldOperators(field: ResourceField): string[] {
-  return getOperatorsForType(field.type, field.operatorOverrides)
+export function getFieldOperators(field: ResourceField): Operator[] {
+  // `operatorOverrides` is plain `string[]`, so a registry entry naming an operator the condition
+  // system no longer defines is dropped here rather than handed to the typed map. Every entry in
+  // the result is a real `OPERATOR_DEFINITIONS` key, so callers need no further filtering.
+  const overrides = field.operatorOverrides?.filter(
+    (name): name is Operator => name in OPERATOR_DEFINITIONS
+  )
+  return getOperatorsForType(field.type, overrides)
 }
 
 /**
  * Check if an operator is valid for a field.
  */
 export function isValidOperatorForField(field: ResourceField, operator: string): boolean {
-  const validOperators = getFieldOperators(field)
+  const validOperators: string[] = getFieldOperators(field)
   return validOperators.includes(operator)
 }
 

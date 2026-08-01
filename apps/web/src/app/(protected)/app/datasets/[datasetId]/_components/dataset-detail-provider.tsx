@@ -1,15 +1,24 @@
 // apps/web/src/app/(protected)/app/datasets/[datasetId]/_components/dataset-detail-provider.tsx
 'use client'
-import type {
-  DatasetEntity as Dataset,
-  DocumentEntity as Document,
-  DocumentStatus,
-} from '@auxx/database/types'
+import type { DocumentEntity as Document, DocumentStatus } from '@auxx/database/types'
 import { keepPreviousData } from '@tanstack/react-query'
-import { useQueryState } from 'nuqs'
+import type { TRPCClientErrorLike } from '@trpc/client'
+import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import { useDebounce } from '~/hooks/use-debounced-value'
-import { api } from '~/trpc/react'
+import type { AppRouter } from '~/server/api/root'
+import { api, type RouterOutputs } from '~/trpc/react'
+
+/**
+ * Exactly what `dataset.getById` returns — including the `createdBy`/`organization`
+ * relations the header renders. Declaring the bare `DatasetEntity` here used to hide
+ * them from consumers.
+ */
+export type Dataset = NonNullable<RouterOutputs['dataset']['getById']>
+
+/** Tabs backed by the `?tab=` query param. */
+export const DATASET_TABS = ['documents', 'search', 'analytics', 'settings'] as const
+export type DatasetTab = (typeof DATASET_TABS)[number]
 
 interface DatasetDetailContextValue {
   // Dataset data
@@ -19,10 +28,10 @@ interface DatasetDetailContextValue {
   isLoading: boolean
   isDocumentsLoading: boolean
   isError: boolean
-  error: Error | null
+  error: TRPCClientErrorLike<AppRouter> | null
   // Current view state
-  currentTab: 'documents' | 'search' | 'analytics' | 'settings'
-  setCurrentTab: (tab: 'documents' | 'search' | 'analytics' | 'settings') => void
+  currentTab: DatasetTab
+  setCurrentTab: (tab: DatasetTab) => void
   // Document filters
   documentFilter: DocumentStatus | 'all'
   setDocumentFilter: (filter: DocumentStatus | 'all') => void
@@ -64,9 +73,10 @@ interface DatasetDetailProviderProps {
 }
 export function DatasetDetailProvider({ datasetId, children }: DatasetDetailProviderProps) {
   // View state - persisted in URL via nuqs
-  const [currentTab, setCurrentTab] = useQueryState('tab', {
-    defaultValue: 'documents',
-  }) as ['documents' | 'search' | 'analytics' | 'settings', (tab: string) => void]
+  const [currentTab, setCurrentTab] = useQueryState(
+    'tab',
+    parseAsStringLiteral(DATASET_TABS).withDefault('documents')
+  )
   // Document filters
   const [documentFilter, setDocumentFilter] = useState<DocumentStatus | 'all'>('all')
   const [documentSearch, setDocumentSearch] = useState('')

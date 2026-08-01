@@ -2,7 +2,7 @@
 'use client'
 
 import { type ActorId, parseActorId } from '@auxx/types/actor'
-import { toRecordId } from '@auxx/types/resource'
+import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import React, { createContext, type RefObject, useContext, useMemo } from 'react'
 import type { EditorMode } from '~/components/mail/email-editor/types'
@@ -20,7 +20,7 @@ interface ReplyBoxState {
   isOpen: boolean
   mode: EditorMode
   sourceMessage: any | null // Message from thread
-  ref: RefObject<HTMLDivElement>
+  ref: RefObject<HTMLDivElement | null>
   draft: any | undefined // Draft message if exists
   isLoadingDraft: boolean
 }
@@ -31,18 +31,18 @@ interface ThreadMutations {
   unarchiveThread: () => Promise<void>
   moveToTrash: () => Promise<void>
   markAsSpam: () => Promise<void>
-  updateAssignee: (assigneeId: ActorId | null | undefined) => Promise<void>
+  updateAssignee: (assigneeId: ActorId | null) => Promise<void>
   updateSubject: (subject: string) => Promise<void>
-  moveToInbox: (inboxId: string) => Promise<void>
+  moveToInbox: (inboxId: RecordId) => Promise<void>
   deletePermanently: () => Promise<void>
 }
 
 /** Thread action handlers */
 interface ThreadHandlers {
   updateStatus: (done: boolean) => Promise<void>
-  updateAssignee: (actorId: ActorId | null | undefined) => Promise<void>
+  updateAssignee: (actorId: ActorId | null) => Promise<void>
   updateSubject: (subject: string) => Promise<void>
-  moveToInbox: (inboxId: string) => Promise<void>
+  moveToInbox: (inboxId: RecordId) => Promise<void>
   linkTicket: (ticketInstanceId: string | null) => Promise<void>
   createAndLinkTicket: () => Promise<string | null>
   openReplyBox: (mode: EditorMode | 'generic', message?: any) => void
@@ -176,7 +176,7 @@ export function ThreadProvider({
         update(threadId, { subject })
       },
 
-      moveToInbox: async (inboxId: string) => {
+      moveToInbox: async (inboxId: RecordId) => {
         // Use optimistic update via unified hook
         update(threadId, { inboxId })
         toastSuccess({ title: 'Thread moved to inbox' })
@@ -466,7 +466,7 @@ export function ThreadProvider({
       updateSubject: async (subject: string) => {
         update(threadId, { subject })
       },
-      moveToInbox: async (inboxId: string) => {
+      moveToInbox: async (inboxId: RecordId) => {
         update(threadId, { inboxId })
       },
       deletePermanently: async () => {

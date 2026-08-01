@@ -6,7 +6,7 @@
 // matching what the field pickers do. Used by the metric + group-by config rows
 // to filter aggregable/groupable fields and to key the op/granularity controls.
 
-import type { FieldType } from '@auxx/database/enums'
+import type { FieldType } from '@auxx/database/types'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
 

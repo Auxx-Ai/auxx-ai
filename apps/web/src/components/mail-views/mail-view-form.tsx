@@ -52,6 +52,11 @@ const getCreateDefaults = (): MailViewFormValues => ({
   filterGroups: [createDefaultGroup()],
 })
 
+/** The form's tab strip. `RadioTab` reports a bare `string`, so the setter
+ *  narrows through this list rather than trusting the callback's value. */
+const MAIL_VIEW_FORM_TABS = ['details', 'filters', 'options'] as const
+type MailViewFormTab = (typeof MAIL_VIEW_FORM_TABS)[number]
+
 /** Props for the shell-free mail view form core. */
 export interface MailViewFormProps {
   /** Whether the form is "open" — drives the init/reset cycle. In a dialog this is
@@ -89,7 +94,7 @@ export function MailViewForm({
   header,
 }: MailViewFormProps) {
   const cancel = onCancel ?? onClose
-  const [activeTab, setActiveTab] = useState<'details' | 'filters' | 'options'>('details')
+  const [activeTab, setActiveTab] = useState<MailViewFormTab>('details')
   const [confirm, DeleteConfirmDialog] = useConfirm()
   const router = useRouter()
   const pathname = usePathname()
@@ -260,7 +265,10 @@ export function MailViewForm({
         <form onSubmit={methods.handleSubmit(onSubmit)}>
           <RadioTab
             value={activeTab}
-            onValueChange={setActiveTab}
+            onValueChange={(value) => {
+              const tab = MAIL_VIEW_FORM_TABS.find((t) => t === value)
+              if (tab) setActiveTab(tab)
+            }}
             size='sm'
             radioGroupClassName='grid w-full'
             className='border border-primary-200 flex flex-1 w-full mb-4'>

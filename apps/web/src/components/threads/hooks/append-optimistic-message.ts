@@ -56,7 +56,12 @@ export function appendOptimisticMessage(
   utils.message.listByThread.setData({ threadId }, (prev) => {
     if (!prev) return prev
     if (prev.messages.some((m) => m.id === message.id)) return prev
-    return { messages: [...prev.messages, message], total: prev.total + 1 }
+    // The query's `MessageMeta` types `messageType` as lib's nominal `enum
+    // MessageType`; the store types it as the identical string union, so the
+    // two are structurally interchangeable but not assignable. Members match
+    // one-for-one — see `packages/lib/src/providers/types.ts`.
+    const appended = message as unknown as (typeof prev.messages)[number]
+    return { messages: [...prev.messages, appended], total: prev.total + 1 }
   })
 
   const thread = getThreadStoreState().getThread(threadId)

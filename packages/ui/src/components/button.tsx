@@ -48,7 +48,7 @@ const buttonVariants = cva(
 )
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+  extends React.ComponentProps<'button'>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean
   loading?: boolean
@@ -91,7 +91,7 @@ function Button({
       ) : (
         <>
           <Loader2 className='h-4 w-4 animate-spin' />
-          {!hideLoadingText.includes(size) && loadingText}
+          {!(size && hideLoadingText.includes(size)) && loadingText}
         </>
       )}
     </Comp>

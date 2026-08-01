@@ -32,7 +32,7 @@ const getUserTypeStmt = db
 export class SystemUserService {
   private static async getRedisClient(): Promise<RedisClient | null> {
     try {
-      return await getRedisClient(false) // Optional Redis
+      return (await getRedisClient(false)) ?? null // Optional Redis
     } catch (error) {
       logger.debug('Redis unavailable, using DB only', { error })
       return null

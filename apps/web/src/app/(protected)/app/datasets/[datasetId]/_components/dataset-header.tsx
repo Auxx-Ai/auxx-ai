@@ -85,7 +85,7 @@ export function DatasetHeader() {
     {
       className: '',
       title: 'Storage',
-      body: formatBytes(dataset.totalSize || 0n),
+      body: formatBytes(dataset.totalSize || 0),
       description: 'Total size used',
       icon: <Database className='size-4' />,
       color: 'text-purple-500',

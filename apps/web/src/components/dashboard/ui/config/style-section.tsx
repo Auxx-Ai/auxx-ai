@@ -64,7 +64,7 @@ export function RangeRows({
 }
 
 const leaf = (ref: WidgetFieldRef): ResourceFieldId =>
-  isFieldPath(ref) ? ref[ref.length - 1] : ref
+  isFieldPath(ref) ? (ref[ref.length - 1] ?? ref[0]) : ref
 
 const DATE_LABEL_FORMAT_OPTIONS: SelectOption[] = [
   { value: 'default', label: 'Default' },

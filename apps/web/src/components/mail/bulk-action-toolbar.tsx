@@ -3,7 +3,11 @@
 
 import type { ActorId } from '@auxx/types/actor'
 import { getInstanceId, type RecordId } from '@auxx/types/resource'
-import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
+import {
+  ActionBar,
+  type ActionBarAction,
+  type PickerComponentProps,
+} from '@auxx/ui/components/action-bar'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import {
@@ -18,7 +22,7 @@ import {
   Trash2,
   UserPlus,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { type ComponentType, useCallback, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { RecordPicker } from '~/components/pickers/record-picker'
@@ -36,7 +40,6 @@ import {
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { useMailFilter } from './mail-filter-context'
 
 /**
  * A toolbar component that appears when multiple threads are selected,
@@ -45,7 +48,6 @@ import { useMailFilter } from './mail-filter-context'
  */
 export default function BulkActionToolbar() {
   const utils = api.useUtils()
-  const { contextType, contextId, statusSlug, searchQuery } = useMailFilter()
 
   // Selection and view state from store
   const selectedThreadIds = useSelectedThreadIds()
@@ -366,7 +368,9 @@ export default function BulkActionToolbar() {
         shortcut: 'T',
         tooltip: 'Apply tags',
         picker: {
-          component: TagPicker,
+          // `ActionBarAction['picker']['component']` is typed as `ComponentType<PickerComponentProps>`,
+          // which cannot express a picker's own required props. Same cast as `board-bulk-bar.tsx`.
+          component: TagPicker as ComponentType<PickerComponentProps>,
           props: {
             onChange: handleTagChange,
             selectedTags: fullySelectedTagIds,
@@ -394,7 +398,7 @@ export default function BulkActionToolbar() {
         shortcut: 'A',
         tooltip: 'Assign to team member',
         picker: {
-          component: ActorPicker,
+          component: ActorPicker as ComponentType<PickerComponentProps>,
           props: {
             value: [],
             onChange: handleAssign,
@@ -412,7 +416,7 @@ export default function BulkActionToolbar() {
         disabled: selectionCount < 2 || isBulkUpdating || disabled,
         tooltip: 'Merge selected into…',
         picker: {
-          component: RecordPicker,
+          component: RecordPicker as ComponentType<PickerComponentProps>,
           props: {
             value: [] as RecordId[],
             onChange: handleMerge,
@@ -479,7 +483,10 @@ export default function BulkActionToolbar() {
         onOpenChange={setWorkflowDialogOpen}
         recordIds={Array.from(selectedThreadIds).map((id) => toRecordId('thread', id))}
         onSuccess={() => {
-          utils.thread.list.invalidate({ contextType, contextId, statusSlug, searchQuery })
+          // `thread.list` is gone — the list is `listIds` + `getByIds`, and its
+          // input is the condition filter, not the context tuple, so nothing
+          // narrower than a blanket invalidate matches the live keys.
+          utils.thread.listIds.invalidate()
         }}
       />
     </>

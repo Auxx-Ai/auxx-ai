@@ -101,7 +101,10 @@ export interface RadioTabItemProps extends VariantProps<typeof radioTabItemVaria
 /**
  * Context to share size and other props between RadioTab and RadioTabItem
  */
-const RadioTabContext = React.createContext<{ size: 'default' | 'sm'; totalItems: number }>({
+const RadioTabContext = React.createContext<{
+  size: NonNullable<VariantProps<typeof radioTabItemVariants>['size']>
+  totalItems: number
+}>({
   size: 'default',
   totalItems: 2,
 })
@@ -151,7 +154,7 @@ function RadioTab({
 
   const getIndicatorClasses = (value: string) => {
     const index = childrenArray.findIndex(
-      (child) => React.isValidElement(child) && child.props.value === value
+      (child) => React.isValidElement<{ value?: string }>(child) && child.props.value === value
     )
 
     const widthClass =

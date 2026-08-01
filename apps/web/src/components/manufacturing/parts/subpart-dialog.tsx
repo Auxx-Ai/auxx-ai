@@ -246,9 +246,13 @@ export function SubpartDialog({
 
     if (isEditMode && recordId) {
       // Edit mode: only quantity and notes are updatable
-      const fieldValues: Array<{ fieldId: string; value: unknown; fieldType: string }> = [
-        { fieldId: 'subpart_quantity', value: editValues.quantity, fieldType: 'NUMBER' },
-        { fieldId: 'subpart_notes', value: editValues.notes || undefined, fieldType: 'TEXT' },
+      const fieldValues = [
+        { fieldId: 'subpart_quantity', value: editValues.quantity, fieldType: FieldType.NUMBER },
+        {
+          fieldId: 'subpart_notes',
+          value: editValues.notes || undefined,
+          fieldType: FieldType.TEXT,
+        },
       ]
 
       const success = await saveMultipleAsync(recordId, fieldValues)

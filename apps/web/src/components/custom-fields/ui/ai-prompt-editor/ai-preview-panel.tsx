@@ -3,7 +3,7 @@
 'use client'
 
 import type { FieldType } from '@auxx/database/types'
-import type { AiOptions, RichReferencePrompt } from '@auxx/types/custom-field'
+import type { RichReferencePrompt, SelectOption } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
 import { AlertTriangle, Play, Sparkles } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -13,8 +13,11 @@ import { api } from '~/trpc/react'
 interface AiPreviewPanelProps {
   /** The field type currently selected in the dialog. */
   type: FieldType
-  /** Native options for the selected type (used to populate SELECT enums, etc.). */
-  options?: unknown
+  /**
+   * Native options for the selected type — only SELECT/MULTI_SELECT supply any
+   * (the enum list the preview grounds its json-schema on).
+   */
+  options?: { options: SelectOption[] }
   /** TipTap prompt JSON the user is editing. */
   prompt: RichReferencePrompt
   /** Field name (used in the LLM system prompt). */
@@ -82,7 +85,7 @@ export function AiPreviewPanel({
     if (!sampleRecordId) return
     previewMutation.mutate({
       type,
-      options: options as AiOptions | undefined,
+      options,
       prompt,
       sampleRecordId,
       name,

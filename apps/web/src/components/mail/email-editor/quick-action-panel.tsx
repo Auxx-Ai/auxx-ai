@@ -3,7 +3,11 @@
 'use client'
 
 import type { DraftActionPayload } from '@auxx/lib/quick-actions/client'
-import type { SelectOption } from '@auxx/types/custom-field'
+import {
+  SELECT_OPTION_COLORS,
+  type SelectOption,
+  type SelectOptionColor,
+} from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
 import {
   Collapsible,
@@ -270,7 +274,17 @@ function QuickActionPicker({
   // One option per action; the action's own icon (raw key) sits on the row, the
   // app icon lands on the group heading. Group headings are keyed by app id.
   const options: SelectOption[] = useMemo(
-    () => actions.map((a) => ({ value: a.id, label: a.label, color: a.color, icon: a.icon })),
+    () =>
+      actions.map((a) => ({
+        value: a.id,
+        label: a.label,
+        // App manifests may carry any colour string; `SelectOption` only
+        // renders the named palette, so anything else drops to no colour.
+        color: SELECT_OPTION_COLORS.includes(a.color as SelectOptionColor)
+          ? (a.color as SelectOptionColor)
+          : undefined,
+        icon: a.icon,
+      })),
     [actions]
   )
 

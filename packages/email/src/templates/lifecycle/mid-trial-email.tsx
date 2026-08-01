@@ -9,23 +9,34 @@ import { EmailTemplate } from '../../components/email-template'
 import { EmailHeading } from '../../components/email-text'
 
 void React
+
+const linkStyle = { color: '#0ea5e9', textDecoration: 'none' }
+
 interface MidTrialEmailProps {
   name: string
+  organizationName?: string
   daysRemaining: number
   ticketsResolved?: number
   timeSaved?: number
   aiAccuracy?: number
   dashboardUrl?: string
+  integrationsUrl?: string
+  upgradeUrl?: string
+  supportUrl?: string
   scheduleCallUrl?: string
 }
 
 export async function MidTrialEmail({
   name,
+  organizationName,
   daysRemaining,
   ticketsResolved = 0,
   timeSaved = 0,
   aiAccuracy = 0,
   dashboardUrl = `${WEBAPP_URL}/dashboard`,
+  integrationsUrl = `${WEBAPP_URL}/settings/channels`,
+  upgradeUrl = `${WEBAPP_URL}/settings/billing`,
+  supportUrl = `${WEBAPP_URL}/support`,
   scheduleCallUrl = 'https://calendly.com/auxx-ai/demo',
 }: MidTrialEmailProps): Promise<React.JSX.Element> {
   return (
@@ -34,9 +45,9 @@ export async function MidTrialEmail({
         <EmailHeading>You're Halfway Through Your Trial!</EmailHeading>
         <Text>Hi {name},</Text>
         <Text>
-          Great progress! You've been using Auxx.ai for a week now, with{' '}
-          <strong>{daysRemaining} days</strong> remaining in your trial. Let's look at what you've
-          accomplished so far.
+          Great progress! {organizationName ?? 'Your team'} has been using Auxx.ai for a week now,
+          with <strong>{daysRemaining} days</strong> remaining in your trial. Let's look at what
+          you've accomplished so far.
         </Text>
 
         {(ticketsResolved > 0 || timeSaved > 0) && (
@@ -127,20 +138,37 @@ export async function MidTrialEmail({
           }}>
           <Text style={{ margin: '0 0 8px 0', fontWeight: 'bold' }}>💡 Pro Tip</Text>
           <Text style={{ margin: '0', fontSize: '14px' }}>
-            Companies that connect both email and Shopify see 3x faster response times and 40%
-            higher customer satisfaction scores.
+            Companies that{' '}
+            <a href={integrationsUrl} style={linkStyle}>
+              connect both email and Shopify
+            </a>{' '}
+            see 3x faster response times and 40% higher customer satisfaction scores.
           </Text>
         </div>
 
-        <Text>Want to maximize your remaining trial time? Our team is here to help!</Text>
+        <Text>
+          Want to maximize your remaining trial time?{' '}
+          <a href={supportUrl} style={linkStyle}>
+            Our team is here to help
+          </a>
+          !
+        </Text>
 
         <div style={{ textAlign: 'center', margin: '24px 0' }}>
           <EmailButton href={scheduleCallUrl} label='Schedule a Quick Demo' />
           <Text style={{ margin: '12px 0', fontSize: '14px', color: '#64748b' }}>or</Text>
-          <a href={dashboardUrl} style={{ color: '#0ea5e9', textDecoration: 'none' }}>
+          <a href={dashboardUrl} style={linkStyle}>
             Continue to App →
           </a>
         </div>
+
+        <Text style={{ fontSize: '14px', color: '#64748b' }}>
+          Ready to keep going after the trial?{' '}
+          <a href={upgradeUrl} style={linkStyle}>
+            Choose your plan
+          </a>
+          .
+        </Text>
 
         <Text
           style={{ fontSize: '14px', fontStyle: 'italic', color: '#64748b', marginTop: '24px' }}>
@@ -158,11 +186,15 @@ export async function MidTrialEmail({
 // Text version
 export function MidTrialText({
   name,
+  organizationName,
   daysRemaining,
   ticketsResolved = 0,
   timeSaved = 0,
   aiAccuracy = 0,
   dashboardUrl = `${WEBAPP_URL}/dashboard`,
+  integrationsUrl = `${WEBAPP_URL}/settings/channels`,
+  upgradeUrl = `${WEBAPP_URL}/settings/billing`,
+  supportUrl = `${WEBAPP_URL}/support`,
   scheduleCallUrl = 'https://calendly.com/auxx-ai/demo',
 }: MidTrialEmailProps): string {
   let impactSection = ''
@@ -180,7 +212,7 @@ You're Halfway Through Your Trial!
 
 Hi ${name},
 
-Great progress! You've been using Auxx.ai for a week now, with ${daysRemaining} days remaining in your trial. Let's look at what you've accomplished so far.
+Great progress! ${organizationName ?? 'Your team'} has been using Auxx.ai for a week now, with ${daysRemaining} days remaining in your trial. Let's look at what you've accomplished so far.
 ${impactSection}
 Features You Might Have Missed:
 • Auto-categorization: Let AI automatically tag and prioritize incoming tickets
@@ -190,11 +222,14 @@ Features You Might Have Missed:
 
 💡 Pro Tip:
 Companies that connect both email and Shopify see 3x faster response times and 40% higher customer satisfaction scores.
+Connect your channels: ${integrationsUrl}
 
-Want to maximize your remaining trial time? Our team is here to help!
+Want to maximize your remaining trial time? Our team is here to help: ${supportUrl}
 
 Schedule a Quick Demo: ${scheduleCallUrl}
 Or continue to your dashboard: ${dashboardUrl}
+
+Ready to keep going after the trial? Choose your plan: ${upgradeUrl}
 
 "Auxx.ai cut our response time by 70% and our customers love the faster, more accurate support. It's been a game-changer for our small team." - Alex Chen, Founder of TechGear Pro
 
@@ -209,10 +244,14 @@ export default MidTrialEmail
 // Preview props for React Email dev server
 MidTrialEmail.PreviewProps = {
   name: 'Sarah',
+  organizationName: 'Acme Store',
   daysRemaining: 7,
   ticketsResolved: 47,
   timeSaved: 12,
   aiAccuracy: 94,
   dashboardUrl: 'https://app.auxx.ai/dashboard',
+  integrationsUrl: 'https://app.auxx.ai/settings/channels',
+  upgradeUrl: 'https://app.auxx.ai/settings/billing',
+  supportUrl: 'https://app.auxx.ai/support',
   scheduleCallUrl: 'https://calendly.com/auxx-ai/demo',
 }

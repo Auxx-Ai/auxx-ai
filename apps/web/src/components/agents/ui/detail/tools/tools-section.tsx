@@ -195,9 +195,10 @@ export function ToolsSection({ agent, onAutosaveChange, onNavigate }: ToolsSecti
         if (!state?.enabled) continue
         changes.push({ slug: leaf.slug, enabled: false })
       }
-      if (changes.length === 0) return
+      const [only] = changes
+      if (!only) return
       if (changes.length === 1) {
-        void toggleToolset(changes[0].slug, false)
+        void toggleToolset(only.slug, false)
         return
       }
       void toggleToolsets(changes)

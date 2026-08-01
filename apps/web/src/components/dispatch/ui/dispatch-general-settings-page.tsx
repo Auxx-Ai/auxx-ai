@@ -98,7 +98,7 @@ function DispatchGeneralSettingsBody() {
     onSave: (next) => {
       const changed: Array<{ key: string; value: SettingValue }> = []
       if (JSON.stringify(next[BUSINESS_KEY]) !== JSON.stringify(server[BUSINESS_KEY])) {
-        changed.push({ key: BUSINESS_KEY, value: next[BUSINESS_KEY] })
+        changed.push({ key: BUSINESS_KEY, value: next[BUSINESS_KEY] ?? null })
       }
       for (const key of SCALAR_DRAFT_KEYS) {
         if (next[key] !== server[key]) changed.push({ key, value: next[key] ?? null })

@@ -2,6 +2,7 @@
 'use client'
 
 import { FieldType, ResourceGranteeType, type SharingGranteeType } from '@auxx/database/enums'
+import { SELECT_OPTION_COLORS, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { type Lens, type LensChoice, normalizeLens } from '@auxx/lib/permissions/visibility/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { type ActorId, toActorId } from '@auxx/types/actor'
@@ -58,7 +59,7 @@ interface FormGrant {
 interface InboxFormValues {
   name: string
   description: string
-  color: string
+  color: SelectOptionColor
   accessType: 'anyone' | 'restricted'
   /** The org-wide floor when accessType is 'anyone'. Restricted ⇒ floor `none`. */
   floorLens: Exclude<Lens, 'none'>
@@ -81,6 +82,17 @@ const DEFAULT_VALUES: InboxFormValues = {
  * `inbox_default_lens` is deliberately absent: see the fetch site below.
  */
 const INBOX_SYSTEM_ATTRS = ['inbox_name', 'inbox_description', 'inbox_color'] as const
+
+/**
+ * Narrows a stored `inbox_color` field value to a known swatch. Rows written
+ * before the palette settled (or by an import) can hold anything, and the
+ * picker only renders the known ids — fall back to the create-mode default.
+ */
+function toSelectOptionColor(value: unknown): SelectOptionColor {
+  return SELECT_OPTION_COLORS.includes(value as SelectOptionColor)
+    ? (value as SelectOptionColor)
+    : DEFAULT_VALUES.color
+}
 
 /** Props for the shell-free inbox form core. */
 export interface InboxFormProps {
@@ -340,7 +352,7 @@ export function InboxForm({
 
         const name = (fieldValues.inbox_name as string) ?? ''
         const description = (fieldValues.inbox_description as string) ?? ''
-        const color = (fieldValues.inbox_color as string) ?? 'indigo'
+        const color = toSelectOptionColor(fieldValues.inbox_color)
         // The floor comes from the `role:org_member` baseline ROW, not from a
         // field value (plan 40 §6) — same rows the grantee list is built from.
         const storedLens = floorFromRows(accessRows)

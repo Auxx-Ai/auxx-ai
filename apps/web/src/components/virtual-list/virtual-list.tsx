@@ -2,7 +2,7 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { useVirtualizer } from '@tanstack/react-virtual'
+import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual'
 import { createContext, type ReactNode, useContext, useRef } from 'react'
 
 /**
@@ -14,7 +14,7 @@ interface VirtualListContextValue<T = any> {
   searchQuery: string
   isLoading: boolean
   hasMore: boolean
-  virtualizer?: ReturnType<typeof useVirtualizer>
+  virtualizer?: Virtualizer<HTMLDivElement, Element>
   scrollContainerRef: React.RefObject<HTMLDivElement | null>
   onSelectionChange?: (id: string, selected: boolean) => void
   onSelectAll?: (selected: boolean) => void

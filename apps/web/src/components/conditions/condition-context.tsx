@@ -21,7 +21,7 @@ import type {
   OperatorDefinition,
 } from './types'
 import { getOperatorDefinition, getOperatorsForFieldType } from './types'
-import { encodeFieldIdKey } from './utils'
+import { encodeFieldIdKey, isOperator } from './utils'
 
 const ConditionContext = createContext<ConditionContextValue | null>(null)
 
@@ -158,11 +158,14 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
       const availableOperators = getOperatorsForFieldType(
         resolvedFieldDef.fieldType ?? resolvedFieldDef.type
       )
-      const defaultOperator = availableOperators[0]?.key || 'is'
+      const defaultOperator = availableOperators.map((o) => o.key).find(isOperator) ?? 'is'
 
       const newCondition: Condition = {
         id: generateId(),
-        fieldId,
+        // The array form only ever arrives as a `FieldPath` from the field pickers
+        // (NavigableFieldSelector / ProcedureFieldSelector), whose every segment is
+        // an `entity:field` ResourceFieldId. The scalar form needs no branding.
+        fieldId: Array.isArray(fieldId) ? (fieldId as ResourceFieldId[]) : fieldId,
         operator: defaultOperator,
         value: '',
         isConstant: true,
@@ -217,7 +220,8 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
               Object.assign(condition, updates)
 
               if (updates.fieldId && config.mode === 'variable') {
-                condition.variableId = updates.fieldId
+                condition.variableId =
+                  typeof updates.fieldId === 'string' ? updates.fieldId : undefined
               }
             }
           }
@@ -230,7 +234,8 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
             Object.assign(condition, updates)
 
             if (updates.fieldId && config.mode === 'variable') {
-              condition.variableId = updates.fieldId
+              condition.variableId =
+                typeof updates.fieldId === 'string' ? updates.fieldId : undefined
             }
           }
         })

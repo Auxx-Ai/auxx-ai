@@ -413,7 +413,9 @@ export const draftLayoutDocSchema = z
 
 /** Doc-wide invariants shared by the strict + draft docs: unique ids, root-def match. */
 function layoutDocRefine(
-  doc: { tabs: Array<{ id: string; widgets: Array<{ id: string; configuration: unknown }> }> },
+  // `widgets` is `unknown[]` in the parsed output (the widget config is a
+  // permissive union), so the shape is re-narrowed per element below.
+  doc: { tabs: Array<{ id: string; widgets: unknown[] }> },
   ctx: z.RefinementCtx
 ): void {
   const tabIds = new Set<string>()
@@ -428,7 +430,8 @@ function layoutDocRefine(
     }
     tabIds.add(tab.id)
 
-    tab.widgets.forEach((widget, wi) => {
+    tab.widgets.forEach((raw, wi) => {
+      const widget = raw as { id: string; configuration: unknown }
       if (widgetIds.has(widget.id)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

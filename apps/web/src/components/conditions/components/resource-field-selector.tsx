@@ -59,8 +59,9 @@ const ResourceFieldSelector = ({
   /** Handle selection change from MultiSelectPicker */
   const handleChange = useCallback(
     (selected: string[]) => {
-      if (selected.length > 0) {
-        onChange(selected[0])
+      const first = selected[0]
+      if (first) {
+        onChange(first)
       }
     },
     [onChange]

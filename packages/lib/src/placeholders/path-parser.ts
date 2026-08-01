@@ -1,7 +1,12 @@
 // packages/lib/src/placeholders/path-parser.ts
 
-import type { FieldReference } from '@auxx/types/field'
-import { getRootEntityId, isFieldPath, keyToFieldRef } from '@auxx/types/field'
+import type { FieldReference, ResourceFieldId } from '@auxx/types/field'
+import {
+  getFieldDefinitionId,
+  getRootEntityId,
+  isFieldPath,
+  keyToFieldRef,
+} from '@auxx/types/field'
 
 /**
  * Synthetic `date:` placeholder slugs. These are not real entity fields —
@@ -111,9 +116,12 @@ export function parsePlaceholderId(id: string): ParsedPlaceholder {
   }
 
   const fieldRef = keyToFieldRef(id)
+  // `keyToFieldRef` only ever yields a FieldPath or a ResourceFieldId — the
+  // bare-FieldId arm of `FieldReference` is unreachable here, so the scalar
+  // branch is safe to read as a one-segment path.
   const rootEntityDefinitionId = isFieldPath(fieldRef)
     ? getRootEntityId(fieldRef)
-    : getRootEntityId([fieldRef])
+    : getFieldDefinitionId(fieldRef as ResourceFieldId)
 
   return { kind: 'field', fieldRef, rootEntityDefinitionId }
 }

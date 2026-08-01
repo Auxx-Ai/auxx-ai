@@ -30,7 +30,8 @@ type Prop = {
     name: string
     email: string
     emailVerified: boolean | null
-    image: boolean | null
+    /** Avatar URL. */
+    image: string | null
   }
   // slug: string
 } & React.ComponentProps<typeof Sidebar>

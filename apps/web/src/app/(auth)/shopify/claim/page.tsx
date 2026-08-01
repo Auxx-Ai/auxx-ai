@@ -136,8 +136,8 @@ export default async function ShopifyClaimPage({ searchParams }: PageProps) {
   // plan selection / fresh link). A shop attached to >1 live org stays ambiguous → picker.
   const liveLinkedOrgIds = orgInfos.filter((o) => o.isLiveShopifyLink).map((o) => o.id)
 
-  if (liveLinkedOrgIds.length === 1) {
-    const targetOrgId = liveLinkedOrgIds[0]
+  const targetOrgId = liveLinkedOrgIds.length === 1 ? liveLinkedOrgIds[0] : undefined
+  if (targetOrgId) {
     // Make the linked workspace active before bouncing into the app, otherwise `/app`
     // would open whatever the user's current default org is.
     if (defaultOrgId !== targetOrgId) {

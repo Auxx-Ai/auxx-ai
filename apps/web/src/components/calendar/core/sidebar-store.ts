@@ -21,9 +21,9 @@ export interface CalendarSidebarState {
   isHidden: (group: string, id: string) => boolean
 }
 
-function createBaseSlice<Extra extends object>(
-  set: StoreApi<CalendarSidebarState & Extra>['setState'],
-  get: StoreApi<CalendarSidebarState & Extra>['getState']
+function createBaseSlice(
+  set: StoreApi<CalendarSidebarState>['setState'],
+  get: () => CalendarSidebarState
 ): CalendarSidebarState {
   return {
     open: true,
@@ -62,7 +62,11 @@ export function createCalendarSidebarStore<Extra extends object = Record<string,
   return create<CalendarSidebarState & Extra>()(
     persist(
       (set, get, api) => ({
-        ...createBaseSlice<Extra>(set, get),
+        // The real store is `CalendarSidebarState & Extra`; this slice only ever reads and
+        // writes base keys, and zustand's `set` merges shallowly, so a base-only setter is
+        // sound. The cast is needed because TS cannot check `Partial<CalendarSidebarState &
+        // Extra>` while `Extra` is still an unresolved type parameter.
+        ...createBaseSlice(set as StoreApi<CalendarSidebarState>['setState'], get),
         ...(extra ? extra(set, get, api) : ({} as Extra)),
       }),
       { name: persistKey, version: 1 }

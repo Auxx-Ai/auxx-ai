@@ -79,10 +79,11 @@ export function EventTypePicker({
     // Enter -> select highlighted option
     if (e.key === 'Enter') {
       e.preventDefault()
+      const firstOption = allOptions[0]
       if (highlightedOption) {
         toggleEventType(highlightedOption)
-      } else if (inputValue && allOptions.length > 0) {
-        toggleEventType(allOptions[0].value)
+      } else if (inputValue && firstOption) {
+        toggleEventType(firstOption.value)
       }
       return
     }

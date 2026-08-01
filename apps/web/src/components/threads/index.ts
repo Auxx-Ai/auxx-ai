@@ -27,13 +27,6 @@ export { ThreadActionsProvider, ThreadDataProvider, useThreadActions } from './p
 export {
   type ChannelProvider,
   type ContextPagination,
-  createAssignedThreadsSelector,
-  // Selector utilities
-  createContextKey,
-  createInboxThreadsSelector,
-  createThreadSelector,
-  createUnreadThreadsSelector,
-  filterThreadsFromMap,
   getMessageListStoreState,
   getMessageStoreState,
   getParticipantStoreState,
@@ -42,8 +35,6 @@ export {
   type MessageMeta,
   type ParticipantIdentifierType,
   type ParticipantMeta,
-  type ParticipantSummary,
-  sortThreads,
   type ThreadFilter,
   type ThreadMeta,
   type ThreadSort,

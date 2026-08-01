@@ -9,6 +9,7 @@ import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
+import type { LucideIcon } from 'lucide-react'
 import { AlertCircle, AlertTriangle, CheckCircle2, Clock, Plus, RefreshCw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { VirtualList, VirtualListContent, VirtualListItems } from '~/components/virtual-list'
@@ -37,7 +38,7 @@ interface StepReviewValuesProps {
 interface StatusGroup {
   status: string
   label: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: LucideIcon
   color: string
   bgColor: string
   values: UniqueValueSummary[]

@@ -11,10 +11,6 @@ import { useCreateEntityStore } from './create-entity-store'
 import { SYSTEM_CREATE_HOTKEYS } from './system-hotkeys'
 
 const HOTKEY_TIMEOUT = 500
-const upper = (combo: [string, string]): [string, string] => [
-  combo[0].toUpperCase(),
-  combo[1].toUpperCase(),
-]
 
 /**
  * Root-level renderer for the global "create any entity" dialog.
@@ -37,16 +33,16 @@ export function GlobalCreateRoot() {
     useCreateEntityStore.getState().openDialog({ entityDefinitionId: resource.id })
   }
 
-  useHotkeySequence(upper(SYSTEM_CREATE_HOTKEYS.contacts), () => openForSlug('contacts'), {
+  useHotkeySequence(SYSTEM_CREATE_HOTKEYS.contacts, () => openForSlug('contacts'), {
     timeout: HOTKEY_TIMEOUT,
   })
-  useHotkeySequence(upper(SYSTEM_CREATE_HOTKEYS.companies), () => openForSlug('companies'), {
+  useHotkeySequence(SYSTEM_CREATE_HOTKEYS.companies, () => openForSlug('companies'), {
     timeout: HOTKEY_TIMEOUT,
   })
-  useHotkeySequence(upper(SYSTEM_CREATE_HOTKEYS.tickets), () => openForSlug('tickets'), {
+  useHotkeySequence(SYSTEM_CREATE_HOTKEYS.tickets, () => openForSlug('tickets'), {
     timeout: HOTKEY_TIMEOUT,
   })
-  useHotkeySequence(upper(SYSTEM_CREATE_HOTKEYS.parts), () => openForSlug('parts'), {
+  useHotkeySequence(SYSTEM_CREATE_HOTKEYS.parts, () => openForSlug('parts'), {
     timeout: HOTKEY_TIMEOUT,
   })
 

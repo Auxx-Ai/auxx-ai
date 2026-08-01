@@ -57,7 +57,6 @@ export function VirtualListHeader({
         {/* Search Bar */}
         {showSearch && onSearch && (
           <InputSearch
-            size='sm'
             value={searchQuery}
             onChange={(e) => onSearch(e.target.value)}
             onClear={() => onSearch('')}

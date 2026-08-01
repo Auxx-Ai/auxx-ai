@@ -154,7 +154,10 @@ export const datasetRouter = createTRPCRouter({
         return {
           ...dataset,
           documentCount: Number(stats?.dc || 0),
-          totalSize: BigInt(Math.floor(stats?.ts || 0)),
+          // `Dataset.totalSize` is `bigint({ mode: 'number' })` — a number on both
+          // sides. Re-wrapping it as a real BigInt here made this branch's shape
+          // disagree with `DatasetEntity` for every consumer of `getById`.
+          totalSize: Math.floor(stats?.ts || 0),
         }
       }
       return dataset

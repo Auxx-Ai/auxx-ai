@@ -55,11 +55,14 @@ export function ArticleDiffView({
   // diff and modified containers reconstructed; `decorations` carries the status
   // of every container-nested leaf. Assembled as one doc so ordered concerns
   // (list numbering) resolve against the full sequence.
-  const { nodes: renderNodes, decorations } = useMemo(
+  const { entries: renderEntries, decorations } = useMemo(
     () => buildDiffRender(diff.blocks),
     [diff.blocks]
   )
-  const renderDoc: DocJSON = useMemo(() => ({ type: 'doc', content: renderNodes }), [renderNodes])
+  const renderDoc: DocJSON = useMemo(
+    () => ({ type: 'doc', content: renderEntries.map((e) => e.node) }),
+    [renderEntries]
+  )
 
   const { added, removed, modified, moved } = diff.stats
   const hasChanges = added + removed + modified + moved > 0
@@ -83,11 +86,11 @@ export function ArticleDiffView({
         <div className='mx-auto w-full max-w-3xl px-7 py-6'>
           {hasChanges ? (
             <article className={cn(kbArticleContainerClass, styles.body)}>
-              {diff.blocks.map((d, idx) => (
+              {renderEntries.map(({ diff: d, node }, idx) => (
                 <DiffBlock
                   key={d.id || idx}
                   diff={d}
-                  node={renderNodes[idx]}
+                  node={node}
                   idx={idx}
                   doc={renderDoc}
                   decorations={decorations}

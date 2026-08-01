@@ -190,11 +190,12 @@ function FileSelectPickerContent({
   const resolvedOpen = isControlled ? open : internalOpen
   const handleOpenChange = useCallback(
     (next: boolean) => {
+      if (next && disabled) return
       if (!next) setMode('menu')
       if (!isControlled) setInternalOpen(next)
       onOpenChange?.(next)
     },
-    [isControlled, onOpenChange]
+    [disabled, isControlled, onOpenChange]
   )
 
   const { selectedItems } = fileSelect
@@ -254,8 +255,7 @@ function FileSelectPickerContent({
         className={cn('w-96 p-0', className)}
         align={align}
         side={side}
-        sideOffset={sideOffset}
-        disabled={disabled}>
+        sideOffset={sideOffset}>
         {mode === 'browse' ? (
           <>
             {inProgressFiles.length > 0 && (

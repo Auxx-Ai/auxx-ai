@@ -174,6 +174,7 @@ function toSystemResourceBase(tableId: TableId): Omit<SystemResource, 'fields'> 
   if (!entry) throw new Error(`Unknown system resource: ${tableId}`)
 
   const displayConfig = RESOURCE_DISPLAY_CONFIG[tableId]
+  if (!displayConfig) throw new Error(`No display config for system resource: ${tableId}`)
   const fieldRegistry = RESOURCE_FIELD_REGISTRY[tableId]
 
   // Helper to create DisplayFieldConfig from field ID

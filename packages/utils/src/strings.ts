@@ -76,7 +76,7 @@ export function humanizeFieldPath(path: string | null | undefined): string {
     let overlap = 0
     for (let k = Math.min(words.length, segWords.length); k > 0; k--) {
       const tail = words.slice(words.length - k)
-      if (tail.every((w, i) => w.toLowerCase() === segWords[i].toLowerCase())) {
+      if (tail.every((w, i) => w.toLowerCase() === segWords[i]?.toLowerCase())) {
         overlap = k
         break
       }

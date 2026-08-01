@@ -19,7 +19,7 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     fieldType: FieldType.TEXT,
     dbColumn: 'id',
     nullable: false,
-    operatorOverrides: ['is', 'is not', 'in', 'not in', 'exists', 'not exists'],
+    operatorOverrides: ['is', 'is not', 'in', 'not in'],
     capabilities: {
       filterable: true,
       sortable: false,

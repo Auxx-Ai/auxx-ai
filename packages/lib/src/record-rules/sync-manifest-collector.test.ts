@@ -29,7 +29,7 @@ describe('createManifestCollector', () => {
     c.recordChange(RID('def_1:i1'), { fld_a: { o: 1, n: 2 }, fld_b: { n: 'x' } })
     const m = c.toJson()
     expect(m).not.toBeNull()
-    expect(m!.changes['def_1:i1']).toEqual({ fld_a: { o: 1, n: 2 }, fld_b: { n: 'x' } })
+    expect(m!.changes[RID('def_1:i1')]).toEqual({ fld_a: { o: 1, n: 2 }, fld_b: { n: 'x' } })
     expect(m!.version).toBe(1)
     expect(m!.truncated).toBe(false)
   })
@@ -39,7 +39,7 @@ describe('createManifestCollector', () => {
     c.recordChange(RID('def_1:i1'), { fld_a: { o: 1, n: 2 } })
     c.recordChange(RID('def_1:i1'), { fld_a: { o: 99, n: 3 }, fld_b: { n: 'y' } })
     const m = c.toJson()!
-    expect(m.changes['def_1:i1']).toEqual({ fld_a: { o: 1, n: 3 }, fld_b: { n: 'y' } })
+    expect(m.changes[RID('def_1:i1')]).toEqual({ fld_a: { o: 1, n: 3 }, fld_b: { n: 'y' } })
   })
 
   // F6: `o`-absence marks "created this run" — a later update in the same slice must
@@ -50,7 +50,7 @@ describe('createManifestCollector', () => {
     c.recordChange(RID('def_1:i1'), { fld_a: { n: 'v' } }) // create capture — no o
     c.recordChange(RID('def_1:i1'), { fld_a: { o: 'v', n: 'v2' } }) // update capture
     const m = c.toJson()!
-    expect(m.changes['def_1:i1']).toEqual({ fld_a: { n: 'v2' } })
+    expect(m.changes[RID('def_1:i1')]).toEqual({ fld_a: { n: 'v2' } })
   })
 
   it('records created/archived lifecycle ids, dedup', () => {

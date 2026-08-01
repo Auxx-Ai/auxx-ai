@@ -187,9 +187,14 @@ function calculateHeight(
   const { sizingStyle, paddingSize, borderSize } = sizingInfo
   const boxSizing = sizingStyle.boxSizing
 
-  // Apply sizing styles to hidden textarea
+  // Apply sizing styles to hidden textarea. `sizingStyle` is keyed by the camelCase
+  // names in SIZING_STYLE_KEYS, so convert back to the CSS property name.
+  const measuringTextarea = hiddenTextarea
   Object.keys(sizingStyle).forEach((key) => {
-    ;(hiddenTextarea!.style as Record<string, string>)[key] = sizingStyle[key]!
+    measuringTextarea.style.setProperty(
+      key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`),
+      sizingStyle[key] ?? ''
+    )
   })
   applyHiddenStyles(hiddenTextarea)
 

@@ -123,7 +123,7 @@ export function PaymentsList({
     }
   }
 
-  if (isLoading) return <EmptySection loading />
+  if (isLoading) return <EmptySection loading title='Loading payments' />
 
   if (!payments?.length) {
     return (

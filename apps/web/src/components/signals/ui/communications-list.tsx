@@ -100,7 +100,7 @@ export function CommunicationsList({
   const router = useRouter()
   const { data: signals, isLoading } = useRecordSignals(recordKeys, { limit })
 
-  if (isLoading) return <EmptySection loading />
+  if (isLoading) return <EmptySection loading title='Loading communications' />
 
   if (!signals?.length) {
     return (

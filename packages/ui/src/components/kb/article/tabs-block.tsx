@@ -31,10 +31,12 @@ export function TabsBlock({ panels }: TabsBlockProps) {
       else if (event.key === 'Home') next = 0
       else if (event.key === 'End') next = panels.length - 1
       if (next == null) return
+      const nextPanel = panels[next]
+      if (!nextPanel) return
       event.preventDefault()
-      setActiveId(panels[next].id)
+      setActiveId(nextPanel.id)
       const target = event.currentTarget.querySelector<HTMLButtonElement>(
-        `[data-tab-id="${panels[next].id}"]`
+        `[data-tab-id="${nextPanel.id}"]`
       )
       target?.focus()
     },

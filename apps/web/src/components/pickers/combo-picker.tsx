@@ -91,7 +91,7 @@ interface ComboPickerProps {
   disabled?: boolean
   className?: string
   multi?: boolean // default true
-  children: React.ReactNode // trigger element
+  children?: React.ReactNode // trigger element (required only when `popover` is true)
   popover?: boolean // default true
   align?: 'start' | 'center' | 'end' // popover alignment, default 'center'
 }

@@ -11,7 +11,12 @@ import {
 } from '@auxx/lib/resources/client'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { getNormalizedRecordId } from '../utils/normalize-record-id'
-import { buildFieldValueKey, type StoredFieldValue, useFieldValueStore } from './field-value-store'
+import {
+  buildFieldValueKey,
+  type FieldValueKey,
+  type StoredFieldValue,
+  useFieldValueStore,
+} from './field-value-store'
 
 /**
  * Derive the target entityDefinitionId for a RELATIONSHIP field so the
@@ -49,7 +54,7 @@ export function hydrateFieldValues({
 }: HydrationOptions): void {
   // Guard: canonicalize the prefix so hydrated keys match subscriber keys.
   const recordId = getNormalizedRecordId(rawRecordId)
-  const entries: Array<{ key: string; value: StoredFieldValue }> = []
+  const entries: Array<{ key: FieldValueKey; value: StoredFieldValue }> = []
 
   // Process all fields (system + custom)
   for (const field of resource.fields) {
@@ -110,7 +115,7 @@ export function hydrateMultipleRecords(
   resource: Resource,
   records: Array<{ recordId: RecordId; data: Record<string, unknown> }>
 ): void {
-  const allEntries: Array<{ key: string; value: StoredFieldValue }> = []
+  const allEntries: Array<{ key: FieldValueKey; value: StoredFieldValue }> = []
 
   for (const record of records) {
     for (const field of resource.fields) {

@@ -79,7 +79,8 @@ function QuotesSettingsBody({ breadcrumbs }: { breadcrumbs: { title: string }[] 
     onSave: (next) => {
       const changed = DRAFT_KEYS.filter((key) => next[key] !== server[key]).map((key) => ({
         key,
-        value: next[key],
+        // Every DRAFT_KEY is seeded from `getSetting`, which never returns undefined.
+        value: next[key] ?? null,
       }))
       if (changed.length > 0) batchUpdateOrganizationSettings(changed)
     },

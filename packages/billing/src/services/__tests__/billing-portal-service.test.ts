@@ -1,11 +1,11 @@
 // packages/billing/src/services/__tests__/billing-portal-service.test.ts
 
-import { stripeClient } from '@auxx/billing/services/stripe-client'
 import type { Database } from '@auxx/database'
 import type Stripe from 'stripe'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BillingError, ErrorCode } from '../../utils/error-codes'
 import { BillingPortalService } from '../billing-portal-service'
+import { stripeClient } from '../stripe-client'
 
 const mockStripeApi = {
   billingPortal: {
@@ -32,7 +32,7 @@ describe('BillingPortalService', () => {
   })
 
   it('throws BillingError(NO_CUSTOMER_FOUND) when no active subscription with stripeCustomerId', async () => {
-    const db = createMockDb(null)
+    const db = createMockDb()
     const service = new BillingPortalService(db, 'https://app.example.com')
 
     await expect(

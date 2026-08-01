@@ -2,7 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { getAllCachedCustomFields } from '@auxx/lib/cache'
-import { CustomFieldService } from '@auxx/lib/custom-fields'
+import { CustomFieldService, type FormulaNode } from '@auxx/lib/custom-fields'
 import { previewFieldValue } from '@auxx/lib/field-values'
 import {
   fieldOptionsUnionSchema,
@@ -220,7 +220,10 @@ export const customFieldRouter = createTRPCRouter({
         userId: ctx.session.user.id,
         sampleRecordId: input.sampleRecordId as RecordId,
         type: input.type,
-        promptJson: input.prompt,
+        // `RichReferencePrompt` and `FormulaNode` both describe the same TipTap
+        // document; they differ only in that the former declares `content` as
+        // `unknown[]` instead of recursing. See the referral on packages/types.
+        promptJson: input.prompt as FormulaNode,
         options: input.options,
         name: input.name,
       })

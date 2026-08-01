@@ -147,32 +147,33 @@ async function materializeExceptionRows(
   const columns = subjectColumns(subject)
   const label = input.label ?? null
 
-  return dates.flatMap((date) =>
-    input.isAvailable
-      ? ranges.map((range) => ({
-          ...columns,
-          kind: 'exception' as const,
-          date,
-          isAvailable: true,
-          label,
-          timezone,
-          dayOfWeek: null,
-          startMinute: range.start,
-          endMinute: range.end,
-        }))
-      : [
-          {
+  return dates.flatMap(
+    (date): Array<typeof schema.OperatingHours.$inferInsert> =>
+      input.isAvailable
+        ? ranges.map((range) => ({
             ...columns,
             kind: 'exception' as const,
             date,
-            isAvailable: false,
+            isAvailable: true,
             label,
             timezone,
             dayOfWeek: null,
-            startMinute: null,
-            endMinute: null,
-          },
-        ]
+            startMinute: range.start,
+            endMinute: range.end,
+          }))
+        : [
+            {
+              ...columns,
+              kind: 'exception' as const,
+              date,
+              isAvailable: false,
+              label,
+              timezone,
+              dayOfWeek: null,
+              startMinute: null,
+              endMinute: null,
+            },
+          ]
   )
 }
 

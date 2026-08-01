@@ -1,8 +1,12 @@
 {
   "extends": "@auxx/typescript-config/base.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src"
+    // Check-only config: `tsdown` builds the package and `tsconfig.build.json`
+    // owns the emit settings. Keeping `composite` on here would demand that every
+    // workspace source file this package reaches (`@auxx/database/src/**`) be
+    // listed in its own file list.
+    "composite": false,
+    "noEmit": true
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]

@@ -17,7 +17,6 @@ interface FileSelectPickerButtonProps {
   allowMultiple?: boolean
   disabled?: boolean
   variant?: 'button' | 'inline'
-  size?: 'sm' | 'md' | 'lg'
   className?: string
   title?: string
   description?: string
@@ -35,7 +34,6 @@ export function FileSelectPickerButton({
   allowMultiple = true,
   disabled = false,
   variant = 'button',
-  size = 'default',
   className,
   title,
   description,

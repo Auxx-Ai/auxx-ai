@@ -49,6 +49,8 @@ export function ContactExternalIdentitiesCard({ recordId }: DrawerTabProps) {
     <div className='flex flex-col gap-2'>
       {[...groups.values()].map((group) => {
         const head = group[0]
+        // Groups are seeded with their first member above, so this never fires.
+        if (!head) return null
         const label = head.appName ?? head.source
         const connectionLabel = head.connectionLabel
         return (

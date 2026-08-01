@@ -76,7 +76,7 @@ export async function seedTestPlans(db: Database, stripePlans: StripePlanIds): P
     },
   ]
 
-  const result: Record<string, PlanRecord> = {}
+  const result: Partial<TestPlans> = {}
 
   for (const def of planDefs) {
     // Check if plan exists
@@ -133,7 +133,12 @@ export async function seedTestPlans(db: Database, stripePlans: StripePlanIds): P
     }
   }
 
-  cachedTestPlans = result as TestPlans
+  const { starter, pro, enterprise } = result
+  if (!starter || !pro || !enterprise) {
+    throw new Error('seedTestPlans did not produce all three test plans')
+  }
+
+  cachedTestPlans = { starter, pro, enterprise }
   return cachedTestPlans
 }
 

@@ -7,6 +7,7 @@ import {
   updateCredential,
 } from '@auxx/credentials/store'
 import { err, ok, type Result } from 'neverthrow'
+import { toCredentialError } from './credential-store-error'
 
 /**
  * Apply a manual secret edit to an existing connection by MERGING, never replacing — so editing
@@ -31,18 +32,18 @@ export async function mergeManualConnectionEdit(
 ): Promise<Result<void, Error>> {
   if (edit.secretFields && Object.keys(edit.secretFields).length > 0) {
     const merged = await mergeSecretFields(connectionId, organizationId, edit.secretFields)
-    if (merged.isErr()) return err(merged.error)
+    if (merged.isErr()) return err(toCredentialError(merged.error))
   }
 
   if (edit.secret !== undefined) {
     const merged = await mergeSecrets(connectionId, organizationId, { secret: edit.secret })
-    if (merged.isErr()) return err(merged.error)
+    if (merged.isErr()) return err(toCredentialError(merged.error))
   }
 
   const plainVariables = edit.plainVariables ?? {}
   if (Object.keys(plainVariables).length > 0) {
     const current = await getCredential(connectionId, organizationId)
-    if (current.isErr()) return err(current.error)
+    if (current.isErr()) return err(toCredentialError(current.error))
 
     const existingMeta = (current.value.metadata ?? {}) as Record<string, unknown>
     const existingVars = (existingMeta.connectionVariables ?? {}) as Record<string, unknown>
@@ -52,7 +53,7 @@ export async function mergeManualConnectionEdit(
     }
 
     const updated = await updateCredential(connectionId, organizationId, { metadata })
-    if (updated.isErr()) return err(updated.error)
+    if (updated.isErr()) return err(toCredentialError(updated.error))
   }
 
   return ok(undefined)

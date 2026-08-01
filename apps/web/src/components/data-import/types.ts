@@ -43,7 +43,8 @@ export interface ColumnMappingUI {
   sourceColumnName: string
   columnName: string
   sampleValues: string[]
-  targetType: 'skip' | 'particle' | 'custom_field'
+  /** Only `skip` and `particle` are ever persisted (`save-mapping-property.ts`). */
+  targetType: 'skip' | 'particle'
   targetFieldKey: string | null
   customFieldId: string | null
   resolutionType: string
@@ -77,7 +78,7 @@ export interface UniqueValueSummary {
   count: number
   originalStatus: ResolutionStatus // From auto-resolution, used for grouping
   effectiveStatus: EffectiveStatus // After override, used for display
-  errorMessage?: string
+  errorMessage: string | null
   isOverridden: boolean
   overrideValues: OverrideValue[] | null
 }
@@ -95,7 +96,7 @@ export interface ColumnFieldConfig {
 }
 
 // Re-export ImportableField from the lib package
-export type { ImportableField } from '@auxx/lib/import'
+export type { FieldGroup, ImportableField } from '@auxx/lib/import'
 
 /** Upload progress state */
 export interface UploadProgress {

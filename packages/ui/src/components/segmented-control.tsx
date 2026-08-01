@@ -21,7 +21,10 @@ const segmentedControlVariants = cva('flex', {
 })
 
 export interface SegmentedControlProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+  // `defaultValue`, `onChange` and `onClick` are deliberately redefined below with
+  // selection-aware signatures; all three are destructured out before `...props`
+  // reaches the container div.
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'defaultValue' | 'onChange' | 'onClick'>,
     VariantProps<typeof segmentedControlVariants> {
   /**
    * Determines if buttons function as toggles or standard buttons
@@ -249,13 +252,15 @@ export function SegmentedControl({
           : {}
 
         return cloneElement(child, {
-          ref: (el: HTMLButtonElement) => {
+          ref: (el: HTMLButtonElement | null) => {
             buttonRefs.current[index] = el
-            // Forward the ref if the child has one
-            if (typeof child.ref === 'function') {
-              child.ref(el)
-            } else if (child.ref) {
-              ;(child.ref as React.MutableRefObject<HTMLButtonElement>).current = el
+            // Forward the ref if the child has one. React 19 passes `ref` through
+            // props, so read it from there rather than off the element.
+            const childRef = child.props.ref
+            if (typeof childRef === 'function') {
+              childRef(el)
+            } else if (childRef) {
+              childRef.current = el
             }
           },
           className: cn(

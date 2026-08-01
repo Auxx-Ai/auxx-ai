@@ -6,7 +6,7 @@ import { componentRegistry, getComponent } from './component-registry'
 /**
  * Sanitized instance from the reconciler.
  */
-interface SanitizedInstance {
+export interface SanitizedInstance {
   instance_type: 'instance' | 'text'
   instance_id?: number
   tag?: string
@@ -17,10 +17,12 @@ interface SanitizedInstance {
 }
 
 /**
- * Tree container with children.
+ * Tree container with children. `children` is optional because callers pass a
+ * node plucked out of a live render tree (a widget container, a workflow node),
+ * which may not have rendered its subtree yet — the guards below handle it.
  */
-interface TreeContainer {
-  children: SanitizedInstance[]
+export interface TreeContainer {
+  children?: SanitizedInstance[]
 }
 
 /**
@@ -45,7 +47,7 @@ interface ReconstructOptions {
  * @returns React element
  */
 export function reconstructReactTree(
-  tree: TreeContainer,
+  tree: TreeContainer | null | undefined,
   options?: ReconstructOptions
 ): React.ReactElement {
   const { injectedProps = {}, onCallHandler } = options || {}

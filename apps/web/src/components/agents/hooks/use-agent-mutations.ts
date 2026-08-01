@@ -207,7 +207,11 @@ export function useAgentMutations(): UseAgentMutationsResult {
       if (patch.description !== undefined) detailPatch.description = patch.description
       if (patch.modelId !== undefined) detailPatch.modelId = patch.modelId
       if (patch.mentionable !== undefined) detailPatch.mentionable = patch.mentionable
-      if (patch.archivedAt !== undefined) detailPatch.archivedAt = patch.archivedAt
+      // `AgentDetail` mirrors the serialized tRPC payload, so the cache splice
+      // must carry an ISO string — a raw Date here renders as `[object Date]`.
+      if (patch.archivedAt !== undefined) {
+        detailPatch.archivedAt = patch.archivedAt ? patch.archivedAt.toISOString() : null
+      }
       // Run-as isn't surfaced in the list/store, only on the detail view.
       if (patch.runAsUserId !== undefined) detailPatch.runAsUserId = patch.runAsUserId
       // Behavior-field edits (prompt/modelId) flip the dirty pill when a

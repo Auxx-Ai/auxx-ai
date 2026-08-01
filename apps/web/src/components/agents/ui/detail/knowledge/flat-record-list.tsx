@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/ui/detail/knowledge/flat-record-list.tsx
 'use client'
 
+import type { AgentScopeMode } from '@auxx/lib/agents/client'
 import type { RecordId, Resource } from '@auxx/lib/resources/client'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { FileText, Plus } from 'lucide-react'
@@ -9,7 +10,7 @@ import { RecordPicker } from '~/components/pickers/record-picker/record-picker'
 import { useRecord } from '~/components/resources/hooks/use-record'
 import type { AgentDetail } from '../../../store/agent-store'
 import { AgentScopeActions } from './agent-scope-actions'
-import { deriveEffectiveMode, type EffectiveScopeMode } from './derive-scope-mode'
+import { deriveEffectiveMode } from './derive-scope-mode'
 import type { useScopeMutations } from './use-scope-mutations'
 
 type ScopeMutations = ReturnType<typeof useScopeMutations>
@@ -19,8 +20,12 @@ interface FlatRecordListProps {
   agent: AgentDetail
   mutations: ScopeMutations
   depth: number
-  /** Mode applied when admin picks a record via the "+ Add" picker. */
-  defaultAddMode?: EffectiveScopeMode
+  /**
+   * Mode applied when admin picks a record via the "+ Add" picker. Only the
+   * writable modes — the `inherited_*` variants of `EffectiveScopeMode` are
+   * derived, never stored.
+   */
+  defaultAddMode?: AgentScopeMode
 }
 
 /**

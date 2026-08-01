@@ -89,7 +89,9 @@ export async function updateThreadMetadataEfficient(
       messageCount: row.messageCount ?? undefined,
       participantCount: row.participantCount ?? undefined,
       firstMessageAt: row.firstMessageAt ? row.firstMessageAt.toISOString() : null,
-      lastMessageAt: row.lastMessageAt ? row.lastMessageAt.toISOString() : null,
+      // Omitted (not nulled) when absent — the client's ThreadMeta types this
+      // non-nullable, so "no last message" must read as "don't touch".
+      ...(row.lastMessageAt ? { lastMessageAt: row.lastMessageAt.toISOString() } : {}),
       latestMessageId: row.latestMessageId ?? null,
     }
 

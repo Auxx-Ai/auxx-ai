@@ -32,6 +32,9 @@ export function MergeTargetPanel({
   const { resource } = useResource(entityDefinitionId ?? '')
 
   const isLoading = externalLoading || recordLoading
+  // `RecordMeta` carries extra resource columns through an index signature, so
+  // this arrives untyped; the store only ever writes it as a string or null.
+  const secondary = record?.secondaryDisplayValue as string | null | undefined
 
   return (
     <div className='flex-1 flex flex-col border rounded-2xl bg-muted max-h-[400px]'>
@@ -64,10 +67,8 @@ export function MergeTargetPanel({
                   <span className='font-medium text-sm truncate'>
                     {record.displayName ?? 'Untitled'}
                   </span>
-                  {record.secondaryDisplayValue && (
-                    <p className='text-sm text-muted-foreground truncate'>
-                      {record.secondaryDisplayValue}
-                    </p>
+                  {secondary && (
+                    <p className='text-sm text-muted-foreground truncate'>{secondary}</p>
                   )}
                 </div>
               </div>

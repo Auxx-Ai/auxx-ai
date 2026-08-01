@@ -27,6 +27,7 @@ export async function createKnowledgeBase(
           updatedAt: new Date(),
         })
         .returning()
+      if (!kb) throw new Error('Knowledge base insert returned no row')
       return kb
     })
     // Best-effort: provision the managed dataset that holds article embeddings.

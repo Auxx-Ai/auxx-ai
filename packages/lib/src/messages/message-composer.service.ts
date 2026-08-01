@@ -48,7 +48,8 @@ export class MessageComposerService {
     organizationId: string
     integrationId: string
     messageId?: string // Optional pre-generated Message-ID
-    subject: string
+    /** Nullable — `Message.subject` is a nullable column; chat sends carry none. */
+    subject?: string | null
     textHtml?: string | null
     textPlain?: string | null
     participants: ProcessedParticipants
@@ -82,7 +83,8 @@ export class MessageComposerService {
     userId: string
     organizationId: string
     integrationId: string
-    subject: string
+    /** Nullable — `Message.subject` is a nullable column; chat sends carry none. */
+    subject?: string | null
     textHtml?: string | null
     textPlain?: string | null
     participants: ProcessedParticipants
@@ -300,7 +302,8 @@ export class MessageComposerService {
     userId: string
     organizationId: string
     threadId: string
-    subject: string
+    /** Nullable — `Message.subject` is a nullable column; chat sends carry none. */
+    subject?: string | null
     textHtml?: string | null
     textPlain?: string | null
     participants: ProcessedParticipants
@@ -419,7 +422,8 @@ export class MessageComposerService {
     userId: string
     organizationId: string
     threadId: string
-    subject: string
+    /** Nullable — `Message.subject` is a nullable column; chat sends carry none. */
+    subject?: string | null
     textHtml?: string | null
     textPlain?: string | null
     participants: ProcessedParticipants

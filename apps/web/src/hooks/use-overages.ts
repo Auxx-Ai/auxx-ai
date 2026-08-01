@@ -4,7 +4,7 @@
 import { useDehydratedOrganization } from '~/providers/dehydrated-state-provider'
 
 export function useOverages(organizationId?: string) {
-  const org = useDehydratedOrganization(organizationId)
+  const org = useDehydratedOrganization(organizationId ?? null)
   return org?.overages ?? []
 }
 

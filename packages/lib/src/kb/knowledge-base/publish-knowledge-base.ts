@@ -3,7 +3,7 @@ import { schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import type { KBDraftSettings } from '../draft-settings'
 import { resolveDb } from '../internal/context'
-import { handleError } from '../internal/errors'
+import { createNotFoundError, handleError } from '../internal/errors'
 import { verifyKnowledgeBaseExists } from '../internal/validate-existence'
 import type { KBContext } from '../types'
 
@@ -65,6 +65,7 @@ export async function publishKnowledgeBase(
       })
       .where(eq(schema.KnowledgeBase.id, id))
       .returning()
+    if (!updated) throw createNotFoundError(`Knowledge base with ID '${id}' not found`)
     return updated
   } catch (error) {
     return handleError(error, ctx.organizationId, 'Error publishing knowledge base', { id, status })
@@ -80,6 +81,7 @@ export async function unpublishKnowledgeBase(ctx: KBContext, id: string): Promis
       .set({ publishStatus: 'DRAFT', updatedAt: new Date() })
       .where(eq(schema.KnowledgeBase.id, id))
       .returning()
+    if (!updated) throw createNotFoundError(`Knowledge base with ID '${id}' not found`)
     return updated
   } catch (error) {
     return handleError(error, ctx.organizationId, 'Error unpublishing knowledge base', { id })

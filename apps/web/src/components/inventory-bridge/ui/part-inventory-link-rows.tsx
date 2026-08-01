@@ -87,7 +87,6 @@ export function PartInventoryLinkRows({ partId, disabled }: PartInventoryLinkRow
             title={source.defLabel}
             description={`Linked records deduct this part when ${source.fieldLabel} decreases`}
             type={BaseType.RELATION}
-            orientation='responsive'
             showIcon>
             <FieldInputAdapter
               fieldType={FieldType.RELATIONSHIP}

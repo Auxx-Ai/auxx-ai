@@ -17,7 +17,6 @@ export { useChunkedUpload } from './hooks/use-chunked-upload'
 export { useImportSSE } from './hooks/use-import-sse'
 // Hooks
 export { useImportWizard } from './hooks/use-import-wizard'
-export { useUniqueValues } from './hooks/use-unique-values'
 export { ImportActions } from './import-actions'
 // Main components
 export { ImportPage } from './import-page'

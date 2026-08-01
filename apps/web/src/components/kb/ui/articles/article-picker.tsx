@@ -11,6 +11,7 @@ import {
   CommandItem,
   CommandList,
   CommandNavigation,
+  type NavigationItem,
   useCommandNavigation,
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
@@ -22,7 +23,7 @@ import { useArticleList } from '../../hooks/use-article-list'
 import { useKnowledgeBases } from '../../hooks/use-knowledge-bases'
 import { normalizeServerArticle } from '../../store/normalize-server-article'
 
-interface NavItem {
+interface NavItem extends NavigationItem {
   /** When `kind` is omitted, this entry is a KB root (cross-KB picker). */
   id: string
   label: string

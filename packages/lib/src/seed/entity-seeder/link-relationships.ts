@@ -33,6 +33,7 @@ export async function linkRelationships(
     // Parse the static inverseResourceFieldId (e.g., 'contact:tickets')
     const staticInverseRef = field.relationship.inverseResourceFieldId as string
     const [inverseEntityType] = staticInverseRef.split(':')
+    if (!inverseEntityType) continue
 
     // Check if this is a special entity relationship (e.g., user)
     if (SPECIAL_ENTITY_TYPES.includes(inverseEntityType as (typeof SPECIAL_ENTITY_TYPES)[number])) {

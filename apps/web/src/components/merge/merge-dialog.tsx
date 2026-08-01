@@ -50,8 +50,8 @@ export function MergeDialog({
 
   // Derive entityDefinitionId from first recordId
   const entityDefinitionId = useMemo(() => {
-    if (baseRecordIds.length === 0) return null
-    return getDefinitionId(baseRecordIds[0])
+    const first = baseRecordIds[0]
+    return first ? getDefinitionId(first) : null
   }, [baseRecordIds])
 
   // Get resource definition for label and fields
@@ -64,7 +64,9 @@ export function MergeDialog({
   const canEdit = entityDefinitionId ? canEditEntity(entityDefinitionId) : false
 
   // State: target and sources (sources = everything except target)
-  const [targetRecordId, setTargetRecordId] = useState<RecordId>(
+  // Undefined only when opened with an empty `baseRecordIds` — the dialog
+  // renders nothing in that case (guard below).
+  const [targetRecordId, setTargetRecordId] = useState<RecordId | undefined>(
     () => initialTargetId ?? baseRecordIds[0]
   )
   const [sourceRecordIds, setSourceRecordIds] = useState<RecordId[]>(() =>
@@ -72,7 +74,7 @@ export function MergeDialog({
   )
   // Fetch all records for display
   const allRecordIds = useMemo(
-    () => [targetRecordId, ...sourceRecordIds].filter(Boolean),
+    () => (targetRecordId ? [targetRecordId, ...sourceRecordIds] : sourceRecordIds),
     [targetRecordId, sourceRecordIds]
   )
   const { records, isLoading: recordsLoading } = useRecords({ recordIds: allRecordIds })
@@ -128,7 +130,7 @@ export function MergeDialog({
     (recordId: RecordId) => {
       setSourceRecordIds((prev) => {
         const newSources = prev.filter((id) => id !== recordId)
-        newSources.push(targetRecordId) // old target becomes source
+        if (targetRecordId) newSources.push(targetRecordId) // old target becomes source
         return newSources
       })
       setTargetRecordId(recordId)
@@ -147,7 +149,10 @@ export function MergeDialog({
   }
 
   const resourceLabel = resource?.label ?? 'Record'
-  const canMerge = sourceRecordIds.length > 0 && targetRecordId && canEdit
+  const canMerge = sourceRecordIds.length > 0 && canEdit
+
+  // Nothing to merge into — every caller mounts this dialog with a selection.
+  if (!targetRecordId) return null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

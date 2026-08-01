@@ -11,7 +11,6 @@ import {
   isPlainFieldId,
   keyToFieldRef,
   type ResourceFieldId,
-  toFieldId,
   toResourceFieldId,
 } from '@auxx/types/field'
 import { Badge } from '@auxx/ui/components/badge'
@@ -62,10 +61,11 @@ export function FieldBadge({
   className,
 }: FieldBadgeProps) {
   const ref: ResourceFieldId | FieldPath = useMemo(() => {
-    if (isPlainFieldId(id)) {
-      return toResourceFieldId(entityDefinitionId, toFieldId(id))
+    const decoded = keyToFieldRef(id)
+    if (isPlainFieldId(decoded)) {
+      return toResourceFieldId(entityDefinitionId, decoded)
     }
-    return keyToFieldRef(id) as ResourceFieldId | FieldPath
+    return decoded
   }, [id, entityDefinitionId])
 
   // Hook calls must be unconditional — pass null/empty for the unused

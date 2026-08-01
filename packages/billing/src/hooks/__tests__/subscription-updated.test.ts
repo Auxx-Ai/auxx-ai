@@ -237,7 +237,7 @@ describe('handleSubscriptionUpdated', () => {
     const stripeSub = makeStripeSubscription({ status: 'active' })
     await handleSubscriptionUpdated(db, makeEvent(stripeSub))
 
-    const payload = setMock.mock.calls[0][0]
+    const payload = setMock.mock.calls[0]?.[0]
     expect(payload.trialConversionStatus).toBe('CONVERTED_TO_PAID')
     expect(payload.hasTrialEnded).toBe(true)
     expect(payload.isEligibleForTrial).toBe(false)
@@ -250,7 +250,7 @@ describe('handleSubscriptionUpdated', () => {
     const stripeSub = makeStripeSubscription({ status: 'canceled' })
     await handleSubscriptionUpdated(db, makeEvent(stripeSub))
 
-    const payload = setMock.mock.calls[0][0]
+    const payload = setMock.mock.calls[0]?.[0]
     expect(payload.trialConversionStatus).toBe('EXPIRED_WITHOUT_CONVERSION')
     expect(payload.hasTrialEnded).toBe(true)
   })
@@ -262,7 +262,7 @@ describe('handleSubscriptionUpdated', () => {
     const stripeSub = makeStripeSubscription({ status: 'past_due' })
     await handleSubscriptionUpdated(db, makeEvent(stripeSub))
 
-    const payload = setMock.mock.calls[0][0]
+    const payload = setMock.mock.calls[0]?.[0]
     expect(payload.trialConversionStatus).toBe('EXPIRED_WITHOUT_CONVERSION')
     expect(payload.trialEligibilityReason).toBe('Trial ended with payment failure')
   })
@@ -282,7 +282,7 @@ describe('handleSubscriptionUpdated', () => {
 
     await handleSubscriptionUpdated(db, makeEvent(makeStripeSubscription()))
 
-    const payload = setMock.mock.calls[0][0]
+    const payload = setMock.mock.calls[0]?.[0]
     expect(payload.plan).toBe('enterprise')
     expect(payload.planId).toBe('plan_enterprise')
     expect(payload.billingCycle).toBe('ANNUAL')
@@ -304,7 +304,7 @@ describe('handleSubscriptionUpdated', () => {
 
     await handleSubscriptionUpdated(db, makeEvent(makeStripeSubscription()))
 
-    const payload = setMock.mock.calls[0][0]
+    const payload = setMock.mock.calls[0]?.[0]
     expect(payload.scheduledPlanId).toBeNull()
     expect(payload.scheduledPlan).toBeNull()
     expect(payload.scheduledBillingCycle).toBeNull()
@@ -322,7 +322,7 @@ describe('handleSubscriptionUpdated', () => {
     })
     await handleSubscriptionUpdated(db, makeEvent(stripeSub))
 
-    const payload = setMock.mock.calls[0][0]
+    const payload = setMock.mock.calls[0]?.[0]
     expect(payload.stripeCustomerId).toBe('cus_1')
     expect(payload.periodStart).toBeInstanceOf(Date)
     expect(payload.periodEnd).toBeInstanceOf(Date)
@@ -337,7 +337,7 @@ describe('handleSubscriptionUpdated', () => {
 
     await handleSubscriptionUpdated(db, makeEvent(makeStripeSubscription()))
 
-    const payload = setMock.mock.calls[0][0]
+    const payload = setMock.mock.calls[0]?.[0]
     expect(payload.plan).toBe('pro')
     expect(payload.planId).toBe('plan_pro')
   })

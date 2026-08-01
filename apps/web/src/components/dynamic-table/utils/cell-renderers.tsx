@@ -16,6 +16,7 @@ import {
   type RecordId,
 } from '@auxx/lib/field-values/client'
 import { type ActorId, isActorId, toActorId } from '@auxx/types/actor'
+import type { TypedFieldValue } from '@auxx/types/field-value'
 import { Badge } from '@auxx/ui/components/badge'
 import { type CurrencyDisplayOptions, formatBytes, formatCurrency } from '@auxx/utils'
 import { format, formatDistanceToNow } from 'date-fns'
@@ -390,9 +391,15 @@ export function renderPhoneValue(
       formatting?.phoneFormat ?? (config?.options as PhoneFieldOptions | undefined)?.phoneFormat,
   }
 
-  // Use converter for display formatting
+  // Use converter for display formatting. `formatToDisplayValue` is typed for
+  // the full DB entity, but the PHONE_INTL converter only reads `.value`, so the
+  // input shape is sufficient here.
   const formatted =
-    (formatToDisplayValue({ type: 'text', value: phone }, 'PHONE_INTL', opts) as string) || phone
+    (formatToDisplayValue(
+      { type: 'text', value: phone } as TypedFieldValue,
+      'PHONE_INTL',
+      opts
+    ) as string) || phone
 
   return (
     <ExpandableCell mode='horizontal'>

@@ -118,8 +118,23 @@ export function endpointVars(
   return opts?.includeStripeSecret ? vars : vars.filter((v) => v.key !== 'stripeSecret')
 }
 
+/**
+ * The configure form's value bag. Every seeder below fills all eight keys, so the form can read
+ * them without a per-key undefined guard (a bare `Record<string, string>` would not model that).
+ */
+export type WebhookEndpointFormValues = {
+  name: string
+  verification: string
+  stripeSecret: string
+  signatureHeader: string
+  signaturePrefix: string
+  signatureEncoding: string
+  topicSourceKind: string
+  topicSourceValue: string
+}
+
 /** Seed the form from an existing endpoint (edit mode). */
-export function seedValuesFromEndpoint(endpoint: WebhookEndpointRow): Record<string, string> {
+export function seedValuesFromEndpoint(endpoint: WebhookEndpointRow): WebhookEndpointFormValues {
   return {
     name: endpoint.name,
     verification: endpoint.verification,
@@ -133,7 +148,9 @@ export function seedValuesFromEndpoint(endpoint: WebhookEndpointRow): Record<str
 }
 
 /** Seed the form from a template (create-from-template). Blank templates fall back to defaults. */
-export function seedValuesFromTemplate(template: WebhookEndpointTemplate): Record<string, string> {
+export function seedValuesFromTemplate(
+  template: WebhookEndpointTemplate
+): WebhookEndpointFormValues {
   const c = template.config
   return {
     name: template.blank ? '' : template.name,
@@ -148,7 +165,7 @@ export function seedValuesFromTemplate(template: WebhookEndpointTemplate): Recor
 }
 
 /** Empty seed (blank create). */
-export function blankSeedValues(): Record<string, string> {
+export function blankSeedValues(): WebhookEndpointFormValues {
   return {
     name: '',
     verification: 'hmac',

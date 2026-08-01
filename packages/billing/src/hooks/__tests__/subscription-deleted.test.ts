@@ -50,7 +50,7 @@ describe('handleSubscriptionDeleted', () => {
     await handleSubscriptionDeleted(db, event)
 
     expect(setMock).toHaveBeenCalledTimes(1)
-    const payload = setMock.mock.calls[0][0]
+    const payload = setMock.mock.calls[0]?.[0]
     expect(payload.status).toBe('canceled')
     expect(payload.canceledAt).toBeInstanceOf(Date)
     expect(payload.updatedAt).toBeInstanceOf(Date)

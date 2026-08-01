@@ -605,7 +605,7 @@ export class OrganizationService {
       await flushOrganization(organizationId)
 
       // Invalidate user caches for all former members so their memberships/profile refresh
-      const dehydrationService = new DehydrationService(this.db)
+      const dehydrationService = new DehydrationService()
       await Promise.all(allMemberIds.map((userId) => dehydrationService.invalidateUser(userId)))
       logger.info(
         `Invalidated caches for org ${organizationId} and ${allMemberIds.length} former members.`
@@ -784,7 +784,7 @@ export class OrganizationService {
     logger.info('Set as default organization', { organizationId, userId })
 
     // Invalidate dehydration cache so client gets fresh data on reload
-    const dehydrationService = new DehydrationService(this.db)
+    const dehydrationService = new DehydrationService()
     await dehydrationService.invalidateUser(userId)
     logger.info('Invalidated dehydration cache', { userId })
 

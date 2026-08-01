@@ -5,7 +5,7 @@
 import { usePathname } from 'next/navigation'
 import { EntityRouteLayout } from '~/components/records'
 
-type Props = { children: React.ReactNode; modal: React.ReactNode }
+type Props = { children: React.ReactNode }
 
 const BASE_PATH = '/app/companies'
 
@@ -15,24 +15,18 @@ const BASE_PATH = '/app/companies'
  * routes own their own `MainPage` (via `DetailView`/`ImportPage`) and bypass
  * the shell entirely.
  */
-function CompaniesLayout({ children, modal }: Props) {
+function CompaniesLayout({ children }: Props) {
   const pathname = usePathname()
   const isDetailOrSpecialPage =
     pathname !== BASE_PATH && !pathname.startsWith(`${BASE_PATH}/dashboard`)
 
   if (isDetailOrSpecialPage) {
-    return (
-      <>
-        {children}
-        {modal}
-      </>
-    )
+    return <>{children}</>
   }
 
   return (
     <EntityRouteLayout slug='companies' basePath={BASE_PATH}>
       {children}
-      {modal}
     </EntityRouteLayout>
   )
 }

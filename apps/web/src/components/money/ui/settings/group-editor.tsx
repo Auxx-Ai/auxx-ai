@@ -2,6 +2,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import type { FieldType as FieldTypeValue } from '@auxx/database/types'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -269,7 +270,7 @@ function freshGroupDraftValues(): GroupDraftValues {
 /** Draft key → wire descriptor. Drives the create seed, the post-create
  *  diff-flush, and live commit routing once the record exists. */
 const GROUP_DRAFT_FIELDS: {
-  [K in keyof GroupDraftValues]: { fieldId: string; fieldType: FieldType }
+  [K in keyof GroupDraftValues]: { fieldId: string; fieldType: FieldTypeValue }
 } = {
   name: { fieldId: 'catalog_group_name', fieldType: FieldType.TEXT },
   description: { fieldId: 'catalog_group_description', fieldType: FieldType.TEXT },
@@ -844,7 +845,8 @@ function GroupEntryRow({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function titleCase(value: string): string {
-  return value.length ? value[0].toUpperCase() + value.slice(1) : value
+  const first = value[0]
+  return first ? first.toUpperCase() + value.slice(1) : value
 }
 
 function AddItemPopover({

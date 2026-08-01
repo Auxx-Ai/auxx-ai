@@ -66,8 +66,10 @@ export const FileNode = Node.create({
           const base64 = reader.result as string
 
           // Insert node into editor
+          const fileNode = view.state.schema.nodes.file
+          if (!fileNode) return
           const transaction = view.state.tr.replaceSelectionWith(
-            view.state.schema.nodes.file.create({
+            fileNode.create({
               src: base64,
               filename: file.name,
             })

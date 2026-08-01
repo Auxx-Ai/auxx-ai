@@ -4,6 +4,7 @@
 
 import { BaseType, InputMode, resolveInputConfig } from '@auxx/lib/workflow-engine/client'
 import { useMemo } from 'react'
+import type { FieldOptions as VarEditorFieldOptions } from '~/components/workflow/ui/input-editor/get-input-component'
 import { VarEditor } from '~/components/workflow/ui/input-editor/var-editor'
 import { VarEditorArray } from '~/components/workflow/ui/input-editor/var-editor-array'
 import { useConditionContext } from '../condition-context'
@@ -34,13 +35,8 @@ interface VariableInputProps {
 /**
  * Builds fieldOptions object for VarEditor from field definition
  */
-function buildFieldOptions(field: FieldDefinition) {
-  const opts: {
-    enum?: Array<{ label: string; value: string }>
-    fieldReference?: string
-    relatedEntityDefinitionId?: string
-    actor?: { target?: string; multiple?: boolean }
-  } = {}
+function buildFieldOptions(field: FieldDefinition): VarEditorFieldOptions | undefined {
+  const opts: VarEditorFieldOptions = {}
   if (field.options?.options?.length) {
     opts.enum = field.options.options
   }

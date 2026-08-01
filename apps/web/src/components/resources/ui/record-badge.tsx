@@ -153,16 +153,10 @@ export function RecordBadge({
   // Determine variant: if link is provided, default to 'link' variant unless explicitly set
   const effectiveVariant = variant ?? (link ? 'link' : 'default')
 
-  // Choose the component type based on link prop
-  const Comp = link && href ? Link : 'div'
+  const badgeClassName = cn(recordBadgeVariants({ variant: effectiveVariant, size }), className)
 
-  const badge = (
-    <Comp
-      data-slot='record-badge'
-      aria-busy={isLoading}
-      {...(link && href ? { href } : {})}
-      className={cn(recordBadgeVariants({ variant: effectiveVariant, size }), className)}
-      {...props}>
+  const badgeContent = (
+    <>
       {isLoading ? (
         <>
           {showIcon && <Skeleton />}
@@ -196,8 +190,25 @@ export function RecordBadge({
           )}
         </>
       )}
-    </Comp>
+    </>
   )
+
+  // `Link` requires `href`, so the two element types can't share one call site.
+  const badge =
+    link && href ? (
+      <Link
+        data-slot='record-badge'
+        aria-busy={isLoading}
+        href={href}
+        className={badgeClassName}
+        {...props}>
+        {badgeContent}
+      </Link>
+    ) : (
+      <div data-slot='record-badge' aria-busy={isLoading} className={badgeClassName} {...props}>
+        {badgeContent}
+      </div>
+    )
 
   if (hoverCard && recordId) {
     const hoverConfig = typeof hoverCard === 'object' ? hoverCard : undefined

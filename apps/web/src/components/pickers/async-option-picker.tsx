@@ -188,11 +188,16 @@ export function AsyncOptionPicker({
           <ItemsListView
             items={normalizedValue}
             maxDisplay={3}
-            renderItem={(v) => (
-              <Badge variant='outline' className='text-xs truncate max-w-[180px]'>
-                {labelCache[v] ?? v}
-              </Badge>
-            )}
+            renderItem={(v) => {
+              // `normalizedValue` is always `string[]`, but `ItemsListView`
+              // widens its render arg to `T | string | number`.
+              const id = typeof v === 'object' ? v.id : String(v)
+              return (
+                <Badge variant='outline' className='text-xs truncate max-w-[180px]'>
+                  {labelCache[id] ?? id}
+                </Badge>
+              )
+            }}
           />
         </PickerTrigger>
       </PopoverTrigger>

@@ -40,9 +40,10 @@ let cachedToken: { token: string; expiresAt: number } | null = null
  */
 function readJwtExpiryMs(token: string): number | null {
   const parts = token.split('.')
-  if (parts.length !== 3) return null
+  const payloadPart = parts[1]
+  if (parts.length !== 3 || payloadPart === undefined) return null
   try {
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString()) as { exp?: number }
+    const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString()) as { exp?: number }
     return typeof payload.exp === 'number' ? payload.exp * 1000 : null
   } catch {
     return null

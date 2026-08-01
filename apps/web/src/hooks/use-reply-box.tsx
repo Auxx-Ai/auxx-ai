@@ -112,7 +112,13 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
   // Chat threads use an always-on composer (no "click Reply to reveal" flow).
   // Auto-open the reply box for chat and keep it open across thread switches —
   // the existing thread-id reset effect below would otherwise close it.
-  const isChat = thread?.integrationProvider === 'chat'
+  //
+  // `integrationProvider` is declared `ChannelProvider` ('GMAIL' | 'OUTLOOK' | …)
+  // but carries the raw `Integration.provider` column, whose enum is lowercase
+  // ('google' | 'outlook' | … | 'chat'). The declared type is the stale side;
+  // the cast matches the runtime value and the sibling checks in
+  // components/mail/{mail,compact}-thread-item.tsx.
+  const isChat = (thread?.integrationProvider as string | null | undefined) === 'chat'
   useEffect(() => {
     if (isChat && !isShowReplyBox) {
       setIsShowReplyBox(true)

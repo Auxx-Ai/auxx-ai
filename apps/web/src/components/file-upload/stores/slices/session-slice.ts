@@ -1,9 +1,9 @@
 // apps/web/src/components/file-upload/stores/slices/session-slice.ts
 
-import type { FileUploadEvent } from '@auxx/lib/files/types'
 import { ENTITY_TYPES, FileUploadEventType } from '@auxx/lib/files/types'
 import { generateId } from '@auxx/utils/generateId'
 import type { StateCreator } from 'zustand'
+import type { UploadSseEvent } from '../../types/upload-events'
 import { SSEConnectionManager } from '../../utils'
 import type { CreateSessionOptions, SessionState, SSEConnectionState, UploadStore } from '../types'
 
@@ -25,7 +25,7 @@ export interface SessionSlice {
   // SSE Management (integrated)
   connectSSE: (sessionId: string) => void
   disconnectSSE: (sessionId: string) => void
-  handleSSEEvent: (sessionId: string, event: FileUploadEvent) => void
+  handleSSEEvent: (sessionId: string, event: UploadSseEvent) => void
 
   // SSE Connections (now part of session state)
   sseConnections: Record<string, SSEConnectionState & { manager?: SSEConnectionManager }>
@@ -304,7 +304,7 @@ export const createUnifiedSessionSlice: StateCreator<
    * Handles SSE events and updates file/session state accordingly
    * Updated for new event names: session-status, status-update
    */
-  handleSSEEvent: (sessionId: string, event: FileUploadEvent) => {
+  handleSSEEvent: (sessionId: string, event: UploadSseEvent) => {
     const { updateFileProgress, updateFileStatus, updateSessionProgress, addError } = get()
 
     console.log('🔔 SSE Event received:', {
@@ -335,7 +335,6 @@ export const createUnifiedSessionSlice: StateCreator<
           break
         }
 
-        case 'status-update': // Custom event for status updates
         case FileUploadEventType.STATUS_UPDATE: {
           const data = event.data as any
 

@@ -1,6 +1,7 @@
 // packages/lib/src/channels/capabilities.ts
 
 import { IntegrationProviderType } from '@auxx/database/enums'
+import type { IntegrationProviderType as IntegrationProviderTypeValue } from '@auxx/database/types'
 
 /**
  * Coarse, kopilot-facing capability map for an integration platform. This is
@@ -37,7 +38,7 @@ export interface PlatformCapabilities {
  * Static capability map keyed by `IntegrationProviderType` enum values
  * (mirrors `packages/database/src/db/schema/_shared.ts`).
  */
-export const PLATFORM_CAPABILITIES: Record<IntegrationProviderType, PlatformCapabilities> = {
+export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, PlatformCapabilities> = {
   [IntegrationProviderType.google]: {
     channel: 'email',
     newOutbound: true,

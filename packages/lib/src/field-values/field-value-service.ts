@@ -194,6 +194,8 @@ export class FieldValueService {
     recordId: RecordId
     fieldId: string
     values: unknown[]
+    /** If true, skip the realtime publish. Default false. Set by bulk writes. */
+    skipPublishEvents?: boolean
   }): Promise<TypedFieldValue[]> {
     return mutations.addValues(this.ctx, params)
   }
@@ -202,7 +204,13 @@ export class FieldValueService {
    * Delete specific values from any multi-value field by typed equality.
    * Throws `BadRequestError` if the target field is not multi-value.
    */
-  removeValues(params: { recordId: RecordId; fieldId: string; values: unknown[] }): Promise<void> {
+  removeValues(params: {
+    recordId: RecordId
+    fieldId: string
+    values: unknown[]
+    /** If true, skip the realtime publish. Default false. Set by bulk writes. */
+    skipPublishEvents?: boolean
+  }): Promise<void> {
     return mutations.removeValues(this.ctx, params)
   }
 

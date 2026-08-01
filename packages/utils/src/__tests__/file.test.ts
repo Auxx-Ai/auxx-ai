@@ -194,7 +194,7 @@ describe('File Utilities', () => {
       const result = validateAttachmentSizes(attachments, limits)
       expect(result.valid).toBe(false)
       expect(result.errors).toHaveLength(1)
-      expect(result.errors[0].filename).toBe('large.pdf')
+      expect(result.errors[0]?.filename).toBe('large.pdf')
     })
 
     test('detects total size violations', () => {

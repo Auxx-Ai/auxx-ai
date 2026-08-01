@@ -87,7 +87,12 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
 
   const deleteInstance = api.record.delete.useMutation({
     onSuccess: (_data, variables) => {
-      const { entityDefinitionId: defId, entityInstanceId } = parseRecordId(variables.recordId)
+      // `recordIdSchema` is declared `z.ZodType<RecordId>`, and zod v4's second
+      // type slot (Input) defaults to `unknown` — so every procedure using it has
+      // an untyped input. The value here is whatever `handleDelete` passed, which
+      // is always `buildRecordId(...)`. See the referral on packages/types.
+      const recordId = variables.recordId as RecordId
+      const { entityDefinitionId: defId, entityInstanceId } = parseRecordId(recordId)
       useRecordStore.getState().removeRecord(defId, entityInstanceId)
       onRefetch?.()
     },

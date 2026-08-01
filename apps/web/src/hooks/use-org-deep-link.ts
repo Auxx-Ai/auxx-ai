@@ -9,7 +9,7 @@ import { useEffect } from 'react'
  * after reading so the switch only fires once.
  */
 export function useOrgDeepLink(
-  currentOrgId: string | undefined,
+  currentOrgId: string | null | undefined,
   organizations: DehydratedOrganization[],
   switchOrganization: (orgId: string) => void
 ) {

@@ -96,8 +96,16 @@ export function PlanComparison({
     }
   }, [subscription, subscriptionLoading, initialCycleSet, annualBillingCycle]) // Dependencies
 
-  // Filter out internal plans (e.g. Demo), then separate free and paid
-  const availablePlans = plans?.filter((plan) => plan.hierarchyLevel >= 0) ?? []
+  // Filter out internal plans (e.g. Demo), then separate free and paid.
+  // `Plan.features` is a jsonb column, so it arrives as `unknown` — narrow it
+  // here rather than trusting the shape all the way down into the cards.
+  const availablePlans: Plan[] =
+    plans
+      ?.filter((plan) => plan.hierarchyLevel >= 0)
+      .map((plan) => ({
+        ...plan,
+        features: Array.isArray(plan.features) ? (plan.features as string[]) : [],
+      })) ?? []
   const paidPlans = availablePlans.filter((plan) => !plan.isFree)
   const freePlan = availablePlans.find((plan) => plan.isFree)
 

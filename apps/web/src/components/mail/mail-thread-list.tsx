@@ -2,7 +2,7 @@
 'use client'
 
 import type { ActorId } from '@auxx/types/actor'
-import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
@@ -27,6 +27,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react'
 // NEW: Import selection hooks from threads module
 import { useCommandPaletteStore } from '~/components/kbar/store'
 import { ActorPicker } from '~/components/pickers/actor-picker'
+import { useResource } from '~/components/resources'
 import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
 import { TagPicker } from '~/components/tags/ui/tag-picker'
 import {
@@ -82,7 +83,10 @@ export const ThreadList = memo(function ThreadList({
 }: ThreadListProps) {
   const [, setTid] = useQueryState('tid', { defaultValue: '', history: 'replace', shallow: true })
   const utils = api.useUtils()
-  const { contextType, contextId, statusSlug, searchQuery } = useMailFilter()
+  const { contextType } = useMailFilter()
+  // Tag entity definition id — the TagPicker below keys on RecordIds.
+  const { resource: tagResource } = useResource('tag')
+  const tagEntityDefId = tagResource?.entityDefinitionId ?? undefined
 
   // Use ID-based hook with unified condition-based filter
   const { recordIds, threadIds, isLoading, isFetchingNextPage, fetchNextPage, hasNextPage } =
@@ -154,7 +158,7 @@ export const ThreadList = memo(function ThreadList({
   // Assign handler for focused thread
   const { update: updateThread } = useThreadMutation()
   const handleFocusedAssign = useCallback(
-    (actorIds: string[]) => {
+    (actorIds: ActorId[]) => {
       if (!assignPickerThreadId) return
       // Empty selection (re-clicking the assignee) unassigns — mirror the header.
       updateThread(assignPickerThreadId, { assigneeId: actorIds[0] ?? null })
@@ -279,7 +283,10 @@ export const ThreadList = memo(function ThreadList({
           onOpenChange={handleWorkflowDialogOpenChange}
           recordIds={[toRecordId('thread', workflowThreadId)]}
           onSuccess={() => {
-            utils.thread.list.invalidate({ contextType, contextId, statusSlug, searchQuery })
+            // `thread.list` is gone — the list is `listIds` + `getByIds`, and its
+            // input is the condition filter, not the context tuple, so nothing
+            // narrower than a blanket invalidate matches the live keys.
+            utils.thread.listIds.invalidate()
           }}
         />
       )}
@@ -289,10 +296,14 @@ export const ThreadList = memo(function ThreadList({
           onOpenChange={handleTagPickerOpenChange}
           anchorRef={tagAnchorRef}
           selectedTags={tagPickerCurrentTags}
-          onChange={handleFocusedTagChange}
+          onChange={(tagIds) => handleFocusedTagChange(tagIds as RecordId[])}
           allowMultiple
           align='end'
           side='bottom'
+          // Without this the picker compares bare instance ids against the
+          // thread's RecordIds — nothing renders checked and a toggle writes a
+          // bare id into `thread_tags` alongside the RecordIds already there.
+          tagEntityDefinitionId={tagEntityDefId}
           scope='thread'
         />
       )}

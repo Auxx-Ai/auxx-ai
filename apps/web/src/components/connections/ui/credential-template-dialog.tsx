@@ -242,7 +242,7 @@ export function CredentialTemplateDialog({
       restrictedItem.kind === 'app'
         ? (restrictedItem.app.methods ?? []).map((m) => m.id)
         : [restrictedItem.provider.providerKey]
-    setSelectedMethodId(methodIds.length === 1 ? methodIds[0] : null)
+    setSelectedMethodId(methodIds.length === 1 ? (methodIds[0] ?? null) : null)
     setValues({})
     setToken('')
     setName(restrictedItem.name)
@@ -427,8 +427,6 @@ function defaultProviderDescription(provider: ProviderRow): string {
   switch (provider.connectionType) {
     case 'oauth2-code':
       return 'Connect with OAuth.'
-    case 'client-credentials':
-      return 'Connect with a client ID and secret.'
     case 'secret':
       return 'Connect with an API key or credentials.'
     default:

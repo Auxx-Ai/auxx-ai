@@ -3,6 +3,11 @@
 
 import type { FieldType } from '@auxx/database/types'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import {
+  DEFAULT_SELECT_OPTION_COLOR,
+  SELECT_OPTION_COLORS,
+  type SelectOptionColor,
+} from '@auxx/types/custom-field'
 import { Button, buttonVariants } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -56,6 +61,15 @@ const tagFormSchema = z.object({
 })
 
 type TagFormValues = z.infer<typeof tagFormSchema>
+
+/**
+ * Tag colors are stored as free-form strings on the field value; narrow to the palette so an
+ * unrecognised value (e.g. a stale row written before a palette change) falls back to the
+ * default rather than reaching the picker as an unknown swatch.
+ */
+function toTagColor(value: string | null | undefined): SelectOptionColor {
+  return SELECT_OPTION_COLORS.find((color) => color === value) ?? DEFAULT_SELECT_OPTION_COLOR
+}
 
 interface TagDialogProps {
   open: boolean
@@ -376,7 +390,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
                     <FormLabel>Color</FormLabel>
                     <FormControl>
                       <FormColorTagPicker
-                        value={field.value || 'gray'}
+                        value={toTagColor(field.value)}
                         onChange={field.onChange}
                         disabled={isReadOnly}
                       />

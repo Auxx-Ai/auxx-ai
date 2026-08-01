@@ -41,7 +41,7 @@ function getLastNDays(n: number): string[] {
     const date = new Date(today)
     date.setDate(date.getDate() - i)
     // Format as YYYY-MM-DD
-    dates.push(date.toISOString().split('T')[0])
+    dates.push(date.toISOString().slice(0, 10))
   }
 
   return dates

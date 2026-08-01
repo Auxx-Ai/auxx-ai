@@ -170,7 +170,9 @@ function WorkerDialogContent({ open, onOpenChange, workerId, initialPage }: Work
                       className='rounded-2xl border'
                       target='user'
                       multi={false}
-                      excludeIds={(workers ?? []).map((w) => toActorId('user', w.userId))}
+                      excludeIds={(workers ?? []).flatMap((w) =>
+                        w.userId ? [toActorId('user', w.userId)] : []
+                      )}
                       placeholder='Search members...'
                       disabled={addWorker.isPending || createdWorkerId != null}
                       onSelectSingle={(actorId) => {
@@ -188,7 +190,8 @@ function WorkerDialogContent({ open, onOpenChange, workerId, initialPage }: Work
                 </DialogNavPage>
               )}
 
-              {worker && (
+              {/* Time off is per-User; team rows carry no `userId` and have no time-off page. */}
+              {worker?.userId && (
                 <DialogNavPage value='time-off' size='md'>
                   <ExceptionListEditor
                     subject={{ type: 'worker', userId: worker.userId }}

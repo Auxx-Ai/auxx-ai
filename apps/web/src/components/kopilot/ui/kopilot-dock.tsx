@@ -35,7 +35,7 @@ export function KopilotDock() {
   const isMobile = useIsMobile()
 
   // Global keyboard shortcut — registered once here
-  useHotkey('mod+shift+k', () => togglePanel(), {
+  useHotkey('Mod+Shift+K', () => togglePanel(), {
     enabled: kopilotEnabled,
     conflictBehavior: 'allow',
   })

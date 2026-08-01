@@ -247,12 +247,13 @@ export class TicketDomain {
   /** generateTicketTitle creates type-appropriate titles. */
   private generateTicketTitle(type: string, index: number): string {
     const prefix = this.scenario.isExample ? '[Example] ' : ''
+    const generalTitles = [
+      'General inquiry about services',
+      'Question about account features',
+      'Request for information',
+    ]
     const titles: Record<string, string[]> = {
-      GENERAL: [
-        'General inquiry about services',
-        'Question about account features',
-        'Request for information',
-      ],
+      GENERAL: generalTitles,
       MISSING_ITEM: [
         'Missing item from order',
         'Incomplete order received',
@@ -286,18 +287,19 @@ export class TicketDomain {
       TECHNICAL: ['Technical issue with platform', 'Login problems', 'Website functionality issue'],
     }
 
-    const typeTemplates = titles[type] || titles.GENERAL
+    const typeTemplates = titles[type] ?? generalTitles
     return `${prefix}${typeTemplates[index % typeTemplates.length]!}`
   }
 
   /** generateTicketDescription creates type-appropriate descriptions. */
   private generateTicketDescription(type: string, index: number): string {
+    const generalDescriptions = [
+      'I have a general question about your services and would like to get more information.',
+      'Could you please provide details about the available options?',
+      'I need assistance understanding how this works.',
+    ]
     const descriptions: Record<string, string[]> = {
-      GENERAL: [
-        'I have a general question about your services and would like to get more information.',
-        'Could you please provide details about the available options?',
-        'I need assistance understanding how this works.',
-      ],
+      GENERAL: generalDescriptions,
       MISSING_ITEM: [
         'My order arrived today but several items are missing from the package. Order number is included.',
         "The package I received is incomplete. I'm missing some products that were listed in my order.",
@@ -335,7 +337,7 @@ export class TicketDomain {
       ],
     }
 
-    const typeTemplates = descriptions[type] || descriptions.GENERAL
+    const typeTemplates = descriptions[type] ?? generalDescriptions
     return typeTemplates[index % typeTemplates.length]!
   }
 }

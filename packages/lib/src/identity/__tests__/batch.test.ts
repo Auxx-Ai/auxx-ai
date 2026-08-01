@@ -1,6 +1,10 @@
 // packages/lib/src/identity/__tests__/batch.test.ts
 
+import type { RecordId } from '@auxx/types/resource'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
+
+/** `@auxx/types/resource` is mocked below, so the runtime helper isn't available. */
+const rid = (value: string) => value as RecordId
 
 const schemaHandler: ProxyHandler<any> = {
   get(_target, tableProp) {
@@ -64,13 +68,13 @@ describe('getRecordIdentitiesForRecords', () => {
 
     const result = await getRecordIdentitiesForRecords(
       'org_1',
-      ['def_contact:inst_1', 'def_contact:inst_2'],
+      [rid('def_contact:inst_1'), rid('def_contact:inst_2')],
       db as any
     )
 
     expect(select).toHaveBeenCalledTimes(1)
-    expect(result.get('def_contact:inst_1' as any)).toHaveLength(2)
-    expect(result.get('def_contact:inst_2' as any)).toHaveLength(1)
+    expect(result.get(rid('def_contact:inst_1'))).toHaveLength(2)
+    expect(result.get(rid('def_contact:inst_2'))).toHaveLength(1)
   })
 
   it('drops rows whose entityInstanceId was not among the requested recordIds', async () => {
@@ -82,7 +86,11 @@ describe('getRecordIdentitiesForRecords', () => {
     const select = vi.fn().mockReturnValue({ from })
     const db = { select }
 
-    const result = await getRecordIdentitiesForRecords('org_1', ['def_contact:inst_1'], db as any)
+    const result = await getRecordIdentitiesForRecords(
+      'org_1',
+      [rid('def_contact:inst_1')],
+      db as any
+    )
 
     expect(result.size).toBe(0)
   })

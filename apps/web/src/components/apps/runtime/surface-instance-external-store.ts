@@ -3,6 +3,7 @@
 import type { AppStore } from './app-store'
 import { EventBroker } from './event-broker'
 import type { MessageClient } from './message-client'
+import type { SanitizedInstance } from './reconstruct-react-tree'
 
 /**
  * Options for creating a surface instance.
@@ -16,21 +17,14 @@ interface SurfaceInstanceOptions {
 }
 
 /**
- * Render instance from the serialized component tree.
- * components are serialized in the iframe and reconstructed in the main window.
- */
-interface RenderInstance {
-  tag: string
-  attributes: Record<string, any>
-  children?: RenderInstance[]
-}
-
-/**
  * Snapshot result for useSyncExternalStore.
+ *
+ * The value is a node from the serialized component tree — the same
+ * `SanitizedInstance` shape the iframe emits and `reconstructReactTree` consumes.
  */
-interface SnapshotResult {
+export interface SnapshotResult {
   status: 'pending' | 'complete'
-  value?: RenderInstance
+  value?: SanitizedInstance
 }
 
 /**
@@ -117,7 +111,8 @@ export class SurfaceInstanceExternalStore {
     // Find widget instance in render tree
     const instance = this._findInstance(render.children, (inst) => {
       return (
-        inst.tag === 'auxxwidgetcontainer' && inst.attributes.hostInstanceId === this._serializedKey
+        inst.tag === 'auxxwidgetcontainer' &&
+        inst.attributes?.hostInstanceId === this._serializedKey
       )
     })
 
@@ -194,9 +189,9 @@ export class SurfaceInstanceExternalStore {
    * Find instance in render tree using predicate.
    */
   private _findInstance(
-    children: RenderInstance[],
-    predicate: (instance: RenderInstance) => boolean
-  ): RenderInstance | null {
+    children: SanitizedInstance[],
+    predicate: (instance: SanitizedInstance) => boolean
+  ): SanitizedInstance | null {
     for (const child of children) {
       if (predicate(child)) {
         return child

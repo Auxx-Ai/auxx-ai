@@ -15,6 +15,8 @@ export interface ToolArgSchema {
   enum?: unknown[]
   /** Free-form description for the arg row. */
   description?: string
+  /** JSON-Schema `default` — seeds the initial value of a test-run/binding form. */
+  default?: unknown
 }
 
 /**

@@ -3,11 +3,11 @@
 
 import type { FieldType } from '@auxx/database/types'
 import type { Operator } from '@auxx/lib/conditions/client'
-import type { ResourceField } from '@auxx/lib/resources/client'
+import { getFieldOperators, type ResourceField } from '@auxx/lib/resources/client'
 import { BaseType } from '@auxx/lib/workflow-engine/client'
 import { useCallback, useEffect, useMemo } from 'react'
 import { ConditionProvider } from '~/components/conditions/condition-context'
-import type { FieldDefinition } from '~/components/conditions/types'
+import { type FieldDefinition, STANDARD_OPERATORS } from '~/components/conditions/types'
 import { getDefaultOperatorForType } from '~/components/conditions/utils'
 import { SearchBarShell } from '~/components/searchbar/searchbar-shell'
 import type { SearchFieldDefinition, SearchSuggestion } from '~/components/searchbar/types'
@@ -53,9 +53,17 @@ const DISPLAY_NAME_FIELD: FieldDefinition = {
   fieldType: 'TEXT' as FieldType,
 }
 
+/**
+ * `getFieldOperators` and `ResourceField.operatorOverrides` are both typed
+ * `string[]` in lib, so keep only the names the condition system knows.
+ */
+function isOperator(name: string): name is Operator {
+  return Object.hasOwn(STANDARD_OPERATORS, name)
+}
+
 /** Convert ResourceField[] to FieldDefinition[] for ConditionProvider */
 function toConditionFields(fields: ResourceField[]): FieldDefinition[] {
-  const mapped = fields
+  const mapped: FieldDefinition[] = fields
     .filter((f) => f.capabilities.filterable && !f.capabilities.hidden)
     .map((f) => ({
       id: f.id,
@@ -63,7 +71,7 @@ function toConditionFields(fields: ResourceField[]): FieldDefinition[] {
       type: f.type,
       fieldType: f.fieldType,
       options: f.options,
-      operators: f.operators as Operator[] | undefined,
+      operators: (f.operatorOverrides || getFieldOperators(f)).filter(isOperator),
     }))
 
   // Ensure the free-text field is always present so the typed chip renders
@@ -123,9 +131,7 @@ export function RecordsSearchBar({ entityDefinitionId, fields }: RecordsSearchBa
     (suggestion: SearchSuggestion) => {
       if (suggestion.type === 'field' && suggestion.fieldId) {
         const field = fields.find((f) => f.id === suggestion.fieldId)
-        const defaultOp = field
-          ? (getDefaultOperatorForType(field.type) as Operator)
-          : ('contains' as Operator)
+        const defaultOp: Operator = field ? getDefaultOperatorForType(field.type) : 'contains'
         actions.addCondition(suggestion.fieldId, defaultOp, undefined)
       }
     },

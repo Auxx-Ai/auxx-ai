@@ -38,7 +38,8 @@ interface SearchResult {
         name: string
       }
     }
-    metadata?: Record<string, any>
+    /** Free-form per-segment metadata as stored in the DB (jsonb). */
+    metadata?: unknown
   }
   score: number
   rank: number

@@ -43,6 +43,12 @@ interface CredentialConfigurationDialogProps {
   modelId?: string
   /** Operation type. */
   operation: DialogOperation
+  /**
+   * Mint an *additional* provider key instead of writing the existing one (the
+   * "Add API key" path). Forwarded to `saveProviderConfiguration.forceNew`;
+   * ignored in `custom-model` mode.
+   */
+  forceNewKey?: boolean
   /** Dialog state. */
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -79,6 +85,7 @@ export function CredentialConfigurationDialog({
   provider,
   modelId,
   operation,
+  forceNewKey = false,
   open,
   onOpenChange,
   onProviderConfigured,
@@ -245,6 +252,7 @@ export function CredentialConfigurationDialog({
         provider: selectedProvider,
         credentials,
         mode: operation,
+        forceNew: forceNewKey,
       })
     } else {
       await saveCustomModel.mutateAsync({

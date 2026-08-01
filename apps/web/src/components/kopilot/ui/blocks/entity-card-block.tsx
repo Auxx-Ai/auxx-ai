@@ -2,6 +2,7 @@
 
 'use client'
 
+import { isRecordId } from '@auxx/lib/resources/client'
 import type { BlockRendererProps } from './block-registry'
 import type { EntityCardData } from './block-schemas'
 import { EntityCardItem } from './entity-card-item'
@@ -13,7 +14,9 @@ export function EntityCardBlock({ data, lastValueTruncated }: BlockRendererProps
   // render until the id is complete — `AuxxBlock` stays mounted, so when the
   // id lands the card just fades in.
   const [recordId] = useStreamSafeIds(data.recordId ? [data.recordId] : [], lastValueTruncated)
-  if (!recordId) return null
+  // The id is model-authored, so it can be any string; only a well-formed
+  // `entityDef:instance` id can be resolved to a record.
+  if (!isRecordId(recordId)) return null
   return (
     <div className='not-prose my-2'>
       <EntityCardItem recordId={recordId} snapshot={data.snapshot} />

@@ -9,6 +9,7 @@ export {
   PasswordResetNotifyText,
 } from './auth/password-reset-notify-email'
 export { ResetPasswordEmail, ResetPasswordText } from './auth/reset-password-email'
+export { TwoFactorOtpEmail, TwoFactorOtpText } from './auth/two-factor-otp-email'
 export { VerificationEmail, VerificationText } from './auth/verification-email'
 export { PaymentFailedEmail, PaymentFailedText } from './billing/payment-failed-email'
 export {

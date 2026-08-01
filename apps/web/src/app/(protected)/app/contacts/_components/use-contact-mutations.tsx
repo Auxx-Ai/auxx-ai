@@ -1,12 +1,14 @@
 // ~/app/(protected)/app/contacts/_components/use-contact-mutations.tsx
 
 import { toastError } from '@auxx/ui/components/toast'
+import type { TRPCClientErrorLike } from '@trpc/client'
 import { useRecordInvalidation } from '~/components/resources'
+import type { AppRouter } from '~/server/api/root'
 import { api } from '~/trpc/react'
 
 interface UseContactMutationsOptions {
   onSuccess?: () => void
-  onError?: (error: Error) => void
+  onError?: (error: TRPCClientErrorLike<AppRouter>) => void
 }
 
 /**

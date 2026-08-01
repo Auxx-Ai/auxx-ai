@@ -19,11 +19,18 @@ export async function POST(
     return new Response('Unauthorized', { status: 401 })
   }
 
+  // No active organization means no installation can belong to the caller. Guarded
+  // explicitly: a null/undefined here would otherwise be handed to `eq()`.
+  const organizationId = session.user.defaultOrganizationId
+  if (!organizationId) {
+    return new Response('Forbidden', { status: 403 })
+  }
+
   // Verify installation belongs to the user's org
   const installation = await database.query.AppInstallation.findFirst({
     where: and(
       eq(AppInstallation.id, installationId),
-      eq(AppInstallation.organizationId, session.user.defaultOrganizationId)
+      eq(AppInstallation.organizationId, organizationId)
     ),
     columns: { id: true },
   })

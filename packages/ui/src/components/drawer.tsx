@@ -71,11 +71,14 @@ const DrawerNestedRoot = ({
 )
 DrawerNestedRoot.displayName = 'DrawerNestedRoot'
 
-const DrawerTrigger = DrawerPrimitive.Trigger
+// Explicit `typeof` annotations: the inferred types name `DialogTriggerProps` /
+// `DialogCloseProps`, which vaul re-exports from @radix-ui/react-dialog without
+// this package depending on it — not portable in a declaration file.
+const DrawerTrigger: typeof DrawerPrimitive.Trigger = DrawerPrimitive.Trigger
 
 const DrawerPortal = DrawerPrimitive.Portal
 
-const DrawerClose = DrawerPrimitive.Close
+const DrawerClose: typeof DrawerPrimitive.Close = DrawerPrimitive.Close
 
 // const DrawerHandle = DrawerPrimitive.Handle
 
@@ -182,7 +185,7 @@ function DrawerContent({
 DrawerContent.displayName = 'DrawerContent'
 
 /** Props for DrawerHeader component */
-interface DrawerHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
+interface DrawerHeaderProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> {
   /** Icon element (use EntityIcon or similar) */
   icon?: React.ReactNode
   /** Title - can be static text or Input for editable titles */

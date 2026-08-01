@@ -49,7 +49,7 @@ export function useToolsetMutations(
 ): UseToolsetMutationsReturn {
   const utils = api.useUtils()
   const update = api.agentToolset.update.useMutation()
-  const savingTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const savingTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const applyOptimisticPatch = (
     toolsets: AgentDetail['toolsets'],

@@ -4,7 +4,7 @@
 // a fixed skeleton of published category articles the extractor files under.
 // See plans/memory/learned-kb-plan.md.
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { NotFoundError } from '../../errors'
 import { createArticle } from '../articles/create-article'
@@ -70,7 +70,10 @@ export async function ensureLearnedKb(ctx: KBContext): Promise<LearnedKb> {
   return { kb, categoryIds }
 }
 
-async function findLearnedKb(db: Database, organizationId: string): Promise<KnowledgeBase | null> {
+async function findLearnedKb(
+  db: Database | Transaction,
+  organizationId: string
+): Promise<KnowledgeBase | null> {
   const kb = await db.query.KnowledgeBase.findFirst({
     where: and(
       eq(schema.KnowledgeBase.organizationId, organizationId),
@@ -114,7 +117,10 @@ async function provisionLearnedKb(ctx: KBContext): Promise<KnowledgeBase> {
  * Resolve a non-null creator/editor for provisioned rows: the org's system
  * user when present, else any member (mirrors the Knowledge Sources fallback).
  */
-async function resolveCreatorId(db: Database, organizationId: string): Promise<string> {
+async function resolveCreatorId(
+  db: Database | Transaction,
+  organizationId: string
+): Promise<string> {
   const org = await db.query.Organization.findFirst({
     where: eq(schema.Organization.id, organizationId),
     columns: { systemUserId: true },

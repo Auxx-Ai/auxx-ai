@@ -11,12 +11,20 @@ import { createRecallProvider } from './recall-provider'
  */
 export function getProvider(providerId: BotProviderId): BotProvider {
   switch (providerId) {
-    case 'recall':
+    case 'recall': {
+      const apiKey = configService.get('RECALL_AI_API_KEY')
+      const webhookSecret = configService.get('RECALL_AI_WEBHOOK_SECRET')
+      if (!apiKey || !webhookSecret) {
+        throw new BadRequestError(
+          'Recall.ai is not configured — RECALL_AI_API_KEY and RECALL_AI_WEBHOOK_SECRET are required'
+        )
+      }
       return createRecallProvider({
-        apiKey: configService.get('RECALL_AI_API_KEY'),
+        apiKey,
         region: configService.get('RECALL_AI_REGION') ?? 'us-west-2',
-        webhookSecret: configService.get('RECALL_AI_WEBHOOK_SECRET'),
+        webhookSecret,
       })
+    }
     default:
       throw new BadRequestError(`Unsupported bot provider: ${providerId}`)
   }

@@ -500,8 +500,10 @@ export class LLMOrchestrator {
         this.logger.info('Retrying failed requests', { count: failedResults.length })
 
         for (const failedResult of failedResults) {
+          const originalRequest = requests[failedResult.requestIndex]
+          if (!originalRequest) continue
           try {
-            const retryResponse = await this.invoke(requests[failedResult.requestIndex])
+            const retryResponse = await this.invoke(originalRequest)
             results[failedResult.requestIndex] = {
               success: true,
               response: retryResponse,
@@ -705,7 +707,10 @@ export class LLMOrchestrator {
 
   // ===== CALLBACK METHODS =====
 
-  private async triggerBeforeCallback(callbacks?: AICallbacks, context?: any): Promise<void> {
+  private async triggerBeforeCallback(
+    callbacks: AICallbacks | undefined,
+    context: unknown
+  ): Promise<void> {
     if (callbacks?.beforeInvoke) {
       try {
         await callbacks.beforeInvoke(context)
@@ -716,8 +721,8 @@ export class LLMOrchestrator {
   }
 
   private async triggerNewChunkCallback(
-    callbacks?: AICallbacks,
-    chunk?: LLMStreamChunk
+    callbacks: AICallbacks | undefined,
+    chunk: LLMStreamChunk
   ): Promise<void> {
     if (callbacks?.onChunk) {
       try {
@@ -729,8 +734,8 @@ export class LLMOrchestrator {
   }
 
   private async triggerAfterInvokeCallback(
-    callbacks?: AICallbacks,
-    response?: LLMInvocationResponse
+    callbacks: AICallbacks | undefined,
+    response: LLMInvocationResponse
   ): Promise<void> {
     if (callbacks?.afterInvoke) {
       try {
@@ -741,7 +746,10 @@ export class LLMOrchestrator {
     }
   }
 
-  private async triggerInvokeErrorCallback(callbacks?: AICallbacks, error?: Error): Promise<void> {
+  private async triggerInvokeErrorCallback(
+    callbacks: AICallbacks | undefined,
+    error: Error
+  ): Promise<void> {
     if (callbacks?.onError) {
       try {
         await callbacks.onError(error)
@@ -752,8 +760,8 @@ export class LLMOrchestrator {
   }
 
   private async triggerToolCallCallback(
-    callbacks?: AICallbacks,
-    toolCall?: ToolCall
+    callbacks: AICallbacks | undefined,
+    toolCall: ToolCall
   ): Promise<void> {
     if (callbacks?.onToolCall) {
       try {
@@ -765,8 +773,8 @@ export class LLMOrchestrator {
   }
 
   private async triggerToolResultCallback(
-    callbacks?: AICallbacks,
-    result?: ToolExecutionResult
+    callbacks: AICallbacks | undefined,
+    result: ToolExecutionResult
   ): Promise<void> {
     if (callbacks?.onToolResult) {
       try {

@@ -2,45 +2,30 @@
 // Service-based seeding helpers for entities requiring business logic coordination
 
 import { database, schema } from '@auxx/database'
+import { InboxService } from '@auxx/lib/inboxes'
 import { ensureSystemProfiles } from '@auxx/lib/permissions'
 import { OrganizationSeeder } from '@auxx/lib/seed'
 import { createId } from '@paralleldrive/cuid2'
-import { eq } from 'drizzle-orm'
-import type { RelationalDomainBuilder } from '../builders/relational-domain-builder'
+import { eq, isNull } from 'drizzle-orm'
 import type { SeedingConfig, SeedingScenario, ServiceIntegratorResult } from '../types'
-import type { IdPoolManager } from '../utils/id-pool-manager'
 
 /**
  * ServiceIntegrator orchestrates entities that benefit from service-layer logic rather than bulk seeding.
- * Enhanced to support multi-phase relational seeding with proper foreign key relationships.
  */
 export class ServiceIntegrator {
   /** config stores CLI configuration flags. */
   private readonly config: SeedingConfig
   /** scenario stores the resolved scenario definition. */
   private readonly scenario: SeedingScenario
-  /** idPoolManager manages foreign key ID pools. */
-  private readonly idPoolManager: IdPoolManager
-  /** relationalBuilder creates domain refinements with proper relationships. */
-  private readonly relationalBuilder: RelationalDomainBuilder
 
   /**
    * Creates a new ServiceIntegrator instance.
    * @param config - CLI/runtime configuration.
    * @param scenario - Scenario definition to follow.
-   * @param idPoolManager - ID pool manager for foreign keys.
-   * @param relationalBuilder - Relational domain builder.
    */
-  constructor(
-    config: SeedingConfig,
-    scenario: SeedingScenario,
-    idPoolManager: IdPoolManager,
-    relationalBuilder: RelationalDomainBuilder
-  ) {
+  constructor(config: SeedingConfig, scenario: SeedingScenario) {
     this.config = config
     this.scenario = scenario
-    this.idPoolManager = idPoolManager
-    this.relationalBuilder = relationalBuilder
   }
 
   /**
@@ -76,9 +61,6 @@ export class ServiceIntegrator {
         defaultAssignments.set(owner.id, organizationId)
       }
 
-      // Seed user settings for owner
-      await this.seedUserSettings(owner.id, organizationId)
-
       // Attach a handful of the remaining curated users as admins/members
       const additionalMembers = authContext.testUsers
         .filter((user) => user.id !== owner.id)
@@ -88,8 +70,6 @@ export class ServiceIntegrator {
         if (!defaultAssignments.has(member.id)) {
           defaultAssignments.set(member.id, organizationId)
         }
-        // Seed user settings for member
-        await this.seedUserSettings(member.id, organizationId)
       }
 
       // Optionally attach random users as standard members for richer data
@@ -99,14 +79,12 @@ export class ServiceIntegrator {
         if (!defaultAssignments.has(member.id)) {
           defaultAssignments.set(member.id, organizationId)
         }
-        // Seed user settings for member
-        await this.seedUserSettings(member.id, organizationId)
       }
 
       const integrationId = await this.ensureIntegration(organizationId, now, i)
       integrations.push({ id: integrationId, organizationId })
 
-      const inboxId = await this.ensureInbox(organizationId, now, i)
+      const inboxId = await this.ensureInbox(organizationId, owner.id)
       inboxes.push({ id: inboxId, organizationId })
 
       organizations.push({ id: organizationId, ownerId: owner.id })
@@ -128,8 +106,6 @@ export class ServiceIntegrator {
         if (!defaultAssignments.has(user.id)) {
           defaultAssignments.set(user.id, targetOrg.id)
         }
-        // Seed user settings for member
-        await this.seedUserSettings(user.id, targetOrg.id)
       }
     }
 
@@ -239,14 +215,19 @@ export class ServiceIntegrator {
         email: emailAlias,
         updatedAt,
         provider: 'google',
-        messageType: 'EMAIL',
         createdAt: updatedAt,
         enabled: true,
-        settings: {},
       })
+      // Matches the partial unique index on Integration:
+      // (organizationId, provider, email) WHERE "deletedAt" IS NULL.
       .onConflictDoUpdate({
-        target: [schema.Integration.organizationId, schema.Integration.email],
-        set: { updatedAt, enabled: true, email: emailAlias },
+        target: [
+          schema.Integration.organizationId,
+          schema.Integration.provider,
+          schema.Integration.email,
+        ],
+        targetWhere: isNull(schema.Integration.deletedAt),
+        set: { updatedAt, enabled: true },
       })
       .returning({ id: schema.Integration.id })
 
@@ -254,38 +235,19 @@ export class ServiceIntegrator {
   }
 
   /**
-   * ensureInbox provisions a default inbox for each organization.
+   * ensureInbox resolves the organization's shared inbox.
+   *
+   * Inboxes are EntityInstances, not a standalone table — `seedOrganizationDefaults`
+   * (which runs first) already creates the shared inbox via `OrganizationSeeder`, so
+   * this only has to find it and fall back to creating it when absent.
    * @param organizationId - Organization that owns the inbox.
-   * @param updatedAt - Timestamp reused for deterministic updates.
-   * @param index - Zero-based organization index for naming.
-   * @returns The inbox identifier.
+   * @param ownerId - User acting as the creator for lazily created inboxes.
+   * @returns The inbox EntityInstance identifier.
    */
-  private async ensureInbox(
-    organizationId: string,
-    updatedAt: Date,
-    index: number
-  ): Promise<string> {
-    const inboxId = createId()
-
-    const inserted = await database
-      .insert(schema.Inbox)
-      .values({
-        id: inboxId,
-        organizationId,
-        name: `Support Inbox ${index + 1}`,
-        updatedAt,
-        settings: {},
-        allowAllMembers: true,
-        enableMemberAccess: false,
-        enableGroupAccess: false,
-      })
-      .onConflictDoUpdate({
-        target: [schema.Inbox.organizationId, schema.Inbox.name],
-        set: { updatedAt },
-      })
-      .returning({ id: schema.Inbox.id })
-
-    return inserted[0]?.id ?? inboxId
+  private async ensureInbox(organizationId: string, ownerId: string): Promise<string> {
+    const inboxService = new InboxService(database, organizationId, ownerId)
+    const inbox = await inboxService.getOrCreateSharedInbox()
+    return inbox.id
   }
 
   /**
@@ -313,192 +275,5 @@ export class ServiceIntegrator {
   private async seedOrganizationDefaults(organizationId: string, userId: string): Promise<void> {
     const seeder = new OrganizationSeeder(database, userId)
     await seeder.seedNewOrganization(organizationId)
-  }
-
-  /**
-   * seedUserSettings initializes default user settings.
-   * @param userId - User identifier to seed settings for.
-   * @param organizationId - Organization identifier for user settings.
-   */
-  private async seedUserSettings(userId: string, organizationId: string): Promise<void> {
-    // Settings v2: no eager row creation — user-setting rows are created lazily
-    // on first write (updateUserSetting), so there's nothing to seed here.
-  }
-
-  // ---- Multi-Phase Execution Methods ----
-
-  /**
-   * executePhase1 seeds foundation entities (User, Session, etc.)
-   * @returns Promise that resolves when Phase 1 is complete
-   */
-  async executePhase1(): Promise<void> {
-    console.log('🌟 Phase 1: Foundation Entities')
-
-    // Initialize User ID pool - this must happen first
-    const userIds = this.idPoolManager.generateUserIds()
-    console.log(`Generated ${userIds.length} User IDs for Phase 1`)
-
-    // Validate that ID pools are properly initialized
-    this.idPoolManager.validatePools()
-
-    console.log('✅ Phase 1 complete - Foundation entities ready')
-  }
-
-  /**
-   * executePhase2 seeds organizations and core settings
-   * @returns Promise that resolves when Phase 2 is complete
-   */
-  async executePhase2(): Promise<void> {
-    console.log('🏢 Phase 2: Organization Foundation')
-
-    // Initialize Organization ID pool
-    const orgIds = this.idPoolManager.generateOrganizationIds()
-    console.log(`Generated ${orgIds.length} Organization IDs for Phase 2`)
-
-    // Validate dependencies from Phase 1
-    const userIds = this.idPoolManager.getUserIds()
-    if (userIds.length === 0) {
-      throw new Error('Phase 2 requires User IDs from Phase 1. Run executePhase1() first.')
-    }
-
-    console.log('✅ Phase 2 complete - Organizations and settings ready')
-  }
-
-  /**
-   * executePhase3 seeds integration layer (EmailIntegration, etc.)
-   * @returns Promise that resolves when Phase 3 is complete
-   */
-  async executePhase3(): Promise<void> {
-    console.log('🔗 Phase 3: Integration Layer')
-
-    // Initialize Integration and Template ID pools
-    const integrationIds = this.idPoolManager.generateIntegrationIds()
-    const templateIds = this.idPoolManager.generateTemplateIds()
-
-    console.log(`Generated ${integrationIds.length} Integration IDs for Phase 3`)
-    console.log(`Generated ${templateIds.length} Template IDs for Phase 3`)
-
-    // Validate dependencies from previous phases
-    const orgIds = this.idPoolManager.getOrganizationIds()
-    if (orgIds.length === 0) {
-      throw new Error('Phase 3 requires Organization IDs from Phase 2. Run executePhase2() first.')
-    }
-
-    console.log('✅ Phase 3 complete - Integrations ready')
-  }
-
-  /**
-   * executePhase4 seeds business entities (Thread, Product, Customer)
-   * @returns Promise that resolves when Phase 4 is complete
-   */
-  async executePhase4(): Promise<void> {
-    console.log('💼 Phase 4: Business Entities')
-
-    // Validate all required dependencies
-    const userIds = this.idPoolManager.getUserIds()
-    const orgIds = this.idPoolManager.getOrganizationIds()
-    const integrationIds = this.idPoolManager.getIntegrationIds()
-
-    if (userIds.length === 0) {
-      throw new Error('Phase 4 requires User IDs from Phase 1')
-    }
-    if (orgIds.length === 0) {
-      throw new Error('Phase 4 requires Organization IDs from Phase 2')
-    }
-    if (integrationIds.length === 0) {
-      throw new Error('Phase 4 requires Integration IDs from Phase 3')
-    }
-
-    console.log('✅ Phase 4 complete - Business entities ready')
-  }
-
-  /**
-   * executePhase5 seeds analytics and automation (AiUsage, AutoResponseRule)
-   * @returns Promise that resolves when Phase 5 is complete
-   */
-  async executePhase5(): Promise<void> {
-    console.log('🤖 Phase 5: Analytics & Automation')
-
-    // Validate all dependencies are available
-    const poolSizes = this.idPoolManager.getPoolSizes()
-    console.log('ID Pool Sizes:', poolSizes)
-
-    if (!poolSizes.User || !poolSizes.Organization) {
-      throw new Error('Phase 5 requires both User and Organization ID pools from previous phases')
-    }
-
-    console.log('✅ Phase 5 complete - Analytics and automation ready')
-  }
-
-  /**
-   * executeAllPhases runs the complete multi-phase seeding process
-   * @returns Promise that resolves when all phases are complete
-   */
-  async executeAllPhases(): Promise<void> {
-    console.log('🚀 Starting Multi-Phase Relational Seeding')
-
-    try {
-      await this.executePhase1()
-      await this.executePhase2()
-      await this.executePhase3()
-      await this.executePhase4()
-      await this.executePhase5()
-
-      console.log('🎉 All phases complete - Relational seeding finished')
-    } catch (error) {
-      console.error('❌ Multi-phase seeding failed:', error)
-      throw error
-    }
-  }
-
-  /**
-   * validatePhasePrerequisites checks that all required ID pools are initialized
-   * @param phase - Phase number to validate
-   */
-  private validatePhasePrerequisites(phase: number): void {
-    const poolSizes = this.idPoolManager.getPoolSizes()
-
-    switch (phase) {
-      case 2:
-        if (!poolSizes.User) {
-          throw new Error('Phase 2 requires User ID pool from Phase 1')
-        }
-        break
-      case 3:
-        if (!poolSizes.User || !poolSizes.Organization) {
-          throw new Error('Phase 3 requires User and Organization ID pools from previous phases')
-        }
-        break
-      case 4:
-        if (!poolSizes.User || !poolSizes.Organization || !poolSizes.Integration) {
-          throw new Error(
-            'Phase 4 requires User, Organization, and Integration ID pools from previous phases'
-          )
-        }
-        break
-      case 5:
-        if (!poolSizes.User || !poolSizes.Organization || !poolSizes.MessageTemplate) {
-          throw new Error(
-            'Phase 5 requires User, Organization, and MessageTemplate ID pools from previous phases'
-          )
-        }
-        break
-    }
-  }
-
-  /**
-   * getPhaseStatus returns the current status of all phases
-   * @returns Object describing which phases are ready to run
-   */
-  getPhaseStatus(): Record<string, boolean> {
-    const poolSizes = this.idPoolManager.getPoolSizes()
-
-    return {
-      phase1Ready: true, // Phase 1 has no dependencies
-      phase2Ready: !!poolSizes.User,
-      phase3Ready: !!poolSizes.User && !!poolSizes.Organization,
-      phase4Ready: !!poolSizes.User && !!poolSizes.Organization && !!poolSizes.Integration,
-      phase5Ready: !!poolSizes.User && !!poolSizes.Organization && !!poolSizes.MessageTemplate,
-    }
   }
 }

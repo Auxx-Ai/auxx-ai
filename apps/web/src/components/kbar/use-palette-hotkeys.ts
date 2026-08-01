@@ -1,7 +1,7 @@
 // apps/web/src/components/kbar/use-palette-hotkeys.ts
 'use client'
 
-import { useHotkey, useHotkeySequence } from '@tanstack/react-hotkeys'
+import { type HotkeySequence, useHotkey, useHotkeySequence } from '@tanstack/react-hotkeys'
 import { SHORTCUTS } from './shortcuts'
 import { useCommandPaletteStore } from './store'
 import type { PaletteAction } from './types'
@@ -9,14 +9,11 @@ import type { PaletteAction } from './types'
 const HOTKEY_TIMEOUT = 500
 
 /**
- * Stable, module-level list of `[actionId, UPPERCASE sequence]`. The order never
- * changes (SHORTCUTS is a constant), so iterating it with `useHotkeySequence`
- * keeps a fixed hook-call count across renders.
+ * Stable, module-level list of `[actionId, sequence]`. The order never changes
+ * (SHORTCUTS is a constant), so iterating it with `useHotkeySequence` keeps a
+ * fixed hook-call count across renders.
  */
-const CHORD_ENTRIES: Array<[string, string[]]> = Object.entries(SHORTCUTS).map(([id, seq]) => [
-  id,
-  seq.map((k) => k.toUpperCase()),
-])
+const CHORD_ENTRIES: Array<[string, HotkeySequence]> = Object.entries(SHORTCUTS)
 
 /**
  * The single global binding system for the palette:

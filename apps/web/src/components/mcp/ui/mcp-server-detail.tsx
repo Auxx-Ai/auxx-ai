@@ -133,7 +133,6 @@ export function McpServerDetail({ initialServer }: { initialServer: McpDetailSer
             serverId: current.serverId,
             name: current.name,
             endpoint: current.endpoint ?? '',
-            connectionType: current.connectionType,
             authPosture: current.authPosture,
             authHeaderName: current.authHeaderName,
             headerNames: current.headerNames,

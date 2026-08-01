@@ -1,6 +1,6 @@
 // apps/web/src/components/datasets/segments/document-segments.tsx
 'use client'
-import type { DocumentEntity } from '@auxx/database/types'
+import type { DocumentEntity, DocumentSegmentEntity } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import {
@@ -144,7 +144,7 @@ export function DocumentSegmentsTab({ document, datasetId }: DocumentSegmentsTab
             searchQuery ? `No segments match "${searchQuery}"` : 'No segments available'
           }
           loadingMessage='Loading segments...'>
-          <VirtualListItems
+          <VirtualListItems<DocumentSegmentEntity>
             renderItem={(segment) => (
               <div className='px-4 py-2'>
                 <DocumentSegmentItem

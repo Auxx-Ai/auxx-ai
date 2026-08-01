@@ -15,11 +15,16 @@ import { Tooltip } from '~/components/global/tooltip'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import type { EditorPresetValues } from '~/components/mail/email-editor/types'
-import { toRecordId, useRecord } from '~/components/resources'
+import { type RecordMeta, toRecordId, useRecord } from '~/components/resources'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { useCompose } from '~/hooks/use-compose'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
+
+/** The contact columns this drawer reads off the record store's untyped `[key: string]` bag. */
+interface ContactRecord extends RecordMeta {
+  email?: string | null
+}
 
 interface ContactDrawerProps {
   /** Whether the drawer is open (for controlled usage) */
@@ -59,7 +64,7 @@ export function ContactDrawer({
   const { canCompose } = useCommentAccess(recordId)
 
   // Get record data for contact-specific UI
-  const { record: contact } = useRecord({
+  const { record: contact } = useRecord<ContactRecord>({
     recordId,
     enabled: !!open && !!contactId,
   })
@@ -103,9 +108,11 @@ export function ContactDrawer({
     setFocusComposerTrigger((prev) => prev + 1)
   }, [])
 
-  if (!open || !contactId) return null
+  // `recordId` is null exactly when `contactId` is — listing it keeps the non-null narrowing
+  // available to the header actions below.
+  if (!open || !contactId || !recordId) return null
 
-  const contactLabel = contact?.displayName
+  const contactLabel = contact?.displayName ?? undefined
 
   return (
     <>
@@ -158,7 +165,6 @@ export function ContactDrawer({
               </Button>
             </Tooltip>
             <ManualTriggerButton
-              resourceType='contact'
               recordId={recordId}
               buttonVariant='ghost'
               buttonSize='icon-sm'

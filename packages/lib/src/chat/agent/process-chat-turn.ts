@@ -86,7 +86,7 @@ async function processChatTurnInternal(ctx: JobContext<ChatTurnJobPayload>): Pro
     )
     .limit(1)
   const inboundText = (inbound?.textPlain ?? '').trim()
-  if (!inboundText) {
+  if (!inbound || !inboundText) {
     logger.warn('Chat turn skipped — inbound message empty or not found', { inboundMessageId })
     return
   }
@@ -125,7 +125,9 @@ async function processChatTurnInternal(ctx: JobContext<ChatTurnJobPayload>): Pro
   // Replay any thread messages the session hasn't recorded (takeover, multiple
   // visitor messages folded by jobId-dedup, etc.). The triggering inbound is
   // excluded — the engine appends it via `submitMessage`.
-  const existingMessages = (session.messages ?? []) as SessionMessage[]
+  // `AiAgentSession.messages` is a jsonb column typed `Record<string, unknown>[]`;
+  // it only ever holds rows this module wrote via `saveSessionMessages`.
+  const existingMessages = (session.messages ?? []) as unknown as SessionMessage[]
   const catchup = await buildCatchupMessages({
     organizationId,
     threadId,
@@ -281,6 +283,7 @@ async function processChatTurnInternal(ctx: JobContext<ChatTurnJobPayload>): Pro
   // to the first un-stamped user turn.
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
+    if (!m) continue
     if (m.role === 'user' && !m.metadata?.messageId) {
       m.metadata = { ...m.metadata, messageId: inboundMessageId }
       break
@@ -299,6 +302,7 @@ async function processChatTurnInternal(ctx: JobContext<ChatTurnJobPayload>): Pro
       const replyId = sent.value.id
       for (let i = messages.length - 1; i >= 0; i--) {
         const m = messages[i]
+        if (!m) continue
         if (m.role === 'assistant' && !m.metadata?.messageId) {
           m.metadata = { ...m.metadata, messageId: replyId }
           break

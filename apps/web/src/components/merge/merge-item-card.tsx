@@ -25,6 +25,9 @@ export function MergeItemCard({ recordId, actions, className }: MergeItemCardPro
   const { entityDefinitionId } = parseRecordId(recordId)
   const { record, isLoading } = useRecord({ recordId })
   const { resource } = useResource(entityDefinitionId)
+  // `RecordMeta` carries extra resource columns through an index signature, so
+  // this arrives untyped; the store only ever writes it as a string or null.
+  const secondary = record?.secondaryDisplayValue as string | null | undefined
 
   if (isLoading) {
     return (
@@ -55,10 +58,8 @@ export function MergeItemCard({ recordId, actions, className }: MergeItemCardPro
       {/* Name and secondary */}
       <div className='flex-1 min-w-0 truncate'>
         <span className='text-sm font-medium'>{record?.displayName ?? 'Untitled'}</span>
-        {record?.secondaryDisplayValue ? (
-          <span className='ps-1 text-xs text-muted-foreground truncate'>
-            {record.secondaryDisplayValue}
-          </span>
+        {secondary ? (
+          <span className='ps-1 text-xs text-muted-foreground truncate'>{secondary}</span>
         ) : null}
       </div>
 

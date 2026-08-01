@@ -1313,7 +1313,7 @@ export class UnifiedCrudHandler {
     return {
       id: resource.entityDefinitionId ?? resource.id,
       entityType: resource.entityType ?? null,
-      apiSlug: resource.apiSlug ?? null,
+      apiSlug: resource.apiSlug,
     }
   }
 
@@ -1399,24 +1399,28 @@ export class UnifiedCrudHandler {
     }
   }
 
+  /**
+   * Emit an `entity:*` bus event for a single-field write.
+   *
+   * The payload has to match `EntityInstance*Event['data']` exactly: every downstream handler
+   * (`createTimelineEvent`, `triggerResourceDispatch`, `handleRecordRules`) keys off `recordId`
+   * and reads the changed values out of `eventData`.
+   */
   private async publishEvent(
     action: 'created' | 'updated' | 'deleted',
     entityDef: ResolvedEntityDefinition,
     instanceId: string,
-    values: Record<string, unknown>,
-    extra?: Record<string, unknown>
+    values: Record<string, unknown>
   ): Promise<void> {
     publisher.publishLater({
       type: `entity:${action}`,
       data: {
-        instanceId,
+        recordId: toRecordId(entityDef.id, instanceId),
         entityDefinitionId: entityDef.id,
         entitySlug: entityDef.apiSlug,
-        entityType: entityDef.entityType,
         organizationId: this.organizationId,
         userId: this.userId,
-        values,
-        ...extra,
+        eventData: values,
       },
     })
   }

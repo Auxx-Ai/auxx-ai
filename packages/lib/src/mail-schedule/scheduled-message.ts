@@ -18,6 +18,7 @@ export async function createScheduledMessage(
   data: Omit<ScheduledMessageInsert, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<ScheduledMessageSelect> {
   const [row] = await db.insert(schema.ScheduledMessage).values(data).returning()
+  if (!row) throw new Error('Scheduled message insert returned no row')
   logger.info('Created scheduled message', { id: row.id, scheduledAt: row.scheduledAt })
   return row
 }

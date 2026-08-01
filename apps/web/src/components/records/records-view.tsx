@@ -7,8 +7,9 @@ import { converters } from '@auxx/lib/field-values/client'
 import { canEditRecordAtRung, FeatureKey } from '@auxx/lib/permissions/client'
 import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
-import type { AiOptions } from '@auxx/types/custom-field'
-import { toFieldId, toResourceFieldId } from '@auxx/types/field'
+import { type AiOptions, getRelatedEntityDefinitionId } from '@auxx/types/custom-field'
+import { keyToFieldRef, toFieldId, toResourceFieldId } from '@auxx/types/field'
+import type { TypedFieldValue } from '@auxx/types/field-value'
 import { Button } from '@auxx/ui/components/button'
 import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
 import { MainPageAction } from '@auxx/ui/components/main-page'
@@ -479,14 +480,23 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
    * it's read at call-time so a null ref during first render is safe.
    */
   const cellSelectionConfig: CellSelectionConfig = useMemo(() => {
+    // A columnId IS a `fieldRefToKey` encoding, so it decodes straight back to
+    // the FieldReference `getValue` expects. Every value the field-value store
+    // holds was written through `formatToTypedInput`, so it is a
+    // TypedFieldValue by construction — the store just types it as `unknown`.
     const readValue = (recordId: RecordId, columnId: string) =>
-      viewRef.current?.getValue(recordId, columnId)
+      viewRef.current?.getValue(recordId, keyToFieldRef(columnId)) as
+        | TypedFieldValue
+        | TypedFieldValue[]
+        | null
+        | undefined
 
     const resolveField = (columnId: string): ResourceField | null => {
       if (columnId.startsWith('_')) return null
       const decoded = decodeColumnId(columnId)
       if (decoded.type === 'path') {
-        const lastResourceFieldId = decoded.fieldPath[decoded.fieldPath.length - 1]
+        // FieldPath is a non-empty tuple; `[0]` is the guaranteed fallback.
+        const lastResourceFieldId = decoded.fieldPath.at(-1) ?? decoded.fieldPath[0]
         return fieldMap[lastResourceFieldId] ?? null
       }
       return fieldMap[decoded.resourceFieldId] ?? null
@@ -627,7 +637,8 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
       resolveRelationshipByDisplay: (columnId, query) => {
         const field = resolveField(columnId)
         if (!field) return null
-        const targetDefId = field.options?.relationship?.relatedEntityDefinitionId
+        const relationship = field.options?.relationship
+        const targetDefId = relationship ? getRelatedEntityDefinitionId(relationship) : null
         if (!targetDefId) return null
         const q = query.trim().toLowerCase()
         if (!q) return null

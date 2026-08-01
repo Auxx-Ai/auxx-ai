@@ -17,6 +17,7 @@ import { ConnectionVariableFields } from '~/components/connections/ui/connection
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { api } from '~/trpc/react'
 import { useMcpOAuthPopup } from '../hooks/use-mcp-oauth-popup'
+import type { McpDetailServer } from './mcp-server-detail'
 
 interface ConnectCuratedDialogProps {
   open: boolean
@@ -24,7 +25,13 @@ interface ConnectCuratedDialogProps {
   serverId: string
   serverName: string
   serverSlug: string
-  connectionType: 'oauth2-code' | 'secret' | 'none' | null
+  /**
+   * The server's connection type, straight off `mcp.getBySlug` — the full
+   * `ConnectionDefinition.connectionType` vocabulary (which also carries
+   * `client-credentials` and `hosted-provision`), not just the three the
+   * dialog reacts to.
+   */
+  connectionType: McpDetailServer['connectionType']
   connectionVariables: ConnectionVariable[]
   onConnected: () => void
 }

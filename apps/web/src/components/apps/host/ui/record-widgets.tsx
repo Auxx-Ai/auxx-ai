@@ -40,7 +40,7 @@ interface RecordWidgetsProps {
 export function RecordWidgets({ recordId, objectType }: RecordWidgetsProps) {
   // Get all widgets that should be shown for this record
   // The useSurfaces hook will filter based on surface predicates
-  const widgets = useSurfaces({
+  const { data: widgets } = useSurfaces({
     surfaceType: 'record-widget',
     context: { recordId, objectType },
   })

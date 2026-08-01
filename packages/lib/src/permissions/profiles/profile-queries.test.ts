@@ -34,6 +34,7 @@ function profile(overrides: Partial<CachedPermissionProfile>): CachedPermissionP
     icon: null,
     seat: 'full',
     appliesTo: 'member',
+    role: 'USER',
     baseLevel: null,
     ceiling: null,
     agentPolicy: null,

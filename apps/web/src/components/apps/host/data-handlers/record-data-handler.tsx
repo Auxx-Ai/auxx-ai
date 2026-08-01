@@ -108,7 +108,7 @@ export function RecordDataHandler() {
         return {
           id: entityInstanceId,
           type: resource.entityType ?? entityDefinitionId,
-          displayName: meta?.displayName,
+          displayName: meta?.displayName ?? undefined,
           data,
           createdAt: meta?.createdAt,
           updatedAt: meta?.updatedAt,

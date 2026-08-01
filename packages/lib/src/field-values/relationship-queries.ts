@@ -2,7 +2,7 @@
 // Query helpers for relationship fields stored in FieldValue table.
 // Used by query builders to replace TagsOnThread junction table queries.
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray, isNotNull, type SQL, sql } from 'drizzle-orm'
 import { getAllCachedCustomFields, requireCachedEntityDefId } from '../cache'
@@ -414,7 +414,7 @@ export async function getArticleTagIds(
  * Returns a Map of articleId -> array of RecordIds (entityDefinitionId:instanceId format).
  */
 export async function batchGetArticleTagIds(
-  db: Database,
+  db: Database | Transaction,
   articleIds: string[],
   organizationId: string
 ): Promise<Map<string, string[]>> {

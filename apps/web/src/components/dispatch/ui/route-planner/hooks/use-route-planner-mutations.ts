@@ -321,7 +321,15 @@ export function useRoutePlannerMutations(window: PlannerDayWindow) {
   })
 
   const scheduleVisit = api.dispatch.scheduleVisit.useMutation({
-    onMutate: async (vars) => {
+    onMutate: async (rawVars) => {
+      // `z.coerce.date()` makes tRPC's CLIENT-side variables type `unknown` per field (it infers
+      // from the schema's pre-parse input, not its parsed output); Dates are what actually land.
+      const vars = rawVars as {
+        visitId: string
+        startTime: Date
+        endTime: Date
+        assigneeWorkerId?: string | null
+      }
       await utils.dispatch.getRoutePlannerBoard.cancel(boardKey)
       const patch: Partial<PlannerVisit> = { startTime: vars.startTime, endTime: vars.endTime }
       if (vars.assigneeWorkerId !== undefined) patch.assigneeWorkerId = vars.assigneeWorkerId

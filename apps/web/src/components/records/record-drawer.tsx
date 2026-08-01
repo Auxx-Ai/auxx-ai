@@ -3,6 +3,8 @@
 
 import { formatToDisplayValue, parseRecordId, type RecordId } from '@auxx/lib/field-values/client'
 import { getEntityDrawerConfig } from '@auxx/lib/resources/client'
+import { toFieldId } from '@auxx/types/field'
+import type { TypedFieldValue } from '@auxx/types/field-value'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -130,10 +132,13 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   }, [secondaryDisplayFieldId, resource?.fields])
 
   // Subscribe to field values (reactive - updates when field values change)
-  const primaryFieldValue = useFieldValue(recordId ?? ('' as RecordId), primaryDisplayFieldId ?? '')
+  const primaryFieldValue = useFieldValue(
+    recordId ?? ('' as RecordId),
+    primaryDisplayFieldId ? toFieldId(primaryDisplayFieldId) : undefined
+  )
   const secondaryFieldValue = useFieldValue(
     recordId ?? ('' as RecordId),
-    secondaryDisplayFieldId ?? ''
+    secondaryDisplayFieldId ? toFieldId(secondaryDisplayFieldId) : undefined
   )
 
   // Format values for display
@@ -144,7 +149,11 @@ export const RecordDrawer = React.memo(function RecordDrawer({
 
     // Use field value if available and field type is known
     if (primaryFieldValue.value && primaryField?.fieldType) {
-      return String(formatToDisplayValue(primaryFieldValue.value, primaryField.fieldType))
+      // The store types values as `unknown` because optimistic writes can hold a
+      // raw value briefly; everything hydrated/confirmed is a TypedFieldValue.
+      return String(
+        formatToDisplayValue(primaryFieldValue.value as TypedFieldValue, primaryField.fieldType)
+      )
     }
 
     // Fall back to cached record
@@ -164,7 +173,9 @@ export const RecordDrawer = React.memo(function RecordDrawer({
 
     // Use field value if available and field type is known
     if (secondaryFieldValue.value && secondaryField?.fieldType) {
-      return String(formatToDisplayValue(secondaryFieldValue.value, secondaryField.fieldType))
+      return String(
+        formatToDisplayValue(secondaryFieldValue.value as TypedFieldValue, secondaryField.fieldType)
+      )
     }
 
     // Fall back to cached record

@@ -2,13 +2,64 @@
 
 import type { Recording } from './recordings-types'
 
+/** The joined calendar-event row `recording.list` returns alongside each recording. */
+type RecordingCalendarEvent = NonNullable<Recording['calendarEvent']>
+
+/**
+ * Full `CalendarEvent` row for a mock recording — the list endpoint returns the whole entity,
+ * not just its title, so the fixture has to carry every column.
+ */
+function mockCalendarEvent(
+  id: string,
+  title: string,
+  startTime: Date,
+  endTime: Date
+): RecordingCalendarEvent {
+  return {
+    id,
+    organizationId: 'org_1',
+    userId: 'user_1',
+    provider: 'google',
+    externalId: `ext_${id}`,
+    title,
+    description: null,
+    startTime,
+    endTime,
+    timezone: 'UTC',
+    meetingUrl: null,
+    meetingPlatform: 'google_meet',
+    location: null,
+    isAllDay: false,
+    status: 'confirmed',
+    organizer: {},
+    attendees: [],
+    isExternal: false,
+    recurringEventId: null,
+    rawData: null,
+    syncedAt: startTime,
+    entityInstanceId: null,
+    createdAt: startTime,
+    updatedAt: startTime,
+  }
+}
+
+/** Columns every mock shares: no AI pass has run and there is no summary yet. */
+const NO_AI_CONTENT = {
+  metadata: null,
+  summaryText: null,
+  actionItems: null,
+  aiProcessingStatus: 'pending',
+  aiProcessingError: null,
+  aiProcessedAt: null,
+} satisfies Partial<Recording>
+
 /** TODO: Remove once real recordings exist. */
 export const MOCK_RECORDINGS: Recording[] = [
   {
     id: 'rec_001',
     organizationId: 'org_1',
-    meetingId: null,
-    calendarEventId: null,
+    meetingId: 'meeting_1',
+    calendarEventId: 'cal_001',
     externalBotId: 'bot_abc',
     provider: 'recall',
     meetingPlatform: 'google_meet',
@@ -26,13 +77,19 @@ export const MOCK_RECORDINGS: Recording[] = [
     createdById: 'user_1',
     createdAt: new Date('2026-04-14T13:58:00Z'),
     updatedAt: new Date('2026-04-14T14:39:00Z'),
-    calendarEvent: { title: 'Q2 Product Roadmap Review' } as never,
+    ...NO_AI_CONTENT,
+    calendarEvent: mockCalendarEvent(
+      'cal_001',
+      'Q2 Product Roadmap Review',
+      new Date('2026-04-14T14:00:00Z'),
+      new Date('2026-04-14T14:39:00Z')
+    ),
   },
   {
     id: 'rec_002',
     organizationId: 'org_1',
-    meetingId: null,
-    calendarEventId: null,
+    meetingId: 'meeting_2',
+    calendarEventId: 'cal_002',
     externalBotId: 'bot_def',
     provider: 'recall',
     meetingPlatform: 'zoom',
@@ -50,13 +107,19 @@ export const MOCK_RECORDINGS: Recording[] = [
     createdById: 'user_1',
     createdAt: new Date('2026-04-15T09:58:00Z'),
     updatedAt: new Date('2026-04-15T10:00:00Z'),
-    calendarEvent: { title: 'Weekly Customer Success Sync' } as never,
+    ...NO_AI_CONTENT,
+    calendarEvent: mockCalendarEvent(
+      'cal_002',
+      'Weekly Customer Success Sync',
+      new Date('2026-04-15T10:00:00Z'),
+      new Date('2026-04-15T10:30:00Z')
+    ),
   },
   {
     id: 'rec_003',
     organizationId: 'org_1',
-    meetingId: null,
-    calendarEventId: null,
+    meetingId: 'meeting_3',
+    calendarEventId: 'cal_003',
     externalBotId: 'bot_ghi',
     provider: 'recall',
     meetingPlatform: 'teams',
@@ -74,13 +137,19 @@ export const MOCK_RECORDINGS: Recording[] = [
     createdById: 'user_1',
     createdAt: new Date('2026-04-13T15:58:00Z'),
     updatedAt: new Date('2026-04-13T16:30:00Z'),
-    calendarEvent: { title: 'Sprint Retrospective' } as never,
+    ...NO_AI_CONTENT,
+    calendarEvent: mockCalendarEvent(
+      'cal_003',
+      'Sprint Retrospective',
+      new Date('2026-04-13T16:00:00Z'),
+      new Date('2026-04-13T16:30:00Z')
+    ),
   },
   {
     id: 'rec_004',
     organizationId: 'org_1',
-    meetingId: null,
-    calendarEventId: null,
+    meetingId: 'meeting_4',
+    calendarEventId: 'cal_004',
     externalBotId: 'bot_jkl',
     provider: 'recall',
     meetingPlatform: 'google_meet',
@@ -98,13 +167,19 @@ export const MOCK_RECORDINGS: Recording[] = [
     createdById: 'user_1',
     createdAt: new Date('2026-04-12T11:00:00Z'),
     updatedAt: new Date('2026-04-12T11:02:00Z'),
-    calendarEvent: { title: 'Investor Update Call' } as never,
+    ...NO_AI_CONTENT,
+    calendarEvent: mockCalendarEvent(
+      'cal_004',
+      'Investor Update Call',
+      new Date('2026-04-12T11:00:00Z'),
+      new Date('2026-04-12T12:00:00Z')
+    ),
   },
   {
     id: 'rec_005',
     organizationId: 'org_1',
-    meetingId: null,
-    calendarEventId: null,
+    meetingId: 'meeting_5',
+    calendarEventId: 'cal_005',
     externalBotId: null,
     provider: 'recall',
     meetingPlatform: 'google_meet',
@@ -122,6 +197,12 @@ export const MOCK_RECORDINGS: Recording[] = [
     createdById: 'user_1',
     createdAt: new Date('2026-04-15T15:00:00Z'),
     updatedAt: new Date('2026-04-15T15:00:00Z'),
-    calendarEvent: { title: 'Design Review — Calls Page' } as never,
+    ...NO_AI_CONTENT,
+    calendarEvent: mockCalendarEvent(
+      'cal_005',
+      'Design Review — Calls Page',
+      new Date('2026-04-15T15:00:00Z'),
+      new Date('2026-04-15T16:00:00Z')
+    ),
   },
 ]

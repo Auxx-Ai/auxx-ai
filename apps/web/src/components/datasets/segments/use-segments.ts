@@ -5,6 +5,14 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 
+/**
+ * Page size used by the `segment.listByDocument` infinite query.
+ * Exported because the tRPC infinite-query cache key includes the whole input
+ * (minus `cursor`) — any `setInfiniteData`/`getInfiniteData` call has to pass
+ * the identical `{ documentId, limit }` or it targets a different cache entry.
+ */
+export const SEGMENTS_PAGE_SIZE = 500
+
 interface UseSegmentsOptions {
   initialSearchQuery?: string
   chunkSize?: number
@@ -49,7 +57,7 @@ export function useSegments(
 ): UseSegmentsReturn {
   const {
     initialSearchQuery = '',
-    chunkSize = 500, // Load 500 segments at a time
+    chunkSize = SEGMENTS_PAGE_SIZE,
     enableVirtualization = true,
   } = options
   // State
@@ -59,22 +67,20 @@ export function useSegments(
   const [isLoadingAll, setIsLoadingAll] = useState(false)
   // API utils
   const utils = api.useUtils()
+  // Cache key input for the infinite query — must be reused verbatim by every
+  // get/setInfiniteData call or they address a different cache entry.
+  // No search param - we filter locally.
+  const listInput = { documentId, limit: chunkSize }
   // Infinite query for progressive loading
   const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
-    api.segment.listByDocument.useInfiniteQuery(
-      {
-        documentId,
-        limit: chunkSize, // Large chunks for efficient loading
-        // No search param - we'll filter locally
-      },
-      {
-        getNextPageParam: (lastPage) =>
-          lastPage.hasMore ? { page: (lastPage.page || 1) + 1 } : undefined,
-        staleTime: 10 * 60 * 1000, // 10 minutes - data is relatively stable
-        gcTime: 15 * 60 * 1000, // 15 minutes cache
-        refetchOnWindowFocus: false,
-      }
-    )
+    api.segment.listByDocument.useInfiniteQuery(listInput, {
+      // The router paginates by `cursor` (an offset), not by page number —
+      // the service hands back the next offset as `nextCursor`.
+      getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+      staleTime: 10 * 60 * 1000, // 10 minutes - data is relatively stable
+      gcTime: 15 * 60 * 1000, // 15 minutes cache
+      refetchOnWindowFocus: false,
+    })
   // Update allSegments when new data arrives
   useEffect(() => {
     if (data?.pages) {
@@ -181,11 +187,11 @@ export function useSegments(
       await utils.segment.listByDocument.cancel({ documentId })
       await utils.document.getById.cancel({ documentId })
       // Snapshot the previous values
-      const previousSegments = utils.segment.listByDocument.getData({ documentId })
+      const previousSegments = utils.segment.listByDocument.getInfiniteData(listInput)
       const previousDocument = utils.document.getById.getData({ documentId })
       // Optimistically update the cache to remove these segments
       const idsToDelete = new Set(segmentIds)
-      utils.segment.listByDocument.setInfiniteData({ documentId }, (old) => {
+      utils.segment.listByDocument.setInfiniteData(listInput, (old) => {
         if (!old) return old
         return {
           ...old,
@@ -209,7 +215,7 @@ export function useSegments(
     onError: (error, _, context) => {
       // Restore the previous data if available
       if (context?.previousSegments) {
-        utils.segment.listByDocument.setInfiniteData({ documentId }, context.previousSegments)
+        utils.segment.listByDocument.setInfiniteData(listInput, context.previousSegments)
         // Also restore local state from the cache
         const segments = context.previousSegments.pages.flatMap((page) => page.segments)
         setAllSegments(segments)

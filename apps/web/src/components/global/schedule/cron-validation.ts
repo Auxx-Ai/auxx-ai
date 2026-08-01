@@ -34,7 +34,7 @@ export function validateCronExpression(cron: string): CronValidationResult {
     return { isValid: false, errors, warnings }
   }
 
-  const [minute, hour, day, month, weekday] = cronParts
+  const [minute = '', hour = '', day = '', month = '', weekday = ''] = cronParts
 
   const fieldResults = [
     validateCronField(minute, 'minute', 0, 59),
@@ -103,7 +103,7 @@ function validateCronField(
 
     // Handle ranges (e.g., 1-5)
     if (trimmedValue.includes('-')) {
-      const [start, end] = trimmedValue.split('-')
+      const [start = '', end = ''] = trimmedValue.split('-')
       const startNum = parseFieldValue(start, namedValues)
       const endNum = parseFieldValue(end, namedValues)
 
@@ -124,7 +124,7 @@ function validateCronField(
     }
     // Handle step values (e.g., */5, 1-10/2)
     else if (trimmedValue.includes('/')) {
-      const [range, step] = trimmedValue.split('/')
+      const [range = '', step = ''] = trimmedValue.split('/')
       const stepNum = parseInt(step, 10)
 
       if (Number.isNaN(stepNum) || stepNum <= 0) {

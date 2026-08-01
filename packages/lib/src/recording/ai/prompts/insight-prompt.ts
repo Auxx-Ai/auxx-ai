@@ -51,7 +51,7 @@ export function buildInsightUserPrompt(fullText: string): string {
 export function buildInsightResponseSchema(
   template: InsightTemplateLike
 ): z.ZodObject<ZodRawShape> {
-  const shape: ZodRawShape = {}
+  const shape: Record<string, ZodTypeAny> = {}
   for (const section of template.sections) {
     const key = slugifyKey(section.title)
     const sectionSchema: ZodTypeAny = section.type === 'list' ? z.array(z.string()) : z.string()

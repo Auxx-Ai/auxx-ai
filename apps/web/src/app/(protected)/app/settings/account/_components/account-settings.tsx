@@ -48,6 +48,10 @@ export function AccountSettings(): React.JSX.Element {
 
   const canEditEmail = (user?.providers?.length ?? 0) === 0
 
+  // The device line reads the SESSION row's user agent — `session` here is
+  // better-auth's `{ user, session }` envelope, not the session row itself.
+  const userAgent = new UAParser(session?.session.userAgent ?? '')
+
   /**
    * Handle sign out - uses the same implementation as nav-user.tsx
    */
@@ -197,13 +201,12 @@ export function AccountSettings(): React.JSX.Element {
       {session && (
         <SettingsSection icon={Monitor} title='Active session'>
           <div className='flex items-center gap-2 text-sm text-black font-medium dark:text-white'>
-            {new UAParser(session.userAgent || '').getDevice().type === 'mobile' ? (
+            {userAgent.getDevice().type === 'mobile' ? (
               <Smartphone className='size-4' />
             ) : (
               <Laptop className='size-4' />
             )}
-            {new UAParser(session.userAgent || '').getOS().name},{' '}
-            {new UAParser(session.userAgent || '').getBrowser().name}
+            {userAgent.getOS().name}, {userAgent.getBrowser().name}
             <button
               className='text-red-500 opacity-80 cursor-pointer text-xs underline'
               onClick={handleSignOut}>

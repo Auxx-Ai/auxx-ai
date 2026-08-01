@@ -1,10 +1,13 @@
 // apps/web/src/components/kbar/shortcuts.ts
 
+import type { Hotkey } from '@tanstack/react-hotkeys'
+
 /**
  * The ONE place command-palette chords live. Maps a `PaletteAction.id` to its
- * key sequence (lowercase, exactly as displayed). `use-palette-hotkeys` binds
- * every entry here through a single `useHotkeySequence` loop, so a chord is
- * registered exactly once.
+ * key sequence, in the uppercase casing `@tanstack/hotkeys` registers (matching
+ * is case-insensitive; `ShortcutHint` lowercases for display).
+ * `use-palette-hotkeys` binds every entry here through a single
+ * `useHotkeySequence` loop, so a chord is registered exactly once.
  *
  * Deliberately NOT here:
  * - Create chords (`c,c` / `c,o` / `c,t` / `c,p`) — owned by global-create
@@ -18,52 +21,52 @@
  * owns a 2-key chord (Inbox `g,i`, Shopify `g,h`) intentionally get no chord —
  * they remain reachable via search.
  */
-export const SHORTCUTS: Record<string, string[]> = {
+export const SHORTCUTS: Record<string, Hotkey[]> = {
   // ── Navigation (top-level) ──────────────────────────────────────────────
-  'nav.inbox': ['g', 'i'],
-  'nav.contacts': ['g', 'c'],
-  'nav.companies': ['g', 'o'],
-  'nav.parts': ['g', 'p'],
-  'nav.tickets': ['g', 't'],
-  'nav.tasks': ['g', 'a'],
-  'nav.workflows': ['g', 'w'],
-  'nav.kb': ['g', 'k'],
-  'nav.datasets': ['g', 'd'],
-  'nav.files': ['g', 'f'],
+  'nav.inbox': ['G', 'I'],
+  'nav.contacts': ['G', 'C'],
+  'nav.companies': ['G', 'O'],
+  'nav.parts': ['G', 'P'],
+  'nav.tickets': ['G', 'T'],
+  'nav.tasks': ['G', 'A'],
+  'nav.workflows': ['G', 'W'],
+  'nav.kb': ['G', 'K'],
+  'nav.datasets': ['G', 'D'],
+  'nav.files': ['G', 'F'],
 
   // ── Shared Inbox (3-key siblings; no `g,s` parent chord, so all reachable) ─
-  'nav.sharedInbox.unassigned': ['g', 's', 'u'],
-  'nav.sharedInbox.assigned': ['g', 's', 'a'],
-  'nav.sharedInbox.done': ['g', 's', 'd'],
-  'nav.sharedInbox.trash': ['g', 's', 't'],
-  'nav.sharedInbox.spam': ['g', 's', 'p'],
+  'nav.sharedInbox.unassigned': ['G', 'S', 'U'],
+  'nav.sharedInbox.assigned': ['G', 'S', 'A'],
+  'nav.sharedInbox.done': ['G', 'S', 'D'],
+  'nav.sharedInbox.trash': ['G', 'S', 'T'],
+  'nav.sharedInbox.spam': ['G', 'S', 'P'],
 
   // ── Settings (member-visible) ───────────────────────────────────────────
-  'settings.general': ['s', 'g'],
-  'settings.account': ['s', 'u'],
-  'settings.organization': ['s', 'o'],
-  'settings.snippets': ['s', 'n'],
-  'settings.signatures': ['s', 's'],
-  'settings.apiKeys': ['s', 'k'],
+  'settings.general': ['S', 'G'],
+  'settings.account': ['S', 'U'],
+  'settings.organization': ['S', 'O'],
+  'settings.snippets': ['S', 'N'],
+  'settings.signatures': ['S', 'S'],
+  'settings.apiKeys': ['S', 'K'],
 
   // ── Settings (admin) ────────────────────────────────────────────────────
-  'settings.channels': ['s', 'i'],
-  'settings.members': ['s', 'm'],
-  'settings.groups': ['s', 'r'],
-  'settings.inbox': ['s', 'b'],
-  'settings.aiModels': ['s', 'a'],
-  'settings.customFields': ['s', 'c'],
-  'settings.tags': ['s', 't'],
-  'settings.apps': ['s', 'p'],
-  'settings.webhooks': ['s', 'w'],
+  'settings.channels': ['S', 'I'],
+  'settings.members': ['S', 'M'],
+  'settings.groups': ['S', 'R'],
+  'settings.inbox': ['S', 'B'],
+  'settings.aiModels': ['S', 'A'],
+  'settings.customFields': ['S', 'C'],
+  'settings.tags': ['S', 'T'],
+  'settings.apps': ['S', 'P'],
+  'settings.webhooks': ['S', 'W'],
 
   // ── Create (palette-owned launchers; entity creates live in global-create) ─
-  'create.dashboard': ['c', 'd'],
+  'create.dashboard': ['C', 'D'],
 
   // ── Theme ───────────────────────────────────────────────────────────────
-  'theme.toggle': ['t', 't'],
-  'theme.light': ['t', 'l'],
-  'theme.dark': ['t', 'd'],
+  'theme.toggle': ['T', 'T'],
+  'theme.light': ['T', 'L'],
+  'theme.dark': ['T', 'D'],
 }
 
 /**
@@ -71,7 +74,7 @@ export const SHORTCUTS: Record<string, string[]> = {
  * of another (both cause double/shadow firing with the sequence manager).
  * Runs once at module load in non-production builds.
  */
-function assertNoChordConflicts(map: Record<string, string[]>): void {
+function assertNoChordConflicts(map: Record<string, Hotkey[]>): void {
   const entries = Object.entries(map)
   for (let i = 0; i < entries.length; i++) {
     for (let j = i + 1; j < entries.length; j++) {

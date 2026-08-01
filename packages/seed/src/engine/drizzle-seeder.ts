@@ -2,9 +2,9 @@
 // Core orchestrator that coordinates reset, service integrations, auth seeding, and drizzle-seed generation
 
 import { configService } from '@auxx/credentials'
-import { schema } from '@auxx/database'
+import { database, schema } from '@auxx/database'
 import { drizzle } from 'drizzle-orm/postgres-js'
-import { reset, seed } from 'drizzle-seed'
+import { reset } from 'drizzle-seed'
 import postgres from 'postgres'
 import { ScenarioBuilder } from '../scenarios/scenario-builder'
 import type { SeedingConfig, SeedingContext, SeedingResult, SeedingScenario } from '../types'
@@ -155,15 +155,18 @@ export class DrizzleSeeder {
 
       // Curated MCP servers (global, org-less) — seed once per database, not per org.
       if (!this.config.organizationId) {
+        // These two forward `db` into `@auxx/lib`, which is typed against the shared
+        // node-postgres `Database`. `this.db` is the seeder's own postgres-js client,
+        // so pass the singleton — same database, correct client type.
         console.log('💾 Inserting curated MCP servers directly...')
         const mcp = new McpDomain()
-        await mcp.insertDirectly(this.db)
+        await mcp.insertDirectly(database)
         console.log('✅ Curated MCP servers inserted')
 
         // Platform connection providers (global, org-less) — seed once per database.
         console.log('🔌 Inserting platform connection providers directly...')
         const connections = new ConnectionsDomain()
-        await connections.insertDirectly(this.db)
+        await connections.insertDirectly(database)
         console.log('✅ Platform connection providers inserted')
       }
 
@@ -260,49 +263,6 @@ export class DrizzleSeeder {
   }
 
   /**
-   * executeDrizzleSeed performs the drizzle-seed bulk generation step (DEPRECATED - has bugs).
-   * @param context - Context from earlier seeding phases.
-   * @returns Result from drizzle-seed or null when no refinements are defined.
-   */
-  private async executeDrizzleSeed(context: SeedingContext): Promise<unknown> {
-    const refinements = this.scenario.buildRefinements(context)
-    if (!refinements) {
-      return null
-    }
-
-    // Skip preview to avoid multiple refinement function calls that may cause side effects
-    // The refinements function will execute generators, and calling it twice may corrupt state
-    const hasRefinements = true
-
-    if (!hasRefinements) {
-      this.tracker.info('No drizzle-seed refinements defined; skipping bulk pass')
-      return null
-    }
-
-    const targetSchema = {
-      Thread: schema.Thread,
-      AiUsage: schema.AiUsage,
-    }
-
-    try {
-      console.log('🧪 Starting drizzle-seed refine pass')
-      const result = await seed(this.db, targetSchema, {
-        count: 0,
-        seed: this.config.seedValue,
-      }).refine(refinements as never)
-      console.log('✅ Drizzle-seed refine pass completed')
-      return result
-    } catch (error) {
-      console.error('❌ Drizzle-seed refine failed', {
-        scenario: this.config.scenario,
-        message: (error as Error).message,
-      })
-      console.error(error)
-      throw error
-    }
-  }
-
-  /**
    * resetOrganizationData deletes all seeded data for a specific organization.
    * Respects foreign key constraints by deleting in correct order.
    * Preserves: Users, Members, Billing, Subscriptions, Integrations (credentials only)
@@ -319,11 +279,21 @@ export class DrizzleSeeder {
       console.log('  ↳ Deleting AI usage data...')
       await this.db.delete(schema.AiUsage).where(eq(schema.AiUsage.organizationId, organizationId))
 
-      // 2. Communication domain (Messages, Threads)
+      // 2. Communication domain (Messages, Threads).
+      // MessageParticipant has no organizationId — scope it through its parent Message.
       console.log('  ↳ Deleting message participants...')
+      const { inArray } = await import('drizzle-orm')
       await this.db
         .delete(schema.MessageParticipant)
-        .where(eq(schema.MessageParticipant.organizationId, organizationId))
+        .where(
+          inArray(
+            schema.MessageParticipant.messageId,
+            this.db
+              .select({ id: schema.Message.id })
+              .from(schema.Message)
+              .where(eq(schema.Message.organizationId, organizationId))
+          )
+        )
 
       console.log('  ↳ Deleting messages...')
       await this.db.delete(schema.Message).where(eq(schema.Message.organizationId, organizationId))

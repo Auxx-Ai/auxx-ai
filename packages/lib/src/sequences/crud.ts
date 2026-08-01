@@ -237,14 +237,14 @@ export async function deleteSequence(
     )
   }
 
-  const [{ activeCount }] = await db
+  const [activeRuns] = await db
     .select({ activeCount: count() })
     .from(schema.SequenceRun)
     .where(
       and(eq(schema.SequenceRun.sequenceId, sequenceId), eq(schema.SequenceRun.status, 'active'))
     )
 
-  if (activeCount > 0) {
+  if ((activeRuns?.activeCount ?? 0) > 0) {
     return err(new ConflictError('Cannot delete a sequence with active runs — exit them first'))
   }
 

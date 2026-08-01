@@ -1308,7 +1308,9 @@ export class ThreadMergeService {
       mergeData: { sources: fanout.flattenedTargetSources },
       messageCount: fanout.targetMeta.messageCount,
       participantCount: fanout.targetMeta.participantCount,
-      lastMessageAt: fanout.targetMeta.lastMessageAt?.toISOString() ?? null,
+      ...(fanout.targetMeta.lastMessageAt
+        ? { lastMessageAt: fanout.targetMeta.lastMessageAt.toISOString() }
+        : {}),
     }
     await publishThreadUpdated(realtime, this.organizationId, {
       threadId: fanout.targetId,
@@ -1352,7 +1354,9 @@ export class ThreadMergeService {
         mergeData: null,
         messageCount: fanout.sourceMeta.messageCount,
         participantCount: fanout.sourceMeta.participantCount,
-        lastMessageAt: fanout.sourceMeta.lastMessageAt?.toISOString() ?? null,
+        ...(fanout.sourceMeta.lastMessageAt
+          ? { lastMessageAt: fanout.sourceMeta.lastMessageAt.toISOString() }
+          : {}),
       },
     })
 
@@ -1365,7 +1369,9 @@ export class ThreadMergeService {
           fanout.targetSourcesAfter.length > 0 ? { sources: fanout.targetSourcesAfter } : null,
         messageCount: fanout.targetMeta.messageCount,
         participantCount: fanout.targetMeta.participantCount,
-        lastMessageAt: fanout.targetMeta.lastMessageAt?.toISOString() ?? null,
+        ...(fanout.targetMeta.lastMessageAt
+          ? { lastMessageAt: fanout.targetMeta.lastMessageAt.toISOString() }
+          : {}),
       },
     })
   }

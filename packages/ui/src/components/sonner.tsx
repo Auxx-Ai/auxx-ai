@@ -3,6 +3,7 @@
 'use client'
 
 import { useTheme } from 'next-themes'
+import type { CSSProperties } from 'react'
 import { Toaster as Sonner, type ToasterProps } from 'sonner'
 
 // type ToasterProps = React.ComponentProps<typeof Sonner>
@@ -10,6 +11,9 @@ import { Toaster as Sonner, type ToasterProps } from 'sonner'
 /**
  * Renders the global Sonner toaster with theme-aware styling.
  */
+/** `--width` is a Sonner CSS custom property; `CSSProperties` has no index signature. */
+const toasterStyle = { '--width': '300px', zIndex: 9999 } as CSSProperties
+
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = 'system' } = useTheme()
 
@@ -19,7 +23,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       className='toaster group'
       position='top-right'
       offset={{ top: 10, right: 10, bottom: 10, left: 10 }}
-      style={{ '--width': '300px', zIndex: 9999 }}
+      style={toasterStyle}
       richColors
       expand
       visibleToasts={9}

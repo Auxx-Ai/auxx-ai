@@ -10,6 +10,7 @@ import { appTemplateId, projectAppConnectorTemplates } from './app-template-proj
 const CONNECTOR: CatalogDataConnector = {
   id: 'shopify.core',
   label: 'Shopify Core',
+  description: null,
   requiresConnection: true,
   iconKey: 'shopping-bag',
   configJsonSchema: {},

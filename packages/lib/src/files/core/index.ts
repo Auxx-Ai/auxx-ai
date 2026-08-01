@@ -18,7 +18,6 @@ export { createFileService, FileService } from './file-service'
 export { createFolderService, FolderService } from './folder-service'
 export { createMediaAssetService, MediaAssetService } from './media-asset-service'
 export type { ContentAccessible, Versioned } from './mixins'
-export { withContentAccess, withVersioning } from './mixins'
 export { ThumbnailService } from './thumbnail-service'
 // Export thumbnail types
 export type {

@@ -37,7 +37,7 @@ export async function flipHandoffState(
   const { threadId, organizationId, reason, source } = args
   const [updated] = await db
     .update(schema.Thread)
-    .set({ handoffState: 'human', updatedAt: new Date() })
+    .set({ handoffState: 'human' })
     .where(and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, organizationId)))
     .returning({ id: schema.Thread.id })
 

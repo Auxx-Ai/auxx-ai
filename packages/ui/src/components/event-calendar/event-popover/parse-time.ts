@@ -24,7 +24,7 @@ export function parseTimeInput(input: string): ParsedTime | null {
 
   const meridiemMatch = trimmed.match(MERIDIEM_RE)
   const meridiem = meridiemMatch?.[2]?.toLowerCase() as 'am' | 'pm' | undefined
-  const body = (meridiemMatch ? meridiemMatch[1] : trimmed).trim()
+  const body = (meridiemMatch?.[1] ?? trimmed).trim()
   if (!body) return null
 
   let hours: number

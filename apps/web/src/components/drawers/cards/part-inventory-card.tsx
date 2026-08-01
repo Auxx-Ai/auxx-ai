@@ -59,7 +59,7 @@ const MOVEMENT_ATTRIBUTES = [
 // Movement Row
 // ─────────────────────────────────────────────────────────────────
 
-function MovementRow({ recordId, createdAt }: { recordId: RecordId; createdAt?: string }) {
+function MovementRow({ recordId, createdAt }: { recordId: RecordId; createdAt?: string | Date }) {
   const { values } = useSystemValues(recordId, MOVEMENT_ATTRIBUTES, { autoFetch: true })
 
   const type = values.stock_movement_type as string | undefined

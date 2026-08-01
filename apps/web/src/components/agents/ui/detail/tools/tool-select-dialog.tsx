@@ -165,9 +165,12 @@ export function ToolSelectDialog({
   const catalog = catalogData
   const flat = useMemo(() => flattenCatalogToToolsets(catalog), [catalog])
 
-  const selectedApp = useMemo(() => {
+  const selectedApp = useMemo<CatalogContainerNode | null>(() => {
     if (!catalog || !selectedAppId) return null
-    return catalog.find((root) => root.id === selectedAppId) ?? null
+    const node = catalog.find((root) => root.id === selectedAppId)
+    // App-detail only ever opens on a container root (see `handleOpenApp`).
+    if (!node || (node.kind !== 'app' && node.kind !== 'subGroup')) return null
+    return node
   }, [catalog, selectedAppId])
 
   function isInstalled(slug: string): boolean {
@@ -261,7 +264,7 @@ export function ToolSelectDialog({
                     icon: (
                       <AppIcon
                         iconId={selectedApp.iconId ?? 'package'}
-                        color={selectedApp.color}
+                        color={selectedApp.color ?? undefined}
                         size='xs'
                       />
                     ),
@@ -327,7 +330,7 @@ interface ListViewProps {
   onTabChange: (tab: ListTab) => void
   search: string
   onSearchChange: (q: string) => void
-  searchInputRef: React.RefObject<HTMLInputElement>
+  searchInputRef: React.RefObject<HTMLInputElement | null>
   catalog: CatalogNode[] | undefined
   flat: ReturnType<typeof flattenCatalogToToolsets>
   isLoading: boolean

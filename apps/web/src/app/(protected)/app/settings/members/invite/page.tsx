@@ -4,17 +4,19 @@ import { CapabilityPageGuard } from '~/components/global/capability-page-guard'
 import SettingsPage from '~/components/global/settings-page'
 import InviteForm from '../_components/invite-form'
 
-type Props = {}
-
-async function InvitePage({}: Props) {
+async function InvitePage() {
   const session = await getSession()
 
   if (!session) {
     redirect('/login')
   }
-  const defaultOrgId = session.user?.defaultOrganizationId
 
-  const defaultOrganizationId = 'your-default-organization-id' // Replace with actual logic to get the default organization ID
+  // Inviting is organization-scoped; with no active org there is nothing to invite into.
+  const defaultOrgId = session.user?.defaultOrganizationId
+  if (!defaultOrgId) {
+    redirect('/organizations')
+  }
+
   return (
     <SettingsPage
       title='Members'

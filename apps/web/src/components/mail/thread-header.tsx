@@ -4,7 +4,7 @@
 import { PLATFORM_CAPABILITIES } from '@auxx/lib/channels/client'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import type { ActorId } from '@auxx/types/actor'
-import { getInstanceId, type RecordId, toRecordId } from '@auxx/types/resource'
+import { getInstanceId, isRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { Alert } from '@auxx/ui/components/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
@@ -213,6 +213,8 @@ export function ThreadHeader() {
       if (!targetInboxId || targetInboxId === thread.inboxId) {
         return
       }
+      // `InboxPicker` emits `inbox.recordId` but declares a bare `string[]`.
+      if (!isRecordId(targetInboxId)) return
       await handlers.moveToInbox(targetInboxId)
     },
     [thread, handlers]
@@ -223,7 +225,7 @@ export function ThreadHeader() {
    */
   const handleAssigneeChange = useCallback(
     (actorIds: ActorId[]) => {
-      const actorId = actorIds.length > 0 ? actorIds[0] : null
+      const actorId = actorIds[0] ?? null
       handlers.updateAssignee(actorId)
     },
     [handlers]
@@ -402,7 +404,7 @@ export function ThreadHeader() {
                 onOpenChange={setOpen}
                 anchorRef={tagButtonRef}
                 selectedTags={selectedTags}
-                onChange={handleTagChange}
+                onChange={(tagIds) => handleTagChange(tagIds as RecordId[])}
                 allowMultiple={true}
                 tagEntityDefinitionId={tagEntityDefId}
                 scope='thread'
@@ -445,7 +447,7 @@ export function ThreadHeader() {
                     {assignee ? (
                       <Avatar className='size-6'>
                         <AvatarImage
-                          src={assignee.image || undefined}
+                          src={assignee.avatarUrl ?? undefined}
                           alt={assignee.name || 'Assignee'}
                         />
                         <AvatarFallback className='text-xs'>

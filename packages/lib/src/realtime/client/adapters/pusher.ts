@@ -1,6 +1,6 @@
 // @auxx/lib/realtime/client/adapters/pusher.ts
 
-import Pusher from 'pusher-js'
+import Pusher, { type Channel, type PresenceChannel } from 'pusher-js'
 import { toPusherChannel } from '../../room-keys'
 import type {
   PresenceHandlers,
@@ -12,7 +12,7 @@ import type {
 import { createBatchChannelAuthorizer } from './batch-channel-authorizer'
 
 interface RoomEntry {
-  channel: Pusher.Channel
+  channel: Channel
   refCount: number
   /** Bound event names so we can `unbind` cleanly on teardown. */
   handlers: Set<SubscribeHandlers | PresenceHandlers>
@@ -239,7 +239,7 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
       entry.globalListener = globalListener
 
       if (presence) {
-        const presenceCh = channel as Pusher.PresenceChannel
+        const presenceCh = channel as PresenceChannel
         const onSubSucceeded = () => {
           const members: PresenceMember[] = []
           presenceCh.members.each((m: { id: string; info?: Record<string, unknown> }) => {
@@ -301,7 +301,7 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
     // this handler attached, `pusher:subscription_succeeded` won't fire again
     // for it — so replay `onSubscribed` once, async, to match the natural
     // ordering of a fresh subscription.
-    if (!presence && (entry.channel as Pusher.Channel).subscribed) {
+    if (!presence && (entry.channel as Channel).subscribed) {
       const h = handlers as SubscribeHandlers
       queueMicrotask(() => {
         if (this.rooms.get(roomKey)?.handlers.has(handlers)) h.onSubscribed?.()
@@ -315,7 +315,7 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
     // returns before `onMembers` lands (matches the natural ordering of a
     // fresh subscription).
     if (presence) {
-      const presenceCh = entry.channel as Pusher.PresenceChannel
+      const presenceCh = entry.channel as PresenceChannel
       if (presenceCh.subscribed) {
         const members: PresenceMember[] = []
         presenceCh.members.each((m: { id: string; info?: Record<string, unknown> }) => {

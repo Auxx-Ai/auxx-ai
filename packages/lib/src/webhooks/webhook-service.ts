@@ -32,7 +32,6 @@ export class WebhookService {
   }
 
   async storeDelivery(params: WebhookDeliveryParams): Promise<TypedResult<WebhookDelivery, Error>> {
-    let result: TypedResult<WebhookDelivery, Error>
     const [delivery] = await this.db
       .insert(schema.WebhookDelivery)
       .values({
@@ -47,15 +46,13 @@ export class WebhookService {
       })
       .returning()
     if (!delivery) {
-      result = Result.error(new Error('Failed to create webhook delivery'))
+      return Result.error(new Error('Failed to create webhook delivery'))
     }
-    result = Result.ok(delivery)
-
     publisher.publishLater({
       type: 'webhook:delivery:created',
       data: { ...params, organizationId: this.organizationId },
     })
-    return result
+    return Result.ok(delivery)
   }
   async processPayload(event: AuxxEvent): Promise<TypedResult<WebhookPayload, Error>> {
     try {
@@ -277,7 +274,7 @@ export class WebhookService {
    * @throws UnprocessableEntityError if any event type is invalid
    */
   private validateEventTypes(eventTypes: string[]): void {
-    const validEventTypes = Object.values(WEBHOOK_EVENT_TYPES)
+    const validEventTypes: string[] = Object.values(WEBHOOK_EVENT_TYPES)
     const invalidEventTypes = eventTypes.filter((type) => !validEventTypes.includes(type))
     if (invalidEventTypes.length > 0) {
       throw new UnprocessableEntityError(`Invalid event types: ${invalidEventTypes.join(', ')}`)

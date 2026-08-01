@@ -70,11 +70,15 @@ export function positionEventsForDay<T extends EventCalendarItem>(
   // ends of the chain don't directly overlap each other.
   const parent = items.map((_, i) => i)
   function find(i: number): number {
-    while (parent[i] !== i) {
-      parent[i] = parent[parent[i]] as number
-      i = parent[i] as number
+    let node = i
+    for (;;) {
+      const p = parent[node]
+      if (p === undefined || p === node) return node
+      // Path halving: point `node` at its grandparent before walking up.
+      const grandparent = parent[p]
+      if (grandparent !== undefined) parent[node] = grandparent
+      node = p
     }
-    return i
   }
   function union(a: number, b: number) {
     const ra = find(a)

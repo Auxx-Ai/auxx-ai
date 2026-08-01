@@ -12,7 +12,7 @@ import { usePathname } from 'next/navigation'
 import { RecordRouteGuard } from '~/components/records'
 import { useResource } from '~/components/resources'
 
-type Props = { children: React.ReactNode; modal: React.ReactNode }
+type Props = { children: React.ReactNode }
 
 const BASE_PATH = '/app/quotes'
 
@@ -23,7 +23,7 @@ const BASE_PATH = '/app/quotes'
  * Detail (`[quoteId]`) and import (`import/[jobId]`) routes own their own
  * `MainPage` and bypass the shell entirely.
  */
-export default function QuotesLayout({ children, modal }: Props) {
+export default function QuotesLayout({ children }: Props) {
   const pathname = usePathname()
   const { resource } = useResource('quotes')
   const isDetailOrSpecialPage = pathname !== BASE_PATH
@@ -31,10 +31,7 @@ export default function QuotesLayout({ children, modal }: Props) {
   return (
     <RecordRouteGuard slug='quotes'>
       {isDetailOrSpecialPage ? (
-        <>
-          {children}
-          {modal}
-        </>
+        <>{children}</>
       ) : (
         <MainPage>
           <MainPageHeader>
@@ -43,7 +40,6 @@ export default function QuotesLayout({ children, modal }: Props) {
             </MainPageBreadcrumb>
           </MainPageHeader>
           {children}
-          {modal}
         </MainPage>
       )}
     </RecordRouteGuard>

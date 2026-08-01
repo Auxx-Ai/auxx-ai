@@ -26,7 +26,7 @@ import { useCmdkRemote } from '~/components/pickers/use-cmdk-remote'
 import { useSignatures } from '~/components/signatures/hooks'
 import type { SerializedQuickAction } from '~/components/workflow/apps/workflow-block-loader'
 import { api } from '~/trpc/react'
-import type { AIOperation } from '~/types/ai-tools'
+import type { AIOperation, AIToneType } from '~/types/ai-tools'
 import { AiSlashContent } from './ai-slash-content'
 import { FileSlashContent } from './file-slash-content'
 import { useSnippetSearch } from './hooks'
@@ -45,7 +45,7 @@ export interface MailAiSlashConfig {
   /** Runs the shared AI entrypoint. Mirrors the toolbar `onOperation` contract. */
   onRunAI: (
     operation: AIOperation,
-    options?: { tone?: string; language?: string; instruction?: string }
+    options?: { tone?: AIToneType; language?: string; instruction?: string }
   ) => void
 }
 

@@ -2,7 +2,7 @@
 import { schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { resolveDb } from '../internal/context'
-import { handleError } from '../internal/errors'
+import { createNotFoundError, handleError } from '../internal/errors'
 import { verifyKnowledgeBaseExists } from '../internal/validate-existence'
 import { validateSlugAvailability } from '../internal/validate-slug'
 import type { KBContext, KBLiveInput } from '../types'
@@ -29,6 +29,7 @@ export async function updateKnowledgeBase(
       .set({ ...data, updatedAt: new Date() })
       .where(eq(schema.KnowledgeBase.id, id))
       .returning()
+    if (!updatedKb) throw createNotFoundError(`Knowledge base with ID '${id}' not found`)
     return updatedKb
   } catch (error) {
     return handleError(error, ctx.organizationId, 'Error updating knowledge base', { id, data })

@@ -92,6 +92,8 @@ export interface FieldOptions {
     allowMultiple?: boolean
     maxFiles?: number
     allowedFileTypes?: string[]
+    /** Extension allowlist (e.g. `['pdf', 'docx']`), mirrors `fileOptionsSchema`. */
+    allowedFileExtensions?: string[]
   }
 
   // ─────────────────────────────────────────────────────────────

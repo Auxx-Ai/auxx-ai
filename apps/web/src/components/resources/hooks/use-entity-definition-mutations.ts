@@ -2,6 +2,7 @@
 
 import type { CustomResource, DisplayFieldConfig } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
+import type { ResourceOptimisticUpdate } from '~/components/resources/store/resource-store'
 import { getResourceStoreState } from '~/components/resources/store/resource-store'
 import { api } from '~/trpc/react'
 
@@ -72,7 +73,7 @@ export function useEntityDefinitionMutations() {
       const version = store.incrementResourceVersion(variables.id)
 
       // Build optimistic updates from mutation variables
-      const optimisticUpdates: Partial<CustomResource> = {}
+      const optimisticUpdates: ResourceOptimisticUpdate = {}
       if (variables.data.singular !== undefined) optimisticUpdates.label = variables.data.singular
       if (variables.data.plural !== undefined) optimisticUpdates.plural = variables.data.plural
       if (variables.data.icon !== undefined) optimisticUpdates.icon = variables.data.icon
@@ -99,9 +100,9 @@ export function useEntityDefinitionMutations() {
           }
         }
 
-        // Build updated display object (spread existing to preserve other properties)
+        // Only the changed display slots — the store merges them onto the
+        // resource's existing display config.
         optimisticUpdates.display = {
-          ...resource.display,
           ...(variables.data.primaryDisplayFieldId !== undefined && {
             primaryDisplayField: buildDisplayFieldConfig(variables.data.primaryDisplayFieldId),
           }),

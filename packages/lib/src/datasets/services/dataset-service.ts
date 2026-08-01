@@ -1,6 +1,6 @@
 // packages/lib/src/datasets/services/dataset-service.ts
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { DEFAULT_CHUNK_SETTINGS } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -44,7 +44,7 @@ const logger = createScopedLogger('dataset-service')
  * Service for managing datasets
  */
 export class DatasetService {
-  constructor(private db: Database) {}
+  constructor(private db: Database | Transaction) {}
 
   /**
    * Create a new dataset with validated embedding configuration

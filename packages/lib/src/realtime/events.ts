@@ -1,5 +1,6 @@
 // @auxx/lib/realtime/events.ts
 
+import type { ActorId } from '@auxx/types/actor'
 import type { FieldValueKey } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import type { ThreadMergeData } from '../threads/types'
@@ -239,7 +240,8 @@ export interface ThreadMeta {
   inboxId?: RecordId | null
   status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH' | 'IGNORED'
   subject?: string
-  assigneeId?: string | null
+  /** Role-prefixed actor id (`user:<id>`), matching the client store's ThreadMeta. */
+  assigneeId?: ActorId | null
   ticketId?: RecordId | null
   isUnread?: boolean
   /** Per-user unread fanout: when present, FE filters to current user before applying */
@@ -247,7 +249,12 @@ export interface ThreadMeta {
   messageCount?: number
   participantCount?: number
   firstMessageAt?: string | null
-  lastMessageAt?: string | null
+  /**
+   * ISO date. Never `null` on the wire — the client store's `ThreadMeta` types
+   * this non-nullable (it is the list's ordering key), so a producer with no
+   * last message must OMIT the key ("don't touch") rather than clear it.
+   */
+  lastMessageAt?: string
   latestMessageId?: string | null
   updatedAt?: string
   /** Chat-only: AI vs human handoff state. Drives the take-over button UI. */

@@ -9,6 +9,15 @@ import {
   useVideoPlayerStore,
 } from './video-player-context'
 
+// react-player 2.16 ships `lib/players/Mux.js` (it reads `config.mux.version` and spreads
+// `config.mux.attributes` onto the `<mux-player>` element) but its `Config` interface never
+// gained a `mux` key. Declare the shape the shipped player actually consumes.
+declare module 'react-player' {
+  interface Config {
+    mux?: { version?: string; attributes?: Record<string, unknown> }
+  }
+}
+
 const MUX_REGEX = /stream\.mux\.com\/(?!\w+\.m3u8)(\w+)/
 
 function useMuxProvider(url: string) {

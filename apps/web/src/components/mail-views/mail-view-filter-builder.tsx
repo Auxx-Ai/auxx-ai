@@ -108,8 +108,12 @@ export function MailViewFilterBuilder() {
   // Field resolution functions
   const getAvailableFields = useCallback(() => fieldDefinitions, [fieldDefinitions])
 
+  // Mail views have no drill-down, so a FieldPath (`string[]`) never resolves
+  // here — returning undefined lets the provider fall through to its own
+  // resolution instead of matching an array against a flat id.
   const getFieldDefinition = useCallback(
-    (fieldId: string) => fieldDefinitions.find((f) => f.id === fieldId),
+    (fieldId: string | string[]) =>
+      Array.isArray(fieldId) ? undefined : fieldDefinitions.find((f) => f.id === fieldId),
     [fieldDefinitions]
   )
 

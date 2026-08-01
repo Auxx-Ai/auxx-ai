@@ -1,8 +1,9 @@
 // packages/lib/src/actors/group-member-service.ts
 
+import type { Database } from '@auxx/database'
 import type { ActorContext, ActorId, AgentActor, UserActor } from '@auxx/types/actor'
 import { parseActorId, toActorId } from '@auxx/types/actor'
-import type { GroupMember } from '@auxx/types/groups'
+import type { GroupContext, GroupMember } from '@auxx/types/groups'
 import { getCachedAgents, getCachedAgentsByUserIds } from '../cache'
 import { getGroupsForUser, getMembers } from '../groups/group-functions'
 
@@ -11,12 +12,15 @@ import { getGroupsForUser, getMembers } from '../groups/group-functions'
  * Extends existing group-functions with actor-focused methods.
  */
 export class GroupMemberService {
-  private db: ActorContext['db']
+  private db: Database
   private organizationId: string
   private userId: string
 
   constructor(ctx: ActorContext) {
-    this.db = ctx.db
+    // `ActorContext.db` is declared `unknown` in `@auxx/types/actor` even though its sibling
+    // `GroupContext` names `Database`. Narrow once here rather than at each `getMembers` call;
+    // every construction site passes the real Drizzle client.
+    this.db = ctx.db as Database
     this.organizationId = ctx.organizationId
     this.userId = ctx.userId
   }
@@ -24,7 +28,7 @@ export class GroupMemberService {
   /**
    * Get the context object for group functions.
    */
-  private get ctx(): ActorContext {
+  private get ctx(): GroupContext {
     return {
       db: this.db,
       organizationId: this.organizationId,

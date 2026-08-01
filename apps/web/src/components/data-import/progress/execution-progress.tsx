@@ -21,6 +21,7 @@ export function ExecutionProgress({ progress, isConnected }: ExecutionProgressPr
 
   const phaseLabel = {
     idle: 'Idle...',
+    resolving: 'Resolving values...',
     preparing: 'Preparing import...',
     executing: 'Importing data...',
     complete: 'Import complete!',

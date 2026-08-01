@@ -18,7 +18,9 @@ import {
   AI_OPERATION,
   AI_TONE_TYPE_VALUES,
   type AIOperation,
+  type AIToneType,
 } from '~/types/ai-tools'
+import { isAiToneType } from '../composer-shared/use-composer-ai-tools'
 import type { useAIToolsState } from './hooks/use-ai-tools-state'
 
 interface AIToolsProps {
@@ -27,7 +29,7 @@ interface AIToolsProps {
   hasContent: boolean
   hasPreviousMessages: boolean
   state: ReturnType<typeof useAIToolsState>['state']
-  onOperation: (operation: AIOperation, options?: { tone?: string; language?: string }) => void
+  onOperation: (operation: AIOperation, options?: { tone?: AIToneType; language?: string }) => void
   /** className forwarded to picker content elements (e.g. for z-index override) */
   popoverClassName?: string
 }
@@ -94,7 +96,9 @@ export function AITools({
           label: value,
         }))}
         value=''
-        onChange={(tone) => onOperation(AI_OPERATION.TONE, { tone })}
+        onChange={(tone) => {
+          if (isAiToneType(tone)) onOperation(AI_OPERATION.TONE, { tone })
+        }}
         placeholder='Tone'
         placeholderIcon={<SlidersHorizontal className='size-3.5' />}
         disabled={state.isProcessing}

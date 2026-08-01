@@ -281,7 +281,7 @@ export class ShopifyBillingProvider implements BillingProvider {
 
 /** `'cool-shop.myshopify.com'` → `'cool-shop'`. */
 export function extractStoreHandle(shopDomain: string): string {
-  const m = shopDomain.match(/^([^.]+)\.myshopify\.com$/)
-  if (!m) throw new Error(`Unexpected shop domain: ${shopDomain}`)
-  return m[1]
+  const handle = shopDomain.match(/^([^.]+)\.myshopify\.com$/)?.[1]
+  if (!handle) throw new Error(`Unexpected shop domain: ${shopDomain}`)
+  return handle
 }

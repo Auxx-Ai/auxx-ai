@@ -1,10 +1,10 @@
 // packages/billing/src/services/__tests__/customer-service.test.ts
 
-import { stripeClient } from '@auxx/billing/services/stripe-client'
 import type { Database } from '@auxx/database'
 import type Stripe from 'stripe'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CustomerService } from '../customer-service'
+import { stripeClient } from '../stripe-client'
 
 vi.mock('@auxx/database', () => ({
   schema: {

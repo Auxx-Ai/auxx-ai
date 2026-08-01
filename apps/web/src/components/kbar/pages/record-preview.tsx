@@ -108,7 +108,7 @@ export function RecordPreview({ recordId: rawRecordId, item }: RecordPreviewProp
             avatarUrl={item.avatarUrl}
             iconId={item.iconId ?? resource?.icon ?? 'circle'}
             color='gray'
-            size='md'
+            size='lg'
             inverse
             className='shrink-0 inset-shadow-xs inset-shadow-black/20'
           />

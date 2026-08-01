@@ -92,7 +92,11 @@ export function DisplayActor() {
       <ItemsListView
         items={actorItems}
         emptyContent={<span className='text-muted-foreground'>-</span>}
-        renderItem={(item) => <ActorBadge actorId={item.actorId} />}
+        // `ItemsListValue<T>` widens to `T | string | number` because the view also
+        // accepts primitive items; every entry we pass is an `ActorItem` object.
+        renderItem={(item) =>
+          typeof item === 'object' ? <ActorBadge actorId={item.actorId} /> : null
+        }
       />
     </DisplayWrapper>
   )

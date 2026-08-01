@@ -4,7 +4,7 @@
 
 import { extractFieldIdsFromPrompt, type RichReferencePrompt } from '@auxx/types/custom-field'
 import Placeholder from '@tiptap/extension-placeholder'
-import { type Editor, useEditor } from '@tiptap/react'
+import { type Editor, type JSONContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
@@ -96,7 +96,10 @@ export function useAiPrompt({
         }),
         Placeholder.configure({ placeholder, showOnlyWhenEditable: true }),
       ],
-      content: initialContent,
+      // `RichReferencePrompt` is the deliberately permissive persisted shape of a
+      // TipTap doc (`content?: unknown[]`); every value reaching here came from
+      // `editor.getJSON()` or `emptyPromptDoc()`.
+      content: initialContent as JSONContent,
       onUpdate: ({ editor }: { editor: Editor }) => {
         // Skip while the `{` picker chip is open — the transient chip must
         // never be persisted into the saved prompt doc.

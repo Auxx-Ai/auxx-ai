@@ -96,7 +96,8 @@ export interface OrganizationDetails {
     id: string
     plan: string
     status: string
-    billingProvider: string
+    /** `'stripe' | 'shopify'`, or null when the subscription is unlinked. */
+    billingProvider: string | null
     shopifyShopDomain: string | null
     billingCycle: string
     seats: number

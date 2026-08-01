@@ -9,7 +9,7 @@ export interface KBColorPair {
   dark: string
 }
 
-export const KB_TOKEN_DEFAULTS: Record<string, KBColorPair> = {
+export const KB_TOKEN_DEFAULTS = {
   primary: { light: '#346ddb', dark: '#346ddb' },
   tint: { light: '#dbeafe', dark: '#1e3a8a' },
   info: { light: '#0ea5e9', dark: '#38bdf8' },
@@ -20,7 +20,7 @@ export const KB_TOKEN_DEFAULTS: Record<string, KBColorPair> = {
   fg: { light: '#1d1d1d', dark: '#ffffff' },
   muted: { light: '#f1f3f5', dark: '#2c2c2c' },
   border: { light: '#dee2e6', dark: '#393939' },
-}
+} satisfies Record<string, KBColorPair>
 
 /**
  * 12-step color scales for primary + neutral families. Each step is paired
@@ -200,20 +200,11 @@ export function sanitizeColor(value: string | null | undefined, fallback: string
   return fallback
 }
 
-const FONT_ALLOWLIST = new Set([
-  'system',
-  'inter',
-  'roboto',
-  'open-sans',
-  'lora',
-  'merriweather',
-  'source-serif-pro',
-  'jetbrains-mono',
-  'ibm-plex-sans',
-])
+const SYSTEM_FONT_STACK = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
 
+/** Keys here are the allowlist — anything else falls back to the system stack. */
 const FONT_STACK_BY_KEY: Record<string, string> = {
-  system: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  system: SYSTEM_FONT_STACK,
   inter: '"Inter", system-ui, -apple-system, sans-serif',
   roboto: '"Roboto", system-ui, sans-serif',
   'open-sans': '"Open Sans", system-ui, sans-serif',
@@ -225,10 +216,9 @@ const FONT_STACK_BY_KEY: Record<string, string> = {
 }
 
 export function sanitizeFontFamily(value: string | null | undefined): string {
-  if (!value) return FONT_STACK_BY_KEY.system
+  if (!value) return SYSTEM_FONT_STACK
   const key = value.trim().toLowerCase()
-  if (FONT_ALLOWLIST.has(key)) return FONT_STACK_BY_KEY[key]
-  return FONT_STACK_BY_KEY.system
+  return FONT_STACK_BY_KEY[key] ?? SYSTEM_FONT_STACK
 }
 
 export function sanitizeCornerStyle(value: string | null | undefined): KBCornerStyle {
@@ -423,9 +413,11 @@ function scaleDecls(
   const out: Array<[string, string]> = []
   for (let i = 0; i < 12; i++) {
     const step = i + 1
-    const value = step === 9 && opts.override9 ? opts.override9 : colors[i]
-    out.push([`${prefix}-${step}`, value])
-    out.push([`${prefix}-contrast-${step}`, contrasts[i]])
+    const color = colors[i]
+    const contrast = contrasts[i]
+    if (color === undefined || contrast === undefined) continue
+    out.push([`${prefix}-${step}`, step === 9 && opts.override9 ? opts.override9 : color])
+    out.push([`${prefix}-contrast-${step}`, contrast])
   }
   return out
 }

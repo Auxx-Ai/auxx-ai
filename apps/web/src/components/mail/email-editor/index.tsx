@@ -42,6 +42,7 @@ import {
   AttachmentStrip,
   ComposerBody,
   INTERACTIVE_ELEMENT_SELECTORS,
+  isAiToneType,
   isContentEmpty,
   useComposerAITools,
   useComposerAttachments,
@@ -160,8 +161,8 @@ function ReplyComposeEditorComponent({
   // server-side enforcement only blocks automated sends, so a human 1:1 send still goes through.
   const suppressedToRecipients = useSuppressionCheck(recipients.TO)
   const suppressionWarningText = useMemo(() => {
-    if (suppressedToRecipients.length === 0) return null
     const [first, ...rest] = suppressedToRecipients
+    if (!first) return null
     const reasonCopy =
       first.reason === 'bounce'
         ? `${first.email} previously bounced — automated sends are blocked; this send will still go through`
@@ -371,7 +372,10 @@ function ReplyComposeEditorComponent({
           // Tag ids as `<role>:<id>` so the participant store + grouping render
           // from/to/cc immediately. Without this the optimistic row shows no
           // participants until the realtime echo / refetch lands.
-          participants: (sentMessage.participants ?? []).map((p) =>
+          // `thread.sendMessage` returns `any` (the router widens its
+          // sent/scheduled union), so this shape is stated locally. It mirrors
+          // `SentMessage['participants']` in @auxx/lib.
+          participants: (sentMessage.participants ?? []).map((p: { id: string; role: string }) =>
             toParticipantId(p.role.toLowerCase() as ParticipantRole, p.id)
           ),
           createdById: null,
@@ -622,7 +626,7 @@ function ReplyComposeEditorComponent({
   // Check if thread has previous messages
   const hasPreviousMessages = useMemo(() => {
     if (!thread) return false
-    return thread.messageCount > 0
+    return (thread.messageCount ?? 0) > 0
   }, [thread])
   // AI Tools — shared state + compose wiring, with email's posthog analytics
   // and the contentApplier-backed write-back (so duplicate writes no-op).
@@ -1355,7 +1359,14 @@ function ReplyComposeEditorComponent({
                     hasContent,
                     hasPreviousMessages,
                     state: aiToolsState,
-                    onOperation: handleAIOperation,
+                    onOperation: (operation, options) => {
+                      // `EditorButton` declares `tone?: string`; narrow back to
+                      // the compose API's named tones (see `isAiToneType`).
+                      void handleAIOperation(operation, {
+                        ...options,
+                        tone: isAiToneType(options?.tone) ? options.tone : undefined,
+                      })
+                    },
                   }}
                 />
               </div>

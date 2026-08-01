@@ -1,5 +1,6 @@
 // hooks/use-user.ts
 
+import { OrganizationRoleValues } from '@auxx/database/enums'
 import type { OrganizationRole } from '@auxx/database/types'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import type { FeatureMapObject } from '@auxx/lib/types'
@@ -77,6 +78,16 @@ interface UseUserResult {
   settings: Record<string, SettingValue> | null
 }
 /**
+ * Narrows the dehydrated membership `role` (typed `string` in the cached blob)
+ * to the `OrganizationRole` union. An unrecognised value — e.g. a stale cache
+ * blob written before a vocabulary change — resolves to `null` so it can never
+ * be mistaken for an elevated role.
+ */
+function toOrganizationRole(value: string | undefined): OrganizationRole | null {
+  return OrganizationRoleValues.find((role) => role === value) ?? null
+}
+
+/**
  * Hook to get the current user data, organization, and role
  * Uses dehydrated state - no API calls or loading!
  * Note: Layout already enforces authentication, but this hook handles role-based access control
@@ -95,8 +106,6 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
   const utils = api.useUtils()
   const switchOrganizationMutation = api.organization.setDefault.useMutation()
 
-  if (!dehydratedUser) {
-  }
   // Effect to set the current organization ID based on user data
   // biome-ignore lint/correctness/useExhaustiveDependencies: setOrganizationId is stable from context
   useEffect(() => {
@@ -111,7 +120,7 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
         setOrganizationId(dehydratedUser.defaultOrganizationId)
       }
       // Otherwise use the first organization they're a member of
-      else if (dehydratedUser.memberships.length > 0) {
+      else if (dehydratedUser.memberships[0]) {
         setOrganizationId(dehydratedUser.memberships[0].organizationId)
       }
     }
@@ -124,7 +133,7 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
   const currentMembership = dehydratedUser.memberships.find(
     (m) => m.organizationId === organizationId
   )
-  const role = currentMembership?.role || null
+  const role = toOrganizationRole(currentMembership?.role)
   const isAdminOrOwner = role === 'ADMIN' || role === 'OWNER'
   const isOwner = role === 'OWNER'
 
@@ -212,7 +221,7 @@ export function useUser(options: UseUserOptions = {}): UseUserResult {
           id: m.id,
           userId: m.userId,
           organizationId: m.organizationId,
-          role: m.role as OrganizationRole,
+          role: toOrganizationRole(m.role) ?? 'USER',
           organization: {
             id: m.organizationId,
             name: orgData?.name ?? null,

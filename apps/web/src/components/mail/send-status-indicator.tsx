@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/send-status-indicator.tsx
 'use client'
 import { SendStatus } from '@auxx/database/enums'
+import type { SendStatus as SendStatusType } from '@auxx/database/types'
 import { cn } from '@auxx/ui/lib/utils'
 import type { VariantProps } from 'class-variance-authority'
 import { RotateCw } from 'lucide-react'
@@ -9,7 +10,7 @@ import { recordBadgeVariants } from '~/components/resources/ui/record-badge'
 import { sendStatusConfig } from './mail-status-config'
 
 interface SendStatusIndicatorProps extends VariantProps<typeof recordBadgeVariants> {
-  status?: SendStatus | null
+  status?: SendStatusType | null
   error?: string | null
   attempts?: number
   className?: string

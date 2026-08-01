@@ -18,7 +18,7 @@ import { sourceResourceId } from '../../lib/widget-source'
 
 /** The leaf (last-hop) ResourceFieldId a WidgetFieldRef resolves to, for labels. */
 function leafRef(ref: WidgetFieldRef): ResourceFieldId {
-  return isFieldPath(ref) ? ref[ref.length - 1] : ref
+  return isFieldPath(ref) ? (ref[ref.length - 1] ?? ref[0]) : ref
 }
 
 function useFieldRefLabel(ref: WidgetFieldRef | null | undefined): string | undefined {

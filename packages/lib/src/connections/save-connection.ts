@@ -14,6 +14,7 @@ import {
 } from '@auxx/credentials/store'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
+import { toCredentialError } from './credential-store-error'
 import { mergeManualConnectionEdit } from './merge-manual-edit'
 
 const logger = createScopedLogger('save-connection')
@@ -82,10 +83,10 @@ export async function saveConnection(input: SaveConnectionInput): Promise<Result
       const rotated = await rotateSecrets(input.connectionId, organizationId, secrets, {
         expiresAt,
       })
-      if (rotated.isErr()) return err(rotated.error)
+      if (rotated.isErr()) return err(toCredentialError(rotated.error))
 
       const metaUpdated = await updateCredential(input.connectionId, organizationId, { metadata })
-      if (metaUpdated.isErr()) return err(metaUpdated.error)
+      if (metaUpdated.isErr()) return err(toCredentialError(metaUpdated.error))
     } else {
       const reconnected = await mergeManualConnectionEdit(input.connectionId, organizationId, {
         secretFields: input.connectionData.secretFields,
@@ -99,7 +100,7 @@ export async function saveConnection(input: SaveConnectionInput): Promise<Result
     const breakerReset = await recordRefreshSuccess(input.connectionId, organizationId, {
       expiresAt,
     })
-    if (breakerReset.isErr()) return err(breakerReset.error)
+    if (breakerReset.isErr()) return err(toCredentialError(breakerReset.error))
 
     logger.info('Reconnected platform connection', {
       credentialId: input.connectionId,
@@ -128,7 +129,7 @@ export async function saveConnection(input: SaveConnectionInput): Promise<Result
     expiresAt,
   })
 
-  if (created.isErr()) return err(created.error)
+  if (created.isErr()) return err(toCredentialError(created.error))
 
   logger.info('Created platform connection', {
     credentialId: created.value.id,

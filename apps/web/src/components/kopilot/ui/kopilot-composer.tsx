@@ -251,12 +251,8 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
   // Prompt template inline node extension
   const promptNodeExtension = useMemo(
     () =>
-      createPromptNode(({ id, selected }) => (
-        <PromptTemplateBadge
-          id={id}
-          selected={selected}
-          onEdit={(id) => handleBadgeEditRef.current(id)}
-        />
+      createPromptNode((props) => (
+        <PromptTemplateBadge {...props} onEdit={(id) => handleBadgeEditRef.current(id)} />
       )),
     []
   )

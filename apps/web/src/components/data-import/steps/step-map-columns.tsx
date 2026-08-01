@@ -58,8 +58,9 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
         sourceColumnName: prop.visibleName,
         columnName: prop.visibleName,
         sampleValues: prop.sampleValues ?? [],
-        // Use saved values from server instead of hardcoded defaults
-        targetType: prop.targetType ?? 'skip',
+        // Use saved values from server instead of hardcoded defaults. The column is a plain
+        // `string` server-side; anything other than 'skip' means the column is mapped.
+        targetType: prop.targetType === 'skip' ? 'skip' : 'particle',
         targetFieldKey: prop.targetFieldKey ?? null,
         customFieldId: prop.customFieldId ?? null,
         resolutionType: prop.resolutionType ?? 'text:value',
@@ -106,7 +107,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
 
     // Update local state - clear old mapping if replacing, then set new mapping
     setMappings((prev) => {
-      const updated = prev.map((m) => {
+      const updated = prev.map((m): ColumnMappingUI => {
         // Clear the old column that had this field
         if (existingMapping && m.sourceColumnIndex === existingMapping.sourceColumnIndex) {
           return {
@@ -163,7 +164,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
 
     // Update local state with auto-mapped results
     setMappings((prev) => {
-      const updated = prev.map((m) => {
+      const updated = prev.map((m): ColumnMappingUI => {
         const autoMapped = result.mappings.find((r) => r.columnIndex === m.sourceColumnIndex)
         if (autoMapped) {
           return {

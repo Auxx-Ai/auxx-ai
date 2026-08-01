@@ -2,6 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { and, eq, sql } from 'drizzle-orm'
+import { NotFoundError } from '../errors'
 
 /** Which record kind a `RecordSequence` row counts. */
 export type SequenceScope = 'ticket' | 'work_order' | 'service_request' | 'quote' | 'invoice'
@@ -98,6 +99,12 @@ export const recordNumbering = {
         )
       )
       .returning()
+
+    // The upsert above guarantees the row exists, so an empty RETURNING means the counter was
+    // deleted between the two statements — surface it rather than crashing on `undefined`.
+    if (!updated) {
+      throw new NotFoundError(`Record sequence for scope "${scope}" is missing`)
+    }
 
     return { recordNumber: formatRecordNumber(updated), sequenceNumber: updated.currentNumber }
   },

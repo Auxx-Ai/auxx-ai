@@ -194,9 +194,10 @@ export namespace parse {
 }
 
 function parseAny(s: string, e: Error, fallback?: Parser<any>): ParseResult<any> {
-  const parser = parsers[s[0]] || fallback
+  const head = s[0]
+  const parser = (head === undefined ? undefined : parsers[head]) ?? fallback
   if (!parser) {
-    logError(`no parser registered for ${JSON.stringify(s[0])}:`, { s })
+    logError(`no parser registered for ${JSON.stringify(head)}:`, { s })
     throw e
   }
   return parser(s, e)
@@ -260,8 +261,8 @@ parsers['['] = parseArray
 
 function parseNumber(s: string): ParseResult<number | string> {
   for (let i = 0; i < s.length; i++) {
-    const c = s[i]
-    if (parsers[c] === parseNumber) {
+    // `charAt` (not `s[i]`) — always a string for an in-range index.
+    if (parsers[s.charAt(i)] === parseNumber) {
       continue
     }
     const num = s.substring(0, i)
@@ -333,7 +334,8 @@ function parseBacktickString(s: string): ParseResult<string> {
   let is_escaped = false
   let escape_count = 0
   for (let i = 1; i < s.length; i++) {
-    const c = s[i]
+    // `charAt` (not `s[i]`) — always a string for an in-range index.
+    const c = s.charAt(i)
     if (is_escaped) {
       buffer.push(c)
       is_escaped = false

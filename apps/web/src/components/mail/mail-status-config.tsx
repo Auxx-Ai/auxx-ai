@@ -107,6 +107,17 @@ export const sendStatusConfig = {
     description: 'Failed to send message',
     animate: false,
   },
+  [SendStatus.BOUNCED]: {
+    color: 'text-orange-600',
+    bgColor: 'bg-orange-100',
+    borderColor: 'border-orange-200',
+    badgeClass:
+      'bg-orange-50 text-orange-700 ring-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:ring-orange-900',
+    icon: AlertTriangle,
+    label: 'Bounced',
+    description: 'The recipient’s mail server rejected this message',
+    animate: false,
+  },
 }
 // ============================================================================
 // Sync Status Configuration
@@ -159,7 +170,7 @@ export const integrationStatusConfig = {
     borderColor: 'border-green-200',
     icon: CheckCircle,
     label: 'Connected',
-    variant: 'success' as const,
+    variant: 'green' as const,
     description: 'Authentication successful',
   },
   auth_error: {

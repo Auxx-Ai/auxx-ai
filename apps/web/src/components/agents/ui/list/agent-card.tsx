@@ -49,7 +49,9 @@ export function AgentCard({ agent }: AgentCardProps) {
   const statusLabel = archived ? 'Archived' : 'Active'
   const displayName = agent.name ?? 'Untitled agent'
 
-  const wrap = (fn: () => void | Promise<void>) => (e: React.MouseEvent) => {
+  // Return value is discarded — handlers may be sync, `Promise<void>`, or a
+  // mutation helper that resolves to a status flag.
+  const wrap = (fn: () => unknown) => (e: React.MouseEvent) => {
     e.stopPropagation()
     void fn()
   }

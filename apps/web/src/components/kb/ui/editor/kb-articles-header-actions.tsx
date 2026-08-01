@@ -3,6 +3,7 @@
 
 import { ArticleKind } from '@auxx/database/enums'
 import type { ArticleKind as ArticleKindType } from '@auxx/database/types'
+import type { ArticleNodeJSON } from '@auxx/lib/kb/markdown'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -152,16 +153,12 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
   )
 }
 
-interface MaybeBlock {
-  type?: string
-  attrs?: { blockType?: string }
-  content?: { type: string; text?: string }[]
-}
-
-function extractFirstHeading(nodes: MaybeBlock[]): string | undefined {
-  for (const block of nodes) {
-    if (block?.attrs?.blockType !== 'heading') continue
-    const text = (block.content ?? [])
+function extractFirstHeading(nodes: ArticleNodeJSON[]): string | undefined {
+  for (const node of nodes) {
+    // Only top-level leaf blocks carry a blockType; containers (tabs, accordion,
+    // table) nest their own content and are skipped.
+    if (node.type !== 'block' || node.attrs.blockType !== 'heading') continue
+    const text = (node.content ?? [])
       .filter((c) => c.type === 'text')
       .map((c) => c.text ?? '')
       .join('')

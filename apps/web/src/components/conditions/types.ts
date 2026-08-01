@@ -192,7 +192,10 @@ export interface ConditionGroupProps {
   showRemoveButton?: boolean
   // showLogicalOperator?: boolean
   showNameInput?: boolean
+  /** NOTE: accepted by the container but not yet rendered by ConditionGroup. */
+  showDescription?: boolean
   showSubtext?: boolean
+  /** NOTE: accepted by the container but not yet rendered by ConditionGroup. */
   allowCollapse?: boolean
   isDragging?: boolean
   className?: string

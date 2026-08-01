@@ -85,7 +85,9 @@ export async function loadExistingState(
   return {
     // Filter out custom entities (entityType is null for user-created entities)
     entityDefs: new Map(
-      defs.filter((d) => d.entityType != null).map((d) => [d.entityType as string, d])
+      defs
+        .filter((d): d is typeof d & { entityType: string } => d.entityType != null)
+        .map((d) => [d.entityType, { id: d.id, entityType: d.entityType }])
     ),
     fields: new Map(
       fields
@@ -304,7 +306,7 @@ export async function linkNewRelationships(
     const [inverseEntityType] = staticInverseRef.split(':')
 
     // Skip special entity types (user)
-    if (inverseEntityType === 'user') continue
+    if (!inverseEntityType || inverseEntityType === 'user') continue
 
     const inverseField = allFieldMaps.get(staticInverseRef)
     const inverseDefId = entityDefIds.get(inverseEntityType)

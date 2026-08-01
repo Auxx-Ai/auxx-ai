@@ -232,9 +232,15 @@ export function FieldInputAdapter({
       }
 
       /**
-       * Handle instance creation - add the new instance to selection
+       * Handle instance creation - add the new instance to selection.
+       *
+       * `instanceId` is optional because the custom editors behind
+       * `RecordEditorDialog` (Parts, Work Orders) still report saves without an
+       * id. Without the guard we'd build `"<def>:undefined"` and select a
+       * phantom record, so bail and leave the selection untouched instead.
        */
-      const handleInstanceCreated = (instanceId: string) => {
+      const handleInstanceCreated = (instanceId?: string) => {
+        if (!instanceId) return
         const newRecordId = toRecordId(entityDefinitionId, instanceId)
         const updatedIds = multi ? [...recordIds, newRecordId] : [newRecordId]
         onChange(updatedIds)

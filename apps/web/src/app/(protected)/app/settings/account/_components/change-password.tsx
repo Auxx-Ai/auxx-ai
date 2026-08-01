@@ -57,28 +57,35 @@ export function ChangePassword() {
     }
     setLoading(true)
 
-    let res
-    if (hasPassword) {
-      // Change existing password
-      res = await client.changePassword({
-        newPassword: newPassword,
-        currentPassword: currentPassword,
-        revokeOtherSessions: signOutDevices,
-      })
-    } else {
-      // Add password for first time
-      res = await addPassword.mutateAsync({ newPassword })
-      console.log('addPassword', res)
+    // The two paths report failure differently: better-auth resolves with an
+    // `{ error }` envelope, while tRPC's `mutateAsync` REJECTS. Both have to be
+    // funnelled into one failure branch — reading `.error` off the tRPC result
+    // silently treated every add-password failure as a success.
+    const fallbackMessage = hasPassword
+      ? "Couldn't change your password! Make sure it's correct"
+      : "Couldn't add your password! Please try again"
+
+    let errorMessage: string | null = null
+    try {
+      if (hasPassword) {
+        // Change existing password
+        const res = await client.changePassword({
+          newPassword: newPassword,
+          currentPassword: currentPassword,
+          revokeOtherSessions: signOutDevices,
+        })
+        if (res.error) errorMessage = res.error.message || fallbackMessage
+      } else {
+        // Add password for first time
+        await addPassword.mutateAsync({ newPassword })
+      }
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : fallbackMessage
     }
 
     setLoading(false)
-    if (res.error) {
-      toastError({
-        description:
-          res.error.message || hasPassword
-            ? "Couldn't change your password! Make sure it's correct"
-            : "Couldn't add your password! Please try again",
-      })
+    if (errorMessage) {
+      toastError({ description: errorMessage })
     } else {
       setOpen(false)
       toastSuccess({

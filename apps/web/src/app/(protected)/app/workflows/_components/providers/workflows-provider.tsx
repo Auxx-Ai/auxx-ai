@@ -1,9 +1,20 @@
 // apps/web/src/app/(protected)/app/workflows/_components/providers/workflows-provider.tsx
 'use client'
 
+import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import React, { createContext, useCallback, useContext, useState } from 'react'
 import { safeLocalStorage } from '~/lib/safe-localstorage'
 import { api } from '~/trpc/react'
+
+/**
+ * The trigger filter is populated from the node registry, whose ids are plain
+ * strings and include UI-only nodes that `workflow.list` does not accept. Narrow
+ * to the enum the router validates against and drop anything else, so an
+ * unrecognised selection simply doesn't filter instead of 400-ing the query.
+ */
+function toTriggerFilter(value: string | null): WorkflowTriggerType | undefined {
+  return Object.values(WorkflowTriggerType).find((type) => type === value)
+}
 
 interface WorkflowsContextValue {
   // Data
@@ -12,9 +23,6 @@ interface WorkflowsContextValue {
     total: number
     enabled: number
     disabled: number
-    totalExecutions: number
-    successRate: number
-    totalVersions: number // New field for workflow versions count
   }
   isLoading: boolean
   error: string | null
@@ -55,7 +63,7 @@ export function WorkflowsProvider({ children }: WorkflowsProviderProps) {
   // Build filter object for API call
   const filters = {
     search: searchQuery || undefined,
-    triggerType: selectedTriggerType || undefined,
+    triggerType: toTriggerFilter(selectedTriggerType),
     enabled: enabledFilter ?? undefined,
     limit: 50,
     offset: 0,
@@ -72,14 +80,7 @@ export function WorkflowsProvider({ children }: WorkflowsProviderProps) {
   // Calculate stats from workflow apps data
   const stats = React.useMemo(() => {
     if (!workflowsData?.workflows) {
-      return {
-        total: 0,
-        enabled: 0,
-        disabled: 0,
-        // totalExecutions: 0,
-        // successRate: 0,
-        // totalVersions: 0,
-      }
+      return { total: 0, enabled: 0, disabled: 0 }
     }
 
     const workflowApps = workflowsData.workflows

@@ -160,6 +160,10 @@ export class PlanAdminService {
       })
       .returning()
 
+    if (!plan) {
+      throw new Error(`Failed to create plan "${input.name}"`)
+    }
+
     logger.info('Plan created', { planId: plan.id, name: plan.name })
     return plan
   }
@@ -178,6 +182,10 @@ export class PlanAdminService {
       })
       .where(eq(schema.Plan.id, id))
       .returning()
+
+    if (!updated) {
+      throw new Error(`Plan with ID ${id} not found`)
+    }
 
     logger.info('Plan updated', { planId: id, changes: Object.keys(input) })
     return updated
@@ -209,6 +217,10 @@ export class PlanAdminService {
       .where(eq(schema.Plan.id, id))
       .returning()
 
+    if (!updated) {
+      throw new Error(`Plan with ID ${id} not found`)
+    }
+
     logger.info('Plan marked as legacy', { planId: id, name: updated.name })
     return updated
   }
@@ -225,6 +237,10 @@ export class PlanAdminService {
       })
       .where(eq(schema.Plan.id, id))
       .returning()
+
+    if (!updated) {
+      throw new Error(`Plan with ID ${id} not found`)
+    }
 
     logger.info('Legacy plan restored', { planId: id, name: updated.name })
     return updated
