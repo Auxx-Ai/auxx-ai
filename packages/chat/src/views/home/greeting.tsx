@@ -113,15 +113,17 @@ function resolveVisitor(id: string, identify: IdentifyPayload | null): string | 
  */
 function decodeFallbackText(raw: unknown): string | null {
   if (!raw) return null
+  let decoded: unknown = raw
   if (typeof raw === 'string') {
     try {
-      raw = JSON.parse(raw)
+      decoded = JSON.parse(raw)
     } catch {
+      // Not JSON — the attr already holds plain fallback text.
       return raw
     }
   }
-  if (typeof raw !== 'object' || raw === null) return null
-  const payload = raw as { v?: number; t?: string; d?: unknown }
+  if (typeof decoded !== 'object' || decoded === null) return null
+  const payload = decoded as { v?: number; t?: string; d?: unknown }
   if (payload.v !== 1) return null
   switch (payload.t) {
     case 'TEXT':

@@ -53,7 +53,7 @@ export function useNavigationStack(initialStack: NavFrame[] = []): NavStack {
   return useMemo<NavStack>(
     () => ({
       stack,
-      current: stack.length > 0 ? stack[stack.length - 1] : null,
+      current: stack.at(-1) ?? null,
       isAtRoot: stack.length === 0,
       push,
       pop,

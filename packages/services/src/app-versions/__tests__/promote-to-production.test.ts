@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const insertValues = vi.fn().mockReturnThis()
 const insertReturning = vi.fn()
-const insert = vi.fn(() => ({
+const insert = vi.fn((..._args: unknown[]) => ({
   values: insertValues,
   returning: insertReturning,
 }))

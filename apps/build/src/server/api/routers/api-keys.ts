@@ -2,7 +2,7 @@
 // Developer API keys tRPC router (headless CLI publishing)
 
 import { generateApiKey, hashApiKey } from '@auxx/credentials/api-key'
-import { ApiKey, DeveloperAccount, DeveloperAccountMember } from '@auxx/database'
+import { ApiKey, type Database, DeveloperAccount, DeveloperAccountMember } from '@auxx/database'
 import { TRPCError } from '@trpc/server'
 import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -11,11 +11,7 @@ import { createTRPCRouter, protectedProcedure } from '../trpc'
 /**
  * Resolve a developer slug to an account ID and verify the caller is a member.
  */
-async function resolveAccount(
-  db: Parameters<Parameters<typeof protectedProcedure.query>[0]>['ctx']['db'],
-  developerSlug: string,
-  userId: string
-) {
+async function resolveAccount(db: Database, developerSlug: string, userId: string) {
   const [account] = await db
     .select({ id: DeveloperAccount.id })
     .from(DeveloperAccount)

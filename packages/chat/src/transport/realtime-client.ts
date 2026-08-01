@@ -13,7 +13,10 @@
 // piece is auth: a single passport-signed `customHandler`, installed once,
 // reading the live passport at call time so token refresh keeps working.
 
-import Pusher from 'pusher-js'
+import Pusher, {
+  type ChannelAuthorizationCallback,
+  type ChannelAuthorizationOptions,
+} from 'pusher-js'
 import { getApiBase } from '~/shared/runtime-config'
 import { clearStoredPassport, getChatPassport } from './passport'
 
@@ -65,12 +68,12 @@ export function getRealtimeClient(
   // `private-`/`presence-` channels, so the public `chat-{session}` channel
   // rides the same socket without auth. Reads the live passport per call so
   // refresh / 401-retry keep working.
-  const channelAuthorization = {
-    transport: 'ajax' as const,
+  const channelAuthorization: ChannelAuthorizationOptions = {
+    transport: 'ajax',
     endpoint: `${getApiBase()}/api/chat/pusher/auth`,
     customHandler: async (
       { socketId, channelName }: { socketId: string; channelName: string },
-      callback: (error: Error | null, auth: unknown) => void
+      callback: ChannelAuthorizationCallback
     ) => {
       try {
         const { passport } = await getChatPassport(channelId)

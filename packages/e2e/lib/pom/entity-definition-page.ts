@@ -268,9 +268,9 @@ export class EntityDefinitionPage {
 
   /** Add multiple select options in sequence */
   async addSelectOptions(options: string[]) {
-    for (let i = 0; i < options.length; i++) {
+    for (const [index, option] of options.entries()) {
       await this.clickAddOption()
-      await this.fillOptionLabel(i, options[i])
+      await this.fillOptionLabel(index, option)
     }
   }
 

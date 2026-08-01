@@ -10,10 +10,9 @@ import path from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { createMediaAssetService, createStorageManager } from '@auxx/lib/files/server'
-import type { GenerateVideoAssetsJobData } from '@auxx/lib/jobs'
+import type { GenerateVideoAssetsJobData, JobContext } from '@auxx/lib/jobs'
 import { findRecording, updateRecording } from '@auxx/lib/recording'
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { err, ok, type Result } from 'neverthrow'
 import sharp from 'sharp'
 import { compositeStoryboard } from './storyboard-compositor'
@@ -208,7 +207,7 @@ async function generatePoster(params: PosterParams): Promise<string | null> {
       purpose: 'recording-preview',
       name: 'preview.webp',
       mimeType: 'image/webp',
-      size: BigInt(buffer.length),
+      size: buffer.length,
       isPrivate: true,
       organizationId,
       createdById: createdById ?? undefined,
@@ -286,7 +285,7 @@ async function generateStoryboard(params: StoryboardParams): Promise<string | nu
       purpose: 'recording-storyboard',
       name: 'storyboard.webp',
       mimeType: 'image/webp',
-      size: BigInt(buffer.length),
+      size: buffer.length,
       isPrivate: true,
       organizationId,
       createdById: createdById ?? undefined,
@@ -321,13 +320,13 @@ async function streamUrlToFile(url: string, filePath: string): Promise<void> {
  * the two derived assets (poster, storyboard) was produced.
  */
 export const generateVideoAssetsJob = async (
-  jobOrCtx: Job<GenerateVideoAssetsJobData>
+  ctx: JobContext<GenerateVideoAssetsJobData>
 ): Promise<GenerateVideoAssetsResult> => {
-  const job: Job<GenerateVideoAssetsJobData> = (jobOrCtx as any).job ?? jobOrCtx
-  const { recordingId, organizationId } = job.data
+  const { jobId, data } = ctx
+  const { recordingId, organizationId } = data
 
   logger.info('Starting video assets generation', {
-    jobId: job.id,
+    jobId,
     recordingId,
     organizationId,
   })
@@ -336,7 +335,7 @@ export const generateVideoAssetsJob = async (
 
   if (result.isErr()) {
     logger.error('Video assets generation failed', {
-      jobId: job.id,
+      jobId,
       recordingId,
       error: result.error.message,
     })

@@ -51,7 +51,12 @@ const tokenCache = new TokenCache()
 
 export interface ValidatedToken {
   userId: string
-  email: string
+  /**
+   * Nullable: `User.email` is a nullable column and the OIDC UserInfo response
+   * is not guaranteed to carry an email either (see the `hasEmail` log below).
+   * Identity is `userId` — this is informational only.
+   */
+  email: string | null
   scopes: string[]
   expiresAt: number
 }

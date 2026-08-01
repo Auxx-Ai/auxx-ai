@@ -37,10 +37,16 @@ interface HomeViewProps {
  * WCAG relative luminance.
  */
 function pickContrastText(hex: string): string {
-  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex)
-  if (!m) return '#ffffff'
-  let h = m[1]
-  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]
+  const captured = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex)?.[1]
+  if (!captured) return '#ffffff'
+  // Expand the #abc shorthand to #aabbcc so the byte slices below always line up.
+  const h =
+    captured.length === 3
+      ? captured
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : captured
   const r = parseInt(h.slice(0, 2), 16) / 255
   const g = parseInt(h.slice(2, 4), 16) / 255
   const b = parseInt(h.slice(4, 6), 16) / 255
@@ -202,7 +208,9 @@ export function HomeView({
           background: `linear-gradient(to bottom, ${bandColor} 45%, transparent 100%)`,
         }}
       />
-      <div
+      {/* `header`, not `div`: `headerRef` is an `HTMLElement` ref shared with
+          FrameHeader's `<header>` for the frame-height measurement in widget.tsx. */}
+      <header
         ref={headerRef}
         className='relative z-10 flex shrink-0 flex-col gap-8 ps-5 pe-3 pt-5 pb-6'
         style={{ color: headerText }}>
@@ -247,7 +255,7 @@ export function HomeView({
           </div>
         </div>
         <Greeting doc={home.greetingTemplate ?? null} identify={identify} />
-      </div>
+      </header>
       <div className='auxx-chat-body-mask relative z-10 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pt-3 px-3 pb-3'>
         {cards.length === 0 ? (
           <p className='py-6 text-center text-xs text-muted-foreground'>No conversations yet</p>

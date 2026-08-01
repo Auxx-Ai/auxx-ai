@@ -49,8 +49,8 @@ function createJobContext<T>(job: Job<T>, signal?: AbortSignal): JobContext<T> {
     },
 
     hasChildren: async () => {
-      const deps = await job.getDependenciesCount()
-      return deps.unprocessed > 0 || deps.processed > 0
+      const deps = await job.getDependenciesCount({ processed: true, unprocessed: true })
+      return (deps.unprocessed ?? 0) > 0 || (deps.processed ?? 0) > 0
     },
   }
 }

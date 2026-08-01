@@ -59,13 +59,14 @@ export async function extractFrames(
             .sort()
             .map((f) => path.join(outputDir, f))
 
-          if (entries.length === 0) {
+          const firstFrame = entries[0]
+          if (!firstFrame) {
             resolve(err(new Error('ffmpeg produced no frames')))
             return
           }
 
           // Probe the first frame to learn the actual dimensions (height is auto-scaled).
-          const dims = await probeFrameDimensions(entries[0])
+          const dims = await probeFrameDimensions(firstFrame)
           if (dims.isErr()) {
             resolve(err(dims.error))
             return

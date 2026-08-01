@@ -184,7 +184,9 @@ function verifyEndpointDelivery(
   return verifyHmacSignature({
     rawBody,
     secret,
-    signature: headers[header],
+    // A delivery with no signature header must fail verification, not crash:
+    // `verifyHmacSignature` already returns false on an empty signature.
+    signature: headers[header] ?? '',
     prefix: endpoint.signaturePrefix ?? undefined,
     encoding: endpoint.signatureEncoding,
   })
@@ -319,10 +321,8 @@ async function handleWebhookRequest(c: any) {
 
     if (metadata?.secretToken) {
       const headerToken = c.req.header('x-telegram-bot-api-secret-token')
-      const expected = Buffer.from(String(metadata.secretToken))
-      const received = Buffer.from(headerToken ?? '')
 
-      if (expected.length !== received.length || !timingSafeEqual(expected, received)) {
+      if (!timingSafeStringEqual(headerToken ?? '', String(metadata.secretToken))) {
         log.warn('Webhook secret token mismatch', { installationId, handlerId })
         return c.json(errorResponse('UNAUTHORIZED', 'Invalid secret token'), 401)
       }

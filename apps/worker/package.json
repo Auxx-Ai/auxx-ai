@@ -29,6 +29,7 @@
     "@auxx/workflow-nodes": "workspace:*",
     "bullmq": "catalog:",
     "dotenv": "catalog:",
+    "drizzle-orm": "catalog:",
     "fluent-ffmpeg": "^2.1.3",
     "hono": "^4.9.7",
     "ioredis": "catalog:",

@@ -83,8 +83,9 @@ test.describe('Settings Navigation - Admin pages', () => {
     })
   }
 
+  // `Integrations` is a SETTINGS_MENU group header, not a navigable link — there is
+  // no `/app/settings/integrations` route. Its pages are the entries below.
   const integrationPages: { label: SettingsPageLabel; title: string }[] = [
-    { label: 'Integrations', title: 'Integrations' },
     { label: 'Apps', title: 'Marketplace' },
     { label: 'Webhooks', title: 'Webhooks' },
     { label: 'Shopify', title: 'Shopify Integration' },

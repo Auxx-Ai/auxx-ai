@@ -3,6 +3,7 @@
 
 import { DEV_PORTAL_URL } from '@auxx/config/server'
 import {
+  type Database,
   DeveloperAccount,
   DeveloperAccountInvite,
   DeveloperAccountMember,
@@ -19,11 +20,7 @@ import { createTRPCRouter, protectedProcedure } from '../trpc'
  * Resolve a developer slug to account ID and verify the calling user is a member.
  * Returns the account ID and the caller's membership row.
  */
-async function resolveAccountAndMember(
-  db: Parameters<Parameters<typeof protectedProcedure.query>[0]>['ctx']['db'],
-  developerSlug: string,
-  userId: string
-) {
+async function resolveAccountAndMember(db: Database, developerSlug: string, userId: string) {
   const [account] = await db
     .select({ id: DeveloperAccount.id, title: DeveloperAccount.title })
     .from(DeveloperAccount)

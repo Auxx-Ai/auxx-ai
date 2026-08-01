@@ -4,7 +4,13 @@
     "rootDir": "./",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "target": "ES2022"
+    "target": "ES2022",
+    // seed has no JSX of its own, but it imports @auxx/lib through
+    // source-resolving exports, and lib's document registry + the email
+    // templates it re-exports are .tsx. Without this every one of those
+    // modules failed to parse (TS6142) and resolved to `any`. Matches the
+    // `jsx` setting in packages/lib and packages/email.
+    "jsx": "react-jsx"
   },
   "include": ["src/**/*", "scripts/**/*"],
   "exclude": ["node_modules", "dist"]
