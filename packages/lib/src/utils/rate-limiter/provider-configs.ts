@@ -199,29 +199,6 @@ export const ENHANCED_PROVIDER_LIMITS: Partial<
     },
   },
 
-  [IntegrationProviderTypeEnum.telegram]: {
-    // Telegram Bot API limits
-    requestsPerSecond: 30, // 30 messages per second per bot
-    requestsPerMinute: 1000,
-    concurrentRequests: 10,
-    batchSize: 100,
-
-    contexts: {
-      messages: {
-        maxRequests: 30,
-        perInterval: 1000,
-      },
-      bulk: {
-        maxRequests: 20, // Bulk notifications
-        perInterval: 60000,
-      },
-      media: {
-        maxRequests: 10,
-        perInterval: 1000,
-      },
-    },
-  },
-
   [IntegrationProviderTypeEnum.shopify]: {
     // Shopify API limits (REST)
     requestsPerSecond: 2, // 2 requests per second
@@ -244,29 +221,6 @@ export const ENHANCED_PROVIDER_LIMITS: Partial<
       },
       bulk: {
         maxRequests: 10,
-        perInterval: 60000,
-      },
-    },
-  },
-
-  [IntegrationProviderTypeEnum.sendgrid]: {
-    // SendGrid API limits
-    requestsPerSecond: 600,
-    requestsPerMinute: 3000,
-    concurrentRequests: 10,
-    batchSize: 1000, // Batch send limit
-
-    contexts: {
-      send: {
-        maxRequests: 600,
-        perInterval: 1000,
-      },
-      batch: {
-        maxRequests: 100,
-        perInterval: 60000,
-      },
-      stats: {
-        maxRequests: 100,
         perInterval: 60000,
       },
     },

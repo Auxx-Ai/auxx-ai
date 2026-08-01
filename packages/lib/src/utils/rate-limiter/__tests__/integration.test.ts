@@ -66,7 +66,7 @@ describe('Rate Limiter Integration Tests', () => {
       expect(bucket.tryAcquire(1)).toBe(true)
     })
 
-    it('should protect service with circuit breaker', () => {
+    it('should protect service with circuit breaker', async () => {
       const breaker = new CircuitBreaker({
         failureThreshold: 3,
         resetTimeout: 1000,
@@ -83,7 +83,7 @@ describe('Rate Limiter Integration Tests', () => {
 
       // Service fails 3 times and circuit opens
       for (let i = 0; i < 3; i++) {
-        expect(() => breaker.execute(() => Promise.resolve(callService()))).rejects.toThrow()
+        await expect(breaker.execute(() => Promise.resolve(callService()))).rejects.toThrow()
       }
 
       expect(breaker.getState()).toBe('open')
@@ -173,8 +173,9 @@ describe('Rate Limiter Integration Tests', () => {
       expect(attempts).toBe(3)
 
       // Verify backoff delays are increasing
-      if (delays.length >= 2) {
-        expect(delays[1]).toBeGreaterThan(delays[0])
+      const [firstDelay, secondDelay] = delays
+      if (firstDelay !== undefined && secondDelay !== undefined) {
+        expect(secondDelay).toBeGreaterThan(firstDelay)
       }
     })
 
@@ -195,7 +196,7 @@ describe('Rate Limiter Integration Tests', () => {
             { queue: false } // Don't queue, fail immediately
           )
           results.push({ success: true, ...result })
-        } catch (error) {
+        } catch (_error) {
           results.push({ success: false, id: i })
         }
       }
@@ -227,7 +228,7 @@ describe('Rate Limiter Integration Tests', () => {
             { cost: op.cost }
           )
           results.push({ success: true, ...result })
-        } catch (error) {
+        } catch (_error) {
           results.push({ success: false, type: op.type })
         }
       }

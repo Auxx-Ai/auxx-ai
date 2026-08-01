@@ -268,10 +268,11 @@ export class RateLimiterConfigManager {
    */
   private getCircuitBreakerConfig(providerType: IntegrationProviderType) {
     return {
-      failureThreshold: configService.get<number>('CIRCUIT_BREAKER_FAILURE_THRESHOLD', 5),
-      resetTimeout: configService.get<number>('CIRCUIT_BREAKER_RESET_TIMEOUT', 60000),
-      halfOpenRequests: configService.get<number>('CIRCUIT_BREAKER_HALF_OPEN_REQUESTS', 2),
-      monitoringWindow: configService.get<number>('CIRCUIT_BREAKER_MONITORING_WINDOW', 300000),
+      failureThreshold: configService.get<number>('CIRCUIT_BREAKER_FAILURE_THRESHOLD', 5) ?? 5,
+      resetTimeout: configService.get<number>('CIRCUIT_BREAKER_RESET_TIMEOUT', 60000) ?? 60000,
+      halfOpenRequests: configService.get<number>('CIRCUIT_BREAKER_HALF_OPEN_REQUESTS', 2) ?? 2,
+      monitoringWindow:
+        configService.get<number>('CIRCUIT_BREAKER_MONITORING_WINDOW', 300000) ?? 300000,
     }
   }
 
@@ -304,7 +305,7 @@ export class RateLimiterConfigManager {
    * @returns Coalescing window in milliseconds
    */
   getCoalescingWindow(): number {
-    return configService.get<number>('RATE_LIMITER_COALESCING_WINDOW', 100)
+    return configService.get<number>('RATE_LIMITER_COALESCING_WINDOW', 100) ?? 100
   }
 
   /**

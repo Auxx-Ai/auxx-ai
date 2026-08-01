@@ -5,12 +5,14 @@
 // vitest (project memory), so the store is exercised at the function level only.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { executeRuleAction } from './actions'
 import { legacyActionTextToDoc } from './client'
+import type { insertRecordRuleRun } from './store'
 import type { CachedRecordRule } from './types'
 
 const h = vi.hoisted(() => ({
-  executeRuleAction: vi.fn(async () => 'ok' as const),
-  insertRecordRuleRun: vi.fn(async () => {}),
+  executeRuleAction: vi.fn<typeof executeRuleAction>(async () => 'ok'),
+  insertRecordRuleRun: vi.fn<typeof insertRecordRuleRun>(async () => undefined),
   fetchResourceById: vi.fn(),
   getCachedResourceFields: vi.fn(async () => [
     { id: 'fld_status', key: 'status', systemAttribute: null },
@@ -52,6 +54,14 @@ const baseCtx = {
   entityInstanceId: 'inst_1',
   source: 'interactive' as const,
   userId: 'user_1',
+}
+
+/** Assert a mock was called before returning its first typed argument tuple. */
+function firstMockCall<TArgs extends unknown[]>(calls: TArgs[]): TArgs {
+  const call = calls[0]
+  expect(call).toBeDefined()
+  if (!call) throw new Error('Expected mock to have been called')
+  return call
 }
 
 beforeEach(() => {
@@ -139,10 +149,10 @@ describe('fireRecordRules', () => {
     await fireRecordRules([r], { ...baseCtx, fieldId: 'fld_status', oldValue: 'a', newValue: 'b' })
 
     expect(h.executeRuleAction).toHaveBeenCalledTimes(2)
-    expect(h.executeRuleAction.mock.calls[0][0]).toMatchObject({ type: 'notify' })
-    expect(h.executeRuleAction.mock.calls[1][0]).toMatchObject({ type: 'set-field' })
+    expect(firstMockCall(h.executeRuleAction.mock.calls)[0]).toMatchObject({ type: 'notify' })
+    expect(h.executeRuleAction.mock.calls[1]?.[0]).toMatchObject({ type: 'set-field' })
     expect(h.insertRecordRuleRun).toHaveBeenCalledTimes(1)
-    const run = h.insertRecordRuleRun.mock.calls[0][1]
+    const run = firstMockCall(h.insertRecordRuleRun.mock.calls)[1]
     expect(run.status).toBe('ok')
     expect(run.outcomes).toHaveLength(2)
   })
@@ -158,7 +168,7 @@ describe('fireRecordRules', () => {
     await fireRecordRules([r], { ...baseCtx })
 
     expect(h.executeRuleAction).toHaveBeenCalledTimes(2)
-    const run = h.insertRecordRuleRun.mock.calls[0][1]
+    const run = firstMockCall(h.insertRecordRuleRun.mock.calls)[1]
     expect(run.status).toBe('partial')
     expect(run.outcomes[0]).toMatchObject({ status: 'failed', error: 'boom' })
     expect(run.outcomes[1]).toMatchObject({ status: 'ok' })
@@ -167,7 +177,7 @@ describe('fireRecordRules', () => {
   it('all actions failing yields status = failed', async () => {
     h.executeRuleAction.mockRejectedValue(new Error('down'))
     await fireRecordRules([rule()], { ...baseCtx })
-    expect(h.insertRecordRuleRun.mock.calls[0][1].status).toBe('failed')
+    expect(firstMockCall(h.insertRecordRuleRun.mock.calls)[1].status).toBe('failed')
   })
 
   it('gates on conditions using the record snapshot', async () => {
