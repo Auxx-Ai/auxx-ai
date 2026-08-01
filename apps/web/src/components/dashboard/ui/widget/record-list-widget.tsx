@@ -23,7 +23,14 @@ import { DroppedFiltersNotice } from '~/components/dynamic-table/components/drop
 import { useResourceFields } from '~/components/resources'
 import { type RecordListRow, useRecordListColumns } from '../../hooks/use-record-list-columns'
 import { useRecordListData } from '../../hooks/use-record-list-data'
-import { WidgetEmpty, WidgetError, WidgetSkeleton, WidgetUnconfigured } from './widget-states'
+import { isForbiddenSourceError, isMailLensSource } from '../../lib/widget-source'
+import {
+  WidgetDataSourceUnavailable,
+  WidgetEmpty,
+  WidgetError,
+  WidgetSkeleton,
+  WidgetUnconfigured,
+} from './widget-states'
 
 export function RecordListWidget({
   config,
@@ -77,8 +84,17 @@ export function RecordListWidget({
       />
     )
   }
+  // Ahead of the loading/error branches: a mail source never fetches, so it
+  // would otherwise sit on a skeleton forever.
+  if (isMailLensSource(config.source)) return <WidgetDataSourceUnavailable />
   if (isLoading) return <WidgetSkeleton variant='list' />
-  if (isError) return <WidgetError message={error?.message} />
+  if (isError) {
+    return isForbiddenSourceError(error) ? (
+      <WidgetDataSourceUnavailable detail='The data source behind this widget can no longer be read through the records API.' />
+    ) : (
+      <WidgetError message={error?.message} />
+    )
+  }
   if (rows.length === 0) return <WidgetEmpty />
 
   return (

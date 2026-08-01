@@ -16,6 +16,7 @@ import {
 import { keepPreviousData } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { api } from '~/trpc/react'
+import { isMailLensSource } from '../lib/widget-source'
 import { selectGlobalFilters, useDashboardStore } from '../stores/dashboard-draft-store'
 
 export function useKpiData(configuration: KpiConfig | GaugeConfig, widgetId?: string) {
@@ -26,7 +27,12 @@ export function useKpiData(configuration: KpiConfig | GaugeConfig, widgetId?: st
   return api.dashboard.kpiData.useQuery(
     { dashboardId: dashboardId ?? '', widgetId, query, globalOverrides },
     {
-      enabled: Boolean(dashboardId) && isChartConfigured(configuration),
+      // See `use-chart-data`: a mail source is refused server-side, so this is a
+      // guaranteed 403 the KPI/gauge body already answers from the config.
+      enabled:
+        Boolean(dashboardId) &&
+        isChartConfigured(configuration) &&
+        !isMailLensSource(configuration.source),
       staleTime: 30_000,
       placeholderData: keepPreviousData,
     }

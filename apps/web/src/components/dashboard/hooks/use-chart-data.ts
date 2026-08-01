@@ -21,6 +21,7 @@ import {
 import { keepPreviousData } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { api } from '~/trpc/react'
+import { isMailLensSource } from '../lib/widget-source'
 import { selectGlobalFilters, useDashboardStore } from '../stores/dashboard-draft-store'
 
 export function useChartData(configuration: ChartWidgetConfig, widgetId?: string) {
@@ -31,7 +32,13 @@ export function useChartData(configuration: ChartWidgetConfig, widgetId?: string
   return api.dashboard.chartData.useQuery(
     { dashboardId: dashboardId ?? '', widgetId, query, globalOverrides },
     {
-      enabled: Boolean(dashboardId) && isChartConfigured(configuration),
+      // A stored mail-sourced widget is refused by `prepareAggregate`, so the
+      // request is a guaranteed 403 — the body renders the unavailable state off
+      // the config alone and never needs the answer.
+      enabled:
+        Boolean(dashboardId) &&
+        isChartConfigured(configuration) &&
+        !isMailLensSource(configuration.source),
       staleTime: 30_000,
       placeholderData: keepPreviousData,
     }

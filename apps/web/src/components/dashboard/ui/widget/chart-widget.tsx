@@ -22,11 +22,18 @@ import { useMetricFieldMeta } from '../../hooks/use-metric-field'
 import { remapGroupLabels, toChartRows } from '../../lib/chart-transform'
 import { effectiveFieldTypeOf } from '../../lib/field-meta'
 import { formatMetricValue, formatMetricValueCompact } from '../../lib/format-value'
+import { isForbiddenSourceError, isMailLensSource } from '../../lib/widget-source'
 import { BarChartWidget } from './bar-chart-widget'
 import { LineChartWidget } from './line-chart-widget'
 import { PieChartWidget } from './pie-chart-widget'
 import { WidgetDroppedFilters } from './widget-dropped-filters'
-import { WidgetEmpty, WidgetError, WidgetSkeleton, WidgetUnconfigured } from './widget-states'
+import {
+  WidgetDataSourceUnavailable,
+  WidgetEmpty,
+  WidgetError,
+  WidgetSkeleton,
+  WidgetUnconfigured,
+} from './widget-states'
 
 type GroupedChartConfig = BarChartConfig | LineChartConfig | PieChartConfig
 
@@ -56,6 +63,10 @@ export function ChartWidget({
   const groupFieldType = groupField ? effectiveFieldTypeOf(groupField) : undefined
   const isDateDim = groupFieldType === 'DATE' || groupFieldType === 'DATETIME'
 
+  // Ahead of `isChartConfigured`: a stored mail chart usually IS fully
+  // configured, and where it isn't, "Configure this widget" would send its owner
+  // to a panel that can no longer offer the source back.
+  if (isMailLensSource(config.source)) return <WidgetDataSourceUnavailable />
   if (!isChartConfigured(config)) {
     return (
       <WidgetUnconfigured
@@ -65,7 +76,13 @@ export function ChartWidget({
     )
   }
   if (isLoading && !data) return <WidgetSkeleton variant='chart' />
-  if (isError) return <WidgetError message={error?.message} />
+  if (isError) {
+    return isForbiddenSourceError(error) ? (
+      <WidgetDataSourceUnavailable detail='The data source behind this widget can no longer be aggregated.' />
+    ) : (
+      <WidgetError message={error?.message} />
+    )
+  }
   if (!data || data.groups.length === 0) return <WidgetEmpty />
 
   const cumulative = config.kind !== 'pieChart' ? config.cumulative : undefined

@@ -23,6 +23,7 @@ import type { RecordId } from '@auxx/types/resource'
 import { keepPreviousData } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { api } from '~/trpc/react'
+import { isMailLensSource } from '../lib/widget-source'
 import { useDashboardStore } from '../stores/dashboard-draft-store'
 
 /** Stable empty array — a fresh `[]` per render would churn every consumer's memo. */
@@ -52,7 +53,11 @@ export function useRecordListData(config: RecordListConfig, _widgetId?: string) 
   const query = api.record.listFiltered.useQuery(
     { entityDefinitionId, filters: config.filters, sorting, limit: pageSize },
     {
-      enabled: Boolean(dashboardId) && Boolean(config.source),
+      // `listFiltered` refuses `thread` / `message` outright
+      // (`assertNotMailLensTable`), so a stored mail-sourced widget must not
+      // spend a request to be told 403 — the body renders the unavailable state
+      // straight from the config.
+      enabled: Boolean(dashboardId) && Boolean(config.source) && !isMailLensSource(config.source),
       staleTime: 30_000,
       placeholderData: keepPreviousData,
     }
