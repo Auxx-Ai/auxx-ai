@@ -60,31 +60,6 @@ export function useRecordsSearchActions() {
 export const RECORDS_FREE_TEXT_FIELD = 'displayName'
 
 /**
- * Convert flat SearchCondition[] from the search store into a ConditionGroup
- * that can be merged with existing view filters and passed to useRecordList.
- *
- * Keeps the free-text condition IN the group — the pre-search-param behaviour
- * (`displayName contains`, compiled to `ILIKE '%q%'`). `RecordsView` uses
- * {@link splitRecordSearch} instead; this remains for surfaces that have not
- * been moved onto the `search` param yet (the KB articles table).
- */
-export function searchConditionsToGroup(conditions: SearchCondition[]): ConditionGroup | null {
-  const valid = conditions.filter((c) => c.value !== undefined && c.value !== '')
-  if (valid.length === 0) return null
-
-  return {
-    id: 'search',
-    logicalOperator: 'AND',
-    conditions: valid.map((c) => ({
-      id: c.id,
-      fieldId: c.fieldId,
-      operator: c.operator,
-      value: c.value,
-    })),
-  }
-}
-
-/**
  * Split the search bar's state into its two axes: the **narrowing conditions**
  * and the **free text**.
  *

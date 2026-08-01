@@ -31,6 +31,7 @@ import {
   hasUnsupportedDraftConditions,
   isDraftsContextQuery,
 } from '../mail-query/draft-condition-builder'
+import { threadSearchCursor, threadSearchRank } from '../mail-query/thread-search-sql'
 import { buildMailVisibilityPredicate } from '../mail-query/visibility-scope'
 import { MailViewService } from '../mail-views/mail-view-service'
 import { getParticipantIdsByMessage } from '../messages/participant-ids'
@@ -47,6 +48,7 @@ import {
 import { automationLens, effectiveLensBatch } from '../permissions/visibility/effective-lens'
 import type { Lens } from '../permissions/visibility/lens'
 import { redactThreadMeta } from '../permissions/visibility/redact'
+import { extractFreeTextSearchTerm } from './thread-search-term'
 import type {
   ChannelProvider,
   ListThreadIdsInput,
@@ -63,6 +65,17 @@ const logger = createScopedLogger('thread-query-service')
 /** Default ordering used when no explicit sort is requested. */
 const DEFAULT_SORT: ThreadSortDescriptor = {
   field: 'lastMessageAt',
+  direction: 'desc',
+}
+
+/**
+ * The ordering a free-text search gets when the caller expressed no preference.
+ *
+ * Always `desc` — "best first" is the only direction relevance has, and the
+ * descriptor keeps the field so the cursor round-trip stays uniform.
+ */
+const RELEVANCE_SORT: ThreadSortDescriptor = {
+  field: 'relevance',
   direction: 'desc',
 }
 
@@ -144,9 +157,88 @@ export class ThreadQueryService {
     return DEFAULT_SORT
   }
 
-  /** Returns Drizzle-compatible orderBy expressions for the provided sort descriptor. */
-  private createOrderByFromDescriptor(sort: ThreadSortDescriptor): SQL[] {
+  /**
+   * Is this descriptor indistinguishable from "the caller did not choose"?
+   *
+   * 🔴 **This is the load-bearing approximation in relevance ordering, so it is
+   * stated plainly.** The records list can tell the two apart because its sort
+   * arrives as an array that is genuinely empty until the user clicks a column
+   * (`resources/crud/unified-handler-queries.ts` gates on `sorting.length > 0`).
+   * Mail cannot: `mail-box.tsx` holds `sortBy` in `useState('newest')` and sends
+   * `{ lastMessageAt, desc }` on **every** request, so "Newest First is simply
+   * what the dropdown says" and "the user deliberately picked Newest First"
+   * arrive on the wire byte-identical.
+   *
+   * Treating that one value as "no preference" is what makes relevance reachable
+   * at all without changing the wire contract. What it costs: a user who opens
+   * the sort menu and re-picks *Newest First* while a search is active still gets
+   * best-first. Everything else in the menu — *By Sender*, *By Subject* — is a
+   * distinct descriptor and wins, which is the case the decision is actually
+   * about ("I sorted by sender and the rows reordered by score" is the bug worth
+   * preventing). An explicit `{ lastMessageAt, asc }` also wins, so a caller that
+   * genuinely needs chronological order under a search has a way to say so.
+   */
+  private isDefaultSort(sort?: ThreadSortDescriptor): boolean {
+    return !sort || (sort.field === DEFAULT_SORT.field && sort.direction === DEFAULT_SORT.direction)
+  }
+
+  /**
+   * The ordering for a thread-only list: relevance when a free-text search is
+   * active and the caller expressed no column preference, the caller's sort
+   * otherwise, and `lastMessageAt DESC` when neither applies.
+   *
+   * **Relevance is the default, never an override** — the same rule the records
+   * list follows (retrieval plan §3.3b). A search with an explicit column sort
+   * still narrows by the ranked predicate; only the `ORDER BY` changes.
+   *
+   * `'relevance'` is also clamped back to {@link DEFAULT_SORT} when there is no
+   * term. Nothing can send it today (the router's zod enum omits it), but a rank
+   * expression over an absent query is `NULL`-ordered noise, and a cursor minted
+   * from it would be unresumable.
+   */
+  private resolveListSort(
+    sort: ThreadSortDescriptor | undefined,
+    searchTerm: string | null
+  ): ThreadSortDescriptor {
+    const requested = this.resolveSortDescriptor(sort)
+
+    if (!searchTerm) {
+      return requested.field === 'relevance' ? DEFAULT_SORT : requested
+    }
+    if (requested.field === 'relevance' || this.isDefaultSort(sort)) {
+      return RELEVANCE_SORT
+    }
+    return requested
+  }
+
+  /**
+   * Returns Drizzle-compatible orderBy expressions for the provided sort descriptor.
+   *
+   * `searchTerm` is required for `field: 'relevance'` and ignored otherwise.
+   */
+  private createOrderByFromDescriptor(
+    sort: ThreadSortDescriptor,
+    searchTerm?: string | null
+  ): SQL[] {
     const tieBreaker = sort.direction === 'asc' ? asc(schema.Thread.id) : desc(schema.Thread.id)
+
+    if (sort.field === 'relevance') {
+      // Without a term there is no rank to order by; fall back rather than emit
+      // an ORDER BY over a query nobody asked. `resolveListSort` already
+      // prevents this — the guard is here so a future caller can't route around it.
+      if (!searchTerm) return this.createOrderByFromDescriptor(DEFAULT_SORT)
+
+      // 🔴 **Exactly two expressions, in exactly this order.** `threadSearchCursor`
+      // is a `(rank, id)` keyset — `rank < $score OR (rank = $score AND id < $id)`.
+      // Inserting `lastMessageAt` between them (which would give ranked ties a
+      // nicer chronological order, and is what the records list does) makes the
+      // `ORDER BY` and the cursor disagree, and a keyset that disagrees with its
+      // ordering skips and duplicates rows rather than erroring. Ranked ties are
+      // the common case here, not the exception, so this would be a live bug on
+      // page 2, not a corner. Adding a third column means adding it to the shared
+      // cursor first.
+      return [desc(threadSearchRank(searchTerm)), desc(schema.Thread.id)]
+    }
 
     if (sort.field === 'subject') {
       const subjectOrder =
@@ -201,8 +293,20 @@ export class ThreadQueryService {
     return undefined
   }
 
-  /** Sender sorting is a correlated subquery, not a column — hence the union. */
-  private getSortValueSelection(sort: ThreadSortDescriptor): PgColumn | SQL {
+  /**
+   * Sender sorting is a correlated subquery, not a column — hence the union.
+   *
+   * Relevance widens that further: the score is not stored anywhere, so it has to
+   * be projected alongside the id purely so the last row of the page can mint a
+   * resumable cursor.
+   */
+  private getSortValueSelection(
+    sort: ThreadSortDescriptor,
+    searchTerm?: string | null
+  ): PgColumn | SQL {
+    if (sort.field === 'relevance') {
+      return searchTerm ? threadSearchRank(searchTerm) : schema.Thread.lastMessageAt
+    }
     if (sort.field === 'subject') {
       return schema.Thread.subject
     }
@@ -267,10 +371,19 @@ export class ThreadQueryService {
       try {
         const json = this.fromBase64Url(raw)
         const data = JSON.parse(json)
+        // Adding `'relevance'` here is additive: every field a pre-relevance
+        // `v1:` cursor can carry is still accepted, so cursors minted before this
+        // change decode exactly as they did. A stale `lastMessageAt` cursor
+        // arriving while a search has since flipped the list into relevance order
+        // is caught one level up by the descriptor guard in
+        // `getThreadIdsInternal`, which drops it and re-serves page 1.
         if (
           data &&
           typeof data.id === 'string' &&
-          (data.field === 'lastMessageAt' || data.field === 'subject' || data.field === 'sender') &&
+          (data.field === 'lastMessageAt' ||
+            data.field === 'subject' ||
+            data.field === 'sender' ||
+            data.field === 'relevance') &&
           (data.direction === 'asc' || data.direction === 'desc')
         ) {
           return {
@@ -297,7 +410,8 @@ export class ThreadQueryService {
 
   private buildCursorCondition(
     sort: ThreadSortDescriptor,
-    payload: EncodedCursorPayload
+    payload: EncodedCursorPayload,
+    searchTerm?: string | null
   ): SQL | undefined {
     const tieCondition =
       sort.direction === 'desc'
@@ -305,6 +419,29 @@ export class ThreadQueryService {
         : gt(schema.Thread.id, payload.id)
 
     switch (sort.field) {
+      case 'relevance': {
+        // The score is not stored, so the next page RECOMPUTES the rank from the
+        // same term the previous page ranked on — which is sound only because
+        // every caller re-sends the whole filter alongside the cursor. Verified,
+        // not assumed: `@trpc/react-query`'s infinite query merges `pageParam`
+        // INTO the original input rather than replacing it, so page 2's payload
+        // is `{ filter, sort, cursor }`; and the filter is part of the React
+        // Query key, so a filter change starts a fresh page 1 instead of pairing
+        // a new term with an old cursor.
+        const score = Number(payload.value)
+        if (!searchTerm || payload.value === null || !Number.isFinite(score)) {
+          // Deliberately NOT the `id` tie-break. Under relevance ordering, ids
+          // are only meaningful *within* one score, so `id < cursorId` alone
+          // silently drops every lower-ranked row with a larger id. Dropping the
+          // cursor re-serves page 1, which is visible; the alternative is not.
+          logger.warn('Dropping relevance cursor with no recoverable score', {
+            organizationId: this.organizationId,
+            hasSearchTerm: Boolean(searchTerm),
+          })
+          return undefined
+        }
+        return threadSearchCursor(searchTerm, score, payload.id)
+      }
       case 'lastMessageAt': {
         const timestampValue = this.parseCursorTimestamp(payload.value)
         if (!timestampValue) {
@@ -463,14 +600,18 @@ export class ThreadQueryService {
     // Build WHERE clause from condition groups
     const whereCondition = buildConditionGroupsQuery(filter, this.organizationId, this.viewer)
 
-    const resolvedSort = this.resolveSortDescriptor(sort)
-    const orderByExpressions = this.createOrderByFromDescriptor(resolvedSort)
+    // Best-first when the caller is searching, newest-first when it isn't. The
+    // term is read back off the same filter the predicate was built from, so the
+    // two can't disagree about whether a search happened.
+    const searchTerm = extractFreeTextSearchTerm(filter)
+    const resolvedSort = this.resolveListSort(sort, searchTerm)
+    const orderByExpressions = this.createOrderByFromDescriptor(resolvedSort, searchTerm)
 
     // Use existing getThreadIds logic to get IDs
     const { orderedThreadIds, nextCursor } = await this.getThreadIdsInternal(
       whereCondition,
       { limit: effectiveLimit, cursor },
-      { orderBy: orderByExpressions, sort: resolvedSort }
+      { orderBy: orderByExpressions, sort: resolvedSort, searchTerm }
     )
 
     // Get total count for the query
@@ -500,6 +641,32 @@ export class ThreadQueryService {
   /**
    * For DRAFTS context, build a UNION query combining threads-with-drafts and standalone drafts.
    * This ensures proper interleaving and pagination across both entity types.
+   *
+   * 🔴 **This path stays on `lastMessageAt` even when a free-text search is
+   * active, and that is a decision, not an oversight.**
+   *
+   * What the user sees: on `/app/mail/drafts` — the only surface that reaches
+   * this union — searching still *filters* both arms correctly (threads through
+   * the ranked predicate, standalone drafts through
+   * `draft-condition-builder.ts`'s tokenized `ILIKE`), but the results stay
+   * newest-first rather than best-first. Every other mail surface (inbox, all
+   * inboxes, saved views, ⌘K, the thread picker, contact conversations,
+   * `find_threads`) is ranked.
+   *
+   * Why not rank the union:
+   * - **Drafts have no comparable score.** They are matched with `ILIKE` over
+   *   jsonb paths, deliberately unindexed and unranked because `Draft` is a
+   *   handful of rows per user. Minting a score for that arm means a *second*
+   *   ranking formula — precisely the drift `search/text-search-sql.ts` exists to
+   *   prevent, and it would have to be tuned against the thread formula's scale
+   *   to interleave sensibly rather than arbitrarily.
+   * - **A constant score is worse than no ranking.** Give drafts `0` and every
+   *   standalone draft collapses into one contiguous block at the bottom of the
+   *   list, in the one view whose entire purpose is showing those drafts. That is
+   *   a silent reorder dressed up as a feature.
+   * - **The cost of deferring is low and the cost of undoing is high.** The mixed
+   *   cursor already carries `sortField`, so adding a `'relevance'` arm later is
+   *   additive; unpicking a badly-calibrated cross-arm score is not.
    */
   private async listDraftsContextIds(
     input: ListThreadIdsInput,
@@ -511,7 +678,14 @@ export class ThreadQueryService {
       throw new Error('userId required for DRAFTS context')
     }
 
-    const resolvedSort = this.resolveSortDescriptor(sort)
+    // Clamp `relevance` back to the date sort. `listThreadIds` never routes a
+    // relevance descriptor here (it resolves the sort only on the thread-only
+    // branch), but a direct caller could — and `decodeMixedCursor` validates
+    // `sortField` against the three column sorts, so a relevance mixed cursor
+    // would decode to `null` and silently re-serve page 1 forever.
+    const requestedSort = this.resolveSortDescriptor(sort)
+    const resolvedSort: ThreadSortDescriptor =
+      requestedSort.field === 'relevance' ? DEFAULT_SORT : requestedSort
     const decodedCursor = this.decodeMixedCursor(cursor)
 
     // Build thread WHERE clause (existing logic)
@@ -1048,17 +1222,18 @@ export class ThreadQueryService {
   private async getThreadIdsInternal(
     whereCondition: SQL | undefined,
     pagination: { limit: number; cursor?: string | null },
-    options: { orderBy?: SQL[]; sort: ThreadSortDescriptor }
+    options: { orderBy?: SQL[]; sort: ThreadSortDescriptor; searchTerm?: string | null }
   ): Promise<{ orderedThreadIds: string[]; nextCursor: string | null }> {
     const { limit, cursor } = pagination
-    const { orderBy = this.createOrderByFromDescriptor(options.sort), sort } = options
+    const { sort, searchTerm = null } = options
+    const { orderBy = this.createOrderByFromDescriptor(sort, searchTerm) } = options
 
     let finalWhereCondition = whereCondition
     const decodedCursor = this.decodeCursor(cursor)
 
     if (decodedCursor) {
       if (decodedCursor.field === sort.field && decodedCursor.direction === sort.direction) {
-        const cursorCondition = this.buildCursorCondition(sort, decodedCursor)
+        const cursorCondition = this.buildCursorCondition(sort, decodedCursor, searchTerm)
         if (cursorCondition) {
           finalWhereCondition = finalWhereCondition
             ? and(finalWhereCondition, cursorCondition)
@@ -1081,7 +1256,7 @@ export class ThreadQueryService {
       .select({
         id: schema.Thread.id,
         lastMessageAt: schema.Thread.lastMessageAt,
-        sortValue: this.getSortValueSelection(sort),
+        sortValue: this.getSortValueSelection(sort, searchTerm),
       })
       .from(schema.Thread)
 
@@ -1089,7 +1264,8 @@ export class ThreadQueryService {
     // method narrows the builder's own type, so reassignment doesn't typecheck.
     const query = finalWhereCondition ? baseQuery.where(finalWhereCondition) : baseQuery
 
-    const orderByExpressions = orderBy.length > 0 ? orderBy : this.createOrderByFromDescriptor(sort)
+    const orderByExpressions =
+      orderBy.length > 0 ? orderBy : this.createOrderByFromDescriptor(sort, searchTerm)
     const finalQuery =
       orderByExpressions.length > 0
         ? query.orderBy(...orderByExpressions)

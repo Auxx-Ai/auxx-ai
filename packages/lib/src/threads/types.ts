@@ -5,8 +5,16 @@ import type { ActorId } from '@auxx/types/actor'
 import type { RecordId } from '@auxx/types/resource'
 import type { ConditionGroup } from '../conditions/types'
 
-/** Allowed fields that can be used when sorting thread lists. */
-export type ThreadSortField = 'lastMessageAt' | 'subject' | 'sender'
+/**
+ * Allowed fields that can be used when sorting thread lists.
+ *
+ * `'relevance'` is **server-derived, not client-supplied** — `thread.listIds`'
+ * zod input enumerates only the three column sorts, and the ranked ordering is
+ * chosen by `ThreadQueryService.resolveListSort` when the filter carries a
+ * free-text term. It is part of this union because the keyset cursor encodes the
+ * active sort field and has to be able to say "this page was ordered by rank".
+ */
+export type ThreadSortField = 'lastMessageAt' | 'subject' | 'sender' | 'relevance'
 
 /**
  * Denormalized merge state stored on `Thread.mergeData`.

@@ -230,7 +230,12 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'org.settings.changed': { org: ['orgSettings'], user: ['userSettings'] },
 
   // ── User-scoped events ──
-  'user.updated': { user: ['userProfile'] },
+  // `members` is here because that org blob projects mutable user columns —
+  // name, email, image, preferredTimezone — so a profile edit leaves it stale
+  // until its TTL otherwise. Caveat: this invalidates only the org in
+  // `context.orgId` (invalidate.ts requires one), so for a user who belongs to
+  // several orgs the other orgs' member blobs still lag to TTL.
+  'user.updated': { user: ['userProfile'], org: ['members'] },
   'user.settings.changed': { user: ['userSettings'] },
   'mail-view.changed': { user: ['userMailViews'], org: ['overages'] },
 

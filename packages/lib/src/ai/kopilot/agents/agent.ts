@@ -116,10 +116,10 @@ export function createKopilotAgent(
       // Only fetch the chip-resolution catalogs when the run actually has
       // an agent persona to render — master Kopilot doesn't reference chips.
       const hasAgentPersona = Boolean(agentConfig && agentConfig.agentId !== null)
-      const [resources, currentUser, integrations, toolCatalog, toolsetCatalog, kbCatalog] =
+      const [resources, caller, integrations, toolCatalog, toolsetCatalog, kbCatalog] =
         await Promise.all([
           getCachedResources(deps.organizationId),
-          hydrateCurrentUser(deps.organizationId, deps.userId),
+          hydrateCaller(deps.organizationId, deps.userId),
           getCachedIntegrationCatalog(deps.organizationId),
           hasAgentPersona ? getOrgToolCatalog(deps.organizationId) : Promise.resolve(undefined),
           hasAgentPersona ? getOrgToolsetCatalog(deps.organizationId) : Promise.resolve(undefined),
@@ -172,7 +172,11 @@ export function createKopilotAgent(
         kbCatalog,
         capabilities,
         tools: agentTools,
-        currentUser,
+        currentUser: caller.currentUser,
+        // The caller's own zone drives the `now` clock. Null (no member row, no
+        // saved preference, autonomous run with no caller) renders UTC — see
+        // `prompts/sections/now.ts`.
+        timezone: caller.timezone,
         integrations,
         toolsetPromptAdditions,
         agentConfig,
@@ -223,22 +227,54 @@ export function createKopilotAgent(
   }
 }
 
-async function hydrateCurrentUser(
-  organizationId: string,
-  userId: string
-): Promise<CurrentUserInfo | null> {
+/**
+ * What one read of the org `members` cache yields for the turn's caller.
+ *
+ * `timezone` is deliberately NOT folded into {@link CurrentUserInfo}: that shape
+ * is what the caller-preamble section prints, and it is audience-gated — a chat
+ * turn resolves the *agent's own* member row, so anything added there risks
+ * being rendered into a customer-facing prompt. The zone feeds only the `now`
+ * clock, which every audience sees.
+ */
+interface CallerHydration {
+  currentUser: CurrentUserInfo | null
+  /** IANA zone, or `null` ⇒ the `now` section renders UTC. */
+  timezone: string | null
+}
+
+/** The value every failure path resolves to — no caller, no zone, UTC clock. */
+const NO_CALLER: CallerHydration = { currentUser: null, timezone: null }
+
+/**
+ * Resolve the turn's caller from the org `members` cache (one read, no DB hit).
+ *
+ * Both the identity and the clock come from the same blob on purpose — the
+ * `userProfile` USER cache also carries `preferredTimezone`, but sourcing it
+ * there would add a second cache roundtrip to every turn for one string.
+ *
+ * **Staleness:** `members` is invalidated on membership events, not on
+ * `user.updated`, so a zone changed in settings can lag by up to the key's TTL.
+ * Documented on the `members` key in `cache/org-cache-keys.ts`; a wrong-by-a-day
+ * zone still beats no zone, and the section coalesces anything missing to UTC.
+ */
+async function hydrateCaller(organizationId: string, userId: string): Promise<CallerHydration> {
   try {
     const [member] = await getCachedMembersByUserIds(organizationId, [userId])
     if (!member) {
       logger.debug('Current user not found in org members cache', { organizationId, userId })
-      return null
+      return NO_CALLER
     }
     return {
-      userId,
-      actorId: toActorId('user', userId),
-      name: member.user?.name ?? null,
-      email: member.user?.email ?? null,
-      role: member.role,
+      currentUser: {
+        userId,
+        actorId: toActorId('user', userId),
+        name: member.user?.name ?? null,
+        email: member.user?.email ?? null,
+        role: member.role,
+      },
+      // `undefined` is reachable on a pre-`v2` cached blob; both it and an empty
+      // string mean "no preference", which the `now` section renders as UTC.
+      timezone: member.user?.preferredTimezone?.trim() || null,
     }
   } catch (err) {
     logger.warn('Failed to hydrate current user for Kopilot prompt', {
@@ -246,6 +282,6 @@ async function hydrateCurrentUser(
       userId,
       error: err instanceof Error ? err.message : String(err),
     })
-    return null
+    return NO_CALLER
   }
 }

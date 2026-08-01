@@ -15,6 +15,7 @@ import { ResourcePicker } from '~/components/pickers/resource-picker/resource-pi
 import { useResources } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import {
+  isMailLensSourceId,
   isSystemAggregateSourceId,
   resourceIdToSource,
   sourceResourceId,
@@ -23,23 +24,37 @@ import {
 export function DataSourceSection({
   source,
   hasDependentConfig,
+  excludeMailLensTables,
   onSelectSource,
 }: {
   source: WidgetSource | undefined
   /** Whether any field-bound setting is set (drives the reset confirm). */
   hasDependentConfig: boolean
+  /**
+   * Drop `thread` / `message` from the offer list. Set by the record-list body:
+   * listing thread ROWS through the generic record path is refused server-side
+   * (the mail lens lives in `mail-query/` only), so offering it would only ever
+   * produce a widget that renders a permission error.
+   */
+  excludeMailLensTables?: boolean
   onSelectSource: (source: WidgetSource) => void
 }) {
   const { resources } = useResources()
   const [confirm, ConfirmDialog] = useConfirm()
 
-  // Hide registry system tables that aren't aggregate-queryable.
+  // Hide registry system tables that aren't aggregate-queryable, plus the
+  // mail-content tables when the caller can't serve rows from them.
   const excludeIds = useMemo(
     () =>
       resources
-        .filter((r) => isSystemResource(r) && !isSystemAggregateSourceId(r.id))
+        .filter(
+          (r) =>
+            isSystemResource(r) &&
+            (!isSystemAggregateSourceId(r.id) ||
+              (excludeMailLensTables && isMailLensSourceId(r.id)))
+        )
         .map((r) => r.id),
-    [resources]
+    [resources, excludeMailLensTables]
   )
 
   const handleSelect = async (id: string) => {

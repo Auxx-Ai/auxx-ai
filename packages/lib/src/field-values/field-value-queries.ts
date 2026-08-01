@@ -34,6 +34,7 @@ import {
   rowToTypedValue,
   validateFieldReferences,
 } from './field-value-helpers'
+import { resolveMailLensGate } from './mail-lens-gate'
 import {
   batchFetchSystemRelationships,
   isVirtualField,
@@ -234,6 +235,16 @@ export async function batchGetValues(
     )
   }
 
+  // MAIL enforcement — the def filter above is inert for `thread` / `message`:
+  // both are `NON_RECORD_DEF_SLUGS`, so `hasDefPresence` passes them for every
+  // member and the resolvers then read the mail tables org-wide. The lens is the
+  // authority there, so it is applied here, batched, by {@link resolveMailLensGate}:
+  // invisible threads drop out of `recordIds` (row visibility) and values above
+  // the viewer's tier — `subject` at `identity`, `body` at `read` — are withheld
+  // from the results (field visibility). `null` for every non-mail batch.
+  const mailGate = await resolveMailLensGate(ctx, recordIds, fieldReferences)
+  if (mailGate) recordIds = mailGate.visibleRecordIds
+
   if (recordIds.length === 0 || fieldReferences.length === 0) {
     return { values: [] }
   }
@@ -244,19 +255,24 @@ export async function batchGetValues(
   // Fast path: if all refs are direct fields (not multi-hop paths), batch into a single query
   const allDirect = fieldReferences.every((ref) => !isFieldPath(ref))
 
-  if (allDirect) {
-    return batchGetAllDirectFieldValues(ctx, recordIds, fieldReferences as ResourceFieldId[])
-  }
-
-  // Slow path: sequential per-field resolution (handles relationship traversals)
   const results: TypedFieldValueResult[] = []
 
-  for (const ref of fieldReferences) {
-    const refResults = await resolveFieldReference(ctx, recordIds, ref)
-    results.push(...refResults)
+  if (allDirect) {
+    const direct = await batchGetAllDirectFieldValues(
+      ctx,
+      recordIds,
+      fieldReferences as ResourceFieldId[]
+    )
+    results.push(...direct.values)
+  } else {
+    // Slow path: sequential per-field resolution (handles relationship traversals)
+    for (const ref of fieldReferences) {
+      const refResults = await resolveFieldReference(ctx, recordIds, ref)
+      results.push(...refResults)
+    }
   }
 
-  return { values: results }
+  return { values: mailGate ? mailGate.filterValues(results) : results }
 }
 
 /** No grant-only relationship targets in play — the overwhelmingly common case. */

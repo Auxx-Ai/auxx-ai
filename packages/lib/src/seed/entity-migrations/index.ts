@@ -3,6 +3,13 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getOrgCache } from '../../cache'
+// Deep path, not the `../../data-migrations` barrel: that barrel re-exports
+// `wrapEntityMigration`, which imports THIS module — a barrel import here would
+// close the cycle. `describe-migration-error.ts` itself imports nothing.
+import {
+  describeMigrationError,
+  MAX_SUMMARY_LENGTH,
+} from '../../data-migrations/describe-migration-error'
 import { migration001VendorPartSubpart } from './migrations/001-vendor-part-subpart'
 import { migration002StockMovement } from './migrations/002-stock-movement-inventory'
 import { migration003BomStockMovementFields } from './migrations/003-bom-stock-movement-fields'
@@ -57,6 +64,43 @@ import { migration062RemoveInboxLensPersonalFields } from './migrations/062-remo
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
+
+/**
+ * Per-org failure lines quoted verbatim in the aggregate thrown by
+ * {@link runEntityMigrationForAllOrgs}. A migration that fails on one org
+ * usually fails on all of them for the same reason, so the first few lines
+ * carry the whole diagnosis and lines 6..N are just N copies of it — bounded
+ * here so an org count, not a bug, can never inflate the message.
+ */
+const MAX_QUOTED_ORG_FAILURES = 5
+
+const TRUNCATION_MARKER = '…[truncated]'
+
+/** Hard bound — the result never exceeds `max`, marker included. */
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text
+  return `${text.slice(0, max - TRUNCATION_MARKER.length)}${TRUNCATION_MARKER}`
+}
+
+/**
+ * Render the multi-org failure list for the aggregate error message.
+ *
+ * Two independent bounds, because each per-org line is already a
+ * {@link describeMigrationError} summary capped at {@link MAX_SUMMARY_LENGTH}:
+ * quoting every org would make the aggregate `orgs × 2 KB`. The line count is
+ * capped first, then the whole message is capped at {@link MAX_SUMMARY_LENGTH}
+ * so it matches what the ledger will actually store. The header carries the
+ * *count* and is emitted before the truncation point, so "how many orgs failed"
+ * survives no matter how verbose one org's error was.
+ */
+function buildAggregateFailureMessage(migrationId: string, failures: string[]): string {
+  const header = `Migration ${migrationId} failed for ${failures.length} org(s):`
+  const quoted = failures.slice(0, MAX_QUOTED_ORG_FAILURES)
+  const omitted = failures.length - quoted.length
+  const lines = omitted > 0 ? [...quoted, `…and ${omitted} more org(s)`] : quoted
+
+  return `${header}\n${truncate(lines.join('\n'), MAX_SUMMARY_LENGTH - header.length - 1)}`
+}
 
 // ─── Migration Registry ──────────────────────────────────────────────
 // Add new migrations here in order. Each must be idempotent.
@@ -194,9 +238,13 @@ export async function runEntityMigrationsForOrg(
         })
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      logger.error(`Migration ${migration.id} failed`, { organizationId, error: message })
-      result.error = `${migration.id}: ${message}`
+      // Not `error.message`: anything Drizzle throws says only `Failed query: …`,
+      // while the SQLSTATE code, constraint, table and column that explain WHY sit
+      // on `.cause`. `describeMigrationError` walks the chain, lifts those fields
+      // and drops the bound query params (customer data) from the stored text.
+      const { summary, pg } = describeMigrationError(error)
+      logger.error(`Migration ${migration.id} failed`, { organizationId, error: summary, ...pg })
+      result.error = `${migration.id}: ${summary}`
       break // Stop running further migrations for this org on failure
     }
   }
@@ -237,6 +285,8 @@ export async function runEntityMigrationForAllOrgs(
   logger.info(`Running entity migration ${migration.id} for ${orgs.length} organizations`)
 
   const errors: string[] = []
+  /** The raw first failure, kept as the `cause` of the aggregate below. */
+  let firstError: unknown
   let totalCreated = 0
 
   for (const org of orgs) {
@@ -259,12 +309,16 @@ export async function runEntityMigrationForAllOrgs(
         })
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      // Same reason as in `runEntityMigrationsForOrg`: the recorded line must name
+      // the pg error, not Drizzle's `Failed query: …` wrapper.
+      const { summary, pg } = describeMigrationError(error)
       logger.error(`Migration ${migration.id} failed for org`, {
         organizationId: org.id,
-        error: message,
+        error: summary,
+        ...pg,
       })
-      errors.push(`${org.id}: ${message}`)
+      if (errors.length === 0) firstError = error
+      errors.push(`${org.id}: ${summary}`)
     }
   }
 
@@ -280,9 +334,16 @@ export async function runEntityMigrationForAllOrgs(
   }
 
   if (errors.length > 0) {
-    throw new Error(
-      `Migration ${migration.id} failed for ${errors.length} org(s):\n${errors.join('\n')}`
-    )
+    // Both halves are needed, and they fix different things:
+    //  - the message quotes `describeMigrationError` summaries, so a human reading
+    //    the ledger row or the script output sees the pg code/constraint per org;
+    //  - `cause` keeps the ORIGINAL error object on the chain. This aggregate is
+    //    what `wrapEntityMigration` hands to `runPendingDataMigrations`, which
+    //    re-describes it; a causeless `new Error(...)` severs the chain there and
+    //    the runner's unwrapping recovers nothing for all ~50 wrapped entity
+    //    migrations. The first failure is the cause because a migration that
+    //    breaks on one org almost always breaks on the rest identically.
+    throw new Error(buildAggregateFailureMessage(migration.id, errors), { cause: firstError })
   }
 }
 

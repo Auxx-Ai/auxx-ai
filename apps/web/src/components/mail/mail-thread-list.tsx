@@ -436,7 +436,10 @@ function ThreadListMenu({ threadIds }: ThreadListMenuProps) {
     if (sort === 'newest') {
       setSortDirection?.('desc')
     } else if (sort === 'oldest') {
-      setSortDirection?.('desc')
+      // 'oldest' shares `lastMessageAt` with 'newest' (see `mapSortByToField`),
+      // so the direction is the ONLY thing distinguishing them. Sending 'desc'
+      // here made Oldest First a no-op that rendered identically to Newest.
+      setSortDirection?.('asc')
     } else {
       setSortDirection?.('asc')
     }

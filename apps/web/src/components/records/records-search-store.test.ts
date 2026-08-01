@@ -12,11 +12,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { SearchCondition } from '~/components/searchbar/types'
-import {
-  RECORDS_FREE_TEXT_FIELD,
-  searchConditionsToGroup,
-  splitRecordSearch,
-} from './records-search-store'
+import { RECORDS_FREE_TEXT_FIELD, splitRecordSearch } from './records-search-store'
 
 const condition = (over: Partial<SearchCondition>): SearchCondition =>
   ({ id: 'c1', fieldId: 'status', operator: 'equals', value: 'open', ...over }) as SearchCondition
@@ -69,18 +65,5 @@ describe('splitRecordSearch', () => {
     // Defensive: `addCondition` merges array values for repeat field ids, so a
     // free-text slot could in principle hold something that is not a string.
     expect(splitRecordSearch([freeText(['a', 'b'])]).search).toBeUndefined()
-  })
-})
-
-describe('searchConditionsToGroup', () => {
-  it('still flattens free text INTO the group — the pre-2.4 behaviour', () => {
-    // Deliberately unchanged: the KB articles table has not been moved onto the
-    // `search` param yet, and it shares this store. Changing this function
-    // instead of adding `splitRecordSearch` would have silently dropped the
-    // articles search bar.
-    const group = searchConditionsToGroup([freeText('acme')])
-
-    expect(group?.conditions).toHaveLength(1)
-    expect(group?.conditions[0].fieldId).toBe(RECORDS_FREE_TEXT_FIELD)
   })
 })

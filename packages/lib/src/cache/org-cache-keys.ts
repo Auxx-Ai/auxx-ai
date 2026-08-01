@@ -56,6 +56,18 @@ export interface OrgMemberInfo extends OrganizationMemberInfo {
     email: string | null
     image: string | null
     userType: string
+    /**
+     * IANA zone (`Europe/Berlin`). Read by the Kopilot `now` prompt section
+     * (`ai/kopilot/prompts/sections/now.ts`) so relative dates ("yesterday")
+     * resolve in the caller's day, not the server's.
+     *
+     * `null` = the user never set one. **Optional, not just nullable**, because
+     * `undefined` is a reachable state the reader has to survive: a `members`
+     * blob written before the `v2` key bump has no such property at all.
+     * Consumers MUST coalesce both to `UTC` rather than falling through to the
+     * host clock.
+     */
+    preferredTimezone?: string | null
   } | null
 }
 
@@ -608,7 +620,24 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   channelProviders: { prefix: 'org:int-providers', ttlSeconds: THIRTY_DAYS },
 
   // Membership & permissions (24h TTL, invalidated on member events)
-  members: { prefix: 'org:members', ttlSeconds: ONE_DAY },
+  // v2: + `user.preferredTimezone` (the Kopilot `now` clock — sections/now.ts).
+  // A v1 blob has no key, so every member would read as `undefined`. That is a
+  // BENIGN miss on its own — the reader coalesces to `UTC`, which is exactly the
+  // pre-change behaviour — but the bump is what makes the rollout deterministic
+  // instead of "correct for whoever happens to miss the cache first", and it is
+  // the repo rule for a shape change either way.
+  //
+  // KNOWN STALENESS, pre-existing and NOT introduced here: this blob projects
+  // mutable `User` columns (`name`, `email`, `image`, and now
+  // `preferredTimezone`), but `INVALIDATION_GRAPH`'s `user.updated` invalidates
+  // only the USER key `userProfile` — it does not list `members`. So a profile
+  // edit (including `user.updateTimezone`) is not reflected here until a
+  // membership event fires or the ONE_DAY TTL lapses. The v2 keyspace move makes
+  // the FIRST read after deploy correct for everyone; a LATER timezone change
+  // still lags. The one-line fix is to add `members` to the `org` list of
+  // `'user.updated'` in `invalidation-graph.ts`, which also repairs the
+  // name/email/avatar staleness that predates this key version.
+  members: { prefix: 'org:members:v2', ttlSeconds: ONE_DAY },
   // v3: + userType (agent capability composition, capability layer v2 §1).
   // v4: + permissionProfileId (the human base-profile binding — doc 19 §8.1; a v3
   // blob has no `permissionProfileId` key, so every member would read as

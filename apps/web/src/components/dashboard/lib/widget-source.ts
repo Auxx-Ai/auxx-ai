@@ -17,6 +17,23 @@ export function isSystemAggregateSourceId(id: string): boolean {
 }
 
 /**
+ * Mail-content tables (client-safe mirror of `MAIL_LENS_TABLE_IDS` in
+ * `packages/lib/src/resources/picker/mail-lens-tables.ts`).
+ *
+ * A widget that lists ROWS from these is refused server-side: the metadata /
+ * subject / body gradation lives only in `mail-query/`, and the generic record
+ * path (`record.listFiltered`) applies none of it. Aggregate widgets still take
+ * `thread` / `message` — a grouped count is a different disclosure than a row
+ * list — so this is not subtracted from {@link SYSTEM_AGGREGATE_SOURCE_IDS};
+ * only the record-list source picker excludes it.
+ */
+export const MAIL_LENS_SOURCE_IDS = ['thread', 'message'] as const
+
+export function isMailLensSourceId(id: string): boolean {
+  return (MAIL_LENS_SOURCE_IDS as readonly string[]).includes(id)
+}
+
+/**
  * The resource/entity-definition id a `WidgetSource` points at — the value both
  * `FieldPicker` (`entityDefinitionId`) and `useResourceFields` key on. Same shape
  * for entity + system sources (system table ids like `'thread'` resolve through

@@ -619,6 +619,7 @@ function RecordListBody({
             hasDependentConfig={
               (config.columns?.length ?? 0) > 0 || !!config.sort || !!config.filters?.length
             }
+            excludeMailLensTables
             onSelectSource={onReset}
           />
           {source && (
