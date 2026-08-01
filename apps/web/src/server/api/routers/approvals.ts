@@ -132,7 +132,15 @@ export const approvalsRouter = createTRPCRouter({
         userId: ctx.session.userId,
       })
       if (!result.ok) {
-        const code = result.error.name === 'ConflictError' ? 'CONFLICT' : 'INTERNAL_SERVER_ERROR'
+        // FORBIDDEN means every action was blocked by the approver's own
+        // permissions — the bundle is untouched and still FRESH, so the client
+        // must keep showing it rather than treating the row as resolved.
+        const code =
+          result.error.name === 'ConflictError'
+            ? 'CONFLICT'
+            : result.error.name === 'ForbiddenError'
+              ? 'FORBIDDEN'
+              : 'INTERNAL_SERVER_ERROR'
         throw new TRPCError({ code, message: result.error.message })
       }
       return result.value

@@ -7,7 +7,6 @@ import {
   resolveAgentConfig,
   resolveAgentKnowledgeScope,
 } from '@auxx/lib/agents'
-import { type UsageTrackingRequest, UsageTrackingService } from '@auxx/lib/ai'
 import {
   AgentEngine,
   type AgentEngineConfig,
@@ -970,36 +969,12 @@ async function runInProcessPath(params: {
           userMessageMetadata ? { metadata: userMessageMetadata } : undefined
         )
 
-  const usageEntries: UsageTrackingRequest[] = []
-
+  // No usage drain here: `createCallModel` bills each LLM call as it completes
+  // (`ai/agent-framework/llm-adapter.ts`), which also covers the turns this loop
+  // abandons on `request.signal.aborted`. Draining `event.iterations` for
+  // billing again would double-charge.
   for await (const event of generator) {
     if (request.signal.aborted) break
-
-    // Per-LLM-call billing breakdown. One entry per agent iteration; restored
-    // SYSTEM-vs-CUSTOM credit gating means BYOK customers consume no credits.
-    // Drain on both `paused` and `finished` — see process-agent-job.ts for
-    // the symmetric worker-path version.
-    if (
-      (event.type === 'assistant-message-finished' || event.type === 'assistant-message-paused') &&
-      event.iterations?.length
-    ) {
-      for (const it of event.iterations) {
-        usageEntries.push({
-          organizationId,
-          userId,
-          provider: it.provider,
-          model: it.model,
-          usage: it.usage,
-          timestamp: new Date(),
-          source: 'agent',
-          sourceId: sessionId,
-          providerType: it.providerType,
-          credentialSource: it.credentialSource,
-          // creditsUsed omitted: metered from USD COGS per call (0 for BYO).
-        })
-      }
-    }
-
     send(event)
   }
 
@@ -1026,20 +1001,6 @@ async function runInProcessPath(params: {
     organizationId,
     domainState: domainStateToSave,
   })
-
-  // Batch usage tracking
-  if (usageEntries.length > 0) {
-    try {
-      const usageService = new UsageTrackingService()
-      await usageService.trackUsageBatch(usageEntries)
-    } catch (err) {
-      logger.error('Failed to track usage batch', {
-        sessionId,
-        entries: usageEntries.length,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
-  }
 
   // Auto-title new sessions after first exchange. The promise was kicked off at
   // the top of this function so its latency overlaps with the engine run.

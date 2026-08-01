@@ -4,7 +4,8 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { ToolCall, UsageMetrics } from '../clients/base/types'
 import { LLMOrchestrator } from '../orchestrator/llm-orchestrator'
-import type { LLMInvocationRequest, UsageTrackingService } from '../orchestrator/types'
+import type { LLMInvocationRequest, UsageSource, UsageTrackingService } from '../orchestrator/types'
+import { UsageTrackingService as DefaultUsageTrackingService } from '../usage/usage-tracking-service'
 import type { LLMCallParams, LLMStreamEvent } from './types'
 
 const logger = createScopedLogger('agent-llm')
@@ -13,9 +14,10 @@ export interface LLMAdapterConfig {
   organizationId: string
   userId: string
   db?: Database
+  /** Overrides the default {@link DefaultUsageTrackingService} (DI seam for tests). */
   usageService?: UsageTrackingService
-  /** Source label for usage tracking (default: 'agent') */
-  source?: string
+  /** `AiUsage.source` label for every call this adapter makes (default: 'agent'). */
+  source?: UsageSource
   sourceId?: string
   /** Default false. Forwarded to LLMInvocationRequest.forceSystem. */
   forceSystem?: boolean
@@ -24,9 +26,20 @@ export interface LLMAdapterConfig {
 /**
  * Create a callModel function that wraps LLMOrchestrator streaming.
  * This is the only file in the agent framework that knows about provider details.
+ *
+ * **It is also where streamed LLM usage is metered.** `LLMOrchestrator.invoke`
+ * records usage itself, but `streamInvoke` deliberately does not — it enforces
+ * the quota gate, hands back `usage`/`providerType`/`credentialSource`, and
+ * leaves recording to whoever consumed the stream. `streamInvoke` has exactly
+ * one caller (this file), so metering here covers every agent path by
+ * construction: kopilot, the agent worker, the customer chat widget, workflow
+ * AI turns, evals, and the headless capture runners. Runners must not drain
+ * usage themselves — that would double-bill.
  */
 export function createCallModel(config: LLMAdapterConfig) {
   const orchestrator = new LLMOrchestrator(config.usageService, config.db)
+  const usageService = config.usageService ?? new DefaultUsageTrackingService(config.db)
+  const source: UsageSource = config.source ?? 'agent'
 
   return async function* callModel(params: LLMCallParams): AsyncGenerator<LLMStreamEvent> {
     const { model, provider, messages, tools, parameters, responseFormat, signal } = params
@@ -91,6 +104,48 @@ export function createCallModel(config: LLMAdapterConfig) {
     let lastReasoningContent: string | undefined
     let lastFinishReason: string | undefined
     let lastStopReason: string | undefined
+
+    /**
+     * Write the `AiUsage` row for this call and deduct SYSTEM credits. Runs
+     * exactly once per call, from the stream loop's `finally` — so a turn that
+     * errors or is aborted mid-stream still bills the tokens it burned, which
+     * a caller-side per-turn drain could never do. Never throws: a billing
+     * failure must not take down the turn that earned it.
+     */
+    let usageRecorded = false
+    const recordUsage = async () => {
+      if (usageRecorded) return
+      usageRecorded = true
+      if (lastUsage.total_tokens <= 0) return
+      try {
+        await usageService.trackUsage({
+          organizationId: config.organizationId,
+          userId: config.userId,
+          provider,
+          model,
+          usage: lastUsage,
+          timestamp: new Date(),
+          source,
+          sourceId: config.sourceId,
+          providerType: lastProviderType as 'SYSTEM' | 'CUSTOM' | undefined,
+          credentialSource: lastCredentialSource as
+            | 'SYSTEM'
+            | 'CUSTOM'
+            | 'MODEL_SPECIFIC'
+            | 'LOAD_BALANCED'
+            | undefined,
+          // `creditsUsed` omitted: metered from real USD COGS per call (0 for BYO).
+        })
+      } catch (error) {
+        logger.error('Failed to track LLM usage', {
+          model,
+          provider,
+          source,
+          sourceId: config.sourceId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
 
     const stream = orchestrator.streamInvoke(request)
 
@@ -216,9 +271,19 @@ export function createCallModel(config: LLMAdapterConfig) {
         if (chunk.finishReason) {
           lastFinishReason = chunk.finishReason
         }
-        const chunkMeta = chunk.metadata as { stopReason?: unknown } | undefined
+        const chunkMeta = chunk.metadata as
+          | { stopReason?: unknown; providerType?: unknown; credentialSource?: unknown }
+          | undefined
         if (chunkMeta && typeof chunkMeta.stopReason === 'string') {
           lastStopReason = chunkMeta.stopReason
+        }
+        // Credential metadata from the orchestrator's synthetic gate chunk —
+        // the only way an aborted stream learns whether it spent SYSTEM credits.
+        if (chunkMeta && typeof chunkMeta.providerType === 'string') {
+          lastProviderType = chunkMeta.providerType
+        }
+        if (chunkMeta && typeof chunkMeta.credentialSource === 'string') {
+          lastCredentialSource = chunkMeta.credentialSource
         }
       }
     } catch (error) {
@@ -229,6 +294,8 @@ export function createCallModel(config: LLMAdapterConfig) {
       if (flushTimer) clearTimeout(flushTimer)
       if (reasoningFlushTimer) clearTimeout(reasoningFlushTimer)
       throw error
+    } finally {
+      await recordUsage()
     }
 
     // Yield any remaining buffered deltas

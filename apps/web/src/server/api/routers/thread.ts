@@ -828,7 +828,15 @@ export const threadRouter = createTRPCRouter({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Thread not found.' })
         }
         const { enqueueLearnedExtraction } = await import('@auxx/lib/jobs')
-        await enqueueLearnedExtraction({ organizationId, threadId, force: true })
+        // `requestedByUserId` is what makes the run possible at all: capture
+        // runs bind to a human member, and most threads have no assignee to
+        // derive one from. It also routes the proposal to this member's feed.
+        await enqueueLearnedExtraction({
+          organizationId,
+          threadId,
+          force: true,
+          requestedByUserId: userId,
+        })
         return { success: true }
       } catch (error: unknown) {
         if (error instanceof TRPCError) throw error

@@ -21,7 +21,7 @@ import {
   type GetToolDeps,
 } from '../ai/kopilot/capabilities'
 import { createMcpCapabilities } from '../ai/mcp'
-import { ConflictError, NotFoundError } from '../errors'
+import { AuxxError, ConflictError, ForbiddenError, NotFoundError } from '../errors'
 import { appendLearnedProvenance } from '../kb/learned/provenance'
 import {
   createScheduledMessage,
@@ -188,15 +188,19 @@ export async function approveBundle(
         failedIndices.add(action.localIndex)
       }
     } catch (err) {
+      // A 403 is the approver's problem, not the proposal's — record it as
+      // `blocked` so an all-blocked bundle survives for someone who can act.
+      const blocked = err instanceof AuxxError && err.statusCode === 403
       logger.error('Approval tool execution threw', {
         bundleId: bundle.id,
         toolName: action.toolName,
         localIndex: action.localIndex,
+        blocked,
         error: err instanceof Error ? err.message : String(err),
       })
       outcomes.push({
         localIndex: action.localIndex,
-        status: 'failed',
+        status: blocked ? 'blocked' : 'failed',
         error: err instanceof Error ? err.message : String(err),
       })
       failedIndices.add(action.localIndex)
@@ -224,7 +228,24 @@ export async function approveBundle(
     }
   }
 
-  // 7. Resolve terminal status.
+  // 7. All-blocked: the approver couldn't run a single action, so the bundle
+  // stays FRESH and untouched. Resolving it to REJECTED here would let a member
+  // without the rung destroy a proposal by clicking Approve — a permission
+  // failure must not consume the thing it failed to apply.
+  if (outcomes.length > 0 && outcomes.every((o) => o.status === 'blocked')) {
+    logger.warn('Approval blocked by permissions; bundle left FRESH', {
+      bundleId: bundle.id,
+      userId: args.userId,
+      actionCount: outcomes.length,
+    })
+    return Result.error(
+      new ForbiddenError(
+        outcomes[0]?.error ?? 'You do not have permission to apply this suggestion.'
+      )
+    )
+  }
+
+  // 8. Resolve terminal status.
   const successCount = outcomes.filter((o) => o.status === 'success').length
   const terminal: BundleTerminalStatus =
     successCount === outcomes.length

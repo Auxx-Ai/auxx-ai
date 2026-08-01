@@ -137,13 +137,27 @@ export type CredentialSourceType = 'SYSTEM' | 'CUSTOM' | 'MODEL_SPECIFIC' | 'LOA
 /** Provider type for tracking system vs custom credentials */
 export type ProviderTypeValue = 'SYSTEM' | 'CUSTOM'
 
-/** Source of AI usage for tracking purposes */
+/**
+ * Source of AI usage for tracking purposes — the `AiUsage.source` label every
+ * cost query groups by. The streaming agent paths take theirs from
+ * `LLMAdapterConfig.source` (see `agent-framework/llm-adapter.ts`), so a new
+ * runner that wants its own cost line adds its label here and passes it to
+ * `createCallModel`. The column itself is free-form text; this union is what
+ * keeps the vocabulary from drifting into unqueryable one-offs.
+ */
 export type UsageSource =
   | 'compose'
   | 'workflow'
+  | 'workflow_ai_node'
+  | 'workflow_ai_node_structured'
   | 'dataset'
   | 'chat'
   | 'agent'
+  | 'kopilot'
+  | 'builder'
+  | 'eval'
+  | 'learned_extraction'
+  | 'stale_scanner'
   | 'autofill'
   | 'transcription'
   | 'other'

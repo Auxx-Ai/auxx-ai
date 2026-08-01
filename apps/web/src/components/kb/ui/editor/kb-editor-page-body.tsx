@@ -10,6 +10,7 @@ import { LoadingSpinner } from '~/components/global/loading-content'
 import { useArticleList, useIsArticleListLoaded } from '../../hooks/use-article-list'
 import { useDiffParam } from '../../hooks/use-diff-param'
 import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
+import { LearnedProvenanceNote } from '../memory/learned-provenance-note'
 import { KBPreview } from '../preview/kb-preview'
 import { ArticleDiffPane } from './article-diff-pane'
 import { ArticleEditor } from './article-editor'
@@ -85,6 +86,18 @@ function KBEditorBody({ knowledgeBaseId, slug, hasArticlesLoaded }: KBEditorBody
           diffValue={diffValue}
           onClose={() => setDiff(null)}
         />
+      )
+    }
+    // AI Memory only: show which conversations taught this article before the
+    // body, so a reader can judge it (and its deletion) on its evidence.
+    if (knowledgeBase?.kind === 'learned') {
+      return (
+        <div className='flex h-full flex-col'>
+          <LearnedProvenanceNote articleId={currentArticle.id} />
+          <div className='min-h-0 flex-1'>
+            <ArticleEditor article={currentArticle} knowledgeBaseId={knowledgeBaseId} />
+          </div>
+        </div>
       )
     }
     return <ArticleEditor article={currentArticle} knowledgeBaseId={knowledgeBaseId} />

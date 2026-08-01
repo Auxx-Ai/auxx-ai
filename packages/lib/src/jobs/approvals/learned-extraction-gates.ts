@@ -27,3 +27,23 @@ export function learnedExtractionSkipReason(
   }
   return undefined
 }
+
+/** One outbound message, reduced to what the authorship gate needs. */
+export interface OutboundAuthor {
+  /** `User.userType` of the sender, or null for provider-synced sends. */
+  authorUserType: string | null
+}
+
+/**
+ * Did a human answer this thread? A thread only teaches us how *we* answer if
+ * one of us wrote the answer — and now that agents reply autonomously, the old
+ * "≥1 outbound message" proxy let the AI learn from its own replies and feed
+ * them back to itself.
+ *
+ * A null `authorUserType` counts as human: it means the message was synced from
+ * the provider (someone replied in Gmail), not sent by an agent through the app.
+ */
+export function hasHumanOutbound(outbound: readonly OutboundAuthor[]): boolean {
+  if (outbound.length === 0) return false
+  return outbound.some((m) => m.authorUserType !== 'AGENT')
+}

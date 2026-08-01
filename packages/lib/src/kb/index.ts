@@ -81,6 +81,11 @@ export {
   readKopilotSnapshot,
 } from './kopilot-snapshot'
 export {
+  diffMarkdownLines,
+  type MarkdownDiff,
+  type MarkdownDiffLine,
+} from './learned/diff-markdown'
+export {
   ensureLearnedKb,
   LEARNED_CATEGORIES,
   LEARNED_CATEGORY_KEYS,
@@ -89,6 +94,14 @@ export {
   type LearnedCategoryKey,
   type LearnedKb,
 } from './learned/ensure-learned-kb'
+export {
+  getLearnedArticleDiff,
+  type LearnedArticleDiff,
+} from './learned/get-learned-article-diff'
+export {
+  getLearnedProvenance,
+  type LearnedProvenanceSource,
+} from './learned/get-learned-provenance'
 export {
   appendLearnedProvenance,
   type LearnedProvenanceEntry,

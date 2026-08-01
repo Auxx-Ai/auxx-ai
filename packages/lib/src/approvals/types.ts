@@ -74,7 +74,14 @@ export interface HeadlessRunInput {
  */
 export interface ActionOutcome {
   localIndex: number
-  status: 'success' | 'failed' | 'skipped_dep_rejected'
+  /**
+   * `blocked` = the approver lacked a permission the tool enforces. Kept
+   * distinct from `failed` because it says nothing about the proposal: a
+   * bundle whose actions are ALL blocked stays FRESH so someone with the right
+   * rung can still approve it, instead of being consumed by the person who
+   * couldn't run it (see `approveBundle`).
+   */
+  status: 'success' | 'failed' | 'blocked' | 'skipped_dep_rejected'
   toolOutput?: Record<string, unknown>
   error?: string
 }
