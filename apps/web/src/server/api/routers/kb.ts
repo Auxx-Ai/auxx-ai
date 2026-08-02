@@ -3,7 +3,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { ArticleStatus } from '@auxx/database/enums'
-import { onCacheEvent } from '@auxx/lib/cache'
+import { getCachedUserInstanceGrants, onCacheEvent } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
 import { NotFoundError } from '@auxx/lib/errors'
 import {
@@ -14,7 +14,13 @@ import {
   KBService,
   linkArticlesIntoKb,
 } from '@auxx/lib/kb'
-import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
+import {
+  FeatureKey,
+  FeaturePermissionService,
+  PermissionKey,
+  satisfiesRung,
+} from '@auxx/lib/permissions'
+import { getThreadLensBatch } from '@auxx/lib/permissions/visibility'
 import { TRPCError } from '@trpc/server'
 import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -236,6 +242,17 @@ export const knowledgeBaseRouter = createTRPCRouter({
       // Read-only over an article the viewer can already see in the memory
       // editor; the Read rung is the right bar.
       ctx.capabilities.assert(PermissionKey.knowledgeBaseView)
+      // …but the area rung alone is NOT the bar: `articleId` is caller-supplied
+      // and unconstrained to the learned KB, and `markdown: ''` renders the
+      // target's entire published body as removed diff lines. That makes this a
+      // full-content read of ANY article in the org. Gate the article's home KB
+      // exactly as `kb.getArticleById` does.
+      const knowledgeBaseId = await knowledgeBaseIdForArticle(
+        ctx.db,
+        input.articleId,
+        organizationId
+      )
+      ctx.capabilities.assertViewInstance('kb', knowledgeBaseId)
       return getLearnedArticleDiff(ctx.db, {
         organizationId,
         articleId: input.articleId,
@@ -247,6 +264,15 @@ export const knowledgeBaseRouter = createTRPCRouter({
    * The conversations a memory article was learned from — the reader for
    * `Article.learnedProvenance`. Answers "why does the AI believe this?", which
    * is the question anyone asks before deleting a memory.
+   *
+   * Two gates, because this crosses two authorities. The article's home KB
+   * decides whether the viewer may ask the question at all (`articleId` is
+   * caller-supplied and not constrained to the learned KB). The **mail lens**
+   * then decides how much of each cited conversation comes back: a thread's
+   * subject line is `identity`-tier (`permissions/visibility/lens.ts`), so a
+   * viewer below that rung gets the entry with a `null` subject — the same
+   * shape the UI already renders for a conversation that no longer exists.
+   * KB access is never a licence to read mail.
    */
   learnedProvenance: capabilityProcedure
     .input(z.object({ articleId: z.string() }))
@@ -259,7 +285,32 @@ export const knowledgeBaseRouter = createTRPCRouter({
         })
       }
       ctx.capabilities.assert(PermissionKey.knowledgeBaseView)
-      return getLearnedProvenance(ctx.db, { organizationId, articleId: input.articleId })
+      const knowledgeBaseId = await knowledgeBaseIdForArticle(
+        ctx.db,
+        input.articleId,
+        organizationId
+      )
+      ctx.capabilities.assertViewInstance('kb', knowledgeBaseId)
+
+      const sources = await getLearnedProvenance(ctx.db, {
+        organizationId,
+        articleId: input.articleId,
+      })
+      if (sources.length === 0) return sources
+
+      const viewer = await getCachedUserInstanceGrants(ctx.session.user.id, organizationId)
+      const lenses = await getThreadLensBatch(
+        ctx.db,
+        organizationId,
+        viewer,
+        sources.map((s) => s.threadId)
+      )
+      return sources.map((source) => ({
+        ...source,
+        subject: satisfiesRung(lenses.get(source.threadId) ?? 'none', 'identity')
+          ? source.subject
+          : null,
+      }))
     }),
 
   create: capabilityProcedure.input(kbCreateSchema).mutation(async ({ ctx, input }) => {
