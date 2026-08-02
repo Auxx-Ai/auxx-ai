@@ -663,7 +663,9 @@ export default function OrganizationDetailsPage() {
                               <TableCell className='py-2'>
                                 <Badge
                                   variant={
-                                    org.subscription.status === 'ACTIVE' ? 'default' : 'outline'
+                                    org.subscription.status.toLowerCase() === 'active'
+                                      ? 'default'
+                                      : 'outline'
                                   }
                                   className='uppercase text-xs'>
                                   {org.subscription.status}

@@ -416,12 +416,10 @@ export function SubscriptionManagementSection({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value='active'>Active</SelectItem>
-                      <SelectItem value='ACTIVE'>ACTIVE</SelectItem>
-                      <SelectItem value='canceled'>Canceled</SelectItem>
+                      <SelectItem value='trialing'>Trialing</SelectItem>
                       <SelectItem value='past_due'>Past Due</SelectItem>
                       <SelectItem value='incomplete'>Incomplete</SelectItem>
-                      <SelectItem value='trialing'>Trialing</SelectItem>
-                      <SelectItem value='TRIALING'>TRIALING</SelectItem>
+                      <SelectItem value='canceled'>Canceled</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
