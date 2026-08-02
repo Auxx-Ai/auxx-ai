@@ -24,4 +24,10 @@ export type OrganizationMemberError =
       message: string
       organizationId: string
     }
+  | {
+      code: 'ORG_DISABLED'
+      message: string
+      organizationId: string
+      disabledReason: string | null
+    }
   | DatabaseError
