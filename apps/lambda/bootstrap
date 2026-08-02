@@ -2,9 +2,21 @@
 set -euo pipefail
 
 # AWS Lambda Runtime Interface for Deno
+#
+# UNVERIFIED PATH. This interpreted entry point is not how the service is deployed
+# — production is Railway via Dockerfile.server (a compiled binary). It is kept in
+# sync with the permission set only so it cannot silently drift (plan D15).
+#
+# --allow-run is scoped to the deno executable because this variant has no compiled
+# runner to exec; sandbox/spawn.ts falls back to `deno run src/sandbox/runner.ts`.
+# That fallback is refused when NODE_ENV=production (it fails closed rather than
+# accept command-line permissions as the boundary), so running untrusted code from
+# THIS entry point in production requires compiling a runner and pointing
+# LAMBDA_RUNNER_PATH at it.
 exec deno run \
   --allow-net \
   --allow-env \
   --allow-read=/var/task,/tmp \
+  --allow-run=deno \
   --no-check \
   /var/task/src/index.ts

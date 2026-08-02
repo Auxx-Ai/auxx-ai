@@ -24,11 +24,19 @@ COPY apps/lambda/deno.json ./deno.json
 EXPOSE 3008
 
 # Development server with hot reload
+# --allow-run is UNSCOPED here and only here. This image keeps hot reload, so there
+# is no compiled runner to point at — sandbox/spawn.ts falls back to spawning
+# `deno run` with the permission flags on the command line. The production image
+# (Dockerfile.server) bakes those permissions into a compiled binary and scopes the
+# parent to --allow-run=/runner. Do not copy this line into a deployed build.
+ENV LAMBDA_SANDBOX_DEV_RUNNER=1
+
 CMD ["deno", "run", \
      "--watch", \
      "--allow-net", \
      "--allow-env", \
      "--allow-read=/app,/bundles", \
      "--allow-sys", \
+     "--allow-run", \
      "--no-check", \
      "src/dev-server.ts"]
