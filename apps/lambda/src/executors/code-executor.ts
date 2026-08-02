@@ -172,7 +172,7 @@ async function executeJavaScript(
   // between macrotasks, so `while(true){}` holds the isolate and the timer never
   // fires. Killing a runaway needs the child process of Phase B. The timer is
   // cleared below so a completed execution does not leave one pending.
-  let timeoutId: number | undefined
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(
       () => reject(new Error(`Code execution timeout after ${timeout}ms`)),
