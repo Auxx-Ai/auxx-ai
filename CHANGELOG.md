@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.195](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.194...auxx-v0.1.195) (2026-08-02)
+
+
+### Features
+
+* **permissions:** articles inherit their knowledge base's grants ([#1501](https://github.com/Auxx-Ai/auxx-ai/issues/1501)) ([76b51a8](https://github.com/Auxx-Ai/auxx-ai/commit/76b51a84c7a61240df3715319086180c546eb1ed))
+
+
+### Bug Fixes
+
+* fail closed when callback auth is not configured ([#1503](https://github.com/Auxx-Ai/auxx-ai/issues/1503)) ([ac74460](https://github.com/Auxx-Ai/auxx-ai/commit/ac744605b884abebc45220d96ba7566f552e01f1))
+* **kb:** autosize article title and description fields ([#1497](https://github.com/Auxx-Ai/auxx-ai/issues/1497)) ([c05d8a7](https://github.com/Auxx-Ai/auxx-ai/commit/c05d8a7a3c92dde34dbcf4aeccb809bcc75f4da8))
+* **kb:** gate preview routes and learned-memory readers on kb access ([#1499](https://github.com/Auxx-Ai/auxx-ai/issues/1499)) ([607065e](https://github.com/Auxx-Ai/auxx-ai/commit/607065e3e8d6b98e96583773c814ff4f59eb261a))
+* remove ambient secrets from the code-execution sandbox ([#1502](https://github.com/Auxx-Ai/auxx-ai/issues/1502)) ([2e1a99a](https://github.com/Auxx-Ai/auxx-ai/commit/2e1a99a77950bf4cf99892a3b6b3262c45ff3aab))
+* require org membership for dev app installs ([#1498](https://github.com/Auxx-Ai/auxx-ai/issues/1498)) ([b7d2a40](https://github.com/Auxx-Ai/auxx-ai/commit/b7d2a40bce06e5bf4c5ecfa75545da097fd943fb))
+* **search:** gate participant lookup and drop a phantom column ([#1500](https://github.com/Auxx-Ai/auxx-ai/issues/1500)) ([93461d8](https://github.com/Auxx-Ai/auxx-ai/commit/93461d855fe7dc300781995cd54749b0b837a81b))
+* unblock record hydration for kb/dataset and fix audit sessionId ([#1495](https://github.com/Auxx-Ai/auxx-ai/issues/1495)) ([982c6ba](https://github.com/Auxx-Ai/auxx-ai/commit/982c6ba5ec7ac1241e33398a4e9f43d62c2bf1a2))
+
 ## [0.1.194](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.193...auxx-v0.1.194) (2026-08-01)
 
 
