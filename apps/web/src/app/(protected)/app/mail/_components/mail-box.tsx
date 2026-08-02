@@ -60,6 +60,7 @@ import { ThreadNavToolbar } from '~/components/mail/thread-nav-toolbar'
 import { NestedThreadProvider } from '~/components/mail/thread-provider'
 import type { ThreadsFilterInput } from '~/components/mail/types'
 import { MailFilterRetroactivePrompt } from '~/components/mail-filters/ui/mail-filter-retroactive-prompt'
+import { MailSuggestionsToolbarButton } from '~/components/mail-suggestions/ui/mail-suggestions-toolbar-button'
 import { ParticipantDrawer } from '~/components/participants/drawer/participant-drawer'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import {
@@ -613,6 +614,11 @@ function MailboxInner({
                       <span className='hidden sm:inline'>List</span>
                     </RadioTabItem>
                   </RadioTab>
+                  {/* Mined mail suggestions (03-suggestions-plan §8.1) — a
+                    doorway to the Approvals tab, never a list of its own.
+                    Renders nothing when there is nothing to answer, and stands
+                    down while the retroactive prompt below is asking. */}
+                  <MailSuggestionsToolbarButton />
                 </div>
               </div>
             </div>

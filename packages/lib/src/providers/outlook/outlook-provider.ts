@@ -20,7 +20,7 @@ import {
   MessageStorageService,
   type ParticipantInputData, // Use this for participant info
 } from '../../email/email-storage' // Adjust path
-import { pickMachineMailHeaders } from '../../ingest/filtering/machine-mail'
+import { pickPersistedHeaders } from '../../ingest/filtering/persisted-headers'
 // Named `deriveTextFromHtml`, not `htmlToPlainText`, on purpose: `@auxx/utils`
 // (imported above) exports an `htmlToPlainText` that is a naive regex chain — it
 // strips tags but leaves <style>/<script> CONTENTS inline and mangles tables.
@@ -888,13 +888,15 @@ export class OutlookProvider
           // send→reply round-trip (Microsoft's own guidance is never to thread on
           // it), so these are what keep a forked conversation in one thread.
           const threading = pickThreadingHeaders(message.internetMessageHeaders)
-          const machineMailHeaders = pickMachineMailHeaders(message.internetMessageHeaders)
+          // Machine-mail detection + bulk-sender identity (suggestions plan §2.2),
+          // merged by the shared picker.
+          const allowlistedHeaders = pickPersistedHeaders(message.internetMessageHeaders)
           // Stays `undefined` when nothing matched, exactly as before — do not
           // collapse this to a bare `{...a, ...b}`, which would start persisting an
           // empty `headers: {}` on every header-less message.
           const persistedHeaders =
-            machineMailHeaders || threading.inReplyTo || threading.references
-              ? { ...machineMailHeaders, ...threading }
+            allowlistedHeaders || threading.inReplyTo || threading.references
+              ? { ...allowlistedHeaders, ...threading }
               : undefined
 
           // Construct MessageData

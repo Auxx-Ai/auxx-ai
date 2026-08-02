@@ -3,7 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import type { ImapFlow } from 'imapflow'
 import PostalMime from 'postal-mime'
-import { pickMachineMailHeaders } from '../../ingest/filtering/machine-mail'
+import { pickPersistedHeaders } from '../../ingest/filtering/persisted-headers'
 import type { ParsedEmail } from './types'
 
 const logger = createScopedLogger('imap-parser')
@@ -44,7 +44,7 @@ export class ImapMessageParserService {
         messageId: parsed.messageId || undefined,
         inReplyTo: parsed.inReplyTo || undefined,
         references: parsed.headers?.find((h) => h.key === 'references')?.value || undefined,
-        headers: pickMachineMailHeaders(parsed.headers),
+        headers: pickPersistedHeaders(parsed.headers),
         date: parsed.date || undefined,
         subject: parsed.subject || undefined,
         from: parsed.from

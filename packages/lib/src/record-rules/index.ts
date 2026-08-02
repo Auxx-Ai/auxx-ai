@@ -31,6 +31,7 @@ export {
 } from './seed-suggested-rules'
 export { fetchResourceSnapshots } from './snapshot-fetcher'
 export {
+  assertRecordRuleDefSupported,
   assertRuleShape,
   createManagedRecordRule,
   createRecordRule,

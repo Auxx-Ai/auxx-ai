@@ -315,6 +315,10 @@ function dispatchConditionQuery(
       return withScope(buildSubjectQuery(op, value), scopes.subject)
     case 'body':
       return withScope(buildBodyQuery(op, value), scopes.body)
+    case 'list':
+      return buildListQuery(op, value)
+    case 'senderDomain':
+      return buildSenderDomainQuery(op, value)
     case 'before':
       return buildBeforeQuery(op, value)
     case 'after':
@@ -908,6 +912,141 @@ function buildBodyQuery(operator: Operator, value: any): SQL<unknown> | null {
     default:
       return null
   }
+}
+
+/**
+ * `exists (select 1 from "Message" where "Message"."threadId" = "Thread"."id"
+ * and <match>)` — the correlated shape every message-backed condition uses.
+ *
+ * ⚠️ The predicate belongs in the WHERE position and nowhere else (mail-filters
+ * invariant 6): a Drizzle `Column` placed in a single-table SELECT projection
+ * loses its table qualifier, so the correlation silently becomes a self-join and
+ * the condition fails closed. The projection here is a literal `1` for exactly
+ * that reason.
+ */
+function messageExists(match: SQL<unknown>): SQL<unknown> {
+  const { Message } = schema
+  return exists(
+    db
+      .select({ id: sql`1` })
+      .from(Message)
+      .where(and(eq(Message.threadId, Thread.id), match))
+  )
+}
+
+/** First usable string in `value` (arrays take element 0); blank → null. */
+function firstText(value: unknown): string | null {
+  const raw = Array.isArray(value) ? value[0] : value
+  if (raw === null || raw === undefined) return null
+  const text = String(raw).trim()
+  return text === '' ? null : text
+}
+
+/** Every usable string in `value`, blanks removed. */
+function textList(value: unknown): string[] {
+  const raw = Array.isArray(value) ? value : [value]
+  const out: string[] = []
+  for (const item of raw) {
+    if (item === null || item === undefined) continue
+    const text = String(item).trim()
+    if (text !== '') out.push(text)
+  }
+  return out
+}
+
+/**
+ * Build a condition over a normalized (lowercased at ingest) text column on
+ * `Message`, as a correlated `exists(...)` scoped to the outer `Thread`.
+ *
+ * **Handles the COMPLETE `FieldType.TEXT` operator set** — `is`, `is not`,
+ * `contains`, `not contains`, `starts with`, `ends with`, `in`, `not in`,
+ * `empty`, `not empty` — because that is exactly what
+ * `getOperatorsForFieldType(FieldType.TEXT)` offers for the `list` /
+ * `senderDomain` field definitions. A gap between the two sets is not a missing
+ * feature: an unhandled operator is DROPPED silently, and a filter whose every
+ * condition drops reduces to the bare org scope, i.e. matches every thread in
+ * the inbox (mail-filters invariant 19 — the `Body starts with` bug).
+ *
+ * Equality (`is` / `in`) lowercases the needle and compares with `=` rather than
+ * `ILIKE`: the stored value is already normalized, and `=` is what lets the
+ * partial `("listId","threadId")` index serve the subquery. The substring
+ * operators use `ILIKE`, which is case-insensitive on its own.
+ *
+ * `empty` / `not empty` are about the THREAD: "not empty" means at least one of
+ * its messages carries a value, "empty" means none does.
+ */
+function buildMessageTextColumnQuery(
+  operator: Operator,
+  value: unknown,
+  column: AnyPgColumn
+): SQL<unknown> | null {
+  const hasValue = and(isNotNull(column), not(eq(column, '')))!
+
+  switch (operator) {
+    case 'is': {
+      const needle = firstText(value)
+      return needle ? messageExists(eq(column, needle.toLowerCase())) : null
+    }
+    case 'is not': {
+      const needle = firstText(value)
+      return needle ? not(messageExists(eq(column, needle.toLowerCase()))) : null
+    }
+    case 'in': {
+      const needles = textList(value).map((v) => v.toLowerCase())
+      return needles.length > 0 ? messageExists(inArray(column, needles)) : null
+    }
+    case 'not in': {
+      const needles = textList(value).map((v) => v.toLowerCase())
+      return needles.length > 0 ? not(messageExists(inArray(column, needles))) : null
+    }
+    case 'contains': {
+      const needle = firstText(value)
+      return needle ? messageExists(ilike(column, `%${needle}%`)) : null
+    }
+    case 'not contains': {
+      const needle = firstText(value)
+      return needle ? not(messageExists(ilike(column, `%${needle}%`))) : null
+    }
+    case 'starts with': {
+      const needle = firstText(value)
+      return needle ? messageExists(ilike(column, `${needle}%`)) : null
+    }
+    case 'ends with': {
+      const needle = firstText(value)
+      return needle ? messageExists(ilike(column, `%${needle}`)) : null
+    }
+    case 'empty':
+      return not(messageExists(hasValue))
+    case 'not empty':
+      return messageExists(hasValue)
+    default:
+      return null
+  }
+}
+
+/**
+ * Build the `list` condition — the normalized `List-Id` of any message in the
+ * thread (`Message.listId`).
+ *
+ * This is the STABLE bulk-mail identity: it survives VERP and per-campaign
+ * from-addresses, which fragment any grouping keyed on the sender address
+ * (suggestions plan §1.1, S7). Kept separate from `senderDomain` on purpose.
+ */
+function buildListQuery(operator: Operator, value: unknown): SQL<unknown> | null {
+  const { Message } = schema
+  return buildMessageTextColumnQuery(operator, value, Message.listId)
+}
+
+/**
+ * Build the `senderDomain` condition — the registrable domain of the sender
+ * address of any message in the thread (`Message.senderDomain`).
+ *
+ * "All mail from acme.com" in one condition, without the `from contains` false
+ * positives that any substring match on an address invites.
+ */
+function buildSenderDomainQuery(operator: Operator, value: unknown): SQL<unknown> | null {
+  const { Message } = schema
+  return buildMessageTextColumnQuery(operator, value, Message.senderDomain)
 }
 
 /**

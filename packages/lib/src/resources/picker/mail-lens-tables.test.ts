@@ -19,6 +19,7 @@ vi.mock('../../cache', async (importOriginal) => {
   return { ...actual, getCachedResources }
 })
 
+import { isSystemResourceId } from '../registry'
 import { isMailLensTableId, MAIL_LENS_TABLE_IDS } from './mail-lens-tables'
 import { RecordPickerService } from './record-picker-service'
 
@@ -51,6 +52,25 @@ describe('mail-lens table ids', () => {
     expect(isMailLensTableId('thread')).toBe(true)
     expect(isMailLensTableId('message')).toBe(true)
     expect(isMailLensTableId('participant')).toBe(false)
+  })
+
+  /**
+   * The record-type pickers that must not offer mail content (the record-rule
+   * dialog, dashboards, data-connector mappings, inventory sources) all filter on
+   * `entityDefinedOnly && isSystemResource(r)`, i.e. `r.type === 'system'` — and
+   * `type: 'system'` is set for exactly the ids in `RESOURCE_TABLE_REGISTRY`.
+   *
+   * So membership here IS the picker exclusion. Moving `thread` or `message` into
+   * `ENTITY_DEFINITION_TYPES` would drop it out of that registry and turn the
+   * per-org `EntityDefinition` row (one exists for `thread` in every org) into a
+   * pickable "Threads" record type overnight. This assertion fails first if that
+   * ever happens; the server refusal in `record-rules/store.ts` is what catches it
+   * if it does.
+   */
+  it('are system registry tables, which is what keeps them out of the record pickers', () => {
+    for (const id of MAIL_LENS_TABLE_IDS) {
+      expect(isSystemResourceId(id)).toBe(true)
+    }
   })
 })
 

@@ -2276,6 +2276,13 @@
       "when": 1785640837720,
       "tag": "0324_mail_filters",
       "breakpoints": true
+    },
+    {
+      "idx": 325,
+      "version": "7",
+      "when": 1785650461628,
+      "tag": "0325_mail_bulk_sender_and_suggestions",
+      "breakpoints": true
     }
   ]
 }

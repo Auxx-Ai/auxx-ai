@@ -22,6 +22,8 @@ import {
   invoiceDraftsJob,
   type JobHandler,
   mailCountsReconcileJob,
+  mailSuggestionsJob,
+  mailUnsubscribeSweepJob,
   mcpToolsResyncJob,
   nextActionStaleScannerJob,
   type OrgSeedJobData,
@@ -243,6 +245,18 @@ const jobMappings = {
   // `source: 'retroactive'` — so the backfill is auditable and undoable, and its
   // claim key never collides with the live firing on the same message.
   mailFilterRetroactiveApplyJob,
+
+  // Weekly mail-suggestion mining (plans/mail-filter/03-suggestions-plan.md §5.1):
+  // per org → per inbox → ONE indexed grouped query over a 90-day window, then the
+  // thresholds and the four suppression rules. Also sweeps `new` suggestions older
+  // than 90 days; `dismissed` rows persist forever because they ARE the suppression
+  // list (invariant 7).
+  mailSuggestionsJob,
+
+  // Daily unsubscribe-ignored sweep (plan §6.4): counts mail that kept arriving
+  // from a `subjectKey` we already unsubscribed from, so "Stripe ignored your
+  // unsubscribe — 6 more since. Filter it?" is answerable.
+  mailUnsubscribeSweepJob,
 
   // Signals substrate (plans/signals/01-signal-store.md "Retention" / "Rollups"):
   // nightly high-volume EntitySignal prune (180d) + EntitySignalRollup *Count30d decay sweep.

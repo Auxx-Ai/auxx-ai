@@ -7,6 +7,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import { collectConditionFieldIds } from '../conditions/collect-field-ids'
 import type { ConditionGroup } from '../conditions/types'
 import { BadRequestError, NotFoundError } from '../errors'
+import { isMailLensTableId } from '../resources/picker/mail-lens-tables'
 import { isSignalKind, isSignalPseudoFieldId } from '../signals/client'
 import type {
   CachedRecordRule,
@@ -28,6 +29,29 @@ export interface RecordRuleInput {
   enabled?: boolean
   /** Managed-feature marker. Set (non-null) ⇔ the row is feature-provisioned + native-capable. */
   managed?: 'inventory' | null
+}
+
+/**
+ * Reject a rule aimed at mail content (`thread` / `message`).
+ *
+ * Both are registered system resource TABLES, not `EntityDefinition`s — they have
+ * no `EntityInstance` rows, so neither record-rule door can ever reach them: the
+ * field-change hook fires from `EntityInstance` field writes, and the lifecycle
+ * consumer keys off `<def>:created|deleted` bus events. A rule saved against one
+ * is permanently silent — no error, just nothing.
+ *
+ * The record-type picker already refuses them (they are `type: 'system'` resources
+ * and the picker runs with `entityDefinedOnly`), but a picker is not a gate: the
+ * router's `entityDefinitionId` is a bare `z.string()`, so this is the only thing
+ * standing between a hand-made call and a dead rule. Mail-side automation is what
+ * mail filters are for.
+ */
+export function assertRecordRuleDefSupported(entityDefinitionId: string): void {
+  if (isMailLensTableId(entityDefinitionId)) {
+    throw new BadRequestError(
+      `Record rules cannot target '${entityDefinitionId}' — threads and messages are not records, so the rule could never fire. Use a mail filter instead.`
+    )
+  }
 }
 
 /**
@@ -122,6 +146,7 @@ export async function createRecordRule(
   input: RecordRuleInput,
   createdByUserId?: string
 ) {
+  assertRecordRuleDefSupported(input.entityDefinitionId)
   assertRuleShape(input)
   const [row] = await db
     .insert(schema.RecordRule)
@@ -191,6 +216,13 @@ export async function updateRecordRule(
   ruleId: string,
   input: Partial<RecordRuleInput>
 ) {
+  // Only the INCOMING def is validated: re-pointing a rule at mail content is the
+  // write this closes. Validating `existing` too would strand a legacy row — a
+  // plain `setEnabled` (which sends no def) could no longer even disable it.
+  if (input.entityDefinitionId !== undefined) {
+    assertRecordRuleDefSupported(input.entityDefinitionId)
+  }
+
   const [existing] = await db
     .select()
     .from(schema.RecordRule)

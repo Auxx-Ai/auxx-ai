@@ -760,6 +760,24 @@
       "import": "./dist/mail-schedule/index.mjs",
       "default": "./src/mail-schedule/index.ts"
     },
+    "./mail-suggestions": {
+      "types": "./src/mail-suggestions/index.ts",
+      "source": "./src/mail-suggestions/index.ts",
+      "import": "./dist/mail-suggestions/index.mjs",
+      "default": "./src/mail-suggestions/index.ts"
+    },
+    "./mail-suggestions/client": {
+      "types": "./src/mail-suggestions/client.ts",
+      "source": "./src/mail-suggestions/client.ts",
+      "import": "./dist/mail-suggestions/client.mjs",
+      "default": "./src/mail-suggestions/client.ts"
+    },
+    "./mail-unsubscribe": {
+      "types": "./src/mail-unsubscribe/index.ts",
+      "source": "./src/mail-unsubscribe/index.ts",
+      "import": "./dist/mail-unsubscribe/index.mjs",
+      "default": "./src/mail-unsubscribe/index.ts"
+    },
     "./mail-views": {
       "types": "./src/mail-views/index.ts",
       "source": "./src/mail-views/index.ts",

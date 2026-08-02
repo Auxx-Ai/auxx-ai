@@ -10,6 +10,15 @@ export {
 } from './expired-trial-account-cleanup-job'
 export { generateThumbnailJob } from './generate-thumbnail-job'
 export { type GettingStartedStats, sendGettingStartedEmailsJob } from './getting-started-job'
+export {
+  MAIL_SUGGESTIONS_JOB_NAME,
+  type MailSuggestionsJobData,
+  type MailSuggestionsJobStats,
+  mailSuggestionsJob,
+} from './mail-suggestions-job'
+// Daily unsubscribe sweep — detects senders that ignored an unsubscribe request
+// (`MailUnsubscribe.lastSeenAfterAt` / `messagesSeenAfter`, plan §6.4).
+export { mailUnsubscribeSweepJob } from './mail-unsubscribe-sweep-job'
 export { cleanupExpiredMediaAssetsJob, getMediaAssetCleanupStats } from './media-asset-cleanup-job'
 export { type MidTrialStats, sendMidTrialEmailsJob } from './mid-trial-job'
 export { oauth2TokenRefreshScannerJob } from './oauth2-token-refresh-scanner-job'

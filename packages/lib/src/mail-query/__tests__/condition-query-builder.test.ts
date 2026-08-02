@@ -1,9 +1,16 @@
 // packages/lib/src/mail-query/__tests__/condition-query-builder.test.ts
 
+import { database, schema } from '@auxx/database'
 import type { Rung } from '@auxx/database/enums'
+import type { SQL } from 'drizzle-orm'
 import { PgDialect } from 'drizzle-orm/pg-core'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, type Mock } from 'vitest'
+import {
+  getOperatorsForFieldType,
+  type OperatorDefinition,
+} from '../../conditions/operator-definitions'
 import type { ConditionGroup } from '../../conditions/types'
+import { getMailViewFieldDefinition } from '../../mail-views/mail-view-field-definitions'
 import type { UserInstanceGrants } from '../../permissions/visibility/context'
 import { THREAD_GRANT_DEF } from '../../permissions/visibility/context'
 import {
@@ -364,5 +371,245 @@ describe('free text — ranked, index-backed predicate (step 3.1 / R2b)', () => 
     const sqlText = freeTextSql('refund')
 
     expect(sqlText.match(/to_tsvector\('english'/g)).toHaveLength(2)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `list` / `senderDomain` — the bulk-mail identity conditions
+//
+// Both are backed by columns on `Message` (`listId`, `senderDomain`, derived at
+// ingest from headers), so both compile to a correlated `exists(...)` over
+// `Message` scoped to the outer `Thread` — the `buildBodyQuery` /
+// `buildToQuery` shape.
+//
+// 🔴 The parity suite is the load-bearing one. `MAIL_VIEW_FIELD_DEFINITIONS`
+// declares no operator list of its own: the condition editor derives it from the
+// field's `fieldType`. So the set the UI offers IS `getOperatorsForFieldType(...)`,
+// and every member of it must dispatch. An operator the builder has no case for
+// is dropped silently, and a filter whose every condition drops reduces to the
+// bare org scope — it matches every thread in the inbox, and `set-status: SPAM`
+// then marks the whole mailbox spam (mail-filters invariant 19, the
+// `Body starts with` bug).
+//
+// The subquery itself is NOT rendered under Vitest: `database.select()` is a
+// chainable `vi.fn` (src/test/setup.ts), so `exists(...)` binds the builder
+// object as a parameter and the whole subquery collapses to `exists $n`. Its
+// shape is therefore asserted on the mock — which table it reads, that it joins
+// nothing, what it projects, and the WHERE clause it was handed (a real Drizzle
+// `SQL`, since only the query builder is mocked, not `and`/`eq`/`ilike`).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const MESSAGE_BACKED_FIELDS = ['list', 'senderDomain'] as const
+
+/** The operators the condition editor offers for a field, as it derives them. */
+function offeredOperators(fieldId: string): OperatorDefinition[] {
+  const field = getMailViewFieldDefinition(fieldId)
+  if (!field) throw new Error(`${fieldId} is not in MAIL_VIEW_FIELD_DEFINITIONS`)
+  return getOperatorsForFieldType(field.fieldType)
+}
+
+/** A value shaped the way the editor would submit it for `operator`. */
+function sampleValue(operator: OperatorDefinition): unknown {
+  if (operator.valueType === 'none') return undefined
+  if (operator.valueType === 'multiple') return ['news.acme.com', 'deals.acme.com']
+  return 'news.acme.com'
+}
+
+function buildOne(fieldId: string, operator: string, value: unknown) {
+  return buildConditionGroupsQueryWithDiagnostics(
+    group([{ id: 'c1', fieldId, operator, value } as ConditionGroup['conditions'][number]]),
+    'organization-1',
+    viewer()
+  )
+}
+
+/**
+ * Build one condition and hand back the correlated subquery the builder opened,
+ * as observed on the mocked query builder.
+ */
+function buildWithSubquery(fieldId: string, operator: string, value: unknown) {
+  const select = database.select as unknown as Mock
+  select.mockClear()
+
+  const result = buildOne(fieldId, operator, value)
+
+  // Exactly one subquery: the base scope opens none for this viewer.
+  expect(select).toHaveBeenCalledTimes(1)
+  const chain = select.mock.results[0]?.value
+  return {
+    result,
+    sqlText: toSql(result.sql),
+    /** The projection handed to `select(...)`. */
+    projection: select.mock.calls[0]?.[0] as Record<string, SQL<unknown>>,
+    /** The table handed to `.from(...)`. */
+    table: chain.from.mock.calls[0]?.[0],
+    /** The predicate handed to `.where(...)`. */
+    where: chain.where.mock.calls[0]?.[0] as SQL<unknown>,
+    chain,
+  }
+}
+
+describe('list / senderDomain — the offered operator set is exactly the handled one', () => {
+  it('offers the full FieldType.TEXT string set on both fields', () => {
+    // Pinned literally: an operator that newly gains `FieldType.TEXT` support
+    // widens what the UI offers, and this is where that has to be noticed —
+    // the builder needs a case for it in the same change.
+    const expected = [
+      'is',
+      'is not',
+      'contains',
+      'not contains',
+      'starts with',
+      'ends with',
+      'in',
+      'not in',
+      'empty',
+      'not empty',
+    ]
+
+    for (const fieldId of MESSAGE_BACKED_FIELDS) {
+      expect(offeredOperators(fieldId).map((op) => op.key)).toEqual(expected)
+    }
+  })
+
+  for (const fieldId of MESSAGE_BACKED_FIELDS) {
+    it(`compiles every operator \`${fieldId}\` offers — nothing dropped`, () => {
+      const operators = offeredOperators(fieldId)
+      expect(operators.length).toBeGreaterThan(0)
+
+      for (const operator of operators) {
+        const result = buildOne(fieldId, operator.key, sampleValue(operator))
+
+        // Keyed by operator so a failure names the one that doesn't compile.
+        expect({ operator: operator.key, dropped: result.droppedConditions }).toEqual({
+          operator: operator.key,
+          dropped: [],
+        })
+        expect(result.allConditionsDropped).toBe(false)
+        // The clause must actually narrow — collapsing to the base scope is the
+        // precise fail-open this suite exists to prevent.
+        expect(toSql(result.sql)).not.toBe(baseScopeSql())
+      }
+    })
+  }
+})
+
+describe('list / senderDomain — correlated exists over Message, never a join', () => {
+  for (const fieldId of MESSAGE_BACKED_FIELDS) {
+    it(`reads \`Message\` through a correlated subquery for \`${fieldId}\``, () => {
+      const built = buildWithSubquery(fieldId, 'is', 'news.acme.com')
+
+      expect(built.table).toBe(schema.Message)
+      expect(built.sqlText).toMatch(/\bexists \$\d+/)
+      // One table, no join — the `buildBodyQuery` shape, not `buildToQuery`'s.
+      expect(built.chain.innerJoin).not.toHaveBeenCalled()
+      expect(built.chain.leftJoin).not.toHaveBeenCalled()
+    })
+
+    it(`keeps the predicate in the WHERE position for \`${fieldId}\``, () => {
+      // 🔴 Invariant 6. A Drizzle `Column` in a single-table SELECT projection
+      // loses its table qualifier, so the correlation silently becomes a
+      // self-join and the condition fails closed. The projection is therefore a
+      // literal `1`, and every column comparison lives in `.where(...)`.
+      const built = buildWithSubquery(fieldId, 'contains', 'acme')
+
+      expect(Object.keys(built.projection)).toEqual(['id'])
+      expect(toSql(built.projection.id as SQL<unknown>)).toBe('1')
+      expect(toSql(built.where)).toMatch(/ilike/i)
+      expect(toParams(built.where)).toContain('%acme%')
+    })
+  }
+})
+
+describe('list / senderDomain — operator semantics', () => {
+  it('lowercases the needle for `is`, matching the value normalized at ingest', () => {
+    const params = toParams(buildWithSubquery('list', 'is', 'News.ACME.com').where)
+
+    expect(params).toContain('news.acme.com')
+    expect(params).not.toContain('News.ACME.com')
+  })
+
+  it('lowercases every needle for `in`', () => {
+    const built = buildWithSubquery('list', 'in', ['News.ACME.com', 'Deals.ACME.com'])
+
+    expect(toSql(built.where)).toMatch(/ in \(/i)
+    expect(toParams(built.where)).toContain('news.acme.com')
+    expect(toParams(built.where)).toContain('deals.acme.com')
+  })
+
+  it('compares `is` with `=` so the partial (listId, threadId) index can serve it', () => {
+    // `ilike` here would make that index useless — and the index exists
+    // specifically for this subquery (suggestions plan §1.1).
+    const built = buildWithSubquery('list', 'is', 'news.acme.com')
+
+    expect(toSql(built.where)).not.toMatch(/ilike/i)
+    expect(toSql(built.where)).toMatch(/= \$\d+/)
+  })
+
+  it('uses ILIKE — not `=` — for the substring operators', () => {
+    for (const operator of ['contains', 'not contains', 'starts with', 'ends with']) {
+      expect(toSql(buildWithSubquery('senderDomain', operator, 'ACME').where)).toMatch(/ilike/i)
+    }
+  })
+
+  it('anchors `starts with` / `ends with` on the right side', () => {
+    expect(toParams(buildWithSubquery('senderDomain', 'starts with', 'acme').where)).toContain(
+      'acme%'
+    )
+    expect(toParams(buildWithSubquery('senderDomain', 'ends with', 'acme').where)).toContain(
+      '%acme'
+    )
+    expect(toParams(buildWithSubquery('senderDomain', 'contains', 'acme').where)).toContain(
+      '%acme%'
+    )
+  })
+
+  it('negates `is not` / `not contains` / `not in` as NOT EXISTS over the thread', () => {
+    for (const [operator, value] of [
+      ['is not', 'news.acme.com'],
+      ['not contains', 'acme'],
+      ['not in', ['news.acme.com']],
+    ] as const) {
+      const built = buildWithSubquery('list', operator, value)
+
+      // "no message in this thread matches", not "some message doesn't".
+      expect(built.sqlText).toMatch(/\bnot exists \$\d+/)
+      expect(built.table).toBe(schema.Message)
+    }
+  })
+
+  it('treats `empty` / `not empty` as a property of the whole thread', () => {
+    const notEmpty = buildWithSubquery('list', 'not empty', undefined)
+    const empty = buildWithSubquery('list', 'empty', undefined)
+
+    // "not empty" = at least one message carries a value.
+    expect(notEmpty.sqlText).toMatch(/\bexists \$\d+/)
+    expect(notEmpty.sqlText).not.toMatch(/not exists/i)
+    expect(toSql(notEmpty.where)).toMatch(/is not null/i)
+    // "empty" = no message does. Same subquery, negated.
+    expect(empty.sqlText).toMatch(/\bnot exists \$\d+/)
+    expect(toSql(empty.where)).toBe(toSql(notEmpty.where))
+  })
+
+  it('drops a value-requiring operator given a blank value rather than matching everything', () => {
+    for (const value of [null, undefined, '', '   ', []]) {
+      const result = buildOne('senderDomain', 'is', value)
+
+      expect(result.allConditionsDropped).toBe(true)
+      expect(result.droppedConditions[0]?.reason).toBe('unsupported-operator-or-value')
+      expect(toSql(result.sql)).toBe(baseScopeSql())
+    }
+  })
+
+  it('reads the two columns independently — the fields never fuse into one key', () => {
+    // S7: the unsubscribe safety gate has to tell a real list from a domain
+    // guess, so the two fields must stay two conditions over two columns.
+    const byList = buildWithSubquery('list', 'is', 'acme.com')
+    const byDomain = buildWithSubquery('senderDomain', 'is', 'acme.com')
+
+    expect(byList.result.droppedConditions).toEqual([])
+    expect(byDomain.result.droppedConditions).toEqual([])
+    expect(byList.sqlText).not.toBe(baseScopeSql())
+    expect(byDomain.sqlText).not.toBe(baseScopeSql())
   })
 })
