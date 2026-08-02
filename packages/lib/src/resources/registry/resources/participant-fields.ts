@@ -1,4 +1,4 @@
-// packages/lib/src/workflow-engine/resources/registry/resources/participant-fields.ts
+// packages/lib/src/resources/registry/resources/participant-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
 import { toFieldId } from '@auxx/types/field'

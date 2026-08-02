@@ -3,6 +3,7 @@ import { ParticipantRole } from '@auxx/database/enums'
 import { InboxService } from '@auxx/lib/inboxes'
 import { IsOperatorValue, SearchOperator } from '@auxx/lib/mail-query'
 import { listMembersWithUser } from '@auxx/lib/members'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { listAll } from '@auxx/lib/resources'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, count as drizzleCount, eq, ilike, inArray, or } from 'drizzle-orm'
@@ -220,6 +221,31 @@ export const searchRouter = createTRPCRouter({
         case SearchOperator.RECIPIENT:
         case SearchOperator.WITH:
         case 'participants': {
+          // Read enforcement: `Participant` is an ORG-WIDE table of every email /
+          // phone identity that has ever touched the org, with no inbox column and
+          // no mail lens — so an ungated ILIKE here answered "has this address ever
+          // corresponded with anyone in this org?" for any authenticated member,
+          // including addresses that only ever appeared in someone else's PERSONAL
+          // mailbox. These are mail-search operators, so the coarse mail door is the
+          // right bar, and it is the SAME primitive every mail router asserts
+          // (`const mailProcedure = permissionProcedure(PermissionKey.inboxesView)`
+          // in thread/message/draft/label/inbox/mailView — and in `participant.ts`,
+          // whose `getByIds` was already gated while this sibling read was not).
+          //
+          // `can()` reads `keys ∪ instanceDerivedKeys`, which is the front-door
+          // union rather than the area level — so a member whose profile closes
+          // `Area.inboxes` but who holds an explicit grant on ONE inbox still
+          // passes, which is correct: they do have mail reach.
+          //
+          // ⚠ This is a COARSE gate and does not claim to be more. A member with
+          // one narrow inbox can still probe addresses drawn from threads their
+          // lens hides — narrowing to participants on lens-admitted threads is the
+          // tight answer and is deliberately NOT attempted here.
+          //
+          // `break` rather than throw, matching the `TAG` branch below: this is one
+          // operator of a shared autocomplete, and a mail-closed member using
+          // `tag:` must still get their suggestions.
+          if (!ctx.capabilities.can(PermissionKey.inboxesView)) break
           const participants = await ctx.db
             .select()
             .from(schema.Participant)
@@ -337,8 +363,20 @@ export const searchRouter = createTRPCRouter({
       }
       return suggestions
     }),
-  // Participant search endpoint
-  participants: protectedProcedure
+  /**
+   * Participant search endpoint — the recipient/participant typeahead.
+   *
+   * Gated on the same coarse mail door as the `FROM`/`TO`/`CC`/`RECIPIENT`/`WITH`
+   * branch of {@link suggestions}, and for the same reason: this is the identical
+   * org-wide `Participant` ILIKE, just reached through its own procedure. It was a
+   * bare `protectedProcedure` — no capability set in `ctx` at all — so gating it
+   * required promoting it to `capabilityProcedure` first.
+   *
+   * `assert` rather than `break` here, unlike the suggestions branch: this
+   * procedure serves ONLY participants, so there is no sibling operator whose
+   * results a silent empty list would have to preserve. A 403 is the honest answer.
+   */
+  participants: capabilityProcedure
     .input(
       z.object({
         query: z.string(),
@@ -346,6 +384,7 @@ export const searchRouter = createTRPCRouter({
       })
     )
     .query(async ({ input, ctx }) => {
+      ctx.capabilities.assert(PermissionKey.inboxesView)
       const { query, type } = input
       const organizationId = ctx.session.organizationId
       // Build role filter based on type
