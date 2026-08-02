@@ -68,6 +68,7 @@ export {
   getCachedInstalledApps,
   getCachedKbCatalog,
   getCachedKnowledgeBases,
+  getCachedMailFilters,
   getCachedMembers,
   getCachedMembersByUserIds,
   getCachedOrgHasActiveChat,

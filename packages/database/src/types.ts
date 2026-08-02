@@ -203,6 +203,10 @@ export type { FolderFileEntity } from './db/schema/folder-file'
 export type { IntegrationEntity } from './db/schema/integration'
 export type { LoadBalancingConfigEntity } from './db/schema/load-balancing-config'
 export type {
+  MailFilterEntity,
+  MailFilterRunEntity,
+} from './db/schema/mail-filter'
+export type {
   CreateMailViewInput,
   MailViewEntity,
   UpdateMailViewInput,

@@ -287,6 +287,19 @@ export const SETTINGS_CATALOG = {
       'Circuit breaker: max automated emails across the organization per 15 minutes ' +
       '(0 disables). Tripping it blocks automated sends and notifies admins.',
   },
+  // Post-connect retroactive prompt (mail-filters plan §7 / D18). A freshly
+  // connected mailbox backfills with filters off, so once the sync completes we
+  // ASK whether to apply them — never do it automatically. This records the
+  // inbox ids this member has waved away. PER-USER on purpose: it is a nudge on
+  // someone's screen, and one admin dismissing it must not hide the prompt from
+  // the colleague who would have said yes.
+  'mailFilters.retroactivePromptDismissed': {
+    scope: 'COMMUNICATION',
+    access: 'user',
+    fieldType: 'JSON',
+    defaultValue: [],
+    description: 'Inbox ids this member dismissed the "apply filters retroactively" prompt for',
+  },
 
   ...sidebarSettings,
 

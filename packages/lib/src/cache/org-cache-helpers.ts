@@ -2,6 +2,7 @@
 
 import type { CustomFieldEntity } from '@auxx/database/types'
 import type { KbCatalogEntry } from '../kb/catalog/kb-catalog'
+import type { CachedMailFilter } from '../mail-filters/types'
 import type { CachedPermissionProfile } from '../permissions/profiles/types'
 import type { CachedRecordRule } from '../record-rules/types'
 import type { ResourceField } from '../resources/registry/field-types'
@@ -112,6 +113,17 @@ export async function getAllCachedCustomFields(orgId: string): Promise<CustomFie
  */
 export async function getCachedRecordRules(orgId: string): Promise<CachedRecordRule[]> {
   return getOrgCache().get(orgId, 'recordRules')
+}
+
+/**
+ * Get all mail filters for an organization (enabled + disabled; the
+ * `message:received` gate filters by inbox and `enabled` in memory).
+ *
+ * Read this rather than querying `MailFilter` — the gate's cheapest early exit
+ * (§4.1 step 3) depends on it staying a pure cache read.
+ */
+export async function getCachedMailFilters(orgId: string): Promise<CachedMailFilter[]> {
+  return getOrgCache().get(orgId, 'mailFilters')
 }
 
 /**

@@ -35,6 +35,7 @@ import {
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { ResourcePicker } from '~/components/pickers/resource-picker/resource-picker'
+import { RuleActionsSummaryRow } from '~/components/rules/ui/rule-actions-summary-row'
 import { BaseType } from '~/components/workflow/types'
 import { RecordRuleFieldRefInput } from './record-rule-field-ref-input'
 
@@ -114,9 +115,15 @@ interface RecordRuleConfigurePageProps {
   /** True only for the contact entity definition — gates the "Signal received" trigger
    * (decision 14: `signal:recorded` payloads only carry `contact:<id>` record keys today). */
   isContactDef: boolean
-  /** Whether the definition is complete enough to move to the actions page. */
-  canContinue: boolean
-  onContinue: () => void
+  /** Labels of the configured actions, for the drill-in summary row. */
+  actionLabels: string[]
+  /** Drill into the actions page. */
+  onOpenActions: () => void
+  /** Whole rule is complete (definition + at least one action). */
+  canSave: boolean
+  isPending: boolean
+  saveLabel: string
+  onSave: () => void
   onCancel: () => void
 }
 
@@ -140,8 +147,12 @@ export function RecordRuleConfigurePage({
   fields,
   isLifecycle,
   isContactDef,
-  canContinue,
-  onContinue,
+  actionLabels,
+  onOpenActions,
+  canSave,
+  isPending,
+  saveLabel,
+  onSave,
   onCancel,
 }: RecordRuleConfigurePageProps) {
   // "Signal received" only ever fires for contact-backed defs (decision 14) — the trigger
@@ -203,7 +214,7 @@ export function RecordRuleConfigurePage({
       className='flex flex-col'
       onSubmit={(e) => {
         e.preventDefault()
-        if (canContinue) onContinue()
+        if (canSave) onSave()
       }}>
       <Section title='Rule' icon={<Zap className='size-4' />} collapsible={false}>
         <FieldPanel className='p-0' breakpoint='md' resizeId='record-rule'>
@@ -294,12 +305,24 @@ export function RecordRuleConfigurePage({
         </Section>
       )}
 
-      <DialogFooter className='p-3'>
+      <RuleActionsSummaryRow
+        labels={actionLabels}
+        onOpen={onOpenActions}
+        emptyText='No actions yet — add at least one before saving'
+      />
+
+      <DialogFooter className='border-t p-3'>
         <Button variant='ghost' size='sm' type='button' onClick={onCancel}>
           Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
         </Button>
-        <Button variant='outline' size='sm' type='submit' disabled={!canContinue}>
-          Continue <KbdSubmit variant='outline' size='sm' />
+        <Button
+          variant='outline'
+          size='sm'
+          type='submit'
+          disabled={!canSave}
+          loading={isPending}
+          loadingText='Saving...'>
+          {saveLabel} <KbdSubmit variant='outline' size='sm' />
         </Button>
       </DialogFooter>
     </form>

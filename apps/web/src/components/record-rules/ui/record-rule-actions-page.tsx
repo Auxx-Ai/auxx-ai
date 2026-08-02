@@ -7,22 +7,25 @@ import { tryParsePlaceholderId } from '@auxx/lib/placeholders/client'
 import {
   ACTION_TOKEN_RECORD_NAME,
   actionDocToSummaryText,
+  isActionDoc,
   type RecordRuleAction,
   SIGNAL_CONTEXT_TOKENS,
 } from '@auxx/lib/record-rules/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { docToText, isNonEmptyDoc } from '@auxx/lib/tiptap'
 import { type ActorId, getActorRawId, toActorId } from '@auxx/types/actor'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { isFieldPath } from '@auxx/types/field'
-import { Button } from '@auxx/ui/components/button'
-import { DialogFooter } from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { EmptySection, Section } from '@auxx/ui/components/section'
-import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
-import { Bell, ListTodo, PenLine, Plus, Settings2, Trash2, Workflow, Zap } from 'lucide-react'
-import { type ReactNode, useMemo } from 'react'
+import { Bell, ListTodo, PenLine, Workflow } from 'lucide-react'
+import { type ComponentType, type ReactNode, useMemo } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { FieldPanelRow } from '~/components/global/forms/field-panel'
+import {
+  firstSelectValue,
+  RULE_ACTION_TRIGGER_PROPS,
+  type RuleActionCatalogEntry,
+  RuleActionsPage,
+} from '~/components/rules/ui/rule-actions-page'
 import { ActionTokenInput, emptyActionDoc } from './action-token-input'
 import { CreateTaskActionForm } from './create-task-action-form'
 import { RecordRuleFieldRefInput } from './record-rule-field-ref-input'
@@ -39,31 +42,54 @@ interface WorkflowOption {
  */
 export type EditableRuleAction = Exclude<RecordRuleAction, { type: 'native' }>
 
-const ACTION_LABELS: Record<EditableRuleAction['type'], string> = {
+type ActionOfType<T extends EditableRuleAction['type']> = Extract<EditableRuleAction, { type: T }>
+
+/**
+ * Display label per action type. Exported so the configure page's drill-in
+ * summary row names the same things the catalog does — the catalog itself is
+ * built in a `useMemo` over fields/workflows and isn't reachable from there.
+ */
+export const RECORD_RULE_ACTION_LABELS: Record<EditableRuleAction['type'], string> = {
   notify: 'Notify members',
   'set-field': 'Set field',
   'enqueue-workflow': 'Run workflow',
   'create-task': 'Create task',
 }
 
-const ACTION_TYPE_OPTIONS: SelectOption[] = (
-  Object.keys(ACTION_LABELS) as EditableRuleAction['type'][]
-).map((type) => ({ value: type, label: ACTION_LABELS[type] }))
-
-/** The flush-in-a-FieldPanelRow trigger sizing shared by every action input. */
-const TRIGGER_PROPS = { className: 'w-full ps-0 pe-1' } as const
-
-function ActionIcon({ type }: { type: EditableRuleAction['type'] }): ReactNode {
-  if (type === 'notify') return <Bell className='size-4' />
-  if (type === 'set-field') return <PenLine className='size-4' />
-  if (type === 'create-task') return <ListTodo className='size-4' />
-  return <Workflow className='size-4' />
+/**
+ * Doc-aware completeness for token-bearing action fields. `isNonEmptyDoc` alone would
+ * reject a doc whose only content is a placeholder chip (it counts text/reference/mention
+ * nodes, not `placeholder`), so a token-only doc is rescued via `docToText`, which renders
+ * placeholder nodes as `{{id}}`.
+ */
+function hasActionContent(v: unknown): boolean {
+  return isActionDoc(v) && (isNonEmptyDoc(v) || docToText(v) !== '')
 }
 
-/** SINGLE_SELECT/ACTOR adapters emit arrays; take the first value. */
-function first(value: unknown): string {
-  const v = Array.isArray(value) ? value[0] : value
-  return typeof v === 'string' ? v : ''
+/**
+ * Builds one catalog entry, narrowing the action to its own variant for the callbacks —
+ * the shared editor only ever hands an entry an action whose `type` matches it.
+ */
+function actionEntry<T extends EditableRuleAction['type']>(
+  type: T,
+  config: {
+    label: string
+    icon: ComponentType<{ className?: string }>
+    makeDefault: () => ActionOfType<T>
+    validate: (action: ActionOfType<T>) => boolean
+    summarize: (action: ActionOfType<T>) => string
+    renderForm: (action: ActionOfType<T>, onChange: (next: ActionOfType<T>) => void) => ReactNode
+  }
+): RuleActionCatalogEntry<EditableRuleAction> {
+  return {
+    type,
+    label: config.label,
+    icon: config.icon,
+    makeDefault: config.makeDefault,
+    validate: (action) => config.validate(action as ActionOfType<T>),
+    summarize: (action) => config.summarize(action as ActionOfType<T>),
+    renderForm: (action, onChange) => config.renderForm(action as ActionOfType<T>, onChange),
+  }
 }
 
 interface RecordRuleActionsPageProps {
@@ -86,8 +112,9 @@ interface RecordRuleActionsPageProps {
 }
 
 /**
- * The rule's ordered action list as a master-detail page: a `TreeRow` list of actions with
- * a shared `FieldPanel` editor below for the selected one — mirroring the webhook topics page.
+ * The record-rule action catalog — labels, defaults, validation, summaries and detail
+ * forms for `notify` / `set-field` / `enqueue-workflow` / `create-task` — rendered
+ * through the shared {@link RuleActionsPage} master-detail editor.
  */
 export function RecordRuleActionsPage({
   actions,
@@ -106,227 +133,153 @@ export function RecordRuleActionsPage({
   onSave,
   onCancel,
 }: RecordRuleActionsPageProps) {
-  const selected = actions[selectedIndex] ?? null
-
   const workflowOptions: SelectOption[] = useMemo(
     () => workflows.map((w) => ({ value: w.id, label: w.name })),
     [workflows]
   )
 
-  /** Token id → display label for `actionDocToSummaryText` — 'Record name', signal labels,
-   * or the field's label (root-level tokens only; drilled paths degrade to the raw id). */
-  const resolveTokenLabel = (id: string): string | undefined => {
-    if (id === ACTION_TOKEN_RECORD_NAME) return 'Record name'
-    const signalToken = SIGNAL_CONTEXT_TOKENS.find((t) => t.id === id)
-    if (signalToken) return signalToken.label
-    const parsed = tryParsePlaceholderId(id)
-    if (parsed?.kind !== 'field') return undefined
-    const terminal = isFieldPath(parsed.fieldRef) ? parsed.fieldRef.at(-1) : parsed.fieldRef
-    return fields.find((f) => f.resourceFieldId === terminal)?.label
-  }
+  const catalog = useMemo<RuleActionCatalogEntry<EditableRuleAction>[]>(() => {
+    /** Token id → display label for `actionDocToSummaryText` — 'Record name', signal labels,
+     * or the field's label (root-level tokens only; drilled paths degrade to the raw id). */
+    const resolveTokenLabel = (id: string): string | undefined => {
+      if (id === ACTION_TOKEN_RECORD_NAME) return 'Record name'
+      const signalToken = SIGNAL_CONTEXT_TOKENS.find((t) => t.id === id)
+      if (signalToken) return signalToken.label
+      const parsed = tryParsePlaceholderId(id)
+      if (parsed?.kind !== 'field') return undefined
+      const terminal = isFieldPath(parsed.fieldRef) ? parsed.fieldRef.at(-1) : parsed.fieldRef
+      return fields.find((f) => f.resourceFieldId === terminal)?.label
+    }
 
-  const summarize = (action: EditableRuleAction): string => {
-    if (action.type === 'notify')
-      return action.userIds.length > 0
-        ? `${action.userIds.length} member${action.userIds.length === 1 ? '' : 's'}`
-        : 'No members'
-    if (action.type === 'set-field')
-      return action.fieldRef
-        ? (fields.find((f) => (f.systemAttribute ?? String(f.id)) === action.fieldRef)?.label ??
-            action.fieldRef)
-        : 'No field'
-    if (action.type === 'create-task')
-      return actionDocToSummaryText(action.title, resolveTokenLabel) || 'No title'
-    return workflows.find((w) => w.id === action.workflowAppId)?.name || 'No workflow'
-  }
-
-  return (
-    <form
-      className='flex flex-col p-0'
-      onSubmit={(e) => {
-        e.preventDefault()
-        if (canSave) onSave()
-      }}>
-      <Section
-        title='Actions'
-        icon={<Zap className='size-4' />}
-        collapsible={false}
-        actions={
-          <Button variant='ghost' size='xs' onClick={onAdd}>
-            <Plus />
-            Add action
-          </Button>
-        }>
-        {actions.length === 0 && (
-          <EmptySection
-            icon={<Zap className='size-5' />}
-            title='No actions yet'
-            description='Add an action to run when the rule fires.'
-          />
-        )}
-        <div className='flex flex-col gap-0.5'>
-          {actions.map((action, i) => (
-            <TreeRow
-              key={i}
-              icon={<ActionIcon type={action.type} />}
-              isOpen={selectedIndex === i}
-              onToggleOpen={() => onSelectedIndexChange(i)}
-              rowClassName={
-                selectedIndex === i
-                  ? 'bg-primary-100 hover:bg-primary-150'
-                  : 'bg-primary-50 hover:bg-primary-100'
-              }
-              title={<span className='text-sm'>{ACTION_LABELS[action.type]}</span>}
-              secondary={<span className='text-xs text-muted-foreground'>{summarize(action)}</span>}
-              actions={
-                <TreeRowButton
-                  variant='destructive'
-                  tooltipText='Delete action'
-                  onClick={() => onRemove(i)}>
-                  <Trash2 />
-                </TreeRowButton>
-              }
-            />
-          ))}
-        </div>
-      </Section>
-
-      <Section
-        title={selected ? `Configure · ${ACTION_LABELS[selected.type]}` : 'Configure'}
-        icon={<Settings2 className='size-4' />}
-        collapsible={false}>
-        {!selected ? (
-          <EmptySection
-            icon={<Settings2 className='size-5' />}
-            title='No action selected'
-            description='Select an action to configure it.'
-          />
-        ) : (
-          <FieldPanel className='p-0' breakpoint='md' resizeId='record-rule'>
-            <FieldPanelRow title='Action' isRequired>
+    return [
+      actionEntry('notify', {
+        label: RECORD_RULE_ACTION_LABELS.notify,
+        icon: Bell,
+        makeDefault: () => ({ type: 'notify', userIds: [], message: emptyActionDoc() }),
+        validate: (action) => action.userIds.length > 0 && hasActionContent(action.message),
+        summarize: (action) =>
+          action.userIds.length > 0
+            ? `${action.userIds.length} member${action.userIds.length === 1 ? '' : 's'}`
+            : 'No members',
+        renderForm: (action, onChange) => (
+          <>
+            <FieldPanelRow title='Members' isRequired>
               <FieldInputAdapter
-                fieldType={FieldType.SINGLE_SELECT}
-                fieldOptions={{ options: ACTION_TYPE_OPTIONS }}
-                triggerProps={TRIGGER_PROPS}
-                value={selected.type}
-                onChange={(v) => {
-                  const type = first(v) as EditableRuleAction['type']
-                  if (type === 'set-field')
-                    onUpdate(selectedIndex, {
-                      type: 'set-field',
-                      fieldRef: '',
-                      value: emptyActionDoc(),
-                    })
-                  else if (type === 'enqueue-workflow')
-                    onUpdate(selectedIndex, { type: 'enqueue-workflow', workflowAppId: '' })
-                  else if (type === 'create-task')
-                    onUpdate(selectedIndex, { type: 'create-task', title: emptyActionDoc() })
-                  else
-                    onUpdate(selectedIndex, {
-                      type: 'notify',
-                      userIds: [],
-                      message: emptyActionDoc(),
-                    })
-                }}
+                fieldType={FieldType.ACTOR}
+                fieldOptions={{ actor: { target: 'user', multiple: true } }}
+                triggerProps={RULE_ACTION_TRIGGER_PROPS}
+                value={action.userIds.map((id) => toActorId('user', id))}
+                onChange={(v) =>
+                  onChange({ ...action, userIds: (v as ActorId[]).map(getActorRawId) })
+                }
+                placeholder='Add members to notify'
               />
             </FieldPanelRow>
-
-            {selected.type === 'notify' && (
-              <>
-                <FieldPanelRow title='Members' isRequired>
-                  <FieldInputAdapter
-                    fieldType={FieldType.ACTOR}
-                    fieldOptions={{ actor: { target: 'user', multiple: true } }}
-                    triggerProps={TRIGGER_PROPS}
-                    value={selected.userIds.map((id) => toActorId('user', id))}
-                    onChange={(v) =>
-                      onUpdate(selectedIndex, {
-                        ...selected,
-                        userIds: (v as ActorId[]).map(getActorRawId),
-                      })
-                    }
-                    placeholder='Add members to notify'
-                  />
-                </FieldPanelRow>
-                <FieldPanelRow title='Message' isRequired description='Type { to insert a field…'>
-                  <ActionTokenInput
-                    value={selected.message}
-                    onChange={(doc) => onUpdate(selectedIndex, { ...selected, message: doc })}
-                    entityDefinitionId={entityDefinitionId}
-                    fields={fields}
-                    isSignalRule={isSignalRule}
-                    placeholder='Notification message'
-                  />
-                </FieldPanelRow>
-              </>
-            )}
-
-            {selected.type === 'set-field' && (
-              <>
-                <FieldPanelRow title='Field' isRequired>
-                  <RecordRuleFieldRefInput
-                    entityDefinitionId={entityDefinitionId}
-                    fields={fields}
-                    value={selected.fieldRef}
-                    onChange={(ref) => onUpdate(selectedIndex, { ...selected, fieldRef: ref })}
-                    placeholder='Field to set'
-                  />
-                </FieldPanelRow>
-                <FieldPanelRow title='Value' description='Type { to insert a field…'>
-                  <ActionTokenInput
-                    value={selected.value}
-                    onChange={(doc) => onUpdate(selectedIndex, { ...selected, value: doc })}
-                    entityDefinitionId={entityDefinitionId}
-                    fields={fields}
-                    isSignalRule={isSignalRule}
-                    placeholder='Value'
-                  />
-                </FieldPanelRow>
-              </>
-            )}
-
-            {selected.type === 'enqueue-workflow' && (
-              <FieldPanelRow title='Workflow' isRequired>
-                <FieldInputAdapter
-                  fieldType={FieldType.SINGLE_SELECT}
-                  fieldOptions={{ options: workflowOptions }}
-                  triggerProps={TRIGGER_PROPS}
-                  value={selected.workflowAppId}
-                  onChange={(v) =>
-                    onUpdate(selectedIndex, { ...selected, workflowAppId: first(v) })
-                  }
-                  placeholder='Select workflow'
-                />
-              </FieldPanelRow>
-            )}
-
-            {selected.type === 'create-task' && (
-              <CreateTaskActionForm
-                action={selected}
-                onChange={(next) => onUpdate(selectedIndex, next)}
+            <FieldPanelRow title='Message' isRequired description='Type { to insert a field…'>
+              <ActionTokenInput
+                value={action.message}
+                onChange={(doc) => onChange({ ...action, message: doc })}
                 entityDefinitionId={entityDefinitionId}
                 fields={fields}
                 isSignalRule={isSignalRule}
+                placeholder='Notification message'
               />
-            )}
-          </FieldPanel>
-        )}
-      </Section>
+            </FieldPanelRow>
+          </>
+        ),
+      }),
 
-      <DialogFooter className='p-3'>
-        <Button variant='ghost' size='sm' type='button' onClick={onCancel}>
-          Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-        </Button>
-        <Button
-          variant='outline'
-          size='sm'
-          type='submit'
-          disabled={!canSave}
-          loading={isPending}
-          loadingText='Saving...'>
-          {isEdit ? 'Save changes' : 'Create rule'} <KbdSubmit variant='outline' size='sm' />
-        </Button>
-      </DialogFooter>
-    </form>
+      actionEntry('set-field', {
+        label: RECORD_RULE_ACTION_LABELS['set-field'],
+        icon: PenLine,
+        makeDefault: () => ({ type: 'set-field', fieldRef: '', value: emptyActionDoc() }),
+        validate: (action) => !!action.fieldRef,
+        summarize: (action) =>
+          action.fieldRef
+            ? (fields.find((f) => (f.systemAttribute ?? String(f.id)) === action.fieldRef)?.label ??
+              action.fieldRef)
+            : 'No field',
+        renderForm: (action, onChange) => (
+          <>
+            <FieldPanelRow title='Field' isRequired>
+              <RecordRuleFieldRefInput
+                entityDefinitionId={entityDefinitionId}
+                fields={fields}
+                value={action.fieldRef}
+                onChange={(ref) => onChange({ ...action, fieldRef: ref })}
+                placeholder='Field to set'
+              />
+            </FieldPanelRow>
+            <FieldPanelRow title='Value' description='Type { to insert a field…'>
+              <ActionTokenInput
+                value={action.value}
+                onChange={(doc) => onChange({ ...action, value: doc })}
+                entityDefinitionId={entityDefinitionId}
+                fields={fields}
+                isSignalRule={isSignalRule}
+                placeholder='Value'
+              />
+            </FieldPanelRow>
+          </>
+        ),
+      }),
+
+      actionEntry('enqueue-workflow', {
+        label: RECORD_RULE_ACTION_LABELS['enqueue-workflow'],
+        icon: Workflow,
+        makeDefault: () => ({ type: 'enqueue-workflow', workflowAppId: '' }),
+        validate: (action) => !!action.workflowAppId,
+        summarize: (action) =>
+          workflows.find((w) => w.id === action.workflowAppId)?.name || 'No workflow',
+        renderForm: (action, onChange) => (
+          <FieldPanelRow title='Workflow' isRequired>
+            <FieldInputAdapter
+              fieldType={FieldType.SINGLE_SELECT}
+              fieldOptions={{ options: workflowOptions }}
+              triggerProps={RULE_ACTION_TRIGGER_PROPS}
+              value={action.workflowAppId}
+              onChange={(v) => onChange({ ...action, workflowAppId: firstSelectValue(v) })}
+              placeholder='Select workflow'
+            />
+          </FieldPanelRow>
+        ),
+      }),
+
+      actionEntry('create-task', {
+        label: RECORD_RULE_ACTION_LABELS['create-task'],
+        icon: ListTodo,
+        makeDefault: () => ({ type: 'create-task', title: emptyActionDoc() }),
+        validate: (action) => hasActionContent(action.title),
+        summarize: (action) =>
+          actionDocToSummaryText(action.title, resolveTokenLabel) || 'No title',
+        renderForm: (action, onChange) => (
+          <CreateTaskActionForm
+            action={action}
+            onChange={onChange}
+            entityDefinitionId={entityDefinitionId}
+            fields={fields}
+            isSignalRule={isSignalRule}
+          />
+        ),
+      }),
+    ]
+  }, [entityDefinitionId, fields, isSignalRule, workflows, workflowOptions])
+
+  return (
+    <RuleActionsPage
+      actions={actions}
+      catalog={catalog}
+      selectedIndex={selectedIndex}
+      onSelectedIndexChange={onSelectedIndexChange}
+      onAdd={onAdd}
+      onRemove={onRemove}
+      onUpdate={onUpdate}
+      resizeId='record-rule'
+      canSave={canSave}
+      isPending={isPending}
+      saveLabel={isEdit ? 'Save changes' : 'Create rule'}
+      onSave={onSave}
+      onCancel={onCancel}
+    />
   )
 }

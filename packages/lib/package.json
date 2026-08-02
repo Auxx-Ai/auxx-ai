@@ -724,6 +724,24 @@
       "import": "./dist/mail-domains/index.mjs",
       "default": "./src/mail-domains/index.ts"
     },
+    "./mail-filters": {
+      "types": "./src/mail-filters/index.ts",
+      "source": "./src/mail-filters/index.ts",
+      "import": "./dist/mail-filters/index.mjs",
+      "default": "./src/mail-filters/index.ts"
+    },
+    "./mail-filters/client": {
+      "types": "./src/mail-filters/client.ts",
+      "source": "./src/mail-filters/client.ts",
+      "import": "./dist/mail-filters/client.mjs",
+      "default": "./src/mail-filters/client.ts"
+    },
+    "./mail-filters/evaluate": {
+      "types": "./src/mail-filters/evaluate.ts",
+      "source": "./src/mail-filters/evaluate.ts",
+      "import": "./dist/mail-filters/evaluate.mjs",
+      "default": "./src/mail-filters/evaluate.ts"
+    },
     "./mail-query": {
       "types": "./src/mail-query/index.ts",
       "source": "./src/mail-query/index.ts",

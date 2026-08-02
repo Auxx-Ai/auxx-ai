@@ -2,6 +2,7 @@
 
 import type { CustomFieldEntity } from '@auxx/database/types'
 import type { Inbox } from '../inboxes/types'
+import type { CachedMailFilter } from '../mail-filters/types'
 import type { Overage } from '../permissions/overage-detection-service'
 import type { FeatureMapObject } from '../permissions/types'
 import type { CachedRecordRule } from '../record-rules/types'
@@ -66,6 +67,9 @@ export interface OrgCacheAccessorMap {
 
   // Record rules — plain array, dispatch filters in memory
   recordRules: ArrayAccessor<CachedRecordRule>
+
+  // Mail filters — plain array (enabled + disabled), the gate filters by inbox in memory
+  mailFilters: ArrayAccessor<CachedMailFilter>
 }
 
 /** Resource accessor — ArrayAccessor + custom sugar methods */

@@ -56,6 +56,7 @@ export enum FeatureKey {
   channels = 'channels',
   workflowsLimit = 'workflowsLimit',
   sequencesLimit = 'sequencesLimit',
+  mailFiltersLimit = 'mailFiltersLimit',
   savedViews = 'savedViews',
   kbPublishedArticles = 'kbPublishedArticles',
   knowledgeBases = 'knowledgeBases',
@@ -248,6 +249,15 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
       'Org-authored outbound email cadences. The seeded client-notification templates are excluded — they cannot be deleted, so counting them would strand an org over its limit.',
     group: 'Automation',
     unit: 'sequences',
+  },
+  {
+    key: FeatureKey.mailFiltersLimit,
+    type: 'static',
+    label: 'Mail Filters',
+    description:
+      'Standing triage rules on shared inboxes. Seeded starter filters are excluded — we provision them, so they must never consume an allowance. Personal-inbox filters are not counted here at all; they carry a flat per-user ceiling instead.',
+    group: 'Automation',
+    unit: 'filters',
   },
   {
     key: FeatureKey.savedViews,

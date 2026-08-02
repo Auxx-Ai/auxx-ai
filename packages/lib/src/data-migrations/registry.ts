@@ -38,6 +38,7 @@ import { migration068WidenEntitySearchText } from './migrations/068-widen-entity
 import { migration069BackfillThreadSearchText } from './migrations/069-backfill-thread-search-text'
 import { migration070BackfillArticleSearchText } from './migrations/070-backfill-article-search-text'
 import { migration071BackfillOutlookPlainText } from './migrations/071-backfill-outlook-plain-text'
+import { migration072MailFiltersLimit } from './migrations/072-mail-filters-limit'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -98,6 +99,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration069BackfillThreadSearchText,
     migration070BackfillArticleSearchText,
     migration071BackfillOutlookPlainText,
+    migration072MailFiltersLimit,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

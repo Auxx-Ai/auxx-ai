@@ -94,10 +94,21 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // sites broadcast user keys (org-wide fan-out).
   'inbox.created': { org: ['inboxes'], user: ['userInstanceGrants'] },
   'inbox.updated': { org: ['inboxes'], user: ['userInstanceGrants'] },
-  'inbox.deleted': { org: ['inboxes'], user: ['userInstanceGrants'] },
+  // `MailFilter.inboxId` cascades on inbox delete (invariant 18) — the rows are
+  // gone from the DB, so the cached array must go with them or the gate keeps
+  // evaluating filters whose containment boundary no longer exists.
+  //
+  // NOT added to `channel.*`: disconnecting a channel is a SOFT delete of the
+  // `Integration` row and leaves the inbox (and therefore its filters) intact.
+  // Filters key on the inbox, never on the channel.
+  'inbox.deleted': { org: ['inboxes', 'mailFilters'], user: ['userInstanceGrants'] },
 
   // Record-rule lifecycle events
   'record-rule.changed': ['recordRules'],
+
+  // Mail-filter lifecycle events (create/update/delete/reorder/enable — every
+  // write in `mail-filters/mutations.ts` emits this).
+  'mail-filter.changed': ['mailFilters'],
 
   // Workflow lifecycle events
   'workflow.published': ['workflowApps'],

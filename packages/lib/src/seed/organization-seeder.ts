@@ -12,6 +12,7 @@ import { SystemModelService } from '../ai/providers/system-model-service'
 import { DEFAULT_QUOTA_LIMITS, ModelType, ProviderQuotaType } from '../ai/providers/types'
 import { InboxService } from '../inboxes'
 import { KBService } from '../kb'
+import { seedSuggestedMailFilters } from '../mail-filters'
 import { ensureSystemProfiles } from '../permissions/profiles'
 import { seedSuggestedRecordRules } from '../record-rules'
 import { UnifiedCrudHandler } from '../resources/crud'
@@ -213,6 +214,14 @@ export class OrganizationSeeder {
         this.seedAiProviderQuotas(organizationId),
         this.seedSystemModelDefaults(organizationId),
       ])
+      // AFTER the parallel step, not inside it: suggested mail filters need the default
+      // shared inbox `seedInboxes` creates (a `MailFilter` requires a NOT NULL `inboxId`,
+      // and that inbox IS the containment boundary) and the tags `seedTags` creates. Both
+      // are members of the `Promise.all` above, so racing this alongside them would make
+      // the seed a coin flip that silently degrades to "no shared inbox — skipped".
+      // `seedSuggestedRecordRules` can sit in the parallel block because its dependency
+      // (the contact `EntityDefinition`) is seeded before it, by `seedEntities`.
+      await this.seedSuggestedMailFilters(organizationId)
       logger.info('Successfully completed seeding for organization', { organizationId })
 
       // Enqueue async example data seeding (companies, contacts, threads, workflow).
@@ -343,6 +352,21 @@ export class OrganizationSeeder {
     logger.info(`Seeding suggested record rules for organization: ${organizationId}`)
     await seedSuggestedRecordRules(this.db, organizationId)
     logger.info(`Suggested record rules seeded for organization: ${organizationId}`)
+  }
+  /**
+   * Seed the starter suggested mail filters (plans/mail-filter/02-mail-filters-plan.md §9
+   * phase 5) on the org's default shared inbox. All seeded `enabled: false`; idempotent on
+   * `(organizationId, templateKey)`; excluded from `countBillableMailFilters`. Thin wrapper
+   * around the domain function so the existing-org backfill script
+   * (`scripts/backfill-suggested-mail-filters.ts`) can call the exact same logic.
+   *
+   * Runs AFTER the parallel seed step — see the call site: the inbox and the tags it
+   * resolves are created in there.
+   */
+  private async seedSuggestedMailFilters(organizationId: string): Promise<void> {
+    logger.info(`Seeding suggested mail filters for organization: ${organizationId}`)
+    await seedSuggestedMailFilters(this.db, organizationId)
+    logger.info(`Suggested mail filters seeded for organization: ${organizationId}`)
   }
   private async seedTicketSequence(organizationId: string) {
     logger.info(`Seeding record sequences for organization: ${organizationId}`)
