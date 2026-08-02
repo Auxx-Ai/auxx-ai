@@ -30,7 +30,7 @@ export function KnowledgeBasesBulkBar() {
   const count = useSelectionCount()
   const bulkMode = useBulkMode()
   const exit = useListSelection((s) => s.exit)
-  const { refetch } = useKnowledgeBasesList()
+  const { refetch, isSystemProvisioned } = useKnowledgeBasesList()
   const { ConfirmDialog, run, isRunning } = useBulkRunner()
   const del = api.kb.delete.useMutation()
   const { canAdminInstance } = useAccess()
@@ -38,37 +38,46 @@ export function KnowledgeBasesBulkBar() {
   // Delete is Full-only per instance — hide the bulk action unless every
   // selected KB passes admin (simplest correct rule; per-item filtering inside
   // a bulk delete is silent-partial-failure UX).
+  //
+  // 🔴 The SECOND surface that must narrow with the tile (plan v3/06 P4). Since
+  // P4 the learned KB is in `kb.list`, so `KnowledgeBasesList` registers its id
+  // for selection and a bulk delete would purge AI Memory through a path the
+  // tile no longer offers. Same all-or-nothing rule for the same reason: a
+  // selection containing a platform-provisioned KB hides Delete entirely rather
+  // than silently skipping that one.
   const allSelectedAdmin = ids.every((id) => canAdminInstance(toRecordId('kb', id)))
+  const anySystemProvisioned = ids.some((id) => isSystemProvisioned(id))
 
-  const actions: ActionBarAction[] = allSelectedAdmin
-    ? [
-        {
-          id: 'delete',
-          label: 'Delete',
-          icon: Trash,
-          variant: 'destructive',
-          tooltip: 'Delete selected',
-          disabled: isRunning || count === 0,
-          onClick: () =>
-            run(
-              ids,
-              async (id) => {
-                await del.mutateAsync({ id })
-                getKnowledgeBaseStoreState().confirmKBDelete(id)
-              },
-              {
-                title: `Delete ${count} ${pluralize(count, 'knowledge base')}?`,
-                description: 'This permanently deletes them. This cannot be undone.',
-                failureTitle: 'Some knowledge bases could not be deleted',
-                onDone: () => {
-                  refetch()
-                  exit()
+  const actions: ActionBarAction[] =
+    allSelectedAdmin && !anySystemProvisioned
+      ? [
+          {
+            id: 'delete',
+            label: 'Delete',
+            icon: Trash,
+            variant: 'destructive',
+            tooltip: 'Delete selected',
+            disabled: isRunning || count === 0,
+            onClick: () =>
+              run(
+                ids,
+                async (id) => {
+                  await del.mutateAsync({ id })
+                  getKnowledgeBaseStoreState().confirmKBDelete(id)
                 },
-              }
-            ),
-        },
-      ]
-    : []
+                {
+                  title: `Delete ${count} ${pluralize(count, 'knowledge base')}?`,
+                  description: 'This permanently deletes them. This cannot be undone.',
+                  failureTitle: 'Some knowledge bases could not be deleted',
+                  onDone: () => {
+                    refetch()
+                    exit()
+                  },
+                }
+              ),
+          },
+        ]
+      : []
 
   return (
     <>

@@ -28,6 +28,11 @@ import {
   type WidgetFieldRef,
 } from '../../dashboards/client'
 import { ForbiddenError, UnprocessableEntityError } from '../../errors'
+import {
+  knowledgeBaseScopeFingerprint,
+  viewableKnowledgeBaseIds,
+} from '../../permissions/capabilities/article-visibility-scope'
+import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import { BaseType } from '../../workflow-engine/core/types'
 import {
   extractRequiredRelatedEntities,
@@ -76,7 +81,27 @@ const MAX_SERIES = 10
 export const OTHER_SERIES_KEY = '__other'
 
 /** Skip the cache READ (still writes) — plumbed for the widget refresh button. */
-export type AggregateRunOptions = { skipCache?: boolean }
+export type AggregateRunOptions = {
+  skipCache?: boolean
+  /**
+   * The viewer, for the one aggregate source that has a row policy: `article`
+   * inherits its knowledge base's instance grants (plan v3/06 §3.1 R9).
+   *
+   * `undefined` ⇒ **unrestricted**, the same convention every other lib entry
+   * point uses for headless callers (§8.2). That is why a router must pass
+   * `ctx.capabilities` — omitting it is not "safe by default", it is the
+   * pre-fix behaviour. Nothing else in the engine reads it, and non-`article`
+   * sources never resolve a scope from it.
+   */
+  capabilities?: CapabilityView
+}
+
+/**
+ * The only system aggregate source carrying a per-row policy. Kept as a named
+ * constant so the two sites that must agree — the scope resolution here and the
+ * predicate in `buildSystemAggregateSql` — are greppable as a pair.
+ */
+const KB_SCOPED_TABLE_ID = 'article'
 
 /** In-flight dedup: N concurrent identical queries in one process run 1 compute. */
 const aggregateInflight = new PromiseMemoizer<Result<AggregateResult, Error>>()
@@ -268,7 +293,15 @@ async function prepareAggregate(
   organizationId: string,
   /** Filters already run through `resolveConditionContext` (also the cache-key input). */
   resolvedFilters: ConditionGroup[],
-  query: AggregateQuery
+  query: AggregateQuery,
+  /**
+   * The viewable-KB allow-list from {@link resolveKbScope} — resolved by the
+   * CALLER, not here, because the same list must fork the result-cache key,
+   * which is computed before this function ever runs. Passing it down rather
+   * than re-resolving it is what guarantees the key and the WHERE describe the
+   * same set (and it is a second fold over the same cache blob avoided).
+   */
+  viewableKbIds: string[] | 'all'
 ): Promise<Result<PreparedAggregate, Error>> {
   const timezone = query.timezone || 'UTC'
   const limit = Math.min(Math.max(query.limit ?? DEFAULT_GROUP_LIMIT, 1), MAX_GROUP_LIMIT)
@@ -451,6 +484,7 @@ async function prepareAggregate(
       groupBy,
       secondaryGroupBy,
       conditionsWhere,
+      viewableKbIds,
       dateWindow,
       timezone,
       fetchCap,
@@ -582,14 +616,41 @@ function refuseMailLensSource(query: AggregateQuery): ForbiddenError | undefined
 }
 
 /**
+ * The viewer's viewable-KB allow-list for this run — `'all'` (no narrowing) for
+ * every source but `article`, and for a headless caller.
+ *
+ * Resolved ONCE per run, at the outermost edge, because it feeds two places that
+ * must not disagree: the result-cache key (below) and the WHERE
+ * (`buildSystemAggregateSql`). A cached number computed under one allow-list and
+ * served under another is the same disclosure as an unfiltered query.
+ *
+ * Both source kinds are checked by id, like the mail gate above:
+ * `{kind:'entity', entityDefinitionId:'article'}` is a shape a client can post,
+ * and while it dies later on its own merits it must not skip the fork on the way
+ * there. Costs one org-cache read, and only for article sources.
+ */
+async function resolveKbScope(
+  organizationId: string,
+  query: AggregateQuery,
+  capabilities: CapabilityView | undefined
+): Promise<string[] | 'all'> {
+  if (sourceIdOf(query) !== KB_SCOPED_TABLE_ID) return 'all'
+  return viewableKnowledgeBaseIds(organizationId, capabilities)
+}
+
+/**
  * Run a grouped aggregate query. Group keys stay RAW (drill-down rebuilds
  * segment conditions from them); labels are display-only. Without a `groupBy`
  * the result carries the single value in `totalValue` with no groups.
  *
  * Results are cached for a short TTL keyed on the RESOLVED query (viewer
- * placeholders substituted, timezone included) — safe to share across users
- * because aggregates carry no row-level permissions. Errors are never cached;
- * `opts.skipCache` bypasses the read but still writes (refresh = repopulate).
+ * placeholders substituted, timezone included) — shared across users, because
+ * aggregates carry no row-level permissions **with one exception, and the key
+ * carries it**: `article` inherits its KB's grants, so the key is forked on a
+ * fingerprint of the viewer's viewable-KB set (plan v3/06 §5.6). Viewers with
+ * identical KB access still share one entry, which per §8.0 is nearly everyone.
+ * Errors are never cached; `opts.skipCache` bypasses the read but still writes
+ * (refresh = repopulate).
  */
 export async function runAggregate(
   db: Database,
@@ -605,10 +666,12 @@ export async function runAggregate(
     const resolvedFilters = resolveConditionContext(query.filters ?? [], {
       currentUserId: userId,
     })
+    const viewableKbIds = await resolveKbScope(organizationId, query, opts?.capabilities)
     const cacheKey = aggregateCacheKey({
       kind: 'agg',
       organizationId,
       query: { ...query, filters: resolvedFilters },
+      scope: knowledgeBaseScopeFingerprint(viewableKbIds),
     })
 
     return await aggregateInflight.memoize(cacheKey, async () => {
@@ -619,7 +682,13 @@ export async function runAggregate(
           return ok(hit.result)
         }
       }
-      const result = await computeAggregate(db, organizationId, resolvedFilters, query)
+      const result = await computeAggregate(
+        db,
+        organizationId,
+        resolvedFilters,
+        query,
+        viewableKbIds
+      )
       if (result.isOk()) {
         await getAggregateCache().write(cacheKey, result.value)
       }
@@ -635,9 +704,10 @@ async function computeAggregate(
   db: Database,
   organizationId: string,
   resolvedFilters: ConditionGroup[],
-  query: AggregateQuery
+  query: AggregateQuery,
+  viewableKbIds: string[] | 'all'
 ): Promise<Result<AggregateResult, Error>> {
-  const prepared = await prepareAggregate(organizationId, resolvedFilters, query)
+  const prepared = await prepareAggregate(organizationId, resolvedFilters, query, viewableKbIds)
   if (prepared.isErr()) return err(prepared.error)
   const {
     buildSql,
@@ -776,11 +846,13 @@ export async function runKpi(
     const resolvedFilters = resolveConditionContext(base.filters ?? [], {
       currentUserId: userId,
     })
+    const viewableKbIds = await resolveKbScope(organizationId, base, opts?.capabilities)
     const cacheKey = aggregateCacheKey({
       kind: 'kpi',
       organizationId,
       query: { ...base, filters: resolvedFilters },
       compare: params.trend?.compare ?? null,
+      scope: knowledgeBaseScopeFingerprint(viewableKbIds),
     })
 
     return await kpiInflight.memoize(cacheKey, async () => {
@@ -791,7 +863,14 @@ export async function runKpi(
           return ok(hit.result)
         }
       }
-      const result = await computeKpi(db, organizationId, resolvedFilters, base, params.trend)
+      const result = await computeKpi(
+        db,
+        organizationId,
+        resolvedFilters,
+        base,
+        params.trend,
+        viewableKbIds
+      )
       if (result.isOk()) {
         await getAggregateCache().write(cacheKey, result.value)
       }
@@ -808,9 +887,10 @@ async function computeKpi(
   organizationId: string,
   resolvedFilters: ConditionGroup[],
   base: AggregateQuery,
-  trend: TrendSpec | undefined
+  trend: TrendSpec | undefined,
+  viewableKbIds: string[] | 'all'
 ): Promise<Result<KpiResult, Error>> {
-  const prepared = await prepareAggregate(organizationId, resolvedFilters, base)
+  const prepared = await prepareAggregate(organizationId, resolvedFilters, base, viewableKbIds)
   if (prepared.isErr()) return err(prepared.error)
   const { buildSql, windowBounds, timezone, dropped } = prepared.value
 

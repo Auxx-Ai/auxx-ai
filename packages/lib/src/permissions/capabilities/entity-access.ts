@@ -31,12 +31,28 @@ import { SEAT_CEILINGS } from './seat-policy'
  * - **Instance-access resources** (`dataset`, `kb`, `dashboard`, `workflow`) —
  *   their own L2 area + per-instance `ResourceAccess` grants, disjoint from
  *   type-level def enforcement (plan 11 §0.6 / plan 12 §0.11 / plan 13 §0.6 /
- *   plan 30 §5). `article` inherits its KB's grants (no per-article grants), so
- *   it is a non-record def too. Nothing calls
- *   `canViewEntity('dataset'|'kb'|'article'|'dashboard'|'workflow')`, so this is
- *   inert for enforcement; it keeps the client mirror `NON_RECORD_ENTITY_SLUGS`
- *   in `resources/registry/types.ts` consistent (that set hides datasets / KBs /
- *   articles / dashboards / workflows from the entity-def Access grid).
+ *   plan 30 §5).
+ * - **`article`** — governed by its KB's instance grants, enforced in
+ *   `permissions/capabilities/article-visibility-scope.ts` and applied by the
+ *   record lane's system-table dispatch (plan v3/06 §4.3). It stays here because
+ *   routing it through the Records area would make KB access depend on a
+ *   `records` rung it has nothing to do with: `canViewEntity` would fall through
+ *   to `canViewRecord` → `effectiveRecordLevel`, and a member on a profile with
+ *   no `records` key would see the whole articles table go dark — no error, just
+ *   an empty list — for exactly the members who legitimately hold a KB grant.
+ *   That is verbatim the `inbox` / `personal_inbox` argument below.
+ *
+ * 🔴 **This set is NOT "inert for enforcement".** That claim was here until plan
+ * v3/06 and it was false — it has been since `article` gained an
+ * `EntityDefinition` row and a system-table search binding. Live callers of
+ * `canViewEntity` on these slugs, all of which this membership opens:
+ * `unified-handler.ts`'s `search` scoped arm, `routers/record.ts`'s unscoped-union
+ * post-filter, `realtime/rooms.ts`'s per-def record-channel ACL,
+ * `assertCanViewRows`' fast path, and `hasDefPresence` / `filterViewableDefIds`.
+ * The set also keeps the client mirror `NON_RECORD_ENTITY_SLUGS`
+ * (`resources/registry/types.ts`) consistent — that one drives
+ * `isAccessManageable`, i.e. "hide from the type-level Access grid", which stays
+ * correct for `article` because there is no per-article grant to author.
  *
  * **`signature` and `snippet` were REMOVED 2026-07-28 (plan 36 §7.6).** They used
  * to sit in the mail-infrastructure half, and membership here is what made
@@ -93,6 +109,54 @@ export const NON_RECORD_DEF_SLUGS: ReadonlySet<string> = new Set([
   'dashboard',
   'workflow',
 ])
+
+/**
+ * Defs whose **def-level write gate is not authoritative for a row**, so every
+ * row must be judged on its `_access` stamp even when the def gate says yes
+ * (plan v3/06 §7.2).
+ *
+ * Deliberately declared HERE, immediately below {@link NON_RECORD_DEF_SLUGS},
+ * because that membership is the *cause*: being a non-record def routes
+ * `canEditEntity` through the coarse `canWriteEntity` verb, and for `article`
+ * that verb resolves to `PermissionKey.recordsEdit` (there is no `article` entry
+ * in `ENTITY_WRITE_KEYS`). The two sets have to be read together, and sixty
+ * lines apart in one file is the only arrangement that makes that visible.
+ *
+ * ## Why a carve-out and not a better def-level key
+ *
+ * `record-row-access.ts` is built on "the def gate runs first and
+ * short-circuits; rows it allows are never read". That holds whenever the def
+ * gate is a sound *upper* bound on row authority. For `article` it is not a
+ * bound in either direction, because an article's authority is **non-local** —
+ * it lives one hop away, on the article's knowledge base — and no def-level key
+ * can express a per-KB answer. Measured (plan v3/06 §7.2, both directions
+ * traced against the real `CapabilitySet`):
+ *
+ * | member | def gate today | correct |
+ * |---|---|---|
+ * | `knowledgeBase: Edit`, `records: None` | denied every article write | allowed on KBs they hold |
+ * | `records: Edit`, `knowledgeBase: None` | allowed on EVERY article in the org | denied |
+ *
+ * The obvious fix — `ENTITY_WRITE_KEYS['article'] = knowledgeBaseEdit` — was
+ * tried and rejected: it simply **swaps** which row is broken, because whichever
+ * area you point at becomes a def-level "yes" that skips the row judgement. Row
+ * one becomes def-allowed and is then never re-judged, so a `knowledgeBase: Edit`
+ * member could write articles in KBs they are explicitly denied. Same for
+ * `ENTITY_BASE_AREAS`, which is the read-side twin of the same def axis.
+ *
+ * ## Cost, and why it stays a set of one
+ *
+ * A def in here forfeits the zero-I/O fast path: its ids are always stamped. The
+ * read is still **one batched `getByIds` for the whole batch**, not one per row,
+ * so a multi-article write costs one extra round trip rather than N. That is
+ * cheap precisely because the set is tiny; adding a high-write def would make it
+ * expensive. `article` is the only def in the tree today whose row authority is
+ * non-local. Anything else belongs on the def axis, where it is free.
+ *
+ * Keyed by entity SLUG. See {@link import('../../resources/crud/record-row-access').defDeniedRecordIds}
+ * for how a CUID-form RecordId is resolved before this set is consulted.
+ */
+export const ALWAYS_PER_ROW_DEF_SLUGS: ReadonlySet<string> = new Set(['article'])
 
 /**
  * A resolved, normalized view of one member's record-access inputs — the shared

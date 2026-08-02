@@ -7,7 +7,11 @@
 // and filters client-side. Each row is merged draft-over-live so an unpublished
 // name/description edit shows immediately, matching kb-switcher.tsx.
 
-import { type KBDraftSettings, mergeDraftOverLive } from '@auxx/lib/kb/client'
+import {
+  isSystemProvisionedKnowledgeBase,
+  type KBDraftSettings,
+  mergeDraftOverLive,
+} from '@auxx/lib/kb/client'
 import { createContext, useContext, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import type { KnowledgeBase } from '../../store/knowledge-base-store'
@@ -15,6 +19,23 @@ import type { KnowledgeBase } from '../../store/knowledge-base-store'
 interface KnowledgeBasesContextValue {
   knowledgeBases: KnowledgeBase[]
   isLoading: boolean
+  /**
+   * Whether the org's AI Memory KB (`kind: 'learned'`) is already in this list.
+   *
+   * Derived from the UNFILTERED response on purpose — the search box narrows
+   * `knowledgeBases`, and deriving this from the narrowed array would make the
+   * standalone AI Memory card blink back into existence the moment a query
+   * excluded it. See `ai-memory-section.tsx` (plan v3/06 P4).
+   */
+  hasLearnedKnowledgeBase: boolean
+  /**
+   * Whether this KB is platform-provisioned and must not offer Delete
+   * (plan v3/06 P4). Exposed as an id lookup because the bulk bar holds
+   * selection **ids** and never the rows — and the tile and the bulk bar
+   * disagreeing about the same KB is exactly the drift the shared
+   * `RecordActionsMenu` work existed to remove.
+   */
+  isSystemProvisioned: (id: string) => boolean
   searchQuery: string
   setSearchQuery: (query: string) => void
   refetch: () => void
@@ -43,9 +64,23 @@ export function KnowledgeBasesProvider({ children }: { children: React.ReactNode
     )
   }, [data, searchQuery])
 
+  const systemProvisionedIds = useMemo(
+    () =>
+      new Set(
+        (data ?? []).filter((kb) => isSystemProvisionedKnowledgeBase(kb.kind)).map((kb) => kb.id)
+      ),
+    [data]
+  )
+  const hasLearnedKnowledgeBase = useMemo(
+    () => (data ?? []).some((kb) => kb.kind === 'learned'),
+    [data]
+  )
+
   const value: KnowledgeBasesContextValue = {
     knowledgeBases,
     isLoading,
+    hasLearnedKnowledgeBase,
+    isSystemProvisioned: (id: string) => systemProvisionedIds.has(id),
     searchQuery,
     setSearchQuery,
     refetch: () => void refetch(),

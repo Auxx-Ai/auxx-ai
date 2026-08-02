@@ -126,6 +126,13 @@ export async function assertFieldValueHostsWritable(params: {
     userId,
     capabilities,
     recordIds: recordHosts,
+    // The SAME resolver this function already built above — not a second read.
+    // Required by the gate because `ALWAYS_PER_ROW_DEF_SLUGS` (plan v3/06 §7.2)
+    // is slug-keyed while the drawer and the grid mint both id forms: the
+    // articles table sends `article:<id>`, a relationship value sends the def
+    // CUID. Without it a `records: Edit` member would keep the def-gate fast
+    // path on articles and write every one in the org.
+    defIdToSlug: toSlug,
   })
 
   if (threadIds.length === 0) return

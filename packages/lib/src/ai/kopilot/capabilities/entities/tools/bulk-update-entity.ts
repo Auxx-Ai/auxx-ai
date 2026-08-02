@@ -1,8 +1,9 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/bulk-update-entity.ts
 
 import { z } from 'zod'
-import { findCachedResource } from '../../../../../cache/org-cache-helpers'
+import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
 import { FieldValueService } from '../../../../../field-values/field-value-service'
+import { buildDefIdToSlug } from '../../../../../permissions/capabilities/resolve-capability-inputs'
 // Deep subpath, NOT the `resources` barrel — the barrel reaches the picker →
 // the files service → `@auxx/database`'s `database` export. This module imports
 // only `errors`, the RecordId parser and types; the picker sits behind a lazy
@@ -210,6 +211,12 @@ Example (ids match list_entity_fields output):
         userId: agentDeps.userId,
         capabilities,
         recordIds,
+        // Required by the gate: `ALWAYS_PER_ROW_DEF_SLUGS` (plan v3/06 §7.2) is
+        // slug-keyed, and an agent's `recordIds` arrive from the model as
+        // whatever form the catalog advertised — usually the def CUID. Off the
+        // warm org cache; this tool already reads `resources` for field-key
+        // validation a few lines below.
+        defIdToSlug: buildDefIdToSlug(await getCachedResources(agentDeps.organizationId)),
       })
 
       const resource = await findCachedResource(

@@ -242,7 +242,12 @@ async function buildExtractionPrompt(params: BuildExtractionPromptParams): Promi
   // model must see what already exists before writing.
   const catalog = await getCachedKbCatalog(organizationId)
   const learnedOnly = catalog.filter((kb) => kb.kind === 'learned')
-  const rendered = renderKbCatalog(learnedOnly, { publicOnly: false, hasGetArticle: true })
+  // `kbAccess: 'unrestricted'` — headless run, no viewer (plan v3/06 §8.2).
+  const rendered = renderKbCatalog(learnedOnly, {
+    publicOnly: false,
+    hasGetArticle: true,
+    kbAccess: 'unrestricted',
+  })
   lines.push('')
   lines.push('## AI Memory catalog')
   lines.push(

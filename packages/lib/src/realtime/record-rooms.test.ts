@@ -7,6 +7,8 @@ import { findRoom, parseRecordRoomKey, roomKindFor, rooms, toPusherChannel } fro
 const ORG = 'abgwpa1l81reht2zmwrcihfu'
 const DEF_A = 'xrbtfl7syi3sm4mqf5wiayuz'
 const DEF_B = 'elppl4chr8dhnjfibwryu5to'
+/** The org's `article` EntityDefinition id — the one def that needs a KB clamp. */
+const ARTICLE_DEF = 'qkmgvfi61m4ubmfrxg7y3mzc'
 const USER = 'JR28eYz582CHqZN5SFlVrEnXErXmunaj'
 
 // Hoisted so the `vi.mock` factories below (which run before the module body)
@@ -16,6 +18,8 @@ const hooks = vi.hoisted(() => ({
   roleMapThrows: false,
   capsThrows: false,
   viewable: new Set<string>(),
+  articleDefId: undefined as string | undefined,
+  viewableKbIds: [] as string[] | 'all',
 }))
 
 // `../cache` is only lazy-imported by the ACL (plus one static `getOrgCache`
@@ -28,6 +32,12 @@ vi.mock('../cache', () => ({
       return hooks.roleMap
     },
   }),
+  getCachedEntityDefId: async () => hooks.articleDefId,
+}))
+
+// Lazy-imported by the ACL for the article clamp only (plan v3/06 §3.1 R10).
+vi.mock('../permissions/capabilities/article-visibility-scope', () => ({
+  viewableKnowledgeBaseIds: vi.fn(async () => hooks.viewableKbIds),
 }))
 
 vi.mock('../permissions/capabilities/get-capabilities', () => ({
@@ -49,7 +59,9 @@ beforeEach(() => {
   hooks.roleMap = { [USER]: { role: 'USER' } }
   hooks.roleMapThrows = false
   hooks.capsThrows = false
-  hooks.viewable = new Set([DEF_A])
+  hooks.viewable = new Set([DEF_A, ARTICLE_DEF])
+  hooks.articleDefId = ARTICLE_DEF
+  hooks.viewableKbIds = ['r7gncj0m9f88home9kp8j1s7']
 })
 
 describe('per-def record room keys', () => {
@@ -153,5 +165,54 @@ describe('record room ACL', () => {
       vi.unstubAllEnvs()
       vi.resetModules()
     }
+  })
+})
+
+/**
+ * `canViewEntity('article')` is unconditionally `true` — `article` is in
+ * `NON_RECORD_DEF_SLUGS` and must STAY there (plan v3/06 §4.3: routing it
+ * through the Records area would make KB access depend on a records rung it has
+ * nothing to do with). So the def-level ACL admits every member to the article
+ * def's channel, which carries `fieldValues:updated` (RAW stored values) and
+ * `records:invalidated`. §3.1 R10's clamp is the second predicate.
+ */
+describe('record room ACL — the article KB clamp (plan v3/06 §3.1 R10)', () => {
+  it('denies the article def channel to a member with NO viewable KB', async () => {
+    hooks.viewableKbIds = []
+    const key = rooms.orgRecords(ORG, ARTICLE_DEF)
+    // The def gate itself passes — this is exactly the hole being closed.
+    expect(hooks.viewable.has(ARTICLE_DEF)).toBe(true)
+    await expect(recordRoomDef(key).authorize(key, session)).resolves.toBe(false)
+  })
+
+  it('grants the article def channel on ≥1 viewable KB — the clamp is COARSE', async () => {
+    // Per-KB fanout is explicitly out of scope (§11 item 4), matching descoped
+    // P6: one viewable KB admits the whole def channel, including events for
+    // articles in KBs this member cannot open. This test states that rather than
+    // pretending otherwise.
+    hooks.viewableKbIds = ['r7gncj0m9f88home9kp8j1s7']
+    const key = rooms.orgRecords(ORG, ARTICLE_DEF)
+    await expect(recordRoomDef(key).authorize(key, session)).resolves.toBe(true)
+  })
+
+  it('leaves every OTHER def on the def gate alone', async () => {
+    // An empty KB allow-list must not dark unrelated record channels.
+    hooks.viewableKbIds = []
+    const key = rooms.orgRecords(ORG, DEF_A)
+    await expect(recordRoomDef(key).authorize(key, session)).resolves.toBe(true)
+  })
+
+  it('still denies the article def when the def gate itself says no', async () => {
+    hooks.viewable = new Set([DEF_A])
+    hooks.viewableKbIds = ['r7gncj0m9f88home9kp8j1s7']
+    const key = rooms.orgRecords(ORG, ARTICLE_DEF)
+    await expect(recordRoomDef(key).authorize(key, session)).resolves.toBe(false)
+  })
+
+  it('does not clamp when the org has no article def at all', async () => {
+    hooks.articleDefId = undefined
+    hooks.viewableKbIds = []
+    const key = rooms.orgRecords(ORG, ARTICLE_DEF)
+    await expect(recordRoomDef(key).authorize(key, session)).resolves.toBe(true)
   })
 })

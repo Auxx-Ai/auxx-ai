@@ -2,10 +2,12 @@
 
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { isOrgMember } from '@auxx/lib/cache'
-// Deep subpath on purpose: `@auxx/lib/permissions` (the barrel) also re-exports
+// Deep subpaths on purpose: `@auxx/lib/permissions` (the barrel) also re-exports
 // `overage-handler` → `NotificationService` → `../realtime`, which would drag
 // realtime + queue dependencies this satellite app does not have into the KB
-// bundle. `get-capabilities`' own graph is cache + capability modules only.
+// bundle. `get-capabilities`' and `article-read-access`' own graphs are cache +
+// capability modules only.
+import { canReadKnowledgeBase } from '@auxx/lib/permissions/capabilities/article-read-access'
 import { getCapabilities } from '@auxx/lib/permissions/capabilities/get-capabilities'
 import { redirect } from 'next/navigation'
 import { cache } from 'react'
@@ -32,11 +34,24 @@ import { cache } from 'react'
  *
  * apps/kb is read-only; there is no authoring surface here, so `canEditInstance`
  * has no meaning in this app and must not be added for symmetry.
+ *
+ * 🔴 The predicate itself is NOT written here any more (plan v3/06 P5,
+ * implementation I3). `canReadKnowledgeBase` in
+ * `@auxx/lib/permissions/capabilities/article-read-access` is the one authoring
+ * point, shared with the Kopilot KB tools, the article SSE route, the attachment
+ * gate and the knowledge-source guard. This app's job is to supply the viewer.
+ *
+ * ⚠ It is one notch stricter than the bare `canViewInstance` it replaced: a
+ * `kind: 'source'` KB is never readable, whatever the grants say. Source KBs are
+ * hidden `KnowledgeSource` containers that this app was never meant to render —
+ * `listKnowledgeBases`' own comment says "never surfaced in KB lists, pickers,
+ * **or the public site**" — so this closes the gap rather than narrowing a
+ * feature.
  */
 export const canViewKB = cache(
   async (kbId: string, organizationId: string, userId: string): Promise<boolean> => {
     const capabilities = await getCapabilities(userId, organizationId)
-    return capabilities.canViewInstance('kb', kbId)
+    return canReadKnowledgeBase(organizationId, capabilities, kbId)
   }
 )
 

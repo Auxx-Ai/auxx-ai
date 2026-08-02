@@ -9,6 +9,7 @@
 import { schema } from '@auxx/database'
 import { type SQL, sql } from 'drizzle-orm'
 import { ForbiddenError } from '../../errors'
+import { articleVisibilitySql } from '../../permissions/capabilities/article-visibility-scope'
 import { isMailLensTableId, MAIL_LENS_REFUSAL } from '../picker/mail-lens-tables'
 import { bucketExpr } from './date-buckets'
 import { type FieldSqlPlan, metricExprSql, valueColExpr } from './expressions'
@@ -43,6 +44,31 @@ import type { ResolvedDateWindow, ResolvedFieldRef, ResolvedGroupBy, ResolvedMet
  *
  * Decision recorded 2026-07-31, `plans/search/2026-07-31-retrieval-execution-sequence.md`
  * step 0.1.
+ *
+ * ⚠ **`article` — the one entry left — DOES carry a per-row policy**, and the
+ * paragraph above did not know it (plan v3/06 §3.1 R9). An article inherits its
+ * knowledge base's instance grants, so `organizationId = $1` alone counted
+ * articles in KBs the viewer cannot open. It is **filtered**, not refused, and
+ * the `thread`/`message` argument deliberately does not transfer (§5.6, §11
+ * item 2 — closed in favour of the cache key):
+ *
+ * - The scope is a short **bounded id list** (`viewableKnowledgeBaseIds`), not a
+ *   per-viewer row predicate over an unbounded table, and it is resolved from
+ *   one org-cache read.
+ * - There is no tier problem. Mail admits a row at `metadata` while its subject
+ *   needs `identity`, so a group-by leaks labels the predicate never authorized;
+ *   an article row is either in a viewable KB or it is not, and its group labels
+ *   are columns of rows that survived the predicate.
+ * - The user-agnostic result cache is preserved by **forking the key** on
+ *   {@link import('../../permissions/capabilities/article-visibility-scope').knowledgeBaseScopeFingerprint}
+ *   (`run-aggregate.ts`). Members with identical KB access — nearly everyone,
+ *   since the seeded `knowledgeBase` baseline is `Edit` — keep sharing one entry.
+ *   🔴 Filtering here WITHOUT that key fork would serve the first caller's
+ *   numbers to the whole org, in both directions.
+ * - KB dashboard widgets are shipped product; refusing them costs a widget type.
+ *
+ * Adding a further system source means answering the same three questions for
+ * it, not inheriting this answer.
  */
 export const SYSTEM_AGGREGATE_TABLE_IDS = ['article'] as const
 
@@ -70,6 +96,17 @@ export type SystemAggregateParams = {
   secondaryGroupBy?: ResolvedGroupBy
   /** WHERE fragment from `systemConditionBuilder.buildGroupedQuery`. */
   conditionsWhere?: SQL
+  /**
+   * The viewer's viewable-KB allow-list from `viewableKnowledgeBaseIds`, or
+   * `'all'` for a headless caller (§8.2's `capabilities: undefined` convention).
+   *
+   * 🔴 **Required, not optional.** An omitted scope would silently aggregate
+   * every article in the org — the exact defect plan v3/06 R9 records — and an
+   * optional field makes that omission a default rather than a typecheck error.
+   * Only `prepareAggregate` builds these params, and it resolves the list once
+   * per run so the WHERE and the result-cache key describe the same set.
+   */
+  viewableKbIds: string[] | 'all'
   dateWindow?: ResolvedDateWindow
   timezone: string
   fetchCap: number
@@ -82,6 +119,11 @@ export type SystemAggregateParams = {
  * refuses them, so this is the last line before Postgres rather than the gate —
  * callers reach this function through a `tableId` cast, and the WHERE built
  * below carries no mail lens (see {@link SYSTEM_AGGREGATE_TABLE_IDS}).
+ *
+ * For `article` the WHERE **does** carry a row policy, from
+ * `params.viewableKbIds`. Its caller owns the other half of that fix: the same
+ * list must fork the result-cache key, or one viewer's counts are served to the
+ * next.
  */
 export function buildSystemAggregateSql(params: SystemAggregateParams): SQL {
   if (isMailLensTableId(params.tableId)) throw new ForbiddenError(MAIL_LENS_REFUSAL)
@@ -93,6 +135,7 @@ export function buildSystemAggregateSql(params: SystemAggregateParams): SQL {
     groupBy,
     secondaryGroupBy,
     conditionsWhere,
+    viewableKbIds,
     dateWindow,
     timezone,
     fetchCap,
@@ -124,6 +167,21 @@ export function buildSystemAggregateSql(params: SystemAggregateParams): SQL {
 
   const whereParts: SQL[] = [sql`${table.organizationId} = ${organizationId}`]
   if (conditionsWhere) whereParts.push(conditionsWhere)
+
+  // The article row policy (plan v3/06 R9). Qualified to `"Article"`, which is
+  // this query's only FROM entry — hence the table-id guard rather than a bare
+  // `viewableKbIds !== 'all'`: no other system source may ever be handed it.
+  //
+  // ⚠ There is deliberately **no "this viewer holds every KB ⇒ skip it"
+  // shortcut**. `viewableKnowledgeBaseIds` answers `'all'` only for an ABSENT
+  // viewer, because `kind: 'source'` KBs are excluded unconditionally — for
+  // OWNER too — so on any org with a KnowledgeSource the predicate still
+  // narrows. An empty list renders `= ANY('{}')`, which matches nothing: the
+  // aggregate returns 0 rather than the org's total, which is the fail-closed
+  // direction and the honest answer for a viewer with no KB at all.
+  if (tableId === 'article' && viewableKbIds !== 'all') {
+    whereParts.push(articleVisibilitySql({ organizationId, viewableKbIds }))
+  }
 
   if (dateWindow && (dateWindow.from || dateWindow.to)) {
     const col = valueColExpr(planField(dateWindow.field), dateWindow.field)

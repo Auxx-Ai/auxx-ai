@@ -27,6 +27,10 @@ vi.mock('../cache', () => ({
   getOrgCache: () => ({
     get: async (_orgId: string, key: string) => (key === 'memberRoleMap' ? hooks.roleMap : {}),
   }),
+  // No `article` def in this org, so the record ACL's article clamp (plan v3/06
+  // §3.1 R10) never engages here — this file is about `authorizeMany` agreeing
+  // with `authorize`, and the clamp is pinned in `record-rooms.test.ts`.
+  getCachedEntityDefId: async () => undefined,
 }))
 
 vi.mock('../permissions/capabilities/get-capabilities', () => ({

@@ -7,7 +7,7 @@ import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
-import { canViewKb } from '../kb-access'
+import { canReadArticle } from '../kb-access'
 
 /**
  * Resolves a heading's text → block id. Useful when the agent is
@@ -22,7 +22,7 @@ export function createResolveBlockByHeadingTool(getDeps: GetToolDeps): AgentTool
       keys: ['kb'],
       level: 'view',
       enforcement: 'enforced',
-      note: 'canViewKb → canViewInstance on the article’s home KB.',
+      note: 'canReadArticle — placement-permissive KB read gate (plan v3/06 §5.2).',
     },
     displayName: 'Find article section',
     toolsetSlug: 'auxx:knowledge',
@@ -63,14 +63,19 @@ export function createResolveBlockByHeadingTool(getDeps: GetToolDeps): AgentTool
         ),
         with: { draftRevision: true },
       })
+      if (!article || !article.draftRevision) {
+        return { success: false, output: null, error: 'article not found' }
+      }
       // The active-article ref is client-supplied, so re-check instance access
       // here (permissions v2 §3.3). Silent filter — a KB the caller can't view
-      // reads as "not found", never a 403.
-      if (
-        !article ||
-        !article.draftRevision ||
-        !canViewKb(capabilities, article.homeKnowledgeBaseId)
-      ) {
+      // reads as "not found", never a 403. Placement-permissive (§2.6).
+      const canRead = await canReadArticle(db, {
+        organizationId: agentDeps.organizationId,
+        capabilities,
+        articleId,
+        homeKnowledgeBaseId: article.homeKnowledgeBaseId,
+      })
+      if (!canRead) {
         return { success: false, output: null, error: 'article not found' }
       }
       const content = (article.draftRevision.contentJson as ArticleNodeJSON[] | null) ?? []

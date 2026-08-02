@@ -31,13 +31,14 @@ function assigneeFilter(userId: string, groupId = 'g1', conditionId = 'c1'): Con
 
 const key = (
   query: AggregateQuery,
-  extra: { kind?: 'agg' | 'kpi'; compare?: 'previousPeriod' } = {}
+  extra: { kind?: 'agg' | 'kpi'; compare?: 'previousPeriod'; scope?: string } = {}
 ) =>
   aggregateCacheKey({
     kind: extra.kind ?? 'agg',
     organizationId: ORG,
     query,
     compare: extra.compare,
+    scope: extra.scope,
   })
 
 describe('aggregateCacheKey', () => {
@@ -113,6 +114,24 @@ describe('aggregateCacheKey', () => {
     withMeta.filters![0]!.order = 3
     expect(key(a)).toBe(key(b))
     expect(key(a)).toBe(key(withMeta))
+  })
+
+  it('forks on the viewer scope fingerprint — the only viewer dimension (plan v3/06 §5.6)', () => {
+    // `article` inherits its KB's grants, so two viewers with different KB
+    // access compute different numbers from an identical query. Without this
+    // fork the first caller's numbers are served to the whole org.
+    const unscoped = key(baseQuery())
+    const all = key(baseQuery(), { scope: 'kb:all' })
+    const narrow = key(baseQuery(), { scope: 'kb:1a2b3c' })
+    const other = key(baseQuery(), { scope: 'kb:9z8y7x' })
+
+    expect(all).not.toBe(narrow)
+    expect(narrow).not.toBe(other)
+    // "No scope resolved" is its own value — an unenforced read must not collide
+    // with a resolved-unrestricted one.
+    expect(unscoped).not.toBe(all)
+    // Same shape ⇒ same entry: the hit rate is what makes this cheap.
+    expect(key(baseQuery(), { scope: 'kb:1a2b3c' })).toBe(narrow)
   })
 
   it('forks on kind and on KPI trend compare', () => {

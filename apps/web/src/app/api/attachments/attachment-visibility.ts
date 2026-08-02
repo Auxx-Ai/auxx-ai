@@ -2,7 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { getCachedResources, getCachedUserInstanceGrants } from '@auxx/lib/cache'
-import { getCapabilities, PermissionKey } from '@auxx/lib/permissions'
+import { canReadArticle, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
 import {
   buildDefIdToDefinitionId,
   buildDefIdToSlug,
@@ -150,8 +150,12 @@ export async function canViewAttachment(
     case 'CUSTOM_FIELD':
       return attachment.createdById === userId
 
-    // Articles inherit their home KB's access level, matching the tRPC sibling
-    // `kb.getArticleById` and the article SSE route.
+    // Articles inherit their KB's access level. `canReadArticle` is the ONE
+    // authoring point for that rule (plan v3/06 P5, implementation I5), shared
+    // with the article SSE route, the Kopilot KB tools, `apps/kb` and the
+    // knowledge-source guard. **Placement-permissive**: the home KB read here
+    // short-circuits the common case, and an article merely LINKED into a KB the
+    // caller holds keeps its attachments readable.
     case 'ARTICLE': {
       const [article] = await database
         .select({ homeKnowledgeBaseId: schema.Article.homeKnowledgeBaseId })
@@ -165,7 +169,12 @@ export async function canViewAttachment(
         .limit(1)
       if (!article) return false
 
-      return (await capabilities()).canViewInstance('kb', article.homeKnowledgeBaseId)
+      return canReadArticle(database, {
+        organizationId,
+        capabilities: await capabilities(),
+        articleId: attachment.entityId,
+        homeKnowledgeBaseId: article.homeKnowledgeBaseId,
+      })
     }
 
     // `entityId` IS the KB id. Confirm the row exists in this org first so a forged id

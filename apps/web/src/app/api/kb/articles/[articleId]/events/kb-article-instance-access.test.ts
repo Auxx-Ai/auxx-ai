@@ -22,16 +22,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * gate must land ahead of it, so an unauthorized caller never gets a stream.
  */
 
-const { getCapabilities, getSession, select, articleLimit, createDedicatedClient, eq, and } =
-  vi.hoisted(() => ({
-    getCapabilities: vi.fn(),
-    getSession: vi.fn(),
-    select: vi.fn(),
-    articleLimit: vi.fn(),
-    createDedicatedClient: vi.fn(),
-    eq: vi.fn((a: unknown, b: unknown) => ({ op: 'eq', a, b })),
-    and: vi.fn((...parts: unknown[]) => ({ op: 'and', parts })),
-  }))
+const {
+  getCapabilities,
+  getSession,
+  select,
+  articleLimit,
+  createDedicatedClient,
+  eq,
+  and,
+  canReadArticle,
+} = vi.hoisted(() => ({
+  getCapabilities: vi.fn(),
+  getSession: vi.fn(),
+  select: vi.fn(),
+  articleLimit: vi.fn(),
+  createDedicatedClient: vi.fn(),
+  eq: vi.fn((a: unknown, b: unknown) => ({ op: 'eq', a, b })),
+  and: vi.fn((...parts: unknown[]) => ({ op: 'and', parts })),
+  canReadArticle: vi.fn(),
+}))
 
 vi.mock('@auxx/database', () => ({
   database: { select },
@@ -48,7 +57,7 @@ vi.mock('drizzle-orm', () => ({ and, eq }))
 
 // The `@auxx/lib/permissions` barrel HANGS under vitest (get-capabilities,
 // record-view-scope, overage-*) — stub it, keep the enums real via `/client`.
-vi.mock('@auxx/lib/permissions', () => ({ getCapabilities }))
+vi.mock('@auxx/lib/permissions', () => ({ getCapabilities, canReadArticle }))
 vi.mock('@auxx/lib/kb', () => ({
   kbArticleChannel: (articleId: string) => `kb:article:${articleId}`,
 }))
@@ -139,6 +148,25 @@ beforeEach(() => {
   select.mockReset().mockReturnValue({
     from: () => ({ where: () => ({ limit: articleLimit }) }),
   })
+  // The shared rule itself is unit-tested in
+  // `packages/lib/src/permissions/capabilities/article-read-access.test.ts` (it
+  // needs the org KB cache, which this route test cannot reach — the
+  // `@auxx/lib/permissions` barrel hangs under vitest and has to be stubbed).
+  // What is stubbed here still runs a REAL `CapabilitySet`: the default
+  // delegates to the home KB, so every case below keeps exercising the composed
+  // blob rather than a boolean the test handed itself.
+  canReadArticle.mockReset().mockImplementation(
+    async (
+      _db: unknown,
+      {
+        capabilities,
+        homeKnowledgeBaseId,
+      }: {
+        capabilities: InstanceType<typeof CapabilitySet>
+        homeKnowledgeBaseId?: string | null
+      }
+    ) => capabilities.canViewInstance('kb', homeKnowledgeBaseId ?? '')
+  )
   createDedicatedClient.mockReset().mockResolvedValue({
     subscribe: vi.fn(async () => undefined),
     unsubscribe: vi.fn(async () => undefined),
@@ -231,6 +259,37 @@ describe('GET /api/kb/articles/[articleId]/events — the article-body hole', ()
     const res = await GET(request(), params)
     expect(eq).toHaveBeenCalledWith('Article.organizationId', ORG_ID)
     await firstChunk(res)
+  })
+
+  it('routes the gate through the SHARED rule, keyed on the home KB (plan v3/06 I4)', async () => {
+    // The route must hand `canReadArticle` the org, the article id and the home
+    // KB it already read — passing the article id alone would cost a second
+    // `Article` read, and passing no home KB at all would lose the
+    // short-circuit. Six readers used to spell this rule six ways; this pins
+    // that the SSE route is no longer one of them.
+    signedIn(capabilitiesFor(ResourcePermission.view))
+    const res = await GET(request(), params)
+    expect(canReadArticle).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: ORG_ID,
+        articleId: ARTICLE_ID,
+        homeKnowledgeBaseId: KB_ID,
+      })
+    )
+    await firstChunk(res)
+  })
+
+  it('streams an article the caller reaches only through a LINKED placement', async () => {
+    // Placement-permissive reads (§5.2): the home KB is denied outright, and the
+    // shared rule still admits the row via a placement in a KB the caller holds.
+    // The old home-only gate 403'd this — an under-permission that reads to a
+    // user as "linking is broken".
+    signedIn(areaOnly(Level.None))
+    canReadArticle.mockResolvedValue(true)
+    const res = await GET(request(), params)
+    expect(res.status).toBe(200)
+    expect(await firstChunk(res)).toContain('event: connected')
   })
 
   it('403s a session with no organization, before any read', async () => {

@@ -10,7 +10,7 @@ import { parseArticleIdArrayArg, parseStringArg } from '../../../../agent-framew
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
-import { canViewKb } from '../kb-access'
+import { resolveArticleReadScope } from '../kb-access'
 
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 200
@@ -25,7 +25,7 @@ export function createListArticlesTool(getDeps: GetToolDeps): AgentToolDefinitio
       keys: ['kb'],
       level: 'view',
       enforcement: 'enforced',
-      note: 'Rows filtered by canViewKb. Same doc-18 caveat as get_article: no visitor clamp and includeUnpublished defaults true.',
+      note: 'Rows filtered by the shared KB read scope (plan v3/06 §5.2) on each row’s PLACEMENT KB. Same doc-18 caveat as get_article: no visitor clamp and includeUnpublished defaults true.',
     },
     displayName: 'List articles',
     toolsetSlug: 'auxx:knowledge',
@@ -144,9 +144,15 @@ export function createListArticlesTool(getDeps: GetToolDeps): AgentToolDefinitio
       // restricted KB's articles simply don't appear (and don't count toward
       // `total`), the same thing a human sees. Runs before the other filters so
       // no unviewable row can survive any of them.
-      let filtered = capabilities
-        ? all.filter((a) => canViewKb(capabilities, a.knowledgeBaseId))
-        : all
+      //
+      // The scope is resolved ONCE and applied as a pure predicate: `all` can be
+      // hundreds of rows and a per-row async gate would pay one cache round trip
+      // each. Keyed on the row's PLACEMENT KB (`a.knowledgeBaseId` comes from the
+      // placement DTO), which is the shape plan v3/06 §5.2 adopted everywhere.
+      const readScope = await resolveArticleReadScope(agentDeps.organizationId, capabilities)
+      let filtered = readScope.unrestricted
+        ? all
+        : all.filter((a) => readScope.canReadKnowledgeBase(a.knowledgeBaseId))
       if (idFilter && idFilter.length > 0) {
         const idSet = new Set(idFilter)
         filtered = filtered.filter((a) => idSet.has(a.id))

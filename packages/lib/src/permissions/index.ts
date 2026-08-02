@@ -1,3 +1,21 @@
+// Plan v3/06 — articles inherit their KB's grants (see `capabilities/index.ts`).
+
+export {
+  type ArticleReadInput,
+  type ArticleReadScope,
+  canReadArticle,
+  canReadKnowledgeBase,
+  resolveArticleReadScope,
+} from './capabilities/article-read-access'
+export {
+  articleAccessRung,
+  articleRowAccess,
+  articleVisibilitySql,
+  articleWriteRung,
+  knowledgeBaseScopeFingerprint,
+  systemTableVisibilityScope,
+  viewableKnowledgeBaseIds,
+} from './capabilities/article-visibility-scope'
 export { CapabilitySet, type DefIdToSlug } from './capabilities/capability-set'
 export {
   type CapabilityView,
@@ -8,6 +26,7 @@ export {
   composeUserCapabilities,
   type UserCapabilities,
 } from './capabilities/compose-user-capabilities'
+export { ALWAYS_PER_ROW_DEF_SLUGS, NON_RECORD_DEF_SLUGS } from './capabilities/entity-access'
 export { getCapabilities } from './capabilities/get-capabilities'
 export type { GranteeGrant, GranteeRef, GrantGranteeType } from './capabilities/grant-service'
 export {

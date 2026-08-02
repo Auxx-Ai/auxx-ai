@@ -250,10 +250,13 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'favorite-folder.changed': { user: ['userFavorites'] },
 
   // ── KB & article events (overages for knowledgeBases / kbPublishedArticles;
-  // kbCatalog is the agent-prompt ToC of published articles) ──
-  'kb.created': ['overages', 'kbCatalog'],
-  'kb.deleted': ['overages', 'kbCatalog'],
-  'kb.updated': ['kbCatalog'], // name / visibility changes
+  // kbCatalog is the agent-prompt ToC of published articles; `knowledgeBases` is
+  // the id+kind allow-list article visibility is built from — plan v3/06 §5.3,
+  // and its stale-blob direction is fail-CLOSED, so these three events are what
+  // bound "a KB I just made hides its own articles") ──
+  'kb.created': ['overages', 'kbCatalog', 'knowledgeBases'],
+  'kb.deleted': ['overages', 'kbCatalog', 'knowledgeBases'],
+  'kb.updated': ['kbCatalog', 'knowledgeBases'], // name / visibility / kind changes
   'article.published': ['overages', 'kbCatalog'],
   'article.unpublished': ['overages', 'kbCatalog'],
   'article.deleted': ['overages', 'kbCatalog'],

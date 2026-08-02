@@ -553,6 +553,18 @@ export interface CachedMcpServer {
   lastSyncError: string | null
 }
 
+/**
+ * One knowledge base, reduced to the two columns article visibility needs
+ * (plan v3/06 §5.3). Deliberately NOT the whole row and deliberately not
+ * `KbCatalogEntry`: this blob is a permission INPUT and must not be recomputed
+ * on every article save.
+ */
+export interface CachedKnowledgeBase {
+  id: string
+  /** `'standard' | 'source' | 'learned'` — `source` is never a viewable KB. */
+  kind: string
+}
+
 /** All org-scoped cache keys and their data types */
 export interface OrgCacheDataMap {
   // Near-immutable
@@ -588,6 +600,7 @@ export interface OrgCacheDataMap {
   workflowApps: CachedWorkflowApp[]
   recordRules: CachedRecordRule[]
   kbCatalog: KbCatalogEntry[] // published AI-enabled article ToC per KB (agent prompt injection)
+  knowledgeBases: CachedKnowledgeBase[] // id + kind for EVERY KB — the article-visibility allow-list (plan v3/06 §5.3)
 
   // AI provider data (15-min TTL, invalidated via ai-provider/model events)
   aiProviderConfigs: Record<string, ProviderConfiguration>
@@ -774,6 +787,40 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   recordRules: { prefix: 'org:record-rules', ttlSeconds: ONE_DAY, localTtlMs: 1_000 },
   // Read once per agent turn at prompt build — stale order/titles are benign.
   kbCatalog: { prefix: 'org:kb-catalog', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
+  // The article-visibility allow-list input (plan v3/06 §5.3): `SELECT id, kind
+  // FROM "KnowledgeBase" WHERE organizationId = $1`, nothing else. Read on the
+  // hot records-list path for `article`, and only there.
+  //
+  // WHY A NEW KEY RATHER THAN REUSING `kbCatalog`, which already carries id +
+  // kind for every KB: `kbCatalog` is invalidated on `article.published` /
+  // `article.changed` / `article.deleted`, so a permission input keyed to it
+  // would be recomputed on every article keystroke-save — and the blob it
+  // recomputes is the whole org ToC. This one moves only when a KB is created,
+  // deleted or renamed, which is org SETUP scale.
+  //
+  // WHICH WAY DOES A STALE BLOB FAIL — worked out from the reader
+  // (`viewableKnowledgeBaseIds`), not asserted:
+  //  - **MISSING KB** (blob predates a `kb.created`) — the id never enters the
+  //    allow-list, so `= ANY(...)` excludes it and every article homed or placed
+  //    there vanishes from the records lane for its own creator. **Fail-CLOSED**,
+  //    and it is the direction this plan deliberately accepts for the
+  //    positive-form hazard (§8.3). Bounded by the `kb.created` invalidation,
+  //    which is already wired.
+  //  - **EXTRA KB** (blob predates a `kb.deleted`) — a dead id sits in the
+  //    allow-list. Harmless: it correlates against no surviving
+  //    `ArticlePlacement` row (FK `onDelete: cascade`) and no surviving
+  //    `Article.homeKnowledgeBaseId`, so it admits nothing.
+  //  - **STALE `kind`** (blob predates a `kb.updated` that flipped `standard` →
+  //    `source`) — the KB stays in the allow-list until the TTL, so a hidden
+  //    container's articles remain listable. **Fail-OPEN**, and the only such
+  //    direction here. Accepted because `kind` is set at creation by the
+  //    KnowledgeSource pipeline and nothing in the product mutates it, and
+  //    because `kb.updated` invalidates this key anyway.
+  //
+  // No `vN` suffix: this is a brand-new prefix, so there is no old writer whose
+  // blob a new reader could misread. Bump it the moment `CachedKnowledgeBase`
+  // grows a field or a value vocabulary here changes meaning.
+  knowledgeBases: { prefix: 'org:knowledge-bases', ttlSeconds: ONE_DAY },
 
   // AI provider data (15-min TTL)
   aiProviderConfigs: { prefix: 'org:ai-provider-configs', ttlSeconds: 900 },

@@ -135,6 +135,16 @@ const REGISTRY: RoomDef[] = [
   // NO dev bypass (unlike `isOrgMember` below): a dev-mode open channel is
   // still a shipped code path that streams other defs' field values.
   //
+  // 🔴 `article` needs a SECOND clamp (plan v3/06 §3.1 R10). `canViewEntity` is
+  // unconditionally `true` for it — `article` is in `NON_RECORD_DEF_SLUGS` and
+  // must stay there (§4.3: routing it through the Records area would make KB
+  // access depend on a records rung it has nothing to do with) — so the ACL
+  // above admits every member to the article def's channel and hands them raw
+  // `fieldValues:updated` payloads for KBs they cannot open. The clamp is
+  // COARSE: ≥1 viewable KB. Per-KB fanout is explicitly out of scope, matching
+  // descoped P6, so a member holding ONE KB still receives events for articles
+  // in every other KB — this closes the "no KB at all" case, not the whole hole.
+  //
   // `getCapabilities` is lazy-imported for the same reason the inbox entry
   // lazy-imports the cache barrel — the realtime barrel participates in an
   // import cycle with it (and `vi.mock` breaks on the static form).
@@ -147,14 +157,27 @@ const REGISTRY: RoomDef[] = [
       if (!parsed) return false
       const { organizationId: orgId, entityDefinitionId } = parsed
       try {
-        const [{ getOrgCache }, { getCapabilities }] = await Promise.all([
+        const [{ getCachedEntityDefId, getOrgCache }, { getCapabilities }] = await Promise.all([
           import('../cache'),
           import('../permissions/capabilities/get-capabilities'),
         ])
         const roleMap = await getOrgCache().get(orgId, 'memberRoleMap')
         if (!roleMap[ctx.session.userId]?.role) return false
         const caps = await getCapabilities(ctx.session.userId, orgId)
-        return caps.canViewEntity(entityDefinitionId)
+        if (!caps.canViewEntity(entityDefinitionId)) return false
+
+        const articleDefId = await getCachedEntityDefId(orgId, 'article')
+        if (articleDefId && entityDefinitionId === articleDefId) {
+          const { viewableKnowledgeBaseIds } = await import(
+            '../permissions/capabilities/article-visibility-scope'
+          )
+          const viewable = await viewableKnowledgeBaseIds(orgId, caps)
+          // `'all'` is the absent-viewer arm and cannot occur here — `caps` is
+          // always a real member's. Kept explicit so a future signature change
+          // fails loudly rather than silently denying every subscriber.
+          return viewable === 'all' || viewable.length > 0
+        }
+        return true
       } catch {
         return false
       }

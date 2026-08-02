@@ -13,6 +13,7 @@ export { PERMISSION_RANK } from '@auxx/types/permissions'
 // ── Shared client-safe entity-access resolver (most-specific-wins core, used by
 //    the client capabilities provider to mirror server enforcement).
 export {
+  ALWAYS_PER_ROW_DEF_SLUGS,
   administersAnyDef,
   type ClientCapabilities,
   canAdminInstance,

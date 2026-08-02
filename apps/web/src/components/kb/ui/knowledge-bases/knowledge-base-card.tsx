@@ -7,6 +7,7 @@
 // use-draft-settings-autosave.ts) — name is staged via `updateDraftSettings`
 // and never auto-published from here, matching the rest of the app.
 
+import { isSystemProvisionedKnowledgeBase } from '@auxx/lib/kb/client'
 import { toRecordId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
@@ -46,6 +47,11 @@ export function KnowledgeBaseCard({ knowledgeBase: kb }: { knowledgeBase: Knowle
   const { isRestrictedInstance, canAdminInstance } = useAccess()
   const isShared = isRestrictedInstance(kb.id)
   const canAdmin = canAdminInstance(toRecordId('kb', kb.id))
+  // An ADDITIONAL narrowing on top of `canAdmin`, never a replacement — OWNER is
+  // exactly the principal that would otherwise sail through, since the instance
+  // ladder hands it `admin` on every KB. See
+  // `isSystemProvisionedKnowledgeBase` for why Delete goes and Settings stays.
+  const canDelete = canAdmin && !isSystemProvisionedKnowledgeBase(kb.kind)
 
   const bulkMode = useBulkMode()
   const selected = useIsSelected(kb.id)
@@ -145,7 +151,7 @@ export function KnowledgeBaseCard({ knowledgeBase: kb }: { knowledgeBase: Knowle
               targetType='KNOWLEDGE_BASE'
               targetIds={{ knowledgeBaseId: kb.id }}
             />
-            {canAdmin && (
+            {canDelete && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem variant='destructive' onClick={() => void handleDelete()}>

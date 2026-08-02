@@ -59,7 +59,7 @@ export interface ArticlePickerProps {
   /**
    * Cross-KB mode only (no `knowledgeBaseId`): list these KBs at the root instead of
    * `useKnowledgeBases()`. Lets callers include KBs the default list hides — e.g. sources'
-   * hidden KBs (`api.kb.list` only returns `kind='standard'`).
+   * hidden KBs (`api.kb.list` returns `standard` + `learned`, never `source`).
    */
   knowledgeBasesOverride?: { id: string; name: string }[]
   /** Focus the search input on mount (e.g. when embedded in a morphing dropdown). */

@@ -139,16 +139,21 @@ describe('kb hydration — the per-row gate', () => {
   })
 
   it('an ordinary system table is untouched — it genuinely has no per-row policy', async () => {
-    // `article` is a system table but NOT instance-access, so the gate must not
-    // start dropping its rows just because it is not an `EntityInstance`.
-    const ARTICLE = 'art_cuid0000000000000000000'
+    // 🔴 This case USED to be `article`, and the claim was false — plan v3/06
+    // §2.2. An article's per-row policy is real; it just lives one hop away, on
+    // its knowledge base. It now has its own branch in `admitSystemRows` and its
+    // own file (`article-admit.test.ts`).
+    //
+    // `participant` is the honest example: a system table, not instance-access,
+    // and with nothing one hop away either.
+    const PARTICIPANT = 'ptp_cuid000000000000000000'
     const result = await hydrate(
-      [`article:${ARTICLE}`],
-      tableRows([ARTICLE], 'article'),
+      [`participant:${PARTICIPANT}`],
+      tableRows([PARTICIPANT], 'participant'),
       view({}) // nothing viewable in the instance keyspace
     )
 
-    expect(Object.keys(result)).toEqual([`article:${ARTICLE}`])
-    expect(result[`article:${ARTICLE}`]?._access).toBeUndefined()
+    expect(Object.keys(result)).toEqual([`participant:${PARTICIPANT}`])
+    expect(result[`participant:${PARTICIPANT}`]?._access).toBeUndefined()
   })
 })

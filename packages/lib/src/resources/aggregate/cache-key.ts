@@ -3,7 +3,8 @@
 // Pure cache-key derivation for the aggregate result cache. Callers MUST pass
 // the query with filters already run through `resolveConditionContext` — that
 // is what makes `{{me}}` placeholders fork keys per viewer while everything
-// else shares across users (aggregates have no row-level permissions).
+// else shares across users (aggregates have no row-level permissions — except
+// `article`, whose viewable-KB scope enters through `params.scope`).
 // The identity object is normalized to JSON primitives — Dates → ISO strings,
 // absent optionals → null — so the hash can't fork on undefined-vs-missing or
 // on Date serialization quirks.
@@ -54,8 +55,25 @@ export function aggregateCacheKey(params: {
   query: AggregateQuery
   /** KPI trend comparison — forks the key because it derives a second window. */
   compare?: TrendCompare | null
+  /**
+   * The VIEWER dimension, and the only one — a fingerprint of the viewable-KB
+   * allow-list from `knowledgeBaseScopeFingerprint` (plan v3/06 §5.6).
+   *
+   * 🔴 Aggregates are otherwise user-agnostic, and `article` is the single
+   * source that is not: it inherits its KB's instance grants, so two viewers
+   * with different KB access compute different numbers from the same query.
+   * Without this fork the first caller's counts are served to the whole org, in
+   * both directions — a narrow viewer would be shown a wide viewer's totals, and
+   * a wide viewer a narrow one's.
+   *
+   * It is a fingerprint of an ACCESS SHAPE, not of a user: viewers with
+   * identical access share one entry, which per §8.0 is nearly everyone. Absent
+   * (`undefined`) hashes as `null`, i.e. "no scope was resolved" — distinct from
+   * `'kb:all'`, "resolved, unrestricted".
+   */
+  scope?: string | null
 }): string {
-  const { kind, organizationId, query, compare } = params
+  const { kind, organizationId, query, compare, scope } = params
   const identity = {
     kind,
     source: query.source,
@@ -73,6 +91,7 @@ export function aggregateCacheKey(params: {
     timezone: query.timezone || 'UTC',
     limit: query.limit ?? null,
     compare: compare ?? null,
+    scope: scope ?? null,
   }
   return `${organizationId}:${stableHash(identity)}`
 }

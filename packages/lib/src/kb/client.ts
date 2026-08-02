@@ -10,3 +10,4 @@ export {
   type KBDraftSettings,
   mergeDraftOverLive,
 } from './draft-settings'
+export { isSystemProvisionedKnowledgeBase } from './knowledge-base-kind'
