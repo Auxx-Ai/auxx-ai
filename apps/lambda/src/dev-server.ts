@@ -17,6 +17,7 @@ import { loadBundle } from './bundle-loader.ts'
 import { createRuntimeContext } from './context-provider.ts'
 import { executeToolStreaming } from './executors/tool-executor.ts'
 import { handler } from './index.ts'
+import { getInvokeSecret, sealEnvironment } from './secrets.ts'
 import type { LambdaEvent } from './types.ts'
 import { validateLambdaEvent } from './validator.ts'
 
@@ -111,7 +112,7 @@ async function handleToolStreamingRequest(req: Request): Promise<Response> {
     return jsonError(413, 'PAYLOAD_TOO_LARGE', 'Payload too large')
   }
 
-  const secret = Deno.env.get('LAMBDA_INVOKE_SECRET')
+  const secret = getInvokeSecret()
   let authCaller: string | undefined
   if (secret) {
     const headers: Record<string, string> = {}
@@ -201,6 +202,11 @@ async function handleToolStreamingRequest(req: Request): Promise<Response> {
     },
   })
 }
+
+// Remove captured secrets from the environment before serving anything. Must run
+// after module init (bundle-loader captures S3 credentials at import time) and
+// before the first request can evaluate user code. See secrets.ts.
+sealEnvironment()
 
 // Start HTTP server — bind to 0.0.0.0 for container networking
 await serve(handleRequest, { port: PORT, hostname: '0.0.0.0' })

@@ -13,6 +13,7 @@
  */
 
 import { handler } from './index.ts'
+import { sealEnvironment } from './secrets.ts'
 
 /** Lambda Runtime API base URL (provided by Lambda environment) */
 const RUNTIME_API = Deno.env.get('AWS_LAMBDA_RUNTIME_API')
@@ -114,6 +115,11 @@ function formatFunctionUrlResponse(response: { statusCode: number; body: string 
  */
 async function runtimeLoop(): Promise<never> {
   console.log('[Runtime] Deno custom runtime started')
+
+  // Remove captured secrets from the environment before the first invocation can
+  // evaluate user code. Runs after module init so bundle-loader has already
+  // captured the S3 credentials into its client. See secrets.ts.
+  sealEnvironment()
 
   while (true) {
     // 1. Poll for next invocation
