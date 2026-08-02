@@ -2,12 +2,10 @@
 
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
-import { ListCard, type ListCardMenuItem, renderBadgeChips } from '@auxx/ui/components/list-card'
-import { History, Lock, Pencil, Plus, Trash, Zap } from 'lucide-react'
+import type { ListCardBadgeChip } from '@auxx/ui/components/list-card'
+import { Lock, Zap } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { SettingsSection } from '~/components/global/settings-page'
-import { useConfirm } from '~/hooks/use-confirm'
+import { RuleListSection } from '~/components/rules/ui/rule-list-section'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { useRecordRules } from '../hooks/use-record-rules'
@@ -47,17 +45,23 @@ function describeRule(rule: RuleRow, defLabel: string | undefined): string {
 }
 
 /**
- * Record rules settings section: the rule card grid + create/edit/toggle/delete/runs
- * wiring over `api.recordRules`.
+ * Record rules settings section: the shared rule card grid wired to `api.recordRules`
+ * for create/edit/toggle/delete/runs.
+ *
+ * **Self-guarded on `automationRules.manage`** (plan §6.4). `settings/rules` used
+ * to carry a whole-page `CapabilityPageGuard` on that key, but the page now also
+ * hosts mail filters, which a personal-mailbox owner manages with NO key at all
+ * (D14/D16). Moving the check down here keeps this section's audience exactly
+ * what it was — every `api.recordRules` procedure is key-gated server-side, so
+ * this is a UI affordance, not the boundary.
  */
 export function RecordRulesSection() {
   const { list, setEnabled, destroy } = useRecordRules()
-  const { canViewEntity } = useAccess()
+  const { canViewEntity, can, isLoading: isAccessLoading } = useAccess()
   const { data: resources } = api.resource.list.useQuery(undefined, { staleTime: 60_000 })
   const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<RuleRow | null>(null)
   const [runsFor, setRunsFor] = useState<RuleRow | null>(null)
-  const [confirm, ConfirmDialog] = useConfirm()
 
   // `api.resource.list` bypasses the store; only surface labels for defs the
   // member can view (per-def read gate). A rule on a non-viewable def falls back
@@ -72,95 +76,39 @@ export function RecordRulesSection() {
 
   const rules = (list.data ?? []) as RuleRow[]
 
-  const handleDelete = async (rule: RuleRow) => {
-    const ok = await confirm({
-      title: 'Delete rule?',
-      description: `Remove "${rule.name}"? This action cannot be undone.`,
-      confirmText: 'Remove',
-      cancelText: 'Cancel',
-      destructive: true,
-    })
-    if (!ok) return
-    destroy.mutate({ ruleId: rule.id })
-  }
+  // Hidden entirely without the key — never an empty grid, which would advertise
+  // a feature the member cannot use. `isLoading` is respected so a legitimate
+  // admin doesn't see the section blink out during an org switch or a refresh.
+  if (isAccessLoading || !can('automationRules.manage')) return null
 
   return (
-    <SettingsSection
+    <RuleListSection
       icon={Zap}
       title='Record rules'
       description='When a field changes or a record is created or deleted, check conditions and run actions.'
-      action={
-        <Button variant='outline' size='sm' onClick={() => setCreateOpen(true)}>
-          <Plus />
-          Add
-        </Button>
-      }>
-      <div className='@container'>
-        <div className='grid gap-2 @md:grid-cols-2 @2xl:grid-cols-3'>
-          {list.isLoading &&
-            [...Array(3)].map((_, i) => (
-              <ListCard key={`skeleton-${i}`} loading descriptionLines={0} />
-            ))}
-
-          {!list.isLoading &&
-            rules.map((rule) => {
-              // Managed rules (e.g. inventory-source setup) are edit/delete-locked; only the
-              // enable toggle + run history are offered, and the card opens run history.
-              const managed = rule.managed != null
-              const menuItems: ListCardMenuItem[] = managed
-                ? [
-                    { label: 'Run history', icon: <History />, onClick: () => setRunsFor(rule) },
-                    {
-                      label: rule.enabled ? 'Disable' : 'Enable',
-                      icon: <Zap />,
-                      onClick: () => setEnabled.mutate({ ruleId: rule.id, enabled: !rule.enabled }),
-                    },
-                  ]
-                : [
-                    { label: 'Edit', icon: <Pencil />, onClick: () => setEditing(rule) },
-                    { label: 'Run history', icon: <History />, onClick: () => setRunsFor(rule) },
-                    {
-                      label: rule.enabled ? 'Disable' : 'Enable',
-                      icon: <Zap />,
-                      onClick: () => setEnabled.mutate({ ruleId: rule.id, enabled: !rule.enabled }),
-                    },
-                    {
-                      label: 'Delete',
-                      icon: <Trash />,
-                      onClick: () => void handleDelete(rule),
-                      destructive: true,
-                    },
-                  ]
-              const badges = [
-                ...(managed ? [{ label: 'Managed', icon: <Lock className='size-3' /> }] : []),
-                ...(rule.enabled ? [] : [{ label: 'Disabled' }]),
-              ]
-              return (
-                <ListCard
-                  key={rule.id}
-                  title={rule.name}
-                  subtitle={defLabels.get(rule.entityDefinitionId) ?? 'Record'}
-                  description={describeRule(rule, defLabels.get(rule.entityDefinitionId))}
-                  icon={<Zap className='size-4' />}
-                  headerEnd={badges.length > 0 ? renderBadgeChips(badges) : undefined}
-                  onClick={() => (managed ? setRunsFor(rule) : setEditing(rule))}
-                  menuItems={menuItems}
-                />
-              )
-            })}
-
-          {!list.isLoading && rules.length === 0 && (
-            <ListCard
-              title='Add a rule'
-              subtitle='Record rules'
-              description='React to record changes with conditions and actions.'
-              icon={<Zap className='size-4 text-muted-foreground' />}
-              onClick={() => setCreateOpen(true)}
-            />
-          )}
-        </div>
-      </div>
-
+      createLabel='Add'
+      onCreate={() => setCreateOpen(true)}
+      isLoading={list.isLoading}
+      rows={rules}
+      subtitle={(rule) => defLabels.get(rule.entityDefinitionId) ?? 'Record'}
+      describe={(rule) => describeRule(rule, defLabels.get(rule.entityDefinitionId))}
+      badges={(rule): ListCardBadgeChip[] => [
+        ...(rule.managed != null ? [{ label: 'Managed', icon: <Lock className='size-3' /> }] : []),
+        ...(rule.enabled ? [] : [{ label: 'Disabled' }]),
+      ]}
+      // Managed rules (e.g. inventory-source setup) are edit/delete-locked; only the
+      // enable toggle + run history are offered, and the card opens run history.
+      isLocked={(rule) => rule.managed != null}
+      onEdit={setEditing}
+      onViewRuns={setRunsFor}
+      onToggleEnabled={(rule) => setEnabled.mutate({ ruleId: rule.id, enabled: !rule.enabled })}
+      onDelete={(rule) => destroy.mutate({ ruleId: rule.id })}
+      deleteConfirmTitle='Delete rule?'
+      placeholder={{
+        title: 'Add a rule',
+        subtitle: 'Record rules',
+        description: 'React to record changes with conditions and actions.',
+      }}>
       <RecordRuleDialog
         open={createOpen || editing !== null}
         onClose={() => {
@@ -170,7 +118,6 @@ export function RecordRulesSection() {
         rule={editing}
       />
       {runsFor && <RecordRuleRunsDialog rule={runsFor} open onClose={() => setRunsFor(null)} />}
-      <ConfirmDialog />
-    </SettingsSection>
+    </RuleListSection>
   )
 }

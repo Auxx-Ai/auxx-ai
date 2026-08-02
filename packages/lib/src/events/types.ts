@@ -1033,84 +1033,123 @@ export type AuxxEvent =
   | RecordingAiInsightsReadyEvent
   | RecordingAiFailedEvent
 export type EventHandler<E extends AuxxEvent> = ({ data }: { data: E }) => void
+
+/**
+ * What a gate handler asks the fan-out to skip (mail-filters plan §3).
+ *
+ * The strings are `Function.prototype.name`s of handlers in the SAME entry's
+ * `then` list — the only coupling between this map and the worker's
+ * `eventHandlersJobMappings`, which keys its job names the same way. Never
+ * hand-write a literal here: read `.name` off the imported handler function so
+ * a rename can't silently stop suppressing.
+ */
+export interface GateResult {
+  suppress: string[]
+}
+
+/**
+ * A handler that runs INLINE, before the fan-out, and may veto part of it.
+ *
+ * Unlike {@link EventHandler} (enqueued onto `eventHandlersQueue` and awaited by
+ * nobody) a gate handler is awaited by `publishEventJob` itself, so it holds an
+ * `eventsQueue` slot for its whole duration. It must therefore be fast and it
+ * must never throw for a reason the caller can't recover from — the gate phase
+ * fails OPEN (invariant 3): a throw or a timeout suppresses nothing.
+ */
+// biome-ignore lint/suspicious/noConfusingVoidType: `void` is a gate with nothing to suppress — the shape every EventHandler already returns.
+export type GateHandler<E extends AuxxEvent> = ({ data }: { data: E }) => Promise<GateResult | void>
+
+/** An event type whose fan-out is preceded by one or more inline gates. */
+export interface GatedEventHandlers<E extends AuxxEvent> {
+  gate: GateHandler<E>[]
+  then: EventHandler<E>[]
+}
+
+/**
+ * One entry in {@link IEventsHandlers}: either the plain fan-out list every
+ * event type has always used, or a gated pair. A plain array behaves exactly as
+ * before — there is no migration of the ~75 ungated types.
+ */
+export type EventHandlerEntry<E extends AuxxEvent> = EventHandler<E>[] | GatedEventHandlers<E>
+
 export interface IEventsHandlers {
-  'project:created': EventHandler<ProjectCreatedEvent>[]
-  'user:created': EventHandler<UserCreatedEvent>[]
-  'membership:created': EventHandler<MembershipCreatedEvent>[]
-  'webhook:delivery:created': EventHandler<WebhookDeliveryCreatedEvent>[]
-  'ticket:created': EventHandler<TicketCreatedEvent>[]
-  'ticket:updated': EventHandler<TicketUpdatedEvent>[]
-  'ticket:deleted': EventHandler<TicketDeletedEvent>[]
-  'ticket:status:changed': EventHandler<TicketStatusChangedEvent>[]
-  'ticket:assignee:added': EventHandler<TicketAssignedEvent>[]
-  'ticket:assignee:removed': EventHandler<TicketUnassignedEvent>[]
-  'ticket:reply:created': EventHandler<TicketReplyCreatedEvent>[]
-  'messages:sync:pending': EventHandler<MessageSyncPendingEvent>[]
-  'messages:sync:processing': EventHandler<MessageSyncProcessingEvent>[]
-  'messages:sync:complete': EventHandler<MessageSyncCompleteEvent>[]
-  'messages:sync:failed': EventHandler<MessageSyncFailedEvent>[]
-  'message:received': EventHandler<MessageReceivedEvent>[]
-  'message:sent': EventHandler<MessageSentEvent>[]
-  'message:failed': EventHandler<MessageFailedEvent>[]
-  'message:comment:created': EventHandler<MessageCommentCreatedEvent>[]
-  'message:assignee:changed': EventHandler<MessageAssigneeChangedEvent>[]
-  'message:tag:added': EventHandler<MessageTagsAddedEvent>[]
-  'message:tag:removed': EventHandler<MessageTagsRemovedEvent>[]
-  'thread:moved': EventHandler<ThreadMovedEvent>[]
-  'thread:archived': EventHandler<ThreadArchivedEvent>[]
-  'thread:deleted': EventHandler<ThreadDeletedEvent>[]
-  'thread:reopened': EventHandler<ThreadReopenedEvent>[]
-  'thread:restored': EventHandler<ThreadRestoredEvent>[]
-  'thread:taken_over': EventHandler<ThreadTakenOverEvent>[]
-  'thread:returned_to_ai': EventHandler<ThreadReturnedToAiEvent>[]
-  'thread:assignee:changed': EventHandler<ThreadAssigneeChangedEvent>[]
-  'thread:visitor:identified': EventHandler<ThreadVisitorIdentifiedEvent>[]
-  'message:processing:started': EventHandler<MessageProcessingStartedEvent>[]
-  'message:processing:completed': EventHandler<MessageProcessingCompletedEvent>[]
-  'message:processing:failed': EventHandler<MessageProcessingFailedEvent>[]
-  'message:bulk:processing:started': EventHandler<MessageBulkProcessingStartedEvent>[]
-  'message:bulk:processing:completed': EventHandler<MessageBulkProcessingCompletedEvent>[]
-  'message:bulk:processing:failed': EventHandler<MessageBulkProcessingFailedEvent>[]
-  'workflow:paused': EventHandler<WorkflowPausedEvent>[]
-  'workflow:resumed': EventHandler<WorkflowResumedEvent>[]
-  'workflow:resume:failed': EventHandler<WorkflowResumeFailedEvent>[]
-  'approval:created': EventHandler<ApprovalCreatedEvent>[]
-  'approval:responded': EventHandler<ApprovalRespondedEvent>[]
-  'approval:cancelled': EventHandler<ApprovalCancelledEvent>[]
-  'approval:timeout': EventHandler<ApprovalTimeoutEvent>[]
-  'contact:created': EventHandler<ContactCreatedEvent>[]
-  'contact:updated': EventHandler<ContactUpdatedEvent>[]
-  'contact:deleted': EventHandler<ContactDeletedEvent>[]
-  'contact:merged': EventHandler<ContactMergedEvent>[]
-  'contact:field:updated': EventHandler<ContactFieldUpdatedEvent>[]
-  'contact:group:added': EventHandler<ContactGroupAddedEvent>[]
-  'contact:group:removed': EventHandler<ContactGroupRemovedEvent>[]
-  'ticket:field:updated': EventHandler<TicketFieldUpdatedEvent>[]
-  'comment:created': EventHandler<CommentCreatedEvent>[]
-  'comment:updated': EventHandler<CommentUpdatedEvent>[]
-  'comment:deleted': EventHandler<CommentDeletedEvent>[]
-  'comment:replied': EventHandler<CommentRepliedEvent>[]
-  'comment:referenced': EventHandler<CommentReferencedEvent>[]
-  'entity:created': EventHandler<EntityInstanceCreatedEvent>[]
-  'entity:updated': EventHandler<EntityInstanceUpdatedEvent>[]
-  'entity:deleted': EventHandler<EntityInstanceDeletedEvent>[]
-  'entity:field:updated': EventHandler<EntityInstanceFieldUpdatedEvent>[]
-  'signal:recorded': EventHandler<SignalRecordedEvent>[]
-  'stock_movement:created': EventHandler<StockMovementCreatedEvent>[]
-  'stock_movement:deleted': EventHandler<StockMovementDeletedEvent>[]
-  'vendor_part:created': EventHandler<VendorPartCreatedEvent>[]
-  'vendor_part:deleted': EventHandler<VendorPartDeletedEvent>[]
-  'subpart:created': EventHandler<SubpartCreatedEvent>[]
-  'subpart:deleted': EventHandler<SubpartDeletedEvent>[]
-  'company:created': EventHandler<CompanyCreatedEvent>[]
-  'company:deleted': EventHandler<CompanyDeletedEvent>[]
-  'field:trigger': EventHandler<FieldTriggerJobEvent>[]
-  'sync:records:changed': EventHandler<SyncRecordsChangedEvent>[]
-  'integration:connected': EventHandler<IntegrationConnectedEvent>[]
-  'integration:connection_failed': EventHandler<IntegrationConnectionFailedEvent>[]
-  'shopify:connected': EventHandler<ShopifyConnectedEvent>[]
-  'recording:ai.summary_ready': EventHandler<RecordingAiSummaryReadyEvent>[]
-  'recording:ai.chapters_ready': EventHandler<RecordingAiChaptersReadyEvent>[]
-  'recording:ai.insights_ready': EventHandler<RecordingAiInsightsReadyEvent>[]
-  'recording:ai.failed': EventHandler<RecordingAiFailedEvent>[]
+  'project:created': EventHandlerEntry<ProjectCreatedEvent>
+  'user:created': EventHandlerEntry<UserCreatedEvent>
+  'membership:created': EventHandlerEntry<MembershipCreatedEvent>
+  'webhook:delivery:created': EventHandlerEntry<WebhookDeliveryCreatedEvent>
+  'ticket:created': EventHandlerEntry<TicketCreatedEvent>
+  'ticket:updated': EventHandlerEntry<TicketUpdatedEvent>
+  'ticket:deleted': EventHandlerEntry<TicketDeletedEvent>
+  'ticket:status:changed': EventHandlerEntry<TicketStatusChangedEvent>
+  'ticket:assignee:added': EventHandlerEntry<TicketAssignedEvent>
+  'ticket:assignee:removed': EventHandlerEntry<TicketUnassignedEvent>
+  'ticket:reply:created': EventHandlerEntry<TicketReplyCreatedEvent>
+  'messages:sync:pending': EventHandlerEntry<MessageSyncPendingEvent>
+  'messages:sync:processing': EventHandlerEntry<MessageSyncProcessingEvent>
+  'messages:sync:complete': EventHandlerEntry<MessageSyncCompleteEvent>
+  'messages:sync:failed': EventHandlerEntry<MessageSyncFailedEvent>
+  'message:received': EventHandlerEntry<MessageReceivedEvent>
+  'message:sent': EventHandlerEntry<MessageSentEvent>
+  'message:failed': EventHandlerEntry<MessageFailedEvent>
+  'message:comment:created': EventHandlerEntry<MessageCommentCreatedEvent>
+  'message:assignee:changed': EventHandlerEntry<MessageAssigneeChangedEvent>
+  'message:tag:added': EventHandlerEntry<MessageTagsAddedEvent>
+  'message:tag:removed': EventHandlerEntry<MessageTagsRemovedEvent>
+  'thread:moved': EventHandlerEntry<ThreadMovedEvent>
+  'thread:archived': EventHandlerEntry<ThreadArchivedEvent>
+  'thread:deleted': EventHandlerEntry<ThreadDeletedEvent>
+  'thread:reopened': EventHandlerEntry<ThreadReopenedEvent>
+  'thread:restored': EventHandlerEntry<ThreadRestoredEvent>
+  'thread:taken_over': EventHandlerEntry<ThreadTakenOverEvent>
+  'thread:returned_to_ai': EventHandlerEntry<ThreadReturnedToAiEvent>
+  'thread:assignee:changed': EventHandlerEntry<ThreadAssigneeChangedEvent>
+  'thread:visitor:identified': EventHandlerEntry<ThreadVisitorIdentifiedEvent>
+  'message:processing:started': EventHandlerEntry<MessageProcessingStartedEvent>
+  'message:processing:completed': EventHandlerEntry<MessageProcessingCompletedEvent>
+  'message:processing:failed': EventHandlerEntry<MessageProcessingFailedEvent>
+  'message:bulk:processing:started': EventHandlerEntry<MessageBulkProcessingStartedEvent>
+  'message:bulk:processing:completed': EventHandlerEntry<MessageBulkProcessingCompletedEvent>
+  'message:bulk:processing:failed': EventHandlerEntry<MessageBulkProcessingFailedEvent>
+  'workflow:paused': EventHandlerEntry<WorkflowPausedEvent>
+  'workflow:resumed': EventHandlerEntry<WorkflowResumedEvent>
+  'workflow:resume:failed': EventHandlerEntry<WorkflowResumeFailedEvent>
+  'approval:created': EventHandlerEntry<ApprovalCreatedEvent>
+  'approval:responded': EventHandlerEntry<ApprovalRespondedEvent>
+  'approval:cancelled': EventHandlerEntry<ApprovalCancelledEvent>
+  'approval:timeout': EventHandlerEntry<ApprovalTimeoutEvent>
+  'contact:created': EventHandlerEntry<ContactCreatedEvent>
+  'contact:updated': EventHandlerEntry<ContactUpdatedEvent>
+  'contact:deleted': EventHandlerEntry<ContactDeletedEvent>
+  'contact:merged': EventHandlerEntry<ContactMergedEvent>
+  'contact:field:updated': EventHandlerEntry<ContactFieldUpdatedEvent>
+  'contact:group:added': EventHandlerEntry<ContactGroupAddedEvent>
+  'contact:group:removed': EventHandlerEntry<ContactGroupRemovedEvent>
+  'ticket:field:updated': EventHandlerEntry<TicketFieldUpdatedEvent>
+  'comment:created': EventHandlerEntry<CommentCreatedEvent>
+  'comment:updated': EventHandlerEntry<CommentUpdatedEvent>
+  'comment:deleted': EventHandlerEntry<CommentDeletedEvent>
+  'comment:replied': EventHandlerEntry<CommentRepliedEvent>
+  'comment:referenced': EventHandlerEntry<CommentReferencedEvent>
+  'entity:created': EventHandlerEntry<EntityInstanceCreatedEvent>
+  'entity:updated': EventHandlerEntry<EntityInstanceUpdatedEvent>
+  'entity:deleted': EventHandlerEntry<EntityInstanceDeletedEvent>
+  'entity:field:updated': EventHandlerEntry<EntityInstanceFieldUpdatedEvent>
+  'signal:recorded': EventHandlerEntry<SignalRecordedEvent>
+  'stock_movement:created': EventHandlerEntry<StockMovementCreatedEvent>
+  'stock_movement:deleted': EventHandlerEntry<StockMovementDeletedEvent>
+  'vendor_part:created': EventHandlerEntry<VendorPartCreatedEvent>
+  'vendor_part:deleted': EventHandlerEntry<VendorPartDeletedEvent>
+  'subpart:created': EventHandlerEntry<SubpartCreatedEvent>
+  'subpart:deleted': EventHandlerEntry<SubpartDeletedEvent>
+  'company:created': EventHandlerEntry<CompanyCreatedEvent>
+  'company:deleted': EventHandlerEntry<CompanyDeletedEvent>
+  'field:trigger': EventHandlerEntry<FieldTriggerJobEvent>
+  'sync:records:changed': EventHandlerEntry<SyncRecordsChangedEvent>
+  'integration:connected': EventHandlerEntry<IntegrationConnectedEvent>
+  'integration:connection_failed': EventHandlerEntry<IntegrationConnectionFailedEvent>
+  'shopify:connected': EventHandlerEntry<ShopifyConnectedEvent>
+  'recording:ai.summary_ready': EventHandlerEntry<RecordingAiSummaryReadyEvent>
+  'recording:ai.chapters_ready': EventHandlerEntry<RecordingAiChaptersReadyEvent>
+  'recording:ai.insights_ready': EventHandlerEntry<RecordingAiInsightsReadyEvent>
+  'recording:ai.failed': EventHandlerEntry<RecordingAiFailedEvent>
 }

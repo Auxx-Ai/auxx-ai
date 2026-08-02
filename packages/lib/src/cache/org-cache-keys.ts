@@ -31,6 +31,7 @@ import type { ConditionGroup } from '../conditions/types'
 import type { DehydratedOrganization } from '../dehydration/types'
 import type { Inbox } from '../inboxes/types'
 import type { KbCatalogEntry } from '../kb/catalog/kb-catalog'
+import type { CachedMailFilter } from '../mail-filters/types'
 import type { Overage } from '../permissions/overage-detection-service'
 import type { CachedPermissionProfile } from '../permissions/profiles/types'
 import type { FeatureMapObject } from '../permissions/types'
@@ -599,6 +600,7 @@ export interface OrgCacheDataMap {
   mcpServers: CachedMcpServer[]
   workflowApps: CachedWorkflowApp[]
   recordRules: CachedRecordRule[]
+  mailFilters: CachedMailFilter[] // every MailFilter row (enabled + disabled); the gate filters in memory
   kbCatalog: KbCatalogEntry[] // published AI-enabled article ToC per KB (agent prompt injection)
   knowledgeBases: CachedKnowledgeBase[] // id + kind for EVERY KB — the article-visibility allow-list (plan v3/06 §5.3)
 
@@ -785,6 +787,11 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // Read per interactive field write. Rules have side effects, so the peer
   // staleness window stays tight (1 s ≈ 10× fewer steady-state hash GETs).
   recordRules: { prefix: 'org:record-rules', ttlSeconds: ONE_DAY, localTtlMs: 1_000 },
+  // Read per INBOUND MESSAGE by the `message:received` gate, and it is the §4.1
+  // step-3 early exit — the read that decides whether an org pays anything at
+  // all for filters. Same reasoning as `recordRules`: filters have side effects
+  // on people's mail, so the peer staleness window stays tight (1 s).
+  mailFilters: { prefix: 'org:mail-filters', ttlSeconds: ONE_DAY, localTtlMs: 1_000 },
   // Read once per agent turn at prompt build — stale order/titles are benign.
   kbCatalog: { prefix: 'org:kb-catalog', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
   // The article-visibility allow-list input (plan v3/06 §5.3): `SELECT id, kind

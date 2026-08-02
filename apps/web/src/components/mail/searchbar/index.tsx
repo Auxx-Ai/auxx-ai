@@ -11,6 +11,7 @@ import { useCallback } from 'react'
 import { v4 as generateId } from 'uuid'
 import { ConditionProvider } from '~/components/conditions/condition-context'
 import { useMailFilter } from '~/components/mail/mail-filter-context'
+import { CreateFilterFromSearchButton } from '~/components/mail-filters/ui/create-filter-from-search-button'
 import { SearchBarShell } from '~/components/searchbar/searchbar-shell'
 import type { SearchCondition, SearchSuggestion } from '~/components/searchbar/types'
 import { useAnalytics } from '~/hooks/use-analytics'
@@ -184,35 +185,41 @@ export function MailSearchBar({
         Array.isArray(fieldId) ? undefined : getMailViewFieldDefinition(fieldId)
       }
       onConditionsChange={handleConditionsChange}>
-      <SearchBarShell
-        conditions={conditions}
-        hiddenFieldIds={MAIL_HIDDEN_FIELD_IDS}
-        actions={actions}
-        highlightedIndex={highlightedIndex}
-        hasActiveConditions={hasActiveConditions}
-        displayText={displayText}
-        suggestions={suggestions}
-        suggestionsLoading={suggestionsLoading}
-        onSuggestionSelect={handleSuggestionSelect}
-        onDeleteRecentSuggestion={deleteRecentSearch}
-        renderRecentItem={renderRecentItem}
-        onSearch={() => onSearch(displayText)}
-        onAfterSearch={handleAfterSearch}
-        freeTextField='freeText'
-        renderAdvancedFilter={({ conditions: advConditions, onApply, onCancel }) => (
-          <AdvancedFilterMode
-            initialConditions={advConditions}
-            onApply={onApply}
-            onCancel={onCancel}
-          />
-        )}
-        pinnedFieldIds={MAIL_HIDDEN_FIELD_IDS}
-        pinnedBadgeClassName='bg-accent/30 border-accent/40'
-        placeholder='Search (/)...'
-        className={className}
-        isLoading={isLoading}
-        showScopeBadge={!isViewContext && hasActiveConditions}
-      />
+      {/* The shell plus the mail-filter entry point (§6.3). The button sits
+          BESIDE the shell rather than inside it: "create a filter from this
+          search" is mail-specific, and the shell is shared with records. */}
+      <div className='flex w-full min-w-0 items-center gap-1'>
+        <SearchBarShell
+          conditions={conditions}
+          hiddenFieldIds={MAIL_HIDDEN_FIELD_IDS}
+          actions={actions}
+          highlightedIndex={highlightedIndex}
+          hasActiveConditions={hasActiveConditions}
+          displayText={displayText}
+          suggestions={suggestions}
+          suggestionsLoading={suggestionsLoading}
+          onSuggestionSelect={handleSuggestionSelect}
+          onDeleteRecentSuggestion={deleteRecentSearch}
+          renderRecentItem={renderRecentItem}
+          onSearch={() => onSearch(displayText)}
+          onAfterSearch={handleAfterSearch}
+          freeTextField='freeText'
+          renderAdvancedFilter={({ conditions: advConditions, onApply, onCancel }) => (
+            <AdvancedFilterMode
+              initialConditions={advConditions}
+              onApply={onApply}
+              onCancel={onCancel}
+            />
+          )}
+          pinnedFieldIds={MAIL_HIDDEN_FIELD_IDS}
+          pinnedBadgeClassName='bg-accent/30 border-accent/40'
+          placeholder='Search (/)...'
+          className={className}
+          isLoading={isLoading}
+          showScopeBadge={!isViewContext && hasActiveConditions}
+        />
+        <CreateFilterFromSearchButton conditions={conditions} />
+      </div>
     </ConditionProvider>
   )
 }

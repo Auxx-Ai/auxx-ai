@@ -280,6 +280,21 @@ export class OverageDetectionService {
         return countSequencesUsed(this.db, organizationId)
       }
 
+      case FeatureKey.mailFiltersLimit: {
+        // Shared-inbox filters only, seeded (`templateKey`) rows excluded — the same
+        // counter the create gate calls, so the gate and this detector cannot drift.
+        // Personal-inbox filters are deliberately NOT counted: pooling them into the
+        // org allowance lets one member exhaust the plan for everyone (they carry a
+        // flat per-user ceiling instead).
+        //
+        // Lazy import for the same ESM-cycle reason as `countSeatsUsed` above:
+        // `mail-filters/limits` reaches the `cache` barrel → `register-providers` →
+        // `overages-provider` → this file, so a static import would close the cycle
+        // (and break `vi.mock` in tests).
+        const { countBillableMailFilters } = await import('../mail-filters/limits')
+        return countBillableMailFilters(this.db, organizationId)
+      }
+
       case FeatureKey.savedViews: {
         // Shared, member-created views across TableView + MailView. Delegates to the
         // one shared counter the create gates use — see `countSavedViewsUsed` for why

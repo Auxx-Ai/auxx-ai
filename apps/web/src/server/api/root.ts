@@ -53,6 +53,7 @@ import { knowledgeBaseRouter } from './routers/kb'
 import { knowledgeSourceRouter } from './routers/knowledge-sources'
 import { kopilotRouter } from './routers/kopilot'
 import { labelRouter } from './routers/label'
+import { mailFiltersRouter } from './routers/mail-filters'
 import { mailDomainsRouter } from './routers/mailDomain'
 import { mailViewRouter } from './routers/mailView'
 import { mcpRouter } from './routers/mcp'
@@ -151,6 +152,7 @@ export const appRouter = createTRPCRouter({
   kopilot: kopilotRouter,
   label: labelRouter,
   mailDomain: mailDomainsRouter,
+  mailFilters: mailFiltersRouter,
   mailView: mailViewRouter,
   mcp: mcpRouter,
   member: memberRouter,

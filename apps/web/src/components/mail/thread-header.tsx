@@ -35,6 +35,11 @@ import {
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useChannel } from '~/components/channels/hooks/use-channels'
+import {
+  ThreadFilterMenuItem,
+  ThreadFilterPrefillDialog,
+} from '~/components/mail-filters/ui/thread-filter-entry'
+import { ThreadFilterRunBadges } from '~/components/mail-filters/ui/thread-filter-run-badges'
 import { RecordPicker } from '~/components/pickers/record-picker'
 import { useActor, useResource } from '~/components/resources/hooks'
 import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
@@ -113,6 +118,12 @@ export function ThreadHeader() {
   // Local state for assign popover (controlled so the A hotkey can open it,
   // anchored to the header's assign button instead of a hidden list row).
   const [assignOpen, setAssignOpen] = useState(false)
+
+  // "Filter messages like this" (mail filters §6.3). The state lives HERE rather
+  // than in the menu item: `DropdownMenuContent` unmounts its children on close,
+  // and choosing the item closes the menu — so a dialog rendered inside it would
+  // be destroyed by the click that opened it.
+  const [filterPrefillOpen, setFilterPrefillOpen] = useState(false)
 
   // --- Detail-view action shortcuts (A/L) ---
   // While this header is mounted it owns the anchored A/L shortcuts; the list
@@ -504,6 +515,10 @@ export function ThreadHeader() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align='end'>
+                <ThreadFilterMenuItem
+                  threadId={threadId}
+                  onSelect={() => setFilterPrefillOpen(true)}
+                />
                 {hasAccess(FeatureKey.learnedMemory) && (
                   <DropdownMenuItem onClick={handleRememberThread}>
                     <Sparkles />
@@ -547,7 +562,18 @@ export function ThreadHeader() {
             </div>
           )}
         </div>
+        {/* "Filtered by …" chips — a sibling of the subject row rather than a
+            child, so they wrap onto their own line instead of being pushed out
+            of the subject's horizontal scroller by a long subject. */}
+        <ThreadFilterRunBadges threadId={threadId} />
       </div>
+
+      {filterPrefillOpen && (
+        <ThreadFilterPrefillDialog
+          threadId={threadId}
+          onClose={() => setFilterPrefillOpen(false)}
+        />
+      )}
 
       {thread.mergeData?.target && (
         <div className='px-4 mt-2'>

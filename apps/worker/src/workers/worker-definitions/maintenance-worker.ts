@@ -46,6 +46,7 @@ import {
   webhookRenewalScannerJob,
 } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
+import { mailFilterRetroactiveApplyJob, mailFilterRunRetentionJob } from '@auxx/lib/mail-filters'
 import { recordRuleRunRetentionJob } from '@auxx/lib/record-rules'
 import { signalRetentionJob, signalRollupSweepJob } from '@auxx/lib/signals'
 import { createScopedLogger } from '@auxx/logger'
@@ -229,6 +230,19 @@ const jobMappings = {
   // Nightly RecordRuleRun retention (age-prunes rule-firing logs older than 60d;
   // sync + system-rule firings multiply these rows)
   recordRuleRunRetentionJob,
+
+  // Nightly MailFilterRun retention (age-prunes filter-firing logs older than
+  // 60d — one row per (filter, message) firing). This also bounds Undo: a firing
+  // whose run row is gone can no longer be reversed.
+  mailFilterRunRetentionJob,
+
+  // Retroactive mail-filter apply (on-demand, enqueued from `mailFilters.
+  // applyRetroactively` and jobId-deduped per filter). Pages through the
+  // filter's inbox with a keyset cursor and runs the SAME action executor the
+  // live gate runs, writing one MailFilterRun per thread at
+  // `source: 'retroactive'` — so the backfill is auditable and undoable, and its
+  // claim key never collides with the live firing on the same message.
+  mailFilterRetroactiveApplyJob,
 
   // Signals substrate (plans/signals/01-signal-store.md "Retention" / "Rollups"):
   // nightly high-volume EntitySignal prune (180d) + EntitySignalRollup *Count30d decay sweep.

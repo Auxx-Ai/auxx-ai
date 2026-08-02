@@ -352,6 +352,22 @@ export async function setupSchedules() {
     }
   )
 
+  // MailFilterRun retention — nightly at 03:55. Age-prunes filter-firing logs older
+  // than 60 days in bounded batches (one row per (filter, message) firing). Also
+  // bounds Undo: a firing whose run row is gone can no longer be reversed.
+  await maintenanceQueue.upsertJobScheduler(
+    'mailFilterRunRetentionJob',
+    { pattern: '55 3 * * *' },
+    {
+      opts: {
+        attempts: 1,
+        priority: 10,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Signal retention — nightly at 04:10. Age-prunes high-volume EntitySignal rows
   // (email:opened, web:page_view, email:delivered) older than 180 days in bounded batches;
   // rollups persist (plans/signals/01-signal-store.md "Retention").

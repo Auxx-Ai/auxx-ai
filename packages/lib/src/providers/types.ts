@@ -54,6 +54,22 @@ export interface ProviderCapabilities {
   supportsPersonalConnection: boolean
 
   /**
+   * Whether inbound messages on this provider's channels run through the
+   * MAIL FILTER engine (mail-filters plan D17 / invariant 17).
+   *
+   * Email-likes only in v1 — the filter field catalog is
+   * `MAIL_VIEW_FIELD_DEFINITIONS` (subject / from / to / attachments / body),
+   * which is an email vocabulary; chat, social DMs and SMS need a field-catalog
+   * pass before this flips for them.
+   *
+   * ⚠️ This gates RUNTIME BEHAVIOR, which is why it lives here and not on
+   * `PLATFORM_CAPABILITIES` — that one only describes a channel to the LLM.
+   * `getProviderCapabilities`' fully-false default means an unknown provider
+   * fails closed.
+   */
+  supportsMailFilters: boolean
+
+  /**
    * Whether this provider can mirror Auxx thread status/read changes back to
    * the provider mailbox (bidirectional status sync). Personal inboxes only,
    * and gated per-channel by `ChannelSettings.bidirectionalSyncEnabled`. Gmail

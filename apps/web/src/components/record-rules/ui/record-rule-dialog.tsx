@@ -3,34 +3,21 @@
 'use client'
 
 import type { Condition, ConditionGroup } from '@auxx/lib/conditions/client'
-import {
-  isActionDoc,
-  LIFECYCLE_TRANSITIONS,
-  type RecordRuleOn,
-} from '@auxx/lib/record-rules/client'
+import { LIFECYCLE_TRANSITIONS, type RecordRuleOn } from '@auxx/lib/record-rules/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { isSignalPseudoFieldId } from '@auxx/lib/signals/client'
-import { docToText, isNonEmptyDoc } from '@auxx/lib/tiptap'
-import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
-import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
-import { toastError } from '@auxx/ui/components/toast'
 import { useEffect, useMemo, useState } from 'react'
+import { RuleDialogShell } from '~/components/rules/ui/rule-dialog-shell'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { useRecordRules } from '../hooks/use-record-rules'
 import { emptyActionDoc } from './action-token-input'
-import { type EditableRuleAction, RecordRuleActionsPage } from './record-rule-actions-page'
+import {
+  type EditableRuleAction,
+  RECORD_RULE_ACTION_LABELS,
+  RecordRuleActionsPage,
+} from './record-rule-actions-page'
 import { RecordRuleConfigurePage } from './record-rule-configure-page'
-
-/**
- * Doc-aware completeness for token-bearing action fields. `isNonEmptyDoc` alone would
- * reject a doc whose only content is a placeholder chip (it counts text/reference/mention
- * nodes, not `placeholder`), so a token-only doc is rescued via `docToText`, which renders
- * placeholder nodes as `{{id}}`.
- */
-function hasActionContent(v: unknown): boolean {
-  return isActionDoc(v) && (isNonEmptyDoc(v) || docToText(v) !== '')
-}
 
 /** Rule shape the settings list hands to the dialog (router `list` output item). */
 export interface EditableRecordRule {
@@ -83,9 +70,10 @@ interface RecordRuleDialogProps {
 }
 
 /**
- * Create/edit dialog for a record rule. A two-page `DialogNav` flow: `configure`
+ * Create/edit dialog for a record rule. A two-page `RuleDialogShell` flow: `configure`
  * (name, record type, trigger, watched field, conditions) → `actions` (the ordered
- * action editor). The shell owns all form state; the pages are presentational.
+ * action editor). This dialog owns all form state; the shell owns navigation and the
+ * pages are presentational.
  */
 export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps) {
   const { create, update } = useRecordRules()
@@ -181,30 +169,20 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
 
   const isPending = create.isPending || update.isPending
   const isSignal = on === 'signal'
-  const canGoToActions =
+  const hasDefinition =
     name.trim() !== '' &&
     entityDefinitionId !== '' &&
     (isLifecycle || (isSignal ? signalKind !== '' : fieldRef !== ''))
-  const canSave = canGoToActions && actions.length > 0
+  // `assertRuleShape` rejects a rule with no actions, so Save stays disabled
+  // until the drill-in row is filled.
+  const canSave = hasDefinition && actions.length > 0
+
+  const actionLabels = useMemo(
+    () => actions.map((action) => RECORD_RULE_ACTION_LABELS[action.type] ?? action.type),
+    [actions]
+  )
 
   const handleSave = async () => {
-    const invalidIndex = actions.findIndex(
-      (a) =>
-        (a.type === 'notify' && (a.userIds.length === 0 || !hasActionContent(a.message))) ||
-        (a.type === 'set-field' && !a.fieldRef) ||
-        (a.type === 'enqueue-workflow' && !a.workflowAppId) ||
-        (a.type === 'create-task' && !hasActionContent(a.title))
-    )
-    if (invalidIndex >= 0) {
-      setSelectedActionIndex(invalidIndex)
-      setPage('actions')
-      toastError({
-        title: 'Incomplete action',
-        description: 'Every action needs its target and content filled in.',
-      })
-      return
-    }
-
     const payload = {
       entityDefinitionId,
       fieldRef: isLifecycle || isSignal ? null : fieldRef,
@@ -227,23 +205,20 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent size='content' position='tc' innerClassName='p-0'>
-        <DialogNav
-          title={rule ? 'Edit rule' : 'New rule'}
-          description='React to record changes with conditions and actions.'
-          onBack={page === 'actions' ? () => setPage('configure') : undefined}
-          crumbs={[
-            {
-              label: name.trim() || (rule ? 'Rule' : 'New rule'),
-              onClick: page !== 'configure' ? () => setPage('configure') : undefined,
-            },
-            ...(page === 'actions' ? [{ label: 'Actions' }] : []),
-          ]}
-        />
-
-        <DialogNavPages value={page}>
-          <DialogNavPage value='configure' size='lg'>
+    <RuleDialogShell
+      open={open}
+      onClose={onClose}
+      title={rule ? 'Edit rule' : 'New rule'}
+      description='React to record changes with conditions and actions.'
+      rootCrumb={name.trim() || (rule ? 'Rule' : 'New rule')}
+      page={page}
+      onPageChange={(next) => setPage(next as 'configure' | 'actions')}
+      pages={[
+        {
+          id: 'configure',
+          title: 'Configure',
+          size: 'lg',
+          content: (
             <RecordRuleConfigurePage
               name={name}
               onNameChange={setName}
@@ -260,13 +235,21 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
               fields={fields}
               isLifecycle={isLifecycle}
               isContactDef={isContactDef}
-              canContinue={canGoToActions}
-              onContinue={() => setPage('actions')}
+              actionLabels={actionLabels}
+              onOpenActions={() => setPage('actions')}
+              canSave={canSave}
+              isPending={isPending}
+              saveLabel={rule ? 'Save changes' : 'Create rule'}
+              onSave={() => void handleSave()}
               onCancel={onClose}
             />
-          </DialogNavPage>
-
-          <DialogNavPage value='actions' size='lg'>
+          ),
+        },
+        {
+          id: 'actions',
+          title: 'Actions',
+          size: 'lg',
+          content: (
             <RecordRuleActionsPage
               actions={actions}
               selectedIndex={selectedActionIndex}
@@ -284,9 +267,9 @@ export function RecordRuleDialog({ open, onClose, rule }: RecordRuleDialogProps)
               onSave={() => void handleSave()}
               onCancel={onClose}
             />
-          </DialogNavPage>
-        </DialogNavPages>
-      </DialogContent>
-    </Dialog>
+          ),
+        },
+      ]}
+    />
   )
 }

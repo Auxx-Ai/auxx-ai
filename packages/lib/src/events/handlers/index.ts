@@ -1,6 +1,7 @@
 // packages/lib/src/events/handlers/index.ts
 
 export { handleFieldTriggerJob } from '../../field-hooks/field-hook-job'
+export { applyMailFilters } from './apply-mail-filters'
 export { autoCompleteTasks } from './auto-complete-tasks'
 export { createAuditLog } from './create-audit-log'
 export { createEventJob } from './create-event-job'

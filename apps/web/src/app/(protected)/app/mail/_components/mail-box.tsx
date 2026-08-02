@@ -59,6 +59,7 @@ import { ThreadDisplay } from '~/components/mail/thread-display'
 import { ThreadNavToolbar } from '~/components/mail/thread-nav-toolbar'
 import { NestedThreadProvider } from '~/components/mail/thread-provider'
 import type { ThreadsFilterInput } from '~/components/mail/types'
+import { MailFilterRetroactivePrompt } from '~/components/mail-filters/ui/mail-filter-retroactive-prompt'
 import { ParticipantDrawer } from '~/components/participants/drawer/participant-drawer'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import {
@@ -615,6 +616,12 @@ function MailboxInner({
                 </div>
               </div>
             </div>
+            {/* Post-connect prompt (mail filters §7 / D18) — "apply your N
+              filters to M existing conversations?". Mounted HERE, above the
+              mail the question is about, rather than in settings: the person who
+              should answer is the one staring at the unfiltered inbox. Renders
+              nothing when there is nothing to ask. */}
+            <MailFilterRetroactivePrompt />
             {/* Unified responsive tree: viewport differences driven by Tailwind
               media queries (sm = 640px). Only layoutMode drives JS branching. */}
             <div

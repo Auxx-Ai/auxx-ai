@@ -14,6 +14,7 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
   [IntegrationProviderType.google]: {
     supportsPersonalConnection: true,
     supportsBidirectionalStatusSync: true,
+    supportsMailFilters: true,
     // Gmail capabilities
     canSend: true,
     canReply: true,
@@ -48,6 +49,7 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
   [IntegrationProviderType.facebook]: {
     supportsPersonalConnection: false,
     supportsBidirectionalStatusSync: false,
+    supportsMailFilters: false,
     // Facebook Messenger capabilities
     canSend: true,
     canReply: true,
@@ -89,6 +91,7 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
   [IntegrationProviderType.instagram]: {
     supportsPersonalConnection: false,
     supportsBidirectionalStatusSync: false,
+    supportsMailFilters: false,
     // Instagram Direct Message capabilities
     canSend: true,
     canReply: true,
@@ -129,6 +132,7 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
   [IntegrationProviderType.openphone]: {
     supportsPersonalConnection: false,
     supportsBidirectionalStatusSync: false,
+    supportsMailFilters: false,
     // SMS capabilities (via OpenPhone or similar)
     canSend: true,
     canReply: true,
@@ -166,6 +170,7 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
   [IntegrationProviderType.mailgun]: {
     supportsPersonalConnection: false,
     supportsBidirectionalStatusSync: false,
+    supportsMailFilters: true,
     // Mailgun email service capabilities
     canSend: true,
     canReply: true,
@@ -200,6 +205,7 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
   [IntegrationProviderType.sms]: {
     supportsPersonalConnection: false,
     supportsBidirectionalStatusSync: false,
+    supportsMailFilters: false,
     // Generic SMS capabilities
     canSend: true,
     canReply: true,
@@ -237,6 +243,7 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
   [IntegrationProviderType.email]: {
     supportsPersonalConnection: true,
     supportsBidirectionalStatusSync: false,
+    supportsMailFilters: true,
     // Generic email capabilities
     canSend: true,
     canReply: true,
@@ -271,6 +278,7 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
   [IntegrationProviderType.whatsapp]: {
     supportsPersonalConnection: false,
     supportsBidirectionalStatusSync: false,
+    supportsMailFilters: false,
     // WhatsApp Business API capabilities
     canSend: true,
     canReply: true,
@@ -310,6 +318,7 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
   [IntegrationProviderType.chat]: {
     supportsPersonalConnection: false,
     supportsBidirectionalStatusSync: false,
+    supportsMailFilters: false,
     // Generic chat capabilities (internal chat system)
     canSend: true,
     canReply: true,
@@ -347,6 +356,7 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
   [IntegrationProviderType.shopify]: {
     supportsPersonalConnection: false,
     supportsBidirectionalStatusSync: false,
+    supportsMailFilters: false,
     // Shopify capabilities (not a messaging provider)
     canSend: false,
     canReply: false,
@@ -385,6 +395,7 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
   [IntegrationProviderType.imap]: {
     supportsPersonalConnection: true,
     supportsBidirectionalStatusSync: false,
+    supportsMailFilters: true,
     // IMAP/SMTP capabilities (self-hosted, enterprise)
     canSend: true,
     canReply: true,
@@ -419,6 +430,7 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
   [IntegrationProviderType.outlook]: {
     supportsPersonalConnection: true,
     supportsBidirectionalStatusSync: false,
+    supportsMailFilters: true,
     // Outlook/Office 365 capabilities
     canSend: true,
     canReply: true,
@@ -472,6 +484,7 @@ export function getProviderCapabilities(providerType: ChannelProviderType): Prov
       // Default minimal capabilities
       supportsPersonalConnection: false,
       supportsBidirectionalStatusSync: false,
+      supportsMailFilters: false,
       canSend: false,
       canReply: false,
       canForward: false,
