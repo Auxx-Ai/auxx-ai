@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.196](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.195...auxx-v0.1.196) (2026-08-02)
+
+
+### Bug Fixes
+
+* **lambda:** type the execution timeout handle environment-agnostically ([#1504](https://github.com/Auxx-Ai/auxx-ai/issues/1504)) ([96042c1](https://github.com/Auxx-Ai/auxx-ai/commit/96042c159dc0cf8ad44f96835365e09408efc7a5))
+
 ## [0.1.195](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.194...auxx-v0.1.195) (2026-08-02)
 
 
