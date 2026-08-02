@@ -44,7 +44,7 @@ function isSubscriptionExpired(subscription: DehydratedOrganization['subscriptio
 /** Helper function to check if trial is expired */
 function isTrialExpired(subscription: DehydratedOrganization['subscription']): boolean {
   if (!subscription) return false
-  return subscription.hasTrialEnded && subscription.status === 'trialing'
+  return subscription.hasTrialEnded && subscription.status.toLowerCase() === 'trialing'
 }
 
 /**

@@ -40,13 +40,23 @@ export const featuresProvider: CacheProvider<FeatureMapObject> = {
 
     if (subscription?.planId) {
       const plan = planMap[subscription.planId]
+      // Status is stored lowercase, but admin overrides have written uppercase rows in the
+      // past. Normalize — an unmatched status silently yields zero features, which reads
+      // as "every feature disabled" rather than as an error.
+      const status = subscription.status?.toLowerCase()
 
       if (!plan) {
         logger.warn('Plan not found in planMap', { orgId, planId: subscription.planId })
-      } else if (subscription.status === 'trialing' && !subscription.hasTrialEnded) {
+      } else if (status === 'trialing' && !subscription.hasTrialEnded) {
         featureDefinitions = parseFeatureLimits(plan.trialFeatureLimits ?? plan.featureLimits)
-      } else if (subscription.status === 'active' || subscription.status === 'past_due') {
+      } else if (status === 'active' || status === 'past_due') {
         featureDefinitions = parseFeatureLimits(plan.featureLimits)
+      } else {
+        logger.warn('Subscription status resolves to no features', {
+          orgId,
+          status: subscription.status,
+          hasTrialEnded: subscription.hasTrialEnded,
+        })
       }
     } else {
       // No subscription — resolve from org type (demo vs free)

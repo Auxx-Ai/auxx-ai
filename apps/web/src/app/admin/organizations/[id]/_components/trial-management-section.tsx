@@ -14,7 +14,7 @@ import { Label } from '@auxx/ui/components/label'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { addDays, format } from 'date-fns'
-import { Calendar, CheckCircle, Clock } from 'lucide-react'
+import { AlertTriangle, Calendar, CheckCircle, Clock } from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -127,8 +127,17 @@ export function TrialManagementSection({
     }
   }
 
-  const isOnTrial = subscription?.status === 'trialing' && !subscription?.hasTrialEnded
-  const hasTrialEnded = subscription?.hasTrialEnded
+  // Status is stored lowercase; normalize so a legacy uppercase row still resolves.
+  const status = subscription?.status?.toLowerCase() ?? null
+  const hasTrialEnded = subscription?.hasTrialEnded ?? false
+  const isOnTrial = status === 'trialing' && !hasTrialEnded
+  /**
+   * Trial ended but the subscription never left `trialing` — the state that locks members
+   * out of the app (`isTrialExpired` in app-layout-wrapper). Extend/convert must stay
+   * reachable here, or ending a trial early strands the org with no way back.
+   */
+  const isTrialExpired = status === 'trialing' && hasTrialEnded
+  const canManageTrial = isOnTrial || isTrialExpired
 
   return (
     <>
@@ -149,6 +158,13 @@ export function TrialManagementSection({
                     <>
                       <Clock className='size-4 text-blue-500' />
                       <span className='font-medium text-blue-500'>Active</span>
+                    </>
+                  ) : isTrialExpired ? (
+                    <>
+                      <AlertTriangle className='size-4 text-destructive' />
+                      <span className='font-medium text-destructive'>
+                        Ended — members locked out
+                      </span>
                     </>
                   ) : hasTrialEnded ? (
                     <>
@@ -176,41 +192,45 @@ export function TrialManagementSection({
           </div>
 
           {/* Actions */}
-          {isOnTrial ? (
+          {canManageTrial ? (
             <Accordion type='single' collapsible className='rounded-lg border'>
               {/* End Trial Immediately */}
-              <AccordionItem value='end-trial' className='border-b px-4 last:border-b-0'>
-                <AccordionTrigger>End Trial Immediately</AccordionTrigger>
-                <AccordionContent className='space-y-3'>
-                  <p className='text-sm text-muted-foreground'>
-                    Force trial to end now, requiring organization to upgrade
-                  </p>
-                  <div>
-                    <Label htmlFor='end-reason'>Reason (Optional)</Label>
-                    <Textarea
-                      id='end-reason'
-                      placeholder='Why are you ending this trial early?'
-                      value={reason}
-                      onChange={(e) => setReason(e.target.value)}
-                      rows={2}
-                    />
-                  </div>
-                  <Button
-                    variant='destructive'
-                    size='sm'
-                    onClick={handleEndTrial}
-                    loading={endTrial.isPending}>
-                    End Trial Now
-                  </Button>
-                </AccordionContent>
-              </AccordionItem>
+              {isOnTrial && (
+                <AccordionItem value='end-trial' className='border-b px-4 last:border-b-0'>
+                  <AccordionTrigger>End Trial Immediately</AccordionTrigger>
+                  <AccordionContent className='space-y-3'>
+                    <p className='text-sm text-muted-foreground'>
+                      Force trial to end now, requiring organization to upgrade
+                    </p>
+                    <div>
+                      <Label htmlFor='end-reason'>Reason (Optional)</Label>
+                      <Textarea
+                        id='end-reason'
+                        placeholder='Why are you ending this trial early?'
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        rows={2}
+                      />
+                    </div>
+                    <Button
+                      variant='destructive'
+                      size='sm'
+                      onClick={handleEndTrial}
+                      loading={endTrial.isPending}>
+                      End Trial Now
+                    </Button>
+                  </AccordionContent>
+                </AccordionItem>
+              )}
 
               {/* Extend Trial */}
               <AccordionItem value='extend-trial' className='border-b px-4 last:border-b-0'>
                 <AccordionTrigger>Extend Trial Period</AccordionTrigger>
                 <AccordionContent className='space-y-3'>
                   <p className='text-sm text-muted-foreground'>
-                    Give customer more time to evaluate the product
+                    {isTrialExpired
+                      ? 'Reopen the ended trial — restores access with the trial feature limits'
+                      : 'Give customer more time to evaluate the product'}
                   </p>
                   <div>
                     <Label htmlFor='extend-days'>Extend by (days)</Label>
@@ -250,7 +270,9 @@ export function TrialManagementSection({
                 <AccordionTrigger>Convert Trial to Paid</AccordionTrigger>
                 <AccordionContent className='space-y-3'>
                   <p className='text-sm text-muted-foreground'>
-                    Manually convert trial to paid without payment (admin override)
+                    {isTrialExpired
+                      ? 'Restore access on the full plan without payment (admin override)'
+                      : 'Manually convert trial to paid without payment (admin override)'}
                   </p>
                   <Button
                     variant='outline'
