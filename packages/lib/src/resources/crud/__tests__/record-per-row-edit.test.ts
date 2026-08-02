@@ -32,6 +32,19 @@ const CLOSED_DEF = 'edf_deals0000000000000000000'
 const ROW_A = 'ins_a000000000000000000000'
 const ROW_B = 'ins_b000000000000000000000'
 
+/**
+ * Def key → slug, required by the gate since plan v3/06 §7.2 added
+ * `ALWAYS_PER_ROW_DEF_SLUGS` (a slug-keyed carve-out of defs whose def-level
+ * write gate is not authoritative for a row — `article` today).
+ *
+ * Identity is CORRECT for this file, not a shortcut: both defs here are
+ * ordinary record definitions whose keys are already their own slugs, and
+ * neither is in the carve-out, so every assertion below is about the def gate
+ * and the stamp exactly as it was. The parameter is required rather than
+ * optional so a new caller cannot opt out of the carve-out by omission.
+ */
+const defIdToSlug = (id: string) => id
+
 const OPEN_A = `${OPEN_DEF}:${ROW_A}` as RecordId
 const CLOSED_A = `${CLOSED_DEF}:${ROW_A}` as RecordId
 const CLOSED_B = `${CLOSED_DEF}:${ROW_B}` as RecordId
@@ -63,12 +76,21 @@ beforeEach(() => {
 
 describe('the def gate is the fast path', () => {
   it('an all-def-editable batch never pays a row read', async () => {
-    await assertRecordRowsEditable(member(Level.Edit), [OPEN_A, OPEN_A], stamp as never)
+    await assertRecordRowsEditable(
+      member(Level.Edit),
+      [OPEN_A, OPEN_A],
+      stamp as never,
+      defIdToSlug
+    )
     expect(stamp).not.toHaveBeenCalled()
   })
 
   it('only the def-DENIED ids are stamped — the open def costs nothing', () => {
-    const denied = defDeniedRecordIds(member(Level.Full, [CLOSED_DEF]), [OPEN_A, CLOSED_B])
+    const denied = defDeniedRecordIds(
+      member(Level.Full, [CLOSED_DEF]),
+      [OPEN_A, CLOSED_B],
+      defIdToSlug
+    )
     expect(denied).toEqual([CLOSED_B])
   })
 
@@ -76,13 +98,13 @@ describe('the def gate is the fast path', () => {
     const caps = member(Level.Edit)
     const spy = vi.spyOn(caps, 'canEditEntity')
     const batch = Array.from({ length: 50 }, () => OPEN_A)
-    expect(defDeniedRecordIds(caps, batch)).toEqual([])
+    expect(defDeniedRecordIds(caps, batch, defIdToSlug)).toEqual([])
     expect(spy).toHaveBeenCalledTimes(1)
   })
 
   it('an absent CapabilityView means an internal caller — nothing is denied', async () => {
-    expect(defDeniedRecordIds(undefined, [CLOSED_A])).toEqual([])
-    await assertRecordRowsEditable(undefined, [CLOSED_A], stamp as never)
+    expect(defDeniedRecordIds(undefined, [CLOSED_A], defIdToSlug)).toEqual([])
+    await assertRecordRowsEditable(undefined, [CLOSED_A], stamp as never, defIdToSlug)
     expect(stamp).not.toHaveBeenCalled()
   })
 })
@@ -94,7 +116,12 @@ describe('§5.3 — a row shared at `edit` IS writable; one shared at `read` is 
     // The row stamp says `edit`, which is exactly what the share conferred.
     stamp.mockResolvedValue({ [CLOSED_A]: { _access: 'edit' } })
     await expect(
-      assertRecordRowsEditable(member(Level.Edit, [CLOSED_DEF]), [CLOSED_A], stamp as never)
+      assertRecordRowsEditable(
+        member(Level.Edit, [CLOSED_DEF]),
+        [CLOSED_A],
+        stamp as never,
+        defIdToSlug
+      )
     ).resolves.toBeUndefined()
     expect(stamp).toHaveBeenCalledWith([CLOSED_A])
   })
@@ -102,14 +129,24 @@ describe('§5.3 — a row shared at `edit` IS writable; one shared at `read` is 
   it('a row shared at `admin` is writable — the ladder is ordered', async () => {
     stamp.mockResolvedValue({ [CLOSED_A]: { _access: 'admin' } })
     await expect(
-      assertRecordRowsEditable(member(Level.Read, [CLOSED_DEF]), [CLOSED_A], stamp as never)
+      assertRecordRowsEditable(
+        member(Level.Read, [CLOSED_DEF]),
+        [CLOSED_A],
+        stamp as never,
+        defIdToSlug
+      )
     ).resolves.toBeUndefined()
   })
 
   it('a row shared at `read` is NOT writable — the `edit` floor holds', async () => {
     stamp.mockResolvedValue({ [CLOSED_A]: { _access: 'read' } })
     await expect(
-      assertRecordRowsEditable(member(Level.Full, [CLOSED_DEF]), [CLOSED_A], stamp as never)
+      assertRecordRowsEditable(
+        member(Level.Full, [CLOSED_DEF]),
+        [CLOSED_A],
+        stamp as never,
+        defIdToSlug
+      )
     ).rejects.toMatchObject({ name: 'ForbiddenError', statusCode: 403 })
   })
 
@@ -132,7 +169,12 @@ describe('§5.3 — a row shared at `edit` IS writable; one shared at `read` is 
     // says so. The old per-def assert refused the whole batch.
     stamp.mockResolvedValue({ [CLOSED_B]: { _access: 'edit' } })
     await expect(
-      assertRecordRowsEditable(member(Level.Edit, [CLOSED_DEF]), [OPEN_A, CLOSED_B], stamp as never)
+      assertRecordRowsEditable(
+        member(Level.Edit, [CLOSED_DEF]),
+        [OPEN_A, CLOSED_B],
+        stamp as never,
+        defIdToSlug
+      )
     ).resolves.toBeUndefined()
     expect(stamp).toHaveBeenCalledWith([CLOSED_B])
   })
@@ -143,7 +185,8 @@ describe('§5.3 — a row shared at `edit` IS writable; one shared at `read` is 
       assertRecordRowsEditable(
         member(Level.Edit, [CLOSED_DEF]),
         [CLOSED_A, CLOSED_B],
-        stamp as never
+        stamp as never,
+        defIdToSlug
       )
     ).rejects.toMatchObject({ statusCode: 403 })
   })
@@ -171,7 +214,12 @@ describe('§5.2 — non-enumeration: an id the read path hid DENIES', () => {
     // strongest denial signal there is, and the write path must read it that way.
     stamp.mockResolvedValue({})
     await expect(
-      assertRecordRowsEditable(member(Level.Full, [CLOSED_DEF]), [CLOSED_A], stamp as never)
+      assertRecordRowsEditable(
+        member(Level.Full, [CLOSED_DEF]),
+        [CLOSED_A],
+        stamp as never,
+        defIdToSlug
+      )
     ).rejects.toMatchObject({ statusCode: 403 })
   })
 
@@ -180,7 +228,12 @@ describe('§5.2 — non-enumeration: an id the read path hid DENIES', () => {
     // "no objection".
     stamp.mockResolvedValue({ [CLOSED_A]: {} })
     await expect(
-      assertRecordRowsEditable(member(Level.Full, [CLOSED_DEF]), [CLOSED_A], stamp as never)
+      assertRecordRowsEditable(
+        member(Level.Full, [CLOSED_DEF]),
+        [CLOSED_A],
+        stamp as never,
+        defIdToSlug
+      )
     ).rejects.toMatchObject({ statusCode: 403 })
   })
 })

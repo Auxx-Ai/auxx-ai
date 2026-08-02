@@ -28,6 +28,12 @@ vi.mock('../../../../../../cache/org-cache-helpers', () => ({
   // `null` ⇒ the tool skips field-key validation and actor resolution, which
   // keeps this test focused on the capability gate.
   findCachedResource: vi.fn(async () => null),
+  // Feeds `buildDefIdToSlug`, which the tool now passes to the per-row gate
+  // (plan v3/06 §7.2 — `ALWAYS_PER_ROW_DEF_SLUGS` is slug-keyed while an agent's
+  // `recordIds` carry def CUIDs). Empty is honest here: `buildDefIdToSlug([])`
+  // is the identity resolver, and neither def in this file is in the carve-out,
+  // so every assertion below still describes the def gate and the stamp.
+  getCachedResources: vi.fn(async () => []),
 }))
 
 vi.mock('../../../../../../field-values/field-value-service', () => ({

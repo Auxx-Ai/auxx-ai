@@ -35,8 +35,12 @@ export function LinkArticlePicker({
   // KBs to pull from: standard KBs (minus this one) + each source's hidden KB
   // (excluding ai-only sources, which surface no articles).
   const knowledgeBasesOverride = useMemo(() => {
+    // `kind === 'standard'` is explicit now that `kb.list` also returns the
+    // `learned` KB (plan v3/06 P4). Linking an AI Memory article into a
+    // publishable KB would push learned-from-conversation content onto the
+    // public site — a different decision from "AI Memory is grantable".
     const standard = (kbs.data ?? [])
-      .filter((kb) => kb.id !== knowledgeBaseId)
+      .filter((kb) => kb.kind === 'standard' && kb.id !== knowledgeBaseId)
       .map((kb) => ({ id: kb.id, name: kb.name || 'Untitled' }))
     const sourceKbs = (sources.data ?? [])
       .filter((s) => s.surface !== 'ai-only')

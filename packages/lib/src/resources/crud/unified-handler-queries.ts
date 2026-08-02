@@ -831,6 +831,22 @@ export async function querySystemResourceIdsPaged(params: {
   search?: string
   /** Run the parallel `COUNT(*)`. Callers pay for it on the first page only. */
   includeTotal?: boolean
+  /**
+   * Per-row READ enforcement for this table, ANDed into `baseWhere` — the clause
+   * the page query AND the `COUNT(*)` share, so `total` describes the **visible**
+   * set rather than the org's (plan v3/06 W1b, the v3/02 short-page property).
+   *
+   * 🔴 Absent means "this table has no per-row policy in the record lane", which
+   * is the truth for `user` / `participant` / `visit` and was assumed for
+   * `article` until v3/06. It is the CALLER's job to supply it —
+   * `UnifiedCrudHandler.systemTableScope` is the only site that does, and it is
+   * the only site that should: a second producer is how the two read entry
+   * points would start disagreeing about the same row.
+   *
+   * The predicate is qualified to its own table (`"Article"."id"`, …), so it is
+   * only ever valid for the `tableId` it was built for.
+   */
+  visibilityWhere?: SQL
 }): Promise<ListFilteredResult> {
   const { db, tableId, organizationId, filters, sorting, limit, offset } = params
 
@@ -852,7 +868,16 @@ export async function querySystemResourceIdsPaged(params: {
     fields
   )
   const { searchWhere, searchOrderBy } = buildSystemSearchParts(tableId, params.search)
-  const baseWhere = and(eq(tableSchema.organizationId, organizationId), whereClause, searchWhere)
+  // `visibilityWhere` rides in `baseWhere`, NOT beside the search predicate —
+  // `article-search-sql.ts`'s own 🔴 comment demands the visibility clause be
+  // ANDed OUTSIDE the ranked search predicate so relevance ordering can never
+  // reorder an unauthorized row into the page.
+  const baseWhere = and(
+    eq(tableSchema.organizationId, organizationId),
+    whereClause,
+    searchWhere,
+    params.visibilityWhere
+  )
 
   // The sort column arrives from the same UIs as the filters and carries the
   // same cuid, so `buildOrderBySql` resolved nothing and returned `undefined` —

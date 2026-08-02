@@ -36,7 +36,24 @@ export interface ActiveArticleSnapshot {
   /** Secondary line for entity-card rendering (slug). */
   secondaryInfo: string
   articleId: string
+  /**
+   * The article's **home** KB (`Article.homeKnowledgeBaseId`).
+   *
+   * ⚠ Named like a placement and is not one. This is what the write tools key
+   * on (home-strict, §7.3) and what the entity card renders. **Never gate a READ
+   * on it** — reads are placement-permissive, and an article homed in a hidden
+   * `source` KB but linked into a KB the caller holds must stay readable. Use
+   * {@link ActiveArticleSnapshot.placementKnowledgeBaseIds} for that. Gating
+   * `get_article` on this field was implementation I2's half of plan v3/06 §2.6.
+   */
   knowledgeBaseId: string
+  /**
+   * Every KB this article is placed into — the read gate's subject (§5.2).
+   * Includes the home placement when one exists; the home KB is carried
+   * separately above because the ≥1-placement invariant is enforced in code
+   * (`kb/internal/placement.ts`), not by a DB constraint.
+   */
+  placementKnowledgeBaseIds: string[]
   title: string
   slug: string
   description: string | null
@@ -67,12 +84,18 @@ export async function buildActiveArticleSnapshot(args: {
   })
   if (!article || !article.draftRevision) return null
 
-  // Slug + publish state live on the home placement now.
-  const homePlacement = await db.query.ArticlePlacement.findFirst({
+  // Slug + publish state live on the home placement. ALL placements are read
+  // (same single query, one more column) because the read gate is
+  // placement-permissive: `get_article` used to gate on `snapshot.knowledgeBaseId`,
+  // which looks placement-shaped but is set to `homeKnowledgeBaseId` below — so
+  // the convergence in plan v3/06 §2.6 had to happen HERE, not at the tool call
+  // site. Editing the tool alone would have changed nothing.
+  const placements = await db.query.ArticlePlacement.findMany({
     where: (p, { and, eq }) =>
-      and(eq(p.articleId, articleId), eq(p.knowledgeBaseId, article.homeKnowledgeBaseId)),
-    columns: { slug: true, hasUnpublishedChanges: true },
+      and(eq(p.articleId, articleId), eq(p.organizationId, organizationId)),
+    columns: { knowledgeBaseId: true, slug: true, hasUnpublishedChanges: true },
   })
+  const homePlacement = placements.find((p) => p.knowledgeBaseId === article.homeKnowledgeBaseId)
   const slug = homePlacement?.slug ?? ''
   const hasUnpublishedChanges = homePlacement?.hasUnpublishedChanges ?? false
 
@@ -116,6 +139,7 @@ export async function buildActiveArticleSnapshot(args: {
     secondaryInfo: slug,
     articleId: article.id,
     knowledgeBaseId: article.homeKnowledgeBaseId,
+    placementKnowledgeBaseIds: placements.map((p) => p.knowledgeBaseId),
     title,
     slug,
     description: draft.description ?? null,

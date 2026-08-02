@@ -36,6 +36,7 @@ const {
   getThreadLens,
   assertWorkflowRunNotSystemOwned,
   loadOwnVisit,
+  canReadArticle,
   and,
   eq,
   isNull,
@@ -47,6 +48,7 @@ const {
   getThreadLens: vi.fn(),
   assertWorkflowRunNotSystemOwned: vi.fn(),
   loadOwnVisit: vi.fn(),
+  canReadArticle: vi.fn(),
   and: vi.fn((...parts: unknown[]) => ({ op: 'and', parts })),
   eq: vi.fn((a: unknown, b: unknown) => ({ op: 'eq', a, b })),
   isNull: vi.fn((value: unknown) => ({ op: 'isNull', value })),
@@ -109,7 +111,13 @@ vi.mock('@auxx/lib/permissions', async () => {
   const { buildDefIdToDefinitionId, buildDefIdToSlug } = await import(
     '@auxx/lib/permissions/capabilities/resolve-capability-inputs'
   )
-  return { buildDefIdToDefinitionId, buildDefIdToSlug, PermissionKey, getCapabilities }
+  return {
+    buildDefIdToDefinitionId,
+    buildDefIdToSlug,
+    PermissionKey,
+    getCapabilities,
+    canReadArticle,
+  }
 })
 
 vi.mock('@auxx/lib/cache', () => ({ getCachedResources, getCachedUserInstanceGrants }))
@@ -250,6 +258,23 @@ beforeEach(() => {
   getThreadLens.mockReset().mockResolvedValue('none')
   assertWorkflowRunNotSystemOwned.mockReset().mockResolvedValue(WORKFLOW_APP_ID)
   loadOwnVisit.mockReset().mockResolvedValue({ id: VISIT_ID })
+  // The shared article rule is unit-tested in
+  // `packages/lib/src/permissions/capabilities/article-read-access.test.ts` (it
+  // needs the org KB cache, which the `@auxx/lib/permissions` stub here cannot
+  // reach). The default still runs a REAL `CapabilitySet` against the home KB,
+  // so every ARTICLE case below keeps exercising the composed blob.
+  canReadArticle.mockReset().mockImplementation(
+    async (
+      _db: unknown,
+      {
+        capabilities,
+        homeKnowledgeBaseId,
+      }: {
+        capabilities: { canViewInstance: (key: string, id: string) => boolean }
+        homeKnowledgeBaseId?: string | null
+      }
+    ) => capabilities.canViewInstance('kb', homeKnowledgeBaseId ?? '')
+  )
 })
 
 describe('canViewAttachment — the attachment row itself', () => {
@@ -524,7 +549,7 @@ describe('canViewAttachment — TICKET (retired)', () => {
   })
 })
 
-describe('canViewAttachment — ARTICLE (inherits the home KB)', () => {
+describe('canViewAttachment — ARTICLE (inherits its KB, plan v3/06 I5)', () => {
   it('grants a member holding `knowledgeBase: Read` on the article home KB', async () => {
     queueRows(attachmentRow('ARTICLE', ARTICLE_ID), [{ homeKnowledgeBaseId: KB_ID }])
     memberHolding({ [Area.knowledgeBase]: Level.Read })
@@ -555,6 +580,36 @@ describe('canViewAttachment — ARTICLE (inherits the home KB)', () => {
     await expect(canView()).resolves.toBe(false)
     expect(fromTables).toEqual(['Attachment.id', 'Article.id'])
     expect(getCapabilities).not.toHaveBeenCalled()
+    expect(canReadArticle).not.toHaveBeenCalled()
+  })
+
+  it('routes through the SHARED rule with the home KB it already read', async () => {
+    // Six readers used to spell KB inheritance six ways (plan v3/06 §2.5). This
+    // pins that the attachment gate is no longer one of them — and that it hands
+    // over the `homeKnowledgeBaseId` it just selected, so the shared rule's
+    // short-circuit costs zero extra queries on the common path.
+    queueRows(attachmentRow('ARTICLE', ARTICLE_ID), [{ homeKnowledgeBaseId: KB_ID }])
+    memberHolding({ [Area.knowledgeBase]: Level.Read })
+    await canView()
+    expect(canReadArticle).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: ORG_ID,
+        articleId: ARTICLE_ID,
+        homeKnowledgeBaseId: KB_ID,
+      })
+    )
+    expect(fromTables).toEqual(['Attachment.id', 'Article.id'])
+  })
+
+  it('grants an article reachable only through a LINKED placement', async () => {
+    // Placement-permissive reads (§5.2): the home KB is denied outright and the
+    // article is still readable through a placement the caller holds. The old
+    // home-only gate blocked this.
+    queueRows(attachmentRow('ARTICLE', ARTICLE_ID), [{ homeKnowledgeBaseId: KB_ID }])
+    memberHolding({ [Area.knowledgeBase]: Level.None })
+    canReadArticle.mockResolvedValue(true)
+    await expect(canView()).resolves.toBe(true)
   })
 })
 

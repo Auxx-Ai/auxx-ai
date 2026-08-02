@@ -10,6 +10,7 @@ import type {
   CachedAgent,
   CachedGroup,
   CachedInstalledApp,
+  CachedKnowledgeBase,
   DehydratedOrgProfile,
   OrgMemberInfo,
 } from './org-cache-keys'
@@ -276,6 +277,18 @@ export async function getCachedUserGroupIds(orgId: string, userId: string): Prom
  */
 export async function getCachedKbCatalog(orgId: string): Promise<KbCatalogEntry[]> {
   return getOrgCache().get(orgId, 'kbCatalog')
+}
+
+/**
+ * Every knowledge base in the org as `{ id, kind }` — the allow-list input for
+ * article visibility (plan v3/06 §5.3). ALL kinds, including `source` and
+ * `learned`; the `kind` policy belongs to the reader.
+ *
+ * Deliberately a separate key from {@link getCachedKbCatalog}, which carries the
+ * same two columns but is invalidated on every article save.
+ */
+export async function getCachedKnowledgeBases(orgId: string): Promise<CachedKnowledgeBase[]> {
+  return getOrgCache().get(orgId, 'knowledgeBases')
 }
 
 // ── Agent cache helpers ──

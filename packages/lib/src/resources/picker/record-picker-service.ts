@@ -26,6 +26,12 @@ import {
 } from '../../cache'
 import { BadRequestError, ForbiddenError } from '../../errors'
 import { getRecordIdentitiesForRecords } from '../../identity'
+import {
+  articleRowAccess,
+  knowledgeBaseScopeFingerprint,
+  systemTableVisibilityScope,
+  viewableKnowledgeBaseIds,
+} from '../../permissions/capabilities/article-visibility-scope'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import {
   type InstanceAccessKey,
@@ -219,12 +225,24 @@ export class RecordPickerService {
       throw new Error(`Unknown table: ${entityDefinitionId}`)
     }
 
+    // 🔴 The VIEWER dimension of the cache key (plan v3/06 §5.5). This cache is
+    // org-keyed and had no user dimension at all, so narrowing the fetch below
+    // without it would serve the first caller's visible set to every other
+    // member of the org — in both directions. A cached page is the same
+    // disclosure as a fresh one, which is exactly the argument step 0.1 makes
+    // for `thread`.
+    //
+    // `undefined` for every table that is not scope-bearing, so their keys are
+    // byte-identical to the ones they had before this existed.
+    const scopeKey = await this.systemTableScopeFingerprint(entityDefinitionId as TableId)
+
     // Check cache first
     if (!skipCache) {
       const cached = await this.cache.getCachedResources(this.organizationId, entityDefinitionId, {
         cursor,
         search,
         filters,
+        scope: scopeKey,
       })
       if (cached) {
         logger.debug('Cache hit', { entityDefinitionId, cursor, search })
@@ -246,9 +264,33 @@ export class RecordPickerService {
       cursor,
       search,
       filters,
+      scope: scopeKey,
     })
 
     return result
+  }
+
+  /**
+   * The org's viewable-KB allow-list for this request, memoized per service.
+   *
+   * One fold over one cached blob, shared by the SQL predicate and the cache-key
+   * fingerprint — resolving it twice would be two folds with two chances to
+   * disagree about the same member, and the disagreement mode is a cache entry
+   * keyed by one answer holding rows selected by the other.
+   */
+  private viewableKbIdsPromise?: Promise<string[] | 'all'>
+  private viewableKbIds(): Promise<string[] | 'all'> {
+    this.viewableKbIdsPromise ??= viewableKnowledgeBaseIds(this.organizationId, this.capabilities)
+    return this.viewableKbIdsPromise
+  }
+
+  /**
+   * The cache-key discriminator for a system table, or `undefined` when the
+   * table carries no viewer-dependent scope (every table but `article` today).
+   */
+  private async systemTableScopeFingerprint(tableId: TableId): Promise<string | undefined> {
+    if (tableId !== 'article' || !this.capabilities) return undefined
+    return knowledgeBaseScopeFingerprint(await this.viewableKbIds())
   }
 
   /**
@@ -300,11 +342,25 @@ export class RecordPickerService {
    * Fetch resources from database using registry config
    * Handles both direct and join-based organization scoping
    *
-   * **The choke point for step 0.1.** Every `TableId`-driven multi-row read in
-   * this service funnels through here, so the mail-lens refusal is asserted here
-   * rather than at each of the three call sites. Callers that fan out over the
-   * whole registry pre-filter instead (see {@link searchGlobalUnion}) so the
-   * refusal is never something they have to catch.
+   * **The choke point for step 0.1, and for plan v3/06's R4/R5.** Every
+   * `TableId`-driven multi-row read in this service funnels through here, so the
+   * mail-lens refusal is asserted here rather than at each of the three call
+   * sites. Callers that fan out over the whole registry pre-filter instead (see
+   * {@link searchGlobalUnion}) so the refusal is never something they have to
+   * catch.
+   *
+   * 🔴 **The article visibility predicate is applied HERE rather than in
+   * `getResources`**, and that placement is what closes R4 *and* R5 in one edit:
+   * the ranked scoped search (`record.search({entityDefinitionId:'article'})` →
+   * `UnifiedCrudHandler.search` → `getResources`), the ⌘K/`@`-reference global
+   * union (`searchGlobalUnion` calls this per system table directly, bypassing
+   * `getResources` entirely) and the by-ids hydration all pass through this one
+   * function. Applying it in `getResources` alone would have left the union arm
+   * — the mention/reference pickers and the SDK — reading org-wide.
+   *
+   * On the by-ids path this is belt-and-braces over {@link admitSystemRows},
+   * which still runs and is still what produces the `_access` stamp. Narrowing
+   * in SQL first is strictly better: unauthorized ids never leave the database.
    */
   private async fetchResourcesFromDb(
     tableId: TableId,
@@ -320,6 +376,11 @@ export class RecordPickerService {
     if (!displayConfig) throw new BadRequestError(`Resource ${tableId} is not statically pickable`)
     const tableName = tableConfig.dbName
 
+    // Read enforcement (§5.2). Arm `none` returns an empty page WITHOUT querying;
+    // arm `restricted` hands the predicate down to whichever builder runs.
+    const scope = await this.recordScope(tableId)
+    if (scope.arm === 'none') return { items: [], nextCursor: null }
+
     // Determine organization scoping strategy
     const scopingStrategy = displayConfig.orgScopingStrategy || 'direct'
 
@@ -334,10 +395,19 @@ export class RecordPickerService {
         limit,
         cursor,
         search,
-        filters
+        filters,
+        scope.where
       )
     } else {
-      return this.fetchResourcesDirect(tableId, displayConfig, limit, cursor, search, filters)
+      return this.fetchResourcesDirect(
+        tableId,
+        displayConfig,
+        limit,
+        cursor,
+        search,
+        filters,
+        scope.where
+      )
     }
   }
 
@@ -351,7 +421,14 @@ export class RecordPickerService {
     limit: number,
     cursor: string | null | undefined,
     search: string | undefined,
-    filters: Record<string, unknown> | undefined
+    filters: Record<string, unknown> | undefined,
+    /**
+     * Per-row read enforcement (plan v3/06 §5.2). Table-qualified, so it is only
+     * ever valid for the `tableId` it was built for — and it survives Drizzle's
+     * relational query builder, whose top-level `FROM` is `"Article" "Article"`
+     * (verified against dev, not assumed).
+     */
+    visibilityWhere?: SQL
   ): Promise<PaginatedResourcesResult> {
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const tableName = tableConfig.dbName
@@ -362,6 +439,9 @@ export class RecordPickerService {
     const items = await resolveQueryBuilder(this.db, tableName).findMany({
       where: (table) => {
         const conditions: SQL[] = []
+        // FIRST, before the caller's filters and before `neverPickable`, so no
+        // later branch can widen past it.
+        if (visibilityWhere) conditions.push(visibilityWhere)
 
         // Organization scoping
         const orgColumn = table.organizationId
@@ -456,13 +536,20 @@ export class RecordPickerService {
     limit: number,
     cursor: string | null | undefined,
     search: string | undefined,
-    filters: Record<string, unknown> | undefined
+    filters: Record<string, unknown> | undefined,
+    /**
+     * See {@link fetchResourcesDirect}. No scope-bearing table uses the join
+     * strategy today (`article` is `direct`), but the parameter is threaded so a
+     * table that switches strategy cannot silently lose its enforcement.
+     */
+    visibilityWhere?: SQL
   ): Promise<PaginatedResourcesResult> {
     const tableConfig = RESOURCE_TABLE_MAP[tableId]
     const joinConfig = displayConfig.joinScoping!
     const joinTable = resolveSchemaTable(joinConfig.joinTable)
 
     const conditions: SQL[] = []
+    if (visibilityWhere) conditions.push(visibilityWhere)
     const idColumn = requireColumn(table, 'id')
 
     // Organization scoping via join table
@@ -878,7 +965,7 @@ export class RecordPickerService {
                 undefined,
                 { id: ids }
               )
-              for (const item of this.admitSystemRows(tableId, fetched)) {
+              for (const item of await this.admitSystemRows(tableId, fetched)) {
                 // Re-key to caller's UUID prefix so the result map lookup matches.
                 const key = toRecordId(originalKey, item.id) as RecordId
                 result[key] = { ...item, recordId: key }
@@ -917,7 +1004,7 @@ export class RecordPickerService {
             undefined,
             { id: ids }
           )
-          for (const item of this.admitSystemRows(resolvedId as TableId, fetched)) {
+          for (const item of await this.admitSystemRows(resolvedId as TableId, fetched)) {
             result[item.recordId] = item
           }
         }
@@ -941,21 +1028,105 @@ export class RecordPickerService {
    * in memory, against the same authority `kb.list` uses (`canViewInstance`).
    *
    * Rows the member cannot view DROP SILENTLY, matching this method's answer for
-   * every other unreachable id. Non-instance-access system tables (`user`,
-   * `article`, `participant`) pass through untouched: they genuinely have no
-   * per-row policy in this lane.
+   * every other unreachable id.
+   *
+   * 🔴 **`article` is gated too, and its old pass-through was the bug** (plan
+   * v3/06 §2.2). This docstring used to say `article` "genuinely has no per-row
+   * policy in this lane"; it has one, it just lives ONE HOP AWAY on its knowledge
+   * base. `article` is not an {@link isInstanceAccessKey} — it is not itself a
+   * grant target and must never become one — so it takes its own branch rather
+   * than joining `kb` / `dataset`. The remaining genuine pass-throughs are
+   * `user`, `participant` and `visit`.
    *
    * `capabilities: undefined` ⇒ internal caller ⇒ no enforcement, the same
-   * convention `recordScope` and `fetchEntityInstancesByIds` follow.
+   * convention `recordScope` and `fetchEntityInstancesByIds` follow. That is
+   * load-bearing for headless work (article sync, embedding jobs, `apps/kb`
+   * rendering, the widget API), so the short-circuit must stay ABOVE every
+   * branch — including the batched placement read, which must not fire at all
+   * for an unenforced caller.
    */
-  private admitSystemRows(tableId: TableId, fetched: RecordPickerItem[]): RecordPickerItem[] {
-    const key = systemTableInstanceAccessKey(tableId)
+  private async admitSystemRows(
+    tableId: TableId,
+    fetched: RecordPickerItem[]
+  ): Promise<RecordPickerItem[]> {
     const capabilities = this.capabilities
-    if (!key || !capabilities) return fetched
+    if (!capabilities || fetched.length === 0) return fetched
+
+    if (tableId === 'article') return this.admitArticleRows(fetched, capabilities)
+
+    const key = systemTableInstanceAccessKey(tableId)
+    if (!key) return fetched
 
     const admitted: RecordPickerItem[] = []
     for (const item of fetched) {
       const access = instanceRung(capabilities, key, item.id)
+      if (!access) continue
+      admitted.push({ ...item, _access: access })
+    }
+    return admitted
+  }
+
+  /**
+   * The `article` branch of {@link admitSystemRows} (plan v3/06 W3 + P2).
+   *
+   * An article is reachable through any of its **placements** as well as its
+   * home KB (§5.2), and neither is on the fetched row except `homeKnowledgeBaseId`
+   * — so the placement set is resolved with **ONE batched read over
+   * `ArticlePlacement` for the whole fetched set**. Never per row: `getByIds`
+   * caps at 100 ids and a per-row lookup would turn one hydration into 100
+   * queries. This is the only new I/O in plan v3/06.
+   *
+   * The stamp is `articleRowAccess` — home-strict above `read`, so a linked
+   * placement the member administers does not license rewriting content the home
+   * KB owns (§7.3). Once it exists, `assertRecordRowsEditable` re-judges
+   * def-denied article rows against it, which is what gives a
+   * `knowledgeBase: Edit` / `records: None` member back their inline tag editing
+   * (§7.2).
+   */
+  private async admitArticleRows(
+    fetched: RecordPickerItem[],
+    capabilities: CapabilityView
+  ): Promise<RecordPickerItem[]> {
+    const viewable = await viewableKnowledgeBaseIds(this.organizationId, capabilities)
+    if (viewable === 'all') return fetched
+    // No viewable KB at all ⇒ no article is reachable, and the placement read
+    // would only confirm it. Skip the query.
+    if (viewable.length === 0) return []
+    const viewableKbIds = new Set(viewable)
+
+    const placements = await this.db
+      .select({
+        articleId: schema.ArticlePlacement.articleId,
+        knowledgeBaseId: schema.ArticlePlacement.knowledgeBaseId,
+      })
+      .from(schema.ArticlePlacement)
+      .where(
+        and(
+          eq(schema.ArticlePlacement.organizationId, this.organizationId),
+          inArray(
+            schema.ArticlePlacement.articleId,
+            fetched.map((item) => item.id)
+          )
+        )
+      )
+
+    const placementKbIdsByArticle = new Map<string, string[]>()
+    for (const row of placements) {
+      const existing = placementKbIdsByArticle.get(row.articleId)
+      if (existing) existing.push(row.knowledgeBaseId)
+      else placementKbIdsByArticle.set(row.articleId, [row.knowledgeBaseId])
+    }
+
+    const admitted: RecordPickerItem[] = []
+    for (const item of fetched) {
+      const homeKnowledgeBaseId = (item.data as { homeKnowledgeBaseId?: string | null })
+        .homeKnowledgeBaseId
+      const access = articleRowAccess({
+        capabilities,
+        placementKbIds: placementKbIdsByArticle.get(item.id) ?? [],
+        homeKnowledgeBaseId,
+        viewableKbIds,
+      })
       if (!access) continue
       admitted.push({ ...item, _access: access })
     }
@@ -1077,14 +1248,48 @@ export class RecordPickerService {
     // the instance-access ones (`kb`, `dataset`). Their policy is real, it just
     // is not SQL: it lives in the composed capability blob, so
     // `getResourcesByIds` filters those rows through {@link instanceRung} AFTER
-    // the fetch. The arm stays `all` because this union expresses a WHERE
-    // predicate and there is none to give.
+    // the fetch.
     //
     // That filter is on the by-ids (hydration) path only. `getResources` — the
     // paginated list path — is still unfiltered for these keys, which is safe
     // solely because `record.ts` refuses them there. Widen that guard and this
     // has to grow a list arm first.
-    if (RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) return { arm: 'all' }
+    //
+    // 🔴 `article` is the one system table whose per-row policy IS expressible
+    // as SQL (plan v3/06 W2) — it inherits its KB's instance grants. This
+    // delegation mirrors `UnifiedCrudHandler.systemTableScope`; the picker is a
+    // second entry point into ONE lane, not a second policy.
+    //
+    // What it buys HERE is the `'none'` arm: a member with no viewable KB drops
+    // the whole article group out of `getResourcesByIds` before any fetch. The
+    // `'restricted'` arm's `where` is qualified to `"Article"` and is deliberately
+    // NOT consumed on this path — the by-ids fetch goes through
+    // {@link admitSystemRows}, which applies the same policy in memory because
+    // the rows are already fetched by then.
+    if (RESOURCE_TABLE_MAP[entityDefinitionId as TableId]) {
+      // ⚠ The allow-list is resolved ONLY for the table that needs it. Hoisting
+      // it above this branch made every system-table picker read (`kb`,
+      // `dataset`, `participant`, …) fetch the KB blob for a scope they can
+      // never use — caught by `system-table-instance-access.test.ts`, which is
+      // exactly the kind of quiet extra I/O a test that mocks only what it needs
+      // is good at noticing.
+      if (entityDefinitionId !== 'article') return { arm: 'all' }
+      const memoKey = `system:${entityDefinitionId}`
+      const memoized = this.scopeCache.get(memoKey)
+      if (memoized) return memoized
+      // Resolved ONCE per service and shared with the cache-key fingerprint —
+      // see {@link viewableKbIds}.
+      const pending = this.viewableKbIds().then((viewableKbIds) =>
+        systemTableVisibilityScope({
+          organizationId: this.organizationId,
+          tableId: entityDefinitionId,
+          capabilities: this.capabilities,
+          viewableKbIds,
+        })
+      )
+      this.scopeCache.set(memoKey, pending)
+      return pending
+    }
     // Arms 1 and 4 are decided in memory, before any def normalization or
     // grantee resolution — see `UnifiedCrudHandler.recordScope` for why.
     const arm = recordScopeArmFor(this.capabilities, entityDefinitionId)

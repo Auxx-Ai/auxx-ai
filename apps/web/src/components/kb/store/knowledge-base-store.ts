@@ -86,9 +86,9 @@ export const useKnowledgeBaseStore = create<KnowledgeBaseStoreState>()(
         set((state) => {
           state.knowledgeBases = kbs
           const byId: Record<string, KnowledgeBase> = {}
-          // `kb.list` only returns standard KBs — carry over byId-hydrated
-          // hidden KBs (kind 'learned') so a list refetch doesn't wipe the
-          // active AI Memory KB out from under the editor.
+          // `kb.list` returns `standard` + `learned` but never `source` (plan
+          // v3/06 P4) — carry over byId-hydrated KBs of any other kind so a list
+          // refetch doesn't wipe a source-KB row out from under the editor.
           for (const [id, kb] of Object.entries(state.knowledgeBasesById)) {
             if (kb.kind !== 'standard') byId[id] = kb
           }

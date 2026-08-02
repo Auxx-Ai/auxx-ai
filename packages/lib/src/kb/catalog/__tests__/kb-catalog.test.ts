@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ResolvedKnowledgeScope } from '../../../agents/resolve-knowledge-scope'
 import { buildKbCatalog, type KbCatalogSourceRow } from '../kb-catalog'
-import { renderKbCatalog } from '../render-kb-catalog'
+import { type RenderKbCatalogOptions, renderKbCatalog } from '../render-kb-catalog'
 
 function knowledgeScope(over: Partial<ResolvedKnowledgeScope> = {}): ResolvedKnowledgeScope {
   return {
@@ -113,7 +113,7 @@ describe('renderKbCatalog', () => {
   )
 
   it('renders KBs with articles and skips empty ones', () => {
-    const out = renderKbCatalog(catalog, { publicOnly: false })
+    const out = renderKbCatalog(catalog, { publicOnly: false, kbAccess: 'unrestricted' })
     expect(out).toContain('## Knowledge Catalog')
     expect(out).toContain('### Help Center')
     expect(out).toContain('- Shipping — How shipping works [art-p1]')
@@ -122,18 +122,18 @@ describe('renderKbCatalog', () => {
   })
 
   it('clamps INTERNAL KBs for customer audiences', () => {
-    const out = renderKbCatalog(catalog, { publicOnly: true })
+    const out = renderKbCatalog(catalog, { publicOnly: true, kbAccess: 'unrestricted' })
     expect(out).toContain('### Help Center')
     expect(out).not.toContain('Internal Playbook')
   })
 
   it('returns null when nothing survives filtering', () => {
-    expect(renderKbCatalog([], { publicOnly: false })).toBeNull()
+    expect(renderKbCatalog([], { publicOnly: false, kbAccess: 'unrestricted' })).toBeNull()
     const internalOnly = buildKbCatalog(
       [kb('kb2', { visibility: 'INTERNAL' })],
       [row({ placementId: 'p1', knowledgeBaseId: 'kb2' })]
     )
-    expect(renderKbCatalog(internalOnly, { publicOnly: true })).toBeNull()
+    expect(renderKbCatalog(internalOnly, { publicOnly: true, kbAccess: 'unrestricted' })).toBeNull()
   })
 
   it('degrades to names + counts over the size cap', () => {
@@ -148,7 +148,11 @@ describe('renderKbCatalog', () => {
         })
       )
     )
-    const out = renderKbCatalog(big, { publicOnly: false, maxChars: 2000 })
+    const out = renderKbCatalog(big, {
+      publicOnly: false,
+      maxChars: 2000,
+      kbAccess: 'unrestricted',
+    })
     expect(out).toContain('**Huge KB** — 200 articles')
     expect(out).not.toContain('[p42]')
   })
@@ -156,7 +160,7 @@ describe('renderKbCatalog', () => {
   it('drops KBs the principal cannot view (capability layer v2 §3.4)', () => {
     const out = renderKbCatalog(catalog, {
       publicOnly: false,
-      canViewKb: (id) => id === 'kb1',
+      kbAccess: (id) => id === 'kb1',
     })
     expect(out).toContain('### Help Center')
     expect(out).not.toContain('Internal Playbook')
@@ -164,18 +168,36 @@ describe('renderKbCatalog', () => {
   })
 
   it('returns null when no KB survives the view gate', () => {
-    expect(renderKbCatalog(catalog, { publicOnly: false, canViewKb: () => false })).toBeNull()
+    expect(renderKbCatalog(catalog, { publicOnly: false, kbAccess: () => false })).toBeNull()
   })
 
-  it('omitting canViewKb is a no-op', () => {
-    expect(renderKbCatalog(catalog, { publicOnly: false, canViewKb: undefined })).toBe(
-      renderKbCatalog(catalog, { publicOnly: false })
+  // 🔴 Replaces "omitting canViewKb is a no-op" (plan v3/06 §3.4 A8 / §11 item
+  // 6). The gate is no longer omittable — `kbAccess` is required, so a caller
+  // must SAY it has no viewer. The no-op behaviour survives only under that
+  // explicit spelling, which is what keeps headless runs (§8.2) unchanged.
+  it("'unrestricted' is a no-op, and there is no way to omit the gate", () => {
+    expect(renderKbCatalog(catalog, { publicOnly: false, kbAccess: 'unrestricted' })).toContain(
+      '### Internal Playbook'
     )
+    // @ts-expect-error `kbAccess` is required — a caller cannot fall back to
+    // unfiltered output by forgetting a field. Type-level only (never called):
+    // the directive self-verifies, since an unused @ts-expect-error is itself a
+    // tsc error.
+    const missingGate: RenderKbCatalogOptions = { publicOnly: false }
+    void missingGate
   })
 
   it('adapts the read hint when get_article is unavailable', () => {
-    const withTool = renderKbCatalog(catalog, { publicOnly: false, hasGetArticle: true })
-    const withoutTool = renderKbCatalog(catalog, { publicOnly: false, hasGetArticle: false })
+    const withTool = renderKbCatalog(catalog, {
+      publicOnly: false,
+      hasGetArticle: true,
+      kbAccess: 'unrestricted',
+    })
+    const withoutTool = renderKbCatalog(catalog, {
+      publicOnly: false,
+      hasGetArticle: false,
+      kbAccess: 'unrestricted',
+    })
     expect(withTool).toContain('get_article')
     expect(withoutTool).not.toContain('`get_article`')
   })
@@ -206,17 +228,28 @@ describe('renderKbCatalog — agent knowledge scope (permissions v2 §1.2/1.3)',
   )
 
   it('null/undefined scope is a no-op', () => {
-    const base = renderKbCatalog(scopedCatalog, { publicOnly: false })
-    expect(renderKbCatalog(scopedCatalog, { publicOnly: false, knowledgeScope: null })).toBe(base)
-    expect(renderKbCatalog(scopedCatalog, { publicOnly: false, knowledgeScope: undefined })).toBe(
-      base
-    )
+    const base = renderKbCatalog(scopedCatalog, { publicOnly: false, kbAccess: 'unrestricted' })
+    expect(
+      renderKbCatalog(scopedCatalog, {
+        publicOnly: false,
+        knowledgeScope: null,
+        kbAccess: 'unrestricted',
+      })
+    ).toBe(base)
+    expect(
+      renderKbCatalog(scopedCatalog, {
+        publicOnly: false,
+        knowledgeScope: undefined,
+        kbAccess: 'unrestricted',
+      })
+    ).toBe(base)
     expect(base).toContain('Out of scope KB')
   })
 
   it('keeps every article of a fully-included KB', () => {
     const out = renderKbCatalog(scopedCatalog, {
       publicOnly: false,
+      kbAccess: 'unrestricted',
       knowledgeScope: knowledgeScope({ fullKbIds: new Set(['kb1']) }),
     })
     expect(out).toContain('### Full KB')
@@ -227,6 +260,7 @@ describe('renderKbCatalog — agent knowledge scope (permissions v2 §1.2/1.3)',
   it('in a partially-included KB, keeps only the individually scoped article and drops the KB if none survive', () => {
     const out = renderKbCatalog(scopedCatalog, {
       publicOnly: false,
+      kbAccess: 'unrestricted',
       knowledgeScope: knowledgeScope({ articleIds: new Set(['art-p3']) }),
     })
     expect(out).toContain('### Partial KB')
@@ -240,6 +274,7 @@ describe('renderKbCatalog — agent knowledge scope (permissions v2 §1.2/1.3)',
   it('drops an excluded article even inside a fully-included KB', () => {
     const out = renderKbCatalog(scopedCatalog, {
       publicOnly: false,
+      kbAccess: 'unrestricted',
       knowledgeScope: knowledgeScope({
         fullKbIds: new Set(['kb1']),
         excludedArticleIds: new Set(['art-p1']),
@@ -253,6 +288,7 @@ describe('renderKbCatalog — agent knowledge scope (permissions v2 §1.2/1.3)',
   it('drops a KB with no surviving article', () => {
     const out = renderKbCatalog(scopedCatalog, {
       publicOnly: false,
+      kbAccess: 'unrestricted',
       knowledgeScope: knowledgeScope({ fullKbIds: new Set(['kb1']) }),
     })
     expect(out).not.toContain('Partial KB')
@@ -261,7 +297,11 @@ describe('renderKbCatalog — agent knowledge scope (permissions v2 §1.2/1.3)',
 
   it('returns null when nothing survives the scope', () => {
     expect(
-      renderKbCatalog(scopedCatalog, { publicOnly: false, knowledgeScope: knowledgeScope() })
+      renderKbCatalog(scopedCatalog, {
+        publicOnly: false,
+        knowledgeScope: knowledgeScope(),
+        kbAccess: 'unrestricted',
+      })
     ).toBeNull()
   })
 })

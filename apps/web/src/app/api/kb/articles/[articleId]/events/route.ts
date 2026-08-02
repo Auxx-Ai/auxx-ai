@@ -2,7 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { kbArticleChannel } from '@auxx/lib/kb'
-import { getCapabilities } from '@auxx/lib/permissions'
+import { canReadArticle, getCapabilities } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { createDedicatedClient } from '@auxx/redis'
 import { and, eq } from 'drizzle-orm'
@@ -26,18 +26,21 @@ export const dynamic = 'force-dynamic'
  * to whoever is subscribed to the channel. This matches the existing
  * imports/documents SSE pattern.
  *
- * Gated on instance **`view`** of the article's home KnowledgeBase, matching the
- * tRPC sibling `kb.getArticleById` (`capabilityProcedure` +
+ * Gated on instance **`view`** of a KnowledgeBase the article is reachable
+ * through, matching the tRPC sibling `kb.getArticleById` (`capabilityProcedure` +
  * `assertViewInstance('kb', kbId)`). Before this, the only check was "the
  * article exists in the caller's org", so any authenticated org member could
  * tail the channel — and `kb-article-resync` carries the article's ENTIRE
  * `contentJson`, `kb-article-patch` its block-level diffs — even for a KB they
  * hold an explicit `none` restriction on.
  *
- * Articles inherit their KB's access level (doc 12 §0.5) and
- * `Article.homeKnowledgeBaseId` is `notNull`, so the row read below resolves the
- * gate's subject totally. The gate runs **before the stream opens** and before
- * any further read, so an unauthorized caller never gets a subscription.
+ * Articles inherit their KB's access level (doc 12 §0.5). The rule is
+ * `canReadArticle` (plan v3/06 P5, implementation I4) — the ONE authoring point,
+ * shared with the Kopilot KB tools, `apps/kb`, the attachment gate and the
+ * knowledge-source guard. It is **placement-permissive**: the home KB read below
+ * short-circuits the common case, and an article merely LINKED into a KB the
+ * caller holds still streams. The gate runs **before the stream opens** and
+ * before any further read, so an unauthorized caller never gets a subscription.
  *
  * No `FeatureKey.knowledgeBase` plan-AND: the tRPC sibling is a
  * `capabilityProcedure`, which runs no plan gate, and this is the same
@@ -77,8 +80,16 @@ export async function GET(
     return new Response('Article not found', { status: 404 })
   }
 
+  // Route handlers get no `auxxErrorMiddleware`, so the denial is mapped to a
+  // status code by hand — an `AuxxError` thrown here would surface as a 500.
   const capabilities = await getCapabilities(session.user.id, organizationId)
-  if (!capabilities.canViewInstance('kb', article.homeKnowledgeBaseId)) {
+  const allowed = await canReadArticle(db, {
+    organizationId,
+    capabilities,
+    articleId,
+    homeKnowledgeBaseId: article.homeKnowledgeBaseId,
+  })
+  if (!allowed) {
     return new Response('Forbidden', { status: 403 })
   }
 

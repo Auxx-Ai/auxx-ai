@@ -302,11 +302,18 @@ export const dashboardRouter = createTRPCRouter({
       )
     }),
 
+  // 🔴 `capabilities` is not optional plumbing on these two. `article` is the
+  // one aggregate source with a per-row policy (it inherits its KB's instance
+  // grants — plan v3/06 R9), and the engine's convention is
+  // `capabilities: undefined` ⇒ UNRESTRICTED, for headless callers. Dropping it
+  // here silently restores the org-wide count and, worse, collapses the
+  // result-cache fork that keeps one viewer's numbers off another's dashboard.
   chartData: capabilityProcedure.input(widgetDataInputSchema).query(async ({ ctx, input }) => {
     const { query } = await prepareWidgetQuery(ctx, input)
     return unwrap(
       await runAggregate(ctx.db, ctx.session.organizationId, ctx.session.userId, query, {
         skipCache: input.skipCache,
+        capabilities: ctx.capabilities,
       })
     )
   }),
@@ -319,7 +326,7 @@ export const dashboardRouter = createTRPCRouter({
         ctx.session.organizationId,
         ctx.session.userId,
         { base: query, trend: trendSpecForWidget(cfg) },
-        { skipCache: input.skipCache }
+        { skipCache: input.skipCache, capabilities: ctx.capabilities }
       )
     )
   }),

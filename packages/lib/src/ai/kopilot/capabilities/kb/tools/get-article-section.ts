@@ -8,7 +8,7 @@ import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
-import { canViewKb } from '../kb-access'
+import { canReadArticle } from '../kb-access'
 
 /**
  * Reads a contiguous section of an article between two heading anchors
@@ -25,7 +25,7 @@ export function createGetArticleSectionTool(getDeps: GetToolDeps): AgentToolDefi
       keys: ['kb'],
       level: 'view',
       enforcement: 'enforced',
-      note: 'canViewKb → canViewInstance on the article’s home KB.',
+      note: 'canReadArticle — placement-permissive KB read gate (plan v3/06 §5.2).',
     },
     displayName: 'Get article section',
     toolsetSlug: 'auxx:knowledge',
@@ -73,14 +73,21 @@ export function createGetArticleSectionTool(getDeps: GetToolDeps): AgentToolDefi
         ),
         with: { draftRevision: true },
       })
+      if (!article || !article.draftRevision) {
+        return { success: false, output: null, error: 'article not found' }
+      }
       // The active-article ref is client-supplied, so re-check instance access
       // here (permissions v2 §3.3). Silent filter — a KB the caller can't view
-      // reads as "not found", never a 403.
-      if (
-        !article ||
-        !article.draftRevision ||
-        !canViewKb(capabilities, article.homeKnowledgeBaseId)
-      ) {
+      // reads as "not found", never a 403. Placement-permissive: the home KB is
+      // checked first and short-circuits, so the placement read only runs for a
+      // multi-home article (plan v3/06 §2.6).
+      const canRead = await canReadArticle(db, {
+        organizationId: agentDeps.organizationId,
+        capabilities,
+        articleId,
+        homeKnowledgeBaseId: article.homeKnowledgeBaseId,
+      })
+      if (!canRead) {
         return { success: false, output: null, error: 'article not found' }
       }
       const content = (article.draftRevision.contentJson as ArticleNodeJSON[] | null) ?? []

@@ -21,10 +21,33 @@ export interface RenderKbCatalogOptions {
    * Per-instance read gate for the member audience (capability layer v2 §3.4).
    * Applied on top of {@link RenderKbCatalogOptions.publicOnly}: a KB the
    * principal can't VIEW is dropped entirely, so its article titles and
-   * body-derived descriptions never reach the model. Omit ⇒ no gating (today's
-   * output) — the workflow AI node and any un-threaded caller.
+   * body-derived descriptions never reach the model.
+   *
+   * 🔴 **REQUIRED, and that is the fix** (plan v3/06 §3.4 A8, §11 item 6). This
+   * was an optional `canViewKb?: (kbId) => boolean` read as
+   * `(!canViewKb || canViewKb(kb.id))` — i.e. **omitting it meant unfiltered**.
+   * That is fail-OPEN in the one place in this plan where the payload is
+   * prompt-injected into a system prompt rather than returned to a tool: the
+   * leak is the org's whole KB table of contents, titles plus body-derived
+   * descriptions. Every other reader in plan v3/06 fails closed.
+   *
+   * Flipping the short-circuit was NOT available, because it collides with a
+   * load-bearing convention: `capabilities: undefined` ⇒ unrestricted for
+   * **headless** callers (§8.2 — the workflow AI node, the headless approval
+   * runner, the learned-extraction runner). So the distinction the type now
+   * forces every caller to make is **"no viewer"** (`'unrestricted'`) versus
+   * **"a viewer, who may see nothing"** (a predicate that may answer `false` for
+   * every KB, and then this returns `null`). A new caller can no longer get
+   * unfiltered output by forgetting a field.
+   *
+   * ⚠ This is deliberately NOT `viewableKnowledgeBaseIds` from
+   * `permissions/capabilities/article-read-access`. That rule additionally drops
+   * `kind: 'source'` KBs, and a source KB's articles are exactly the crawled
+   * org knowledge an answering agent is supposed to ground replies in (§8.2 /
+   * A4). Agent retrieval is out of scope for plan v3/06 and must not be narrowed
+   * here.
    */
-  canViewKb?: (kbId: string) => boolean
+  kbAccess: 'unrestricted' | ((kbId: string) => boolean)
   /**
    * Agent retrieval scope (permissions v2 §1.2/1.3) — the same allowlist
    * `search_knowledge` enforces (`isSegmentInKnowledgeScope` in
@@ -52,10 +75,11 @@ export function renderKbCatalog(
     publicOnly,
     maxChars = DEFAULT_MAX_CHARS,
     hasGetArticle = true,
-    canViewKb,
+    kbAccess,
     knowledgeScope,
   } = options
 
+  const canViewKb = kbAccess === 'unrestricted' ? null : kbAccess
   const kbs = catalog
     .map((kb) => narrowKbByScope(kb, knowledgeScope))
     .filter((kb): kb is KbCatalogEntry => kb !== null)
@@ -63,7 +87,7 @@ export function renderKbCatalog(
       (kb) =>
         kb.articles.length > 0 &&
         (!publicOnly || kb.visibility === 'PUBLIC') &&
-        (!canViewKb || canViewKb(kb.id))
+        (canViewKb === null || canViewKb(kb.id))
     )
   if (kbs.length === 0) return null
 

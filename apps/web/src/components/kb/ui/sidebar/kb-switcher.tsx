@@ -1,7 +1,7 @@
 // apps/web/src/components/kb/ui/sidebar/kb-switcher.tsx
 'use client'
 
-import { mergeDraftOverLive } from '@auxx/lib/kb/client'
+import { isSystemProvisionedKnowledgeBase, mergeDraftOverLive } from '@auxx/lib/kb/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { toRecordId } from '@auxx/types/resource'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
@@ -108,6 +108,19 @@ export function KBBreadcrumbSwitcher({ activeKnowledgeBase }: KBBreadcrumbSwitch
     [knowledgeBases]
   )
 
+  // 🔴 The THIRD delete surface over the same list (plan v3/06 P4). `kb.list`
+  // now returns the learned KB, so the switcher names it too — and
+  // `EntitySwitcherItem` carries no `kind`, so the rule is resolved here, from
+  // the rows, and applied as an id lookup. Deleting AI Memory is a content purge
+  // wearing a delete button's clothes; see `isSystemProvisionedKnowledgeBase`.
+  const systemProvisionedIds = useMemo(
+    () =>
+      new Set(
+        knowledgeBases.filter((kb) => isSystemProvisionedKnowledgeBase(kb.kind)).map((kb) => kb.id)
+      ),
+    [knowledgeBases]
+  )
+
   // The list is the source of truth for renames (it carries optimistic updates);
   // the prop only covers the window before the list has loaded.
   const activeLabel =
@@ -167,7 +180,9 @@ export function KBBreadcrumbSwitcher({ activeKnowledgeBase }: KBBreadcrumbSwitch
         isLoading={isLoading}
         onSelect={(item) => goToKnowledgeBase(item.id)}
         onDelete={handleDelete}
-        canDelete={(item) => canAdminInstance(toRecordId('kb', item.id))}
+        canDelete={(item) =>
+          canAdminInstance(toRecordId('kb', item.id)) && !systemProvisionedIds.has(item.id)
+        }
         deleteConfirm={(item) => ({
           title: 'Delete knowledge base?',
           description: `"${item.label}" and all of its docs will be permanently deleted. This action cannot be undone.`,

@@ -5,7 +5,8 @@ import { parseArticleIdArg, parseStringArg } from '../../../../agent-framework/t
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
-import { canViewKb } from '../kb-access'
+import { resolveArticleReadScope } from '../kb-access'
+import type { ActiveArticleSnapshot } from '../snapshot-pipeline'
 import { buildActiveArticleSnapshot } from '../snapshot-pipeline'
 
 /**
@@ -28,7 +29,7 @@ export function createGetArticleTool(getDeps: GetToolDeps): AgentToolDefinition 
       keys: ['kb'],
       level: 'view',
       enforcement: 'enforced',
-      note: 'canViewKb on the article’s KB. Gates only the AGENT’s caps — no invoker clamp, no visibility/isPublished check (doc 18); safe today only because the tool is not registered on visitor chat.',
+      note: 'Placement-permissive KB read gate (plan v3/06 §5.2) — readable through ANY placement, not just the home KB. Gates only the AGENT’s caps — no invoker clamp, no visibility/isPublished check (doc 18); safe today only because the tool is not registered on visitor chat.',
     },
     displayName: 'Get article',
     toolsetSlug: 'auxx:knowledge',
@@ -39,6 +40,7 @@ export function createGetArticleTool(getDeps: GetToolDeps): AgentToolDefinition 
       secondaryInfo: 'how-to-track-your-order',
       articleId: 'art_4Kp9wZ',
       knowledgeBaseId: 'kb_2Lm8xR',
+      placementKnowledgeBaseIds: ['kb_2Lm8xR'],
       title: 'How to track your order',
       slug: 'how-to-track-your-order',
       description: 'Step-by-step guide to finding your order tracking number and status.',
@@ -109,6 +111,19 @@ export function createGetArticleTool(getDeps: GetToolDeps): AgentToolDefinition 
       const knowledgeBaseId =
         (args.knowledgeBaseId as string | undefined) ?? findRef(sessionContext, 'kb')?.id
 
+      // Resolved once per call and shared by both lookup modes — one cached KB
+      // read, then a pure predicate. Silent filter: a KB the caller can't view
+      // reads as "not found", never a 403.
+      const readScope = await resolveArticleReadScope(agentDeps.organizationId, capabilities)
+      // 🔴 Placement-permissive (plan v3/06 §2.6). `snapshot.knowledgeBaseId` is
+      // the HOME KB — gating on it alone 404s an article that is homed in a
+      // hidden `source` KB but deliberately linked into a KB the caller holds.
+      const canRead = (snapshot: ActiveArticleSnapshot) =>
+        readScope.canReadArticleIn([
+          ...snapshot.placementKnowledgeBaseIds,
+          snapshot.knowledgeBaseId,
+        ])
+
       // Modes 1 + 3: id (explicit, or via the active-article ref) wins.
       const articleId = explicitId ?? (slug ? undefined : findRef(sessionContext, 'article')?.id)
       if (articleId) {
@@ -117,7 +132,7 @@ export function createGetArticleTool(getDeps: GetToolDeps): AgentToolDefinition 
           organizationId: agentDeps.organizationId,
           articleId,
         })
-        if (!snapshot || !canViewKb(capabilities, snapshot.knowledgeBaseId)) {
+        if (!snapshot || !canRead(snapshot)) {
           return { success: false, output: null, error: `article "${articleId}" not found` }
         }
         return { success: true, output: snapshot }
@@ -140,7 +155,7 @@ export function createGetArticleTool(getDeps: GetToolDeps): AgentToolDefinition 
             organizationId: agentDeps.organizationId,
             articleId: article.id,
           })
-          if (!snapshot || !canViewKb(capabilities, snapshot.knowledgeBaseId)) {
+          if (!snapshot || !canRead(snapshot)) {
             return { success: false, output: null, error: `article "${slug}" not found` }
           }
           return { success: true, output: snapshot }

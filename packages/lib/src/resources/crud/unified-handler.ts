@@ -14,7 +14,12 @@ import { isEntityDefinitionType } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { type AnyColumn, and, eq, type SQL } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { findCachedResource, getCachedCustomFields, getCachedFieldMap } from '../../cache'
+import {
+  findCachedResource,
+  getCachedCustomFields,
+  getCachedFieldMap,
+  getCachedResources,
+} from '../../cache'
 import { type ConditionGroup, resolveConditionContext } from '../../conditions'
 import { BadRequestError, ForbiddenError } from '../../errors'
 import { publisher } from '../../events/publisher'
@@ -22,6 +27,7 @@ import { FieldValueService } from '../../field-values'
 import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
 import { typedColumnMatch } from '../../field-values/typed-column-match'
 import { upsertRecordIdentity } from '../../identity'
+import { systemTableVisibilityScope } from '../../permissions/capabilities/article-visibility-scope'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import {
   assertRequestScoped,
@@ -30,6 +36,7 @@ import {
   recordScopeArmFor,
   resolveRecordVisibilityScope,
 } from '../../permissions/capabilities/record-visibility-scope'
+import { buildDefIdToSlug } from '../../permissions/capabilities/resolve-capability-inputs'
 import { resolveResourceAccessGrantees } from '../../resource-access/grantee-resolution'
 import { getCommonHooks, getSystemHooks } from '../hooks'
 import { RecordPickerService } from '../picker'
@@ -292,6 +299,17 @@ export class UnifiedCrudHandler {
     // read entry points refuse them outright instead of relying on this answer —
     // see `listFiltered` above and `assertNotMailLensTable` in
     // `unified-handler-queries.ts`.
+    //
+    // 🔴 `article` is the THIRD such case (plan v3/06 §2.1) and its per-row
+    // policy — its KB's instance grants — IS expressible as SQL. But the
+    // predicate is qualified to `"Article"`, so it is only valid on the
+    // system-table query lane. **This method serves the `EntityInstance` lane**
+    // (`getById`, `lookupByField`, `listAll`, the picker's instance fetch), where
+    // ANDing it in would raise `missing FROM-clause entry for table "Article"`.
+    // Arm 1 remains the right — and behaviourally identical — answer here: an
+    // article has no `EntityInstance` row for those queries to return (verified:
+    // zero rows org-wide). {@link systemTableScope} is the system-lane twin, and
+    // `listFiltered` is its only caller.
     if (isSystemResource(entityDefinitionId)) return { arm: 'all' }
 
     // ARMS 1 AND 4 COST NOTHING, and that ordering is the point (§5.1): the arm
@@ -312,6 +330,30 @@ export class UnifiedCrudHandler {
       capabilities: this.capabilities,
     })
     this.scopeCache.set(defId, pending)
+    return pending
+  }
+
+  /**
+   * The visibility scope for the SYSTEM-TABLE query lane (plan v3/06 W1).
+   *
+   * Arm `all` for every table but `article`, which inherits its KB's instance
+   * grants. Memoized per handler under the table id — the underlying read is
+   * org-cache-only, but a list that also counts asks twice.
+   *
+   * ⚠ Kept textually parallel with `RecordPickerService.systemTableScope`: the
+   * picker is a second entry point into the SAME lane, not a second policy. Both
+   * are one-line delegations to `systemTableVisibilityScope` so they cannot
+   * drift.
+   */
+  private async systemTableScope(tableId: string): Promise<RecordVisibilityScope> {
+    const cached = this.scopeCache.get(`system:${tableId}`)
+    if (cached) return cached
+    const pending = systemTableVisibilityScope({
+      organizationId: this.organizationId,
+      tableId,
+      capabilities: this.capabilities,
+    })
+    this.scopeCache.set(`system:${tableId}`, pending)
     return pending
   }
 
@@ -353,13 +395,27 @@ export class UnifiedCrudHandler {
    *
    * The def gate still runs FIRST and short-circuits, so the ordinary
    * all-def-editable batch pays exactly what it paid before — zero I/O. Only the
-   * ids the def gate refuses are stamped and re-judged. See
-   * {@link assertRecordRowsEditable} for the missing-row/missing-stamp rule.
+   * ids the def gate refuses are stamped and re-judged, plus the
+   * `ALWAYS_PER_ROW_DEF_SLUGS` carve-out. See {@link assertRecordRowsEditable}
+   * for the missing-row/missing-stamp rule.
    *
-   * A no-op when `capabilities` is absent (internal/system callers).
+   * A no-op when `capabilities` is absent (internal/system callers) — which is
+   * also why the resolver is only built when there is a member to judge.
    */
   private async assertEditRows(recordIds: readonly RecordId[]): Promise<void> {
-    return assertRecordRowsEditable(this.capabilities, recordIds, (ids) => this.getByIds(ids))
+    const capabilities = this.capabilities
+    if (!capabilities) return
+    // `ALWAYS_PER_ROW_DEF_SLUGS` is slug-keyed and a RecordId's def part may be
+    // the definition CUID, so the carve-out needs the same org-cache resolver
+    // `getCapabilities` uses. The blob is already warm — `capabilityProcedure`
+    // read `resources` on the way in.
+    const defIdToSlug = buildDefIdToSlug(await getCachedResources(this.organizationId))
+    return assertRecordRowsEditable(
+      capabilities,
+      recordIds,
+      (ids) => this.getByIds(ids),
+      defIdToSlug
+    )
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1030,10 +1086,15 @@ export class UnifiedCrudHandler {
     // arms 2/3 join their predicate into `baseWhere`, which the page query and
     // the `COUNT(*)` share — so `total` describes the visible set.
     //
-    // Other system resources (`user`, `inbox`, `dataset`, …) are not
-    // EntityInstance-backed, so the record scope does not apply to them; that
-    // branch is taken below, before `visibilityWhere` is used.
-    const scope = await this.recordScope(entityDefinitionId)
+    // The two lanes resolve their scope from DIFFERENT sources and must: the
+    // EntityInstance lane correlates `ResourceAccess` against
+    // `"EntityInstance"."id"`, the system lane (plan v3/06 W1) correlates
+    // `ArticlePlacement` against `"Article"."id"`. Each predicate is qualified to
+    // its own table and is invalid in the other's query.
+    const isSystem = isSystemResource(entityDefinitionId)
+    const scope = isSystem
+      ? await this.systemTableScope(entityDefinitionId)
+      : await this.recordScope(entityDefinitionId)
     if (scope.arm === 'none') {
       return { ids: [], total: 0, hasMore: false }
     }
@@ -1047,7 +1108,7 @@ export class UnifiedCrudHandler {
     const offset = Math.max(cursor?.offset ?? params.offset ?? 0, 0)
     const includeTotal = params.includeTotal ?? offset === 0
 
-    if (isSystemResource(entityDefinitionId)) {
+    if (isSystem) {
       return querySystemResourceIdsPaged({
         db: this.db,
         tableId: entityDefinitionId as TableId,
@@ -1058,6 +1119,9 @@ export class UnifiedCrudHandler {
         limit,
         offset,
         includeTotal,
+        // W1b — without this forward the system-table scope produces SQL nobody
+        // reads and W1 is a no-op.
+        visibilityWhere: scope.where,
       })
     }
 

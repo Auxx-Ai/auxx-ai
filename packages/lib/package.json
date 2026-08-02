@@ -808,6 +808,12 @@
       "import": "./dist/permissions/index.mjs",
       "default": "./src/permissions/index.ts"
     },
+    "./permissions/capabilities/article-read-access": {
+      "types": "./src/permissions/capabilities/article-read-access.ts",
+      "source": "./src/permissions/capabilities/article-read-access.ts",
+      "import": "./dist/permissions/capabilities/article-read-access.mjs",
+      "default": "./src/permissions/capabilities/article-read-access.ts"
+    },
     "./permissions/capabilities/capability-set": {
       "types": "./src/permissions/capabilities/capability-set.ts",
       "source": "./src/permissions/capabilities/capability-set.ts",

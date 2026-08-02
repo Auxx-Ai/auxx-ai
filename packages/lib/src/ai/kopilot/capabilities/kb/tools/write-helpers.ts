@@ -167,6 +167,15 @@ export async function runBlockCrudOp(args: {
   // assert lives at this single choke point — before the snapshot, the lock and
   // the patch. Throws `ForbiddenError`, which the query loop surfaces as a tool
   // error. Absent capabilities (workflow AI node) ⇒ unrestricted, as before.
+  //
+  // 🔴 **HOME-STRICT ON PURPOSE — do NOT converge this onto the read gate**
+  // (plan v3/06 §7.3, closed as such in §11 item 3). The KB *reads*
+  // (`get_article`, `get_article_section`, `resolve_block_by_heading`,
+  // `list_articles`) moved to the placement-permissive rule in P5 and this did
+  // not, because the draft revision is shared across every placement: editing
+  // through a LINKED placement mutates content the home KB owns. `kb.ts`'s
+  // `moveArticle` models the same asymmetry — it asserts the placement KB and
+  // additionally the home KB when the two differ.
   toolDeps.capabilities?.assertEditInstance('kb', knowledgeBaseId)
 
   const draftJson = (article.draftRevision.contentJson as ArticleNodeJSON[] | null) ?? []

@@ -37,8 +37,10 @@ interface KBEditorHeaderProps {
  * The learned KB ("AI Memory") gets trimmed chrome: no settings tabs (the
  * panel is forced to the article tree), no publish cluster (it is INTERNAL
  * and never site-published), and a plain breadcrumb instead of the KB
- * switcher (the learned KB is excluded from `kb.list`, so the switcher
- * neither names it nor offers it). An Edit-level (non-admin) member gets the
+ * switcher. ⚠ Since plan v3/06 P4 the learned KB IS in `kb.list`, so the
+ * switcher does now offer it as a destination from other KBs — the plain
+ * breadcrumb here is about the trimmed chrome, not about the KB being
+ * unlistable. An Edit-level (non-admin) member gets the
  * same trimmed chrome minus the switcher swap — settings/layout/publish AND
  * Share are Full-only (doc 24 §A.2.4).
  */

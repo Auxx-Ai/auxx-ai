@@ -22,7 +22,7 @@ import {
   unlinkSourceFromKb,
   updateSource,
 } from '@auxx/lib/knowledge-sources'
-import { type CapabilitySet, PermissionKey } from '@auxx/lib/permissions'
+import { type CapabilitySet, PermissionKey, resolveArticleReadScope } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -66,7 +66,22 @@ function isSourceCreatorOrAdmin(
   )
 }
 
-/** Read visibility for a source: Read on ≥1 linked KB, or (link-less) creator/admin. */
+/**
+ * Read visibility for a source: Read on ≥1 linked KB, or (link-less)
+ * creator/admin.
+ *
+ * The any-of fold was this codebase's closest existing thing to the shared rule
+ * (plan v3/06 §2.5, implementation I6) and is now literally it: the per-KB
+ * predicate comes from `resolveArticleReadScope`, the ONE authoring point shared
+ * with the article SSE route, the attachment gate, `apps/kb` and the Kopilot KB
+ * tools. Resolved once and applied as a pure predicate — `linkedKbIds` is a
+ * short list, but a per-id async gate would still be one cache round trip each.
+ *
+ * ⚠ `linkedKbIds` deliberately EXCLUDES the source's own hidden `kind: 'source'`
+ * KB (see `listSourceLinks`), which is why the shared rule's `source` exclusion
+ * is a no-op here rather than a regression: a source is read through the
+ * user-facing KBs it feeds, never through its own container.
+ */
 async function canReadSource(
   db: Database,
   capabilities: CapabilitySet,
@@ -76,7 +91,8 @@ async function canReadSource(
 ): Promise<boolean> {
   const kbIds = await linkedKbIds(db, organizationId, source.id)
   if (kbIds.length === 0) return isSourceCreatorOrAdmin(capabilities, userId, source)
-  return kbIds.some((id) => capabilities.canViewInstance('kb', id))
+  const readScope = await resolveArticleReadScope(organizationId, capabilities)
+  return readScope.unrestricted || kbIds.some((id) => readScope.canReadKnowledgeBase(id))
 }
 
 /** Throwing read guard — resolves the source (org-scoped) then applies {@link canReadSource}. */

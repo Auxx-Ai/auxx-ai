@@ -102,6 +102,10 @@ describe('the aggregate allowlist no longer names mail content', () => {
           // guard is the one that counts.
           tableId: tableId as never,
           metric: { op: 'count' },
+          // Widest possible scope — the refusal must not depend on it. `'all'`
+          // is the article predicate's OFF position (plan v3/06 §5.6), so a
+          // mail table cannot slip through by looking unrestricted.
+          viewableKbIds: 'all',
           timezone: 'UTC',
           fetchCap: 100,
         })

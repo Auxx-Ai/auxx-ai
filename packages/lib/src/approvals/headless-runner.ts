@@ -506,7 +506,11 @@ async function buildHeadlessPrompt(params: BuildPromptParams): Promise<string> {
   // so INTERNAL KBs are visible).
   try {
     const catalog = await getCachedKbCatalog(params.organizationId)
-    const rendered = renderKbCatalog(catalog, { publicOnly: false })
+    // `kbAccess: 'unrestricted'` — a headless approval run has no viewer to be
+    // relative to (plan v3/06 §8.2). Stated explicitly because the option is
+    // required now; omitting it used to silently mean the same thing, which is
+    // how the fail-open in §3.4 A8 survived.
+    const rendered = renderKbCatalog(catalog, { publicOnly: false, kbAccess: 'unrestricted' })
     if (rendered) {
       lines.push('')
       lines.push(rendered)

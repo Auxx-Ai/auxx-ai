@@ -1,5 +1,23 @@
 // packages/lib/src/permissions/capabilities/index.ts
 
+// Plan v3/06 P5 — the ONE boolean article/KB read gate the six ad-hoc readers
+// (§2.5 I2–I6) now share.
+export {
+  type ArticleReadInput,
+  type ArticleReadScope,
+  canReadArticle,
+  canReadKnowledgeBase,
+  resolveArticleReadScope,
+} from './article-read-access'
+export {
+  articleAccessRung,
+  articleRowAccess,
+  articleVisibilitySql,
+  articleWriteRung,
+  knowledgeBaseScopeFingerprint,
+  systemTableVisibilityScope,
+  viewableKnowledgeBaseIds,
+} from './article-visibility-scope'
 export { CapabilitySet, type DefIdToSlug } from './capability-set'
 export {
   type CapabilityView,
@@ -11,6 +29,10 @@ export {
   type UserCapabilities,
 } from './compose-user-capabilities'
 export { computeUserCapabilities } from './compute-user-capabilities'
+// Plan v3/06 — articles inherit their KB's grants. The ONE authoring point for
+// "which articles may this member read", and for the `_access` stamp that makes
+// a `knowledgeBase: Edit` member's article writes work.
+export { ALWAYS_PER_ROW_DEF_SLUGS, NON_RECORD_DEF_SLUGS } from './entity-access'
 export { getCapabilities } from './get-capabilities'
 export {
   clearGranteeLevels,
