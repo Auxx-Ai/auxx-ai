@@ -19,6 +19,7 @@ import { executeTool } from './executors/tool-executor.ts'
 import { executeWebhookHandler } from './executors/webhook-executor.ts'
 import { executeWorkflowBlock } from './executors/workflow-block-executor.ts'
 import { getCapturedLogs } from './runtime-helpers/console.ts'
+import { getInvokeSecret } from './secrets.ts'
 import type { LambdaEvent, LambdaResponse } from './types.ts'
 import { parseError } from './utils.ts'
 import { type ValidatedLambdaEvent, validateLambdaEvent } from './validator.ts'
@@ -128,6 +129,13 @@ const CALLER_TYPE_ALLOWLIST: Record<string, string[]> = {
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024
 
 /**
+ * Maximum serialized response size (5 MB), mirroring the inbound cap. Without it,
+ * user code can return an arbitrarily large value and exhaust memory in this
+ * process and the caller's. See plan §2.4 / A3.
+ */
+const MAX_RESPONSE_BYTES = 5 * 1024 * 1024
+
+/**
  * Lambda handler - entry point for all server function executions
  */
 export async function handler(
@@ -148,7 +156,8 @@ export async function handler(
     }
 
     // 0b. Auth gate — reject unsigned requests
-    const secret = Deno.env.get('LAMBDA_INVOKE_SECRET')
+    // Captured at boot; the variable itself is deleted by sealEnvironment().
+    const secret = getInvokeSecret()
     let authCaller: string | undefined
 
     if (!secret) {
@@ -252,20 +261,40 @@ export async function handler(
       logCount: executionResult.metadata?.consoleLogs?.length || 0,
     })
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        execution_result: executionResult.result,
-        metadata: {
-          duration,
-          cold_start: !(globalThis as Record<string, unknown>).__warm,
-          settings_schema: executionResult.metadata?.settingsSchema,
-          console_logs: executionResult.metadata?.consoleLogs,
-          validation_error: executionResult.metadata?.validationError,
-          runtime_error: executionResult.metadata?.runtimeError,
-        },
-      }),
+    const responseBody = JSON.stringify({
+      execution_result: executionResult.result,
+      metadata: {
+        duration,
+        cold_start: !(globalThis as Record<string, unknown>).__warm,
+        settings_schema: executionResult.metadata?.settingsSchema,
+        console_logs: executionResult.metadata?.consoleLogs,
+        validation_error: executionResult.metadata?.validationError,
+        runtime_error: executionResult.metadata?.runtimeError,
+      },
+    })
+
+    // Input is capped at MAX_PAYLOAD_BYTES; the response was not. `return
+    // 'x'.repeat(1e9)` from user code is a memory-exhaustion vector against every
+    // process that handles the reply — this service, then the caller. Reject the
+    // oversized result instead of returning it.
+    if (responseBody.length > MAX_RESPONSE_BYTES) {
+      console.error('[Lambda] Response too large:', {
+        type: eventType,
+        bytes: responseBody.length,
+        limit: MAX_RESPONSE_BYTES,
+      })
+      return {
+        statusCode: 413,
+        body: JSON.stringify({
+          error: {
+            message: `Execution result exceeds ${MAX_RESPONSE_BYTES} bytes`,
+            code: 'RESPONSE_TOO_LARGE',
+          },
+        }),
+      }
     }
+
+    return { statusCode: 200, body: responseBody }
   } catch (error: unknown) {
     const duration = Date.now() - startTime
     const { message, code, stack, scope, details } = parseError(error)

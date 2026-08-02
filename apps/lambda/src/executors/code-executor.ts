@@ -166,17 +166,41 @@ async function executeJavaScript(
   // Generate wrapped code
   const wrappedCode = generateWrappedCode(code, inputsConfig)
 
-  // Execute with timeout
+  // Execute with timeout.
+  //
+  // NOTE: this cannot preempt synchronous user code — `Promise.race` only settles
+  // between macrotasks, so `while(true){}` holds the isolate and the timer never
+  // fires. Killing a runaway needs the child process of Phase B. The timer is
+  // cleared below so a completed execution does not leave one pending.
+  let timeoutId: number | undefined
   const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error(`Code execution timeout after ${timeout}ms`)), timeout)
+    timeoutId = setTimeout(
+      () => reject(new Error(`Code execution timeout after ${timeout}ms`)),
+      timeout
+    )
   })
 
   const executionPromise = (async () => {
     try {
       // Execute wrapped code with values passed as parameters
       // This avoids JSON.stringify issues with complex objects
-      const fn = new Function('variables', 'codeInput', wrappedCode)
-      const result = await fn(variables, codeInput)
+      //
+      // `Deno` is declared as a parameter and left undefined, so a bare `Deno.env`
+      // in user code resolves to the parameter instead of the global namespace.
+      //
+      // DEFENSE IN DEPTH ONLY — this is NOT the security boundary, and it is
+      // BYPASSABLE: `globalThis.Deno` still reaches the namespace, and
+      // `import('node:fs')` reaches the filesystem without touching `Deno` at all
+      // (measured — see plan §4.3). Parameter shadowing is used rather than
+      // deleting the global because deletion is process-wide: a concurrent
+      // invocation, or one that hangs on an unresolved promise past the timeout,
+      // would leave the whole service without `Deno`.
+      //
+      // The real boundary is a child process with no ambient authority (Phase B).
+      // The non-bypassable part of Phase A is secrets.ts, which removes the
+      // credentials from the environment outright instead of hiding a path to them.
+      const fn = new Function('variables', 'codeInput', 'Deno', wrappedCode)
+      const result = await fn(variables, codeInput, undefined)
       return result
     } catch (error) {
       // Enhance error message
@@ -187,7 +211,11 @@ async function executeJavaScript(
     }
   })()
 
-  return Promise.race([executionPromise, timeoutPromise])
+  try {
+    return await Promise.race([executionPromise, timeoutPromise])
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
+  }
 }
 
 /**

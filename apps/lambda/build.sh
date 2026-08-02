@@ -33,8 +33,7 @@ deno compile \
   --config "$BUILD_DIR/deno.json" \
   --allow-net \
   --allow-env \
-  --allow-read \
-  --allow-write=/tmp \
+  --allow-read=/var/task,/tmp,/bundles \
   --allow-sys \
   --output "$DIST_DIR/bootstrap" \
   "$BUILD_DIR/src/lambda-runtime.ts"
