@@ -1,14 +1,113 @@
 // apps/web/src/components/kb/ui/editor/article-editor-top.tsx
 'use client'
 
+import { AutosizeField } from '@auxx/ui/components/autosize-field'
 import { IconPicker } from '@auxx/ui/components/icon-picker'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { cn } from '@auxx/ui/lib/utils'
 import { Smile } from 'lucide-react'
+import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { EditableText, type EditableTextHandle } from '~/components/editor/editable-text'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta } from '../../store/article-store'
 import { ArticleCoverStrip } from './article-cover-strip'
+
+interface InlineTextFieldProps {
+  /** Persisted value — resets the local draft whenever it changes. */
+  value: string
+  /** Called on blur/Enter with the trimmed value, only when it actually changed. */
+  onCommit: (value: string) => void
+  /** Called after Enter commits — used to advance focus to the next field. */
+  onEnter?: () => void
+  placeholder: string
+  className?: string
+  /** Rows to show before the field scrolls instead of growing. */
+  maxRows?: number
+  readOnly?: boolean
+  fieldRef?: React.RefObject<HTMLTextAreaElement | null>
+}
+
+/**
+ * Always-live, auto-growing single-line-semantics text field: it wraps to as
+ * many lines as the content needs (up to `maxRows`) but never stores newlines —
+ * Enter commits and advances rather than breaking the line.
+ */
+function InlineTextField({
+  value,
+  onCommit,
+  onEnter,
+  placeholder,
+  className,
+  maxRows,
+  readOnly = false,
+  fieldRef,
+}: InlineTextFieldProps) {
+  const [draft, setDraft] = useState(value)
+  // Blur fires synchronously from the Escape/Enter handlers, before the state
+  // update lands — so commit reads the draft from a ref, and dedupes against
+  // the last value it actually sent.
+  const draftRef = useRef(value)
+  const committedRef = useRef(value)
+
+  const updateDraft = (next: string) => {
+    draftRef.current = next
+    setDraft(next)
+  }
+
+  useEffect(() => {
+    committedRef.current = value
+    draftRef.current = value
+    setDraft(value)
+  }, [value])
+
+  const commit = () => {
+    const next = draftRef.current.trim()
+    if (next !== draftRef.current) updateDraft(next)
+    if (next === committedRef.current) return
+    committedRef.current = next
+    onCommit(next)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      commit()
+      onEnter?.()
+      return
+    }
+    if (e.key === 'Escape') {
+      updateDraft(value)
+      e.currentTarget.blur()
+    }
+  }
+
+  return (
+    <AutosizeField
+      ref={fieldRef}
+      variant='transparent'
+      minRows={1}
+      maxRows={maxRows}
+      value={draft}
+      readOnly={readOnly}
+      placeholder={readOnly ? undefined : placeholder}
+      // Pasted multi-line text collapses to spaces — the field renders wrapped
+      // lines, but title/description stay single-line values.
+      onChange={(e) => updateDraft(e.target.value.replace(/\r?\n/g, ' '))}
+      onKeyDown={handleKeyDown}
+      onBlur={commit}
+      className={cn(
+        // `border-solid` is required: the transparent variant sets `border-none`,
+        // which wins the border-style slot and would suppress the border entirely.
+        // The always-present transparent border keeps the layout from shifting
+        // when the hover/focus border appears.
+        'rounded-2xl border border-transparent border-solid transition-colors placeholder:text-muted-foreground',
+        !readOnly && 'hover:border-primary-300 focus:border-primary-400',
+        readOnly && 'cursor-default',
+        className
+      )}
+    />
+  )
+}
 
 interface ArticleEditorTopProps {
   article: ArticleMeta
@@ -26,7 +125,7 @@ export function ArticleEditorTop({
   onAdvanceToContent,
   readOnly = false,
 }: ArticleEditorTopProps) {
-  const descriptionRef = useRef<EditableTextHandle>(null)
+  const descriptionRef = useRef<HTMLTextAreaElement>(null)
   const { updateArticleDraft } = useArticleMutations(knowledgeBaseId)
   const draftEmoji = article.draft.emoji
   const hasCover = !!article.draft.coverImage
@@ -86,44 +185,30 @@ export function ArticleEditorTop({
                       </IconPicker>
                     )}
                   </div>
-                  <div className='relative flex h-full w-full items-center overflow-hidden text-2xl font-semibold lg:text-4xl'>
-                    <EditableText
-                      className='leading-snug focus:ring-0 py-0'
-                      containerClassName='w-full'
+                  <div className='relative flex h-full w-full items-center'>
+                    <InlineTextField
                       readOnly={readOnly}
-                      initialText={article.title}
-                      placeholderColor='text-muted-foreground'
+                      value={article.title}
                       placeholder='Title goes here'
-                      onSave={(newTitle, { reason }) => {
-                        if (onUpdateMetadata && newTitle !== article.title) {
-                          onUpdateMetadata({ title: newTitle })
-                        }
-                        if (reason === 'enter') {
-                          descriptionRef.current?.enterEdit()
-                        }
-                      }}
+                      className='px-2 py-0 font-semibold text-2xl leading-snug lg:text-4xl'
+                      onCommit={(title) => onUpdateMetadata?.({ title })}
+                      onEnter={() => descriptionRef.current?.focus()}
                     />
                   </div>
                 </div>
               </div>
               <div className='flex items-center justify-between'>
                 <div className='flex flex-1 items-center justify-start'>
-                  <div className='mt-2 max-h-[2.5rem] flex-1 overflow-y-scroll text-muted-foreground'>
-                    <EditableText
-                      ref={descriptionRef}
+                  <div className='mt-2 flex-1'>
+                    <InlineTextField
+                      fieldRef={descriptionRef}
                       readOnly={readOnly}
+                      value={article.description || ''}
                       placeholder='Add a description...'
-                      placeholderColor='text-muted-foreground'
-                      className='leading-snug focus:ring-0'
-                      initialText={article.description || ''}
-                      onSave={(newDescription, { reason }) => {
-                        if (onUpdateMetadata && newDescription !== article.description) {
-                          onUpdateMetadata({ description: newDescription })
-                        }
-                        if (reason === 'enter') {
-                          onAdvanceToContent?.()
-                        }
-                      }}
+                      maxRows={4}
+                      className='px-2 py-1 text-base text-muted-foreground leading-snug'
+                      onCommit={(description) => onUpdateMetadata?.({ description })}
+                      onEnter={() => onAdvanceToContent?.()}
                     />
                   </div>
                 </div>
