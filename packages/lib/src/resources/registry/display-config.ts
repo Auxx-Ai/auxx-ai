@@ -1,4 +1,4 @@
-// packages/lib/src/workflow-engine/resources/registry/display-config.ts
+// packages/lib/src/resources/registry/display-config.ts
 
 import type { TableId } from './field-registry'
 
@@ -207,11 +207,26 @@ export const RESOURCE_DISPLAY_CONFIG: Partial<Record<TableId, ResourceDisplayCon
     orgScopingStrategy: 'direct',
   },
 
+  // ⚠ `Participant` has NO `email` column — a participant's address lives in
+  // `identifier`, typed by `identifierType` (EMAIL / PHONE). This entry named
+  // `email` as both the secondary display field and a search field from the
+  // initial commit onward, which made `requireColumn` throw on every search:
+  // swallowed and logged in the global union (`searchGlobalUnion`'s per-kind
+  // catch), an uncaught 500 on scoped `record.search({entityDefinitionId:
+  // 'participant'})`. See `resources/registry/display-config.test.ts`, which now
+  // fails on any display config naming a column its table does not have.
+  //
+  // 🔴 NOT repointed at `identifier`, deliberately. `Participant` is org-wide
+  // with no inbox column and no mail lens, so making addresses text-searchable
+  // through the generic record path would hand any member with `Records: Read` a
+  // typeahead over every identity that has ever mailed the org — including ones
+  // that only ever appeared in another member's PERSONAL mailbox. That is a
+  // visibility decision, not a bug fix. `displayName` is not a safe substitute
+  // either: it equals the raw address for roughly a third of rows.
   participant: {
     identifierField: 'id',
     primaryDisplayFieldId: 'name',
-    secondaryDisplayFieldId: 'email',
-    searchFields: ['name', 'email'],
+    searchFields: ['name'],
     defaultSortField: 'createdAt',
     defaultSortDirection: 'desc',
     orgScopingStrategy: 'direct',
@@ -258,10 +273,11 @@ export const RESOURCE_DISPLAY_CONFIG: Partial<Record<TableId, ResourceDisplayCon
     orgScopingStrategy: 'direct',
     // `source` only — NOT `learned`. Source KBs are internal containers with no
     // UI of their own. The `learned` KB (AI Memory) is a real, member-facing
-    // knowledge base with its own card on the KB landing page; it is absent from
-    // `listKnowledgeBases` because that query backs the standard-KB grid, not
-    // because it is secret. Excluding it here would make the AI Memory KB
-    // unresolvable anywhere it is referenced.
+    // knowledge base, and since plan v3/06 P4 it is returned by
+    // `listKnowledgeBases` too — that query was filtering `kind = 'standard'`,
+    // which meant no Share card could ever be rendered for AI Memory and no `kb`
+    // grant row could be authored against it. Excluding it here would make the
+    // AI Memory KB unresolvable anywhere it is referenced.
     neverPickable: { kind: ['source'] },
   },
 
