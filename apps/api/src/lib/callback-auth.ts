@@ -26,7 +26,24 @@ export function verifyCallbackAuth(
 
   const secret = process.env.LAMBDA_INVOKE_SECRET
   if (!secret) {
-    // No secret configured — fall back to installation ID only (dev mode)
+    // FAIL CLOSED. This previously fell through to "installation ID only", which
+    // meant a deploy missing LAMBDA_INVOKE_SECRET silently disabled auth on every
+    // /api/v1/sdk/* route — and `installationId` is a caller-supplied header, so
+    // anyone could name any installation. Keying the bypass on the env var rather
+    // than on NODE_ENV turned one missing variable into a platform-wide hole.
+    //
+    // The dev convenience is kept, but gated explicitly on NODE_ENV.
+    if (process.env.NODE_ENV !== 'development') {
+      c.res = c.json(
+        errorResponse('AUTH_CONFIG_ERROR', 'Callback auth is not configured'),
+        500
+      ) as any
+      return null
+    }
+
+    console.warn(
+      '[CallbackAuth] LAMBDA_INVOKE_SECRET unset — callback tokens are NOT verified. Development only.'
+    )
     return { installationId, organizationId: '' }
   }
 
