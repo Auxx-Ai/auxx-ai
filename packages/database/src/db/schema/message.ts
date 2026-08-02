@@ -84,6 +84,27 @@ export const Message = pgTable(
     // Machine-mail tier, set at ingest for inbound mail (machine-mail plan Phase 1).
     // Null = ordinary human mail. The detection reason stays in metadata.machineMail.
     machineMailTier: machineMailTier(),
+    // --- Bulk-mail identity, derived once at ingest from headers already in hand
+    // (mail suggestions plan §1.1). Inbound-only, set at insert, never updated.
+    //
+    // Normalized `list-id` (human description stripped, angle brackets stripped,
+    // lowercased). THE stable bulk identity: it survives VERP and per-campaign
+    // from-addresses, which fragment any grouping keyed on the sender address.
+    listId: text(),
+    // Registrable domain of the from-address (via `tldts`). Fallback grouping when
+    // there is no list-id, and independently useful as a filter condition
+    // ("all mail from acme.com"). Kept SEPARATE from listId on purpose (S7): the
+    // unsubscribe safety gate must be able to tell a real list from a domain guess.
+    senderDomain: text(),
+    // Parsed `list-unsubscribe` + `list-unsubscribe-post`:
+    // `{ httpUrl?, mailto?, oneClick: boolean }`. Parsed once here instead of
+    // re-parsing `<https://…>, <mailto:…>` in the mining job. Never filtered on.
+    unsubscribeMeta: jsonb().$type<unknown>(),
+    // DMARC/DKIM verdict from `authentication-results`.
+    // NULL MEANS UNKNOWN AND MUST READ AS "NOT AUTHENTICATED" (invariant 3) — the
+    // absence of the header is not a pass, and coercing it to one is how you end up
+    // POSTing to a spammer's confirmation endpoint.
+    senderAuthenticated: boolean(),
   },
   (table) => [
     index('Message_createdById_idx').using('btree', table.createdById.asc().nullsLast()),
@@ -107,6 +128,22 @@ export const Message = pgTable(
       )
       .where(sql`("machineMailTier" IS NOT NULL)`),
     index('Message_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
+    // The mining group-by (suggestions plan §1.1). Partial — most mail has no list-id.
+    index('Message_organizationId_listId_idx')
+      .using('btree', table.organizationId.asc().nullsLast(), table.listId.asc().nullsLast())
+      .where(sql`("listId" IS NOT NULL)`),
+    // Fallback group-by when there is no list-id.
+    index('Message_organizationId_senderDomain_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.senderDomain.asc().nullsLast()
+    ),
+    // Serves the correlated `exists(...)` that a `list is X` filter condition compiles
+    // to — condition-query-builder emits subqueries against Message, so threadId must
+    // be IN the index or every candidate thread degrades to a heap lookup.
+    index('Message_listId_threadId_idx')
+      .using('btree', table.listId.asc().nullsLast(), table.threadId.asc().nullsLast())
+      .where(sql`("listId" IS NOT NULL)`),
     uniqueIndex('Message_organizationId_internetMessageId_key')
       .using(
         'btree',

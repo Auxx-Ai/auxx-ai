@@ -21,6 +21,7 @@ import {
 } from '../realtime'
 import { applyMailCountDeltas } from '../threads/mail-counts'
 import type { IngestContext } from './context'
+import { deriveBulkMailFields } from './filtering/bulk-mail'
 import { detectMachineMail } from './filtering/machine-mail'
 import { shouldIgnoreMessage } from './filtering/should-ignore'
 import { storeIgnoredMessage } from './filtering/store-ignored'
@@ -292,6 +293,24 @@ export async function storeMessage(
     const messageMetadata = machineMailResult
       ? { ...(messageData.metadata ?? {}), machineMail: machineMailResult }
       : messageData.metadata
+
+    // Bulk-sender identity (suggestions plan §2.1): `listId`, `senderDomain`,
+    // `unsubscribeMeta`, `senderAuthenticated`, derived from the same headers and
+    // the same from-address the machine-mail check above already holds, so the four
+    // columns land in the same write as the insert below.
+    //
+    // This does NOT violate mail-filters invariant 13 ("the engine never runs inside
+    // ingest"): it is a header derive, not rule evaluation — pure string parsing with
+    // no query, no cache read, no user-authored code and no branching on org state.
+    // Anything that needs org state belongs after the write. Inbound-only, for the
+    // same reason as the tier above: outbound rows here are provider sync echoing our
+    // own sent mail, which has no inbound list identity.
+    const bulkMailFields = messageData.isInbound
+      ? deriveBulkMailFields({
+          headers: (messageData.metadata as any)?.headers,
+          fromEmail: messageData.from?.identifier ?? null,
+        })
+      : null
 
     // Hard-tier machine mail (bounces/NDRs) must never grow the contact graph —
     // an NDR from mailer-daemon@ becoming a Contact fires `contact:created`
@@ -571,6 +590,15 @@ export async function storeMessage(
           htmlBodyStorageLocationId: messageData.htmlBodyStorageLocationId ?? null,
           metadata: messageMetadata || null,
           machineMailTier: machineMailResult?.tier ?? null,
+          // Bulk-sender identity — insert only, deliberately absent from the
+          // DO UPDATE below. The schema contract is "set once at insert, never
+          // updated": a re-sync that happens to carry a thinner header set must not
+          // be able to null out an identity we already derived. Rows that predate
+          // the columns are the backfill's job (DataMigration 073), not the upsert's.
+          listId: bulkMailFields?.listId ?? null,
+          senderDomain: bulkMailFields?.senderDomain ?? null,
+          unsubscribeMeta: bulkMailFields?.unsubscribeMeta ?? null,
+          senderAuthenticated: bulkMailFields?.senderAuthenticated ?? null,
           isInbound: messageData.isInbound,
           isFirstInThread: isNewThread,
           fromId: senderParticipantId,

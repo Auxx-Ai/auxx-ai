@@ -264,6 +264,24 @@ is per-channel (`requireChannelManageAccess`), not the coarse `channelsManage`
 key; ingest must never throw and disconnect is a soft delete, so every channel
 query needs `isNull(Integration.deletedAt)`.
 
+## Mail Suggestions & Unsubscribe
+
+**Before touching mined mail suggestions, the bulk-sender columns derived at
+ingest, proposed filter conditions, or unsubscribe, read
+`docs/mail-suggestions-architecture-guide.md`.** It documents the two producers
+(seeded `templateKey` starters vs mined, evidence-carrying `MailSuggestion`
+rows), the `list:`/`domain:` **`subjectKey` keyspace defined once** in
+`mail-suggestions/client.ts`, the weekly miner's thresholds and four suppression
+rules, and the three unsubscribe tiers with their safety gate.
+
+Short version: `proposedConditions` are validated with
+`assertFilterConditionsCompile` **when the job writes the row**, because an
+all-dropped condition set reduces to the bare org scope and matches every thread
+in the inbox; unsubscribe is a one-shot command, never a `MailFilterAction`, is
+gated on inbox write alone (not `automationRules.manage`), treats
+`senderAuthenticated IS NULL` as *not* authenticated, and must never be recorded
+as `contact:unsubscribed`; dismissal is a status write, never a delete.
+
 ## Database Models — LEGACY
 
 Existing models extend `BaseModel`. Do NOT add new model classes; put query code

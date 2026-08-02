@@ -402,6 +402,41 @@ export async function setupSchedules() {
     }
   )
 
+  // Mail-suggestion mining — Mondays at 05:10, clear of the 03:00/03:45/03:55/04:10/04:25
+  // maintenance slots. WEEKLY, not nightly: the evidence is a 90-day aggregate, so a daily
+  // rerun would burn one grouped query per inbox to move numbers that barely changed. The
+  // same tick sweeps `new` suggestions older than 90 days; `dismissed` rows persist forever
+  // because they ARE the suppression list (plans/mail-filter/03-suggestions-plan.md §5.4).
+  await maintenanceQueue.upsertJobScheduler(
+    'mailSuggestionsJob',
+    { pattern: '10 5 * * 1' },
+    {
+      opts: {
+        attempts: 1,
+        priority: 10,
+        removeOnComplete: { count: 8 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
+  // Unsubscribe-ignored sweep — daily at 05:40. Counts mail that kept arriving from a
+  // `subjectKey` the org already unsubscribed from (`MailUnsubscribe.lastSeenAfterAt` /
+  // `messagesSeenAfter`, plan §6.4). Daily rather than weekly: "they ignored you" is only
+  // useful while the annoyance is current.
+  await maintenanceQueue.upsertJobScheduler(
+    'mailUnsubscribeSweepJob',
+    { pattern: '40 5 * * *' },
+    {
+      opts: {
+        attempts: 1,
+        priority: 10,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Dispatch recurring engine daily sweep — every day at 03:00 UTC
   // (plans/dispatch/06-recurring-engine.md §4.4/§5.3). Extends the materialization horizon
   // for active recurring engagements that have fallen behind, and auto-ends engagements

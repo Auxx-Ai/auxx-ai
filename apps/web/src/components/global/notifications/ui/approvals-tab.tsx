@@ -14,11 +14,13 @@ import InfiniteScroll from '@auxx/ui/components/infinite-scroll'
 import { CircleCheck, TriangleAlert } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useEffect, useMemo, useState } from 'react'
+import { useMailSuggestions } from '~/components/mail-suggestions/hooks/use-mail-suggestions'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useNotificationPanelStore } from '../notification-panel-store'
 import { AccessRequestRow } from './items/access-request-row'
 import { ConfirmationRow } from './items/confirmation-row'
+import { MailSuggestionRow } from './items/mail-suggestion-row'
 import { SuggestionRow } from './items/suggestion-row'
 import { NotificationRowSkeleton } from './notification-row'
 
@@ -69,6 +71,13 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
     getNextPageParam: (lastPage) => lastPage?.nextCursor ?? undefined,
     refetchOnWindowFocus: false,
   })
+  /**
+   * The fourth source (§8.2). **Not gated on `FeatureKey.todayInbox`** — that key
+   * gates the AI-suggestions section only, and this is a different feature for a
+   * different audience. It is also capped at five cards per inbox by the mining
+   * job, so it needs no pagination of its own.
+   */
+  const mailSuggestions = useMailSuggestions()
 
   // Deadline order — soonest expiry first, undated last.
   const confirmationItems = useMemo(() => {
@@ -88,6 +97,8 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
     [suggestions.data]
   )
 
+  const mailSuggestionItems = mailSuggestions.data ?? []
+
   /**
    * The acting client refetches both lists and both badge counts itself rather
    * than waiting for its own `approval:resolved` frame, so the tab badge cannot
@@ -100,7 +111,19 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
     void utils.approvals.count.invalidate()
   }
 
-  const isLoading = confirmations.isLoading || (suggestionsEnabled && suggestions.isLoading)
+  /**
+   * Mail rows invalidate their own two queries inside
+   * `useMailSuggestionActions`; this only keeps the bell badge honest, which
+   * reads the count query rather than the list.
+   */
+  const onMailResolved = () => {
+    void utils.mailSuggestions.count.invalidate()
+  }
+
+  const isLoading =
+    confirmations.isLoading ||
+    (suggestionsEnabled && suggestions.isLoading) ||
+    mailSuggestions.isLoading
   const highlightIsListed = confirmationItems.some((item) => item.id === highlightApprovalId)
 
   /**
@@ -140,8 +163,14 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
   // A failed query must not read as "no work to do". Both sources returning
   // nothing looks identical to both sources erroring, and an approval inbox that
   // quietly claims to be empty is worse than one that admits it is broken.
-  const loadError = confirmations.error ?? (suggestionsEnabled ? suggestions.error : null)
-  if (loadError && !confirmationItems.length && !suggestionItems.length) {
+  const loadError =
+    confirmations.error ?? (suggestionsEnabled ? suggestions.error : null) ?? mailSuggestions.error
+  if (
+    loadError &&
+    !confirmationItems.length &&
+    !suggestionItems.length &&
+    !mailSuggestionItems.length
+  ) {
     return (
       <div className='flex flex-1 items-center justify-center'>
         <Empty className='border-0'>
@@ -157,6 +186,7 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
               onClick={() => {
                 void confirmations.refetch()
                 if (suggestionsEnabled) void suggestions.refetch()
+                void mailSuggestions.refetch()
               }}>
               Try again
             </Button>
@@ -166,7 +196,7 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
     )
   }
 
-  if (!confirmationItems.length && !suggestionItems.length) {
+  if (!confirmationItems.length && !suggestionItems.length && !mailSuggestionItems.length) {
     return (
       // flex-1 against the ScrollArea content wrapper's `min-h-full flex
       // flex-col`, so the empty state centres in the whole panel.
@@ -230,6 +260,23 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
             <div className='h-px' />
           </InfiniteScroll>
           {suggestions.isFetchingNextPage ? <NotificationRowSkeleton /> : null}
+        </section>
+      ) : null}
+
+      {/* Last, deliberately (§8.2): sections split by urgency, and this is the
+          least urgent source in the panel. An unanswered workflow confirmation
+          blocks a live run and expires; an unanswered mail suggestion costs
+          nothing. */}
+      {mailSuggestionItems.length ? (
+        <section>
+          <SectionHeader label='Mail suggestions' count={mailSuggestionItems.length} />
+          {mailSuggestionItems.map((suggestion) => (
+            <MailSuggestionRow
+              key={suggestion.id}
+              suggestion={suggestion}
+              onResolved={onMailResolved}
+            />
+          ))}
         </section>
       ) : null}
     </>

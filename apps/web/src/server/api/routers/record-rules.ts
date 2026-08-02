@@ -8,6 +8,7 @@ import { getCachedCustomFields, onCacheEvent } from '@auxx/lib/cache'
 import { ForbiddenError } from '@auxx/lib/errors'
 import { PermissionKey } from '@auxx/lib/permissions'
 import {
+  assertRecordRuleDefSupported,
   createRecordRule,
   deleteRecordRule,
   getRecordRuleById,
@@ -161,6 +162,10 @@ export const recordRulesRouter = createTRPCRouter({
     .input(ruleInputSchema)
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.organizationId
+      // Ahead of `normalizeFieldRef`, which would otherwise resolve a field ref
+      // against mail content and report the wrong reason for the refusal. The
+      // store re-asserts this — the picker's exclusion is not the gate.
+      assertRecordRuleDefSupported(input.entityDefinitionId)
       await assertActionsWorkflowsAccessible(ctx.db, organizationId, input.actions)
       const fieldId = await normalizeFieldRef(organizationId, input)
       const rule = await createRecordRule(
@@ -187,6 +192,9 @@ export const recordRulesRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.organizationId
       const { ruleId, fieldRef, actions, ...rest } = input
+      if (rest.entityDefinitionId !== undefined) {
+        assertRecordRuleDefSupported(rest.entityDefinitionId)
+      }
       await assertNotManaged(ctx.db, organizationId, ruleId)
       if (actions) {
         await assertActionsWorkflowsAccessible(ctx.db, organizationId, actions)

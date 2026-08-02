@@ -164,6 +164,31 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     placeholder: 'Body text...',
     description: 'Filter by email body content',
   },
+  // `list` and `senderDomain` are backed by the `Message.listId` /
+  // `Message.senderDomain` columns derived at ingest (suggestions plan §1.1).
+  // Both are `FieldType.TEXT`, which advertises the full string operator set —
+  // `is` / `is not` / `contains` / `not contains` / `starts with` / `ends with` /
+  // `in` / `not in` / `empty` / `not empty`. `buildListQuery` /
+  // `buildSenderDomainQuery` handle **every one of them**, and
+  // `mail-query/__tests__/condition-query-builder.test.ts` pins that parity: a
+  // field that offers an operator the builder can't dispatch compiles to the bare
+  // org scope and matches the whole mailbox (mail-filters invariant 19).
+  {
+    id: 'list',
+    label: 'Mailing list',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    placeholder: 'news.acme.com',
+    description: 'Filter by the mailing list (List-Id) a message was sent to',
+  },
+  {
+    id: 'senderDomain',
+    label: 'Sender domain',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    placeholder: 'acme.com',
+    description: 'Filter by the registrable domain of the sender address',
+  },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // STATUS FIELD

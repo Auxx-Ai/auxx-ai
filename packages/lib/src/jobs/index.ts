@@ -164,6 +164,15 @@ export {
   type MailCountsReconcileJobData,
   mailCountsReconcileJob,
 } from './maintenance/mail-counts-reconcile-job'
+// Weekly mail-suggestion mining (plans/mail-filter/03-suggestions-plan.md §5.1)
+export {
+  MAIL_SUGGESTIONS_JOB_NAME,
+  type MailSuggestionsJobData,
+  type MailSuggestionsJobStats,
+  mailSuggestionsJob,
+} from './maintenance/mail-suggestions-job'
+// Daily unsubscribe-ignored sweep (plan §6.4)
+export { mailUnsubscribeSweepJob } from './maintenance/mail-unsubscribe-sweep-job'
 export {
   cleanupExpiredMediaAssetsJob,
   getMediaAssetCleanupStats,

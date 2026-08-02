@@ -4,7 +4,12 @@
 
 import { describe, expect, it } from 'vitest'
 import { legacyActionTextToDoc } from './client'
-import { assertRuleShape } from './store'
+import {
+  assertRecordRuleDefSupported,
+  assertRuleShape,
+  createRecordRule,
+  updateRecordRule,
+} from './store'
 
 const fieldRule = { fieldId: 'fld_1', on: 'changed' as const }
 
@@ -155,5 +160,58 @@ describe('assertRuleShape — stale signal:* conditions (decision 15)', () => {
         ] as never,
       })
     ).not.toThrow()
+  })
+})
+
+/**
+ * Mail content is not a record-rule target (mail-filters plan §11).
+ *
+ * `thread` / `message` are system resource TABLES with no `EntityInstance` rows, so
+ * neither dispatch door can reach them — a rule saved against one is permanently
+ * silent. The record-type picker never offers them (they are `type: 'system'` and it
+ * runs with `entityDefinedOnly`), but the router's `entityDefinitionId` is a bare
+ * `z.string()`: these cases pin the SERVER refusal, which is the actual gate.
+ */
+describe('record-rule def guard — mail content', () => {
+  const notify = [{ type: 'notify' as const, userIds: ['u'], message: legacyActionTextToDoc('m') }]
+
+  /** Any DB access at all is a failure: the refusal is pure and must come first. */
+  const explodingDb = new Proxy(
+    {},
+    {
+      get() {
+        throw new Error('the store must refuse mail defs before touching the database')
+      },
+    }
+  ) as never
+
+  it('rejects thread and message', () => {
+    expect(() => assertRecordRuleDefSupported('thread')).toThrow(/could never fire/)
+    expect(() => assertRecordRuleDefSupported('message')).toThrow(/could never fire/)
+  })
+
+  it('leaves every other def alone', () => {
+    for (const defId of ['contact', 'participant', 'inbox', 'mzxt3cxyzhm3cbtgcbpmeir1']) {
+      expect(() => assertRecordRuleDefSupported(defId)).not.toThrow()
+    }
+  })
+
+  it('createRecordRule refuses a thread rule before any write', async () => {
+    await expect(
+      createRecordRule(explodingDb, 'org_1', {
+        entityDefinitionId: 'thread',
+        fieldId: null,
+        name: 'Tag urgent threads',
+        on: 'created',
+        condition: [],
+        actions: notify,
+      })
+    ).rejects.toThrow(/could never fire/)
+  })
+
+  it('updateRecordRule refuses re-pointing a rule at message before any read', async () => {
+    await expect(
+      updateRecordRule(explodingDb, 'org_1', 'rule_1', { entityDefinitionId: 'message' })
+    ).rejects.toThrow(/could never fire/)
   })
 })

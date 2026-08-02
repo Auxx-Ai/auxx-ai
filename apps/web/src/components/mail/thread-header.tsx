@@ -40,6 +40,7 @@ import {
   ThreadFilterPrefillDialog,
 } from '~/components/mail-filters/ui/thread-filter-entry'
 import { ThreadFilterRunBadges } from '~/components/mail-filters/ui/thread-filter-run-badges'
+import { ThreadMailSuggestionChip } from '~/components/mail-suggestions/ui/thread-mail-suggestion-chip'
 import { RecordPicker } from '~/components/pickers/record-picker'
 import { useActor, useResource } from '~/components/resources/hooks'
 import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
@@ -566,6 +567,11 @@ export function ThreadHeader() {
             child, so they wrap onto their own line instead of being pushed out
             of the subject's horizontal scroller by a long subject. */}
         <ThreadFilterRunBadges threadId={threadId} />
+        {/* "You've never opened the last 12 of these" (03-suggestions-plan §8.3).
+            Renders only when the weekly mining job already wrote a card for this
+            thread's sender, so every threshold and suppression rule is inherited
+            rather than restated here. */}
+        <ThreadMailSuggestionChip threadId={threadId} />
       </div>
 
       {filterPrefillOpen && (

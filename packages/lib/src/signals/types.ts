@@ -16,6 +16,7 @@ export type SignalKind =
   | 'email:complained'
   | 'contact:unsubscribed'
   | 'contact:resubscribed'
+  | 'mail:unsubscribed_from'
   | 'web:page_view'
   | 'web:session'
   | 'thread:resolved'
@@ -108,6 +109,28 @@ export const SIGNAL_KINDS: Record<SignalKind, SignalKindMeta> = {
     icon: 'user-plus',
     timeline: 'always',
     rollup: 'resubscribe',
+    highVolume: false,
+  },
+  /**
+   * WE unsubscribed from a list THEY send us (mail-suggestions plan §3/§6.4).
+   *
+   * ⚠️ The direction is the whole point, and it is the opposite of
+   * `contact:unsubscribed`. That kind means the CONTACT unsubscribed from OUR
+   * mail, and `signals/unsubscribe.ts` upserts an org-wide **suppression** row
+   * on it — recording our own outbound unsubscribe under that kind would
+   * silence our mail to that address, a silent and hard-to-trace deliverability
+   * bug (invariant 2). Hence `rollup: 'none'`: this event says nothing about
+   * their engagement with us and must never move `unsubscribedAt`.
+   *
+   * `timeline: 'always'` so "you unsubscribed from Stripe updates" lands on the
+   * contact timeline when the sender maps to one. Low volume by construction —
+   * at most one per (inbox, list), enforced by `MailUnsubscribe`'s unique index.
+   */
+  'mail:unsubscribed_from': {
+    label: 'Unsubscribed from list',
+    icon: 'mail-minus',
+    timeline: 'always',
+    rollup: 'none',
     highVolume: false,
   },
   'web:page_view': {

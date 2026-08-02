@@ -2,11 +2,12 @@
 'use client'
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
+import { useMailSuggestionsCount } from '~/components/mail-suggestions/hooks/use-mail-suggestions'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 
 export interface ApprovalsCount {
-  /** Pending workflow confirmations + fresh suggestion bundles. */
+  /** Pending workflow confirmations + fresh suggestion bundles + mail suggestions. */
   count: number
   /**
    * At least one of the two queries failed. A badge that fails to load and a
@@ -40,9 +41,22 @@ export function useApprovalsCount(): ApprovalsCount {
     { filters: { ownerScope: 'mine_and_unassigned', status: ['FRESH'] } },
     { enabled: suggestionsEnabled, refetchOnWindowFocus: true }
   )
+  /**
+   * The Approvals tab's fourth section (mail-filter plan 03 §8.2). Folded in
+   * here rather than given a badge of its own: the mail toolbar's own button is
+   * a doorway to this same tab, so a second badge source would be two numbers
+   * describing one queue.
+   *
+   * Deliberately NOT behind `FeatureKey.todayInbox` — that gates the AI
+   * suggestions above, a different feature for a different audience.
+   */
+  const mailSuggestions = useMailSuggestionsCount()
 
   return {
-    count: (confirmations.data ?? 0) + (suggestions.data?.count ?? 0),
-    isError: !!confirmations.error || (suggestionsEnabled && !!suggestions.error),
+    count: (confirmations.data ?? 0) + (suggestions.data?.count ?? 0) + mailSuggestions.count,
+    isError:
+      !!confirmations.error ||
+      (suggestionsEnabled && !!suggestions.error) ||
+      mailSuggestions.isError,
   }
 }
