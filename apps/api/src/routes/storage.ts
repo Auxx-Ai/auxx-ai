@@ -66,6 +66,12 @@ async function resolveConnectionId(
 
   // The credential must exist and be bound to this installation (which already
   // ties it to one app + org). When the token carries an org, assert it too.
+  //
+  // `auth.organizationId` is empty ONLY in the unverified development path of
+  // verifyCallbackAuth (LAMBDA_INVOKE_SECRET unset + NODE_ENV=development). Any
+  // verified token carries the org, since createCallbackToken signs it in. Before
+  // that path was gated on NODE_ENV, a deploy missing the secret made this
+  // short-circuit to true in production and dropped the org assertion entirely.
   if (
     !credential ||
     credential.appInstallationId !== auth.installationId ||
