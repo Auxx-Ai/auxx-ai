@@ -4,6 +4,7 @@ import { getDevInstallation } from '@auxx/services/app-installations'
 // Service imports
 // import { verifyAppAccess } from '../services/developer-accounts'
 import { verifyAppAccess } from '@auxx/services/developer-accounts'
+import { verifyOrgMembership } from '@auxx/services/organization-members'
 import { Hono } from 'hono'
 import { type ErrorStatusCode, errorResponse } from '../lib/response'
 import { authMiddleware } from '../middleware/auth'
@@ -21,6 +22,7 @@ const ERROR_STATUS_MAP: Record<string, ErrorStatusCode> = {
   APP_NOT_FOUND: 404,
   ACCESS_DENIED: 403,
   INSTALLATION_NOT_FOUND: 404,
+  ORG_ACCESS_DENIED: 403,
   DATABASE_ERROR: 500,
 }
 
@@ -44,7 +46,26 @@ installations.get(
       return c.json(errorResponse(error.code, error.message), statusCode)
     }
 
-    // Step 2: Get installation
+    // Step 2: Verify the caller belongs to the organization they are asking about.
+    // `organizationId` is a caller-supplied URL param and verifyAppAccess above
+    // only covers the developer account that owns the App — without this, any
+    // developer could probe whether their app is dev-installed in an arbitrary
+    // tenant. Same guard as the dev-deployment path in `deployments.ts`; the CLI
+    // already picks the org from the membership-scoped
+    // GET /developers/dev-organizations, so this only rejects forged requests.
+    const membershipResult = await verifyOrgMembership({ userId, organizationId })
+    if (membershipResult.isErr()) {
+      if (membershipResult.error.code === 'DATABASE_ERROR') {
+        return c.json(errorResponse('INTERNAL_ERROR', 'Database error occurred'), 500)
+      }
+      // Fail closed: a missing organization and a non-member look identical.
+      return c.json(
+        errorResponse('ORG_ACCESS_DENIED', 'You do not have access to this organization'),
+        403
+      )
+    }
+
+    // Step 3: Get installation
     const installationResult = await getDevInstallation({ appId, organizationId })
     if (installationResult.isErr()) {
       const error = installationResult.error

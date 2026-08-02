@@ -7,6 +7,7 @@ import { invalidateAppCatalog, invalidateOrgsByDeploymentId, onCacheEvent } from
 import { restampWebhookBindingsForDeployment } from '@auxx/lib/data-connectors'
 import { calculateNextVersion } from '@auxx/services/app-versions'
 import { verifyAppAccess } from '@auxx/services/developer-accounts'
+import { verifyOrgMembership } from '@auxx/services/organization-members'
 import { stableStringify } from '@auxx/utils/json'
 import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -152,7 +153,52 @@ deployments.post('/:appId/deployments', requireScope(['developer', 'apps:write']
       : version || null
 
   // Dev deployments: delete old deployments + insert + update installation atomically
-  if (deploymentType === 'development' && targetOrganizationId) {
+  if (deploymentType === 'development') {
+    // `targetOrganizationId` is caller-supplied body input, and a dev deployment
+    // installs this developer's server bundle into that tenant, where it later
+    // executes as app code. Nothing upstream binds the request to an
+    // organization: authMiddleware sets only userId/scopes, requireScope is a
+    // pure token-scope check, verifyAppAccess covers only the developer account
+    // that owns the App, and organizationMiddleware is not mounted on this
+    // router (it keys off a :handle URL param). So membership must be asserted
+    // here. The CLI already picks the org from the membership-scoped
+    // GET /developers/dev-organizations, so this only rejects forged bodies.
+    if (!targetOrganizationId) {
+      return c.json(
+        errorResponse(
+          'BAD_REQUEST',
+          'targetOrganizationId is required for development deployments'
+        ),
+        400
+      )
+    }
+
+    // Deliberately a direct indexed OrganizationMember lookup (via the shared
+    // verifyOrgMembership service) rather than the cached isOrgMember helper
+    // from @auxx/lib/cache: this runs once per bundle upload, not on a hot read
+    // path, it is a security boundary where the org-cache staleness window is
+    // undesirable, and it is cheaper than materializing the whole members blob
+    // to answer a single boolean. No apps/api route uses isOrgMember today —
+    // the established convention here is the services-layer verify* functions.
+    const membershipResult = await verifyOrgMembership({
+      userId,
+      organizationId: targetOrganizationId,
+    })
+
+    if (membershipResult.isErr()) {
+      if (membershipResult.error.code === 'DATABASE_ERROR') {
+        return c.json(errorResponse('INTERNAL_ERROR', 'Database error occurred'), 500)
+      }
+      // Fail closed: a missing organization and a non-member are indistinguishable.
+      return c.json(
+        errorResponse(
+          'ORG_ACCESS_DENIED',
+          'You do not have access to the target organization for this deployment'
+        ),
+        403
+      )
+    }
+
     const result = await database.transaction(async (tx) => {
       // 1. Clean up old dev deployments from the same developer
       await tx
