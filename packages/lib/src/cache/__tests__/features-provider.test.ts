@@ -88,8 +88,10 @@ describe('featuresProvider.compute — status resolution', () => {
         customFeatureLimits: null,
       })
     )
-    expect(features).toMatchObject({ mail: 1 })
-    expect(features.workflows).toBeUndefined()
+    // Exact, not toMatchObject: the point of the trial branch is that `workflows` is
+    // ABSENT, and a partial match cannot assert absence. `FeatureMapObject` is nullable,
+    // so dereferencing `features.workflows` to check that does not typecheck either.
+    expect(features).toEqual({ mail: 1 })
   })
 
   it('resolves no features for an ended trial that never left trialing', async () => {

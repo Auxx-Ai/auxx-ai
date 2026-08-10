@@ -16,6 +16,16 @@ const SKIP_PACKAGES = new Set(['lib', 'sdk', 'typescript-config', 'ui', 'seed', 
 // Disallowed deep import patterns (checked across all consumer files)
 const DISALLOWED_IMPORTS = [/@auxx\/database\/schema\//, /@auxx\/database\/db\//]
 
+// The one legitimate reason to reach past the exports map: a test that needs the REAL
+// Drizzle tables. `src/test/setup.ts` mocks `@auxx/database` with a Proxy handing back
+// `{}` per table, so column-level introspection is impossible through it — and
+// `vi.importActual('@auxx/database')` is not an option either, because the package index
+// evaluates `db/client`, whose top-level `createDatabase()` opens a `pg.Pool` at import.
+// The schema barrel is pure table declarations. Narrow on purpose: test files only, and
+// only through `importActual` — production code bypassing the exports map still errors.
+const DEEP_IMPORT_EXEMPT_FILE = /\.(test|spec)\.tsx?$/
+const DEEP_IMPORT_EXEMPT_LINE = /\bvi\.importActual\b/
+
 // @auxx/* packages that are NOT published to npm. If any of these appear inside
 // a published package's dist/, the customer install will 404. Add a new entry
 // here when a new private @auxx/* package gets created.
@@ -135,7 +145,9 @@ async function checkDisallowedImports() {
         for (const file of files) {
           const content = await readFile(file, 'utf-8')
           const lines = content.split('\n')
+          const isTestFile = DEEP_IMPORT_EXEMPT_FILE.test(file)
           for (const line of lines) {
+            if (isTestFile && DEEP_IMPORT_EXEMPT_LINE.test(line)) continue
             if (line.match(pattern) && !line.trimStart().startsWith('//')) {
               const relFile = file.replace(ROOT + '/', '')
               console.error(`ERROR: Disallowed deep import in ${relFile}: ${line.trim()}`)
