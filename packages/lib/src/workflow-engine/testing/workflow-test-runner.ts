@@ -338,6 +338,13 @@ export class WorkflowTestRunner {
       integrationId: 'test-integration',
       isInbound: true,
       machineMailTier: null,
+      // Bulk-mail identity, derived at ingest. All null here: a workflow test message is
+      // ordinary human mail, and `senderAuthenticated: null` is the correct default —
+      // unknown reads as NOT authenticated.
+      listId: null,
+      senderDomain: null,
+      unsubscribeMeta: null,
+      senderAuthenticated: null,
       isFirstInThread: true,
       subject: 'Test Subject',
       textHtml: '<p>Test message body</p>',
