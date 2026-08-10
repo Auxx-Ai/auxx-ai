@@ -27,6 +27,7 @@ export {
   canRecordVerbAtRung,
   canViewInstance,
   canViewRecord,
+  capabilityKeySet,
   effectiveRecordLevel,
   type GrantedDefIds,
   hasDefPresence,

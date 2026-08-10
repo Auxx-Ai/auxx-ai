@@ -614,6 +614,26 @@ export interface ClientCapabilities {
 }
 
 /**
+ * The flat key set the coarse `can()` gate answers from: resolved-area `keys`
+ * UNION the Read rungs derived from instance grants, so a member whose only
+ * access to a feature is one shared instance still passes nav / cmd+K / landing
+ * gates.
+ *
+ * This is the FRONT-DOOR union and deliberately not the same view as
+ * {@link toResolvedRecordAccess}, whose `keys` stay pure (see its note). Shared
+ * here because it has two callers that must agree: the `can()` gate in
+ * `capabilities-provider`, which reads the ACTIVE org's snapshot, and surfaces
+ * that gate on a NON-active org's snapshot from the dehydration seed (the
+ * organizations list) — where the provider's hook is structurally unavailable.
+ *
+ * Callers holding a snapshot across many checks should build the Set once.
+ */
+export function capabilityKeySet(caps: ClientCapabilities | null | undefined): Set<string> {
+  if (!caps) return new Set()
+  return new Set<string>([...(caps.keys ?? []), ...(caps.instanceDerivedKeys ?? [])])
+}
+
+/**
  * Rebuild the Set-backed {@link ResolvedRecordAccess} from a wire snapshot.
  *
  * `instanceDerivedKeys` is deliberately NOT merged into `keys` here: this view's

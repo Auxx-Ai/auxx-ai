@@ -2,6 +2,7 @@
 'use client'
 
 import type { DehydratedOrganization } from '@auxx/lib/dehydration'
+import { capabilityKeySet, PermissionKey } from '@auxx/lib/permissions/client'
 import { BLOCKED_SUBSCRIPTION_STATUSES } from '@auxx/types/billing'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -17,6 +18,7 @@ import { Building, MoreVertical, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { CreateOrganizationDialog } from '~/components/global/create-org-dialog'
+import { useConfirm } from '~/hooks/use-confirm'
 import {
   useDehydratedOrganizations,
   useDehydratedUser,
@@ -51,21 +53,39 @@ function getSubscriptionStatus(org: DehydratedOrganization) {
   return { label: org.subscription.status, isActive: false }
 }
 
+/**
+ * `can('billing.view')` for an organization that may not be the active one.
+ *
+ * `useAccess()` can't answer this: it seeds from the ACTIVE org's snapshot only,
+ * and this page lists every membership. The dehydration seed already carries a
+ * per-org snapshot for each one (`assembleOrganization` resolves capabilities
+ * per membership), so the gate reads off that, through the same front-door union
+ * the provider's `can()` uses.
+ *
+ * No plan layer to mirror here — `billing.view` carries no `featureKey` in the
+ * permission registry, so the provider's `hasAccess()` leg is always true for it.
+ */
+function canViewBilling(org: DehydratedOrganization): boolean {
+  return capabilityKeySet(org.capabilities).has(PermissionKey.billingView)
+}
+
 /** Organization card component */
 function OrganizationCard({
   org,
   isDefault,
   isCurrent,
-  onSwitch,
-  onNavigate,
-  switching,
+  onOpen,
+  onManageSubscription,
+  onLeave,
+  busy,
 }: {
   org: DehydratedOrganization
   isDefault: boolean
   isCurrent: boolean
-  onSwitch: () => void
-  onNavigate: () => void
-  switching: boolean
+  onOpen: () => void
+  onManageSubscription: () => void
+  onLeave: () => void
+  busy: boolean
 }) {
   const status = getSubscriptionStatus(org)
 
@@ -74,12 +94,8 @@ function OrganizationCard({
     if ((e.target as HTMLElement).closest('[data-dropdown-trigger]')) {
       return
     }
-    if (!switching) {
-      if (isCurrent) {
-        onNavigate()
-      } else {
-        onSwitch()
-      }
+    if (!busy) {
+      onOpen()
     }
   }
 
@@ -135,23 +151,25 @@ function OrganizationCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end'>
-            <DropdownMenuItem
-              variant='destructive'
-              onClick={(e) => {
-                e.stopPropagation()
-                // Handle delete
-              }}>
-              Leave Organization
-            </DropdownMenuItem>
-            {!status.isActive && (
+            {canViewBilling(org) && (
               <DropdownMenuItem
+                disabled={busy}
                 onClick={(e) => {
                   e.stopPropagation()
-                  window.location.href = `/subscription?org=${org.id}`
+                  onManageSubscription()
                 }}>
                 Manage Subscription
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem
+              variant='destructive'
+              disabled={busy}
+              onClick={(e) => {
+                e.stopPropagation()
+                onLeave()
+              }}>
+              Leave Organization
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -166,26 +184,65 @@ export default function OrganizationsPage() {
   const router = useRouter()
   const [switching, setSwitching] = useState(false)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [confirm, ConfirmDialog] = useConfirm()
 
   const switchOrg = api.organization.setDefault.useMutation({
-    onSuccess: (data) => {
-      setOrganizationId(data.organizationId)
-      router.push('/app')
-      router.refresh()
-    },
     onError: (error) => {
       toastError({ title: 'Failed to switch organization', description: error.message })
       setSwitching(false)
     },
   })
 
-  const handleSwitch = async (orgId: string) => {
+  const leaveOrg = api.organization.leave.useMutation({
+    onError: (error) => {
+      toastError({ title: 'Failed to leave organization', description: error.message })
+    },
+  })
+
+  const busy = switching || leaveOrg.isPending
+
+  /**
+   * Make `orgId` the active organization if it isn't already, then navigate to
+   * `destination`. Switching is what makes the destination resolve against the
+   * right org — every in-app route reads the active org from context.
+   */
+  const openOrg = async (orgId: string, destination: string) => {
+    if (orgId === currentOrgId) {
+      router.push(destination)
+      return
+    }
+
     setSwitching(true)
-    await switchOrg.mutateAsync({ organizationId: orgId })
+    try {
+      const data = await switchOrg.mutateAsync({ organizationId: orgId })
+      setOrganizationId(data.organizationId)
+      router.push(destination)
+      router.refresh()
+    } catch {
+      // onError already toasted and cleared `switching`
+    }
   }
 
-  const handleNavigate = () => {
-    router.push('/app')
+  const handleLeave = async (org: DehydratedOrganization) => {
+    const label = org.name || org.handle || 'this organization'
+    const confirmed = await confirm({
+      title: `Leave ${label}?`,
+      description:
+        'You will immediately lose access to this organization, and any personal email channels you connected here stop syncing. You need a new invite to rejoin.',
+      confirmText: 'Leave',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (!confirmed) return
+
+    try {
+      await leaveOrg.mutateAsync({ organizationId: org.id })
+      // The server picks the replacement default org when the one being left was
+      // the default, so re-read it from the server rather than guessing here.
+      router.refresh()
+    } catch {
+      // onError already toasted
+    }
   }
 
   return (
@@ -211,9 +268,10 @@ export default function OrganizationsPage() {
                     org={org}
                     isDefault={org.id === user.defaultOrganizationId}
                     isCurrent={org.id === currentOrgId}
-                    onSwitch={() => handleSwitch(org.id)}
-                    onNavigate={handleNavigate}
-                    switching={switching}
+                    onOpen={() => openOrg(org.id, '/app')}
+                    onManageSubscription={() => openOrg(org.id, '/app/settings/plans')}
+                    onLeave={() => handleLeave(org)}
+                    busy={busy}
                   />
                 ))
               ) : (
@@ -232,6 +290,7 @@ export default function OrganizationsPage() {
           </CardContent>
         </Card>
         <CreateOrganizationDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+        <ConfirmDialog />
       </div>
     </div>
   )

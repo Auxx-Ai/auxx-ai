@@ -14,6 +14,7 @@ import {
   canImportRecord,
   canViewInstance,
   canViewRecord,
+  capabilityKeySet,
   hasDefPresence,
   PERMISSION_REGISTRY_MAP,
   type PermissionKey,
@@ -269,7 +270,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
     // pure `keys` — that view is the AREA-level source of truth for
     // `canViewInstance`, and merging the derived key there would hand them every
     // row-less instance in the org.
-    const capKeys = new Set<string>([...snapshot.keys, ...(snapshot.instanceDerivedKeys ?? [])])
+    const capKeys = capabilityKeySet(snapshot)
     const resolved = toResolvedRecordAccess(snapshot)
     const governedInstances = new Set<string>(snapshot.governingInstanceIds ?? [])
 
