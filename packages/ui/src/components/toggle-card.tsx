@@ -7,6 +7,7 @@ import { Label } from '@auxx/ui/components/label'
 import { Switch, type SwitchProps } from '@auxx/ui/components/switch'
 import { cn } from '@auxx/ui/lib/utils'
 import type React from 'react'
+import { useId } from 'react'
 
 export interface ToggleCardProps {
   /** Title shown on the left of the header row. */
@@ -59,6 +60,21 @@ export function ToggleCard({
 }: ToggleCardProps) {
   const interactive = rowClickToggles && !disabled
 
+  // Wire the switch to its visible title/description with ARIA rather than
+  // `htmlFor`. Without this the switch has NO accessible name — a screen reader
+  // announces a bare "switch, off", and `getByRole('switch', { name })` matches
+  // nothing, so callers end up walking the DOM in tests.
+  //
+  // ⚠️ Deliberately `aria-labelledby`, NOT `<Label htmlFor>`. A real `htmlFor`
+  // forwards the label click to the switch, and that click then bubbles to the
+  // header row's own `onClick` below — toggling twice and landing back where it
+  // started. `aria-labelledby` names the control without making the label a
+  // second click target, so behaviour is identical in both `rowClickToggles`
+  // modes and only the accessibility tree changes.
+  const reactId = useId()
+  const titleId = `${reactId}-title`
+  const descriptionId = `${reactId}-description`
+
   return (
     <div className={cn('rounded-xl border px-3 py-2.5', className)}>
       <div
@@ -66,14 +82,26 @@ export function ToggleCard({
         onClick={interactive ? () => onCheckedChange(!checked) : undefined}>
         <div className='space-y-0.5 leading-none'>
           <Label
+            id={titleId}
             className={cn(
               'flex items-center gap-1.5 text-sm font-medium',
               interactive && 'cursor-pointer'
             )}>
-            {icon}
+            {/* Hidden from the name so a decorative glyph can't pollute it.
+                `flex items-center` keeps the wrapper a tight box around the
+                icon, so it lays out exactly as the bare node did before. */}
+            {icon && (
+              <span aria-hidden='true' className='flex items-center'>
+                {icon}
+              </span>
+            )}
             {title}
           </Label>
-          {description && <p className='text-xs text-muted-foreground'>{description}</p>}
+          {description && (
+            <p id={descriptionId} className='text-xs text-muted-foreground'>
+              {description}
+            </p>
+          )}
         </div>
         <div onClick={(e) => e.stopPropagation()}>
           <Switch
@@ -81,6 +109,8 @@ export function ToggleCard({
             checked={checked}
             onCheckedChange={onCheckedChange}
             disabled={disabled}
+            aria-labelledby={titleId}
+            aria-describedby={description ? descriptionId : undefined}
           />
         </div>
       </div>

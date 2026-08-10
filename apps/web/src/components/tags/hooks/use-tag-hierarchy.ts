@@ -57,6 +57,7 @@ export function useTagHierarchy(options?: UseTagHierarchyOptions): UseTagHierarc
         tag_color: record.fieldValues.tag_color ?? 'gray',
         parentId,
         isSystemTag: record.fieldValues.is_system_tag ?? false,
+        aiClassify: record.fieldValues.tag_ai_classify ?? false,
         scope: tagScope,
         children: [],
       }

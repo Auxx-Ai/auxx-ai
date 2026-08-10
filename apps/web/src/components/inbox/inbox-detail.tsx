@@ -24,6 +24,7 @@ import { InboxDialog } from './inbox-dialog'
 import { ConnectExistingChannelDialog } from './ui/connect-existing-channel-dialog'
 import { InboxChannelCard } from './ui/inbox-channel-card'
 import { InboxChannelPlaceholderCard } from './ui/inbox-channel-placeholder-card'
+import { InboxClassificationCard } from './ui/inbox-classification-card'
 import { InboxInfoCard } from './ui/inbox-info-card'
 
 const GRID_CLASS = 'grid gap-2 @md:grid-cols-2 @2xl:grid-cols-3'
@@ -81,6 +82,19 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
   const canDeleteInbox = inbox?.isPersonal
     ? inbox.ownerUserId === userId
     : !!inbox && canRouteChannels
+
+  /**
+   * The AI-classification opt-in answers to the mail model, never to admin rank
+   * (05-mail-classification-plan §5): a personal mailbox is its owner's alone, a
+   * shared one needs `automationRules.manage` + inbox `admin`.
+   *
+   * Read off `mailFilters.authorableInboxes` rather than re-derived from the
+   * capability blob, because that query IS the authority the classification
+   * router asserts with — so the card can never appear where the write would
+   * 403, or be hidden where it would have succeeded.
+   */
+  const { data: authorableInboxes } = api.mailFilters.authorableInboxes.useQuery()
+  const canConfigureClassification = !!authorableInboxes?.some((entry) => entry.id === inboxId)
 
   const isLoading = isLoadingInbox || isLoadingIntegrations || isLoadingCapabilities
 
@@ -231,6 +245,7 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
                   </div>
                 </div>
               </SettingsSection>
+              {canConfigureClassification && <InboxClassificationCard inboxId={inboxId} />}
             </div>
           ) : (
             <EmptyState

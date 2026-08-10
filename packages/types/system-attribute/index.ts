@@ -89,6 +89,7 @@ export const SYSTEM_ATTRIBUTES = [
   'tag_articles',
   'tag_is_public',
   'tag_scope',
+  'tag_ai_classify',
 
   // ─── KB fields ──────────────────────────────────────────────────
   'kb_name',

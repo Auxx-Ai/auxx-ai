@@ -227,18 +227,41 @@ export function assertCanAuthorMailFilters(
 }
 
 /**
- * The same §5.1 branch, for a write addressed by FILTER id — update, setEnabled,
+ * The §5.1 branch again, refusing in the shape the ADDRESSED RESOURCE allows
+ * (V6, `plans/mail-filter/04-v2-plan.md` §1.3):
+ *
+ * ```
+ *   authorable                         →  allowed
+ *   on a shared inbox                  →  403, the caller can see the inbox
+ *   on someone else's personal inbox   →  404, indistinguishable from an id
+ *   (incl. the legacy-marker row on       that has no row at all
+ *    the shared def)
+ * ```
+ *
+ * One body, two exported wrappers, differing only in the not-found MESSAGE —
+ * because the refusal must never disclose more than the caller already knows,
+ * and the message is the last place that could leak it.
+ */
+function assertAuthorableOrDisclose(
+  authority: MailFilterAuthority,
+  inboxId: string,
+  notFoundMessage: string,
+  forbiddenMessage: string
+): AuthorableInbox {
+  const inbox = authority.byId.get(inboxId)
+  if (inbox) return inbox
+  if (authority.disclosableInboxIds.has(inboxId)) {
+    throw new ForbiddenError(forbiddenMessage)
+  }
+  throw new NotFoundError(notFoundMessage)
+}
+
+/**
+ * The §5.1 branch, for a write addressed by FILTER id — update, setEnabled,
  * delete, applyRetroactively (V6, `plans/mail-filter/04-v2-plan.md` §1.3).
  *
- * Identical in WHO it refuses; different in WHAT the refusal admits:
- *
- * ```
- *   authorable                        →  allowed
- *   filter on a shared inbox          →  403, the caller can see the inbox
- *   filter on someone else's personal →  404, verbatim `getMailFilterById`'s
- *   inbox (incl. the legacy-marker       "Filter not found" — indistinguishable
- *   row on the shared def)               from an id with no row
- * ```
+ * Identical in WHO it refuses to {@link assertCanAuthorMailFilters}; different
+ * in WHAT the refusal admits — see {@link assertAuthorableOrDisclose}.
  *
  * §5.1 promises that a personal filter is never disclosed to anyone else, and
  * `list` / `get` / `runs` / `undoRun` all keep that promise by answering
@@ -257,10 +280,42 @@ export function assertCanMutateMailFilter(
   authority: MailFilterAuthority,
   filter: { inboxId: string }
 ): AuthorableInbox {
-  const inbox = authority.byId.get(filter.inboxId)
-  if (inbox) return inbox
-  if (authority.disclosableInboxIds.has(filter.inboxId)) {
-    throw new ForbiddenError("You don't have permission to manage filters for this inbox.")
-  }
-  throw new NotFoundError('Filter not found')
+  return assertAuthorableOrDisclose(
+    authority,
+    filter.inboxId,
+    'Filter not found',
+    "You don't have permission to manage filters for this inbox."
+  )
+}
+
+/**
+ * The same authority, for per-inbox AUTOMATION SETTINGS that are not filters —
+ * today the mail-classification opt-in
+ * (`plans/mail-filter/05-mail-classification-plan.md` §5).
+ *
+ * Deliberately this module and not a second rule: §5 says the opt-in uses "the
+ * same gate that governs authoring a filter on that inbox", because turning on
+ * inference that bills the org and reads colleagues' mail is at least as
+ * consequential as writing a filter. A parallel check here would be a second
+ * place for the personal-inbox branch to rot.
+ *
+ * {@link assertCanAuthorMailFilters} is the wrong wrapper even though the caller
+ * addresses an inbox id: its blanket 403 would confirm, to any member who can
+ * guess a CUID, that a colleague's private mailbox exists. Personal mailboxes
+ * are never disclosed (invariant 11 / §5.1), so an unauthorable personal inbox
+ * answers 404 here just as a filter on one does.
+ *
+ * @throws NotFoundError when the inbox is personal and not the caller's.
+ * @throws ForbiddenError when it is a shared inbox the caller cannot author on.
+ */
+export function assertCanConfigureInboxAutomation(
+  authority: MailFilterAuthority,
+  inboxId: string
+): AuthorableInbox {
+  return assertAuthorableOrDisclose(
+    authority,
+    inboxId,
+    'Inbox not found',
+    "You don't have permission to manage automation for this inbox."
+  )
 }

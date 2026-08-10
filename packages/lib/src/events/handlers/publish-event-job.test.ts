@@ -37,6 +37,11 @@ const ALL_MESSAGE_HANDLERS = [
   'triggerMessageWorkflows',
   'deriveMessageReplySignal',
   'ingestBounceMessage',
+  // AI categorisation (mail-classification plan §4). Deliberately NOT in the
+  // gate — see the comment on the `then` list — and deliberately NOT in
+  // `SUPPRESSIBLE_AUTOMATION_HANDLERS`, so `suppress-automations` does not
+  // switch it off.
+  'enqueueMailClassification',
 ]
 
 beforeEach(() => {
@@ -88,6 +93,7 @@ describe('publishEventJob — gated entries', () => {
       'createTimelineEvent',
       'deriveMessageReplySignal',
       'ingestBounceMessage',
+      'enqueueMailClassification',
     ])
   })
 

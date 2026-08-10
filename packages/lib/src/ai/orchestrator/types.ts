@@ -159,6 +159,10 @@ export type UsageSource =
   | 'learned_extraction'
   | 'stale_scanner'
   | 'autofill'
+  // Inbound-mail categorisation (mail-classification plan §3.2). Its own arm so
+  // per-message classification spend is separable from `agent`/`autofill` in
+  // cost reporting — it is the one source that scales with mail volume.
+  | 'mail_classification'
   | 'transcription'
   | 'other'
 

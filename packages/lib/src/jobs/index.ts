@@ -1,5 +1,13 @@
 // Billing
 
+// Mail classification (plans/mail-filter/05-mail-classification-plan.md §4)
+export { MAIL_CLASSIFICATION_JOB_NAME } from '../mail-classification/client'
+export { enqueueMailClassification } from '../mail-classification/enqueue'
+export {
+  type MailClassificationJobData,
+  type MailClassificationJobResult,
+  mailClassificationJob,
+} from '../mail-classification/job'
 // Mail schedule
 export {
   enqueueScheduledMessageJob,

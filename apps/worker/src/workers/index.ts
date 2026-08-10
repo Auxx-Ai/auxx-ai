@@ -23,6 +23,7 @@ import { startEventHandlersWorker, startEventsWorker } from './worker-definition
 import { startKBSyncWorker } from './worker-definitions/kb-sync-worker'
 import { startKnowledgeSourceWorker } from './worker-definitions/knowledge-source-worker'
 import { startLearnedExtractionWorker } from './worker-definitions/learned-extraction-worker'
+import { startMailClassificationWorker } from './worker-definitions/mail-classification-worker'
 import { startMaintenanceWorker } from './worker-definitions/maintenance-worker'
 import { startMessageProcessingWorker } from './worker-definitions/message-processing-worker'
 import { startMessageSyncWorker } from './worker-definitions/message-sync-worker'
@@ -127,6 +128,9 @@ export async function startWorkers() {
   // QuickBooks invoice sync worker (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3)
   const quickbooksInvoiceSyncWorker = startQuickbooksInvoiceSyncWorker()
 
+  // Inbound-mail AI categorisation worker (mail-classification plan §4)
+  const mailClassificationWorker = startMailClassificationWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -161,6 +165,7 @@ export async function startWorkers() {
     dataConnectorWorker,
     documentPdfWorker,
     quickbooksInvoiceSyncWorker,
+    mailClassificationWorker,
   ]
 
   return Promise.all(workers)

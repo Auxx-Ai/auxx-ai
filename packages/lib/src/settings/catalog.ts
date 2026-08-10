@@ -300,6 +300,21 @@ export const SETTINGS_CATALOG = {
     defaultValue: [],
     description: 'Inbox ids this member dismissed the "apply filters retroactively" prompt for',
   },
+  // AI mail classification opt-in (mail-classification plan §5). A LIST of inbox
+  // ids, never a boolean: "classify everything" must not be expressible.
+  //
+  // ⚠️ ORG-scoped storage, but authoring authority is PER INBOX and follows the
+  // mail model, never admin rank (filters-plan invariant 7) — the same gate that
+  // governs authoring a filter on that inbox. A personal mailbox is its owner's
+  // alone and an admin must never be able to switch inference on over it
+  // (invariant 11). The router asserts; this catalog entry only declares storage.
+  mailClassificationInboxIds: {
+    scope: 'COMMUNICATION',
+    access: 'org',
+    fieldType: 'JSON',
+    defaultValue: [],
+    description: 'Inbox ids whose inbound mail the AI classifier may read and categorise',
+  },
 
   ...sidebarSettings,
 

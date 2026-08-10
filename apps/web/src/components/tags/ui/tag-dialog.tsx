@@ -39,9 +39,10 @@ import {
 import { Switch } from '@auxx/ui/components/switch'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
+import { ToggleCard } from '@auxx/ui/components/toggle-card'
 import { cn } from '@auxx/ui/lib/utils'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { Loader2, Tag } from 'lucide-react'
+import { Loader2, Sparkles, Tag, TriangleAlert } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -57,10 +58,21 @@ const tagFormSchema = z.object({
   tag_description: z.string().optional().nullable(),
   tag_emoji: z.string().optional().nullable(),
   tag_color: z.string().optional().nullable(),
+  tag_ai_classify: z.boolean(),
   parentId: z.string().optional().nullable(),
 })
 
 type TagFormValues = z.infer<typeof tagFormSchema>
+
+/** Blank form state — shared by the create-mode reset paths so they cannot drift. */
+const EMPTY_TAG_FORM: TagFormValues = {
+  title: '',
+  tag_description: '',
+  tag_emoji: '',
+  tag_color: 'gray',
+  tag_ai_classify: false,
+  parentId: undefined,
+}
 
 /**
  * Tag colors are stored as free-form strings on the field value; narrow to the palette so an
@@ -98,6 +110,12 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
     isEditing && editingInstanceId ? tagMap.get(editingInstanceId)?.isSystemTag === true : false
   const isReadOnly = isSystemTag
 
+  // `tag_ai_classify` reaches an org only once its entity migration has run. No
+  // field row means no way to persist the flag, so the card is hidden rather
+  // than shown as a control whose value silently goes nowhere.
+  const aiClassifyFieldId = fields.tag_ai_classify?.id
+  const canClassify = !!aiClassifyFieldId
+
   // Track if dialog has been initialized
   const isInitialized = useRef(false)
 
@@ -107,14 +125,21 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
   // Form setup
   const form = useForm<TagFormValues>({
     resolver: standardSchemaResolver(tagFormSchema),
-    defaultValues: {
-      title: '',
-      tag_description: '',
-      tag_emoji: '',
-      tag_color: 'gray',
-      parentId: undefined,
-    },
+    defaultValues: EMPTY_TAG_FORM,
   })
+
+  // Eligibility drives the description's label, not just the card's body: when
+  // it is on, `tag_description` stops being copy and becomes the classifier's
+  // instruction for this label (plan C3).
+  const aiClassify = form.watch('tag_ai_classify')
+  const tagDescription = form.watch('tag_description')
+  const tagTitle = form.watch('title')
+
+  // Warn, but never block (plan Q5). A bare title like "Refunds" often carries
+  // enough meaning, and silently excluding a tag whose switch is visibly on is
+  // the worse failure — so the label set is built from eligibility alone and
+  // this stays a hint.
+  const missingClassifierInstruction = aiClassify && !tagDescription?.trim()
 
   // Initialize form when dialog opens
   useEffect(() => {
@@ -131,18 +156,13 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
             tag_description: tag.tag_description || '',
             tag_emoji: tag.tag_emoji || '',
             tag_color: tag.tag_color || 'gray',
+            tag_ai_classify: tag.aiClassify,
             parentId: tag.parentId || undefined,
           })
         }
       } else {
         // Create mode: reset to defaults
-        form.reset({
-          title: '',
-          tag_description: '',
-          tag_emoji: '',
-          tag_color: 'gray',
-          parentId: undefined,
-        })
+        form.reset(EMPTY_TAG_FORM)
       }
     } else {
       isInitialized.current = false
@@ -164,13 +184,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
 
   /** Reset form for creating another tag */
   const resetForm = useCallback(() => {
-    form.reset({
-      title: '',
-      tag_description: '',
-      tag_emoji: '',
-      tag_color: 'gray',
-      parentId: undefined,
-    })
+    form.reset(EMPTY_TAG_FORM)
   }, [form])
 
   /** Handle form submission */
@@ -207,6 +221,19 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
           },
         ]
 
+        // `tag_ai_classify` is a registry field materialized by an entity
+        // migration, so an org that has not run it yet has no field row. Send
+        // it only when it resolved to a real id — the key-string fallback above
+        // would fail the whole multi-save and take the other four fields down
+        // with it. The card is hidden in that state, so nothing is dropped.
+        if (aiClassifyFieldId) {
+          fieldValues.push({
+            fieldId: aiClassifyFieldId,
+            value: values.tag_ai_classify,
+            fieldType: 'CHECKBOX',
+          })
+        }
+
         // Handle parent relationship (key is 'tag_parent')
         if (values.parentId) {
           const parentRecordId = toRecordId(entityDefinitionId, values.parentId)
@@ -234,6 +261,10 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
           tag_description: values.tag_description || null,
           tag_emoji: values.tag_emoji || null,
           tag_color: values.tag_color || 'gray',
+        }
+
+        if (aiClassifyFieldId) {
+          formValues.tag_ai_classify = values.tag_ai_classify
         }
 
         // Handle parent relationship for create (key is 'tag_parent')
@@ -291,6 +322,46 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
       })
     },
     [tagMap]
+  )
+
+  /**
+   * The `tag_description` field. Mounted inside the ToggleCard while
+   * eligibility is on and beside it while off — exactly one of the two at a
+   * time, so the value survives the move (react-hook-form owns it, not the
+   * node) and there is never a duplicate textarea on screen.
+   *
+   * `aiMode` is the whole of plan C3: the field is unchanged, its meaning is
+   * not, and this relabel is the only place a user can learn that.
+   */
+  const renderDescriptionField = (aiMode: boolean) => (
+    <FormField
+      control={form.control}
+      name='tag_description'
+      render={({ field }) => (
+        <FormItem>
+          {aiMode && <FormLabel>When should this tag apply?</FormLabel>}
+          <FormControl>
+            <Textarea
+              placeholder={
+                aiMode
+                  ? 'e.g. Questions about invoices, charges, refunds or payment methods.'
+                  : 'Optional description'
+              }
+              className='h-20 resize-none'
+              {...field}
+              value={field.value || ''}
+              disabled={isReadOnly}
+            />
+          </FormControl>
+          <FormDescription>
+            {aiMode
+              ? 'Auxx reads this to decide whether the tag fits an incoming message. Describe the mail it should match, not the tag.'
+              : "Brief description of this tag's purpose"}
+          </FormDescription>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
   )
 
   return (
@@ -360,26 +431,40 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
                 </div>
               </div>
 
-              {/* Description */}
-              <FormField
-                control={form.control}
-                name='tag_description'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Textarea
-                        placeholder='Optional description'
-                        className='h-20 resize-none'
-                        {...field}
-                        value={field.value || ''}
-                        disabled={isReadOnly}
-                      />
-                    </FormControl>
-                    <FormDescription>Brief description of this tag's purpose</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* Description — plain when the tag is not AI-eligible, and the
+                  classifier's instruction inside the card when it is. */}
+              {(!canClassify || !aiClassify) && renderDescriptionField(false)}
+
+              {/* AI classification opt-in */}
+              {canClassify && (
+                <FormField
+                  control={form.control}
+                  name='tag_ai_classify'
+                  render={({ field }) => (
+                    <ToggleCard
+                      title='Let AI apply this tag'
+                      description='Auxx reads incoming mail and applies this tag when it fits.'
+                      icon={<Sparkles className='size-3.5' />}
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={isReadOnly}
+                      collapsible
+                      contentClassName='space-y-3'>
+                      {field.value && renderDescriptionField(true)}
+                      {missingClassifierInstruction && (
+                        <p className='flex items-start gap-1.5 text-amber-700 text-xs dark:text-amber-500'>
+                          <TriangleAlert className='mt-px size-3.5 shrink-0' />
+                          <span className='min-w-0'>
+                            Without a description the classifier only sees the name
+                            {tagTitle?.trim() ? ` “${tagTitle.trim()}”` : ''}. The tag stays
+                            eligible, but a sentence here makes it far more accurate.
+                          </span>
+                        </p>
+                      )}
+                    </ToggleCard>
+                  )}
+                />
+              )}
 
               {/* Color picker */}
               <FormField

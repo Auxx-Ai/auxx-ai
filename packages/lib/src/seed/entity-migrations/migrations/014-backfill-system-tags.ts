@@ -158,6 +158,76 @@ async function ensureIsSystemTagField(
 }
 
 /**
+ * Drop any tag carrying `tag_ai_classify = true` from the flag set.
+ *
+ * ⚠️ **Added 2026-08-10 — this migration is replayed, not ledger-guarded.**
+ * `runEntityMigrationsForOrg` loops `ALL_MIGRATIONS` and calls `up()`
+ * unconditionally every time (`entity-migrations/index.ts:231-233`);
+ * `alreadyUpToDate` is a REPORT, not a guard. Both it and
+ * `runAllEntityMigrations` are exposed as super-admin actions
+ * (`admin.ts:1563-1583`).
+ *
+ * Three of this migration's canonical titles — `Billing`, `Sales`, `Support` —
+ * are also mail-classification starter tags, which are deliberately ORDINARY
+ * tags (`05-mail-classification-plan.md` C4/§2.3) because
+ * `rejectIfSystemTag` freezes `tag_description`, and that description IS the
+ * classifier's instruction for the label. Without this exclusion, one replay
+ * would flag the starters by title, permanently freeze their instructions, and
+ * report success while doing it.
+ *
+ * Matching on title alone cannot tell a legacy system tag from a starter that
+ * happens to share its name; the eligibility flag is the only thing that can.
+ * Absent field or absent row ⇒ not eligible ⇒ flagged as before, so this is a
+ * no-op for every org that predates the field.
+ */
+async function excludeAiClassifyTags(
+  db: Database,
+  organizationId: string,
+  tagDefId: string,
+  instanceIds: string[]
+): Promise<string[]> {
+  const [aiClassifyField] = await db
+    .select({ id: schema.CustomField.id })
+    .from(schema.CustomField)
+    .where(
+      and(
+        eq(schema.CustomField.organizationId, organizationId),
+        eq(schema.CustomField.entityDefinitionId, tagDefId),
+        eq(schema.CustomField.systemAttribute, 'tag_ai_classify')
+      )
+    )
+    .limit(1)
+
+  // Field not materialized yet (every org before migration 074) — nothing is
+  // eligible, so the original behavior stands.
+  if (!aiClassifyField) return instanceIds
+
+  const eligibleRows = await db
+    .select({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, aiClassifyField.id),
+        eq(schema.FieldValue.valueBoolean, true),
+        inArray(schema.FieldValue.entityId, instanceIds)
+      )
+    )
+
+  if (eligibleRows.length === 0) return instanceIds
+
+  const eligible = new Set(eligibleRows.map((r) => r.entityId))
+  const kept = instanceIds.filter((id) => !eligible.has(id))
+
+  logger.info('Skipped AI-eligible tags during system-tag backfill', {
+    organizationId,
+    skipped: instanceIds.length - kept.length,
+  })
+
+  return kept
+}
+
+/**
  * Upsert `is_system_tag = true` on every tag instance whose title matches
  * the canonical seeded list. Returns counts for logging.
  */
@@ -203,7 +273,16 @@ async function flagCanonicalTags(
     return { flagged: 0, alreadyFlagged: 0 }
   }
 
-  const canonicalInstanceIds = canonicalRows.map((r) => r.entityId)
+  const canonicalInstanceIds = await excludeAiClassifyTags(
+    db,
+    organizationId,
+    tagDefId,
+    canonicalRows.map((r) => r.entityId)
+  )
+
+  if (canonicalInstanceIds.length === 0) {
+    return { flagged: 0, alreadyFlagged: 0 }
+  }
 
   // Find which ones already have an is_system_tag FieldValue row.
   const existingFlagRows = await db

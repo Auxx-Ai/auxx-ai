@@ -61,4 +61,8 @@ export enum Queues {
   learnedExtractionQueue = 'learned-extraction',
   // QuickBooks invoice sync queue (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3)
   quickbooksInvoiceSyncQueue = 'quickbooks-invoice-sync',
+  // Inbound-mail AI categorisation (mail-classification plan §4). Its OWN queue:
+  // the call cannot run in the `message:received` gate (2s timeout, shared
+  // `eventsQueue`) and must not hold `eventHandlersQueue` slots for seconds.
+  mailClassificationQueue = 'mail-classification',
 }

@@ -19,6 +19,7 @@ import { UnifiedCrudHandler } from '../resources/crud'
 import { seedClientNotificationSequences } from '../sequences'
 import { buildSystemSnippetTemplates } from '../snippets'
 import { SystemUserService } from '../users/system-user-service'
+import { seedAiCategoryTags } from './ai-category-tags'
 import { EntitySeeder } from './entity-seeder'
 import { SYSTEM_ENTITIES } from './entity-seeder/constants'
 
@@ -403,7 +404,8 @@ export class OrganizationSeeder {
   /**
    * Seed default tags for a new organization using the unified entity system.
    * Creates a hierarchical tag structure with a parent "Topic Categorization" tag
-   * and child tags, plus independent top-level tags.
+   * and child tags, plus independent top-level tags — then the five AI mail
+   * categories under their own parent (see `seedAiCategoryTags`).
    */
   private async seedTags(organizationId: string) {
     // Dedicated handler with `is_system_tag` bypass — the tag-system-guard
@@ -434,12 +436,18 @@ export class OrganizationSeeder {
 
     // Create child tags under Topic Categorization using parent relationship
     // Must be sequential to avoid inverse relationship sync conflicts (sortKey collisions)
+    //
+    // `Billing` and `Sales` USED to live here as system tags, and `Support` below as an
+    // independent one. They moved to `AI_CATEGORY_STARTER_TAGS` (mail-classification plan
+    // §2.4), which needs those exact three titles — seeding both sets would give every new
+    // org two tags called `Billing`, one of them frozen by the system-tag guard. They are
+    // still created for every new org, just as ORDINARY tags under "Mail Categories", which
+    // is what C4 requires: their descriptions are the classifier's instructions and have to
+    // stay editable. `suggested:billing-mail` still resolves `Billing` by display name.
     const topicSubTags = [
       { title: 'Account Management', tag_emoji: '👤', tag_color: 'red' },
-      { title: 'Billing', tag_emoji: '💳', tag_color: 'green' },
       { title: 'Customer Feedback', tag_emoji: '💬', tag_color: 'orange' },
       { title: 'Legal', tag_emoji: '⚖️', tag_color: 'gray' },
-      { title: 'Sales', tag_emoji: '💼', tag_color: 'pink' },
       { title: 'Security', tag_emoji: '🔒', tag_color: 'purple' },
       { title: 'Shipping', tag_emoji: '🚚', tag_color: 'amber' },
       { title: 'Troubleshooting', tag_emoji: '🛠️', tag_color: 'teal' },
@@ -458,8 +466,8 @@ export class OrganizationSeeder {
     }
 
     // Create independent tags (no parent) - can be parallel since no inverse sync needed
+    // (`Support` moved to the AI mail categories — see the note on `topicSubTags`.)
     const independentTags = [
-      { title: 'Support', tag_emoji: '🆘', tag_color: 'red' },
       { title: 'Urgent', tag_emoji: '🚨', tag_color: 'purple' },
       { title: 'Orders', tag_emoji: '📦', tag_color: 'amber' },
       { title: 'VIP', tag_emoji: '⭐', tag_color: 'orange' },
@@ -468,6 +476,11 @@ export class OrganizationSeeder {
     await Promise.all(
       independentTags.map((tag) => handler.create('tag', { ...tag, is_system_tag: true }, seedOpts))
     )
+
+    // The five AI mail categories, under their own parent. Ordinary (editable, deletable)
+    // tags with `tag_ai_classify: true` — they make the labels AVAILABLE to the classifier
+    // and nothing more; no mail is classified until an inbox is opted in.
+    await seedAiCategoryTags(this.db, organizationId, this.userId)
   }
   // Create ticket sequence for the organization
   /**

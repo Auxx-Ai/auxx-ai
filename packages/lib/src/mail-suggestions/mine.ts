@@ -116,6 +116,36 @@ const GROUP_SCAN_LIMIT = 200
  */
 const MESSAGE_AT = sql`COALESCE(m."receivedAt", m."createdAt")`
 
+/**
+ * The `tag` custom field that marks a tag as eligible for AI classification
+ * (05-mail-classification-plan §2.1) — a `CHECKBOX`, so its value lives in
+ * `FieldValue."valueBoolean"`.
+ *
+ * ⚠️ THE MINER MUST NOT PROPOSE `auto-tag` FOR AN ELIGIBLE TAG (05-plan §7,
+ * invariant 8). `top_tag` measures tag consistency inside a group, and applying
+ * the same tag to every message in a group is the *definition* of what a
+ * classifier does — so the moment classification ships, every classified group
+ * reads at ~1.0 consistency and the weekly job proposes a filter to do what the
+ * classifier is already doing. Forever, because nothing suppresses it: the
+ * existing "already covered" guard reads `MailFilterRun`, and the classifier is
+ * not a filter.
+ *
+ * The exclusion is WHOLESALE — regardless of who applied the tag. That is not
+ * over-exclusion: if a tag is AI-eligible, an `auto-tag` suggestion for it is
+ * redundant whether a human or the model has been applying it.
+ *
+ * It ships BEFORE any inference exists. Today the loop is dormant but armed:
+ * `auto-tag` is fully implemented end to end and has produced zero rows only
+ * because no group reaches {@link CONSISTENCY_THRESHOLD} (measured on dev: 80
+ * groups over {@link MIN_THREADS}, 44 carrying a tag, 0 at 0.8). Classification
+ * is precisely the thing that changes that number.
+ *
+ * The field may not be materialized in an org yet, and the predicate is written
+ * so that this is the safe case: with no `CustomField` row the anti-join matches
+ * nothing and `top_tag` behaves exactly as it did before.
+ */
+const AI_CLASSIFY_ATTRIBUTE = 'tag_ai_classify'
+
 // ═══════════════════════════════════════════════════════════════════════════
 // THE GROUPED QUERY (§5.1)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -146,6 +176,11 @@ export interface MailGroupStats {
   /** Newest {@link MESSAGE_AT} in the window — mail time, not ingest time. */
   lastSeenAt: Date | null
   sampleThreadIds: string[]
+  /**
+   * The group's most-applied tag, **excluding AI-eligible ones**
+   * ({@link AI_CLASSIFY_ATTRIBUTE}). `null` when the group's only tags are
+   * eligible — which is what stops the `auto-tag` proposal there.
+   */
   topTagId: string | null
   topTagThreadCount: number
   topAssigneeId: string | null
@@ -194,6 +229,9 @@ export interface InboxGroupQueryParams {
  *    {@link MESSAGE_AT} for the ordering and the paragraph below for why it is
  *    not a window-wide `bool_and`.
  * 4. **Every timestamp is {@link MESSAGE_AT}, never bare `createdAt`.**
+ * 5. **`top_tag` excludes AI-eligible tags** ({@link AI_CLASSIFY_ATTRIBUTE}) —
+ *    the same class of feedback loop as 2, against the classifier instead of a
+ *    filter, and invisible to the `MailFilterRun` guard that catches 2.
  *
  * **Why newest-message, not `bool_and` (04-v2-plan §2.3, V3).**
  * `resolveUnsubscribeTarget` reads its gate inputs — `listId` and
@@ -311,6 +349,16 @@ export function buildInboxGroupQuery(params: InboxGroupQueryParams): SQL {
         WHERE cf."systemAttribute" = 'thread_tags'
           AND cf."organizationId" = ${organizationId}
           AND fv."relatedEntityId" IS NOT NULL
+          -- An AI-eligible tag is never a candidate. See AI_CLASSIFY_ATTRIBUTE.
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "FieldValue" afv
+            JOIN "CustomField" acf ON acf.id = afv."fieldId"
+            WHERE afv."entityId" = fv."relatedEntityId"
+              AND acf."systemAttribute" = ${AI_CLASSIFY_ATTRIBUTE}
+              AND acf."organizationId" = ${organizationId}
+              AND afv."valueBoolean" IS TRUE
+          )
         GROUP BY pt.subject_key, fv."relatedEntityId"
       ) ranked WHERE rn = 1
     )

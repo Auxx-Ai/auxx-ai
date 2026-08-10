@@ -10,7 +10,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { Edit, Lock, Plus, Tags, Trash2 } from 'lucide-react'
+import { Edit, Lock, Plus, Sparkles, Tags, Trash2 } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
@@ -266,15 +266,33 @@ function TagTreeItem({
         </span>
       }
       title={
-        tag.isSystemTag ? (
-          <span className='inline-flex items-center gap-1.5'>
-            {tag.title}
-            <Tooltip content='System tag — managed by Auxx, read-only.'>
-              <Lock className='size-3 shrink-0 text-muted-foreground' aria-label='System tag' />
-            </Tooltip>
-          </span>
-        ) : (
+        // Bare string when there is no badge: TreeRow's own `truncate` ellipsizes
+        // inline text, but clips an inline-flex child instead — so only pay that
+        // cost on the rows that actually need a badge beside the name.
+        !tag.isSystemTag && !tag.aiClassify ? (
           tag.title
+        ) : (
+          <span className='inline-flex min-w-0 items-center gap-1.5'>
+            <span className='truncate'>{tag.title}</span>
+            {tag.isSystemTag && (
+              <Tooltip content='System tag — managed by Auxx, read-only.'>
+                <Lock className='size-3 shrink-0 text-muted-foreground' aria-label='System tag' />
+              </Tooltip>
+            )}
+            {tag.aiClassify && (
+              <Tooltip
+                content={
+                  tag.tag_description
+                    ? 'AI may apply this tag to incoming mail.'
+                    : 'AI may apply this tag to incoming mail — add a description so it knows when.'
+                }>
+                <Sparkles
+                  className='size-3 shrink-0 text-primary-500'
+                  aria-label='AI may apply this tag'
+                />
+              </Tooltip>
+            )}
+          </span>
         )
       }
       description={tag.tag_description || undefined}

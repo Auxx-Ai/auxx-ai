@@ -21,6 +21,7 @@ import {
   triggerResourceWorkflows,
   updateWebhookLastTriggeredAt,
 } from '@auxx/lib/events/handlers'
+import { enqueueMailClassification } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
 import { createWorker } from '../utils/createWorker'
 
@@ -57,6 +58,10 @@ const eventHandlersJobMappings = {
   // signal:recorded (plans/signals/06-follow-ups-build.md Steps 3 + 5).
   handleSignalRecordRules,
   autoCompleteTasks,
+  // `message:received` → `mailClassificationQueue` (mail-classification plan §4).
+  // The name key must match `Function.prototype.name`, which is how
+  // `publishEventJob` names the job it enqueues.
+  enqueueMailClassification,
 }
 
 // IO-bound handlers; concurrency > 1 drops the queue-global FIFO ordering,

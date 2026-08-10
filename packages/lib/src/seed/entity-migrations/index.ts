@@ -61,6 +61,7 @@ import { migration048ScoutingPhotoFields } from './migrations/048-scouting-photo
 import { migration057RemoveSignatureVisibilityField } from './migrations/057-remove-signature-visibility-field'
 import { migration059PersonalInboxDef } from './migrations/059-personal-inbox-def'
 import { migration062RemoveInboxLensPersonalFields } from './migrations/062-remove-inbox-lens-personal-fields'
+import { migration074TagAiClassify } from './migrations/074-tag-ai-classify'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -163,6 +164,9 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // pure data migrations. 062 MUST sort after 060 — it drops the two fields 060
   // reads. See the ordering note in the migration itself.
   migration062RemoveInboxLensPersonalFields,
+  // 063–073 are pure data migrations (`data-migrations/migrations/`) — the NNN id
+  // space is shared across both directories, so the gap is expected.
+  migration074TagAiClassify,
 ]
 
 /**

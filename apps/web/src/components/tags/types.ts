@@ -18,6 +18,8 @@ export interface TagRecord extends RecordMeta {
     tag_color?: string
     tag_parent?: RecordId[]
     is_system_tag?: boolean
+    /** Opt-in: the mail classifier may apply this tag to inbound mail. */
+    tag_ai_classify?: boolean
     /** SINGLE_SELECT comes back as an array per the resource read pipeline. */
     tag_scope?: string | string[]
   }
@@ -35,6 +37,12 @@ export interface TagNode {
   tag_color: string
   parentId: string | null
   isSystemTag: boolean
+  /**
+   * Opt-in flag for the mail classifier (`tag_ai_classify`). When true this tag
+   * is offered to the model as a label, and `tag_description` is read as the
+   * label's definition rather than as decorative copy.
+   */
+  aiClassify: boolean
   scope: TagScopeValue
   children: TagNode[]
 }

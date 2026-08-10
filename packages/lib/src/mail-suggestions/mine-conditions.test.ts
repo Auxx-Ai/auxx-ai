@@ -11,6 +11,10 @@
 // query builder's `list` / `senderDomain` support shows up as a failing
 // preference rather than as a silently widened filter.
 //
+// The §7 block is the same kind of assertion for a different reason: the
+// AI-eligible-tag exclusion lives entirely inside the emitted `top_tag` CTE, so
+// no assertion over the returned rows can see it.
+//
 // Vitest has no Postgres, so the V2/V3 blocks use the same two-layer shape as
 // `mail-query/__tests__/thread-search-sql.test.ts`: rendered-SQL tests pin the
 // expression the database receives, and small TypeScript MODELS of those
@@ -280,6 +284,155 @@ describe('buildInboxGroupQuery', () => {
       const { sql } = render(null)
       const guards = sql.match(/\)\[1\] IS TRUE\)/g)
       expect(guards).toHaveLength(2)
+    })
+  })
+
+  // ── §7: the classifier feedback loop (05-mail-classification-plan, inv. 8) ──
+  //
+  // `top_tag` measures tag consistency, and applying the same tag to every
+  // message in a group is what a classifier DOES. Without this exclusion the
+  // weekly job would propose an `auto-tag` filter to do what the classifier is
+  // already doing — every run, forever, and invisibly to the `MailFilterRun`
+  // guard, because the classifier is not a filter.
+  describe('excludes AI-eligible tags from top_tag (§7)', () => {
+    it('anti-joins the tag instance against its tag_ai_classify value', () => {
+      const { sql, params } = render(null)
+      expect(sql).toContain('NOT EXISTS')
+      expect(sql).toContain('afv."valueBoolean" IS TRUE')
+      // A boolean CHECKBOX field, so the value is a second FieldValue row on the
+      // TAG — not a column on anything the outer query already has in hand.
+      expect(params).toContain('tag_ai_classify')
+    })
+
+    it('keys the exclusion on the TAG instance, never on the thread', () => {
+      // `fv."relatedEntityId"` is the tag; `pt.thread_id` is the thread carrying
+      // it. Anti-joining the thread would drop every OTHER tag on a thread that
+      // happens to carry one eligible tag — a much wider cut than §7 asks for,
+      // and one that silently suppresses unrelated `auto-tag` proposals.
+      const { sql } = render(null)
+      expect(sql).toContain('afv."entityId" = fv."relatedEntityId"')
+      expect(sql).not.toContain('afv."entityId" = pt.thread_id')
+    })
+
+    it('drops the row BEFORE the count, so the runner-up is ranked on its own threads', () => {
+      // Filtering after the aggregate would either null out the winner (losing
+      // the runner-up entirely) or, worse, hand the eligible tag's thread count
+      // to whichever tag inherited first place.
+      const { sql } = render(null)
+      const exclusion = sql.indexOf('afv."valueBoolean" IS TRUE')
+      const grouping = sql.indexOf('GROUP BY pt.subject_key, fv."relatedEntityId"')
+      expect(exclusion).toBeGreaterThan(-1)
+      expect(grouping).toBeGreaterThan(exclusion)
+    })
+
+    it('scopes the eligibility field to the org, like every other CustomField read', () => {
+      const { sql } = render(null)
+      expect(sql).toContain('acf."systemAttribute" = ')
+      expect(sql).toContain('acf."organizationId" = ')
+    })
+  })
+
+  describe('top_tag semantics — what Postgres does with that exclusion', () => {
+    /**
+     * `top_tag`, in TypeScript: count DISTINCT threads per (group, tag) over the
+     * tag rows that survive the anti-join, then take the highest count with the
+     * tag id as the tiebreak — the same `row_number() … ORDER BY count DESC,
+     * relatedEntityId` the CTE emits.
+     *
+     * `eligible` models `NOT EXISTS (… valueBoolean IS TRUE)`: membership means a
+     * `tag_ai_classify` row exists AND is true. An unmaterialized field, or a tag
+     * nobody toggled, is simply absent — so the pre-§7 behaviour is what an org
+     * without the field still gets. Tied to the source by the assertion below.
+     */
+    const topTag = (
+      applications: { threadId: string; tagId: string }[],
+      eligible: Set<string>
+    ): { tagId: string; threadCount: number } | null => {
+      const counts = new Map<string, Set<string>>()
+      for (const { threadId, tagId } of applications) {
+        if (eligible.has(tagId)) continue
+        const threads = counts.get(tagId) ?? new Set<string>()
+        threads.add(threadId)
+        counts.set(tagId, threads)
+      }
+      const ranked = [...counts.entries()].sort(
+        ([aTag, a], [bTag, b]) => b.size - a.size || aTag.localeCompare(bTag)
+      )
+      const winner = ranked[0]
+      return winner ? { tagId: winner[0], threadCount: winner[1].size } : null
+    }
+
+    /** Ten threads, all read, so `auto-tag` is the only kind a card can carry. */
+    const kindsFor = (
+      applications: { threadId: string; tagId: string }[],
+      eligible: Set<string>
+    ) => {
+      const top = topTag(applications, eligible)
+      return buildMailSuggestionDrafts({
+        organizationId: 'org_1',
+        inboxId: 'ibx_1',
+        userId: null,
+        groups: [
+          group({
+            threadCount: 10,
+            readThreadCount: 10,
+            topTagId: top?.tagId ?? null,
+            topTagThreadCount: top?.threadCount ?? 0,
+          }),
+        ],
+        suppressedSubjectKeys: new Set<string>(),
+      }).map((d) => d.kind)
+    }
+
+    const on = (tagId: string, threads: number) =>
+      Array.from({ length: threads }, (_, i) => ({ threadId: `thr_${i + 1}`, tagId }))
+
+    it('models the exclusion the statement actually emits', () => {
+      const { sql, params } = render(null)
+      expect(sql).toContain('afv."entityId" = fv."relatedEntityId"')
+      expect(sql).toContain('afv."valueBoolean" IS TRUE')
+      expect(params).toContain('tag_ai_classify')
+    })
+
+    it('never picks an AI-eligible tag, even at 100% consistency', () => {
+      // The exact shape the classifier produces: one tag, every thread, forever.
+      expect(topTag(on('tag_billing', 10), new Set(['tag_billing']))).toBeNull()
+    })
+
+    it('still picks a NON-eligible tag over the threshold', () => {
+      expect(topTag(on('tag_vip', 8), new Set(['tag_billing']))).toEqual({
+        tagId: 'tag_vip',
+        threadCount: 8,
+      })
+    })
+
+    it('leaves the pre-§7 answer untouched when nothing is eligible', () => {
+      // An org that has not enabled a single tag — and, identically, an org where
+      // the field is not materialized yet — must mine exactly as it did before.
+      expect(topTag(on('tag_billing', 10), new Set())).toEqual({
+        tagId: 'tag_billing',
+        threadCount: 10,
+      })
+    })
+
+    it('falls back to the runner-up, ranked on ITS OWN threads', () => {
+      // The eligible tag's ten threads must not be inherited by the tag that
+      // takes first place behind it — that would fabricate consistency out of
+      // the classifier's own work, which is the whole loop in one number.
+      const applications = [...on('tag_billing', 10), ...on('tag_vip', 2)]
+      expect(topTag(applications, new Set(['tag_billing']))).toEqual({
+        tagId: 'tag_vip',
+        threadCount: 2,
+      })
+      expect(kindsFor(applications, new Set(['tag_billing']))).toEqual([])
+    })
+
+    it('produces NO auto-tag card for a group whose only tags are eligible', () => {
+      expect(kindsFor(on('tag_billing', 10), new Set(['tag_billing']))).toEqual([])
+    })
+
+    it('still produces the auto-tag card the feature exists for', () => {
+      expect(kindsFor(on('tag_vip', 8), new Set(['tag_billing']))).toEqual(['auto-tag'])
     })
   })
 
