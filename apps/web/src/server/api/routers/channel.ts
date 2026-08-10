@@ -15,6 +15,7 @@ import {
   getProviderType,
   linkChannelToInbox,
   list as listChannels,
+  recoverChannel,
   requireChannelManageAccess,
   resolveChannelDefinitionId,
   supportsPersonalChannelConnection,
@@ -45,7 +46,7 @@ import { fanOutAuxxChatAudienceToShopify } from '@auxx/lib/shopify'
 import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { and, count, eq, isNull } from 'drizzle-orm'
+import { count, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, permissionProcedure, protectedProcedure } from '../trpc'
@@ -919,70 +920,36 @@ export const channelRouter = createTRPCRouter({
     }),
 
   /**
-   * Reset sync state for a stuck integration.
-   * Clears throttle, resets stage to IDLE, and optionally clears lastHistoryId for full re-sync.
+   * Bring a channel back to a healthy baseline after a successful reconnect:
+   * re-enable it, clear the auth-failure counter, and reset the sync breaker.
+   * See `recoverChannel` for why all three have to move together.
    */
-  resetSyncState: protectedProcedure
+  recoverAfterReconnect: protectedProcedure
     .input(
       z.object({
         integrationId: z.string(),
         fullResync: z.boolean().default(false),
       })
     )
-    .use(notDemo('reset sync state'))
+    .use(notDemo('recover channel'))
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
       await requireChannelManageAccess({ db: ctx.db, organizationId, userId }, input.integrationId)
 
-      // Verify integration belongs to this org
-      const [integration] = await ctx.db
-        .select({ id: schema.Integration.id, syncStage: schema.Integration.syncStage })
-        .from(schema.Integration)
-        .where(
-          and(
-            eq(schema.Integration.id, input.integrationId),
-            eq(schema.Integration.organizationId, organizationId),
-            isNull(schema.Integration.deletedAt)
-          )
-        )
-        .limit(1)
+      const result = await recoverChannel({ db: ctx.db, organizationId }, input.integrationId, {
+        fullResync: input.fullResync,
+      })
+      if (!result.ok) throw result.error
 
-      if (!integration) {
-        throw new Error('Integration not found')
-      }
-
-      // Clear Redis import cache (both main and processing sets)
-      const { clearImportCache } = await import('@auxx/lib/email/polling-import-cache')
-      await clearImportCache(input.integrationId)
-
-      // Reset sync state
-      const updateData: Record<string, any> = {
-        syncStage: 'IDLE',
-        syncStatus: 'ACTIVE',
-        syncStageStartedAt: null,
-        throttleFailureCount: 0,
-        throttleRetryAfter: null,
-        updatedAt: new Date(),
-      }
-
-      if (input.fullResync) {
-        updateData.lastHistoryId = null
-      }
-
-      await ctx.db
-        .update(schema.Integration)
-        .set(updateData)
-        .where(eq(schema.Integration.id, input.integrationId))
-
-      logger.info('Admin reset sync state', {
+      logger.info('Channel recovered after reconnect', {
         integrationId: input.integrationId,
         fullResync: input.fullResync,
-        previousStage: integration.syncStage,
+        reEnabled: result.value.reEnabled,
         userId,
       })
 
-      return { success: true }
+      return result.value
     }),
 
   /**

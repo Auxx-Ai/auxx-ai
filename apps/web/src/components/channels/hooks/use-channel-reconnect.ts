@@ -18,10 +18,13 @@ const RETURN_TO = '/app/settings/channels'
  * `connections.refreshTokens` first (`attemptRefreshThenOAuth`), popup only when the refresh grant
  * is actually dead. Replaces the four bespoke `channelReauth.initiateReauth` +
  * `window.location.href` call sites (plans/channels/v3/README.md Phase 2).
+ *
+ * Either way a success ends in `channel.recoverAfterReconnect`, which is what makes the channel
+ * usable again — see the note on `onConnected`.
  */
 export function useChannelReconnect() {
   const utils = api.useUtils()
-  const resetSyncState = api.channel.resetSyncState.useMutation()
+  const recoverChannel = api.channel.recoverAfterReconnect.useMutation()
   // credentialId -> integrationId, set right before a reconnect attempt starts. `onConnected`
   // fires with the credId, which for a reconnect always equals the credentialId we passed in.
   const integrationByCredential = useRef(new Map<string, string>())
@@ -32,18 +35,20 @@ export function useChannelReconnect() {
       void utils.channelReauth.getAuthStatus.invalidate()
       void utils.channelReauth.getMultipleAuthStatus.invalidate()
 
-      // Sync-breaker gap: the provisioning hook's relink branch resets `syncStatus`/`syncStage`
-      // back to a healthy baseline, but that only runs on a full OAuth callback. A *silent*
-      // refresh success (attemptRefreshThenOAuth) skips the callback entirely, so a channel
-      // stuck at FAILED would refresh its token and still show "Sync Error" forever.
+      // Recovery gap: the provisioning hook's relink branch re-enables the channel and resets
+      // its sync breaker, but that only runs on a full OAuth callback. A *silent* refresh success
+      // (attemptRefreshThenOAuth) skips the callback entirely, so a channel that auth failures had
+      // auto-disabled would refresh its token, report success, and still reject every sync with
+      // "Cannot sync messages for disabled channel" — with the Reconnect action now hidden,
+      // because the refresh just cleared the credential's reauth flag.
       // `useConnectFlow` doesn't expose which path settled `onConnected` (both the silent-refresh
-      // branch and the popup's `onDone` call the same callback) — resetting on every success is
-      // harmless: the provisioning hook already reset it on the popup path, so this is a no-op
-      // re-write there, and the only path where it actually matters.
+      // branch and the popup's `onDone` call the same callback) — recovering on every success is
+      // harmless: the provisioning hook already did this work on the popup path, so this is a
+      // no-op re-write there, and the only path where it actually matters.
       const integrationId = integrationByCredential.current.get(credId)
       if (integrationId) {
         integrationByCredential.current.delete(credId)
-        resetSyncState.mutate({ integrationId })
+        recoverChannel.mutate({ integrationId })
       }
     },
   })
