@@ -11,6 +11,13 @@ import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { addDays, format } from 'date-fns'
@@ -18,6 +25,9 @@ import { AlertTriangle, Calendar, CheckCircle, Clock } from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+
+/** Sentinel for "don't change the plan" — Radix `SelectItem` rejects an empty value. */
+const KEEP_CURRENT_PLAN = '__keep_current__'
 
 interface TrialManagementSectionProps {
   organizationId: string
@@ -41,7 +51,11 @@ export function TrialManagementSection({
   const [confirm, ConfirmDialog] = useConfirm()
   const [extendDays, setExtendDays] = useState('7')
   const [reason, setReason] = useState('')
+  /** `KEEP_CURRENT_PLAN` = convert in place; anything else also moves them to that plan. */
+  const [convertPlan, setConvertPlan] = useState(KEEP_CURRENT_PLAN)
   const utils = api.useUtils()
+
+  const plansQuery = api.admin.getPlans.useQuery()
 
   const endTrial = api.admin.billing.endTrial.useMutation({
     onSuccess: () => {
@@ -112,9 +126,13 @@ export function TrialManagementSection({
    * Handle convert trial to paid
    */
   const handleConvertToPaid = async () => {
+    const planName = convertPlan === KEEP_CURRENT_PLAN ? undefined : convertPlan
+
     const confirmed = await confirm({
       title: 'Convert Trial to Paid?',
-      description: `This will convert "${organizationName}" from trial to paid status without requiring payment. Use this for special cases or manual conversions.`,
+      description: planName
+        ? `This will convert "${organizationName}" from trial to paid status on the "${planName}" plan, without requiring payment.`
+        : `This will convert "${organizationName}" from trial to paid status without requiring payment, keeping their current plan. Use this for special cases or manual conversions.`,
       confirmText: 'Convert to Paid',
       cancelText: 'Cancel',
     })
@@ -122,6 +140,7 @@ export function TrialManagementSection({
     if (confirmed) {
       convertTrial.mutate({
         organizationId,
+        planName,
         skipPayment: true,
       })
     }
@@ -274,6 +293,25 @@ export function TrialManagementSection({
                       ? 'Restore access on the full plan without payment (admin override)'
                       : 'Manually convert trial to paid without payment (admin override)'}
                   </p>
+                  <div>
+                    <Label htmlFor='convert-plan'>Plan</Label>
+                    <Select value={convertPlan} onValueChange={setConvertPlan}>
+                      <SelectTrigger id='convert-plan'>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={KEEP_CURRENT_PLAN}>Keep current plan</SelectItem>
+                        {plansQuery.data?.map((plan) => (
+                          <SelectItem key={plan.id} value={plan.name}>
+                            {plan.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className='text-xs text-muted-foreground mt-1'>
+                      Picking a plan moves them to it as part of the conversion.
+                    </p>
+                  </div>
                   <Button
                     variant='outline'
                     size='sm'

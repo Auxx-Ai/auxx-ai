@@ -214,6 +214,8 @@ export class DehydrationService {
       createdAt: orgProfile.createdAt,
       completedOnboarding: orgProfile.completedOnboarding,
       demoExpiresAt: orgProfile.demoExpiresAt,
+      disabledAt: orgProfile.disabledAt,
+      disabledReason: orgProfile.disabledReason,
       subscription: toClientSubscription(subscription),
       features: features ?? {},
       capabilities: capabilities.toClientCapabilities(),

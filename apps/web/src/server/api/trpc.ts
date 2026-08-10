@@ -329,6 +329,34 @@ const mutationRateLimitMiddleware = t.middleware(async ({ ctx, next, type }) => 
 })
 
 /**
+ * Blocks every member of an admin-suspended organization (`Organization.disabledAt`).
+ *
+ * `apps/api` has enforced this since the column shipped (`verifyOrganizationAccess`,
+ * `verifyOrgMembership`), but nothing in `apps/web` ever read it — so "Disable
+ * Organization" in the admin panel suspended the REST API while leaving the whole
+ * Next.js app usable. This is the authoritative half of the fix; the
+ * `AppLayoutWrapper` screen is only the presentation of it.
+ *
+ * Super admins are exempt: their own `defaultOrganizationId` may well be a
+ * suspended org, and locking them out of tRPC would lock them out of the very
+ * admin panel that re-enables it.
+ */
+const organizationDisabledMiddleware = t.middleware(async ({ ctx, next }) => {
+  const session = ctx.session as { organizationId: string; isSuperAdmin: boolean } | null
+  if (!session || session.isSuperAdmin) return next()
+
+  const { orgProfile } = await getOrgCache().getOrRecompute(session.organizationId, ['orgProfile'])
+  if (orgProfile?.disabledAt) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: orgProfile.disabledReason || 'This organization has been disabled',
+    })
+  }
+
+  return next()
+})
+
+/**
  * Public (unauthenticated) procedure
  *
  * This is the base piece you use to build new queries and mutations on your tRPC API. It does not
@@ -373,6 +401,9 @@ export const protectedProcedure = t.procedure
       },
     })
   })
+  // Chained AFTER the session enrichment above — it reads `organizationId` and
+  // `isSuperAdmin`, which only exist once that middleware has run.
+  .use(organizationDisabledMiddleware)
 /**
  * Owner procedure — genuinely rank-shaped actions ONLY (plan 21 §2.b.4):
  * delete the organization, transfer ownership, manage Owner roles. Everything

@@ -16,6 +16,7 @@ import { FloatingComposeRoot } from '~/components/mail/email-editor/floating-com
 import { GlobalRecordEditorRoot } from '~/components/records/global-record-editor-root'
 import { SignatureDialogRoot } from '~/components/signatures/ui/signature-dialog-root'
 import { SnippetDialogRoot } from '~/components/snippets/ui/snippet-dialog-root'
+import { OrganizationDisabled } from '~/components/subscriptions/organization-disabled'
 import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended'
 import { FloatingTaskEditorRoot } from '~/components/tasks/ui/floating-task-editor-root'
 import { FloatingTaskRoot } from '~/components/tasks/ui/floating-task-root'
@@ -69,6 +70,23 @@ export function AppLayoutWrapper({
   useOAuthReturn()
 
   const currentOrg = organizations.find((org) => org.id === currentOrgId)
+
+  // Admin suspension outranks every billing state — it applies on self-hosted too,
+  // since it is an operator action rather than a plan gate. Super admins are exempt
+  // here for the same reason `protectedProcedure` exempts them: their own default org
+  // may be the suspended one, and the admin panel is how it gets re-enabled.
+  // The server-side gate in `~/server/api/trpc` is what actually enforces this.
+  if (currentOrg?.disabledAt && user?.isSuperAdmin !== true) {
+    return (
+      <SimpleLayout>
+        <OrganizationDisabled
+          organizationName={currentOrg.name}
+          disabledReason={currentOrg.disabledReason}
+          otherOrganizationsCount={organizations.length - 1}
+        />
+      </SimpleLayout>
+    )
+  }
 
   // Self-hosted deployments skip subscription checks entirely
   const subscriptionExpired = !selfHosted && isSubscriptionExpired(currentOrg?.subscription ?? null)
