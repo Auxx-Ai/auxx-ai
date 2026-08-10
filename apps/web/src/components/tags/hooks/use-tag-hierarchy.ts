@@ -58,6 +58,9 @@ export function useTagHierarchy(options?: UseTagHierarchyOptions): UseTagHierarc
         parentId,
         isSystemTag: record.fieldValues.is_system_tag ?? false,
         aiClassify: record.fieldValues.tag_ai_classify ?? false,
+        // Empty string reads as "no template" so a blanked-out field cannot make
+        // a tag look seeded (and cannot resolve a default that does not exist).
+        templateKey: record.fieldValues.tag_template_key || null,
         scope: tagScope,
         children: [],
       }

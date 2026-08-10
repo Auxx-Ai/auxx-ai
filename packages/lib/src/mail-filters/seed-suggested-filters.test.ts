@@ -13,6 +13,9 @@
 //     the operator: a field builder that declines it drops the clause the same way.
 //  5. **Seeded rows never consume the plan allowance** — the row always carries a
 //     `templateKey`, and `countBillableMailFilters` excludes `templateKey IS NOT NULL`.
+//  5b. **The deterministic replacement for the retired `Newsletter`/`Notification` AI
+//     labels stays deterministic** (categories plan 06 D2) — a header-keyed filter, no
+//     tag dependency, and never an ARCHIVE on the broad "any mailing list" signal.
 //  6. **The `mailFilters` org-cache key is busted after a seed that actually inserted** —
 //     and only then. The cached array is what the gate reads; leaving it stale is invisible
 //     while seeds are disabled and becomes a real bug the moment one is enabled.
@@ -60,6 +63,8 @@ vi.mock('drizzle-orm', async (importOriginal) => ({
   count: () => ({ count: true }),
 }))
 
+import type { ConditionGroup } from '../conditions/types'
+import { assertFilterConditionsCompile } from './evaluate'
 import { countBillableMailFilters } from './limits'
 import { assertFilterShape } from './mutations'
 import { SUGGESTED_MAIL_FILTER_TEMPLATES, seedSuggestedMailFilters } from './seed-suggested-filters'
@@ -87,6 +92,9 @@ const FIELD_BUILDERS: Record<string, string> = {
   // `buildFromQuery` is a one-line delegation to `buildSenderQuery`, which owns the cases.
   from: 'buildSenderQuery',
   subject: 'buildSubjectQuery',
+  // `buildListQuery` is likewise a one-line delegation — the operator cases live in the
+  // shared `buildMessageTextColumnQuery` it hands `Message.listId` to.
+  list: 'buildMessageTextColumnQuery',
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -199,6 +207,119 @@ describe('SUGGESTED_MAIL_FILTER_TEMPLATES', () => {
         }
       }
     }
+  })
+
+  // ── categories plan 06 D2 / §2.4 ──
+  // `Newsletter` and `Notification` are retired as AI labels because both are
+  // answerable from a header. What replaces them has to actually be a header rule.
+  describe('the deterministic replacement for the retired Newsletter/Notification labels', () => {
+    const listConditionsOf = (templateKey: string) =>
+      SUGGESTED_MAIL_FILTER_TEMPLATES.find((t) => t.templateKey === templateKey)
+        ?.conditions.flatMap((g) => g.conditions)
+        .filter((c) => String(c.fieldId) === 'list') ?? []
+
+    it('ships a filter keyed on the List-Id signal, not on an AI label', () => {
+      const template = SUGGESTED_MAIL_FILTER_TEMPLATES.find(
+        (t) => t.templateKey === 'suggested:mailing-list-mail'
+      )
+      expect(template).toBeDefined()
+      expect(listConditionsOf('suggested:mailing-list-mail').map((c) => c.operator)).toEqual([
+        'not empty',
+      ])
+      // No tag: the replacement must not depend on a tag name resolving at seed time,
+      // or a taxonomy rename silently skips it (§5.2 — resolution is name-based and
+      // logs-and-skips, so the failure is soft but invisible).
+      expect(template?.requiredTagName).toBeUndefined()
+    })
+
+    it('writes no thread state on the broad signal — `soft` cannot tell a blast from a receipt', () => {
+      // §1.1's warning triangle: List-Id (and the `soft` tier it feeds) covers bulk
+      // marketing AND transactional notices in one bucket. "Skip the AI" is true of
+      // both; "archive it" is not.
+      const actions = SUGGESTED_MAIL_FILTER_TEMPLATES.find(
+        (t) => t.templateKey === 'suggested:mailing-list-mail'
+      )?.buildActions('tag_test')
+      expect(actions).toEqual([{ type: 'suppress-automations' }])
+    })
+
+    it('never archives on a bare `list not empty` — that is every mailing list in the mailbox', () => {
+      for (const template of SUGGESTED_MAIL_FILTER_TEMPLATES) {
+        const archives = template
+          .buildActions('tag_test')
+          .some((a) => a.type === 'set-status' || a.type === 'add-tag')
+        if (!archives) continue
+        for (const condition of listConditionsOf(template.templateKey)) {
+          expect(
+            condition.operator,
+            `${template.templateKey} archives/tags on an unqualified mailing-list match`
+          ).not.toBe('not empty')
+        }
+      }
+    })
+
+    it('matches bulk mail on the list identity too, not only on a from-address fragment', () => {
+      // A campaign sender rotates its from-address (VERP) far more often than it
+      // renames its list, so `from contains 'newsletter@'` alone misses most blasts.
+      expect(listConditionsOf('suggested:bulk-newsletters').length).toBeGreaterThan(0)
+      for (const condition of listConditionsOf('suggested:bulk-newsletters')) {
+        expect(condition.operator).toBe('contains')
+        expect(String(condition.value)).not.toBe('')
+      }
+    })
+
+    it('keeps every condition id unique within its template', () => {
+      // The widened OR group is where a copy-pasted `c4` would collide; duplicate
+      // ids make the condition editor edit the wrong row.
+      for (const template of SUGGESTED_MAIL_FILTER_TEMPLATES) {
+        const ids = template.conditions.flatMap((g) => g.conditions.map((c) => c.id))
+        expect(new Set(ids).size, template.templateKey).toBe(ids.length)
+      }
+    })
+  })
+
+  // The source-derived checks above catch a fieldId/operator the builder has no case
+  // for. This runs the REAL save-time gate over the same catalog, which additionally
+  // catches a value the field builder declines (`in` with an empty array, say) and a
+  // builder that throws. Both fail the same way: the condition is dropped, the filter
+  // reduces to the bare org scope, and it matches every thread in the inbox
+  // (invariant 19).
+  describe('every seeded condition set survives assertFilterConditionsCompile', () => {
+    /** `Body starts with` — the exact combination invariant 19 is named after. */
+    const UNCOMPILABLE: ConditionGroup[] = [
+      {
+        id: 'g1',
+        logicalOperator: 'AND',
+        conditions: [
+          { id: 'c1', fieldId: 'body', operator: 'starts with' as never, value: 'unsubscribe' },
+        ],
+      },
+    ]
+
+    /** The same, on the `list` field the D2 templates use — a numeric op it declines. */
+    const UNCOMPILABLE_LIST: ConditionGroup[] = [
+      {
+        id: 'g1',
+        logicalOperator: 'AND',
+        conditions: [{ id: 'c1', fieldId: 'list', operator: '>' as never, value: 'x' }],
+      },
+    ]
+
+    it('rejects a known-uncompilable set — proving the assertion below is not vacuous', () => {
+      expect(() => assertFilterConditionsCompile(UNCOMPILABLE, 'org_1')).toThrow()
+      // Pinned on `list` too: the D2 templates are the only ones on that field, and a
+      // gate that reported "compiles" for everything reaching `buildListQuery` would
+      // pass them vacuously.
+      expect(() => assertFilterConditionsCompile(UNCOMPILABLE_LIST, 'org_1')).toThrow()
+    })
+
+    it('accepts every template in the catalog', () => {
+      for (const template of SUGGESTED_MAIL_FILTER_TEMPLATES) {
+        expect(
+          () => assertFilterConditionsCompile(template.conditions, 'org_1'),
+          template.templateKey
+        ).not.toThrow()
+      }
+    })
   })
 
   it("every condition's operator is one its field builder accepts", () => {

@@ -40,6 +40,7 @@ import { migration070BackfillArticleSearchText } from './migrations/070-backfill
 import { migration071BackfillOutlookPlainText } from './migrations/071-backfill-outlook-plain-text'
 import { migration072MailFiltersLimit } from './migrations/072-mail-filters-limit'
 import { migration073BackfillBulkMailFields } from './migrations/073-backfill-bulk-mail-fields'
+import { migration076MailCategoryRework } from './migrations/076-mail-category-rework'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -102,6 +103,11 @@ function buildRegistry(): DataMigrationDef[] {
     migration071BackfillOutlookPlainText,
     migration072MailFiltersLimit,
     migration073BackfillBulkMailFields,
+    // 074 (`tag_ai_classify`) and 075 (`tag_template_key`) are ENTITY migrations
+    // and arrive via ALL_ENTITY_MIGRATIONS above; they own those ids in the
+    // shared sequence and both sort before 076, which depends on the fields they
+    // materialize.
+    migration076MailCategoryRework,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

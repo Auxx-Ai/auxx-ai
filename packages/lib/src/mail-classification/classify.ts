@@ -13,10 +13,12 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { QuotaExceededError } from '../ai/errors/quota-errors'
 import { LLMOrchestrator } from '../ai/orchestrator/llm-orchestrator'
 import { SystemModelService } from '../ai/providers/system-model-service'
 import { ModelType } from '../ai/providers/types'
 import { UsageTrackingService } from '../ai/usage/usage-tracking-service'
+import { UsageLimitError } from '../errors'
 import {
   MAIL_CLASSIFY_BODY_CHARS,
   MAIL_CLASSIFY_CONFIDENCE_THRESHOLD,
@@ -30,7 +32,7 @@ const logger = createScopedLogger('mail-classification')
 const SYSTEM_PROMPT = [
   'You categorise inbound customer email for a help desk.',
   'Choose exactly ONE category from the list, or the sentinel value when none of',
-  'them fits. Each category is defined by its description — classify against the',
+  'them fits. Each category is defined by its description, so classify against the',
   'description, not against the label wording.',
   'Report your confidence as a number between 0 and 1. Be honest: a low',
   'confidence means the mail is not applied to any category at all, which is the',
@@ -72,6 +74,71 @@ export function buildClassificationSchema(labels: MailClassificationLabel[]) {
       },
     },
   }
+}
+
+/**
+ * Every `Error` in a wrapping chain, outermost first.
+ *
+ * ⚠️ The error that says WHY is never the one thrown. `LLMOrchestrator.invoke`
+ * re-wraps everything its `try` catches into an `OrchestratorError`
+ * (`ai/orchestrator/types.ts`) — INCLUDING the quota gate, which runs inside
+ * that try — and each specialized client wraps the SDK error again below it. So
+ * `err instanceof QuotaExceededError` is false at this call site no matter what
+ * happened, and only walking the chain recovers the cause.
+ *
+ * Both `.originalError` (what the orchestrator and the clients set) and `.cause`
+ * (what a plain `new Error(msg, { cause })` sets) are followed, with a depth cap
+ * so a self-referential chain cannot spin.
+ */
+function errorChain(error: unknown): Error[] {
+  const chain: Error[] = []
+  let current: unknown = error
+  while (current instanceof Error && chain.length < 8 && !chain.includes(current)) {
+    chain.push(current)
+    const next = (current as { originalError?: unknown }).originalError
+    current = next instanceof Error ? next : current.cause
+  }
+  return chain
+}
+
+/** Transient-failure signatures, checked against every link of the chain. */
+const TRANSIENT_PATTERNS =
+  /\b429\b|rate.?limit|too many requests|overloaded|timed? ?out|timeout|socket hang up|fetch failed|network|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|502|503|504|bad gateway|service unavailable/i
+
+/**
+ * Why the call failed, to the resolution a caller can act on.
+ *
+ * All three answers mean the same thing for the marker — nothing was spent, so
+ * the message stays classifiable (see `MailClassificationResult.inferred`). They
+ * differ in what a human should do:
+ *
+ * - `'quota-exceeded'` is not transient in any useful sense. It clears when the
+ *   billing cycle rolls or somebody tops up, so it is surfaced in the UI rather
+ *   than retried.
+ * - `'unavailable'` is time-resolved and would be recoverable by a retry, if one
+ *   is ever added.
+ * - `'error'` is unexpected and deserves a real error log.
+ */
+function classifyFailure(error: unknown): 'quota-exceeded' | 'unavailable' | 'error' {
+  const chain = errorChain(error)
+
+  if (chain.some((e) => e instanceof QuotaExceededError || e instanceof UsageLimitError)) {
+    return 'quota-exceeded'
+  }
+
+  for (const link of chain) {
+    const status = (link as { status?: unknown }).status
+    if (typeof status === 'number' && (status === 429 || status >= 500)) return 'unavailable'
+    // ⚠️ Message matching is load-bearing, not a fallback: the Anthropic client
+    // turns a `rate_limit_error` into a bare `new Error('Anthropic API rate
+    // limit exceeded')` with no status and no code, so the string is the only
+    // surviving evidence that it was a 429.
+    const code = (link as { code?: unknown }).code
+    if (typeof code === 'string' && TRANSIENT_PATTERNS.test(code)) return 'unavailable'
+    if (TRANSIENT_PATTERNS.test(link.message)) return 'unavailable'
+  }
+
+  return 'error'
 }
 
 /** The label list as the prompt sees it — `title` + `tag_description` (C3). */
@@ -134,7 +201,7 @@ export async function classifyMessage(
       organizationId,
       messageId,
     })
-    return { tagId: null, confidence: 0, reason: 'no-default-model' }
+    return { tagId: null, confidence: 0, reason: 'no-default-model', inferred: false }
   }
 
   let structured: Record<string, unknown> | undefined
@@ -156,13 +223,26 @@ export async function classifyMessage(
     })
     structured = response.structured_output
   } catch (error) {
-    logger.warn('Mail classification model call failed — leaving the thread untagged', {
+    // ⚠️ `inferred: false` on EVERY arm here, which is what keeps the message
+    // classifiable. `invoke` only meters usage against a response that came back
+    // (`llm-orchestrator.ts`) and the quota gate throws before any provider
+    // traffic at all — so a throw means nothing was billed and nothing was
+    // decided, exactly like `'no-default-model'`. Stamping the marker here is
+    // what used to turn one 429 into a permanent write-off.
+    const reason = classifyFailure(error)
+    const fields = {
       organizationId,
       messageId,
+      threadId: context.threadId,
       model: def.model,
+      reason,
       error: error instanceof Error ? error.message : String(error),
-    })
-    return { tagId: null, confidence: 0, reason: 'error', model: def.model }
+    }
+    const message = 'Mail classification call failed, leaving the thread untagged and classifiable'
+    if (reason === 'error') logger.error(message, fields)
+    else logger.warn(message, fields)
+
+    return { tagId: null, confidence: 0, reason, model: def.model, inferred: false }
   }
 
   const rawCategory = typeof structured?.category === 'string' ? structured.category : null
@@ -195,11 +275,15 @@ export async function classifyMessage(
     applied,
   })
 
-  if (applied) return { tagId: category, confidence, model: def.model }
+  // Past this point a call COMPLETED, so `inferred: true` even when nothing is
+  // applied: "no category" and "not confident enough" are answers, they were
+  // paid for, and re-asking would buy the same answer twice (C9).
+  if (applied) return { tagId: category, confidence, model: def.model, inferred: true }
   return {
     tagId: null,
     confidence,
     reason: category === null ? 'no-category' : 'below-threshold',
     model: def.model,
+    inferred: true,
   }
 }

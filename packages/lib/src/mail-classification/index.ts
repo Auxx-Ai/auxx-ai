@@ -19,9 +19,22 @@ export {
   MAIL_CLASSIFY_BODY_CHARS,
   MAIL_CLASSIFY_CONFIDENCE_THRESHOLD,
   MAIL_CLASSIFY_NO_CATEGORY,
+  MAIL_RECLASSIFY_BACKLOG_COUNT_CAP,
+  MAIL_RECLASSIFY_DAY_PRESETS,
+  MAIL_RECLASSIFY_DEFAULT_MODE,
+  MAIL_RECLASSIFY_DEFAULT_RANGE,
+  MAIL_RECLASSIFY_MAX_THREADS,
+  MAIL_RECLASSIFY_SAMPLE_JOB_NAME,
+  MAIL_RECLASSIFY_SAMPLE_SIZE,
+  MAIL_RECLASSIFY_THREAD_PRESETS,
   type MailClassificationLabel,
   type MailClassificationMarker,
   type MailClassificationSkipReason,
+  type MailReclassifyMode,
+  type MailReclassifyRange,
+  type MailReclassifySampleLabelStat,
+  type MailReclassifySampleReport,
+  type MailReclassifySampleStatus,
   TAG_AI_CLASSIFY_ATTRIBUTE,
 } from './client'
 // The `then`-side door (§4)
@@ -38,6 +51,28 @@ export {
 export { getEligibleClassificationTags } from './labels'
 // ⚠️ The mandatory second filter pass (§4.1, invariant 13)
 export { rerunMailFiltersAfterClassification } from './rerun-filters'
+// Retroactive re-classification, phase 1 (07-mail-reclassification-plan.md §4).
+// ⚠️ This path deliberately does NOT re-run mail filters (07 R2 / invariant 3).
+export {
+  buildReclassifyWhere,
+  cancelMailReclassifySample,
+  countReclassifiableThreads,
+  enqueueMailReclassifySample,
+  getMailReclassifySampleStatus,
+  MAIL_RECLASSIFY_THREAD_DELAY_MS,
+  type MailReclassifyCount,
+  type MailReclassifySampleJobData,
+  mailReclassifySampleJob,
+  mailReclassifySampleJobId,
+  type ReclassifyCursor,
+  type ReclassifyScopeSqlInput,
+  type ReclassifyThreadRow,
+  type ResolvedReclassifyWindow,
+  type RunMailReclassifySampleInput,
+  resolveReclassifyWindow,
+  runMailReclassifySample,
+  selectReclassifyThreadPage,
+} from './retroactive'
 // Server-side shapes
 export type {
   MailClassificationContext,

@@ -2,13 +2,15 @@
 
 'use client'
 
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { ToggleCard } from '@auxx/ui/components/toggle-card'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import { SettingsSection } from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
+import { InboxReclassifyRow } from './inbox-reclassify-row'
 
 /**
  * The per-inbox mail-classification opt-in
@@ -30,6 +32,11 @@ import { api } from '~/trpc/react'
  *   inbox is completely inert — so the switch is disabled and says why, rather
  *   than flipping on and looking like it worked.
  * - **What it costs.** Metered per inbound message, zero on your own key.
+ * - **Whether it is currently working.** With the balance empty every inbound
+ *   message fails its model call and is left untagged — and because the
+ *   classifier runs in the background, nobody finds out. Every other AI surface
+ *   reports this by interrupting a human mid-action; this one has no human to
+ *   interrupt, so the card has to say it.
  */
 export function InboxClassificationCard({ inboxId }: { inboxId: string }) {
   const utils = api.useUtils()
@@ -50,7 +57,7 @@ export function InboxClassificationCard({ inboxId }: { inboxId: string }) {
     )
   }
 
-  const { enabled, eligibleTagCount } = data
+  const { enabled, eligibleTagCount, creditsExhausted } = data
   const hasEligibleTags = eligibleTagCount > 0
 
   return (
@@ -58,6 +65,19 @@ export function InboxClassificationCard({ inboxId }: { inboxId: string }) {
       icon={Sparkles}
       title='AI classification'
       description='Let Auxx categorise new mail in this inbox by applying your tags.'>
+      {/* Only when it is actually costing something: an inbox that is switched
+          off is not being stopped by anything, and saying so there would just be
+          noise on a page nobody came to for billing. */}
+      {enabled && creditsExhausted ? (
+        <Alert variant='warning' className='mb-3'>
+          <TriangleAlert />
+          <AlertDescription>
+            Classification is paused. Your organization is out of AI credits. Incoming mail is being
+            delivered as normal but is not being tagged. Credits refill at the start of your next
+            billing cycle, and mail that arrives before then is not classified later.
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <ToggleCard
         title='Classify incoming mail'
         icon={<Sparkles className='size-3.5' />}
@@ -103,6 +123,12 @@ export function InboxClassificationCard({ inboxId }: { inboxId: string }) {
           </>
         }
       />
+      {/* The backlog row (07 §3.1) — only once the toggle is on, because the
+          classifier's own double guard (C8) means a switched-off inbox has
+          nothing it may legally run. It hides itself when there is no backlog.
+          ⚠️ Enabling the toggle makes it appear immediately; that IS the prompt,
+          and the cost dialog is never auto-opened (07 invariant 12). */}
+      {enabled ? <InboxReclassifyRow inboxId={inboxId} /> : null}
     </SettingsSection>
   )
 }

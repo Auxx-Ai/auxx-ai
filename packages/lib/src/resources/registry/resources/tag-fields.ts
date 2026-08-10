@@ -115,6 +115,47 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
     description: 'When true, the AI mail classifier may apply this tag to inbound mail.',
   },
 
+  /**
+   * Shipped identity of a seeded mail category
+   * (plans/mail-filter/06-mail-categories-rework-plan.md §3.1) — `category:sales`,
+   * `category:order-status`, … Null for every user-created tag.
+   *
+   * A **provenance marker, not a lock**. Unlike `is_system_tag` it freezes nothing:
+   * title, emoji, colour, parent and above all `tag_description` stay editable, which
+   * is the entire point (D4/D5) — the description IS the classifier's instruction, so a
+   * category the business cannot re-word is a category it cannot use. What the marker
+   * buys is (a) an undeletable seeded category, via `rejectDeleteIfTemplateTag`, and
+   * (b) a shipped default to reset back to.
+   *
+   * ⚠️ **Not user-writable** (invariant 2): a user who can stamp this on their own tag
+   * makes it undeletable. `creatable`/`updatable: false` is documentation only — the
+   * write path does not read capabilities — so the enforcement is
+   * `dropUnauthorizedTemplateKey` on the field pre-hook chain, exactly as
+   * `is_system_tag` is enforced today. Only the seeder writes it, through
+   * `bypassFieldGuards`.
+   */
+  tag_template_key: {
+    id: toFieldId('tag_template_key'),
+    key: 'tag_template_key',
+    label: 'Template Key',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'tag_template_key',
+    systemSortOrder: 'a15',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description:
+      'Shipped identity of a seeded mail category. Set by the seeder only; makes the tag undeletable and resettable to its shipped default.',
+  },
+
   emoji: {
     id: toFieldId('emoji'),
     key: 'emoji',

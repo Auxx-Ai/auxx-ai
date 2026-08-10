@@ -718,6 +718,24 @@
       "import": "./dist/knowledge-sources/run-source-sync.mjs",
       "default": "./src/knowledge-sources/run-source-sync.ts"
     },
+    "./mail-classification": {
+      "types": "./src/mail-classification/index.ts",
+      "source": "./src/mail-classification/index.ts",
+      "import": "./dist/mail-classification/index.mjs",
+      "default": "./src/mail-classification/index.ts"
+    },
+    "./mail-classification/client": {
+      "types": "./src/mail-classification/client.ts",
+      "source": "./src/mail-classification/client.ts",
+      "import": "./dist/mail-classification/client.mjs",
+      "default": "./src/mail-classification/client.ts"
+    },
+    "./mail-classification/labels": {
+      "types": "./src/mail-classification/labels.ts",
+      "source": "./src/mail-classification/labels.ts",
+      "import": "./dist/mail-classification/labels.mjs",
+      "default": "./src/mail-classification/labels.ts"
+    },
     "./mail-domains": {
       "types": "./src/mail-domains/index.ts",
       "source": "./src/mail-domains/index.ts",
@@ -1107,6 +1125,12 @@
       "source": "./src/seed/index.ts",
       "import": "./dist/seed/index.mjs",
       "default": "./src/seed/index.ts"
+    },
+    "./seed/ai-category-tags": {
+      "types": "./src/seed/ai-category-tags.ts",
+      "source": "./src/seed/ai-category-tags.ts",
+      "import": "./dist/seed/ai-category-tags.mjs",
+      "default": "./src/seed/ai-category-tags.ts"
     },
     "./seed/entity-migrations": {
       "types": "./src/seed/entity-migrations/index.ts",

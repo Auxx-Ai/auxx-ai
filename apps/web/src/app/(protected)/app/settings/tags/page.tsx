@@ -30,9 +30,10 @@ async function TagsPage() {
           description={
             <>
               Open any tag and turn on <span className='font-medium'>Let AI apply this tag</span> to
-              add it to the set Auxx may apply to incoming mail — its description tells the
-              classifier when it fits. Nothing is classified until you also switch a specific inbox
-              on.
+              add it to the set Auxx may apply to incoming mail. Its description tells the
+              classifier when it fits. For ready made categories, use{' '}
+              <span className='font-medium'>Add Tag &rsaquo; Suggested AI categories</span> below.
+              Nothing is classified until you also switch a specific inbox on.
             </>
           }
           action={

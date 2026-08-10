@@ -53,6 +53,7 @@ import {
   rejectDeleteIfSystemTag,
   rejectIfSystemTag,
 } from './pre/tag-system-guard'
+import { dropUnauthorizedTemplateKey, rejectDeleteIfTemplateTag } from './pre/tag-template-guard'
 import { guardWorkOrderDelete } from './pre/work-order-delete-guard'
 import {
   registerEntityFieldChangeHooks,
@@ -254,7 +255,14 @@ export function registerAllHooks(): void {
   registerFieldPreHooks('tags', 'tag_emoji', [rejectIfSystemTag])
   registerFieldPreHooks('tags', 'tag_color', [rejectIfSystemTag])
   registerFieldPreHooks('tags', 'tag_parent', [rejectIfSystemTag])
-  registerEntityPreDeleteHooks('tags', [rejectDeleteIfSystemTag])
+  // Seeded mail-category guard (plans/mail-filter/06-mail-categories-rework-plan.md §3.2).
+  // A `tag_template_key` marks a shipped category: undeletable, but fully editable —
+  // deliberately NO `rejectIfSystemTag`-style freeze on title/description/emoji/color/parent,
+  // because the description is the classifier's instruction (D4/D5).
+  // The drop hook is what actually enforces invariant 2 (the field's
+  // `capabilities.updatable: false` is not read by the write path).
+  registerFieldPreHooks('tags', 'tag_template_key', [dropUnauthorizedTemplateKey])
+  registerEntityPreDeleteHooks('tags', [rejectDeleteIfSystemTag, rejectDeleteIfTemplateTag])
 
   // Money delete-safety (plans/dispatch/money/12-delete-safety.md §A/§C/§F) — moves the
   // invoice/work-order guard+cleanup logic out of the client-only drawer branch and into the

@@ -78,9 +78,13 @@ export function ToggleCard({
   return (
     <div className={cn('rounded-xl border px-3 py-2.5', className)}>
       <div
-        className={cn('flex items-center justify-between', interactive && 'cursor-pointer')}
+        className={cn('flex items-center justify-between gap-3', interactive && 'cursor-pointer')}
         onClick={interactive ? () => onCheckedChange(!checked) : undefined}>
-        <div className='space-y-0.5 leading-none'>
+        {/* ⚠️ `min-w-0` is load-bearing: without it this flex child sizes to its
+            text's min-content, so a long description (or one carrying a link)
+            pushes the switch out of the row and overflows the card on narrow
+            viewports. `flex-1` keeps it claiming the space the switch does not. */}
+        <div className='min-w-0 flex-1 space-y-0.5 leading-none'>
           <Label
             id={titleId}
             className={cn(
@@ -103,7 +107,10 @@ export function ToggleCard({
             </p>
           )}
         </div>
-        <div onClick={(e) => e.stopPropagation()}>
+        {/* ⚠️ `shrink-0`: a flex child defaults to shrinking, so a long
+            description squeezed the switch and pushed it flush against the
+            card's padding edge. The `gap-3` on the row is the other half. */}
+        <div className='shrink-0' onClick={(e) => e.stopPropagation()}>
           <Switch
             size={switchSize}
             checked={checked}

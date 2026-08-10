@@ -90,10 +90,14 @@ export async function mailClassificationJob(
 
   // Stamp the marker for EVERY completed inference, including the ones that
   // apply nothing (C9): the spend has happened, and re-inferring the same
-  // message would bill twice for the same answer. `'no-default-model'` is the
-  // one exception — nothing was spent and nothing was decided, so the message
-  // stays classifiable once a model is configured.
-  if (result.reason !== 'no-default-model') {
+  // message would bill twice for the same answer.
+  //
+  // ⚠️ Gated on `inferred`, never on the reason. A failed call — no credits, a
+  // provider 429, a network blip — spent nothing and decided nothing, so it must
+  // leave the message classifiable exactly as `'no-default-model'` does. Marking
+  // those disqualified the message forever, silently, for a condition that
+  // typically resolves on its own.
+  if (result.inferred) {
     await markMessageClassified({
       db,
       organizationId,
