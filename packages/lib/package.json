@@ -778,6 +778,12 @@
       "import": "./dist/mail-unsubscribe/index.mjs",
       "default": "./src/mail-unsubscribe/index.ts"
     },
+    "./mail-unsubscribe/client": {
+      "types": "./src/mail-unsubscribe/client.ts",
+      "source": "./src/mail-unsubscribe/client.ts",
+      "import": "./dist/mail-unsubscribe/client.mjs",
+      "default": "./src/mail-unsubscribe/client.ts"
+    },
     "./mail-views": {
       "types": "./src/mail-views/index.ts",
       "source": "./src/mail-views/index.ts",

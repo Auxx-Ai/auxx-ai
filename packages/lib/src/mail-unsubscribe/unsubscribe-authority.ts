@@ -23,9 +23,14 @@ import { ForbiddenError } from '../errors'
  *
  * Declared as a METHOD, so a real `CapabilitySet` whose signature takes the wide
  * `InstanceAccessKey` union stays assignable.
+ *
+ * `canViewInstance` is the **`read` threshold**, which is the rung this gate
+ * wants — see {@link canUnsubscribeOnInbox}. Naming the threshold rather than
+ * the rung is deliberate: if the mail ladder ever gains a tier between
+ * `identity` and `read`, the gate moves with it instead of quietly staying put.
  */
 export interface UnsubscribeAuthorityCapabilities {
-  canEditInstance(key: 'inbox', instanceId: string): boolean
+  canViewInstance(key: 'inbox', instanceId: string): boolean
 }
 
 /**
@@ -46,14 +51,14 @@ export interface UnsubscribeInbox {
  *
  * ```
  *   personal_inbox owned by the caller  →  allowed. NO permission key.
- *   shared inbox (`inbox` def)          →  inbox write authority, and NOTHING else.
+ *   shared inbox (`inbox` def)          →  inbox READ, and NOTHING else.
  * ```
  *
- * **This deliberately diverges from the filter-authoring gate**, which also
- * requires `automationRules.manage`. Unsubscribing is a mail operation, not an
- * automation one; requiring an automation grant to stop a newsletter would gate
- * mail on admin rank, which the mail guide forbids (filters-plan invariant 7).
- * Per-inbox authority is the whole model here.
+ * **This deliberately diverges from the filter-authoring gate**, which requires
+ * `automationRules.manage` AND inbox `admin`. Unsubscribing is a mail operation,
+ * not an automation one; requiring an automation grant to stop a newsletter
+ * would gate mail on admin rank, which the mail guide forbids (filters-plan
+ * invariant 7). Per-inbox authority is the whole model here.
  *
  * The personal branch keys on the inbox's DEFINITION — def membership is the
  * unforgeable half of the mail model. The legacy `isPersonal` marker is honored
@@ -61,14 +66,21 @@ export interface UnsubscribeInbox {
  * `canAuthorOnInbox` in `mail-filter-authoring-access.ts`: personal-ness can be
  * self-declared into a stricter rule, never forged into a laxer one.
  *
- * ⚠️ **Known wrinkle, stated as the threshold rather than the rung.** The mail
- * vocabulary is sparse: `INSTANCE_ACCESS_RESOURCES.inbox` declares
- * `none < metadata < identity < read < admin` with NO `edit` rung, and
- * `canEditInstance` asks for `>= edit` on the ordinal ladder — so on an inbox
- * today the only rung that satisfies it is `admin`. That is stricter than §7.1
- * intends. Writing `canAdminInstance` here would hard-code the coincidence; this
- * way, inserting an `edit` rung into the mail ladder MOVES this gate instead of
- * silently leaving it at admin.
+ * ⚠️ **Why `read`, and why it is written as a threshold** (v2 plan §2.1, user
+ * decision 2026-08-10). `INSTANCE_ACCESS_RESOURCES.inbox` declares
+ * `none < metadata < identity < read < admin` with **no `edit` rung, on purpose**
+ * — mail's `read` already confers acting (reply, assign), so the only tier above
+ * it is managing the mailbox itself. This gate previously asked
+ * `canEditInstance`, which on that sparse ladder resolves to `admin` and made
+ * unsubscribe exactly as strict as authoring a standing filter; §7.1 designed it
+ * as the LOOSER of the two, and the divergence had silently collapsed. A
+ * one-shot command against a list is acting on mail, so it sits with reply and
+ * assign at `read`. Authoring is unchanged: an unattended standing mutation is a
+ * different kind of act.
+ *
+ * It stays a THRESHOLD (`canViewInstance`, i.e. `>= read`) rather than a literal
+ * rung comparison, so a later insertion into the mail ladder moves this gate
+ * with it instead of leaving it pinned to a name.
  */
 export function canUnsubscribeOnInbox(
   inbox: UnsubscribeInbox,
@@ -78,7 +90,7 @@ export function canUnsubscribeOnInbox(
   if (inbox.entityDefinitionKey === 'personal_inbox') return inbox.ownerUserId === userId
   if (inbox.isPersonal) return inbox.ownerUserId === userId
 
-  return capabilities.canEditInstance('inbox', inbox.id)
+  return capabilities.canViewInstance('inbox', inbox.id)
 }
 
 /**

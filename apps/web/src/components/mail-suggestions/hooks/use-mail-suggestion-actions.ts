@@ -90,6 +90,13 @@ export function useMailSuggestionActions(
    *
    * The count is a LOWER BOUND (the preview evaluates under the caller's own
    * viewer while the engine fires as SYSTEM), so the copy says "at least".
+   *
+   * ⚠️ **The two numbers on screen measure different things** (v2 plan §4.5).
+   * The card's evidence line is a SAMPLE — the last `evidence.windowDays` days of
+   * mail, which is all the miner looked at — while this count is every
+   * conversation in the mailbox, however old. "68 emails in 90 days" above
+   * "matches 408 conversations" is both-correct and reads as a bug, so the prompt
+   * names the window rather than leaving the user to reconcile it.
    */
   const acceptFilter = async (): Promise<boolean> => {
     const created = await accept.mutateAsync({ suggestionId: suggestion.id })
@@ -98,9 +105,10 @@ export function useMailSuggestionActions(
       const confirmed = await confirm({
         title: 'Apply this to existing mail?',
         description:
-          `This matches at least ${count} conversation${created.matchCount === 1 ? '' : 's'} ` +
-          'already in this mailbox. Applying runs in the background and every change can be ' +
-          'reversed from the conversation it changed.',
+          `This matches at least ${count} conversation${created.matchCount === 1 ? '' : 's'} in ` +
+          `this mailbox, going back further than the ${suggestion.evidence.windowDays}-day ` +
+          'sample the suggestion was based on. Applying runs in the background and every change ' +
+          'can be reversed from the conversation it changed.',
         confirmText: 'Apply now',
         cancelText: 'Only new mail',
       })
@@ -147,6 +155,19 @@ export function useMailSuggestionActions(
         // block-sender alternative and the filter half is still worth doing.
         if (outcome.status === 'refused') {
           setRefusal(outcome.refusal.message)
+        } else if (outcome.status === 'failed') {
+          // The sender's one-click endpoint REFUSED us (500 / 403 / 410 are all
+          // real answers). Say so — reporting it as done is the defect this
+          // replaces. We deliberately do NOT fall back to opening the URL: a
+          // one-click POST endpoint is not necessarily a browsable confirmation
+          // page, which is why tier 2 exists as its own tier. The row is left
+          // `failed`, so the card re-offers and a second click really retries.
+          toastError({
+            title: 'The sender rejected the unsubscribe',
+            description:
+              'Their unsubscribe endpoint refused the request. You can try again, or block the ' +
+              'sender instead.',
+          })
         } else if (outcome.status === 'requested' && outcome.openUrl) {
           // The `http` tier: we never POST that URL, the user opens it. A blocked
           // popup becomes a link on the card rather than nothing at all.

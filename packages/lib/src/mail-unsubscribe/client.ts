@@ -77,6 +77,69 @@ export type UnsubscribeOffer =
   | { offered: true; method: 'mailto'; mailto: string }
   | UnsubscribeRefusal
 
+/**
+ * What {@link unsubscribeRefusal} needs — the safety gate's inputs, with the
+ * header question reduced to "is there anything to act on at all?".
+ *
+ * The UI holds a denormalized `evidence` row rather than a `Message`, so it
+ * knows only whether a tier was found (`unsubscribeMethod !== null`), never the
+ * raw `unsubscribeMeta`. Taking the boolean is what lets both callers share one
+ * predicate instead of restating the rule.
+ */
+export interface UnsubscribeGateInput {
+  /** Normalized `list-id`, or null when the group is a domain heuristic. */
+  listId: string | null
+  /** DMARC/DKIM verdict. **NULL IS NOT A PASS** — see {@link unsubscribeRefusal}. */
+  senderAuthenticated: boolean | null
+  /** Did the mail carry a usable `List-Unsubscribe` endpoint of any tier? */
+  hasUnsubscribeMethod: boolean
+}
+
+const UNVERIFIED_SENDER_REFUSAL: UnsubscribeRefusal = {
+  offered: false,
+  reason: 'unverified-sender',
+  alternative: 'block-sender',
+  message:
+    'This sender has no mailing-list identity and is not authenticated. Unsubscribing would ' +
+    'confirm your address is live — block the sender or filter it to spam instead.',
+}
+
+const NO_UNSUBSCRIBE_METHOD_REFUSAL: UnsubscribeRefusal = {
+  offered: false,
+  reason: 'no-unsubscribe-method',
+  alternative: 'block-sender',
+  message:
+    'This sender publishes no unsubscribe address. Block the sender or filter it to spam ' +
+    'instead.',
+}
+
+/**
+ * THE refusal predicate (§6.2, invariants 3 & 4) — one implementation, shared by
+ * the server gate below and by the card that has to *explain* the refusal.
+ *
+ * **No `listId` AND not `senderAuthenticated` ⇒ never offer unsubscribe.**
+ * `senderAuthenticated === null` counts as NOT authenticated — the absence of an
+ * `authentication-results` header is not a pass, and coercing the unknown to one
+ * is how you end up POSTing to a spammer's confirmation endpoint. Note the
+ * explicit `!== true`: a truthiness test would agree with this on `boolean |
+ * null` today and diverge the moment the column carried anything else.
+ * Outlook/IMAP history legitimately lands here until the header starts arriving;
+ * the conservative branch is the correct answer for it.
+ *
+ * ⚠️ This is deliberately ONE function rather than a server rule plus a UI
+ * paraphrase. The UI's copy is explanation-only — {@link selectUnsubscribeMethod}
+ * re-runs against the freshest message on every real attempt — but a paraphrase
+ * that agrees on day one is exactly the pair that drifts silently, and the
+ * failure mode is a card promising an unsubscribe the executor will refuse.
+ *
+ * @returns the refusal to render, or `null` when the gate passes.
+ */
+export function unsubscribeRefusal(input: UnsubscribeGateInput): UnsubscribeRefusal | null {
+  if (!input.listId && input.senderAuthenticated !== true) return UNVERIFIED_SENDER_REFUSAL
+  if (!input.hasUnsubscribeMethod) return NO_UNSUBSCRIBE_METHOD_REFUSAL
+  return null
+}
+
 /** Inputs the gate + tier selection read. All four come off one `Message` row. */
 export interface UnsubscribeCandidate {
   /** Normalized `list-id`, or null when the group is a domain heuristic. */
@@ -109,12 +172,8 @@ export function parseUnsubscribeMeta(raw: unknown): UnsubscribeMeta | null {
 /**
  * THE safety gate + tier selection (§6.1, §6.2, invariants 3 & 4).
  *
- * The gate first: **no `listId` AND not `senderAuthenticated` ⇒ never offer
- * unsubscribe.** `senderAuthenticated === null` counts as NOT authenticated —
- * the absence of an `authentication-results` header is not a pass, and coercing
- * the unknown to one is how you end up POSTing to a spammer's confirmation
- * endpoint. Outlook/IMAP history legitimately lands here until the header starts
- * arriving; the conservative branch is the correct answer for it.
+ * The gate first, via {@link unsubscribeRefusal} — the same predicate the card
+ * renders its explanation from.
  *
  * Then the tier, chosen by header and never by provider:
  *
@@ -129,42 +188,21 @@ export function parseUnsubscribeMeta(raw: unknown): UnsubscribeMeta | null {
  */
 export function selectUnsubscribeMethod(candidate: UnsubscribeCandidate): UnsubscribeOffer {
   const { listId, senderAuthenticated, unsubscribeMeta } = candidate
+  const { httpUrl, mailto, oneClick } = unsubscribeMeta ?? { oneClick: false }
 
-  if (!listId && senderAuthenticated !== true) {
-    return {
-      offered: false,
-      reason: 'unverified-sender',
-      alternative: 'block-sender',
-      message:
-        'This sender has no mailing-list identity and is not authenticated. Unsubscribing would ' +
-        'confirm your address is live — block the sender or filter it to spam instead.',
-    }
-  }
+  const refusal = unsubscribeRefusal({
+    listId,
+    senderAuthenticated,
+    hasUnsubscribeMethod: Boolean(httpUrl || mailto),
+  })
+  if (refusal) return refusal
 
-  if (!unsubscribeMeta) {
-    return {
-      offered: false,
-      reason: 'no-unsubscribe-method',
-      alternative: 'block-sender',
-      message:
-        'This sender publishes no unsubscribe address. Block the sender or filter it to spam ' +
-        'instead.',
-    }
-  }
-
-  const { httpUrl, mailto, oneClick } = unsubscribeMeta
   if (oneClick && httpUrl) return { offered: true, method: 'one-click', httpUrl }
   if (httpUrl) return { offered: true, method: 'http', httpUrl }
   if (mailto) return { offered: true, method: 'mailto', mailto }
 
-  return {
-    offered: false,
-    reason: 'no-unsubscribe-method',
-    alternative: 'block-sender',
-    message:
-      'This sender publishes no unsubscribe address. Block the sender or filter it to spam ' +
-      'instead.',
-  }
+  // Unreachable: the gate above already refused a meta with neither operand.
+  return NO_UNSUBSCRIBE_METHOD_REFUSAL
 }
 
 /**

@@ -96,11 +96,9 @@ describe(`resolveSweepUpdate — the ${UNSUBSCRIBE_IGNORED_AFTER_DAYS}-day 'igno
     expect(update?.status).toBe('ignored')
   })
 
-  it.each([
-    'confirmed',
-    'failed',
-    'ignored',
-  ] as const)("never flips a '%s' row — only 'requested' can become ignored", (status) => {
+  it.each(['failed', 'ignored'] as const)("never flips a '%s' row", (status) => {
+    // `failed` means we never got through, so counting the sender's mail against
+    // our own failure is the wrong attribution; `ignored` is already terminal.
     const update = resolveSweepUpdate(
       row({
         status,
@@ -111,6 +109,33 @@ describe(`resolveSweepUpdate — the ${UNSUBSCRIBE_IGNORED_AFTER_DAYS}-day 'igno
     )
     expect(update?.status).toBeUndefined()
     expect(update?.messagesSeenAfter).toBe(9)
+  })
+
+  it("DOES flip a 'confirmed' row — a 2xx is a promise, not the mail stopping", () => {
+    // V1's companion rule. The one-click endpoint answering 200 is the only
+    // acknowledgement any tier gets, and RFC 8058 says nothing about when (or
+    // whether) the list actually drops the address. Letting `confirmed`
+    // short-circuit the flip would make the one tier that tells us anything the
+    // only tier we never audit.
+    const update = resolveSweepUpdate(
+      row({ status: 'confirmed', requestedAt: new Date(NOW.getTime() - 90 * DAY_MS) }),
+      { messagesSeenAfter: 9, lastSeenAfterAt: NOW },
+      NOW
+    )
+    expect(update?.status).toBe('ignored')
+    expect(update?.messagesSeenAfter).toBe(9)
+  })
+
+  it("a quiet 'confirmed' sender is never called ignored", () => {
+    // Silence past the deadline is the sender HONORING us — the flip needs BOTH
+    // the deadline and mail that actually kept arriving.
+    expect(
+      resolveSweepUpdate(
+        row({ status: 'confirmed', requestedAt: new Date(NOW.getTime() - 90 * DAY_MS) }),
+        { messagesSeenAfter: 0, lastSeenAfterAt: null },
+        NOW
+      )
+    ).toBeNull()
   })
 })
 
@@ -192,6 +217,24 @@ describe('sweepMailUnsubscribes', () => {
 
     expect(stats).toEqual({ scanned: 1, updated: 1, markedIgnored: 1 })
     expect(updates[0]).toMatchObject({ status: 'ignored', messagesSeenAfter: 6 })
+  })
+
+  it('flips a CONFIRMED sender that kept mailing — a 200 buys no exemption', async () => {
+    const { db, updates } = fakeDb(
+      [
+        row({
+          id: 'unsub_confirmed',
+          status: 'confirmed',
+          requestedAt: new Date(NOW.getTime() - 20 * DAY_MS),
+        }),
+      ],
+      [{ messagesSeenAfter: 4, lastSeenAfterAt: NOW }]
+    )
+
+    const stats = await sweepMailUnsubscribes(db, { now: NOW })
+
+    expect(stats).toEqual({ scanned: 1, updated: 1, markedIgnored: 1 })
+    expect(updates[0]).toMatchObject({ status: 'ignored', messagesSeenAfter: 4 })
   })
 
   it('skips an unparseable subject key instead of aborting the whole sweep', async () => {

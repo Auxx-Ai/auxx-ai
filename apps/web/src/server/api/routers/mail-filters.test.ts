@@ -64,6 +64,13 @@ const hoisted = vi.hoisted(() => {
   const OWN_FILTER = 'mfl_own00000000000000000000'
   const OTHER_FILTER = 'mfl_other00000000000000000'
   /**
+   * A filter on the 059→060 migration-window mailbox: SHARED def, personal
+   * marker, somebody else's. It is the row that separates "personal by
+   * definition" from "personal in fact", and a refusal keyed on the def alone
+   * would name it.
+   */
+  const LEGACY_FILTER = 'mfl_legacy00000000000000000'
+  /**
    * A filter id with NO row — `MailFilterRun.filterId` carries no FK on purpose,
    * so a run whose filter was deleted is a real, expected state.
    */
@@ -139,6 +146,7 @@ const hoisted = vi.hoisted(() => {
     [SHARED_FILTER]: SHARED_INBOX,
     [OWN_FILTER]: OWN_PERSONAL,
     [OTHER_FILTER]: OTHER_PERSONAL,
+    [LEGACY_FILTER]: LEGACY_PERSONAL,
   }
 
   const filterRow = (id: string) => ({
@@ -455,6 +463,7 @@ const hoisted = vi.hoisted(() => {
     SHARED_FILTER,
     OWN_FILTER,
     OTHER_FILTER,
+    LEGACY_FILTER,
     GONE_FILTER,
     THREAD_ID,
     FOREIGN_THREAD,
@@ -493,6 +502,8 @@ const {
   SHARED_FILTER,
   OWN_FILTER,
   OTHER_FILTER,
+  LEGACY_FILTER,
+  GONE_FILTER,
   THREAD_ID,
   FOREIGN_THREAD,
   RUN_OWN,
@@ -742,13 +753,14 @@ describe('mailFilters router — §5.1 authorship', () => {
     expect(gate).toEqual([])
   })
 
+  /** V6 — the refusal is 404, not 403. The full matrix is its own describe below. */
   it("refuses to mutate another member's personal filter", async () => {
     world.capabilities.add(AUTOMATION_KEY)
     world.writableInboxIds.add(OTHER_PERSONAL)
 
     await expect(
       caller().setEnabled({ filterId: OTHER_FILTER, enabled: false })
-    ).rejects.toMatchObject(FORBIDDEN)
+    ).rejects.toMatchObject(NOT_FOUND)
     expect(lib.setMailFilterEnabled).not.toHaveBeenCalled()
   })
 
@@ -817,6 +829,96 @@ describe('mailFilters router — §5.1 authorship', () => {
       })
     }
   })
+})
+
+/**
+ * V6 (`plans/mail-filter/04-v2-plan.md` §1.3) — the SHAPE of the refusal on the
+ * four filter-addressed write paths.
+ *
+ * §5.1 promises a personal filter you do not own is indistinguishable from one
+ * that does not exist. The read paths kept that promise; these four answered
+ * 403, which is an existence oracle for a guessed CUID. They now answer 404 —
+ * **with the same message** `getMailFilterById` uses, because a distinct string
+ * is a distinguishing signal even when the status matches.
+ *
+ * A shared-inbox filter deliberately stays 403: the caller can see that inbox,
+ * so "you need permission to manage automation rules" is the actionable answer
+ * rather than a lie. Flattening the two into one code is the failure mode this
+ * block exists to catch, in BOTH directions — hence the positive controls.
+ */
+describe('mailFilters router — 404 vs 403 on the filter write paths', () => {
+  /** Byte-identical to what `getMailFilterById` answers for an id with no row. */
+  const GONE = { cause: { statusCode: 404, message: 'Filter not found' } }
+
+  const writes: Array<{
+    name: 'update' | 'setEnabled' | 'delete' | 'applyRetroactively'
+    input: (filterId: string) => object
+    helper: () => unknown
+  }> = [
+    {
+      name: 'update',
+      input: (filterId) => ({ filterId, name: 'Renamed' }),
+      helper: () => lib.updateMailFilter,
+    },
+    {
+      name: 'setEnabled',
+      input: (filterId) => ({ filterId, enabled: false }),
+      helper: () => lib.setMailFilterEnabled,
+    },
+    { name: 'delete', input: (filterId) => ({ filterId }), helper: () => lib.deleteMailFilter },
+    {
+      name: 'applyRetroactively',
+      input: (filterId) => ({ filterId }),
+      helper: () => lib.applyRetroactively,
+    },
+  ]
+
+  const invoke = (op: string, input: object) =>
+    (caller() as unknown as Record<string, (arg: unknown) => Promise<unknown>>)[op]!(input)
+
+  for (const { name, input, helper } of writes) {
+    it(`${name} 404s another member's personal filter, even for an admin`, async () => {
+      // `Inboxes: Full` composes write on EVERY inbox and the key is held — the
+      // strongest caller in the org still gets not-found (§5.1: no override).
+      asAutomationAdmin()
+
+      await expect(invoke(name, input(OTHER_FILTER))).rejects.toMatchObject(GONE)
+      expect(helper()).not.toHaveBeenCalled()
+      expect(gate).toEqual([])
+    })
+
+    it(`${name} 404s a personal mailbox still on the SHARED def`, async () => {
+      // The 059→060 window. Keyed on the def alone this row reads as shared and
+      // would 403 — naming somebody's private mailbox.
+      asAutomationAdmin()
+
+      await expect(invoke(name, input(LEGACY_FILTER))).rejects.toMatchObject(GONE)
+      expect(helper()).not.toHaveBeenCalled()
+    })
+
+    it(`${name} 404s an id with no row at all`, async () => {
+      asAutomationAdmin()
+
+      await expect(invoke(name, input(GONE_FILTER))).rejects.toMatchObject(GONE)
+      expect(helper()).not.toHaveBeenCalled()
+    })
+
+    it(`${name} 403s a shared-inbox filter the caller may not author on`, async () => {
+      // Holds the key, writes to no inbox. The inbox is org inventory the caller
+      // can see, so hiding it behind a 404 would be a lie, not a protection.
+      world.capabilities.add(AUTOMATION_KEY)
+
+      await expect(invoke(name, input(SHARED_FILTER))).rejects.toMatchObject(FORBIDDEN)
+      expect(helper()).not.toHaveBeenCalled()
+    })
+
+    it(`${name} succeeds for the owner of the personal filter, with no key`, async () => {
+      await invoke(name, input(OWN_FILTER))
+
+      expect(helper()).toHaveBeenCalledTimes(1)
+      expect(gate).toEqual([])
+    })
+  }
 })
 
 /** Invariant 15 — server-side rejection, not a hidden catalog entry. */
@@ -1304,11 +1406,12 @@ describe('mailFilters router — applyRetroactively', () => {
     expect(lib.loadBackfillableFilter).not.toHaveBeenCalled()
   })
 
+  /** V6 — 404, so the largest mutation the feature has is not an existence oracle. */
   it("refuses another member's personal filter", async () => {
     asAutomationAdmin()
 
     await expect(caller().applyRetroactively({ filterId: OTHER_FILTER })).rejects.toMatchObject(
-      FORBIDDEN
+      NOT_FOUND
     )
     expect(lib.applyRetroactively).not.toHaveBeenCalled()
   })

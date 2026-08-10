@@ -42,8 +42,8 @@ import { mailFiltersRouter } from './mail-filters'
  * | Operation | Gate |
  * | --- | --- |
  * | listing cards | {@link loadMailSuggestionScope}, in SQL — personal ⇒ owner only |
- * | dismissing | inbox write — it silences that sender for everyone, permanently |
- * | unsubscribing | `assertCanUnsubscribe` — inbox write, NO automation key (§7.1) |
+ * | dismissing | inbox read — the same authority unsubscribing needs |
+ * | unsubscribing | `assertCanUnsubscribe` — inbox read, NO automation key (§7.1) |
  * | accepting (⇒ a filter) | `assertCanAuthorMailFilters` — the ordinary filter gate |
  *
  * **The suggestion is a PREFILL, never an authorization path** (invariant 10).
@@ -72,10 +72,11 @@ interface MailSuggestionScope {
  *   confers no override — that predicate branches on the inbox DEFINITION, so
  *   personal-ness cannot be forged, only self-declared into a stricter rule.
  * - The filter-authoring set is a strict SUBSET of this one (authoring wants
- *   `automationRules.manage` *and* inbox write; unsubscribing wants inbox write
- *   alone), so scoping visibility here can never hide a card its viewer could
- *   have accepted — while a mere reader, who could act on nothing, is not shown
- *   an action prompt they cannot answer.
+ *   `automationRules.manage` *and* inbox `admin`; unsubscribing wants inbox
+ *   `read` alone), so scoping visibility here can never hide a card its viewer
+ *   could have accepted — and a member who can read the mailbox can answer every
+ *   prompt the card offers, because mail's `read` is the rung that confers
+ *   acting.
  *
  * One computation, two consumers (`list` and `count`), so the badge and the cards
  * cannot drift. The mutations re-derive authority per operation against the row
@@ -83,7 +84,7 @@ interface MailSuggestionScope {
  */
 async function loadMailSuggestionScope(ctx: {
   session: { organizationId: string; userId: string }
-  capabilities: { canEditInstance(key: 'inbox', instanceId: string): boolean }
+  capabilities: { canViewInstance(key: 'inbox', instanceId: string): boolean }
 }): Promise<MailSuggestionScope> {
   const inboxes = await getOrgCache().get(ctx.session.organizationId, 'inboxes')
   const visible = inboxes.filter((inbox) =>
@@ -238,9 +239,12 @@ export const mailSuggestionsRouter = createTRPCRouter({
       const organizationId = ctx.session.organizationId
       const { inbox } = await loadSuggestionForWrite(ctx.db, ctx, input.suggestionId)
       /**
-       * The same inbox-write authority unsubscribing needs, because dismissal is
-       * an org-level decision on a shared mailbox: it silences that sender's card
-       * permanently, for everyone, and the next weekly sweep honours it.
+       * The same inbox authority unsubscribing needs, deliberately one predicate
+       * rather than two: dismissal is the *decline* half of the same decision,
+       * and a member who may stop the mail outright but not decline the
+       * suggestion about it would be an incoherent pair of gates. It is still an
+       * org-level act on a shared mailbox — the card is silenced permanently,
+       * for everyone, and the next weekly sweep honours it.
        */
       if (!canUnsubscribeOnInbox(inbox, ctx.session.userId, ctx.capabilities)) {
         throw new ForbiddenError("You don't have permission to change this mailbox's suggestions.")
@@ -316,15 +320,22 @@ export const mailSuggestionsRouter = createTRPCRouter({
   /**
    * Unsubscribe this inbox from the card's list (§6).
    *
-   * ⚠️ Gated on **inbox write alone** — `assertCanUnsubscribe`, and deliberately
-   * NOT `automationRules.manage` (§7.1). Unsubscribing is a mail operation, not
-   * an automation one; requiring an automation grant to stop a newsletter would
-   * gate mail on admin rank, which the mail guide forbids.
+   * ⚠️ Gated on **inbox `read` alone** — `assertCanUnsubscribe`, and deliberately
+   * NOT `automationRules.manage` (§7.1, v2 plan §2.1). Unsubscribing is a mail
+   * operation, not an automation one; requiring an automation grant to stop a
+   * newsletter would gate mail on admin rank, which the mail guide forbids. Mail's
+   * `read` is the rung that confers acting (reply, assign), and a one-shot command
+   * against a list belongs with them — authoring a standing filter does not, and
+   * keeps its stricter gate.
    *
    * `refused` comes back as an OUTCOME, not an error: "we won't unsubscribe from
    * this, block the sender instead" is a legitimate answer the card renders.
    * `openUrl` is set for the `http` tier only — we hand that URL to the client to
    * open, and never fetch it ourselves.
+   *
+   * The returned `status` is what the tier ACHIEVED: only the one-click tier is
+   * acknowledged, so only it can come back `confirmed` or `failed`; `http` and
+   * `mailto` stay `requested`.
    */
   unsubscribe: capabilityProcedure
     .input(z.object({ suggestionId: z.string().min(1) }))
@@ -355,7 +366,7 @@ export const mailSuggestionsRouter = createTRPCRouter({
    * prevention, not a polite request.
    *
    * ⚠️ **This is a THIRD authority, stricter than the other two.** Unsubscribe and
-   * dismiss are gated on inbox write; blocking writes `ChannelSettings.excludeSenders`
+   * dismiss are gated on inbox read; blocking writes `ChannelSettings.excludeSenders`
    * on the *channel*, one step EARLIER than a filter — `shouldIgnoreMessage` runs
    * before the write, so blocked mail never becomes a thread at all
    * (mail-filters §3.5). It affects every inbox fed by that channel, not just this
@@ -376,7 +387,11 @@ export const mailSuggestionsRouter = createTRPCRouter({
       const organizationId = ctx.session.organizationId
       const { suggestion, inbox } = await loadSuggestionForWrite(ctx.db, ctx, input.suggestionId)
 
-      // Inbox write first: without it you may not act on this mail at all.
+      // Inbox authority FIRST, and the ordering is load-bearing: without it you
+      // may not act on this mail at all, so a caller who cannot reach the
+      // mailbox never learns anything about the channel behind it. The channel
+      // layer below is a separate, stricter gate — never a substitute for this
+      // one, and never reached before it.
       assertCanUnsubscribe(inbox, ctx.session.userId, ctx.capabilities)
 
       const targetResult = await resolveUnsubscribeTarget(

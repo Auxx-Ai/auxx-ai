@@ -36,6 +36,26 @@ export interface SweepableUnsubscribe {
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /**
+ * The statuses this sweep still has something to say about — both which rows it
+ * LOADS and which rows the `ignored` flip may move. One list, because those are
+ * the same question: measuring a row we would never flip is work with no answer
+ * attached.
+ *
+ * **`confirmed` is in here deliberately.** A 2xx from an RFC 8058 endpoint is
+ * the sender's *promise*, not the mail stopping — the spec says nothing about
+ * when (or whether) the list actually drops the address, and a sender that keeps
+ * mailing after answering 200 is precisely what the "Stripe ignored your
+ * unsubscribe" surface exists to catch. Letting `confirmed` short-circuit the
+ * flip would make the one tier that tells us anything the only tier we never
+ * audit.
+ *
+ * `failed` and `ignored` stay out. We never got through on a `failed` row, so
+ * counting the sender's mail against our own failure is the wrong attribution
+ * (and the executor re-offers it instead); `ignored` is already terminal.
+ */
+const SWEEPABLE_STATUSES: UnsubscribeStatus[] = ['requested', 'confirmed']
+
+/**
  * Decide what to write for one row, or `null` for "nothing changed".
  *
  * The `ignored` flip needs BOTH conditions and neither alone:
@@ -47,9 +67,8 @@ const DAY_MS = 24 * 60 * 60 * 1000
  *   is the sender HONORING us, and marking that `ignored` would be exactly
  *   backwards.
  *
- * Only `requested` flips. `confirmed` means the endpoint told us it worked and
- * `failed` means we never got through — neither is a claim the sender ignored
- * us — and `ignored` is already terminal.
+ * Which rows may flip at all is {@link SWEEPABLE_STATUSES} — `requested` AND
+ * `confirmed`, for the reason recorded there.
  *
  * Returns `null` when nothing moved, so the job writes only rows that changed
  * rather than touching every row every night.
@@ -61,7 +80,8 @@ export function resolveSweepUpdate(
 ): { messagesSeenAfter: number; lastSeenAfterAt: Date | null; status?: UnsubscribeStatus } | null {
   const pastDeadline =
     now.getTime() - row.requestedAt.getTime() >= UNSUBSCRIBE_IGNORED_AFTER_DAYS * DAY_MS
-  const shouldFlip = row.status === 'requested' && pastDeadline && observation.messagesSeenAfter > 0
+  const shouldFlip =
+    SWEEPABLE_STATUSES.includes(row.status) && pastDeadline && observation.messagesSeenAfter > 0
 
   const countChanged = observation.messagesSeenAfter !== row.messagesSeenAfter
   const seenChanged =
@@ -117,15 +137,6 @@ export async function countMessagesSinceUnsubscribe(
 /** Rows loaded per pass — bounds memory and keeps each write short. */
 export const UNSUBSCRIBE_SWEEP_BATCH = 500
 
-/**
- * Statuses still worth measuring.
- *
- * `ignored` is terminal (we already concluded they don't honor it) and `failed`
- * means the request never got through — counting THEIR mail against OUR failure
- * would be the wrong attribution.
- */
-const OPEN_STATUSES: UnsubscribeStatus[] = ['requested', 'confirmed']
-
 export interface SweepMailUnsubscribesStats {
   scanned: number
   updated: number
@@ -177,7 +188,7 @@ export async function sweepMailUnsubscribes(
       .from(schema.MailUnsubscribe)
       .where(
         and(
-          inArray(schema.MailUnsubscribe.status, OPEN_STATUSES),
+          inArray(schema.MailUnsubscribe.status, SWEEPABLE_STATUSES),
           ...(cursor ? [gt(schema.MailUnsubscribe.id, cursor)] : [])
         )
       )

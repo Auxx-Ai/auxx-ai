@@ -31,6 +31,7 @@ import { getUserSetting, updateUserSetting } from '@auxx/lib/settings'
 import { z } from 'zod'
 import {
   assertCanAuthorMailFilters,
+  assertCanMutateMailFilter,
   loadMailFilterAuthority,
   type MailFilterAuthority,
 } from '~/server/lib/mail-filter-authoring-access'
@@ -176,6 +177,11 @@ function assertActionDestinationsAllowed(
  * an authorization decision ever being made, so a 403 can never be used as an
  * existence oracle. `inboxId` is not patchable (the lib omits it from
  * `UpdateMailFilterInput`), so the stored inbox is always the one to judge.
+ *
+ * `assertCanMutateMailFilter`, not `assertCanAuthorMailFilters` (V6): the caller
+ * addressed a FILTER here, so a refusal on somebody else's personal mailbox has
+ * to read as `NotFoundError` — 403 was an existence oracle for the one thing
+ * §5.1 promises is never disclosed. Shared-inbox filters still 403.
  */
 async function loadFilterForWrite(
   db: Parameters<typeof getMailFilterById>[0],
@@ -185,7 +191,7 @@ async function loadFilterForWrite(
 ) {
   const result = await getMailFilterById(db, organizationId, filterId)
   if (result.isErr()) throw result.error
-  assertCanAuthorMailFilters(authority, result.value.inboxId)
+  assertCanMutateMailFilter(authority, result.value)
   return result.value
 }
 

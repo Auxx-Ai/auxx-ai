@@ -1,7 +1,7 @@
 // apps/web/src/server/lib/mail-filter-authoring-access.ts
 
 import { getOrgCache } from '@auxx/lib/cache'
-import { ForbiddenError } from '@auxx/lib/errors'
+import { ForbiddenError, NotFoundError } from '@auxx/lib/errors'
 import type { Inbox } from '@auxx/lib/inboxes'
 import type { InstanceAccessKey } from '@auxx/lib/permissions/capabilities/instance-access'
 import { PermissionKey } from '@auxx/lib/permissions/capabilities/registry'
@@ -22,9 +22,12 @@ import { PermissionKey } from '@auxx/lib/permissions/capabilities/registry'
  * **One computation, three consumers.** `mailFilters.list` scopes its SQL with
  * {@link MailFilterAuthority.inboxIds}, `mailFilters.authorableInboxes` renders
  * {@link MailFilterAuthority.inboxes}, and every mutation asserts through
- * {@link assertCanAuthorMailFilters} against the same map. They cannot drift,
- * which is what invariant 11 asks for now that the `settings/rules` page guard
- * is gone and the router is the only gate left.
+ * {@link assertCanAuthorMailFilters} / {@link assertCanMutateMailFilter} against
+ * the same map. They cannot drift, which is what invariant 11 asks for now that
+ * the `settings/rules` page guard is gone and the router is the only gate left.
+ *
+ * The two asserts differ ONLY in the shape of the refusal, never in who is
+ * refused — see {@link assertCanMutateMailFilter}.
  *
  * Deep permission imports rather than the `@auxx/lib/permissions` barrel: the
  * barrel hangs under vitest (the `snippet-instance-access.ts` precedent), and
@@ -65,6 +68,24 @@ export interface MailFilterAuthority {
   inboxIds: string[]
   /** Lookup for the per-mutation assert. */
   byId: Map<string, AuthorableInbox>
+  /**
+   * Every inbox in the org whose EXISTENCE is not private — i.e. every inbox on
+   * the shared `inbox` def, authorable or not.
+   *
+   * This set decides the SHAPE of a refusal, never who is refused
+   * (`plans/mail-filter/04-v2-plan.md` §1.3, V6). §5.1 says a personal filter
+   * you do not own must be indistinguishable from a filter that does not exist,
+   * so refusing one has to read as 404 — while a shared inbox is org inventory
+   * the caller can already see, and answering 404 there would hide the one thing
+   * they can act on ("ask for `automationRules.manage`").
+   *
+   * The legacy-marker row is EXCLUDED for the same reason
+   * {@link canAuthorOnInbox} excludes it: between entity migration 059 and data
+   * migration 060 a private mailbox still sits on the shared def, and disclosing
+   * it by def alone would name somebody's personal mailbox. The marker narrows
+   * here too — it can only ever move a row from "disclosable" to "private".
+   */
+  disclosableInboxIds: Set<string>
   /**
    * Whether the caller holds `automationRules.manage`. Carried on the authority
    * because invariant 15 needs it a second time, on the ACTION list: an author
@@ -148,6 +169,11 @@ export function mailFilterAuthority(args: {
     inboxes: authorable,
     inboxIds: authorable.map((inbox) => inbox.id),
     byId: new Map(authorable.map((inbox) => [inbox.id, inbox])),
+    disclosableInboxIds: new Set(
+      inboxes
+        .filter((inbox) => inbox.entityDefinitionKey !== 'personal_inbox' && !inbox.isPersonal)
+        .map((inbox) => inbox.id)
+    ),
     hasAutomationKey,
   }
 }
@@ -176,10 +202,16 @@ export async function loadMailFilterAuthority(
 /**
  * Assert the §5.1 branch for one inbox and return its authorable descriptor.
  *
- * Called by EVERY mutating procedure — create, update, setEnabled, reorder and
- * delete — rather than once at create. Rights change after a filter is written
- * and an inbox can be moved between definitions, so authorization is re-derived
- * on each write from the state it is being written against.
+ * The INBOX-ADDRESSED assert: the caller named the inbox itself (create,
+ * reorder, previewMatchCount, a `move-inbox` destination, a prompt dismissal),
+ * so the refusal is about that inbox and 403 is the honest answer. The
+ * FILTER-addressed paths go through {@link assertCanMutateMailFilter} instead,
+ * which has one more thing to protect.
+ *
+ * Called by EVERY mutating procedure rather than once at create. Rights change
+ * after a filter is written and an inbox can be moved between definitions, so
+ * authorization is re-derived on each write from the state it is being written
+ * against.
  *
  * @throws ForbiddenError when the caller may not author on this inbox.
  */
@@ -192,4 +224,43 @@ export function assertCanAuthorMailFilters(
     throw new ForbiddenError("You don't have permission to manage filters for this inbox.")
   }
   return inbox
+}
+
+/**
+ * The same §5.1 branch, for a write addressed by FILTER id — update, setEnabled,
+ * delete, applyRetroactively (V6, `plans/mail-filter/04-v2-plan.md` §1.3).
+ *
+ * Identical in WHO it refuses; different in WHAT the refusal admits:
+ *
+ * ```
+ *   authorable                        →  allowed
+ *   filter on a shared inbox          →  403, the caller can see the inbox
+ *   filter on someone else's personal →  404, verbatim `getMailFilterById`'s
+ *   inbox (incl. the legacy-marker       "Filter not found" — indistinguishable
+ *   row on the shared def)               from an id with no row
+ * ```
+ *
+ * §5.1 promises that a personal filter is never disclosed to anyone else, and
+ * `list` / `get` / `runs` / `undoRun` all keep that promise by answering
+ * not-found. A 403 here broke it: it is an existence oracle for a guessed CUID,
+ * confirming that a colleague's private mailbox holds that filter. Flattening
+ * the shared case into 404 as well would over-correct — that filter IS visible
+ * inventory to a member who can see the inbox, and "you need permission" is the
+ * actionable answer rather than a lie.
+ *
+ * @throws NotFoundError when the filter sits on a personal inbox that is not the
+ *   caller's — same class and same message as a filter that does not exist.
+ * @throws ForbiddenError when it sits on a shared inbox the caller cannot author
+ *   on.
+ */
+export function assertCanMutateMailFilter(
+  authority: MailFilterAuthority,
+  filter: { inboxId: string }
+): AuthorableInbox {
+  const inbox = authority.byId.get(filter.inboxId)
+  if (inbox) return inbox
+  if (authority.disclosableInboxIds.has(filter.inboxId)) {
+    throw new ForbiddenError("You don't have permission to manage filters for this inbox.")
+  }
+  throw new NotFoundError('Filter not found')
 }
