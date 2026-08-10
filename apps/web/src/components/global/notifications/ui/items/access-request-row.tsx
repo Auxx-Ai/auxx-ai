@@ -18,7 +18,7 @@ import { api } from '~/trpc/react'
 import { Emphasis } from '../notification-chips'
 import { NotificationRow } from '../notification-row'
 
-type PendingApprovalRequest = RouterOutputs['approval']['getPendingRequests'][number]
+type PendingApprovalRequest = RouterOutputs['approval']['list']['items'][number]
 
 const TIMESTAMP_FORMAT = 'MMM d, yyyy h:mm a'
 

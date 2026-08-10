@@ -16,6 +16,7 @@ import {
   and,
   arrayContains,
   arrayOverlaps,
+  asc,
   count,
   desc,
   eq,
@@ -25,6 +26,7 @@ import {
   isNull,
   lte,
   ne,
+  not,
   or,
   type SQL,
   sql,
@@ -91,24 +93,118 @@ function assignedTo(userId: string, userGroupIds: string[]): SQL | undefined {
 }
 
 /**
- * Every pending approval waiting on one member — both kinds, in one list.
+ * "This request can still be decided" — the `pending` view's predicate, and the
+ * NEGATION of the `past` view's.
+ *
+ * Defining the two views as `p` and `NOT p` over one builder is what makes them a
+ * PARTITION: every row the member can see is in exactly one of them. Spelling
+ * `past` out as a status list instead would silently strand the rows that are
+ * dead without being terminal — a `pending` access request whose 14-day
+ * `expiresAt` lapsed is never rewritten to `timeout` (only the workflow lane has a
+ * cleanup, `cleanupApprovalsForWorkflowRun`), so a status-list `past` would drop
+ * it from both surfaces and it would exist nowhere in the UI.
+ *
+ * `not()` is sound here only because none of the three conjuncts can evaluate to
+ * NULL (`NOT NULL` is NULL, which would silently exclude the row — the same shape
+ * of bug H1 and its sibling were): `status` is NOT NULL; {@link notExpired} is an
+ * `IS NULL` disjunction; and {@link runStillActiveOrNotWorkflow}'s first arm is
+ * TRUE for every non-workflow row, while a workflow row always has an FK-backed
+ * run to join (`ApprovalRequest_workflow_columns_check`).
+ */
+function stillActionable(): SQL {
+  // Narrowed here rather than at the `not()` call site: `and()` is typed
+  // `SQL | undefined` because it returns undefined when EVERY argument is, and
+  // `eq()` on a non-null column never is. `not()` is the one caller that cannot
+  // take the wider type.
+  return and(
+    eq(schema.ApprovalRequest.status, ApprovalStatus.pending),
+    notExpired(),
+    runStillActiveOrNotWorkflow()
+  ) as SQL
+}
+
+/** Which slice of the member's approvals to list. */
+export type ApprovalListView = 'pending' | 'past'
+
+export interface ListApprovalsForUserArgs {
+  /** Defaults to `pending`, which is the pre-history behaviour of this query. */
+  view?: ApprovalListView
+  cursor?: string
+  limit?: number
+}
+
+function encodeApprovalCursor(createdAt: Date, id: string): string {
+  return Buffer.from(`${createdAt.toISOString()}|${id}`).toString('base64url')
+}
+
+function decodeApprovalCursor(cursor?: string): { createdAt: Date; id: string } | undefined {
+  if (!cursor) return undefined
+  const [createdAt, id] = Buffer.from(cursor, 'base64url').toString('utf8').split('|')
+  if (!createdAt || !id) return undefined
+  const parsed = new Date(createdAt)
+  return Number.isNaN(parsed.getTime()) ? undefined : { createdAt: parsed, id }
+}
+
+/**
+ * One member's approvals — both kinds, in one list, in either of two views.
+ *
+ * - `pending` (default) is what still needs a decision FROM THIS MEMBER, so its
+ *   audience is the assignee set alone.
+ * - `past` is what this member was INVOLVED IN, so the audience additionally
+ *   admits the rows they filed themselves. Without that, a requester could never
+ *   see the outcome of their own access request: a requester is never in
+ *   `assigneeUsers`, and a `denied` row is the one case where they got no access
+ *   to hydrate the target from either.
+ *
+ * The two audiences are deliberately asymmetric. Folding `createdById` into the
+ * pending audience too would surface a member's own open request under "needs a
+ * decision", which they cannot act on.
  *
  * The access-lane columns are projected alongside the workflow ones because the
  * rows H1 stopped excluding are useless to the Approvals tab without them.
  *
- * `requester` is resolved for the whole list in ONE org-member cache read rather
- * than a `User` join or a per-row query (plan 42 §6.2's rule, applied to the
- * approver side): "who asked" is the lead of an access row's collapsed copy, so it
- * cannot be deferred to the lazily-fetched detail drawer without the row rendering
- * anonymous. `null` for workflow rows, which have no requester.
+ * `requester` and (for decided rows) `decision.by` are resolved for the whole page
+ * in ONE org-member cache read rather than `User` joins or per-row queries (plan
+ * 42 §6.2's rule, applied to the approver side): "who asked" is the lead of an
+ * access row's collapsed copy and "who decided" is the lead of a past row's, so
+ * neither can be deferred to the lazily-fetched detail drawer without the row
+ * rendering anonymous.
+ *
+ * ⚠ **The `past` view has no covering index.** Both audience GINs are partial on
+ * `status = 'pending'` (deliberately — see the schema), so this falls back to
+ * `ApprovalRequest_organizationId_idx` and rechecks the assignee arrays on the
+ * heap. It is bounded by the page limit and by how rarely history is opened; the
+ * fix, if it ever bites, is to drop the partial predicate rather than to widen
+ * this query's filters.
  */
-export async function getPendingApprovalsForUser(
+export async function listApprovalsForUser(
   db: Database,
   organizationId: string,
-  userId: string
+  userId: string,
+  args: ListApprovalsForUserArgs = {}
 ) {
+  const view = args.view ?? 'pending'
+  const limit = Math.min(args.limit ?? 25, 100)
+  const isPast = view === 'past'
   const userGroups = await getCachedUserGroupIds(organizationId, userId)
-  const rows = await db
+  const cursor = decodeApprovalCursor(args.cursor)
+
+  // `past` reads newest-first — a history is scanned backwards from the last
+  // decision. `pending` keeps its original oldest-first order; the Approvals tab
+  // re-sorts that section by deadline anyway, so this only decides ties among
+  // rows with no expiry, where oldest-first is the fairer queue.
+  //
+  // Ordered by `createdAt`, NOT by when the decision landed: there is no
+  // decided-at column, and `ApprovalResponse.respondedAt` exists only for
+  // approve/deny. `withdrawn` and `timeout` are bare status writes with no
+  // response row, so ordering on the join would strand them at one end.
+  const cursorCondition = cursor
+    ? isPast
+      ? sql`(${schema.ApprovalRequest.createdAt}, ${schema.ApprovalRequest.id}) < (${cursor.createdAt}, ${cursor.id})`
+      : sql`(${schema.ApprovalRequest.createdAt}, ${schema.ApprovalRequest.id}) > (${cursor.createdAt}, ${cursor.id})`
+    : undefined
+
+  const selected = await db
     .select({
       id: schema.ApprovalRequest.id,
       organizationId: schema.ApprovalRequest.organizationId,
@@ -129,6 +225,8 @@ export async function getPendingApprovalsForUser(
       area: schema.ApprovalRequest.area,
       requestedLevel: schema.ApprovalRequest.requestedLevel,
       requestedLens: schema.ApprovalRequest.requestedLens,
+      grantedLevel: schema.ApprovalRequest.grantedLevel,
+      grantedLens: schema.ApprovalRequest.grantedLens,
       workflow: {
         name: schema.Workflow.name,
         id: schema.Workflow.id,
@@ -143,42 +241,101 @@ export async function getPendingApprovalsForUser(
     .where(
       and(
         eq(schema.ApprovalRequest.organizationId, organizationId),
-        eq(schema.ApprovalRequest.status, ApprovalStatus.pending),
-        notExpired(),
-        assignedTo(userId, userGroups),
-        runStillActiveOrNotWorkflow()
+        isPast ? not(stillActionable()) : stillActionable(),
+        isPast
+          ? or(
+              assignedTo(userId, userGroups),
+              eq(schema.ApprovalRequest.createdById, userId),
+              // Redundant with `createdById` for today's self-service flow, and
+              // deliberately not folded into it: the schema separates the two for
+              // a future admin-filed-on-behalf-of request, and that request's
+              // subject must still see its own outcome.
+              eq(schema.ApprovalRequest.requesterId, userId)
+            )
+          : assignedTo(userId, userGroups),
+        cursorCondition
       )
     )
-    .orderBy(schema.ApprovalRequest.createdAt)
+    .orderBy(
+      ...(isPast
+        ? [desc(schema.ApprovalRequest.createdAt), desc(schema.ApprovalRequest.id)]
+        : [asc(schema.ApprovalRequest.createdAt), asc(schema.ApprovalRequest.id)])
+    )
+    .limit(limit + 1)
 
-  const requesterIds = [
-    ...new Set(rows.flatMap((row) => (row.requesterId ? [row.requesterId] : []))),
-  ]
-  const members = requesterIds.length
-    ? await getCachedMembersByUserIds(organizationId, requesterIds)
+  const hasMore = selected.length > limit
+  const rows = hasMore ? selected.slice(0, limit) : selected
+  const last = rows[rows.length - 1]
+  const nextCursor = hasMore && last ? encodeApprovalCursor(last.createdAt, last.id) : undefined
+
+  // Only the `past` view can carry decisions, and only approve/deny write a
+  // response row at all — a `withdrawn`, `timeout` or lapsed row has none, and
+  // renders on its status alone.
+  const decidedIds = isPast ? rows.map((row) => row.id) : []
+  const responses = decidedIds.length
+    ? await db
+        .select({
+          approvalRequestId: schema.ApprovalResponse.approvalRequestId,
+          userId: schema.ApprovalResponse.userId,
+          action: schema.ApprovalResponse.action,
+          comment: schema.ApprovalResponse.comment,
+          respondedAt: schema.ApprovalResponse.respondedAt,
+        })
+        .from(schema.ApprovalResponse)
+        .where(inArray(schema.ApprovalResponse.approvalRequestId, decidedIds))
     : []
-  const byUserId = new Map(members.map((member) => [member.userId, member]))
+  // Fetched as a second query rather than a join: the unique index is on
+  // `(approvalRequestId, userId)`, so a join is a fan-out risk that would
+  // duplicate list rows, and the page's decider ids fold into the same member
+  // cache read the requesters already pay for.
+  const byRequestId = new Map(responses.map((response) => [response.approvalRequestId, response]))
 
-  return rows.map((row) => {
-    const member = row.requesterId ? byUserId.get(row.requesterId) : undefined
+  const memberIds = [
+    ...new Set([
+      ...rows.flatMap((row) => (row.requesterId ? [row.requesterId] : [])),
+      ...responses.map((response) => response.userId),
+    ]),
+  ]
+  const members = memberIds.length ? await getCachedMembersByUserIds(organizationId, memberIds) : []
+  const byUserId = new Map(members.map((member) => [member.userId, member]))
+  const toPerson = (id: string | null | undefined) => {
+    const member = id ? byUserId.get(id) : undefined
+    return member
+      ? {
+          userId: member.userId,
+          name: member.user?.name ?? null,
+          image: member.user?.image ?? null,
+        }
+      : null
+  }
+
+  const items = rows.map((row) => {
+    const response = byRequestId.get(row.id)
     return {
       ...row,
-      requester: member
+      requester: toPerson(row.requesterId),
+      decision: response
         ? {
-            userId: member.userId,
-            name: member.user?.name ?? null,
-            image: member.user?.image ?? null,
+            action: response.action,
+            comment: response.comment,
+            respondedAt: response.respondedAt,
+            by: toPerson(response.userId),
           }
         : null,
     }
   })
+
+  return { items, nextCursor }
 }
 
 /**
  * Badge count for the Approvals tab. The predicate is DELIBERATELY identical to
- * {@link getPendingApprovalsForUser}'s — they are duplicated in SQL, so both H1
- * and the null-expiry reading have to be applied twice or the badge disagrees
- * with the list.
+ * {@link listApprovalsForUser}'s `pending` view — they are duplicated in SQL, so
+ * both H1 and the null-expiry reading have to be applied twice or the badge
+ * disagrees with the list. {@link stillActionable} is what they now share.
+ *
+ * Stays pending-only, and takes no `view`: this is the number on the bell, and
+ * history is not a thing anyone needs to be counted at.
  */
 export async function getPendingCount(
   db: Database,
@@ -193,10 +350,8 @@ export async function getPendingCount(
     .where(
       and(
         eq(schema.ApprovalRequest.organizationId, organizationId),
-        eq(schema.ApprovalRequest.status, ApprovalStatus.pending),
-        notExpired(),
-        assignedTo(userId, userGroups),
-        runStillActiveOrNotWorkflow()
+        stillActionable(),
+        assignedTo(userId, userGroups)
       )
     )
   // `count(*)` is int8, which pg hands back as a string. The caller adds this to

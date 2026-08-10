@@ -60,6 +60,10 @@ export {
   resolveApprovalRequests,
   validateApprovalToken,
 } from './approval-request-mutations'
+export type {
+  ApprovalListView,
+  ListApprovalsForUserArgs,
+} from './approval-request-queries'
 export {
   canUserApprove,
   canUserViewApproval,
@@ -67,11 +71,11 @@ export {
   getApprovalRequestById,
   getApprovalRequestWithContext,
   getApprovalsByStatus,
-  getPendingApprovalsForUser,
   getPendingApprovers,
   getPendingCount,
   getUserApprovalStats,
   getWorkflowApprovalHistory,
+  listApprovalsForUser,
 } from './approval-request-queries'
 export type {
   AccessLens,

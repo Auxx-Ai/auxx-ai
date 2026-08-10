@@ -90,7 +90,7 @@ export function useNotificationSubscription(userId: string) {
  */
 function invalidateApprovals(utils: ReturnType<typeof api.useUtils>) {
   void utils.approval.getPendingCount.invalidate()
-  void utils.approval.getPendingRequests.invalidate()
+  void utils.approval.list.invalidate()
   void utils.approvals.count.invalidate()
   void utils.approvals.list.invalidate()
 }

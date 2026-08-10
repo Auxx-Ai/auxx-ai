@@ -12,9 +12,11 @@
 import { type Database, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
+import { toRecordId } from '@auxx/types/resource'
 import crypto from 'crypto'
 import { and, eq, inArray, lt } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
+import { AUDIT_ACTIONS, type AuditContext, recordAudit } from '../audit-log'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import { publisher } from '../events/publisher'
 import { getQueue, Queues } from '../jobs/queues'
@@ -25,6 +27,112 @@ import { allowsTokenResolution, getApprovalKindHandler } from './registry'
 import type { ApprovalAudience, ApprovalRequestEntity, ApprovalResponseResult } from './types'
 
 const logger = createScopedLogger('approval-requests')
+
+/**
+ * Final status → audit action, for the `access` lane only.
+ *
+ * `approved` maps onto `permission.granted` — the SAME action the share popover
+ * writes through `resourceAccess` — deliberately. An approved access request *is* a
+ * permission grant, and the question an audit log exists to answer ("how did this
+ * person get access to X?") has to be one filter on `targetId`, not a union of two
+ * actions one of which the reader has to know exists. The two paths also agree on
+ * `targetId`: both key it on the canonical `RecordId`.
+ *
+ * The outcomes that write NO grant get their own actions rather than being
+ * omitted — an admin who sees a request marked Denied or Superseded in the panel
+ * and finds nothing in the log cannot tell a decision that wrote nothing from a log
+ * that dropped a write.
+ */
+const ACCESS_DECISION_ACTIONS: Record<string, string> = {
+  [ApprovalStatus.approved]: AUDIT_ACTIONS.permissionGranted,
+  [ApprovalStatus.denied]: AUDIT_ACTIONS.accessRequestDenied,
+  [ApprovalStatus.superseded]: AUDIT_ACTIONS.accessRequestSuperseded,
+}
+
+/**
+ * Append the security-log row for one decided ACCESS request.
+ *
+ * Lives here, in the shared resolve path, rather than in the router or in the two
+ * kind handlers, for one reason each:
+ *
+ * - **Not the router.** `resolveApprovalRequest` is reached from the tRPC
+ *   procedures, the email-token lane, and the bulk resolver. A router-side write
+ *   covers one of the three and silently omits the rest — and it is a permission
+ *   grant that goes unlogged, which is the failure this closes in the first place.
+ * - **Not the handlers.** The thread and record arms have three terminal outcomes
+ *   each; six call sites is six chances for a new outcome to ship unlogged.
+ *
+ * Reads the row back POST-COMMIT rather than trusting the claimed snapshot: the
+ * handler may have moved the status past the claim (`approved` → `superseded`) and
+ * is what writes `grantedLevel`/`grantedLens`. One primary-key read.
+ *
+ * Never throws. `recordAudit` already returns a Result, and a failed audit write
+ * must not turn a committed grant into an error the approver sees.
+ */
+async function recordAccessDecisionAudit(
+  db: Database,
+  approvalRequestId: string,
+  approverUserId: string,
+  context?: AuditContext
+): Promise<void> {
+  try {
+    const row = await db.query.ApprovalRequest.findFirst({
+      where: eq(schema.ApprovalRequest.id, approvalRequestId),
+      columns: {
+        organizationId: true,
+        status: true,
+        requesterId: true,
+        entityDefinitionId: true,
+        entityInstanceId: true,
+        subjectLabel: true,
+        grantedLevel: true,
+        grantedLens: true,
+      },
+    })
+    const action = row ? ACCESS_DECISION_ACTIONS[row.status] : undefined
+    if (!row || !action) return
+
+    const result = await recordAudit({
+      organizationId: row.organizationId,
+      category: 'security',
+      action,
+      actorType: 'user',
+      actorId: approverUserId,
+      targetType: 'Resource',
+      targetId:
+        row.entityDefinitionId && row.entityInstanceId
+          ? toRecordId(row.entityDefinitionId, row.entityInstanceId)
+          : null,
+      newState: {
+        status: row.status,
+        rung: row.grantedLens,
+        level: row.grantedLevel,
+      },
+      metadata: {
+        scope: 'instance',
+        // What distinguishes this row from the share popover's `permission.granted`:
+        // the grant was asked for and decided, and this is the request it came from.
+        origin: 'approval',
+        approvalRequestId,
+        granteeType: 'user',
+        granteeId: row.requesterId,
+        subjectLabel: row.subjectLabel,
+      },
+      context,
+    })
+    if (result.isErr()) {
+      logger.warn('Failed to write access-decision audit row', {
+        approvalRequestId,
+        error: result.error.message,
+      })
+    }
+  } catch (error) {
+    logger.warn('Failed to write access-decision audit row', {
+      approvalRequestId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
 
 /**
  * Record one approver's decision.
@@ -53,6 +161,12 @@ export async function resolveApprovalRequest(
     comment?: string
     ipAddress?: string
     /**
+     * Request context for the security-log row an `access` decision writes. Optional
+     * because the bulk resolver and any job-driven caller have no request to derive
+     * it from — the row is still written, just without IP/UA/session.
+     */
+    auditContext?: AuditContext
+    /**
      * Set by the unauthenticated email-token lane. When true the kind must have
      * opted in via `allowsTokenResolution` (plan 28 H5) — a hard reject, not a
      * "we won't send those emails" convention.
@@ -60,10 +174,12 @@ export async function resolveApprovalRequest(
     viaToken?: boolean
   }
 ): Promise<Result<ApprovalResponseResult, Error>> {
-  const { approvalRequestId, userId, action, comment, ipAddress, viaToken } = params
+  const { approvalRequestId, userId, action, comment, ipAddress, auditContext, viaToken } = params
   let audience: ApprovalAudience | undefined
   let organizationId: string | undefined
   let afterCommit: ((db: Database) => Promise<void>) | undefined
+  /** Set only by the WINNER of the claim — the loser must log nothing. */
+  let decidedKind: string | undefined
 
   const outcome = await guard(
     async () => {
@@ -115,6 +231,7 @@ export async function resolveApprovalRequest(
           // The loser. No response row, no handler, no side effect.
           return { success: false, message: 'Approval already decided' }
         }
+        decidedKind = claimed.kind
 
         await tx.insert(schema.ApprovalResponse).values({
           approvalRequestId,
@@ -173,6 +290,16 @@ export async function resolveApprovalRequest(
           error: error instanceof Error ? error.message : String(error),
         })
       }
+    }
+    // Post-commit and AFTER the handler, so the row reflects the final status the
+    // handler settled on. Only the access lane: a workflow confirmation is a
+    // business decision already recorded on its `WorkflowRun`, not a security event.
+    if (decidedKind === 'access') {
+      await recordAccessDecisionAudit(db, approvalRequestId, userId, {
+        ipAddress: auditContext?.ipAddress ?? ipAddress ?? null,
+        userAgent: auditContext?.userAgent ?? null,
+        sessionId: auditContext?.sessionId ?? null,
+      })
     }
     await retractApprovalNotifications(db, approvalRequestId, organizationId)
     await publishResolved(db, approvalRequestId, audience)

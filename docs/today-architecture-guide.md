@@ -219,18 +219,69 @@ the notification side panel. See `plans/today/` for the rationale.
 ### The tab (`ui/approvals-tab.tsx`)
 Third item in the panel's `RadioTab` (All / Unread / Approvals). It reads
 its two source tables directly — **no `Notification` rows are minted for
-bundles** — and renders two sections:
+bundles**.
 
-- **Needs a decision** — `approval.getPendingRequests` (workflow human
-  confirmations). Not feature-flagged, unpaginated, sorted `expiresAt` asc
-  nulls last.
+The tab carries its own **Pending / Past** `RadioTab`, rendered in the panel's
+filter strip (the slot the notification search occupies on the other tabs) so
+it never scrolls away. State is `approvalsView` on the panel store;
+`openApprovals()` resets it to `pending`, because a caller pointing at one
+request is always pointing at a pending one.
+
+**Pending** renders the sections:
+
+- **Needs a decision** — `approval.list` `{ view: 'pending' }` (workflow human
+  confirmations + access requests). Not feature-flagged, fetched as one page of
+  100, sorted `expiresAt` asc nulls last client-side.
 - **Suggestions** — `approvals.list` (`mine_and_unassigned`,
   `status: ['FRESH']`, limit 25), cursor-paginated. Gated by
   `useFeatureFlags().hasAccess(FeatureKey.todayInbox)`, which skips the
   query entirely when off.
+- **Mail suggestions** — `useMailSuggestions()`, capped at five per inbox by
+  the mining job, so unpaginated.
 
-An empty section is hidden; both empty shows one `Empty` state. Search, the
+An empty section is hidden; all empty shows one `Empty` state. Search, the
 type filter, and the bulk delete actions are hidden on this tab.
+
+**Past** renders one **Decided** section from `approval.list`
+`{ view: 'past' }`, cursor-paginated, through the read-only `DecidedRow`.
+Deliberately scoped to the `ApprovalRequest` lane: suggestion bundles have
+terminal statuses too and `approvals.list` already accepts them, but
+`SuggestionRow` reads every non-`FRESH` status as "out of date — the record
+changed since this was proposed", so an approved bundle would render with copy
+that is false. Splitting `STALE` from the terminal statuses there is the
+prerequisite.
+
+`past` is the **complement** of `pending`, not a status list — see
+`listApprovalsForUser`. Its audience is also wider: it admits rows the viewer
+filed (`createdById` / `requesterId`), not just ones they were assigned, or a
+requester could never see the outcome of their own access request. The bell
+badge (`approval.getPendingCount`) stays pending-only.
+
+### Access decisions and the security log
+A decided `kind: 'access'` request writes one `AuditLog` row, from
+`recordAccessDecisionAudit` in `resolveApprovalRequest`'s **post-commit** block.
+
+- **In the shared resolve path, not the router and not the kind handlers.** The
+  resolve path is reached from the tRPC procedures, the email-token lane and the
+  bulk resolver; a router-side write covers one of three. The two handlers have
+  three terminal outcomes each, so writing there is six sites.
+- **Reads the row back post-commit** rather than trusting the claimed snapshot —
+  the handler can move the status past the claim (`approved` → `superseded`) and
+  is what writes `grantedLevel` / `grantedLens`.
+- **An approved request records `permission.granted`**, the same action the share
+  popover writes via the `resourceAccess` router, keyed on the same canonical
+  `RecordId`. "How did this person get access to X" has to be one filter on
+  `targetId`. `metadata.origin: 'approval'` plus `approvalRequestId` is what
+  distinguishes the two. Denied and superseded get `accessRequest.denied` /
+  `accessRequest.superseded` — they write no grant, but a decision visible in the
+  panel and absent from the log is indistinguishable from a dropped write.
+- **Workflow confirmations write nothing.** A human-confirmation is a business
+  decision already recorded on its `WorkflowRun`, and the `security` category
+  stays readable.
+- Never throws: `recordAudit` returns a Result and the call is wrapped, so a
+  failed audit write cannot turn a committed grant into an error the approver
+  sees. `auditContext` (IP / UA / session) is optional — the bulk and job lanes
+  have no request to derive it from, and the row is still written without it.
 
 ### `SuggestionRow` (`ui/items/suggestion-row.tsx`)
 Shows the bundle's `summary` (or a generic "`N` actions" fallback),

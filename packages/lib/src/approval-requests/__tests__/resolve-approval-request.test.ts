@@ -59,6 +59,14 @@ vi.mock('../approval-recipients', () => ({
   getApprovalAssigneeUserIds: vi.fn(async () => []),
 }))
 
+// PARTIAL mock — `AUDIT_ACTIONS` must stay real, or the assertions below pin the
+// test's own copy of the action strings instead of the shipped ones.
+const recordAudit = vi.fn(() => Promise.resolve({ isErr: () => false }))
+vi.mock('../../audit-log', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  recordAudit: (...args: unknown[]) => recordAudit(...(args as [])),
+}))
+
 const WORKFLOW_ROW = {
   id: 'req-1',
   organizationId: 'org1',
@@ -90,15 +98,36 @@ const ACCESS_ROW = {
  * pass through, while the advisory pre-flight read keeps reporting `pending` to
  * both (which is exactly the state that made the old unconditional UPDATE unsafe).
  */
-function makeDb(row: Record<string, unknown>, opts: { claimsAvailable?: number } = {}) {
+function makeDb(
+  row: Record<string, unknown>,
+  opts: {
+    claimsAvailable?: number
+    /**
+     * Opt-in: reads AFTER the transaction returns see the claimed status, which is
+     * what the post-commit audit read needs. Off by default — the race tests
+     * deliberately keep the advisory pre-flight reporting `pending` to both callers.
+     */
+    reflectClaimAfterCommit?: boolean
+  } = {}
+) {
   let claimsLeft = opts.claimsAvailable ?? 1
+  let committed = false
   const calls = {
     responseInserts: [] as unknown[],
     statusSets: [] as unknown[],
     updateWheres: [] as unknown[],
   }
+  const claimedStatus = () =>
+    (calls.statusSets.find((s) => (s as { status?: string }).status) as { status?: string })?.status
   const db: Record<string, unknown> = {
-    query: { ApprovalRequest: { findFirst: async () => ({ ...row }) } },
+    query: {
+      ApprovalRequest: {
+        findFirst: async () =>
+          opts.reflectClaimAfterCommit && committed
+            ? { ...row, status: claimedStatus() ?? row.status }
+            : { ...row },
+      },
+    },
     update: () => {
       const chain: Record<string, unknown> = {}
       chain.set = (v: unknown) => {
@@ -126,7 +155,11 @@ function makeDb(row: Record<string, unknown>, opts: { claimsAvailable?: number }
       return chain
     },
   }
-  db.transaction = async (fn: (tx: unknown) => Promise<unknown>) => fn(db)
+  db.transaction = async (fn: (tx: unknown) => Promise<unknown>) => {
+    const result = await fn(db)
+    committed = true
+    return result
+  }
   return { db, calls }
 }
 
@@ -224,6 +257,87 @@ describe('atomic decision claim (plan 42 §4.1)', () => {
     expect((applyAccessDecision.mock.calls as unknown as Array<[unknown]>)[0]![0]).toMatchObject({
       action: 'deny',
     })
+  })
+
+  it('an APPROVED access decision writes the security-log row', async () => {
+    const { resolveApprovalRequest } = await import('../approval-request-mutations')
+    const { db } = makeDb(ACCESS_ROW, { reflectClaimAfterCommit: true })
+
+    await resolveApprovalRequest(db as never, {
+      approvalRequestId: 'req-1',
+      userId: 'user1',
+      action: 'approve',
+      auditContext: { ipAddress: '1.2.3.4', userAgent: 'agent', sessionId: 'sess-1' },
+    })
+
+    expect(recordAudit).toHaveBeenCalledTimes(1)
+    expect(
+      (recordAudit.mock.calls as unknown as Array<[Record<string, unknown>]>)[0]![0]
+    ).toMatchObject({
+      category: 'security',
+      // The SAME action the share popover writes — an approved request is a
+      // permission grant, and "how did they get access to X" must be one filter.
+      action: 'permission.granted',
+      actorId: 'user1',
+      targetType: 'Resource',
+      targetId: 'thread:thread-1',
+      metadata: { origin: 'approval', approvalRequestId: 'req-1', granteeId: 'requester1' },
+      context: { ipAddress: '1.2.3.4', userAgent: 'agent', sessionId: 'sess-1' },
+    })
+  })
+
+  it('a DENIED access decision is logged too, under its own action', async () => {
+    const { resolveApprovalRequest } = await import('../approval-request-mutations')
+    const { db } = makeDb(ACCESS_ROW, { reflectClaimAfterCommit: true })
+
+    await resolveApprovalRequest(db as never, {
+      approvalRequestId: 'req-1',
+      userId: 'user1',
+      action: 'deny',
+    })
+
+    // Not `permission.granted` — nothing was granted — but recorded all the same:
+    // a decision that appears in the panel and nowhere in the log is
+    // indistinguishable from a dropped write.
+    expect(
+      (recordAudit.mock.calls as unknown as Array<[Record<string, unknown>]>)[0]![0]
+    ).toMatchObject({ action: 'accessRequest.denied' })
+  })
+
+  it('a WORKFLOW confirmation writes NO security-log row', async () => {
+    const { resolveApprovalRequest } = await import('../approval-request-mutations')
+    const { db } = makeDb(WORKFLOW_ROW, { reflectClaimAfterCommit: true })
+
+    await resolveApprovalRequest(db as never, {
+      approvalRequestId: 'req-1',
+      userId: 'user1',
+      action: 'approve',
+    })
+
+    // A human-confirmation is a business decision, already recorded on its
+    // `WorkflowRun`. The lane gate is what keeps the security category readable.
+    expect(recordAudit).not.toHaveBeenCalled()
+  })
+
+  it('the LOSER of a race logs nothing', async () => {
+    const { resolveApprovalRequest } = await import('../approval-request-mutations')
+    const { db } = makeDb(ACCESS_ROW, { claimsAvailable: 1 })
+
+    await resolveApprovalRequest(db as never, {
+      approvalRequestId: 'req-1',
+      userId: 'user1',
+      action: 'approve',
+    })
+    recordAudit.mockClear()
+    await resolveApprovalRequest(db as never, {
+      approvalRequestId: 'req-1',
+      userId: 'user2',
+      action: 'deny',
+    })
+
+    // `decidedKind` is set inside the claim, so only the winner reaches the write.
+    // Otherwise every refused double-decision would file a second grant row.
+    expect(recordAudit).not.toHaveBeenCalled()
   })
 
   it('a handler that throws rolls the decision back — no post-commit side effects', async () => {
