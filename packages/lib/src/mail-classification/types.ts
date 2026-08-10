@@ -46,4 +46,21 @@ export interface MailClassificationResult {
   /** Set when nothing is applied, so the job's log line explains itself. */
   reason?: MailClassificationSkipReason
   model?: string
+  /**
+   * Did a model call COMPLETE and return an answer?
+   *
+   * ⚠️ This is the sole gate on stamping the C9 marker, and it is a field rather
+   * than a check against {@link reason} on purpose: a new failure arm added to
+   * that union must be forced to state its answer here, instead of inheriting
+   * "stamp" by default. Inheriting the wrong default is precisely the bug this
+   * flag replaced — `'error'` was stamped like a completed inference, so a
+   * single provider 429 marked the message classified forever, having neither
+   * classified it nor cost anything.
+   *
+   * True for an applied tag, and equally for a deliberate "apply nothing"
+   * (`'below-threshold'`, `'no-category'`) — the answer was bought and re-asking
+   * would pay twice for it. False for every path where `invoke` threw, because
+   * usage is only metered against a response that actually came back.
+   */
+  inferred: boolean
 }

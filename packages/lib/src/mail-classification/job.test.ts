@@ -40,7 +40,12 @@ function ctx(data: Partial<MailClassificationJobData> = {}) {
 beforeEach(() => {
   vi.clearAllMocks()
   h.guard.mockResolvedValue({ proceed: true, context: CONTEXT })
-  h.classify.mockResolvedValue({ tagId: 'tag_billing', confidence: 0.9, model: 'gpt-x' })
+  h.classify.mockResolvedValue({
+    tagId: 'tag_billing',
+    confidence: 0.9,
+    model: 'gpt-x',
+    inferred: true,
+  })
   h.apply.mockResolvedValue(true)
   h.mark.mockResolvedValue(undefined)
   h.rerun.mockResolvedValue(['flt_category'])
@@ -131,6 +136,7 @@ describe('mailClassificationJob — nothing applied', () => {
       confidence: 0.4,
       reason: 'below-threshold',
       model: 'gpt-x',
+      inferred: true,
     })
 
     await expect(mailClassificationJob(ctx())).resolves.toEqual({
@@ -146,7 +152,54 @@ describe('mailClassificationJob — nothing applied', () => {
   })
 
   it('no default model: NO marker, so the message stays classifiable once one is set', async () => {
-    h.classify.mockResolvedValue({ tagId: null, confidence: 0, reason: 'no-default-model' })
+    h.classify.mockResolvedValue({
+      tagId: null,
+      confidence: 0,
+      reason: 'no-default-model',
+      inferred: false,
+    })
+
+    await mailClassificationJob(ctx())
+
+    expect(h.mark).not.toHaveBeenCalled()
+  })
+
+  // ⚠️ THE REGRESSION. A failed call spends nothing and decides nothing, so the
+  // C9 marker must not go down — stamping it disqualified the message from ever
+  // being classified, permanently, for a condition that usually clears by
+  // itself. The marker is gated on `inferred`, never on the reason.
+  for (const reason of ['quota-exceeded', 'unavailable', 'error'] as const) {
+    it(`"${reason}": NO marker, so the message stays classifiable`, async () => {
+      h.classify.mockResolvedValue({
+        tagId: null,
+        confidence: 0,
+        reason,
+        model: 'gpt-x',
+        inferred: false,
+      })
+
+      await expect(mailClassificationJob(ctx())).resolves.toEqual({
+        classified: false,
+        confidence: 0,
+        skipped: reason,
+      })
+
+      expect(h.mark).not.toHaveBeenCalled()
+      expect(h.apply).not.toHaveBeenCalled()
+      expect(h.rerun).not.toHaveBeenCalled()
+    })
+  }
+
+  it('stamps on `inferred`, NOT on the reason — a new failure arm cannot inherit "stamp"', async () => {
+    // A reason the marker gate has never heard of. If the gate ever goes back to
+    // enumerating reasons, this is what catches it: an unrecognised failure must
+    // default to "stays classifiable", not to "done forever".
+    h.classify.mockResolvedValue({
+      tagId: null,
+      confidence: 0,
+      reason: 'some-future-failure',
+      inferred: false,
+    })
 
     await mailClassificationJob(ctx())
 
