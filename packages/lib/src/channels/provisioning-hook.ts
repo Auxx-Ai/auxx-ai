@@ -19,6 +19,7 @@ import { publisher } from '../events'
 import { InboxService } from '../inboxes/inbox-service'
 import { GoogleOAuthService } from '../providers/google/google-oauth'
 import { assertSharedConnectInbox } from './connect-inbox'
+import { withAuthFailuresCleared } from './internal/auth-metadata'
 import { provisionPersonalInbox } from './personal-connection'
 
 const logger = createScopedLogger('channel-provisioning-hook')
@@ -184,6 +185,11 @@ async function assertConnectScope(args: {
  * is healthy again, so a prior `FAILED` must not stick: it both shows a stale "Sync Error" badge
  * and — for webhook-mode channels, which the polling relaunch job skips — would never recover on
  * its own. Reset to the clean `NOT_SYNCED` / `IDLE` baseline so the next push or poll resumes.
+ *
+ * The auth-failure block goes with it. `enabled: true` alone would re-open a channel still
+ * carrying `metadata.auth.consecutiveFailures` at or above the auto-disable threshold, and the
+ * only thing that clears that counter is a successful sync — so the first transient auth error
+ * after the re-consent would disable the channel again on its first strike.
  */
 async function upsertIntegration(args: {
   organizationId: string
@@ -218,7 +224,7 @@ async function upsertIntegration(args: {
         credentialId,
         email,
         enabled: true,
-        metadata: mergeMetadata(existing.metadata, metadataPatch) as any,
+        metadata: withAuthFailuresCleared(mergeMetadata(existing.metadata, metadataPatch)) as any,
         syncStatus: 'NOT_SYNCED',
         syncStage: 'IDLE',
         syncStageStartedAt: null,

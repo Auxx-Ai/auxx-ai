@@ -25,6 +25,7 @@ export {
   provisionPersonalInbox,
   supportsPersonalChannelConnection,
 } from './personal-connection'
+export { type RecoverChannelResult, recoverChannel } from './recover'
 export { registerChannelHooks } from './register-hooks'
 export {
   addExcludedSender,

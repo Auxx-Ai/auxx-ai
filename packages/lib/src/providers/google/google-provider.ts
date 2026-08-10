@@ -830,79 +830,108 @@ export class GoogleProvider
     const deletedMessageIds: string[] = []
     let newHistoryId = lastHistoryId || '0'
 
-    if (lastHistoryId && !since) {
+    // A cursor older than Gmail's history retention (roughly a week) makes
+    // `history.list` 404. That is the normal state of any channel that has been
+    // dark for a while — auto-disabled by auth failures, throttled, or just
+    // reconnected — so it must degrade to a re-list rather than fail the sync.
+    // Mirrors the fallback `syncGmailMessages` already performs on the manual path.
+    let useHistory = !!lastHistoryId && !since
+    let listSince = since
+
+    if (useHistory) {
       // Incremental sync via History API
       let nextPageToken: string | undefined | null
-      let highestHistoryId = BigInt(lastHistoryId)
+      let highestHistoryId = BigInt(lastHistoryId!)
 
-      do {
-        const historyResponse = await executeWithThrottle(
-          'gmail.history.list',
-          async () =>
-            this.gmail!.users.history.list({
-              userId: 'me',
-              startHistoryId: highestHistoryId.toString(),
-              pageToken: nextPageToken ?? undefined,
-              historyTypes: ['messageAdded', 'messageDeleted', 'labelRemoved'],
-            }),
-          {
-            userId: this.integrationId!,
-            throttler: this.throttler!,
-            cost: getGmailQuotaCost('history.list'),
-            queue: true,
-            priority: 5,
-          }
-        )
+      try {
+        do {
+          const historyResponse = await executeWithThrottle(
+            'gmail.history.list',
+            async () =>
+              this.gmail!.users.history.list({
+                userId: 'me',
+                startHistoryId: highestHistoryId.toString(),
+                pageToken: nextPageToken ?? undefined,
+                historyTypes: ['messageAdded', 'messageDeleted', 'labelRemoved'],
+              }),
+            {
+              userId: this.integrationId!,
+              throttler: this.throttler!,
+              cost: getGmailQuotaCost('history.list'),
+              queue: true,
+              priority: 5,
+            }
+          )
 
-        const historyRecords = historyResponse.data.history || []
+          const historyRecords = historyResponse.data.history || []
 
-        for (const record of historyRecords) {
-          if (record.messagesAdded) {
-            for (const msgAdded of record.messagesAdded) {
-              if (msgAdded.message?.id) {
-                addedMessageIds.push(msgAdded.message.id)
+          for (const record of historyRecords) {
+            if (record.messagesAdded) {
+              for (const msgAdded of record.messagesAdded) {
+                if (msgAdded.message?.id) {
+                  addedMessageIds.push(msgAdded.message.id)
+                }
               }
             }
-          }
-          if (record.messagesDeleted) {
-            for (const msgDeleted of record.messagesDeleted) {
-              if (msgDeleted.message?.id) {
-                deletedMessageIds.push(msgDeleted.message.id)
+            if (record.messagesDeleted) {
+              for (const msgDeleted of record.messagesDeleted) {
+                if (msgDeleted.message?.id) {
+                  deletedMessageIds.push(msgDeleted.message.id)
+                }
               }
             }
-          }
-          // Treat INBOX label removal as deletion (archived messages)
-          if (record.labelsRemoved) {
-            for (const labelChange of record.labelsRemoved) {
-              if (labelChange.labelIds?.includes('INBOX') && labelChange.message?.id) {
-                deletedMessageIds.push(labelChange.message.id)
+            // Treat INBOX label removal as deletion (archived messages)
+            if (record.labelsRemoved) {
+              for (const labelChange of record.labelsRemoved) {
+                if (labelChange.labelIds?.includes('INBOX') && labelChange.message?.id) {
+                  deletedMessageIds.push(labelChange.message.id)
+                }
               }
             }
+            const recordHistoryId = BigInt(record.id ?? '0')
+            if (recordHistoryId > highestHistoryId) {
+              highestHistoryId = recordHistoryId
+            }
           }
-          const recordHistoryId = BigInt(record.id ?? '0')
-          if (recordHistoryId > highestHistoryId) {
-            highestHistoryId = recordHistoryId
+
+          if (historyRecords.length === 0 && historyResponse.data.historyId) {
+            const currentHistoryId = BigInt(historyResponse.data.historyId)
+            if (currentHistoryId > highestHistoryId) {
+              highestHistoryId = currentHistoryId
+            }
           }
-        }
 
-        if (historyRecords.length === 0 && historyResponse.data.historyId) {
-          const currentHistoryId = BigInt(historyResponse.data.historyId)
-          if (currentHistoryId > highestHistoryId) {
-            highestHistoryId = currentHistoryId
-          }
-        }
+          nextPageToken = historyResponse.data.nextPageToken
+        } while (nextPageToken)
 
-        nextPageToken = historyResponse.data.nextPageToken
-      } while (nextPageToken)
+        newHistoryId = highestHistoryId.toString()
+      } catch (error) {
+        const status =
+          (error as { response?: { status?: number }; status?: number })?.response?.status ??
+          (error as { status?: number })?.status
+        if (status !== 404) throw error
 
-      newHistoryId = highestHistoryId.toString()
-    } else {
+        // Expired cursor: re-list instead. `listSince` stays undefined so the
+        // window isn't silently narrowed — anything already imported is deduped
+        // downstream, but a message dropped here is never seen again.
+        logger.warn('History ID expired (404) — falling back to full message list', {
+          integrationId: this.integrationId,
+          expiredHistoryId: lastHistoryId,
+        })
+        useHistory = false
+        listSince = undefined
+        addedMessageIds.length = 0
+        deletedMessageIds.length = 0
+      }
+    }
+
+    if (!useHistory) {
       // Full sync via Message List API. Empty `q` (combined with the existing
       // `includeSpamTrash: false` below) pulls INBOX + SENT + every other
       // non-trash/non-spam label — `in:inbox` would silently drop the user's
       // own SENT messages, which the polling pipeline relies on to thread
       // outbound replies and create recipient contacts.
-      const query = since ? `after:${Math.floor(since.getTime() / 1000)}` : ''
+      const query = listSince ? `after:${Math.floor(listSince.getTime() / 1000)}` : ''
       let nextPageToken: string | undefined | null
       let highestHistoryId = BigInt(0)
       let pageCount = 0
