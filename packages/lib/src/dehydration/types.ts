@@ -141,6 +141,14 @@ export interface DehydratedOrganization {
   completedOnboarding: boolean
   demoExpiresAt: string | null
 
+  /**
+   * Admin suspension marker. Non-null means every member is locked out —
+   * enforced server-side by `protectedProcedure`; this copy only drives the
+   * client screen.
+   */
+  disabledAt: string | null
+  disabledReason: string | null
+
   // Subscription (nullable)
   subscription: {
     id: string

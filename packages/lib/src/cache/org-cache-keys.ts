@@ -160,6 +160,9 @@ export interface DehydratedOrgProfile {
   createdAt: string
   completedOnboarding: boolean
   demoExpiresAt: string | null
+  /** Admin suspension marker — non-null means every member is locked out. */
+  disabledAt: string | null
+  disabledReason: string | null
 }
 
 /** Cached AgentTrigger row (JSON-serializable). Mirrors the dispatch-relevant
@@ -713,7 +716,15 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // Business data (24h TTL, all invalidated via cache events)
   features: { prefix: 'org:features', ttlSeconds: THIRTY_DAYS },
   subscription: { prefix: 'org:subscription', ttlSeconds: ONE_DAY },
-  orgProfile: { prefix: 'org:profile', ttlSeconds: ONE_DAY },
+  // v2: + disabledAt/disabledReason, which `protectedProcedure` now reads to lock
+  // members out of an admin-suspended org. The shape is still parseable by both
+  // sides, which is exactly why the bump is load-bearing: a v1 blob has no
+  // `disabledAt` key, so the gate reads `undefined` → falsy → **fail-OPEN**, and a
+  // just-suspended org would stay fully usable for up to the ONE_DAY TTL for any
+  // org whose blob was written before the deploy. Moving the keyspace makes that
+  // impossible. (`org.updated` invalidation only covers orgs suspended *after*
+  // the new code is live.)
+  orgProfile: { prefix: 'org:profile:v2', ttlSeconds: ONE_DAY },
   resources: { prefix: 'org:resources', ttlSeconds: ONE_DAY },
   customFields: { prefix: 'org:custom-fields', ttlSeconds: ONE_DAY },
   groups: { prefix: 'org:groups', ttlSeconds: ONE_DAY },
