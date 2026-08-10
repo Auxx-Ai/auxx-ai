@@ -731,6 +731,8 @@ export default function OrganizationDetailsPage() {
                   <TrialManagementSection
                     organizationId={org.id}
                     organizationName={org.name}
+                    billingProvider={org.subscription.billingProvider}
+                    shopifyShopDomain={org.subscription.shopifyShopDomain}
                     subscription={{
                       trialEnd: org.subscription.trialEnd,
                       hasTrialEnded: org.subscription.hasTrialEnded,
@@ -771,6 +773,8 @@ export default function OrganizationDetailsPage() {
                           cancelAtPeriodEnd: org.subscription.cancelAtPeriodEnd,
                           periodEnd: org.subscription.periodEnd,
                           creditsBalance: org.subscription.creditsBalance,
+                          adminOverrideAt: org.subscription.adminOverrideAt,
+                          adminOverrideReason: org.subscription.adminOverrideReason,
                         }
                       : null
                   }

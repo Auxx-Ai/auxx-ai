@@ -21,7 +21,7 @@ import {
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
-import { AlertCircle, Ban, DollarSign, Plus, RefreshCw, Unlink } from 'lucide-react'
+import { AlertCircle, Ban, DollarSign, Plus, RefreshCw, ShieldCheck, Unlink } from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -37,6 +37,9 @@ interface SubscriptionManagementSectionProps {
     cancelAtPeriodEnd: boolean
     periodEnd: Date | null
     creditsBalance: number
+    /** Non-null while a super admin owns the lifecycle — provider syncs are skipped. */
+    adminOverrideAt: Date | null
+    adminOverrideReason: string | null
   } | null
 }
 
@@ -91,6 +94,14 @@ export function SubscriptionManagementSection({
     },
     onError: (error) =>
       toastError({ title: 'Failed to unlink billing', description: error.message }),
+  })
+
+  const clearOverride = api.admin.billing.clearBillingOverride.useMutation({
+    onSuccess: () => {
+      utils.admin.getOrganization.invalidate({ id: organizationId })
+    },
+    onError: (error) =>
+      toastError({ title: 'Failed to clear billing override', description: error.message }),
   })
 
   const applyCredit = api.admin.billing.applyCreditAdjustment.useMutation({
@@ -190,6 +201,23 @@ export function SubscriptionManagementSection({
 
     if (confirmed) {
       unlinkBilling.mutate({ organizationId, reason: unlinkReason })
+    }
+  }
+
+  /**
+   * Handle clearing the admin override — hands lifecycle ownership back to the provider.
+   */
+  const handleClearOverride = async () => {
+    const confirmed = await confirm({
+      title: 'Return billing control to the provider?',
+      description: `Stripe or Shopify will resume owning the status, plan, and trial dates for "${organizationName}". Whatever the provider currently believes will overwrite the current values on the next sync — any comp or forced status set here will be lost.`,
+      confirmText: 'Return control',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (confirmed) {
+      clearOverride.mutate({ organizationId })
     }
   }
 
@@ -357,6 +385,23 @@ export function SubscriptionManagementSection({
                 <span className='text-sm font-medium'>Subscription will cancel at period end</span>
               </div>
             )}
+            {subscription.adminOverrideAt && (
+              <div className='mt-4 pt-4 border-t space-y-1'>
+                <div className='flex items-center gap-2 text-amber-600'>
+                  <ShieldCheck className='size-4' />
+                  <span className='text-sm font-medium'>
+                    Admin-controlled since {format(subscription.adminOverrideAt, 'PPP')}
+                  </span>
+                </div>
+                <p className='text-xs text-muted-foreground'>
+                  Stripe webhooks and the Shopify billing sync will not change this subscription's
+                  status, plan, or trial dates.
+                  {subscription.adminOverrideReason
+                    ? ` Reason: ${subscription.adminOverrideReason}`
+                    : ''}
+                </p>
+              </div>
+            )}
           </div>
 
           <Accordion type='single' collapsible className='rounded-lg border'>
@@ -479,6 +524,28 @@ export function SubscriptionManagementSection({
                 </Button>
               </AccordionContent>
             </AccordionItem>
+
+            {/* Return billing control to the provider */}
+            {subscription.adminOverrideAt && (
+              <AccordionItem value='clear-override' className='border-b px-4 last:border-b-0'>
+                <AccordionTrigger>Return billing control to provider</AccordionTrigger>
+                <AccordionContent className='space-y-3'>
+                  <p className='text-sm text-muted-foreground'>
+                    Lets Stripe or Shopify own this subscription's status, plan, and trial dates
+                    again. The provider's current view overwrites the local values on the next sync,
+                    so any comp or forced status set here is lost.
+                  </p>
+                  <Button
+                    variant='destructive'
+                    size='sm'
+                    onClick={handleClearOverride}
+                    loading={clearOverride.isPending}>
+                    <ShieldCheck />
+                    Return Control
+                  </Button>
+                </AccordionContent>
+              </AccordionItem>
+            )}
 
             {/* Credit Adjustment */}
             <AccordionItem value='credit' className='border-b px-4 last:border-b-0'>

@@ -820,6 +820,12 @@ export const adminRouter = createTRPCRouter({
             scheduledChangeAt: null,
             cancelAtPeriodEnd: false,
             canceledAt: null,
+            // Nulling the provider ids alone does NOT detach the row: the Stripe webhook
+            // also resolves subscriptions via `metadata.subscriptionId` and
+            // `metadata.organizationId`, which survive this write, and it re-writes
+            // `stripeSubscriptionId` when it does. The override is what actually holds.
+            adminOverrideAt: new Date(),
+            adminOverrideReason: input.reason,
             updatedAt: new Date(),
           })
           .where(eq(schema.PlanSubscription.id, existing.id))
@@ -841,6 +847,30 @@ export const adminRouter = createTRPCRouter({
           },
         })
 
+        return { success: true }
+      }),
+
+    /**
+     * Hand billing control back to the provider by clearing the admin override.
+     *
+     * After this the Stripe webhook and the Shopify Admin poll resume owning status, plan,
+     * and trial dates for this subscription — whatever the provider currently believes wins
+     * on the next sync.
+     */
+    clearBillingOverride: superAdminProcedure
+      .input(
+        z.object({
+          organizationId: z.string(),
+          reason: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const service = new AdminBillingService(ctx.db, WEBAPP_URL, handlePlanDowngrade)
+        await service.clearAdminOverride({
+          ...input,
+          adminUserId: ctx.session.user.id,
+        })
+        await onCacheEvent('plan.changed', { orgId: input.organizationId })
         return { success: true }
       }),
 

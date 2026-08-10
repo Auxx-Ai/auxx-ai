@@ -11,9 +11,17 @@ import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import type { PlanChangeHandler } from '../types'
 import { auditLog } from '../utils/audit-logger'
+import { BillingError, ErrorCode } from '../utils/error-codes'
 import { stripeClient } from './stripe-client'
 
 const logger = createScopedLogger('admin-billing-service')
+
+/**
+ * Stripe rejects a `trial_end` less than 48 hours in the future. We validate against it
+ * before touching the database so a rejected extension can't leave the local row extended
+ * while Stripe still holds the old date.
+ */
+const STRIPE_MIN_TRIAL_END_MS = 48 * 60 * 60 * 1000
 
 /** Custom feature limits for Enterprise customers (camelCase keys match FeatureKey enum) */
 export interface CustomFeatureLimits {
@@ -46,7 +54,12 @@ export class AdminBillingService {
   // ============ Trial Management ============
 
   /**
-   * End trial immediately, forcing organization to upgrade or lose access
+   * End trial immediately, forcing organization to upgrade or lose access.
+   *
+   * Claims the admin override: without it, Stripe's own trial keeps running on its
+   * original schedule and the `customer.subscription.updated` webhook that fires when it
+   * expires would flip the local status back to `active` — silently restoring access to an
+   * org an admin had just locked out, and billing them for it.
    */
   async endTrialImmediately(input: {
     organizationId: string
@@ -54,6 +67,7 @@ export class AdminBillingService {
     reason?: string
   }): Promise<void> {
     const subscription = await this.getSubscription(input.organizationId)
+    this.assertTrialEditable(subscription)
 
     const previousState = {
       trialEnd: subscription.trialEnd,
@@ -67,6 +81,8 @@ export class AdminBillingService {
       .set({
         hasTrialEnded: true,
         trialEnd: new Date(),
+        adminOverrideAt: new Date(),
+        adminOverrideReason: input.reason ?? 'Trial ended early by admin',
         updatedAt: new Date(),
       })
       .where(eq(schema.PlanSubscription.id, subscription.id))
@@ -96,13 +112,32 @@ export class AdminBillingService {
     reason?: string
   }): Promise<void> {
     const subscription = await this.getSubscription(input.organizationId)
+    this.assertTrialEditable(subscription)
 
     const previousState = {
       trialEnd: subscription.trialEnd,
       hasTrialEnded: subscription.hasTrialEnded,
     }
 
-    // Update subscription
+    // Stripe FIRST, database second. The Stripe call is the fallible half — it rejects a
+    // `trial_end` under 48 hours, and a rejection used to land after the local write, so the
+    // row read as extended while Stripe still held the old date and the admin saw only
+    // "Failed to extend trial". A subscription with no `stripeSubscriptionId` is local-only
+    // (admin-created or unlinked); nothing reconciles it, so the local write alone is correct.
+    if (subscription.stripeSubscriptionId) {
+      if (input.newEndDate.getTime() - Date.now() < STRIPE_MIN_TRIAL_END_MS) {
+        throw new BillingError(
+          ErrorCode.STRIPE_ERROR,
+          'Stripe requires the new trial end to be at least 48 hours in the future. Extend by 3 days or more.'
+        )
+      }
+
+      const trialEndTimestamp = Math.floor(input.newEndDate.getTime() / 1000)
+      await stripeClient.getClient().subscriptions.update(subscription.stripeSubscriptionId, {
+        trial_end: trialEndTimestamp,
+      })
+    }
+
     await this.db
       .update(schema.PlanSubscription)
       .set({
@@ -113,14 +148,6 @@ export class AdminBillingService {
         updatedAt: new Date(),
       })
       .where(eq(schema.PlanSubscription.id, subscription.id))
-
-    // Update Stripe if subscription exists
-    if (subscription.stripeSubscriptionId) {
-      const trialEndTimestamp = Math.floor(input.newEndDate.getTime() / 1000)
-      await stripeClient.getClient().subscriptions.update(subscription.stripeSubscriptionId, {
-        trial_end: trialEndTimestamp,
-      })
-    }
 
     await auditLog(this.db, {
       adminUserId: input.adminUserId,
@@ -153,6 +180,7 @@ export class AdminBillingService {
     adminUserId: string
   }): Promise<void> {
     const subscription = await this.getSubscription(input.organizationId)
+    this.assertTrialEditable(subscription)
 
     // Resolve the target plan up front so an unknown name fails before any write.
     const targetPlan = input.planName ? await this.findPlanByName(input.planName) : null
@@ -167,13 +195,19 @@ export class AdminBillingService {
       plan: subscription.plan,
     }
 
-    // Update subscription to active
+    // Update subscription to active, and claim the admin override. This conversion is a
+    // comp (`skipPayment`), so it deliberately does NOT touch the provider — which means
+    // without the override the next Stripe webhook would overwrite `active` with whatever
+    // Stripe says. With no payment method that is `incomplete`/`past_due`, both of which
+    // are in BLOCKED_SUBSCRIPTION_STATUSES, so the comp would expire into a lockout.
     await this.db
       .update(schema.PlanSubscription)
       .set({
         status: 'active',
         trialConversionStatus: 'CONVERTED_TO_PAID',
         hasTrialEnded: true,
+        adminOverrideAt: new Date(),
+        adminOverrideReason: 'Trial converted to paid by admin without payment',
         ...(targetPlan ? { planId: targetPlan.id, plan: targetPlan.name } : {}),
         updatedAt: new Date(),
       })
@@ -204,6 +238,68 @@ export class AdminBillingService {
     if (targetPlan && targetPlan.id !== subscription.planId) {
       await this.onPlanChange?.(this.db, input.organizationId, targetPlan.id)
     }
+  }
+
+  /**
+   * Rejects trial edits on Shopify-billed organizations.
+   *
+   * Shopify owns the trial outright: trial days are configured per plan in the Partner
+   * Dashboard, and {@link ShopifyBillingProvider} is read-only by design — it never issues a
+   * billing GraphQL mutation. A local trial edit therefore changes nothing on Shopify's side
+   * and is reverted within 15 minutes by `syncFromAdminApi`, which overwrites both `status`
+   * and `trialEnd` from the Admin API. Failing loudly beats writing something that silently
+   * disappears.
+   */
+  private assertTrialEditable(subscription: { billingProvider: string | null }): void {
+    if (subscription.billingProvider === 'shopify') {
+      throw new BillingError(
+        ErrorCode.OPERATION_NOT_SUPPORTED,
+        'Shopify owns the trial for this organization. Change the trial on the plan in the ' +
+          'Shopify Partner Dashboard — a local edit is reverted by the billing sync.'
+      )
+    }
+  }
+
+  /**
+   * Hand billing control back to the provider by clearing the admin override.
+   *
+   * After this the Stripe webhook and the Shopify Admin poll resume writing status, plan,
+   * and trial dates for this subscription — so whatever the provider currently believes
+   * becomes the truth on the next sync.
+   */
+  async clearAdminOverride(input: {
+    organizationId: string
+    adminUserId: string
+    reason?: string
+  }): Promise<void> {
+    const subscription = await this.getSubscription(input.organizationId)
+
+    const previousState = {
+      adminOverrideAt: subscription.adminOverrideAt,
+      adminOverrideReason: subscription.adminOverrideReason,
+    }
+
+    await this.db
+      .update(schema.PlanSubscription)
+      .set({
+        adminOverrideAt: null,
+        adminOverrideReason: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.PlanSubscription.id, subscription.id))
+
+    await auditLog(this.db, {
+      adminUserId: input.adminUserId,
+      actionType: 'CLEAR_BILLING_OVERRIDE',
+      targetType: 'SUBSCRIPTION',
+      targetId: subscription.id,
+      organizationId: input.organizationId,
+      reason: input.reason,
+      previousState,
+      newState: { adminOverrideAt: null, adminOverrideReason: null },
+    })
+
+    logger.info('Admin billing override cleared', { organizationId: input.organizationId })
   }
 
   /**
@@ -422,10 +518,14 @@ export class AdminBillingService {
 
     const previousState = { status: subscription.status }
 
+    // Claims the override — a manually forced status is only meaningful if the provider
+    // reconcilers stop overwriting it on the next webhook or Admin API poll.
     await this.db
       .update(schema.PlanSubscription)
       .set({
         status: input.newStatus,
+        adminOverrideAt: new Date(),
+        adminOverrideReason: input.reason,
         updatedAt: new Date(),
       })
       .where(eq(schema.PlanSubscription.id, subscription.id))
