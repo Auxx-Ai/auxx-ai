@@ -80,9 +80,23 @@ export interface MailClassificationLabel {
 }
 
 /**
- * Why a message was not classified. Every arm is a guard exit (§3.1) except
- * `'error'`; all of them are normal, and none of them is a failure the caller
- * should retry.
+ * Why a message was not classified.
+ *
+ * The first six arms are guard exits (§3.1) and are entirely normal. The last
+ * four are outcomes of the call itself, and they split on ONE question that
+ * decides whether the message may ever be classified again:
+ *
+ * - `'below-threshold'` / `'no-category'` — an inference COMPLETED. The answer
+ *   was "apply nothing", which is a decision, and it was paid for. The marker
+ *   goes down (C9) and the message is done.
+ * - `'no-default-model'` / `'quota-exceeded'` / `'unavailable'` / `'error'` —
+ *   nothing ran. `LLMOrchestrator` only meters usage against a response that
+ *   came back (`llm-orchestrator.ts`), so a throw means no spend and no
+ *   decision. These must NOT stamp the marker, or one transient 429 disqualifies
+ *   the message from classification forever.
+ *
+ * That distinction is carried explicitly by `MailClassificationResult.inferred`
+ * rather than re-derived from this union — see the note there.
  */
 export type MailClassificationSkipReason =
   | 'machine-mail'
@@ -94,6 +108,11 @@ export type MailClassificationSkipReason =
   | 'no-default-model'
   | 'below-threshold'
   | 'no-category'
+  /** Out of AI credits, or over the completions rate limit. Nothing was spent. */
+  | 'quota-exceeded'
+  /** Provider 429/5xx, network failure or timeout — transient, nothing spent. */
+  | 'unavailable'
+  /** Anything unexpected. Also unspent, but worth an `error` log rather than a warn. */
   | 'error'
 
 /** The marker written to `Message.metadata.mailClassification` after a call. */
@@ -104,4 +123,166 @@ export interface MailClassificationMarker {
   tagId: string | null
   confidence: number
   model?: string
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Retroactive re-classification (07-mail-reclassification-plan.md)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * How far back a retroactive run reaches (07 §2.4, axis 1).
+ *
+ * Presets rather than free-form, because the count preview has to be cheap. The
+ * `'threads'` arm is a COUNT of threads rather than a date bound — "just try it
+ * on a bit" without thinking about dates — and combines with the always-newest-
+ * first ordering (07 invariant 8) to mean "the N most recent threads".
+ *
+ * Dates are ISO strings, not `Date`s: this shape travels through tRPC input and
+ * through BullMQ job data, both of which are JSON, so a `Date` would arrive as a
+ * string anyway and only the type would lie.
+ */
+export type MailReclassifyRange =
+  | { kind: 'days'; days: number }
+  | { kind: 'threads'; threads: number }
+  | { kind: 'custom'; sinceIso: string; untilIso?: string }
+  | { kind: 'all-time' }
+
+/** The offered day windows (07 §2.4). */
+export const MAIL_RECLASSIFY_DAY_PRESETS = [7, 30, 90] as const
+
+/** The offered thread-count windows (07 §2.4). */
+export const MAIL_RECLASSIFY_THREAD_PRESETS = [100, 500, 1000] as const
+
+/**
+ * Default range: the last 30 days (07 R-Q1).
+ *
+ * A cost decision, not a correctness one — under R5 a label on 2021 mail has
+ * full analytical value, so "all time" stays available behind a confirm.
+ */
+export const MAIL_RECLASSIFY_DEFAULT_RANGE: MailReclassifyRange = { kind: 'days', days: 30 }
+
+/**
+ * What state of thread a run is pointed at (07 §2.4, axis 2 / R4).
+ *
+ * ⚠️ Two genuinely different operations with different cost profiles, and the UI
+ * must not blur them:
+ *
+ * - `'fill-gaps'` — threads whose first inbound message carries **no** marker.
+ *   Pays once, for mail that never reached the classifier at all. THE DEFAULT.
+ * - `'re-classify'` — everything in scope, marker or not. Bypasses guard exit 5
+ *   and therefore **pays again** for mail already classified. The taxonomy-change
+ *   case, and the only way a user can accidentally spend twice.
+ */
+export type MailReclassifyMode = 'fill-gaps' | 're-classify'
+
+/** 07 R4 — fill-gaps is the default because it can never double-bill. */
+export const MAIL_RECLASSIFY_DEFAULT_MODE: MailReclassifyMode = 'fill-gaps'
+
+/**
+ * Hard ceiling on threads ONE run may touch (07 §2.5, R-Q4).
+ *
+ * ⚠️ Reaching it is reported, never a silent truncate (07 invariant 8) — a capped
+ * run says what it capped, because silent truncation reads as "covered
+ * everything".
+ */
+export const MAIL_RECLASSIFY_MAX_THREADS = 5000
+
+/**
+ * Ceiling for the backlog count shown on the classification card (07 R-Q5).
+ *
+ * Past it the UI renders `1,000+`: it is an order of magnitude for a decision,
+ * not a billing figure, and an exact count over a large mailbox is a slow query.
+ */
+export const MAIL_RECLASSIFY_BACKLOG_COUNT_CAP = 1000
+
+/** Threads one sample classifies (07 §2.11, R-Q2). Re-sample rather than resize. */
+export const MAIL_RECLASSIFY_SAMPLE_SIZE = 100
+
+/** BullMQ job name for the sample run. Registered on `maintenanceQueue`. */
+export const MAIL_RECLASSIFY_SAMPLE_JOB_NAME = 'mailReclassifySampleJob'
+
+/** One label's share of a sample (07 §2.11, §3.3). */
+export interface MailReclassifySampleLabelStat {
+  tagId: string
+  title: string
+  /** Threads the model assigned this label, at or above the threshold. */
+  count: number
+  /**
+   * Mean confidence across those threads, or 0 when `count` is 0.
+   *
+   * A label with consistently low confidence is overlapping another (07 §2.11).
+   */
+  meanConfidence: number
+}
+
+/**
+ * What a sample run reports (07 §2.11).
+ *
+ * ⚠️ It applies NOTHING and writes NO marker (07 invariant 9) — `applied` is a
+ * literal `false` so a future change that starts persisting has to change the
+ * type rather than quietly change behaviour.
+ */
+export interface MailReclassifySampleReport {
+  inboxId: string
+  mode: MailReclassifyMode
+  /** Threads asked for — {@link MAIL_RECLASSIFY_SAMPLE_SIZE} unless overridden. */
+  requested: number
+  /** Threads the scope actually yielded. May be < `requested`. */
+  selected: number
+  /**
+   * Threads a model call COMPLETED for. Guard exits and provider failures reduce
+   * it below `selected`, and 07 §2.11 requires saying so rather than implying
+   * the full sample size.
+   */
+  inferred: number
+  /** Threads that produced a label at or above the confidence threshold. */
+  classified: number
+  /**
+   * Completed inferences that applied nothing.
+   *
+   * **The single most informative number** (07 §2.11): high abstention means the
+   * vocabulary does not fit this mail, or the threshold is wrong. Rendered as its
+   * own row, never hidden (07 §3.3).
+   */
+  abstained: number
+  /** `abstained / inferred`, or 0 when nothing was inferred. */
+  abstentionRate: number
+  /** Mean confidence over every completed inference, abstentions included. */
+  meanConfidence: number
+  /**
+   * Every eligible label, **including the ones never chosen**. A zero row is the
+   * finding (07 §3.3 / 06 Q1: a label never chosen is a label to merge), so it
+   * must render rather than be filtered out.
+   */
+  labels: MailReclassifySampleLabelStat[]
+  /**
+   * Threads that never reached a model call, keyed by guard/failure reason.
+   *
+   * Guard exits and provider failures both land here, and they mean different
+   * things: an exit is normal, a `'quota-exceeded'` or `'unavailable'` means the
+   * sample is smaller than it looks for a reason worth showing.
+   */
+  skipped: Partial<Record<MailClassificationSkipReason, number>>
+  /**
+   * Why the completed inferences applied nothing — `'no-category'` (the model
+   * declined) versus `'below-threshold'` (it picked one but was not confident).
+   *
+   * Kept apart from `skipped` because these DID cost an inference, and because
+   * the split is what says whether the vocabulary is wrong or the threshold is.
+   */
+  abstainedByReason: Partial<Record<MailClassificationSkipReason, number>>
+  /** ⚠️ Always false. Sample mode persists nothing (07 invariant 9). */
+  applied: false
+}
+
+/** Lifecycle of an enqueued sample, as the dialog polls it. */
+export interface MailReclassifySampleStatus {
+  jobId: string
+  state: 'waiting' | 'active' | 'completed' | 'failed' | 'delayed' | 'unknown'
+  /** Threads processed so far, when the job has reported progress. */
+  processed: number
+  /** Threads the job intends to process. */
+  total: number
+  /** Present once `state === 'completed'`. */
+  report?: MailReclassifySampleReport
 }
