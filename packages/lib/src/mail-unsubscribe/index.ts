@@ -17,12 +17,14 @@ export {
   UNSUBSCRIBE_IGNORED_AFTER_DAYS,
   type UnsubscribeAlternative,
   type UnsubscribeCandidate,
+  type UnsubscribeGateInput,
   type UnsubscribeMeta,
   type UnsubscribeMethod,
   type UnsubscribeOffer,
   type UnsubscribeRefusal,
   type UnsubscribeRefusalReason,
   type UnsubscribeStatus,
+  unsubscribeRefusal,
 } from './client'
 // The three-tier executor (§6.1) + the shared-inbox audit action
 export { executeUnsubscribe, MAIL_UNSUBSCRIBE_AUDIT_ACTION } from './execute-unsubscribe'
@@ -60,6 +62,7 @@ export type {
   ExecuteUnsubscribeInput,
   ExecuteUnsubscribeOutcome,
   MailUnsubscribeRow,
+  SynchronousUnsubscribeStatus,
   UnsubscribeTarget,
 } from './types'
 export { toMailUnsubscribeRow } from './types'

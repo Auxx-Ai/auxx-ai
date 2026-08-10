@@ -78,6 +78,44 @@ export const MAX_SUGGESTIONS_PER_INBOX = 5
 /** Groups pulled back from one inbox's statement — bounds memory, not behaviour. */
 const GROUP_SCAN_LIMIT = 200
 
+/**
+ * MAIL time, not ingest time (04-v2-plan §1.2, V2). THE clock for every window
+ * bound, every first/last timestamp and every "newest message" ordering in the
+ * grouped statement below.
+ *
+ * `Message.createdAt` NAMES ingest time, and nothing constrains it to mail
+ * time. If it ever holds one — a freshly connected mailbox whose whole backfill
+ * carries a recent `createdAt` — a 90-day window on it sweeps up years:
+ * `evidence.messageCount` and `historyDays` inflate, weak groups clear the §5.2
+ * floors on the strength of two-year-old mail, and the card then reads
+ * "34 emails in 90 days", which is false.
+ *
+ * ⚠️ Today that is LATENT, not live, and the distinction matters to anyone
+ * re-verifying this: every inbound path happens to set `createdAt` from the
+ * provider's message time rather than `now()` — `createdTime: receivedAt` in
+ * `providers/google/messages/parse-message.ts` and `email/inbound/
+ * inbound-email-processor.ts`, `const createdTime = receivedAt` in
+ * `providers/outlook`, `createdTime: sentAt` in `providers/imap` — so on dev
+ * (6392/6392 inbound rows) `createdAt` and `receivedAt` are byte-identical and
+ * this change moves nothing. It is a load-bearing coincidence across five
+ * independent call sites, held by no test and no constraint; one new ingest
+ * path defaulting `createdAt` is all it takes. The window should not depend on
+ * it.
+ *
+ * `receivedAt` is nullable (Outlook/IMAP history, and anything ingested before
+ * the column was populated), which is why `createdAt` was reached for in the
+ * first place; the coalesce keeps that fallback rather than silently dropping
+ * every message that has no mail time at all. `mail-unsubscribe/sweep.ts`
+ * already windows on `receivedAt`, so the miner and the sweep now agree about
+ * "when".
+ *
+ * Not a sargability regression: `Message` carries no index on `createdAt`
+ * either — the statement is driven by `Message_organizationId_listId_idx` /
+ * `Message_organizationId_senderDomain_idx` and the timestamp is a filter on
+ * top of that both before and after.
+ */
+const MESSAGE_AT = sql`COALESCE(m."receivedAt", m."createdAt")`
+
 // ═══════════════════════════════════════════════════════════════════════════
 // THE GROUPED QUERY (§5.1)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -96,9 +134,16 @@ export interface MailGroupStats {
   /** Threads an existing filter fired on. */
   filteredThreadCount: number
   everReplied: boolean
+  /**
+   * The NEWEST message's DMARC verdict, already collapsed — the same reading
+   * `resolveUnsubscribeTarget` gates on, so the card and the button agree.
+   * `false` covers "failed" and "unknown" alike (invariant 3).
+   */
   senderAuthenticated: boolean
   unsubscribeMeta: MailUnsubscribeMeta | null
+  /** Oldest {@link MESSAGE_AT} in the window — mail time, not ingest time. */
   firstSeenAt: Date | null
+  /** Newest {@link MESSAGE_AT} in the window — mail time, not ingest time. */
   lastSeenAt: Date | null
   sampleThreadIds: string[]
   topTagId: string | null
@@ -119,7 +164,10 @@ export interface InboxGroupQueryParams {
    * anyone read this" and the only safe org-level reading is the union.
    */
   readerUserId: string | null
-  /** Oldest message that counts. Bound as a timestamp, never as day arithmetic. */
+  /**
+   * Oldest message that counts, compared against {@link MESSAGE_AT}. Bound as a
+   * timestamp, never as day arithmetic.
+   */
   since: Date
 }
 
@@ -133,7 +181,7 @@ export interface InboxGroupQueryParams {
  *   latest unsubscribeMeta, senderAuthenticated
  * ```
  *
- * Three things in here are load-bearing rather than incidental:
+ * Four things in here are load-bearing rather than incidental:
  *
  * 1. **`per_thread` collapses to ONE ROW PER THREAD before any rate is taken.**
  *    A newsletter thread with 12 messages must count once toward `threadCount`,
@@ -142,12 +190,30 @@ export interface InboxGroupQueryParams {
  * 2. **`manual_archived` excludes threads with a `MailFilterRun`** (§1.2,
  *    invariant 6). Without it the job proposes a filter to do what a filter is
  *    already doing, every week, forever.
- * 3. **`bool_and` on `senderAuthenticated`, not `bool_or`.** NULL means unknown
- *    and must read as "not authenticated" (invariant 3); requiring every message
- *    in the window to have passed is the conservative branch Outlook/IMAP
- *    history lands in until the header backfill catches up (§2.3), and the
- *    consequence — an archive suggestion instead of an unsubscribe one — is the
- *    right one.
+ * 3. **`senderAuthenticated` is the NEWEST message's verdict** — see
+ *    {@link MESSAGE_AT} for the ordering and the paragraph below for why it is
+ *    not a window-wide `bool_and`.
+ * 4. **Every timestamp is {@link MESSAGE_AT}, never bare `createdAt`.**
+ *
+ * **Why newest-message, not `bool_and` (04-v2-plan §2.3, V3).**
+ * `resolveUnsubscribeTarget` reads its gate inputs — `listId` and
+ * `senderAuthenticated` — off the NEWEST inbound message
+ * (`mail-unsubscribe/unsubscribe-queries.ts`), because §6.2 is written
+ * per-message and the executor is the thing that actually acts. The miner used
+ * to take `bool_and(senderAuthenticated IS TRUE)` across the whole window, and
+ * the two disagreed: one unauthenticated message from months ago made the CARD
+ * say "unverified sender / archive instead" while the BUTTON would have offered
+ * one-click (`domain:intuit.com`, on real data). A card that says one thing
+ * while the button does another is the same class of defect as
+ * `03-suggestions-plan.md §12.3`, so the miner adopts the executor's reading —
+ * the same shape as the newest-non-null `unsubscribeMeta` pick beside it.
+ *
+ * ⚠️ **Invariant 3 does not move.** The array subscript yields SQL `NULL` when
+ * the newest message carries no verdict, and the `IS TRUE` collapses that to
+ * `false`. Unknown is still NOT authenticated, at both levels of aggregation.
+ * Note also that only the *header* falls back to an older message
+ * (`findFreshestUnsubscribeMeta`, `03-…§12.3`) — `senderAuthenticated` never
+ * does, here or there.
  *
  * Exported so a test can read the emitted SQL: the `MailFilterRun` exclusion is
  * invisible to any assertion made on the returned rows alone.
@@ -166,10 +232,11 @@ export function buildInboxGroupQuery(params: InboxGroupQueryParams): SQL {
         m."senderDomain" AS sender_domain,
         t.id AS thread_id,
         count(*)::int AS message_count,
-        min(m."createdAt") AS first_at,
-        max(m."createdAt") AS last_at,
-        bool_and(m."senderAuthenticated" IS TRUE) AS sender_authenticated,
-        (array_agg(m."unsubscribeMeta" ORDER BY m."createdAt" DESC)
+        min(${MESSAGE_AT}) AS first_at,
+        max(${MESSAGE_AT}) AS last_at,
+        ((array_agg(m."senderAuthenticated" ORDER BY ${MESSAGE_AT} DESC))[1] IS TRUE)
+          AS sender_authenticated,
+        (array_agg(m."unsubscribeMeta" ORDER BY ${MESSAGE_AT} DESC)
            FILTER (WHERE m."unsubscribeMeta" IS NOT NULL))[1] AS unsubscribe_meta,
         (t."repliedAt" IS NOT NULL) AS ever_replied,
         (t."status" = 'ARCHIVED') AS archived,
@@ -188,7 +255,7 @@ export function buildInboxGroupQuery(params: InboxGroupQueryParams): SQL {
         AND t."inboxId" = ${inboxId}
         AND t."mergedIntoThreadId" IS NULL
         AND m."isInbound" = true
-        AND m."createdAt" >= ${since}
+        AND ${MESSAGE_AT} >= ${since}
         AND (m."listId" IS NOT NULL OR m."senderDomain" IS NOT NULL)
       GROUP BY 1, 2, 3, 4, t."repliedAt", t."status", t."assigneeId"
     ),
@@ -203,7 +270,11 @@ export function buildInboxGroupQuery(params: InboxGroupQueryParams): SQL {
         count(*) FILTER (WHERE archived AND NOT filtered)::int AS manual_archived_thread_count,
         count(*) FILTER (WHERE filtered)::int AS filtered_thread_count,
         bool_or(ever_replied) AS ever_replied,
-        bool_and(sender_authenticated) AS sender_authenticated,
+        -- The thread holding the group's newest message also holds the group's
+        -- max(last_at), so that thread's already-collapsed per-thread verdict IS
+        -- the newest message's. IS TRUE again: unknown stays unauthenticated.
+        ((array_agg(sender_authenticated ORDER BY last_at DESC))[1] IS TRUE)
+          AS sender_authenticated,
         min(first_at) AS first_seen_at,
         max(last_at) AS last_seen_at,
         (array_agg(unsubscribe_meta ORDER BY last_at DESC)
@@ -532,6 +603,10 @@ export function buildMailSuggestionDrafts(params: BuildDraftsParams): MailSugges
     // as NOT authenticated, which is why `senderAuthenticated` is a plain
     // boolean here and the SQL collapses unknown to false. A sender that
     // published no usable header is the same case — there is nothing to click.
+    //
+    // Both inputs are the NEWEST message's, matching `resolveUnsubscribeTarget`
+    // exactly (see {@link buildInboxGroupQuery}): this predicate is the card's
+    // copy of the gate the executor re-runs, and the two must not diverge.
     const unsubscribeOfferable =
       unreadRate >= UNREAD_RATE_THRESHOLD &&
       unsubscribeMethod !== null &&

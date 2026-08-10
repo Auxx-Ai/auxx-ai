@@ -8,6 +8,7 @@ import {
   describeSubjectKey,
   MAIL_SUGGESTION_KIND_LABELS,
 } from '@auxx/lib/mail-suggestions/client'
+import { unsubscribeRefusal } from '@auxx/lib/mail-unsubscribe/client'
 import { Button } from '@auxx/ui/components/button'
 import { ShieldBan, SquareArrowOutUpRight } from 'lucide-react'
 import Link from 'next/link'
@@ -28,21 +29,23 @@ import type { MailSuggestionCard } from '../hooks/use-mail-suggestions'
  * The mining job only ever mints `kind: 'unsubscribe'` for a group that PASSED
  * this gate, so a card that reaches the refusal branch always arrives as
  * `auto-archive` — which is why an unsubscribe button we would refuse is never
- * rendered in the first place. This restates the gate for the *explanation*, not
- * as a second authority: the executor re-runs it against the freshest message on
- * every real attempt.
+ * rendered in the first place.
+ *
+ * This is an adapter onto the denormalized `evidence` shape, NOT a second
+ * implementation: `unsubscribeRefusal` is the same predicate
+ * `selectUnsubscribeMethod` runs server-side, so the card's explanation and the
+ * executor's answer cannot drift (v2 plan §4.1). `evidence.unsubscribeMethod`
+ * is the tier the miner already resolved, so `!== null` is this row's version of
+ * "the mail carried a usable `List-Unsubscribe`".
  */
 export function unsubscribeRefusalReason(evidence: MailSuggestionEvidence): string | null {
-  if (!evidence.listId && !evidence.senderAuthenticated) {
-    return (
-      'This sender has no mailing-list identity and is not authenticated, so unsubscribing would ' +
-      'only confirm your address is live.'
-    )
-  }
-  if (evidence.unsubscribeMethod === null) {
-    return 'This sender publishes no unsubscribe address.'
-  }
-  return null
+  return (
+    unsubscribeRefusal({
+      listId: evidence.listId,
+      senderAuthenticated: evidence.senderAuthenticated,
+      hasUnsubscribeMethod: evidence.unsubscribeMethod !== null,
+    })?.message ?? null
+  )
 }
 
 /** Which buttons this card offers, given what the caller is allowed to do. */

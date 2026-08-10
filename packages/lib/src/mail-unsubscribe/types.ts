@@ -97,6 +97,18 @@ export interface ExecuteUnsubscribeInput {
 }
 
 /**
+ * The statuses one attempt can reach SYNCHRONOUSLY.
+ *
+ * `ignored` is deliberately absent: only the sweep job can conclude a sender
+ * ignored us, and it needs {@link import('./client').UNSUBSCRIBE_IGNORED_AFTER_DAYS}
+ * days of subsequent mail to say so (§6.4).
+ */
+export type SynchronousUnsubscribeStatus = Extract<
+  UnsubscribeStatus,
+  'requested' | 'confirmed' | 'failed'
+>
+
+/**
  * The outcome of an unsubscribe attempt.
  *
  * `refused` is an OUTCOME, not an error: the UI renders the alternative
@@ -107,11 +119,29 @@ export type ExecuteUnsubscribeOutcome =
   /** Already unsubscribed from this list in this inbox — never twice (§6.4). */
   | { status: 'already-requested'; record: MailUnsubscribeRow }
   | {
-      status: 'requested'
+      /**
+       * What the tier ACTUALLY achieved — never a blanket "we asked":
+       *
+       * - `confirmed` — the RFC 8058 endpoint answered 2xx. **Tier 1 only.**
+       * - `failed` — it answered something else. 500 / 403 / 410 are all real
+       *   answers from real senders, and reporting them as `requested` is what
+       *   made a refusal indistinguishable from a success. **Tier 1 only.**
+       * - `requested` — `http` and `mailto`, which carry NO acknowledgement:
+       *   nobody tells us whether the user finished the sender's page or whether
+       *   the list processed our mail, so this is the only honest answer and the
+       *   14-day sweep is what eventually resolves it.
+       *
+       * ⚠️ `confirmed` is not proof the mail stops — it is the sender's promise.
+       * The sweep still measures it; see `sweep.ts`'s `SWEEPABLE_STATUSES`.
+       */
+      status: SynchronousUnsubscribeStatus
       method: UnsubscribeMethod
       /**
        * ONLY set for the `http` tier: the URL the CLIENT must open in a new
-       * tab. We never POST a URL without the RFC 8058 one-click header.
+       * tab. We never POST a URL without the RFC 8058 one-click header, and we
+       * deliberately do NOT fall back to it when a one-click POST is rejected —
+       * a one-click endpoint is not necessarily a browsable confirmation page,
+       * which is exactly why tier 2 exists as its own tier.
        */
       openUrl?: string
       record: MailUnsubscribeRow

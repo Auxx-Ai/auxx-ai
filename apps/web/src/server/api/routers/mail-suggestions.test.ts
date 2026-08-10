@@ -15,14 +15,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *
  *  1. owns a personal inbox ⇒ sees exactly their own cards
  *  2. an admin ⇒ never sees another member's personal-inbox cards
- *  3. no inbox write ⇒ denied on unsubscribe (§7.1 is inbox write, and ONLY that)
+ *  3. no inbox read ⇒ denied on unsubscribe (§7.1 is inbox read, and ONLY that)
  *  4. no filter-authoring rights ⇒ denied on accept (invariant 10 — the
  *     suggestion is a PREFILL, never an authorization path)
  *
  * plus invariant 7 (dismissal is a STATUS WRITE, never a delete — dismissed rows
  * ARE the suppression list) and the §7.1 divergence itself: unsubscribing needs
- * inbox write and must NOT need `automationRules.manage`, because gating mail on
+ * inbox `read` and must NOT need `automationRules.manage`, because gating mail on
  * an automation grant is gating mail on admin rank.
+ *
+ * ## The two thresholds are modelled, not stubbed
+ *
+ * The caller composes a RUNG per inbox on the real, sparse mail ladder
+ * (`none < metadata < identity < read < admin` — no `edit`, on purpose), and both
+ * capability reads are derived from it the way the real `CapabilitySet` derives
+ * them: `canViewInstance` is `>= read`, `canEditInstance` is `>= edit`, which on
+ * this ladder only `admin` reaches. That is what makes the v2 §2.1 divergence
+ * assertable here: a member at `read` may unsubscribe and may NOT author.
  *
  * ## Shape notes
  *
@@ -45,6 +54,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const AUTOMATION_KEY = 'automationRules.manage'
 
 const hoisted = vi.hoisted(() => {
+  /**
+   * The mail rung ladder, verbatim from
+   * `permissions/capabilities/instance-access.ts`. `edit` is ABSENT on purpose:
+   * mail's `read` already confers acting (reply, assign), so the only tier above
+   * it is managing the mailbox itself.
+   */
+  const INBOX_RUNGS = ['none', 'metadata', 'identity', 'read', 'admin'] as const
+  type InboxRung = (typeof INBOX_RUNGS)[number]
+
+  /** `canViewInstance` — the `>= read` threshold, i.e. mail's acting tier. */
+  const satisfiesRead = (rung: InboxRung | undefined): boolean =>
+    rung !== undefined && INBOX_RUNGS.indexOf(rung) >= INBOX_RUNGS.indexOf('read')
+
+  /**
+   * `canEditInstance` — the `>= edit` threshold. `edit` is not in this ladder, so
+   * `admin` is the only rung that satisfies it, exactly as in production.
+   */
+  const satisfiesEdit = (rung: InboxRung | undefined): boolean => rung === 'admin'
+
   const ORG_ID = 'org_cuid000000000000000000000'
   const USER_ID = 'usr_member00000000000000000'
   const OTHER_USER_ID = 'usr_other000000000000000000'
@@ -66,8 +94,12 @@ const hoisted = vi.hoisted(() => {
   const world = {
     /** Layer-2 capability keys the caller holds. EMPTY is the interesting case. */
     capabilities: new Set<string>(),
-    /** Inbox ids the caller composes `edit`+ on (the shared branch's second half). */
-    writableInboxIds: new Set<string>(),
+    /**
+     * The rung the caller composes per inbox. Absent ⇒ no access at all.
+     * Both `canViewInstance` (`>= read`) and `canEditInstance` (`>= edit`, i.e.
+     * `admin` on this ladder) are derived from it — see the header note.
+     */
+    inboxRungs: new Map<string, InboxRung>(),
     /** What `executeUnsubscribe` answers. */
     unsubscribeOutcome: {
       status: 'requested',
@@ -203,14 +235,14 @@ const hoisted = vi.hoisted(() => {
     ownerUserId: string | null
   }
   interface AuthorityCaps {
-    canEditInstance(key: 'inbox', instanceId: string): boolean
+    canViewInstance(key: 'inbox', instanceId: string): boolean
   }
 
   /**
    * A FAITHFUL stand-in for `unsubscribe-authority.ts` (§7.1):
    *
    *   personal_inbox owned by the caller  →  allowed, NO permission key
-   *   shared inbox                        →  inbox write, and NOTHING else
+   *   shared inbox                        →  inbox READ, and NOTHING else
    *
    * The legacy `isPersonal` marker narrows and never widens, exactly as the real
    * predicate does — personal-ness can be self-declared into a stricter rule, not
@@ -220,7 +252,7 @@ const hoisted = vi.hoisted(() => {
     (inbox: AuthorityInbox, userId: string, capabilities: AuthorityCaps) => {
       if (inbox.entityDefinitionKey === 'personal_inbox') return inbox.ownerUserId === userId
       if (inbox.isPersonal) return inbox.ownerUserId === userId
-      return capabilities.canEditInstance('inbox', inbox.id)
+      return capabilities.canViewInstance('inbox', inbox.id)
     }
   )
 
@@ -365,6 +397,8 @@ const hoisted = vi.hoisted(() => {
   }
 
   return {
+    satisfiesRead,
+    satisfiesEdit,
     ORG_ID,
     USER_ID,
     OTHER_USER_ID,
@@ -470,27 +504,36 @@ const caller = (userId: string = USER_ID) =>
     },
     capabilities: {
       can: (key: string) => world.capabilities.has(key),
+      /** `>= read` — the unsubscribe/dismiss threshold (§7.1, v2 §2.1). */
+      canViewInstance: (key: string, instanceId: string) =>
+        key === 'inbox' && hoisted.satisfiesRead(world.inboxRungs.get(instanceId)),
+      /** `>= edit`, i.e. `admin` on the mail ladder — the filter-authoring half. */
       canEditInstance: (key: string, instanceId: string) =>
-        key === 'inbox' && world.writableInboxIds.has(instanceId),
+        key === 'inbox' && hoisted.satisfiesEdit(world.inboxRungs.get(instanceId)),
     },
   } as never)
+
+/** Compose one rung on one inbox. Defaults to the unsubscribe threshold. */
+const grantInbox = (inboxId: string, rung: 'none' | 'metadata' | 'identity' | 'read' | 'admin') => {
+  world.inboxRungs.set(inboxId, rung)
+}
 
 /** The shape `auxxErrorMiddleware` maps to a 403 / 404. */
 const FORBIDDEN = { cause: { statusCode: 403 } }
 const NOT_FOUND = { cause: { statusCode: 404 } }
 
-/** An org admin composing `Inboxes: Full` — write on EVERY inbox, plus the key. */
+/** An org admin composing `Inboxes: Full` — `admin` on EVERY inbox, plus the key. */
 const asAutomationAdmin = () => {
   world.capabilities.add(AUTOMATION_KEY)
-  world.writableInboxIds.add(SHARED_INBOX)
-  world.writableInboxIds.add(OWN_PERSONAL)
-  world.writableInboxIds.add(OTHER_PERSONAL)
-  world.writableInboxIds.add(LEGACY_PERSONAL)
+  grantInbox(SHARED_INBOX, 'admin')
+  grantInbox(OWN_PERSONAL, 'admin')
+  grantInbox(OTHER_PERSONAL, 'admin')
+  grantInbox(LEGACY_PERSONAL, 'admin')
 }
 
 beforeEach(() => {
   world.capabilities.clear()
-  world.writableInboxIds.clear()
+  world.inboxRungs.clear()
   world.unsubscribeOutcome = {
     status: 'requested',
     method: 'one-click',
@@ -573,21 +616,46 @@ describe('mailSuggestions router — §7.2 visibility', () => {
   })
 
   it('hides the filter half from a caller without the automation key', async () => {
-    world.writableInboxIds.add(SHARED_INBOX)
+    grantInbox(SHARED_INBOX, 'admin')
 
     const shared = (await caller().list()).find((row) => row.id === SHARED_SUGGESTION)
 
-    // Inbox write is enough to unsubscribe (§7.1) and NOT enough to author a
+    // Inbox authority is enough to unsubscribe (§7.1) and NOT enough to author a
     // filter — the card must say so rather than offering a button we would 403.
     expect(shared?.canUnsubscribe).toBe(true)
     expect(shared?.canAuthorFilter).toBe(false)
   })
+
+  it('shows the cards to a plain READER of a shared mailbox', async () => {
+    // v2 §2.1: the scope is the unsubscribe predicate, so widening that gate to
+    // `read` widens visibility with it — correctly, because a member at `read`
+    // can now answer every prompt the card offers.
+    world.capabilities.add(AUTOMATION_KEY)
+    grantInbox(SHARED_INBOX, 'read')
+
+    const shared = (await caller().list()).find((row) => row.id === SHARED_SUGGESTION)
+
+    expect(shared?.canUnsubscribe).toBe(true)
+    // …and still cannot author the standing filter, which stayed at `admin`.
+    expect(shared?.canAuthorFilter).toBe(false)
+  })
+
+  it.each([
+    'none',
+    'metadata',
+    'identity',
+  ] as const)('shows a member composing %s nothing at all', async (rung) => {
+    grantInbox(SHARED_INBOX, rung)
+
+    expect(await caller(STRANGER_ID).list()).toEqual([])
+    expect(suggestionsLib.listMailSuggestions).not.toHaveBeenCalled()
+  })
 })
 
 describe('mailSuggestions router — §7.1 unsubscribe authority', () => {
-  /** Case 3 — inbox write, and nothing else, is the whole gate. */
-  it('denies unsubscribe on a shared inbox to a caller with no inbox write', async () => {
-    // Deliberately holds the AUTOMATION key and no inbox write: an automation
+  /** Case 3 — inbox authority, and nothing else, is the whole gate. */
+  it('denies unsubscribe on a shared inbox to a caller with no inbox access', async () => {
+    // Deliberately holds the AUTOMATION key and no inbox rung: an automation
     // grant must not buy mail authority in either direction.
     world.capabilities.add(AUTOMATION_KEY)
 
@@ -597,8 +665,8 @@ describe('mailSuggestions router — §7.1 unsubscribe authority', () => {
     expect(unsubscribeLib.executeUnsubscribe).not.toHaveBeenCalled()
   })
 
-  it('allows unsubscribe on a shared inbox with inbox write and NO automation key', async () => {
-    world.writableInboxIds.add(SHARED_INBOX)
+  it('allows unsubscribe on a shared inbox with inbox access and NO automation key', async () => {
+    grantInbox(SHARED_INBOX, 'admin')
 
     const result = await caller().unsubscribe({ suggestionId: SHARED_SUGGESTION })
 
@@ -650,7 +718,7 @@ describe('mailSuggestions router — §7.1 unsubscribe authority', () => {
   })
 
   it('returns a refusal as an OUTCOME rather than an error', async () => {
-    world.writableInboxIds.add(SHARED_INBOX)
+    grantInbox(SHARED_INBOX, 'admin')
     world.unsubscribeOutcome = {
       status: 'refused',
       refusal: { offered: false, reason: 'unverified-sender', alternative: 'block-sender' },
@@ -664,13 +732,83 @@ describe('mailSuggestions router — §7.1 unsubscribe authority', () => {
   })
 })
 
+/**
+ * V4 — the rung, not merely "some authority".
+ *
+ * §7.1 designed unsubscribe as the LOOSER of the two shared-inbox gates, but
+ * asking `canEditInstance` on a ladder with no `edit` rung resolves to `admin`,
+ * which is the strict half of the filter-authoring gate. The divergence had
+ * collapsed invisibly because both landed on the same rung. User decision
+ * 2026-08-10: unsubscribe is `read`; authoring is unchanged.
+ */
+describe('mailSuggestions router — v2 §2.1, unsubscribe is gated on inbox READ', () => {
+  it('allows a member with inbox read who is NOT an inbox admin', async () => {
+    grantInbox(SHARED_INBOX, 'read')
+
+    await expect(caller().unsubscribe({ suggestionId: SHARED_SUGGESTION })).resolves.toMatchObject({
+      status: 'requested',
+    })
+    expect(unsubscribeLib.executeUnsubscribe).toHaveBeenCalled()
+  })
+
+  it.each([
+    'none',
+    'metadata',
+    'identity',
+  ] as const)('denies a member composing %s', async (rung) => {
+    grantInbox(SHARED_INBOX, rung)
+
+    await expect(caller().unsubscribe({ suggestionId: SHARED_SUGGESTION })).rejects.toMatchObject(
+      FORBIDDEN
+    )
+    expect(unsubscribeLib.executeUnsubscribe).not.toHaveBeenCalled()
+  })
+
+  it('does not move the AUTHORING gate — read still cannot accept', async () => {
+    // The whole point of restoring the divergence: a one-shot command sits with
+    // reply and assign at `read`, an unattended standing mutation does not.
+    world.capabilities.add(AUTOMATION_KEY)
+    grantInbox(SHARED_INBOX, 'read')
+
+    await expect(caller().accept({ suggestionId: SHARED_SUGGESTION })).rejects.toMatchObject(
+      FORBIDDEN
+    )
+    expect(filtersLib.createMailFilter).not.toHaveBeenCalled()
+  })
+
+  it("a reader of every shared mailbox still cannot touch another member's personal one", async () => {
+    // The personal branch never consults a capability at all, so loosening the
+    // shared rung must not reach across it. 404, never 403 — a private mailbox
+    // must not be distinguishable from an id that was never real.
+    grantInbox(SHARED_INBOX, 'read')
+    grantInbox(OTHER_PERSONAL, 'read')
+    grantInbox(LEGACY_PERSONAL, 'read')
+
+    await expect(caller().unsubscribe({ suggestionId: OTHER_SUGGESTION })).rejects.toMatchObject(
+      NOT_FOUND
+    )
+    await expect(caller().unsubscribe({ suggestionId: LEGACY_SUGGESTION })).rejects.toMatchObject(
+      NOT_FOUND
+    )
+    expect(unsubscribeLib.executeUnsubscribe).not.toHaveBeenCalled()
+  })
+
+  it('carries the same rung to dismiss — the decline half of one decision', async () => {
+    grantInbox(SHARED_INBOX, 'read')
+
+    await expect(caller().dismiss({ suggestionId: SHARED_SUGGESTION })).resolves.toMatchObject({
+      status: 'dismissed',
+    })
+  })
+})
+
 describe('mailSuggestions router — §6.2 block sender is a THIRD authority', () => {
   it('blocks the from-ADDRESS, never the group domain', async () => {
     // The refusal branch is dominated by consumer mail — on real data it includes
     // `domain:gmail.com` (477 messages), hotmail, outlook, yahoo. Blocking a
     // domain key there would stop every consumer sender on the channel,
     // customers included. Only the exact address may be blocked from a card.
-    world.writableInboxIds.add(SHARED_INBOX)
+    grantInbox(SHARED_INBOX, 'admin')
 
     const result = await caller().blockSender({ suggestionId: SHARED_SUGGESTION })
 
@@ -687,7 +825,7 @@ describe('mailSuggestions router — §6.2 block sender is a THIRD authority', (
   it('requires PER-CHANNEL manage authority, not just inbox write', async () => {
     // Blocking writes ChannelSettings.excludeSenders, which reaches every inbox
     // that channel feeds — strictly more than the one this card is about.
-    world.writableInboxIds.add(SHARED_INBOX)
+    grantInbox(SHARED_INBOX, 'admin')
     world.canManageChannel = false
 
     await expect(caller().blockSender({ suggestionId: SHARED_SUGGESTION })).rejects.toThrow(
@@ -696,7 +834,7 @@ describe('mailSuggestions router — §6.2 block sender is a THIRD authority', (
     expect(hoisted.channels.addExcludedSender).not.toHaveBeenCalled()
   })
 
-  it('denies a caller without inbox write before it ever reaches the channel', async () => {
+  it('denies a caller without inbox access before it ever reaches the channel', async () => {
     world.capabilities.add(AUTOMATION_KEY)
 
     await expect(caller().blockSender({ suggestionId: SHARED_SUGGESTION })).rejects.toMatchObject(
@@ -706,10 +844,36 @@ describe('mailSuggestions router — §6.2 block sender is a THIRD authority', (
     expect(hoisted.channels.addExcludedSender).not.toHaveBeenCalled()
   })
 
+  it.each([
+    'none',
+    'metadata',
+    'identity',
+  ] as const)('refuses a %s reader before the channel layer, even after v2 §2.1 loosened the inbox gate', async (rung) => {
+    // The ordering is the property: inbox authority is asserted FIRST, so
+    // widening it must never let someone reach the channel gate who could not
+    // reach it before.
+    grantInbox(SHARED_INBOX, rung)
+
+    await expect(caller().blockSender({ suggestionId: SHARED_SUGGESTION })).rejects.toMatchObject(
+      FORBIDDEN
+    )
+    expect(hoisted.channels.requireChannelManageAccess).not.toHaveBeenCalled()
+  })
+
+  it('still requires the channel gate from a plain inbox READER', async () => {
+    grantInbox(SHARED_INBOX, 'read')
+    world.canManageChannel = false
+
+    await expect(caller().blockSender({ suggestionId: SHARED_SUGGESTION })).rejects.toThrow(
+      /manage shared channels/
+    )
+    expect(hoisted.channels.addExcludedSender).not.toHaveBeenCalled()
+  })
+
   it('dismisses the card afterwards — blocking IS the answer', async () => {
     // A status write, never a delete: otherwise the next weekly sweep re-proposes
     // a sender the user has already blocked (invariant 7).
-    world.writableInboxIds.add(SHARED_INBOX)
+    grantInbox(SHARED_INBOX, 'admin')
 
     await caller().blockSender({ suggestionId: SHARED_SUGGESTION })
 
@@ -720,7 +884,7 @@ describe('mailSuggestions router — §6.2 block sender is a THIRD authority', (
 describe('mailSuggestions router — invariant 10, accept is a prefill', () => {
   /** Case 4 — accepting runs the SAME gate as authoring a filter by hand. */
   it('denies accept to a caller with inbox write but no automation key', async () => {
-    world.writableInboxIds.add(SHARED_INBOX)
+    grantInbox(SHARED_INBOX, 'admin')
 
     await expect(caller().accept({ suggestionId: SHARED_SUGGESTION })).rejects.toMatchObject(
       FORBIDDEN

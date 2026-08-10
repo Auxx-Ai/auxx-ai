@@ -12,6 +12,7 @@ import {
   parseUnsubscribeMeta,
   selectUnsubscribeMethod,
   toMailSubjectKey,
+  unsubscribeRefusal,
 } from './client'
 
 const oneClickMeta = { httpUrl: 'https://list.example.com/u/abc', oneClick: true }
@@ -76,6 +77,75 @@ describe('selectUnsubscribeMethod — the safety gate (§6.2, invariants 3 & 4)'
     if (offer.offered) throw new Error('unreachable')
     expect(offer.reason).toBe('no-unsubscribe-method')
     expect(offer.alternative).toBe('block-sender')
+  })
+})
+
+describe('unsubscribeRefusal — the ONE predicate the card also renders (v2 §4.1)', () => {
+  const meta = { listId: null, senderAuthenticated: null, hasUnsubscribeMethod: true }
+
+  it('treats senderAuthenticated NULL exactly like FALSE on a domain group (invariant 3)', () => {
+    for (const senderAuthenticated of [null, false] as const) {
+      expect(unsubscribeRefusal({ ...meta, senderAuthenticated })).toMatchObject({
+        offered: false,
+        reason: 'unverified-sender',
+        alternative: 'block-sender',
+      })
+    }
+  })
+
+  it('passes on a domain group only when the sender is explicitly authenticated', () => {
+    expect(unsubscribeRefusal({ ...meta, senderAuthenticated: true })).toBeNull()
+  })
+
+  it('passes on a list-id regardless of the verdict — the list IS the identity', () => {
+    for (const senderAuthenticated of [null, false, true] as const) {
+      expect(
+        unsubscribeRefusal({ ...meta, listId: 'l.example.com', senderAuthenticated })
+      ).toBeNull()
+    }
+  })
+
+  it('refuses a verified sender that publishes no address', () => {
+    expect(
+      unsubscribeRefusal({
+        listId: 'l.example.com',
+        senderAuthenticated: true,
+        hasUnsubscribeMethod: false,
+      })
+    ).toMatchObject({ offered: false, reason: 'no-unsubscribe-method' })
+  })
+
+  it('ranks the unverified branch first — the identity question precedes the header one', () => {
+    expect(
+      unsubscribeRefusal({
+        listId: null,
+        senderAuthenticated: null,
+        hasUnsubscribeMethod: false,
+      })
+    ).toMatchObject({ reason: 'unverified-sender' })
+  })
+
+  it('is the same authority selectUnsubscribeMethod uses — identical message, every case', () => {
+    const rows = [
+      { listId: null, senderAuthenticated: null },
+      { listId: null, senderAuthenticated: false },
+      { listId: null, senderAuthenticated: true },
+      { listId: 'l.example.com', senderAuthenticated: null },
+      { listId: 'l.example.com', senderAuthenticated: true },
+    ] as const
+
+    for (const row of rows) {
+      for (const unsubscribeMeta of [oneClickMeta, httpOnlyMeta, mailtoOnlyMeta, null]) {
+        const offer = selectUnsubscribeMethod({ ...row, unsubscribeMeta })
+        const refusal = unsubscribeRefusal({
+          ...row,
+          hasUnsubscribeMethod: unsubscribeMeta !== null,
+        })
+
+        expect(offer.offered).toBe(refusal === null)
+        if (!offer.offered) expect(offer.message).toBe(refusal?.message)
+      }
+    }
   })
 })
 

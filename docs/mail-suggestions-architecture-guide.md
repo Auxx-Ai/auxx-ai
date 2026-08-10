@@ -295,9 +295,10 @@ the job runs from a worker with no caller at all, and holds zero permission chec
 `buildInboxGroupQuery(params)` — exported specifically so a test can read the emitted SQL, because
 the `MailFilterRun` exclusion is invisible to any assertion made on the returned rows alone. Four
 CTEs: `per_thread` → `per_group` → `top_assignee` / `top_tag`. Scope: one inbox, inbound only,
-`mergedIntoThreadId IS NULL`, `createdAt >= now − 90d`, and at least one of `listId`/`senderDomain`.
+`mergedIntoThreadId IS NULL`, `coalesce(receivedAt, createdAt) >= now − 90d`, and at least one of
+`listId`/`senderDomain`.
 
-Three things in it are load-bearing rather than incidental:
+Four things in it are load-bearing rather than incidental:
 
 1. **`per_thread` collapses to one row per thread before any rate is taken.** A newsletter thread with
    12 messages must count once toward `threadCount`; aggregating rates straight off `Message` would
@@ -305,8 +306,21 @@ Three things in it are load-bearing rather than incidental:
 2. **`manual_archived` counts `archived AND NOT filtered`** — threads with a `MailFilterRun` are
    excluded. Without it the job proposes a filter to do what a filter is already doing, every week,
    forever.
-3. **`bool_and(m."senderAuthenticated" IS TRUE)`, not `bool_or`.** NULL collapses to `false`, and
-   requiring every message in the window to have passed is the conservative branch (§9.2).
+3. **`senderAuthenticated` is the NEWEST message's verdict**, not `bool_and` over the window:
+   `(array_agg(m."senderAuthenticated" ORDER BY <mail time> DESC))[1] IS TRUE`, rolled up to the
+   group by the thread holding its newest message. `resolveUnsubscribeTarget` reads the gate inputs
+   off the newest inbound message because §6.2 is written per-message and the executor is the thing
+   that acts; a window-wide `bool_and` disagreed with it, so the card refused while the button would
+   have offered (`domain:intuit.com`, on real data — 04-v2-plan §2.3). The `IS TRUE` at both levels is
+   what keeps invariant 3: a NULL subscript is `NULL`, and `NULL` is not authenticated.
+4. **Every timestamp is `COALESCE(m."receivedAt", m."createdAt")` — MAIL time, not ingest time**
+   (04-v2-plan §1.2): the window bound, `first_at`/`last_at` (and therefore `historyDays`), and both
+   "newest message" orderings. `createdAt` *names* ingest time, so a backfill on it would report
+   years of history as 90 days of traffic under a card reading "34 emails in 90 days". Latent rather
+   than live today — every ingest path happens to set `createdAt` from the provider's message time
+   (`createdTime: receivedAt`), so the two columns agree on every dev row — but that is five
+   independent call sites agreeing, not a constraint. `receivedAt` is nullable, hence the coalesce
+   rather than a swap.
 
 `readerUserId` decides what "unread" means: a personal inbox passes its owner; a **shared inbox
 passes `null`**, so unread means *no member has read it*.
@@ -785,9 +799,10 @@ engine — into every importer's graph.
    tests are thorough (`mine*.test.ts`, `mutations.test.ts`, `retention.test.ts`, and seven files in
    `mail-unsubscribe/`), but the only authorization path in the feature is currently unpinned. Write
    the router test before changing anything in §10.
-4. **The mining window uses `Message.createdAt` (ingest time) while the sweep counts on
-   `receivedAt`.** For a freshly backfilled mailbox the 90-day evidence window is ingest-relative, not
-   send-relative.
+4. ~~**The mining window uses `Message.createdAt` (ingest time) while the sweep counts on
+   `receivedAt`.**~~ Closed (04-v2-plan V2/V3): the miner now windows, bounds and orders on
+   `coalesce(receivedAt, createdAt)`, and reads `senderAuthenticated` off the newest message like the
+   executor. See §5.1 items 3–4.
 
 ---
 
@@ -801,8 +816,10 @@ engine — into every importer's graph.
 3. **Never record our outbound unsubscribe as `contact:unsubscribed`** — that kind upserts an org-wide
    suppression and would silence our own mail to that address. Use `mail:unsubscribed_from`
    (`rollup: 'none'`).
-4. **`senderAuthenticated IS NULL` means "not authenticated".** In SQL that is
-   `bool_and(x IS TRUE)`; in TS it is `senderAuthenticated !== true`.
+4. **`senderAuthenticated IS NULL` means "not authenticated".** In SQL that is the `IS TRUE` on the
+   newest-message subscript (§5.1 item 3) — an out-of-range or NULL element yields `NULL`, which is
+   not a pass; in TS it is `senderAuthenticated !== true`. Only the unsubscribe *header* may fall
+   back to an older message (`findFreshestUnsubscribeMeta`); the verdict never does.
 5. **No `listId` + not authenticated ⇒ offer block/filter to spam, never unsubscribe.**
 6. **One reply ever ⇒ no suggestion for that `subjectKey`, permanently.** The most important rule in
    the feature.

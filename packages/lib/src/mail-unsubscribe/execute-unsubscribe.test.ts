@@ -17,7 +17,10 @@ vi.mock('./unsubscribe-queries', () => ({
   getMailUnsubscribe: vi.fn(),
   resolveUnsubscribeTarget: vi.fn(),
 }))
-vi.mock('./unsubscribe-mutations', () => ({ upsertMailUnsubscribe: vi.fn() }))
+vi.mock('./unsubscribe-mutations', () => ({
+  upsertMailUnsubscribe: vi.fn(),
+  setMailUnsubscribeStatus: vi.fn(),
+}))
 vi.mock('./one-click-post', () => ({ postOneClickUnsubscribe: vi.fn() }))
 vi.mock('./mailto-send', () => ({ sendMailtoUnsubscribe: vi.fn() }))
 vi.mock('../signals/record-signal', () => ({ recordSignal: vi.fn() }))
@@ -30,7 +33,7 @@ import { executeUnsubscribe } from './execute-unsubscribe'
 import { sendMailtoUnsubscribe } from './mailto-send'
 import { postOneClickUnsubscribe } from './one-click-post'
 import type { UnsubscribeTarget } from './types'
-import { upsertMailUnsubscribe } from './unsubscribe-mutations'
+import { setMailUnsubscribeStatus, upsertMailUnsubscribe } from './unsubscribe-mutations'
 import { getMailUnsubscribe, resolveUnsubscribeTarget } from './unsubscribe-queries'
 
 const db = {} as never
@@ -75,6 +78,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(getMailUnsubscribe).mockResolvedValue(ok(null))
   vi.mocked(upsertMailUnsubscribe).mockResolvedValue(ok(RECORD))
+  vi.mocked(setMailUnsubscribeStatus).mockImplementation(async (_db, _orgId, id, status) =>
+    ok({ ...RECORD, id, status })
+  )
   vi.mocked(postOneClickUnsubscribe).mockResolvedValue({
     accepted: true,
     status: 200,
@@ -96,7 +102,7 @@ describe('executeUnsubscribe — tiers', () => {
     const result = await executeUnsubscribe(db, INPUT)
 
     expect(result.isOk()).toBe(true)
-    expect(result._unsafeUnwrap()).toMatchObject({ status: 'requested', method: 'one-click' })
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'confirmed', method: 'one-click' })
     expect(postOneClickUnsubscribe).toHaveBeenCalledWith('https://list.example.com/u/abc')
     expect(sendMailtoUnsubscribe).not.toHaveBeenCalled()
   })
@@ -241,7 +247,109 @@ describe('executeUnsubscribe — the signal (§3, INVARIANT 2)', () => {
     const result = await executeUnsubscribe(db, INPUT)
 
     expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'confirmed' })
+  })
+})
+
+/**
+ * V1 — a rejected unsubscribe used to be recorded as a successful one.
+ *
+ * The endpoint's answer was logged at `warn` and thrown away: the row said
+ * `requested`, the card said done, and a sender answering 410 was
+ * indistinguishable from one that honored us. `setMailUnsubscribeStatus` existed
+ * for exactly this and had zero callers, so `confirmed` and `failed` were
+ * unreachable states.
+ */
+describe('executeUnsubscribe — the tier-1 verdict is recorded (V1)', () => {
+  beforeEach(() => {
+    vi.mocked(resolveUnsubscribeTarget).mockResolvedValue(ok(target()))
+  })
+
+  it('records confirmed when the endpoint accepts', async () => {
+    const result = await executeUnsubscribe(db, INPUT)
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'confirmed', method: 'one-click' })
+    expect(setMailUnsubscribeStatus).toHaveBeenCalledWith(db, 'org_1', 'unsub_1', 'confirmed')
+    expect(result._unsafeUnwrap()).toMatchObject({ record: { status: 'confirmed' } })
+  })
+
+  it.each([500, 403, 410])('records failed — NOT requested — on a %i', async (status) => {
+    vi.mocked(postOneClickUnsubscribe).mockResolvedValue({
+      accepted: false,
+      status,
+      finalUrl: 'https://list.example.com/u/abc',
+    })
+
+    const result = await executeUnsubscribe(db, INPUT)
+
+    const outcome = result._unsafeUnwrap()
+    expect(outcome).toMatchObject({ status: 'failed', method: 'one-click' })
+    expect(outcome.status).not.toBe('requested')
+    expect(setMailUnsubscribeStatus).toHaveBeenCalledWith(db, 'org_1', 'unsub_1', 'failed')
+  })
+
+  it('never falls back to opening the URL when the POST is rejected', async () => {
+    // A one-click POST endpoint is not necessarily a browsable confirmation
+    // page — that is exactly why tier 2 exists as a separate tier. Surface the
+    // failure; the fallback is a product question, not a silent retry.
+    vi.mocked(postOneClickUnsubscribe).mockResolvedValue({
+      accepted: false,
+      status: 500,
+      finalUrl: 'https://list.example.com/u/abc',
+    })
+
+    const result = await executeUnsubscribe(db, INPUT)
+
+    expect(result._unsafeUnwrap()).not.toHaveProperty('openUrl')
+  })
+
+  it.each([
+    ['http', { offered: true as const, method: 'http' as const, httpUrl: 'https://x.test/u' }],
+    ['mailto', { offered: true as const, method: 'mailto' as const, mailto: 'u@x.test' }],
+  ])('leaves the %s tier at requested — nothing acknowledges it', async (_name, offer) => {
+    vi.mocked(resolveUnsubscribeTarget).mockResolvedValue(ok(target({ offer })))
+
+    const result = await executeUnsubscribe(db, INPUT)
+
     expect(result._unsafeUnwrap()).toMatchObject({ status: 'requested' })
+    // No acknowledgement exists, so there is no terminal state to write.
+    expect(setMailUnsubscribeStatus).not.toHaveBeenCalled()
+  })
+
+  it('a failed status write never fails the unsubscribe — the POST already went out', async () => {
+    // Same posture as the audit write: bookkeeping must not turn a completed
+    // operation into an error the user retries. The endpoint's answer is still
+    // the truth about the attempt, so the reported status does not degrade.
+    vi.mocked(setMailUnsubscribeStatus).mockRejectedValue(new Error('db down'))
+
+    const result = await executeUnsubscribe(db, INPUT)
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'confirmed', record: RECORD })
+  })
+
+  it('re-offers a previously FAILED row instead of short-circuiting it', async () => {
+    // Without this, recording `failed` would be worse than the bug it fixes: the
+    // short-circuit would dead-end the card on `already-requested` forever.
+    vi.mocked(getMailUnsubscribe).mockResolvedValue(ok({ ...RECORD, status: 'failed' }))
+
+    const result = await executeUnsubscribe(db, INPUT)
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'confirmed' })
+    expect(postOneClickUnsubscribe).toHaveBeenCalled()
+  })
+
+  it.each([
+    'requested',
+    'confirmed',
+    'ignored',
+  ] as const)('still short-circuits a %s row — we never ask a third party twice', async (status) => {
+    vi.mocked(getMailUnsubscribe).mockResolvedValue(ok({ ...RECORD, status }))
+
+    const result = await executeUnsubscribe(db, INPUT)
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'already-requested' })
+    expect(postOneClickUnsubscribe).not.toHaveBeenCalled()
   })
 })
 

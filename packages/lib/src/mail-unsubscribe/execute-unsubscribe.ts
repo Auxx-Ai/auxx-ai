@@ -3,7 +3,7 @@
 //
 // ZERO permission checks (lib-module-guide §6). The router asserts §7.1 —
 // personal inbox owned by the caller ⇒ ownership alone; shared inbox ⇒ inbox
-// write authority and DELIBERATELY NOT `automationRules.manage` — and passes
+// READ authority and DELIBERATELY NOT `automationRules.manage` — and passes
 // `isSharedInbox` in, which only drives the audit row. See
 // `./unsubscribe-authority.ts` for the predicate the router calls.
 //
@@ -16,8 +16,13 @@ import type { AuxxError } from '../errors'
 import { guard } from './guard'
 import { sendMailtoUnsubscribe } from './mailto-send'
 import { postOneClickUnsubscribe } from './one-click-post'
-import type { ExecuteUnsubscribeInput, ExecuteUnsubscribeOutcome } from './types'
-import { upsertMailUnsubscribe } from './unsubscribe-mutations'
+import type {
+  ExecuteUnsubscribeInput,
+  ExecuteUnsubscribeOutcome,
+  MailUnsubscribeRow,
+  SynchronousUnsubscribeStatus,
+} from './types'
+import { setMailUnsubscribeStatus, upsertMailUnsubscribe } from './unsubscribe-mutations'
 import { getMailUnsubscribe, resolveUnsubscribeTarget } from './unsubscribe-queries'
 import { recordUnsubscribeSignal } from './unsubscribe-signal'
 
@@ -30,7 +35,8 @@ const logger = createScopedLogger('mail-unsubscribe')
  *
  * 1. **Already unsubscribed?** Short-circuit. The unique
  *    `(organizationId, inboxId, subjectKey)` index is the race-safe floor, but
- *    checking first is what stops us POSTing a third party twice.
+ *    checking first is what stops us POSTing a third party twice. A `failed`
+ *    row is the one that does NOT short-circuit — see below.
  * 2. **Resolve the target and run the safety gate.** No `listId` and no
  *    `senderAuthenticated` ⇒ a typed REFUSAL (invariants 3 & 4), returned as an
  *    outcome rather than an error so the UI can render "block sender / filter to
@@ -41,13 +47,19 @@ const logger = createScopedLogger('mail-unsubscribe')
  *      to open in a new tab. A bare GET is usually a confirmation page, and
  *      POSTing an arbitrary URL on a user's behalf is not ours to do.
  *    - `mailto` — a real outbound send from that mailbox's own channel.
- * 4. **Record the row**, then the signal + audit.
+ * 4. **Record the row**, stamp the tier's verdict on it, then the signal + audit.
  *
- * The `MailUnsubscribe` row is written AFTER the tier runs, so a failed POST
- * leaves no record claiming we unsubscribed. The `http` tier is the exception
- * worth naming: we record it as `requested` at the moment we hand the URL over,
- * because we will never learn whether the user completed it, and a row that only
- * appears on success would never appear at all.
+ * **The returned status is what the tier actually achieved**, not a blanket "we
+ * asked". Only tier 1 gets an acknowledgement, so only tier 1 can reach a
+ * terminal state synchronously: 2xx ⇒ `confirmed`, anything else ⇒ `failed`.
+ * `http` and `mailto` have nothing that answers them and stay `requested`. A
+ * rejected POST recorded as `requested` is what made a sender answering 410
+ * indistinguishable from one that honored us.
+ *
+ * A `failed` row is deliberately RETRYABLE: the short-circuit in step 1 skips
+ * it, because we never got through, so a second attempt is a first request
+ * rather than a duplicate — the upsert's conflict branch already documents the
+ * `failed → requested` upgrade as the case worth reflecting.
  */
 export async function executeUnsubscribe(
   db: Database,
@@ -62,7 +74,11 @@ export async function executeUnsubscribe(
         input.subjectKey
       )
       if (existing.isErr()) throw existing.error
-      if (existing.value) {
+      // A `failed` row means the endpoint REFUSED us, so nothing was ever
+      // requested and re-offering is correct. Every other status did reach the
+      // sender (or is the sweep's verdict on one that did), and asking twice is
+      // what the short-circuit exists to prevent.
+      if (existing.value && existing.value.status !== 'failed') {
         return { status: 'already-requested' as const, record: existing.value }
       }
 
@@ -80,10 +96,17 @@ export async function executeUnsubscribe(
       }
 
       let openUrl: string | undefined
+      /**
+       * What the tier achieved. `requested` is the floor and the only answer
+       * tiers 2 and 3 can give: neither is acknowledged, so claiming anything
+       * stronger would be a guess.
+       */
+      let status: SynchronousUnsubscribeStatus = 'requested'
 
       switch (target.offer.method) {
         case 'one-click': {
           const posted = await postOneClickUnsubscribe(target.offer.httpUrl)
+          status = posted.accepted ? 'confirmed' : 'failed'
           if (!posted.accepted) {
             logger.warn('One-click unsubscribe endpoint rejected the request', {
               organizationId: input.organizationId,
@@ -116,6 +139,10 @@ export async function executeUnsubscribe(
         requestedByUserId: input.userId,
       })
       if (upserted.isErr()) throw upserted.error
+      const record =
+        status === 'requested'
+          ? upserted.value
+          : await stampTerminalStatus(db, input, upserted.value, status)
 
       if (target.contactEntityInstanceId) {
         await recordUnsubscribeSignal({
@@ -135,15 +162,59 @@ export async function executeUnsubscribe(
       }
 
       return {
-        status: 'requested' as const,
+        status,
         method: target.offer.method,
         ...(openUrl ? { openUrl } : {}),
-        record: upserted.value,
+        record,
       }
     },
     'executeUnsubscribe failed',
     { organizationId: input.organizationId, inboxId: input.inboxId, subjectKey: input.subjectKey }
   )
+}
+
+/**
+ * Stamp tier 1's verdict onto the row the upsert just created.
+ *
+ * **A separate write, on purpose.** The upsert is the RACE-SAFE FLOOR — the
+ * `(organizationId, inboxId, subjectKey)` uniqueness is what stops two tabs
+ * POSTing a third party twice — and it must still fail loudly when it cannot
+ * write, because a missing row is a real failure. This is BOOKKEEPING layered on
+ * an operation that already happened: the POST went out and the sender already
+ * answered. So it is best-effort, the same posture as
+ * {@link writeSharedInboxAudit} — a failed status write must not turn a
+ * completed attempt into an error the user retries.
+ *
+ * The caller still reports the real status either way. The endpoint's answer is
+ * the truth about the attempt whether or not we managed to persist it; only the
+ * returned `record` falls back to the un-stamped row.
+ */
+async function stampTerminalStatus(
+  db: Database,
+  input: ExecuteUnsubscribeInput,
+  record: MailUnsubscribeRow,
+  status: SynchronousUnsubscribeStatus
+): Promise<MailUnsubscribeRow> {
+  try {
+    const updated = await setMailUnsubscribeStatus(db, input.organizationId, record.id, status)
+    if (updated.isOk()) return updated.value
+    logger.warn('Failed to record the unsubscribe outcome', {
+      organizationId: input.organizationId,
+      inboxId: input.inboxId,
+      subjectKey: input.subjectKey,
+      status,
+      error: updated.error.message,
+    })
+  } catch (error) {
+    logger.warn('Failed to record the unsubscribe outcome', {
+      organizationId: input.organizationId,
+      inboxId: input.inboxId,
+      subjectKey: input.subjectKey,
+      status,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+  return record
 }
 
 /** `AuditLog.action` for an unsubscribe on a SHARED inbox. Ad-hoc by design —

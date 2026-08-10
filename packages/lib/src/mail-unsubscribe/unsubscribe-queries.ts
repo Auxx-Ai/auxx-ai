@@ -3,7 +3,7 @@
 // Functional Drizzle + neverthrow — no service class (docs/lib-module-guide.md).
 //
 // ZERO permission checks by design (lib-module-guide §6): the router asserts the
-// §7.1 branch (own personal inbox ⇒ ownership alone; shared inbox ⇒ inbox write
+// §7.1 branch (own personal inbox ⇒ ownership alone; shared inbox ⇒ inbox READ
 // authority, and NOT `automationRules.manage`) and hands the allowed inbox ids
 // down as `opts.inboxIds`, which this module turns into a WHERE fragment. A
 // post-read `.filter()` would leak counts even where it hides content.
