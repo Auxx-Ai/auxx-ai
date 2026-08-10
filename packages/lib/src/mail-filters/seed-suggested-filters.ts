@@ -28,6 +28,11 @@
 //     display name and is skipped entirely when that tag is absent, rather than writing a
 //     `tagIds` entry pointing at nothing.
 //
+// Some of the catalog exists because a DETERMINISTIC rule beat an inference:
+// `plans/mail-filter/06-mail-categories-rework-plan.md` D2 retires `Newsletter` and
+// `Notification` as AI labels precisely because both are answerable from headers this
+// file can match on for free. `suggested:mailing-list-mail` is that replacement.
+//
 // Seeded rows do NOT consume the customer's `mailFiltersLimit` allowance —
 // `countBillableMailFilters` excludes `templateKey IS NOT NULL` (§5.2). They ARE deletable,
 // unlike seeded sequences; see the note on `deleteMailFilter`.
@@ -92,6 +97,28 @@ function subjectContains(id: string, value: string) {
 }
 
 /**
+ * `list` matches on `Message.listId` — the normalized `List-Id` header derived at
+ * ingest (`ingest/filtering/bulk-mail.ts:parseListId`), lowercased and stripped to
+ * the bare identity (`ACME News <news.acme.com>` → `news.acme.com`).
+ *
+ * This is the STABLE bulk-mail identity: it survives VERP and per-campaign
+ * from-addresses, both of which defeat any `from contains` fragment. `not empty`
+ * means "some message in this thread carries a List-Id", i.e. it came from a real
+ * mailing list.
+ */
+function listNotEmpty(id: string) {
+  // `value` is required by `Condition` and ignored by `buildMessageTextColumnQuery`
+  // for `empty` / `not empty`; `''` is the convention `mail-suggestions/mine.ts`
+  // already uses for the value-less operators.
+  return { id, fieldId: 'list', operator: 'not empty' as const, value: '' }
+}
+
+/** `list` substring match on `Message.listId` via `ILIKE '%value%'`. */
+function listContains(id: string, value: string) {
+  return { id, fieldId: 'list', operator: 'contains' as const, value }
+}
+
+/**
  * The starter suggested filters. All seeded `enabled: false`, `stopProcessing: false`, on
  * the org's default shared inbox.
  *
@@ -101,6 +128,8 @@ function subjectContains(id: string, value: string) {
  * - **automated-notifications** — writes no thread state at all. `suppress-automations`
  *   only tells the gate to skip AI/automation for robot mail, which is the single safest
  *   useful thing a filter can do.
+ * - **mailing-list-mail** — the same, on the deterministic signal rather than an
+ *   address fragment. See its own note below.
  * - **bulk-newsletters** — `ARCHIVED` is mail's "done" (never `TRASH`/`SPAM`, which are
  *   destructive and provider-visible), paired with `suppress-automations` because nobody
  *   wants an agent drafting a reply to a marketing blast. Undo restores the prior status.
@@ -128,6 +157,42 @@ export const SUGGESTED_MAIL_FILTER_TEMPLATES: SuggestedMailFilterTemplate[] = [
     buildActions: () => [{ type: 'suppress-automations' }],
   },
   {
+    // ── The deterministic replacement for the retired `Notification` /
+    //    `Newsletter` AI labels (categories plan 06 D2, §2.4). ──
+    //
+    // Both were answerable from a header, and 63% of recent inbound is already
+    // flagged `machineMailTier = 'soft'` by exactly that deterministic rule
+    // (06-plan §1.1). Spending an inference to conclude "this is a notification"
+    // is the anti-pattern `05-mail-classification-plan.md` §3.1.1 was written
+    // against, so it is a filter instead: free, exact, instant.
+    //
+    // ⚠️ `machineMailTier` itself is NOT a condition `condition-query-builder.ts`
+    // dispatches — there is no `machineMailTier` case in its dispatch table, so
+    // the tier the plan names cannot be matched on today. `list` is the signal
+    // that IS in the vocabulary, and it is one of the two headers
+    // (`ingest/filtering/machine-mail.ts:158`) that produce the `soft` tier in
+    // the first place, so this filter selects a large, well-defined subset of
+    // what the plan describes. Inventing a `machineMailTier` fieldId here would
+    // be DROPPED silently and the filter would then match the whole inbox
+    // (invariant 19).
+    //
+    // Suppress only — no status, no tag. §1.1's other warning applies: `soft` (and
+    // `List-Id` with it) covers bulk marketing AND transactional notices in one
+    // bucket, so this cannot tell a newsletter from a shipping notice. "Skip the
+    // AI" is true of both; "archive it" is not, and that stays with the narrower
+    // `bulk-newsletters` below.
+    templateKey: 'suggested:mailing-list-mail',
+    name: 'Skip AI on mailing-list mail',
+    conditions: [
+      {
+        id: 'g1',
+        logicalOperator: 'AND',
+        conditions: [listNotEmpty('c1')],
+      },
+    ],
+    buildActions: () => [{ type: 'suppress-automations' }],
+  },
+  {
     templateKey: 'suggested:bulk-newsletters',
     name: 'Archive newsletters',
     conditions: [
@@ -139,6 +204,16 @@ export const SUGGESTED_MAIL_FILTER_TEMPLATES: SuggestedMailFilterTemplate[] = [
           fromContains('c2', 'newsletters@'),
           fromContains('c3', 'marketing@'),
           fromContains('c4', 'mailer@'),
+          // The same intent on the stable list identity (06-plan D2). A campaign
+          // sender rotates its from-address (VERP, `bounce-1234@…`) far more often
+          // than it renames its list, so these arms catch blasts the four
+          // address fragments above miss entirely. Substring, not `not empty`:
+          // this arm ARCHIVES, and "every mailing list" would sweep in
+          // transactional list mail the tier cannot distinguish (§1.1).
+          listContains('c5', 'news'),
+          listContains('c6', 'marketing'),
+          listContains('c7', 'campaign'),
+          listContains('c8', 'promo'),
         ],
       },
     ],
