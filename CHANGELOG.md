@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.197](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.196...auxx-v0.1.197) (2026-08-10)
+
+
+### Features
+
+* **lambda:** run workflow code nodes in an isolated child process ([#1506](https://github.com/Auxx-Ai/auxx-ai/issues/1506)) ([6652393](https://github.com/Auxx-Ai/auxx-ai/commit/665239328b37268e5b54c45338d0bc0c7cacb7eb))
+* **mail:** add mail filters ([#1509](https://github.com/Auxx-Ai/auxx-ai/issues/1509)) ([0e54dde](https://github.com/Auxx-Ai/auxx-ai/commit/0e54dde553e115733e5e4ec4d5d143997fd76e88))
+* **mail:** mine inbox suggestions and one-click unsubscribe ([#1510](https://github.com/Auxx-Ai/auxx-ai/issues/1510)) ([d0f4324](https://github.com/Auxx-Ai/auxx-ai/commit/d0f43246171a6065b33dfe0eea06e865d75ef6ef))
+
+
+### Bug Fixes
+
+* **admin:** keep trial recovery actions reachable after a trial ends ([#1507](https://github.com/Auxx-Ai/auxx-ai/issues/1507)) ([b1d4fd0](https://github.com/Auxx-Ai/auxx-ai/commit/b1d4fd0e31825791d03b197ff5bb4b534965efc6))
+* **ci:** unbreak main typecheck, lint and api tests ([#1512](https://github.com/Auxx-Ai/auxx-ai/issues/1512)) ([f2d8dbb](https://github.com/Auxx-Ai/auxx-ai/commit/f2d8dbb451d5be1f9f906305715b3b71adbb651e))
+* **homepage:** repair mobile layout in the agents sections ([#1511](https://github.com/Auxx-Ai/auxx-ai/issues/1511)) ([1cfca18](https://github.com/Auxx-Ai/auxx-ai/commit/1cfca1840816af365a7c76109a398807e3a67f7c))
+
 ## [0.1.196](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.195...auxx-v0.1.196) (2026-08-02)
 
 
