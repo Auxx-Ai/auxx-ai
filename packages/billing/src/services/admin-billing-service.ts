@@ -140,7 +140,11 @@ export class AdminBillingService {
   }
 
   /**
-   * Convert trial to paid without payment (admin override)
+   * Convert trial to paid without payment (admin override).
+   *
+   * When `planName` is omitted the org stays on the plan it trialed on; when it is
+   * given, the conversion lands them on that plan in the same write (which is what
+   * an admin converting a Free trial into a paid Growth workspace needs).
    */
   async convertTrialToPaid(input: {
     organizationId: string
@@ -150,9 +154,17 @@ export class AdminBillingService {
   }): Promise<void> {
     const subscription = await this.getSubscription(input.organizationId)
 
+    // Resolve the target plan up front so an unknown name fails before any write.
+    const targetPlan = input.planName ? await this.findPlanByName(input.planName) : null
+    if (input.planName && !targetPlan) {
+      throw new Error(`Plan ${input.planName} not found`)
+    }
+
     const previousState = {
       status: subscription.status,
       trialConversionStatus: subscription.trialConversionStatus,
+      planId: subscription.planId,
+      plan: subscription.plan,
     }
 
     // Update subscription to active
@@ -162,6 +174,7 @@ export class AdminBillingService {
         status: 'active',
         trialConversionStatus: 'CONVERTED_TO_PAID',
         hasTrialEnded: true,
+        ...(targetPlan ? { planId: targetPlan.id, plan: targetPlan.name } : {}),
         updatedAt: new Date(),
       })
       .where(eq(schema.PlanSubscription.id, subscription.id))
@@ -174,10 +187,38 @@ export class AdminBillingService {
       organizationId: input.organizationId,
       details: { skipPayment: input.skipPayment },
       previousState,
-      newState: { status: 'active', trialConversionStatus: 'CONVERTED_TO_PAID' },
+      newState: {
+        status: 'active',
+        trialConversionStatus: 'CONVERTED_TO_PAID',
+        planId: targetPlan?.id ?? subscription.planId,
+        plan: targetPlan?.name ?? subscription.plan,
+      },
     })
 
-    logger.info('Trial converted to paid', { organizationId: input.organizationId })
+    logger.info('Trial converted to paid', {
+      organizationId: input.organizationId,
+      plan: targetPlan?.name ?? subscription.plan,
+    })
+
+    // A plan change has to run the same overage check every other plan write does.
+    if (targetPlan && targetPlan.id !== subscription.planId) {
+      await this.onPlanChange?.(this.db, input.organizationId, targetPlan.id)
+    }
+  }
+
+  /**
+   * Resolve a non-legacy plan by name, case-insensitively.
+   *
+   * Callers hand us names from two different vocabularies — `Plan.name` is stored
+   * TitleCase ('Growth'), while `PlanService.getPlans()` lowercases it for its
+   * consumers — so matching exactly on either one silently misses the other.
+   */
+  private async findPlanByName(name: string) {
+    const plans = await this.db.query.Plan.findMany({
+      where: (plan, { eq }) => eq(plan.isLegacy, false),
+    })
+    const wanted = name.trim().toLowerCase()
+    return plans.find((plan) => plan.name.toLowerCase() === wanted) ?? null
   }
 
   // ============ Organization Access Management ============
