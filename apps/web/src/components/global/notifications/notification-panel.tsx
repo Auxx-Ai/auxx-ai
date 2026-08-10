@@ -34,7 +34,11 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { useApprovalsCount } from './hooks/use-approvals-count'
 import { useNotifications } from './hooks/use-notifications'
-import { type NotificationPanelMode, useNotificationPanelStore } from './notification-panel-store'
+import {
+  type ApprovalsView,
+  type NotificationPanelMode,
+  useNotificationPanelStore,
+} from './notification-panel-store'
 import { ApprovalsTab } from './ui/approvals-tab'
 import { NotificationItemDispatch } from './ui/notification-item'
 import { NotificationRowSkeleton } from './ui/notification-row'
@@ -83,6 +87,8 @@ export function NotificationPanel() {
   // panel straight onto the Approvals tab.
   const mode = useNotificationPanelStore((state) => state.mode)
   const setMode = useNotificationPanelStore((state) => state.setMode)
+  const approvalsView = useNotificationPanelStore((state) => state.approvalsView)
+  const setApprovalsView = useNotificationPanelStore((state) => state.setApprovalsView)
   const [search, setSearch] = useState('')
   const [types, setTypes] = useState<NotificationType[]>([])
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -248,7 +254,24 @@ export function NotificationPanel() {
             ) : null}
           </RadioTabItem>
         </RadioTab>
-        {isApprovals ? null : (
+        {isApprovals ? (
+          // Sub-filter, in the slot the notification search occupies on the other
+          // tabs: it belongs above the scroller so it never scrolls away, and the
+          // sections that read it live inside `ApprovalsTab`.
+          <RadioTab
+            value={approvalsView}
+            onValueChange={(value) => setApprovalsView(value as ApprovalsView)}
+            size='sm'
+            className='w-full border border-primary-200'
+            radioGroupClassName='w-full'>
+            <RadioTabItem value='pending' size='sm' className='gap-1 px-2'>
+              Pending
+            </RadioTabItem>
+            <RadioTabItem value='past' size='sm' className='gap-1 px-2'>
+              Past
+            </RadioTabItem>
+          </RadioTab>
+        ) : (
           <div className='flex items-center gap-2'>
             <InputSearch
               value={search}

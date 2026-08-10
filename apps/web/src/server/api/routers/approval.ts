@@ -8,10 +8,10 @@ import {
   createThreadAccessRequest,
   getApprovalMetrics,
   getApprovalRequestWithContext,
-  getPendingApprovalsForUser,
   getPendingCount,
   getRecordAccessRequestApproverView,
   getThreadAccessRequestApproverView,
+  listApprovalsForUser,
   preflightRecordAccessRequest,
   preflightThreadAccessRequest,
   resolveApprovalByToken,
@@ -22,6 +22,7 @@ import {
 import { RedisRateLimiter } from '@auxx/lib/utils/rate-limiter'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
+import { requestAuditContext } from '~/server/api/audit-context'
 import {
   createTRPCRouter,
   isAuxxError,
@@ -63,10 +64,36 @@ function getIpFromHeaders(headers: Headers): string {
  *   where a direct API caller meets them too.
  */
 export const approvalRouter = createTRPCRouter({
-  /** Every pending approval waiting on the caller — both kinds (plan 28 H1). */
-  getPendingRequests: protectedProcedure.query(async ({ ctx }) => {
-    return await getPendingApprovalsForUser(ctx.db, ctx.session.organizationId, ctx.session.userId)
-  }),
+  /**
+   * The caller's approvals — both kinds (plan 28 H1), in one of two views.
+   *
+   * `view` is an enum rather than a raw status list on purpose: `pending` and
+   * `past` are a partition with different audiences (see
+   * {@link listApprovalsForUser}), and an arbitrary status filter from the client
+   * could ask for a combination that is neither.
+   *
+   * `pending` defaults to a page of 100 and the tab does not scroll it — that
+   * section is re-sorted by deadline client-side, which is only correct over the
+   * whole set. `past` pages normally.
+   */
+  list: protectedProcedure
+    .input(
+      z
+        .object({
+          view: z.enum(['pending', 'past']).default('pending'),
+          cursor: z.string().optional(),
+          limit: z.number().min(1).max(100).optional(),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const view = input?.view ?? 'pending'
+      return await listApprovalsForUser(ctx.db, ctx.session.organizationId, ctx.session.userId, {
+        view,
+        cursor: input?.cursor,
+        limit: input?.limit ?? (view === 'pending' ? 100 : 25),
+      })
+    }),
 
   /** One request with full context. */
   getApprovalDetails: protectedProcedure
@@ -104,6 +131,11 @@ export const approvalRouter = createTRPCRouter({
         userId: ctx.session.userId,
         action: 'approve',
         comment: input.comment,
+        // Feeds both the `ApprovalResponse.ipAddress` column and the security-log
+        // row an access decision writes. `requestAuditContext` rather than
+        // `recordAuditFromCtx`: the write itself belongs in the resolve path, which
+        // the email-token and bulk lanes also reach — see `resolveApprovalRequest`.
+        auditContext: requestAuditContext(ctx.headers),
       })
       if (result.isErr()) throw result.error
       return result.value
@@ -123,6 +155,7 @@ export const approvalRouter = createTRPCRouter({
         userId: ctx.session.userId,
         action: 'deny',
         comment: input.comment,
+        auditContext: requestAuditContext(ctx.headers),
       })
       if (result.isErr()) throw result.error
       return result.value

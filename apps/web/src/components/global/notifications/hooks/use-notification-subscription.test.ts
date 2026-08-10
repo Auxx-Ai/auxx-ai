@@ -16,7 +16,10 @@ const h = vi.hoisted(() => ({
   preflightInvalidate: vi.fn(),
   approvalInvalidates: {
     getPendingCount: vi.fn(),
-    getPendingRequests: vi.fn(),
+    // `approval.list` and `approvals.list` are different routers — distinct spies,
+    // or one shadows the other in this object literal and both assertions pass off
+    // whichever call happened to land last.
+    approvalList: vi.fn(),
     count: vi.fn(),
     list: vi.fn(),
   },
@@ -54,7 +57,7 @@ vi.mock('~/trpc/react', () => ({
       approval: {
         accessRequestPreflight: { invalidate: h.preflightInvalidate },
         getPendingCount: { invalidate: h.approvalInvalidates.getPendingCount },
-        getPendingRequests: { invalidate: h.approvalInvalidates.getPendingRequests },
+        list: { invalidate: h.approvalInvalidates.approvalList },
       },
       approvals: {
         count: { invalidate: h.approvalInvalidates.count },

@@ -88,29 +88,34 @@ describe('runStillActiveOrNotWorkflow — plan 28 H1', () => {
   })
 })
 
+/**
+ * A `db` stub that records every `where()` argument so the built predicate can be
+ * rendered to SQL and asserted, and resolves the builder to `[]` — `getPendingCount`
+ * awaits it and destructures `[row]`.
+ */
+const capture = () => {
+  const whereArgs: unknown[] = []
+  const chain: Record<string, unknown> = {}
+  for (const key of ['from', 'leftJoin', 'orderBy', 'limit']) {
+    chain[key] = () => chain
+  }
+  chain.where = (arg: unknown) => {
+    whereArgs.push(arg)
+    return chain
+  }
+  ;(chain as { then?: unknown }).then = (resolve: (v: unknown) => unknown) => resolve([])
+  return { db: { select: () => chain }, whereArgs }
+}
+
 describe('both list surfaces use the same two predicates', () => {
-  // The predicate is duplicated in SQL across `getPendingApprovalsForUser` and
+  // The predicate is duplicated in SQL across `listApprovalsForUser` and
   // `getPendingCount`. A fix applied to one leaves the badge disagreeing with the
   // list, which is why this asserts the WHERE clause of each carries both arms.
-  const capture = () => {
-    const whereArgs: unknown[] = []
-    const chain: Record<string, unknown> = {}
-    for (const key of ['from', 'leftJoin', 'orderBy', 'limit']) {
-      chain[key] = () => chain
-    }
-    chain.where = (arg: unknown) => {
-      whereArgs.push(arg)
-      return chain
-    }
-    // `getPendingCount` awaits the builder and destructures `[row]`.
-    ;(chain as { then?: unknown }).then = (resolve: (v: unknown) => unknown) => resolve([])
-    return { db: { select: () => chain }, whereArgs }
-  }
 
-  it('getPendingApprovalsForUser admits a null-expiry access row', async () => {
+  it('listApprovalsForUser admits a null-expiry access row', async () => {
     const mod = await import('../approval-request-queries')
     const { db, whereArgs } = capture()
-    await mod.getPendingApprovalsForUser(db as never, 'org1', 'user1')
+    await mod.listApprovalsForUser(db as never, 'org1', 'user1')
     const { sql, params } = render(whereArgs[0])
     expect(sql.toLowerCase()).toContain('"expiresat" is null')
     expect(sql).toContain('"kind" <>')
@@ -125,6 +130,36 @@ describe('both list surfaces use the same two predicates', () => {
     expect(sql.toLowerCase()).toContain('"expiresat" is null')
     expect(sql).toContain('"kind" <>')
     expect(params).toContain('workflow')
+  })
+})
+
+describe('listApprovalsForUser — the two views partition the member’s rows', () => {
+  // `past` is the COMPLEMENT of `pending`, not a status list. A status list would
+  // strand a `pending` access request whose 14-day expiry lapsed — nothing ever
+  // rewrites it to `timeout` — leaving it in neither view.
+  it('past negates the whole actionable predicate rather than listing statuses', async () => {
+    const mod = await import('../approval-request-queries')
+    const { db, whereArgs } = capture()
+    await mod.listApprovalsForUser(db as never, 'org1', 'user1', { view: 'past' })
+    const { sql } = render(whereArgs[0])
+    expect(sql.toLowerCase()).toContain('not (')
+    // The negated conjunction still carries both null-safety arms — negating a
+    // predicate that could go NULL would silently drop rows.
+    expect(sql.toLowerCase()).toContain('"expiresat" is null')
+  })
+
+  // A requester is never in `assigneeUsers`, so an assignee-only audience would
+  // hide the outcome of their own request — and a DENIED row is exactly the case
+  // where they have no access to hydrate the target from anywhere else.
+  it('past admits rows the member filed, pending does not', async () => {
+    const mod = await import('../approval-request-queries')
+    const past = capture()
+    await mod.listApprovalsForUser(past.db as never, 'org1', 'user1', { view: 'past' })
+    expect(render(past.whereArgs[0]).sql).toContain('"createdById"')
+
+    const pending = capture()
+    await mod.listApprovalsForUser(pending.db as never, 'org1', 'user1')
+    expect(render(pending.whereArgs[0]).sql).not.toContain('"createdById"')
   })
 })
 

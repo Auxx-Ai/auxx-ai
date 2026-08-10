@@ -23,6 +23,12 @@ export const AUDIT_ACTIONS = {
   permissionGranted: 'permission.granted',
   permissionRevoked: 'permission.revoked',
   permissionSet: 'permission.set',
+  // Access-request decisions. An APPROVED request deliberately records
+  // `permission.granted` — the same action the share popover writes — because "how
+  // did this person get access to X" must be one filter on `targetId`, not two. Only
+  // the outcomes that write no grant get their own actions.
+  accessRequestDenied: 'accessRequest.denied',
+  accessRequestSuperseded: 'accessRequest.superseded',
   permissionProfileCreated: 'permission.profile.created',
   permissionProfileUpdated: 'permission.profile.updated',
   sessionsInvalidated: 'sessions.invalidated',
