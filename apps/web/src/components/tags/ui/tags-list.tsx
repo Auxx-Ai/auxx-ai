@@ -3,14 +3,21 @@
 
 import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { Edit, Lock, Plus, Sparkles, Tags, Trash2 } from 'lucide-react'
+import { ChevronDown, Edit, Lock, Plus, Sparkles, Tags, Trash2 } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
@@ -22,6 +29,7 @@ import { api } from '~/trpc/react'
 import { useTagHierarchy } from '../hooks/use-tag-hierarchy'
 import type { TagNode } from '../types'
 import { filterHierarchy } from '../utils/hierarchy'
+import { SuggestedCategoriesDialog } from './suggested-categories-dialog'
 import { TagDialog } from './tag-dialog'
 
 /**
@@ -39,6 +47,7 @@ export function TagTreeView() {
   // State for tag operations
   const [expandedTags, setExpandedTags] = useState<Record<string, boolean>>({})
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isSuggestedOpen, setIsSuggestedOpen] = useState(false)
   const [editingRecordId, setEditingRecordId] = useState<RecordId | undefined>(undefined)
 
   // Fetch tag hierarchy
@@ -156,10 +165,30 @@ export function TagTreeView() {
           onChange={(e) => setSearchQuery(e.target.value)}
         />
         <ListToolbarGroup align='end'>
-          <Button variant='outline' size='sm' onClick={handleCreateTag}>
-            <Plus />
-            <span className='hidden sm:inline'>Add Tag</span>
-          </Button>
+          {/* Matches the create dropdown on custom-fields: blank first, shipped
+              templates second. The suggested categories live here rather than in
+              a settings section of their own — they ARE tags, and the list is
+              where tags are managed (plan 06 §7.2). */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='outline' size='sm'>
+                <Plus />
+                <span className='hidden sm:inline'>Add Tag</span>
+                <ChevronDown />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end'>
+              <DropdownMenuItem onClick={handleCreateTag}>
+                <Plus /> Blank tag
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setIsSuggestedOpen(true)}
+                className='data-highlighted:bg-[#ffaa40]/10'>
+                <Sparkles className='text-[#ffaa40]' />{' '}
+                <AnimatedGradientText>Suggested AI categories</AnimatedGradientText>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </ListToolbarGroup>
       </ListToolbar>
 
@@ -208,6 +237,8 @@ export function TagTreeView() {
           />
         )}
       </div>
+
+      <SuggestedCategoriesDialog open={isSuggestedOpen} onOpenChange={setIsSuggestedOpen} />
 
       {/* Tag dialog for creating/editing */}
       <TagDialog
@@ -275,7 +306,7 @@ function TagTreeItem({
           <span className='inline-flex min-w-0 items-center gap-1.5'>
             <span className='truncate'>{tag.title}</span>
             {tag.isSystemTag && (
-              <Tooltip content='System tag — managed by Auxx, read-only.'>
+              <Tooltip content='System tag, managed by Auxx. Read-only.'>
                 <Lock className='size-3 shrink-0 text-muted-foreground' aria-label='System tag' />
               </Tooltip>
             )}
@@ -284,7 +315,7 @@ function TagTreeItem({
                 content={
                   tag.tag_description
                     ? 'AI may apply this tag to incoming mail.'
-                    : 'AI may apply this tag to incoming mail — add a description so it knows when.'
+                    : 'AI may apply this tag to incoming mail. Add a description so it knows when.'
                 }>
                 <Sparkles
                   className='size-3 shrink-0 text-primary-500'

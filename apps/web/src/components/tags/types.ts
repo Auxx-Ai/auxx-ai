@@ -20,6 +20,11 @@ export interface TagRecord extends RecordMeta {
     is_system_tag?: boolean
     /** Opt-in: the mail classifier may apply this tag to inbound mail. */
     tag_ai_classify?: boolean
+    /**
+     * Shipped identity of a seeded mail category (`category:sales`, …). Absent
+     * for every user-created tag. Provenance marker, not a lock.
+     */
+    tag_template_key?: string
     /** SINGLE_SELECT comes back as an array per the resource read pipeline. */
     tag_scope?: string | string[]
   }
@@ -43,6 +48,16 @@ export interface TagNode {
    * label's definition rather than as decorative copy.
    */
   aiClassify: boolean
+  /**
+   * `tag_template_key` — the shipped identity of a seeded mail category, null
+   * for a user-created tag (plan 06 §3.1).
+   *
+   * ⚠️ A PROVENANCE MARKER, not a lock, and deliberately not folded into
+   * {@link TagNode.isSystemTag}: a seeded category stays fully editable
+   * (D4 vs D5). All it buys the UI is a default to reset back to and the fact
+   * that the delete hook will refuse.
+   */
+  templateKey: string | null
   scope: TagScopeValue
   children: TagNode[]
 }

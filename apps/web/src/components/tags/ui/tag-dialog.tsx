@@ -42,12 +42,17 @@ import { toastError } from '@auxx/ui/components/toast'
 import { ToggleCard } from '@auxx/ui/components/toggle-card'
 import { cn } from '@auxx/ui/lib/utils'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { Loader2, Sparkles, Tag, TriangleAlert } from 'lucide-react'
+import { Loader2, RotateCcw, Sparkles, Tag, TriangleAlert } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useCreateRecord } from '~/components/resources/hooks/use-create-record'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import {
+  getTagTemplateDefault,
+  isTemplateTag,
+  TEMPLATE_TAG_UNDELETABLE_REASON,
+} from '../category-defaults'
 import { useTagHierarchy } from '../hooks/use-tag-hierarchy'
 import type { TagNode } from '../types'
 import { FormColorTagPicker } from './color-tag-picker'
@@ -102,13 +107,32 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
   const isEditing = !!editingInstanceId
 
   // Fetch tag hierarchy for parent selection (includes fields map for saving)
-  const { hierarchy, flatTags, tagMap, fields, entityDefinitionId, refresh } = useTagHierarchy()
+  const { hierarchy, tagMap, fields, entityDefinitionId, refresh } = useTagHierarchy()
+
+  const editingTag = isEditing && editingInstanceId ? tagMap.get(editingInstanceId) : undefined
 
   // System tags are read-only: server rejects edits via field-hooks guard, and
   // the dialog disables inputs + hides the save button as a UX safety net.
-  const isSystemTag =
-    isEditing && editingInstanceId ? tagMap.get(editingInstanceId)?.isSystemTag === true : false
+  const isSystemTag = editingTag?.isSystemTag === true
   const isReadOnly = isSystemTag
+
+  // A SEEDED MAIL CATEGORY (plan 06 D4) — an ordinary tag carrying a
+  // `tag_template_key`. ⚠️ Deliberately NOT folded into `isReadOnly`: that flag
+  // belongs to `is_system_tag` and freezes `tag_description`, which is the one
+  // field this whole feature exists to make editable (D4 vs D5). All the marker
+  // changes here is that there is a shipped default to go back to, and that the
+  // pre-delete hook will refuse a delete.
+  //
+  // ⚠️ Two separate questions, deliberately not one boolean:
+  //   • `isTemplateCategory` — does the row carry the MARKER? That is what
+  //     `rejectDeleteIfTemplateTag` reads, so it alone decides whether we may
+  //     state "cannot be deleted".
+  //   • `templateDefault` — does THIS BUILD know the shipped text for that key?
+  //     A key seeded by a newer deploy resolves to undefined, and only the
+  //     placeholder and "Reset to default" depend on it. Collapsing the two
+  //     would make a category from a newer deploy silently look deletable.
+  const isTemplateCategory = isTemplateTag(editingTag)
+  const templateDefault = getTagTemplateDefault(editingTag?.templateKey)
 
   // `tag_ai_classify` reaches an org only once its entity migration has run. No
   // field row means no way to persist the flag, so the card is hidden rather
@@ -140,6 +164,25 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
   // the worse failure — so the label set is built from eligibility alone and
   // this stays a hint.
   const missingClassifierInstruction = aiClassify && !tagDescription?.trim()
+
+  // "Drifted" is anything that is not byte-identical to the shipped text —
+  // including cleared, which is the case §4.1's placeholder covers. Compared
+  // against the CURRENT form value rather than the saved one, so the affordance
+  // disappears the moment a reset lands instead of waiting for a save.
+  const descriptionHasDrifted =
+    !!templateDefault && (tagDescription ?? '').trim() !== templateDefault.description
+
+  /**
+   * Put the shipped definition back in the field. Writes the form only — the
+   * user still saves — so a mis-click is undone by cancelling the dialog.
+   */
+  const resetDescriptionToDefault = useCallback(() => {
+    if (!templateDefault) return
+    form.setValue('tag_description', templateDefault.description, {
+      shouldDirty: true,
+      shouldValidate: true,
+    })
+  }, [form, templateDefault])
 
   // Initialize form when dialog opens
   useEffect(() => {
@@ -332,6 +375,11 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
    *
    * `aiMode` is the whole of plan C3: the field is unchanged, its meaning is
    * not, and this relabel is the only place a user can learn that.
+   *
+   * On a seeded category it also carries plan 06 §4's two affordances: the
+   * shipped definition as the PLACEHOLDER (never the value — a cleared
+   * description stays cleared, it just still shows what we would have said), and
+   * "Reset to default" once the text has drifted.
    */
   const renderDescriptionField = (aiMode: boolean) => (
     <FormField
@@ -339,13 +387,34 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
       name='tag_description'
       render={({ field }) => (
         <FormItem>
-          {aiMode && <FormLabel>When should this tag apply?</FormLabel>}
+          {(aiMode || (descriptionHasDrifted && !isReadOnly)) && (
+            <div
+              className={cn(
+                'flex min-h-7 items-center gap-2',
+                aiMode ? 'justify-between' : 'justify-end'
+              )}>
+              {aiMode && <FormLabel>When should this tag apply?</FormLabel>}
+              {descriptionHasDrifted && !isReadOnly && (
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='sm'
+                  className='h-6 px-1.5 text-xs'
+                  onClick={resetDescriptionToDefault}>
+                  <RotateCcw />
+                  Reset to default
+                </Button>
+              )}
+            </div>
+          )}
           <FormControl>
             <Textarea
               placeholder={
-                aiMode
-                  ? 'e.g. Questions about invoices, charges, refunds or payment methods.'
-                  : 'Optional description'
+                templateDefault
+                  ? templateDefault.description
+                  : aiMode
+                    ? 'e.g. Questions about invoices, charges, refunds or payment methods.'
+                    : 'Optional description'
               }
               className='h-20 resize-none'
               {...field}
@@ -373,7 +442,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
           </DialogTitle>
           <DialogDescription>
             {isReadOnly
-              ? 'Managed by Auxx — read-only.'
+              ? 'Managed by Auxx. Read-only.'
               : isEditing
                 ? "Update this tag's details below."
                 : 'Fill out the form below to create a new tag.'}
@@ -383,6 +452,22 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
         {isReadOnly && (
           <div className='rounded-md bg-amber-100 border border-amber-300 px-3 py-2 text-sm text-amber-900'>
             This is a system tag. It cannot be modified or deleted.
+          </div>
+        )}
+
+        {/* Seeded category. Muted, not amber: this is a statement of provenance,
+            not a warning that something is frozen — everything below stays
+            editable, and saying so is the point (plan 06 D4). The delete line is
+            the UI half of `rejectDeleteIfTemplateTag`: no surface may offer a
+            delete that the pre-delete hook will 403. */}
+        {isTemplateCategory && !isReadOnly && (
+          <div className='rounded-md border bg-muted/40 px-3 py-2 text-muted-foreground text-sm mb-2'>
+            <span className='font-medium text-foreground'>Built-in mail category.</span> Rename it,
+            recolour it and re-word its description to fit your business. The description is what
+            the classifier reads. {TEMPLATE_TAG_UNDELETABLE_REASON}
+            {canClassify &&
+              aiClassify &&
+              ' To stop it being used, switch off “Let AI apply this tag”.'}
           </div>
         )}
 
