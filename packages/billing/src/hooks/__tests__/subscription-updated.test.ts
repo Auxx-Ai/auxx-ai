@@ -343,6 +343,59 @@ describe('handleSubscriptionUpdated', () => {
   })
 })
 
+describe('admin override', () => {
+  it('writes nothing when the subscription is under admin override', async () => {
+    const localSub = {
+      id: 'local_sub_1',
+      status: 'trialing',
+      organizationId: 'org_1',
+      adminOverrideAt: new Date('2026-08-01T00:00:00Z'),
+    }
+    const { db, setMock, updateMock } = createMockDb({ localSub, plan: null })
+
+    // Stripe says the trial converted to `active` — exactly the event that used to
+    // silently overwrite an admin comp.
+    await handleSubscriptionUpdated(db, makeEvent(makeStripeSubscription({ status: 'active' })))
+
+    expect(updateMock).not.toHaveBeenCalled()
+    expect(setMock).not.toHaveBeenCalled()
+  })
+
+  it('does not re-link an unlinked row through the metadata lookup rungs', async () => {
+    // `unlinkBillingProvider` nulls the Stripe ids but cannot remove them from Stripe's
+    // own metadata, so the row is still reachable by `metadata.subscriptionId`. Before the
+    // override guard the handler re-adopted it and wrote `stripeSubscriptionId` back.
+    const unlinked = {
+      id: 'local_sub_1',
+      status: 'active',
+      organizationId: 'org_1',
+      billingProvider: null,
+      stripeSubscriptionId: null,
+      adminOverrideAt: new Date('2026-08-01T00:00:00Z'),
+    }
+    const { db, setMock } = createMockDb({ localSub: unlinked, plan: null })
+
+    await handleSubscriptionUpdated(db, makeEvent(makeStripeSubscription()))
+
+    expect(setMock).not.toHaveBeenCalled()
+  })
+
+  it('still syncs normally when no override is set', async () => {
+    const localSub = {
+      id: 'local_sub_1',
+      status: 'trialing',
+      organizationId: 'org_1',
+      adminOverrideAt: null,
+    }
+    const { db, setMock } = createMockDb({ localSub, plan: null })
+
+    await handleSubscriptionUpdated(db, makeEvent(makeStripeSubscription({ status: 'active' })))
+
+    expect(setMock).toHaveBeenCalledTimes(1)
+    expect(setMock.mock.calls[0]?.[0].status).toBe('active')
+  })
+})
+
 describe('handleSubscriptionCreated', () => {
   it('delegates to the same sync logic as updated', async () => {
     const localSub = { id: 'local_sub_1', status: 'incomplete', organizationId: 'org_1' }

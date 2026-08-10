@@ -99,6 +99,9 @@ export interface OrganizationDetails {
     /** `'stripe' | 'shopify'`, or null when the subscription is unlinked. */
     billingProvider: string | null
     shopifyShopDomain: string | null
+    /** Non-null while a super admin owns this row's lifecycle — provider syncs are skipped. */
+    adminOverrideAt: Date | null
+    adminOverrideReason: string | null
     billingCycle: string
     seats: number
     creditsBalance: number
@@ -378,6 +381,8 @@ export class AdminService {
         status: schema.PlanSubscription.status,
         billingProvider: schema.PlanSubscription.billingProvider,
         shopifyShopDomain: schema.PlanSubscription.shopifyShopDomain,
+        adminOverrideAt: schema.PlanSubscription.adminOverrideAt,
+        adminOverrideReason: schema.PlanSubscription.adminOverrideReason,
         billingCycle: schema.PlanSubscription.billingCycle,
         seats: schema.PlanSubscription.seats,
         creditsBalance: schema.PlanSubscription.creditsBalance,
@@ -412,6 +417,10 @@ export class AdminService {
             status: subscription.status,
             billingProvider: subscription.billingProvider,
             shopifyShopDomain: subscription.shopifyShopDomain,
+            adminOverrideAt: subscription.adminOverrideAt
+              ? new Date(subscription.adminOverrideAt)
+              : null,
+            adminOverrideReason: subscription.adminOverrideReason,
             billingCycle: subscription.billingCycle,
             seats: subscription.seats,
             creditsBalance: subscription.creditsBalance,

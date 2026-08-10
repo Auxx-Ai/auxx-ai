@@ -193,10 +193,20 @@ export class ShopifyBillingProvider implements BillingProvider {
   ): Promise<void> {
     const row = await this.db.query.PlanSubscription.findFirst({
       where: (sub, { eq: e }) => e(sub.organizationId, organizationId),
-      columns: { id: true, planId: true, shopifyShopDomain: true, billingProvider: true },
+      columns: {
+        id: true,
+        planId: true,
+        shopifyShopDomain: true,
+        billingProvider: true,
+        adminOverrideAt: true,
+      },
     })
     if (!row?.shopifyShopDomain || row.billingProvider !== 'shopify') {
       return // not a Shopify-billed org
+    }
+    if (row.adminOverrideAt) {
+      // A super admin owns this row's lifecycle — the 15-minute poll must not revert it.
+      return
     }
 
     const sub = await getActiveSubscription({

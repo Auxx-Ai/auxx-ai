@@ -35,6 +35,15 @@ export const PlanSubscription = pgTable(
     }), // Nullable - populated by better-auth lifecycle hooks
     plan: text().notNull(), // Better-auth requires plan name ("free", "starter", etc.)
     billingProvider: text().default('stripe'), // 'stripe' | 'shopify' | null (null = unlinked: row exists, linked to no provider)
+    /**
+     * Set when a super admin takes manual ownership of this subscription's lifecycle
+     * (comp, forced status, unlink). While non-null the provider reconcilers — the Stripe
+     * `customer.subscription.*` webhook and the Shopify Admin API poll — must not write
+     * status/plan/trialEnd, because the admin panel is authoritative. Cleared by
+     * `AdminBillingService.clearAdminOverride` to hand the row back to the provider.
+     */
+    adminOverrideAt: timestamp({ precision: 3 }),
+    adminOverrideReason: text(),
     status: text().default('incomplete').notNull(), // Stripe subscription status
     seats: integer().default(1).notNull(),
     billingCycle: billingCycle().default('MONTHLY').notNull(),

@@ -29,9 +29,19 @@ import { api } from '~/trpc/react'
 /** Sentinel for "don't change the plan" — Radix `SelectItem` rejects an empty value. */
 const KEEP_CURRENT_PLAN = '__keep_current__'
 
+/**
+ * Stripe rejects a `trial_end` under 48 hours out. The floor is 3 days rather than 2 so a
+ * value computed at submit time can't land on the wrong side of the boundary; the server
+ * validates it again before touching either side.
+ */
+const MIN_EXTEND_DAYS = 3
+
 interface TrialManagementSectionProps {
   organizationId: string
   organizationName: string | null
+  /** `'stripe' | 'shopify'`, or null when the subscription is unlinked. */
+  billingProvider: string | null
+  shopifyShopDomain: string | null
   subscription: {
     trialEnd: Date | null
     hasTrialEnded: boolean
@@ -46,6 +56,8 @@ interface TrialManagementSectionProps {
 export function TrialManagementSection({
   organizationId,
   organizationName,
+  billingProvider,
+  shopifyShopDomain,
   subscription,
 }: TrialManagementSectionProps) {
   const [confirm, ConfirmDialog] = useConfirm()
@@ -88,7 +100,7 @@ export function TrialManagementSection({
   const handleEndTrial = async () => {
     const confirmed = await confirm({
       title: 'End Trial Immediately?',
-      description: `This will immediately end the trial for "${organizationName}". They will need to upgrade to continue using the service.`,
+      description: `This will immediately end the trial for "${organizationName}". They will need to upgrade to continue using the service. This takes the subscription out of the billing provider's control until you return it.`,
       confirmText: 'End Trial',
       cancelText: 'Cancel',
       destructive: true,
@@ -104,6 +116,15 @@ export function TrialManagementSection({
    */
   const handleExtendTrial = async () => {
     const days = parseInt(extendDays, 10) || 7
+
+    if (days < MIN_EXTEND_DAYS) {
+      toastError({
+        title: 'Extension too short',
+        description: `Stripe requires the new trial end to be at least 48 hours out. Extend by ${MIN_EXTEND_DAYS} days or more.`,
+      })
+      return
+    }
+
     const newEndDate = addDays(new Date(), days)
 
     const confirmed = await confirm({
@@ -131,8 +152,8 @@ export function TrialManagementSection({
     const confirmed = await confirm({
       title: 'Convert Trial to Paid?',
       description: planName
-        ? `This will convert "${organizationName}" from trial to paid status on the "${planName}" plan, without requiring payment.`
-        : `This will convert "${organizationName}" from trial to paid status without requiring payment, keeping their current plan. Use this for special cases or manual conversions.`,
+        ? `This will convert "${organizationName}" from trial to paid status on the "${planName}" plan, without requiring payment. The subscription leaves the billing provider's control until you return it.`
+        : `This will convert "${organizationName}" from trial to paid status without requiring payment, keeping their current plan. The subscription leaves the billing provider's control until you return it.`,
       confirmText: 'Convert to Paid',
       cancelText: 'Cancel',
     })
@@ -156,7 +177,14 @@ export function TrialManagementSection({
    * reachable here, or ending a trial early strands the org with no way back.
    */
   const isTrialExpired = status === 'trialing' && hasTrialEnded
-  const canManageTrial = isOnTrial || isTrialExpired
+  /**
+   * Shopify owns the trial outright — trial days come from the plan in the Partner
+   * Dashboard, and our provider never issues a billing mutation. Any local edit is
+   * reverted within 15 minutes by the Admin API sync, so the actions are hidden rather
+   * than shown disabled or left to fail server-side.
+   */
+  const isShopifyBilled = billingProvider === 'shopify'
+  const canManageTrial = (isOnTrial || isTrialExpired) && !isShopifyBilled
 
   return (
     <>
@@ -256,7 +284,7 @@ export function TrialManagementSection({
                     <Input
                       id='extend-days'
                       type='number'
-                      min='1'
+                      min={MIN_EXTEND_DAYS}
                       max='365'
                       value={extendDays}
                       onChange={(e) => setExtendDays(e.target.value)}
@@ -264,7 +292,8 @@ export function TrialManagementSection({
                     />
                     <p className='text-xs text-muted-foreground mt-1'>
                       New end date:{' '}
-                      {format(addDays(new Date(), parseInt(extendDays, 10) || 7), 'PPP')}
+                      {format(addDays(new Date(), parseInt(extendDays, 10) || 7), 'PPP')} — Stripe
+                      requires at least 48 hours, so the minimum is {MIN_EXTEND_DAYS} days.
                     </p>
                   </div>
                   <div>
@@ -323,6 +352,20 @@ export function TrialManagementSection({
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
+          ) : isShopifyBilled ? (
+            <div className='p-4 rounded-lg border bg-muted/50 space-y-2'>
+              <div className='font-medium'>Shopify owns this trial</div>
+              <p className='text-sm text-muted-foreground'>
+                Trial length is set per plan in the Shopify Partner Dashboard, and the billing sync
+                overwrites any local change within 15 minutes. Change the trial on the plan itself,
+                or have the merchant manage the subscription in their Shopify Admin.
+              </p>
+              {shopifyShopDomain && (
+                <p className='text-sm text-muted-foreground'>
+                  Shop: <span className='font-medium text-foreground'>{shopifyShopDomain}</span>
+                </p>
+              )}
+            </div>
           ) : (
             <div className='text-center py-8 text-muted-foreground'>
               Organization is not currently on trial

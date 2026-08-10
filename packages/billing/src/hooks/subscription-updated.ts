@@ -148,6 +148,22 @@ async function syncStripeSubscription(
     return { organizationId: null }
   }
 
+  // A super admin has taken manual ownership of this row (comp, forced status, unlink) —
+  // Stripe is no longer authoritative for it. Skipping the WHOLE update rather than just
+  // `status` is load-bearing: the lookup ladder above resolves unlinked rows through
+  // `metadata.subscriptionId` and `metadata.organizationId`, which survive
+  // `unlinkBillingProvider`, so a partial skip would still write `stripeSubscriptionId`
+  // back and silently re-link the subscription.
+  if (localSubscription.adminOverrideAt) {
+    logger.info('Skipping sync — subscription is under admin override', {
+      eventType,
+      subscriptionId: localSubscription.id,
+      organizationId: localSubscription.organizationId,
+      adminOverrideAt: localSubscription.adminOverrideAt,
+    })
+    return { organizationId: localSubscription.organizationId }
+  }
+
   const periodStart = firstItem?.current_period_start
   const periodEnd = firstItem?.current_period_end
 
