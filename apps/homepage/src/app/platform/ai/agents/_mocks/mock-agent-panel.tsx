@@ -14,6 +14,7 @@ import {
   Workflow,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
+import { useEffect, useRef } from 'react'
 import { cn } from '~/lib/utils'
 import type { AgentCastMember } from '../_components/agent-cast'
 import type { ProcedureLine, ProcedureLink, Segment } from '../_components/agent-scripts'
@@ -159,6 +160,7 @@ function Line({
   return (
     <button
       type='button'
+      data-active-line={active || undefined}
       onClick={() => onSelect(line.id)}
       className={cn(
         'relative flex w-full gap-2 rounded-md py-0.5 pr-2 text-left transition-colors',
@@ -271,6 +273,27 @@ export function MockAgentPanel({
   className?: string
 }) {
   const opened = procedures.find((p) => p.id === openedId)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * Follow the run: keep the highlighted line inside the procedures list. On a
+   * phone the panel is short enough that an opened procedure can run past the
+   * box, and a document that doesn't move while its own run steps through it is
+   * the one thing this illustration can't afford. Nudging `scrollTop` by the
+   * rect delta keeps the scrolling inside this box — `scrollIntoView` would
+   * walk up to the page scroller and yank the section around.
+   */
+  useEffect(() => {
+    if (!activeLine) return
+    const box = listRef.current
+    const line = box?.querySelector<HTMLElement>('[data-active-line]')
+    if (!box || !line) return
+
+    const boxRect = box.getBoundingClientRect()
+    const lineRect = line.getBoundingClientRect()
+    if (lineRect.top < boxRect.top) box.scrollTop -= boxRect.top - lineRect.top + 8
+    else if (lineRect.bottom > boxRect.bottom) box.scrollTop += lineRect.bottom - boxRect.bottom + 8
+  }, [activeLine])
 
   return (
     // `min-h-0` + a scrollable list below: the panel absorbs the procedure
@@ -295,7 +318,7 @@ export function MockAgentPanel({
             box clips on all four sides at its padding edge. The rows' `ring-1`
             paints outside their border box, so without the pad the ring loses
             its left/right edges and the first and last row lose theirs. */}
-        <div className='flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-px'>
+        <div ref={listRef} className='flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-px'>
           {procedures.map((link) => {
             const isOpen = link.id === openedId
             const isCandidate = openedId == null

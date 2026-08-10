@@ -289,14 +289,26 @@ export default function Header() {
         <div className='mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
         <div className='bg-background/75 mask-b-from-35% absolute inset-x-0 -bottom-12 top-0 backdrop-blur max-lg:hidden'></div>
       </div>
+      {/*
+       * This box clips (`overflow-hidden`, so the menu opens out of a closed
+       * height instead of overlaying the page), so its height has to clear the
+       * bar inside it plus room for the bar's shadow. `pt-2` + a 14 tall row
+       * puts the bar's bottom edge at 66px; `h-18` left 6px, which cut into the
+       * shadow, and the old `pb-4` pushed the bar itself to 82px so the clip
+       * landed inside its own `rounded-2xl` and squared off the bottom corners.
+       */}
       <div
         className={cn(
-          'max-lg:in-data-[state=active]:bg-background/75 max-lg:in-data-[state=active]:h-screen max-lg:in-data-[state=active]:backdrop-blur max-lg:h-18 fixed inset-x-0 top-0 z-50 pt-2 max-lg:overflow-hidden max-lg:px-2 lg:pt-3'
+          'max-lg:in-data-[state=active]:bg-background/75 max-lg:in-data-[state=active]:h-screen max-lg:in-data-[state=active]:backdrop-blur max-lg:h-20 fixed inset-x-0 top-0 z-50 pt-2 max-lg:overflow-hidden max-lg:px-2 lg:pt-3'
         )}>
         <div
           className={cn(
-            'in-data-scrolled:ring-foreground/5 in-data-scrolled:bg-background/75 in-data-scrolled:shadow-black/10 in-data-scrolled:max-w-4xl max-lg:in-data-scrolled:px-5 in-data-scrolled:backdrop-blur mx-auto w-full max-w-6xl rounded-2xl border border-transparent px-3 shadow-md shadow-transparent ring-1 ring-transparent transition-[max-width,padding,background-color,box-shadow,backdrop-filter] duration-500 ease-in-out max-lg:pb-4',
-            'max-lg:in-data-[state=active]:backdrop-blur max-lg:in-data-[state=active]:ring-foreground/5 max-lg:in-data-[state=active]:bg-background/75 max-lg:in-data-[state=active]:px-5 max-lg:in-data-[state=active]:shadow-black/10'
+            'in-data-scrolled:ring-foreground/5 in-data-scrolled:bg-background/75 in-data-scrolled:shadow-black/10 in-data-scrolled:max-w-4xl max-lg:in-data-scrolled:px-5 in-data-scrolled:backdrop-blur mx-auto w-full max-w-6xl rounded-2xl border border-transparent px-3 shadow-md shadow-transparent ring-1 ring-transparent transition-[max-width,padding,background-color,box-shadow,backdrop-filter] duration-500 ease-in-out',
+            // The bottom padding belongs to the open menu, which ends on a
+            // button that would otherwise sit on the bar's edge. Closed, it was
+            // 16px of dead space under a row that already sets its own height —
+            // it made the bar bottom-heavy and hung it past the clip above.
+            'max-lg:in-data-[state=active]:pb-4 max-lg:in-data-[state=active]:backdrop-blur max-lg:in-data-[state=active]:ring-foreground/5 max-lg:in-data-[state=active]:bg-background/75 max-lg:in-data-[state=active]:px-5 max-lg:in-data-[state=active]:shadow-black/10'
           )}>
           <div className='relative flex flex-wrap items-center justify-between lg:py-3'>
             <div className='max-lg:in-data-[state=active]:border-b flex items-center justify-between gap-8 max-lg:h-14 max-lg:w-full'>
