@@ -26,6 +26,12 @@ export interface TagData {
   parentRecordId: RecordId | null
   isSystemTag: boolean
   isPublic: boolean
+  /**
+   * Eligible for the AI mail classifier (mail-classification plan C2). When true the
+   * classifier may apply this tag to inbound mail and `tag_description` is read as the
+   * label's definition. Independent of `isSystemTag` — a system tag can be eligible.
+   */
+  aiClassify: boolean
   scope: TagScopeValue
   createdAt: Date
   updatedAt: Date
@@ -134,6 +140,8 @@ export class TagService {
       parentRecordId,
       isSystemTag: (item.fieldValues.is_system_tag as boolean) ?? false,
       isPublic: (item.fieldValues.tag_is_public as boolean) ?? false,
+      // Absent FieldValue ⇒ not eligible. No tag is classifiable until someone opts it in.
+      aiClassify: (item.fieldValues.tag_ai_classify as boolean) ?? false,
       scope,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,

@@ -22,6 +22,7 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
+import { enqueueMailClassification } from '../../mail-classification/enqueue'
 import { getEnabledMailFiltersForInbox, orgHasEnabledMailFilters } from '../../mail-filters/cache'
 import { fireMailFilters } from '../../mail-filters/engine'
 import { getProviderCapabilities } from '../../providers/provider-capabilities'
@@ -43,8 +44,23 @@ const logger = createScopedLogger('apply-mail-filters')
  * `deriveMessageReplySignal` and `ingestBounceMessage` are bookkeeping — a
  * filter must not be able to make mail disappear from the timeline or break
  * bounce handling.
+ *
+ * `enqueueMailClassification` belongs here for TWO reasons, and the second is
+ * the one that makes it non-optional:
+ *
+ *  1. **Semantics.** AI categorisation is automation. A user who wrote
+ *     "suppress automations" on this message meant this too.
+ *  2. **It is the only billed handler in the fan-out.** Leaving it out means a
+ *     filter that explicitly asked for no automation still pays for an
+ *     inference on every matching message — a cost the user has already said no
+ *     to, on the exact mail they said it about.
+ *
+ * Suppression here is also cheaper than the classifier's own guard: exit 6
+ * ("the thread already carries an eligible tag") only fires when a filter
+ * actually TAGGED the thread, whereas `suppress-automations` commonly appears
+ * beside `set-status: ARCHIVED` with no tag at all.
  */
-const SUPPRESSIBLE_AUTOMATION_HANDLERS = [triggerMessageWorkflows]
+const SUPPRESSIBLE_AUTOMATION_HANDLERS = [triggerMessageWorkflows, enqueueMailClassification]
 
 /**
  * Decide, per inbound message, which filters fire and what the fan-out should

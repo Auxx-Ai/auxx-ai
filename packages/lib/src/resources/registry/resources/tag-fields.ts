@@ -81,6 +81,40 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
     },
   },
 
+  /**
+   * Mail-classification eligibility (plans/mail-filter/05-mail-classification-plan.md C2).
+   *
+   * When true, this tag is offered to the inbound-mail classifier as a label it may apply,
+   * and `tag_description` stops being decorative: it becomes the label's DEFINITION in the
+   * prompt (C3). Opt-in per tag, because the eligible set *is* the prompt — "every tag"
+   * classifies badly and "system tags only" would mean we pick the taxonomy.
+   *
+   * Deliberately NOT guarded by `rejectIfSystemTag` (§2.2): eligibility is a routing
+   * decision about our classifier, not a mutation of the tag's identity, so it stays
+   * togglable on any tag including a system one.
+   */
+  tag_ai_classify: {
+    id: toFieldId('tag_ai_classify'),
+    key: 'tag_ai_classify',
+    label: 'AI Classification',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'tag_ai_classify',
+    systemSortOrder: 'a14',
+    showInPanel: false,
+    nullable: false,
+    defaultValue: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'When true, the AI mail classifier may apply this tag to inbound mail.',
+  },
+
   emoji: {
     id: toFieldId('emoji'),
     key: 'emoji',

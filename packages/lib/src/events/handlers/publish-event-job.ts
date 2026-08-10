@@ -5,6 +5,7 @@ import type { Job } from 'bullmq'
 import { handleFieldTriggerJob } from '../../field-hooks/field-hook-job'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
+import { enqueueMailClassification } from '../../mail-classification/enqueue'
 import type {
   AuxxEvent,
   EventHandler,
@@ -84,6 +85,15 @@ export const EventHandlers: IEventsHandlers = {
       triggerMessageWorkflows,
       deriveMessageReplySignal,
       ingestBounceMessage,
+      // AI categorisation (mail-classification plan §4). ON THE `then` SIDE, not
+      // the gate: an LLM call would blow `GATE_TIMEOUT_MS` and head-of-line
+      // block unrelated events, and the gate's fail-open would then make the
+      // classification silently never happen (invariant 2).
+      //
+      // Enqueuing here is also what makes guard exit 6 correct — `applyMailFilters`
+      // has already run inline by now, so every deterministic `add-tag` is on the
+      // thread before the classifier decides whether a rule already answered.
+      enqueueMailClassification,
     ],
   },
   'message:sent': [createTimelineEvent],

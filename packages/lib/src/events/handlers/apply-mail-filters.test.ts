@@ -195,7 +195,7 @@ describe('applyMailFilters — the suppress list', () => {
     await expect(applyMailFilters(event())).resolves.toBeUndefined()
   })
 
-  it('names the automation handler by its function name, not a literal', async () => {
+  it('names the automation handlers by their function names, not literals', async () => {
     h.fireMailFilters.mockResolvedValue({
       suppressAutomations: true,
       firedFilterIds: ['flt_a'],
@@ -203,10 +203,45 @@ describe('applyMailFilters — the suppress list', () => {
 
     const result = await applyMailFilters(event())
 
-    // Must match the `then` entry in `publish-event-job.ts` exactly, and must
+    // Must match the `then` entries in `publish-event-job.ts` exactly, and must
     // NOT include the bookkeeping handlers — a filter cannot make mail vanish
     // from the timeline or break bounce handling.
-    expect(result).toEqual({ suppress: ['triggerMessageWorkflows'] })
+    expect(result).toEqual({
+      suppress: ['triggerMessageWorkflows', 'enqueueMailClassification'],
+    })
+  })
+
+  it('suppresses AI classification — the only BILLED handler in the fan-out', async () => {
+    h.fireMailFilters.mockResolvedValue({
+      suppressAutomations: true,
+      firedFilterIds: ['flt_a'],
+    })
+
+    const result = await applyMailFilters(event())
+
+    // Separate from the test above on purpose. That one pins the whole list and
+    // would happily go green if someone "simplified" it back to one entry while
+    // updating the expectation. This one states the standalone rule: a user who
+    // said "suppress automations" must not be charged for an inference on the
+    // exact mail they said it about.
+    expect(result?.suppress).toContain('enqueueMailClassification')
+  })
+
+  it('never suppresses the bookkeeping handlers', async () => {
+    h.fireMailFilters.mockResolvedValue({
+      suppressAutomations: true,
+      firedFilterIds: ['flt_a'],
+    })
+
+    const result = await applyMailFilters(event())
+
+    for (const bookkeeping of [
+      'createTimelineEvent',
+      'deriveMessageReplySignal',
+      'ingestBounceMessage',
+    ]) {
+      expect(result?.suppress).not.toContain(bookkeeping)
+    }
   })
 
   it('passes the personal-inbox owner through for the set-read branch', async () => {

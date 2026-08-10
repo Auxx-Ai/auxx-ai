@@ -19,6 +19,29 @@ import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc
 
 const logger = createScopedLogger('api-settings')
 
+/**
+ * Catalog keys this generic door refuses, because a dedicated router owns their
+ * authorization and this one only ever asks for `settings.manage`.
+ *
+ * `mailClassificationInboxIds` is the mail-classification opt-in
+ * (`plans/mail-filter/05-mail-classification-plan.md` §5). It is authored
+ * PER INBOX — a personal mailbox by its owner alone, a shared one with
+ * `automationRules.manage` + inbox `admin` — and §5 states outright that "a
+ * personal mailbox must never be opted in by an admin". Leaving it writable
+ * here would hand any `settings.manage` holder a one-call "classify
+ * everything", which is precisely what per-inbox storage exists to make
+ * inexpressible. `mailClassification.setInboxEnabled` is the only door.
+ */
+const ROUTER_OWNED_ORG_SETTING_KEYS = new Set<string>(['mailClassificationInboxIds'])
+
+function assertNotRouterOwned(key: string): void {
+  if (ROUTER_OWNED_ORG_SETTING_KEYS.has(key)) {
+    throw new BadRequestError(
+      `Setting ${key} is managed per inbox and cannot be changed from organization settings.`
+    )
+  }
+}
+
 // Input validation schema for getting user settings
 const getUserSettingSchema = z.object({
   key: z.string(),
@@ -101,6 +124,7 @@ export const settingsRouter = createTRPCRouter({
       if (!isSettingKey(key)) {
         throw new BadRequestError(`Unknown setting: ${key}`)
       }
+      assertNotRouterOwned(key)
       // Capability gate, not role (plan 21 §4.2): settingsManage is what a
       // profile turns off.
       await requirePermission(userId, organizationId, PermissionKey.settingsManage)
@@ -186,6 +210,7 @@ export const settingsRouter = createTRPCRouter({
       if (unknownKey) {
         throw new BadRequestError(`Unknown setting: ${unknownKey.key}`)
       }
+      for (const setting of settings) assertNotRouterOwned(setting.key)
 
       await batchUpdateOrganizationSettings({
         organizationId,
