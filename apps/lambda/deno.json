@@ -18,8 +18,8 @@
     }
   },
   "tasks": {
-    "dev": "deno run --watch --allow-all src/index.ts",
-    "test": "deno test --allow-all"
+    "dev": "LAMBDA_SANDBOX_DEV_RUNNER=1 deno run --watch --allow-all src/index.ts",
+    "test": "LAMBDA_SANDBOX_DEV_RUNNER=1 deno test --allow-all"
   },
   "imports": {
     "@aws-sdk/client-s3": "npm:@aws-sdk/client-s3@^3.893.0",

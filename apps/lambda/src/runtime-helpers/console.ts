@@ -322,3 +322,20 @@ export function getCapturedLogs(): ConsoleLog[] {
 export function clearCapturedLogs(): void {
   capturedLogs = []
 }
+
+/**
+ * Adopt logs captured elsewhere as this invocation's logs.
+ *
+ * Needed because untrusted code no longer runs in this process: the sandbox child
+ * captures its own console and ships the logs back over stdio
+ * (`sandbox/protocol.ts`). Publishing them here keeps the one retrieval path in
+ * `index.ts` working for BOTH outcomes — in particular the error path, which
+ * reads `getCapturedLogs()` after a throw and would otherwise report nothing for
+ * a failed code node.
+ *
+ * @param {ConsoleLog[]} logs - Logs captured by the sandbox child
+ * @returns {void}
+ */
+export function setCapturedLogs(logs: ConsoleLog[]): void {
+  capturedLogs = logs
+}

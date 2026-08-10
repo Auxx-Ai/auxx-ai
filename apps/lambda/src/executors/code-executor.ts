@@ -2,278 +2,44 @@
 
 /**
  * Code executor for Lambda runtime.
- * Executes user code in a sandboxed environment with variable access via $ function.
+ *
+ * Routes workflow code nodes through the sandbox child process
+ * (`../sandbox/spawn.ts`). This file no longer evaluates anything itself — the
+ * `new Function` call that ran user code in this realm is deleted, along with the
+ * wrapper generation and `sanitizeForJson`, both of which moved into the runner so
+ * they execute on the far side of the boundary.
+ *
+ * See `plans/lambda/security/01-sandbox-hardening-plan.md` §5, Phase B step 4.
+ * This is the surface every full-seat member can reach
+ * (`MEMBER_BASELINE_LEVELS[Area.workflows] = Level.Full`), so it cuts over first.
  */
 
-import {
-  clearCapturedLogs,
-  getCapturedLogs,
-  interceptConsole,
-  restoreConsole,
-} from '../runtime-helpers/index.ts'
+import { setCapturedLogs } from '../runtime-helpers/console.ts'
+import { runInSandbox } from '../sandbox/spawn.ts'
 import type { ExecutionResult } from '../types.ts'
 import type { CodeExecutionEvent } from '../validator.ts'
 
 /**
- * Helper to resolve variable paths with multiple fallback strategies
- * Ported from packages/lib/src/workflow-engine/nodes/action-nodes/code.ts:237-259
- */
-function resolveVariablePath(path: string, variables: Record<string, any>): any {
-  // 1. Direct lookup: "sys.currentTime"
-  if (variables[path] !== undefined) {
-    return variables[path]
-  }
-
-  // 2. Underscore format: "sys_currentTime" (for backwards compatibility)
-  const underscorePath = path.replace(/\./g, '_')
-  if (variables[underscorePath] !== undefined) {
-    return variables[underscorePath]
-  }
-
-  // 3. Nested object access: "message.subject" where variables['message'] is an object
-  const parts = path.split('.')
-  if (parts.length > 1) {
-    const rootValue = variables[parts[0]]
-    if (rootValue && typeof rootValue === 'object') {
-      return getNestedProperty(rootValue, parts.slice(1).join('.'))
-    }
-  }
-
-  return undefined
-}
-
-/**
- * Helper for nested property access with array support
- * Ported from packages/lib/src/workflow-engine/nodes/action-nodes/code.ts:262-276
- */
-function getNestedProperty(obj: any, path: string): any {
-  return path.split('.').reduce((current, prop) => {
-    if (current === null || current === undefined) return undefined
-
-    // Handle array access like "items[0]"
-    const arrayMatch = prop.match(/^(.+)\[(\d+)\]$/)
-    if (arrayMatch) {
-      const [, arrayProp, index] = arrayMatch
-      const array = current[arrayProp]
-      return Array.isArray(array) ? array[parseInt(index, 10)] : undefined
-    }
-
-    return current[prop]
-  }, obj)
-}
-
-/**
- * Check if contextId is a known schema context
- * Ported from packages/lib/src/workflow-engine/nodes/action-nodes/code.ts:279-281
- */
-function isSchemaContext(contextId: string): boolean {
-  return ['message', 'order', 'customer', 'product', 'ticket', 'user'].includes(contextId)
-}
-
-/**
- * Create the $ function for variable access
- * Ported from packages/lib/src/workflow-engine/nodes/action-nodes/code.ts:284-298
- *
- * Usage:
- * - $('sys').var('currentTime') → looks up "sys.currentTime"
- * - $('env').var('apiKey') → looks up "env.apiKey"
- * - $('nodeId').var('result') → looks up "nodeId.result"
- */
-// function createDollarFunction(variables: Record<string, any>) {
-//   return function $(contextId: string) {
-//     return {
-//       var: (varPath: string) => {
-//         if (contextId === 'sys' || contextId === 'env' || isSchemaContext(contextId)) {
-//           // Handle system, environment, and schema variables
-//           const fullPath = contextId + '.' + varPath
-//           return resolveVariablePath(fullPath, variables)
-//         } else {
-//           // Handle node variables
-//           const fullPath = contextId + '.' + varPath
-//           return resolveVariablePath(fullPath, variables)
-//         }
-//       },
-//     }
-//   }
-// }
-
-/**
- * Generate the wrapped code that includes $ function and main() execution
- */
-function generateWrappedCode(
-  userCode: string,
-  inputsConfig: Array<{ name: string; variableId: string }>
-): string {
-  // Build argument list dynamically from inputsConfig
-  const argList = inputsConfig.map((input) => `codeInput.${input.name}`).join(', ')
-
-  return `
-    return (async function() {
-      'use strict';
-
-      // Receive workflow variables and code inputs as parameters (not stringified!)
-      // These are passed via Function constructor parameters below
-      const __variables = variables;
-
-      // $ function for variable access
-      ${resolveVariablePath.toString()}
-      ${getNestedProperty.toString()}
-      ${isSchemaContext.toString()}
-
-      const $ = function(contextId) {
-        return {
-          var: function(varPath) {
-            if (contextId === 'sys' || contextId === 'env' || isSchemaContext(contextId)) {
-              // Handle system, environment, and schema variables
-              const fullPath = contextId + '.' + varPath;
-              return resolveVariablePath(fullPath, __variables);
-            } else {
-              // Handle node variables
-              const fullPath = contextId + '.' + varPath;
-              return resolveVariablePath(fullPath, __variables);
-            }
-          }
-        };
-      };
-
-      // User's code
-      ${userCode}
-
-      // Execute main function with input values as arguments
-      if (typeof main === 'function') {
-        // IMPORTANT: Pass input values as arguments in the order defined in inputsConfig
-        // Access values from codeInput object (passed as parameter)
-        // This preserves complex types: Dates, Functions, circular refs, etc.
-        const argValues = [${argList}];
-        return await main(...argValues);
-      } else {
-        throw new Error('Code must define a main() function');
-      }
-    })()
-  `
-}
-
-/**
- * Execute JavaScript code in Deno sandbox
- */
-async function executeJavaScript(
-  code: string,
-  codeInput: Record<string, any>,
-  inputsConfig: Array<{ name: string; variableId: string }>,
-  variables: Record<string, any>,
-  timeout: number
-): Promise<any> {
-  // Generate wrapped code
-  const wrappedCode = generateWrappedCode(code, inputsConfig)
-
-  // Execute with timeout.
-  //
-  // NOTE: this cannot preempt synchronous user code — `Promise.race` only settles
-  // between macrotasks, so `while(true){}` holds the isolate and the timer never
-  // fires. Killing a runaway needs the child process of Phase B. The timer is
-  // cleared below so a completed execution does not leave one pending.
-  let timeoutId: ReturnType<typeof setTimeout> | undefined
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(
-      () => reject(new Error(`Code execution timeout after ${timeout}ms`)),
-      timeout
-    )
-  })
-
-  const executionPromise = (async () => {
-    try {
-      // Execute wrapped code with values passed as parameters
-      // This avoids JSON.stringify issues with complex objects
-      //
-      // `Deno` is declared as a parameter and left undefined, so a bare `Deno.env`
-      // in user code resolves to the parameter instead of the global namespace.
-      //
-      // DEFENSE IN DEPTH ONLY — this is NOT the security boundary, and it is
-      // BYPASSABLE: `globalThis.Deno` still reaches the namespace, and
-      // `import('node:fs')` reaches the filesystem without touching `Deno` at all
-      // (measured — see plan §4.3). Parameter shadowing is used rather than
-      // deleting the global because deletion is process-wide: a concurrent
-      // invocation, or one that hangs on an unresolved promise past the timeout,
-      // would leave the whole service without `Deno`.
-      //
-      // The real boundary is a child process with no ambient authority (Phase B).
-      // The non-bypassable part of Phase A is secrets.ts, which removes the
-      // credentials from the environment outright instead of hiding a path to them.
-      const fn = new Function('variables', 'codeInput', 'Deno', wrappedCode)
-      const result = await fn(variables, codeInput, undefined)
-      return result
-    } catch (error) {
-      // Enhance error message
-      if (error instanceof Error) {
-        throw new Error(`Code execution error: ${error.message}\n${error.stack || ''}`)
-      }
-      throw error
-    }
-  })()
-
-  try {
-    return await Promise.race([executionPromise, timeoutPromise])
-  } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId)
-  }
-}
-
-/**
  * Execute Python code (placeholder for future implementation)
  */
-async function executePython(
-  _code: string,
-  _codeInput: Record<string, any>,
-  _inputsConfig: Array<{ name: string; variableId: string }>,
-  _workflowVariables: Record<string, any>,
-  _timeout: number
-): Promise<any> {
+function executePython(): never {
   throw new Error('Python execution not yet implemented')
 }
 
 /**
- * Sanitize object for JSON serialization
- * Converts undefined values to null to preserve object structure
- * (JSON.stringify drops undefined properties, but preserves null)
- */
-function sanitizeForJson(obj: any): any {
-  // Primitives
-  if (obj === undefined) return null
-  if (obj === null) return null
-  if (typeof obj !== 'object') return obj
-
-  // Arrays
-  if (Array.isArray(obj)) {
-    return obj.map(sanitizeForJson)
-  }
-
-  // Objects
-  const sanitized: Record<string, any> = {}
-  for (const [key, value] of Object.entries(obj)) {
-    sanitized[key] = value === undefined ? null : sanitizeForJson(value)
-  }
-  return sanitized
-}
-
-/**
  * Main code executor function.
- * Executes user code in a sandboxed environment with:
- * - $ function for workflow variable access
- * - Input variables passed as function parameters
- * - Console log capture
- * - Timeout enforcement
  *
- * Uses CodeExecutionEvent type from validator for type safety
+ * Executes user code in a child process with no ambient authority, with:
+ * - `$` function for workflow variable access
+ * - input variables passed as function parameters
+ * - console log capture (performed in the child, shipped back over stdio)
+ * - timeout enforcement that can preempt synchronous code
+ *
+ * Uses CodeExecutionEvent type from validator for type safety.
  */
 export async function executeCode(options: CodeExecutionEvent): Promise<ExecutionResult> {
-  const {
-    code,
-    codeLanguage,
-    codeInput = {}, // Default to empty object
-    inputsConfig = [], // Default to empty array
-    variables,
-    timeout, // Default provided by Zod schema
-  } = options
+  const { code, codeLanguage, codeInput = {}, inputsConfig = [], variables, timeout } = options
+
   console.log('[CodeExecutor] Executing code:', {
     language: codeLanguage,
     timeout,
@@ -284,47 +50,42 @@ export async function executeCode(options: CodeExecutionEvent): Promise<Executio
     userId: variables['sys.userId'],
   })
 
-  try {
-    // 1. Clear previous logs and intercept console
-    clearCapturedLogs()
-    interceptConsole()
+  if (codeLanguage === 'python3') {
+    executePython()
+  }
 
-    // 2. Execute code based on language
-    let result: any
-    if (codeLanguage === 'javascript') {
-      result = await executeJavaScript(
-        code,
-        codeInput,
-        inputsConfig,
-        variables, // Pass all variables
-        timeout
-      )
-    } else if (codeLanguage === 'python3') {
-      result = await executePython(
-        code,
-        codeInput,
-        inputsConfig,
-        variables, // Pass all variables
-        timeout
-      )
-    } else {
-      throw new Error(`Unsupported language: ${codeLanguage}`)
-    }
+  if (codeLanguage !== 'javascript') {
+    throw new Error(`Unsupported language: ${codeLanguage}`)
+  }
 
-    // 3. Get captured logs
-    const consoleLogs = getCapturedLogs()
+  const outcome = await runInSandbox({ code, codeInput, inputsConfig, variables }, timeout)
 
-    console.log('[CodeExecutor] Execution succeeded:', {
-      resultType: typeof result,
-      logCount: consoleLogs.length,
+  // Publish the child's logs before any throw, so the error path in index.ts
+  // still reports what the code printed before it failed.
+  setCapturedLogs(outcome.logs)
+
+  if (!outcome.ok) {
+    console.error('[CodeExecutor] Execution failed:', {
+      failure: outcome.failure,
+      logCount: outcome.logs.length,
     })
 
-    return {
-      result: sanitizeForJson(result),
-      metadata: { consoleLogs },
+    const error = new Error(outcome.message ?? 'Code execution failed') as Error & {
+      code?: string
     }
-  } finally {
-    // 4. Always restore console
-    restoreConsole()
+    // Preserves the 413 the handler already returns for oversized results — the
+    // sandbox cap now trips before index.ts can measure the serialized body.
+    if (outcome.failure === 'output_too_large') error.code = 'RESPONSE_TOO_LARGE'
+    throw error
+  }
+
+  console.log('[CodeExecutor] Execution succeeded:', {
+    resultType: typeof outcome.value,
+    logCount: outcome.logs.length,
+  })
+
+  return {
+    result: outcome.value,
+    metadata: { consoleLogs: outcome.logs },
   }
 }

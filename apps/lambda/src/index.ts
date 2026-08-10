@@ -319,7 +319,11 @@ export async function handler(
     }
 
     return {
-      statusCode: 500,
+      // The sandbox's own output cap (4 MB) trips before this handler ever gets a
+      // value to measure against MAX_RESPONSE_BYTES, so the oversized-result case
+      // now arrives here as a throw. Keep answering 413 for it rather than
+      // silently downgrading a documented status to a generic 500.
+      statusCode: code === 'RESPONSE_TOO_LARGE' ? 413 : 500,
       body: JSON.stringify({
         error: {
           message,

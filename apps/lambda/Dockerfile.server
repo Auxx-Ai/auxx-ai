@@ -29,10 +29,24 @@ COPY apps/lambda/deno.json ./deno.json
 # Cache dependencies
 RUN deno cache src/dev-server.ts
 
-# Compile to standalone binary
+# Compile the sandbox runner FIRST — the child process that evaluates untrusted
+# code. Its permissions are baked in here, at build time, precisely so they cannot
+# be widened at spawn (plan §5.1, D3). `--allow-net` rather than `--deny-net` is
+# deliberate: the egress broker is deferred (D13, §6.1).
+RUN deno compile \
+  --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys \
+  --allow-net \
+  --v8-flags=--max-old-space-size=256 \
+  --output dist/runner \
+  src/sandbox/runner.ts
+
+# Compile to standalone binary.
+# The parent gains exactly one new grant: --allow-run scoped to the runner path,
+# never blanket --allow-run.
 RUN deno compile \
   --allow-net --allow-env \
   --allow-read=/app,/bundles --allow-sys \
+  --allow-run=/runner \
   --output dist/server \
   src/dev-server.ts
 
@@ -48,6 +62,10 @@ ENV APP_VERSION=$APP_VERSION
 ENV BUILD_TIME=$BUILD_TIME
 
 COPY --from=builder /app/dist/server /server
+# Must land at /runner — the path baked into the parent's --allow-run grant and
+# the default in sandbox/spawn.ts. Distroless has no shell, which is irrelevant:
+# Deno.Command execs this binary directly.
+COPY --from=builder /app/dist/runner /runner
 
 EXPOSE 3008
 
