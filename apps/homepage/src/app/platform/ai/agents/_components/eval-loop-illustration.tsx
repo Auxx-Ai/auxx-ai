@@ -135,7 +135,10 @@ function CaseRow({
         ))}
       </span>
 
-      <span className='flex w-[150px] shrink-0 items-center'>
+      {/* `h-5` is the resolved chip's height. Stacked on a phone the row is a
+          column, so without it the row grew as each case resolved and swapped a
+          6px pending bar for the chip — five separate nudges per loop. */}
+      <span className='flex h-5 w-[150px] shrink-0 items-center'>
         <AnimatePresence mode='wait' initial={false}>
           {resolved ? (
             <motion.span
@@ -189,14 +192,29 @@ function DiffHeader({ visible }: { visible: boolean }) {
   )
 }
 
-function KopilotCard({ reduceMotion }: { reduceMotion: boolean | null }) {
+/**
+ * Stays mounted and fades, rather than entering and leaving. Mounting it added
+ * its whole height to the board mid-loop; animating a permanent element gets
+ * the same motion out of a slot whose size never changes. The stagger still
+ * replays on every pass, because the chips animate toward a target that flips
+ * with `active`.
+ */
+function KopilotCard({ active, reduceMotion }: { active: boolean; reduceMotion: boolean | null }) {
   return (
     <motion.div
-      initial={reduceMotion ? false : { opacity: 0, y: 12, filter: 'blur(6px)' }}
-      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-      exit={reduceMotion ? undefined : { opacity: 0, y: -8, filter: 'blur(6px)' }}
+      aria-hidden={!active}
+      initial={false}
+      animate={
+        reduceMotion
+          ? { opacity: active ? 1 : 0 }
+          : {
+              opacity: active ? 1 : 0,
+              y: active ? 0 : 12,
+              filter: active ? 'blur(0px)' : 'blur(6px)',
+            }
+      }
       transition={{ duration: 0.35 }}
-      className='m-3 rounded-xl border bg-muted/40 p-3'>
+      className='col-start-1 row-start-1 m-3 self-start rounded-xl border bg-muted/40 p-3'>
       <div className='flex items-center gap-1.5 text-xs font-medium text-foreground'>
         <Sparkles className='size-3.5 text-amber-500' />
         Kopilot
@@ -206,9 +224,9 @@ function KopilotCard({ reduceMotion }: { reduceMotion: boolean | null }) {
         {KOPILOT_FIX.tools.map((toolName, i) => (
           <motion.span
             key={toolName}
-            initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: reduceMotion ? 0 : 0.5 + i * 0.4, duration: 0.25 }}
+            initial={false}
+            animate={{ opacity: active ? 1 : 0, scale: active ? 1 : 0.9 }}
+            transition={{ delay: reduceMotion || !active ? 0 : 0.5 + i * 0.4, duration: 0.25 }}
             className='inline-flex items-center gap-1 rounded-md border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground'>
             <Check className='size-2.5 text-emerald-500' />
             {toolName}
@@ -226,12 +244,18 @@ function KopilotCard({ reduceMotion }: { reduceMotion: boolean | null }) {
  *
  * The `Run 12 / Run 13` tabs are the point of making this interactive rather
  * than a looping video: they let you hold the before and after side by side.
- * The board height is fixed across all three states so the page does not jump.
+ *
+ * Nothing in the board mounts or unmounts across the three phases — the two
+ * footers share a grid cell and the status cell is a fixed height — so its
+ * height is the same in every phase and the page below never moves. The
+ * `min-h` is only a floor for the short desktop state, not what holds the
+ * layout still.
  */
 export default function EvalLoopIllustration() {
   const { phase, resolved, reduceMotion, scrubTo, pause, resume } = useSuitePlayback()
   const agent = agentById('refund')
   const showingAfter = phase === 'after'
+  const showNote = phase === 'before' && resolved === EVAL_CASES.length
 
   return (
     <div onMouseEnter={pause} onMouseLeave={resume} className='mx-auto w-full max-w-3xl text-left'>
@@ -283,16 +307,27 @@ export default function EvalLoopIllustration() {
           ))}
         </div>
 
-        <AnimatePresence mode='wait'>
-          {phase === 'fix' && <KopilotCard key='fix' reduceMotion={reduceMotion} />}
-        </AnimatePresence>
+        {/*
+         * One slot for both phase footers, stacked in the same grid cell and
+         * crossfaded — the same trick `DiffHeader` uses. The cell is as tall as
+         * the taller of the two at whatever width it lands on, so the board
+         * measures the same in all three phases without pinning a height that
+         * would have to be re-measured per breakpoint. `self-start` keeps each
+         * at its natural height instead of stretching to the cell.
+         */}
+        <div className='grid grid-cols-1 grid-rows-1'>
+          <KopilotCard active={phase === 'fix'} reduceMotion={reduceMotion} />
 
-        {phase === 'before' && resolved === EVAL_CASES.length && (
-          <p className='m-3 rounded-lg bg-amber-500/[0.07] px-3 py-2 text-[11px] italic text-muted-foreground'>
+          <p
+            aria-hidden={!showNote}
+            className={cn(
+              'col-start-1 row-start-1 m-3 self-start rounded-lg bg-amber-500/[0.07] px-3 py-2 text-[11px] italic text-muted-foreground transition-opacity duration-300',
+              showNote ? 'opacity-100' : 'opacity-0'
+            )}>
             The last one didn&apos;t fail, it errored: a tool call had no stub, so the run
             couldn&apos;t finish. Nothing passes on a technicality here.
           </p>
-        )}
+        </div>
       </div>
     </div>
   )

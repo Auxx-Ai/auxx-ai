@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   MockAssistantSlot,
   MockToolStatusPill,
@@ -29,12 +29,20 @@ import { AgentPortrait } from './agent-portrait'
 import { AGENT_SCRIPTS, type AgentScript, type RunEntry } from './agent-scripts'
 
 /**
- * Fixed height for both columns, so opening a procedure never moves the page
- * below. Measured max content across the four agents is ~600px; the extra
- * headroom keeps the tallest state off the boundary, and the panel's own list
- * scrolls rather than clipping if copy ever grows past it.
+ * Fixed heights, so revealing an entry or opening a procedure never moves the
+ * page below. Side by side the two columns share one box; stacked they need one
+ * each, and a phone-width column wraps far more, so its box is taller.
+ *
+ * The stacked pins are deliberately under the tallest agent rather than over
+ * it: measured at 314px — what a 390px viewport leaves inside the section's
+ * rails — the four scripts span 79–570px of run and 445–710px of panel, so
+ * pinning to the maximum left the short agents as a half-empty box. Both lists
+ * scroll instead, and both keep the part that matters in view: the run sticks
+ * to its newest entry, the panel to its active line.
  */
-const COLUMN_H = 'min-h-[640px] lg:h-[640px]'
+const GRID_H = 'lg:h-[640px]'
+const RUN_H = 'h-[420px] lg:h-full'
+const PANEL_H = 'h-[560px] lg:h-full'
 
 /** Default per-entry dwell. Individual entries can override it. */
 const STEP_MS = 950
@@ -253,6 +261,44 @@ function RunColumn({
   revealed: number
   reduceMotion: boolean | null
 }) {
+  const listRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * Keep the newest entry in view, the way a chat does. A no-op while the run
+   * fits its box — it earns its keep on a phone, where the pinned height is
+   * under the longest script and the terminal entry (the payoff) would
+   * otherwise sit below the fold.
+   *
+   * Observing the content rather than reacting to `revealed`: an entry's
+   * `layout` animation keeps growing the list for ~280ms after the render that
+   * added it, so a scroll issued on the state change lands short. Scrolling
+   * this box never moves the page, unlike `scrollIntoView`. Scrolling up
+   * releases the pin, so reading back through a run isn't fought.
+   */
+  useEffect(() => {
+    const el = listRef.current
+    const content = el?.firstElementChild
+    if (!el || !content) return
+
+    let pinned = true
+    const stick = () => {
+      if (pinned) el.scrollTop = el.scrollHeight
+    }
+    const release = () => {
+      pinned = el.scrollHeight - el.clientHeight - el.scrollTop < 24
+    }
+
+    const observer = new ResizeObserver(stick)
+    observer.observe(content)
+    el.addEventListener('scroll', release, { passive: true })
+    stick()
+
+    return () => {
+      observer.disconnect()
+      el.removeEventListener('scroll', release)
+    }
+  }, [])
+
   return (
     <div className='flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-zinc-200/30 dark:bg-white/[0.03]'>
       <div className='flex items-center justify-between px-3 pt-1 pb-2'>
@@ -263,20 +309,31 @@ function RunColumn({
         </span>
       </div>
 
-      <div className='flex flex-1 flex-col items-start gap-1.5 p-3'>
-        <AnimatePresence initial={false}>
-          {script.run.slice(0, revealed).map((entry, i) => (
-            <motion.div
-              key={`${script.agentId}-${i}`}
-              layout={!reduceMotion}
-              initial={reduceMotion ? false : { opacity: 0, y: 6, filter: 'blur(4px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              transition={{ duration: 0.28 }}
-              className='w-full'>
-              <RunRow entry={entry} agent={agent} />
-            </motion.div>
-          ))}
-        </AnimatePresence>
+      <div ref={listRef} className='flex min-h-0 flex-1 flex-col overflow-y-auto p-3'>
+        {/* Stacked, the box is shorter than the longest script, so a short run
+            settles at the bottom the way a chat does and the headroom above it
+            reads as an empty transcript rather than a half-filled card. Side by
+            side the box is tuned to hold every script, so entries stay top-
+            aligned with the persona card opposite them.
+
+            `mt-auto` rather than `justify-end`: once the run outgrows the box
+            the margin collapses to zero and the top entries stay reachable,
+            where `justify-end` would push them out of the scrollable area. */}
+        <div className='mt-auto flex w-full flex-col items-start gap-1.5 lg:mt-0'>
+          <AnimatePresence initial={false}>
+            {script.run.slice(0, revealed).map((entry, i) => (
+              <motion.div
+                key={`${script.agentId}-${i}`}
+                layout={!reduceMotion}
+                initial={reduceMotion ? false : { opacity: 0, y: 6, filter: 'blur(4px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                transition={{ duration: 0.28 }}
+                className='w-full'>
+                <RunRow entry={entry} agent={agent} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   )
@@ -359,13 +416,20 @@ export default function AgentRunIllustration() {
       <AgentChips activeIndex={agentIndex} onSelect={selectAgent} />
 
       {/*
-       * Both columns are pinned to `COLUMN_H`. Without it the grid's height is
-       * driven by whichever column is taller, and that swings ~180px every time
-       * a procedure opens or collapses — which is what made the page below jump
+       * Both columns are pinned. Without it the grid's height is driven by
+       * whichever column is taller, and that swings ~180px every time a
+       * procedure opens or collapses — which is what made the page below jump
        * when you clicked a chip (a click resets to step 0, closing the
        * procedure, and it then reopens a beat later).
+       *
+       * `min-w-0` on both: a grid item's automatic minimum is its min-content
+       * width, and the procedure rows' `truncate` summaries are a single
+       * unbreakable line ~480px wide. Stacked, that is the *only* column, so it
+       * sized the track to 480px inside a 314px viewport and the run bubbles,
+       * persona and procedure prose all ran off the right edge with no
+       * horizontal scroll to recover them.
        */}
-      <div className={cn('mt-6 grid gap-4 lg:grid-cols-2', COLUMN_H)}>
+      <div className={cn('mt-6 grid gap-4 lg:grid-cols-2', GRID_H)}>
         <MockAgentPanel
           agent={agent}
           persona={script.persona}
@@ -376,11 +440,11 @@ export default function AgentRunIllustration() {
           activeLine={activeLine}
           onSelectLine={scrubToLine}
           reduceMotion={reduceMotion}
-          className='order-2 lg:order-1'
+          className={cn('order-2 min-w-0 lg:order-1', PANEL_H)}
         />
 
         {/* Run first on a phone: it is the payoff, the document is context. */}
-        <div className='order-1 min-h-0 lg:order-2'>
+        <div className={cn('order-1 min-h-0 min-w-0 lg:order-2', RUN_H)}>
           <RunColumn
             script={script}
             agent={agent}
