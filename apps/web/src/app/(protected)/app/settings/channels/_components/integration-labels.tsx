@@ -1,5 +1,5 @@
 'use client'
-// ~/app/(protected)/app/settings/integrations/_components/integration-labels.tsx
+// ~/app/(protected)/app/settings/channels/_components/integration-labels.tsx
 
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -15,7 +15,9 @@ import { Kbd } from '@auxx/ui/components/kbd'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
-import { Edit, FolderSync, RefreshCw } from 'lucide-react'
+import { TreeRow, TreeRowEmpty } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
+import { Edit, Folder, FolderSync, RefreshCw, SearchX } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
@@ -135,37 +137,53 @@ export default function IntegrationLabels({ integration, disabled }: Integration
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder='Search folders...'
                 />
-                <div className='rounded-2xl border divide-y max-h-80 overflow-y-auto'>
+                <div className='rounded-xl border p-1 max-h-80 overflow-y-auto'>
                   {filteredLabels.length === 0 ? (
-                    <div className='px-3 py-4 text-sm text-muted-foreground text-center'>
-                      No folders match your search.
-                    </div>
+                    <TreeRowEmpty
+                      icon={<SearchX className='size-4' />}
+                      title='No folders match your search.'
+                    />
                   ) : (
-                    filteredLabels.map((label) => {
-                      const isPendingRemoval = label.pendingAction === 'PENDING_REMOVAL'
-                      return (
-                        <div
-                          key={label.id}
-                          className={`flex items-center justify-between px-3 py-2.5 ${isPendingRemoval ? 'opacity-50' : ''}`}>
-                          <div className='flex flex-col'>
-                            <span className='text-sm font-medium'>{label.name}</span>
-                            {isPendingRemoval && (
-                              <span className='text-xs text-muted-foreground'>
-                                Removed from server
-                              </span>
-                            )}
-                          </div>
-                          <Switch
-                            size='sm'
-                            checked={label.enabled}
-                            disabled={isPendingRemoval || toggleEnabled.isPending}
-                            onCheckedChange={(enabled) =>
-                              toggleEnabled.mutate({ labelId: label.id, enabled })
+                    <TreeRowList
+                      className='gap-1'
+                      items={filteredLabels}
+                      getKey={(label) => label.id}
+                      renderRow={(label) => {
+                        const isPendingRemoval = label.pendingAction === 'PENDING_REMOVAL'
+                        // Only the row being toggled locks — the write is optimistic, so
+                        // the other rows stay usable while it's in flight.
+                        const isToggling =
+                          toggleEnabled.isPending && toggleEnabled.variables?.labelId === label.id
+                        const rowDisabled = isPendingRemoval || isToggling
+                        return (
+                          <TreeRow
+                            rowClassName={`bg-primary-50 hover:bg-primary-100 ${isPendingRemoval ? 'opacity-50' : ''}`}
+                            icon={<Folder className='size-4' />}
+                            title={label.name}
+                            secondary={isPendingRemoval ? 'Removed from server' : undefined}
+                            onToggleOpen={
+                              rowDisabled
+                                ? undefined
+                                : () =>
+                                    toggleEnabled.mutate({
+                                      labelId: label.id,
+                                      enabled: !label.enabled,
+                                    })
+                            }
+                            actions={
+                              <Switch
+                                size='xs'
+                                checked={label.enabled}
+                                disabled={rowDisabled}
+                                onCheckedChange={(enabled) =>
+                                  toggleEnabled.mutate({ labelId: label.id, enabled })
+                                }
+                              />
                             }
                           />
-                        </div>
-                      )
-                    })
+                        )
+                      }}
+                    />
                   )}
                 </div>
               </div>
