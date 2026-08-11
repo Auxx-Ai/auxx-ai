@@ -12,6 +12,15 @@ interface UseTagHierarchyOptions {
    * scope are returned. Tags without a scope value default to 'thread'.
    */
   scope?: TagScopeValue
+  /**
+   * Include archived tags in the result, each flagged as {@link TagNode.isArchived}.
+   *
+   * Off everywhere except the settings list's "Show archived" toggle: a picker
+   * must never offer a retired tag, and the classifier never sees one either
+   * (`labels.ts:92`). The settings list is the one surface that has to show them,
+   * because archive would otherwise be a one-way door with no route back.
+   */
+  includeArchived?: boolean
 }
 
 /**
@@ -27,6 +36,7 @@ export function useTagHierarchy(options?: UseTagHierarchyOptions): UseTagHierarc
   const { records, entityDefinitionId, fields, isLoading, error, refresh } =
     useAllRecords<TagRecord>({
       entityDefinitionId: 'tag',
+      includeArchived: options?.includeArchived,
     })
 
   const scope = options?.scope
@@ -61,6 +71,11 @@ export function useTagHierarchy(options?: UseTagHierarchyOptions): UseTagHierarc
         // Empty string reads as "no template" so a blanked-out field cannot make
         // a tag look seeded (and cannot resolve a default that does not exist).
         templateKey: record.fieldValues.tag_template_key || null,
+        // `record.listAll` spreads the whole `EntityInstance` row, so `archivedAt`
+        // rides along untyped through `RecordMeta`'s index signature. Narrowed to
+        // a boolean here so no caller has to re-derive it (or get the null check
+        // backwards).
+        isArchived: Boolean((record as { archivedAt?: unknown }).archivedAt),
         scope: tagScope,
         children: [],
       }
