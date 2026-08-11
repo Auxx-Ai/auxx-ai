@@ -6,10 +6,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
-import { Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
@@ -107,8 +108,13 @@ export function RecordTagChip({ tagId, removeLabel, onRemove, size = 'sm' }: Rec
         </DropdownMenuTrigger>
         <DropdownMenuContent align='end'>
           <DropdownMenuItem onClick={handleRemoveFromRecord}>
+            <X />
             Remove from {removeLabel}
           </DropdownMenuItem>
+          {/* Separates the record-scoped action above from the org-wide tag
+              actions below — so it only renders when at least one of those is
+              permitted, never as a trailing rule. */}
+          {(canEditTag || canDeleteTag) && <DropdownMenuSeparator />}
           {canEditTag && (
             <DropdownMenuItem onClick={handleEdit}>
               <Pencil />

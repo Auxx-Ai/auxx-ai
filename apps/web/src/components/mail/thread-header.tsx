@@ -44,6 +44,7 @@ import { ThreadMailSuggestionChip } from '~/components/mail-suggestions/ui/threa
 import { RecordPicker } from '~/components/pickers/record-picker'
 import { useActor, useResource } from '~/components/resources/hooks'
 import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
+import { RecordTagChip } from '~/components/tags/ui/record-tag-chip'
 import { useInbox, useThread, useThreadMutation } from '~/components/threads/hooks'
 import {
   useHasMultipleSelected,
@@ -66,7 +67,6 @@ import { ThreadHandoffControl } from './thread-handoff-control'
 import { ThreadMergeBadge } from './thread-merge-badge'
 import { ThreadParticipantButton } from './thread-participant-button'
 import { useThreadContext } from './thread-provider'
-import { ThreadTag } from './thread-tag'
 import { ThreadTicketControl } from './thread-ticket-control'
 
 /**
@@ -549,9 +549,9 @@ export function ThreadHeader() {
           {thread.tagIds && thread.tagIds.length > 0 && (
             <div className='flex flex-row no-wrap gap-2 shrink-0'>
               {thread.tagIds.map((tagId) => (
-                <ThreadTag
+                <RecordTagChip
                   tagId={tagId}
-                  threadId={threadId}
+                  removeLabel='thread'
                   key={tagId}
                   onRemove={() => {
                     // Remove this tag from the current tags list
