@@ -642,7 +642,7 @@ function MailboxInner({
               mail the question is about, rather than in settings: the person who
               should answer is the one staring at the unfiltered inbox. Renders
               nothing when there is nothing to ask. */}
-            <MailFilterRetroactivePrompt />
+            <MailFilterRetroactivePrompt activeInboxId={activeInboxId} />
             {/* Post-sync classification prompt (07-mail-reclassification-plan.md
               §3.4) — "classify N existing conversations?". Same slot and same
               reasoning as the filter prompt above.

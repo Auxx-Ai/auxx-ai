@@ -16,7 +16,15 @@ const h = vi.hoisted(() => ({
 
 vi.mock('./guard', () => ({ guardClassification: h.guard }))
 vi.mock('./classify', () => ({ classifyMessage: h.classify }))
-vi.mock('./apply', () => ({ applyClassificationTag: h.apply, markMessageClassified: h.mark }))
+// ⚠️ PARTIAL. `toClassificationMarker` is kept REAL so the marker's contents are
+// asserted against the actual builder rather than a paraphrase of it — and so a
+// full replacement cannot silently hand `undefined` to `markMessageClassified`
+// the next time this module grows an export.
+vi.mock('./apply', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./apply')>()),
+  applyClassificationTag: h.apply,
+  markMessageClassified: h.mark,
+}))
 vi.mock('./rerun-filters', () => ({ rerunMailFiltersAfterClassification: h.rerun }))
 
 import type { MailClassificationJobData } from './job'
@@ -126,6 +134,33 @@ describe('mailClassificationJob — the happy path', () => {
       confidence: 0.9,
       model: 'gpt-x',
     })
+  })
+
+  it('carries the summary and the candidate label onto the marker (08 phase 1)', async () => {
+    h.classify.mockResolvedValue({
+      tagId: null,
+      confidence: 0.5,
+      reason: 'below-threshold',
+      model: 'gpt-x',
+      inferred: true,
+      messageSummary: 'The sender wants to open a wholesale account.',
+      altTagName: 'wholesale enquiry',
+    })
+
+    await mailClassificationJob(ctx())
+
+    expect(h.mark.mock.calls[0]?.[0]?.marker).toMatchObject({
+      messageSummary: 'The sender wants to open a wholesale account.',
+      altTagName: 'wholesale enquiry',
+    })
+  })
+
+  it('omits the two keys entirely when the model returned nothing usable', async () => {
+    await mailClassificationJob(ctx())
+
+    const marker = h.mark.mock.calls[0]?.[0]?.marker
+    expect(marker).not.toHaveProperty('messageSummary')
+    expect(marker).not.toHaveProperty('altTagName')
   })
 })
 

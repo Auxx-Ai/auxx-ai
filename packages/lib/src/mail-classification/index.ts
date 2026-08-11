@@ -3,7 +3,7 @@
 // Explicit named exports only — see CLAUDE.md's "Module Exports" convention.
 
 // Write path (§3.3, C9)
-export { applyClassificationTag, markMessageClassified } from './apply'
+export { applyClassificationTag, markMessageClassified, toClassificationMarker } from './apply'
 // The one model call (§3.2)
 export {
   buildClassificationPrompt,
@@ -18,10 +18,12 @@ export {
   MAIL_CLASSIFICATION_INBOX_IDS_SETTING,
   MAIL_CLASSIFICATION_JOB_NAME,
   MAIL_CLASSIFICATION_METADATA_KEY,
+  MAIL_CLASSIFY_ALT_TAG_CHARS,
   MAIL_CLASSIFY_BODY_CHARS,
   MAIL_CLASSIFY_CONFIDENCE_THRESHOLD,
   MAIL_CLASSIFY_FAILURE_REASONS,
   MAIL_CLASSIFY_NO_CATEGORY,
+  MAIL_CLASSIFY_SUMMARY_CHARS,
   MAIL_RECLASSIFY_APPLY_JOB_NAME,
   MAIL_RECLASSIFY_BACKLOG_COUNT_CAP,
   MAIL_RECLASSIFY_DAY_PRESETS,

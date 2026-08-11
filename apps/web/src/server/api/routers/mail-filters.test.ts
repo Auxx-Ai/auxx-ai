@@ -1508,8 +1508,38 @@ describe('mailFilters router — the retroactive prompt is per-user', () => {
     expect(lib.findPendingRetroactivePrompt).toHaveBeenCalledWith(
       expect.anything(),
       ORG_ID,
-      expect.not.arrayContaining([OTHER_PERSONAL, LEGACY_PERSONAL])
+      expect.not.arrayContaining([OTHER_PERSONAL, LEGACY_PERSONAL]),
+      expect.anything()
     )
+  })
+
+  /**
+   * ⚠️ The viewed-inbox preference must not be able to WIDEN the answer. It is
+   * forwarded verbatim, and the narrowing that protects a colleague's personal
+   * mailbox stays in the candidate list — so a caller naming an inbox they may
+   * not author on gets the same candidates and the same answer.
+   */
+  it('forwards the viewed inbox as a preference without widening the candidates', async () => {
+    await caller(USER_ID).pendingRetroactivePrompt({ inboxId: OTHER_PERSONAL })
+
+    expect(lib.findPendingRetroactivePrompt).toHaveBeenCalledWith(
+      expect.anything(),
+      ORG_ID,
+      expect.not.arrayContaining([OTHER_PERSONAL, LEGACY_PERSONAL]),
+      { preferredInboxId: OTHER_PERSONAL }
+    )
+  })
+
+  /** The client needs it to build the route, and the two live under different paths. */
+  it('reports whether the prompted inbox is personal', async () => {
+    world.writableInboxIds.add(OWN_PERSONAL)
+    world.promptInboxIds.clear()
+    world.promptInboxIds.add(OWN_PERSONAL)
+
+    expect(await caller(USER_ID).pendingRetroactivePrompt()).toMatchObject({
+      inboxId: OWN_PERSONAL,
+      isPersonal: true,
+    })
   })
 
   it('answers null without touching settings for a caller who owns no inbox', async () => {

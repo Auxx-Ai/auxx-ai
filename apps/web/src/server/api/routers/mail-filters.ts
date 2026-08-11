@@ -576,21 +576,38 @@ export const mailFiltersRouter = createTRPCRouter({
    *
    * Scoped to the caller's authorable inboxes, so it can never surface someone
    * else's personal mailbox.
+   *
+   * `inboxId` is the inbox the caller is currently VIEWING, and it only ever
+   * reorders the candidates — the banner names the inbox it is about, and its
+   * button MUTATES, so asking about a different mailbox than the one on screen
+   * puts a bulk apply one click from the wrong target. It is not a scope: a view
+   * with no inbox of its own (search, drafts, all-inboxes) passes nothing and
+   * still gets asked. ⚠️ It grants nothing either — the preference applies AFTER
+   * the authority filter, so an id the caller cannot author on changes no answer.
+   *
+   * `isPersonal` rides along so the client can build the right route to the
+   * inbox: personal mailboxes live under `/app/mail/personal/{id}`, shared ones
+   * under `/app/mail/inboxes/{id}`.
    */
-  pendingRetroactivePrompt: capabilityProcedure.query(async ({ ctx }) => {
-    const organizationId = ctx.session.organizationId
-    const authority = await loadMailFilterAuthority(ctx)
-    if (authority.inboxIds.length === 0) return null
+  pendingRetroactivePrompt: capabilityProcedure
+    .input(z.object({ inboxId: z.string().min(1).optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const organizationId = ctx.session.organizationId
+      const authority = await loadMailFilterAuthority(ctx)
+      if (authority.inboxIds.length === 0) return null
 
-    const dismissed = await readDismissedPromptInboxIds(ctx)
-    const candidates = authority.inboxIds.filter((id) => !dismissed.includes(id))
-    if (candidates.length === 0) return null
+      const dismissed = await readDismissedPromptInboxIds(ctx)
+      const candidates = authority.inboxIds.filter((id) => !dismissed.includes(id))
+      if (candidates.length === 0) return null
 
-    const prompt = await findPendingRetroactivePrompt(ctx.db, organizationId, candidates)
-    if (!prompt) return null
+      const prompt = await findPendingRetroactivePrompt(ctx.db, organizationId, candidates, {
+        preferredInboxId: input?.inboxId,
+      })
+      if (!prompt) return null
 
-    return { ...prompt, inboxName: authority.byId.get(prompt.inboxId)?.name ?? '' }
-  }),
+      const inbox = authority.byId.get(prompt.inboxId)
+      return { ...prompt, inboxName: inbox?.name ?? '', isPersonal: inbox?.isPersonal ?? false }
+    }),
 
   /** Wave the post-connect prompt away for one inbox, for this member only. */
   dismissRetroactivePrompt: capabilityProcedure

@@ -17,7 +17,7 @@
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { JobContext } from '../jobs/types/job-context'
-import { applyClassificationTag, markMessageClassified } from './apply'
+import { applyClassificationTag, markMessageClassified, toClassificationMarker } from './apply'
 import { classifyMessage } from './classify'
 import type { MailClassificationSkipReason } from './client'
 import { guardClassification } from './guard'
@@ -102,12 +102,7 @@ export async function mailClassificationJob(
       db,
       organizationId,
       messageId,
-      marker: {
-        at: new Date().toISOString(),
-        tagId: result.tagId,
-        confidence: result.confidence,
-        ...(result.model ? { model: result.model } : {}),
-      },
+      marker: toClassificationMarker(result),
     })
   }
 

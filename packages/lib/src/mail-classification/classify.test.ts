@@ -41,7 +41,12 @@ vi.mock('../ai/usage/usage-tracking-service', () => ({
 
 import { QuotaExceededError } from '../ai/errors/quota-errors'
 import { buildClassificationPrompt, buildClassificationSchema, classifyMessage } from './classify'
-import { MAIL_CLASSIFY_BODY_CHARS, MAIL_CLASSIFY_NO_CATEGORY } from './client'
+import {
+  MAIL_CLASSIFY_ALT_TAG_CHARS,
+  MAIL_CLASSIFY_BODY_CHARS,
+  MAIL_CLASSIFY_NO_CATEGORY,
+  MAIL_CLASSIFY_SUMMARY_CHARS,
+} from './client'
 import type { MailClassificationContext } from './types'
 
 const context: MailClassificationContext = {
@@ -67,8 +72,36 @@ describe('the structured-output schema (invariant 12)', () => {
   it('is an OBJECT with a `category` field, not a bare id', () => {
     const schema = buildClassificationSchema(context.labels)
     expect(schema.schema.type).toBe('object')
-    expect(Object.keys(schema.schema.properties)).toEqual(['category', 'confidence'])
-    expect(schema.schema.required).toEqual(['category', 'confidence'])
+    expect(Object.keys(schema.schema.properties)).toEqual([
+      'category',
+      'confidence',
+      'messageSummary',
+      'altTagName',
+    ])
+  })
+
+  it('⚠️ requires EVERY property — "optional" does not survive the provider layer (08 T2)', () => {
+    const schema = buildClassificationSchema(context.labels)
+    // `openai-llm-client.ts` overwrites `required` with `Object.keys(properties)`
+    // while `anthropic-llm-client.ts` passes ours through to the forced tool's
+    // `input_schema` untouched. Declaring a property optional therefore means a
+    // different contract per provider, decided by the org's default model. The
+    // absent case is carried as a VALUE (`''`, and `__none__` for `category`).
+    expect(schema.schema.required).toEqual(Object.keys(schema.schema.properties))
+  })
+
+  it('states lengths in prose, never as a `maxLength` keyword (not portable under strict)', () => {
+    const schema = buildClassificationSchema(context.labels)
+    expect(schema.schema.properties.messageSummary).not.toHaveProperty('maxLength')
+    expect(schema.schema.properties.altTagName).not.toHaveProperty('maxLength')
+    expect(schema.schema.properties.messageSummary.description).toContain(
+      String(MAIL_CLASSIFY_SUMMARY_CHARS)
+    )
+  })
+
+  it('keeps `category` first, so the decision is generated before the extras', () => {
+    const schema = buildClassificationSchema(context.labels)
+    expect(Object.keys(schema.schema.properties)[0]).toBe('category')
   })
 
   it('enumerates the eligible TAG IDS plus the abstention sentinel — never free text', () => {
@@ -179,6 +212,148 @@ describe('classifyMessage — the model cannot return a non-eligible id', () => 
       confidence: 0,
       reason: 'no-category',
     })
+  })
+})
+
+describe('classifyMessage — the summary and the candidate label (08 phase 1)', () => {
+  it('captures the summary on an applied classification', async () => {
+    h.invoke.mockResolvedValue({
+      structured_output: {
+        category: 'tag_billing',
+        confidence: 0.9,
+        messageSummary: 'The customer wants a refund for a duplicate charge.',
+        altTagName: '',
+      },
+    })
+
+    await expect(classifyMessage(db, context)).resolves.toMatchObject({
+      tagId: 'tag_billing',
+      messageSummary: 'The customer wants a refund for a duplicate charge.',
+    })
+  })
+
+  it('captures the candidate label when the model abstained', async () => {
+    h.invoke.mockResolvedValue({
+      structured_output: {
+        category: MAIL_CLASSIFY_NO_CATEGORY,
+        confidence: 0.95,
+        messageSummary: 'The sender is asking about a wholesale account.',
+        altTagName: 'wholesale enquiry',
+      },
+    })
+
+    await expect(classifyMessage(db, context)).resolves.toMatchObject({
+      tagId: null,
+      reason: 'no-category',
+      altTagName: 'wholesale enquiry',
+    })
+  })
+
+  it('captures it on a BELOW-THRESHOLD pick too — the boundary is the signal (08 T3)', async () => {
+    h.invoke.mockResolvedValue({
+      structured_output: {
+        category: 'tag_billing',
+        confidence: 0.55,
+        messageSummary: 'A chargeback notice from the payment processor.',
+        altTagName: 'chargeback',
+      },
+    })
+
+    await expect(classifyMessage(db, context)).resolves.toMatchObject({
+      tagId: null,
+      reason: 'below-threshold',
+      altTagName: 'chargeback',
+    })
+  })
+
+  it('⚠️ DROPS the candidate label when a tag was actually applied', async () => {
+    // The prompt says to leave it empty when a category fitted; a model that
+    // fills it in anyway must not seed the miner with candidates arguing for
+    // tags the org demonstrably already has.
+    h.invoke.mockResolvedValue({
+      structured_output: {
+        category: 'tag_billing',
+        confidence: 0.95,
+        messageSummary: 'A refund request.',
+        altTagName: 'refunds',
+      },
+    })
+
+    const result = await classifyMessage(db, context)
+    expect(result.tagId).toBe('tag_billing')
+    expect(result).not.toHaveProperty('altTagName')
+  })
+
+  it('treats the empty-string sentinel as "nothing to record", not as a value', async () => {
+    h.invoke.mockResolvedValue({
+      structured_output: {
+        category: MAIL_CLASSIFY_NO_CATEGORY,
+        confidence: 0.9,
+        messageSummary: '   ',
+        altTagName: '',
+      },
+    })
+
+    const result = await classifyMessage(db, context)
+    expect(result).not.toHaveProperty('altTagName')
+    expect(result).not.toHaveProperty('messageSummary')
+  })
+
+  it('clamps both in TypeScript — the schema states the limit, the clamp holds it', async () => {
+    h.invoke.mockResolvedValue({
+      structured_output: {
+        category: MAIL_CLASSIFY_NO_CATEGORY,
+        confidence: 0.9,
+        messageSummary: 'y'.repeat(MAIL_CLASSIFY_SUMMARY_CHARS + 400),
+        altTagName: 'z'.repeat(MAIL_CLASSIFY_ALT_TAG_CHARS + 40),
+      },
+    })
+
+    const result = await classifyMessage(db, context)
+    expect(result.messageSummary).toHaveLength(MAIL_CLASSIFY_SUMMARY_CHARS)
+    expect(result.altTagName).toHaveLength(MAIL_CLASSIFY_ALT_TAG_CHARS)
+  })
+
+  it('survives wrong types without becoming a failure arm (invariant 6)', async () => {
+    h.invoke.mockResolvedValue({
+      structured_output: {
+        category: 'tag_billing',
+        confidence: 0.9,
+        messageSummary: { not: 'a string' },
+        altTagName: 42,
+      },
+    })
+
+    await expect(classifyMessage(db, context)).resolves.toMatchObject({
+      tagId: 'tag_billing',
+      inferred: true,
+    })
+  })
+
+  it('captures NOTHING when the call failed — same gate as the tag', async () => {
+    h.invoke.mockRejectedValue(new Error('429'))
+
+    const result = await classifyMessage(db, context)
+    expect(result.inferred).toBe(false)
+    expect(result).not.toHaveProperty('messageSummary')
+    expect(result).not.toHaveProperty('altTagName')
+  })
+
+  it('logs the candidate label but NOT the summary (customer prose stays out of logs)', async () => {
+    h.invoke.mockResolvedValue({
+      structured_output: {
+        category: MAIL_CLASSIFY_NO_CATEGORY,
+        confidence: 0.9,
+        messageSummary: 'A wholesale enquiry from a boutique.',
+        altTagName: 'wholesale enquiry',
+      },
+    })
+
+    await classifyMessage(db, context)
+
+    const logged = h.info.mock.calls.find(([msg]) => msg === 'Mail classification result')?.[1]
+    expect(logged).toMatchObject({ altTagName: 'wholesale enquiry', hasSummary: true })
+    expect(JSON.stringify(logged)).not.toContain('boutique')
   })
 })
 
