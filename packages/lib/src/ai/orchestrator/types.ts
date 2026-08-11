@@ -22,7 +22,16 @@ export interface LLMInvocationRequest {
 
   // Context
   organizationId: string
-  userId: string
+  /**
+   * Who this call is on behalf of, or **null** for a background run that no user
+   * initiated (mail classification, a sweeper).
+   *
+   * ⚠️ Nullable so callers stop reaching for `''`. It reaches two places and they
+   * want different things: credential resolution treats a missing user as "no
+   * user-specific key", which `''` already meant; the usage insert writes it to a
+   * FK column where `''` is fatal. See {@link UsageTrackingRequest.userId}.
+   */
+  userId: string | null
   context?: {
     source: string
     workflowId?: string
@@ -168,7 +177,20 @@ export type UsageSource =
 
 export interface UsageTrackingRequest {
   organizationId: string
-  userId: string
+  /**
+   * Who incurred this spend, or **null** when nobody did.
+   *
+   * ⚠️ Nullable because the column is: `AiUsage.userId` and `UsageEvent.userId`
+   * are both `text().references(User.id, { onDelete: 'set null' })`, i.e. a usage
+   * row is DESIGNED to exist without a user. Typing this as a required `string`
+   * is what produced the `userId: ''` that background callers reached for to
+   * satisfy the compiler — and `''` is not "no user", it is a `User.id` that does
+   * not exist, so the FK rejected the insert.
+   *
+   * A background run (mail classification, a sweeper) genuinely has no user, and
+   * attribution for it lives in `source`, not here. Pass null.
+   */
+  userId: string | null
   provider: string
   model: string
   usage: UsageMetrics

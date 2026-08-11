@@ -90,10 +90,18 @@ export interface MailClassificationLabel {
  *   was "apply nothing", which is a decision, and it was paid for. The marker
  *   goes down (C9) and the message is done.
  * - `'no-default-model'` / `'quota-exceeded'` / `'unavailable'` / `'error'` —
- *   nothing ran. `LLMOrchestrator` only meters usage against a response that
- *   came back (`llm-orchestrator.ts`), so a throw means no spend and no
- *   decision. These must NOT stamp the marker, or one transient 429 disqualifies
- *   the message from classification forever.
+ *   no decision was reached. These must NOT stamp the marker, or one transient
+ *   429 disqualifies the message from classification forever.
+ *
+ * ⚠️ **"A throw means no spend" is not guaranteed, and assuming it caused a real
+ * incident.** The original reasoning was that `LLMOrchestrator` only meters
+ * against a response that came back, so a throw implies nothing was billed. But
+ * `invoke` also throws when the *metering write itself* fails — which is what
+ * happened when a caller passed `userId: ''` into a column with a FK to
+ * `User.id`: 100 calls were completed and paid for at the provider, every
+ * `AiUsage` insert was rejected, and all 100 came back as `'unavailable'`. Not
+ * stamping the marker is still right (the message deserves another attempt), but
+ * treat these arms as "no decision", never as "no cost".
  *
  * That distinction is carried explicitly by `MailClassificationResult.inferred`
  * rather than re-derived from this union — see the note there.
@@ -108,12 +116,48 @@ export type MailClassificationSkipReason =
   | 'no-default-model'
   | 'below-threshold'
   | 'no-category'
-  /** Out of AI credits, or over the completions rate limit. Nothing was spent. */
+  /** Out of AI credits, or over the completions rate limit. Gated before any call. */
   | 'quota-exceeded'
-  /** Provider 429/5xx, network failure or timeout — transient, nothing spent. */
+  /**
+   * Provider 429/5xx, network failure, timeout — or a metering write that failed
+   * after a successful call. Transient, but see the warning above: not free.
+   */
   | 'unavailable'
-  /** Anything unexpected. Also unspent, but worth an `error` log rather than a warn. */
+  /** Anything unexpected. Worth an `error` log rather than a warn. */
   | 'error'
+
+/**
+ * The skip reasons that mean **something went wrong**, as opposed to the guard
+ * doing its job.
+ *
+ * ⚠️ Exists because a sample report cannot be read without it. `selected -
+ * inferred` counts every thread that never reached a decision, and "all 100 were
+ * already classified" and "all 100 calls failed" produce the identical number.
+ * The first is a no-op; the second is an incident that silently reads as "the
+ * taxonomy matched nothing".
+ */
+export const MAIL_CLASSIFY_FAILURE_REASONS = [
+  'no-default-model',
+  'quota-exceeded',
+  'unavailable',
+  'error',
+  // `satisfies`, not a type annotation: the annotation would widen this to
+  // `MailClassificationSkipReason[]` and a caller keying a Record off it would be
+  // forced to handle all twelve arms. This keeps the literal tuple AND still
+  // fails to compile if one of these stops being a real skip reason.
+] as const satisfies readonly MailClassificationSkipReason[]
+
+/** One of the four arms in {@link MAIL_CLASSIFY_FAILURE_REASONS}. */
+export type MailClassificationFailureReason = (typeof MAIL_CLASSIFY_FAILURE_REASONS)[number]
+
+/** How many of a report's `skipped` counts are failures rather than guard exits. */
+export function countClassificationFailures(
+  skipped: Partial<Record<MailClassificationSkipReason, number>>
+): number {
+  let total = 0
+  for (const reason of MAIL_CLASSIFY_FAILURE_REASONS) total += skipped[reason] ?? 0
+  return total
+}
 
 /** The marker written to `Message.metadata.mailClassification` after a call. */
 export interface MailClassificationMarker {

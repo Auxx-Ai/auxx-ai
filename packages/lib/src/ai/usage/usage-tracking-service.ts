@@ -103,7 +103,13 @@ export class UsageTrackingService {
 
     await this.database.insert(schema.AiUsage).values({
       organizationId: request.organizationId,
-      userId: request.userId,
+      // ⚠️ `||`, not `??`. `AiUsage.userId` is a FK to `User.id`, so an EMPTY
+      // STRING is not "no user" — it is a user id that does not exist, and the
+      // insert fails. Normalizing at the write rather than trusting the caller is
+      // deliberate: this insert runs AFTER the provider has already been paid, so
+      // a throw here loses the record of spend that really happened. Whatever a
+      // caller passes, the column gets something the FK accepts.
+      userId: request.userId || null,
       provider: request.provider,
       model: request.model,
       modelType: 'llm',
@@ -202,7 +208,9 @@ export class UsageTrackingService {
 
     const rows = [...grouped.values()].map((g) => ({
       organizationId: g.ref.organizationId,
-      userId: g.ref.userId,
+      // `||` for the same reason as the single-row insert above — and it matters
+      // more here, because one bad id would fail the whole grouped batch.
+      userId: g.ref.userId || null,
       provider: g.ref.provider,
       model: g.ref.model,
       modelType: 'llm' as const,

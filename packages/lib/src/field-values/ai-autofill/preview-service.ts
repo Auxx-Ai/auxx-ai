@@ -104,7 +104,8 @@ export async function previewFieldValue(params: {
     model: def.model,
     provider: def.provider,
     organizationId: orgId,
-    userId: userId ?? '',
+    // `?? null`, not `?? ''` — see `generation-service.ts`.
+    userId: userId ?? null,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: resolvedPrompt },

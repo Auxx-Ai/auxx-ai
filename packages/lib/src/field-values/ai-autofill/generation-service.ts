@@ -114,7 +114,9 @@ export async function generateFieldValue(params: {
     model: def.model,
     provider: def.provider,
     organizationId: orgId,
-    userId: userId ?? '',
+    // `?? null`, not `?? ''` — the FK on `AiUsage.userId` rejects an empty
+    // string, and the throw lands after the provider has been paid.
+    userId: userId ?? null,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: resolvedPrompt },

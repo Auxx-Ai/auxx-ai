@@ -3,10 +3,13 @@
 'use client'
 
 import {
+  countClassificationFailures,
+  MAIL_CLASSIFY_FAILURE_REASONS,
   MAIL_RECLASSIFY_DAY_PRESETS,
   MAIL_RECLASSIFY_DEFAULT_MODE,
   MAIL_RECLASSIFY_SAMPLE_SIZE,
   MAIL_RECLASSIFY_THREAD_PRESETS,
+  type MailClassificationFailureReason,
   type MailReclassifyMode,
   type MailReclassifyRange,
   type MailReclassifySampleReport,
@@ -386,6 +389,14 @@ function SampleProgress({ processed, total }: { processed: number; total: number
  * Nothing was applied, so there is no undo affordance here and no "sampled" state
  * on any conversation (07 invariant 9).
  */
+/** Plain-language cause for each failure arm, for the results line. */
+const FAILURE_LABELS: Record<MailClassificationFailureReason, string> = {
+  'no-default-model': 'no default model configured',
+  'quota-exceeded': 'out of AI credits',
+  unavailable: 'the provider was unavailable',
+  error: 'an unexpected error',
+}
+
 function SampleResults({ report }: { report: MailReclassifySampleReport }) {
   const rows = [
     ...report.labels.map((label) => ({
@@ -405,6 +416,12 @@ function SampleResults({ report }: { report: MailReclassifySampleReport }) {
   ]
   const max = Math.max(1, ...rows.map((row) => row.count))
   const skipped = Math.max(0, report.selected - report.inferred)
+  const failures = countClassificationFailures(report.skipped)
+  // Whatever `skipped` is not accounted for by a failure is a guard exit.
+  const exits = Math.max(0, skipped - failures)
+  const failureReasons = MAIL_CLASSIFY_FAILURE_REASONS.filter((r) => (report.skipped[r] ?? 0) > 0)
+    .map((r) => FAILURE_LABELS[r])
+    .join(', ')
 
   return (
     <div className='space-y-3'>
@@ -433,11 +450,23 @@ function SampleResults({ report }: { report: MailReclassifySampleReport }) {
         ))}
       </div>
 
+      {/* ⚠️ Failures are called out separately from guard exits, and first.
+          Folding them into one "never reached the model" sentence is how a run
+          where EVERY call failed rendered as `0 classified · 0 no category` —
+          indistinguishable from a taxonomy that matched nothing, and read as a
+          result rather than as an incident. */}
+      {failures > 0 ? (
+        <p className='text-xs font-medium text-destructive'>
+          {n(failures)} {failures === 1 ? 'call' : 'calls'} failed and never reached a verdict
+          {failureReasons ? ` (${failureReasons})` : ''}. These conversations were not sampled.
+        </p>
+      ) : null}
+
       <p className='text-xs text-muted-foreground'>
         {/* Guard exits reduce the sample; 07 §2.11 requires saying so rather than
             implying the full sample size. */}
-        {skipped > 0
-          ? `${n(skipped)} of them never reached the model: already classified, machine mail, or a failed call. `
+        {exits > 0
+          ? `${n(exits)} of them were skipped by the guard: already classified, or machine mail. `
           : ''}
         Nothing was applied and nothing was marked as classified, so a real run still covers all of
         these.

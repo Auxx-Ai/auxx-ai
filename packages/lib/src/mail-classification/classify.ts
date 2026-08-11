@@ -217,7 +217,13 @@ export async function classifyMessage(
       model: def.model,
       provider: def.provider,
       organizationId,
-      userId: '',
+      // ⚠️ NULL, never `''`. Nobody asked for this classification — it runs off
+      // an inbound message — and `AiUsage.userId` is a FK to `User.id`, so an
+      // empty string is a user that does not exist. It made every insert throw
+      // AFTER the provider had already been paid, so the call was billed, no
+      // usage row was written, and the thread came back untagged. Attribution for
+      // this spend is `source: 'mail_classification'` below, not a user.
+      userId: null,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: buildClassificationPrompt(context) },
