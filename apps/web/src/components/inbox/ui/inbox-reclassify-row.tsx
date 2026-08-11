@@ -124,6 +124,21 @@ export function InboxReclassifyRow({ inboxId }: { inboxId: string }) {
   const runState = runStatus.data?.state
   const runActive = runState === 'waiting' || runState === 'active' || runState === 'delayed'
   const runReport = runState === 'completed' ? runStatus.data?.report : undefined
+  /**
+   * ⚠️ A run that DIED must not render as one that never happened.
+   *
+   * `runReport` is only set for `completed`, so before this a failed run fell
+   * straight through to the backlog branch — "N older conversations have never
+   * been classified" — and the run visibly vanished. The worker dying under an
+   * active run is not exotic: every deploy does it, and every `--watch` restart
+   * does it in dev.
+   *
+   * It matters beyond the copy, because a run killed partway has already applied
+   * tags. `startedAtIso` comes off the job's PROGRESS rather than its report
+   * (progress survives a failure), so those tags stay undoable.
+   */
+  const runFailed = runState === 'failed'
+  const runStartedAtIso = runStatus.data?.startedAtIso
 
   const state = status.data?.state
   const running = state === 'waiting' || state === 'active' || state === 'delayed'
@@ -133,26 +148,38 @@ export function InboxReclassifyRow({ inboxId }: { inboxId: string }) {
 
   // Nothing to catch up on and nothing in flight — the row is a standing
   // affordance, not a permanent fixture.
-  if (!runActive && !runReport && !running && !report && count === 0) return null
+  if (!runActive && !runReport && !runFailed && !running && !report && count === 0) return null
 
   // A run outranks a sample everywhere below: it is the one that spent real money
   // and changed real data, so it is the one a user needs to see.
-  const processed = (runActive ? runStatus.data?.processed : status.data?.processed) ?? 0
-  const total = (runActive ? runStatus.data?.total : status.data?.total) ?? 0
+  //
+  // ⚠️ `runFailed` counts as "showing the run". Keying this on `runActive` alone
+  // made an interrupted run read the SAMPLE's counters — which are null when no
+  // sample ran — so it rendered "interrupted after 0 of 0" and told the user
+  // nothing about how far it got.
+  const showingRun = runActive || runFailed
+  const processed = (showingRun ? runStatus.data?.processed : status.data?.processed) ?? 0
+  const total = (showingRun ? runStatus.data?.total : status.data?.total) ?? 0
   const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0
   const busy = runActive || running
 
   const handleUndo = async () => {
-    if (!runReport) return
+    // A finished run knows its own count; an interrupted one does not, because
+    // the report it would have carried was never written.
+    if (!runStartedAtIso) return
+    const applied = runReport?.applied
     const confirmed = await confirm({
-      title: `Remove ${runReport.applied.toLocaleString()} applied ${runReport.applied === 1 ? 'category' : 'categories'}?`,
+      title:
+        applied === undefined
+          ? 'Remove the categories this run applied?'
+          : `Remove ${applied.toLocaleString()} applied ${applied === 1 ? 'category' : 'categories'}?`,
       description:
         'Conversations that also carry another category are left alone, because the AI is not necessarily the only thing that applied it. This does not refund the classification.',
       confirmText: 'Undo',
       cancelText: 'Keep them',
       destructive: true,
     })
-    if (confirmed) undoRun.mutate({ inboxId, sinceIso: runReport.startedAtIso })
+    if (confirmed) undoRun.mutate({ inboxId, sinceIso: runStartedAtIso })
   }
 
   return (
@@ -174,6 +201,11 @@ export function InboxReclassifyRow({ inboxId }: { inboxId: string }) {
                 {runReport.capped > 0
                   ? `, ${runReport.capped.toLocaleString()} left over the per-run limit`
                   : ''}
+              </p>
+            ) : runFailed ? (
+              <p className='text-sm font-medium'>
+                Run interrupted after {processed.toLocaleString()} of{' '}
+                {(total || 0).toLocaleString()}
               </p>
             ) : running ? (
               <p className='text-sm font-medium'>
@@ -198,7 +230,12 @@ export function InboxReclassifyRow({ inboxId }: { inboxId: string }) {
                 mail" reads as "apply my automations to old mail" to most people,
                 and the honest correction belongs at the point of action. */}
             <p className='text-xs text-muted-foreground'>
-              Labels older mail for search and reporting. Your filters will not run on it.
+              {runFailed
+                ? // Resuming is safe and free for what already landed: a
+                  // classified conversation carries a marker, so fill-gaps skips
+                  // it rather than paying twice.
+                  'It stopped before finishing — usually a restart. Everything it already classified is saved, and running it again picks up where it left off.'
+                : 'Labels older mail for search and reporting. Your filters will not run on it.'}
             </p>
           </div>
 
@@ -213,12 +250,15 @@ export function InboxReclassifyRow({ inboxId }: { inboxId: string }) {
               }>
               Cancel
             </Button>
-          ) : runReport ? (
+          ) : runReport || runFailed ? (
             <div className='flex shrink-0 items-center gap-2'>
               {/* Undo is offered only while the report exists — the job is reaped
                   a day after it completes, and `startedAtIso` is the only scope
                   key undo has. An undo button with no key is worse than none. */}
-              {runReport.applied > 0 ? (
+              {/* Offered whenever a scope key exists — including for an
+                  interrupted run, which is precisely the one whose partial work
+                  somebody needs to reverse. */}
+              {runStartedAtIso && (runReport ? runReport.applied > 0 : true) ? (
                 <Button
                   variant='ghost'
                   size='sm'
@@ -229,7 +269,7 @@ export function InboxReclassifyRow({ inboxId }: { inboxId: string }) {
                 </Button>
               ) : null}
               <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
-                Classify more…
+                {runFailed ? 'Resume…' : 'Classify more…'}
               </Button>
             </div>
           ) : (
