@@ -46,6 +46,7 @@ import {
   buildReclassifyWhere,
   countReclassifiableThreads,
   enqueueMailReclassifySample,
+  findPendingClassificationPrompt,
   mailReclassifySampleJobId,
   resolveReclassifyWindow,
   runMailReclassifySample,
@@ -760,5 +761,93 @@ describe('enqueueMailReclassifySample — the queue contract (§2.2)', () => {
     expect(h.jobRemove).toHaveBeenCalledTimes(1)
     expect(h.queueAdd).toHaveBeenCalledTimes(1)
     expect(result.deduplicated).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The banner mounts in a fixed slot for EVERY mail view and names the inbox it
+ * is about, so which candidate wins is user-visible: without a preference it
+ * asked about whichever inbox sorted first, which reads — to someone sitting in
+ * a different mailbox — as a claim about the mail on screen.
+ *
+ * A REORDER, never a filter, and never a grant: it lands after the caller's
+ * authorized candidate list has already been narrowed.
+ */
+describe('findPendingClassificationPrompt — the viewed inbox goes first (§3.4)', () => {
+  const INBOX_B = 'ibx_2'
+
+  /** `db.select()` for the synced-channel probe + `db.execute()` for the counts. */
+  function promptDb(syncedInboxIds: string[], countsByInbox: Record<string, number>) {
+    const rows = syncedInboxIds.map((inboxId) => ({ inboxId }))
+    const chain: Record<string, unknown> = {}
+    Object.assign(chain, {
+      from: () => chain,
+      innerJoin: () => chain,
+      where: () => chain,
+      // biome-ignore lint/suspicious/noThenProperty: intentional thenable query-builder mock
+      then: (ok: (v: unknown) => unknown, err?: (e: unknown) => unknown) =>
+        Promise.resolve(rows).then(ok, err),
+    })
+    // The count query renders the inbox id inline, so the fake reads it back out
+    // of the SQL rather than relying on call order.
+    const execute = vi.fn(async (fragment: SQL) => {
+      const sql = render(fragment)
+      const params = JSON.stringify(sql.params)
+      const inboxId = Object.keys(countsByInbox).find((id) => params.includes(id))
+      return { rows: [{ count: inboxId ? (countsByInbox[inboxId] ?? 0) : 0 }] }
+    })
+    return { select: () => chain, execute } as unknown as Database
+  }
+
+  beforeEach(() => {
+    h.getOrgCache.mockReturnValue({
+      get: vi.fn(async () => ({ mailClassificationInboxIds: [INBOX, INBOX_B] })),
+    })
+  })
+
+  it('asks about the viewed inbox when it has a backlog', async () => {
+    const db = promptDb([INBOX, INBOX_B], { [INBOX]: 40, [INBOX_B]: 900 })
+
+    const prompt = await findPendingClassificationPrompt(db, ORG, [INBOX, INBOX_B], {
+      preferredInboxId: INBOX_B,
+    })
+
+    expect(prompt).toMatchObject({ inboxId: INBOX_B, threadCount: 900 })
+  })
+
+  // The preference is not a scope — a view whose own inbox is already clean
+  // should still surface the inbox that is not.
+  it('falls back to another candidate when the viewed inbox has none', async () => {
+    const db = promptDb([INBOX, INBOX_B], { [INBOX]: 40, [INBOX_B]: 0 })
+
+    const prompt = await findPendingClassificationPrompt(db, ORG, [INBOX, INBOX_B], {
+      preferredInboxId: INBOX_B,
+    })
+
+    expect(prompt).toMatchObject({ inboxId: INBOX, threadCount: 40 })
+  })
+
+  // ⚠️ The preference must never widen the answer. `candidateInboxIds` is the
+  // caller's authorized set; an id outside it is inert, not an existence oracle.
+  it('ignores an inbox the caller was not already a candidate for', async () => {
+    const db = promptDb([INBOX], { [INBOX]: 40, ibx_other: 900 })
+
+    const prompt = await findPendingClassificationPrompt(db, ORG, [INBOX], {
+      preferredInboxId: 'ibx_other',
+    })
+
+    expect(prompt).toMatchObject({ inboxId: INBOX })
+  })
+
+  // Search, drafts and all-inboxes span inboxes and pass nothing — discovery
+  // must not depend on standing in the right mailbox.
+  it('still asks when no inbox is being viewed', async () => {
+    const db = promptDb([INBOX, INBOX_B], { [INBOX]: 40, [INBOX_B]: 900 })
+
+    const prompt = await findPendingClassificationPrompt(db, ORG, [INBOX, INBOX_B])
+
+    expect(prompt).toMatchObject({ inboxId: INBOX })
   })
 })

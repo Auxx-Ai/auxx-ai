@@ -769,24 +769,35 @@ export const mailClassificationRouter = createTRPCRouter({
    * Scoped to the caller's configurable inboxes minus their own dismissals, so
    * the lib call holds no permission logic — the house rule, and the same shape
    * `mailFilters.pendingRetroactivePrompt` uses.
+   *
+   * `inboxId` is the inbox the caller is currently VIEWING, and it only ever
+   * reorders the candidates — the banner names the inbox it is about, and asking
+   * about a different one while someone reads this mailbox looks like a
+   * statement about the mail in front of them. It is not a scope: a view with no
+   * inbox of its own (search, drafts, all-inboxes) passes nothing and still gets
+   * asked. ⚠️ It grants nothing either — the preference applies AFTER the
+   * authority filter, so an id the caller cannot configure changes no answer.
    */
-  pendingRetroactivePrompt: capabilityProcedure.query(async ({ ctx }) => {
-    const authority = await loadMailFilterAuthority(ctx)
-    if (authority.inboxIds.length === 0) return null
+  pendingRetroactivePrompt: capabilityProcedure
+    .input(z.object({ inboxId: z.string().min(1).optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const authority = await loadMailFilterAuthority(ctx)
+      if (authority.inboxIds.length === 0) return null
 
-    const dismissed = await readDismissedClassifyPromptInboxIds(ctx)
-    const candidates = authority.inboxIds.filter((id) => !dismissed.includes(id))
-    if (candidates.length === 0) return null
+      const dismissed = await readDismissedClassifyPromptInboxIds(ctx)
+      const candidates = authority.inboxIds.filter((id) => !dismissed.includes(id))
+      if (candidates.length === 0) return null
 
-    const prompt = await findPendingClassificationPrompt(
-      ctx.db,
-      ctx.session.organizationId,
-      candidates
-    )
-    if (!prompt) return null
+      const prompt = await findPendingClassificationPrompt(
+        ctx.db,
+        ctx.session.organizationId,
+        candidates,
+        { preferredInboxId: input?.inboxId }
+      )
+      if (!prompt) return null
 
-    return { ...prompt, inboxName: authority.byId.get(prompt.inboxId)?.name ?? '' }
-  }),
+      return { ...prompt, inboxName: authority.byId.get(prompt.inboxId)?.name ?? '' }
+    }),
 
   /** Stop asking this member about this inbox. */
   dismissRetroactivePrompt: capabilityProcedure

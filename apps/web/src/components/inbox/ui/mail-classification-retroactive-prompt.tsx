@@ -33,13 +33,26 @@ import { InboxReclassifyDialog } from './inbox-reclassify-dialog'
  * mail" reads as "apply my automations to old mail" to most people, and the
  * honest correction belongs at the point of action, not in a tooltip.
  */
-export function MailClassificationRetroactivePrompt() {
+export function MailClassificationRetroactivePrompt({
+  activeInboxId,
+}: {
+  /**
+   * The inbox being VIEWED, when the current mail context is one inbox. Only a
+   * preference — the server reorders its candidates and still asks about
+   * another inbox when this one has no backlog, so search / drafts / all-inboxes
+   * (which pass nothing) keep the prompt. Without it the banner sits in the same
+   * slot for every view and names whichever inbox sorted first, which reads as a
+   * claim about the mail on screen.
+   */
+  activeInboxId?: string
+}) {
   const utils = api.useUtils()
   const [dialogOpen, setDialogOpen] = useState(false)
 
-  const { data: prompt } = api.mailClassification.pendingRetroactivePrompt.useQuery(undefined, {
-    staleTime: 60_000,
-  })
+  const { data: prompt } = api.mailClassification.pendingRetroactivePrompt.useQuery(
+    { inboxId: activeInboxId },
+    { staleTime: 60_000 }
+  )
 
   /**
    * ⚠️ **07 §3.4 — TWO PROMPTS MUST NEVER STACK.**
