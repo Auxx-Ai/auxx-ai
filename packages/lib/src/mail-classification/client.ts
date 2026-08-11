@@ -420,6 +420,18 @@ export interface MailReclassifyRunStatus {
   processed: number
   total: number
   report?: MailReclassifyRunReport
+  /**
+   * The run's start, available even when it never finished.
+   *
+   * ⚠️ **This is what makes a crashed run undoable.** BullMQ keeps `progress` on
+   * a failed job but only keeps a return value for one that completed, so a run
+   * the worker died under — a deploy, a dev `--watch` restart — has applied tags
+   * and produced no report. Reading the key off progress instead means undo does
+   * not depend on the run having ended cleanly.
+   */
+  startedAtIso?: string
+  /** Why a `failed` run failed, when BullMQ recorded a reason. */
+  failedReason?: string
 }
 
 /**

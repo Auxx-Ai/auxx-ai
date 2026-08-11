@@ -600,6 +600,7 @@ export interface RunMailReclassifySampleInput {
   threadDelayMs?: number
   now?: Date
   /** Called after each thread, for the job's progress surface. */
+  /** Called after each thread, for the job's progress surface. */
   onProgress?: (processed: number, total: number) => void
   /** Stop between threads. Safe at any point — a sample commits nothing. */
   isCancelled?: () => boolean
@@ -769,7 +770,15 @@ export interface RunMailReclassifyApplyInput {
   /** Test override for {@link MAIL_RECLASSIFY_PAGE_SIZE}. */
   pageSize?: number
   now?: Date
-  onProgress?: (processed: number, total: number) => void
+  /**
+   * ⚠️ Carries `startedAtIso` as well as the counts, and that is not cosmetic.
+   * BullMQ keeps `progress` on a job even when the job FAILS, whereas a return
+   * value only exists for a run that reached its end. A run the worker dies
+   * under — a deploy, a dev `--watch` restart — has therefore already applied
+   * tags and produced no report, so without this there is no scope key and its
+   * work cannot be undone. See {@link getMailReclassifyRunStatus}.
+   */
+  onProgress?: (processed: number, total: number, startedAtIso: string) => void
   /**
    * Stop between threads. Safe at ANY point (§2.5): each thread is committed on
    * its own, so a cancelled run is a partial run, never a broken one.
@@ -840,6 +849,11 @@ export async function runMailReclassifyApply(
     skipped[reason] = (skipped[reason] ?? 0) + 1
   }
 
+  // ⚠️ Published BEFORE the first thread, so the undo key exists from the moment
+  // the run can have changed anything. A run that dies on thread 1 has still
+  // applied a tag on thread 1.
+  input.onProgress?.(0, total, startedAt.toISOString())
+
   let cursor: ReclassifyCursor | undefined
   pager: while (selected < total) {
     const rows = await selectReclassifyThreadPage(db, {
@@ -878,7 +892,7 @@ export async function runMailReclassifyApply(
 
       if (!resolved.proceed) {
         note(resolved.reason)
-        input.onProgress?.(selected, total)
+        input.onProgress?.(selected, total, startedAt.toISOString())
         continue
       }
 
@@ -890,7 +904,7 @@ export async function runMailReclassifyApply(
       // run over one transient 429.
       if (!result.inferred) {
         note(result.reason ?? 'error')
-        input.onProgress?.(selected, total)
+        input.onProgress?.(selected, total, startedAt.toISOString())
         continue
       }
 
@@ -931,7 +945,7 @@ export async function runMailReclassifyApply(
         },
       })
 
-      input.onProgress?.(selected, total)
+      input.onProgress?.(selected, total, startedAt.toISOString())
       await sleep(threadDelayMs)
     }
 
@@ -1216,8 +1230,8 @@ export async function mailReclassifyApplyJob(
     mode,
     threadDelayMs,
     isCancelled: () => ctx.isCancelled?.() ?? false,
-    onProgress: (processed, total) => {
-      void ctx.job?.updateProgress({ processed, total })?.catch(() => {})
+    onProgress: (processed, total, startedAtIso) => {
+      void ctx.job?.updateProgress({ processed, total, startedAtIso })?.catch(() => {})
     },
   }).catch((error) => {
     logger.error('Mail re-classification run failed', {
@@ -1297,7 +1311,11 @@ export async function getMailReclassifyRunStatus(
   if (!job) return null
 
   const rawState = await job.getState().catch(() => 'unknown')
-  const progress = (job.progress ?? {}) as { processed?: number; total?: number }
+  const progress = (job.progress ?? {}) as {
+    processed?: number
+    total?: number
+    startedAtIso?: string
+  }
   const value = job.returnvalue as MailReclassifyRunReport | { skipped: string } | undefined
 
   const KNOWN: MailReclassifyRunStatus['state'][] = [
@@ -1308,14 +1326,21 @@ export async function getMailReclassifyRunStatus(
     'delayed',
   ]
 
+  // `startedAtIso` is the discriminator — a `{ skipped }` value has no such key,
+  // so a precondition failure never renders as an all-zero run.
+  const report = value && 'startedAtIso' in value ? value : undefined
+
   return {
     jobId: job.id ?? mailReclassifyApplyJobId(organizationId, inboxId),
     state: KNOWN.find((known) => known === rawState) ?? 'unknown',
     processed: typeof progress.processed === 'number' ? progress.processed : 0,
     total: typeof progress.total === 'number' ? progress.total : 0,
-    // `startedAtIso` is the discriminator — a `{ skipped }` value has no such
-    // key, so a precondition failure never renders as an all-zero run.
-    report: value && 'startedAtIso' in value ? value : undefined,
+    report,
+    // ⚠️ Progress FIRST, report second. The report only exists for a run that
+    // ended; progress survives a run the worker died under, and that is exactly
+    // the run whose applied tags somebody needs to reverse.
+    startedAtIso: progress.startedAtIso ?? report?.startedAtIso,
+    ...(job.failedReason ? { failedReason: job.failedReason } : {}),
   }
 }
 

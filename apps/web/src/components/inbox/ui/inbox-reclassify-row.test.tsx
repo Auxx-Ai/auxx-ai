@@ -148,3 +148,55 @@ describe('InboxReclassifyRow — after a sample', () => {
     expect(screen.getByRole('button', { name: /View results/i })).toBeInTheDocument()
   })
 })
+
+/**
+ * ⚠️ The regression this section exists for: a run the worker DIED under used to
+ * render as one that never happened.
+ *
+ * `runReport` is only populated for `completed`, so a `failed` job fell through
+ * to the backlog branch and the row said "N older conversations have never been
+ * classified" — the run visibly vanished. That is not an exotic state: every
+ * deploy kills an active run, and every dev `--watch` restart does too. And it
+ * is not only cosmetic, because a run killed partway has already applied tags
+ * that somebody may want back.
+ */
+describe('an interrupted run', () => {
+  beforeEach(() => {
+    h.runStatus = {
+      jobId: 'j1',
+      state: 'failed',
+      processed: 340,
+      total: 1204,
+      startedAtIso: '2026-08-11T01:44:00.000Z',
+    }
+  })
+
+  it('says it stopped rather than falling back to the backlog copy', () => {
+    render(<InboxReclassifyRow inboxId='ibx_1' />)
+
+    expect(screen.getByText(/Run interrupted after 340 of 1,204/i)).toBeInTheDocument()
+    expect(screen.queryByText(/have never been classified/i)).not.toBeInTheDocument()
+  })
+
+  /**
+   * The undo key comes off the job's PROGRESS, not its report — progress
+   * survives a failure, a return value does not. Without it the tags an
+   * interrupted run applied would be unreachable.
+   */
+  it('still offers undo, keyed off the progress-carried start time', async () => {
+    render(<InboxReclassifyRow inboxId='ibx_1' />)
+
+    await userEvent.click(screen.getByRole('button', { name: /^Undo$/i }))
+    expect(h.undoRun).toHaveBeenCalledWith({
+      inboxId: 'ibx_1',
+      sinceIso: '2026-08-11T01:44:00.000Z',
+    })
+  })
+
+  it('offers to resume, and says resuming does not pay twice', () => {
+    render(<InboxReclassifyRow inboxId='ibx_1' />)
+
+    expect(screen.getByRole('button', { name: /Resume/i })).toBeInTheDocument()
+    expect(screen.getByText(/picks up where it left off/i)).toBeInTheDocument()
+  })
+})
