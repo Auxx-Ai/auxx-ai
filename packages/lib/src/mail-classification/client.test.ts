@@ -6,7 +6,13 @@
 // range quietly continuing instead.
 
 import { describe, expect, it } from 'vitest'
-import { isSameReclassifyScope, type MailReclassifyMode, type MailReclassifyRange } from './client'
+import {
+  isSameReclassifyScope,
+  MAIL_RECLASSIFY_APPLY_JOB_NAME,
+  MAIL_RECLASSIFY_SAMPLE_JOB_NAME,
+  type MailReclassifyMode,
+  type MailReclassifyRange,
+} from './client'
 
 const scope = (range: MailReclassifyRange, mode: MailReclassifyMode = 'fill-gaps') => ({
   range,
@@ -78,5 +84,27 @@ describe('isSameReclassifyScope', () => {
     const a = { mode: 'fill-gaps' as const, range: { kind: 'custom', sinceIso: 'x' } as const }
     const b = { range: { sinceIso: 'x', kind: 'custom' } as const, mode: 'fill-gaps' as const }
     expect(isSameReclassifyScope(a, b)).toBe(true)
+  })
+})
+
+/**
+ * The other half of a contract the type system does not express.
+ *
+ * These constants are the strings `queue.add()` writes, and a job only runs if
+ * the SAME string is a key in the worker's mapping. `createJobHandler` resolves
+ * it at runtime and throws `Job function not found` otherwise — which is how
+ * retroactive classification shipped inert (07 §7.5.1).
+ *
+ * ⚠️ The worker's half asserts the literals directly rather than importing these
+ * (importing made it read a stale `dist` and report a correct registration as
+ * `undefined`). So this file pins constant → literal, and
+ * `apps/worker/src/workers/worker-definitions/maintenance-worker.test.ts` pins
+ * literal → handler. Change a name and exactly one of the two goes red, which is
+ * the point.
+ */
+describe('queue job names', () => {
+  it('match the handler keys registered on the maintenance worker', () => {
+    expect(MAIL_RECLASSIFY_SAMPLE_JOB_NAME).toBe('mailReclassifySampleJob')
+    expect(MAIL_RECLASSIFY_APPLY_JOB_NAME).toBe('mailReclassifyApplyJob')
   })
 })

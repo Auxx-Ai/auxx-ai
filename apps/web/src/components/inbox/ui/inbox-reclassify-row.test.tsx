@@ -23,21 +23,36 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   backlog: { count: 1204, capped: false, cap: 1000 } as Record<string, unknown> | undefined,
   status: null as Record<string, unknown> | null,
+  runStatus: null as Record<string, unknown> | null,
   cancel: vi.fn(),
+  cancelRun: vi.fn(),
+  undoRun: vi.fn(),
   invalidate: vi.fn(),
+  confirm: vi.fn(async () => true),
 }))
 
 vi.mock('~/trpc/react', () => ({
   api: {
     useUtils: () => ({
-      mailClassification: { getReclassifySampleStatus: { invalidate: h.invalidate } },
+      mailClassification: {
+        getBacklog: { invalidate: h.invalidate },
+        getReclassifySampleStatus: { invalidate: h.invalidate },
+        getReclassifyRunStatus: { invalidate: h.invalidate },
+      },
     }),
     mailClassification: {
       getBacklog: { useQuery: () => ({ data: h.backlog }) },
       getReclassifySampleStatus: { useQuery: () => ({ data: h.status }) },
+      getReclassifyRunStatus: { useQuery: () => ({ data: h.runStatus }) },
       cancelReclassifySample: { useMutation: () => ({ mutate: h.cancel, isPending: false }) },
+      cancelReclassifyRun: { useMutation: () => ({ mutate: h.cancelRun, isPending: false }) },
+      undoReclassifyRun: { useMutation: () => ({ mutate: h.undoRun, isPending: false }) },
     },
   },
+}))
+
+vi.mock('~/hooks/use-confirm', () => ({
+  useConfirm: () => [h.confirm, () => null],
 }))
 
 /**
@@ -54,6 +69,7 @@ const { InboxReclassifyRow } = await import('./inbox-reclassify-row')
 beforeEach(() => {
   h.backlog = { count: 1204, capped: false, cap: 1000 }
   h.status = null
+  h.runStatus = null
 })
 
 describe('InboxReclassifyRow — the standing affordance', () => {

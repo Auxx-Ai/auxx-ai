@@ -7,6 +7,7 @@ import {
   MAIL_CLASSIFY_FAILURE_REASONS,
   MAIL_RECLASSIFY_DAY_PRESETS,
   MAIL_RECLASSIFY_DEFAULT_MODE,
+  MAIL_RECLASSIFY_MAX_THREADS,
   MAIL_RECLASSIFY_SAMPLE_SIZE,
   MAIL_RECLASSIFY_THREAD_PRESETS,
   type MailClassificationFailureReason,
@@ -157,6 +158,16 @@ export function InboxReclassifyDialog({ inboxId, open, onOpenChange }: InboxRecl
       toastError({ title: 'Error starting the sample', description: error.message }),
   })
 
+  // Starting a run closes the dialog: §3.1 makes the backlog row the progress
+  // surface, and two progress bars for one job is how they drift apart.
+  const startRun = api.mailClassification.startReclassifyRun.useMutation({
+    onSuccess: () => {
+      void utils.mailClassification.getReclassifyRunStatus.invalidate({ inboxId })
+      onOpenChange(false)
+    },
+    onError: (error) => toastError({ title: 'Error starting the run', description: error.message }),
+  })
+
   const running =
     status.data?.state === 'waiting' ||
     status.data?.state === 'active' ||
@@ -164,6 +175,18 @@ export function InboxReclassifyDialog({ inboxId, open, onOpenChange }: InboxRecl
   const report = status.data?.state === 'completed' ? status.data.report : undefined
 
   const handleSample = () => startSample.mutate({ inboxId, range, mode })
+  const handleRun = () => startRun.mutate({ inboxId, range, mode })
+
+  // ⚠️ A capped run says what it capped (07 invariant 8). A bare number implies
+  // completeness, and "silent truncation reads as covered everything".
+  const inScope = preview.data?.count ?? 0
+  const willRun = Math.min(inScope, MAIL_RECLASSIFY_MAX_THREADS)
+  const runLabel =
+    willRun < inScope
+      ? `Classify ${n(willRun)} of ${n(inScope)}`
+      : `Classify ${n(willRun)} ${willRun === 1 ? 'conversation' : 'conversations'}`
+  const startDisabled =
+    preview.isPending || !preview.data?.count || preview.data.syncInProgress === true
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -263,29 +286,49 @@ export function InboxReclassifyDialog({ inboxId, open, onOpenChange }: InboxRecl
                 </Link>
               </Button>
               <Button
+                variant='ghost'
+                size='sm'
+                onClick={handleSample}
+                loading={startSample.isPending}
+                loadingText='Starting...'>
+                Sample again
+              </Button>
+              <Button
                 variant='outline'
+                size='sm'
+                onClick={handleRun}
+                loading={startRun.isPending}
+                loadingText='Starting...'
+                disabled={startDisabled}
+                data-dialog-submit>
+                {runLabel} <KbdSubmit variant='outline' size='sm' />
+              </Button>
+            </>
+          ) : running ? null : (
+            <>
+              {/* The sample stays the SECONDARY action even now that the run
+                  exists (R6): until a taxonomy has been measured on real mail,
+                  spending on thousands of threads is the worse first click. */}
+              <Button
+                variant='ghost'
                 size='sm'
                 onClick={handleSample}
                 loading={startSample.isPending}
                 loadingText='Starting...'
+                disabled={startDisabled}>
+                Try a sample of {n(preview.data?.sampleSize ?? MAIL_RECLASSIFY_SAMPLE_SIZE)}
+              </Button>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={handleRun}
+                loading={startRun.isPending}
+                loadingText='Starting...'
+                disabled={startDisabled}
                 data-dialog-submit>
-                Sample again <KbdSubmit variant='outline' size='sm' />
+                {runLabel} <KbdSubmit variant='outline' size='sm' />
               </Button>
             </>
-          ) : running ? null : (
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={handleSample}
-              loading={startSample.isPending}
-              loadingText='Starting...'
-              disabled={
-                preview.isPending || !preview.data?.count || preview.data.syncInProgress === true
-              }
-              data-dialog-submit>
-              Try a sample of {n(preview.data?.sampleSize ?? MAIL_RECLASSIFY_SAMPLE_SIZE)}{' '}
-              <KbdSubmit variant='outline' size='sm' />
-            </Button>
           )}
         </DialogFooter>
       </DialogContent>

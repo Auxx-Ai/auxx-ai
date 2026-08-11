@@ -366,3 +366,77 @@ export interface MailReclassifySampleStatus {
   /** Present once `state === 'completed'`. */
   report?: MailReclassifySampleReport
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The full run (07 §4 phase 2) — the same machinery, with an apply path
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** BullMQ job name for the apply run. Registered on `maintenanceQueue`. */
+export const MAIL_RECLASSIFY_APPLY_JOB_NAME = 'mailReclassifyApplyJob'
+
+/** Threads per page of a full run — the keyset step, not a cap. */
+export const MAIL_RECLASSIFY_PAGE_SIZE = 100
+
+/**
+ * What a full run did.
+ *
+ * Deliberately **not** `MailReclassifySampleReport & { applied: true }`. A sample
+ * reports a distribution to reason about; a run reports what it *changed* and
+ * what it cost, and the two are read for different reasons. Sharing a type would
+ * make `applied` a mode flag on one shape and invite code that treats them
+ * interchangeably.
+ */
+export interface MailReclassifyRunReport {
+  inboxId: string
+  mode: MailReclassifyMode
+  /**
+   * When the run began, ISO. **Undo's scope key** (07 §2.7): every marker this
+   * run wrote carries an `at` at or after it, which is what lets undo find its
+   * own work without a run table.
+   */
+  startedAtIso: string
+  /** Threads the scope yielded, after the cap. */
+  selected: number
+  /** Threads the cap removed from the scope, or 0. Never truncate silently (07 invariant 8). */
+  capped: number
+  /** Threads a model call completed for. */
+  inferred: number
+  /** Threads that had a tag applied. */
+  applied: number
+  /** Completed inferences that applied nothing. */
+  abstained: number
+  /** Threads that never reached a model call, keyed by reason. */
+  skipped: Partial<Record<MailClassificationSkipReason, number>>
+  /** Per-label totals, every eligible label included. */
+  labels: MailReclassifySampleLabelStat[]
+  /** True when the run stopped early because the user cancelled it. */
+  cancelled: boolean
+}
+
+/** Lifecycle of an enqueued run, as the card polls it. */
+export interface MailReclassifyRunStatus {
+  jobId: string
+  state: 'waiting' | 'active' | 'completed' | 'failed' | 'delayed' | 'unknown'
+  processed: number
+  total: number
+  report?: MailReclassifyRunReport
+}
+
+/**
+ * What an undo removed (07 §2.7, R7).
+ *
+ * ⚠️ `skippedSharedTag` is the honest part. A tag the classifier applied may also
+ * have been applied by a human or a rule, and the marker says "the AI applied
+ * this", never "only the AI applied this". Undo therefore refuses any thread
+ * carrying more than one eligible tag (R-Q6's conservative option) and reports
+ * how many it left alone rather than guessing.
+ */
+export interface MailReclassifyUndoReport {
+  inboxId: string
+  /** Threads the tag was removed from. */
+  removed: number
+  /** Threads left alone because they carry another eligible tag too. */
+  skippedSharedTag: number
+  /** Markers whose `tagId` no longer resolves — a logged no-op (07 invariant 13). */
+  staleMarkers: number
+}
