@@ -147,13 +147,18 @@ export const ThreadList = memo(function ThreadList({
   const { selectedTags: tagPickerCurrentTags, handleTagChange: handleFocusedTagChange } =
     useThreadTags(tagPickerThreadId ?? '')
 
-  // Anchor ref for assign picker popover — points to the focused thread's DOM element
+  // Anchor ref for the assign picker — points at the thread's assignee avatar
+  // slot so the popover opens where the chip is (falling back to the whole row
+  // for variants that have no chip). Resolved during render rather than in an
+  // effect: `ActorPicker` mounts in this same commit and Radix reads
+  // `virtualRef.current` from a child effect, which runs *before* a parent
+  // effect would have filled it — leaving the first open mispositioned.
   const assignAnchorRef = useRef<HTMLElement | null>(null)
-  useEffect(() => {
-    if (assignPickerThreadId && assignPickerOpen) {
-      assignAnchorRef.current = document.getElementById(`thread-${assignPickerThreadId}`) ?? null
-    }
-  }, [assignPickerThreadId, assignPickerOpen])
+  if (assignPickerThreadId && assignPickerOpen) {
+    assignAnchorRef.current =
+      document.getElementById(`assign-anchor-${assignPickerThreadId}`) ??
+      document.getElementById(`thread-${assignPickerThreadId}`)
+  }
 
   // Assign handler for focused thread
   const { update: updateThread } = useThreadMutation()
@@ -317,7 +322,7 @@ export const ThreadList = memo(function ThreadList({
           multi={false}
           target='user'
           emptyLabel='Assign'
-          align='end'
+          align='start'
           side='bottom'
         />
       )}
