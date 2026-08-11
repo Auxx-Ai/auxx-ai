@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.198](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.197...auxx-v0.1.198) (2026-08-11)
+
+
+### Features
+
+* **approvals:** add a past-approvals view and audit access decisions ([#1518](https://github.com/Auxx-Ai/auxx-ai/issues/1518)) ([25c8584](https://github.com/Auxx-Ai/auxx-ai/commit/25c85841be947bda9002a75bd042cf713a74922e))
+* **mail:** apply and undo a retroactive classification run ([#1525](https://github.com/Auxx-Ai/auxx-ai/issues/1525)) ([6a1f5ee](https://github.com/Auxx-Ai/auxx-ai/commit/6a1f5ee5412a1bd879ae6aa7fae7cf0f053436d5))
+* **mail:** classify inbound mail into existing tags ([#1519](https://github.com/Auxx-Ai/auxx-ai/issues/1519)) ([a7db603](https://github.com/Auxx-Ai/auxx-ai/commit/a7db60330ba1b9578200c8d05d4015c4a11953c6))
+* **mail:** prompt to classify existing mail once an inbox has synced ([#1526](https://github.com/Auxx-Ai/auxx-ai/issues/1526)) ([3554378](https://github.com/Auxx-Ai/auxx-ai/commit/3554378be0bc0a4369b3f7e520fd47666869a45f))
+* **mail:** return a summary and a candidate tag from the classify call ([#1531](https://github.com/Auxx-Ai/auxx-ai/issues/1531)) ([b925dbe](https://github.com/Auxx-Ai/auxx-ai/commit/b925dbe9ad468c7815a75359daa021fc7a1147ce))
+* **mail:** rework mail categories, editable definitions, and retroactive classification ([#1522](https://github.com/Auxx-Ai/auxx-ai/issues/1522)) ([2587323](https://github.com/Auxx-Ai/auxx-ai/commit/258732369425b756bd1bf6c578f15d349f05bc69))
+
+
+### Bug Fixes
+
+* **ai:** bound provider retries and hung calls, and stop implying a scope ([#1528](https://github.com/Auxx-Ai/auxx-ai/issues/1528)) ([910f6be](https://github.com/Auxx-Ai/auxx-ai/commit/910f6be5e55be477c8b4a63837ab8cd9ee50ddd1))
+* **ai:** stop `userId: ''` rejecting every usage write ([#1524](https://github.com/Auxx-Ai/auxx-ai/issues/1524)) ([746a784](https://github.com/Auxx-Ai/auxx-ai/commit/746a7848357a832ddddff7e7c742f9f8f9b3e3f3))
+* **billing:** make admin billing overrides survive provider sync ([#1517](https://github.com/Auxx-Ai/auxx-ai/issues/1517)) ([ea97d53](https://github.com/Auxx-Ai/auxx-ai/commit/ea97d537ef146ebd553d83a1d7707c8c8ef77fb6))
+* **channels:** re-enable the channel when a reconnect succeeds ([#1520](https://github.com/Auxx-Ai/auxx-ai/issues/1520)) ([3c87f67](https://github.com/Auxx-Ai/auxx-ai/commit/3c87f67e76a46f99d4e86adb2bcd0dd671968176))
+* enforce org suspension in web app, honor planName on trial conversion ([#1515](https://github.com/Auxx-Ai/auxx-ai/issues/1515)) ([df0e67e](https://github.com/Auxx-Ai/auxx-ai/commit/df0e67e077f9550f6842d7fff3de9d943919cc21))
+* **mail:** ask about the inbox being viewed in the classify prompt ([#1530](https://github.com/Auxx-Ai/auxx-ai/issues/1530)) ([4352b2f](https://github.com/Auxx-Ai/auxx-ai/commit/4352b2fd913928b5a52fdf74d98a99d9297ea5bf))
+* **mail:** guard the subject-key keyspace and keep the tag-candidate corpus clean ([#1532](https://github.com/Auxx-Ai/auxx-ai/issues/1532)) ([af6b58d](https://github.com/Auxx-Ai/auxx-ai/commit/af6b58de43805ea28090652d5b05b6454a99183a))
+* **mail:** keep an interrupted classification run visible and undoable ([#1527](https://github.com/Auxx-Ai/auxx-ai/issues/1527)) ([cf2522a](https://github.com/Auxx-Ai/auxx-ai/commit/cf2522ab5c625a17598125044056f7c0865dbf1e))
+* **mail:** publish thread tags to the mail UI so they appear live ([#1529](https://github.com/Auxx-Ai/auxx-ai/issues/1529)) ([928d862](https://github.com/Auxx-Ai/auxx-ai/commit/928d862d56ed5026e9f3fdbc44becfc344c65512))
+* **mail:** unbreak mail classification enqueue, the reclassify sample, and the org seeder ([#1523](https://github.com/Auxx-Ai/auxx-ai/issues/1523)) ([64e74a3](https://github.com/Auxx-Ai/auxx-ai/commit/64e74a3f6df8bde20d598f224cfcfd52a28f011e))
+* **mail:** unsubscribe terminal status, inbox read authority, personal-filter 404s ([#1513](https://github.com/Auxx-Ai/auxx-ai/issues/1513)) ([5db4bad](https://github.com/Auxx-Ai/auxx-ai/commit/5db4badb7c8d061594ce7325615193b0f56d42d7))
+* **web:** wire up the organizations card menu actions ([#1516](https://github.com/Auxx-Ai/auxx-ai/issues/1516)) ([1849a7c](https://github.com/Auxx-Ai/auxx-ai/commit/1849a7c66ef71f07d9e8ef066d019022a2404f72))
+
 ## [0.1.197](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.196...auxx-v0.1.197) (2026-08-10)
 
 
