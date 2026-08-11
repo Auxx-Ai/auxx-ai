@@ -4,6 +4,7 @@
 import { cn } from '@auxx/ui/lib/utils'
 import { type Cell, flexRender } from '@tanstack/react-table'
 import { memo, useCallback, useMemo, useRef } from 'react'
+import { getEditModeForFieldType } from '~/components/fields/utils/edit-mode'
 import { CellActiveProvider } from '../context/cell-active-context'
 import { useCellIndexerContext } from '../context/cell-indexer-context'
 import {
@@ -16,7 +17,6 @@ import {
 } from '../context/cell-selection-context'
 import { useRangeDragContext } from '../context/range-drag-context'
 import type { RangeEndpoint } from '../types'
-import { getEditModeForFieldType } from '../utils/edit-mode'
 import { sanitizeColumnId } from '../utils/sanitize-column-id'
 import { CellFieldEditor } from './cell-field-editor'
 import { InlineCellEditor } from './inline-cell-editor'

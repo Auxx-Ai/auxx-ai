@@ -1,14 +1,10 @@
 // apps/web/src/components/records/record-drawer.tsx
 'use client'
 
-import { formatToDisplayValue, parseRecordId, type RecordId } from '@auxx/lib/field-values/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/field-values/client'
 import { getEntityDrawerConfig } from '@auxx/lib/resources/client'
-import { toFieldId } from '@auxx/types/field'
-import type { TypedFieldValue } from '@auxx/types/field-value'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { formatDistanceToNow } from 'date-fns'
 import { Expand } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
@@ -24,18 +20,17 @@ import { useIsNestedThread } from '~/components/mail/thread-provider'
 import { GranularPermissionsGate } from '~/components/mail-permissions/ui/granular-permissions-gate'
 import { RecordRequestAccessPopover } from '~/components/permissions/ui/record-request-access-popover'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
+import { RecordIdentityHeader } from '~/components/records/ui/record-identity-header'
 import {
   resourceHasDetailPage,
   useRecord,
   useRecordAccess,
   useResource,
 } from '~/components/resources'
-import { useFieldValue } from '~/components/resources/hooks/use-field-values'
-import { AvatarUploadIcon } from '~/components/resources/ui/avatar-upload-icon'
-import { RecordIcon } from '~/components/resources/ui/record-icon'
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
+import { useRecordDisplayFields } from './hooks/use-record-display-fields'
 import { useRecordShortcuts } from './hooks/use-record-shortcuts'
 import { RecordActionsMenu } from './record-actions-menu'
 import { useRecordDrawerReadOnly } from './use-record-drawer-read-only'
@@ -106,87 +101,16 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   )
 
   // Fetch entity record from cache (populated by batch fetcher when list loads)
-  const { record: cachedRecord, isLoading: isRecordLoading } = useRecord({
+  const { record: cachedRecord } = useRecord({
     recordId: recordId ?? null,
     enabled: !!open && !!recordId,
   })
 
-  // Get display field configurations from resource
-  const primaryDisplayFieldId = resource?.display.primaryDisplayField?.id ?? null
-  const secondaryDisplayFieldId = resource?.display.secondaryDisplayField?.id ?? null
-  const avatarField = resource?.display.avatarField ?? null
-  const avatarFieldDef = React.useMemo(
-    () => (avatarField ? resource?.fields.find((f) => f.id === avatarField.id) : null),
-    [avatarField, resource?.fields]
-  )
-
-  // Get field definitions from resource
-  const primaryField = React.useMemo(() => {
-    if (!primaryDisplayFieldId || !resource?.fields) return null
-    return resource.fields.find((f) => f.id === primaryDisplayFieldId)
-  }, [primaryDisplayFieldId, resource?.fields])
-
-  const secondaryField = React.useMemo(() => {
-    if (!secondaryDisplayFieldId || !resource?.fields) return null
-    return resource.fields.find((f) => f.id === secondaryDisplayFieldId)
-  }, [secondaryDisplayFieldId, resource?.fields])
-
-  // Subscribe to field values (reactive - updates when field values change)
-  const primaryFieldValue = useFieldValue(
-    recordId ?? ('' as RecordId),
-    primaryDisplayFieldId ? toFieldId(primaryDisplayFieldId) : undefined
-  )
-  const secondaryFieldValue = useFieldValue(
-    recordId ?? ('' as RecordId),
-    secondaryDisplayFieldId ? toFieldId(secondaryDisplayFieldId) : undefined
-  )
-
-  // Format values for display
-  const displayName = React.useMemo(() => {
-    if (!recordId || !primaryDisplayFieldId) {
-      return (cachedRecord?.displayName as string) ?? null
-    }
-
-    // Use field value if available and field type is known
-    if (primaryFieldValue.value && primaryField?.fieldType) {
-      // The store types values as `unknown` because optimistic writes can hold a
-      // raw value briefly; everything hydrated/confirmed is a TypedFieldValue.
-      return String(
-        formatToDisplayValue(primaryFieldValue.value as TypedFieldValue, primaryField.fieldType)
-      )
-    }
-
-    // Fall back to cached record
-    return (cachedRecord?.displayName as string) ?? null
-  }, [
-    recordId,
-    primaryDisplayFieldId,
-    primaryFieldValue.value,
-    primaryField?.fieldType,
-    cachedRecord?.displayName,
-  ])
-
-  const secondaryDisplay = React.useMemo(() => {
-    if (!recordId || !secondaryDisplayFieldId) {
-      return (cachedRecord?.secondaryDisplayValue as string) ?? null
-    }
-
-    // Use field value if available and field type is known
-    if (secondaryFieldValue.value && secondaryField?.fieldType) {
-      return String(
-        formatToDisplayValue(secondaryFieldValue.value as TypedFieldValue, secondaryField.fieldType)
-      )
-    }
-
-    // Fall back to cached record
-    return (cachedRecord?.secondaryDisplayValue as string) ?? null
-  }, [
-    recordId,
-    secondaryDisplayFieldId,
-    secondaryFieldValue.value,
-    secondaryField?.fieldType,
-    cachedRecord?.secondaryDisplayValue,
-  ])
+  // The identity header derives its own display fields from `recordId`; the
+  // drawer only still needs the resolved name for the Kopilot/command scopes.
+  // Gated on `open` for the same reason the `useRecord` above is: the hook
+  // requests the record it resolves against, and a closed drawer must not fetch.
+  const { displayName } = useRecordDisplayFields(open && recordId ? recordId : null, readOnly)
 
   // Counter for focusing comments composer
   const [focusComposerTrigger, setFocusComposerTrigger] = React.useState(0)
@@ -256,15 +180,6 @@ export const RecordDrawer = React.memo(function RecordDrawer({
     enabled: !!open && !isNestedThread,
     onExpand: resource && resourceHasDetailPage(resource) ? handleExpand : undefined,
   })
-
-  // Memoize the createdAt text to avoid recalculating on every render
-  const createdAtText = React.useMemo(
-    () =>
-      cachedRecord?.createdAt
-        ? `Created ${formatDistanceToNow(new Date(cachedRecord.createdAt as string), { addSuffix: true })}`
-        : null,
-    [cachedRecord?.createdAt]
-  )
 
   if (!open || !recordId) return null
 
@@ -393,53 +308,17 @@ export const RecordDrawer = React.memo(function RecordDrawer({
           </>
         }
         cardContent={
-          <div className='flex gap-3 py-2 px-3 flex-row items-center justify-start border-b'>
-            {avatarField && recordId && avatarFieldDef?.fieldType === 'FILE' && !readOnly ? (
-              <AvatarUploadIcon
-                recordId={recordId}
-                avatarUrl={cachedRecord?.avatarUrl as string}
-                avatarFieldId={avatarField.id}
-                avatarFieldOptions={avatarFieldDef?.options}
-                iconId={resource?.icon || 'circle'}
-                color={resource?.color || 'gray'}
+          <RecordIdentityHeader
+            recordId={recordId}
+            readOnly={readOnly}
+            primaryAdornment={
+              <ConnectorSourceBadge
+                sources={cachedRecord?.sources}
+                variant='chip'
+                className='shrink-0'
               />
-            ) : (
-              <RecordIcon
-                avatarUrl={cachedRecord?.avatarUrl as string}
-                iconId={resource?.icon || 'circle'}
-                color={resource?.color || 'gray'}
-                size='xl'
-                inverse
-              />
-            )}
-            <div className='flex flex-col align-start w-full min-w-0'>
-              <div className='flex items-center gap-2 min-w-0'>
-                <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate min-w-0'>
-                  {isRecordLoading ? (
-                    <div className='mb-1'>
-                      <Skeleton className='h-6 w-80' />
-                    </div>
-                  ) : (
-                    displayName || 'Untitled'
-                  )}
-                </div>
-                {!isRecordLoading && (
-                  <ConnectorSourceBadge
-                    sources={cachedRecord?.sources}
-                    variant='chip'
-                    className='shrink-0'
-                  />
-                )}
-              </div>
-              <div className='text-xs text-neutral-500 truncate'>
-                {isRecordLoading ? (
-                  <Skeleton className='h-4 w-40' />
-                ) : (
-                  secondaryDisplay || createdAtText
-                )}
-              </div>
-            </div>
-          </div>
+            }
+          />
         }
       />
 

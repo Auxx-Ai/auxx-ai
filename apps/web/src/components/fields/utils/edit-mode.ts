@@ -1,11 +1,11 @@
-// apps/web/src/components/dynamic-table/utils/edit-mode.ts
+// apps/web/src/components/fields/utils/edit-mode.ts
 
 import { FieldType } from '@auxx/database/enums'
 
-/** Edit mode determines how the cell editor renders */
+/** Edit mode determines how the field editor renders */
 export type EditMode = 'inline' | 'popover'
 
-/** Field types that support inline editing in cells */
+/** Field types that support inline editing (table cells, record header) */
 const INLINE_EDITABLE_FIELD_TYPES = new Set<string>([
   FieldType.TEXT,
   FieldType.NUMBER,

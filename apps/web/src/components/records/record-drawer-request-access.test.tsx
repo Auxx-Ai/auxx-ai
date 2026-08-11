@@ -115,6 +115,12 @@ vi.mock('~/components/workflow/mass-workflow-trigger-dialog', () => ({
 vi.mock('~/components/mail/thread-provider', () => ({ useIsNestedThread: () => false }))
 vi.mock('~/components/fields/connector-source-badge', () => ({ ConnectorSourceBadge: () => null }))
 vi.mock('~/components/resources/ui/avatar-upload-icon', () => ({ AvatarUploadIcon: () => null }))
+// The drawer's card content is now the shared identity header, which drags in the
+// whole field-editing stack (PropertyProvider, field inputs). None of it is under
+// test here.
+vi.mock('~/components/records/ui/record-identity-header', () => ({
+  RecordIdentityHeader: () => null,
+}))
 vi.mock('~/components/resources/ui/record-icon', () => ({ RecordIcon: () => null }))
 vi.mock('~/components/resources/hooks/use-field-values', () => ({
   useFieldValue: () => ({ value: undefined }),
@@ -123,6 +129,10 @@ vi.mock('~/components/resources', () => ({
   resourceHasDetailPage: () => false,
   useRecordLink: () => null,
   useRecord: () => ({ record: null, isLoading: false }),
+  // Read by `useRecordDisplayFields`, which the drawer now calls for the name it
+  // hands the Kopilot/command scopes. No display fields are configured below, so
+  // an empty list is the whole answer.
+  useResourceFields: () => ({ fields: [] }),
   useResource: () => ({
     resource: {
       id: DEF,

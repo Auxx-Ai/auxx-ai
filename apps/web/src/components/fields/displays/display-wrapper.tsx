@@ -129,7 +129,11 @@ function DisplayWrapper({
 
   return (
     <div data-slot='field-display' className='relative flex-1 overflow-hidden '>
-      <div className='group-hover/property-row:dark:bg-foreground/8 group-hover/property-row:bg-neutral-100 rounded-md flex items-start w-full gap-2 '>
+      {/* `data-slot` so a host surface can retarget the hover tint without
+          changing it for every field row — see `RecordIdentityHeader`. */}
+      <div
+        data-slot='field-display-hover'
+        className='group-hover/property-row:dark:bg-foreground/8 group-hover/property-row:bg-neutral-100 rounded-md flex items-start w-full gap-2 '>
         <div
           data-slot='field-display-content'
           className={cn(
