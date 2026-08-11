@@ -388,20 +388,23 @@ export function RecordPickerContent({
             })}
           </CommandGroup>
         )}
-
-        {/* Create Option */}
-        {canCreate && onCreate && (
-          <>
-            {(hasSelectedSection || hasResultsSection) && <CommandSeparator />}
-            <CommandGroup aria-label='Create'>
-              <CommandItem onSelect={onCreate} disabled={disabled}>
-                <Plus />
-                {createLabel || `Create ${relatedResource?.label ?? 'Item'}`}
-              </CommandItem>
-            </CommandGroup>
-          </>
-        )}
       </CommandList>
+
+      {/* Create Option — outside the scrolling list so it stays pinned and visible */}
+      {canCreate && onCreate && (
+        <CommandGroup
+          aria-label='Create'
+          className={cn(
+            'shrink-0',
+            (hasSelectedSection || hasResultsSection) &&
+              'border-t border-border/50 dark:border-[#323842]/80'
+          )}>
+          <CommandItem onSelect={onCreate} disabled={disabled}>
+            <Plus />
+            {createLabel || `Create ${relatedResource?.label ?? 'Item'}`}
+          </CommandItem>
+        </CommandGroup>
+      )}
     </Command>
   )
 }

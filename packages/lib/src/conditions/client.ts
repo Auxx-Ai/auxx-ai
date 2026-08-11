@@ -13,9 +13,10 @@ export {
 export type { FieldInputConfig } from './field-input-modes'
 // Field input modes for resource-based conditions
 export { FieldInputMode, resolveFieldInputConfig } from './field-input-modes'
-export type { FieldViewConfig, ViewContextType } from './field-view-config'
+export type { FieldGroup, FieldViewConfig, ViewContextType } from './field-view-config'
 export {
   createDefaultFieldViewConfig,
+  fieldGroupSchema,
   fieldViewConfigSchema,
   viewContextTypeSchema,
   viewContextTypes,

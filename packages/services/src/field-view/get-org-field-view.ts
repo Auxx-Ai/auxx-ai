@@ -13,7 +13,9 @@ type ViewContextType = 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_
 type FieldViewConfig = {
   fieldVisibility: Record<string, boolean>
   fieldOrder: string[]
-  collapsedSections?: string[]
+  // `collapsedSections` was removed — its role is served by `fieldGroups[].collapsed`
+  // on `fieldViewConfigSchema`. `TableView.config` is jsonb with no DB-level shape and
+  // zod strips unknown keys on read, so stale values in existing rows are inert.
   fieldLabels?: Record<string, string>
   showLabels?: boolean
 }

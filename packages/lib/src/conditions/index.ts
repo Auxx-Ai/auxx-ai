@@ -9,6 +9,9 @@ export { evaluateConditions } from './evaluate'
 export type { FieldInputConfig } from './field-input-modes'
 // Field input modes for resource-based conditions
 export { FieldInputMode, resolveFieldInputConfig } from './field-input-modes'
+// Collapsible panel field groups (view-config only — never enter resource.fields)
+export type { FieldGroup } from './field-view-config'
+export { fieldGroupSchema } from './field-view-config'
 export type { Operator, OperatorDefinition } from './operator-definitions'
 // Operator definitions - SINGLE SOURCE OF TRUTH for operators
 export {
