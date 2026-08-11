@@ -285,13 +285,21 @@ export function InboxReclassifyDialog({ inboxId, open, onOpenChange }: InboxRecl
                   Adjust my categories <ArrowRight />
                 </Link>
               </Button>
+              {/* ⚠️ The cost is ON the button here, unlike the first sample.
+                  Re-sampling removes the finished job and pays again, and the
+                  user is looking at a completed report — the state in which
+                  "Sample again" reads most like refreshing a view rather than
+                  buying a second one. It is the only place someone can spend
+                  twice without passing a number first. */}
               <Button
                 variant='ghost'
                 size='sm'
                 onClick={handleSample}
                 loading={startSample.isPending}
                 loadingText='Starting...'>
-                Sample again
+                {preview.data?.sampleCredits
+                  ? `Sample again (~${n(preview.data.sampleCredits)} credits)`
+                  : 'Sample again'}
               </Button>
               <Button
                 variant='outline'

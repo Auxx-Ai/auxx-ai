@@ -117,6 +117,15 @@ export class AnthropicClient extends ProviderClient {
   getApiClient(credentials: ProviderCredentials): Anthropic {
     return new Anthropic({
       apiKey: this.requireApiKey(credentials, 'apiKey'),
+      // Retry policy lives in RetryManager (one place), exactly as every other
+      // provider client does it.
+      //
+      // ⚠️ This client was the ONLY one missing it, and the arithmetic is why it
+      // matters: the SDK defaults to 2 internal retries, so `RetryManager`'s 4
+      // attempts became up to 12 HTTP calls against a provider that is asking us
+      // to slow down. `05-mail-classification-plan.md` §12.6 flagged it as a
+      // reason transient failures fired more often than they should.
+      maxRetries: 0,
       // Tee every HTTP attempt (incl. the SDK's silent 4xx/5xx retries) with its
       // status, latency, and diagnostic headers (rate-limit, retry-after, auth)
       // into the agent-session trace, so a throttle-and-retry or auth failure is

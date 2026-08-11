@@ -85,7 +85,11 @@ export class OpenAILLMClient extends LLMClient {
         {
           operation: 'llm_invoke',
           model: params.model,
-        }
+        },
+        // A completion, streaming or not, gets the longer budget: reasoning
+        // models are legitimately slow, and the embedding-sized `request`
+        // timeout would fail calls that were about to succeed.
+        { timeoutMs: this.config.timeouts.completion }
       )
       // Only log success on the success path — a `finally` here would log
       // "completed successfully" even when handleApiError re-throws.

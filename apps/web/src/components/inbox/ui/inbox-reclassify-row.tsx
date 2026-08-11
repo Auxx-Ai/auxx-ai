@@ -274,7 +274,13 @@ export function InboxReclassifyRow({ inboxId }: { inboxId: string }) {
             </div>
           ) : (
             <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
-              {report ? 'View results' : 'Classify…'}
+              {/* ⚠️ "Choose what to classify", not "Classify…". The headline above
+                  is the ALL-TIME backlog while the dialog opens on a 30-day
+                  default (07 R-Q1), so a bare "Classify" reads as a promise to do
+                  the number just quoted. The preview corrects it before any
+                  spend, but the button should not have implied it. Same label as
+                  the post-sync prompt, which advertises the same count. */}
+              {report ? 'View results' : 'Choose what to classify'}
             </Button>
           )}
         </div>
