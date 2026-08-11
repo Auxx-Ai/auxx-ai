@@ -82,6 +82,11 @@ interface FieldInputRowProps {
   disabled?: boolean
   /** Custom placeholder text (e.g., "<Varies>" for bulk edit) */
   placeholder?: string
+  /**
+   * Last row of the panel. Only used by a panel running `rowBorders='managed'`
+   * (the grouped record dialog), where nesting defeats the direct-child rule.
+   */
+  isLastRow?: boolean
 }
 
 /**
@@ -96,6 +101,7 @@ export function FieldInputRow({
   validationType = 'error',
   disabled = false,
   placeholder,
+  isLastRow = false,
 }: FieldInputRowProps) {
   const isRequired = field.required ?? field.capabilities?.required ?? false
   const fieldType = field.fieldType ?? 'TEXT'
@@ -152,6 +158,7 @@ export function FieldInputRow({
       isRequired={isRequired}
       validationError={validationError}
       validationType={validationType}
+      isLastRow={isLastRow}
       showIcon>
       <FieldInputAdapter
         fieldType={fieldType}

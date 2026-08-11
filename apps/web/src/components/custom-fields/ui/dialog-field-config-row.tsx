@@ -4,57 +4,56 @@
 import { Switch } from '@auxx/ui/components/switch'
 import { cn } from '@auxx/ui/lib/utils'
 import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { GripVertical } from 'lucide-react'
-import { memo, useMemo } from 'react'
+import { memo } from 'react'
 
 /** Props for DialogFieldConfigRow */
 interface DialogFieldConfigRowProps {
-  /** Unique ID for the sortable item */
+  /** Unique ID for the sortable item — the VIEW field id, which is every dnd id */
   id: string
   /** Display label for the field */
   label: string
   /** Whether the field is currently visible */
   isVisible: boolean
-  /** Handler for toggling visibility */
-  onToggleVisibility: (visible: boolean) => void
+  /**
+   * Handler for toggling visibility. Withheld for a preview row (the drag
+   * ghost), which is what collapses it to grip + name.
+   */
+  onToggleVisibility?: (visible: boolean) => void
+  /** Last row of the panel — see `FieldPanel`'s `rowBorders='managed'`. */
+  isLastRow?: boolean
 }
 
 /**
  * Sortable row for dialog config mode.
+ *
  * Mirrors FieldPanelRow DOM structure (data-slot="field-row") so there is
  * zero layout shift when toggling between normal and config mode.
  * GripVertical replaces the type icon; Switch replaces the input content.
+ *
+ * There is deliberately NO `SortableContext` around it (see
+ * `fields/ui/field-group-list.tsx`): nothing displaces, so `useSortable` never
+ * resolves a `transform` and applying one would be dead code. The row fades in
+ * place at 0.3 — the same value `FieldEditRow`, `FieldGroupRow` and the KB
+ * sidebar use — and the `DragOverlay` ghost is what follows the pointer.
  */
 export const DialogFieldConfigRow = memo(function DialogFieldConfigRow({
   id,
   label,
   isVisible,
   onToggleVisibility,
+  isLastRow = false,
 }: DialogFieldConfigRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id,
-  })
-
-  /** Memoize style to prevent unnecessary re-renders during drag */
-  const style = useMemo(
-    () => ({
-      transform: CSS.Transform.toString(transform),
-      transition,
-      zIndex: isDragging ? 10 : 1,
-      opacity: isDragging ? 0.8 : 1,
-    }),
-    [transform, transition, isDragging]
-  )
+  const { attributes, listeners, setNodeRef, isDragging } = useSortable({ id })
 
   return (
     <div
       ref={setNodeRef}
-      style={style}
       data-slot='field-row'
+      data-last-row={isLastRow ? '' : undefined}
       className={cn(
         'relative flex border-b dark:border-b-[#404754]/20',
-        isDragging && 'bg-accent rounded',
+        isDragging && 'opacity-30',
         !isVisible && 'opacity-50'
       )}>
       {/* Label area — matches FieldPanelRow [data-slot="field-row-label"] */}
@@ -73,7 +72,9 @@ export const DialogFieldConfigRow = memo(function DialogFieldConfigRow({
       <div
         data-slot='field-row-content'
         className='w-full flex-1 flex items-center justify-end pe-2 py-1.5'>
-        <Switch checked={isVisible} size='sm' onCheckedChange={onToggleVisibility} />
+        {onToggleVisibility && (
+          <Switch checked={isVisible} size='sm' onCheckedChange={onToggleVisibility} />
+        )}
       </div>
     </div>
   )

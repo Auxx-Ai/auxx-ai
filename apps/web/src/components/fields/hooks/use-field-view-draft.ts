@@ -60,8 +60,12 @@ export interface UseFieldViewDraftResult {
    * flat `SortableContext` drag wants. See {@link moveFieldToSlot}.
    */
   reorderDraft: (activeId: string, overId: string, edge?: 'before' | 'after') => void
-  /** Persist the draft: update the existing org default view, or create one. Resolves on success. */
-  saveDraft: () => Promise<void>
+  /**
+   * Persist the draft: update the existing org default view, or create one.
+   * Never rejects — resolves `true` when the write landed (and draft mode has
+   * exited), `false` when it failed and the draft was left intact.
+   */
+  saveDraft: () => Promise<boolean>
   /** Groups in the draft. Empty array when the draft has none. */
   draftGroups: FieldGroup[]
   /** Create a group; returns its new id. */
@@ -432,8 +436,8 @@ export function useFieldViewDraft({
    * failures surface through the mutations' `onError` toasts and leave the
    * draft intact so the user can retry.
    */
-  const saveDraft = useCallback(async () => {
-    if (!draft) return
+  const saveDraft = useCallback(async (): Promise<boolean> => {
+    if (!draft) return false
 
     try {
       if (orgFieldView) {
@@ -469,8 +473,10 @@ export function useFieldViewDraft({
       setDraft(null)
       setPristineConfig(null)
       setIsDraftMode(false)
+      return true
     } catch {
       // Errors handled by mutation onError
+      return false
     }
   }, [draft, orgFieldView, draftContextType, entityDefinitionId, updateView, createView])
 

@@ -1,11 +1,13 @@
 // apps/web/src/components/custom-fields/ui/entity-instance/entity-instance-form.tsx
 'use client'
 
+import type { FieldGroup, ViewContextType } from '@auxx/lib/conditions/client'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import {
   isTrailingMetadataField,
   parseRecordId,
   type RecordId,
+  type ResourceField,
   toRecordId,
 } from '@auxx/lib/resources/client'
 import { Button, buttonVariants } from '@auxx/ui/components/button'
@@ -14,34 +16,73 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Switch } from '@auxx/ui/components/switch'
 import { cn } from '@auxx/ui/lib/utils'
-import {
-  closestCenter,
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { Pencil, X } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useFieldGroupDnd } from '~/components/fields/hooks/use-field-group-dnd'
 import { useFieldView } from '~/components/fields/hooks/use-field-view'
 import { useFieldViewDraft } from '~/components/fields/hooks/use-field-view-draft'
 import { mergeFieldOrder } from '~/components/fields/merge-field-order'
+import { AddGroupRow } from '~/components/fields/rows/field-group-row'
+import {
+  FieldGroupList,
+  type FieldGroupListRowContext,
+} from '~/components/fields/ui/field-group-list'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { useResource } from '~/components/resources'
 import { useCreateRecord } from '~/components/resources/hooks/use-create-record'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { DialogFieldConfigRow } from '../dialog-field-config-row'
 import { FieldInputRow } from '../field-input-row'
+
+/** The view id a field is keyed by in `fieldOrder` / `fieldGroups[].fieldIds`. */
+function viewFieldId(field: { resourceFieldId?: unknown; id?: unknown; key?: unknown }): string {
+  return String(field.resourceFieldId ?? field.id ?? field.key)
+}
+
+/**
+ * A grouped row's inset.
+ *
+ * The label column is a fixed width synced across mounted panels, and the resize
+ * divider is ONE absolutely positioned line at that offset — so indenting the
+ * ROW would push its content column 12px past the divider and break the
+ * alignment contract for grouped rows only. Indent the label TEXT instead,
+ * keeping the label/content boundary global. On mobile there is no fixed column
+ * to misalign, so the whole row can indent there.
+ *
+ * The label-slot override beats `FieldPanelRow`'s own `ps-2` on specificity —
+ * (0,2,0) vs (0,1,0) — the same mechanism `FieldPanel` uses for its orientation
+ * rules. `@md` matches the `breakpoint='md'` both panels below declare.
+ */
+const GROUPED_ROW_CLASS = 'ps-3 @md:ps-0 @md:[&_[data-slot=field-row-label]]:ps-5'
+
+/**
+ * Re-align the group header with the rows around it.
+ *
+ * `FieldGroupRow` is shaped for the property panel, whose rows put their glyph
+ * in a 24px band flush with the row's left edge and band it to the row's TOP.
+ * A `FieldPanelRow` does neither: its icon sits in the panel's `ps-2` gutter and
+ * is vertically centred. The 24px band width is unchanged either way, so the
+ * header's label text stays on the same x as the field names below it — only
+ * the glyph and the vertical banding move.
+ */
+const GROUP_HEADER_CLASS = [
+  '[&_[data-slot=field-group-glyph]]:justify-start [&_[data-slot=field-group-glyph]]:ps-2',
+  '[&_[data-slot=field-group-band]]:self-center',
+  // The rows' content area ends on `pe-2`, so their switches never touch the
+  // panel's edge. The header's delete button gets the same gutter.
+  '[&_[data-slot=field-group-actions]]:pe-2',
+].join(' ')
+
+/** What each mode hands `FieldGroupList` to draw one row. */
+type FieldListRowRenderer = (field: ResourceField, ctx: FieldGroupListRowContext) => ReactNode
+
+/** Stable empty array so a group-less view keeps referential identity across renders. */
+const NO_GROUPS: FieldGroup[] = []
 
 /** Title + description derived from the form's mode, handed to the header slot. */
 export interface EntityInstanceFormHeaderContext {
@@ -131,6 +172,7 @@ export function EntityInstanceForm({
   const {
     draft,
     isDraftMode,
+    isDraftDirty,
     isSaving,
     draftContextType,
     enterDraft,
@@ -139,10 +181,17 @@ export function EntityInstanceForm({
     setDraftVisibility,
     reorderDraft,
     saveDraft,
+    draftGroups,
+    addGroup,
+    renameGroup,
+    deleteGroup,
+    assignFieldToGroup,
+    moveGroup,
   } = useFieldViewDraft({ entityDefinitionId, contextType, fields: allEditableFields })
 
-  // Use field view for visibility/ordering (normal mode only)
-  const { getVisibleFields } = useFieldView({
+  // Use field view for visibility/ordering (normal mode only). `config` carries
+  // the saved groups read mode renders sections from.
+  const { config: viewConfig, getVisibleFields } = useFieldView({
     entityDefinitionId,
     contextType,
     fields: allEditableFields,
@@ -150,10 +199,7 @@ export function EntityInstanceForm({
   })
 
   // Field IDs in baseline order — the merge baseline for config mode
-  const fieldIds = useMemo(
-    () => allEditableFields.map((f) => String(f.resourceFieldId ?? f.id ?? f.key)),
-    [allEditableFields]
-  )
+  const fieldIds = useMemo(() => allEditableFields.map(viewFieldId), [allEditableFields])
 
   // DnD sensors for config mode
   const sensors = useSensors(
@@ -161,16 +207,103 @@ export function EntityInstanceForm({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
+  // Confirm dialog for discarding unsaved view edits (the X and the Create/Edit
+  // tab both route through it) and for deleting a populated group.
+  const [confirmDraft, ConfirmDraftDialog] = useConfirm()
+
   // ─── Config Mode Handlers ──────────────────────────────────────────────────
 
-  /** dnd-kit adapter over the draft hook's index-free reorder */
-  const handleDraftDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event
-      if (!over || active.id === over.id) return
-      reorderDraft(String(active.id), String(over.id))
+  // The field half of drop routing, shared verbatim with the property panel.
+  const { handleFieldDragEnd, placeFieldBesideGroup } = useFieldGroupDnd({
+    draft,
+    draftGroups,
+    assignFieldToGroup,
+    reorderDraft,
+  })
+
+  /** The group whose label input should take focus (just created in this session). */
+  const [newGroupId, setNewGroupId] = useState<string | null>(null)
+
+  const handleAddGroup = () => setNewGroupId(addGroup('New group'))
+
+  const handleDeleteGroup = async (groupId: string, label: string) => {
+    // An EMPTY group has nothing to lose — no field changes hands and the draft
+    // is still discardable with Cancel — so a confirm is pure friction on the
+    // most likely case: created one by mistake, remove it again.
+    const memberCount = draftGroups.find((g) => g.id === groupId)?.fieldIds.length ?? 0
+    if (memberCount === 0) {
+      deleteGroup(groupId)
+      return
+    }
+
+    const confirmed = await confirmDraft({
+      title: 'Delete group?',
+      description: `"${label}" will be removed and its ${memberCount} field${memberCount === 1 ? '' : 's'} become ungrouped. No field is deleted — only the group.`,
+      confirmText: 'Delete group',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (confirmed) deleteGroup(groupId)
+  }
+
+  /**
+   * "Save or discard?" — the prompt both silent-discard exits now route through.
+   *
+   * Ordering-only edits made losing a draft an annoyance; a half-built group is
+   * real work. Saving here is exactly Save View: the same `saveDraft`, one
+   * config write.
+   */
+  const askToSaveDraft = useCallback(
+    () =>
+      confirmDraft({
+        title: 'Save changes to this view?',
+        description:
+          'Your changes to the field layout have not been saved. Saving applies them for everyone in the organization.',
+        confirmText: 'Save',
+        cancelText: 'Discard',
+      }),
+    [confirmDraft]
+  )
+
+  /**
+   * The X out of config mode. Unlike the footer's Cancel — which sits beside
+   * Save View, so the choice has already been put to the user — this reads as
+   * "close this", not "throw my work away".
+   *
+   * `saveDraft` never rejects: on failure it toasts and leaves the draft intact,
+   * so a failed save keeps the user in config mode with their changes rather
+   * than closing over them.
+   */
+  const handleExitDraft = useCallback(async () => {
+    if (!isDraftDirty) {
+      cancelDraft()
+      return
+    }
+    if (await askToSaveDraft()) await saveDraft()
+    else cancelDraft()
+  }, [askToSaveDraft, cancelDraft, isDraftDirty, saveDraft])
+
+  /**
+   * The Create/Edit tab re-snapshots from the store, which drops the current
+   * context's unsaved edits — so it asks first, exactly like the X.
+   *
+   * A successful `saveDraft` leaves config mode entirely, so the save branch
+   * re-enters it: this is a tab switch, not an exit. A failed one aborts the
+   * switch outright, leaving the user on the tab whose work is still unsaved.
+   */
+  const handleSwitchDraftContext = useCallback(
+    async (next: ViewContextType) => {
+      if (next === draftContextType) return
+      if (isDraftDirty) {
+        if (await askToSaveDraft()) {
+          if (!(await saveDraft())) return
+          enterDraft()
+        }
+      }
+      switchDraftContext(next)
     },
-    [reorderDraft]
+    [askToSaveDraft, draftContextType, enterDraft, isDraftDirty, saveDraft, switchDraftContext]
   )
 
   // ─── Config Mode Derived State ────────────────────────────────────────────
@@ -178,9 +311,7 @@ export function EntityInstanceForm({
   /** Fields ordered by the draft config (for config mode rendering) */
   const configModeFields = useMemo(() => {
     if (!draft) return []
-    const fieldMap = new Map(
-      allEditableFields.map((f) => [String(f.resourceFieldId ?? f.id ?? f.key), f])
-    )
+    const fieldMap = new Map(allEditableFields.map((f) => [viewFieldId(f), f]))
 
     // The merge yields exactly the baseline ids, each once — a field missing from
     // the stored order is spliced in at its baseline anchor rather than appended
@@ -213,11 +344,12 @@ export function EntityInstanceForm({
     return isDraftMode ? configModeFields : getVisibleFields()
   }, [isDraftMode, configModeFields, getVisibleFields])
 
-  // Sortable IDs for DnD (all fields in config mode)
-  const sortableFieldIds = useMemo(
-    () => editableFields.map((f) => f.resourceFieldId ?? f.id ?? f.key),
-    [editableFields]
-  )
+  /**
+   * The groups the list renders sections from: the unsaved draft's in config
+   * mode, the saved org view's in normal mode. A group carries no position —
+   * its header renders where its first member sits in the field order.
+   */
+  const renderedGroups = isDraftMode ? draftGroups : (viewConfig.fieldGroups ?? NO_GROUPS)
 
   // RecordIds for syncer
   const recordIds = useMemo(() => (recordId ? [recordId] : []), [recordId])
@@ -509,6 +641,28 @@ export function EntityInstanceForm({
     }
   }
 
+  /**
+   * Groups holding a field that currently fails validation, so the list can
+   * force them open.
+   *
+   * TWO ID KEYSPACES MEET HERE. `errors` is keyed by `field.id` (the form
+   * keyspace); groups are keyed by the VIEW id (`resourceFieldId`, which for a
+   * custom field is `<entityDefinitionId>:<fieldId>` — a genuinely different
+   * string). The map therefore goes through the field OBJECT and never
+   * string-matches one against the other.
+   */
+  const errorGroupIds = useMemo(() => {
+    if (Object.keys(errors).length === 0 || renderedGroups.length === 0) return []
+    const ids = new Set<string>()
+    for (const field of editableFields) {
+      if (!errors[field.id]) continue
+      const viewId = viewFieldId(field)
+      const group = renderedGroups.find((g) => g.fieldIds.includes(viewId))
+      if (group) ids.add(group.id)
+    }
+    return [...ids]
+  }, [errors, editableFields, renderedGroups])
+
   const resourceLabel = resource?.label ?? 'Record'
 
   const title = isDraftMode
@@ -522,8 +676,31 @@ export function EntityInstanceForm({
       ? `Update the ${resourceLabel.toLowerCase()} details below.`
       : `Enter the details for the new ${resourceLabel.toLowerCase()}.`
 
+  /** Shared by both modes — one list component, one drag model, one collapse state. */
+  const renderFieldList = (renderRow: FieldListRowRenderer) => (
+    <FieldGroupList<ResourceField>
+      rows={editableFields}
+      rowId={viewFieldId}
+      rowKey={(field) => String(field.id ?? field.key)}
+      groups={renderedGroups}
+      isEditMode={isDraftMode}
+      sensors={sensors}
+      onFieldDragEnd={handleFieldDragEnd}
+      onPlaceFieldBesideGroup={placeFieldBesideGroup}
+      onMoveGroup={moveGroup}
+      onRenameGroup={renameGroup}
+      onDeleteGroup={handleDeleteGroup}
+      newGroupId={newGroupId}
+      groupedRowClassName={GROUPED_ROW_CLASS}
+      groupClassName={GROUP_HEADER_CLASS}
+      forceExpandGroupIds={errorGroupIds}
+      renderRow={renderRow}
+    />
+  )
+
   return (
     <>
+      <ConfirmDraftDialog />
       {header?.({ title, description })}
 
       {/* Field card area — floating edit button anchored to its top-right corner */}
@@ -537,7 +714,7 @@ export function EntityInstanceForm({
           <Button
             variant='ghost'
             size='icon-xs'
-            onClick={() => (isDraftMode ? cancelDraft() : enterDraft())}
+            onClick={() => (isDraftMode ? void handleExitDraft() : enterDraft())}
             className={cn(
               'cursor-pointer',
               isDraftMode
@@ -549,31 +726,36 @@ export function EntityInstanceForm({
         </div>
 
         {isDraftMode ? (
-          /* Config mode: sortable field list with visibility switches.
+          /* Config mode: grouped, draggable field list with visibility switches.
              No resizeId here — the resize strip would steal pointer-downs from
-             the row drag-and-drop. */
-          <FieldPanel className='p-0'>
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDraftDragEnd}
-              modifiers={[restrictToVerticalAxis]}>
-              <SortableContext items={sortableFieldIds} strategy={verticalListSortingStrategy}>
-                {editableFields.map((field) => {
-                  const fieldKey = field.resourceFieldId ?? field.id ?? field.key
-                  return (
-                    <DialogFieldConfigRow
-                      key={fieldKey}
-                      id={fieldKey}
-                      label={field.label ?? field.name ?? field.key}
-                      isVisible={draft?.fieldVisibility[fieldKey] !== false}
-                      onToggleVisibility={(visible) => setDraftVisibility(fieldKey, visible)}
-                    />
-                  )
-                })}
-              </SortableContext>
-            </DndContext>
-          </FieldPanel>
+             the row drag-and-drop, and group-header drags make that worse.
+             `rowBorders='managed'`: group wrappers nest the rows, which defeats
+             the panel's direct-child last-row rule. */
+          <>
+            <FieldPanel className='p-0' breakpoint='md' rowBorders='managed'>
+              {renderFieldList((field, ctx) => {
+                const fieldKey = viewFieldId(field)
+                return (
+                  <DialogFieldConfigRow
+                    id={fieldKey}
+                    label={field.label ?? field.name ?? field.key}
+                    isVisible={draft?.fieldVisibility[fieldKey] !== false}
+                    // A preview row is the drag ghost: withholding the handler
+                    // is what collapses it to grip + name.
+                    onToggleVisibility={
+                      ctx.preview ? undefined : (visible) => setDraftVisibility(fieldKey, visible)
+                    }
+                    isLastRow={ctx.isLast}
+                  />
+                )
+              })}
+            </FieldPanel>
+            {/* Field DEFINITION administration lives in the property panel and
+                settings, so there is no Add Field counterpart here. The panel is
+                a bordered card in this surface, not a bare list, so the row
+                needs its own clearance from the edge. */}
+            <AddGroupRow onClick={handleAddGroup} className='mt-2 ms-0' />
+          </>
         ) : (
           /* Normal mode: form inputs */
           <>
@@ -581,10 +763,10 @@ export function EntityInstanceForm({
               <FieldPanel
                 className='p-0'
                 breakpoint='md'
+                rowBorders='managed'
                 resizeId={`entity-instance:${entityDefinitionId}`}>
-                {editableFields.map((field) => (
+                {renderFieldList((field, ctx) => (
                   <FieldInputRow
-                    key={field.id}
                     field={field}
                     value={values[field.id] ?? ''}
                     onChange={handleFieldChange}
@@ -595,9 +777,11 @@ export function EntityInstanceForm({
                     }
                     validationType='error'
                     disabled={isPending}
+                    isLastRow={ctx.isLast}
                   />
                 ))}
               </FieldPanel>
+              {/* Outside every group, after the sections. */}
               {!isEditing && createExtension?.content}
             </div>
 
@@ -617,7 +801,7 @@ export function EntityInstanceForm({
           {/* Left side: Context type toggle (Create / Edit) */}
           <RadioTab
             value={draftContextType}
-            onValueChange={switchDraftContext}
+            onValueChange={(value) => void handleSwitchDraftContext(value as ViewContextType)}
             size='sm'
             radioGroupClassName='rounded-xl'
             className='h-7'>
@@ -637,7 +821,7 @@ export function EntityInstanceForm({
             <Button
               size='sm'
               variant='outline'
-              onClick={saveDraft}
+              onClick={() => void saveDraft()}
               loading={isSaving}
               loadingText='Saving...'>
               Save View

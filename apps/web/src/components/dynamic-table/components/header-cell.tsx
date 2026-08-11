@@ -673,7 +673,11 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
 
           {/* New button (only for primary column with onAddNew) */}
           {showNewButton && (
-            <Tooltip content={`New ${entityLabel || ''}`} side='top'>
+            /* `allowInteraction`: without it `SimpleTooltip` preventDefault-s the
+               pointerdown and pins itself open for 50ms, which suppresses Radix's
+               own close-on-click — so the bubble hung over the dialog this button
+               opens. */
+            <Tooltip content={`New ${entityLabel || ''}`} side='top' allowInteraction>
               <Button
                 variant='ghost'
                 size='icon-xs'
