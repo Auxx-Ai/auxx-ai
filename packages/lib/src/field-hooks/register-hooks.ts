@@ -48,6 +48,7 @@ import { guardInboxOwnerField } from './pre/inbox-owner-guard'
 import { guardInvoiceDelete } from './pre/invoice-delete-guard'
 import { guardQuoteConvertedDelete } from './pre/quote-delete-guard'
 import { guardQuoteDraftReturnWithPaidDeposit } from './pre/quote-deposit-guard'
+import { rejectDeleteIfTagInUse } from './pre/tag-in-use-guard'
 import {
   dropUnauthorizedSystemFlag,
   rejectDeleteIfSystemTag,
@@ -262,7 +263,15 @@ export function registerAllHooks(): void {
   // The drop hook is what actually enforces invariant 2 (the field's
   // `capabilities.updatable: false` is not read by the write path).
   registerFieldPreHooks('tags', 'tag_template_key', [dropUnauthorizedTemplateKey])
-  registerEntityPreDeleteHooks('tags', [rejectDeleteIfSystemTag, rejectDeleteIfTemplateTag])
+  // ⚠️ ORDER IS THE MESSAGE. The two "never, by anyone" guards run first and throw
+  // 403; only then does the in-use check throw 409. A system tag that also carries
+  // 500 threads must be refused as a system tag, not told to untag itself first —
+  // clearing the references would not make it deletable.
+  registerEntityPreDeleteHooks('tags', [
+    rejectDeleteIfSystemTag,
+    rejectDeleteIfTemplateTag,
+    rejectDeleteIfTagInUse,
+  ])
 
   // Money delete-safety (plans/dispatch/money/12-delete-safety.md §A/§C/§F) — moves the
   // invoice/work-order guard+cleanup logic out of the client-only drawer branch and into the

@@ -58,6 +58,17 @@ export interface TagNode {
    * that the delete hook will refuse.
    */
   templateKey: string | null
+  /**
+   * `EntityInstance.archivedAt !== null` — the tag is retired but every record
+   * that carries it keeps it.
+   *
+   * ⚠️ Archive is the DEFAULT retirement path for a tag in use, not a lesser
+   * delete. `mail-classification/labels.ts:92` already filters archived tags out
+   * of the classifier's label set, so archiving stops a tag being applied to new
+   * mail while leaving the historical claim on the threads that have it — which
+   * is what `rejectDeleteIfTagInUse` points callers at when it refuses a delete.
+   */
+  isArchived: boolean
   scope: TagScopeValue
   children: TagNode[]
 }

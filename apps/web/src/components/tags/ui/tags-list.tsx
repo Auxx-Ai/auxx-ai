@@ -17,7 +17,17 @@ import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, Edit, Lock, Plus, Sparkles, Tags, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  ArchiveRestore,
+  ChevronDown,
+  Edit,
+  Lock,
+  Plus,
+  Sparkles,
+  Tags,
+  Trash2,
+} from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
@@ -50,8 +60,23 @@ export function TagTreeView() {
   const [isSuggestedOpen, setIsSuggestedOpen] = useState(false)
   const [editingRecordId, setEditingRecordId] = useState<RecordId | undefined>(undefined)
 
+  // Archived tags are hidden by default and revealed by the toolbar toggle.
+  // ⚠️ Without this the archive action would be a ONE-WAY DOOR — an archived tag
+  // vanishes from the only surface that manages tags, with no route back. That
+  // would be strictly worse than the delete it replaces.
+  const [showArchived, setShowArchived] = useQueryState('archived', {
+    defaultValue: false,
+    parse: (v) => v === '1',
+    serialize: (v) => (v ? '1' : ''),
+  })
+
   // Fetch tag hierarchy
-  const { hierarchy: tagHierarchy, isLoading, refresh, entityDefinitionId } = useTagHierarchy()
+  const {
+    hierarchy: tagHierarchy,
+    isLoading,
+    refresh,
+    entityDefinitionId,
+  } = useTagHierarchy({ includeArchived: showArchived })
 
   // Tags are RECORDS, not a settings surface: this page creates and deletes them
   // through `record.create`/`record.delete`, which assert `assertEditEntity` on
@@ -66,7 +91,25 @@ export function TagTreeView() {
       refresh()
     },
     onError: (error) => {
+      // ⚠️ The common failure here is a 409 from `rejectDeleteIfTagInUse`, whose
+      // message already names the record count and points at archive. Surfacing
+      // `error.message` verbatim is the whole remedy — do not replace it with a
+      // generic string.
       toastError({ title: 'Failed to delete tag', description: error.message })
+    },
+  })
+
+  const archiveRecord = api.record.archive.useMutation({
+    onSuccess: () => refresh(),
+    onError: (error) => {
+      toastError({ title: 'Failed to archive tag', description: error.message })
+    },
+  })
+
+  const restoreRecord = api.record.restore.useMutation({
+    onSuccess: () => refresh(),
+    onError: (error) => {
+      toastError({ title: 'Failed to restore tag', description: error.message })
     },
   })
 
@@ -156,6 +199,35 @@ export function TagTreeView() {
     }
   }
 
+  /**
+   * Archive a tag — the default way to retire one that is in use.
+   *
+   * Confirmed rather than immediate, despite being reversible: an archived tag
+   * leaves the classifier's label set (`labels.ts:92`), so mail that used to get
+   * this category silently stops getting it. That is a behaviour change worth one
+   * click, and the copy says so.
+   */
+  const handleArchiveTag = async (tag: TagNode) => {
+    const confirmed = await confirm({
+      title: 'Archive tag?',
+      description: tag.aiClassify
+        ? `"${tag.title}" stays on every conversation that already has it, but will no longer be applied to new mail by AI. You can restore it at any time.`
+        : `"${tag.title}" stays on every record that already has it, but will no longer be offered when tagging. You can restore it at any time.`,
+      confirmText: 'Archive',
+      cancelText: 'Cancel',
+      destructive: false,
+    })
+
+    if (confirmed) {
+      archiveRecord.mutate({ recordId: tag.recordId })
+    }
+  }
+
+  /** Restore an archived tag. Reversible and consequence-free — no confirm. */
+  const handleRestoreTag = (tag: TagNode) => {
+    restoreRecord.mutate({ recordId: tag.recordId })
+  }
+
   return (
     <div className='flex flex-1 flex-col'>
       <ListToolbar sticky={false}>
@@ -165,6 +237,17 @@ export function TagTreeView() {
           onChange={(e) => setSearchQuery(e.target.value)}
         />
         <ListToolbarGroup align='end'>
+          {/* The route back out of archive. Kept beside the create control rather
+              than buried in a menu — it is the only way to reach a restore. */}
+          <Button
+            variant={showArchived ? 'secondary' : 'outline'}
+            size='sm'
+            onClick={() => setShowArchived(showArchived ? null : true)}>
+            <Archive />
+            <span className='hidden sm:inline'>
+              {showArchived ? 'Hide archived' : 'Show archived'}
+            </span>
+          </Button>
           {/* Matches the create dropdown on custom-fields: blank first, shipped
               templates second. The suggested categories live here rather than in
               a settings section of their own — they ARE tags, and the list is
@@ -214,6 +297,8 @@ export function TagTreeView() {
                 onToggle={toggleExpanded}
                 onEdit={handleEditTag}
                 onDelete={handleDeleteTag}
+                onArchive={handleArchiveTag}
+                onRestore={handleRestoreTag}
               />
             )}
           />
@@ -264,6 +349,8 @@ interface TagTreeItemProps {
   onToggle: (tagId: string) => void
   onEdit: (tag: TagNode) => void
   onDelete: (tag: TagNode) => void
+  onArchive: (tag: TagNode) => void
+  onRestore: (tag: TagNode) => void
 }
 
 /**
@@ -279,6 +366,8 @@ function TagTreeItem({
   onToggle,
   onEdit,
   onDelete,
+  onArchive,
+  onRestore,
 }: TagTreeItemProps) {
   const hasChildren = tag.children?.length > 0
   const isExpanded = !!expandedTags[tag.id]
@@ -286,7 +375,12 @@ function TagTreeItem({
   return (
     <TreeRow
       depth={depth}
-      rowClassName='bg-primary-50 hover:bg-primary-100'
+      rowClassName={cn(
+        'bg-primary-50 hover:bg-primary-100',
+        // Muted, never hidden: the row is still actionable (restore lives on it),
+        // so it reads as retired rather than disabled.
+        tag.isArchived && 'opacity-60'
+      )}
       icon={
         <span
           className={cn(
@@ -300,11 +394,18 @@ function TagTreeItem({
         // Bare string when there is no badge: TreeRow's own `truncate` ellipsizes
         // inline text, but clips an inline-flex child instead — so only pay that
         // cost on the rows that actually need a badge beside the name.
-        !tag.isSystemTag && !tag.aiClassify ? (
+        !tag.isSystemTag && !tag.aiClassify && !tag.isArchived ? (
           tag.title
         ) : (
           <span className='inline-flex min-w-0 items-center gap-1.5'>
             <span className='truncate'>{tag.title}</span>
+            {tag.isArchived && (
+              <Tooltip content='Archived. Kept on the records that have it, but no longer offered — or applied by AI.'>
+                <span className='shrink-0 rounded border px-1 py-px text-[10px] leading-none text-muted-foreground'>
+                  Archived
+                </span>
+              </Tooltip>
+            )}
             {tag.isSystemTag && (
               <Tooltip content='System tag, managed by Auxx. Read-only.'>
                 <Lock className='size-3 shrink-0 text-muted-foreground' aria-label='System tag' />
@@ -331,10 +432,20 @@ function TagTreeItem({
       isOpen={isExpanded}
       onToggleOpen={hasChildren ? () => onToggle(tag.id) : undefined}
       actions={
-        tag.isSystemTag ? undefined : (
+        tag.isSystemTag ? undefined : tag.isArchived ? (
+          // An archived row offers only the way back. Editing a retired tag or
+          // archiving it twice are both meaningless; delete stays reachable by
+          // restoring first, which is one deliberate step rather than a trap.
+          <TreeRowButton tooltipText='Restore tag' onClick={() => onRestore(tag)}>
+            <ArchiveRestore />
+          </TreeRowButton>
+        ) : (
           <>
             <TreeRowButton tooltipText='Edit tag' onClick={() => onEdit(tag)}>
               <Edit />
+            </TreeRowButton>
+            <TreeRowButton tooltipText='Archive tag' onClick={() => onArchive(tag)}>
+              <Archive />
             </TreeRowButton>
             <TreeRowButton
               variant='destructive'
@@ -355,6 +466,8 @@ function TagTreeItem({
             onToggle={onToggle}
             onEdit={onEdit}
             onDelete={onDelete}
+            onArchive={onArchive}
+            onRestore={onRestore}
           />
         ))}
     </TreeRow>
