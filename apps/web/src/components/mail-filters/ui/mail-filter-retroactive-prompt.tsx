@@ -6,6 +6,7 @@ import { Alert } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { Filter, X } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
 
@@ -26,14 +27,31 @@ import { api } from '~/trpc/react'
  *
  * Mounted in the mail UI rather than in settings: the person who should answer
  * is the one looking at the unfiltered mail.
+ *
+ * ⚠️ **"The one looking at the mail" was aspirational until the `activeInboxId`
+ * preference landed.** The query took no inbox, so the banner named whichever
+ * authorable inbox sorted first and rendered in a fixed slot above EVERY mail
+ * view — putting a one-click bulk mutation on a mailbox the reader was not in.
+ * See `07-…`§7.10.
  */
-export function MailFilterRetroactivePrompt() {
+export function MailFilterRetroactivePrompt({
+  activeInboxId,
+}: {
+  /**
+   * The inbox being VIEWED, when the current mail context is one inbox. Only a
+   * preference — the server reorders its candidates and still asks about
+   * another inbox when this one has nothing pending, so search / drafts /
+   * all-inboxes (which pass nothing) keep the prompt.
+   */
+  activeInboxId?: string
+}) {
   const utils = api.useUtils()
   const [applying, setApplying] = useState(false)
 
-  const { data: prompt } = api.mailFilters.pendingRetroactivePrompt.useQuery(undefined, {
-    staleTime: 60_000,
-  })
+  const { data: prompt } = api.mailFilters.pendingRetroactivePrompt.useQuery(
+    { inboxId: activeInboxId },
+    { staleTime: 60_000 }
+  )
   // Scoped to the caller's authorable inboxes by the router, so this is the same
   // set the prompt is drawn from.
   const { data: filters } = api.mailFilters.list.useQuery(undefined, { enabled: !!prompt })
@@ -83,6 +101,25 @@ export function MailFilterRetroactivePrompt() {
   const filterLabel = prompt.filterCount === 1 ? 'filter' : 'filters'
   const inboxName = prompt.inboxName || 'this inbox'
 
+  /**
+   * ⚠️ **One click only applies to the mailbox you are looking at.**
+   *
+   * The preference above makes a mismatch rare, not impossible — a view that
+   * spans inboxes passes no id at all, and the inbox you are in may have nothing
+   * pending while another does. In those cases the banner is still worth showing
+   * (that is the whole discovery argument), but "Apply now" is not: this button
+   * assigns, archives and moves across a whole mailbox's history, and offering
+   * that in one click for a mailbox that is not on screen is the mistake this
+   * component's own doc comment warns about.
+   *
+   * So off-target, the action degrades to navigation. Same question, same
+   * banner — you just have to be looking at the mail before you can mutate it.
+   */
+  const isActiveInbox = prompt.inboxId === activeInboxId
+  const inboxHref = prompt.isPersonal
+    ? `/app/mail/personal/${prompt.inboxId}/open`
+    : `/app/mail/inboxes/${prompt.inboxId}/unassigned`
+
   return (
     <div className='shrink-0 bg-secondary px-2 pt-2 max-sm:dark:bg-primary-100 sm:dark:bg-muted-50'>
       <Alert variant='blue' className='flex flex-col gap-2 sm:flex-row sm:items-center'>
@@ -101,15 +138,21 @@ export function MailFilterRetroactivePrompt() {
           </div>
         </div>
         <div className='flex shrink-0 items-center gap-1 self-end sm:self-auto'>
-          <Button
-            variant='outline'
-            size='sm'
-            loading={applying}
-            loadingText='Starting...'
-            disabled={applicable.length === 0}
-            onClick={() => void handleApply()}>
-            Apply now
-          </Button>
+          {isActiveInbox ? (
+            <Button
+              variant='outline'
+              size='sm'
+              loading={applying}
+              loadingText='Starting...'
+              disabled={applicable.length === 0}
+              onClick={() => void handleApply()}>
+              Apply now
+            </Button>
+          ) : (
+            <Button variant='outline' size='sm' asChild>
+              <Link href={inboxHref}>Review in {inboxName}</Link>
+            </Button>
+          )}
           <Button
             variant='ghost'
             size='sm'

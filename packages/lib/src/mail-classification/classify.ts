@@ -20,20 +20,31 @@ import { UsageTrackingService } from '../ai/usage/usage-tracking-service'
 import { getCachedDefaultModel } from '../cache'
 import { UsageLimitError } from '../errors'
 import {
+  MAIL_CLASSIFY_ALT_TAG_CHARS,
   MAIL_CLASSIFY_BODY_CHARS,
   MAIL_CLASSIFY_CONFIDENCE_THRESHOLD,
   MAIL_CLASSIFY_NO_CATEGORY,
+  MAIL_CLASSIFY_SUMMARY_CHARS,
   type MailClassificationLabel,
 } from './client'
 import type { MailClassificationContext, MailClassificationResult } from './types'
 
 const logger = createScopedLogger('mail-classification')
 
+// ⚠️ The confidence sentence stays LAST (08 §3.2). The two additions below it
+// describe outputs that are recorded and never acted on; the confidence rule
+// governs the only decision this call actually makes, and burying it under
+// secondary instructions is how a prompt quietly stops abstaining.
 const SYSTEM_PROMPT = [
   'You categorise inbound customer email for a help desk.',
   'Choose exactly ONE category from the list, or the sentinel value when none of',
   'them fits. Each category is defined by its description, so classify against the',
   'description, not against the label wording.',
+  'Also summarise the mail in one short sentence describing what the sender wants.',
+  'If — and only if — no category fitted, or you were unsure of the one you chose,',
+  'name the topic you would have used, as a short lowercase noun phrase of at most',
+  'three words. It is recorded for a human to review and is applied to nothing.',
+  'Leave it empty whenever a category fitted.',
   'Report your confidence as a number between 0 and 1. Be honest: a low',
   'confidence means the mail is not applied to any category at all, which is the',
   'correct outcome for ambiguous mail.',
@@ -52,6 +63,28 @@ const SYSTEM_PROMPT = [
  * {@link MAIL_CLASSIFY_NO_CATEGORY} is a member of the same enum: under `strict`
  * a nullable enum is not portable across providers, so abstention has to be a
  * legal value rather than an absent one.
+ *
+ * ⚠️ **EVERY property is `required`, and "absent" is carried as a value** — the
+ * empty string for `altTagName`, exactly as `__none__` carries it for `category`
+ * (08 T2). Declaring a property optional does NOT survive the provider layer and
+ * fails differently per provider, silently:
+ *  • `openai-llm-client.ts` OVERWRITES the array —
+ *    `required = Object.keys(properties)` — so an optional property is mandatory
+ *    by the time the request leaves; while
+ *  • `anthropic-llm-client.ts` unwraps this same schema into a forced synthetic
+ *    tool's `input_schema` and passes `required` through untouched, where it
+ *    really is optional.
+ * An "optional" field therefore means a different contract depending on which
+ * default model the org happens to have picked. Requiring everything makes the
+ * two providers agree by construction rather than by luck.
+ *
+ * Lengths are stated for the model's benefit only — a `maxLength` keyword is not
+ * portable under `strict`, so the clamp in {@link clampText} is what holds.
+ *
+ * Property ORDER is the generation order under strict structured outputs, and
+ * `category` deliberately stays first: summarising before deciding would likely
+ * classify better (a free reasoning step), but it changes the decision on a
+ * shipped feature, so it belongs in a measured follow-up rather than here.
  */
 export function buildClassificationSchema(labels: MailClassificationLabel[]) {
   return {
@@ -60,7 +93,7 @@ export function buildClassificationSchema(labels: MailClassificationLabel[]) {
     schema: {
       type: 'object',
       additionalProperties: false,
-      required: ['category', 'confidence'],
+      required: ['category', 'confidence', 'messageSummary', 'altTagName'],
       properties: {
         category: {
           type: 'string',
@@ -71,9 +104,38 @@ export function buildClassificationSchema(labels: MailClassificationLabel[]) {
           type: 'number',
           description: 'Confidence in the chosen category, from 0 to 1.',
         },
+        messageSummary: {
+          type: 'string',
+          description: `One short sentence describing what the sender wants, at most ${MAIL_CLASSIFY_SUMMARY_CHARS} characters. Summarise only this message.`,
+        },
+        altTagName: {
+          type: 'string',
+          description:
+            `A short lowercase noun phrase of at most three words naming the topic you would have used, ONLY when no category fitted or you were unsure of the one you chose. ` +
+            `The empty string whenever a category fitted. It is recorded for review and applied to nothing.`,
+        },
       },
     },
   }
+}
+
+/**
+ * Trim a model-supplied string to a hard ceiling, or `undefined` when there is
+ * nothing usable.
+ *
+ * ⚠️ The empty string is `undefined` here, and that is the whole abstention
+ * protocol for `altTagName` (08 T2): the field is mandatory on the wire, so
+ * "nothing to say" arrives as `''` rather than as an absent key.
+ *
+ * Verbatim otherwise — no lowercasing, no punctuation stripping. Normalization
+ * belongs to the miner (08 T5), and doing it here would bake today's clustering
+ * strategy into rows that outlive it.
+ */
+function clampText(raw: unknown, max: number): string | undefined {
+  if (typeof raw !== 'string') return undefined
+  const trimmed = raw.trim()
+  if (!trimmed) return undefined
+  return trimmed.length > max ? trimmed.slice(0, max).trimEnd() : trimmed
 }
 
 /**
@@ -269,8 +331,22 @@ export async function classifyMessage(
 
   const applied = category !== null && confidence >= MAIL_CLASSIFY_CONFIDENCE_THRESHOLD
 
+  const messageSummary = clampText(structured?.messageSummary, MAIL_CLASSIFY_SUMMARY_CHARS)
+  // ⚠️ Dropped outright when a tag was applied (08 T3), rather than trusted from
+  // the prompt. The instruction says "leave it empty whenever a category fitted",
+  // and a model that fills it in anyway would seed the miner with candidates
+  // arguing for tags the org demonstrably already has.
+  const altTagName = applied
+    ? undefined
+    : clampText(structured?.altTagName, MAIL_CLASSIFY_ALT_TAG_CHARS)
+
   // ⚠️ Q4 — LOG ON EVERY CALL, including the below-threshold ones that apply
   // nothing. There is no column and no audit row: this line IS the tuning data.
+  //
+  // `altTagName` is logged (until the 08 phase-2 miner exists, this line is the
+  // only way to eyeball candidates); `messageSummary` deliberately is NOT — it is
+  // customer prose already persisted on the message, and a second copy in the log
+  // stream buys nothing.
   logger.info('Mail classification result', {
     organizationId,
     messageId,
@@ -285,17 +361,27 @@ export async function classifyMessage(
     confidence,
     threshold: MAIL_CLASSIFY_CONFIDENCE_THRESHOLD,
     applied,
+    hasSummary: messageSummary !== undefined,
+    altTagName: altTagName ?? null,
   })
 
   // Past this point a call COMPLETED, so `inferred: true` even when nothing is
   // applied: "no category" and "not confident enough" are answers, they were
   // paid for, and re-asking would buy the same answer twice (C9).
-  if (applied) return { tagId: category, confidence, model: def.model, inferred: true }
+  const captured = {
+    ...(messageSummary ? { messageSummary } : {}),
+    ...(altTagName ? { altTagName } : {}),
+  }
+
+  if (applied) {
+    return { tagId: category, confidence, model: def.model, inferred: true, ...captured }
+  }
   return {
     tagId: null,
     confidence,
     reason: category === null ? 'no-category' : 'below-threshold',
     model: def.model,
     inferred: true,
+    ...captured,
   }
 }

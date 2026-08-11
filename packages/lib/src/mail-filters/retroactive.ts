@@ -435,11 +435,30 @@ export async function findPendingRetroactivePrompt(
   db: Database,
   organizationId: string,
   candidateInboxIds: string[],
-  opts: { threadCountCap?: number } = {}
+  opts: { threadCountCap?: number; preferredInboxId?: string } = {}
 ): Promise<PendingRetroactivePrompt | null> {
   if (candidateInboxIds.length === 0) return null
   const candidates = new Set(candidateInboxIds)
   const cap = Math.max(1, Math.trunc(opts.threadCountCap ?? PROMPT_THREAD_COUNT_CAP))
+
+  /**
+   * The inbox the caller is currently LOOKING at goes first, when it is one of
+   * the candidates. The banner mounts in a fixed slot for every mail view and
+   * names the inbox it is about, so without this it asks about whichever inbox
+   * sorted first — reading, to anyone in a different mailbox, as a statement
+   * about the mail in front of them. It matters more here than on the
+   * classification twin: this banner's button MUTATES, so a mistargeted one is a
+   * click away from a bulk assign/archive over a mailbox nobody was looking at.
+   *
+   * ⚠️ A REORDER, never a filter, and it runs against the already-authorized
+   * `candidateInboxIds` — so an id the caller may not author on is inert rather
+   * than an existence oracle, and a view with no inbox of its own (search,
+   * drafts, all-inboxes) still gets the prompt.
+   */
+  const order =
+    opts.preferredInboxId && candidates.has(opts.preferredInboxId)
+      ? [opts.preferredInboxId, ...candidateInboxIds.filter((id) => id !== opts.preferredInboxId)]
+      : candidateInboxIds
 
   const filters = await db
     .select({ id: schema.MailFilter.id, inboxId: schema.MailFilter.inboxId })
@@ -499,10 +518,10 @@ export async function findPendingRetroactivePrompt(
       .map((c) => c.inboxId)
   )
 
-  // `candidateInboxIds` order is the caller's order (the authority's inbox
-  // order), so the prompt is stable across refetches rather than whatever the
-  // filter query happened to return first.
-  for (const inboxId of candidateInboxIds) {
+  // `order` is the caller's order (the authority's inbox order, with the viewed
+  // inbox hoisted), so the prompt is stable across refetches rather than
+  // whatever the filter query happened to return first.
+  for (const inboxId of order) {
     const filterIds = byInbox.get(inboxId)
     if (!filterIds || !synced.has(inboxId)) continue
 

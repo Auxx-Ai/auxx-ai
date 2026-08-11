@@ -83,6 +83,7 @@ vi.mock('@auxx/database', async () => {
 import { matchFilters } from './evaluate'
 import {
   assertBackfillable,
+  findPendingRetroactivePrompt,
   mailFilterRetroactiveApplyJob,
   PREVIEW_MATCH_COUNT_CAP,
   previewMatchCount,
@@ -465,5 +466,105 @@ describe('assertBackfillable', () => {
 
   it('accepts an enabled filter with a real action', () => {
     expect(assertBackfillable(filterRow()).isOk()).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * §7.10 (`07-mail-reclassification-plan.md`) — the banner mounts in a fixed slot
+ * for EVERY mail view and names the inbox it is about, so which candidate wins
+ * is user-visible. Without a preference it asked about whichever inbox sorted
+ * first, and this banner's button MUTATES: a mistargeted one puts a bulk
+ * assign/archive over a whole mailbox's history one click away from someone who
+ * was reading a different mailbox.
+ *
+ * A REORDER, never a filter, and never a grant — it is applied to the caller's
+ * already-authorized candidate list.
+ */
+describe('findPendingRetroactivePrompt — the viewed inbox goes first (§7.10)', () => {
+  const INBOX_A = 'ibx_a'
+  const INBOX_B = 'ibx_b'
+
+  /**
+   * The three reads the prompt makes, in order: enabled filters (`select`),
+   * prior retroactive runs (`selectDistinct`), live channels (`select`). Then one
+   * `execute` per surviving candidate, IN ITERATION ORDER — so queueing counts
+   * rather than keying them by inbox is what makes the order observable.
+   */
+  function promptDb(inboxIds: string[], counts: number[]) {
+    const selectResults = [
+      inboxIds.map((inboxId, i) => ({ id: `flt_${i}`, inboxId })),
+      // `PROVIDER_CAPABILITIES` is keyed by `IntegrationProviderType`, whose
+      // values are lowercase (`google`), not the `ChannelProvider` spellings.
+      inboxIds.map((inboxId) => ({ inboxId, provider: 'google' })),
+    ]
+    let selectCall = 0
+    const chain = (rows: unknown[]) => {
+      const c: Record<string, unknown> = {}
+      Object.assign(c, {
+        from: () => c,
+        innerJoin: () => c,
+        where: () => c,
+        // biome-ignore lint/suspicious/noThenProperty: intentional thenable query-builder mock
+        then: (ok: (v: unknown) => unknown, err?: (e: unknown) => unknown) =>
+          Promise.resolve(rows).then(ok, err),
+      })
+      return c
+    }
+    let countCall = 0
+    return {
+      select: () => chain(selectResults[selectCall++] ?? []),
+      selectDistinct: () => chain([]),
+      execute: async () => ({ rows: [{ count: counts[countCall++] ?? 0 }] }),
+    } as never
+  }
+
+  it('asks about the viewed inbox when it has threads', async () => {
+    const prompt = await findPendingRetroactivePrompt(
+      promptDb([INBOX_A, INBOX_B], [7, 7]),
+      'org_1',
+      [INBOX_A, INBOX_B],
+      { preferredInboxId: INBOX_B }
+    )
+
+    expect(prompt).toMatchObject({ inboxId: INBOX_B })
+  })
+
+  // The preference is not a scope — a view whose own inbox has nothing pending
+  // must still surface the inbox that does, or §2.9's discovery argument fails.
+  it('falls back to another candidate when the viewed inbox has nothing', async () => {
+    const prompt = await findPendingRetroactivePrompt(
+      promptDb([INBOX_A, INBOX_B], [0, 7]),
+      'org_1',
+      [INBOX_A, INBOX_B],
+      { preferredInboxId: INBOX_B }
+    )
+
+    expect(prompt).toMatchObject({ inboxId: INBOX_A })
+  })
+
+  // ⚠️ The preference must never widen the answer — `candidateInboxIds` is the
+  // caller's authorized set, and an id outside it is inert, not an oracle.
+  it('ignores an inbox that was not already a candidate', async () => {
+    const prompt = await findPendingRetroactivePrompt(
+      promptDb([INBOX_A, INBOX_B], [7, 7]),
+      'org_1',
+      [INBOX_A, INBOX_B],
+      { preferredInboxId: 'ibx_not_mine' }
+    )
+
+    expect(prompt).toMatchObject({ inboxId: INBOX_A })
+  })
+
+  // Search, drafts and all-inboxes span inboxes and pass nothing.
+  it('still asks when no inbox is being viewed', async () => {
+    const prompt = await findPendingRetroactivePrompt(
+      promptDb([INBOX_A, INBOX_B], [7, 7]),
+      'org_1',
+      [INBOX_A, INBOX_B]
+    )
+
+    expect(prompt).toMatchObject({ inboxId: INBOX_A })
   })
 })

@@ -17,8 +17,34 @@ import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, sql } from 'drizzle-orm'
 import { MAIL_CLASSIFICATION_METADATA_KEY, type MailClassificationMarker } from './client'
+import type { MailClassificationResult } from './types'
 
 const logger = createScopedLogger('mail-classification')
+
+/**
+ * The marker for a completed inference.
+ *
+ * ⚠️ Exists so the live job and the retroactive run cannot drift. They stamp the
+ * same marker for the same reason, and the two call sites were byte-identical
+ * blocks — which meant every field added to the marker had to be added twice, and
+ * a miss would show up only as "the backfill produced no summaries" long after
+ * the fact.
+ *
+ * Callers must still gate on `result.inferred` themselves (`05-…§12.6`): a
+ * marker for a call that never completed disqualifies the message from
+ * classification forever, and that decision belongs at the call site where the
+ * skip is also counted.
+ */
+export function toClassificationMarker(result: MailClassificationResult): MailClassificationMarker {
+  return {
+    at: new Date().toISOString(),
+    tagId: result.tagId,
+    confidence: result.confidence,
+    ...(result.model ? { model: result.model } : {}),
+    ...(result.messageSummary ? { messageSummary: result.messageSummary } : {}),
+    ...(result.altTagName ? { altTagName: result.altTagName } : {}),
+  }
+}
 
 /**
  * Apply one classifier-chosen tag to a thread.

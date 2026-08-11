@@ -63,4 +63,23 @@ export interface MailClassificationResult {
    * usage is only metered against a response that actually came back.
    */
   inferred: boolean
+  /**
+   * One-line summary of the message (08 §3.1). Absent when the model returned
+   * nothing usable, and on every `inferred: false` path — like the tag, it is
+   * only captured where a call completed.
+   *
+   * ⚠️ Of ONE message, not the thread (08 T10). See
+   * {@link import('./client').MailClassificationMarker.messageSummary}.
+   */
+  messageSummary?: string
+  /**
+   * The topic label the model would have used instead of a real category.
+   *
+   * ⚠️ Populated ONLY on abstentions (08 T3) — `'no-category'` and
+   * `'below-threshold'`. A model that fills this in while classifying happily has
+   * its answer dropped: an applied tag means the taxonomy fit, and a candidate
+   * mined from a message that classified fine is noise that would later argue for
+   * a tag the org already has.
+   */
+  altTagName?: string
 }

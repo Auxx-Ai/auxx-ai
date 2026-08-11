@@ -47,7 +47,7 @@ import { err, ok, type Result } from 'neverthrow'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import type { JobContext } from '../jobs/types/job-context'
-import { applyClassificationTag, markMessageClassified } from './apply'
+import { applyClassificationTag, markMessageClassified, toClassificationMarker } from './apply'
 import { classifyMessage } from './classify'
 import {
   MAIL_CLASSIFICATION_INBOX_IDS_SETTING,
@@ -937,12 +937,7 @@ export async function runMailReclassifyApply(
         db,
         organizationId: input.organizationId,
         messageId: row.messageId,
-        marker: {
-          at: new Date().toISOString(),
-          tagId: result.tagId,
-          confidence: result.confidence,
-          ...(result.model ? { model: result.model } : {}),
-        },
+        marker: toClassificationMarker(result),
       })
 
       input.onProgress?.(selected, total, startedAt.toISOString())
