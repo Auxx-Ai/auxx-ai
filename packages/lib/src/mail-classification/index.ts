@@ -13,6 +13,7 @@ export {
 } from './classify'
 // Client-safe constants + types (also importable as `@auxx/lib/mail-classification/client`)
 export {
+  isSameReclassifyScope,
   MAIL_CLASSIFICATION_INBOX_IDS_SETTING,
   MAIL_CLASSIFICATION_JOB_NAME,
   MAIL_CLASSIFICATION_METADATA_KEY,
@@ -57,6 +58,7 @@ export {
   buildReclassifyWhere,
   cancelMailReclassifySample,
   countReclassifiableThreads,
+  type EnqueueMailReclassifySampleResult,
   enqueueMailReclassifySample,
   getMailReclassifySampleStatus,
   MAIL_RECLASSIFY_THREAD_DELAY_MS,

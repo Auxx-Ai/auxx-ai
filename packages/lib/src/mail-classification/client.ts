@@ -179,6 +179,42 @@ export type MailReclassifyMode = 'fill-gaps' | 're-classify'
 export const MAIL_RECLASSIFY_DEFAULT_MODE: MailReclassifyMode = 'fill-gaps'
 
 /**
+ * Do two requests describe the same run?
+ *
+ * ⚠️ Exists because the sample's BullMQ `jobId` is keyed on **(org, inbox) only**,
+ * so a second start while one is in flight collapses into the running job no
+ * matter what scope was asked for. That collapse is right for a double-click and
+ * wrong for a changed scope: the caller believes it started the run it described,
+ * and would carry on to record it. The router compares here and refuses the
+ * mismatch rather than silently running something else.
+ *
+ * Field-by-field per arm, not `JSON.stringify` — the two objects travel through
+ * tRPC input and BullMQ job data independently, and jsonb/JSON round-trips do not
+ * promise key order.
+ */
+export function isSameReclassifyScope(
+  a: { range: MailReclassifyRange; mode: MailReclassifyMode },
+  b: { range: MailReclassifyRange; mode: MailReclassifyMode }
+): boolean {
+  if (a.mode !== b.mode) return false
+  const x = a.range
+  const y = b.range
+  if (x.kind !== y.kind) return false
+  switch (x.kind) {
+    case 'days':
+      return x.days === (y as { kind: 'days'; days: number }).days
+    case 'threads':
+      return x.threads === (y as { kind: 'threads'; threads: number }).threads
+    case 'custom': {
+      const other = y as { kind: 'custom'; sinceIso: string; untilIso?: string }
+      return x.sinceIso === other.sinceIso && x.untilIso === other.untilIso
+    }
+    case 'all-time':
+      return true
+  }
+}
+
+/**
  * Hard ceiling on threads ONE run may touch (07 §2.5, R-Q4).
  *
  * ⚠️ Reaching it is reported, never a silent truncate (07 invariant 8) — a capped

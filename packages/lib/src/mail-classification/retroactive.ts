@@ -818,6 +818,22 @@ export async function mailReclassifySampleJob(
   return result.value
 }
 
+/** What {@link enqueueMailReclassifySample} decided. */
+export interface EnqueueMailReclassifySampleResult {
+  jobId: string
+  /** True when an in-flight run was returned instead of a new one being started. */
+  deduplicated: boolean
+  /**
+   * The scope of the run already in flight — set only when `deduplicated`, and
+   * only when the job still carried readable data.
+   *
+   * ⚠️ The caller must compare this against what it asked for
+   * ({@link isSameReclassifyScope}). The `jobId` is keyed on (org, inbox), so a
+   * collapse says nothing about whether the running job matches the request.
+   */
+  running?: { range: MailReclassifyRange; mode: MailReclassifyMode }
+}
+
 /**
  * Enqueue a sample, collapsing a double-click into one run.
  *
@@ -825,10 +841,15 @@ export async function mailReclassifySampleJob(
  * than duplicated. A FINISHED sample is removed first, because §3.3's loop —
  * sample, fix the vocabulary, sample again — has to be able to re-run the same
  * scope; otherwise BullMQ would hand back the stale report.
+ *
+ * ⚠️ **A collapse is not a start.** The id is per (org, inbox) and carries no
+ * scope, so this can only report *that* it collapsed and *into what*; deciding
+ * whether that is acceptable is the caller's, because only the caller knows
+ * whether it was about to write an audit row claiming a run began.
  */
 export async function enqueueMailReclassifySample(
   input: MailReclassifySampleJobData
-): Promise<Result<{ jobId: string; deduplicated: boolean }, Error>> {
+): Promise<Result<EnqueueMailReclassifySampleResult, Error>> {
   const [{ getQueue }, { Queues }] = await Promise.all([
     import('../jobs/queues'),
     import('../jobs/queues/types'),
@@ -843,7 +864,14 @@ export async function enqueueMailReclassifySample(
     // states than the obvious three (`prioritized`, `waiting-children`), and
     // treating an unrecognised one as finished would remove a job that is about
     // to spend money.
-    if (state !== 'completed' && state !== 'failed') return ok({ jobId, deduplicated: true })
+    if (state !== 'completed' && state !== 'failed') {
+      const data = existing.data as MailReclassifySampleJobData | undefined
+      return ok({
+        jobId,
+        deduplicated: true,
+        ...(data?.range && data?.mode ? { running: { range: data.range, mode: data.mode } } : {}),
+      })
+    }
     await existing.remove().catch(() => {})
   }
 

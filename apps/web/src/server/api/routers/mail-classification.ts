@@ -14,6 +14,7 @@ import {
   getMailReclassifySampleStatus,
 } from '@auxx/lib/mail-classification'
 import {
+  isSameReclassifyScope,
   MAIL_CLASSIFY_BODY_CHARS,
   MAIL_RECLASSIFY_BACKLOG_COUNT_CAP,
   MAIL_RECLASSIFY_MAX_THREADS,
@@ -514,8 +515,35 @@ export const mailClassificationRouter = createTRPCRouter({
       })
       if (queued.isErr()) throw queued.error
 
+      // ── The collapse case ───────────────────────────────────────────────
+      // The sample's BullMQ `jobId` is keyed on (org, inbox) and carries no
+      // scope, so an in-flight run swallows this request whatever it asked for.
+      // Two different situations hide behind that:
+      //
+      //  - SAME scope — a double-click, or a second tab. Collapsing is exactly
+      //    right, and there is nothing new to say. Fall through to the early
+      //    return: no second run, and no audit row, because nothing started.
+      //  - DIFFERENT scope — the caller asked for something that is NOT going to
+      //    happen. Returning ok would tell them their run began while the old one
+      //    carries on, so refuse and name what is actually running.
+      if (queued.value.deduplicated) {
+        const running = queued.value.running
+        if (running && !isSameReclassifyScope(running, input)) {
+          throw new ConflictError(
+            'A sample is already running for this inbox with a different range. Wait for it to finish or stop it first.'
+          )
+        }
+        return queued.value
+      }
+
       // "Somebody pointed a model at this mailbox's history" is exactly the kind
       // of spend that should never be untraceable — same reasoning as the opt-in.
+      //
+      // ⚠️ Reached only when a run actually STARTED. This used to be written
+      // unconditionally, which meant a collapsed click recorded a run at a scope
+      // that never executed — the one thing an audit trail must not do, and worse
+      // here than a missing row, because the metadata below is the record of what
+      // was spent.
       await recordAuditFromCtx(ctx, {
         category: 'settings',
         action: 'mail.classification.sample_started',
