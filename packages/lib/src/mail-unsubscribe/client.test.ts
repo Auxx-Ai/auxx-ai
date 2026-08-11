@@ -243,4 +243,19 @@ describe('subject keys stay two prefixes (S7, invariant 8)', () => {
     expect(parseMailSubjectKey('sender:example.com')).toBeNull()
     expect(parseMailSubjectKey('list:')).toBeNull()
   })
+
+  // ⚠️ The regression this guards: `parseMailSubjectKey` used to end in a
+  // ternary whose else-branch meant "not a list, therefore a domain". The
+  // keyspace lives in `mail-suggestions/client.ts` and will grow prefixes this
+  // module has no meaning for (`topic:`, 08 §4.2) — under that else a `topic:`
+  // key parsed as `{ kind: 'domain', senderDomain: '<topic text>' }` and
+  // `buildSubjectKeyPredicate` compiled it into a real predicate that matches
+  // nothing instead of throwing. A sweep that counts no later mail reports every
+  // sender as honoring an unsubscribe they ignored. The throwing half is
+  // asserted in `subject-key.test.ts`.
+  it('never coerces a non-bulk-mail key into a domain group', () => {
+    for (const key of ['topic:refund request', 'thread:abc', 'contact:someone@example.com']) {
+      expect(parseMailSubjectKey(key)).toBeNull()
+    }
+  })
 })

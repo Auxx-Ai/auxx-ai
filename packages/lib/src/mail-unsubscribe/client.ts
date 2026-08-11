@@ -230,15 +230,36 @@ export function toMailSubjectKey(group: {
 /**
  * The inverse of {@link toMailSubjectKey}, in this module's discriminated shape.
  * Returns null for an unknown prefix **or a bare prefix with no value**.
+ *
+ * ⚠️ **Every arm is matched EXPLICITLY, and an unrecognized kind returns null** —
+ * never an `else` that assumes "not a list, therefore a domain".
+ *
+ * `parseSubjectKey` owns the keyspace and will grow prefixes this module has no
+ * meaning for (`topic:` for mined tag suggestions, 08 §4.2). Under an else-branch
+ * a `topic:refund request` key would arrive here as
+ * `{ kind: 'domain', senderDomain: 'refund request' }`, and
+ * `buildSubjectKeyPredicate` would compile it into a real `Message` predicate that
+ * matches nothing instead of throwing — which is precisely the "silently degrade
+ * into match-nothing" failure that function refuses, because a sweep counting zero
+ * later mail reports every sender as honoring an unsubscribe they ignored.
+ *
+ * Returning null routes an unknown kind into that same `BadRequestError`, and the
+ * `satisfies never` below makes a newly added prefix a COMPILE error here rather
+ * than a silent misparse at runtime.
  */
 export function parseMailSubjectKey(
   subjectKey: string
 ): { kind: 'list'; listId: string } | { kind: 'domain'; senderDomain: string } | null {
   const parsed = parseSubjectKey(subjectKey)
   if (!parsed) return null
-  return parsed.kind === 'list'
-    ? { kind: 'list', listId: parsed.value }
-    : { kind: 'domain', senderDomain: parsed.value }
+  if (parsed.kind === 'list') return { kind: 'list', listId: parsed.value }
+  if (parsed.kind === 'domain') return { kind: 'domain', senderDomain: parsed.value }
+
+  // Unreachable today. When the keyspace grows a prefix that is not a bulk-mail
+  // group, this stops compiling and whoever added it has to decide what
+  // unsubscribe should do with it — which is "refuse", not "guess a domain".
+  const unhandledKind: never = parsed.kind
+  return unhandledKind
 }
 
 /**

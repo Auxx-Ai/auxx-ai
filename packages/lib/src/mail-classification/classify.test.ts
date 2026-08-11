@@ -284,6 +284,29 @@ describe('classifyMessage — the summary and the candidate label (08 phase 1)',
     expect(result).not.toHaveProperty('altTagName')
   })
 
+  it('⚠️ DROPS it on an INELIGIBLE pick — that is not an abstention', async () => {
+    // `reason: 'no-category'` covers two different events: the model returned
+    // `__none__` (your taxonomy has no tag for this — real evidence for a new
+    // tag), and the model returned an id outside the eligible set (it believed
+    // it HAD classified the mail; the id just does not exist). Only the first is
+    // mineable, and the candidate corpus is stored verbatim and clustered months
+    // later (08 T5), so noise written here is noise the miner reads then.
+    h.invoke.mockResolvedValue({
+      structured_output: {
+        category: 'tag_does_not_exist',
+        confidence: 0.95,
+        messageSummary: 'A question about a wholesale account.',
+        altTagName: 'wholesale enquiry',
+      },
+    })
+
+    const result = await classifyMessage(db, context)
+    expect(result).toMatchObject({ tagId: null, reason: 'no-category' })
+    expect(result).not.toHaveProperty('altTagName')
+    // The summary is unaffected — it describes the message, not the decision.
+    expect(result.messageSummary).toBe('A question about a wholesale account.')
+  })
+
   it('treats the empty-string sentinel as "nothing to record", not as a value', async () => {
     h.invoke.mockResolvedValue({
       structured_output: {

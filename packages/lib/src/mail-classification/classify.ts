@@ -331,14 +331,31 @@ export async function classifyMessage(
 
   const applied = category !== null && confidence >= MAIL_CLASSIFY_CONFIDENCE_THRESHOLD
 
+  // A pick that was not one of ours: the model named a category id outside the
+  // eligible set, so `category` fell to null above. This is NOT an abstention —
+  // the model believed it had classified the mail — and the two must not be
+  // conflated, because they end in the same `'no-category'` reason.
+  const ineligiblePick =
+    rawCategory !== null && rawCategory !== MAIL_CLASSIFY_NO_CATEGORY && !category
+
   const messageSummary = clampText(structured?.messageSummary, MAIL_CLASSIFY_SUMMARY_CHARS)
   // ⚠️ Dropped outright when a tag was applied (08 T3), rather than trusted from
   // the prompt. The instruction says "leave it empty whenever a category fitted",
   // and a model that fills it in anyway would seed the miner with candidates
   // arguing for tags the org demonstrably already has.
-  const altTagName = applied
-    ? undefined
-    : clampText(structured?.altTagName, MAIL_CLASSIFY_ALT_TAG_CHARS)
+  //
+  // ⚠️ Dropped on an INELIGIBLE PICK too, for the opposite reason. That path
+  // reports `reason: 'no-category'` — the same arm a real `__none__` abstention
+  // takes — but the two say different things: one is "your taxonomy has no tag
+  // for this", the other is "the model returned an id that does not exist". Only
+  // the first is evidence for a new tag. Keeping the second would let a
+  // misbehaving model argue, through the 08 phase-2 miner, for tags nobody's mail
+  // ever asked for, and the candidate corpus is stored verbatim and mined later
+  // (T5) — so noise written today is noise the miner reads months from now.
+  const altTagName =
+    applied || ineligiblePick
+      ? undefined
+      : clampText(structured?.altTagName, MAIL_CLASSIFY_ALT_TAG_CHARS)
 
   // ⚠️ Q4 — LOG ON EVERY CALL, including the below-threshold ones that apply
   // nothing. There is no column and no audit row: this line IS the tuning data.
