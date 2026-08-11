@@ -1,7 +1,6 @@
 // packages/lib/src/events/handlers/publish-event-job.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
 import { handleFieldTriggerJob } from '../../field-hooks/field-hook-job'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
@@ -264,8 +263,7 @@ async function runGate(gate: GateHandler<AuxxEvent>[], event: AuxxEvent): Promis
   return suppressed
 }
 
-export const publishEventJob = async (job: Job<AuxxEvent>) => {
-  const event = job.data
+export const publishEventJob = async ({ data: event }: { data: AuxxEvent }) => {
   // The map is keyed per event type, so indexing it with a union `event.type`
   // yields a union of unrelated handler-array types. Widen once, here.
   const entry = EventHandlers[event.type] as
