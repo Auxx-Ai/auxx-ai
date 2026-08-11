@@ -265,6 +265,17 @@ export interface ThreadMeta {
    * `ChatThreadMetadata`; other channels may carry `{ importance }`.
    */
   metadata?: Record<string, unknown> | null
+  /**
+   * Tag RecordIds — FULL REPLACEMENT of the thread's tag set, not a delta.
+   * Metadata-tier (`THREAD_METADATA_FIELDS`), so it rides every lens variant:
+   * the payload carries tag ids, never tag names, and the org tag vocabulary is
+   * readable to any member anyway.
+   *
+   * Producer is `ThreadMutationService.tagThreadsBulk` — the single write path
+   * for thread tags — so classifier, filter action, workflow node and the
+   * bulk toolbar all publish this identically.
+   */
+  tagIds?: RecordId[]
   /** Soft-merge pointer — target Thread RecordId or null when unmerged/target. */
   mergedIntoThreadId?: RecordId | null
   /**
