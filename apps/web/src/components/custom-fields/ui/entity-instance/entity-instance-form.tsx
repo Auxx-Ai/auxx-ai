@@ -36,6 +36,7 @@ import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-valu
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
+import { useAccess } from '~/providers/capabilities-provider'
 import { DialogFieldConfigRow } from '../dialog-field-config-row'
 import { FieldInputRow } from '../field-input-row'
 
@@ -149,6 +150,15 @@ export function EntityInstanceForm({
 
   // Determine context type based on mode (for normal form rendering)
   const contextType = isEditing ? 'dialog_edit' : 'dialog_create'
+
+  // Config mode edits the ORG'S shared default view for this context — def
+  // administration (the `Full`/`admin` rung), not record editing. It is the same
+  // capability the server gates the write on (`tableView.update` →
+  // `assertStructuralAccess` → `assertAdministerDef`) and the same one the
+  // property panel gates its own pencil on, so the affordance and the write
+  // agree instead of ending in a 403 toast over a layout the user just built.
+  const { canAdministerDef } = useAccess()
+  const canConfigureView = canAdministerDef(entityDefinitionId)
 
   // Get all potentially editable fields first. `resource.fields` already arrives
   // in baseline order — `ORDER BY sortOrder ASC` server-side, then partitioned by
@@ -705,25 +715,29 @@ export function EntityInstanceForm({
 
       {/* Field card area — floating edit button anchored to its top-right corner */}
       <div className='relative group/field-card'>
-        {/* Floating edit button — matches entity-fields panel placement */}
-        <div
-          className={cn(
-            'absolute -top-4 -right-3 z-80 rounded-full transition-opacity duration-200 ring ring-border bg-background flex items-center justify-center size-7 shadow-md backdrop-blur-sm',
-            isDraftMode ? 'opacity-100' : 'opacity-0 group-hover/field-card:opacity-100'
-          )}>
-          <Button
-            variant='ghost'
-            size='icon-xs'
-            onClick={() => (isDraftMode ? void handleExitDraft() : enterDraft())}
+        {/* Floating edit button — matches entity-fields panel placement. This is
+            the ONLY caller of `enterDraft`, so gating it here is what makes the
+            whole of config mode unreachable without def administration. */}
+        {canConfigureView && (
+          <div
             className={cn(
-              'cursor-pointer',
-              isDraftMode
-                ? 'bg-bad-200 hover:bg-bad-200 text-bad-700 hover:text-bad-800'
-                : 'text-muted-foreground hover:text-foreground'
+              'absolute -top-4 -right-3 z-80 rounded-full transition-opacity duration-200 ring ring-border bg-background flex items-center justify-center size-7 shadow-md backdrop-blur-sm',
+              isDraftMode ? 'opacity-100' : 'opacity-0 group-hover/field-card:opacity-100'
             )}>
-            {isDraftMode ? <X /> : <Pencil />}
-          </Button>
-        </div>
+            <Button
+              variant='ghost'
+              size='icon-xs'
+              onClick={() => (isDraftMode ? void handleExitDraft() : enterDraft())}
+              className={cn(
+                'cursor-pointer',
+                isDraftMode
+                  ? 'bg-bad-200 hover:bg-bad-200 text-bad-700 hover:text-bad-800'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}>
+              {isDraftMode ? <X /> : <Pencil />}
+            </Button>
+          </div>
+        )}
 
         {isDraftMode ? (
           /* Config mode: grouped, draggable field list with visibility switches.
