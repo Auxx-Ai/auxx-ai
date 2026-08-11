@@ -100,7 +100,7 @@ describe.skipIf(!canRunLiveApi(GOOGLE_API_KEY))('Google Integration Tests', () =
         resetTimeout: 1,
         monitoringPeriod: 1,
       },
-      timeouts: { request: 120_000, connection: 60_000 },
+      timeouts: { request: 120_000, connection: 60_000, completion: 300_000 },
     })
   })
 

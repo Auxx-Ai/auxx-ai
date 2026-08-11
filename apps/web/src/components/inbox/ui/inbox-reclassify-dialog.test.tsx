@@ -312,3 +312,36 @@ describe('InboxReclassifyDialog — while a sample runs', () => {
     expect(screen.queryByRole('button', { name: /Try a sample/i })).not.toBeInTheDocument()
   })
 })
+
+/**
+ * ⚠️ 07 §7.6 left this open: re-running a COMPLETED sample removes the finished
+ * job and pays again, and the button said only "Sample again". That is the one
+ * place someone can spend twice without a number passing in front of them — and
+ * it is shown next to a finished report, the state in which the label reads most
+ * like refreshing a view rather than buying a second one.
+ */
+describe('re-sampling states its cost', () => {
+  it('puts the credit estimate on the button when a report is already showing', () => {
+    h.status = {
+      jobId: 'j1',
+      state: 'completed',
+      processed: 100,
+      total: 100,
+      report,
+    }
+    open()
+
+    expect(
+      screen.getByRole('button', { name: /Sample again \(~\d+ credits\)/i })
+    ).toBeInTheDocument()
+  })
+
+  /** BYO orgs are quoted 0 and must not be shown a bill they will never pay. */
+  it('omits the estimate when the org is not billed for it', () => {
+    h.preview = { ...h.preview, sampleCredits: null }
+    h.status = { jobId: 'j1', state: 'completed', processed: 100, total: 100, report }
+    open()
+
+    expect(screen.getByRole('button', { name: /^Sample again$/i })).toBeInTheDocument()
+  })
+})

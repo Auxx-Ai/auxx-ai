@@ -64,13 +64,58 @@ export abstract class BaseSpecializedClient {
   // ===== PROTECTED HELPER METHODS =====
 
   /**
-   * Execute operation with retry logic and circuit breaker
+   * Execute operation with retry logic, a circuit breaker and a TIMEOUT.
+   *
+   * ⚠️ The timeout is the reason this wrapper exists at all for hung providers.
+   * `ClientConfig.timeouts` has carried sane values since it was written and
+   * NOTHING read them, so every call ran to the SDK's own default — roughly ten
+   * minutes — and a single unresponsive provider could pin a worker slot for
+   * that long. Flagged in `05-mail-classification-plan.md` §12.6 as one of the
+   * reasons transient failures hurt more than they should.
+   *
+   * ⚠️ The race does not ABORT the underlying HTTP request; the socket is left
+   * to close on its own. That is a deliberate trade: threading an `AbortSignal`
+   * through every provider SDK is a much larger change, and the harm being fixed
+   * here is the blocked caller, not the idle socket.
+   *
+   * `timeoutMs` is per-operation because an LLM completion and an embedding have
+   * nothing in common in how long they may honestly take — see
+   * `ClientConfig.timeouts.completion`.
    */
   protected async withRetryAndCircuitBreaker<T>(
     operation: () => Promise<T>,
-    context: OperationContext
+    context: OperationContext,
+    opts: { timeoutMs?: number } = {}
   ): Promise<T> {
-    return await this.retryManager.execute(operation, {
+    const timeoutMs = Math.max(1_000, opts.timeoutMs ?? this.config.timeouts.request)
+
+    // Wrapped INSIDE the retry, so each attempt gets its own budget rather than
+    // the first slow attempt consuming the whole allowance.
+    const withTimeout = async (): Promise<T> => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        return await Promise.race([
+          operation(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    `${this.clientName} ${context.operation} timed out after ${timeoutMs}ms`
+                  )
+                ),
+              timeoutMs
+            )
+          }),
+        ])
+      } finally {
+        // Without this the process keeps a live timer per call and a short
+        // operation still waits out the full timeout before exiting.
+        if (timer) clearTimeout(timer)
+      }
+    }
+
+    return await this.retryManager.execute(withTimeout, {
       maxRetries: this.config.retries.maxAttempts,
       backoffStrategy: this.config.retries.backoffStrategy,
       circuitBreaker: this.circuitBreaker,

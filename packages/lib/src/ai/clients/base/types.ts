@@ -81,8 +81,19 @@ export interface ClientConfig {
     monitoringPeriod: number
   }
   timeouts: {
+    /** Cap for a single non-streaming call: embeddings, moderation, TTS, STT. */
     request: number
     connection: number
+    /**
+     * Cap for an LLM completion, streaming or not.
+     *
+     * ⚠️ Separate from `request` because a reasoning model can legitimately run
+     * for minutes, and capping a completion at the embedding timeout would fail
+     * calls that were about to succeed. Both exist to bound a HUNG provider well
+     * below the SDK's own ~10-minute default, not to police slow-but-working
+     * ones.
+     */
+    completion: number
   }
 }
 
@@ -362,5 +373,6 @@ export const DEFAULT_CLIENT_CONFIG: ClientConfig = {
   timeouts: {
     request: 120000, // 2 minutes
     connection: 30000, // 30 seconds
+    completion: 300000, // 5 minutes — reasoning models are legitimately slow
   },
 }

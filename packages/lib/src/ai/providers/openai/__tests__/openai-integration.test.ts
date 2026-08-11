@@ -138,7 +138,7 @@ describe.skipIf(!canRunLiveApi(OPENAI_API_KEY))('OpenAI Integration Tests', () =
         resetTimeout: 1,
         monitoringPeriod: 1,
       },
-      timeouts: { request: 120_000, connection: 60_000 },
+      timeouts: { request: 120_000, connection: 60_000, completion: 300_000 },
     })
   })
 

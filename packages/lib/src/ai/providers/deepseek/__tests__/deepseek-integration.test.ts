@@ -98,7 +98,7 @@ describe.skipIf(!canRunLiveApi(DEEPSEEK_API_KEY))('DeepSeek Integration Tests', 
         resetTimeout: 1,
         monitoringPeriod: 1,
       },
-      timeouts: { request: 120_000, connection: 60_000 },
+      timeouts: { request: 120_000, connection: 60_000, completion: 300_000 },
     })
   })
 
