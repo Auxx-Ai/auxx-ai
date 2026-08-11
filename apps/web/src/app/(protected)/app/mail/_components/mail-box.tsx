@@ -230,6 +230,20 @@ function MailboxInner({
     return ids.length > 0 ? ids : undefined
   }, [contextType, inboxes, userId])
 
+  /**
+   * The inbox this view IS, when the context is a single inbox — the only two
+   * context types whose `contextId` is an inbox id. Everything else (tag, view,
+   * all-inboxes, drafts, sent, search) spans inboxes and resolves to undefined.
+   *
+   * Consumed by the classification prompt below to ask about the mailbox on
+   * screen first.
+   */
+  const activeInboxId =
+    contextType === InternalFilterContextType.SPECIFIC_INBOX ||
+    contextType === InternalFilterContextType.PERSONAL_CHANNEL
+      ? contextId
+      : undefined
+
   // For view contexts, fetch the view's saved filter conditions
   const { data: mailViewData } = api.mailView.getById.useQuery(
     { id: contextId! },
@@ -636,7 +650,7 @@ function MailboxInner({
               one wins. The component enforces it by returning null while a
               filter prompt is pending, but keeping them adjacent here is what
               makes that rule visible to whoever edits this file next. */}
-            <MailClassificationRetroactivePrompt />
+            <MailClassificationRetroactivePrompt activeInboxId={activeInboxId} />
             {/* Unified responsive tree: viewport differences driven by Tailwind
               media queries (sm = 640px). Only layoutMode drives JS branching. */}
             <div

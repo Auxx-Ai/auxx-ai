@@ -1592,7 +1592,7 @@ export async function findPendingClassificationPrompt(
   db: Database,
   organizationId: string,
   candidateInboxIds: string[],
-  opts: { threadCountCap?: number } = {}
+  opts: { threadCountCap?: number; preferredInboxId?: string } = {}
 ): Promise<PendingClassificationPrompt | null> {
   if (candidateInboxIds.length === 0) return null
   const cap = Math.max(1, Math.trunc(opts.threadCountCap ?? MAIL_RECLASSIFY_BACKLOG_COUNT_CAP))
@@ -1601,8 +1601,25 @@ export async function findPendingClassificationPrompt(
   if (labels.length === 0) return null
 
   const optedIn = new Set(await getOptedInInboxIds(organizationId))
-  const candidates = candidateInboxIds.filter((id) => optedIn.has(id))
+  let candidates = candidateInboxIds.filter((id) => optedIn.has(id))
   if (candidates.length === 0) return null
+
+  /**
+   * The inbox the caller is currently LOOKING at goes first, when it is one of
+   * the candidates. The banner mounts in a fixed slot for every mail view and
+   * names the inbox it is about, so without this it asks about whichever inbox
+   * happened to sort first — reading, to anyone in a different mailbox, as a
+   * statement about the mail in front of them.
+   *
+   * ⚠️ A REORDER, never a filter, and it runs AFTER the authority-derived
+   * `candidateInboxIds` have been narrowed — so an id the caller may not
+   * configure is inert here rather than an existence oracle, and a view with no
+   * inbox of its own (search, drafts, all-inboxes) still gets the prompt.
+   */
+  const preferred = opts.preferredInboxId
+  if (preferred && candidates.includes(preferred)) {
+    candidates = [preferred, ...candidates.filter((id) => id !== preferred)]
+  }
 
   // R-Q8 again: an inbox still filling up must not be prompted, because the run
   // it invites would miss everything still arriving.
