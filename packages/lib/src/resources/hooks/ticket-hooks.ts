@@ -270,7 +270,14 @@ const publishAssigneeChangeEvent: SystemHook = async ({
  * Ticket hooks registry.
  *
  * Note: No validation hooks - handled by field options in entity-seeder.
- * Note: No prevent-update hooks - handled by field capabilities (isUpdatable: false).
+ *
+ * Note: no field here is update-locked. `ticket_type` used to carry
+ * `updatable: false`, but that flag was never read by the write path
+ * (see `field-hooks/register-hooks.ts`) — it only ever disabled UI affordances,
+ * and inconsistently at that. Changing a ticket's type is now allowed outright
+ * (data migration `078-ticket-type-updatable`). If a field ever does need to be
+ * genuinely immutable, it needs a hook here — the capability flag alone will not
+ * stop an API, workflow-node, or Kopilot write.
  */
 export const TICKET_HOOKS: SystemHookRegistry = {
   // Auto-generate ticket number on create

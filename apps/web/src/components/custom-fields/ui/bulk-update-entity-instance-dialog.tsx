@@ -51,13 +51,28 @@ export function BulkUpdateEntityInstanceDialog({
   // Get resource definition with fields
   const { resource } = useResource(entityDefinitionId)
 
-  // Get editable fields (exclude system fields like id, createdAt, updatedAt)
+  // Get editable fields (exclude system fields like id, createdAt, updatedAt).
+  //
+  // BOTH capabilities, and each for its own reason. `updatable` because every
+  // write this dialog makes is an update, so a create-only field
+  // (`ticket_number`, stock-movement columns, connector-owned columns) must not
+  // be offered — the table cell and property panel already refuse those, and the
+  // write path does not check the capability itself, so this filter is what
+  // actually holds. `creatable` because it is the closest proxy for "writable
+  // through the generic `fieldValue.set` path this dialog uses": an edit-only
+  // system field (`thread_status`, `subject`) lives in a `dbColumn` on its host
+  // table, and that path writes a `FieldValue` row while reads project the
+  // column — the edit would appear to save and silently vanish, besides skipping
+  // the events, counters and provider push its own service owns.
   const editableFields = useMemo(() => {
     if (!resource) return []
     return resource.fields
       .filter(
         (f): f is typeof f & { id: string } =>
-          f.capabilities?.creatable !== false && !f.capabilities?.hidden && !!f.id
+          f.capabilities?.creatable !== false &&
+          f.capabilities?.updatable !== false &&
+          !f.capabilities?.hidden &&
+          !!f.id
       )
       .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
   }, [resource])

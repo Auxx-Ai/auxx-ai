@@ -430,7 +430,11 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
       filterable: false,
       sortable: false,
       creatable: false,
-      updatable: true,
+      // Written by the enrichment job only. The write path does not read this
+      // flag, so the backend keeps writing — it is the UI surfaces that honour
+      // it. `hidden` already keeps the field off every surface; this makes the
+      // declaration true so unhiding it later cannot silently make it editable.
+      updatable: false,
       configurable: false,
       hidden: true,
     },
@@ -459,7 +463,8 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
       filterable: false,
       sortable: false,
       creatable: false,
-      updatable: true,
+      // Backend-owned lifecycle marker — see `enrichedAt` above.
+      updatable: false,
       configurable: false,
       hidden: true,
     },
