@@ -372,21 +372,29 @@ function EntityFields({
    * `-after-group` droppables name those two positions; this applies them.
    *
    * Why the round trip THROUGH the group rather than `assignFieldToGroup(null)`
-   * plus a reorder: `reorderDraft` is an arrayMove, so aiming at the group's
-   * first member lands the field below it on a downward drag and above it on an
-   * upward one. Joining the block first puts the field at a known end of it, and
-   * leaving the block then keeps that slot — `assignFieldToGroupInOrder` re-
-   * anchors the block at its first remaining MEMBER, so a departing field at the
-   * head floats above the block and one at the tail floats below it. The result
-   * is the same in both drag directions.
+   * plus a reorder: aiming at the group's first member is direction-sensitive
+   * unless the edge is named. Joining the block first puts the field at a known
+   * end of it, and leaving the block then keeps that slot —
+   * `assignFieldToGroupInOrder` re-anchors the block at its first remaining
+   * MEMBER, so a departing field at the head floats above the block and one at
+   * the tail floats below it. The result is the same in both drag directions.
    *
    * All three writes are functional `setDraft` updaters, so each observes the
    * previous one within this handler.
    */
   const placeFieldBesideGroup = useCallback(
     (fieldId: string, groupId: string, side: 'before' | 'after') => {
-      const memberIds = (draftGroups.find((g) => g.id === groupId)?.fieldIds ?? []).filter(
-        (id) => id !== fieldId
+      const memberSet = new Set(draftGroups.find((g) => g.id === groupId)?.fieldIds ?? [])
+
+      // Members in DISPLAY order, from `fieldOrder` — NOT the group's own
+      // `fieldIds` array. Membership is a set whose array order is only a
+      // tie-break; it drifts from the rendered order the moment anything is
+      // reordered inside the group. Reading `fieldIds[0]` as "the top of the
+      // block" therefore aimed step 2 at an arbitrary member, and a field
+      // dropped ABOVE a group landed in the middle of it — from where step 3's
+      // re-normalisation pushed it out BELOW the whole block.
+      const memberIds = (draft?.fieldOrder ?? []).filter(
+        (id) => id !== fieldId && memberSet.has(id)
       )
 
       // 1. Join the block — `assignFieldToGroup` places it at the block's end
@@ -396,12 +404,12 @@ function EntityFields({
       // 2. For `before`, pull it to the head; for `after` it is already at the
       //    tail, since step 1 appends.
       const firstMemberId = memberIds[0]
-      if (side === 'before' && firstMemberId) reorderDraft(fieldId, firstMemberId)
+      if (side === 'before' && firstMemberId) reorderDraft(fieldId, firstMemberId, 'before')
 
       // 3. Leave every group, keeping the slot just established.
       assignFieldToGroup(fieldId, null)
     },
-    [assignFieldToGroup, draftGroups, reorderDraft]
+    [assignFieldToGroup, draft, draftGroups, reorderDraft]
   )
 
   // ─────────────────────────────────────────────────────────────────
