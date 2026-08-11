@@ -44,10 +44,24 @@ const fieldPanelVariants = cva(
   [
     'relative grow rounded-2xl px-1.5 py-0.5',
     'bg-primary-200/30 dark:bg-[#23272e]/30 border flex flex-col focus-within:border-primary-300',
-    '[&>[data-slot=field-row]:not(:has(~[data-slot=field-row]))]:border-b-0',
   ],
   {
     variants: {
+      /**
+       * Which rule strips the bottom border from the panel's last row.
+       *
+       * `auto` is a DIRECT-CHILD selector, so it breaks the moment rows are
+       * nested (field groups wrap their members in a section div): the last row
+       * inside a group keeps a border it should not have, and a direct-child row
+       * followed by a group wrapper loses one it should keep. CSS cannot express
+       * "no field-row later in document order" across different parents, so
+       * `managed` has the renderer mark the last row with `data-last-row`
+       * instead — the honest encoding, not a shortcut.
+       */
+      rowBorders: {
+        auto: ['[&>[data-slot=field-row]:not(:has(~[data-slot=field-row]))]:border-b-0'],
+        managed: ['[&_[data-slot=field-row][data-last-row]]:border-b-0'],
+      },
       orientation: {
         horizontal: [
           // field-row: horizontal layout (default behavior)
@@ -105,6 +119,7 @@ const fieldPanelVariants = cva(
     defaultVariants: {
       orientation: 'responsive',
       breakpoint: 'sm',
+      rowBorders: 'auto',
     },
   }
 )
@@ -134,6 +149,7 @@ function FieldPanel({
   validationType = 'error',
   orientation = 'responsive',
   breakpoint = 'sm',
+  rowBorders = 'auto',
   className,
   resizeId,
   defaultLabelWidth = DEFAULT_LABEL_WIDTH,
@@ -227,7 +243,7 @@ function FieldPanel({
       data-slot='field'
       data-orientation={orientation}
       style={{ '--field-panel-label-w': `${labelWidth}px` } as React.CSSProperties}
-      className={cn(fieldPanelVariants({ orientation, breakpoint }), className)}>
+      className={cn(fieldPanelVariants({ orientation, breakpoint, rowBorders }), className)}>
       {children}
       {showResizer && (
         <div
@@ -273,6 +289,12 @@ interface FieldPanelRowProps {
   className?: string
   /** When provided, renders a clear button on row hover (positioned on the right edge) */
   onClear?: () => void
+  /**
+   * Marks this row as the panel's last one for `rowBorders: 'managed'`. Only
+   * needed when rows are nested (field groups), where the default direct-child
+   * rule cannot see them.
+   */
+  isLastRow?: boolean
 }
 
 /**
@@ -291,10 +313,12 @@ function FieldPanelRow({
   showIcon = false,
   className,
   onClear,
+  isLastRow = false,
 }: FieldPanelRowProps) {
   return (
     <div
       data-slot='field-row'
+      data-last-row={isLastRow ? '' : undefined}
       className={cn(
         'group/field-row relative flex border-b dark:border-b-[#404754]/20',
         className

@@ -108,6 +108,7 @@ export const FieldGroupRow = memo(function FieldGroupRow({
     <div
       ref={setNodeRef}
       style={style}
+      data-slot='field-group-row'
       // The section wrapper owns this header's top margin now — it wraps the
       // header AND its members, so `first:mt-0` has to be measured against the
       // panel's children, not against the inside of that wrapper.
@@ -116,13 +117,19 @@ export const FieldGroupRow = memo(function FieldGroupRow({
           24px band. `FieldEditRow` bands its grip + field name the same way, so
           the row is 30px tall but its text sits at the top. Leaving the label as
           a sibling centred by the row's `items-center` dropped group titles a few
-          px below the field names beneath them. */}
-      <div className='flex h-[24px] min-w-0 flex-1 items-center gap-[4px] self-start'>
+          px below the field names beneath them.
+          A surface whose rows centre theirs instead (the record dialog's
+          `FieldPanelRow`s) overrides through `data-slot`. */}
+      <div
+        data-slot='field-group-band'
+        className='flex h-[24px] min-w-0 flex-1 items-center gap-[4px] self-start'>
         {isEditMode ? (
           /* Icon by default, grip cross-fading in on row hover or while dragging
              — the same swap `TreeRow` and `FieldEditRow` use, so a group header
              reads like the rows it contains. */
-          <span className='relative flex size-6 shrink-0 items-center justify-center'>
+          <span
+            data-slot='field-group-glyph'
+            className='relative flex size-6 shrink-0 items-center justify-center'>
             <span
               className={cn(
                 'flex items-center justify-center opacity-0 transition-opacity pointer-fine:opacity-100',
@@ -141,6 +148,11 @@ export const FieldGroupRow = memo(function FieldGroupRow({
               {...attributes}
               {...listeners}
               aria-label={`Reorder group ${group.label}`}
+              // Carries the glyph slot too: `inset-0` resolves against the
+              // PADDING box, so an override that insets the icon layer above
+              // would leave the grip centred and the two would cross-fade
+              // between different x positions.
+              data-slot='field-group-glyph'
               className={cn(
                 'absolute inset-0 flex cursor-grab touch-none items-center justify-center opacity-100 transition-opacity pointer-fine:opacity-0 active:cursor-grabbing',
                 isDragging
@@ -159,6 +171,7 @@ export const FieldGroupRow = memo(function FieldGroupRow({
             aria-expanded={!collapsed}
             aria-label={collapsed ? `Expand ${group.label}` : `Collapse ${group.label}`}
             onClick={onToggleCollapsed}
+            data-slot='field-group-glyph'
             className='flex size-6 shrink-0 cursor-pointer items-center justify-center rounded transition-colors hover:bg-primary-200/60'>
             <ChevronRight
               className={cn(
@@ -204,14 +217,19 @@ export const FieldGroupRow = memo(function FieldGroupRow({
       </div>
 
       {onDelete && (
-        <Button
-          variant='ghost'
-          size='icon-sm'
-          aria-label={`Delete group ${group.label}`}
-          className='text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
-          onClick={onDelete}>
-          <Trash2 />
-        </Button>
+        /* Trailing actions, flush right by default — the panel's rows are too.
+           A surface whose rows keep a right gutter (the dialog's `pe-2` content
+           area) adds one through this slot. */
+        <div data-slot='field-group-actions' className='flex shrink-0 items-center'>
+          <Button
+            variant='ghost'
+            size='icon-sm'
+            aria-label={`Delete group ${group.label}`}
+            className='text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
+            onClick={onDelete}>
+            <Trash2 />
+          </Button>
+        </div>
       )}
     </div>
   )
@@ -219,17 +237,22 @@ export const FieldGroupRow = memo(function FieldGroupRow({
 
 interface AddGroupRowProps {
   onClick: () => void
+  /** Spacing/alignment for the surface it sits under (the panel needs none). */
+  className?: string
 }
 
 /**
  * Edit-mode affordance that creates a new (empty) group, mirroring `AddFieldRow`'s
  * shape so the two read as one pair of actions.
  */
-export function AddGroupRow({ onClick }: AddGroupRowProps) {
+export function AddGroupRow({ onClick, className }: AddGroupRowProps) {
   return (
     <div
       onClick={onClick}
-      className='-ms-1 row group flex h-[24px] min-h-[30px] cursor-pointer items-center gap-1 rounded-md transition-colors hover:bg-primary-200/50'>
+      className={cn(
+        '-ms-1 row group flex h-[24px] min-h-[30px] cursor-pointer items-center gap-1 rounded-md transition-colors hover:bg-primary-200/50',
+        className
+      )}>
       <div className='flex h-[24px] shrink-0 items-center gap-[4px] ps-1.5 text-primary-500'>
         <FolderPlus className='size-4 shrink-0' />
         <div className='w-[120px] shrink-0 text-sm'>
