@@ -10,7 +10,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
   type NavigationItem,
   useCommandNavigation,
 } from '@auxx/ui/components/command'
@@ -269,21 +268,21 @@ export function LegacyAddColumnStack<TData = any>({
             ))}
           </CommandGroup>
         )}
-
-        {/* Create Field Button — def-admin only (onCreateField is omitted for
-            members below the Full/admin rung; see AddColumnStackProps). */}
-        {entityDefinitionId && onCreateField && (
-          <>
-            {filteredColumns.length > 0 && <CommandSeparator />}
-            <CommandGroup>
-              <CommandItem onSelect={onCreateField}>
-                <Plus />
-                Create field
-              </CommandItem>
-            </CommandGroup>
-          </>
-        )}
       </CommandList>
+
+      {/* Create Field Button — def-admin only (onCreateField is omitted for
+          members below the Full/admin rung; see AddColumnStackProps). Pinned
+          below the list so it survives the list scrolling. */}
+      {entityDefinitionId && onCreateField && (
+        <div className='border-t border-border/50'>
+          <CommandGroup>
+            <CommandItem onSelect={onCreateField}>
+              <Plus />
+              Create field
+            </CommandItem>
+          </CommandGroup>
+        </div>
+      )}
     </>
   )
 }

@@ -361,22 +361,23 @@ export function FieldPickerInnerContent({
           </CommandGroup>
         )}
 
-        {/* Create field button */}
-        {onCreateField && isAtRoot && (
-          <>
-            {filteredFields.length > 0 && <CommandSeparator />}
-            <CommandGroup>
-              <CommandItem onSelect={onCreateField}>
-                <Plus className='size-4' />
-                <span>{createLabel}</span>
-              </CommandItem>
-            </CommandGroup>
-          </>
-        )}
-
         {/* Additional content (e.g., Functions for CALC) */}
         {renderAdditionalContent?.(search)}
       </CommandList>
+
+      {/* Create field — pinned BELOW the list rather than as its last item, so
+          it stays reachable once the field list overflows `CommandList`'s
+          `max-h-[300px]` and starts scrolling. */}
+      {onCreateField && isAtRoot && (
+        <div className='border-t border-border/50'>
+          <CommandGroup>
+            <CommandItem onSelect={onCreateField}>
+              <Plus className='size-4' />
+              <span>{createLabel}</span>
+            </CommandItem>
+          </CommandGroup>
+        </div>
+      )}
     </>
   )
 

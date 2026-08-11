@@ -307,19 +307,20 @@ export function ViewSelector({
                     </CommandGroup>
                   </>
                 )}
-
-                <CommandSeparator />
-                <CommandGroup>
-                  <CommandItem
-                    onSelect={() => {
-                      handleCreateDialogChange(true)
-                      setOpen(false)
-                    }}>
-                    <Plus />
-                    Create new view
-                  </CommandItem>
-                </CommandGroup>
               </CommandList>
+
+              {/* Pinned OUTSIDE CommandList so a long saved-view list scrolls
+                  under it rather than pushing it past `max-h-[300px]`. */}
+              <CommandGroup className='border-t'>
+                <CommandItem
+                  onSelect={() => {
+                    handleCreateDialogChange(true)
+                    setOpen(false)
+                  }}>
+                  <Plus />
+                  Create new view
+                </CommandItem>
+              </CommandGroup>
             </Command>
           </PopoverContent>
         </Popover>
