@@ -1,7 +1,7 @@
 // packages/lib/src/mail-classification/classify.ts
 // The ONE model call (§3.2). Copied in shape from
 // `field-values/ai-autofill/generation-service.ts:107-124`:
-//   SystemModelService.getDefault(ModelType.LLM)
+//   getCachedDefaultModel(orgId, ModelType.LLM)
 //     → new LLMOrchestrator(new UsageTrackingService(db), db).invoke({ … })
 //
 // That path already enforces quota, writes `AiUsage` and meters credits from
@@ -15,9 +15,9 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { QuotaExceededError } from '../ai/errors/quota-errors'
 import { LLMOrchestrator } from '../ai/orchestrator/llm-orchestrator'
-import { SystemModelService } from '../ai/providers/system-model-service'
 import { ModelType } from '../ai/providers/types'
 import { UsageTrackingService } from '../ai/usage/usage-tracking-service'
+import { getCachedDefaultModel } from '../cache'
 import { UsageLimitError } from '../errors'
 import {
   MAIL_CLASSIFY_BODY_CHARS,
@@ -187,8 +187,14 @@ export async function classifyMessage(
 ): Promise<MailClassificationResult> {
   const { organizationId, messageId } = context
 
-  const systemModels = new SystemModelService(db, organizationId)
-  const def = await systemModels.getDefault(ModelType.LLM).catch((error) => {
+  // ⚠️ The CACHE, not `SystemModelService` directly. This runs once per inbound
+  // message and once per thread on a retroactive run, so a per-call DB roundtrip
+  // for a value that changes when somebody edits a settings dialog is the most
+  // repeated query in the whole feature. `aiDefaultModels` is hydrated per org
+  // and invalidated by `ai-default-model.changed`, which the two mutations in
+  // `aiIntegration` already fire — so the cache cannot go stale on an edit.
+  // Every other LLM consumer resolves this way; this module was the outlier.
+  const def = await getCachedDefaultModel(organizationId, ModelType.LLM).catch((error) => {
     logger.warn('Mail classification could not resolve the org default LLM', {
       organizationId,
       messageId,
