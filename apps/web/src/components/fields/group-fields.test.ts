@@ -11,9 +11,11 @@ import {
   assignFieldToGroupInOrder,
   type FieldGroupLike,
   groupFieldOrder,
+  moveFieldToSlot,
   moveGroupBlock,
   normalizeGroupContiguity,
   reassignFieldToGroup,
+  resolveEmptyGroupAnchor,
 } from './group-fields'
 
 const group = (id: string, fieldIds: string[]): FieldGroupLike => ({
@@ -164,6 +166,61 @@ describe('groupFieldOrder', () => {
       ['empty', []],
       ['ghosts', []],
     ])
+  })
+
+  it('renders an anchored empty group immediately BEFORE its anchor field', () => {
+    const groups = [group('g1', ['A']), { ...group('empty', []), anchorFieldId: 'B' }]
+    const sections = groupFieldOrder({
+      fieldOrder: ['A', 'B', 'C'],
+      groups,
+      includeEmptyGroups: true,
+    })
+    // The ungrouped run splits around it — B and C must not read as one run
+    // straddling a group header.
+    expect(shape(sections)).toEqual([
+      ['g1', ['A']],
+      ['empty', []],
+      [null, ['B', 'C']],
+    ])
+  })
+
+  it('falls back to the end when the anchor field no longer exists', () => {
+    const groups = [{ ...group('empty', []), anchorFieldId: 'deleted' }, group('g1', ['A'])]
+    expect(
+      shape(groupFieldOrder({ fieldOrder: ['A', 'B'], groups, includeEmptyGroups: true }))
+    ).toEqual([
+      ['g1', ['A']],
+      [null, ['B']],
+      ['empty', []],
+    ])
+  })
+
+  it('ignores the anchor once the group has a surviving member', () => {
+    // A populated group derives its position from its first member, so a stale
+    // anchor from when it was empty must not move it — and must not emit it twice.
+    const groups = [{ ...group('g1', ['C']), anchorFieldId: 'A' }]
+    expect(
+      shape(groupFieldOrder({ fieldOrder: ['A', 'B', 'C'], groups, includeEmptyGroups: true }))
+    ).toEqual([
+      [null, ['A', 'B']],
+      ['g1', ['C']],
+    ])
+  })
+
+  it('honours an anchor that names a group’s first member', () => {
+    const groups = [group('g1', ['B', 'C']), { ...group('empty', []), anchorFieldId: 'B' }]
+    expect(
+      shape(groupFieldOrder({ fieldOrder: ['A', 'B', 'C'], groups, includeEmptyGroups: true }))
+    ).toEqual([
+      [null, ['A']],
+      ['empty', []],
+      ['g1', ['B', 'C']],
+    ])
+  })
+
+  it('drops anchored empty groups in read mode like any other empty group', () => {
+    const groups = [{ ...group('empty', []), anchorFieldId: 'B' }]
+    expect(shape(groupFieldOrder({ fieldOrder: ['A', 'B'], groups }))).toEqual([[null, ['A', 'B']]])
   })
 
   it('returns [] for an empty fieldOrder, and only empty groups when asked', () => {
@@ -414,15 +471,13 @@ describe('assignFieldToGroupInOrder', () => {
     fieldOrder: string[],
     groups: FieldGroupLike[],
     activeId: string,
-    overId: string
+    overId: string,
+    edge?: 'before' | 'after'
   ) {
-    const from = fieldOrder.indexOf(activeId)
-    const to = fieldOrder.indexOf(overId)
-    if (from === -1 || to === -1) return fieldOrder
-    const next = [...fieldOrder]
-    const [moved] = next.splice(from, 1)
-    next.splice(to, 0, moved as string)
-    return normalizeGroupContiguity(next, groups)
+    return normalizeGroupContiguity(
+      moveFieldToSlot({ fieldOrder, fieldId: activeId, overId, edge }),
+      groups
+    )
   }
 
   it('does not relocate the block when a field joins from ABOVE it', () => {
@@ -457,26 +512,105 @@ describe('assignFieldToGroupInOrder', () => {
     expect(r.groups[0]?.fieldIds).toEqual(['b', 'd'])
   })
 
-  it('no-ops the order when the target group has no other surviving members', () => {
+  it('sends the field to the END when the target group has no surviving members', () => {
+    // An empty group is drawn after every other section, so the field has to
+    // travel down to it. Leaving the field at its old slot would give the group
+    // that position instead — the group would jump UP to meet the field, which
+    // is what a freshly created group did.
     const r = assignFieldToGroupInOrder({
       fieldOrder: ['a', 'x', 'b'],
       groups: [{ id: 'G', label: 'G', fieldIds: [] }],
       fieldId: 'x',
       groupId: 'G',
     })
-    expect(r.fieldOrder).toEqual(['a', 'x', 'b'])
+    expect(r.fieldOrder).toEqual(['a', 'b', 'x'])
     expect(r.groups[0]?.fieldIds).toEqual(['x'])
   })
 
-  it('composes with a follow-up reorder to hit the exact intra-group slot', () => {
+  it('lands the first field at an empty group’s ANCHOR, not at the end', () => {
+    // The group was dragged up the panel while empty, so it renders before `b`.
+    // Sending its first field to the end would drag the group back down with it.
+    const r = assignFieldToGroupInOrder({
+      fieldOrder: ['a', 'b', 'c', 'x'],
+      groups: [{ id: 'G', label: 'G', fieldIds: [], anchorFieldId: 'b' }],
+      fieldId: 'x',
+      groupId: 'G',
+    })
+    expect(r.fieldOrder).toEqual(['a', 'x', 'b', 'c'])
+  })
+
+  it('keeps the group in place when its anchor IS the field being dropped in', () => {
+    const r = assignFieldToGroupInOrder({
+      fieldOrder: ['a', 'x', 'b'],
+      groups: [{ id: 'G', label: 'G', fieldIds: [], anchorFieldId: 'x' }],
+      fieldId: 'x',
+      groupId: 'G',
+    })
+    expect(r.fieldOrder).toEqual(['a', 'x', 'b'])
+  })
+
+  it('pins a group that is losing its LAST member to where it currently renders', () => {
+    // Otherwise the emptied group falls back to the end of the list — or to a
+    // stale anchor from before it was ever filled.
+    const r = assignFieldToGroupInOrder({
+      fieldOrder: ['a', 'x', 'b', 'c'],
+      groups: [{ id: 'G', label: 'G', fieldIds: ['x'], anchorFieldId: 'c' }],
+      fieldId: 'x',
+      groupId: null,
+    })
+    expect(r.groups[0]?.fieldIds).toEqual([])
+    // `b` followed the block, so the emptied group renders just above `b` —
+    // exactly where it sat. NOT `x`, which the caller is about to reorder.
+    expect(r.groups[0]?.anchorFieldId).toBe('b')
+  })
+
+  it('clears the anchor when the emptied group sat last', () => {
+    const r = assignFieldToGroupInOrder({
+      fieldOrder: ['a', 'b', 'x'],
+      groups: [{ id: 'G', label: 'G', fieldIds: ['x'], anchorFieldId: 'a' }],
+      fieldId: 'x',
+      groupId: null,
+    })
+    expect(r.groups[0]?.anchorFieldId).toBeUndefined()
+  })
+
+  it('leaves the anchor alone while the source group keeps a member', () => {
+    const r = assignFieldToGroupInOrder({
+      fieldOrder: ['a', 'x', 'y', 'b'],
+      groups: [{ id: 'G', label: 'G', fieldIds: ['x', 'y'], anchorFieldId: 'stale' }],
+      fieldId: 'x',
+      groupId: null,
+    })
+    expect(r.groups[0]?.fieldIds).toEqual(['y'])
+    expect(r.groups[0]?.anchorFieldId).toBe('stale')
+  })
+
+  it('composes with an edge-named reorder to hit the exact intra-group slot', () => {
     const r = assignFieldToGroupInOrder({
       fieldOrder: ['x', 'a', 'b', 'c', 'd'],
       groups: G(),
       fieldId: 'x',
       groupId: 'G',
     })
-    expect(reorder(r.fieldOrder, r.groups, 'x', 'c')).toEqual(['a', 'b', 'x', 'c', 'd'])
-    expect(reorder(r.fieldOrder, r.groups, 'x', 'b')).toEqual(['a', 'x', 'b', 'c', 'd'])
+    expect(r.fieldOrder).toEqual(['a', 'b', 'c', 'd', 'x'])
+    expect(reorder(r.fieldOrder, r.groups, 'x', 'c', 'after')).toEqual(['a', 'b', 'c', 'x', 'd'])
+    expect(reorder(r.fieldOrder, r.groups, 'x', 'c', 'before')).toEqual(['a', 'b', 'x', 'c', 'd'])
+  })
+
+  it('lands on the LAST member when a field joins from above and aims at it', () => {
+    // The reported bug. `x` starts above the block and is dragged onto `d`, the
+    // last member — the insert line is drawn on `d`'s bottom edge. Assignment
+    // has already moved `x` to the block's tail, so a bare arrayMove reads the
+    // gesture as travelling UP and lands `x` before `d` instead.
+    const r = assignFieldToGroupInOrder({
+      fieldOrder: ['x', 'a', 'b', 'c', 'd'],
+      groups: G(),
+      fieldId: 'x',
+      groupId: 'G',
+    })
+    expect(reorder(r.fieldOrder, r.groups, 'x', 'd', 'after')).toEqual(['a', 'b', 'c', 'd', 'x'])
+    // Without the edge — what the handler used to do — it lands one slot early.
+    expect(reorder(r.fieldOrder, r.groups, 'x', 'd')).toEqual(['a', 'b', 'c', 'x', 'd'])
   })
 
   it('leaves the result a fixpoint under re-normalization', () => {
@@ -863,5 +997,106 @@ describe('moveGroupBlock', () => {
     moveGroupBlock({ fieldOrder, groups, groupId: 'gA', overId: 'gB', overIsGroup: true })
     expect(fieldOrder).toEqual(orderCopy)
     expect(groups).toEqual(groupsCopy)
+  })
+})
+
+describe('resolveEmptyGroupAnchor', () => {
+  const groups = (): FieldGroupLike[] => [group('E', []), group('G', ['b', 'c'])]
+  const fieldOrder = ['a', 'b', 'c', 'd']
+
+  it('anchors on an ungrouped field the drop landed on', () => {
+    expect(
+      resolveEmptyGroupAnchor({
+        fieldOrder,
+        groups: groups(),
+        groupId: 'E',
+        overId: 'a',
+        overIsGroup: false,
+      })
+    ).toEqual({ anchorFieldId: 'a' })
+  })
+
+  it('snaps to the group boundary when the drop lands on a grouped field', () => {
+    // `c` is mid-block. Anchoring there would point at a field that never opens
+    // a section, so `groupFieldOrder` would ignore it and the group would jump
+    // back to the end. Resolve to the block's first member instead.
+    expect(
+      resolveEmptyGroupAnchor({
+        fieldOrder,
+        groups: groups(),
+        groupId: 'E',
+        overId: 'c',
+        overIsGroup: false,
+      })
+    ).toEqual({ anchorFieldId: 'b' })
+  })
+
+  it('anchors on a target group’s first surviving member', () => {
+    expect(
+      resolveEmptyGroupAnchor({
+        fieldOrder,
+        groups: groups(),
+        groupId: 'E',
+        overId: 'G',
+        overIsGroup: true,
+      })
+    ).toEqual({ anchorFieldId: 'b' })
+  })
+
+  it('returns null for every unresolvable drop', () => {
+    const g = groups()
+    // Unknown moving group
+    expect(
+      resolveEmptyGroupAnchor({
+        fieldOrder,
+        groups: g,
+        groupId: 'nope',
+        overId: 'a',
+        overIsGroup: false,
+      })
+    ).toBeNull()
+    // Dropped on itself
+    expect(
+      resolveEmptyGroupAnchor({
+        fieldOrder,
+        groups: g,
+        groupId: 'E',
+        overId: 'E',
+        overIsGroup: true,
+      })
+    ).toBeNull()
+    // Target group has no surviving members
+    expect(
+      resolveEmptyGroupAnchor({
+        fieldOrder: ['a'],
+        groups: g,
+        groupId: 'E',
+        overId: 'G',
+        overIsGroup: true,
+      })
+    ).toBeNull()
+    // Field absent from the order
+    expect(
+      resolveEmptyGroupAnchor({
+        fieldOrder,
+        groups: g,
+        groupId: 'E',
+        overId: 'gone',
+        overIsGroup: false,
+      })
+    ).toBeNull()
+  })
+
+  it('never mutates its inputs', () => {
+    const g = groups()
+    const copy = g.map((x) => ({ ...x, fieldIds: [...x.fieldIds] }))
+    resolveEmptyGroupAnchor({
+      fieldOrder,
+      groups: g,
+      groupId: 'E',
+      overId: 'a',
+      overIsGroup: false,
+    })
+    expect(g).toEqual(copy)
   })
 })

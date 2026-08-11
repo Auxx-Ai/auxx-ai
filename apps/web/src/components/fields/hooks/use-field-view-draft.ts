@@ -15,8 +15,10 @@ import { useDynamicTableStore } from '~/components/dynamic-table/stores/dynamic-
 import { useOrgFieldView } from '~/components/dynamic-table/stores/store-selectors'
 import {
   assignFieldToGroupInOrder,
+  moveFieldToSlot,
   moveGroupBlock,
   normalizeGroupContiguity,
+  resolveEmptyGroupAnchor,
 } from '~/components/fields/group-fields'
 import { resolveFieldVisible } from '~/components/fields/hooks/use-field-view'
 import { mergeFieldOrder } from '~/components/fields/merge-field-order'
@@ -37,6 +39,12 @@ export interface UseFieldViewDraftResult {
   /** Null when not in draft mode. */
   draft: FieldViewConfig | null
   isDraftMode: boolean
+  /**
+   * Whether the draft differs from the snapshot draft mode opened with. False
+   * outside draft mode. Lets a surface skip the "save or discard?" prompt when
+   * the user only looked around.
+   */
+  isDraftDirty: boolean
   isSaving: boolean
   /** Which context the draft is currently editing (may differ from `contextType`). */
   draftContextType: ViewContextType
@@ -45,8 +53,13 @@ export interface UseFieldViewDraftResult {
   /** Re-snapshot for a different context (the dialog's Create/Edit toggle). */
   switchDraftContext: (contextType: ViewContextType) => void
   setDraftVisibility: (resourceFieldId: string, visible: boolean) => void
-  /** Move `activeId` to `overId`'s slot within draft.fieldOrder. No-op if either is absent. */
-  reorderDraft: (activeId: string, overId: string) => void
+  /**
+   * Move `activeId` to `overId`'s slot within draft.fieldOrder. No-op if either
+   * is absent. `edge` names which side of `overId` the field lands on; omit it
+   * for dnd-kit's direction-dependent `arrayMove` semantics, which is what a
+   * flat `SortableContext` drag wants. See {@link moveFieldToSlot}.
+   */
+  reorderDraft: (activeId: string, overId: string, edge?: 'before' | 'after') => void
   /** Persist the draft: update the existing org default view, or create one. Resolves on success. */
   saveDraft: () => Promise<void>
   /** Groups in the draft. Empty array when the draft has none. */
@@ -92,6 +105,12 @@ export function useFieldViewDraft({
 
   /** Draft config: local buffer for batch save (null when not in draft mode) */
   const [draft, setDraft] = useState<FieldViewConfig | null>(null)
+
+  /**
+   * The snapshot draft mode opened with, serialized — the baseline `isDraftDirty`
+   * compares against. Null outside draft mode.
+   */
+  const [pristineConfig, setPristineConfig] = useState<string | null>(null)
 
   // Field IDs for creating default configs
   const fieldIds = useMemo(
@@ -198,24 +217,49 @@ export function useFieldViewDraft({
 
   /** Enter draft mode: snapshot the current config into the buffer */
   const enterDraft = useCallback(() => {
+    const snapshot = snapshotConfigForContext(contextType)
     setDraftContextType(contextType)
-    setDraft(snapshotConfigForContext(contextType))
+    setDraft(snapshot)
+    setPristineConfig(JSON.stringify(snapshot))
     setIsDraftMode(true)
   }, [contextType, snapshotConfigForContext])
 
   /** Cancel draft mode: discard the buffer, exit */
   const cancelDraft = useCallback(() => {
     setDraft(null)
+    setPristineConfig(null)
     setIsDraftMode(false)
   }, [])
 
-  /** Switch which context is being edited, re-snapshotting from the store */
+  /**
+   * Switch which context is being edited, re-snapshotting from the store.
+   *
+   * The new snapshot becomes the dirty baseline — unsaved edits to the previous
+   * context are dropped by the re-snapshot itself, so carrying its baseline over
+   * would only report a phantom diff against a draft that no longer exists.
+   */
   const switchDraftContext = useCallback(
     (newContextType: ViewContextType) => {
+      const snapshot = snapshotConfigForContext(newContextType)
       setDraftContextType(newContextType)
-      setDraft(snapshotConfigForContext(newContextType))
+      setDraft(snapshot)
+      setPristineConfig(JSON.stringify(snapshot))
     },
     [snapshotConfigForContext]
+  )
+
+  /**
+   * Structural comparison against the opening snapshot.
+   *
+   * `JSON.stringify` is sound here because every mutator above rebuilds the
+   * config by spreading the previous one and overwriting keys that the snapshot
+   * already established, so key order never drifts. The only way it can be wrong
+   * is a spurious `true` (a prompt with nothing to save) — never a false `false`,
+   * which is the direction that would silently discard the user's work.
+   */
+  const isDraftDirty = useMemo(
+    () => draft !== null && pristineConfig !== null && JSON.stringify(draft) !== pristineConfig,
+    [draft, pristineConfig]
   )
 
   /** Toggle field visibility in the draft (no server call) */
@@ -230,26 +274,29 @@ export function useFieldViewDraft({
   }, [])
 
   /** Reorder a field within the draft's `fieldOrder` (no server call) */
-  const reorderDraft = useCallback((activeId: string, overId: string) => {
-    if (activeId === overId) return
+  const reorderDraft = useCallback(
+    (activeId: string, overId: string, edge?: 'before' | 'after') => {
+      if (activeId === overId) return
 
-    setDraft((prev) => {
-      if (!prev) return prev
-      const fromIndex = prev.fieldOrder.indexOf(activeId)
-      const toIndex = prev.fieldOrder.indexOf(overId)
-      if (fromIndex === -1 || toIndex === -1) return prev
+      setDraft((prev) => {
+        if (!prev) return prev
+        const newOrder = moveFieldToSlot({
+          fieldOrder: prev.fieldOrder,
+          fieldId: activeId,
+          overId,
+          edge,
+        })
+        // Returned by reference when either id is missing or the move is a no-op.
+        if (newOrder === prev.fieldOrder) return prev
 
-      const newOrder = [...prev.fieldOrder]
-      const [moved] = newOrder.splice(fromIndex, 1)
-      if (!moved) return prev
-      newOrder.splice(toIndex, 0, moved)
-
-      // A drag can drop a non-member in the middle of a group's block, which
-      // would split it. Membership changes travel through `assignFieldToGroup`;
-      // position alone never rewrites it, so the split is repaired here instead.
-      return { ...prev, fieldOrder: normalizeGroupContiguity(newOrder, prev.fieldGroups ?? []) }
-    })
-  }, [])
+        // A drag can drop a non-member in the middle of a group's block, which
+        // would split it. Membership changes travel through `assignFieldToGroup`;
+        // position alone never rewrites it, so the split is repaired here instead.
+        return { ...prev, fieldOrder: normalizeGroupContiguity(newOrder, prev.fieldGroups ?? []) }
+      })
+    },
+    []
+  )
 
   /** Add a group to the draft. Returns the new group's id so the caller can focus/rename it. */
   const addGroup = useCallback((label: string): string => {
@@ -326,22 +373,51 @@ export function useFieldViewDraft({
   /**
    * Move a whole group to `overId`'s position, carrying its members with it.
    *
-   * Membership is untouched — a block move is purely positional, so `fieldGroups`
-   * is passed straight through and only `fieldOrder` changes. `moveGroupBlock`
-   * owns all of the arithmetic (block extraction, drop-index resolution, the
-   * snap-to-group-boundary rule) and returns an already-normalized order, so
-   * there is no second contiguity pass here.
+   * Two different writes, because a group's position has two different sources:
+   *
+   * - **Populated** → `fieldOrder`. Membership is untouched (a block move is
+   *   purely positional), and `moveGroupBlock` owns all of the arithmetic —
+   *   block extraction, drop-index resolution, the snap-to-group-boundary rule —
+   *   returning an already-normalized order, so there is no second contiguity
+   *   pass here.
+   * - **Empty** → the group's own `anchorFieldId`. There are no member rows to
+   *   lift, so `moveGroupBlock` can only no-op; the group instead records the
+   *   field it renders before. The anchor stays on the row once members arrive
+   *   and is simply ignored — a populated group derives its position from its
+   *   first member — so emptying the group later returns it to where it was.
    */
   const moveGroup = useCallback((groupId: string, overId: string, overIsGroup: boolean) => {
     if (groupId === overId) return
 
     setDraft((prev) => {
       if (!prev) return prev
+      const groups = prev.fieldGroups ?? []
+      const moving = groups.find((group) => group.id === groupId)
+      if (!moving) return prev
+
+      const hasMembers = moving.fieldIds.some((fieldId) => prev.fieldOrder.includes(fieldId))
+      if (!hasMembers) {
+        const resolved = resolveEmptyGroupAnchor({
+          fieldOrder: prev.fieldOrder,
+          groups,
+          groupId,
+          overId,
+          overIsGroup,
+        })
+        if (!resolved) return prev
+        return {
+          ...prev,
+          fieldGroups: groups.map((group) =>
+            group.id === groupId ? { ...group, anchorFieldId: resolved.anchorFieldId } : group
+          ),
+        }
+      }
+
       return {
         ...prev,
         fieldOrder: moveGroupBlock({
           fieldOrder: prev.fieldOrder,
-          groups: prev.fieldGroups ?? [],
+          groups,
           groupId,
           overId,
           overIsGroup,
@@ -391,6 +467,7 @@ export function useFieldViewDraft({
 
       // Exit draft mode
       setDraft(null)
+      setPristineConfig(null)
       setIsDraftMode(false)
     } catch {
       // Errors handled by mutation onError
@@ -400,6 +477,7 @@ export function useFieldViewDraft({
   return {
     draft,
     isDraftMode,
+    isDraftDirty,
     isSaving: updateView.isPending || createView.isPending,
     draftContextType,
     enterDraft,

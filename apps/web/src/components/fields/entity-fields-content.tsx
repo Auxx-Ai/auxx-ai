@@ -53,8 +53,13 @@ export interface EntityFieldsContentProps {
   isEditMode: boolean
   /** Enter edit mode (snapshots the current view into a draft buffer) */
   onEnterEditMode: () => void
-  /** Leave edit mode, discarding the draft */
+  /** Leave edit mode, discarding the draft — the footer's explicit Cancel */
   onCancelEditMode: () => void
+  /**
+   * Leave edit mode via the header's X. Unlike Cancel this is not a decision to
+   * discard, so the owner prompts to save or discard when the draft is dirty.
+   */
+  onExitEditMode: () => void | Promise<void>
   /** Persist the draft (order + visibility) as one config write */
   onSaveView: () => void | Promise<void>
   /** Whether the view config is currently being persisted */
@@ -63,7 +68,12 @@ export interface EntityFieldsContentProps {
   setDialogOpen: (value: boolean) => void
   editingResourceFieldId: ResourceFieldId | null
   sensors: SensorDescriptor<SensorOptions>[]
-  handleDragEnd: (event: DragEndEvent) => void
+  /**
+   * Drop handler for a FIELD drag. `edge` names which side of the target the
+   * field lands on, read from the pre-drag positions so the drop agrees with
+   * the insert line.
+   */
+  handleDragEnd: (event: DragEndEvent, edge?: 'before' | 'after') => void
   /** Unified sorted fields (system + custom) */
   fields: ResourceField[]
   /** Loading state */
@@ -127,6 +137,7 @@ export function EntityFieldsContent({
   isEditMode,
   onEnterEditMode,
   onCancelEditMode,
+  onExitEditMode,
   onSaveView,
   isSaving = false,
   dialogOpen,
@@ -365,17 +376,25 @@ export function EntityFieldsContent({
    * Turn the hovered droppable into the ONE line to draw and the ONE group to
    * light up.
    *
-   * The highlight means "you will be inside this group" — it is drawn for a
-   * field about to join a group and for a group about to snap against another
-   * group's block, and deliberately NOT for `group-before`/`group-after`, which
-   * land the field outside every group.
+   * The highlight answers "will this end up INSIDE that group", and its colour
+   * answers it in both directions:
+   *
+   * - `blocked: false` (blue) — a FIELD about to join the group. It really will
+   *   be a member.
+   * - `blocked: true` (grey) — a GROUP hovering another group. Groups do not
+   *   nest, so the drop repositions the block against that group's boundary
+   *   instead. The fill says "not into this"; the insert line still says where
+   *   the block lands, which is why lines stay blue in both cases.
+   *
+   * Deliberately NOT drawn for `group-before`/`group-after`: those land the
+   * field outside every group, so there is no group to be inside of.
    */
   const deriveDropFeedback = (): {
     indicator: DropIndicator | null
-    highlightGroupId: string | null
+    highlight: { groupId: string; blocked: boolean } | null
   } => {
     if (dropTarget === null || activeDragId === null) {
-      return { indicator: null, highlightGroupId: null }
+      return { indicator: null, highlight: null }
     }
 
     const anchorIndexOfGroup = (groupId: string): number => {
@@ -393,27 +412,29 @@ export function EntityFieldsContent({
           : dropTarget.groupId
       if (referenceGroupId === null) {
         const fieldId = dropTarget.kind === 'field' ? dropTarget.fieldId : null
-        if (fieldId === null) return { indicator: null, highlightGroupId: null }
+        if (fieldId === null) return { indicator: null, highlight: null }
         const side = edgeFor(orderIndexById.get(fieldId) ?? -1)
         return {
           indicator: { kind: 'row', rowId: fieldId, side, inset: false },
-          highlightGroupId: null,
+          highlight: null,
         }
       }
-      if (referenceGroupId === activeGroupId) return { indicator: null, highlightGroupId: null }
+      if (referenceGroupId === activeGroupId) return { indicator: null, highlight: null }
       const side = edgeFor(anchorIndexOfGroup(referenceGroupId))
       return {
         indicator: { kind: 'group', groupId: referenceGroupId, side, inset: false },
-        highlightGroupId: referenceGroupId,
+        // A group hovering a group: the block lands beside it, never inside it.
+        highlight: { groupId: referenceGroupId, blocked: true },
       }
     }
 
     switch (dropTarget.kind) {
       case 'field': {
         const side = edgeFor(orderIndexById.get(dropTarget.fieldId) ?? -1)
+        const targetGroupId = groupIdByFieldId.get(dropTarget.fieldId) ?? null
         return {
           indicator: { kind: 'row', rowId: dropTarget.fieldId, side, inset: false },
-          highlightGroupId: groupIdByFieldId.get(dropTarget.fieldId) ?? null,
+          highlight: targetGroupId === null ? null : { groupId: targetGroupId, blocked: false },
         }
       }
       case 'group-into': {
@@ -426,23 +447,23 @@ export function EntityFieldsContent({
             firstMemberId === undefined
               ? null
               : { kind: 'row', rowId: firstMemberId, side: 'top', inset: false },
-          highlightGroupId: dropTarget.groupId,
+          highlight: { groupId: dropTarget.groupId, blocked: false },
         }
       }
       case 'group-before':
         return {
           indicator: { kind: 'group', groupId: dropTarget.groupId, side: 'top', inset: false },
-          highlightGroupId: null,
+          highlight: null,
         }
       case 'group-after':
         return {
           indicator: { kind: 'group', groupId: dropTarget.groupId, side: 'bottom', inset: true },
-          highlightGroupId: null,
+          highlight: null,
         }
     }
   }
 
-  const { indicator, highlightGroupId } = deriveDropFeedback()
+  const { indicator, highlight } = deriveDropFeedback()
 
   const lineForRow = (rowId: string, side: 'top' | 'bottom'): boolean =>
     indicator?.kind === 'row' && indicator.rowId === rowId && indicator.side === side
@@ -462,7 +483,13 @@ export function EntityFieldsContent({
    * - a FIELD may not target its own row (`x-before` and the bare `x` both
    *   resolve to the same no-op),
    * - a GROUP may not land inside its own block — its members' rows, its own
-   *   header, its own `-before`/`-after-group` boundaries.
+   *   header, its own `-before`/`-after-group` boundaries,
+   * - a GROUP may not target an EMPTY group at all. An empty group has no index
+   *   in `fieldOrder` (its end-of-list slot is a render convention), so
+   *   `moveGroupBlock` has no honest insertion point and refuses every one of
+   *   its three droppables. Letting it become `over` drew a highlight and an
+   *   insert line for a drop that then did nothing. A FIELD drag still targets
+   *   it — that is the only way a new group ever gets its first member.
    *
    * Filtering here rather than per-row is what lets every affordance below key
    * off `over` alone: an invalid target simply never becomes `over`, so no
@@ -489,10 +516,15 @@ export function EntityFieldsContent({
     const ownMemberIds = new Set(
       sectionsRef.current.find((section) => section.group?.id === draggedGroupId)?.fieldIds ?? []
     )
+    const emptyGroupIds = new Set(
+      sectionsRef.current
+        .filter((section) => section.group !== null && section.fieldIds.length === 0)
+        .map((section) => section.group?.id)
+    )
     return collisions.filter((collision) => {
       const target = resolveDropTarget(String(collision.id))
       if (target.kind === 'field') return !ownMemberIds.has(target.fieldId)
-      return target.groupId !== draggedGroupId
+      return target.groupId !== draggedGroupId && !emptyGroupIds.has(target.groupId)
     })
   }, [])
 
@@ -555,10 +587,17 @@ export function EntityFieldsContent({
     }
 
     switch (target.kind) {
-      case 'field':
+      case 'field': {
         if (target.fieldId === activeId) return
-        handleDragEnd(aimedAt(event, target.fieldId))
+        // The SAME expression `deriveDropFeedback` draws the insert line from,
+        // so the drop cannot land on a different edge than the line promised.
+        // It must be read from the pre-drag positions in this render's closure —
+        // `handleDragEnd` may relocate the field (joining a group appends it to
+        // the block's tail) before it reorders, which would flip the direction.
+        const side = edgeFor(orderIndexById.get(target.fieldId) ?? -1)
+        handleDragEnd(aimedAt(event, target.fieldId), side === 'bottom' ? 'after' : 'before')
         return
+      }
       case 'group-into':
         handleDragEnd(aimedAt(event, groupDropId(target.groupId)))
         return
@@ -695,13 +734,23 @@ export function EntityFieldsContent({
       if (!group) return <Fragment key={`ungrouped-${sectionIndex}`}>{rowElements}</Fragment>
 
       return (
-        <div key={`group-${group.id}`} className='relative mt-1.5 first:mt-0'>
+        <div
+          key={`group-${group.id}`}
+          className={cn(
+            'relative mt-1.5 first:mt-0',
+            // The fill is a real BACKGROUND on the section, not part of the
+            // overlay below: `bg-primary-100` is opaque, and an absolutely
+            // positioned overlay paints above statically positioned children —
+            // it would hide the header and rows it is meant to be highlighting.
+            highlight?.groupId === group.id &&
+              (highlight.blocked ? 'rounded-md bg-primary-100' : 'rounded-md bg-primary/10')
+          )}>
           {isEditMode && (
             <>
               <FieldDropZone id={groupBeforeDropId(group.id)} edge='top' />
               <FieldDropZone id={groupAfterDropId(group.id)} edge='bottom' />
-              {highlightGroupId === group.id && (
-                <div className='pointer-events-none absolute inset-0 z-10 rounded-md border border-primary/40 border-dashed bg-primary/10' />
+              {highlight?.groupId === group.id && (
+                <div className='pointer-events-none absolute inset-0 z-10 rounded-md border border-primary-200 border-dashed' />
               )}
               {lineForGroup(group.id, 'top') && <FieldInsertLine side='top' />}
               {lineForGroup(group.id, 'bottom') && (
@@ -752,7 +801,7 @@ export function EntityFieldsContent({
               <Button
                 variant='ghost'
                 size='icon-xs'
-                onClick={() => (isEditMode ? onCancelEditMode() : onEnterEditMode())}
+                onClick={() => (isEditMode ? void onExitEditMode() : onEnterEditMode())}
                 className={cn(
                   'cursor-pointer',
                   isEditMode
@@ -819,7 +868,12 @@ export function EntityFieldsContent({
                       // Semi-transparent so the insert line stays readable through
                       // the ghost — the line marks the landing slot and the ghost
                       // is only "what is in hand", so the line has to win.
-                      <div className='rounded-md bg-background/90 opacity-90 shadow-lg ring-1 ring-border'>
+                      //
+                      // `pe-2`: the overlay's width is released to `auto`, so an
+                      // EMPTY group shrinks to icon + title + member count with
+                      // the count pressed against the ring. Members give the
+                      // ghost its own width and never need it.
+                      <div className='rounded-md bg-background/90 pe-2 opacity-90 shadow-lg ring-1 ring-border'>
                         {renderGroupHeader(
                           activeGroupSection.group as FieldGroupLike,
                           activeGroupSection.fieldIds.length,
