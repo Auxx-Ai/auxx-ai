@@ -11,16 +11,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
-import {
-  Archive,
-  ChevronRight,
-  Clock,
-  Share2,
-  ShieldAlert,
-  Tag,
-  Trash2,
-  UserRound,
-} from 'lucide-react'
+import { Archive, ChevronRight, Clock, Share2, ShieldAlert, Tag, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo, useState } from 'react'
@@ -314,9 +305,15 @@ export const CompactThreadItem = memo(function CompactThreadItem({
               )}
             </div>
 
-            {/* Assignee avatar - fixed slot to avoid layout shift */}
-            <div className='flex w-5 shrink-0 items-center justify-center ms-1.5'>
-              {thread.assigneeId && <AssigneeChip assigneeId={thread.assigneeId as ActorId} />}
+            {/* Assignee avatar — fixed slot to avoid layout shift, and the assign
+                picker's anchor (see `assign-anchor-` lookup in mail-thread-list) */}
+            <div
+              id={`assign-anchor-${threadId}`}
+              className='flex w-5 shrink-0 items-center justify-center ms-1.5'>
+              <AssigneeChip
+                assigneeId={thread.assigneeId as ActorId | null}
+                onClick={() => onAssignClick?.(threadId)}
+              />
             </div>
 
             {/* Tags */}
@@ -391,15 +388,6 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                     className='size-6'
                     onClick={() => update(threadId, { status: 'SPAM' })}>
                     <ShieldAlert className='size-3.5' />
-                  </Button>
-                </Tooltip>
-                <Tooltip content='Assign' shortcut='A' delayDuration={300}>
-                  <Button
-                    variant='ghost'
-                    size='icon'
-                    className='size-6'
-                    onClick={() => onAssignClick?.(threadId)}>
-                    <UserRound className='size-3.5' />
                   </Button>
                 </Tooltip>
                 <Tooltip content='Tag' shortcut='T' delayDuration={300}>
