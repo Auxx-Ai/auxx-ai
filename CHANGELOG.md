@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.199](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.198...auxx-v0.1.199) (2026-08-11)
+
+
+### Features
+
+* **fields:** collapsible field groups in the property panel ([#1539](https://github.com/Auxx-Ai/auxx-ai/issues/1539)) ([ae88406](https://github.com/Auxx-Ai/auxx-ai/commit/ae88406cb56c7515901020a6cc5abf00ea98fb90))
+* **fields:** field groups in the record create/edit dialog ([#1542](https://github.com/Auxx-Ai/auxx-ai/issues/1542)) ([3b60a1c](https://github.com/Auxx-Ai/auxx-ai/commit/3b60a1c266ccb970b51ec8b79d800414c35cd4e5))
+* **records:** one editable identity header for drawers and detail pages ([#1537](https://github.com/Auxx-Ai/auxx-ai/issues/1537)) ([0abde41](https://github.com/Auxx-Ai/auxx-ai/commit/0abde413878e8f381a38bfefe9a0ae8475fa9efd))
+* **ui:** let viewers hide drawer tabs, not just reorder them ([#1538](https://github.com/Auxx-Ai/auxx-ai/issues/1538)) ([5dd0dea](https://github.com/Auxx-Ai/auxx-ai/commit/5dd0deabec2ad190ce37e042810619415e677558))
+
+
+### Bug Fixes
+
+* **fields:** gate the record dialog's view config on def administration ([#1544](https://github.com/Auxx-Ai/auxx-ai/issues/1544)) ([f8c45ef](https://github.com/Auxx-Ai/auxx-ai/commit/f8c45eff8cffd17fa39be356e82c95850fb4cd1e))
+* **fields:** hide inline relationship create without write on the target def ([#1545](https://github.com/Auxx-Ai/auxx-ai/issues/1545)) ([ce8b7c5](https://github.com/Auxx-Ai/auxx-ai/commit/ce8b7c5050c37913caf7fa4dd410544ab9865b7e))
+* **fields:** land group drops where the insert line promised, and let empty groups hold a position ([#1540](https://github.com/Auxx-Ai/auxx-ai/issues/1540)) ([262ef2b](https://github.com/Auxx-Ai/auxx-ai/commit/262ef2b72befc2132337212d94c6f24dc07fb01b))
+* **fields:** make every named drop boundary mean one thing, whichever way you drag ([#1541](https://github.com/Auxx-Ai/auxx-ai/issues/1541)) ([37a0188](https://github.com/Auxx-Ai/auxx-ai/commit/37a01886ca820c4f96064816f161a2809e3a09cd))
+* **mail:** date threads whose sends never landed, and surface the failure ([#1535](https://github.com/Auxx-Ai/auxx-ai/issues/1535)) ([04b81cf](https://github.com/Auxx-Ai/auxx-ai/commit/04b81cfdc378f92fbe353aca9d9227b63ceedfdc))
+* **mail:** move the assign popover onto the assignee avatar ([#1536](https://github.com/Auxx-Ai/auxx-ai/issues/1536)) ([65a218f](https://github.com/Auxx-Ai/auxx-ai/commit/65a218f800abadc40325a682e2bd9f897f7c7761))
+* **tags:** stop tag deletes orphaning their records, and add the archive path ([#1533](https://github.com/Auxx-Ai/auxx-ai/issues/1533)) ([ac84235](https://github.com/Auxx-Ai/auxx-ai/commit/ac84235084a31c201b733f880942a0f7101dc1a6))
+
 ## [0.1.198](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.197...auxx-v0.1.198) (2026-08-11)
 
 
