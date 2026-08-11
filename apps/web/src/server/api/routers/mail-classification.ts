@@ -13,6 +13,7 @@ import {
   countReclassifiableThreads,
   enqueueMailReclassifyApply,
   enqueueMailReclassifySample,
+  findPendingClassificationPrompt,
   getMailReclassifyRunStatus,
   getMailReclassifySampleStatus,
   undoMailReclassifyRun,
@@ -25,7 +26,12 @@ import {
   MAIL_RECLASSIFY_SAMPLE_SIZE,
 } from '@auxx/lib/mail-classification/client'
 import { getEligibleClassificationTags } from '@auxx/lib/mail-classification/labels'
-import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'
+import {
+  getOrganizationSetting,
+  getUserSetting,
+  updateOrganizationSetting,
+  updateUserSetting,
+} from '@auxx/lib/settings'
 import { TagService } from '@auxx/lib/tags'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -78,6 +84,26 @@ import { capabilityProcedure, createTRPCRouter } from '../trpc'
  * Declared in `packages/lib/src/settings/catalog.ts`; spelled once here so the
  * two reads below and the `setting.ts` refusal cannot drift apart.
  */
+/**
+ * Per-user dismissal of the post-sync prompt (07 §3.4).
+ *
+ * PER-USER on purpose, exactly as the mail-filter prompt is: the banner is a
+ * nudge on one person's screen, and one member waving it away must not hide it
+ * from the colleague who would have said yes.
+ */
+const CLASSIFY_PROMPT_DISMISSED_KEY = 'mailClassification.retroactivePromptDismissed' as const
+
+async function readDismissedClassifyPromptInboxIds(ctx: {
+  session: { organizationId: string; userId: string }
+}): Promise<string[]> {
+  const value = await getUserSetting({
+    userId: ctx.session.userId,
+    organizationId: ctx.session.organizationId,
+    key: CLASSIFY_PROMPT_DISMISSED_KEY,
+  })
+  return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []
+}
+
 export const MAIL_CLASSIFICATION_INBOXES_KEY = 'mailClassificationInboxIds' as const
 
 /** The stored value, defensively — a jsonb blob is only as typed as its reader. */
@@ -731,5 +757,51 @@ export const mailClassificationRouter = createTRPCRouter({
       })
 
       return undone.value
+    }),
+
+  /**
+   * The one inbox worth asking about in the mail UI, or `null` (07 §3.4).
+   *
+   * §2.9's gap: an inbox that finished syncing last week has no completion event
+   * left to hang a prompt on, and the settings backlog row is only seen by
+   * someone who goes looking.
+   *
+   * Scoped to the caller's configurable inboxes minus their own dismissals, so
+   * the lib call holds no permission logic — the house rule, and the same shape
+   * `mailFilters.pendingRetroactivePrompt` uses.
+   */
+  pendingRetroactivePrompt: capabilityProcedure.query(async ({ ctx }) => {
+    const authority = await loadMailFilterAuthority(ctx)
+    if (authority.inboxIds.length === 0) return null
+
+    const dismissed = await readDismissedClassifyPromptInboxIds(ctx)
+    const candidates = authority.inboxIds.filter((id) => !dismissed.includes(id))
+    if (candidates.length === 0) return null
+
+    const prompt = await findPendingClassificationPrompt(
+      ctx.db,
+      ctx.session.organizationId,
+      candidates
+    )
+    if (!prompt) return null
+
+    return { ...prompt, inboxName: authority.byId.get(prompt.inboxId)?.name ?? '' }
+  }),
+
+  /** Stop asking this member about this inbox. */
+  dismissRetroactivePrompt: capabilityProcedure
+    .input(z.object({ inboxId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const authority = await loadMailFilterAuthority(ctx)
+      assertCanConfigureInboxAutomation(authority, input.inboxId)
+
+      const dismissed = await readDismissedClassifyPromptInboxIds(ctx)
+      if (dismissed.includes(input.inboxId)) return
+      await updateUserSetting({
+        userId: ctx.session.userId,
+        organizationId: ctx.session.organizationId,
+        key: CLASSIFY_PROMPT_DISMISSED_KEY,
+        value: [...dismissed, input.inboxId],
+      })
     }),
 })

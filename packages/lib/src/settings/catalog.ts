@@ -300,6 +300,22 @@ export const SETTINGS_CATALOG = {
     defaultValue: [],
     description: 'Inbox ids this member dismissed the "apply filters retroactively" prompt for',
   },
+  // Post-sync classification prompt (07-mail-reclassification-plan.md §3.4).
+  // Mirrors `mailFilters.retroactivePromptDismissed` and for the same reason:
+  // the banner is a nudge on ONE person's screen, so one member waving it away
+  // must not hide it from the colleague who would have said yes.
+  //
+  // ⚠️ Two prompts must never stack (07 §3.4). When both are pending for an
+  // inbox the FILTER prompt wins — it is the older feature and its action
+  // mutates routing, whereas this one only labels. That precedence lives in the
+  // component, not here; this entry only declares storage.
+  'mailClassification.retroactivePromptDismissed': {
+    scope: 'COMMUNICATION',
+    access: 'user',
+    fieldType: 'JSON',
+    defaultValue: [],
+    description: 'Inbox ids this member dismissed the "classify existing mail" prompt for',
+  },
   // AI mail classification opt-in (mail-classification plan §5). A LIST of inbox
   // ids, never a boolean: "classify everything" must not be expressible.
   //
