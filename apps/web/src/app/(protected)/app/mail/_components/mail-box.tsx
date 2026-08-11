@@ -41,6 +41,7 @@ import {
 import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
 import { DrawerContextProvider } from '~/components/drawers/drawer-context'
 import { EmptyState } from '~/components/global/empty-state'
+import { MailClassificationRetroactivePrompt } from '~/components/inbox/ui/mail-classification-retroactive-prompt'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 // import SearchBar from '~/components/mail/mail-searchbar'
@@ -628,6 +629,14 @@ function MailboxInner({
               should answer is the one staring at the unfiltered inbox. Renders
               nothing when there is nothing to ask. */}
             <MailFilterRetroactivePrompt />
+            {/* Post-sync classification prompt (07-mail-reclassification-plan.md
+              §3.4) — "classify N existing conversations?". Same slot and same
+              reasoning as the filter prompt above.
+              ⚠️ ORDER IS THE CONTRACT: the two must never stack, and the filter
+              one wins. The component enforces it by returning null while a
+              filter prompt is pending, but keeping them adjacent here is what
+              makes that rule visible to whoever edits this file next. */}
+            <MailClassificationRetroactivePrompt />
             {/* Unified responsive tree: viewport differences driven by Tailwind
               media queries (sm = 640px). Only layoutMode drives JS branching. */}
             <div

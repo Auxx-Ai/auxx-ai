@@ -39,10 +39,10 @@
 //    mode; the opt-in exits are never bypassable (invariant 6 — a re-run is a way
 //    to catch up, not a way in).
 
-import type { Database } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
-import { type SQL, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull, ne, type SQL, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
@@ -53,6 +53,7 @@ import {
   MAIL_CLASSIFICATION_INBOX_IDS_SETTING,
   MAIL_CLASSIFICATION_METADATA_KEY,
   MAIL_RECLASSIFY_APPLY_JOB_NAME,
+  MAIL_RECLASSIFY_BACKLOG_COUNT_CAP,
   MAIL_RECLASSIFY_MAX_THREADS,
   MAIL_RECLASSIFY_PAGE_SIZE,
   MAIL_RECLASSIFY_SAMPLE_JOB_NAME,
@@ -1511,4 +1512,111 @@ export async function undoMailReclassifyRun(
     ...report,
   })
   return ok(report)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. The post-sync prompt (§3.4, phase 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The one inbox worth asking about, as the mail-UI banner renders it. */
+export interface PendingClassificationPrompt {
+  inboxId: string
+  /** Unclassified threads, capped — the copy renders `M+` past the cap. */
+  threadCount: number
+  threadCountCapped: boolean
+  /** How many labels the classifier could choose from, for the copy. */
+  labelCount: number
+}
+
+/**
+ * The one inbox worth prompting about, or `null` (§3.4).
+ *
+ * §2.9's problem: an inbox that finished syncing last week has no completion
+ * event left to hang a prompt on, and the backlog row in settings is only seen
+ * by someone who goes looking. This is the other trigger — mounted in the mail
+ * UI, because the person who should answer is the one looking at the mail.
+ *
+ * ⚠️ **Never automatic** (R1). This decides whether the QUESTION is worth
+ * asking; the run still needs a click, and that click lands on the same paged,
+ * cancellable, undoable path as the settings button.
+ *
+ * `candidateInboxIds` is the caller's already-authorized set minus the ones this
+ * user dismissed, so this function holds no permission logic of its own — the
+ * house rule, and the same shape `findPendingRetroactivePrompt` uses.
+ *
+ * The conditions, cheapest first:
+ *  1. the org has at least one eligible label — otherwise there is nothing to
+ *     classify INTO, and C8's double guard would refuse the run anyway;
+ *  2. the inbox is opted in (invariant 6 — a prompt is not a way past the
+ *     opt-in, it is a nudge for someone who already said yes);
+ *  3. a live channel on it has FINISHED a sync at least once and is not
+ *     mid-sync — R-Q8, the same refusal the router makes, because a prompt that
+ *     appears mid-backfill invites a run that races the sync;
+ *  4. it actually has unclassified threads.
+ *
+ * ⚠️ **There is no "has a run ever happened" check, deliberately.** The filter
+ * prompt can ask that because a `MailFilterRun` row is permanent; a
+ * classification run's only record is a BullMQ job reaped a day later. Condition
+ * 4 is the honest substitute and it is self-limiting: a completed run stamps a
+ * marker on every thread it touched — including the ones it abstained on — so
+ * the backlog goes to zero and the prompt stops on its own. A partial or
+ * cancelled run leaves a real backlog, and asking again about real backlog is
+ * correct, not nagging. Dismissal covers the person who disagrees.
+ */
+export async function findPendingClassificationPrompt(
+  db: Database,
+  organizationId: string,
+  candidateInboxIds: string[],
+  opts: { threadCountCap?: number } = {}
+): Promise<PendingClassificationPrompt | null> {
+  if (candidateInboxIds.length === 0) return null
+  const cap = Math.max(1, Math.trunc(opts.threadCountCap ?? MAIL_RECLASSIFY_BACKLOG_COUNT_CAP))
+
+  const labels = await getEligibleClassificationTags(db, organizationId)
+  if (labels.length === 0) return null
+
+  const optedIn = new Set(await getOptedInInboxIds(organizationId))
+  const candidates = candidateInboxIds.filter((id) => optedIn.has(id))
+  if (candidates.length === 0) return null
+
+  // R-Q8 again: an inbox still filling up must not be prompted, because the run
+  // it invites would miss everything still arriving.
+  const synced = await db
+    .select({ inboxId: schema.InboxIntegration.inboxId })
+    .from(schema.InboxIntegration)
+    .innerJoin(schema.Integration, eq(schema.Integration.id, schema.InboxIntegration.integrationId))
+    .where(
+      and(
+        eq(schema.Integration.organizationId, organizationId),
+        isNull(schema.Integration.deletedAt),
+        eq(schema.Integration.enabled, true),
+        isNotNull(schema.Integration.lastSuccessfulSync),
+        ne(schema.Integration.syncStatus, 'SYNCING')
+      )
+    )
+  const syncedInboxIds = new Set(synced.map((row) => row.inboxId))
+
+  // Candidate order is the caller's, so the prompt is stable across refetches
+  // rather than whichever inbox a query happened to return first.
+  for (const inboxId of candidates) {
+    if (!syncedInboxIds.has(inboxId)) continue
+
+    const counted = await countReclassifiableThreads(db, {
+      organizationId,
+      inboxId,
+      range: { kind: 'all-time' },
+      mode: 'fill-gaps',
+      cap,
+    })
+    if (counted.isErr() || counted.value.count === 0) continue
+
+    return {
+      inboxId,
+      threadCount: counted.value.count,
+      threadCountCapped: counted.value.capped,
+      labelCount: labels.length,
+    }
+  }
+
+  return null
 }
