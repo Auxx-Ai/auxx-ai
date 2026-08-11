@@ -13,12 +13,14 @@ export {
 } from './classify'
 // Client-safe constants + types (also importable as `@auxx/lib/mail-classification/client`)
 export {
+  countClassificationFailures,
   isSameReclassifyScope,
   MAIL_CLASSIFICATION_INBOX_IDS_SETTING,
   MAIL_CLASSIFICATION_JOB_NAME,
   MAIL_CLASSIFICATION_METADATA_KEY,
   MAIL_CLASSIFY_BODY_CHARS,
   MAIL_CLASSIFY_CONFIDENCE_THRESHOLD,
+  MAIL_CLASSIFY_FAILURE_REASONS,
   MAIL_CLASSIFY_NO_CATEGORY,
   MAIL_RECLASSIFY_BACKLOG_COUNT_CAP,
   MAIL_RECLASSIFY_DAY_PRESETS,

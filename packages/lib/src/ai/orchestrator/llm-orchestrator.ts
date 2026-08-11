@@ -83,11 +83,17 @@ export class LLMOrchestrator {
       // Single-pass gate: resolves the client + credential metadata AND enforces
       // the SYSTEM credit quota + abuse rate-limit. One DB lookup for client
       // credentials covers both.
+      //
+      // ⚠️ `userId ?? ''` ONLY here. Credential resolution and the rate-limit key
+      // have always read an empty user as "no user-specific key", which is a
+      // truthful reading of `null`. The metering insert below is the one place
+      // `''` is fatal, and it gets the real value — see
+      // `LLMInvocationRequest.userId`.
       const {
         client: llmClient,
         providerType,
         credentialSource,
-      } = await this.enforceQuotaGate(provider, model, organizationId, userId, {
+      } = await this.enforceQuotaGate(provider, model, organizationId, userId ?? '', {
         forceSystem: request.forceSystem ?? false,
       })
 
@@ -250,11 +256,14 @@ export class LLMOrchestrator {
 
     // Single-pass gate: resolves the client + credential metadata AND enforces
     // the SYSTEM credit quota + abuse rate-limit.
+    //
+    // ⚠️ `userId ?? ''` only for the credential/rate-limit path — see the same
+    // note in `invoke` above.
     const {
       client: llmClient,
       providerType,
       credentialSource,
-    } = await this.enforceQuotaGate(provider, model, organizationId, userId, {
+    } = await this.enforceQuotaGate(provider, model, organizationId, userId ?? '', {
       forceSystem: request.forceSystem ?? false,
     })
 
