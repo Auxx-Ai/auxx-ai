@@ -587,69 +587,58 @@ export function MultiSelectPicker({
             {filteredOptions.length === 0 && !searchValue.trim() && (
               <CommandEmpty>No options yet. Type to create one.</CommandEmpty>
             )}
-            {filteredOptions.length > 0 && (
-              <>
-                {groupedOptions ? (
-                  groupedOptions.map((group) => (
-                    <CommandGroup key={group.id} heading={group.heading}>
-                      {group.items.map(renderOption)}
-                    </CommandGroup>
-                  ))
-                ) : (
-                  <CommandGroup>{filteredOptions.map(renderOption)}</CommandGroup>
-                )}
-                <div className='-mx-1 h-px bg-border/50' />
-              </>
-            )}
-
-            {/* Manage button */}
-            {canManage && (
-              <CommandGroup>
-                <CommandItem
-                  onSelect={toggleManageMode}
-                  disabled={disabled}
-                  className='cursor-pointer h-7.5'>
-                  {isManageMode ? (
-                    <>
-                      <Check className='text-good-500' />
-                      <span>Done</span>
-                    </>
-                  ) : (
-                    <>
-                      <Tags className='text-muted-foreground' />
-                      <span>{manageLabel}</span>
-                    </>
-                  )}
-                </CommandItem>
-              </CommandGroup>
-            )}
-
-            {/* Create / Browse buttons */}
-            {(onCreate || onBrowse) && (
-              <CommandGroup>
-                {onCreate && (
-                  <CommandItem
-                    onSelect={onCreate}
-                    disabled={disabled}
-                    className='cursor-pointer h-7.5'>
-                    <Plus className='text-muted-foreground' />
-                    <span>{createLabel}</span>
-                  </CommandItem>
-                )}
-                {onBrowse && (
-                  <CommandItem
-                    onSelect={onBrowse}
-                    disabled={disabled}
-                    className='cursor-pointer h-7.5'>
-                    <LayoutGrid className='text-muted-foreground' />
-                    <span>{browseLabel}</span>
-                  </CommandItem>
-                )}
-              </CommandGroup>
-            )}
+            {filteredOptions.length > 0 &&
+              (groupedOptions ? (
+                groupedOptions.map((group) => (
+                  <CommandGroup key={group.id} heading={group.heading}>
+                    {group.items.map(renderOption)}
+                  </CommandGroup>
+                ))
+              ) : (
+                <CommandGroup>{filteredOptions.map(renderOption)}</CommandGroup>
+              ))}
           </>
         )}
       </CommandList>
+
+      {/* Manage / Create / Browse — pinned OUTSIDE CommandList so a long option
+          list scrolls under them instead of pushing them past `max-h-[300px]`.
+          The `Create "«search»"` row above stays INSIDE the list on purpose: it
+          is search-driven and belongs beside the results it filters. */}
+      {!isLoading && (canManage || onCreate || onBrowse) && (
+        <CommandGroup className='border-t'>
+          {canManage && (
+            <CommandItem
+              onSelect={toggleManageMode}
+              disabled={disabled}
+              className='cursor-pointer h-7.5'>
+              {isManageMode ? (
+                <>
+                  <Check className='text-good-500' />
+                  <span>Done</span>
+                </>
+              ) : (
+                <>
+                  <Tags className='text-muted-foreground' />
+                  <span>{manageLabel}</span>
+                </>
+              )}
+            </CommandItem>
+          )}
+          {onCreate && (
+            <CommandItem onSelect={onCreate} disabled={disabled} className='cursor-pointer h-7.5'>
+              <Plus className='text-muted-foreground' />
+              <span>{createLabel}</span>
+            </CommandItem>
+          )}
+          {onBrowse && (
+            <CommandItem onSelect={onBrowse} disabled={disabled} className='cursor-pointer h-7.5'>
+              <LayoutGrid className='text-muted-foreground' />
+              <span>{browseLabel}</span>
+            </CommandItem>
+          )}
+        </CommandGroup>
+      )}
     </Command>
   )
 }

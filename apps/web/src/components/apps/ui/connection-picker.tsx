@@ -9,7 +9,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from '@auxx/ui/components/command'
 import { cn } from '@auxx/ui/lib/utils'
 import { Check, Plus, TriangleAlert } from 'lucide-react'
@@ -165,19 +164,19 @@ export function ConnectionPicker({
             ))}
           </CommandGroup>
         )}
-
-        {onCreateNew && (
-          <>
-            {!isEmpty && <CommandSeparator alwaysRender />}
-            <CommandGroup forceMount>
-              <CommandItem forceMount onSelect={onCreateNew} className='cursor-pointer h-7.5'>
-                <Plus className='text-muted-foreground' />
-                <span>New connection</span>
-              </CommandItem>
-            </CommandGroup>
-          </>
-        )}
       </CommandList>
+
+      {/* Pinned OUTSIDE CommandList so it stays put as the connection list
+          grows. `forceMount` still matters: cmdk otherwise filters this row out
+          whenever the search text doesn't match it. */}
+      {onCreateNew && (
+        <CommandGroup forceMount className={cn(!isEmpty && 'border-t')}>
+          <CommandItem forceMount onSelect={onCreateNew} className='cursor-pointer h-7.5'>
+            <Plus className='text-muted-foreground' />
+            <span>New connection</span>
+          </CommandItem>
+        </CommandGroup>
+      )}
     </Command>
   )
 }

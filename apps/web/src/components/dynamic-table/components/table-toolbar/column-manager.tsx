@@ -12,7 +12,6 @@ import {
   CommandList,
   CommandNavigableItem,
   CommandNavigation,
-  CommandSeparator,
   CommandSortable,
   CommandSortableItem,
   useCommandNavigation,
@@ -180,54 +179,57 @@ function RootStack<TData = any>() {
   )
 
   return (
-    <CommandList>
-      {/* Visible Columns Group - Sortable */}
-      <CommandGroup heading='Visible Columns'>
-        {validVisibleColumns.length === 0 ? (
-          <CommandDescription>No visible columns</CommandDescription>
-        ) : (
-          <CommandSortable items={validVisibleColumns.map((c) => c.id)} onReorder={handleReorder}>
-            {validVisibleColumns.map((column) => {
-              const display = getColumnDisplay(column)
+    <>
+      <CommandList>
+        {/* Visible Columns Group - Sortable */}
+        <CommandGroup heading='Visible Columns'>
+          {validVisibleColumns.length === 0 ? (
+            <CommandDescription>No visible columns</CommandDescription>
+          ) : (
+            <CommandSortable items={validVisibleColumns.map((c) => c.id)} onReorder={handleReorder}>
+              {validVisibleColumns.map((column) => {
+                const display = getColumnDisplay(column)
 
-              return (
-                <CommandSortableItem key={column.id} id={column.id} className='py-0 pe-0.5'>
-                  <span className='truncate flex-1 flex items-center'>
-                    {display.type === 'breadcrumb' ? (
-                      <SmartBreadcrumb
-                        segments={display.segments}
-                        mode='display'
-                        size='sm'
-                        className='flex-1 min-w-0'
-                      />
-                    ) : (
-                      display.label
-                    )}
-                  </span>
-                  <ColumnOptionsDropdown<TData>
-                    column={column}
-                    onRemove={() => handleRemoveColumn(column.id)}
-                  />
-                </CommandSortableItem>
-              )
-            })}
-          </CommandSortable>
-        )}
-      </CommandGroup>
+                return (
+                  <CommandSortableItem key={column.id} id={column.id} className='py-0 pe-0.5'>
+                    <span className='truncate flex-1 flex items-center'>
+                      {display.type === 'breadcrumb' ? (
+                        <SmartBreadcrumb
+                          segments={display.segments}
+                          mode='display'
+                          size='sm'
+                          className='flex-1 min-w-0'
+                        />
+                      ) : (
+                        display.label
+                      )}
+                    </span>
+                    <ColumnOptionsDropdown<TData>
+                      column={column}
+                      onRemove={() => handleRemoveColumn(column.id)}
+                    />
+                  </CommandSortableItem>
+                )
+              })}
+            </CommandSortable>
+          )}
+        </CommandGroup>
+      </CommandList>
 
-      <CommandSeparator />
-
-      {/* Add Column Button */}
-      <CommandGroup>
-        <CommandNavigableItem
-          item={{ id: 'add-column', label: 'Add column', type: 'add-column' }}
-          hasChildren
-          onSelect={() => push({ id: 'add-column', label: 'Add column', type: 'add-column' })}>
-          <Plus />
-          <span>Add column</span>
-        </CommandNavigableItem>
-      </CommandGroup>
-    </CommandList>
+      {/* Add Column — pinned below the list so a long column set scrolls under
+          it instead of pushing it out of reach. */}
+      <div className='border-t border-border/50'>
+        <CommandGroup>
+          <CommandNavigableItem
+            item={{ id: 'add-column', label: 'Add column', type: 'add-column' }}
+            hasChildren
+            onSelect={() => push({ id: 'add-column', label: 'Add column', type: 'add-column' })}>
+            <Plus />
+            <span>Add column</span>
+          </CommandNavigableItem>
+        </CommandGroup>
+      </div>
+    </>
   )
 }
 

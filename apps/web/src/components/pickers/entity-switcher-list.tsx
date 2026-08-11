@@ -295,21 +295,21 @@ export function EntitySwitcherList<T extends FavoriteTargetType = FavoriteTarget
               {truncatedNotice && (
                 <div className='px-3 py-2 text-xs text-muted-foreground'>{truncatedNotice}</div>
               )}
-
-              {onCreate && (
-                <CommandGroup>
-                  <CommandItem
-                    value='__create__'
-                    onSelect={onCreate}
-                    className='cursor-pointer h-7.5'>
-                    <Plus className='text-muted-foreground' />
-                    <span>{createLabel}</span>
-                  </CommandItem>
-                </CommandGroup>
-              )}
             </>
           )}
         </CommandList>
+
+        {/* Pinned OUTSIDE CommandList: the entity list scrolls past
+            `max-h-[300px]`, so as the last list item this would be dragged out
+            of reach. Matches `record-switcher-list`. */}
+        {!isLoading && onCreate && (
+          <CommandGroup aria-label='Create' className='border-t'>
+            <CommandItem value='__create__' onSelect={onCreate} className='cursor-pointer h-7.5'>
+              <Plus className='text-muted-foreground' />
+              <span>{createLabel}</span>
+            </CommandItem>
+          </CommandGroup>
+        )}
       </Command>
 
       <ConfirmDialog />
