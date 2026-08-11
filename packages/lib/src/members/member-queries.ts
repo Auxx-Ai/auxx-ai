@@ -2,7 +2,7 @@
 
 import { type Database, database as defaultDb, schema } from '@auxx/database'
 import type { OrganizationMemberInfo, OrganizationRole } from '@auxx/database/types'
-import { and, asc, count, eq } from 'drizzle-orm'
+import { and, asc, count, eq, getTableColumns } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 
 /** Find membership for a user within an organization (uses org cache) */
@@ -168,22 +168,27 @@ export async function getActiveMemberCount(
  * name then email.
  */
 export async function getOrganizationMembers(organizationId: string, db: Database = defaultDb) {
-  const members = await db.query.OrganizationMember.findMany({
-    where: eq(schema.OrganizationMember.organizationId, organizationId),
-    with: {
+  // An INNER JOIN, not `findMany({ with: { user: { where } } })`: Drizzle's
+  // relational config for a TO-ONE relation has no `where` key, so the filter
+  // that used to sit there was dropped silently and SYSTEM/AGENT users were
+  // listed as ordinary members.
+  const members = await db
+    .select({
+      ...getTableColumns(schema.OrganizationMember),
       user: {
-        columns: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-        },
-        // Exclude system users from member lists
-        where: eq(schema.User.userType, 'USER'),
+        id: schema.User.id,
+        name: schema.User.name,
+        email: schema.User.email,
+        image: schema.User.image,
       },
-    },
-    orderBy: [asc(schema.OrganizationMember.role)],
-  })
+    })
+    .from(schema.OrganizationMember)
+    .innerJoin(
+      schema.User,
+      and(eq(schema.User.id, schema.OrganizationMember.userId), eq(schema.User.userType, 'USER'))
+    )
+    .where(eq(schema.OrganizationMember.organizationId, organizationId))
+    .orderBy(asc(schema.OrganizationMember.role))
 
   const roleOrder: Record<OrganizationRole, number> = { OWNER: 0, ADMIN: 1, USER: 2 }
   return members.sort((a, b) => {
