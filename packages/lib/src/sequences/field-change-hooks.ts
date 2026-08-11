@@ -101,7 +101,12 @@ export const enqueueQuickbooksInvoiceSyncOnSent: EntityFieldChangeHandler = asyn
         invoiceInstanceId: entityInstanceId,
         actorUserId: event.userId,
       },
-      { jobId: `qb-invoice-sync:${entityInstanceId}` }
+      // ⚠️ Hyphens, not colons. BullMQ rejects a custom `jobId` containing `:`
+      // unless it splits into exactly THREE parts (`job.js` — a compat carve-out
+      // for old repeatable jobs), so a two-part `qb-invoice-sync:<id>` threw
+      // `Custom Id cannot contain :` on every enqueue and the catch below
+      // swallowed it.
+      { jobId: `qb-invoice-sync-${entityInstanceId}` }
     )
   } catch (error) {
     logger.error('Failed to enqueue QuickBooks invoice sync on invoice:sent', {

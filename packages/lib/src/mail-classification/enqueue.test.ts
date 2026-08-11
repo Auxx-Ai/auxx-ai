@@ -44,8 +44,22 @@ describe('enqueueMailClassification', () => {
         threadId: 'thr_1',
         from: 'a@b.com',
       },
-      { jobId: 'mail-classify:msg_1' }
+      { jobId: 'mail-classify-msg_1' }
     )
+  })
+
+  // The previous id was `mail-classify:msg_1`, and this test asserted it happily
+  // while BullMQ threw `Custom Id cannot contain :` on every single enqueue —
+  // live classification never ran once. An equality assertion cannot catch that,
+  // because it only proves we passed the string we meant to pass. This one
+  // encodes BullMQ's actual rule (`job.js`): a `:` is legal ONLY when the id
+  // splits into exactly three parts, a compat carve-out for old repeatable jobs.
+  it('builds a jobId BullMQ will accept', async () => {
+    await enqueueMailClassification(event())
+
+    const { jobId } = h.add.mock.calls[0]![2] as { jobId: string }
+    expect(jobId.includes(':') && jobId.split(':').length !== 3).toBe(false)
+    expect(`${Number.parseInt(jobId, 10)}`).not.toBe(jobId)
   })
 
   it('ignores events that are not `message:received`', async () => {

@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   invoke: vi.fn(),
-  getDefault: vi.fn(),
+  getCachedDefaultModel: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -24,12 +24,17 @@ vi.mock('../ai/orchestrator/llm-orchestrator', () => ({
     invoke = h.invoke
   },
 }))
-vi.mock('../ai/providers/system-model-service', () => ({
-  SystemModelService: class {
-    getDefault = h.getDefault
-  },
+vi.mock('../cache', () => ({ getCachedDefaultModel: h.getCachedDefaultModel }))
+// ⚠️ PARTIAL. A full replacement returning only `ModelType` worked until
+// `classify.ts` imported `../cache`, whose graph reaches `provider-registry` →
+// `anthropic-defaults`, which reads `FetchFrom` from this same module at import
+// time. The whole file then died at COLLECTION with "No FetchFrom export is
+// defined on the mock" — a failure that looks nothing like its cause. Keep the
+// real module and override only what needs overriding.
+vi.mock('../ai/providers/types', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../ai/providers/types')>()),
+  ModelType: { LLM: 'LLM' },
 }))
-vi.mock('../ai/providers/types', () => ({ ModelType: { LLM: 'LLM' } }))
 vi.mock('../ai/usage/usage-tracking-service', () => ({
   UsageTrackingService: class {},
 }))
@@ -55,7 +60,7 @@ const db = {} as never
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.getDefault.mockResolvedValue({ provider: 'openai', model: 'gpt-x' })
+  h.getCachedDefaultModel.mockResolvedValue({ provider: 'openai', model: 'gpt-x' })
 })
 
 describe('the structured-output schema (invariant 12)', () => {
@@ -200,7 +205,7 @@ describe('classifyMessage — usage attribution + never throws', () => {
   })
 
   it('no default LLM is a skip, not an error — and costs no call', async () => {
-    h.getDefault.mockResolvedValue(null)
+    h.getCachedDefaultModel.mockResolvedValue(null)
 
     await expect(classifyMessage(db, context)).resolves.toEqual({
       tagId: null,
@@ -290,7 +295,7 @@ describe('classifyMessage — a failed call NEVER counts as an inference', () =>
     expect(h.warn).not.toHaveBeenCalled()
 
     vi.clearAllMocks()
-    h.getDefault.mockResolvedValue({ provider: 'openai', model: 'gpt-x' })
+    h.getCachedDefaultModel.mockResolvedValue({ provider: 'openai', model: 'gpt-x' })
     h.invoke.mockRejectedValue(new Error('429 too many requests'))
     await classifyMessage(db, context)
     expect(h.warn).toHaveBeenCalled()

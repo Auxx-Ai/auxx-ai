@@ -716,6 +716,37 @@ describe('enqueueMailReclassifySample — the queue contract (§2.2)', () => {
     expect(h.jobRemove).not.toHaveBeenCalled()
   })
 
+  // ⚠️ The jobId is keyed on (org, inbox) and carries NO scope, so a collapse
+  // says nothing about whether the running job matches what was asked for. The
+  // caller has to be able to tell — without this the router would write an audit
+  // row for a run at a scope that never executed.
+  it('reports the scope of the run it collapsed into', async () => {
+    const inFlight = { ...data, range: { kind: 'all-time' } as MailReclassifyRange }
+    h.queueGetJob.mockResolvedValue({
+      getState: async () => 'active',
+      data: inFlight,
+      remove: h.jobRemove,
+    })
+
+    const result = (
+      await enqueueMailReclassifySample({ ...data, mode: 're-classify' })
+    )._unsafeUnwrap()
+
+    expect(result.running).toEqual({ range: { kind: 'all-time' }, mode: 'fill-gaps' })
+  })
+
+  // A job old enough to predate this field, or one BullMQ hands back with its
+  // payload reaped, must not fabricate a scope — `undefined` is the honest answer
+  // and the router treats it as "cannot prove a mismatch".
+  it('omits the scope when the in-flight job carries no readable data', async () => {
+    h.queueGetJob.mockResolvedValue({ getState: async () => 'waiting', remove: h.jobRemove })
+
+    const result = (await enqueueMailReclassifySample(data))._unsafeUnwrap()
+
+    expect(result.deduplicated).toBe(true)
+    expect(result.running).toBeUndefined()
+  })
+
   // §3.3's loop is sample → fix the vocabulary → sample again. A completed job
   // left in place would make BullMQ hand back the stale report.
   it('clears a COMPLETED run so the same scope can be re-sampled', async () => {

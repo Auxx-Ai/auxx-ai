@@ -403,9 +403,33 @@ export class OrganizationSeeder {
 
   /**
    * Seed default tags for a new organization using the unified entity system.
-   * Creates a hierarchical tag structure with a parent "Topic Categorization" tag
-   * and child tags, plus independent top-level tags — then the five AI mail
-   * categories under their own parent (see `seedAiCategoryTags`).
+   *
+   * Two system tags — `Urgent` and `VIP` — plus the mail categories under their
+   * own parent (see `seedAiCategoryTags`). That is the whole default taxonomy.
+   *
+   * ## Why there is no "Topic Categorization" tree here any more
+   *
+   * This method used to create 13 SYSTEM tags: a `Topic Categorization` parent
+   * with six children, and three independent ones. Data migration `076`
+   * (`076-mail-category-rework.ts`, plan 06 §5.1) retires all of them for
+   * existing orgs — `Orders` and `Account Management` are adopted in place and
+   * renamed to `Order Status` and `Account`, the five remaining topics are
+   * unflagged, and `Topic Categorization` collapses into `Mail Categories`.
+   * Seeding the old set here and immediately migrating it away would mean every
+   * NEW org is born needing that migration (plan 06 Q6).
+   *
+   * ⚠️ The five retired topics (`Customer Feedback`, `Legal`, `Security`,
+   * `Shipping`, `Troubleshooting`) are not seeded at all, where `076` only
+   * UNFLAGS them. The difference is deliberate: `076` keeps them because an
+   * existing org may have applied them by hand and deleting one would drop real
+   * curation. A brand-new org has applied nothing, so there is nothing to
+   * preserve — and plan 06 §2.1's whole argument is that a default taxonomy of
+   * thirteen is the thing to fix.
+   *
+   * ⚠️ `Urgent` and `VIP` stay, and stay SYSTEM tags — plan 06 §5.1 step 7
+   * leaves them completely alone. They are priority and segment, never intents,
+   * so they must never become classifier-eligible (invariant 8), and
+   * `seed-suggested-filters.ts` resolves `VIP` by display name.
    */
   private async seedTags(organizationId: string) {
     // Dedicated handler with `is_system_tag` bypass — the tag-system-guard
@@ -420,56 +444,17 @@ export class OrganizationSeeder {
     // and each invalidation attempt costs 5s on Lambda when Redis is slow/unavailable
     const seedOpts = { skipEvents: true }
 
-    // Create parent tag first - Topic Categorization
-    // UnifiedCrudHandler.create() throws on error, so if we get a result, it succeeded
-    const topicResult = await handler.create(
-      'tag',
-      {
-        title: 'Topic Categorization',
-        tag_description: 'Top-level categorization for support tickets',
-        tag_emoji: '🏷️',
-        tag_color: 'blue',
-        is_system_tag: true,
-      },
-      seedOpts
-    )
-
-    // Create child tags under Topic Categorization using parent relationship
-    // Must be sequential to avoid inverse relationship sync conflicts (sortKey collisions)
+    // Priority and segment. No parent, so these can go in parallel — there is no
+    // inverse (`tag_children`) sync to race on sortKey.
     //
-    // `Billing` and `Sales` USED to live here as system tags, and `Support` below as an
-    // independent one. They moved to `AI_CATEGORY_STARTER_TAGS` (mail-classification plan
-    // §2.4), which needs those exact three titles — seeding both sets would give every new
-    // org two tags called `Billing`, one of them frozen by the system-tag guard. They are
-    // still created for every new org, just as ORDINARY tags under "Mail Categories", which
-    // is what C4 requires: their descriptions are the classifier's instructions and have to
-    // stay editable. `suggested:billing-mail` still resolves `Billing` by display name.
-    const topicSubTags = [
-      { title: 'Account Management', tag_emoji: '👤', tag_color: 'red' },
-      { title: 'Customer Feedback', tag_emoji: '💬', tag_color: 'orange' },
-      { title: 'Legal', tag_emoji: '⚖️', tag_color: 'gray' },
-      { title: 'Security', tag_emoji: '🔒', tag_color: 'purple' },
-      { title: 'Shipping', tag_emoji: '🚚', tag_color: 'amber' },
-      { title: 'Troubleshooting', tag_emoji: '🛠️', tag_color: 'teal' },
-    ]
-
-    for (const tag of topicSubTags) {
-      await handler.create(
-        'tag',
-        {
-          ...tag,
-          tag_parent: topicResult.recordId, // Link to parent via RecordId
-          is_system_tag: true,
-        },
-        seedOpts
-      )
-    }
-
-    // Create independent tags (no parent) - can be parallel since no inverse sync needed
-    // (`Support` moved to the AI mail categories — see the note on `topicSubTags`.)
+    // `Billing`, `Sales` and `Support` used to be seeded here as system tags. They
+    // moved to `AI_CATEGORY_STARTER_TAGS` and are created below as ORDINARY tags
+    // under "Mail Categories", which is what 05 C4 requires: their descriptions are
+    // the classifier's instructions and have to stay editable.
+    // `suggested:billing-mail` still resolves `Billing` by display name, and
+    // `suggested:key-domain` still resolves `VIP` — both titles survive.
     const independentTags = [
       { title: 'Urgent', tag_emoji: '🚨', tag_color: 'purple' },
-      { title: 'Orders', tag_emoji: '📦', tag_color: 'amber' },
       { title: 'VIP', tag_emoji: '⭐', tag_color: 'orange' },
     ]
 
@@ -477,9 +462,14 @@ export class OrganizationSeeder {
       independentTags.map((tag) => handler.create('tag', { ...tag, is_system_tag: true }, seedOpts))
     )
 
-    // The five AI mail categories, under their own parent. Ordinary (editable, deletable)
-    // tags with `tag_ai_classify: true` — they make the labels AVAILABLE to the classifier
-    // and nothing more; no mail is classified until an inbox is opted in.
+    // The core mail categories, under their own parent. Ordinary (editable,
+    // undeletable-by-template-key) tags with `tag_ai_classify: true` — they make the
+    // labels AVAILABLE to the classifier and nothing more; no mail is classified
+    // until an inbox is opted in.
+    //
+    // ⚠️ Core only, deliberately: pack inference (06 §5.4) keys on a Shopify
+    // integration, and a brand-new org has none yet. The vertical packs are
+    // discovered through the tag list's `Add Tag` → suggested-categories picker.
     await seedAiCategoryTags(this.db, organizationId, this.userId)
   }
   // Create ticket sequence for the organization

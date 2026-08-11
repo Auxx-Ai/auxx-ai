@@ -15,6 +15,13 @@ const logger = createScopedLogger('entity-migrations:014')
  * Frozen-in-time snapshot of the titles `OrganizationSeeder.seedTags` creates.
  * If the seeder's defaults change later, do NOT edit this list — write a new
  * migration that flags the new titles. Migrations are historical.
+ *
+ * ⚠️ It has already drifted, deliberately. `seedTags` now creates only `Urgent`
+ * and `VIP` as system tags: data migration `076` retired the rest (plan 06 §5.1
+ * / Q6), so seeding them would make every new org need that migration. Eleven of
+ * the titles below therefore describe orgs created before 2026-08-10 and nothing
+ * else — which is exactly what a historical migration should describe. Syncing
+ * this list to the current seeder would be the bug, not the fix.
  */
 const CANONICAL_SYSTEM_TAG_TITLES = [
   // Parent
