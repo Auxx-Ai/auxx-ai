@@ -14,6 +14,12 @@ export interface FieldGroupLike {
   collapsed?: boolean
   icon?: string
   fieldIds: string[]
+  /**
+   * Where an EMPTY group renders: immediately before this field. Read only
+   * while the group has no surviving member, ignored once it has one. See
+   * {@link resolveEmptyGroupAnchor}.
+   */
+  anchorFieldId?: string
 }
 
 export interface GroupedFieldSection {
@@ -54,10 +60,17 @@ export interface GroupFieldOrderParams {
  *   skip-the-miss pattern `fieldOrder` itself already relies on.
  * - **Duplicates in `fieldOrder` collapse** to their first occurrence, matching
  *   `mergeFieldOrder`.
- * - With `includeEmptyGroups`, groups with zero surviving members are appended
- *   at the END, after everything else, in `groups` array order — they have no
- *   derived position to render at, by construction. Read mode passes false and
- *   they vanish; edit mode passes true and they become drop targets.
+ * - With `includeEmptyGroups`, groups with zero surviving members render
+ *   immediately before their `anchorFieldId`, or at the END when they have no
+ *   anchor or their anchor no longer exists. An empty group has no member to
+ *   derive a position from, so the anchor is the only thing it can be placed by;
+ *   it is written by dragging the group (see {@link resolveEmptyGroupAnchor}).
+ *   Read mode passes false and empty groups vanish entirely, anchor or not.
+ * - **An anchor only fires where a section STARTS.** Later members of a group
+ *   are consumed while emitting that group's block, so an anchor naming one is
+ *   never reached and the empty group falls through to the end. The resolver
+ *   only ever writes an ungrouped field or a group's first member, so this
+ *   costs nothing in practice and keeps a group's block unsplittable.
  *
  * Invariant: flattening the result's `fieldIds` yields a permutation of
  * `fieldOrder` (deduplicated) with no losses and no duplicates.
@@ -87,8 +100,32 @@ export function groupFieldOrder(params: GroupFieldOrderParams): GroupedFieldSect
   // producing an empty `group: null` section.
   let openUngrouped: GroupedFieldSection | null = null
 
+  // Empty groups indexed by the field they render before, in `groups` order so
+  // several anchored on the same field keep a stable sequence.
+  const anchoredEmptyGroups = new Map<string, number[]>()
+  if (includeEmptyGroups) {
+    for (let index = 0; index < groups.length; index++) {
+      const group = groups[index] as FieldGroupLike
+      if (group.anchorFieldId === undefined) continue
+      if (group.fieldIds.some((fieldId) => fieldOrder.includes(fieldId))) continue
+      const pending = anchoredEmptyGroups.get(group.anchorFieldId)
+      if (pending) pending.push(index)
+      else anchoredEmptyGroups.set(group.anchorFieldId, [index])
+    }
+  }
+
   for (const fieldId of fieldOrder) {
     if (consumed.has(fieldId)) continue
+
+    // Anchored empty groups go in BEFORE the section this field opens. Emitting
+    // one closes the ungrouped run in progress, so the fields after it start a
+    // new section rather than reading as part of the run above the group.
+    for (const index of anchoredEmptyGroups.get(fieldId) ?? []) {
+      sections.push({ group: groups[index] as FieldGroupLike, fieldIds: [] })
+      emitted.add(index)
+      openUngrouped = null
+    }
+
     consumed.add(fieldId)
 
     const ownerIndex = ownerByField.get(fieldId)
@@ -228,11 +265,17 @@ export interface AssignFieldInOrderResult {
  *
  * The field lands at the END of the target group's block; callers that want a
  * precise intra-group slot should follow this with a reorder against the
- * returned order (the two compose — see the tests).
+ * returned order. **That follow-up reorder must name its edge** — this function
+ * has just moved the field to the block's tail, so an `arrayMove` against a
+ * member would read the gesture as travelling upward and land the field one slot
+ * early (see {@link moveFieldToSlot}).
  *
- * No-ops on the order when the target group has no other surviving members
- * (nothing to anchor against) or when the field is absent from `fieldOrder`.
- * Never mutates the inputs.
+ * A target group with no surviving members sends the field to wherever
+ * {@link groupFieldOrder} draws that empty group — just before its
+ * `anchorFieldId`, or the END of `fieldOrder` when it has no live anchor.
+ * Leaving the field in place would instead give the group the field's position
+ * and move the group. No-ops on the order when the field is absent from
+ * `fieldOrder`. Never mutates the inputs.
  */
 export function assignFieldToGroupInOrder(params: {
   fieldOrder: string[]
@@ -241,14 +284,43 @@ export function assignFieldToGroupInOrder(params: {
   groupId: string | null
 }): AssignFieldInOrderResult {
   const { fieldOrder, groups, fieldId, groupId } = params
-  const nextGroups = reassignFieldToGroup({ groups, fieldId, groupId })
+  const reassigned = reassignFieldToGroup({ groups, fieldId, groupId })
 
   // Membership unchanged (the field is already in the target group, or already
   // ungrouped) → the order must be left ALONE. Relocating here would move a
   // field on a same-group drag, so a caller doing the usual
   // assign-then-reorder would move it twice and land it a slot off.
   const wasMember = groups.some((g) => g.id === groupId && g.fieldIds.includes(fieldId))
-  if (wasMember) return { fieldOrder, groups: nextGroups }
+  if (wasMember) return { fieldOrder, groups: reassigned }
+
+  const from = fieldOrder.indexOf(fieldId)
+
+  /**
+   * The group the field is LEAVING, when this is its last surviving member.
+   *
+   * It is about to lose the only thing giving it a position, so pin it to where
+   * it renders right now — otherwise it falls back to the end of the list (or,
+   * worse, to a stale `anchorFieldId` from before it was ever filled, which is
+   * where it was last seen jumping to).
+   *
+   * The anchor is the field that FOLLOWS the departing one, read from the
+   * order as it stands before the move. Anchoring to the departing field itself
+   * would be wrong: the caller usually reorders it straight afterwards, and the
+   * emptied group would then travel with it. Blocks are contiguous, so the
+   * successor is always either ungrouped or the first member of the next group
+   * — never mid-block, which the walk would ignore. No successor means the
+   * block sat last, and no anchor already means "at the end".
+   */
+  const sourceGroup = groups.find((g) => g.id !== groupId && g.fieldIds.includes(fieldId))
+  const sourceEmptied =
+    sourceGroup !== undefined &&
+    !sourceGroup.fieldIds.some((id) => id !== fieldId && fieldOrder.includes(id))
+  const successorId = from === -1 ? undefined : fieldOrder[from + 1]
+
+  const nextGroups =
+    sourceEmptied && sourceGroup
+      ? reassigned.map((g) => (g.id === sourceGroup.id ? { ...g, anchorFieldId: successorId } : g))
+      : reassigned
 
   const target = groupId ? nextGroups.find((g) => g.id === groupId) : undefined
   if (!target)
@@ -259,17 +331,168 @@ export function assignFieldToGroupInOrder(params: {
   for (let i = 0; i < fieldOrder.length; i++) {
     if (siblings.has(fieldOrder[i] as string)) lastSibling = i
   }
-  const from = fieldOrder.indexOf(fieldId)
-  if (lastSibling === -1 || from === -1) {
+  if (from === -1) {
     return { fieldOrder: normalizeGroupContiguity(fieldOrder, nextGroups), groups: nextGroups }
   }
 
   const next = [...fieldOrder]
   next.splice(from, 1)
-  // Removing the field shifts indices left when it sat before the block.
-  next.splice(from < lastSibling ? lastSibling : lastSibling + 1, 0, fieldId)
+
+  /**
+   * An EMPTY group has no member to land beside, so the field goes to wherever
+   * that group is currently DRAWN — otherwise the group inherits the field's
+   * position instead and visibly jumps to meet it.
+   *
+   * `groupFieldOrder` draws an empty group immediately before its
+   * `anchorFieldId`, or at the very end when it has none (or the anchor is a
+   * deleted field). Both cases have to be mirrored here, and the anchor case is
+   * the one that matters most: a group the user has just dragged up the panel
+   * must not snap back to the bottom the moment it gets its first field.
+   */
+  const emptyGroupInsertAt = (): number => {
+    const anchorFieldId = target.anchorFieldId
+    if (anchorFieldId === undefined) return next.length
+    // The anchor IS the field being dropped in: the group already renders just
+    // above it, so keeping the field's own slot leaves the group where it is.
+    if (anchorFieldId === fieldId) return Math.min(from, next.length)
+    const anchorIndex = next.indexOf(anchorFieldId)
+    return anchorIndex === -1 ? next.length : anchorIndex
+  }
+
+  // With members, the field lands after the block's last one. Removing it first
+  // shifts indices left when it sat before the block, hence the two cases.
+  const insertAt =
+    lastSibling === -1 ? emptyGroupInsertAt() : from < lastSibling ? lastSibling : lastSibling + 1
+  next.splice(insertAt, 0, fieldId)
 
   return { fieldOrder: normalizeGroupContiguity(next, nextGroups), groups: nextGroups }
+}
+
+export interface MoveFieldToSlotParams {
+  fieldOrder: string[]
+  /** The field being moved. */
+  fieldId: string
+  /** The field whose slot it is aimed at. */
+  overId: string
+  /**
+   * Which side of `overId` the field lands on.
+   *
+   * **Omit for dnd-kit's `arrayMove` semantics**, which are direction-dependent:
+   * the destination index is read BEFORE the source is spliced out, so removing
+   * an element that sat earlier shifts everything left and the field lands
+   * AFTER the target — while a field that sat later lands ON it, i.e. before.
+   * A flat `SortableContext` drag wants exactly that, because the row has
+   * already been displaced on screen.
+   *
+   * **Pass it when a drop and its affordance must agree.** The property panel's
+   * insert line is drawn from the ORIGINAL positions, so any step that relocates
+   * the field before the reorder — joining a group appends it to the block's
+   * tail — inverts the arrayMove direction and lands it one slot early. Naming
+   * the side removes the dependency: the target index is recomputed after the
+   * removal, so the result is the same whichever way the field travelled.
+   */
+  edge?: 'before' | 'after'
+}
+
+/**
+ * Move a field to another field's slot in `fieldOrder`.
+ *
+ * Returns the input array by reference when either id is missing or the move is
+ * a no-op, so callers can skip a state write. Never mutates the input, and never
+ * touches group membership — run {@link normalizeGroupContiguity} afterwards if
+ * the move may have split a block.
+ */
+export function moveFieldToSlot(params: MoveFieldToSlotParams): string[] {
+  const { fieldOrder, fieldId, overId, edge } = params
+
+  const from = fieldOrder.indexOf(fieldId)
+  const to = fieldOrder.indexOf(overId)
+  if (from === -1 || to === -1 || from === to) return fieldOrder
+
+  const next = [...fieldOrder]
+  next.splice(from, 1)
+
+  if (edge === undefined) {
+    next.splice(to, 0, fieldId)
+    return next
+  }
+
+  const target = next.indexOf(overId)
+  next.splice(edge === 'after' ? target + 1 : target, 0, fieldId)
+  return next
+}
+
+export interface ResolveEmptyGroupAnchorParams {
+  fieldOrder: string[]
+  groups: FieldGroupLike[]
+  /** The EMPTY group being dragged. */
+  groupId: string
+  /** Drop target: a field id, or another group's id. */
+  overId: string
+  /** True when `overId` names a group rather than a field. */
+  overIsGroup: boolean
+}
+
+/**
+ * Where a dragged EMPTY group should come to rest, as an `anchorFieldId`.
+ *
+ * {@link moveGroupBlock} cannot answer this: it works by lifting a group's
+ * member rows out of `fieldOrder` and splicing them back at a new index, and an
+ * empty group has no rows to lift. So an empty group is repositioned by naming
+ * the field it renders BEFORE, which {@link groupFieldOrder} then honours.
+ *
+ * **Before, not after.** The insert line for an empty group is always drawn on
+ * its target's TOP edge — `edgeFor` needs the block's own first member to know
+ * which way it travelled, and there isn't one — so "before the target" is the
+ * position the affordance actually promises. It also leaves the end of the list
+ * reachable as the no-anchor default, which an "after" encoding would not.
+ *
+ * Decisions this function pins down:
+ * - **A drop snaps to a group boundary**, exactly as `moveGroupBlock` does: a
+ *   field belonging to another group resolves to that group's FIRST surviving
+ *   member, so the empty group lands above that whole block instead of inside
+ *   it. `groupFieldOrder` only fires anchors where a section starts, so an
+ *   anchor pointing mid-block would silently do nothing.
+ * - **Returns null for anything unresolvable** — an unknown group, a target
+ *   that is the moving group itself, a target group with no surviving members,
+ *   a field absent from `fieldOrder` — so the caller writes nothing.
+ * - **The caller is responsible for only calling this on an empty group.** A
+ *   populated group has a real derived position and must go through
+ *   `moveGroupBlock`.
+ *
+ * Never mutates its inputs.
+ */
+export function resolveEmptyGroupAnchor(
+  params: ResolveEmptyGroupAnchorParams
+): { anchorFieldId: string } | null {
+  const { fieldOrder, groups, groupId, overId, overIsGroup } = params
+
+  if (!groups.some((group) => group.id === groupId)) return null
+
+  const ownerById = new Map<string, string>()
+  for (const group of groups) {
+    for (const fieldId of group.fieldIds) {
+      if (!ownerById.has(fieldId)) ownerById.set(fieldId, group.id)
+    }
+  }
+
+  const firstMemberOf = (targetGroupId: string): string | undefined =>
+    fieldOrder.find((fieldId) => ownerById.get(fieldId) === targetGroupId)
+
+  if (overIsGroup) {
+    if (overId === groupId) return null
+    const anchorFieldId = firstMemberOf(overId)
+    return anchorFieldId === undefined ? null : { anchorFieldId }
+  }
+
+  if (!fieldOrder.includes(overId)) return null
+
+  const ownerGroupId = ownerById.get(overId)
+  if (ownerGroupId === undefined) return { anchorFieldId: overId }
+  if (ownerGroupId === groupId) return null
+
+  const anchorFieldId = firstMemberOf(ownerGroupId)
+  return anchorFieldId === undefined ? null : { anchorFieldId }
 }
 
 export interface MoveGroupBlockParams {

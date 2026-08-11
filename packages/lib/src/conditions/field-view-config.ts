@@ -40,6 +40,20 @@ export const fieldGroupSchema = z.object({
    * harmless and skipped at read time.
    */
   fieldIds: z.array(z.string()),
+  /**
+   * Where an EMPTY group renders: immediately before this field.
+   *
+   * Read only while `fieldIds` has no surviving member, and ignored entirely
+   * once the group has one — a populated group's position is still derived from
+   * where its first member sits in `fieldOrder`, so this can never disagree with
+   * that. It exists because an empty group has no member to derive a position
+   * from at all, which left a freshly created group pinned at the end of the
+   * list and impossible to move until something was dragged into it.
+   *
+   * Unset, or naming a field that no longer exists, means "render at the end" —
+   * the same convention as before.
+   */
+  anchorFieldId: z.string().optional(),
 })
 
 /** A labelled, collapsible group of fields in the property panel */

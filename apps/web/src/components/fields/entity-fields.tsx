@@ -103,6 +103,11 @@ function EntityFields({
   // Confirm dialog for delete
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm()
 
+  // Confirm dialog for leaving edit mode with unsaved view changes. Separate
+  // instance from the delete one so neither has to borrow the other's naming;
+  // they can never be open at the same time.
+  const [confirmExit, ConfirmExitDialog] = useConfirm()
+
   // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
@@ -143,6 +148,7 @@ function EntityFields({
   const {
     draft,
     isDraftMode: isEditMode,
+    isDraftDirty,
     isSaving,
     enterDraft,
     cancelDraft,
@@ -165,6 +171,39 @@ function EntityFields({
   // view's otherwise. A group has no stored position — its header renders where
   // its first member sits in the field order (see `group-fields.ts`).
   const fieldGroups: FieldGroup[] = isEditMode ? draftGroups : (viewConfig.fieldGroups ?? [])
+
+  /**
+   * Leaving edit mode via the header's X.
+   *
+   * The X reads as "close this", not "throw my work away", so an untouched draft
+   * just closes and a modified one asks first. Saving here is exactly Save View —
+   * the same `saveDraft`, one config write — so the prompt is a route to it, not
+   * a second write path.
+   *
+   * `saveDraft` never rejects: on failure it toasts and leaves the draft intact,
+   * so a failed save keeps the user in edit mode with their changes rather than
+   * closing over them.
+   *
+   * The footer's explicit Cancel is deliberately NOT routed through here — it
+   * sits beside Save View, so the choice has already been put to the user.
+   */
+  const handleExitEditMode = useCallback(async () => {
+    if (!isDraftDirty) {
+      cancelDraft()
+      return
+    }
+
+    const shouldSave = await confirmExit({
+      title: 'Save changes to this view?',
+      description:
+        'Your changes to the field layout have not been saved. Saving applies them for everyone in the organization.',
+      confirmText: 'Save',
+      cancelText: 'Discard',
+    })
+
+    if (shouldSave) await saveDraft()
+    else cancelDraft()
+  }, [isDraftDirty, cancelDraft, confirmExit, saveDraft])
 
   // ─────────────────────────────────────────────────────────────────
   // FIELD PROCESSING (unified system + custom)
@@ -274,9 +313,17 @@ function EntityFields({
    * the first within this handler. A same-group drag skips the assignment — it
    * is a no-op on membership but not on position, so running it would move the
    * field twice.
+   *
+   * `edge` is why the reorder cannot be a bare `arrayMove`. Joining a group
+   * relocates the field to the block's TAIL, so a field dragged DOWN into a
+   * group arrives above its target having travelled up — and an arrayMove reads
+   * direction from the post-assignment position, landing it one slot early
+   * (dropping on the last member put it second-to-last). The caller passes the
+   * same edge the insert line was drawn from, so the drop lands where the line
+   * promised.
    */
   const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
+    (event: DragEndEvent, edge?: 'before' | 'after') => {
       const { active, over } = event
       if (!over) return
 
@@ -299,14 +346,18 @@ function EntityFields({
         const firstMemberId = draftGroups
           .find((group) => group.id === headerGroupId)
           ?.fieldIds.find((id) => id !== activeId)
-        if (firstMemberId) reorderDraft(activeId, firstMemberId)
+        // `before` states the intent outright — dropping on a header means the
+        // head of the block, whichever direction the field travelled from. An
+        // EMPTY group has no first member, and none is needed: the assignment
+        // has already sent the field to where an empty group renders.
+        if (firstMemberId) reorderDraft(activeId, firstMemberId, 'before')
         return
       }
 
       const targetGroupId = draftGroupIdOf(overId)
 
       if (targetGroupId !== currentGroupId) assignFieldToGroup(activeId, targetGroupId)
-      reorderDraft(activeId, overId)
+      reorderDraft(activeId, overId, edge)
     },
     [assignFieldToGroup, draftGroupIdOf, draftGroups, reorderDraft]
   )
@@ -425,11 +476,13 @@ function EntityFields({
 
   return (
     <FieldNavigationProvider>
+      <ConfirmExitDialog />
       <EntityFieldsContent
         className={className}
         isEditMode={isEditMode}
         onEnterEditMode={enterDraft}
         onCancelEditMode={cancelDraft}
+        onExitEditMode={handleExitEditMode}
         onSaveView={saveDraft}
         isSaving={isSaving}
         dialogOpen={dialogOpen}
