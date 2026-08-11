@@ -9,6 +9,7 @@ import { getCachedResources, getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import { publisher } from '../events/publisher'
 import { FieldValueService } from '../field-values'
+import { batchGetThreadTagIds } from '../field-values/relationship-queries'
 import { toInboxRecordId } from '../inbox-record-ids'
 import { buildDefIdToSlug } from '../permissions/capabilities/resolve-capability-inputs'
 import type { MailViewer } from '../permissions/visibility/context'
@@ -22,6 +23,19 @@ const logger = createScopedLogger('thread-mutation-service')
 
 /** Active statuses eligible for retroactive filtering */
 const FILTERABLE_STATUSES = ['OPEN', 'ACTIVE', 'PENDING'] as const
+
+/**
+ * Order-insensitive tag-set compare. `batchGetThreadTagIds` has no `ORDER BY`,
+ * so two reads of an unchanged thread can differ in order — comparing as lists
+ * would report every thread as changed.
+ */
+function sameTagSet(a: string[] | undefined, b: string[] | undefined): boolean {
+  const before = a ?? []
+  const after = b ?? []
+  if (before.length !== after.length) return false
+  const seen = new Set(before)
+  return after.every((id) => seen.has(id))
+}
 
 /**
  * Unified thread updates interface.
@@ -1020,8 +1034,10 @@ export class ThreadMutationService {
    * Tags are stored as RELATIONSHIP field values with systemAttribute='thread_tags'.
    *
    * Delegates to FieldValueService bulk primitives so tag writes share the same
-   * inverse-sync, field-trigger, and realtime-publish path as every other
-   * relationship write (no direct FieldValue writes here).
+   * inverse-sync, field-trigger, and relationship-publish path as every other
+   * relationship write (no direct FieldValue writes here), then publishes the
+   * MAIL-side `thread:updated` itself — see {@link publishTagChanges} for why
+   * the field-value layer's own publish is not enough.
    */
   async tagThreadsBulk(
     recordIds: RecordId[],
@@ -1032,7 +1048,8 @@ export class ThreadMutationService {
       return { created: 0, skipped: 0, errors: [] }
     }
 
-    await this.assertCanActOnThreads(recordIds.map((id) => parseRecordId(id).entityInstanceId))
+    const threadIds = recordIds.map((id) => parseRecordId(id).entityInstanceId)
+    await this.assertCanActOnThreads(threadIds)
 
     logger.info(`Bulk tagging threads`, {
       operation,
@@ -1055,6 +1072,14 @@ export class ThreadMutationService {
 
       const fieldId = tagsField.id
       const fieldValueService = new FieldValueService(this.organizationId, undefined, this.db)
+
+      // Tag sets BEFORE the write. Needed because the bulk primitives report
+      // aggregate `inserted`/`skipped`/`removed` counts and never say WHICH
+      // threads moved — and re-adding a tag a thread already carries is a
+      // deliberate no-op (mail-classification C5, "accumulate don't replace"),
+      // so a run over a backlog is mostly no-ops. Diffing keeps the fan-out
+      // below proportional to what actually changed.
+      const tagsBefore = await batchGetThreadTagIds(this.db, threadIds, this.organizationId)
 
       let created = 0
       let skipped = 0
@@ -1090,6 +1115,8 @@ export class ThreadMutationService {
         created = recordIds.length * relatedRecordIds.length
       }
 
+      await this.publishTagChanges(threadIds, tagsBefore)
+
       logger.info(`Bulk thread tagging completed`, { operation, created, skipped })
       return { created, skipped, errors }
     } catch (error: unknown) {
@@ -1099,6 +1126,87 @@ export class ThreadMutationService {
       throw new Error(
         `Database error updating tags for threads: ${error instanceof Error ? error.message : error}`
       )
+    }
+  }
+
+  /**
+   * Publish the MAIL-side `thread:updated` for a tag write, carrying each
+   * changed thread's FULL resulting tag set.
+   *
+   * ⚠️ This exists because the field-value layer's own publish does not reach
+   * the mail UI. `addRelationValuesBulk` emits `fieldValues:updated` on
+   * `rooms.orgRecords(org, threadDefId)` — the per-def RECORDS channel, which
+   * only the Records grid joins (`use-resource-sync`). The mail UI subscribes to
+   * per-inbox lens channels and its dispatcher has no `fieldValues:updated`
+   * case, so before this every tag write was invisible until a reload: the
+   * classifier, the `add-tag` filter action, the workflow CRUD node, Kopilot's
+   * `update-thread`, and the bulk toolbar — whose local optimistic write hid it
+   * from the person clicking, but not from anyone else.
+   *
+   * Reads the tag set back rather than reconstructing it, so the patch is
+   * byte-for-byte what a `thread.getByIds` refetch would return (same
+   * `batchGetThreadTagIds`).
+   *
+   * Best-effort: the tags are already committed, so a realtime failure degrades
+   * to "stale until reload" and must never fail the write.
+   */
+  private async publishTagChanges(
+    threadIds: string[],
+    tagsBefore: Map<string, string[]>
+  ): Promise<void> {
+    try {
+      const tagsAfter = await batchGetThreadTagIds(this.db, threadIds, this.organizationId)
+      const changed = threadIds.filter((id) => !sameTagSet(tagsBefore.get(id), tagsAfter.get(id)))
+      if (changed.length === 0) return
+
+      // `publishThreadUpdated` fans out per inbox lens and to grantees, so it
+      // needs the thread's inbox and assignee — neither is known here, unlike
+      // in `updateBulk` where the write itself RETURNINGs them.
+      const rows = await this.db
+        .select({
+          id: schema.Thread.id,
+          inboxId: schema.Thread.inboxId,
+          assigneeId: schema.Thread.assigneeId,
+        })
+        .from(schema.Thread)
+        .where(
+          and(
+            inArray(schema.Thread.id, changed),
+            eq(schema.Thread.organizationId, this.organizationId)
+          )
+        )
+
+      const realtime = getRealtimeService()
+      // Chunked for the same reason `updateBulk` chunks: a retroactive
+      // classification run tags thousands of threads through a single call.
+      for (let i = 0; i < rows.length; i += 50) {
+        await Promise.allSettled(
+          rows.slice(i, i + 50).map((row) =>
+            publishThreadUpdated(
+              realtime,
+              this.organizationId,
+              {
+                threadId: row.id,
+                inboxId: row.inboxId ?? null,
+                assigneeId: row.assigneeId ?? null,
+                patch: { tagIds: (tagsAfter.get(row.id) ?? []) as RecordId[] },
+              },
+              { excludeSocketId: this.socketId }
+            )
+          )
+        )
+      }
+
+      // A mail view filters on arbitrary conditions, tag conditions included,
+      // and `getViewCounts` counts unread threads matching them — so a tag
+      // write can move a view's badge.
+      await this.markCountsStale()
+    } catch (error) {
+      logger.warn('Failed to publish thread tag updates', {
+        organizationId: this.organizationId,
+        threadCount: threadIds.length,
+        error: error instanceof Error ? error.message : error,
+      })
     }
   }
 
