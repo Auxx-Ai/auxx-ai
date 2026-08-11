@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/email-display.tsx
 'use client'
 
+import { SendStatus } from '@auxx/database/enums'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -13,7 +14,6 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { Kbd } from '@auxx/ui/components/kbd'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
 import {
@@ -45,6 +45,7 @@ import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
 import type { MessageType } from './email-editor/types'
 import { useHtmlBody } from './hooks/use-html-body'
+import { useRetrySend } from './hooks/use-retry-send'
 import { ParticipantList, type ParticipantListEntry } from './participant-display'
 import { SendStatusIndicator } from './send-status-indicator'
 import { initialsFor } from './utils/participant-initials'
@@ -126,21 +127,7 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
     return result
   }, [message, from, to, cc])
 
-  // Retry send mutation
-  const retrySendMessage = api.thread.retrySendMessage.useMutation({
-    onError: (error) => {
-      toastError({
-        title: 'Failed to retry sending',
-        description: error.message,
-      })
-    },
-  })
-
-  const handleRetry = useCallback(() => {
-    if (message) {
-      retrySendMessage.mutate({ messageId: message.id })
-    }
-  }, [message, retrySendMessage])
+  const { retry, isRetrying } = useRetrySend(message?.id, thread?.integrationId)
 
   const editorMessage: MessageType | null = useMemo(
     () => (message ? toEditorMessage(message, { from, to, cc }) : null),
@@ -225,6 +212,11 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
   const isMe = !message.isInbound
   const senderInitials = initialsFor(from)
 
+  // Outbound messages carry a blue frame; a send that never landed swaps it for
+  // a red one so the failure reads from the card, not just the status icon.
+  const sendFailed =
+    isMe && (message.sendStatus === SendStatus.FAILED || message.sendStatus === SendStatus.BOUNCED)
+
   // Read-only seam: a populated `messageActions` always carries `onReply`. When
   // it's empty (e.g. the palette's ReadOnlyThreadProvider) hide every action
   // affordance — the dropdown and the inline reply/forward buttons.
@@ -234,7 +226,10 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
     <div
       className={cn(
         'flex flex-col rounded-2xl border bg-background shadow-xs transition-all duration-200 ease-in-out hover:bg-muted',
-        { 'ring-5 ring-info/5 hover:ring-info/20 border-info': isMe },
+        { 'ring-5 ring-info/5 hover:ring-info/20 border-info': isMe && !sendFailed },
+        {
+          'ring-5 ring-destructive/10 hover:ring-destructive/30 border-destructive': sendFailed,
+        },
         { 'hover:bg-background transition-none': selected }
       )}
       ref={letterRef}>
@@ -281,29 +276,33 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
                 )}
               </AnimatePresence>
             </div>
-            <SendStatusIndicator
-              status={message.sendStatus}
-              error={message.providerError}
-              attempts={message.attempts}
-              onRetry={handleRetry}
-              className='mt-1'
-            />
           </div>
           <div className='flex shrink-0 grow-0 items-start gap-2'>
             <div className='flex flex-col items-end'>
-              {hasActions && (
-                <div className='flex items-center flex-row justify-end'>
-                  <DropdownMenuDemo
-                    message={message}
-                    editorMessage={editorMessage}
-                    emailActions={messageActions}
-                    onMarkUnread={markAsUnread}
-                  />
-                  <Button variant='ghost' size='icon-sm' onClick={handleReply}>
-                    <Reply />
-                  </Button>
-                </div>
-              )}
+              <div className='flex items-center flex-row justify-end gap-1'>
+                <SendStatusIndicator
+                  variant='icon'
+                  status={message.sendStatus}
+                  error={message.providerError}
+                  attempts={message.attempts}
+                  integrationId={thread?.integrationId}
+                  onRetry={retry}
+                  isRetrying={isRetrying}
+                />
+                {hasActions && (
+                  <>
+                    <DropdownMenuDemo
+                      message={message}
+                      editorMessage={editorMessage}
+                      emailActions={messageActions}
+                      onMarkUnread={markAsUnread}
+                    />
+                    <Button variant='ghost' size='icon-sm' onClick={handleReply}>
+                      <Reply />
+                    </Button>
+                  </>
+                )}
+              </div>
               <div className='text-xs text-muted-foreground'>
                 <Tooltip
                   content={message.sentAt ? new Date(message.sentAt).toString() : ''}

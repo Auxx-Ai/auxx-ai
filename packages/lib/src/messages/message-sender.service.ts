@@ -20,7 +20,7 @@ import { getThreadLens } from '../permissions/visibility/thread-lens'
 import type { NormalizedEmailError as NormalizedEmailErrorInstance } from '../providers/error-normalization'
 import type { AttachmentFile } from '../providers/message-provider-interface'
 import type { ProviderRegistryService } from '../providers/provider-registry-service'
-import { getRealtimeService, publishMessageCreated } from '../realtime'
+import { getRealtimeService, publishMessageCreated, publishMessageUpdated } from '../realtime'
 import { Result } from '../result'
 import { isSuppressed } from '../sequences/suppression'
 import { getOrganizationSetting } from '../settings/settings-service'
@@ -1125,8 +1125,8 @@ export class MessageSenderService {
       const sendParams = await this.extractRetryParameters(failedMessage)
       // 5. Send directly via provider (skip composition)
       const result = await this.retrySendViaProvider(sendParams)
-      // 6. Handle result and update message status
-      return await this.processRetryResult(failedMessage.id, result, attemptNumber)
+      // 6. Run the same post-send tail a first-time send runs
+      return await this.finalizeRetry(failedMessage, result, attemptNumber)
     } catch (error) {
       logger.error('Failed to retry message', {
         messageId: input.messageId,
@@ -1410,67 +1410,118 @@ export class MessageSenderService {
         provider: providerType,
         messageId: params.messageId,
       })
-      // Update message with error - don't throw, let processRetryResult handle it.
-      // The provider's own text is merged into metadata rather than assigned, so
-      // the earlier reconciliation bookkeeping survives the retry.
-      const raw = extractProviderErrorText(error)
-      await db
-        .update(schema.Message)
-        .set({
-          sendStatus: 'FAILED' as any,
-          providerError: normalizedError.message,
-          ...(raw ? { metadata: providerErrorRawMerge(raw) } : {}),
-        })
-        .where(eq(schema.Message.id, params.messageId))
-      // Return failure response instead of throwing
+      // Don't throw and don't write the row here — returning a failure response
+      // lets `finalizeRetry` put it through the reconciler, which is the single
+      // writer of `sendStatus`/`providerError` on every other send path.
       return {
         success: false,
         error: normalizedError.message,
         timestamp: new Date(),
-        metadata: { error: normalizedError, providerErrorRaw: raw },
+        metadata: { error: normalizedError, providerErrorRaw: extractProviderErrorText(error) },
       }
     }
   }
   /**
-   * Processes the result of a retry attempt
+   * Runs the post-send tail for a retry attempt.
+   *
+   * A retry is a second run of the *same* send, so it goes through the same
+   * infrastructure `sendMessage` uses rather than hand-writing message rows:
+   * the reconciler owns `sendStatus`/`sentAt`/`externalId`/`lastAttemptAt`,
+   * thread counters get recomputed, and a `message:updated` goes out so open
+   * tabs reflect the result without a reload.
    */
-  private async processRetryResult(
-    messageId: string,
+  private async finalizeRetry(
+    failedMessage: any,
     result: ProviderSendResponse,
     attemptNumber: number
   ): Promise<RetryMessageResult> {
-    if (result.success) {
-      // Update message as sent
-      await db
-        .update(schema.Message)
-        .set({
-          sendStatus: 'SENT' as any,
-          externalId: result.messageId ?? null,
-          metadata: (result.metadata as any) ?? {},
-          sentAt: result.timestamp ?? new Date(),
-        })
-        .where(eq(schema.Message.id, messageId))
-      // Get updated message
-      const message = await this.getUpdatedMessage(messageId)
-      logger.info('Message retry successful', {
-        messageId,
-        attemptNumber,
-        externalId: result.messageId,
+    const messageId = failedMessage.id as string
+    const threadId = failedMessage.threadId as string
+    const integrationId = failedMessage.integrationId as string
+    const capabilities = await this.getCapabilitiesForIntegration(integrationId)
+
+    // Step 7 equivalent: per-message bookkeeping, thread reconciliation gated on
+    // the provider having external thread state to reconcile against.
+    await this.reconciler.reconcileSentMessage({
+      messageId,
+      sendToken: failedMessage.sendToken ?? '',
+      providerResponse: result,
+      threadContext: {
+        id: threadId,
+        organizationId: this.organizationId,
+        integrationId,
+        externalId: failedMessage.thread?.externalId ?? null,
+        isPending: false,
+      },
+      reconcileThread: capabilities.requiresSendReconciliation,
+    })
+
+    // The reconciler replaces `metadata` wholesale, so the provider's own text
+    // has to be merged back in afterwards or it is lost (same as Step 7).
+    if (!result.success) {
+      await this.persistProviderErrorRaw(messageId, result.metadata?.providerErrorRaw)
+    }
+
+    // Step 8 equivalent. Thread counters are derived from `MAX(sentAt)`, so a
+    // retry that finally lands has to recompute them — otherwise the thread
+    // keeps `lastMessageAt = NULL` and renders as "0 seconds" forever.
+    await this.threadManager.updateThreadMetadata(threadId)
+    await this.threadManager.updateThreadParticipants(threadId)
+    await touchActivityForThreadLinks(threadId, this.organizationId)
+
+    const message = await this.getUpdatedMessage(messageId)
+
+    // Realtime: the row already exists client-side, so this is an update rather
+    // than the `message:created` a first-time send publishes.
+    try {
+      const [threadRow] = await (this.db ?? db)
+        .select({ inboxId: schema.Thread.inboxId, assigneeId: schema.Thread.assigneeId })
+        .from(schema.Thread)
+        .where(eq(schema.Thread.id, threadId))
+        .limit(1)
+      await publishMessageUpdated(
+        getRealtimeService(),
+        this.organizationId,
+        {
+          messageId,
+          threadId,
+          inboxId: threadRow?.inboxId ?? null,
+          assigneeId: threadRow?.assigneeId ?? null,
+          patch: {
+            sendStatus: message.sendStatus,
+            providerError: message.providerError ?? null,
+            sentAt: message.sentAt ? new Date(message.sentAt).toISOString() : null,
+            attempts: attemptNumber,
+          },
+        },
+        { excludeSocketId: this.socketId }
+      )
+    } catch (err) {
+      logger.debug('Failed to publish message:updated for retry (non-critical)', {
+        err: err instanceof Error ? err.message : err,
       })
-      return {
-        success: true,
-        message,
-        attemptNumber,
-      }
-    } else {
-      // Already updated as failed in retrySendViaProvider catch block
-      const message = await this.getUpdatedMessage(messageId)
-      return {
-        success: false,
-        message,
-        attemptNumber,
-        error: 'Failed to send message via provider',
-      }
+    }
+
+    // Step 9 equivalent — only meaningful once the provider actually accepted it.
+    if (result.success && capabilities.triggersPostSendSync) {
+      await this.triggerPostSendSync(integrationId, {
+        messageId,
+        threadId,
+        sendToken: failedMessage.sendToken ?? '',
+      })
+    }
+
+    logger.info('Message retry finalized', {
+      messageId,
+      attemptNumber,
+      success: result.success,
+    })
+
+    return {
+      success: result.success,
+      message,
+      attemptNumber,
+      error: result.success ? undefined : (result.error ?? 'Failed to send message via provider'),
     }
   }
 }

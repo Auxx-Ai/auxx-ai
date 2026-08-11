@@ -331,17 +331,22 @@ export class ThreadManagerService {
             WHERE "threadId" = ${threadId}
               AND "sentAt" IS NOT NULL
           ), 0),
+          -- Dates fall back to "createdAt" for messages that never got a
+          -- "sentAt" (a send the provider rejected). Aggregating on "sentAt"
+          -- alone left an outbound-only thread with "lastMessageAt" NULL, which
+          -- the list projection then papered over with the current time —
+          -- rendering as "0 seconds" forever and pinning the row to the top of
+          -- every newest-first list (DESC sorts NULLs first). "messageCount"
+          -- deliberately still counts delivered messages only.
           "firstMessageAt" = (
-            SELECT MIN("sentAt")
+            SELECT MIN(COALESCE("sentAt", "createdAt"))
             FROM "Message"
             WHERE "threadId" = ${threadId}
-              AND "sentAt" IS NOT NULL
           ),
           "lastMessageAt" = (
-            SELECT MAX("sentAt")
+            SELECT MAX(COALESCE("sentAt", "createdAt"))
             FROM "Message"
             WHERE "threadId" = ${threadId}
-              AND "sentAt" IS NOT NULL
           ),
           "latestMessageId" = (
             SELECT id

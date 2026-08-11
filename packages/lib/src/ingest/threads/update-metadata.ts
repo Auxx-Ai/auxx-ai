@@ -36,17 +36,19 @@ export async function updateThreadMetadataEfficient(
           WHERE "threadId" = ${threadId}
             AND "sentAt" IS NOT NULL
         ), 0),
+        -- Kept in step with \`ThreadManagerService.updateThreadMetadata\`: dates
+        -- fall back to "createdAt" so a message the provider rejected still
+        -- dates the thread, instead of leaving "lastMessageAt" NULL for the
+        -- list projection to paper over with the current time.
         "firstMessageAt" = (
-          SELECT MIN("sentAt")
+          SELECT MIN(COALESCE("sentAt", "createdAt"))
           FROM "Message"
           WHERE "threadId" = ${threadId}
-            AND "sentAt" IS NOT NULL
         ),
         "lastMessageAt" = (
-          SELECT MAX("sentAt")
+          SELECT MAX(COALESCE("sentAt", "createdAt"))
           FROM "Message"
           WHERE "threadId" = ${threadId}
-            AND "sentAt" IS NOT NULL
         ),
         "latestMessageId" = (
           SELECT id

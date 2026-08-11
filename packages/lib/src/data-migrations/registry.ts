@@ -41,6 +41,7 @@ import { migration071BackfillOutlookPlainText } from './migrations/071-backfill-
 import { migration072MailFiltersLimit } from './migrations/072-mail-filters-limit'
 import { migration073BackfillBulkMailFields } from './migrations/073-backfill-bulk-mail-fields'
 import { migration076MailCategoryRework } from './migrations/076-mail-category-rework'
+import { migration077BackfillUnsentThreadDates } from './migrations/077-backfill-unsent-thread-dates'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -108,6 +109,7 @@ function buildRegistry(): DataMigrationDef[] {
     // shared sequence and both sort before 076, which depends on the fields they
     // materialize.
     migration076MailCategoryRework,
+    migration077BackfillUnsentThreadDates,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))
