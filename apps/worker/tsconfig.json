@@ -16,5 +16,9 @@
     //   "@auxx/workflow-nodes": ["../../packages/workflow-nodes"]
     // }
   },
-  "include": ["src/**/*.ts", "*.ts"]
+  "include": ["src/**/*.ts", "*.ts"],
+  // `vitest.config.ts` imports the repo-root `vitest.alias.ts`, which sits above
+  // this package's rootDir (TS6059/TS6307). apps/api and apps/kb keep their
+  // vitest configs out of the program for the same reason.
+  "exclude": ["node_modules", "dist", "vitest.config.ts"]
 }

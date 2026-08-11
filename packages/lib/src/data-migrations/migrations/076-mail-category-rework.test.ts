@@ -878,6 +878,9 @@ describe('migration076MailCategoryRework', () => {
     expect(migration076MailCategoryRework.id).toBe('076-mail-category-rework')
   })
 
+  // The registry import pulls in every migration module and its dependencies —
+  // ~6s warm, past the 10s project default on a cold runner. The budget is for
+  // that one import, not for the assertions.
   it('is registered exactly once', async () => {
     const { ALL_DATA_MIGRATIONS } = await import('../registry')
     const matches = ALL_DATA_MIGRATIONS.filter((m) => m.id === migration076MailCategoryRework.id)
@@ -885,5 +888,5 @@ describe('migration076MailCategoryRework', () => {
     // It must sort after the entity migration that materializes the field.
     expect(ALL_DATA_MIGRATIONS.some((m) => m.id === '075-tag-template-key')).toBe(true)
     expect('076-mail-category-rework' > '075-tag-template-key').toBe(true)
-  })
+  }, 30_000)
 })
