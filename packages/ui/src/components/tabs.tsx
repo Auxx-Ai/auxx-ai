@@ -2,13 +2,6 @@
 
 import { Button } from '@auxx/ui/components/button'
 import {
-  Command,
-  CommandGroup,
-  CommandList,
-  CommandSortable,
-  CommandSortableItem,
-} from '@auxx/ui/components/command'
-import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -23,6 +16,9 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { SortableList } from '@auxx/ui/components/sortable'
+import { Switch } from '@auxx/ui/components/switch'
+import { SortableTreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { ChevronDown, Settings } from 'lucide-react'
@@ -124,6 +120,12 @@ export interface TabDefinition {
   icon: React.ComponentType<{ className?: string; size?: number }>
   /** Optional badge count to display */
   badge?: number
+  /**
+   * Whether the viewer may hide this tab from the strip. Defaults to `true`.
+   * Set `false` for a tab the surface can't function without (an Overview the
+   * drawer always falls back to), so its switch stays locked on.
+   */
+  hideable?: boolean
 }
 
 /** Props for OverflowTabsList component */
@@ -142,12 +144,19 @@ export interface OverflowTabsListProps extends VariantProps<typeof tabsListVaria
   moreClassName?: string
   /** Variant toggle for the overflow "more" trigger */
   moreVariant?: VariantProps<typeof tabsTriggerVariants>['variant']
-  /** Whether tabs can be reordered via drag-and-drop dialog */
-  canReorder?: boolean
-  /** Called with the new tab value order when the user confirms reorder */
-  onReorder?: (orderedValues: string[]) => void
-  /** Called when the user resets tab order to default */
-  onResetOrder?: () => void
+  /** Whether tabs can be reordered and shown/hidden via the customize dialog */
+  canCustomize?: boolean
+  /**
+   * Values of tabs the viewer has hidden. Hidden tabs are dropped from the strip
+   * *and* the overflow dropdown — the customize dialog is the only way back.
+   * The active tab is never filtered out, so a deep link into a hidden tab still
+   * resolves (see {@link OverflowTabsListProps.value}).
+   */
+  hidden?: string[]
+  /** Called with the full committed state when the user saves the customize dialog */
+  onCustomize?: (next: { order: string[]; hidden: string[] }) => void
+  /** Called when the user resets tab order and visibility to defaults */
+  onReset?: () => void
 }
 
 /**
@@ -164,18 +173,36 @@ function OverflowTabsList({
   moreClassName,
   moreVariant,
   variant,
-  canReorder,
-  onReorder,
-  onResetOrder,
+  canCustomize,
+  hidden,
+  onCustomize,
+  onReset,
 }: OverflowTabsListProps) {
-  const [reorderDialogOpen, setReorderDialogOpen] = React.useState(false)
+  const [customizeDialogOpen, setCustomizeDialogOpen] = React.useState(false)
   const containerRef = React.useRef<HTMLDivElement>(null)
   const tabRefs = React.useRef<Map<string, HTMLElement>>(new Map())
   const dropdownButtonRef = React.useRef<HTMLButtonElement>(null)
   const observerRef = React.useRef<IntersectionObserver | null>(null)
   const containerWidthRef = React.useRef<number>(0)
+
+  /**
+   * The tabs the strip actually lays out and measures — `tabs` minus the hidden
+   * ones. The dialog keeps rendering the full `tabs` list, since a hidden tab
+   * still needs a row (and a switch) to be recoverable.
+   *
+   * The active tab is deliberately never filtered: a `?tab=` deep link into a
+   * hidden tab reveals it in its natural position for this visit, and it drops
+   * back out as soon as the viewer selects something else — no extra state, and
+   * nothing written back to the caller's stored `hidden`.
+   */
+  const stripTabs = React.useMemo(() => {
+    if (!hidden || hidden.length === 0) return tabs
+    const hiddenSet = new Set(hidden)
+    return tabs.filter((tab) => !hiddenSet.has(tab.value) || tab.value === value)
+  }, [tabs, hidden, value])
+
   const [visibleTabs, setVisibleTabs] = React.useState<Set<string>>(
-    new Set(tabs.map((t) => t.value))
+    new Set(stripTabs.map((t) => t.value))
   )
   const overflowTriggerVariant = (moreVariant ?? variant ?? 'default') as VariantProps<
     typeof tabsTriggerVariants
@@ -184,7 +211,7 @@ function OverflowTabsList({
   const previousTabValuesRef = React.useRef<string[]>([])
 
   if (latestTabValuesRef.current.length === 0) {
-    const values = tabs.map((tab) => tab.value)
+    const values = stripTabs.map((tab) => tab.value)
     latestTabValuesRef.current = values
     previousTabValuesRef.current = values
   }
@@ -219,7 +246,7 @@ function OverflowTabsList({
   }, [])
 
   React.useEffect(() => {
-    const values = tabs.map((tab) => tab.value)
+    const values = stripTabs.map((tab) => tab.value)
     latestTabValuesRef.current = values
 
     const previousValues = previousTabValuesRef.current
@@ -234,14 +261,14 @@ function OverflowTabsList({
 
     previousTabValuesRef.current = values
     syncVisibleTabs(values)
-  }, [tabs, syncVisibleTabs])
+  }, [stripTabs, syncVisibleTabs])
 
   // Calculate which tabs should be visible vs in overflow
   const { displayTabs, overflowTabs } = React.useMemo(() => {
     const display: TabDefinition[] = []
     const overflow: TabDefinition[] = []
 
-    tabs.forEach((tab) => {
+    stripTabs.forEach((tab) => {
       if (visibleTabs.has(tab.value)) {
         display.push(tab)
       } else {
@@ -250,10 +277,10 @@ function OverflowTabsList({
     })
 
     return { displayTabs: display, overflowTabs: overflow }
-  }, [tabs, visibleTabs])
+  }, [stripTabs, visibleTabs])
 
   // Setup IntersectionObserver to detect visible tabs
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tabs, moreClassName, overflowTriggerVariant are used as triggers to re-create observer when tab layout changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stripTabs, moreClassName, overflowTriggerVariant are used as triggers to re-create observer when tab layout changes
   React.useEffect(() => {
     if (!containerRef.current) return
 
@@ -308,7 +335,7 @@ function OverflowTabsList({
     })
 
     return () => observer.disconnect()
-  }, [tabs, overflowTabs.length, moreClassName, overflowTriggerVariant])
+  }, [stripTabs, overflowTabs.length, moreClassName, overflowTriggerVariant])
 
   // Setup ResizeObserver to re-calculate on container resize
   React.useEffect(() => {
@@ -386,10 +413,11 @@ function OverflowTabsList({
           )
         })}
 
-        {canReorder && onReorder && overflowTabs.length === 0 && (
+        {canCustomize && onCustomize && overflowTabs.length === 0 && (
           <button
             type='button'
-            onClick={() => setReorderDialogOpen(true)}
+            aria-label='Customize tabs'
+            onClick={() => setCustomizeDialogOpen(true)}
             className='ml-auto shrink-0 size-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors'>
             <Settings size={14} />
           </button>
@@ -432,12 +460,12 @@ function OverflowTabsList({
                   </DropdownMenuItem>
                 )
               })}
-              {canReorder && onReorder && (
+              {canCustomize && onCustomize && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => setReorderDialogOpen(true)}>
+                  <DropdownMenuItem onSelect={() => setCustomizeDialogOpen(true)}>
                     <Settings size={16} />
-                    Reorder tabs
+                    Customize tabs
                   </DropdownMenuItem>
                 </>
               )}
@@ -446,13 +474,14 @@ function OverflowTabsList({
         )}
       </TabsList>
 
-      {canReorder && onReorder && (
-        <TabReorderDialog
-          open={reorderDialogOpen}
-          onOpenChange={setReorderDialogOpen}
+      {canCustomize && onCustomize && (
+        <TabCustomizeDialog
+          open={customizeDialogOpen}
+          onOpenChange={setCustomizeDialogOpen}
           tabs={tabs}
-          onReorder={onReorder}
-          onReset={onResetOrder}
+          hidden={hidden}
+          onCustomize={onCustomize}
+          onReset={onReset}
         />
       )}
     </div>
@@ -462,28 +491,38 @@ function OverflowTabsList({
 OverflowTabsList.displayName = 'OverflowTabsList'
 
 /**
- * Dialog for reordering tabs via drag-and-drop
+ * Dialog for reordering tabs (drag) and showing/hiding them (switch). Both edits
+ * stage locally and commit together on Save, so Cancel/Esc discards the whole
+ * session and the caller only ever sees one consistent `{order, hidden}` write.
  */
-function TabReorderDialog({
+function TabCustomizeDialog({
   open,
   onOpenChange,
   tabs,
-  onReorder,
+  hidden,
+  onCustomize,
   onReset,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   tabs: TabDefinition[]
-  onReorder: (orderedValues: string[]) => void
+  hidden?: string[]
+  onCustomize: (next: { order: string[]; hidden: string[] }) => void
   onReset?: () => void
 }) {
   const [localOrder, setLocalOrder] = React.useState<string[]>([])
+  const [localHidden, setLocalHidden] = React.useState<Set<string>>(new Set())
+  const wasOpenRef = React.useRef(false)
 
+  // Seed on the closed → open transition only. Re-seeding on every `tabs`/`hidden`
+  // identity change would throw away edits the viewer has staged but not saved.
   React.useEffect(() => {
-    if (open) {
+    if (open && !wasOpenRef.current) {
       setLocalOrder(tabs.map((t) => t.value))
+      setLocalHidden(new Set(hidden))
     }
-  }, [open, tabs])
+    wasOpenRef.current = open
+  }, [open, tabs, hidden])
 
   const tabMap = React.useMemo(() => {
     const map = new Map<string, TabDefinition>()
@@ -491,8 +530,19 @@ function TabReorderDialog({
     return map
   }, [tabs])
 
+  // The strip must never empty out, so the last remaining visible tab locks on.
+  const visibleCount = localOrder.filter((v) => !localHidden.has(v)).length
+
+  const toggleHidden = (value: string) => {
+    setLocalHidden((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(value)) next.add(value)
+      return next
+    })
+  }
+
   const handleConfirm = () => {
-    onReorder(localOrder)
+    onCustomize({ order: localOrder, hidden: [...localHidden] })
     onOpenChange(false)
   }
 
@@ -505,27 +555,39 @@ function TabReorderDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size='sm'>
         <DialogHeader>
-          <DialogTitle>Reorder tabs</DialogTitle>
+          <DialogTitle>Customize tabs</DialogTitle>
         </DialogHeader>
-        <Command shouldFilter={false}>
-          <CommandList>
-            <CommandGroup>
-              <CommandSortable items={localOrder} onReorder={setLocalOrder}>
-                {localOrder.map((value) => {
-                  const tab = tabMap.get(value)
-                  if (!tab) return null
-                  const Icon = tab.icon
-                  return (
-                    <CommandSortableItem key={value} id={value}>
-                      <Icon className='opacity-60 me-2' size={16} />
-                      <span>{tab.label}</span>
-                    </CommandSortableItem>
-                  )
-                })}
-              </CommandSortable>
-            </CommandGroup>
-          </CommandList>
-        </Command>
+        <SortableList items={localOrder} onReorder={setLocalOrder} className='space-y-0.5'>
+          {localOrder.map((value) => {
+            const tab = tabMap.get(value)
+            if (!tab) return null
+            const Icon = tab.icon
+            const isVisible = !localHidden.has(value)
+            const locked = tab.hideable === false || (isVisible && visibleCount <= 1)
+            return (
+              <SortableTreeRow
+                key={value}
+                id={value}
+                icon={<Icon size={16} />}
+                title={tab.label}
+                secondary={tab.badge !== undefined ? <TabsBadge count={tab.badge} /> : undefined}
+                rowClassName='bg-primary-50 hover:bg-primary-100'
+                // A row click flips its switch. TreeRow's `actions` slot stops
+                // propagation itself, so hitting the switch never double-toggles.
+                onToggleOpen={locked ? undefined : () => toggleHidden(value)}
+                actions={
+                  <Switch
+                    size='xs'
+                    checked={isVisible}
+                    disabled={locked}
+                    aria-label={`Show ${tab.label} tab`}
+                    onCheckedChange={() => toggleHidden(value)}
+                  />
+                }
+              />
+            )
+          })}
+        </SortableList>
         <DialogFooter>
           <Button variant='ghost' size='sm' onClick={handleReset} className='mr-auto'>
             Reset to default

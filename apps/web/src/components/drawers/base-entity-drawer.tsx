@@ -127,6 +127,42 @@ function applyTabOrder(tabs: TabDefinition[], savedOrder: string[]): TabDefiniti
   return ordered
 }
 
+/** Stable empty array so an uncustomized drawer doesn't hand OverflowTabsList a
+ *  fresh `hidden` reference on every render. */
+const EMPTY_HIDDEN_TABS: string[] = []
+
+/** Per-viewer, per-entity-definition tab customization, as stored in localStorage. */
+interface TabPreferences {
+  /** Tab values in the viewer's chosen order. */
+  order: string[]
+  /** Tab values the viewer hid from the strip. */
+  hidden: string[]
+}
+
+/**
+ * Read the stored tab preferences, tolerating the legacy shape.
+ *
+ * Before show/hide existed the key held a bare `string[]` of tab values, so an
+ * array is read as order-only with nothing hidden — the upgrade is silent and
+ * costs no migration. Anything unparseable falls back to defaults.
+ */
+function parseTabPreferences(raw: string | null): TabPreferences | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) return { order: parsed, hidden: [] }
+    if (parsed && typeof parsed === 'object') {
+      return {
+        order: Array.isArray(parsed.order) ? parsed.order : [],
+        hidden: Array.isArray(parsed.hidden) ? parsed.hidden : [],
+      }
+    }
+  } catch {
+    // Invalid JSON, fall through to defaults
+  }
+  return null
+}
+
 /**
  * entityType derivation shared by the outer header (derives from the TOP
  * frame) and each `DrawerRecordFrame` (derives from its own frame) — override
@@ -264,7 +300,14 @@ function DrawerRecordFrame({
   const tabs = React.useMemo(() => {
     if (!drawerConfig) return []
 
-    const overviewTab = { value: 'overview', label: 'Overview', icon: HouseIcon }
+    // Overview is un-hideable: it's the fallback `effectiveTab` resolves to, and
+    // it's the only tab guaranteed to exist for every entity type.
+    const overviewTab = {
+      value: 'overview',
+      label: 'Overview',
+      icon: HouseIcon,
+      hideable: false,
+    }
     const trailingTabs = [
       { value: 'timeline', label: 'Timeline', icon: Clock },
       { value: 'comments', label: 'Comments', icon: MessagesSquare },
@@ -290,32 +333,27 @@ function DrawerRecordFrame({
     return `tabOrder:${organizationId}:${user.id}:${entityDefinitionId}`
   }, [organizationId, user?.id, entityDefinitionId])
 
-  const [savedTabOrder, setSavedTabOrder] = React.useState<string[] | null>(null)
+  const [tabPreferences, setTabPreferences] = React.useState<TabPreferences | null>(null)
 
   React.useEffect(() => {
     if (!tabOrderStorageKey) {
-      setSavedTabOrder(null)
+      setTabPreferences(null)
       return
     }
-    const raw = safeLocalStorage.get(tabOrderStorageKey)
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed)) {
-          setSavedTabOrder(parsed)
-          return
-        }
-      } catch {
-        // Invalid JSON, ignore
-      }
-    }
-    setSavedTabOrder(null)
+    setTabPreferences(parseTabPreferences(safeLocalStorage.get(tabOrderStorageKey)))
   }, [tabOrderStorageKey])
 
   const orderedTabs = React.useMemo(() => {
-    if (!savedTabOrder || savedTabOrder.length === 0) return tabs
-    return applyTabOrder(tabs, savedTabOrder)
-  }, [tabs, savedTabOrder])
+    const savedOrder = tabPreferences?.order
+    if (!savedOrder || savedOrder.length === 0) return tabs
+    return applyTabOrder(tabs, savedOrder)
+  }, [tabs, tabPreferences])
+
+  // Hidden values for tabs that no longer exist are harmless (OverflowTabsList
+  // only ever matches them against real tabs), so they're kept as-is — a tab
+  // gated off today may come back tomorrow, and dropping them would silently
+  // un-hide it.
+  const hiddenTabs = tabPreferences?.hidden ?? EMPTY_HIDDEN_TABS
 
   // A `?tab=` pointing at a tab this viewer can't see (a stale deep link, or a
   // frame whose entity type has no such tab) must not render a blank body.
@@ -326,20 +364,27 @@ function DrawerRecordFrame({
     ? activeTab
     : (orderedTabs[0]?.value ?? 'overview')
 
-  const handleTabReorder = React.useCallback(
-    (newOrder: string[]) => {
-      setSavedTabOrder(newOrder)
+  const handleCustomizeTabs = React.useCallback(
+    (next: TabPreferences) => {
+      setTabPreferences(next)
       if (tabOrderStorageKey) {
-        safeLocalStorage.set(tabOrderStorageKey, JSON.stringify(newOrder))
+        safeLocalStorage.set(tabOrderStorageKey, JSON.stringify(next))
+      }
+      // Hiding the tab you're standing on shouldn't leave it revealed — that
+      // reveal is reserved for deep links arriving at a hidden tab. Move to the
+      // first tab that survives the new hidden set instead.
+      if (next.hidden.includes(effectiveTab)) {
+        const fallback = next.order.find((value) => !next.hidden.includes(value))
+        if (fallback) setActiveTab(fallback)
       }
     },
-    [tabOrderStorageKey]
+    [tabOrderStorageKey, effectiveTab, setActiveTab]
   )
 
-  const handleResetTabOrder = React.useCallback(() => {
-    setSavedTabOrder(null)
+  const handleResetTabs = React.useCallback(() => {
+    setTabPreferences(null)
     if (tabOrderStorageKey) {
-      localStorage.removeItem(tabOrderStorageKey)
+      safeLocalStorage.remove(tabOrderStorageKey)
     }
   }, [tabOrderStorageKey])
 
@@ -369,9 +414,10 @@ function DrawerRecordFrame({
             value={effectiveTab}
             onValueChange={setActiveTab}
             variant='outline'
-            canReorder={!!tabOrderStorageKey}
-            onReorder={handleTabReorder}
-            onResetOrder={handleResetTabOrder}
+            canCustomize={!!tabOrderStorageKey}
+            hidden={hiddenTabs}
+            onCustomize={handleCustomizeTabs}
+            onReset={handleResetTabs}
           />
 
           {/* Card content (person card, entity card, etc.) — base frame only (decision #9) */}

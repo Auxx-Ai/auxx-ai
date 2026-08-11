@@ -374,9 +374,14 @@ export function SortableTreeRow({
 
   if (sortDisabled) return <TreeRow icon={icon} {...props} />
 
-  const style = {
+  // `position: relative` is load-bearing: `verticalListSortingStrategy` transforms
+  // every sibling, and a non-none transform makes each row its own stacking
+  // context. Left static, they all sit at z-index auto and paint in DOM order, so
+  // rows *below* the dragged one paint over it — the z-index alone does nothing.
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
+    position: isDragging ? 'relative' : undefined,
     zIndex: isDragging ? 10 : undefined,
     opacity: isDragging ? 0.8 : 1,
   }
@@ -407,7 +412,12 @@ export function SortableTreeRow({
   )
 
   return (
-    <div ref={setNodeRef} style={style}>
+    // The row itself is transparent at rest, so a lifted row needs its own
+    // opaque backdrop here — otherwise the rows it floats over read through it.
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(isDragging && 'rounded-md bg-background shadow-sm')}>
       <TreeRow icon={grip} {...props} />
     </div>
   )
