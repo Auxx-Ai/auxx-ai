@@ -4,9 +4,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { formatDistanceToNow } from 'date-fns'
-import { Expand, Mail, MessagesSquare, Trash, User } from 'lucide-react'
+import { Expand, Mail, MessagesSquare, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
@@ -15,6 +13,8 @@ import { Tooltip } from '~/components/global/tooltip'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import type { EditorPresetValues } from '~/components/mail/email-editor/types'
+import { RecordIdentityHeader } from '~/components/records/ui/record-identity-header'
+import { useRecordDrawerReadOnly } from '~/components/records/use-record-drawer-read-only'
 import { type RecordMeta, toRecordId, useRecord } from '~/components/resources'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { useCompose } from '~/hooks/use-compose'
@@ -63,20 +63,15 @@ export function ContactDrawer({
   )
   const { canCompose } = useCommentAccess(recordId)
 
+  // Restricted (read-only) mode, resolved per ROW from the contact's own `_access`
+  // stamp. Called above the early return below so the hook order stays stable.
+  const readOnly = useRecordDrawerReadOnly('contact', contactId ?? undefined)
+
   // Get record data for contact-specific UI
   const { record: contact } = useRecord<ContactRecord>({
     recordId,
     enabled: !!open && !!contactId,
   })
-
-  // Memoize the createdAt text to avoid recalculating on every render
-  const createdAtText = React.useMemo(
-    () =>
-      contact
-        ? `Created ${formatDistanceToNow(new Date(contact.createdAt), { addSuffix: true })}`
-        : null,
-    [contact]
-  )
 
   // Memoize preset values for email compose
   const presetValues = React.useMemo<EditorPresetValues | undefined>(() => {
@@ -135,6 +130,7 @@ export function ContactDrawer({
         onWidthChange={setDockedWidth}
         minWidth={400}
         maxWidth={800}
+        readOnly={readOnly}
         focusComposerTrigger={focusComposerTrigger}
         onClose={handleClose}
         headerIcon={<EntityIcon iconId='circle-user' color='indigo' className='size-6' />}
@@ -185,21 +181,7 @@ export function ContactDrawer({
             </Tooltip>
           </>
         }
-        cardContent={
-          <div className='flex gap-3 py-2 px-3 flex-row items-center justify-start border-b'>
-            <div className='size-10 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0'>
-              <User className='size-6 text-neutral-500 dark:text-foreground' />
-            </div>
-            <div className='flex flex-col align-start w-full'>
-              <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate'>
-                {contact ? contact.displayName : <Skeleton className='h-6 w-80 mb-1' />}
-              </div>
-              <div className='text-xs text-neutral-500 truncate'>
-                {contact ? createdAtText : <Skeleton className='h-4 w-40' />}
-              </div>
-            </div>
-          </div>
-        }
+        cardContent={<RecordIdentityHeader recordId={recordId} readOnly={readOnly} />}
       />
     </>
   )

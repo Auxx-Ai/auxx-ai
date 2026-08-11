@@ -51,14 +51,12 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
     'entityType', // ModelType: 'contact' | 'ticket' | 'part' | 'entity' | etc.
     'label',
     'plural',
-    'icon',
-    'color',
   ])
 
   // Extract with defaults
   const entityDefinitionId = resourceProps?.id ?? apiSlug
   const entityType: ModelType = (resourceProps?.entityType as ModelType) ?? 'entity'
-  const { label, plural, icon, color } = resourceProps ?? {}
+  const { label, plural } = resourceProps ?? {}
 
   // Build recordId with the actual entityDefinitionId
   const recordId = toRecordId(entityDefinitionId, instanceId)
@@ -191,9 +189,6 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
       config={config}
       activeTab={sidebarTab}
       onTabChange={setSidebarTab}
-      icon={icon}
-      color={color}
-      displayName={displayName}
     />
   )
 

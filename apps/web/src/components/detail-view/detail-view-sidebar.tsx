@@ -9,10 +9,10 @@ import { TabCardSection } from '~/components/drawers/base-entity-drawer'
 import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { useCommentAccess } from '~/components/global/comments/use-comment-access'
+import { RecordIdentityHeader } from '~/components/records/ui/record-identity-header'
 import { useRecordDrawerReadOnly } from '~/components/records/use-record-drawer-read-only'
 import { type RecordId, useCanViewRecordResource } from '~/components/resources'
 import { useAccess } from '~/providers/capabilities-provider'
-import { DetailViewCardHeader } from './components/detail-view-card-header'
 import type { DetailViewSidebarProps } from './types'
 
 /** Memoized EntityFields for performance */
@@ -28,9 +28,6 @@ export function DetailViewSidebar({
   config,
   activeTab,
   onTabChange,
-  icon,
-  color,
-  displayName,
 }: DetailViewSidebarProps) {
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
   const { can } = useAccess()
@@ -73,7 +70,7 @@ export function DetailViewSidebar({
   return (
     <div className='h-full flex flex-col'>
       {/* Card header */}
-      <DetailViewCardHeader icon={icon} color={color} displayName={displayName} record={record} />
+      <RecordIdentityHeader recordId={recordId} readOnly={readOnly} />
 
       {/* Sidebar tabs */}
       <Tabs

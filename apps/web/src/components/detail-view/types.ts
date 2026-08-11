@@ -57,12 +57,6 @@ export interface DetailViewSidebarProps {
   activeTab: string
   /** Callback when sidebar tab changes */
   onTabChange: (tab: string) => void
-  /** Entity icon name */
-  icon?: string
-  /** Entity color */
-  color?: string
-  /** Display name for the entity */
-  displayName: string
 }
 
 /**
@@ -81,20 +75,6 @@ export interface DetailViewMainTabsProps {
   onTabChange: (tab: string | null) => void
   /** Record data passed to tab components */
   record?: Record<string, unknown>
-}
-
-/**
- * Props for DetailViewCardHeader component
- */
-export interface DetailViewCardHeaderProps {
-  /** Entity icon name */
-  icon?: string
-  /** Entity color */
-  color?: string
-  /** Display name for the entity */
-  displayName: string
-  /** Record data */
-  record: Record<string, unknown>
 }
 
 /**

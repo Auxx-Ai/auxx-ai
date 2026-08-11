@@ -1,8 +1,6 @@
 // apps/web/src/components/detail-view/index.ts
 
 export { DetailViewActions } from './components/detail-view-actions'
-// Component sub-components
-export { DetailViewCardHeader } from './components/detail-view-card-header'
 // Main component
 export { DetailView } from './detail-view'
 export { DetailViewMainTabs } from './detail-view-main-tabs'
@@ -27,7 +25,6 @@ export {
 // Types
 export type {
   DetailViewActionsProps,
-  DetailViewCardHeaderProps,
   DetailViewConfig,
   DetailViewMainTabsProps,
   DetailViewNotFoundProps,

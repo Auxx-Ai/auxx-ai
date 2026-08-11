@@ -12,7 +12,7 @@ interface EmbedRecordHeaderProps {
 }
 
 /**
- * Compact header lifted from `DetailViewCardHeader` — avatar + displayName +
+ * Compact header lifted from `RecordIdentityHeader` — avatar + displayName +
  * "Open in Auxx" affordance, sized for the ~380px iframe. The extension's
  * outer wrapper used to render its own title row above this; we collapsed
  * the two so identity + the Open CTA live in one place.
