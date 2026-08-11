@@ -28,6 +28,7 @@ import {
   PhoneInput,
   StringInput,
 } from '~/components/workflow/nodes/shared/node-inputs'
+import { useAccess } from '~/providers/capabilities-provider'
 import { NameFieldInput, type NameValue } from './name-field-input'
 import { getSelectConfig, SelectFieldInput } from './select-input-field'
 
@@ -159,6 +160,17 @@ export function FieldInputAdapter({
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [createEntityDefinitionId, setCreateEntityDefinitionId] = useState<string | null>(null)
 
+  // Inline create writes a record of the TARGET definition, so it needs write on
+  // THAT def — not on the record being edited. Picking an existing target only
+  // needs read, so a `ticket: Read` member keeps the picker and loses "Create
+  // Ticket" inside it. Same rule and same helper as `RelationshipInputField`,
+  // which the property panel uses; this branch is what the record dialog, bulk
+  // update, workflow node panels and the kbar create page go through.
+  //
+  // Read at the top because the RELATIONSHIP case below is inside a `switch` —
+  // a hook may not be called from there.
+  const { canEditEntity } = useAccess()
+
   /**
    * Adapter for NodeInputProps onChange
    */
@@ -221,6 +233,10 @@ export function FieldInputAdapter({
       // Use allowMultiple if provided (from operator), otherwise derive from relationship type
       const multi = allowMultiple ?? isMultiRelationship(relationship.relationshipType)
 
+      // `getRelatedEntityDefinitionId` returns the canonical def id, which is
+      // what `canEditEntity` requires — a slug always resolves to `false`.
+      const canInlineCreate = canEditEntity(entityDefinitionId)
+
       const recordIds = Array.isArray(value) ? value : value ? [value] : []
 
       /**
@@ -255,7 +271,10 @@ export function FieldInputAdapter({
             multi={multi}
             placeholder={placeholder}
             disabled={disabled}
-            onCreate={handleOpenCreate}
+            // Withholding the handler is what hides the row: the picker renders
+            // "Create …" on the handler's presence alone
+            // (`pickers/multi-select-picker.tsx`).
+            onCreate={canInlineCreate ? handleOpenCreate : undefined}
             excludeIds={fieldOptions?.excludeIds}
             showDefinitionIcon={fieldOptions?.showDefinitionIcon}
             triggerProps={triggerProps}
@@ -263,7 +282,9 @@ export function FieldInputAdapter({
             onOpenChange={onOpenChange}
             shouldPreventDismiss={shouldPreventDismiss}
           />
-          {createDialogOpen && createEntityDefinitionId && (
+          {/* Belt and braces: the dialog is a second way in, so it is gated too
+              rather than relying on the trigger being hidden. */}
+          {canInlineCreate && createDialogOpen && createEntityDefinitionId && (
             <RecordEditorDialog
               open={createDialogOpen}
               onOpenChange={setCreateDialogOpen}
