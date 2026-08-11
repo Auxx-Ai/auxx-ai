@@ -165,6 +165,17 @@ export function EntityInstanceForm({
   // `sortFieldsWithMetadataLast` — so no re-sort here; re-sorting by raw
   // `sortOrder` would discard that partition and make this surface define
   // "baseline" differently from the property panel.
+  //
+  // `creatable` is the pool floor, NOT because this list is create-only — it also
+  // feeds edit mode — but because it is the closest proxy for "writable through
+  // the generic `fieldValue.set` path this dialog uses". An edit-only system
+  // field (`thread_status`, `subject`) has a `dbColumn` on its host table, and
+  // that path writes a `FieldValue` row while reads project the column — so the
+  // edit would appear to save and silently vanish, on top of skipping the
+  // lifecycle events, counters and provider push that `ThreadMutationService`
+  // owns. Those fields are updatable via their own routers; they are simply not
+  // this dialog's to write. Narrowing FURTHER per mode happens in
+  // `editableFields` below.
   const allEditableFields = useMemo(() => {
     if (!resource) return []
     return resource.fields.filter(
@@ -350,9 +361,21 @@ export function EntityInstanceForm({
   }, [draft, allEditableFields, fieldIds])
 
   // Get editable fields: config mode shows all from draft, normal mode shows visible
+  // fields the CURRENT mode can actually write.
+  //
+  // The mode split matters: this dialog used to gate on `creatable` alone, so a
+  // create-only field stayed editable while EDITING, and the write went through —
+  // the write path does not check `capabilities.updatable` (see
+  // `field-hooks/register-hooks.ts`), so the flag is only ever as strong as the
+  // surface honouring it. That put the dialog at odds with the table cell,
+  // property panel and kanban card, which all refuse a field with
+  // `updatable === false`.
   const editableFields = useMemo(() => {
-    return isDraftMode ? configModeFields : getVisibleFields()
-  }, [isDraftMode, configModeFields, getVisibleFields])
+    if (isDraftMode) return configModeFields
+    return getVisibleFields().filter((f) =>
+      isEditing ? f.capabilities?.updatable !== false : f.capabilities?.creatable !== false
+    )
+  }, [isDraftMode, configModeFields, getVisibleFields, isEditing])
 
   /**
    * The groups the list renders sections from: the unsaved draft's in config

@@ -100,12 +100,11 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
       filterable: true,
       sortable: true,
       creatable: true,
-      updatable: false, // Type cannot be changed after creation
+      updatable: true,
       required: true,
       configurable: false,
     },
     placeholder: 'Select ticket type',
-    description: 'Ticket type cannot be changed after creation',
     defaultValue: 'GENERAL',
   },
 
