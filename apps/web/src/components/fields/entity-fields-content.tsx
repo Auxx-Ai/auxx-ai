@@ -39,6 +39,7 @@ import {
   groupAfterDropId,
   groupBeforeDropId,
   groupDropId,
+  groupEndDropId,
   resolveDropTarget,
 } from './rows/field-insert-line'
 import { FieldValueRow } from './rows/field-value-row'
@@ -406,12 +407,18 @@ export function EntityFieldsContent({
     // never splits another group), so a field target resolves to that field's
     // group when it has one.
     if (activeGroupId !== null) {
+      const overFieldId =
+        dropTarget.kind === 'field' || dropTarget.kind === 'field-before'
+          ? dropTarget.fieldId
+          : null
       const referenceGroupId =
-        dropTarget.kind === 'field'
-          ? (groupIdByFieldId.get(dropTarget.fieldId) ?? null)
-          : dropTarget.groupId
+        overFieldId !== null
+          ? (groupIdByFieldId.get(overFieldId) ?? null)
+          : dropTarget.kind === 'field' || dropTarget.kind === 'field-before'
+            ? null
+            : dropTarget.groupId
       if (referenceGroupId === null) {
-        const fieldId = dropTarget.kind === 'field' ? dropTarget.fieldId : null
+        const fieldId = overFieldId
         if (fieldId === null) return { indicator: null, highlight: null }
         const side = edgeFor(orderIndexById.get(fieldId) ?? -1)
         return {
@@ -437,6 +444,14 @@ export function EntityFieldsContent({
           highlight: targetGroupId === null ? null : { groupId: targetGroupId, blocked: false },
         }
       }
+      case 'field-before': {
+        // Named boundary: always the row's top edge, never `edgeFor`.
+        const targetGroupId = groupIdByFieldId.get(dropTarget.fieldId) ?? null
+        return {
+          indicator: { kind: 'row', rowId: dropTarget.fieldId, side: 'top', inset: false },
+          highlight: targetGroupId === null ? null : { groupId: targetGroupId, blocked: false },
+        }
+      }
       case 'group-into': {
         // A field dropped on the header lands at the HEAD of the block, so the
         // line belongs above the first member — not above the header, which is
@@ -447,6 +462,21 @@ export function EntityFieldsContent({
             firstMemberId === undefined
               ? null
               : { kind: 'row', rowId: firstMemberId, side: 'top', inset: false },
+          highlight: { groupId: dropTarget.groupId, blocked: false },
+        }
+      }
+      case 'group-end': {
+        // Full-width line under the last member, and the group lights up: this
+        // lands INSIDE. The `group-after` zone directly below draws the short
+        // inset line instead, so the two are told apart at a glance even though
+        // they sit only a few pixels apart.
+        const memberIds = memberIdsOfGroup(dropTarget.groupId).filter((id) => id !== activeDragId)
+        const lastMemberId = memberIds[memberIds.length - 1]
+        return {
+          indicator:
+            lastMemberId === undefined
+              ? null
+              : { kind: 'row', rowId: lastMemberId, side: 'bottom', inset: false },
           highlight: { groupId: dropTarget.groupId, blocked: false },
         }
       }
@@ -507,10 +537,42 @@ export function EntityFieldsContent({
     const draggedGroupId = parseGroupDropId(draggedId)
 
     if (draggedGroupId === null) {
-      return collisions.filter((collision) => {
+      /** The field in hand is already the last thing in that group's block. */
+      const isLastMemberOf = (groupId: string): boolean => {
+        const memberIds = sectionsRef.current.find((s) => s.group?.id === groupId)?.fieldIds ?? []
+        return memberIds[memberIds.length - 1] === draggedId
+      }
+
+      const usable = collisions.filter((collision) => {
         const target = resolveDropTarget(String(collision.id))
-        return !(target.kind === 'field' && target.fieldId === draggedId)
+        if (target.kind === 'field' || target.kind === 'field-before')
+          return target.fieldId !== draggedId
+        // "Inside, last slot" is where this field already IS — the drop would be
+        // a no-op, and the zone would sit on top of the one target that isn't:
+        // leaving the group downward.
+        if (target.kind === 'group-end') return !isLastMemberOf(target.groupId)
+        return true
       })
+
+      // `group-end` wins outright wherever it is under the pointer.
+      //
+      // `pointerWithin` ranks by distance from the pointer to each droppable's
+      // CENTRE, and this zone is a band inside the last member's row — so the
+      // two centres are about a pixel apart and the winner flipped with a pixel
+      // of pointer movement, which read as "the zone doesn't accept drops".
+      // Sizing cannot fix that; only precedence can. It is safe because the
+      // zone only overlaps that one row, and for a DOWNWARD drag both targets
+      // resolve to the same slot anyway.
+      const endIndex = usable.findIndex(
+        (collision) => resolveDropTarget(String(collision.id)).kind === 'group-end'
+      )
+      if (endIndex > 0) {
+        const promoted = usable[endIndex]
+        usable.splice(endIndex, 1)
+        if (promoted) usable.unshift(promoted)
+      }
+
+      return usable
     }
 
     const ownMemberIds = new Set(
@@ -523,7 +585,12 @@ export function EntityFieldsContent({
     )
     return collisions.filter((collision) => {
       const target = resolveDropTarget(String(collision.id))
-      if (target.kind === 'field') return !ownMemberIds.has(target.fieldId)
+      if (target.kind === 'field' || target.kind === 'field-before')
+        return !ownMemberIds.has(target.fieldId)
+      // `group-end` means "inside that group", which a group can never be. Left
+      // in, it would only compete with the `group-after` zone beneath it for the
+      // one thing a group drag CAN do at that boundary.
+      if (target.kind === 'group-end') return false
       return target.groupId !== draggedGroupId && !emptyGroupIds.has(target.groupId)
     })
   }, [])
@@ -533,15 +600,17 @@ export function EntityFieldsContent({
     setDropTarget(null)
   }
 
+  /** Identity of a drop target, so an unchanged hover does not re-render. */
+  const dropTargetKey = (target: FieldDropTarget): string =>
+    target.kind === 'field' || target.kind === 'field-before'
+      ? `${target.kind}:${target.fieldId}`
+      : `${target.kind}:${target.groupId}`
+
   const handleDragOver = (event: DragOverEvent) => {
     const next = event.over === null ? null : resolveDropTarget(String(event.over.id))
     setDropTarget((prev) => {
       if (prev === null || next === null) return prev === next ? prev : next
-      const sameId =
-        prev.kind === 'field' && next.kind === 'field'
-          ? prev.fieldId === next.fieldId
-          : prev.kind !== 'field' && next.kind !== 'field' && prev.groupId === next.groupId
-      return prev.kind === next.kind && sameId ? prev : next
+      return dropTargetKey(prev) === dropTargetKey(next) ? prev : next
     })
   }
 
@@ -577,7 +646,7 @@ export function EntityFieldsContent({
     // same call: `moveGroupBlock` owns the snap-to-boundary and direction rules,
     // so "above" vs "below" is its decision, not the droppable's.
     if (draggedGroupId !== null) {
-      if (target.kind === 'field') {
+      if (target.kind === 'field' || target.kind === 'field-before') {
         onMoveGroup?.(draggedGroupId, target.fieldId, false)
         return
       }
@@ -587,6 +656,11 @@ export function EntityFieldsContent({
     }
 
     switch (target.kind) {
+      case 'field-before':
+        // The zone names the edge, so the drop does not consult the direction.
+        if (target.fieldId === activeId) return
+        handleDragEnd(aimedAt(event, target.fieldId), 'before')
+        return
       case 'field': {
         if (target.fieldId === activeId) return
         // The SAME expression `deriveDropFeedback` draws the insert line from,
@@ -601,6 +675,20 @@ export function EntityFieldsContent({
       case 'group-into':
         handleDragEnd(aimedAt(event, groupDropId(target.groupId)))
         return
+      case 'group-end': {
+        // Aim at the last member with an explicit `after`. `handleDragEnd`
+        // reads membership from where the field lands, so targeting a member
+        // both joins the group and settles at its end — and naming the edge is
+        // the whole point: an upward drag would otherwise land before it.
+        const memberIds = memberIdsOfGroup(target.groupId).filter((id) => id !== activeId)
+        const lastMemberId = memberIds[memberIds.length - 1]
+        if (lastMemberId === undefined) {
+          handleDragEnd(aimedAt(event, groupDropId(target.groupId)))
+          return
+        }
+        handleDragEnd(aimedAt(event, lastMemberId), 'after')
+        return
+      }
       case 'group-before':
         onPlaceFieldBesideGroup?.(activeId, target.groupId, 'before')
         return
@@ -748,6 +836,12 @@ export function EntityFieldsContent({
           {isEditMode && (
             <>
               <FieldDropZone id={groupBeforeDropId(group.id)} edge='top' />
+              {/* Only when the block HAS a last member to land after. On an
+                  empty group this band would sit over the header, where
+                  `group-into` already means the same thing. */}
+              {memberRows.length > 0 && (
+                <FieldDropZone id={groupEndDropId(group.id)} edge='inner-bottom' />
+              )}
               <FieldDropZone id={groupAfterDropId(group.id)} edge='bottom' />
               {highlight?.groupId === group.id && (
                 <div className='pointer-events-none absolute inset-0 z-10 rounded-md border border-primary-200 border-dashed' />

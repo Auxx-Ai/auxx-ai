@@ -34,6 +34,9 @@ export const BEFORE_SUFFIX = '-before'
 /** Suffix for "the boundary below this group's whole block". */
 export const AFTER_GROUP_SUFFIX = '-after-group'
 
+/** Suffix for "the last slot INSIDE this group", after its final member. */
+export const GROUP_END_SUFFIX = '-end'
+
 /** Droppable id for the boundary above a field row. */
 export function fieldBeforeDropId(fieldId: string): string {
   return `${fieldId}${BEFORE_SUFFIX}`
@@ -54,20 +57,44 @@ export function groupAfterDropId(groupId: string): string {
   return `${GROUP_DROP_PREFIX}${groupId}${AFTER_GROUP_SUFFIX}`
 }
 
+/** Droppable id for the last slot INSIDE a group, after its final member. */
+export function groupEndDropId(groupId: string): string {
+  return `${GROUP_DROP_PREFIX}${groupId}${GROUP_END_SUFFIX}`
+}
+
 /**
  * What a droppable id means, once its suffix is parsed off.
  *
- * - `field` — land at that row's slot. Both the row's own `useSortable`
- *   droppable and its `-before` line resolve here: they are two hit areas for
- *   one outcome, which is what makes targeting robust near a row boundary.
+ * - `field` — land at that row's slot, on the side the drag came FROM: down
+ *   onto a row lands after it, up onto a row lands before it. Direction is the
+ *   right rule for a row's body, where the gesture is "past this row".
+ * - `field-before` — land immediately above that row, whatever the direction.
+ *
+ * The two used to be one: a `-before` id had its suffix stripped and resolved
+ * to the bare row, handing its meaning back to `edgeFor`. That made a NAMED
+ * boundary direction-dependent, and next to a group it produced a genuine
+ * inversion — the band above a row meant "above it" while the group zone just
+ * above THAT meant "below the last member", so moving the pointer up moved the
+ * insert position down. A zone that names a boundary now decides its own edge.
  * - `group-into` — join the group (the bare header id).
  * - `group-before` / `group-after` — land beside the block, in no group.
+ * - `group-end` — join the group at its LAST slot, after the final member.
+ *
+ * `group-end` exists because a row target's edge is derived from the drag's
+ * DIRECTION (`edgeFor`): dragging down onto a row lands after it, dragging up
+ * lands before it. So an upward drag can never express "after this row", and
+ * for a group's final member that made the group's own last slot unreachable —
+ * the field had to be dropped into the group somewhere else and reordered in a
+ * second gesture. This names the slot outright, so it means the same thing from
+ * either direction.
  */
 export type FieldDropTarget =
   | { kind: 'field'; fieldId: string }
+  | { kind: 'field-before'; fieldId: string }
   | { kind: 'group-into'; groupId: string }
   | { kind: 'group-before'; groupId: string }
   | { kind: 'group-after'; groupId: string }
+  | { kind: 'group-end'; groupId: string }
 
 /**
  * Parse a dnd `over` id back into the drop it expresses.
@@ -81,10 +108,16 @@ export function resolveDropTarget(overId: string): FieldDropTarget {
     const groupId = parseGroupDropId(overId.slice(0, -AFTER_GROUP_SUFFIX.length))
     if (groupId !== null) return { kind: 'group-after', groupId }
   }
+  if (overId.endsWith(GROUP_END_SUFFIX)) {
+    const groupId = parseGroupDropId(overId.slice(0, -GROUP_END_SUFFIX.length))
+    if (groupId !== null) return { kind: 'group-end', groupId }
+  }
   if (overId.endsWith(BEFORE_SUFFIX)) {
     const bare = overId.slice(0, -BEFORE_SUFFIX.length)
     const groupId = parseGroupDropId(bare)
-    return groupId !== null ? { kind: 'group-before', groupId } : { kind: 'field', fieldId: bare }
+    return groupId !== null
+      ? { kind: 'group-before', groupId }
+      : { kind: 'field-before', fieldId: bare }
   }
   const groupId = parseGroupDropId(overId)
   return groupId !== null ? { kind: 'group-into', groupId } : { kind: 'field', fieldId: overId }
@@ -93,8 +126,13 @@ export function resolveDropTarget(overId: string): FieldDropTarget {
 interface FieldDropZoneProps {
   /** One of the ids minted above. */
   id: string
-  /** Which edge of the positioned parent this zone straddles. */
-  edge: 'top' | 'bottom'
+  /**
+   * Where in the positioned parent this zone sits:
+   * - `top` — straddling the top boundary
+   * - `inner-bottom` — inside the block, just above its closing edge
+   * - `bottom` — the closing edge itself
+   */
+  edge: 'top' | 'inner-bottom' | 'bottom'
 }
 
 /**
@@ -104,22 +142,44 @@ interface FieldDropZoneProps {
  * rects, never from pointer events, so the zone can overlap a row's own controls
  * without swallowing clicks.
  *
- * The two edges are deliberately NOT symmetric. A `top` zone straddles its
- * boundary (`-top-2 h-4`) while a `bottom` zone sits just inside the block it
- * closes (`bottom-0 h-4`). A group's trailing zone and the next row's leading
- * zone describe the same seam, and two droppables with identical rects make
- * `closestCorners` pick by registration order rather than by where the pointer
- * actually is.
+ * A `top` zone STRADDLES its boundary; the two bottom zones sit INSIDE the block
+ * they close. That asymmetry is load bearing: an ungrouped row following a group
+ * has no top margin, so a bottom zone straddling the block's edge would occupy
+ * the identical 16px band as that row's `-top-2 h-4` leading zone — and the two
+ * mean slots one row apart, so the tie would decide the drop.
  */
+/**
+ * The last member's row is ~30px, and its bottom is where three different
+ * answers compete. They are stacked, not overlapped, so each owns real estate:
+ *
+ *   30px ┬ ── row body / its own `-before` band above ─ "before the last member"
+ *        │
+ *   24px ┼ ── inner-bottom ──────────────────────────── "inside, last slot"
+ *        │
+ *   12px ┼ ── bottom ─────────────────────────────────── "below the block, out"
+ *        │
+ *    0px ┴
+ *
+ * Sizing them equally matters, and both directions were tried the hard way: a
+ * 16px `bottom` swallowed the whole lower half and made the group's own last
+ * slot unreachable, then correcting it to 8px made LEAVING the group the hard
+ * one. Height alone cannot settle it either — `pointerWithin` ranks by distance
+ * to each droppable's CENTRE, and a band inside a 30px row has a centre within a
+ * pixel or two of the row's own, so `inner-bottom` is additionally given
+ * precedence in `collisionDetection` rather than left to win on proximity.
+ */
+const ZONE_POSITION: Record<FieldDropZoneProps['edge'], string> = {
+  top: '-top-2 h-4',
+  'inner-bottom': 'bottom-3 h-3',
+  bottom: 'bottom-0 h-3',
+}
+
 export function FieldDropZone({ id, edge }: FieldDropZoneProps) {
   const { setNodeRef } = useDroppable({ id })
   return (
     <div
       ref={setNodeRef}
-      className={cn(
-        'pointer-events-none absolute right-0 left-0 z-0 h-4',
-        edge === 'top' ? '-top-2' : 'bottom-0'
-      )}
+      className={cn('pointer-events-none absolute right-0 left-0 z-0', ZONE_POSITION[edge])}
     />
   )
 }
