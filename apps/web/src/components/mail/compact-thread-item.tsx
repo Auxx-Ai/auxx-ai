@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/compact-thread-item.tsx
 'use client'
 
+import { SendStatus } from '@auxx/database/enums'
 import { evaluateConditions, normalizeStatusConditions } from '@auxx/lib/conditions/client'
 import type { ActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
@@ -10,7 +11,16 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
-import { Archive, Clock, Share2, ShieldAlert, Tag, Trash2, UserRound } from 'lucide-react'
+import {
+  Archive,
+  ChevronRight,
+  Clock,
+  Share2,
+  ShieldAlert,
+  Tag,
+  Trash2,
+  UserRound,
+} from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo, useState } from 'react'
@@ -35,9 +45,11 @@ import {
 import { threadFieldResolver } from '~/components/threads/utils/thread-field-resolver'
 import { useIsRecordProcessing } from '~/components/workflow/use-is-record-processing'
 import { AssigneeChip } from './assignee-chip'
+import { useRetrySend } from './hooks'
 import { useMailFilter } from './mail-filter-context'
 import { getIntegrationIcon } from './mail-status-config'
 import { ProcessingMenu } from './mail-thread-item'
+import { SendStatusIndicator } from './send-status-indicator'
 
 export interface CompactThreadItemProps {
   threadId: string
@@ -104,6 +116,18 @@ export const CompactThreadItem = memo(function CompactThreadItem({
 
   const hasDraft = (thread?.draftIds?.length ?? 0) > 0
   const hasScheduledMessage = (thread?.scheduledMessageCount ?? 0) > 0
+
+  // A failed outbound send outranks every other dot in the status slot — it's
+  // the only one that needs the agent to do something. `latestMessage` is
+  // already in the store for the snippet, so this costs no extra fetch.
+  const sendFailed =
+    latestMessage?.isInbound === false &&
+    (latestMessage.sendStatus === SendStatus.FAILED ||
+      latestMessage.sendStatus === SendStatus.BOUNCED)
+  const { retry, isRetrying } = useRetrySend(
+    sendFailed ? latestMessage?.id : undefined,
+    thread?.integrationId
+  )
 
   const isMultiSelected = useIsThreadSelected(threadId)
 
@@ -232,7 +256,18 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                 )}
               </div>
               <div className='flex w-3 shrink-0 items-center justify-center'>
-                {hasScheduledMessage && !hasDraft ? (
+                {sendFailed ? (
+                  <SendStatusIndicator
+                    variant='icon'
+                    status={latestMessage?.sendStatus}
+                    error={latestMessage?.providerError}
+                    attempts={latestMessage?.attempts}
+                    integrationId={thread.integrationId}
+                    onRetry={retry}
+                    isRetrying={isRetrying}
+                    className='size-3'
+                  />
+                ) : hasScheduledMessage && !hasDraft ? (
                   <Clock className='size-2.5 text-amber-500' />
                 ) : hasDraft ? (
                   <div className='size-2 rounded-full bg-red-500' />
@@ -315,7 +350,9 @@ export const CompactThreadItem = memo(function CompactThreadItem({
               )}
               {snippet && (
                 <>
-                  <span className='shrink-0 text-muted-foreground/50'>—</span>
+                  <span className='shrink-0 text-muted-foreground/40'>
+                    <ChevronRight className='size-3' />
+                  </span>
                   <span className='min-w-0 truncate text-xs text-muted-foreground'>{snippet}</span>
                 </>
               )}

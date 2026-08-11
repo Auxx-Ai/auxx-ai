@@ -12,7 +12,6 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
 import {
@@ -37,6 +36,7 @@ import { ContactHoverCard } from '../contacts/contact-hover-card'
 import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
 import { useHtmlBody } from './hooks/use-html-body'
+import { useRetrySend } from './hooks/use-retry-send'
 import { SendStatusIndicator } from './send-status-indicator'
 import { initialsFor } from './utils/participant-initials'
 import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
@@ -68,21 +68,7 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
   // Fetch sender participant using the new hook
   const { from: sender } = useMessageParticipants(message?.participants ?? [])
 
-  // Retry send mutation
-  const retrySendMessage = api.thread.retrySendMessage.useMutation({
-    onError: (error) => {
-      toastError({
-        title: 'Failed to retry sending',
-        description: error.message,
-      })
-    },
-  })
-
-  const handleRetry = useCallback(() => {
-    if (message) {
-      retrySendMessage.mutate({ messageId: message.id })
-    }
-  }, [message, retrySendMessage])
+  const { retry, isRetrying } = useRetrySend(message?.id)
 
   // Determine whether HTML is available inline or needs lazy fetch
   const hasInlineHtml = !!message?.textHtml
@@ -171,7 +157,8 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
                     status={message.sendStatus}
                     error={message.providerError}
                     attempts={message.attempts}
-                    onRetry={handleRetry}
+                    onRetry={retry}
+                    isRetrying={isRetrying}
                   />
                 </div>
               </div>

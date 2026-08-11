@@ -130,6 +130,8 @@ export interface SentMessage {
   subject: string
   sendStatus: SendStatus
   sentAt: Date | null
+  /** Sanitized provider failure text, selected alongside the status. */
+  providerError?: string | null
   error?: string | null
   /**
    * Resolved participants (id + role) for the sent message, so the client can

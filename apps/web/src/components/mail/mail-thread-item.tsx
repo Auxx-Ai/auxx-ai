@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/mail-thread-item.tsx
 'use client'
 
+import { SendStatus } from '@auxx/database/enums'
 import { evaluateConditions, normalizeStatusConditions } from '@auxx/lib/conditions/client'
 import type { ActorId } from '@auxx/types/actor'
 import { getInstanceId, type RecordId, toRecordId } from '@auxx/types/resource'
@@ -60,8 +61,10 @@ import { useIsRecordProcessing } from '~/components/workflow/use-is-record-proce
 import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
 import { api } from '~/trpc/react'
 import { AssigneeChip } from './assignee-chip'
+import { useRetrySend } from './hooks'
 import { useMailFilter } from './mail-filter-context'
 import { getIntegrationIcon } from './mail-status-config'
+import { SendStatusIndicator } from './send-status-indicator'
 
 /**
  * Processing menu component for triggering manual message processing
@@ -264,6 +267,18 @@ export const MailThreadItem = memo(function MailThreadItem({
   const hasDraft = (thread?.draftIds?.length ?? 0) > 0
   const hasScheduledMessage = (thread?.scheduledMessageCount ?? 0) > 0
 
+  // A failed outbound send outranks every other dot in the status slot — it's
+  // the only one that needs the agent to do something. `latestMessage` is
+  // already in the store for the snippet, so this costs no extra fetch.
+  const sendFailed =
+    latestMessage?.isInbound === false &&
+    (latestMessage.sendStatus === SendStatus.FAILED ||
+      latestMessage.sendStatus === SendStatus.BOUNCED)
+  const { retry, isRetrying } = useRetrySend(
+    sendFailed ? latestMessage?.id : undefined,
+    thread?.integrationId
+  )
+
   // --- Selection state ---
   // isMultiSelected = user-driven checkbox selection (drives checkbox + drag payload).
   // isActive = the thread currently open in the detail pane.
@@ -416,8 +431,22 @@ export const MailThreadItem = memo(function MailThreadItem({
             aria-selected={isHighlighted}
             onClick={handleClick}
             onDragStart={(e) => e.preventDefault()}>
-            {/* Status indicator dot: red for draft, amber clock for scheduled, blue for unread */}
-            {(hasDraft || hasScheduledMessage || isUnread) &&
+            {/* Status indicator dot: warning for a failed send, red for draft, amber clock for scheduled, blue for unread */}
+            {sendFailed ? (
+              <div className='absolute left-1 top-8'>
+                <SendStatusIndicator
+                  variant='icon'
+                  status={latestMessage?.sendStatus}
+                  error={latestMessage?.providerError}
+                  attempts={latestMessage?.attempts}
+                  integrationId={thread.integrationId}
+                  onRetry={retry}
+                  isRetrying={isRetrying}
+                  className='size-3.5'
+                />
+              </div>
+            ) : (
+              (hasDraft || hasScheduledMessage || isUnread) &&
               (hasScheduledMessage && !hasDraft ? (
                 <div
                   className={cn(
@@ -436,7 +465,8 @@ export const MailThreadItem = memo(function MailThreadItem({
                   )}
                   aria-label={hasDraft ? 'Has draft' : 'Unread message'}
                 />
-              ))}
+              ))
+            )}
 
             <div className={cn('absolute left-1', isProcessing ? 'top-1' : 'top-3')}>
               {viewMode === 'edit' ? (
