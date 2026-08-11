@@ -48,7 +48,7 @@ import {
   webhookRenewalScannerJob,
 } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
-import { mailReclassifySampleJob } from '@auxx/lib/mail-classification'
+import { mailReclassifyApplyJob, mailReclassifySampleJob } from '@auxx/lib/mail-classification'
 import { mailFilterRetroactiveApplyJob, mailFilterRunRetentionJob } from '@auxx/lib/mail-filters'
 import { recordRuleRunRetentionJob } from '@auxx/lib/record-rules'
 import { signalRetentionJob, signalRollupSweepJob } from '@auxx/lib/signals'
@@ -111,7 +111,17 @@ function cloudOnly(handler: JobHandler): JobHandler {
   }
 }
 
-const jobMappings = {
+/**
+ * ⚠️ Exported for one reason: so a test can prove a queued job has a handler.
+ *
+ * Nothing in the type system connects `queue.add(NAME, …)` to this map. A job
+ * enqueued under a name that is absent here compiles, passes review, and fails
+ * only at runtime inside the worker with `Job function not found` — which is
+ * exactly how the retroactive-classification sample shipped inert
+ * (`plans/mail-filter/07-…§7.5.1`). The mapping is the contract; this makes it
+ * assertable.
+ */
+export const jobMappings = {
   // Eval-run watchdog — times out abandoned queued/running runs
   evalRunWatchdog,
 
@@ -256,6 +266,14 @@ const jobMappings = {
   // ⚠️ Pinned to `attempts: 1` at the enqueue: every retry would re-spend ~100
   // inferences for the same answer.
   mailReclassifySampleJob,
+
+  // Retroactive mail-classification FULL RUN (07-…§4 phase 2). Pages the scope
+  // newest-first with a keyset cursor, classifies the first inbound message of
+  // each thread, applies the tag and stamps the C9 marker.
+  //
+  // ⚠️ Deliberately does NOT re-run mail filters (07 R2 / invariant 3) — the one
+  // exception to 05's invariant 15. Do not "fix" the inconsistency.
+  mailReclassifyApplyJob,
 
   // Weekly mail-suggestion mining (plans/mail-filter/03-suggestions-plan.md §5.1):
   // per org → per inbox → ONE indexed grouped query over a 90-day window, then the

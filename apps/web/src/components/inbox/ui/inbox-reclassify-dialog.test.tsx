@@ -38,13 +38,17 @@ const h = vi.hoisted(() => ({
   previewError: null as { message: string } | null,
   status: null as Record<string, unknown> | null,
   startSample: vi.fn(),
+  startRun: vi.fn(),
   invalidate: vi.fn(),
 }))
 
 vi.mock('~/trpc/react', () => ({
   api: {
     useUtils: () => ({
-      mailClassification: { getReclassifySampleStatus: { invalidate: h.invalidate } },
+      mailClassification: {
+        getReclassifySampleStatus: { invalidate: h.invalidate },
+        getReclassifyRunStatus: { invalidate: h.invalidate },
+      },
     }),
     mailClassification: {
       getReclassifyPreview: {
@@ -57,6 +61,9 @@ vi.mock('~/trpc/react', () => ({
       getReclassifySampleStatus: { useQuery: () => ({ data: h.status }) },
       startReclassifySample: {
         useMutation: () => ({ mutate: h.startSample, isPending: false }),
+      },
+      startReclassifyRun: {
+        useMutation: () => ({ mutate: h.startRun, isPending: false }),
       },
     },
   },
@@ -246,17 +253,53 @@ describe('InboxReclassifyDialog — sample results (07 §3.3)', () => {
     expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument()
   })
 
-  it('says how many never reached the model rather than implying a full sample', () => {
+  it('says how many the guard skipped rather than implying a full sample', () => {
     h.status = {
       jobId: 'j1',
       state: 'completed',
       processed: 100,
       total: 100,
-      report: { ...report, selected: 100, inferred: 88 },
+      report: {
+        ...report,
+        selected: 100,
+        inferred: 88,
+        skipped: { 'already-classified': 12 },
+      },
     }
     open()
 
-    expect(screen.getByText(/12 of them never reached the model/i)).toBeInTheDocument()
+    expect(screen.getByText(/12 of them were skipped by the guard/i)).toBeInTheDocument()
+  })
+
+  /**
+   * ⚠️ THE regression this file exists for now. A run where every call FAILED
+   * rendered as `0 classified · 0 no category` next to seven zero-count labels,
+   * folded into the same "never reached the model" sentence as a guard exit —
+   * indistinguishable from a taxonomy that matched nothing, and read as a result
+   * rather than an incident. That is exactly what happened on the first real
+   * sample (07 §7.5.4).
+   */
+  it('calls failures out separately from guard exits, and names the cause', () => {
+    h.status = {
+      jobId: 'j1',
+      state: 'completed',
+      processed: 100,
+      total: 100,
+      report: {
+        ...report,
+        selected: 100,
+        inferred: 0,
+        classified: 0,
+        abstained: 0,
+        skipped: { unavailable: 100 },
+      },
+    }
+    open()
+
+    expect(screen.getByText(/100 calls failed and never reached a verdict/i)).toBeInTheDocument()
+    expect(screen.getByText(/the provider was unavailable/i)).toBeInTheDocument()
+    // The guard line must NOT claim these — they are not guard exits.
+    expect(screen.queryByText(/skipped by the guard/i)).not.toBeInTheDocument()
   })
 })
 

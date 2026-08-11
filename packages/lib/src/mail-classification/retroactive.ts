@@ -41,24 +41,31 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toRecordId } from '@auxx/types/resource'
 import { type SQL, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import type { JobContext } from '../jobs/types/job-context'
+import { applyClassificationTag, markMessageClassified } from './apply'
 import { classifyMessage } from './classify'
 import {
   MAIL_CLASSIFICATION_INBOX_IDS_SETTING,
   MAIL_CLASSIFICATION_METADATA_KEY,
+  MAIL_RECLASSIFY_APPLY_JOB_NAME,
   MAIL_RECLASSIFY_MAX_THREADS,
+  MAIL_RECLASSIFY_PAGE_SIZE,
   MAIL_RECLASSIFY_SAMPLE_JOB_NAME,
   MAIL_RECLASSIFY_SAMPLE_SIZE,
   type MailClassificationLabel,
   type MailClassificationSkipReason,
   type MailReclassifyMode,
   type MailReclassifyRange,
+  type MailReclassifyRunReport,
+  type MailReclassifyRunStatus,
   type MailReclassifySampleReport,
   type MailReclassifySampleStatus,
+  type MailReclassifyUndoReport,
 } from './client'
 import { guardClassification } from './guard'
 import { getEligibleClassificationTags } from './labels'
@@ -748,6 +755,221 @@ export async function runMailReclassifySample(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 6b. The full run (§4 phase 2) — the sample's loop, with an apply path
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface RunMailReclassifyApplyInput {
+  organizationId: string
+  inboxId: string
+  range: MailReclassifyRange
+  mode: MailReclassifyMode
+  /** Test/ops override for {@link MAIL_RECLASSIFY_THREAD_DELAY_MS}. */
+  threadDelayMs?: number
+  /** Test override for {@link MAIL_RECLASSIFY_PAGE_SIZE}. */
+  pageSize?: number
+  now?: Date
+  onProgress?: (processed: number, total: number) => void
+  /**
+   * Stop between threads. Safe at ANY point (§2.5): each thread is committed on
+   * its own, so a cancelled run is a partial run, never a broken one.
+   */
+  isCancelled?: () => boolean
+}
+
+/**
+ * Classify the chosen scope and APPLY the results (§4 phase 2).
+ *
+ * The sample's loop with three differences, and only three:
+ *
+ *  1. it **pages** with a keyset cursor instead of taking one page, because the
+ *     scope can be thousands of threads rather than ~100;
+ *  2. it calls `applyClassificationTag` and `markMessageClassified`;
+ *  3. it reports what it changed rather than a distribution to reason about.
+ *
+ * ⚠️ **It still does NOT re-run mail filters** (R2, §2.12, invariant 3). This is
+ * the deliberate exception to `05-…` invariant 15, and it is the single thing
+ * most likely to be "fixed" by someone noticing the inconsistency. Firing
+ * `assign` / `archive` / `run-agent` across a historical backlog is the
+ * late-filter-action problem: threads resolved a fortnight ago get re-routed. A
+ * retroactive run tags and stops. If a user wants filters applied to the newly
+ * tagged backlog, `mail-filters/retroactive.ts` is a separate action they
+ * trigger themselves.
+ *
+ * ⚠️ **Resumable by construction, not by bookkeeping.** A completed thread has a
+ * marker, so re-running the same scope in `fill-gaps` mode picks up exactly what
+ * did not finish. A failed call leaves NO marker (`05-…§12.6`), so provider
+ * errors self-heal on the next run instead of being written off — which is also
+ * why cancellation needs no checkpoint of its own.
+ */
+export async function runMailReclassifyApply(
+  db: Database,
+  input: RunMailReclassifyApplyInput
+): Promise<Result<MailReclassifyRunReport, Error>> {
+  const startedAt = input.now ?? new Date()
+  const threadDelayMs = Math.max(0, input.threadDelayMs ?? MAIL_RECLASSIFY_THREAD_DELAY_MS)
+  const pageSize = Math.max(1, Math.trunc(input.pageSize ?? MAIL_RECLASSIFY_PAGE_SIZE))
+
+  const pre = await resolvePreconditions(db, input)
+  if (pre.isErr()) return err(pre.error)
+  const { labels, window } = pre.value
+  const eligibleTagIds = labels.map((label) => label.tagId)
+
+  // The count the confirm was based on, re-read here so the report can say what
+  // the cap removed. Same predicate as the run below (invariant 10).
+  const counted = await countReclassifiableThreads(db, {
+    organizationId: input.organizationId,
+    inboxId: input.inboxId,
+    range: input.range,
+    mode: input.mode,
+    now: input.now,
+  })
+  const inScope = counted.isOk() ? counted.value.count : 0
+  const total = Math.min(inScope, window.maxThreads)
+  const capped = Math.max(0, inScope - total)
+
+  const counts = new Map<string, { count: number; confidenceSum: number }>()
+  const skipped: Partial<Record<MailClassificationSkipReason, number>> = {}
+  let selected = 0
+  let inferred = 0
+  let applied = 0
+  let abstained = 0
+  let cancelled = false
+
+  const note = (reason: MailClassificationSkipReason) => {
+    skipped[reason] = (skipped[reason] ?? 0) + 1
+  }
+
+  let cursor: ReclassifyCursor | undefined
+  pager: while (selected < total) {
+    const rows = await selectReclassifyThreadPage(db, {
+      organizationId: input.organizationId,
+      inboxId: input.inboxId,
+      window,
+      mode: input.mode,
+      eligibleTagIds,
+      cursor,
+      limit: Math.min(pageSize, total - selected),
+    })
+    if (rows.length === 0) break
+
+    for (const row of rows) {
+      if (input.isCancelled?.()) {
+        cancelled = true
+        break pager
+      }
+      selected += 1
+
+      const resolved = await resolveThreadContext({
+        db,
+        organizationId: input.organizationId,
+        row,
+        labels,
+        inboxId: input.inboxId,
+        bypassAlreadyClassified: input.mode === 're-classify',
+      }).catch((error) => {
+        logger.warn('Run guard failed for a thread — skipping it', {
+          organizationId: input.organizationId,
+          threadId: row.threadId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        return { proceed: false as const, reason: 'error' as const }
+      })
+
+      if (!resolved.proceed) {
+        note(resolved.reason)
+        input.onProgress?.(selected, total)
+        continue
+      }
+
+      const result = await classifyMessage(db, resolved.context)
+
+      // ⚠️ The marker is gated on `inferred`, never on "did we get a tag"
+      // (`05-…§12.6`). A quota or provider failure spent nothing and decided
+      // nothing, so stamping it would disqualify the thread from every future
+      // run over one transient 429.
+      if (!result.inferred) {
+        note(result.reason ?? 'error')
+        input.onProgress?.(selected, total)
+        continue
+      }
+
+      inferred += 1
+      if (result.tagId) {
+        const ok = await applyClassificationTag({
+          db,
+          organizationId: input.organizationId,
+          threadId: row.threadId,
+          tagId: result.tagId,
+        })
+        if (ok) {
+          applied += 1
+          const bucket = counts.get(result.tagId) ?? { count: 0, confidenceSum: 0 }
+          bucket.count += 1
+          bucket.confidenceSum += result.confidence
+          counts.set(result.tagId, bucket)
+        }
+      } else {
+        abstained += 1
+      }
+
+      // ⚠️ Stamped on the FIRST INBOUND message only, not the thread (§2.3).
+      // Guard exit 5 is per-message, so a later live message on this thread is
+      // still technically classifiable — exit 6 catches it via the applied tag.
+      // When the run ABSTAINED there is no tag, so exit 6 does not catch it and
+      // the next inbound message is classified normally. That is correct, and
+      // surprising enough to say out loud.
+      await markMessageClassified({
+        db,
+        organizationId: input.organizationId,
+        messageId: row.messageId,
+        marker: {
+          at: new Date().toISOString(),
+          tagId: result.tagId,
+          confidence: result.confidence,
+          ...(result.model ? { model: result.model } : {}),
+        },
+      })
+
+      input.onProgress?.(selected, total)
+      await sleep(threadDelayMs)
+    }
+
+    cursor = rows[rows.length - 1]?.cursor
+    if (!cursor) break
+  }
+
+  const report: MailReclassifyRunReport = {
+    inboxId: input.inboxId,
+    mode: input.mode,
+    startedAtIso: startedAt.toISOString(),
+    selected,
+    capped,
+    inferred,
+    applied,
+    abstained,
+    skipped,
+    labels: labels.map((label) => {
+      const bucket = counts.get(label.tagId)
+      return {
+        tagId: label.tagId,
+        title: label.title,
+        count: bucket?.count ?? 0,
+        meanConfidence: bucket && bucket.count > 0 ? bucket.confidenceSum / bucket.count : 0,
+      }
+    }),
+    cancelled,
+  }
+
+  logger.info('Mail re-classification run finished', {
+    organizationId: input.organizationId,
+    ...report,
+    labels: report.labels.map((label) => `${label.title}:${label.count}`),
+  })
+
+  return ok(report)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 7. The queue job (§2.2)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -949,4 +1171,344 @@ export async function cancelMailReclassifySample(
   if (state === 'active') return false
   await job.remove().catch(() => {})
   return true
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. The full run's queue surface (§4 phase 2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface MailReclassifyApplyJobData {
+  organizationId: string
+  inboxId: string
+  range: MailReclassifyRange
+  mode: MailReclassifyMode
+  threadDelayMs?: number
+  /** For the log trail only — the run still executes as SYSTEM. */
+  requestedByUserId?: string
+}
+
+/** Deterministic per (org, inbox), so a double-click collapses into one run. */
+export function mailReclassifyApplyJobId(organizationId: string, inboxId: string): string {
+  // ⚠️ Three colon-separated parts, and that is LOAD-BEARING, not cosmetic.
+  // BullMQ rejects a custom jobId containing `:` unless it splits into exactly
+  // three (`05-…§12.7.1`). Adding or removing a segment here breaks every run.
+  return `mail-reclassify-apply:${organizationId}:${inboxId}`
+}
+
+/**
+ * Run one full apply on the queue.
+ *
+ * ⚠️ NEVER THROWS, and never retries. A retry would re-classify every thread the
+ * run had already paid for — the bulk equivalent of the C9 double-billing bug.
+ * The enqueue pins `attempts: 1` and this handler returns its failures.
+ */
+export async function mailReclassifyApplyJob(
+  ctx: JobContext<MailReclassifyApplyJobData>
+): Promise<MailReclassifyRunReport | { skipped: string }> {
+  const { database } = await import('@auxx/database')
+  const { organizationId, inboxId, range, mode, threadDelayMs } = ctx.data
+
+  const result = await runMailReclassifyApply(database, {
+    organizationId,
+    inboxId,
+    range,
+    mode,
+    threadDelayMs,
+    isCancelled: () => ctx.isCancelled?.() ?? false,
+    onProgress: (processed, total) => {
+      void ctx.job?.updateProgress({ processed, total })?.catch(() => {})
+    },
+  }).catch((error) => {
+    logger.error('Mail re-classification run failed', {
+      organizationId,
+      inboxId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return err(error instanceof Error ? error : new Error(String(error)))
+  })
+
+  if (result.isErr()) {
+    logger.warn('Mail re-classification run skipped', {
+      organizationId,
+      inboxId,
+      reason: result.error.message,
+    })
+    return { skipped: result.error.message }
+  }
+  return result.value
+}
+
+/**
+ * Enqueue a full run, collapsing a double-click into one.
+ *
+ * ⚠️ A FINISHED run is removed before a new one is added, exactly as the sample
+ * does — otherwise BullMQ hands back the previous report and the card claims a
+ * run that never happened. Whether collapsing is acceptable is the CALLER's
+ * decision (the id carries no scope), so the in-flight scope is reported back.
+ */
+export async function enqueueMailReclassifyApply(
+  input: MailReclassifyApplyJobData
+): Promise<Result<EnqueueMailReclassifySampleResult, Error>> {
+  const [{ getQueue }, { Queues }] = await Promise.all([
+    import('../jobs/queues'),
+    import('../jobs/queues/types'),
+  ])
+  const queue = getQueue(Queues.maintenanceQueue)
+  const jobId = mailReclassifyApplyJobId(input.organizationId, input.inboxId)
+
+  const existing = await queue.getJob(jobId)
+  if (existing) {
+    const state = await existing.getState().catch(() => 'unknown')
+    if (state !== 'completed' && state !== 'failed') {
+      const data = existing.data as MailReclassifyApplyJobData | undefined
+      return ok({
+        jobId,
+        deduplicated: true,
+        ...(data?.range && data?.mode ? { running: { range: data.range, mode: data.mode } } : {}),
+      })
+    }
+    await existing.remove().catch(() => {})
+  }
+
+  await queue.add(MAIL_RECLASSIFY_APPLY_JOB_NAME, input satisfies MailReclassifyApplyJobData, {
+    jobId,
+    // ⚠️ ONE attempt — see the job handler.
+    attempts: 1,
+    // The report carries the undo key (`startedAtIso`), so it has to outlive the
+    // run long enough for somebody to change their mind. A day, not an hour.
+    removeOnComplete: { age: 86_400 },
+    removeOnFail: { age: 86_400 },
+  })
+  return ok({ jobId, deduplicated: false })
+}
+
+/** Poll one inbox's run, for the backlog row's progress surface (§3.1). */
+export async function getMailReclassifyRunStatus(
+  organizationId: string,
+  inboxId: string
+): Promise<MailReclassifyRunStatus | null> {
+  const [{ getQueue }, { Queues }] = await Promise.all([
+    import('../jobs/queues'),
+    import('../jobs/queues/types'),
+  ])
+  const queue = getQueue(Queues.maintenanceQueue)
+  const job = await queue.getJob(mailReclassifyApplyJobId(organizationId, inboxId))
+  if (!job) return null
+
+  const rawState = await job.getState().catch(() => 'unknown')
+  const progress = (job.progress ?? {}) as { processed?: number; total?: number }
+  const value = job.returnvalue as MailReclassifyRunReport | { skipped: string } | undefined
+
+  const KNOWN: MailReclassifyRunStatus['state'][] = [
+    'waiting',
+    'active',
+    'completed',
+    'failed',
+    'delayed',
+  ]
+
+  return {
+    jobId: job.id ?? mailReclassifyApplyJobId(organizationId, inboxId),
+    state: KNOWN.find((known) => known === rawState) ?? 'unknown',
+    processed: typeof progress.processed === 'number' ? progress.processed : 0,
+    total: typeof progress.total === 'number' ? progress.total : 0,
+    // `startedAtIso` is the discriminator — a `{ skipped }` value has no such
+    // key, so a precondition failure never renders as an all-zero run.
+    report: value && 'startedAtIso' in value ? value : undefined,
+  }
+}
+
+/**
+ * Cancel a run.
+ *
+ * ⚠️ Unlike the sample, an ACTIVE run has already spent money and already
+ * changed data, so removing the job outright would throw away the report — and
+ * the report carries `startedAtIso`, which is undo's only scope key. An active
+ * run is therefore asked to stop (BullMQ's abort signal, honoured between
+ * threads) and left to finish reporting; only a queued one is removed.
+ */
+export async function cancelMailReclassifyRun(
+  organizationId: string,
+  inboxId: string
+): Promise<boolean> {
+  const [{ getQueue }, { Queues }] = await Promise.all([
+    import('../jobs/queues'),
+    import('../jobs/queues/types'),
+  ])
+  const queue = getQueue(Queues.maintenanceQueue)
+  const job = await queue.getJob(mailReclassifyApplyJobId(organizationId, inboxId))
+  if (!job) return false
+  const state = await job.getState().catch(() => 'unknown')
+  if (state === 'active') return false
+  await job.remove().catch(() => {})
+  return true
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. Undo (§2.7, R7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Reverse a run's tag applications.
+ *
+ * `05-…§8` recorded that bulk undo could not be built because provenance was too
+ * coarse — "we can tell which *tags* the AI may apply, not which *applications*
+ * it made". **That predates the C9 marker.** `Message.metadata.mailClassification`
+ * records `{ at, tagId, … }` per message, so for any message we know exactly
+ * which tag the classifier applied and when. Undo is: find the markers this run
+ * wrote, and remove those tags from those threads.
+ *
+ * ## Scope key is TIME, not a run id
+ *
+ * There is no run table, and adding one to support undo would be a schema for a
+ * value the marker already carries. `sinceIso` comes from the report's
+ * `startedAtIso`, and every marker the run wrote has an `at` at or after it.
+ *
+ * ⚠️ The consequence is that undo is bounded by *when*, not by *which run*. Two
+ * runs on one inbox inside the same window undo together. Acceptable because the
+ * jobId is per-inbox, so two concurrent runs on one inbox cannot exist — but a
+ * caller passing an old `sinceIso` will reach further back than it expects.
+ *
+ * ## What it refuses to touch (R-Q6)
+ *
+ * ⚠️ **The marker says "the AI applied this", never "only the AI applied this".**
+ * A human or an `add-tag` rule may have applied the same tag to the same thread,
+ * and removing it on marker evidence alone destroys their work. So a thread
+ * carrying MORE than one eligible tag is left entirely alone and counted in
+ * `skippedSharedTag` — the conservative arm of R-Q6, with the imprecision
+ * reported rather than hidden.
+ *
+ * ⚠️ A marker whose `tagId` no longer resolves (the category was deleted, or
+ * `076` reshaped it) is a logged no-op, never an error — invariant 13.
+ *
+ * Never throws.
+ */
+export async function undoMailReclassifyRun(
+  db: Database,
+  input: { organizationId: string; inboxId: string; sinceIso: string }
+): Promise<Result<MailReclassifyUndoReport, Error>> {
+  const since = new Date(input.sinceIso)
+  if (Number.isNaN(since.getTime())) {
+    return err(new BadRequestError('That is not a valid run start time.'))
+  }
+
+  const labels = await getEligibleClassificationTags(db, input.organizationId)
+  const eligible = new Set(labels.map((label) => label.tagId))
+  // No eligible labels means nothing the classifier could have applied, and it
+  // also means the `IN (…)` below would be empty and invalid. Both say "stop".
+  if (eligible.size === 0) {
+    return ok({ inboxId: input.inboxId, removed: 0, skippedSharedTag: 0, staleMarkers: 0 })
+  }
+  // ⚠️ `sql.join` of individual `sql` fragments, NOT `sql.raw` of a joined
+  // string. These ids are DB-sourced cuids today, so hand-quoting would work —
+  // right up until someone reuses this shape where the list IS user input.
+  // Parameterize by default; a raw list is a habit, not a decision.
+  const eligibleList = sql.join(
+    [...eligible].map((id) => sql`${id}`),
+    sql`, `
+  )
+
+  // Markers this run wrote, with the thread they landed on and how many eligible
+  // tags that thread currently carries. The count is what implements R-Q6, and
+  // it has to be read in the SAME query — computing it separately would race a
+  // human tagging the thread mid-undo.
+  const rows = (
+    await db.execute(sql`
+      SELECT m."threadId"                                            AS "threadId",
+             m."metadata" -> ${MAIL_CLASSIFICATION_METADATA_KEY} ->> 'tagId' AS "tagId",
+             (
+               SELECT count(*)
+               FROM "FieldValue" tv
+               WHERE tv."entityId" = m."threadId"
+                 AND tv."organizationId" = ${input.organizationId}
+                 AND tv."relatedEntityId" IN (${eligibleList})
+             )                                                        AS "eligibleTagCount"
+      FROM "Message" m
+      JOIN "Thread" t ON t."id" = m."threadId"
+      WHERE m."organizationId" = ${input.organizationId}
+        AND t."inboxId" = ${input.inboxId}
+        AND m."metadata" -> ${MAIL_CLASSIFICATION_METADATA_KEY} ->> 'tagId' IS NOT NULL
+        AND (m."metadata" -> ${MAIL_CLASSIFICATION_METADATA_KEY} ->> 'at')::timestamptz >= ${since.toISOString()}::timestamptz
+    `)
+  ).rows as Array<Record<string, unknown>>
+
+  let removed = 0
+  let skippedSharedTag = 0
+  let staleMarkers = 0
+
+  // Grouped by tag so one `tagThreadsBulk` call covers every thread that got the
+  // same label — the same batching the apply path would have wanted.
+  const byTag = new Map<string, string[]>()
+  for (const row of rows) {
+    const tagId = String(row.tagId)
+    const threadId = String(row.threadId)
+    if (!eligible.has(tagId)) {
+      staleMarkers += 1
+      continue
+    }
+    if (Number(row.eligibleTagCount ?? 0) > 1) {
+      skippedSharedTag += 1
+      continue
+    }
+    const list = byTag.get(tagId) ?? []
+    list.push(threadId)
+    byTag.set(tagId, list)
+  }
+
+  if (byTag.size > 0) {
+    // Lazy, like `apply.ts`: a static edge drags the realtime barrel into every
+    // importer's graph and breaks `vi.mock` in unit tests.
+    const [{ requireCachedEntityDefId }, { ThreadMutationService }, { SYSTEM_VISIBILITY }] =
+      await Promise.all([
+        import('../cache'),
+        import('../threads/thread-mutation.service'),
+        import('../permissions/visibility/context'),
+      ])
+    const [threadDefId, tagDefId] = await Promise.all([
+      requireCachedEntityDefId(input.organizationId, 'thread'),
+      requireCachedEntityDefId(input.organizationId, 'tag'),
+    ])
+    const service = new ThreadMutationService(
+      input.organizationId,
+      db,
+      undefined,
+      undefined,
+      SYSTEM_VISIBILITY
+    )
+
+    for (const [tagId, threadIds] of byTag) {
+      try {
+        await service.tagThreadsBulk(
+          threadIds.map((id) => toRecordId(threadDefId, id)),
+          [toRecordId(tagDefId, tagId)],
+          'remove'
+        )
+        removed += threadIds.length
+      } catch (error) {
+        // One tag failing must not abandon the rest of the undo.
+        logger.error('Undo failed to remove a classified tag', {
+          organizationId: input.organizationId,
+          tagId,
+          threads: threadIds.length,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+  }
+
+  // ⚠️ The MARKERS ARE LEFT IN PLACE, deliberately. They record that an inference
+  // happened and was paid for; clearing them would make `fill-gaps` re-classify
+  // and re-bill every undone thread on the next run, which is the opposite of
+  // what someone who just undid a run wants.
+  const report: MailReclassifyUndoReport = {
+    inboxId: input.inboxId,
+    removed,
+    skippedSharedTag,
+    staleMarkers,
+  }
+  logger.info('Mail re-classification undo finished', {
+    organizationId: input.organizationId,
+    ...report,
+  })
+  return ok(report)
 }

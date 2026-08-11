@@ -6,6 +6,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Progress } from '@auxx/ui/components/progress'
 import { toastError } from '@auxx/ui/components/toast'
 import { useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { InboxReclassifyDialog } from './inbox-reclassify-dialog'
 
@@ -45,6 +46,7 @@ import { InboxReclassifyDialog } from './inbox-reclassify-dialog'
  */
 export function InboxReclassifyRow({ inboxId }: { inboxId: string }) {
   const utils = api.useUtils()
+  const [confirm, ConfirmDialog] = useConfirm()
   const [dialogOpen, setDialogOpen] = useState(false)
 
   const backlog = api.mailClassification.getBacklog.useQuery({ inboxId })
@@ -79,6 +81,50 @@ export function InboxReclassifyRow({ inboxId }: { inboxId: string }) {
       toastError({ title: 'Error stopping the sample', description: error.message }),
   })
 
+  // The RUN, polled on the same cadence as the sample. Kept as its own query
+  // rather than folded into one status endpoint: a sample and a run can each be
+  // the last thing that happened, and collapsing them would make "which finished
+  // last" decide what the user is told.
+  const runStatus = api.mailClassification.getReclassifyRunStatus.useQuery(
+    { inboxId },
+    {
+      refetchInterval: (query) => {
+        const state = query.state.data?.state
+        return state === 'waiting' || state === 'active' || state === 'delayed' ? 2000 : false
+      },
+    }
+  )
+
+  const cancelRun = api.mailClassification.cancelReclassifyRun.useMutation({
+    onSuccess: (result) => {
+      void utils.mailClassification.getReclassifyRunStatus.invalidate({ inboxId })
+      if (!result.removed) {
+        // ⚠️ Deliberately NOT "it cannot be stopped". An active run IS asked to
+        // stop — it just finishes the thread it is on and reports, because the
+        // report carries the undo key. Saying "cannot" would push someone toward
+        // waiting it out when the stop already worked.
+        toastError({
+          title: 'Stopping after the current conversation',
+          description:
+            'The run finishes what it started so it can report what it changed, then stops. Everything it applied stays undoable.',
+        })
+      }
+    },
+    onError: (error) => toastError({ title: 'Error stopping the run', description: error.message }),
+  })
+
+  const undoRun = api.mailClassification.undoReclassifyRun.useMutation({
+    onSuccess: () => {
+      void utils.mailClassification.getReclassifyRunStatus.invalidate({ inboxId })
+      void utils.mailClassification.getBacklog.invalidate({ inboxId })
+    },
+    onError: (error) => toastError({ title: 'Error undoing the run', description: error.message }),
+  })
+
+  const runState = runStatus.data?.state
+  const runActive = runState === 'waiting' || runState === 'active' || runState === 'delayed'
+  const runReport = runState === 'completed' ? runStatus.data?.report : undefined
+
   const state = status.data?.state
   const running = state === 'waiting' || state === 'active' || state === 'delayed'
   const report = state === 'completed' ? status.data?.report : undefined
@@ -87,18 +133,49 @@ export function InboxReclassifyRow({ inboxId }: { inboxId: string }) {
 
   // Nothing to catch up on and nothing in flight — the row is a standing
   // affordance, not a permanent fixture.
-  if (!running && !report && count === 0) return null
+  if (!runActive && !runReport && !running && !report && count === 0) return null
 
-  const processed = status.data?.processed ?? 0
-  const total = status.data?.total ?? 0
+  // A run outranks a sample everywhere below: it is the one that spent real money
+  // and changed real data, so it is the one a user needs to see.
+  const processed = (runActive ? runStatus.data?.processed : status.data?.processed) ?? 0
+  const total = (runActive ? runStatus.data?.total : status.data?.total) ?? 0
   const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0
+  const busy = runActive || running
+
+  const handleUndo = async () => {
+    if (!runReport) return
+    const confirmed = await confirm({
+      title: `Remove ${runReport.applied.toLocaleString()} applied ${runReport.applied === 1 ? 'category' : 'categories'}?`,
+      description:
+        'Conversations that also carry another category are left alone, because the AI is not necessarily the only thing that applied it. This does not refund the classification.',
+      confirmText: 'Undo',
+      cancelText: 'Keep them',
+      destructive: true,
+    })
+    if (confirmed) undoRun.mutate({ inboxId, sinceIso: runReport.startedAtIso })
+  }
 
   return (
     <>
       <div className='mt-3 rounded-xl border px-3 py-2.5'>
         <div className='flex items-center justify-between gap-3'>
           <div className='min-w-0 space-y-0.5'>
-            {running ? (
+            {runActive ? (
+              <p className='text-sm font-medium'>
+                Applying categories: {processed.toLocaleString()} of {(total || 0).toLocaleString()}
+                …
+              </p>
+            ) : runReport ? (
+              <p className='text-sm font-medium'>
+                {runReport.cancelled ? 'Run stopped — ' : 'Run finished: '}
+                applied {runReport.applied.toLocaleString()} of{' '}
+                {runReport.selected.toLocaleString()}
+                {/* 07 invariant 8 — a capped run says what it capped. */}
+                {runReport.capped > 0
+                  ? `, ${runReport.capped.toLocaleString()} left over the per-run limit`
+                  : ''}
+              </p>
+            ) : running ? (
               <p className='text-sm font-medium'>
                 Classifying a sample: {processed.toLocaleString()} of{' '}
                 {(total || 0).toLocaleString()}…
@@ -125,15 +202,36 @@ export function InboxReclassifyRow({ inboxId }: { inboxId: string }) {
             </p>
           </div>
 
-          {running ? (
+          {busy ? (
             <Button
               variant='outline'
               size='sm'
-              loading={cancelSample.isPending}
+              loading={runActive ? cancelRun.isPending : cancelSample.isPending}
               loadingText='Stopping...'
-              onClick={() => cancelSample.mutate({ inboxId })}>
+              onClick={() =>
+                runActive ? cancelRun.mutate({ inboxId }) : cancelSample.mutate({ inboxId })
+              }>
               Cancel
             </Button>
+          ) : runReport ? (
+            <div className='flex shrink-0 items-center gap-2'>
+              {/* Undo is offered only while the report exists — the job is reaped
+                  a day after it completes, and `startedAtIso` is the only scope
+                  key undo has. An undo button with no key is worse than none. */}
+              {runReport.applied > 0 ? (
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  loading={undoRun.isPending}
+                  loadingText='Undoing...'
+                  onClick={handleUndo}>
+                  Undo
+                </Button>
+              ) : null}
+              <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
+                Classify more…
+              </Button>
+            </div>
           ) : (
             <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
               {report ? 'View results' : 'Classify…'}
@@ -141,8 +239,9 @@ export function InboxReclassifyRow({ inboxId }: { inboxId: string }) {
           )}
         </div>
 
-        {running ? <Progress value={pct} className='mt-2' /> : null}
+        {busy ? <Progress value={pct} className='mt-2' /> : null}
       </div>
+      <ConfirmDialog />
 
       <InboxReclassifyDialog inboxId={inboxId} open={dialogOpen} onOpenChange={setDialogOpen} />
     </>

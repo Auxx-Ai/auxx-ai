@@ -8,10 +8,14 @@ import { CREDIT_USD_VALUE } from '@auxx/lib/ai/quota/client'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { BadRequestError, ConflictError } from '@auxx/lib/errors'
 import {
+  cancelMailReclassifyRun,
   cancelMailReclassifySample,
   countReclassifiableThreads,
+  enqueueMailReclassifyApply,
   enqueueMailReclassifySample,
+  getMailReclassifyRunStatus,
   getMailReclassifySampleStatus,
+  undoMailReclassifyRun,
 } from '@auxx/lib/mail-classification'
 import {
   isSameReclassifyScope,
@@ -593,5 +597,139 @@ export const mailClassificationRouter = createTRPCRouter({
 
       const removed = await cancelMailReclassifySample(ctx.session.organizationId, input.inboxId)
       return { removed }
+    }),
+
+  /**
+   * Start the FULL run — classify the scope and apply the tags (07 §4 phase 2).
+   *
+   * Same authority, same preconditions and the same collapse handling as the
+   * sample, because it is the same action with a write at the end. What differs
+   * is only what it costs and what it changes, and both are in the confirm.
+   *
+   * ⚠️ It does NOT re-run mail filters (07 R2). Nothing is assigned, archived or
+   * answered as a result — the UI says so, and it is not optional copy.
+   */
+  startReclassifyRun: capabilityProcedure
+    .input(reclassifyScopeInput)
+    .mutation(async ({ ctx, input }) => {
+      const authority = await loadMailFilterAuthority(ctx)
+      assertCanConfigureInboxAutomation(authority, input.inboxId)
+
+      // 07 R-Q8 — a run must not race a backfill and miss everything still
+      // arriving. Same refusal as the sample.
+      if (await isChannelSyncInProgress(ctx.db, ctx.session.organizationId, input.inboxId)) {
+        throw new ConflictError(
+          'This inbox is still syncing. Wait for the sync to finish, then classify its history.'
+        )
+      }
+
+      const counted = await countReclassifiableThreads(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        inboxId: input.inboxId,
+        range: input.range,
+        mode: input.mode,
+      })
+      if (counted.isErr()) throw counted.error
+      if (counted.value.count === 0) {
+        throw new BadRequestError('There are no conversations in that range to classify.')
+      }
+
+      const queued = await enqueueMailReclassifyApply({
+        organizationId: ctx.session.organizationId,
+        inboxId: input.inboxId,
+        range: input.range,
+        mode: input.mode,
+        requestedByUserId: ctx.session.userId,
+      })
+      if (queued.isErr()) throw queued.error
+
+      // See `startReclassifySample` — a collapse into a DIFFERENT scope is a
+      // conflict, and a collapse writes no audit row because nothing started.
+      if (queued.value.deduplicated) {
+        const running = queued.value.running
+        if (running && !isSameReclassifyScope(running, input)) {
+          throw new ConflictError(
+            'A run is already in progress for this inbox with a different range. Wait for it to finish or stop it first.'
+          )
+        }
+        return queued.value
+      }
+
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'mail.classification.run_started',
+        targetType: 'Inbox',
+        targetId: input.inboxId,
+        metadata: {
+          range: input.range,
+          mode: input.mode,
+          threadsInScope: counted.value.count,
+          capped: Math.max(0, counted.value.count - MAIL_RECLASSIFY_MAX_THREADS),
+        },
+      })
+
+      return queued.value
+    }),
+
+  /** Poll one inbox's run — the backlog row's progress and result surface. */
+  getReclassifyRunStatus: capabilityProcedure
+    .input(z.object({ inboxId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const authority = await loadMailFilterAuthority(ctx)
+      assertCanConfigureInboxAutomation(authority, input.inboxId)
+
+      return await getMailReclassifyRunStatus(ctx.session.organizationId, input.inboxId)
+    }),
+
+  /**
+   * Stop a run.
+   *
+   * ⚠️ Unlike the sample, an ACTIVE run is asked to stop rather than removed —
+   * it has already spent money and already changed data, and its report carries
+   * `startedAtIso`, which is undo's only scope key. Throwing the job away would
+   * throw away the ability to reverse what it did.
+   */
+  cancelReclassifyRun: capabilityProcedure
+    .input(z.object({ inboxId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const authority = await loadMailFilterAuthority(ctx)
+      assertCanConfigureInboxAutomation(authority, input.inboxId)
+
+      const removed = await cancelMailReclassifyRun(ctx.session.organizationId, input.inboxId)
+      return { removed }
+    }),
+
+  /**
+   * Reverse a run's tag applications (07 §2.7, R7).
+   *
+   * `sinceIso` is the completed run's `startedAtIso` — the marker's `at` is the
+   * provenance, so no run table is needed.
+   *
+   * ⚠️ Conservative by design (R-Q6): a thread carrying more than one eligible
+   * tag is left alone, because the marker proves the AI applied a tag and never
+   * that only the AI did. The count of those is returned, not hidden.
+   */
+  undoReclassifyRun: capabilityProcedure
+    .input(z.object({ inboxId: z.string().min(1), sinceIso: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const authority = await loadMailFilterAuthority(ctx)
+      assertCanConfigureInboxAutomation(authority, input.inboxId)
+
+      const undone = await undoMailReclassifyRun(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        inboxId: input.inboxId,
+        sinceIso: input.sinceIso,
+      })
+      if (undone.isErr()) throw undone.error
+
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'mail.classification.run_undone',
+        targetType: 'Inbox',
+        targetId: input.inboxId,
+        metadata: { sinceIso: input.sinceIso, ...undone.value },
+      })
+
+      return undone.value
     }),
 })
