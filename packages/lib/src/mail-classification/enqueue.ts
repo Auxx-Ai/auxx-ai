@@ -53,7 +53,13 @@ export const enqueueMailClassification = async ({ data: event }: { data: AuxxEve
 
   try {
     await getQueue(Queues.mailClassificationQueue).add(MAIL_CLASSIFICATION_JOB_NAME, data, {
-      jobId: `mail-classify:${messageId}`,
+      // ⚠️ Hyphen, not a colon. BullMQ rejects a custom `jobId` containing `:`
+      // unless it splits into exactly THREE parts — a compat carve-out for old
+      // repeatable jobs (`bullmq/dist/cjs/classes/job.js`, "Custom Id cannot
+      // contain :"). `mail-classify:<messageId>` is two parts, so EVERY enqueue
+      // threw and the never-throw catch below swallowed it: live classification
+      // never ran once. Deterministic dedup still works, just on a legal id.
+      jobId: `mail-classify-${messageId}`,
     })
   } catch (error) {
     // Never throw: a classification that did not get queued must not fail the

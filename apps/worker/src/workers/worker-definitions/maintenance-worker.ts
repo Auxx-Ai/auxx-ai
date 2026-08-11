@@ -48,6 +48,7 @@ import {
   webhookRenewalScannerJob,
 } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
+import { mailReclassifySampleJob } from '@auxx/lib/mail-classification'
 import { mailFilterRetroactiveApplyJob, mailFilterRunRetentionJob } from '@auxx/lib/mail-filters'
 import { recordRuleRunRetentionJob } from '@auxx/lib/record-rules'
 import { signalRetentionJob, signalRollupSweepJob } from '@auxx/lib/signals'
@@ -245,6 +246,16 @@ const jobMappings = {
   // `source: 'retroactive'` — so the backfill is auditable and undoable, and its
   // claim key never collides with the live firing on the same message.
   mailFilterRetroactiveApplyJob,
+
+  // Retroactive mail-classification SAMPLE (plans/mail-filter/07-…§2.11, on-demand,
+  // enqueued from `mailClassification.startSample` and jobId-deduped per inbox).
+  // Classifies ~100 threads, reports the label distribution and abstention rate,
+  // and applies NOTHING — no tag, no marker (07 invariant 9), so the threads stay
+  // eligible for the real run that follows.
+  //
+  // ⚠️ Pinned to `attempts: 1` at the enqueue: every retry would re-spend ~100
+  // inferences for the same answer.
+  mailReclassifySampleJob,
 
   // Weekly mail-suggestion mining (plans/mail-filter/03-suggestions-plan.md §5.1):
   // per org → per inbox → ONE indexed grouped query over a 90-day window, then the
