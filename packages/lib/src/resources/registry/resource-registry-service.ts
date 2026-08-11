@@ -17,6 +17,7 @@ import { resolveEntityDefTypeId } from './entity-def-resolver'
 import { getEntityInstanceFields } from './entity-instance-fields'
 import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_REGISTRY, type TableId } from './field-registry'
 import type { ResourceField } from './field-types'
+import { isTrailingMetadataField } from './trailing-fields'
 import type {
   CustomResource,
   CustomResourceId,
@@ -25,18 +26,12 @@ import type {
   SystemResource,
 } from './types'
 
-/** Keys of metadata fields that should appear after business fields */
-const TRAILING_FIELD_KEYS = new Set(['id', 'createdAt', 'updatedAt', 'created_by_id'])
-
 /** Reorder fields so metadata fields (id, createdAt, updatedAt, created_by_id) appear last */
 function sortFieldsWithMetadataLast(fields: ResourceField[]): ResourceField[] {
   const leading: ResourceField[] = []
   const trailing: ResourceField[] = []
   for (const field of fields) {
-    if (
-      TRAILING_FIELD_KEYS.has(field.key) ||
-      TRAILING_FIELD_KEYS.has(field.systemAttribute ?? '')
-    ) {
+    if (isTrailingMetadataField(field)) {
       trailing.push(field)
     } else {
       leading.push(field)

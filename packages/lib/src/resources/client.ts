@@ -107,6 +107,8 @@ export {
   RECORD_ACTIONS_REGISTRY,
 } from './registry/record-actions-config'
 export type { RecordActions } from './registry/record-actions-types'
+// Trailing metadata fields (id/createdAt/updatedAt/created_by_id) — client-safe leaf module
+export { isTrailingMetadataField, TRAILING_FIELD_KEYS } from './registry/trailing-fields'
 export type {
   CustomResource,
   CustomResourceId,

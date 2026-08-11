@@ -461,7 +461,7 @@ export function TagDialog({ open, onOpenChange, recordId, onSaved }: TagDialogPr
             the UI half of `rejectDeleteIfTemplateTag`: no surface may offer a
             delete that the pre-delete hook will 403. */}
         {isTemplateCategory && !isReadOnly && (
-          <div className='rounded-md border bg-muted/40 px-3 py-2 text-muted-foreground text-sm mb-2'>
+          <div className='rounded-2xl border bg-muted/40 px-3 py-2 text-muted-foreground text-sm mb-2'>
             <span className='font-medium text-foreground'>Built-in mail category.</span> Rename it,
             recolour it and re-word its description to fit your business. The description is what
             the classifier reads. {TEMPLATE_TAG_UNDELETABLE_REASON}

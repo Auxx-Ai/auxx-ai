@@ -169,7 +169,7 @@ export function ChannelCard({ channel, inboxes }: { channel: Channel; inboxes: I
           </span>
         }
         status={channelStatus(channel)}
-        headerEnd={renderBadgeChips(chips)}
+        badges={renderBadgeChips(chips)}
         href={`${DETAIL_BASE}/${channel.id}`}
         menuItems={menuItems}
         descriptionLines={0}

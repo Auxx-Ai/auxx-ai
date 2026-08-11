@@ -1,19 +1,18 @@
 // apps/web/src/components/custom-fields/ui/entity-instance/entity-instance-form.tsx
 'use client'
 
-import {
-  createDefaultFieldViewConfig,
-  type FieldViewConfig,
-  type ViewContextType,
-} from '@auxx/lib/conditions/client'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
-import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import {
+  isTrailingMetadataField,
+  parseRecordId,
+  type RecordId,
+  toRecordId,
+} from '@auxx/lib/resources/client'
 import { Button, buttonVariants } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Switch } from '@auxx/ui/components/switch'
-import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import {
   closestCenter,
@@ -32,19 +31,15 @@ import {
 } from '@dnd-kit/sortable'
 import { Pencil, X } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useDynamicTableStore } from '~/components/dynamic-table/stores/dynamic-table-store'
-import { useOrgFieldView } from '~/components/dynamic-table/stores/store-selectors'
-import {
-  isFieldDefaultHiddenInDialogs,
-  useFieldView,
-} from '~/components/fields/hooks/use-field-view'
+import { useFieldView } from '~/components/fields/hooks/use-field-view'
+import { useFieldViewDraft } from '~/components/fields/hooks/use-field-view-draft'
+import { mergeFieldOrder } from '~/components/fields/merge-field-order'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { useResource } from '~/components/resources'
 import { useCreateRecord } from '~/components/resources/hooks/use-create-record'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
-import { api } from '~/trpc/react'
 import { DialogFieldConfigRow } from '../dialog-field-config-row'
 import { FieldInputRow } from '../field-input-row'
 
@@ -114,27 +109,37 @@ export function EntityInstanceForm({
   // Determine context type based on mode (for normal form rendering)
   const contextType = isEditing ? 'dialog_edit' : 'dialog_create'
 
-  // Get all potentially editable fields first
+  // Get all potentially editable fields first. `resource.fields` already arrives
+  // in baseline order — `ORDER BY sortOrder ASC` server-side, then partitioned by
+  // `sortFieldsWithMetadataLast` — so no re-sort here; re-sorting by raw
+  // `sortOrder` would discard that partition and make this surface define
+  // "baseline" differently from the property panel.
   const allEditableFields = useMemo(() => {
     if (!resource) return []
-    return resource.fields
-      .filter(
-        (f): f is typeof f & { id: string } =>
-          f.capabilities?.creatable !== false && !f.capabilities?.hidden && !!f.id
-      )
-      .sort((a, b) => (a.sortOrder ?? '').localeCompare(b.sortOrder ?? ''))
+    return resource.fields.filter(
+      (f): f is typeof f & { id: string } =>
+        f.capabilities?.creatable !== false && !f.capabilities?.hidden && !!f.id
+    )
   }, [resource])
 
   // ─── Config Mode State ──────────────────────────────────────────────────────
 
-  /** Whether config mode is active */
-  const [isConfigMode, setIsConfigMode] = useState(false)
-
-  /** Which context is being configured (independent of isEditing in config mode) */
-  const [configContextType, setConfigContextType] = useState<ViewContextType>('dialog_create')
-
-  /** Draft config: local buffer for batch save (null when not in config mode) */
-  const [draftConfig, setDraftConfig] = useState<FieldViewConfig | null>(null)
+  // Draft-buffer editing of the org's default view for a context, shared with the
+  // property-panel drawer. `contextType` is only the context config mode OPENS
+  // on — `draftContextType` is what it currently edits, and the Create/Edit tab
+  // moves it independently of the dialog's own mode.
+  const {
+    draft,
+    isDraftMode,
+    isSaving,
+    draftContextType,
+    enterDraft,
+    cancelDraft,
+    switchDraftContext,
+    setDraftVisibility,
+    reorderDraft,
+    saveDraft,
+  } = useFieldViewDraft({ entityDefinitionId, contextType, fields: allEditableFields })
 
   // Use field view for visibility/ordering (normal mode only)
   const { getVisibleFields } = useFieldView({
@@ -144,43 +149,11 @@ export function EntityInstanceForm({
     enabled: allEditableFields.length > 0,
   })
 
-  // Field IDs for creating default configs
+  // Field IDs in baseline order — the merge baseline for config mode
   const fieldIds = useMemo(
-    () => allEditableFields.map((f) => f.resourceFieldId ?? f.id ?? f.key),
+    () => allEditableFields.map((f) => String(f.resourceFieldId ?? f.id ?? f.key)),
     [allEditableFields]
   )
-
-  // Org field view for the config context type (used for save-vs-create logic)
-  const configOrgFieldView = useOrgFieldView(entityDefinitionId, configContextType)
-
-  // Store action for adding newly created views
-  const addView = useDynamicTableStore((s) => s.addView)
-  const setViewStoreInitialized = useDynamicTableStore((s) => s.setInitialized)
-  const apiUtils = api.useUtils()
-
-  // Mutations for persisting view config on "Save View"
-  const updateViewMutation = api.tableView.update.useMutation({
-    onError: (error) => {
-      toastError({ title: 'Failed to save view', description: error.message })
-    },
-  })
-  const createViewMutation = api.tableView.create.useMutation({
-    onSuccess: (newView) => {
-      addView(newView)
-    },
-    onError: async (error) => {
-      // A default view for this context usually already exists server-side but
-      // this tab's store is stale (e.g. views seeded by a migration after the
-      // store hydrated) — the insert trips the one-default-per-context unique
-      // index. Rehydrate so the next save finds the view and updates it.
-      await apiUtils.tableView.listAll.invalidate()
-      setViewStoreInitialized(false)
-      toastError({
-        title: 'Failed to create view',
-        description: `${error.message}. Views have been refreshed — please try again.`,
-      })
-    },
-  })
 
   // DnD sensors for config mode
   const sensors = useSensors(
@@ -190,173 +163,55 @@ export function EntityInstanceForm({
 
   // ─── Config Mode Handlers ──────────────────────────────────────────────────
 
-  /** Snapshot a FieldViewConfig for the given context type from the store */
-  const snapshotConfigForContext = useCallback(
-    (ct: ViewContextType): FieldViewConfig => {
-      const state = useDynamicTableStore.getState()
-      const views = state.viewsByTableId[entityDefinitionId] ?? []
-      const view = views.find((v) => v.contextType === ct && v.isDefault && v.isShared)
-      const storedConfig = view?.config as FieldViewConfig | undefined
-      const baseConfig = storedConfig ?? createDefaultFieldViewConfig(fieldIds)
-
-      // Ensure all current field IDs are represented (handles newly added fields).
-      // Backfill visibility from the computed default for the context — blanket
-      // `true` would resurrect fields the dialog default-hidden rule suppresses
-      // (inverses, showInDialogs:false, identity fields) on every view save.
-      const fieldById = new Map(
-        allEditableFields.map((f) => [String(f.resourceFieldId ?? f.id ?? f.key), f])
-      )
-      const existingOrderSet = new Set(baseConfig.fieldOrder)
-      const missingFields = fieldIds.filter((id) => !existingOrderSet.has(id))
-
-      return {
-        ...baseConfig,
-        fieldOrder: [...baseConfig.fieldOrder, ...missingFields],
-        fieldVisibility: {
-          ...baseConfig.fieldVisibility,
-          ...Object.fromEntries(
-            missingFields.map((id) => {
-              const field = fieldById.get(String(id))
-              return [id, field ? !isFieldDefaultHiddenInDialogs(field, ct) : true]
-            })
-          ),
-        },
-      }
+  /** dnd-kit adapter over the draft hook's index-free reorder */
+  const handleDraftDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+      reorderDraft(String(active.id), String(over.id))
     },
-    [entityDefinitionId, fieldIds, allEditableFields]
+    [reorderDraft]
   )
-
-  /** Enter config mode: snapshot current config into draft */
-  const enterConfigMode = useCallback(() => {
-    setConfigContextType(contextType)
-    setDraftConfig(snapshotConfigForContext(contextType))
-    setIsConfigMode(true)
-  }, [contextType, snapshotConfigForContext])
-
-  /** Cancel config mode: discard draft, exit */
-  const handleCancelConfig = useCallback(() => {
-    setDraftConfig(null)
-    setIsConfigMode(false)
-  }, [])
-
-  /** Switch which context type is being configured */
-  const switchConfigContext = useCallback(
-    (newContextType: ViewContextType) => {
-      setConfigContextType(newContextType)
-      setDraftConfig(snapshotConfigForContext(newContextType))
-    },
-    [snapshotConfigForContext]
-  )
-
-  /** Toggle field visibility in draft (no server call) */
-  const handleDraftToggle = useCallback((fieldKey: string, visible: boolean) => {
-    setDraftConfig((prev) => {
-      if (!prev) return prev
-      return {
-        ...prev,
-        fieldVisibility: { ...prev.fieldVisibility, [fieldKey]: visible },
-      }
-    })
-  }, [])
-
-  /** Reorder field in draft via drag-and-drop (no server call) */
-  const handleDraftDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-
-    setDraftConfig((prev) => {
-      if (!prev) return prev
-      const fromIndex = prev.fieldOrder.indexOf(String(active.id))
-      const toIndex = prev.fieldOrder.indexOf(String(over.id))
-      if (fromIndex === -1 || toIndex === -1) return prev
-
-      const newOrder = [...prev.fieldOrder]
-      const [moved] = newOrder.splice(fromIndex, 1)
-      if (!moved) return prev
-      newOrder.splice(toIndex, 0, moved)
-
-      return { ...prev, fieldOrder: newOrder }
-    })
-  }, [])
-
-  /** Save View: persist draft to server, update store, exit config mode */
-  const handleSaveView = useCallback(async () => {
-    if (!draftConfig) return
-
-    try {
-      if (configOrgFieldView) {
-        // Update existing view
-        await updateViewMutation.mutateAsync({
-          id: configOrgFieldView.id,
-          config: draftConfig,
-        })
-        // Update the view config in the store (immer allows direct mutation)
-        useDynamicTableStore.setState((state) => {
-          const views = state.viewsByTableId[entityDefinitionId]
-          if (!views) return
-          const view = views.find((v) => v.id === configOrgFieldView.id)
-          // Panel/dialog views persist a `FieldViewConfig` in the same `config`
-          // column that table views use for `ViewConfig` (the router accepts
-          // either), but `TableView.config` only models the table shape — hence
-          // the widening hop. See the burndown referral on `TableView.config`.
-          if (view) view.config = draftConfig as unknown as typeof view.config
-        })
-      } else {
-        // Create new view (addView called via onSuccess)
-        await createViewMutation.mutateAsync({
-          tableId: entityDefinitionId,
-          name: 'Default Dialog View',
-          contextType: configContextType,
-          isShared: true,
-          isDefault: true,
-          config: draftConfig,
-        })
-      }
-
-      // Exit config mode
-      setDraftConfig(null)
-      setIsConfigMode(false)
-    } catch {
-      // Errors handled by mutation onError
-    }
-  }, [
-    draftConfig,
-    configOrgFieldView,
-    configContextType,
-    entityDefinitionId,
-    updateViewMutation,
-    createViewMutation,
-  ])
 
   // ─── Config Mode Derived State ────────────────────────────────────────────
 
-  /** Fields ordered by draft config (for config mode rendering) */
+  /** Fields ordered by the draft config (for config mode rendering) */
   const configModeFields = useMemo(() => {
-    if (!draftConfig) return []
-    const { fieldOrder } = draftConfig
+    if (!draft) return []
     const fieldMap = new Map(
       allEditableFields.map((f) => [String(f.resourceFieldId ?? f.id ?? f.key), f])
     )
 
+    // The merge yields exactly the baseline ids, each once — a field missing from
+    // the stored order is spliced in at its baseline anchor rather than appended
+    // to the end, and ids for deleted fields are dropped.
+    const groupedFieldIds = new Set((draft.fieldGroups ?? []).flatMap((group) => group.fieldIds))
+
+    const mergedOrder = mergeFieldOrder({
+      baseline: fieldIds,
+      storedOrder: draft.fieldOrder,
+      isTrailing: (fieldId) => {
+        const field = fieldMap.get(fieldId)
+        return field ? isTrailingMetadataField(field) : false
+      },
+      // A field absent from the draft's order belongs to no group, so it must
+      // not anchor inside one — otherwise it renders within a group's block
+      // without being a member.
+      isGrouped: (fieldId) => groupedFieldIds.has(fieldId),
+    })
+
     const ordered: typeof allEditableFields = []
-    for (const fieldId of fieldOrder) {
+    for (const fieldId of mergedOrder) {
       const field = fieldMap.get(fieldId)
-      if (field) {
-        ordered.push(field)
-        fieldMap.delete(fieldId)
-      }
-    }
-    // Append any fields not in the order
-    for (const [, field] of fieldMap) {
-      ordered.push(field)
+      if (field) ordered.push(field)
     }
     return ordered
-  }, [draftConfig, allEditableFields])
+  }, [draft, allEditableFields, fieldIds])
 
   // Get editable fields: config mode shows all from draft, normal mode shows visible
   const editableFields = useMemo(() => {
-    return isConfigMode ? configModeFields : getVisibleFields()
-  }, [isConfigMode, configModeFields, getVisibleFields])
+    return isDraftMode ? configModeFields : getVisibleFields()
+  }, [isDraftMode, configModeFields, getVisibleFields])
 
   // Sortable IDs for DnD (all fields in config mode)
   const sortableFieldIds = useMemo(
@@ -463,10 +318,18 @@ export function EntityInstanceForm({
     } else {
       // Reset initialization flag and config mode when dialog closes
       isInitialized.current = false
-      setIsConfigMode(false)
-      setDraftConfig(null)
+      cancelDraft()
     }
-  }, [open, recordId, editableFields, presetValues, setInitial, getValue, focusFirstField])
+  }, [
+    open,
+    recordId,
+    editableFields,
+    presetValues,
+    setInitial,
+    getValue,
+    focusFirstField,
+    cancelDraft,
+  ])
 
   // Canonical create hook — seeds record + field-value caches from the result so
   // the creating user sees the new row with no refetch (the create mutation
@@ -647,14 +510,13 @@ export function EntityInstanceForm({
   }
 
   const resourceLabel = resource?.label ?? 'Record'
-  const isSavingView = updateViewMutation.isPending || createViewMutation.isPending
 
-  const title = isConfigMode
+  const title = isDraftMode
     ? `Customize ${resourceLabel} Fields`
     : isEditing
       ? `Edit ${resourceLabel}`
       : `New ${resourceLabel}`
-  const description = isConfigMode
+  const description = isDraftMode
     ? 'Drag to reorder and toggle field visibility.'
     : isEditing
       ? `Update the ${resourceLabel.toLowerCase()} details below.`
@@ -670,23 +532,23 @@ export function EntityInstanceForm({
         <div
           className={cn(
             'absolute -top-4 -right-3 z-80 rounded-full transition-opacity duration-200 ring ring-border bg-background flex items-center justify-center size-7 shadow-md backdrop-blur-sm',
-            isConfigMode ? 'opacity-100' : 'opacity-0 group-hover/field-card:opacity-100'
+            isDraftMode ? 'opacity-100' : 'opacity-0 group-hover/field-card:opacity-100'
           )}>
           <Button
             variant='ghost'
             size='icon-xs'
-            onClick={() => (isConfigMode ? handleCancelConfig() : enterConfigMode())}
+            onClick={() => (isDraftMode ? cancelDraft() : enterDraft())}
             className={cn(
               'cursor-pointer',
-              isConfigMode
+              isDraftMode
                 ? 'bg-bad-200 hover:bg-bad-200 text-bad-700 hover:text-bad-800'
                 : 'text-muted-foreground hover:text-foreground'
             )}>
-            {isConfigMode ? <X /> : <Pencil />}
+            {isDraftMode ? <X /> : <Pencil />}
           </Button>
         </div>
 
-        {isConfigMode ? (
+        {isDraftMode ? (
           /* Config mode: sortable field list with visibility switches.
              No resizeId here — the resize strip would steal pointer-downs from
              the row drag-and-drop. */
@@ -704,8 +566,8 @@ export function EntityInstanceForm({
                       key={fieldKey}
                       id={fieldKey}
                       label={field.label ?? field.name ?? field.key}
-                      isVisible={draftConfig?.fieldVisibility[fieldKey] !== false}
-                      onToggleVisibility={(visible) => handleDraftToggle(fieldKey, visible)}
+                      isVisible={draft?.fieldVisibility[fieldKey] !== false}
+                      onToggleVisibility={(visible) => setDraftVisibility(fieldKey, visible)}
                     />
                   )
                 })}
@@ -750,33 +612,33 @@ export function EntityInstanceForm({
         )}
       </div>
 
-      {isConfigMode ? (
+      {isDraftMode ? (
         <DialogFooter className='sm:justify-between'>
           {/* Left side: Context type toggle (Create / Edit) */}
           <RadioTab
-            value={configContextType}
-            onValueChange={switchConfigContext}
+            value={draftContextType}
+            onValueChange={switchDraftContext}
             size='sm'
             radioGroupClassName='rounded-xl'
             className='h-7'>
-            <RadioTabItem value='dialog_create' disabled={isSavingView}>
+            <RadioTabItem value='dialog_create' disabled={isSaving}>
               Create
             </RadioTabItem>
-            <RadioTabItem value='dialog_edit' disabled={isSavingView}>
+            <RadioTabItem value='dialog_edit' disabled={isSaving}>
               Edit
             </RadioTabItem>
           </RadioTab>
 
           {/* Right side: Cancel + Save View */}
           <div className='flex items-center gap-2'>
-            <Button size='sm' variant='ghost' onClick={handleCancelConfig} disabled={isSavingView}>
+            <Button size='sm' variant='ghost' onClick={cancelDraft} disabled={isSaving}>
               Cancel
             </Button>
             <Button
               size='sm'
               variant='outline'
-              onClick={handleSaveView}
-              loading={isSavingView}
+              onClick={saveDraft}
+              loading={isSaving}
               loadingText='Saving...'>
               Save View
             </Button>

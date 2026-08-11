@@ -2,12 +2,13 @@
 'use client'
 
 import type { FieldViewConfig, ViewContextType } from '@auxx/lib/conditions/client'
-import type { ResourceField } from '@auxx/lib/resources/client'
+import { isTrailingMetadataField, type ResourceField } from '@auxx/lib/resources/client'
 import { useCallback, useMemo } from 'react'
 import {
   useOrgFieldView,
   useViewStoreInitialized,
 } from '~/components/dynamic-table/stores/store-selectors'
+import { mergeFieldOrder } from '~/components/fields/merge-field-order'
 
 interface UseFieldViewOptions {
   /** Entity definition ID (e.g., 'contact', 'ticket') */
@@ -119,70 +120,68 @@ export function useFieldView({
     [fields]
   )
 
-  // Get visible fields in configured order.
+  // The effective order: the stored `fieldOrder` merged against the live
+  // baseline (`fieldIds` — CustomField.sortOrder ASC, trailing metadata
+  // partitioned last server-side). Computed once here so both getters walk the
+  // same array instead of re-deriving it per call.
+  const groupedFieldIds = useMemo(
+    () => new Set((config.fieldGroups ?? []).flatMap((group) => group.fieldIds)),
+    [config.fieldGroups]
+  )
+
+  const mergedOrder = useMemo(
+    () =>
+      mergeFieldOrder({
+        baseline: fieldIds,
+        storedOrder: config.fieldOrder,
+        isTrailing: (fieldId) => {
+          const field = fieldById.get(fieldId)
+          return field ? isTrailingMetadataField(field) : false
+        },
+        // A field the stored order has never seen is in no group, so it must not
+        // anchor on a grouped field — that would render it inside a group's
+        // block without membership and break the contiguity the group walk
+        // depends on.
+        isGrouped: (fieldId) => groupedFieldIds.has(fieldId),
+      }),
+    [fieldIds, config.fieldOrder, fieldById, groupedFieldIds]
+  )
+
+  // Get visible fields in merged order.
+  // `mergedOrder` already contains every baseline field exactly once — stored
+  // entries in their stored relative order, unknown fields spliced in at their
+  // baseline anchor, ids for deleted fields dropped — so there is nothing to
+  // append afterwards.
   // Fields with `capabilities.hidden` are excluded unconditionally — they are
   // system-internal and users must not see them in any view or configuration.
   const getVisibleFields = useCallback((): ResourceField[] => {
-    const { fieldVisibility, fieldOrder } = config
+    const { fieldVisibility } = config
 
-    // Create a map of fields by their ID
-    const fieldMap = new Map<string, ResourceField>(
-      fields.map((f) => [f.resourceFieldId ?? f.id ?? f.key, f])
-    )
-
-    // Return fields in order, filtering by visibility
     const orderedFields: ResourceField[] = []
-
-    // First, add fields that are in the configured order
-    for (const fieldId of fieldOrder) {
-      const field = fieldMap.get(fieldId)
+    for (const fieldId of mergedOrder) {
+      const field = fieldById.get(fieldId)
       if (!field) continue
       if (field.capabilities.hidden) continue
       if (!resolveFieldVisible(field, contextType, fieldVisibility)) continue
       orderedFields.push(field)
-      fieldMap.delete(fieldId)
-    }
-
-    // Then add any remaining fields not in order (new fields added after view was configured)
-    for (const [, field] of fieldMap) {
-      if (field.capabilities.hidden) continue
-      if (!resolveFieldVisible(field, contextType, fieldVisibility)) continue
-      orderedFields.push(field)
     }
 
     return orderedFields
-  }, [config, fields, contextType])
+  }, [config, fieldById, mergedOrder, contextType])
 
-  // Get all fields in configured order (for edit mode — includes fields the
+  // Get all fields in merged order (for edit mode — includes fields the
   // user has toggled off but NOT registry-hidden fields).
   const getAllFields = useCallback((): ResourceField[] => {
-    const { fieldOrder } = config
-
-    // Create a map of fields by their ID — exclude registry-hidden up front
-    const fieldMap = new Map<string, ResourceField>(
-      fields
-        .filter((f) => !f.capabilities.hidden)
-        .map((f) => [f.resourceFieldId ?? f.id ?? f.key, f])
-    )
-
     const orderedFields: ResourceField[] = []
-
-    // First, add fields that are in the configured order
-    for (const fieldId of fieldOrder) {
-      const field = fieldMap.get(fieldId)
-      if (field) {
-        orderedFields.push(field)
-        fieldMap.delete(fieldId)
-      }
-    }
-
-    // Then add any remaining fields not in order (new fields added after view was configured)
-    for (const [, field] of fieldMap) {
+    for (const fieldId of mergedOrder) {
+      const field = fieldById.get(fieldId)
+      if (!field) continue
+      if (field.capabilities.hidden) continue
       orderedFields.push(field)
     }
 
     return orderedFields
-  }, [config, fields])
+  }, [fieldById, mergedOrder])
 
   // Check if a field is visible — mirrors getVisibleFields exactly so the
   // edit-mode toggle switch reflects the field's real effective visibility

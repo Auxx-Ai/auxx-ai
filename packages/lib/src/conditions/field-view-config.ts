@@ -20,6 +20,32 @@ export type ViewContextType = (typeof viewContextTypes)[number]
 export const viewContextTypeSchema = z.enum(viewContextTypes)
 
 /**
+ * A labelled, collapsible group of fields in the property panel.
+ *
+ * Groups are a view-config concern only — they never enter `resource.fields`,
+ * so no surface that consumes the field registry has to know about them.
+ */
+export const fieldGroupSchema = z.object({
+  /** Stable id, generated client-side. */
+  id: z.string(),
+  label: z.string(),
+  /** Persisted collapse state (org-wide, per context). */
+  collapsed: z.boolean().optional(),
+  /** Optional icon id for the group header. */
+  icon: z.string().optional(),
+  /**
+   * Explicit membership: resourceFieldIds belonging to this group.
+   * Membership is independent of `fieldOrder`; a group's POSITION is derived
+   * from where its first member sits in `fieldOrder`. Ids of deleted fields are
+   * harmless and skipped at read time.
+   */
+  fieldIds: z.array(z.string()),
+})
+
+/** A labelled, collapsible group of fields in the property panel */
+export type FieldGroup = z.infer<typeof fieldGroupSchema>
+
+/**
  * Field view configuration schema for panel and dialog views.
  * This config controls which fields are visible and their order.
  */
@@ -28,8 +54,18 @@ export const fieldViewConfigSchema = z.object({
   fieldVisibility: z.record(z.string(), z.boolean()),
   /** Field display order (array of resourceFieldIds) */
   fieldOrder: z.array(z.string()),
-  /** Fields that should be collapsed/hidden by default in panel */
-  collapsedSections: z.array(z.string()).optional(),
+  /**
+   * Collapsible field groups for the panel. A field absent from every group's
+   * `fieldIds` renders ungrouped — the safe default, so a newly created field
+   * never silently joins a group it was not put in.
+   *
+   * Replaces the former `collapsedSections`, which was declared and documented
+   * but read by nothing; per-group collapse state now lives on
+   * `fieldGroups[].collapsed`. `TableView.config` is jsonb with no DB-level
+   * shape and zod strips unknown keys on read, so stale `collapsedSections`
+   * values in existing rows are inert — no data migration needed.
+   */
+  fieldGroups: z.array(fieldGroupSchema).optional(),
   /** Custom labels override for fields */
   fieldLabels: z.record(z.string(), z.string()).optional(),
   /** Whether to show field labels/titles in panel */
