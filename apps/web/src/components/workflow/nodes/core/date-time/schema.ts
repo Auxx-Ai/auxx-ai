@@ -197,6 +197,11 @@ export function extractDateTimeNodeVariables(data: DateTimeNodeData): string[] {
  * Output variables definition
  */
 export function getDateTimeNodeOutputVariables(data: DateTimeNodeData, nodeId: string): any[] {
+  // The date-producing operations emit an ISO 8601 string in the node's
+  // timezone, or epoch milliseconds when `outputAsTimestamp` is set.
+  const dateOutputType = data.outputAsTimestamp ? BaseType.NUMBER : BaseType.DATETIME
+  const dateOutputSuffix = data.outputAsTimestamp ? ' (epoch milliseconds)' : ''
+
   switch (data.operation) {
     case DateTimeOperation.ADD_SUBTRACT:
     case DateTimeOperation.ROUND:
@@ -204,8 +209,8 @@ export function getDateTimeNodeOutputVariables(data: DateTimeNodeData, nodeId: s
         createUnifiedOutputVariable({
           nodeId,
           path: 'result', // Changed from 'name' to 'path'
-          type: BaseType.DATETIME,
-          description: 'Modified date/time',
+          type: dateOutputType,
+          description: `Modified date/time${dateOutputSuffix}`,
         }),
       ]
 
@@ -234,8 +239,8 @@ export function getDateTimeNodeOutputVariables(data: DateTimeNodeData, nodeId: s
         createUnifiedOutputVariable({
           nodeId,
           path: 'result', // Changed from 'name' to 'path'
-          type: BaseType.DATETIME,
-          description: 'Parsed date object',
+          type: dateOutputType,
+          description: `Parsed date${dateOutputSuffix}`,
         }),
       ]
 

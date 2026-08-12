@@ -69,7 +69,6 @@ export {
   // WorkflowExecutionReporter,
   RedisWorkflowExecutionReporter,
 } from './execution-reporter'
-export { AIProcessor } from './nodes/action-nodes/ai'
 export { AnswerProcessor } from './nodes/action-nodes/answer'
 export { CodeProcessor } from './nodes/action-nodes/code'
 export { ExecuteProcessor } from './nodes/action-nodes/execute'

@@ -24,9 +24,16 @@ import { resolveTargetTime } from './target-time'
 import { DurationUnit, type WaitAnchorConfig, type WaitNodeConfig, WaitType } from './types'
 
 /**
- * Wait node configuration
+ * Wait node processor.
+ *
+ * Two authors write a wait node's config, and they write DIFFERENT keys:
+ * - the builder panel writes `waitType` + (`durationAmount`/`durationUnit`) or (`time`/`timezone`);
+ * - `buildSequenceGraph` (`packages/lib/src/sequences/publish.ts`) additionally compiles
+ *   `deliveryWindow` and `anchor` onto the wait nodes it generates.
+ *
+ * `deliveryWindow`/`anchor` are deliberately server-authored only — the panel must never gain
+ * controls for them, or a hand-edited node could disagree with the sequence it was compiled from.
  */
-
 export class WaitNodeProcessor extends BaseNodeProcessor {
   readonly type = WorkflowNodeType.WAIT
 
@@ -45,27 +52,20 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
     // Process duration-based wait
     let durationConfig: any = null
     if (waitType === WaitType.DURATION) {
-      let waitDuration: number
-
-      if (config.duration !== undefined) {
-        // Legacy duration field (in seconds)
-        waitDuration = config.duration * 1000
-      } else {
-        // New format with durationAmount and durationUnit
-        const amount = await this.extractValue(
-          config.durationAmount,
-          config.isDurationConstant ?? true,
-          contextManager
-        )
-        const unit = config.durationUnit || DurationUnit.SECONDS
-        waitDuration = this.convertToMilliseconds(Number(amount), unit)
-      }
+      const amount = await this.extractValue(
+        config.durationAmount,
+        config.isDurationConstant ?? true,
+        contextManager
+      )
+      const unit = config.durationUnit || DurationUnit.SECONDS
+      const waitDuration = this.convertToMilliseconds(Number(amount), unit)
 
       // Zero-duration waits are valid when a delivery window OR an anchor supplies the real
       // delay (compiled sequence anchor steps always carry duration 0; step-1 immediate waits
       // carry 0 + window — same rule as `validateNodeConfig`).
       const minWaitMs = config.deliveryWindow || config.anchor ? 0 : 1
       if (
+        !Number.isFinite(waitDuration) ||
         waitDuration < minWaitMs ||
         waitDuration > WAIT_CONSTANTS.EXECUTION.MAX_WAIT_DURATION_MS
       ) {
@@ -141,8 +141,7 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
         preserveContext: true, // Default to preserve context
         enableMetrics: false,
 
-        // Original configuration for backward compatibility
-        originalDuration: config.duration,
+        // Original configuration, echoed back for trace/debug rendering
         originalDurationAmount: config.durationAmount,
         originalTime: config.time,
         isReadyForWait: true,
@@ -187,7 +186,6 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
     //   return await this.executePreprocessedWait(node, contextManager, preprocessedData)
     // }
 
-    // Legacy execution path for backward compatibility
     const config = node.data as unknown as WaitNodeConfig
     const isDryRun = contextManager.getOptions()?.dryRun
     let originalDurationMs: number | undefined
@@ -201,8 +199,9 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
       // so this wait must not introduce artificial delay for a step that won't send anyway.
       let skipDeliveryWindowSnap = false
 
-      // Anchored wait (client-notifications plan §4.2) — takes priority over the legacy
-      // duration/specific-time config; a compiled anchor step never sets `waitType`.
+      // Anchored wait (client-notifications plan §4.2) — server-authored by
+      // `buildSequenceGraph`, and takes priority over the node's own duration/specific-time
+      // config (a compiled anchor step carries `waitType: 'duration'` with amount 0).
       if (config.anchor) {
         const anchorOutcome = await this.resolveAnchorWait(node, contextManager, config.anchor)
         resumeAt = anchorOutcome.resumeAt
@@ -211,10 +210,6 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
         if (anchorOutcome.skip) {
           contextManager.log('INFO', node.name, anchorOutcome.reason)
         }
-      } else if (!config.waitType && config.duration !== undefined) {
-        // Handle legacy duration field
-        waitDurationMs = config.duration * 1000
-        resumeAt = new Date(Date.now() + waitDurationMs)
       } else if (config.waitType === WaitType.DURATION) {
         // Handle duration-based wait
         const amount = await this.extractValue(
@@ -224,6 +219,9 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
         )
         const unit = config.durationUnit || DurationUnit.SECONDS
         waitDurationMs = this.convertToMilliseconds(Number(amount), unit)
+        if (!Number.isFinite(waitDurationMs)) {
+          throw new Error('Wait duration did not resolve to a number')
+        }
         resumeAt = new Date(Date.now() + waitDurationMs)
       } else if (config.waitType === WaitType.SPECIFIC_TIME) {
         // Handle specific time wait
@@ -526,20 +524,6 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
     const errors: string[] = []
     const warnings: string[] = []
     const config = node.data as unknown as WaitNodeConfig
-
-    // Handle legacy duration field
-    if (!config.waitType && config.duration !== undefined) {
-      if (typeof config.duration !== 'number') {
-        errors.push('Duration must be a number')
-      } else if (config.duration < 1) {
-        errors.push('Duration must be at least 1 second')
-      } else if (config.duration > WAIT_CONSTANTS.EXECUTION.MAX_WAIT_DURATION_MS / 1000) {
-        errors.push(
-          `Duration cannot exceed ${WAIT_CONSTANTS.EXECUTION.MAX_WAIT_DURATION_MS / 1000} seconds`
-        )
-      }
-      return { valid: errors.length === 0, errors, warnings }
-    }
 
     // Validate based on wait type
     if (!config.waitType) {

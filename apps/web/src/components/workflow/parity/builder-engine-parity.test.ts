@@ -210,6 +210,42 @@ describe('engine reader — resolves the bulk setNodeVariables writer', () => {
   })
 })
 
+describe('engine reader — attributes a .data read to the right node and the right file', () => {
+  it('separates a read of a FOREIGN node pulled out of the graph', () => {
+    // `manual.ts` reads `inputType` / `typeOptions` off the connected FORM-INPUT
+    // node it fetches from `sys.workflow.graph.nodes`. Scored against `manual`'s
+    // own panel — which declares neither — they read as drift, and two of them
+    // were filed that way. They belong to form-input, which does declare them.
+    const manual = ENGINE.get('manual')
+    expect(manual?.dataReads).not.toContain('inputType')
+    expect(Object.keys(manual?.foreignDataReads ?? {}).sort()).toEqual(['inputType', 'typeOptions'])
+    // The binding is carried so the NOTE can name it.
+    expect(manual?.foreignDataReads.inputType).toContain('nodes.find(')
+  })
+
+  it('names the ancestor file a read came from', () => {
+    // The ancestor walk itself: `AIProcessorV2` and `TextClassifierProcessor`
+    // both extend `BaseAiNodeProcessor`, and neither writes `text` in its own
+    // file.
+    expect(ENGINE.get('ai')?.writes).toContain('text')
+    expect(ENGINE.get('text-classifier')?.writes).toContain('text')
+
+    // The same walk unions the ancestors' READS in, which is how ONE legacy
+    // `outputVariable` read on `base-ai-node.ts` was reported twice — once as
+    // `config:ai.outputVariable`, once as `config:text-classifier.outputVariable`
+    // — and chased by two people, the second of whom could only ever have fixed
+    // it in the first's file. Every inherited read now names the file it lives
+    // in. Empty today (the AI base reads only `model`, which both subclasses
+    // read themselves); this pins the shape, not the count.
+    for (const [nodeType, contract] of ENGINE) {
+      for (const [key, file] of Object.entries(contract.inheritedDataReads)) {
+        expect(`${nodeType}.${key} -> ${file}`).toMatch(/\.ts$/)
+        expect(contract.files).not.toContain(file)
+      }
+    }
+  })
+})
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. OUTPUT VARIABLES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -344,11 +380,30 @@ describe('config keys — every node.data key the engine reads has a builder wri
       if (!contract) continue
 
       const writable = builderDataKeys(definition, dir)
-      for (const key of contract.dataReads) {
+      const reads = [...contract.dataReads, ...Object.keys(contract.foreignDataReads)]
+      for (const key of reads) {
         if (writable.has(key)) continue
+
+        // Two NOTEs, both about ATTRIBUTION rather than about the read itself.
+        // Whoever regenerates the allowlist decides "drift" vs "blind spot", and
+        // both of these have already produced a wrong decision once.
+        const notes: string[] = []
+        const foreign = contract.foreignDataReads[key]
+        if (foreign) {
+          notes.push(
+            `NOTE: this read goes through \`${foreign}\` — a node taken OUT of the graph, so it may target a FOREIGN node whose own panel declares the key. Open the source before filing it as ${nodeType} drift.`
+          )
+        }
+        const ancestor = contract.inheritedDataReads[key]
+        if (ancestor) {
+          notes.push(
+            `NOTE: INHERITED read — it lives in \`${ancestor}\`, not in this node's own processor. Every subclass of that base reports it separately; fix it once, there.`
+          )
+        }
+
         observed.set(
           `config:${nodeType}.${key}`,
-          `engine reads node.data.${key} but the builder schema/defaults never declare it (${contract.files.join(', ')})`
+          `engine reads node.data.${key} but the builder schema/defaults never declare it (${contract.files.join(', ')})${notes.length ? ` — ${notes.join(' ')}` : ''}`
         )
       }
     }

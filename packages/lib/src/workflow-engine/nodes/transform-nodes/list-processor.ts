@@ -104,50 +104,35 @@ export class ListProcessor extends BaseNodeProcessor {
         }
       }
 
-      // Execute the appropriate operation
+      // Execute the appropriate operation.
+      //
+      // `count` is advertised by the builder's picker for exactly the three
+      // operations that change how many items come out (`output-variables.ts`),
+      // so it is set here for those three and left undefined for the rest — an
+      // operation that never drops an item has nothing to report that
+      // `result.length` does not already say.
       let result: any
-      const metadata: Record<string, any> = {}
+      let count: number | undefined
 
       switch (node.data.operation) {
         case 'filter':
           result = await this.executeFilter(resolvedList, node.data.filterConfig, contextManager)
-          metadata.count = result.length
+          count = result.length
           break
 
         case 'sort':
           result = await this.executeSort(resolvedList, node.data.sortConfig)
           break
 
-        // case 'map':
-        //   result = await this.executeMap(inputList, node.data.mapConfig, contextManager)
-        //   break
-
-        // case 'reduce':
-        //   result = await this.executeReduce(inputList, node.data.reduceConfig, contextManager)
-        //   if (node.data.reduceConfig?.type === 'count') {
-        //     metadata.count = result
-        //   }
-        //   break
-
         case 'slice':
           result = await this.executeSlice(resolvedList, node.data.sliceConfig, contextManager)
-          metadata.count = Array.isArray(result) ? result.length : 1
+          count = Array.isArray(result) ? result.length : 1
           break
 
         case 'unique':
           result = await this.executeUnique(resolvedList, node.data.uniqueConfig)
-          metadata.count = result.length
+          count = result.length
           break
-
-        // case 'group':
-        //   result = await this.executeGroup(inputList, node.data.groupConfig)
-        //   metadata.groups = result
-        //   break
-
-        // case 'find':
-        //   result = await this.executeFind(inputList, node.data.findConfig, contextManager)
-        //   metadata.count = Array.isArray(result) ? result.length : result ? 1 : 0
-        //   break
 
         case 'join':
           result = await this.executeJoin(resolvedList, node.data.joinConfig)
@@ -157,10 +142,6 @@ export class ListProcessor extends BaseNodeProcessor {
           result = await this.executePluck(resolvedList, node.data.pluckConfig)
           break
 
-        // case 'flatten':
-        //   result = await this.executeFlatten(inputList, node.data.flattenConfig)
-        //   break
-
         case 'reverse':
           result = [...resolvedList].reverse()
           break
@@ -169,14 +150,15 @@ export class ListProcessor extends BaseNodeProcessor {
           throw new Error(`Unknown operation: ${node.data.operation}`)
       }
 
-      // Set output variables with proper node scoping
-      // This allows subsequent nodes to access as nodeId.result (e.g., list-xxx.result)
+      // Publish the outputs with node scoping so downstream nodes can address
+      // them as `<nodeId>.result` / `<nodeId>.count`. Both paths are written
+      // with a literal name on purpose: a computed key here is invisible to the
+      // builder↔engine parity reader, which is how `count` came to be filed as
+      // drift while it was in fact being published.
       contextManager.setNodeVariable(node.nodeId, 'result', result)
-
-      // Set operation-specific metadata with node scoping
-      Object.entries(metadata).forEach(([key, value]) => {
-        contextManager.setNodeVariable(node.nodeId, key, value)
-      })
+      if (count !== undefined) {
+        contextManager.setNodeVariable(node.nodeId, 'count', count)
+      }
 
       contextManager.log(
         'INFO',
@@ -186,7 +168,7 @@ export class ListProcessor extends BaseNodeProcessor {
 
       return {
         status: NodeRunningStatus.Succeeded,
-        output: { result, ...metadata },
+        output: { result, ...(count !== undefined && { count }) },
         outputHandle: 'source', // Standard output for transform nodes
       }
     } catch (error) {
@@ -313,113 +295,6 @@ export class ListProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * Map operation implementation
-   */
-  // private async executeMap(
-  //   list: any[],
-  //   config: any,
-  //   contextManager: ExecutionContextManager,
-  // ): Promise<any[]> {
-  //   if (!config) return list
-
-  //   switch (config.mode) {
-  //     case 'template': {
-  //       if (!config.template) return list
-
-  //       // Process all items in parallel
-  //       const templatePromises = list.map(async (item) => {
-  //         // Replace {{item}} placeholder with actual item
-  //         const template = config.template.replace(/\{\{item\}\}/g, JSON.stringify(item))
-  //         return await this.interpolateVariables(template, contextManager)
-  //       })
-
-  //       return await Promise.all(templatePromises)
-  //     }
-
-  //     case 'extract':
-  //       if (!config.extractFields || config.extractFields.length === 0) return list
-  //       return list.map((item) => {
-  //         const extracted: any = {}
-  //         config.extractFields.forEach((field: string) => {
-  //           extracted[field] = this.getNestedValue(item, field)
-  //         })
-  //         return extracted
-  //       })
-
-  //     case 'transform':
-  //       // TODO: Implement transformations
-  //       return list
-
-  //     default:
-  //       return list
-  //   }
-  // }
-
-  /**
-   * Reduce operation implementation
-   */
-  // private async executeReduce(
-  //   list: any[],
-  //   config: any,
-  //   contextManager: ExecutionContextManager
-  // ): Promise<any> {
-  //   if (!config || !config.type) return null
-
-  //   switch (config.type) {
-  //     case 'sum':
-  //       if (!config.field) return 0
-  //       return list.reduce((sum, item) => {
-  //         const value = this.getNestedValue(item, config.field)
-  //         return sum + (typeof value === 'number' ? value : 0)
-  //       }, 0)
-
-  //     case 'average':
-  //       if (!config.field || list.length === 0) return 0
-  //       const sum = list.reduce((sum, item) => {
-  //         const value = this.getNestedValue(item, config.field)
-  //         return sum + (typeof value === 'number' ? value : 0)
-  //       }, 0)
-  //       return sum / list.length
-
-  //     case 'min':
-  //       if (!config.field || list.length === 0) return null
-  //       return list.reduce((min, item) => {
-  //         const value = this.getNestedValue(item, config.field)
-  //         if (typeof value === 'number' && (min === null || value < min)) {
-  //           return value
-  //         }
-  //         return min
-  //       }, null)
-
-  //     case 'max':
-  //       if (!config.field || list.length === 0) return null
-  //       return list.reduce((max, item) => {
-  //         const value = this.getNestedValue(item, config.field)
-  //         if (typeof value === 'number' && (max === null || value > max)) {
-  //           return value
-  //         }
-  //         return max
-  //       }, null)
-
-  //     case 'count':
-  //       return list.length
-
-  //     case 'concat':
-  //       const separator = config.separator || ''
-  //       return list
-  //         .map((item) => (config.field ? this.getNestedValue(item, config.field) : item))
-  //         .join(separator)
-
-  //     case 'custom':
-  //       // TODO: Implement custom reduce with expression
-  //       return null
-
-  //     default:
-  //       return null
-  //   }
-  // }
-
-  /**
    * Slice operation implementation
    */
   private async executeSlice(
@@ -536,6 +411,14 @@ export class ListProcessor extends BaseNodeProcessor {
     const unique: any[] = []
     const iterate = config.keepFirst === false ? [...list].reverse() : list
 
+    // The unique panel's "Case Sensitive" switch defaults to ON
+    // (`use-unique-config.ts`: `config?.caseSensitive ?? true`), so an absent key
+    // has to mean case-SENSITIVE here or the toggle the user sees lies about what
+    // the engine does. This is deliberately NOT the filter-level flag that #1551
+    // removed — filter operators compare case-insensitively via `evaluateOperator`;
+    // dedup keys off an explicit, user-visible choice.
+    const caseSensitive = config.caseSensitive ?? true
+
     for (const item of iterate) {
       let key = this.getNestedValue(item, resolvedField)
 
@@ -545,8 +428,7 @@ export class ListProcessor extends BaseNodeProcessor {
         continue
       }
 
-      // case-insensitive comparison for strings
-      if (!config.caseSensitive && typeof key === 'string') {
+      if (!caseSensitive && typeof key === 'string') {
         key = key.toLowerCase()
       }
 
@@ -558,59 +440,6 @@ export class ListProcessor extends BaseNodeProcessor {
 
     return config.keepFirst === false ? unique.reverse() : unique
   }
-
-  /**
-   * Group operation implementation
-   */
-  // private async executeGroup(list: any[], config: any): Promise<Record<string, any>> {
-  //   if (!config || !config.field) return {}
-
-  //   const groups: Record<string, any> = {}
-
-  //   for (const item of list) {
-  //     const key = String(this.getNestedValue(item, config.field))
-
-  //     if (!groups[key]) {
-  //       groups[key] = { items: [], count: 0 }
-  //     }
-
-  //     groups[key].items.push(item)
-  //     groups[key].count++
-
-  //     // Apply aggregations if specified
-  //     if (config.aggregations) {
-  //       // TODO: Implement aggregations
-  //     }
-  //   }
-
-  //   return groups
-  // }
-
-  /**
-   * Find operation implementation
-   */
-  // private async executeFind(
-  //   list: any[],
-  //   config: any,
-  //   contextManager: ExecutionContextManager
-  // ): Promise<any> {
-  //   if (!config || !config.conditions || config.conditions.length === 0) {
-  //     return config.mode === 'all' ? list : null
-  //   }
-
-  //   const matches = await this.executeFilter(list, config, contextManager)
-
-  //   switch (config.mode) {
-  //     case 'first':
-  //       return matches[0] || null
-  //     case 'last':
-  //       return matches[matches.length - 1] || null
-  //     case 'all':
-  //       return matches
-  //     default:
-  //       return null
-  //   }
-  // }
 
   /**
    * Join operation - converts array to string with delimiter
@@ -641,16 +470,6 @@ export class ListProcessor extends BaseNodeProcessor {
 
     return plucked
   }
-
-  /**
-   * Flatten operation implementation
-   */
-  // private async executeFlatten(list: any[], config: any): Promise<any[]> {
-  //   if (!config || config.depth === undefined) return list
-
-  //   const depth = config.depth === 'infinite' ? Infinity : config.depth
-  //   return list.flat(depth)
-  // }
 
   /**
    * Helper: Get nested value from object using dot notation
@@ -792,18 +611,10 @@ export class ListProcessor extends BaseNodeProcessor {
       this.extractVariableIds(node.data.inputList).forEach((v) => variables.add(v))
     }
 
-    // Extract from map template
-    if (node.data.operation === 'map' && node.data.mapConfig?.template) {
-      this.extractVariableIds(node.data.mapConfig.template).forEach((v) => variables.add(v))
-    }
-
     // Join operation no longer extracts from secondList (new string-join implementation)
 
     // Extract from filter conditions
-    if (
-      (node.data.operation === 'filter' || node.data.operation === 'find') &&
-      node.data.filterConfig?.conditions
-    ) {
+    if (node.data.operation === 'filter' && node.data.filterConfig?.conditions) {
       node.data.filterConfig.conditions.forEach((condition: any) => {
         if (condition.value && typeof condition.value === 'string') {
           this.extractVariableIds(condition.value).forEach((v) => variables.add(v))
@@ -851,12 +662,8 @@ export class ListProcessor extends BaseNodeProcessor {
 
     // Operation-specific validation
     switch (node.data.operation) {
-      case 'filter':
-      case 'find': {
-        const conditions =
-          node.data.operation === 'filter'
-            ? node.data.filterConfig?.conditions
-            : node.data.findConfig?.conditions
+      case 'filter': {
+        const conditions = node.data.filterConfig?.conditions
         if (!conditions || conditions.length === 0) {
           errors.push('At least one condition is required')
         } else {

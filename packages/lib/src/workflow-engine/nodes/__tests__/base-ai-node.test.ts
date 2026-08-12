@@ -178,13 +178,11 @@ describe('BaseAiNodeProcessor', () => {
       }
 
       // Call the private storeAIResponse method through executeNode
-      ;(processor as any).storeAIResponse(node, mockContextManager, response, node.data)
+      ;(processor as any).storeAIResponse(node, mockContextManager, response)
 
-      // Should store in standard locations
-      expect(mockContextManager.setVariable).toHaveBeenCalledWith(
-        'node_1.text',
-        'AI generated response'
-      )
+      // Everything is addressed as a NODE variable. `setNodeVariable(id, 'text')`
+      // already lands at `<id>.text`, so there is no second `setVariable` alias.
+      expect(mockContextManager.setVariable).not.toHaveBeenCalled()
       expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith(
         'node_1',
         'output',
@@ -210,7 +208,7 @@ describe('BaseAiNodeProcessor', () => {
         },
       }
 
-      ;(processor as any).storeAIResponse(node, mockContextManager, response, node.data)
+      ;(processor as any).storeAIResponse(node, mockContextManager, response)
 
       // Should store structured output
       expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith(
@@ -223,7 +221,7 @@ describe('BaseAiNodeProcessor', () => {
       expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith('node_1', 'confidence', 0.95)
     })
 
-    it('should store tool results when present', () => {
+    it('stores the tool_results array and nothing per-call', () => {
       const node = aiNode({})
 
       const response: InvokeOrchestratorResponse = {
@@ -240,26 +238,25 @@ describe('BaseAiNodeProcessor', () => {
         ],
       }
 
-      ;(processor as any).storeAIResponse(node, mockContextManager, response, node.data)
+      ;(processor as any).storeAIResponse(node, mockContextManager, response)
 
-      // Should store tool results
       expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith(
         'node_1',
         'tool_results',
         response.tool_results
       )
-      // Should store indexed tool result
-      expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith('node_1', 'tool_0', {
-        result: 42,
-      })
-      // Should store named tool result
-      expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith('node_1', 'tool_calculator', {
-        result: 42,
-      })
+      // `tool_<index>` / `tool_<toolName>` are gone: the builder could never
+      // advertise them (the tool set is a run-time fact) and `AIProcessorV2`'s
+      // tools path never wrote them, so the two paths disagreed.
+      const written = mockContextManager.setNodeVariable.mock.calls.map(
+        (call: unknown[]) => call[1]
+      )
+      expect(written).not.toContain('tool_0')
+      expect(written).not.toContain('tool_calculator')
     })
 
-    it('should use custom output variable if specified', () => {
-      const node = aiNode({ outputVariable: 'custom.output' })
+    it('ignores a legacy outputVariable alias on node data', () => {
+      const node = aiNode({ outputVariable: 'custom.output' } as any)
 
       const response: InvokeOrchestratorResponse = {
         content: 'Response',
@@ -267,9 +264,12 @@ describe('BaseAiNodeProcessor', () => {
         provider: 'openai',
       }
 
-      ;(processor as any).storeAIResponse(node, mockContextManager, response, node.data)
+      ;(processor as any).storeAIResponse(node, mockContextManager, response)
 
-      expect(mockContextManager.setVariable).toHaveBeenCalledWith('custom.output', 'Response')
+      // The builder has no such field; the AI response is only ever addressable
+      // at `<nodeId>.text` / `<nodeId>.output`.
+      expect(mockContextManager.setVariable).not.toHaveBeenCalled()
+      expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith('node_1', 'text', 'Response')
     })
   })
 

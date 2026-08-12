@@ -331,6 +331,45 @@ const schemaToUnifiedVariable = (
 }
 
 /**
+ * Build the `tool_results` picker entry — the array the engine stores at
+ * `<nodeId>.tool_results` once the turn made at least one tool call
+ * (`ai-v2.ts` on the tools path, `base-ai-node.ts` on the plain path; the two
+ * write the identical shape). Item fields mirror `AiToolResult`.
+ *
+ * Only the array is addressable. Per-call aliases are deliberately absent: the
+ * tool a model chooses is a run-time fact, so `tool_<toolName>` cannot be
+ * advertised ahead of the run, and `tool_<index>` is unbounded.
+ */
+const toolResultsVariable = (nodeId: string): UnifiedVariable => {
+  const itemPath = 'tool_results[*]'
+  const field = (key: string, type: BaseType, description: string) =>
+    createUnifiedOutputVariable({ nodeId, path: `${itemPath}.${key}`, type, description })
+
+  const item = createUnifiedOutputVariable({
+    nodeId,
+    path: itemPath,
+    type: BaseType.OBJECT,
+    description: 'A single tool call and its result',
+  })
+  item.properties = {
+    toolCallId: field('toolCallId', BaseType.STRING, 'Provider id for this tool call'),
+    toolName: field('toolName', BaseType.STRING, 'Name of the tool that was called'),
+    success: field('success', BaseType.BOOLEAN, 'Whether the tool call succeeded'),
+    output: field('output', BaseType.OBJECT, 'Value the tool returned'),
+    error: field('error', BaseType.STRING, 'Error message when the tool call failed'),
+  }
+
+  const variable = createUnifiedOutputVariable({
+    nodeId,
+    path: 'tool_results',
+    type: BaseType.ARRAY,
+    description: 'Every tool call the AI made this run, in call order',
+  })
+  variable.items = item
+  return variable
+}
+
+/**
  * Define output variables for AI node
  */
 const getAiOutputVariables = (data: Partial<AiNodeData>, nodeId: string): UnifiedVariable[] => {
@@ -345,6 +384,11 @@ const getAiOutputVariables = (data: Partial<AiNodeData>, nodeId: string): Unifie
       description: 'The AI-generated response text',
     })
   )
+
+  // Tool results exist only when the node can call tools.
+  if (data.toolsEnabled) {
+    outputs.push(toolResultsVariable(nodeId))
+  }
 
   // Add structured_output if enabled and schema is defined
   if (data.structured_output?.enabled && data.structured_output.schema) {

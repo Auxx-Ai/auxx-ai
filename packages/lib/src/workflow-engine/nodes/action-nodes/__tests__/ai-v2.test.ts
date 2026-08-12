@@ -141,31 +141,21 @@ describe('AIProcessorV2', () => {
     })
   })
 
-  describe('buildMessages - Legacy Format', () => {
-    it('should build messages from legacy prompt field', async () => {
-      const node = aiNode({
-        model: { provider: 'openai', name: 'gpt-4' },
-        prompt: 'Write me a poem',
-      })
-
-      const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
-
-      expect(messages).toHaveLength(1)
-      expect(messages[0]).toEqual({ role: 'user', content: 'Write me a poem' })
-    })
-
-    it('should build messages with systemPrompt in legacy format', async () => {
+  // `prompt_template[]` is the only prompt source. The flat `prompt` /
+  // `systemPrompt` pair it superseded has no writer anywhere in the builder —
+  // not the panel, not the zod schema, not `AiNodeData` — so the branch that
+  // read them was unreachable and is gone rather than duplicated.
+  describe('buildMessages - the removed legacy prompt fields', () => {
+    it('throws on a node carrying only the legacy prompt/systemPrompt pair', async () => {
       const node = aiNode({
         model: { provider: 'openai', name: 'gpt-4' },
         systemPrompt: 'You are a poet',
         prompt: 'Write me a poem',
-      })
+      } as any)
 
-      const messages = await (processor as any).buildMessages(node, node.data, mockContextManager)
-
-      expect(messages).toHaveLength(2)
-      expect(messages[0]).toEqual({ role: 'system', content: 'You are a poet' })
-      expect(messages[1]).toEqual({ role: 'user', content: 'Write me a poem' })
+      await expect(
+        (processor as any).buildMessages(node, node.data, mockContextManager)
+      ).rejects.toThrow('AI node has no prompt_template configured')
     })
 
     it('should throw error if no prompt configuration found', async () => {
@@ -175,7 +165,7 @@ describe('AIProcessorV2', () => {
 
       await expect(
         (processor as any).buildMessages(node, node.data, mockContextManager)
-      ).rejects.toThrow('No prompt configuration found')
+      ).rejects.toThrow('AI node has no prompt_template configured')
     })
   })
 
@@ -235,24 +225,14 @@ describe('AIProcessorV2', () => {
       expect(variables).toContain('webhook.name')
     })
 
-    it('should extract variables from legacy prompt', () => {
-      const node = aiNode({
-        prompt: 'Summarize: {{article.content}}',
-      })
-
-      const variables = (processor as any).extractRequiredVariables(node)
-      expect(variables).toContain('article.content')
-    })
-
-    it('should extract variables from systemPrompt', () => {
+    it('ignores the removed legacy prompt / systemPrompt fields', () => {
       const node = aiNode({
         systemPrompt: 'Context: {{sys.context}}',
-        prompt: 'Question: {{user.question}}',
-      })
+        prompt: 'Summarize: {{article.content}}',
+      } as any)
 
       const variables = (processor as any).extractRequiredVariables(node)
-      expect(variables).toContain('sys.context')
-      expect(variables).toContain('user.question')
+      expect(variables).toEqual([])
     })
 
     it('ignores legacy context config (dead setting removed)', () => {
@@ -295,14 +275,15 @@ describe('AIProcessorV2', () => {
       expect(result.errors).toHaveLength(0)
     })
 
-    it('should validate legacy prompt configuration', async () => {
+    it('rejects a node carrying only the legacy prompt field', async () => {
       const node = aiNode({
         model: { provider: 'openai', name: 'gpt-4' },
         prompt: 'Hello world',
-      })
+      } as any)
 
       const result = await (processor as any).validateNodeConfig(node)
-      expect(result.valid).toBe(true)
+      expect(result.valid).toBe(false)
+      expect(result.errors.join(' ')).toContain("Expected 'prompt_template' array")
     })
 
     it('should fail validation without prompt', async () => {
@@ -322,7 +303,7 @@ describe('AIProcessorV2', () => {
           name: 'gpt-4',
           completion_params: { temperature: 3.0 },
         },
-        prompt: 'Hello',
+        prompt_template: [pt('user', 'Hello')],
       })
 
       const result = await (processor as any).validateNodeConfig(node)
@@ -337,7 +318,7 @@ describe('AIProcessorV2', () => {
           name: 'gpt-4',
           completion_params: { max_tokens: -100 },
         },
-        prompt: 'Hello',
+        prompt_template: [pt('user', 'Hello')],
       })
 
       const result = await (processor as any).validateNodeConfig(node)
@@ -348,7 +329,7 @@ describe('AIProcessorV2', () => {
     it('should validate structured output schema', async () => {
       const node = aiNode({
         model: { provider: 'openai', name: 'gpt-4' },
-        prompt: 'Hello',
+        prompt_template: [pt('user', 'Hello')],
         structured_output: {
           enabled: true,
           // Missing schema
@@ -363,7 +344,7 @@ describe('AIProcessorV2', () => {
     it('should accept toolsEnabled with toolsets array', async () => {
       const node = aiNode({
         model: { provider: 'openai', name: 'gpt-4' },
-        prompt: 'Hello',
+        prompt_template: [pt('user', 'Hello')],
         toolsEnabled: true,
         toolsets: [{ slug: 'workflow.variable', enabled: true, source: 'manual' }],
       })
@@ -375,7 +356,7 @@ describe('AIProcessorV2', () => {
     it('should reject invalid maxIterations on a tools-enabled node', async () => {
       const node = aiNode({
         model: { provider: 'openai', name: 'gpt-4' },
-        prompt: 'Hello',
+        prompt_template: [pt('user', 'Hello')],
         toolsEnabled: true,
         toolsets: [],
         maxIterations: 0,

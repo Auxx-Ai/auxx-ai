@@ -24,18 +24,11 @@ export interface SortConfig {
 }
 
 /**
- * Available list operations
+ * Available list operations.
+ *
+ * Mirrors the builder's `ListOperation`
+ * (`apps/web/src/components/workflow/nodes/core/list/types.ts`) exactly — the
+ * `ListProcessor` throws `Unknown operation` on anything else, so a value here
+ * that the switch does not handle is a promise the node cannot keep.
  */
-export type ListOperation =
-  | 'filter'
-  | 'sort'
-  | 'map'
-  | 'reduce'
-  | 'slice'
-  | 'unique'
-  | 'group'
-  | 'find'
-  | 'join'
-  | 'pluck'
-  | 'flatten'
-  | 'reverse'
+export type ListOperation = 'filter' | 'sort' | 'slice' | 'unique' | 'join' | 'pluck' | 'reverse'

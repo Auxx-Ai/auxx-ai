@@ -588,7 +588,7 @@
               "conditions": [
                 {
                   "id": "cond_reply_order",
-                  "variableId": "ai_order_reply.respond",
+                  "variableId": "ai_order_reply.structured_output.respond",
                   "comparison_operator": "is",
                   "value": true,
                   "isConstant": true,
@@ -627,7 +627,7 @@
           "desc": "Reply with order-specific information",
           "messageType": "reply",
           "recordId": "trigger_1.thread",
-          "text": "{{ai_order_reply.email_message}}",
+          "text": "{{ai_order_reply.structured_output.email_message}}",
           "to": [],
           "toModes": [],
           "cc": [],
@@ -883,7 +883,7 @@
               "conditions": [
                 {
                   "id": "cond_reply_mismatch",
-                  "variableId": "ai_order_mismatch.respond",
+                  "variableId": "ai_order_mismatch.structured_output.respond",
                   "comparison_operator": "is",
                   "value": true,
                   "isConstant": true,
@@ -922,7 +922,7 @@
           "desc": "Ask the customer to write from the address the order was placed from",
           "messageType": "reply",
           "recordId": "trigger_1.thread",
-          "text": "{{ai_order_mismatch.email_message}}",
+          "text": "{{ai_order_mismatch.structured_output.email_message}}",
           "to": [],
           "toModes": [],
           "cc": [],
@@ -1164,7 +1164,7 @@
               "conditions": [
                 {
                   "id": "cond_reply_not_found",
-                  "variableId": "ai_order_not_found.respond",
+                  "variableId": "ai_order_not_found.structured_output.respond",
                   "comparison_operator": "is",
                   "value": true,
                   "isConstant": true,
@@ -1203,7 +1203,7 @@
           "desc": "Ask the customer to confirm their order number",
           "messageType": "reply",
           "recordId": "trigger_1.thread",
-          "text": "{{ai_order_not_found.email_message}}",
+          "text": "{{ai_order_not_found.structured_output.email_message}}",
           "to": [],
           "toModes": [],
           "cc": [],
@@ -1435,7 +1435,7 @@
               "conditions": [
                 {
                   "id": "cond_reply_no_order",
-                  "variableId": "ai_no_order_reply.respond",
+                  "variableId": "ai_no_order_reply.structured_output.respond",
                   "comparison_operator": "is",
                   "value": true,
                   "isConstant": true,
@@ -1474,7 +1474,7 @@
           "desc": "Ask customer for their order number",
           "messageType": "reply",
           "recordId": "trigger_1.thread",
-          "text": "{{ai_no_order_reply.email_message}}",
+          "text": "{{ai_no_order_reply.structured_output.email_message}}",
           "to": [],
           "toModes": [],
           "cc": [],

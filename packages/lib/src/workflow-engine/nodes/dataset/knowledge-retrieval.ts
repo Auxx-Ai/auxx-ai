@@ -13,12 +13,8 @@ import type {
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
-import {
-  extractVariableRefs,
-  resolveEnumConfig,
-  resolveNumberConfig,
-  variableBound,
-} from './config-value'
+import { extractVariableRefs } from '../utils/variable-refs'
+import { resolveEnumConfig, resolveNumberConfig, variableBound } from './config-value'
 
 const logger = createScopedLogger('knowledge-retrieval-processor')
 

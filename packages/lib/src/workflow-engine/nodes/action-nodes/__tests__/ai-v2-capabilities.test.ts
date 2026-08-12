@@ -83,6 +83,7 @@ vi.mock('../../utils/model-capability-gates', () => ({
   resolveCapabilityGates: () => ({ skipStructuredOutput: false, skipFiles: false, warnings: [] }),
 }))
 
+import { textToDoc } from '../../../../tiptap'
 import { WorkflowNodeType } from '../../../core/types'
 import { AIProcessorV2 } from '../ai-v2'
 
@@ -93,8 +94,7 @@ const NONE_VIEW = new AgentPolicyCapabilities(emptyAgentPolicy()) as unknown as 
 
 const config = {
   model: { provider: 'openai', model: 'gpt-4' },
-  prompt_template: [],
-  prompt: 'hello',
+  prompt_template: [{ role: 'user', json: textToDoc('hello') }],
   toolsEnabled: true,
   toolsets: [{ slug: 'entities', enabled: true, source: 'manual' }],
 } as any

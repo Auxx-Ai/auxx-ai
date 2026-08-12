@@ -15,12 +15,8 @@ import type {
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
-import {
-  extractVariableRefs,
-  resolveBooleanConfig,
-  resolveNumberConfig,
-  variableBound,
-} from './config-value'
+import { extractVariableRefs } from '../utils/variable-refs'
+import { resolveBooleanConfig, resolveNumberConfig, variableBound } from './config-value'
 
 const logger = createScopedLogger('chunker-processor')
 

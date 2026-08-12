@@ -1,6 +1,16 @@
 // packages/lib/src/workflow-engine/nodes/triggers/resource-trigger-base.ts
 
-import { requireCachedEntityDefId } from '../../../cache'
+import { getCachedResourceFields, requireCachedEntityDefId } from '../../../cache'
+import {
+  evaluateConditionsWithDiagnostics,
+  normalizeStatusConditions,
+} from '../../../conditions/evaluate'
+import { isKnownOperator } from '../../../conditions/evaluate-operator'
+import type { Condition, ConditionGroup } from '../../../conditions/types'
+// Generic record-snapshot resolver — the exact shape `fetchResourceById` produces,
+// which is what lands in `context.triggerData`. Shared with the record-rule engine
+// so a condition written against a field means the same thing in both.
+import { makeSnapshotResolver, type RecordSnapshot } from '../../../record-rules/resolver'
 import { RESOURCE_CONFIGS, RESOURCE_OPERATIONS } from '../../../resources/definitions'
 import {
   isCustomResourceId,
@@ -13,6 +23,61 @@ import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, type WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
+
+/**
+ * Outcome of reading + evaluating a trigger's filter.
+ *
+ * `refused` is deliberately distinct from `no-match`: a filter that does not
+ * compile as written has NOT decided anything, and treating it as "no match" or
+ * as "no filter" are both wrong. It is reported as an error and the workflow
+ * does not run.
+ */
+type TriggerFilterOutcome =
+  | { decision: 'fire' }
+  | { decision: 'no-match' }
+  | { decision: 'refused'; reason: string; detail?: unknown }
+
+/**
+ * Read `node.data.filters` as condition groups.
+ *
+ * Returns `null` when the key is present but is not shaped like condition groups.
+ * That is NOT the same as "no filter": a filter nobody can parse must fail closed,
+ * because reducing it to the empty set silently promotes the trigger to
+ * "fire on every record".
+ */
+function readTriggerFilters(raw: unknown): ConditionGroup[] | null {
+  if (raw === undefined || raw === null) return []
+  if (!Array.isArray(raw)) return null
+
+  const groups: ConditionGroup[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null
+    const group = entry as Partial<ConditionGroup>
+    if (!Array.isArray(group.conditions)) return null
+    if (group.conditions.some((c) => !c || typeof c !== 'object' || typeof c.operator !== 'string'))
+      return null
+    groups.push(group as ConditionGroup)
+  }
+  return groups
+}
+
+/** True when at least one group carries at least one condition. */
+function hasConditions(groups: ConditionGroup[]): boolean {
+  return groups.some((g) => g.conditions.length > 0)
+}
+
+/**
+ * Conditions the shared evaluator cannot honour here.
+ *
+ * A trigger fires BEFORE any node has run, so there is no upstream variable to
+ * resolve — `isConstant: false` conditions carry a `{{…}}` reference the
+ * evaluator would compare as a literal string. The panel cannot author one
+ * (variable mode is off for trigger filters); a hand-authored or imported graph
+ * can, and it must not be silently mis-evaluated.
+ */
+function findVariableModeConditions(groups: ConditionGroup[]): Condition[] {
+  return groups.flatMap((g) => g.conditions.filter((c) => c.isConstant === false))
+}
 
 /**
  * Unified trigger node processor for all resource-based triggers
@@ -65,6 +130,36 @@ export class ResourceTriggerBase extends BaseNodeProcessor {
       )
     }
 
+    // Trigger filters gate the whole run — evaluate BEFORE publishing any variables.
+    // A `Skipped` status on a trigger stops the execution branch (workflow-engine.ts:506),
+    // so this is the only thing standing between a filtered trigger and a full run.
+    const filterOutcome = await this.evaluateTriggerFilters(
+      node,
+      resourceType,
+      organizationId,
+      triggerData
+    )
+    if (filterOutcome.decision !== 'fire') {
+      const refused = filterOutcome.decision === 'refused'
+      contextManager.log(
+        refused ? 'ERROR' : 'INFO',
+        node.name,
+        refused
+          ? `${resourceType} trigger filter did not evaluate as written — workflow not run`
+          : `${resourceType} filtered out by trigger conditions`,
+        refused ? { reason: filterOutcome.reason, detail: filterOutcome.detail } : undefined
+      )
+      return {
+        status: NodeRunningStatus.Skipped,
+        output: {
+          filtered: true,
+          reason: refused
+            ? `Trigger filter did not evaluate as written: ${filterOutcome.reason}`
+            : 'Did not pass trigger filters',
+        },
+      }
+    }
+
     // Entity definition types (contact, ticket, etc.) store data in EntityInstance/FieldValue.
     // Resolve the entityType string to the actual entityDefinitionId UUID so variable paths
     // match frontend output-variables which use entityDefinitionId.
@@ -97,18 +192,6 @@ export class ResourceTriggerBase extends BaseNodeProcessor {
     // Set organization context if available
     if (context.organizationId) {
       contextManager.setVariable('organizationId', context.organizationId)
-    }
-
-    // Apply any filters from node data
-    if (node.data.filters) {
-      const passesFilters = await this.applyFilters(node.data.filters, triggerData, contextManager)
-      if (!passesFilters) {
-        contextManager.log('INFO', node.name, `${resourceType} filtered out by trigger conditions`)
-        return {
-          status: NodeRunningStatus.Skipped,
-          output: { filtered: true, reason: 'Did not pass trigger filters' },
-        }
-      }
     }
 
     return {
@@ -209,10 +292,22 @@ export class ResourceTriggerBase extends BaseNodeProcessor {
       errors.push(`Invalid operation: "${node.data.operation}"`)
     }
 
-    // Validate filters if present
-    if (node.data.filters) {
-      if (typeof node.data.filters !== 'object') {
-        errors.push('Filters must be an object')
+    // Validate filters if present. Same fail-closed reading as the run path — a
+    // filter that cannot be parsed here is one that will refuse to fire there, so
+    // surface it at save time rather than as a silent non-run.
+    if (node.data.filters !== undefined && node.data.filters !== null) {
+      const groups = readTriggerFilters(node.data.filters)
+      if (groups === null) {
+        errors.push('Trigger filters must be an array of condition groups')
+      } else {
+        for (const condition of groups.flatMap((g) => g.conditions)) {
+          if (!isKnownOperator(condition.operator)) {
+            errors.push(`Unknown filter operator: "${condition.operator}"`)
+          }
+        }
+        if (findVariableModeConditions(groups).length > 0) {
+          errors.push('Trigger filters cannot reference workflow variables')
+        }
       }
     }
 
@@ -220,18 +315,70 @@ export class ResourceTriggerBase extends BaseNodeProcessor {
   }
 
   /**
-   * Apply filters to determine if the resource should trigger the workflow
-   * Future implementation for resource filtering
+   * Decide whether `node.data.filters` lets this record through.
+   *
+   * 🔴 This is a GATE, and it fails CLOSED. Uses
+   * {@link evaluateConditionsWithDiagnostics} rather than the plain evaluator for
+   * the same reason record rules and sequence enrollment do: an unrecognised
+   * operator now evaluates `false`, so a filter the evaluator cannot read as
+   * written would just stop firing — silently. Refuse and say so instead.
+   *
+   * Operator semantics come from the shared `evaluateOperator` via the shared
+   * evaluator; there is deliberately no private comparison logic here.
+   *
+   * No filter at all → `fire`. That is the only path on which an unfiltered
+   * trigger keeps its "runs on every record" behaviour.
    */
-  private async applyFilters(
-    filters: Record<string, any>,
-    resourceData: any,
-    contextManager: ExecutionContextManager
-  ): Promise<boolean> {
-    // Future implementation - for now, all resources pass
-    contextManager.log('DEBUG', undefined, 'Resource filter evaluation (not yet implemented)', {
-      filters,
-    })
-    return true
+  private async evaluateTriggerFilters(
+    node: WorkflowNode,
+    resourceType: string,
+    organizationId: string,
+    triggerData: unknown
+  ): Promise<TriggerFilterOutcome> {
+    const groups = readTriggerFilters(node.data.filters)
+    if (groups === null) {
+      return {
+        decision: 'refused',
+        reason: 'filters is not an array of condition groups',
+        detail: { filters: node.data.filters },
+      }
+    }
+    if (!hasConditions(groups)) return { decision: 'fire' }
+
+    const variableConditions = findVariableModeConditions(groups)
+    if (variableConditions.length > 0) {
+      return {
+        decision: 'refused',
+        reason: 'trigger filters cannot reference workflow variables',
+        detail: variableConditions.map((c) => ({ conditionId: c.id, operator: c.operator })),
+      }
+    }
+
+    // Field refs arrive as `resourceType:fieldKey` (the panel's `toResourceFieldId`);
+    // the shared evaluator strips the prefix and the snapshot resolver maps the key
+    // onto the snapshot's field-value output key.
+    const fields = await getCachedResourceFields(organizationId, resourceType)
+    if (fields.length === 0) {
+      return {
+        decision: 'refused',
+        reason: `no cached fields for resource "${resourceType}" — conditions cannot be resolved`,
+      }
+    }
+
+    const { matched, diagnostics } = evaluateConditionsWithDiagnostics(
+      triggerData as RecordSnapshot,
+      normalizeStatusConditions(groups),
+      makeSnapshotResolver(fields)
+    )
+
+    if (diagnostics.length > 0) {
+      return {
+        decision: 'refused',
+        reason: 'one or more conditions could not be evaluated as written',
+        detail: diagnostics,
+      }
+    }
+
+    return matched ? { decision: 'fire' } : { decision: 'no-match' }
   }
 }

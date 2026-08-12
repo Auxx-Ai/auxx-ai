@@ -41,6 +41,10 @@ import type {
 } from '../../core/types'
 import { BaseType, NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
+import { extractVariableRefs } from '../utils/variable-refs'
+
+/** Rows returned when the configured limit is missing, unresolvable or non-positive. */
+const DEFAULT_FIND_LIMIT = 10
 
 interface FindNodeData {
   resourceType: string // Supports both system resources and custom entities (UUID/CUID format)
@@ -410,24 +414,7 @@ export class FindProcessor extends BaseNodeProcessor {
       resolvedGroups = await Promise.all(groupPromises)
     }
 
-    // Resolve limit if it's a variable (string) or object (legacy)
-    let resolvedLimit: number | undefined
-    if (config.limit !== undefined) {
-      if (typeof config.limit === 'string') {
-        // Variable mode: resolve the variable reference
-        const interpolated = await this.interpolateVariables(config.limit, contextManager)
-        resolvedLimit = parseInt(interpolated, 10)
-        if (Number.isNaN(resolvedLimit) || resolvedLimit <= 0) {
-          resolvedLimit = 10 // Default to 10 if invalid
-        }
-      } else if (typeof config.limit === 'object') {
-        // Legacy object-based variable reference
-        resolvedLimit = Number(await this.resolveVariableValue(config.limit, contextManager))
-      } else {
-        // Constant mode: use the number directly
-        resolvedLimit = config.limit
-      }
-    }
+    const resolvedLimit = await this.resolveLimit(config, contextManager)
 
     const totalConditions =
       resolvedConditions.length +
@@ -544,23 +531,7 @@ export class FindProcessor extends BaseNodeProcessor {
 
         orderBy = config.orderBy
 
-        // Resolve limit if it's a variable (string) or object (legacy)
-        if (config.limit !== undefined) {
-          if (typeof config.limit === 'string') {
-            // Variable mode: resolve the variable reference
-            const interpolated = await this.interpolateVariables(config.limit, contextManager)
-            limit = parseInt(interpolated, 10)
-            if (Number.isNaN(limit) || limit <= 0) {
-              limit = 10 // Default to 10 if invalid
-            }
-          } else if (typeof config.limit === 'object') {
-            // Legacy object-based variable reference
-            limit = Number(await this.resolveVariableValue(config.limit, contextManager))
-          } else {
-            // Constant mode: use the number directly
-            limit = config.limit
-          }
-        }
+        limit = await this.resolveLimit(config, contextManager)
       }
 
       // Get execution context
@@ -1053,6 +1024,42 @@ export class FindProcessor extends BaseNodeProcessor {
   }
 
   /**
+   * Resolve the row limit, which the panel can put in constant or variable mode.
+   *
+   * The limit field is a `VAR_MODE.PICKER` editor, so in variable mode it stores a
+   * **bare dotted path** (`node-1.count`) and only sometimes a `{{…}}` template.
+   * Interpolating alone left the path untouched, `parseInt` returned `NaN`, and the
+   * node silently queried 10 rows while the panel showed the bound variable —
+   * {@link BaseNodeProcessor.resolveNumberField} understands both shapes.
+   *
+   * A resolved value of zero or less is meaningless for a query, so it falls back
+   * to the same default an unresolvable one does.
+   */
+  private async resolveLimit(
+    config: FindNodeData,
+    contextManager: ExecutionContextManager
+  ): Promise<number | undefined> {
+    const { limit } = config
+    if (limit === undefined) return undefined
+
+    // Legacy object-based variable reference ({ varName })
+    if (typeof limit === 'object') {
+      const resolved = Number(await this.resolveVariableValue(limit, contextManager))
+      return Number.isFinite(resolved) ? resolved : undefined
+    }
+
+    if (typeof limit === 'number') return limit
+
+    const resolved = await this.resolveNumberField(
+      limit,
+      config.fieldModes?.['limit'],
+      DEFAULT_FIND_LIMIT,
+      contextManager
+    )
+    return resolved > 0 ? Math.trunc(resolved) : DEFAULT_FIND_LIMIT
+  }
+
+  /**
    * Resolve variable values
    */
   protected async resolveVariableValue(
@@ -1104,9 +1111,10 @@ export class FindProcessor extends BaseNodeProcessor {
       })
     }
 
-    // Extract from limit if it's a variable reference
+    // Extract from limit if it's a variable reference — both shapes, since the
+    // picker writes a bare path and the rich editor writes a `{{…}}` template.
     if (config.limit && typeof config.limit === 'string') {
-      this.extractVariableIds(config.limit).forEach((v) => variables.add(v))
+      extractVariableRefs(config.limit).forEach((v) => variables.add(v))
     }
 
     return Array.from(variables)

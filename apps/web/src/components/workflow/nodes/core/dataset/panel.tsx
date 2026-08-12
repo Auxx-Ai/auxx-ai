@@ -3,6 +3,7 @@
 'use client'
 
 import { DocumentTypeValues } from '@auxx/database/enums'
+import { DATASET_NODE_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
 import { produce } from 'immer'
 import type React from 'react'
 import { memo, useCallback } from 'react'
@@ -35,6 +36,21 @@ type StringField =
   | 'mimeType'
   | 'documentType'
   | 'sourceUrl'
+
+/** Boolean toggles, which the engine defaults differently from one another */
+type BooleanField = 'skipEmbedding' | 'waitForEmbeddings'
+
+const { DEFAULT_WAIT_FOR_EMBEDDINGS, DEFAULT_TIMEOUT_MINUTES, MIN_TIMEOUT_MINUTES } =
+  DATASET_NODE_CONSTANTS.EMBEDDING_WAIT
+
+/**
+ * What an unset toggle means to the engine, so switching a field back to
+ * constant mode restores what it does when nobody touched it.
+ */
+const BOOLEAN_FIELD_DEFAULTS: Record<BooleanField, boolean> = {
+  skipEmbedding: false,
+  waitForEmbeddings: DEFAULT_WAIT_FOR_EMBEDDINGS,
+}
 
 /**
  * Dataset node configuration panel
@@ -83,14 +99,15 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
    * `value === true` would pin every bound toggle to `false`.
    */
   const handleBooleanChange = useCallback(
-    (field: 'skipEmbedding', value: VarEditorValue, isConstantMode: boolean) => {
+    (field: BooleanField, value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
         const wasConstantMode = draft.fieldModes?.[field] ?? true
 
         if (wasConstantMode !== isConstantMode) {
           // Clear the value when switching modes — a reference is meaningless
-          // as a literal, and vice versa
-          draft[field] = isConstantMode ? false : undefined
+          // as a literal, and vice versa. Clearing back to constant mode lands
+          // on the field's own default, not a blanket `false`.
+          draft[field] = isConstantMode ? BOOLEAN_FIELD_DEFAULTS[field] : undefined
         } else if (isConstantMode) {
           draft[field] = value === true
         } else {
@@ -99,6 +116,33 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
 
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes[field] = isConstantMode
+      })
+      setInputs(newData)
+    },
+    [nodeData, setInputs]
+  )
+
+  /**
+   * Handle the embedding timeout, which is a number in constant mode and a
+   * variable reference in variable mode.
+   */
+  const handleTimeoutChange = useCallback(
+    (value: VarEditorValue, isConstantMode: boolean) => {
+      const newData = produce(nodeData, (draft) => {
+        const wasConstantMode = draft.fieldModes?.['embeddingTimeoutMinutes'] ?? true
+
+        if (wasConstantMode !== isConstantMode) {
+          draft.embeddingTimeoutMinutes = undefined
+        } else if (isConstantMode) {
+          const parsed =
+            typeof value === 'number' ? value : Number.parseInt(varEditorText(value), 10)
+          draft.embeddingTimeoutMinutes = Number.isNaN(parsed) ? undefined : parsed
+        } else {
+          draft.embeddingTimeoutMinutes = varEditorText(value) || undefined
+        }
+
+        if (!draft.fieldModes) draft.fieldModes = {}
+        draft.fieldModes['embeddingTimeoutMinutes'] = isConstantMode
       })
       setInputs(newData)
     },
@@ -325,6 +369,53 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
               allowedTypes={[BaseType.BOOLEAN]}
               allowConstant
               isConstantMode={nodeData.fieldModes?.['skipEmbedding'] ?? true}
+              hideClearButton
+            />
+          </VarEditorFieldRow>
+
+          <VarEditorFieldRow
+            className='pe-2'
+            title='Wait for Embeddings'
+            description='On: the workflow pauses here until this document is embedded, so a later node reading this dataset finds it. Off: the workflow continues immediately and the embeddings finish in the background. Ignored when Skip Embedding is on.'
+            type={BaseType.BOOLEAN}>
+            <VarEditor
+              nodeId={nodeId}
+              value={nodeData.waitForEmbeddings ?? DEFAULT_WAIT_FOR_EMBEDDINGS}
+              onChange={(v, m) => handleBooleanChange('waitForEmbeddings', v, m)}
+              fieldOptions={{ variant: 'switch' }}
+              varType={BaseType.BOOLEAN}
+              mode={VAR_MODE.PICKER}
+              allowedTypes={[BaseType.BOOLEAN]}
+              allowConstant
+              isConstantMode={nodeData.fieldModes?.['waitForEmbeddings'] ?? true}
+              hideClearButton
+            />
+          </VarEditorFieldRow>
+
+          <VarEditorFieldRow
+            title='Embedding Timeout (minutes)'
+            description={`How long that wait may last. If the embeddings are not done by then the workflow continues anyway with Embedding Status = "timeout" — it never waits forever. Clamped to ${MIN_TIMEOUT_MINUTES}–${DATASET_NODE_CONSTANTS.EMBEDDING_WAIT.MAX_TIMEOUT_MINUTES} minutes.`}
+            type={BaseType.NUMBER}
+            onClear={
+              nodeData.embeddingTimeoutMinutes != null && nodeData.embeddingTimeoutMinutes !== ''
+                ? () =>
+                    handleTimeoutChange(
+                      '',
+                      nodeData.fieldModes?.['embeddingTimeoutMinutes'] ?? true
+                    )
+                : undefined
+            }>
+            <VarEditor
+              nodeId={nodeId}
+              value={nodeData.embeddingTimeoutMinutes}
+              onChange={handleTimeoutChange}
+              varType={BaseType.NUMBER}
+              mode={VAR_MODE.PICKER}
+              allowedTypes={[BaseType.NUMBER]}
+              placeholder='Pick variable'
+              placeholderConstant={String(DEFAULT_TIMEOUT_MINUTES)}
+              allowConstant
+              isConstantMode={nodeData.fieldModes?.['embeddingTimeoutMinutes'] ?? true}
               hideClearButton
             />
           </VarEditorFieldRow>
