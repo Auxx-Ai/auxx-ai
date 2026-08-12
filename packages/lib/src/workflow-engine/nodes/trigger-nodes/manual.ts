@@ -43,6 +43,20 @@ export class ManualTriggerProcessor extends BaseNodeProcessor {
 
     await this.processManualInputs(triggerData, contextManager)
 
+    const triggeredAt = new Date().toISOString()
+
+    // The trigger's own three advertised variables. `userId` is the run's acting
+    // user — `WorkflowRun.createdBy`, which the run creator resolves to the org
+    // system user for a headless run — so it is populated for a builder test run
+    // (the signed-in user) and for a production run alike. `inputs` is the whole
+    // form-input payload, keyed by form-input node id — the same record whose
+    // entries `processManualInputs` also publishes one node at a time.
+    contextManager.setNodeVariables(node.nodeId, {
+      timestamp: triggeredAt,
+      userId: contextManager.getContext().userId ?? '',
+      inputs: triggerData,
+    })
+
     contextManager.log('INFO', node.name, 'Manual trigger activated', {
       variables: Object.keys(contextManager.getContext().variables),
       hasFiles: Object.values(triggerData).some(
@@ -54,7 +68,7 @@ export class ManualTriggerProcessor extends BaseNodeProcessor {
     return {
       status: NodeRunningStatus.Succeeded,
       output: {
-        triggered_at: new Date().toISOString(),
+        triggered_at: triggeredAt,
         trigger_type: 'manual',
       },
       outputHandle: 'source',
@@ -64,7 +78,7 @@ export class ManualTriggerProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * Process all manual inputs and set them as workflow variables.
+   * Process all manual inputs and set them as per-form-input-node variables.
    * Detects file inputs (arrays, single objects, file: prefixed IDs) and
    * sets both single and array variable formats for each.
    * Non-file inputs are passed through as-is.
@@ -95,8 +109,6 @@ export class ManualTriggerProcessor extends BaseNodeProcessor {
         })
       }
     }
-
-    contextManager.setVariable('manualInputs', triggerData)
   }
 
   /**
@@ -106,6 +118,12 @@ export class ManualTriggerProcessor extends BaseNodeProcessor {
    * Returns null when the graph is unavailable or the id is not a form-input node,
    * in which case the caller falls back to STRING — the default branch of the
    * output contract, and the shape a bare scalar already has.
+   *
+   * The `data` read here is the FORM-INPUT node's, not this trigger's: `inputType`
+   * / `typeOptions` / `label` are written by the form-input panel, and the run
+   * panel's manual-input prompt reads the very same three keys off the very same
+   * node (`nodes/shared/manual-trigger-input.tsx`). The manual trigger's own
+   * `node.data` carries none of them.
    */
   private async findFormInputConfig(
     nodeId: string,
@@ -117,13 +135,13 @@ export class ManualTriggerProcessor extends BaseNodeProcessor {
     const nodes = workflow?.graph?.nodes
     if (!Array.isArray(nodes)) return null
 
-    const node = nodes.find((candidate) => (candidate?.nodeId ?? candidate?.id) === nodeId)
-    if (!node || node.type !== 'form-input') return null
+    const formInputNode = nodes.find((candidate) => (candidate?.nodeId ?? candidate?.id) === nodeId)
+    if (!formInputNode || formInputNode.type !== 'form-input') return null
 
     return {
-      inputType: node.data?.inputType as BaseType | undefined,
-      typeOptions: node.data?.typeOptions as TypeOptions | undefined,
-      label: node.data?.label as string | undefined,
+      inputType: formInputNode.data?.inputType as BaseType | undefined,
+      typeOptions: formInputNode.data?.typeOptions as TypeOptions | undefined,
+      label: formInputNode.data?.label as string | undefined,
     }
   }
 

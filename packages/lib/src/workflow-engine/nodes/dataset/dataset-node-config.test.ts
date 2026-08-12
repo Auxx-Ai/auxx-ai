@@ -1,22 +1,37 @@
 // packages/lib/src/workflow-engine/nodes/dataset/dataset-node-config.test.ts
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ExecutionContextManager } from '../../core/execution-context'
-import type { WorkflowNode } from '../../core/types'
+import type { PauseReason, WorkflowNode } from '../../core/types'
 import { WorkflowNodeType } from '../../core/types'
 import { ChunkerProcessor } from './chunker'
 import { DatasetProcessor } from './dataset'
 import { DocumentExtractorProcessor } from './document-extractor'
+import {
+  buildEmbeddingTimeoutJobId,
+  clampEmbeddingTimeoutMinutes,
+  EMBEDDING_WAIT,
+  embeddingResumeVariables,
+  scheduleEmbeddingTimeout,
+} from './embedding-wait'
 import { KnowledgeRetrievalProcessor } from './knowledge-retrieval'
+
+const queueAdd = vi.fn()
+vi.mock('../../../jobs/queues', () => ({
+  getQueue: () => ({ add: (...args: unknown[]) => queueAdd(...args) }),
+  Queues: { workflowDelayQueue: 'workflow-delay' },
+}))
 
 /**
  * Builder↔engine contract tests for the knowledge/dataset cluster.
  *
- * Two failures are covered:
+ * Three failures are covered:
  *  - a config field bound to a variable must survive the processor's zod
  *    schema, so the variable gets a chance to resolve at all
  *  - a boolean bound to a variable must follow the variable, instead of being
  *    coerced to `false` whatever the variable says
+ *  - the dataset node's embedding wait must be bounded, and its outcome must
+ *    become addressable when the run resumes
  */
 
 function createNode(type: WorkflowNodeType, data: Record<string, unknown>): WorkflowNode {
@@ -332,6 +347,194 @@ describe('DatasetProcessor boolean binding', () => {
     )
 
     expect(preprocessed.inputs.skipEmbedding).toBe(false)
+  })
+})
+
+describe('DatasetProcessor embedding wait', () => {
+  let processor: DatasetProcessor
+
+  const chunks = [{ content: 'a chunk', position: 0 }]
+
+  function datasetNode(overrides: Record<string, unknown> = {}): WorkflowNode {
+    return createNode(WorkflowNodeType.DATASET, {
+      datasetId: 'ds_123',
+      chunks: 'chunker_1.chunks',
+      fieldModes: { datasetId: true, chunks: false, ...(overrides.fieldModes as object) },
+      ...overrides,
+    })
+  }
+
+  const preprocess = (node: WorkflowNode, variables: Record<string, unknown> = {}) =>
+    processor.preprocessNode(node, createContext({ 'chunker_1.chunks': chunks, ...variables }))
+
+  beforeEach(() => {
+    processor = new DatasetProcessor()
+  })
+
+  it('waits by default — an unset toggle is not "off"', async () => {
+    const preprocessed = await preprocess(datasetNode())
+
+    expect(preprocessed.inputs.waitForEmbeddings).toBe(true)
+  })
+
+  it('honours an explicit opt-out', async () => {
+    const preprocessed = await preprocess(
+      datasetNode({ waitForEmbeddings: false, fieldModes: { waitForEmbeddings: true } })
+    )
+
+    expect(preprocessed.inputs.waitForEmbeddings).toBe(false)
+  })
+
+  it.each([
+    ['a real boolean false', false],
+    ['the string "false"', 'false'],
+  ])('lets a bound toggle turn the wait off for %s', async (_label, value) => {
+    const preprocessed = await preprocess(
+      datasetNode({
+        waitForEmbeddings: 'settings_1.wait',
+        fieldModes: { waitForEmbeddings: false },
+      }),
+      { 'settings_1.wait': value }
+    )
+
+    expect(preprocessed.inputs.waitForEmbeddings).toBe(false)
+  })
+
+  it('falls back to waiting when a bound toggle never resolves', async () => {
+    const preprocessed = await preprocess(
+      datasetNode({
+        waitForEmbeddings: 'settings_1.missing',
+        fieldModes: { waitForEmbeddings: false },
+      })
+    )
+
+    expect(preprocessed.inputs.waitForEmbeddings).toBe(true)
+  })
+
+  it('defaults the timeout rather than leaving the wait unbounded', async () => {
+    const preprocessed = await preprocess(datasetNode())
+
+    expect(preprocessed.inputs.embeddingTimeoutMinutes).toBe(EMBEDDING_WAIT.DEFAULT_TIMEOUT_MINUTES)
+  })
+
+  it('resolves a bound timeout and clamps it into range', async () => {
+    const node = datasetNode({
+      embeddingTimeoutMinutes: 'settings_1.timeout',
+      fieldModes: { embeddingTimeoutMinutes: false },
+    })
+
+    expect(
+      (await preprocess(node, { 'settings_1.timeout': 30 })).inputs.embeddingTimeoutMinutes
+    ).toBe(30)
+    expect(
+      (await preprocess(node, { 'settings_1.timeout': 100_000 })).inputs.embeddingTimeoutMinutes
+    ).toBe(EMBEDDING_WAIT.MAX_TIMEOUT_MINUTES)
+    expect(
+      (await preprocess(node, { 'settings_1.timeout': 0 })).inputs.embeddingTimeoutMinutes
+    ).toBe(EMBEDDING_WAIT.MIN_TIMEOUT_MINUTES)
+  })
+
+  it('declares bound wait settings as required variables', () => {
+    const node = datasetNode({
+      waitForEmbeddings: 'settings_1.wait',
+      embeddingTimeoutMinutes: 'settings_1.timeout',
+      fieldModes: { waitForEmbeddings: false, embeddingTimeoutMinutes: false },
+    })
+
+    // @ts-expect-error - exercising the protected contract directly
+    const required = processor.extractRequiredVariables(node) as string[]
+
+    expect(required).toContain('settings_1.wait')
+    expect(required).toContain('settings_1.timeout')
+  })
+
+  it('warns that the wait is inert when embedding is skipped', async () => {
+    // @ts-expect-error - exercising the protected contract directly
+    const result = await processor.validateNodeConfig(
+      datasetNode({ skipEmbedding: true, fieldModes: { skipEmbedding: true } })
+    )
+
+    expect(result.warnings).toContain('waitForEmbeddings has no effect when skipEmbedding is true')
+  })
+})
+
+describe('embedding wait timeout', () => {
+  beforeEach(() => {
+    queueAdd.mockClear()
+  })
+
+  it('clamps a missing or nonsensical timeout to the default', () => {
+    expect(clampEmbeddingTimeoutMinutes(undefined)).toBe(EMBEDDING_WAIT.DEFAULT_TIMEOUT_MINUTES)
+    expect(clampEmbeddingTimeoutMinutes(Number.NaN)).toBe(EMBEDDING_WAIT.DEFAULT_TIMEOUT_MINUTES)
+    expect(clampEmbeddingTimeoutMinutes(Number.POSITIVE_INFINITY)).toBe(
+      EMBEDDING_WAIT.DEFAULT_TIMEOUT_MINUTES
+    )
+    expect(clampEmbeddingTimeoutMinutes(-5)).toBe(EMBEDDING_WAIT.MIN_TIMEOUT_MINUTES)
+  })
+
+  it('schedules a delayed resume that ends the wait', async () => {
+    await scheduleEmbeddingTimeout({
+      workflowRunId: 'run_1',
+      nodeId: 'dataset_1',
+      documentId: 'doc_1',
+      timeoutMs: 15 * 60_000,
+      originalNodeOutput: { documentId: 'doc_1', chunksAdded: 3 },
+    })
+
+    expect(queueAdd).toHaveBeenCalledTimes(1)
+    const [name, data, opts] = queueAdd.mock.calls[0] as [string, any, any]
+
+    expect(name).toBe('resumeWorkflowJob')
+    expect(data.workflowRunId).toBe('run_1')
+    expect(data.resumeFromNodeId).toBe('dataset_1')
+    // The run continues on its normal handle with an honest status, rather than
+    // sitting in WAITING forever behind a stuck embedding job.
+    expect(data.nodeOutput.embeddingStatus).toBe('timeout')
+    expect(data.nodeOutput.chunksAdded).toBe(3)
+    expect(opts.delay).toBe(15 * 60_000)
+    // Deterministic, so the finalize job can cancel this exact job in O(1).
+    expect(opts.jobId).toBe(buildEmbeddingTimeoutJobId('run_1', 'dataset_1'))
+  })
+})
+
+describe('embedding resume variables', () => {
+  const documentProcessing: PauseReason = { type: 'document_processing', nodeId: 'dataset_1' }
+
+  it('publishes the outcome the resume payload carries', () => {
+    expect(
+      embeddingResumeVariables(documentProcessing, {
+        embeddingStatus: 'completed',
+        segmentsEmbedded: 12,
+        processingTimeMs: 4200,
+        completedAt: '2026-08-11T00:00:00.000Z',
+        documentId: 'doc_1',
+      })
+    ).toEqual({
+      embeddingStatus: 'completed',
+      segmentsEmbedded: 12,
+      processingTimeMs: 4200,
+      completedAt: '2026-08-11T00:00:00.000Z',
+    })
+  })
+
+  it('publishes a timeout the same way, so the branch can see it', () => {
+    expect(
+      embeddingResumeVariables(documentProcessing, {
+        embeddingStatus: 'timeout',
+        error: 'Embeddings did not complete within 15 minute(s)',
+      })
+    ).toEqual({
+      embeddingStatus: 'timeout',
+      error: 'Embeddings did not complete within 15 minute(s)',
+    })
+  })
+
+  it('is inert for every other pause type', () => {
+    expect(
+      embeddingResumeVariables({ type: 'wait', nodeId: 'wait_1' }, { embeddingStatus: 'completed' })
+    ).toBeNull()
+    expect(embeddingResumeVariables(undefined, { embeddingStatus: 'completed' })).toBeNull()
+    expect(embeddingResumeVariables(documentProcessing, undefined)).toBeNull()
   })
 })
 

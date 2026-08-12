@@ -8,9 +8,51 @@ import { BaseNodeProcessor } from '../base-node'
 
 const logger = createScopedLogger('scheduled-trigger-processor')
 
+/**
+ * Every interval setting the scheduled-trigger panel can produce. `custom` means
+ * "a cron expression"; the other four are units of a fixed interval.
+ */
+export const SCHEDULE_TRIGGER_INTERVALS = ['minutes', 'hours', 'days', 'weeks', 'custom'] as const
+
+export type ScheduleTriggerInterval = (typeof SCHEDULE_TRIGGER_INTERVALS)[number]
+
+/**
+ * The vocabulary of the `schedule_type` output variable — **the only definition**.
+ * A scheduled trigger runs on one of two kinds of schedule, and that is the fact a
+ * workflow author branches on (`{{trigger_1.schedule_type}} is 'cron'`).
+ *
+ * Deliberately NOT the interval *unit*: `'hours'`/`'days'` answer a different
+ * question ("how often"), and that fact is already published on its own path as
+ * `interval_config.unit`. Overloading one name with both is how the builder's
+ * advertised `'interval' | 'cron'` and the engine's emitted `'hours'` drifted apart
+ * — a condition comparing `schedule_type == 'interval'` could never match.
+ */
+export const SCHEDULE_KINDS = ['interval', 'cron'] as const
+
+export type ScheduleKind = (typeof SCHEDULE_KINDS)[number]
+
+/** The interval units — every panel setting except `custom`, which means cron. */
+export type ScheduleIntervalUnit = Exclude<ScheduleTriggerInterval, 'custom'>
+
+/**
+ * The kind of schedule, carrying the interval unit on the branch where one exists.
+ * Keeping the two facts on one discriminated value is what stops them drifting: the
+ * emitted `schedule_type`, the choice between the `cron_expression` and
+ * `interval_config` output paths, and the `unit` inside `interval_config` all read
+ * off a single `scheduleShapeFor` call.
+ */
+export type ScheduleShape = { kind: 'cron' } | { kind: 'interval'; unit: ScheduleIntervalUnit }
+
+/** Derive the schedule shape from a panel interval setting. The only mapping site. */
+export function scheduleShapeFor(triggerInterval: ScheduleTriggerInterval): ScheduleShape {
+  return triggerInterval === 'custom'
+    ? { kind: 'cron' }
+    : { kind: 'interval', unit: triggerInterval }
+}
+
 interface ScheduledTriggerNodeData {
   config: {
-    triggerInterval: 'minutes' | 'hours' | 'days' | 'weeks' | 'custom'
+    triggerInterval: ScheduleTriggerInterval
     timeBetweenTriggers: {
       minutes?: number | string
       hours?: number | string
@@ -131,13 +173,30 @@ export class ScheduledTriggerProcessor extends BaseNodeProcessor {
     // Resolve dynamic interval values if needed
     const resolvedConfig = await this.resolveScheduleConfig(data.config, contextManager)
 
-    // Get trigger context
+    // Get trigger context.
+    //
+    // `sys.triggerData` is the run's `inputs` blob. The two producers spell the
+    // scheduled instant differently: `scheduled-trigger-job.ts` writes
+    // `scheduled_time` into `createRun({ inputs })`, while a builder run passes
+    // whatever the run panel's input tab collected. Read both spellings before
+    // falling back to "now" — otherwise a real scheduled fire silently reports
+    // its own execution time instead of the instant it was scheduled for.
     const triggerData = (await contextManager.getVariable('sys.triggerData')) || {}
-    const scheduledTime = triggerData.scheduledTime || new Date().toISOString()
+    const scheduledTime =
+      triggerData.scheduledTime || triggerData.scheduled_time || new Date().toISOString()
+
+    // A "test run" is a run started from the builder rather than by the scheduler.
+    // `createRun({ mode: 'test' })` stamps `WorkflowRun.triggeredFrom = DEBUGGING`,
+    // which `executeWorkflowAsync` turns into `executeWorkflow(..., { debug: true })`
+    // and the engine into `contextManager.setDebugMode(true)`. The scheduler's job
+    // uses `mode: 'production'`, so this is `false` there. Same signal the answer and
+    // human-confirmation nodes already use to decide whether to do the real thing.
+    const isTestRun = contextManager.isDebugMode()
 
     contextManager.log('INFO', node.nodeId, 'Scheduled trigger activated', {
       triggerInterval: resolvedConfig.triggerInterval,
       scheduledTime,
+      isTestRun,
     })
 
     // Set output variables
@@ -147,19 +206,26 @@ export class ScheduledTriggerProcessor extends BaseNodeProcessor {
       schedule_config: resolvedConfig,
       interval_description: this.getScheduleDescription(resolvedConfig),
       ...triggerData,
+      // After the spread on purpose: how the run was started is the engine's fact,
+      // not something an inputs payload gets to claim.
+      is_test_run: isTestRun,
     }
 
-    // Set node-specific variables
-    contextManager.setNodeVariable(node.nodeId, 'triggered_at', scheduledTime)
-    contextManager.setNodeVariable(node.nodeId, 'schedule_type', resolvedConfig.triggerInterval)
+    // Set node-specific variables. One `schedule` value drives the emitted
+    // `schedule_type`, which of the two mutually exclusive config paths is written,
+    // and the unit inside `interval_config` — so they cannot disagree.
+    const schedule = scheduleShapeFor(resolvedConfig.triggerInterval)
 
-    if (resolvedConfig.triggerInterval === 'custom') {
+    contextManager.setNodeVariable(node.nodeId, 'triggered_at', scheduledTime)
+    contextManager.setNodeVariable(node.nodeId, 'schedule_type', schedule.kind)
+    contextManager.setNodeVariable(node.nodeId, 'is_test_run', isTestRun)
+
+    if (schedule.kind === 'cron') {
       contextManager.setNodeVariable(node.nodeId, 'cron_expression', resolvedConfig.customCron)
     } else {
-      const intervalValue = resolvedConfig.timeBetweenTriggers[resolvedConfig.triggerInterval]
       contextManager.setNodeVariable(node.nodeId, 'interval_config', {
-        unit: resolvedConfig.triggerInterval,
-        value: intervalValue,
+        unit: schedule.unit,
+        value: resolvedConfig.timeBetweenTriggers[schedule.unit],
       })
     }
 

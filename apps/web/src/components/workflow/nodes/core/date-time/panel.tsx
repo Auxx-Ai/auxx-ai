@@ -2,6 +2,7 @@
 
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
 import {
@@ -11,8 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { Switch } from '@auxx/ui/components/switch'
 import { produce } from 'immer'
+import { Trash } from 'lucide-react'
 import { memo, useCallback, useMemo } from 'react'
+import { TimeZonePicker } from '~/components/pickers/timezone-picker'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
@@ -154,6 +158,26 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
     },
     [nodeData, setInputs]
   )
+
+  const handleTimezoneChange = useCallback(
+    (timezone: string) => setInputs({ ...nodeData, timezone: timezone || undefined }),
+    [nodeData, setInputs]
+  )
+
+  const handleOutputAsTimestampChange = useCallback(
+    (outputAsTimestamp: boolean) => setInputs({ ...nodeData, outputAsTimestamp }),
+    [nodeData, setInputs]
+  )
+
+  /**
+   * Only the operations that yield a date can be emitted as a timestamp.
+   * `format` already offers `unix`/`unix_ms` format types, and `time_between`
+   * returns a number by definition.
+   */
+  const producesDate =
+    nodeData.operation === DateTimeOperation.ADD_SUBTRACT ||
+    nodeData.operation === DateTimeOperation.ROUND ||
+    nodeData.operation === DateTimeOperation.PARSE_DATE
 
   // Memoized enum options for time unit VarEditor
   const timeUnitEnumOptions = useMemo(
@@ -581,21 +605,38 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
       {/* Advanced Settings Section */}
       <Section
         title='Advanced Settings'
-        description='Additional nodeDatauration options.'
+        description='Timezone, locale and output shape.'
         initialOpen={false}>
         <div className='space-y-4'>
           <div>
             <Label htmlFor='timezone'>Timezone</Label>
-            <Input
-              id='timezone'
-              value={nodeData.timezone || ''}
-              onChange={(e) => setInputs({ ...nodeData, timezone: e.target.value })}
-              placeholder='e.g., America/New_York'
-              className='mt-1'
-              disabled={isReadOnly}
-            />
+            <div className='mt-1 flex flex-row items-center gap-1'>
+              <TimeZonePicker
+                selected={nodeData.timezone}
+                onChange={handleTimezoneChange}
+                disabled={isReadOnly}>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  className='flex-1 justify-start font-normal'
+                  disabled={isReadOnly}>
+                  {nodeData.timezone || 'UTC'}
+                </Button>
+              </TimeZonePicker>
+              {nodeData.timezone && (
+                <Button
+                  variant='outline'
+                  size='icon-sm'
+                  className='text-bad-500'
+                  onClick={() => handleTimezoneChange('')}
+                  disabled={isReadOnly}>
+                  <Trash />
+                </Button>
+              )}
+            </div>
             <p className='text-xs text-muted-foreground mt-1'>
-              Leave empty to use user's local timezone
+              Dates are read, rounded and rendered in this timezone. Defaults to UTC — a workflow
+              runs on the server, with no browser to borrow a timezone from.
             </p>
           </div>
 
@@ -613,6 +654,23 @@ const DateTimePanelComponent = ({ nodeId, data }: DateTimePanelProps) => {
               <p className='text-xs text-muted-foreground mt-1'>
                 For localized date formatting (month names, etc.)
               </p>
+            </div>
+          )}
+
+          {producesDate && (
+            <div className='flex items-center justify-between'>
+              <div className='space-y-0.5'>
+                <Label className='text-xs'>Output as timestamp</Label>
+                <p className='text-xs text-muted-foreground'>
+                  Emit epoch milliseconds instead of an ISO 8601 string.
+                </p>
+              </div>
+              <Switch
+                checked={nodeData.outputAsTimestamp ?? false}
+                size='sm'
+                onCheckedChange={handleOutputAsTimestampChange}
+                disabled={isReadOnly}
+              />
             </div>
           )}
         </div>

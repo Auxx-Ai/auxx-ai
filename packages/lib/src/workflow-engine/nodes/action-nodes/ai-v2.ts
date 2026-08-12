@@ -90,13 +90,6 @@ interface AiNodeConfig {
   approvalMode?: 'auto'
   /** Default 10 for AI node; agent default is 30. */
   maxIterations?: number
-
-  // Legacy fields preserved for `buildMessages` only.
-  prompt?: string
-  systemPrompt?: string
-  temperature?: number
-  maxTokens?: number
-  outputVariable?: string
 }
 
 /**
@@ -118,9 +111,11 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
   }
 
   /**
-   * Build messages from prompt templates (or legacy prompt fields) and attach
-   * file content if `files` is enabled. Identical to the previous behavior —
-   * only the tools pipeline is touched in this phase.
+   * Build messages from `prompt_template[]` and attach file content if `files`
+   * is enabled. `prompt_template` is the only prompt source: the panel writes
+   * it, its zod schema requires at least one entry, and the legacy flat
+   * `prompt` / `systemPrompt` pair it superseded has been removed rather than
+   * given a second, competing writer.
    */
   protected async buildMessages(
     node: WorkflowNode,
@@ -172,25 +167,8 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
         '_resolvedPromptVars',
         Object.fromEntries(resolved)
       )
-    } else if (config.prompt) {
-      const promptPromises: Promise<Message>[] = []
-      if (config.systemPrompt) {
-        promptPromises.push(
-          this.interpolateVariables(config.systemPrompt, contextManager).then((content) => ({
-            role: 'system' as const,
-            content,
-          }))
-        )
-      }
-      promptPromises.push(
-        this.interpolateVariables(config.prompt, contextManager).then((content) => ({
-          role: 'user' as const,
-          content,
-        }))
-      )
-      messages.push(...(await Promise.all(promptPromises)))
     } else {
-      throw new Error('No prompt configuration found')
+      throw new Error('AI node has no prompt_template configured')
     }
 
     // File attachment (unchanged from previous implementation).
@@ -572,10 +550,8 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       }
     }
 
-    // Standard output variables — match what `BaseAiNodeProcessor.storeAIResponse`
-    // wrote so downstream nodes consume the same shape.
-    const outputVariable = (config as any).outputVariable || `${node.nodeId}.text`
-    contextManager.setVariable(outputVariable, turn.finalAssistantMessage)
+    // Standard output variables — the exact set `BaseAiNodeProcessor.storeAIResponse`
+    // writes, so the no-tools and tools paths are indistinguishable downstream.
     contextManager.setNodeVariable(node.nodeId, 'output', turn.finalAssistantMessage)
     contextManager.setNodeVariable(node.nodeId, 'text', turn.finalAssistantMessage)
     if (structured) {
@@ -728,14 +704,6 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       })
     }
 
-    if (config.prompt && typeof config.prompt === 'string') {
-      this.extractVariableIds(config.prompt).forEach((v) => variables.add(v))
-    }
-
-    if (config.systemPrompt && typeof config.systemPrompt === 'string') {
-      this.extractVariableIds(config.systemPrompt).forEach((v) => variables.add(v))
-    }
-
     if (config.files?.enabled && config.files.input && !config.files.isConstant) {
       this.extractVariableIds(config.files.input).forEach((v) => variables.add(v))
     }
@@ -753,16 +721,12 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       return { valid: false, errors, warnings }
     }
 
-    if (!config.prompt_template?.length && !config.prompt) {
-      const possiblePrompt =
-        (config as any)?.prompt || (config as any)?.prompts || (config as any)?.messages
-      if (!possiblePrompt) {
-        errors.push(
-          `AI node configuration is invalid. Expected 'prompt_template' array but found: ${Object.keys(
-            config
-          ).join(', ')}.`
-        )
-      }
+    if (!config.prompt_template?.length) {
+      errors.push(
+        `AI node configuration is invalid. Expected 'prompt_template' array but found: ${Object.keys(
+          config
+        ).join(', ')}.`
+      )
     }
 
     if (!config.model?.provider && !config.model?.name && !config.model) {

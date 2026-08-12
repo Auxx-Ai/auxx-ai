@@ -27,40 +27,10 @@ export function variableBound<T extends z.ZodTypeAny>(schema: T) {
   return z.union([schema, z.string()])
 }
 
-const TEMPLATE_PATTERN = /\{\{([^}]+)\}\}/g
-
-/**
- * A bare variable path as the picker writes it: an identifier followed by at
- * least one dotted segment, optionally with array accessors. Deliberately
- * refuses anything starting with a digit so numeric literals like `"0.5"` are
- * not mistaken for variable references.
- */
-const BARE_PATH_PATTERN = /^[A-Za-z_$][\w$-]*(?:\.[\w$-]+(?:\[(?:-?\d+|\*)\])?)+$/
-
-/**
- * Collect the variable references a bindable config value carries.
- *
- * Covers both shapes a bound field can take: `{{…}}` templates (possibly
- * several in one string) and a single bare picker path.
- */
-export function extractVariableRefs(value: unknown): string[] {
-  if (typeof value !== 'string') return []
-
-  const trimmed = value.trim()
-  if (!trimmed) return []
-
-  const refs = new Set<string>()
-  for (const match of trimmed.matchAll(TEMPLATE_PATTERN)) {
-    const id = match[1]?.trim()
-    if (id) refs.add(id)
-  }
-
-  if (refs.size === 0 && BARE_PATH_PATTERN.test(trimmed)) {
-    refs.add(trimmed)
-  }
-
-  return Array.from(refs)
-}
+// The literal-vs-reference rule is NOT defined here. `extractVariableRefs` and the
+// bare-path pattern live in `../utils/variable-refs` for the whole engine — this
+// module used to carry a second copy, and two copies of that rule is exactly how
+// `"0.5"` ends up classified as a variable path in one place and a number in another.
 
 const TRUTHY_STRINGS = new Set(['true', '1', 'yes', 'on'])
 const FALSY_STRINGS = new Set(['false', '0', 'no', 'off', ''])

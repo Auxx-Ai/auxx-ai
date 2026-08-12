@@ -14,7 +14,8 @@ import type {
 import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
 import type { WorkflowFileData } from '../../types/file-variable'
 import { BaseNodeProcessor } from '../base-node'
-import { extractVariableRefs, resolveBooleanConfig, variableBound } from './config-value'
+import { extractVariableRefs } from '../utils/variable-refs'
+import { resolveBooleanConfig, variableBound } from './config-value'
 
 const logger = createScopedLogger('document-extractor-processor')
 

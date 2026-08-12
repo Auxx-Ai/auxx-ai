@@ -200,7 +200,11 @@ function getScheduledTriggerOutputVariables(
       nodeId,
       path: 'schedule_type', // Changed from 'name' to 'path'
       type: BaseType.STRING,
-      description: 'Type of schedule (interval or cron)',
+      // Vocabulary defined once, engine-side, in `SCHEDULE_KINDS`
+      // (`packages/lib/src/workflow-engine/nodes/trigger-nodes/scheduled.ts`).
+      // This is the kind of schedule, never the interval unit — the unit is
+      // published separately as `interval_config.unit`.
+      description: "Kind of schedule this trigger runs on: 'interval' or 'cron'",
     })
   )
 
@@ -230,7 +234,8 @@ function getScheduledTriggerOutputVariables(
         nodeId,
         path: 'interval_config', // Changed from 'name' to 'path'
         type: BaseType.OBJECT,
-        description: 'The interval configuration used for scheduling',
+        description:
+          "The interval used for scheduling: `{ unit, value }`, where `unit` is 'minutes' | 'hours' | 'days' | 'weeks'",
       })
     )
   }

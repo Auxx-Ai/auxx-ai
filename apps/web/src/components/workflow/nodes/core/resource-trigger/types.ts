@@ -1,4 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/resource-trigger/types.ts
+
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { conditionGroupsSchema } from '@auxx/lib/conditions/client'
 import { z } from 'zod'
 import type { ExecutionResult } from '~/components/workflow/types'
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
@@ -24,8 +27,18 @@ export interface ResourceTriggerData extends BaseNodeData {
   description?: string
   variables?: any[]
 
-  // Future extensibility - filters could be added here later
-  // filters?: ResourceFilter[]
+  /**
+   * Trigger filter — the gate that decides whether the workflow runs at all.
+   *
+   * Groups are AND'd; conditions inside a group combine by the group's
+   * `logicalOperator`. An empty/absent filter means "fire on every record".
+   *
+   * Read by `resource-trigger-base.ts`, which evaluates it with the shared
+   * `evaluateConditionsWithDiagnostics` and REFUSES to fire when any condition
+   * does not evaluate as written. Values are constants only — a trigger fires
+   * before any node has run, so there is no workflow variable to reference.
+   */
+  filters?: ConditionGroup[]
 
   // Standard node data properties
   isValid?: boolean
@@ -53,6 +66,9 @@ export const resourceTriggerNodeDataSchema = z.object({
   desc: z.string().optional(),
   description: z.string().optional(),
   variables: z.array(z.any()).optional(),
+
+  // Trigger filter — condition groups, AND'd at the top level
+  filters: conditionGroupsSchema.optional(),
 
   // Standard properties
   isValid: z.boolean().optional(),

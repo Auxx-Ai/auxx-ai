@@ -37,6 +37,16 @@ export interface DatasetNodeData extends BaseNodeData {
   // === Processing Options ===
   /** Skip embedding generation (default: false). A string when bound to a variable. */
   skipEmbedding?: boolean | string
+  /**
+   * Pause the workflow until the embeddings for this document exist
+   * (default: true). A string when bound to a variable.
+   */
+  waitForEmbeddings?: boolean | string
+  /**
+   * How long that wait may last before the workflow continues anyway
+   * (default: 15). A string when bound to a variable.
+   */
+  embeddingTimeoutMinutes?: number | string
   /** Additional metadata to store with the document */
   metadata?: Record<string, unknown>
 

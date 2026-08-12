@@ -67,9 +67,6 @@ export const SortPanel: React.FC<SortPanelProps> = ({ config, onChange, isReadOn
     )
   }
 
-  // Find the currently selected field definition for display
-  const selectedField = sortableFields.find((f) => f.id === currentField)
-
   return (
     <VarEditorField className='p-0'>
       <div className='flex gap-2 p-1 '>

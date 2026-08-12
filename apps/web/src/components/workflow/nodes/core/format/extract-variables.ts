@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/format/extract-variables.ts
 
+import { extractVariableRefs } from '@auxx/lib/workflow-engine/client'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import type { FormatNodeData } from './types'
 
@@ -39,7 +40,14 @@ export function extractFormatVariables(data: Partial<FormatNodeData>): string[] 
   }
 
   // Variable-mode config fields (numeric fields track their own flag; the
-  // boolean/enum toggles track theirs in `fieldModes`)
+  // boolean/enum toggles track theirs in `fieldModes`).
+  //
+  // These go through `extractVariableRefs`, not `extractVarIdsFromString`: the
+  // toggle's variable side is a `VarEditor` in picker mode, which writes a **bare**
+  // dotted path (`node-1.result`) with no braces. Scanning only for `{{…}}` here
+  // meant a picker-bound field declared no dependency at all — and because the
+  // engine's resolver had the same blind spot, both sides agreed and the parity
+  // suite saw nothing.
   const fieldModes = data.fieldModes ?? {}
   const varFields = [
     { value: data.trimConfig?.trimAll, isConstant: fieldModes.trimAll ?? true },
@@ -62,7 +70,7 @@ export function extractFormatVariables(data: Partial<FormatNodeData>): string[] 
   ]
   for (const { value, isConstant } of varFields) {
     if (value && typeof value === 'string' && !isConstant) {
-      extractVarIdsFromString(value).forEach((v) => ids.add(v))
+      extractVariableRefs(value).forEach((v) => ids.add(v))
     }
   }
 

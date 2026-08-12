@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/resource-trigger/schema.ts
 
+import { isKnownOperator, operatorRequiresValue } from '@auxx/lib/conditions/client'
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
 import { getResourceTriggerOutputVariables } from './output-variables'
@@ -56,6 +57,8 @@ export function createResourceTriggerDefaultData(
     outputVariables: [],
     resourceType,
     operation: operation as 'created' | 'updated' | 'deleted' | 'manual',
+    // No filter = fire on every record. The engine reads this key.
+    filters: [],
   }
 }
 
@@ -93,7 +96,42 @@ export const validateResourceTriggerConfig = (data: ResourceTriggerData): Valida
     })
   }
 
+  // Trigger filters are a GATE — a condition that does not evaluate as written makes
+  // the engine refuse to fire the workflow at all (`resource-trigger-base.ts`). Reject
+  // it at save time so the author sees it here rather than as a workflow that stopped
+  // running for no visible reason.
+  for (const group of data.filters ?? []) {
+    for (const condition of group.conditions) {
+      if (condition.isConstant === false) {
+        errors.push({
+          field: 'filters',
+          message: 'Trigger filters cannot reference workflow variables',
+          type: 'error',
+        })
+      }
+      if (!isKnownOperator(condition.operator)) {
+        errors.push({
+          field: 'filters',
+          message: `Unknown filter operator: "${condition.operator}"`,
+          type: 'error',
+        })
+      } else if (operatorRequiresValue(condition.operator) && isBlank(condition.value)) {
+        errors.push({
+          field: 'filters',
+          message: `Filter on "${String(condition.fieldId)}" is missing a value`,
+          type: 'error',
+        })
+      }
+    }
+  }
+
   return { isValid: errors.filter((e) => e.type === 'error').length === 0, errors }
+}
+
+/** A condition value the author has not filled in yet. */
+function isBlank(value: unknown): boolean {
+  if (value === undefined || value === null || value === '') return true
+  return Array.isArray(value) && value.length === 0
 }
 
 /**

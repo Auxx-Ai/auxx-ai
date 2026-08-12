@@ -19,6 +19,7 @@ import type {
   WorkflowNodeType,
 } from '../core/types'
 import { NodeRunningStatus } from '../core/types'
+import { resolveModedNumber } from './utils/moded-field'
 
 const logger = createScopedLogger('base-node')
 
@@ -492,8 +493,14 @@ export abstract class BaseNodeProcessor implements NodeProcessor {
   }
 
   /**
-   * Interpolate a string field that may contain {{variable}} references.
+   * Interpolate a rich-text string field that may contain {{variable}} references.
    * Returns empty string for undefined/null values.
+   *
+   * Template-only **by design**: this is for the mode-less rich-text fields (a
+   * delimiter, a find/replace term, a prefix) where a dotted string like
+   * `"shipped.today"` is a perfectly good literal. A field the panel can toggle
+   * between constant and variable mode belongs on `resolveModedString`
+   * (`./utils/moded-field`), which honours that flag.
    */
   protected async interpolateField(
     value: string | undefined | null,
@@ -505,8 +512,15 @@ export abstract class BaseNodeProcessor implements NodeProcessor {
 
   /**
    * Resolve a numeric config field that may be a constant number or a variable reference.
-   * When isConstant is true (or value is already a number), parses directly.
-   * When isConstant is false, interpolates the variable first, then parses.
+   *
+   * Delegates to {@link resolveModedNumber}, which understands **both** shapes a
+   * bound field can take — a `{{…}}` template and the bare dotted path
+   * (`node-1.result`) that `VAR_MODE.PICKER` actually writes. Only the first was
+   * handled before, so every picker-bound numeric field silently fell back to its
+   * default while the panel still showed a correctly-filled value.
+   *
+   * @see resolveModedString / resolveModedBoolean in `./utils/moded-field` for the
+   * string and boolean equivalents.
    */
   protected async resolveNumberField(
     value: number | string | undefined | null,
@@ -514,15 +528,7 @@ export abstract class BaseNodeProcessor implements NodeProcessor {
     fallback: number,
     contextManager: ExecutionContextManager
   ): Promise<number> {
-    if (value == null) return fallback
-    if (typeof value === 'number') return value
-    if (isConstant ?? true) {
-      const parsed = Number(value)
-      return Number.isNaN(parsed) ? fallback : parsed
-    }
-    const resolved = await this.interpolateVariables(value, contextManager)
-    const parsed = Number(resolved)
-    return Number.isNaN(parsed) ? fallback : parsed
+    return resolveModedNumber(value, isConstant, fallback, contextManager)
   }
 
   /**

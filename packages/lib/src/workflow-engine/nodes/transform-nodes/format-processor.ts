@@ -4,6 +4,7 @@ import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
+import { resolveModedBoolean, resolveModedString } from '../utils/moded-field'
 
 // --- Helper functions ---
 
@@ -116,57 +117,6 @@ function stripHtml(s: string, keepLineBreaks: boolean): string {
 export class FormatProcessor extends BaseNodeProcessor {
   readonly type = WorkflowNodeType.FORMAT
 
-  /**
-   * Resolve a config field that the panel can put in either constant or variable mode.
-   *
-   * `fieldModes[key]` is written by the panel's constant/variable toggle and defaults to
-   * constant. In variable mode the stored value is either a `{{…}}` template or a bare
-   * variable id (`node-1.result`) — the variable picker writes the latter.
-   */
-  private async resolveModedField(
-    value: unknown,
-    isConstant: boolean | undefined,
-    contextManager: ExecutionContextManager
-  ): Promise<unknown> {
-    if ((isConstant ?? true) || typeof value !== 'string' || !value) return value
-    if (value.includes('{{') && value.includes('}}')) {
-      return this.interpolateVariables(value, contextManager)
-    }
-    return this.resolveVariablePath(value, contextManager)
-  }
-
-  /** Resolve a boolean toggle that may be bound to a variable. */
-  private async resolveBooleanField(
-    value: unknown,
-    isConstant: boolean | undefined,
-    fallback: boolean,
-    contextManager: ExecutionContextManager
-  ): Promise<boolean> {
-    const resolved = await this.resolveModedField(value, isConstant, contextManager)
-    if (resolved == null || resolved === '') return fallback
-    if (typeof resolved === 'boolean') return resolved
-    if (typeof resolved === 'number') return resolved !== 0
-    if (typeof resolved === 'string') {
-      const normalized = resolved.trim().toLowerCase()
-      if (['true', '1', 'yes', 'on'].includes(normalized)) return true
-      if (['false', '0', 'no', 'off'].includes(normalized)) return false
-      return fallback
-    }
-    return fallback
-  }
-
-  /** Resolve a string/enum field that may be bound to a variable. */
-  private async resolveStringField(
-    value: unknown,
-    isConstant: boolean | undefined,
-    fallback: string,
-    contextManager: ExecutionContextManager
-  ): Promise<string> {
-    const resolved = await this.resolveModedField(value, isConstant, contextManager)
-    if (resolved == null || resolved === '') return fallback
-    return String(resolved)
-  }
-
   protected async executeNode(
     node: WorkflowNode,
     contextManager: ExecutionContextManager
@@ -215,7 +165,7 @@ export class FormatProcessor extends BaseNodeProcessor {
 
         // --- Trim & Pad ---
         case 'trim': {
-          const trimAll = await this.resolveBooleanField(
+          const trimAll = await resolveModedBoolean(
             data.trimConfig?.trimAll,
             fieldModes.trimAll,
             false,
@@ -270,7 +220,7 @@ export class FormatProcessor extends BaseNodeProcessor {
         case 'replace': {
           const find = await this.interpolateField(data.replaceConfig?.find, ctx)
           const replaceWith = await this.interpolateField(data.replaceConfig?.replaceWith, ctx)
-          const replaceAll = await this.resolveBooleanField(
+          const replaceAll = await resolveModedBoolean(
             data.replaceConfig?.replaceAll,
             fieldModes.replaceAll,
             false,
@@ -310,7 +260,7 @@ export class FormatProcessor extends BaseNodeProcessor {
             result = input
           } else {
             const locale = String(data.currencyConfig?.locale ?? 'en-US')
-            const currency = await this.resolveStringField(
+            const currency = await resolveModedString(
               data.currencyConfig?.currencyCode,
               fieldModes.currencyCode,
               'USD',
@@ -449,7 +399,7 @@ export class FormatProcessor extends BaseNodeProcessor {
           break
         }
         case 'strip_html': {
-          const keepBreaks = await this.resolveBooleanField(
+          const keepBreaks = await resolveModedBoolean(
             data.stripHtmlConfig?.keepLineBreaks,
             fieldModes.keepLineBreaks,
             true,

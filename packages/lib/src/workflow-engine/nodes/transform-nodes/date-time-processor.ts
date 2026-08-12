@@ -1,4 +1,26 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/date-time-processor.ts
+//
+// ── THE TIMEZONE CONTRACT ───────────────────────────────────────────────────
+// Every operation on this node is evaluated in ONE timezone: `config.timezone`,
+// defaulting to **UTC**. Not the server's timezone — a workflow runs in a
+// background job with no user attached, and a deployment detail must never
+// decide what "start of day" means. UTC is the only deterministic answer, and
+// it is what every date already flowing through the engine (DB timestamps, ISO
+// strings) is expressed in.
+//
+// What the zone actually governs:
+//   - parsing   a bare wall-clock input (`2024-01-15 09:00`) is read IN the zone
+//   - formatting rendering goes through `formatInTimeZone`, so the offset is the
+//               zone's, not the server's
+//   - rounding  `start/endOf<unit>` are computed on the zone's wall clock
+//   - add/sub   CALENDAR units (years…days) shift the zone's wall clock, so a
+//               day across a DST boundary is 23 or 25 real hours; EXACT units
+//               (hours…milliseconds) are absolute and zone-independent
+//
+// `result` is an ISO 8601 string with the zone's offset for every date-producing
+// operation (add/subtract, round, parse), or epoch milliseconds when
+// `outputAsTimestamp` is set. There is exactly one execution path — see
+// `executeNode`.
 
 import type { Duration, Locale } from 'date-fns'
 import {
@@ -25,6 +47,7 @@ import {
   sub,
 } from 'date-fns'
 import * as dateFnsLocales from 'date-fns/locale'
+import { formatInTimeZone, fromZonedTime, toZonedTime } from 'date-fns-tz'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -34,6 +57,8 @@ import type {
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
+import { resolveModedValue } from '../utils/moded-field'
+import { resolveTargetTime } from '../wait/target-time'
 
 /**
  * Date time operation types
@@ -99,6 +124,67 @@ enum ParseDateFormatType {
   CUSTOM = 'custom',
 }
 
+/**
+ * The timezone every operation is evaluated in when the node does not name one.
+ * See the file header for why this is UTC and not the server's zone.
+ */
+const DEFAULT_TIMEZONE = 'UTC'
+
+/** Fallback locale for month/day names when the node does not name one. */
+const DEFAULT_LOCALE = 'en-US'
+
+/**
+ * ISO 8601 with the offset of the *configured* zone. `XXX` renders a zero offset
+ * as `Z`, so under the default UTC this is byte-identical to `Date#toISOString`.
+ */
+const ISO_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
+
+/**
+ * Units whose arithmetic follows the calendar rather than an exact elapsed
+ * duration. "Tomorrow at 09:00" stays 09:00 across a DST boundary (23 or 25 real
+ * hours); "in 24 hours" does not. Anything not listed here is exact, and exact
+ * arithmetic is the same in every zone.
+ */
+const CALENDAR_UNITS = new Set<string>([
+  TimeUnit.YEARS,
+  TimeUnit.QUARTERS,
+  TimeUnit.MONTHS,
+  TimeUnit.WEEKS,
+  TimeUnit.DAYS,
+])
+
+/** Boundary functions for the ROUND operation, by unit. */
+const ROUND_FUNCTIONS: Partial<
+  Record<TimeUnit, { start: (date: Date) => Date; end: (date: Date) => Date }>
+> = {
+  [TimeUnit.YEARS]: { start: startOfYear, end: endOfYear },
+  [TimeUnit.MONTHS]: { start: startOfMonth, end: endOfMonth },
+  [TimeUnit.WEEKS]: { start: startOfWeek, end: endOfWeek },
+  [TimeUnit.DAYS]: { start: startOfDay, end: endOfDay },
+  [TimeUnit.HOURS]: { start: startOfHour, end: endOfHour },
+  [TimeUnit.MINUTES]: { start: startOfMinute, end: endOfMinute },
+  [TimeUnit.SECONDS]: { start: startOfSecond, end: endOfSecond },
+}
+
+/** Fallback patterns tried when a date string is not ISO-parseable. */
+const FALLBACK_PARSE_FORMATS = [
+  'yyyy-MM-dd',
+  'MM/dd/yyyy',
+  'dd/MM/yyyy',
+  'MM-dd-yyyy',
+  'dd-MM-yyyy',
+]
+
+/**
+ * Resolved timezone/locale/output settings — computed once in `preprocessNode`
+ * and threaded through every operation.
+ */
+interface LocalizationConfig {
+  timezone: string
+  locale: string
+  outputAsTimestamp: boolean
+}
+
 const LOCALE_REGISTRY = dateFnsLocales as unknown as Record<string, Locale | undefined>
 
 /**
@@ -144,8 +230,15 @@ interface DateTimeNodeConfig {
     formatType: ParseDateFormatType
     customFormat?: string
   }
+  /** IANA zone every operation is evaluated in. Defaults to UTC. */
   timezone?: string
+  /** BCP-47 tag for month/day names. Defaults to `en-US`. */
   locale?: string
+  /**
+   * Emit epoch milliseconds instead of an ISO string. Only meaningful for the
+   * date-producing operations (add/subtract, round, parse) — `format` already
+   * has `unix`/`unix_ms` format types and `time_between` returns a number.
+   */
   outputAsTimestamp?: boolean
 }
 
@@ -170,15 +263,31 @@ export class DateTimeProcessor extends BaseNodeProcessor {
       throw new Error(`Invalid operation: ${config.operation}`)
     }
 
-    // 1. Process and validate input date
+    // 1. Resolve timezone/locale FIRST — every parse below is evaluated in that zone
+    const localizationConfig: LocalizationConfig = {
+      timezone: config.timezone || DEFAULT_TIMEZONE,
+      locale: config.locale || DEFAULT_LOCALE,
+      outputAsTimestamp: config.outputAsTimestamp ?? false,
+    }
+
+    // 2. Validate the timezone. `Intl` is checked with no locale on purpose: an
+    // unknown locale tag must fall back silently, not masquerade as a bad zone.
+    try {
+      new Intl.DateTimeFormat(undefined, { timeZone: localizationConfig.timezone })
+    } catch {
+      throw new Error(`Invalid timezone: ${localizationConfig.timezone}`)
+    }
+
+    // 3. Process and validate input date
     // For PARSE_DATE, don't parse the input - keep it as a string
     const inputDateInfo = await this.processInputDate(
       config,
       contextManager,
+      localizationConfig.timezone,
       config.operation === DateTimeOperation.PARSE_DATE
     )
 
-    // 2. Process operation-specific configuration
+    // 4. Process operation-specific configuration
     let operationConfig: any = null
 
     switch (config.operation) {
@@ -187,37 +296,27 @@ export class DateTimeProcessor extends BaseNodeProcessor {
         break
 
       case DateTimeOperation.FORMAT:
-        operationConfig = await this.processFormatOperation(config, contextManager)
+        operationConfig = this.processFormatOperation(config)
         break
 
       case DateTimeOperation.TIME_BETWEEN:
-        operationConfig = await this.processTimeBetweenOperation(config, contextManager)
+        operationConfig = await this.processTimeBetweenOperation(
+          config,
+          contextManager,
+          localizationConfig.timezone
+        )
         break
 
       case DateTimeOperation.ROUND:
-        operationConfig = await this.processRoundOperation(config, contextManager)
+        operationConfig = this.processRoundOperation(config)
         break
 
       case DateTimeOperation.PARSE_DATE:
-        operationConfig = await this.processParseDateOperation(config, contextManager)
+        operationConfig = this.processParseDateOperation(config, contextManager)
         break
 
       default:
         throw new Error(`Unsupported operation: ${config.operation}`)
-    }
-
-    // 3. Process timezone and locale settings
-    const localizationConfig = {
-      timezone: config.timezone || 'UTC',
-      locale: config.locale || 'en-US',
-      outputAsTimestamp: config.outputAsTimestamp || false,
-    }
-
-    // 4. Validate timezone
-    try {
-      Intl.DateTimeFormat(localizationConfig.locale, { timeZone: localizationConfig.timezone })
-    } catch (error) {
-      throw new Error(`Invalid timezone: ${localizationConfig.timezone}`)
     }
 
     // 5. Pre-calculate result if possible (for constant inputs)
@@ -232,13 +331,13 @@ export class DateTimeProcessor extends BaseNodeProcessor {
             ? inputDateInfo.resolvedValue
             : inputDateInfo.parsedDate
 
-        preCalculatedResult = await this.performDateOperation(
+        preCalculatedResult = this.performDateOperation(
           inputValue,
           config.operation,
           operationConfig,
           localizationConfig
         )
-      } catch (error) {
+      } catch {
         // If pre-calculation fails, we'll calculate during execution
         canPreCalculate = false
       }
@@ -297,98 +396,84 @@ export class DateTimeProcessor extends BaseNodeProcessor {
     }
   }
 
+  /**
+   * There is exactly ONE execution path.
+   *
+   * This node used to carry a second, hand-rolled implementation for the case
+   * where the engine handed it no preprocessed data — and the two disagreed:
+   * `iso` came back as a local-offset string from one and a UTC `Z` string from
+   * the other, and `long` used two different format strings. Same node, same
+   * config, different answer depending on how it was invoked. If preprocessing
+   * has not happened, we run it here rather than reimplementing it.
+   */
   protected async executeNode(
     node: WorkflowNode,
     contextManager: ExecutionContextManager,
     preprocessedData?: PreprocessedNodeData
   ): Promise<Partial<NodeExecutionResult>> {
-    // Use preprocessed data if available
-    if (preprocessedData?.inputs) {
-      const inputs = preprocessedData.inputs
+    const data = preprocessedData?.inputs
+      ? preprocessedData
+      : await this.preprocessNode(node, contextManager)
+    const inputs = data.inputs
 
-      contextManager.log(
-        'INFO',
-        node.name,
-        `Executing date-time operation with preprocessed data: ${inputs.operation}`,
-        {
+    contextManager.log('INFO', node.name, `Executing date-time operation: ${inputs.operation}`, {
+      operation: inputs.operation,
+      hasPreCalculatedResult: inputs.canPreCalculate,
+      timezone: inputs.localizationConfig.timezone,
+      locale: inputs.localizationConfig.locale,
+    })
+
+    try {
+      let result: any
+
+      // Use pre-calculated result if available
+      if (inputs.canPreCalculate && inputs.preCalculatedResult !== null) {
+        result = inputs.preCalculatedResult
+
+        contextManager.log('DEBUG', node.name, 'Using pre-calculated date result', {
+          result,
+          operationType: inputs.operation,
+          inputWasConstant: inputs.inputDateInfo.isConstant,
+        })
+      } else {
+        result = await this.executeWithPreprocessedData(inputs, contextManager)
+      }
+
+      contextManager.setVariable(inputs.outputVariable, result)
+      contextManager.setNodeVariable(node.nodeId, 'result', result)
+
+      contextManager.log('INFO', node.name, 'Date-time operation completed', {
+        operation: inputs.operation,
+        result,
+        usedPreCalculatedResult: inputs.canPreCalculate,
+        outputVariable: inputs.outputVariable,
+      })
+
+      return {
+        status: NodeRunningStatus.Succeeded,
+        output: {
+          result,
           operation: inputs.operation,
-          hasPreCalculatedResult: inputs.canPreCalculate,
+          inputDate: inputs.inputDateInfo.resolvedValue,
+          outputFormat: inputs.outputFormat,
+          executedAt: new Date(),
+        },
+        metadata: {
+          operation: inputs.operation,
+          usedPreCalculatedResult: inputs.canPreCalculate,
           timezone: inputs.localizationConfig.timezone,
           locale: inputs.localizationConfig.locale,
-        }
-      )
-
-      try {
-        let result: any
-
-        // Use pre-calculated result if available
-        if (inputs.canPreCalculate && inputs.preCalculatedResult !== null) {
-          result = inputs.preCalculatedResult
-
-          contextManager.log('DEBUG', node.name, 'Using pre-calculated date result', {
-            result,
-            operationType: inputs.operation,
-            inputWasConstant: inputs.inputDateInfo.isConstant,
-          })
-        } else {
-          // Perform calculation with preprocessed configuration
-          result = await this.executeWithPreprocessedData(inputs, contextManager)
-        }
-
-        // Set output variable using preprocessed configuration
-        contextManager.setVariable(inputs.outputVariable, result)
-        contextManager.setNodeVariable(node.nodeId, 'result', result)
-
-        contextManager.log(
-          'INFO',
-          node.name,
-          'Date-time operation completed with preprocessed data',
-          {
-            operation: inputs.operation,
-            result,
-            usedPreCalculatedResult: inputs.canPreCalculate,
-            outputVariable: inputs.outputVariable,
-            usedPreprocessedData: true,
-            preprocessingBenefit: 'Skip date parsing and operation configuration',
-          }
-        )
-
-        return {
-          status: NodeRunningStatus.Succeeded,
-          output: {
-            result,
-            operation: inputs.operation,
-            inputDate: inputs.inputDateInfo.resolvedValue,
-            outputFormat: inputs.outputFormat,
-            executedAt: new Date(),
-          },
-          metadata: {
-            operation: inputs.operation,
-            usedPreCalculatedResult: inputs.canPreCalculate,
-            timezone: inputs.localizationConfig.timezone,
-            locale: inputs.localizationConfig.locale,
-            executionTime: preprocessedData.metadata?.estimatedExecutionTime,
-            usedPreprocessedData: true,
-          },
-          outputHandle: 'source',
-        }
-      } catch (error) {
-        contextManager.log(
-          'ERROR',
-          node.name,
-          'Date-time operation failed with preprocessed data',
-          {
-            error: error instanceof Error ? error.message : String(error),
-            operation: inputs.operation,
-            usedPreprocessedData: true,
-          }
-        )
-        throw error
+          executionTime: data.metadata?.estimatedExecutionTime,
+        },
+        outputHandle: 'source',
       }
+    } catch (error) {
+      contextManager.log('ERROR', node.name, 'Date-time operation failed', {
+        error: error instanceof Error ? error.message : String(error),
+        operation: inputs.operation,
+      })
+      throw error
     }
-
-    // Fallback to original implementation
-    return this.originalExecuteNode(node, contextManager)
   }
 
   /**
@@ -406,23 +491,15 @@ export class DateTimeProcessor extends BaseNodeProcessor {
 
       if (!inputDateInfo.isConstant) {
         // Re-resolve the variable value at execution time
-        if (
-          inputDateInfo.originalValue.includes('{{') &&
-          inputDateInfo.originalValue.includes('}}')
-        ) {
-          inputValue = await this.interpolateVariables(inputDateInfo.originalValue, contextManager)
-        } else {
-          inputValue = await this.resolveVariablePath(inputDateInfo.originalValue, contextManager)
-        }
+        inputValue = await resolveModedValue(
+          inputDateInfo.originalValue,
+          inputDateInfo.isConstant,
+          contextManager
+        )
       }
 
       // Execute parse operation with string value
-      return await this.performDateOperation(
-        inputValue,
-        operation,
-        operationConfig,
-        localizationConfig
-      )
+      return this.performDateOperation(inputValue, operation, operationConfig, localizationConfig)
     }
 
     // For other operations, use parsed date
@@ -430,414 +507,49 @@ export class DateTimeProcessor extends BaseNodeProcessor {
 
     if (!inputDateInfo.isConstant) {
       // Re-resolve the variable value at execution time
-      let currentInputValue: any
-      if (
-        inputDateInfo.originalValue.includes('{{') &&
-        inputDateInfo.originalValue.includes('}}')
-      ) {
-        currentInputValue = await this.interpolateVariables(
-          inputDateInfo.originalValue,
-          contextManager
-        )
-      } else {
-        currentInputValue = await this.resolveVariablePath(
-          inputDateInfo.originalValue,
-          contextManager
-        )
-      }
+      const currentInputValue = await resolveModedValue(
+        inputDateInfo.originalValue,
+        inputDateInfo.isConstant,
+        contextManager
+      )
 
-      inputDate = this.parseDate(currentInputValue)
+      inputDate = this.parseDate(currentInputValue, localizationConfig.timezone)
       if (!isValid(inputDate)) {
         throw new Error(`Invalid input date: ${currentInputValue}`)
       }
     }
 
     // Execute operation with preprocessed configuration
-    return await this.performDateOperation(
-      inputDate,
-      operation,
-      operationConfig,
-      localizationConfig
-    )
+    return this.performDateOperation(inputDate, operation, operationConfig, localizationConfig)
   }
 
   /**
-   * Original executeNode implementation (fallback)
+   * Parse a value into an instant, reading bare wall-clock strings IN `timezone`.
+   *
+   * `new Date('2024-01-15 09:00')` reads the string in the SERVER's zone — the
+   * reason the node's timezone control did nothing. `resolveTargetTime` (shared
+   * with the wait node) handles the trap that comes with fixing it: a value that
+   * already carries `Z` or `±HH:MM` pins an absolute instant and must NOT be
+   * re-interpreted, or it shifts twice.
    */
-  private async originalExecuteNode(
-    node: WorkflowNode,
-    contextManager: ExecutionContextManager
-  ): Promise<Partial<NodeExecutionResult>> {
-    try {
-      const config = node.data as unknown as DateTimeNodeConfig
-
-      contextManager.log('INFO', node.name, `Executing date-time operation: ${config.operation}`)
-
-      // Get input date value
-      const inputDateValue = await this.extractDateValue(
-        config.inputDate,
-        config.isInputDateConstant ?? true,
-        contextManager
-      )
-
-      if (!inputDateValue) {
-        throw new Error('Input date is required')
-      }
-
-      let result: any
-
-      // Handle PARSE_DATE separately since it takes a string input
-      if (config.operation === DateTimeOperation.PARSE_DATE) {
-        result = await this.executeParseDateOperation(inputDateValue, node, contextManager)
-      } else {
-        // Parse the input date for other operations
-        const inputDate = this.parseDate(inputDateValue)
-        if (!isValid(inputDate)) {
-          throw new Error(`Invalid input date: ${inputDateValue}`)
-        }
-
-        switch (config.operation) {
-          case DateTimeOperation.ADD_SUBTRACT:
-            result = await this.executeAddSubtract(inputDate, node, contextManager)
-            break
-
-          case DateTimeOperation.FORMAT:
-            result = await this.executeFormat(inputDate, node)
-            break
-
-          case DateTimeOperation.TIME_BETWEEN:
-            result = await this.executeTimeBetween(inputDate, node, contextManager)
-            break
-
-          case DateTimeOperation.ROUND:
-            result = await this.executeRound(inputDate, node)
-            break
-
-          default:
-            throw new Error(`Unknown operation: ${config.operation}`)
-        }
-      }
-
-      // Set output variable
-      contextManager.setNodeVariable(node.nodeId, 'result', result)
-
-      return {
-        status: NodeRunningStatus.Succeeded,
-        output: { result, operation: config.operation },
-        outputHandle: 'source', // Standard output for transform nodes
-      }
-    } catch (error) {
-      contextManager.log(
-        'ERROR',
-        node.name,
-        `Error in date-time operation: ${error instanceof Error ? error.message : String(error)}`
-      )
-      throw error
-    }
-  }
-
-  /**
-   * Extract date value from field that might be a variable reference
-   */
-  private async extractDateValue(
-    value: any,
-    isConstant: boolean,
-    contextManager: ExecutionContextManager
-  ): Promise<any> {
-    // If marked as constant, return the value directly
-    if (isConstant || isConstant === undefined) {
-      // Default to constant for backward compatibility
-      return value
-    }
-
-    // If not constant, treat as variable reference
-    if (value && typeof value === 'string') {
-      // Value is the variable ID
-      const varValue = await contextManager.getVariable(value)
-      return varValue
-    }
-
-    return value
-  }
-
-  /**
-   * Parse date from various formats
-   */
-  private parseDate(value: any): Date {
+  private parseDate(value: any, timezone: string): Date {
     if (value instanceof Date) return value
     if (typeof value === 'number') return new Date(value)
+
     if (typeof value === 'string') {
-      // Try ISO format first
-      let date = new Date(value)
-      if (isValid(date)) return date
+      const zoned = resolveTargetTime(value, timezone)
+      if (isValid(zoned)) return zoned
 
-      // Try common formats
-      const formats = ['yyyy-MM-dd', 'MM/dd/yyyy', 'dd/MM/yyyy', 'MM-dd-yyyy', 'dd-MM-yyyy']
-
-      for (const fmt of formats) {
-        date = parse(value, fmt, new Date())
-        if (isValid(date)) return date
+      // Non-ISO shapes `resolveTargetTime` cannot read. `parse` yields a
+      // server-local wall clock, so re-anchor it in the configured zone.
+      const reference = new Date()
+      for (const fmt of FALLBACK_PARSE_FORMATS) {
+        const parsed = parse(value.trim(), fmt, reference)
+        if (isValid(parsed)) return fromZonedTime(parsed, timezone)
       }
     }
 
     throw new Error(`Cannot parse date: ${value}`)
-  }
-
-  /**
-   * Execute add/subtract operation
-   */
-  private async executeAddSubtract(
-    date: Date,
-    node: WorkflowNode,
-    contextManager: ExecutionContextManager
-  ): Promise<Date> {
-    const config = node.data as unknown as DateTimeNodeConfig
-    if (!config.addSubtract) {
-      throw new Error('Add/subtract configuration is required')
-    }
-
-    // Duration and unit can each be bound to a variable — `fieldModes` records which.
-    const resolvedDuration = await this.resolveAddSubtractDuration(config, contextManager)
-    if (Number.isNaN(resolvedDuration)) {
-      throw new Error(`Invalid duration value: ${config.addSubtract.duration}`)
-    }
-    const resolvedUnit = (await this.resolveAddSubtractUnit(config, contextManager)) as TimeUnit
-
-    const duration = this.convertDuration(resolvedDuration, resolvedUnit)
-
-    if (config.addSubtract.action === 'add') {
-      return add(date, duration)
-    } else {
-      return sub(date, duration)
-    }
-  }
-
-  /**
-   * Execute format operation
-   */
-  private async executeFormat(date: Date, node: WorkflowNode): Promise<string> {
-    const config = node.data as unknown as DateTimeNodeConfig
-    if (!config.format) {
-      throw new Error('Format configuration is required')
-    }
-
-    const locale = { locale: resolveDateFnsLocale(config.locale) }
-
-    switch (config.format.type) {
-      case DateFormatType.ISO:
-        return date.toISOString()
-
-      case DateFormatType.MM_DD_YYYY:
-        return format(date, 'MM/dd/yyyy', locale)
-
-      case DateFormatType.DD_MM_YYYY:
-        return format(date, 'dd/MM/yyyy', locale)
-
-      case DateFormatType.YYYY_MM_DD:
-        return format(date, 'yyyy/MM/dd', locale)
-
-      case DateFormatType.MM_DD_YYYY_DASH:
-        return format(date, 'MM-dd-yyyy', locale)
-
-      case DateFormatType.DD_MM_YYYY_DASH:
-        return format(date, 'dd-MM-yyyy', locale)
-
-      case DateFormatType.YYYY_MM_DD_DASH:
-        return format(date, 'yyyy-MM-dd', locale)
-
-      case DateFormatType.UNIX:
-        return String(Math.floor(date.getTime() / 1000))
-
-      case DateFormatType.UNIX_MS:
-        return String(date.getTime())
-
-      case DateFormatType.RELATIVE:
-        return formatRelative(date, new Date(), locale)
-
-      case DateFormatType.LONG:
-        return format(date, 'MMMM d, yyyy', locale)
-
-      case DateFormatType.SHORT:
-        return format(date, 'M/d/yy', locale)
-
-      case DateFormatType.TIME_ONLY:
-        return format(date, 'HH:mm:ss', locale)
-
-      case DateFormatType.DATE_ONLY:
-        return format(date, 'yyyy-MM-dd', locale)
-
-      case DateFormatType.CUSTOM:
-        if (!config.format.customFormat) {
-          throw new Error('Custom format string is required')
-        }
-        return format(date, config.format.customFormat, locale)
-
-      default:
-        throw new Error(`Unknown format type: ${config.format.type}`)
-    }
-  }
-
-  /**
-   * Execute time between operation
-   */
-  private async executeTimeBetween(
-    startDate: Date,
-    node: WorkflowNode,
-    contextManager: ExecutionContextManager
-  ): Promise<number> {
-    const config = node.data as unknown as DateTimeNodeConfig
-    if (!config.timeBetween) {
-      throw new Error('Time between configuration is required')
-    }
-
-    // Get end date
-    const endDateValue = await this.extractDateValue(
-      config.timeBetween.endDate,
-      config.timeBetween.isEndDateConstant ?? true,
-      contextManager
-    )
-
-    if (!endDateValue) {
-      throw new Error('End date is required for time between operation')
-    }
-
-    const endDate = this.parseDate(endDateValue)
-    if (!isValid(endDate)) {
-      throw new Error(`Invalid end date: ${endDateValue}`)
-    }
-
-    // Calculate difference in milliseconds
-    const diffMs = differenceInMilliseconds(endDate, startDate)
-
-    // Convert to requested unit
-    return this.convertMillisecondsToUnit(diffMs, config.timeBetween.unit)
-  }
-
-  /**
-   * Execute round operation
-   */
-  private async executeRound(date: Date, node: WorkflowNode): Promise<Date> {
-    const config = node.data as unknown as DateTimeNodeConfig
-    if (!config.round) {
-      throw new Error('Round configuration is required')
-    }
-
-    const { direction, unit } = config.round
-
-    // Map of unit to start/end functions
-    const roundFunctions = {
-      [TimeUnit.YEARS]: { start: startOfYear, end: endOfYear },
-      [TimeUnit.MONTHS]: { start: startOfMonth, end: endOfMonth },
-      [TimeUnit.WEEKS]: { start: startOfWeek, end: endOfWeek },
-      [TimeUnit.DAYS]: { start: startOfDay, end: endOfDay },
-      [TimeUnit.HOURS]: { start: startOfHour, end: endOfHour },
-      [TimeUnit.MINUTES]: { start: startOfMinute, end: endOfMinute },
-      [TimeUnit.SECONDS]: { start: startOfSecond, end: endOfSecond },
-    } as any
-
-    const funcs = roundFunctions[unit]
-    if (!funcs) {
-      throw new Error(`Cannot round to unit: ${unit}`)
-    }
-
-    switch (direction) {
-      case 'down':
-        return funcs.start(date)
-
-      case 'up':
-        return funcs.end(date)
-
-      case 'nearest': {
-        const start = funcs.start(date)
-        const end = funcs.end(date)
-        const startDiff = Math.abs(date.getTime() - start.getTime())
-        const endDiff = Math.abs(date.getTime() - end.getTime())
-        return startDiff < endDiff ? start : end
-      }
-
-      default:
-        throw new Error(`Unknown round direction: ${direction}`)
-    }
-  }
-
-  /**
-   * Execute parse date operation
-   */
-  private async executeParseDateOperation(
-    dateString: string,
-    node: WorkflowNode,
-    contextManager: ExecutionContextManager
-  ): Promise<Date> {
-    const config = node.data as unknown as DateTimeNodeConfig
-    if (!config.parseDate) {
-      throw new Error('Parse date configuration is required')
-    }
-
-    const { formatType, customFormat } = config.parseDate
-
-    try {
-      let parsedDate: Date
-
-      switch (formatType) {
-        case ParseDateFormatType.AUTO:
-          // Auto-detect format using existing parseDate method
-          parsedDate = this.parseDate(dateString)
-          break
-
-        case ParseDateFormatType.UNIX:
-          // Unix timestamp in seconds
-          parsedDate = new Date(Number(dateString) * 1000)
-          break
-
-        case ParseDateFormatType.UNIX_MS:
-          // Unix timestamp in milliseconds
-          parsedDate = new Date(Number(dateString))
-          break
-
-        case ParseDateFormatType.ISO:
-          // ISO 8601 format
-          parsedDate = new Date(dateString)
-          break
-
-        case ParseDateFormatType.CUSTOM:
-          if (!customFormat) {
-            throw new Error('Custom format string is required')
-          }
-          parsedDate = parse(dateString, customFormat, new Date())
-          break
-
-        default: {
-          // Use predefined format
-          const formatString = this.getParseFormatString(formatType)
-          if (!formatString) {
-            throw new Error(`Cannot determine format string for: ${formatType}`)
-          }
-          parsedDate = parse(dateString, formatString, new Date())
-          break
-        }
-      }
-
-      if (!isValid(parsedDate)) {
-        throw new Error(`Failed to parse date string: "${dateString}" with format: ${formatType}`)
-      }
-
-      contextManager.log(
-        'INFO',
-        node.name,
-        `Successfully parsed date: ${dateString} -> ${parsedDate.toISOString()}`,
-        { formatType, customFormat }
-      )
-
-      return parsedDate
-    } catch (error) {
-      contextManager.log(
-        'ERROR',
-        node.name,
-        `Failed to parse date string: ${error instanceof Error ? error.message : String(error)}`,
-        { dateString, formatType, customFormat }
-      )
-      throw error
-    }
   }
 
   /**
@@ -910,26 +622,17 @@ export class DateTimeProcessor extends BaseNodeProcessor {
   private async processInputDate(
     config: DateTimeNodeConfig,
     contextManager: ExecutionContextManager,
+    timezone: string,
     skipParsing = false
   ): Promise<any> {
     if (!config.inputDate) {
       throw new Error('Input date is required')
     }
 
-    let inputDateValue: any
     const isConstant = config.isInputDateConstant ?? true
 
-    if (isConstant) {
-      // Constant date value
-      inputDateValue = config.inputDate
-    } else {
-      // Variable date - resolve and interpolate
-      if (config.inputDate.includes('{{') && config.inputDate.includes('}}')) {
-        inputDateValue = await this.interpolateVariables(config.inputDate, contextManager)
-      } else {
-        inputDateValue = await this.resolveVariablePath(config.inputDate, contextManager)
-      }
-    }
+    // Constant mode passes the literal through; variable mode resolves either shape.
+    const inputDateValue = await resolveModedValue(config.inputDate, isConstant, contextManager)
 
     // For PARSE_DATE operation, skip parsing and keep as string
     if (skipParsing) {
@@ -944,7 +647,7 @@ export class DateTimeProcessor extends BaseNodeProcessor {
     }
 
     // Parse and validate the date
-    const parsedDate = this.parseDate(inputDateValue)
+    const parsedDate = this.parseDate(inputDateValue, timezone)
 
     if (!isValid(parsedDate)) {
       throw new Error(`Invalid input date: ${inputDateValue}`)
@@ -994,7 +697,7 @@ export class DateTimeProcessor extends BaseNodeProcessor {
       action,
       duration,
       unit: timeUnit,
-      durationObject: this.createDurationObject(duration, timeUnit),
+      durationObject: this.convertDuration(duration, timeUnit),
     }
   }
 
@@ -1013,10 +716,7 @@ export class DateTimeProcessor extends BaseNodeProcessor {
       return typeof raw === 'number' ? raw : Number(raw)
     }
 
-    const resolved =
-      raw.includes('{{') && raw.includes('}}')
-        ? await this.interpolateVariables(raw, contextManager)
-        : await this.resolveVariablePath(raw, contextManager)
+    const resolved = await resolveModedValue(raw, isConstant, contextManager)
 
     if (resolved === undefined || resolved === null || resolved === '') {
       throw new Error(`Duration variable resolved to no value: ${raw}`)
@@ -1037,10 +737,7 @@ export class DateTimeProcessor extends BaseNodeProcessor {
 
     if (isConstant || typeof raw !== 'string' || !raw) return String(raw ?? '')
 
-    const resolved =
-      raw.includes('{{') && raw.includes('}}')
-        ? await this.interpolateVariables(raw, contextManager)
-        : await this.resolveVariablePath(raw, contextManager)
+    const resolved = await resolveModedValue(raw, isConstant, contextManager)
 
     return resolved === undefined || resolved === null ? '' : String(resolved)
   }
@@ -1048,10 +745,7 @@ export class DateTimeProcessor extends BaseNodeProcessor {
   /**
    * Process format operation configuration
    */
-  private async processFormatOperation(
-    config: DateTimeNodeConfig,
-    contextManager: ExecutionContextManager
-  ): Promise<any> {
+  private processFormatOperation(config: DateTimeNodeConfig): any {
     if (!config.format) {
       throw new Error('Format configuration is required for FORMAT operation')
     }
@@ -1071,7 +765,7 @@ export class DateTimeProcessor extends BaseNodeProcessor {
       try {
         // Test the format with a sample date
         format(new Date(), customFormat)
-      } catch (error) {
+      } catch {
         throw new Error(`Invalid custom format string: ${customFormat}`)
       }
     }
@@ -1089,7 +783,8 @@ export class DateTimeProcessor extends BaseNodeProcessor {
    */
   private async processTimeBetweenOperation(
     config: DateTimeNodeConfig,
-    contextManager: ExecutionContextManager
+    contextManager: ExecutionContextManager,
+    timezone: string
   ): Promise<any> {
     if (!config.timeBetween) {
       throw new Error('Time between configuration is required for TIME_BETWEEN operation')
@@ -1106,21 +801,11 @@ export class DateTimeProcessor extends BaseNodeProcessor {
     }
 
     // Process end date
-    let endDateValue: any
     const endDateIsConstant = isEndDateConstant ?? true
-
-    if (endDateIsConstant) {
-      endDateValue = endDate
-    } else {
-      if (endDate.includes('{{') && endDate.includes('}}')) {
-        endDateValue = await this.interpolateVariables(endDate, contextManager)
-      } else {
-        endDateValue = await this.resolveVariablePath(endDate, contextManager)
-      }
-    }
+    const endDateValue = await resolveModedValue(endDate, endDateIsConstant, contextManager)
 
     // Parse and validate end date
-    const parsedEndDate = this.parseDate(endDateValue)
+    const parsedEndDate = this.parseDate(endDateValue, timezone)
 
     if (!isValid(parsedEndDate)) {
       throw new Error(`Invalid end date: ${endDateValue}`)
@@ -1138,10 +823,7 @@ export class DateTimeProcessor extends BaseNodeProcessor {
   /**
    * Process round operation configuration
    */
-  private async processRoundOperation(
-    config: DateTimeNodeConfig,
-    contextManager: ExecutionContextManager
-  ): Promise<any> {
+  private processRoundOperation(config: DateTimeNodeConfig): any {
     if (!config.round) {
       throw new Error('Round configuration is required for ROUND operation')
     }
@@ -1156,16 +838,20 @@ export class DateTimeProcessor extends BaseNodeProcessor {
       throw new Error(`Invalid time unit: ${unit}`)
     }
 
-    return { direction, unit, roundingFunction: this.getRoundingFunction(direction, unit) }
+    if (!ROUND_FUNCTIONS[unit]) {
+      throw new Error(`Cannot round to unit: ${unit}`)
+    }
+
+    return { direction, unit }
   }
 
   /**
    * Process parse date operation configuration
    */
-  private async processParseDateOperation(
+  private processParseDateOperation(
     config: DateTimeNodeConfig,
     contextManager: ExecutionContextManager
-  ): Promise<any> {
+  ): any {
     if (!config.parseDate) {
       throw new Error('Parse date configuration is required for PARSE_DATE operation')
     }
@@ -1186,7 +872,7 @@ export class DateTimeProcessor extends BaseNodeProcessor {
         // Test the format with a sample date
         const testDate = '2024-01-01 12:00:00'
         parse(testDate, customFormat, new Date())
-      } catch (error) {
+      } catch {
         // Format validation - non-blocking, will fail at runtime if truly invalid
         contextManager.log('WARN', 'PARSE_DATE', `Custom format may be invalid: ${customFormat}`)
       }
@@ -1200,42 +886,6 @@ export class DateTimeProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * Create duration object for date-fns
-   */
-  private createDurationObject(duration: number, unit: TimeUnit): Duration {
-    const durationObj: Duration = {}
-
-    switch (unit) {
-      case TimeUnit.YEARS:
-        durationObj.years = duration
-        break
-      case TimeUnit.MONTHS:
-        durationObj.months = duration
-        break
-      case TimeUnit.WEEKS:
-        durationObj.weeks = duration
-        break
-      case TimeUnit.DAYS:
-        durationObj.days = duration
-        break
-      case TimeUnit.HOURS:
-        durationObj.hours = duration
-        break
-      case TimeUnit.MINUTES:
-        durationObj.minutes = duration
-        break
-      case TimeUnit.SECONDS:
-        durationObj.seconds = duration
-        break
-      default:
-        durationObj.days = duration
-        break
-    }
-
-    return durationObj
-  }
-
-  /**
    * Get format string for different format types
    */
   private getFormatString(type: DateFormatType, customFormat?: string): string {
@@ -1243,7 +893,7 @@ export class DateTimeProcessor extends BaseNodeProcessor {
       case DateFormatType.CUSTOM:
         return customFormat || ''
       case DateFormatType.ISO:
-        return "yyyy-MM-dd'T'HH:mm:ss.SSSxxx"
+        return ISO_FORMAT
       case DateFormatType.MM_DD_YYYY:
         return 'MM/dd/yyyy'
       case DateFormatType.DD_MM_YYYY:
@@ -1313,15 +963,13 @@ export class DateTimeProcessor extends BaseNodeProcessor {
   private parseWithFormat(
     dateString: string,
     formatType: ParseDateFormatType,
-    formatString: string | null
+    formatString: string | null,
+    timezone: string
   ): Date {
     let parsedDate: Date
 
     switch (formatType) {
-      case ParseDateFormatType.AUTO:
-        parsedDate = this.parseDate(dateString)
-        break
-
+      // Epoch values are absolute — no zone can reinterpret them.
       case ParseDateFormatType.UNIX:
         parsedDate = new Date(Number(dateString) * 1000)
         break
@@ -1330,16 +978,20 @@ export class DateTimeProcessor extends BaseNodeProcessor {
         parsedDate = new Date(Number(dateString))
         break
 
+      case ParseDateFormatType.AUTO:
       case ParseDateFormatType.ISO:
-        parsedDate = new Date(dateString)
+        parsedDate = this.parseDate(dateString, timezone)
         break
 
-      default:
+      default: {
         if (!formatString) {
           throw new Error(`Cannot parse without format string for type: ${formatType}`)
         }
-        parsedDate = parse(dateString, formatString, new Date())
+        // `parse` produces a server-local wall clock; re-anchor it in the zone.
+        const wallClock = parse(dateString, formatString, new Date())
+        parsedDate = isValid(wallClock) ? fromZonedTime(wallClock, timezone) : wallClock
         break
+      }
     }
 
     if (!isValid(parsedDate)) {
@@ -1390,37 +1042,43 @@ export class DateTimeProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * Perform the actual date operation (for pre-calculation)
+   * Perform the actual date operation. Every branch is evaluated in
+   * `localizationConfig.timezone` — see the file header.
    */
-  private async performDateOperation(
+  private performDateOperation(
     inputDate: Date | string,
     operation: DateTimeOperation,
     operationConfig: any,
-    localizationConfig: any
-  ): Promise<any> {
+    localizationConfig: LocalizationConfig
+  ): any {
+    const { timezone } = localizationConfig
+
     switch (operation) {
       case DateTimeOperation.ADD_SUBTRACT: {
-        const { action, durationObject } = operationConfig
-        const result =
-          action === 'add'
-            ? add(inputDate as Date, durationObject)
-            : sub(inputDate as Date, durationObject)
-        return this.formatResult(result, localizationConfig)
+        const { action, durationObject, unit } = operationConfig
+        return this.formatResult(
+          this.shiftDate(inputDate as Date, action, durationObject, unit, timezone),
+          localizationConfig
+        )
       }
 
       case DateTimeOperation.FORMAT: {
         const { type, formatString } = operationConfig
-        const locale = resolveDateFnsLocale(localizationConfig?.locale)
+        const locale = resolveDateFnsLocale(localizationConfig.locale)
+        const date = inputDate as Date
 
+        // Epoch output is absolute — the zone cannot change it.
+        if (type === DateFormatType.UNIX) return Math.floor(date.getTime() / 1000)
+        if (type === DateFormatType.UNIX_MS) return date.getTime()
+
+        // `formatRelative` compares two wall clocks, so both sides move together.
         if (type === DateFormatType.RELATIVE) {
-          return formatRelative(inputDate as Date, new Date(), { locale })
-        } else if (type === DateFormatType.UNIX) {
-          return Math.floor((inputDate as Date).getTime() / 1000)
-        } else if (type === DateFormatType.UNIX_MS) {
-          return (inputDate as Date).getTime()
-        } else {
-          return format(inputDate as Date, formatString, { locale })
+          return formatRelative(toZonedTime(date, timezone), toZonedTime(new Date(), timezone), {
+            locale,
+          })
         }
+
+        return formatInTimeZone(date, timezone, formatString, { locale })
       }
 
       case DateTimeOperation.TIME_BETWEEN: {
@@ -1431,12 +1089,18 @@ export class DateTimeProcessor extends BaseNodeProcessor {
 
       case DateTimeOperation.ROUND: {
         const { direction, unit } = operationConfig
-        return this.performRounding(inputDate as Date, direction, unit, localizationConfig)
+        return this.formatResult(
+          this.performRounding(inputDate as Date, direction, unit, timezone),
+          localizationConfig
+        )
       }
 
       case DateTimeOperation.PARSE_DATE: {
         const { formatType, formatString } = operationConfig
-        return this.parseWithFormat(inputDate as string, formatType, formatString)
+        return this.formatResult(
+          this.parseWithFormat(inputDate as string, formatType, formatString, timezone),
+          localizationConfig
+        )
       }
 
       default:
@@ -1445,14 +1109,40 @@ export class DateTimeProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * Format result based on localization configuration
+   * Add or subtract a duration, honouring the timezone for calendar units.
+   *
+   * "+1 day" means the same wall-clock time tomorrow — 23 or 25 real hours
+   * across a DST boundary — while "+24 hours" is exactly 24 hours anywhere. So
+   * calendar units round-trip through the zone's wall clock and exact units do
+   * not.
    */
-  private formatResult(date: Date, localizationConfig: any): any {
-    if (localizationConfig.outputAsTimestamp) {
-      return date.getTime()
-    }
+  private shiftDate(
+    date: Date,
+    action: 'add' | 'subtract',
+    durationObject: Duration,
+    unit: TimeUnit,
+    timezone: string
+  ): Date {
+    const apply = (value: Date) =>
+      action === 'add' ? add(value, durationObject) : sub(value, durationObject)
 
-    return date.toISOString()
+    if (!CALENDAR_UNITS.has(unit)) return apply(date)
+
+    return fromZonedTime(apply(toZonedTime(date, timezone)), timezone)
+  }
+
+  /**
+   * Render a date-producing operation's result.
+   *
+   * One shape for all three of them: an ISO 8601 string carrying the configured
+   * zone's offset, or epoch milliseconds when the node asks for a timestamp.
+   * `round` and `parse` used to hand back a raw `Date`, which serialised
+   * differently from `add/subtract`'s string on the way into the variable store.
+   */
+  private formatResult(date: Date, localizationConfig: LocalizationConfig): string | number {
+    if (localizationConfig.outputAsTimestamp) return date.getTime()
+
+    return formatInTimeZone(date, localizationConfig.timezone, ISO_FORMAT)
   }
 
   /**
@@ -1472,21 +1162,6 @@ export class DateTimeProcessor extends BaseNodeProcessor {
         return 10 // 10ms
     }
   }
-
-  /**
-   * Extract variable IDs from a string
-   */
-  // private extractVariableIds(value: string): string[] {
-  //   const variables: string[] = [];
-  //   const variablePattern = /\{\{([^}]+)\}\}/g;
-  //   let match;
-
-  //   while ((match = variablePattern.exec(value)) !== null) {
-  //     variables.push(match[1].trim());
-  //   }
-
-  //   return variables;
-  // }
 
   /**
    * Extract variables from operation-specific configuration
@@ -1525,66 +1200,45 @@ export class DateTimeProcessor extends BaseNodeProcessor {
    * Determine output format based on configuration
    */
   private determineOutputFormat(config: DateTimeNodeConfig): string {
-    if (config.outputAsTimestamp) return 'timestamp'
-
     if (config.operation === DateTimeOperation.FORMAT && config.format) {
       return this.getFormatOutputType(config.format.type)
     }
 
-    return 'string'
+    if (config.operation === DateTimeOperation.TIME_BETWEEN) return 'number'
+
+    // The date-producing operations — the only ones `outputAsTimestamp` reaches.
+    return config.outputAsTimestamp ? 'timestamp' : 'string'
   }
 
   /**
-   * Get rounding function for direction and unit
+   * Round to a unit boundary **in the configured timezone**.
+   *
+   * "Start of day" is a wall-clock question, so the boundary is computed on the
+   * zone's wall clock and converted back to an instant. Rounded down to the day
+   * in `America/New_York`, `2024-01-15T02:30Z` is `2024-01-14T05:00Z` — the
+   * previous local day — not the server's midnight.
    */
-  private getRoundingFunction(direction: string, unit: TimeUnit): any {
-    // This would contain the actual rounding logic
-    return { direction, unit }
-  }
-
-  /**
-   * Perform rounding operation
-   */
-  private performRounding(
-    date: Date,
-    direction: string,
-    unit: TimeUnit,
-    localizationConfig: any
-  ): Date {
-    // Map of unit to start/end functions
-    const roundFunctions = {
-      [TimeUnit.YEARS]: { start: startOfYear, end: endOfYear },
-      [TimeUnit.MONTHS]: { start: startOfMonth, end: endOfMonth },
-      [TimeUnit.WEEKS]: { start: startOfWeek, end: endOfWeek },
-      [TimeUnit.DAYS]: { start: startOfDay, end: endOfDay },
-      [TimeUnit.HOURS]: { start: startOfHour, end: endOfHour },
-      [TimeUnit.MINUTES]: { start: startOfMinute, end: endOfMinute },
-      [TimeUnit.SECONDS]: { start: startOfSecond, end: endOfSecond },
-    } as any
-
-    const funcs = roundFunctions[unit]
+  private performRounding(date: Date, direction: string, unit: TimeUnit, timezone: string): Date {
+    const funcs = ROUND_FUNCTIONS[unit]
     if (!funcs) {
       throw new Error(`Cannot round to unit: ${unit}`)
     }
 
-    switch (direction) {
-      case 'down':
-        return funcs.start(date)
+    const wallClock = toZonedTime(date, timezone)
+    const start = fromZonedTime(funcs.start(wallClock), timezone)
 
-      case 'up':
-        return funcs.end(date)
+    if (direction === 'down') return start
 
-      case 'nearest': {
-        const start = funcs.start(date)
-        const end = funcs.end(date)
-        const startDiff = Math.abs(date.getTime() - start.getTime())
-        const endDiff = Math.abs(date.getTime() - end.getTime())
-        return startDiff < endDiff ? start : end
-      }
+    const end = fromZonedTime(funcs.end(wallClock), timezone)
+    if (direction === 'up') return end
 
-      default:
-        throw new Error(`Unknown round direction: ${direction}`)
+    if (direction === 'nearest') {
+      const startDiff = Math.abs(date.getTime() - start.getTime())
+      const endDiff = Math.abs(date.getTime() - end.getTime())
+      return startDiff < endDiff ? start : end
     }
+
+    throw new Error(`Unknown round direction: ${direction}`)
   }
 
   /**
@@ -1621,6 +1275,16 @@ export class DateTimeProcessor extends BaseNodeProcessor {
 
     if (!config.inputDate) {
       errors.push('Input date is required')
+    }
+
+    // A node imported or hand-authored outside the panel's timezone picker can
+    // carry a zone `Intl` does not know — surface it here rather than at run time.
+    if (config.timezone) {
+      try {
+        new Intl.DateTimeFormat(undefined, { timeZone: config.timezone })
+      } catch {
+        errors.push(`Invalid timezone: ${config.timezone}`)
+      }
     }
 
     // Validate operation-specific config

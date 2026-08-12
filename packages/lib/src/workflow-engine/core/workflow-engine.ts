@@ -6,6 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { runLogPath, stopCurrentRunLog, withRunLog } from '@auxx/logger/run-log'
 import { and, eq } from 'drizzle-orm'
 import type { WorkflowExecutionReporter } from '../execution-reporter'
+import { embeddingResumeVariables } from '../nodes/dataset/embedding-wait'
 import { WorkflowEventType } from '../shared/types'
 import { BatchedJoinStateUpdater } from './batched-join-updater'
 import { BranchMerger } from './branch-merger'
@@ -2161,6 +2162,20 @@ export class WorkflowEngine {
         logger.info('Wrote approval decision variables for resumed node', {
           fromNodeId,
           outcome: approvalVariables.outcome,
+        })
+      }
+
+      // Same reason, for the dataset node's embedding wait: the processor is not
+      // re-entered, so without this `<node>.embeddingStatus` stays pinned at
+      // `processing` and `segmentsEmbedded`/`processingTimeMs`/`completedAt`
+      // never become addressable — whether the embeddings completed, failed or
+      // timed out.
+      const embeddingVariables = embeddingResumeVariables(state.pauseReason, nodeOutput)
+      if (embeddingVariables) {
+        contextManager.setNodeVariables(fromNodeId, embeddingVariables)
+        logger.info('Wrote embedding resume variables for resumed node', {
+          fromNodeId,
+          embeddingStatus: embeddingVariables.embeddingStatus,
         })
       }
       logger.info('Updated node result for resumed node', {

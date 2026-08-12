@@ -153,6 +153,107 @@ describe('TextClassifierProcessor', () => {
     })
   })
 
+  describe('handleResponse — the published output contract', () => {
+    /**
+     * The classifier advertises exactly three paths in the builder
+     * (`getTextClassifierOutputVariables`, `text-classifier/schema.ts`) and the
+     * bundled `order-issue-triage` template reads `{{classifier-013.category}}`
+     * off the fixed name. These are the assertions that make the legacy
+     * `data.outputVariable` alias redundant rather than missing, so they are
+     * what stops a future change from quietly re-opening the gap.
+     */
+    const categories = [
+      { id: 'cat_urgent', name: 'urgent', description: 'Urgent matters' },
+      { id: 'cat_normal', name: 'normal', description: 'Normal matters' },
+    ]
+
+    const classifiedResponse = (category: string) => ({
+      content: JSON.stringify({ category, confidence: 0.91, reasoning: 'because' }),
+      model: 'gpt-4o-mini',
+      provider: 'openai',
+    })
+
+    it('publishes category / confidence / reasoning under the fixed node paths', async () => {
+      const node = classifierNode({ categories })
+
+      await (processor as any).handleResponse(
+        node,
+        node.data,
+        mockContextManager,
+        classifiedResponse('urgent')
+      )
+
+      expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith(
+        'node_1',
+        'category',
+        'urgent'
+      )
+      expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith('node_1', 'confidence', 0.91)
+      expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith(
+        'node_1',
+        'reasoning',
+        'because'
+      )
+    })
+
+    it('publishes nothing beyond those three paths, and no free-form alias', async () => {
+      const node = classifierNode({ categories })
+
+      await (processor as any).handleResponse(
+        node,
+        // A stray `outputVariable` is the legacy alias shape. The classifier
+        // must ignore it outright — the fixed names above are the contract.
+        { ...node.data, outputVariable: 'my.custom.alias' },
+        mockContextManager,
+        classifiedResponse('urgent')
+      )
+
+      const publishedPaths = mockContextManager.setNodeVariable.mock.calls.map(
+        (call: unknown[]) => call[1]
+      )
+      expect(publishedPaths.sort()).toEqual(['category', 'confidence', 'reasoning'])
+      expect(mockContextManager.setVariable).not.toHaveBeenCalled()
+    })
+
+    it('routes to the matched category handle in branches mode', async () => {
+      const node = classifierNode({ categories, outputMode: 'branches' })
+
+      const result = await (processor as any).handleResponse(
+        node,
+        node.data,
+        mockContextManager,
+        classifiedResponse('normal')
+      )
+
+      expect(result.outputHandle).toBe('cat_normal')
+      expect(result.output).toEqual({
+        category: 'normal',
+        confidence: 0.91,
+        reasoning: 'because',
+      })
+    })
+
+    it("routes to the single 'source' handle in variable mode", async () => {
+      const node = classifierNode({ categories, outputMode: 'variable' })
+
+      const result = await (processor as any).handleResponse(
+        node,
+        node.data,
+        mockContextManager,
+        classifiedResponse('normal')
+      )
+
+      // Variable mode is a ROUTING choice, not an aliasing one: the panel's own
+      // help text points the user at the `category` output variable.
+      expect(result.outputHandle).toBe('source')
+      expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith(
+        'node_1',
+        'category',
+        'normal'
+      )
+    })
+  })
+
   describe('getStructuredOutputConfig', () => {
     it('should always return structured output config for classification', () => {
       const node = classifierNode({})

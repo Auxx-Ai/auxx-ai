@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/dataset/schema.ts
 
+import { DATASET_NODE_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
 import { z } from 'zod'
 import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
 import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
@@ -33,6 +34,8 @@ export const datasetNodeDataSchema = baseNodeDataSchema.extend({
 
   // Processing options — a variable reference string when bound to a variable
   skipEmbedding: z.union([z.boolean(), z.string()]).optional(),
+  waitForEmbeddings: z.union([z.boolean(), z.string()]).optional(),
+  embeddingTimeoutMinutes: z.union([z.number(), z.string()]).optional(),
   metadata: z.record(z.string(), z.any()).optional(),
 
   // Field modes
@@ -46,12 +49,19 @@ export const datasetDefaultData: Partial<DatasetNodeData> = {
   title: 'Dataset',
   desc: 'Add chunks to a dataset',
   skipEmbedding: false,
+  // Waiting is the default: without it the node reports success while the
+  // dataset still holds no vectors, so anything reading the dataset later in
+  // the same run silently sees fewer results. Bounded by the timeout below.
+  waitForEmbeddings: DATASET_NODE_CONSTANTS.EMBEDDING_WAIT.DEFAULT_WAIT_FOR_EMBEDDINGS,
+  embeddingTimeoutMinutes: DATASET_NODE_CONSTANTS.EMBEDDING_WAIT.DEFAULT_TIMEOUT_MINUTES,
   mimeType: 'text/plain',
   fieldModes: {
     datasetId: true, // Default to constant mode for dataset picker
     chunks: false, // Default to variable mode for chunks
     documentTitle: true,
     skipEmbedding: true,
+    waitForEmbeddings: true,
+    embeddingTimeoutMinutes: true,
   },
 }
 
@@ -98,13 +108,14 @@ export function extractDatasetVariables(data: Partial<DatasetNodeData>): string[
     }
   }
 
-  // Extract from skipEmbedding (a boolean toggle bound to a variable)
-  if (
-    typeof data.skipEmbedding === 'string' &&
-    isVariableMode(fieldModes, 'skipEmbedding') &&
-    isNodeVariable(data.skipEmbedding)
-  ) {
-    variableIds.add(data.skipEmbedding)
+  // Extract from the processing options bound to a variable — the two boolean
+  // toggles and the numeric timeout all store a reference string in variable
+  // mode
+  for (const field of ['skipEmbedding', 'waitForEmbeddings', 'embeddingTimeoutMinutes'] as const) {
+    const value = data[field]
+    if (typeof value === 'string' && isVariableMode(fieldModes, field) && isNodeVariable(value)) {
+      variableIds.add(value)
+    }
   }
 
   return Array.from(variableIds)

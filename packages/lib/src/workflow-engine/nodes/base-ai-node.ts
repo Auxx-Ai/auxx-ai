@@ -175,7 +175,7 @@ export abstract class BaseAiNodeProcessor extends BaseNodeProcessor {
       const response = await invokeOrchestrator(this.llmOrchestrator, invocationOptions)
 
       // Step 10: Store standard AI response variables
-      this.storeAIResponse(node, contextManager, response, data)
+      this.storeAIResponse(node, contextManager, response)
 
       // Step 11: Let subclass handle response and determine output (subclass-specific)
       const result = await this.handleResponse(node, data, contextManager, response)
@@ -238,20 +238,22 @@ export abstract class BaseAiNodeProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * Store AI response in context variables
-   * This provides consistent variable naming across all AI nodes
+   * Store AI response in context variables.
+   *
+   * These are the only addresses the builder's variable picker advertises for an
+   * AI node, and the set is deliberately identical to what `AIProcessorV2`'s
+   * tool-enabled path writes — the two must not diverge.
+   *
+   * There is no custom output-variable alias: `setNodeVariable(nodeId, 'text')`
+   * already lands at `<nodeId>.text` (see `ExecutionContextManager.setNodeVariable`),
+   * which is exactly what the picker offers, and a user-named global has no
+   * representation in the `<nodeId>.<path>` model the picker is built on.
    */
   private storeAIResponse(
     node: WorkflowNode,
     contextManager: ExecutionContextManager,
-    response: InvokeOrchestratorResponse,
-    data: any
+    response: InvokeOrchestratorResponse
   ): void {
-    // Store in custom output variable if specified
-    const outputVariable = data.outputVariable || `${node.nodeId}.text`
-    contextManager.setVariable(outputVariable, response.content)
-
-    // Store as standard node variables
     contextManager.setNodeVariable(node.nodeId, 'output', response.content)
     contextManager.setNodeVariable(node.nodeId, 'text', response.content)
 
@@ -265,15 +267,11 @@ export abstract class BaseAiNodeProcessor extends BaseNodeProcessor {
       })
     }
 
-    // Store tool results if present
+    // Store tool results if present. The whole array only — per-call aliases
+    // (`tool_<index>` / `tool_<toolName>`) were unadvertisable by construction
+    // and a tool literally named `results` collided with this key.
     if (response.tool_results) {
       contextManager.setNodeVariable(node.nodeId, 'tool_results', response.tool_results)
-
-      // Store individual tool results for easy access
-      response.tool_results.forEach((result, index) => {
-        contextManager.setNodeVariable(node.nodeId, `tool_${index}`, result.output)
-        contextManager.setNodeVariable(node.nodeId, `tool_${result.toolName}`, result.output)
-      })
     }
   }
 

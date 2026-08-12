@@ -8,14 +8,25 @@ import { computeListOutputVariables } from './output-variables'
 import type { ListNodeData, ListOperation } from './types'
 
 /**
+ * A `FieldReference`: either a single `ResourceFieldId` (`"ticket:subject"`) or a
+ * `FieldPath` array for relationship traversal (`["ticket:contact",
+ * "contact:email"]`).
+ *
+ * The join, pluck and unique panels all select fields through
+ * `NavigableFieldSelector`, which hands back either shape — so a `z.string()`
+ * here marks every relationship-traversing list node invalid in the builder.
+ */
+const fieldReferenceSchema = z.union([
+  z.string().min(1, 'Field is required'),
+  z.array(z.string().min(1)).min(1, 'Field path is required'),
+])
+
+/**
  * Zod schema for Condition (modern ConditionProvider format)
  */
 const conditionSchema = z.object({
   id: z.string(),
-  fieldId: z.union([
-    z.string().min(1, 'Field is required'),
-    z.array(z.string().min(1)).min(1, 'Field path is required'),
-  ]),
+  fieldId: fieldReferenceSchema,
   operator: z.string().min(1, 'Operator is required'), // Operator enum from engine
   value: z.any(),
   isConstant: z.boolean(),
@@ -63,27 +74,78 @@ const sliceConfigSchema = z.object({
 /**
  * Zod schema for unique configuration
  */
-// const uniqueConfigSchema = z.object({
-//   by: z.enum(['whole', 'field'] as const),
-//   field: z.string().optional(),
-//   keepFirst: z.boolean().optional().default(true),
-// })
+const uniqueConfigSchema = z.object({
+  by: z.enum(['whole', 'field'] as const),
+  field: fieldReferenceSchema.optional(),
+  keepFirst: z.boolean().optional().default(true),
+  // Defaults to ON, which is what the panel shows and what the engine's
+  // `executeUnique` assumes when the key is absent.
+  caseSensitive: z.boolean().optional().default(true),
+})
 
 /**
  * Zod schema for join configuration - converts array to string with delimiter
  */
 const joinConfigSchema = z.object({
   delimiter: z.string().default(', '),
-  field: z.string().optional(),
+  field: fieldReferenceSchema.optional(),
 })
 
 /**
  * Zod schema for pluck configuration
  */
 const pluckConfigSchema = z.object({
-  field: z.string().min(1, 'Field is required'),
+  field: fieldReferenceSchema,
   flatten: z.boolean().optional().default(false),
 })
+
+/**
+ * The operations the node actually offers.
+ *
+ * Declared once and reused by both schemas: they had drifted apart from each
+ * other AND from `ListOperation` — neither listed `unique` (so every unique node
+ * failed validation with "invalid enum value") while the deprecated one still
+ * listed `reduce`, an operation the engine has never implemented.
+ *
+ * `satisfies` pins this to the builder type, which in turn mirrors the engine's
+ * `ListProcessor` switch. Adding an operation now fails to compile until all
+ * three agree.
+ */
+const LIST_OPERATIONS = [
+  'filter',
+  'sort',
+  'slice',
+  'unique',
+  'join',
+  'pluck',
+  'reverse',
+] as const satisfies readonly ListOperation[]
+
+/**
+ * The config object each operation needs before it can run — `undefined` for the
+ * two that need none (`join`'s delimiter defaults to `", "`, and `reverse` takes
+ * no configuration at all).
+ */
+const CONFIG_KEY_BY_OPERATION = {
+  filter: 'filterConfig',
+  sort: 'sortConfig',
+  slice: 'sliceConfig',
+  unique: 'uniqueConfig',
+  join: undefined,
+  pluck: 'pluckConfig',
+  reverse: undefined,
+} as const satisfies Record<ListOperation, keyof ListNodeData | undefined>
+
+const listConfigShape = {
+  operation: z.enum(LIST_OPERATIONS),
+  inputList: z.string().min(1, 'Input list is required'),
+  filterConfig: filterConfigSchema.optional(),
+  sortConfig: sortConfigSchema.optional(),
+  sliceConfig: sliceConfigSchema.optional(),
+  uniqueConfig: uniqueConfigSchema.optional(),
+  joinConfig: joinConfigSchema.optional(),
+  pluckConfig: pluckConfigSchema.optional(),
+}
 
 /**
  * Zod schema for list node data
@@ -95,14 +157,7 @@ export const listNodeDataSchema = z.object({
   title: z.string().default('List Operations'),
   desc: z.string().optional(),
   // List-specific fields
-  operation: z.enum(['filter', 'sort', 'slice', 'pluck', 'reverse', 'join'] as const),
-  inputList: z.string().min(1, 'Input list is required'),
-  filterConfig: filterConfigSchema.optional(),
-  sortConfig: sortConfigSchema.optional(),
-  sliceConfig: sliceConfigSchema.optional(),
-  // uniqueConfig: uniqueConfigSchema.optional(),
-  joinConfig: joinConfigSchema.optional(),
-  pluckConfig: pluckConfigSchema.optional(),
+  ...listConfigShape,
 })
 
 /**
@@ -112,45 +167,13 @@ export const listNodeSchema = z
   .object({
     title: z.string().default('List Operations'),
     desc: z.string().optional(),
-    operation: z.enum([
-      'filter',
-      'sort',
-      // 'map',
-      'reduce',
-      'slice',
-      // 'unique',
-      // 'group',
-      'join',
-      'pluck',
-      'reverse',
-    ] as const),
-    inputList: z.string().min(1, 'Input list is required'),
-    filterConfig: filterConfigSchema.optional(),
-    sortConfig: sortConfigSchema.optional(),
-    sliceConfig: sliceConfigSchema.optional(),
-    // uniqueConfig: uniqueConfigSchema.optional(),
-    joinConfig: joinConfigSchema.optional(),
-    pluckConfig: pluckConfigSchema.optional(),
+    ...listConfigShape,
   })
   .refine(
     (data) => {
       // Validate that the appropriate config is provided for each operation
-      switch (data.operation) {
-        case 'filter':
-          return data.filterConfig !== undefined
-        case 'sort':
-          return data.sortConfig !== undefined
-        case 'slice':
-          return data.sliceConfig !== undefined
-        case 'pluck':
-          return data.pluckConfig !== undefined
-        case 'join':
-          return true // joinConfig is optional, delimiter defaults to ", "
-        case 'reverse':
-          return true // No additional config needed
-        default:
-          return false
-      }
+      const required = CONFIG_KEY_BY_OPERATION[data.operation]
+      return required === undefined || data[required] !== undefined
     },
     { message: 'Operation configuration is required' }
   )
@@ -168,16 +191,6 @@ export const createListDefaultData = (): Partial<ListNodeData> => ({
     logic: 'AND',
   },
 })
-
-/**
- * Default configuration for list node (deprecated)
- */
-// export const defaultConfig: ListNodeConfig = {
-//   title: 'List Operations',
-//   operation: 'filter',
-//   inputList: '',
-//   filterConfig: { conditions: [{ field: '', operator: 'equals', value: '' }], logic: 'AND' },
-// }
 
 /**
  * List node definition

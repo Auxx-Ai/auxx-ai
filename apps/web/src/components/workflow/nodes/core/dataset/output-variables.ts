@@ -10,9 +10,17 @@ import type { DatasetNodeData } from './types'
  * Matches backend output from DatasetNodeProcessor
  */
 export function getDatasetOutputVariables(
-  _data: DatasetNodeData,
+  data: DatasetNodeData,
   nodeId: string
 ): UnifiedVariable[] {
+  // The last three are only ever written when the node waited for the
+  // embeddings — the engine publishes them on the way back in from the pause
+  // (`workflow-engine/nodes/dataset/embedding-wait.ts`). Advertising them for a
+  // node that never waits would offer paths that resolve to nothing.
+  // Unset means waiting, and a variable-bound toggle is unknowable here, so
+  // only a literal `false` (or skipping embedding outright) withdraws them.
+  const waits = data.waitForEmbeddings !== false && data.skipEmbedding !== true
+
   return [
     // Document ID
     createNestedVariable({
@@ -52,7 +60,9 @@ export function getDatasetOutputVariables(
       basePath: 'embeddingStatus',
       type: BaseType.STRING,
       label: 'Embedding Status',
-      description: 'Status of embedding generation (queued/completed/skipped)',
+      description: waits
+        ? 'Status of embedding generation: completed, failed, timeout, or skipped'
+        : 'Status of embedding generation: queued or skipped (the node did not wait for the result)',
     }),
 
     // Dataset reference
@@ -81,5 +91,32 @@ export function getDatasetOutputVariables(
       label: 'Error',
       description: 'Error message if operation failed (null if successful)',
     }),
+
+    // Wait-only results, published when the workflow resumes
+    ...(waits
+      ? [
+          createNestedVariable({
+            nodeId,
+            basePath: 'segmentsEmbedded',
+            type: BaseType.NUMBER,
+            label: 'Segments Embedded',
+            description: 'Number of segments that were embedded before the wait ended',
+          }),
+          createNestedVariable({
+            nodeId,
+            basePath: 'processingTimeMs',
+            type: BaseType.NUMBER,
+            label: 'Processing Time (ms)',
+            description: 'How long embedding generation took',
+          }),
+          createNestedVariable({
+            nodeId,
+            basePath: 'completedAt',
+            type: BaseType.STRING,
+            label: 'Completed At',
+            description: 'ISO timestamp of when embedding generation completed',
+          }),
+        ]
+      : []),
   ]
 }

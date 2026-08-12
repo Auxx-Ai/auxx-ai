@@ -40,6 +40,7 @@ import type {
 import { DocumentProcessingQueue } from '../../datasets/workers/document-processing-queue'
 import { DocumentProcessor } from '../../datasets/workers/document-processor'
 import { EmbeddingProcessor } from '../../datasets/workers/embedding-processor'
+import { cancelEmbeddingTimeout } from '../../workflow-engine/nodes/dataset/embedding-wait'
 import type { FinalizeDocumentJobData, FlowEmbeddingGenerationJobData } from '../flows'
 import { getQueue, Queues } from '../queues'
 import type { JobContext } from '../types'
@@ -348,6 +349,10 @@ export const finalizeDocumentJob = async (ctx: JobContext<FinalizeDocumentJobDat
           failedBatches,
         })
 
+        // Drop the dataset node's pending timeout FIRST: once the run leaves
+        // WAITING a late timeout resume just fails and retries for nothing.
+        await cancelEmbeddingTimeout(workflowResume.workflowRunId, workflowResume.resumeFromNodeId)
+
         const workflowDelayQueue = getQueue(Queues.workflowDelayQueue)
 
         await workflowDelayQueue.add(
@@ -408,6 +413,10 @@ export const finalizeDocumentJob = async (ctx: JobContext<FinalizeDocumentJobDat
         workflowRunId: workflowResume.workflowRunId,
         resumeFromNodeId: workflowResume.resumeFromNodeId,
       })
+
+      // Drop the dataset node's pending timeout FIRST: once the run leaves
+      // WAITING a late timeout resume just fails and retries for nothing.
+      await cancelEmbeddingTimeout(workflowResume.workflowRunId, workflowResume.resumeFromNodeId)
 
       const workflowDelayQueue = getQueue(Queues.workflowDelayQueue)
 

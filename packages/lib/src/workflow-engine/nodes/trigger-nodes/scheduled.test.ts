@@ -4,7 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeData, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import { ScheduledTriggerProcessor } from './scheduled'
+import {
+  SCHEDULE_KINDS,
+  SCHEDULE_TRIGGER_INTERVALS,
+  ScheduledTriggerProcessor,
+  scheduleShapeFor,
+} from './scheduled'
 
 // Silence the logger. Partial mock: `@auxx/logger/run-log` imports sink-registration
 // helpers from this barrel at module load, so a full replacement breaks collection.
@@ -318,11 +323,190 @@ describe('ScheduledTriggerProcessor', () => {
       expect(await contextManager.getNodeVariable('test', 'triggered_at')).toBe(
         '2023-01-01T10:00:00Z'
       )
-      expect(await contextManager.getNodeVariable('test', 'schedule_type')).toBe('days')
+      // The KIND of schedule, not the interval unit — the unit rides on
+      // `interval_config.unit` below.
+      expect(await contextManager.getNodeVariable('test', 'schedule_type')).toBe('interval')
       expect(await contextManager.getNodeVariable('test', 'interval_config')).toEqual({
         unit: 'days',
         value: 7,
       })
+    })
+  })
+
+  describe('is_test_run', () => {
+    const intervalNode = () =>
+      scheduledNode({
+        config: {
+          triggerInterval: 'hours',
+          timeBetweenTriggers: { hours: 1, isConstant: true },
+        },
+        isEnabled: true,
+      })
+
+    // The scheduler path: `scheduled-trigger-job.ts` calls `createRun({ mode: 'production' })`,
+    // which stamps `triggeredFrom = APP_RUN`, so `executeWorkflowAsync` passes
+    // `debug: false` and the engine never calls `setDebugMode`.
+    it('is false on a scheduler-fired run', async () => {
+      const node = intervalNode()
+      contextManager.setVariable('sys.triggerData', {
+        trigger_type: 'scheduled',
+        scheduled_time: '2023-01-01T10:00:00Z',
+        node_id: 'test',
+      })
+
+      const result = await (processor as any).executeNode(node, contextManager)
+
+      expect(result.output.is_test_run).toBe(false)
+      expect(await contextManager.getNodeVariable('test', 'is_test_run')).toBe(false)
+    })
+
+    // The builder path: the run panel posts `mode: 'test'`, which stamps
+    // `triggeredFrom = DEBUGGING`, which becomes `executeWorkflow(..., { debug: true })`
+    // and then `contextManager.setDebugMode(true)`.
+    it('is true on a builder test run', async () => {
+      const node = intervalNode()
+      contextManager.setDebugMode(true)
+      contextManager.setVariable('sys.triggerData', { scheduledTime: '2023-01-01T10:00:00Z' })
+
+      const result = await (processor as any).executeNode(node, contextManager)
+
+      expect(result.output.is_test_run).toBe(true)
+      expect(await contextManager.getNodeVariable('test', 'is_test_run')).toBe(true)
+    })
+
+    it('is written for custom cron schedules too', async () => {
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'custom',
+          timeBetweenTriggers: {},
+          customCron: '0 9 * * 1-5',
+        },
+        isEnabled: true,
+      })
+      contextManager.setDebugMode(true)
+
+      const result = await (processor as any).executeNode(node, contextManager)
+
+      expect(result.output.is_test_run).toBe(true)
+      expect(await contextManager.getNodeVariable('test', 'is_test_run')).toBe(true)
+    })
+
+    it('cannot be spoofed by the trigger payload', async () => {
+      const node = intervalNode()
+      contextManager.setVariable('sys.triggerData', {
+        scheduledTime: '2023-01-01T10:00:00Z',
+        is_test_run: true,
+      })
+
+      const result = await (processor as any).executeNode(node, contextManager)
+
+      expect(result.output.is_test_run).toBe(false)
+      expect(await contextManager.getNodeVariable('test', 'is_test_run')).toBe(false)
+    })
+  })
+
+  // The `schedule_type` vocabulary is pinned here and nowhere else. `SCHEDULE_KINDS`
+  // is the sole definition in the repo (the builder only describes the path; the one
+  // other writer, an unreferenced `test-data.ts` fixture that spelled the unit as the
+  // kind, is deleted). A fourth spelling — or a new interval unit that nobody mapped
+  // to a kind — fails right here.
+  describe('schedule_type vocabulary', () => {
+    it('has exactly two kinds', () => {
+      expect([...SCHEDULE_KINDS]).toEqual(['interval', 'cron'])
+    })
+
+    it('maps every panel interval to a declared kind, keeping the unit separate', () => {
+      const mapped = SCHEDULE_TRIGGER_INTERVALS.map((interval) => [
+        interval,
+        scheduleShapeFor(interval),
+      ])
+
+      expect(mapped).toEqual([
+        ['minutes', { kind: 'interval', unit: 'minutes' }],
+        ['hours', { kind: 'interval', unit: 'hours' }],
+        ['days', { kind: 'interval', unit: 'days' }],
+        ['weeks', { kind: 'interval', unit: 'weeks' }],
+        ['custom', { kind: 'cron' }],
+      ])
+      for (const interval of SCHEDULE_TRIGGER_INTERVALS) {
+        expect(SCHEDULE_KINDS).toContain(scheduleShapeFor(interval).kind)
+      }
+    })
+
+    it("emits 'cron' and the cron_expression path for a custom schedule", async () => {
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'custom',
+          timeBetweenTriggers: {},
+          customCron: '0 9 * * 1-5',
+        },
+        isEnabled: true,
+      })
+
+      await (processor as any).executeNode(node, contextManager)
+
+      expect(await contextManager.getNodeVariable('test', 'schedule_type')).toBe('cron')
+      expect(await contextManager.getNodeVariable('test', 'cron_expression')).toBe('0 9 * * 1-5')
+      expect(await contextManager.getNodeVariable('test', 'interval_config')).toBeUndefined()
+    })
+
+    it("emits 'interval' and carries the unit on interval_config, not schedule_type", async () => {
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'weeks',
+          timeBetweenTriggers: { weeks: 2, isConstant: true },
+        },
+        isEnabled: true,
+      })
+
+      await (processor as any).executeNode(node, contextManager)
+
+      expect(await contextManager.getNodeVariable('test', 'schedule_type')).toBe('interval')
+      expect(await contextManager.getNodeVariable('test', 'interval_config')).toEqual({
+        unit: 'weeks',
+        value: 2,
+      })
+      expect(await contextManager.getNodeVariable('test', 'cron_expression')).toBeUndefined()
+    })
+  })
+
+  describe('triggered_at sourcing', () => {
+    // `scheduled-trigger-job.ts` puts the instant in `inputs.scheduled_time`; only
+    // that snake_case key ever reaches `sys.triggerData` on a real scheduled fire.
+    it("reads the scheduler's snake_case scheduled_time", async () => {
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'hours',
+          timeBetweenTriggers: { hours: 1, isConstant: true },
+        },
+        isEnabled: true,
+      })
+      contextManager.setVariable('sys.triggerData', {
+        trigger_type: 'scheduled',
+        scheduled_time: '2023-06-01T08:30:00Z',
+      })
+
+      const result = await (processor as any).executeNode(node, contextManager)
+
+      expect(result.output.triggered_at).toBe('2023-06-01T08:30:00Z')
+      expect(await contextManager.getNodeVariable('test', 'triggered_at')).toBe(
+        '2023-06-01T08:30:00Z'
+      )
+    })
+
+    it('falls back to now when the payload carries no scheduled instant', async () => {
+      const node = scheduledNode({
+        config: {
+          triggerInterval: 'hours',
+          timeBetweenTriggers: { hours: 1, isConstant: true },
+        },
+        isEnabled: true,
+      })
+
+      const before = Date.now()
+      const result = await (processor as any).executeNode(node, contextManager)
+
+      expect(Date.parse(result.output.triggered_at)).toBeGreaterThanOrEqual(before)
     })
   })
 

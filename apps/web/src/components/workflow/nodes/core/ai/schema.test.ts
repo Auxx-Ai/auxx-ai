@@ -163,4 +163,44 @@ describe('AI node output variables', () => {
 
     expect(outputs.map((v) => v.id)).toEqual([`${NODE_ID}.text`])
   })
+
+  /**
+   * `tool_results` is written by both engine paths — `ai-v2.ts` on the
+   * tools branch and `base-ai-node.ts` on the plain one — and was advertised
+   * by neither side of the builder until now.
+   */
+  describe('tool_results', () => {
+    const outputsWithTools = (toolsEnabled: boolean) =>
+      aiDefinition.outputVariables(
+        { structured_output: { enabled: false }, toolsEnabled } as unknown as AiNodeData,
+        NODE_ID,
+        { allResources: [], resolveVariable: () => undefined }
+      )
+
+    it('is not offered on a node that cannot call tools', () => {
+      expect(outputsWithTools(false).map((v) => v.id)).toEqual([`${NODE_ID}.text`])
+    })
+
+    it('is offered as an array of call results once tools are enabled', () => {
+      const toolResults = outputsWithTools(true).find(
+        (v) => v.id === `${NODE_ID}.tool_results`
+      ) as UnifiedVariable
+
+      expect(toolResults.type).toBe(BaseType.ARRAY)
+      expect(collectIds(toolResults)).toEqual([
+        'ai-1.tool_results',
+        'ai-1.tool_results[*]',
+        'ai-1.tool_results[*].toolCallId',
+        'ai-1.tool_results[*].toolName',
+        'ai-1.tool_results[*].success',
+        'ai-1.tool_results[*].output',
+        'ai-1.tool_results[*].error',
+      ])
+    })
+
+    it('offers no per-call alias — the tool a model picks is a run-time fact', () => {
+      const ids = outputsWithTools(true).flatMap(collectIds)
+      expect(ids.some((id) => /\.tool_(?!results)/.test(id))).toBe(false)
+    })
+  })
 })

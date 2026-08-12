@@ -1013,3 +1013,225 @@ describe('ListProcessor - Filter Operation', () => {
     })
   })
 })
+
+/**
+ * Run any list operation and hand back both halves of the node's contract: the
+ * `output` recorded on the execution row for the trace UI, and the variable
+ * store the picker's `<nodeId>.<path>` references actually resolve against.
+ *
+ * They are NOT the same place — a value that only ever reaches `output` is
+ * unreachable from a downstream node — so every assertion below checks the store.
+ */
+async function runOperation(operation: string, config: Record<string, any>, items: any[]) {
+  const processor = new ListProcessor()
+  const node = createMockListNode(operation, config)
+  const context = createMockContext({ testList: items })
+  const result = await processor.execute(node, context)
+
+  return {
+    result,
+    output: result.output,
+    variable: (path: string) => context.getVariable(`test-node.${path}`),
+  }
+}
+
+describe('ListProcessor - published output variables', () => {
+  const items = [
+    { id: 'a', status: 'open' },
+    { id: 'b', status: 'closed' },
+    { id: 'c', status: 'open' },
+  ]
+
+  it('publishes `result` into the variable store, not just the trace output', async () => {
+    const { result, variable } = await runOperation('reverse', {}, items)
+
+    expect(result.status).toBe(NodeRunningStatus.Succeeded)
+    expect(await variable('result')).toEqual([items[2], items[1], items[0]])
+  })
+
+  // `output-variables.ts` advertises `<nodeId>.count` for exactly these three
+  // operations. Each one is asserted against the STORE because the write used to
+  // go through a computed `Object.entries(metadata)` loop, which publishes fine
+  // but is invisible to the parity reader — the reason `variable:list.count` was
+  // filed as drift.
+  describe('count — advertised for the three operations that change the item count', () => {
+    it('filter publishes the surviving item count', async () => {
+      const { output, variable } = await runOperation(
+        'filter',
+        { filterConfig: { conditions: [createCondition('status', 'is', 'open')] } },
+        items
+      )
+
+      expect(await variable('count')).toBe(2)
+      expect(output?.count).toBe(2)
+    })
+
+    it('unique publishes the deduplicated item count', async () => {
+      const { output, variable } = await runOperation(
+        'unique',
+        { uniqueConfig: { by: 'field', field: 'status' } },
+        items
+      )
+
+      expect(await variable('count')).toBe(2)
+      expect(output?.count).toBe(2)
+    })
+
+    it('slice publishes the sliced item count', async () => {
+      const { variable } = await runOperation(
+        'slice',
+        { sliceConfig: { mode: 'first', count: 2, isCountConstant: true } },
+        items
+      )
+
+      expect(await variable('count')).toBe(2)
+    })
+
+    it('slice publishes 1 when it collapses to a single item', async () => {
+      const { output, variable } = await runOperation(
+        'slice',
+        { sliceConfig: { mode: 'first', count: 1, isCountConstant: true } },
+        items
+      )
+
+      expect(output?.result).toEqual(items[0])
+      expect(await variable('count')).toBe(1)
+    })
+  })
+
+  // The other four operations do not advertise `count`, so publishing one would
+  // be the mirror-image bug: a variable the engine writes that the picker never
+  // offers, wired to nothing.
+  describe('count — not published for the operations that do not advertise it', () => {
+    it.each([
+      ['sort', { sortConfig: { field: 'id', direction: 'asc' } }],
+      ['join', { joinConfig: { delimiter: ', ', field: 'id' } }],
+      ['pluck', { pluckConfig: { field: 'id' } }],
+      ['reverse', {}],
+    ])('%s omits count', async (operation, config) => {
+      const { result, output, variable } = await runOperation(operation, config, items)
+
+      expect(result.status).toBe(NodeRunningStatus.Succeeded)
+      expect(output).not.toHaveProperty('count')
+      expect(await variable('count')).toBeUndefined()
+    })
+  })
+})
+
+describe('ListProcessor - Unique operation', () => {
+  const items = [
+    { id: 'a', email: 'Ada@Example.com' },
+    { id: 'b', email: 'ada@example.com' },
+    { id: 'c', email: 'grace@example.com' },
+  ]
+
+  // The panel's switch reads `config?.caseSensitive ?? true` and `panel.tsx`
+  // seeds `{ by: 'whole', keepFirst: true, caseSensitive: true }` the moment the
+  // operation is chosen — so an ABSENT key has to mean case-sensitive here, or
+  // the toggle the user sees means the opposite of what the engine does.
+  it('treats an absent caseSensitive as case-SENSITIVE, matching the panel default', async () => {
+    const { output } = await runOperation(
+      'unique',
+      { uniqueConfig: { by: 'field', field: 'email' } },
+      items
+    )
+
+    expect(output?.result.map((item: any) => item.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('honours caseSensitive: true', async () => {
+    const { output } = await runOperation(
+      'unique',
+      { uniqueConfig: { by: 'field', field: 'email', caseSensitive: true } },
+      items
+    )
+
+    expect(output?.result.map((item: any) => item.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('honours caseSensitive: false', async () => {
+    const { output } = await runOperation(
+      'unique',
+      { uniqueConfig: { by: 'field', field: 'email', caseSensitive: false } },
+      items
+    )
+
+    expect(output?.result.map((item: any) => item.id)).toEqual(['a', 'c'])
+  })
+
+  it('keeps the last occurrence when keepFirst is false', async () => {
+    const { output } = await runOperation(
+      'unique',
+      { uniqueConfig: { by: 'field', field: 'email', caseSensitive: false, keepFirst: false } },
+      items
+    )
+
+    expect(output?.result.map((item: any) => item.id)).toEqual(['b', 'c'])
+  })
+})
+
+describe('ListProcessor - the operation surface is exactly what the builder offers', () => {
+  const processor = new ListProcessor()
+
+  // `find` / `map` / `reduce` / `group` / `flatten` survived as commented-out
+  // switch arms with live `findConfig` / `mapConfig` reads in
+  // `extractRequiredVariables` and `validateNodeConfig`. There is no panel, no
+  // config interface and no output-variable inference for any of them on the
+  // builder side, so they were removed rather than finished — these pin that the
+  // node now fails loudly instead of advertising them.
+  it.each([
+    'find',
+    'map',
+    'reduce',
+    'group',
+    'flatten',
+  ])('fails with Unknown operation for the removed `%s` operation', async (operation) => {
+    const { result } = await runOperation('' + operation, {}, [{ id: 'a' }])
+
+    expect(result.status).toBe(NodeRunningStatus.Failed)
+    expect(result.error).toContain(`Unknown operation: ${operation}`)
+    expect(result.outputHandle).toBe('error')
+  })
+
+  it('no longer treats findConfig as a source of required variables', async () => {
+    const node = createMockListNode('find', {
+      inputList: '{{upstream.items}}',
+      findConfig: { conditions: [createCondition('status', 'is', '{{upstream.status}}')] },
+    })
+
+    expect((processor as any).extractRequiredVariables(node)).toEqual(['upstream.items'])
+  })
+
+  it('no longer treats mapConfig.template as a source of required variables', async () => {
+    const node = createMockListNode('map', {
+      inputList: '{{upstream.items}}',
+      mapConfig: { mode: 'template', template: '{{upstream.greeting}}' },
+    })
+
+    expect((processor as any).extractRequiredVariables(node)).toEqual(['upstream.items'])
+  })
+
+  it('still extracts variables from the filter conditions it does support', async () => {
+    const node = createMockListNode('filter', {
+      inputList: '{{upstream.items}}',
+      filterConfig: { conditions: [createCondition('status', 'is', '{{upstream.status}}')] },
+    })
+
+    expect((processor as any).extractRequiredVariables(node)).toEqual([
+      'upstream.items',
+      'upstream.status',
+    ])
+  })
+
+  it('validates a unique node by its own config, with no find branch left', async () => {
+    const valid = await (processor as any).validateNodeConfig(
+      createMockListNode('unique', { uniqueConfig: { by: 'field', field: 'email' } })
+    )
+    expect(valid.valid).toBe(true)
+
+    const invalid = await (processor as any).validateNodeConfig(
+      createMockListNode('unique', { uniqueConfig: { by: 'field' } })
+    )
+    expect(invalid.errors).toContain('Unique field is required when deduplicating by field')
+  })
+})

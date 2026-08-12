@@ -83,17 +83,30 @@ describe('WaitNodeProcessor', () => {
       expect(resumeAt.getTime() - pausedAt.getTime()).toBe(2000)
     })
 
-    it('publishes outputs for a legacy `duration` config too', async () => {
-      vi.useFakeTimers()
-      const node = waitNode({ duration: 3 })
+    /**
+     * The legacy seconds-valued `duration` field is gone: the panel has only ever written
+     * `durationAmount` + `durationUnit`, and no server-side author (including
+     * `buildSequenceGraph`) writes `duration` either. A node carrying only it is now an
+     * invalid config rather than a silently-honoured wait.
+     */
+    it('rejects a config that carries only the removed `duration` field', async () => {
+      await expect(processor.execute(waitNode({ duration: 3 }), contextManager)).rejects.toThrow(
+        'Wait type is required'
+      )
+    })
 
-      const running = processor.execute(node, contextManager)
-      await vi.advanceTimersByTimeAsync(3000)
-      await running
-
-      expect(await contextManager.getVariable('wait-1.wait_duration_ms')).toBe(3000)
-      expect(await contextManager.getVariable('wait-1.wait_method')).toBe('short_delay')
-      expect(await contextManager.getVariable('wait-1.resume_at')).toBeDefined()
+    it('rejects a duration variable that does not resolve to a number', async () => {
+      await expect(
+        processor.execute(
+          waitNode({
+            waitType: 'duration',
+            durationAmount: '{{nope.missing}}',
+            durationUnit: 'seconds',
+            isDurationConstant: false,
+          }),
+          contextManager
+        )
+      ).rejects.toThrow('Wait duration did not resolve to a number')
     })
   })
 
@@ -116,6 +129,67 @@ describe('WaitNodeProcessor', () => {
       }
       expect(await contextManager.getVariable('wait-1.wait_method')).toBe('queue_delay')
       expect(await contextManager.getVariable('wait-1.wait_duration_ms')).toBe(30 * 60 * 1000)
+    })
+  })
+
+  /**
+   * `deliveryWindow` and `anchor` are written by ONE author — `buildSequenceGraph` in
+   * `packages/lib/src/sequences/publish.ts`. The builder panel neither writes nor reads them,
+   * by design. These assert the shape that compiler actually emits stays executable.
+   */
+  describe('server-authored sequence config', () => {
+    it('accepts the zero-duration + deliveryWindow wait that step 1 compiles to', async () => {
+      const preprocessed = await processor.preprocessNode(
+        waitNode({
+          waitType: 'duration',
+          durationAmount: 0,
+          isDurationConstant: true,
+          durationUnit: 'seconds',
+          deliveryWindow: {
+            startTime: '08:00',
+            endTime: '20:00',
+            timezone: 'UTC',
+            businessDaysOnly: false,
+          },
+        }),
+        contextManager
+      )
+
+      expect(preprocessed.inputs.durationConfig.duration).toBe(0)
+    })
+
+    it('accepts the zero-duration + anchor wait an anchor step compiles to', async () => {
+      const preprocessed = await processor.preprocessNode(
+        waitNode({
+          waitType: 'duration',
+          durationAmount: 0,
+          isDurationConstant: true,
+          durationUnit: 'seconds',
+          anchor: {
+            subjectRef: 'visit',
+            offsetDays: -1,
+            timeOfDay: '09:00',
+            timezone: 'UTC',
+          },
+        }),
+        contextManager
+      )
+
+      expect(preprocessed.inputs.durationConfig.duration).toBe(0)
+    })
+
+    it('still rejects a zero duration with neither window nor anchor', async () => {
+      await expect(
+        processor.preprocessNode(
+          waitNode({
+            waitType: 'duration',
+            durationAmount: 0,
+            isDurationConstant: true,
+            durationUnit: 'seconds',
+          }),
+          contextManager
+        )
+      ).rejects.toThrow('Wait duration must be between 1ms and maximum allowed duration')
     })
   })
 

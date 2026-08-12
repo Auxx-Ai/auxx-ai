@@ -54,7 +54,6 @@ export interface WaitNodeConfig {
   time?: string | { id: string; nodeId?: string; path: string }
   isTimeConstant?: boolean
   timezone?: string
-  duration?: number // Legacy field for backward compatibility
   /** Sequences plan §3.3 — snap the computed `resumeAt` into this window. */
   deliveryWindow?: WaitDeliveryWindowConfig
   /** Client-notifications plan §4.2 — resolve the wait's target from a subject's live anchor

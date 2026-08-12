@@ -16,7 +16,13 @@ import type {
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
-import { extractVariableRefs, resolveBooleanConfig, variableBound } from './config-value'
+import { extractVariableRefs } from '../utils/variable-refs'
+import { resolveBooleanConfig, resolveNumberConfig, variableBound } from './config-value'
+import {
+  clampEmbeddingTimeoutMinutes,
+  EMBEDDING_WAIT,
+  scheduleEmbeddingTimeout,
+} from './embedding-wait'
 
 const logger = createScopedLogger('dataset-processor')
 
@@ -41,9 +47,10 @@ interface DatasetConfig {
   fileId?: string
 
   // Processing options
-  // Both carry a variable reference string when bound to a variable
+  // All three carry a variable reference string when bound to a variable
   skipEmbedding?: boolean | string
   waitForEmbeddings?: boolean | string
+  embeddingTimeoutMinutes?: number | string
   metadata?: Record<string, any>
 
   // Field modes tracking (constant vs variable)
@@ -57,7 +64,7 @@ interface DatasetOutput {
   documentId: string
   segmentIds: string[]
   chunksAdded: number
-  embeddingStatus: 'queued' | 'completed' | 'skipped' | 'processing' | 'failed'
+  embeddingStatus: 'queued' | 'completed' | 'skipped' | 'processing' | 'failed' | 'timeout'
   datasetId: string
   success: boolean
   error?: string
@@ -87,6 +94,7 @@ const datasetConfigSchema = z.object({
   fileId: z.string().optional(),
   skipEmbedding: variableBound(z.boolean()).optional(),
   waitForEmbeddings: variableBound(z.boolean()).optional(),
+  embeddingTimeoutMinutes: variableBound(z.number()).optional(),
   metadata: z.record(z.string(), z.any()).optional(),
   fieldModes: z.record(z.string(), z.boolean()).optional(),
 })
@@ -102,6 +110,16 @@ const datasetConfigSchema = z.object({
  * - Creates document and segments in the target dataset
  * - Optionally queues embeddings via existing document processing flow
  * - Supports waitForEmbeddings mode that pauses workflow until embeddings complete
+ *
+ * `waitForEmbeddings` defaults to ON. Embedding generation is a BullMQ flow, so
+ * without the wait the node reports success while the dataset still holds zero
+ * vectors: a downstream knowledge-retrieval node reading the same dataset gets
+ * fewer results, or none, with no error anywhere. That failure is silent and
+ * data-dependent; the wait's cost is a pause/resume and bounded latency, and it
+ * is what makes `embeddingStatus` / `segmentsEmbedded` mean anything. The wait
+ * is ALWAYS bounded by `embeddingTimeoutMinutes` (see `./embedding-wait.ts`) —
+ * a run that waits forever on a stuck embedding job is worse than one that
+ * never waited.
  */
 export class DatasetProcessor extends BaseNodeProcessor {
   readonly type = WorkflowActionType.DATASET
@@ -253,13 +271,18 @@ export class DatasetProcessor extends BaseNodeProcessor {
       false,
       resolveValue
     )
+    // Defaults ON — see the class docblock. An unset toggle waits.
     const resolvedWaitForEmbeddings = await resolveBooleanConfig(
       config.waitForEmbeddings,
-      false,
+      EMBEDDING_WAIT.DEFAULT_WAIT_FOR_EMBEDDINGS,
       resolveValue
+    )
+    const resolvedTimeoutMinutes = clampEmbeddingTimeoutMinutes(
+      await resolveNumberConfig(config.embeddingTimeoutMinutes, resolveValue)
     )
     extractVariableRefs(config.skipEmbedding).forEach((v) => usedVariables.add(v))
     extractVariableRefs(config.waitForEmbeddings).forEach((v) => usedVariables.add(v))
+    extractVariableRefs(config.embeddingTimeoutMinutes).forEach((v) => usedVariables.add(v))
 
     // Get organization and user IDs from context
     const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
@@ -280,6 +303,7 @@ export class DatasetProcessor extends BaseNodeProcessor {
         fileId: resolvedFileId,
         skipEmbedding: resolvedSkipEmbedding,
         waitForEmbeddings: resolvedWaitForEmbeddings,
+        embeddingTimeoutMinutes: resolvedTimeoutMinutes,
         metadata: config.metadata,
         organizationId,
         userId,
@@ -291,6 +315,7 @@ export class DatasetProcessor extends BaseNodeProcessor {
         chunkCount: resolvedChunks.length,
         skipEmbedding: resolvedSkipEmbedding,
         waitForEmbeddings: resolvedWaitForEmbeddings,
+        embeddingTimeoutMinutes: resolvedTimeoutMinutes,
         variableCount: usedVariables.size,
         preprocessingComplete: true,
       },
@@ -434,6 +459,24 @@ export class DatasetProcessor extends BaseNodeProcessor {
         // Get workflowRunId from context options
         const workflowRunId = contextManager.getOptions()?.workflowRunId
 
+        // A run with no id cannot be resumed, so it cannot be paused either —
+        // say so rather than silently ignoring the toggle.
+        if (inputs.waitForEmbeddings && !workflowRunId) {
+          contextManager.log(
+            'WARN',
+            node.name,
+            'Cannot wait for embeddings without a workflow run id — continuing without waiting'
+          )
+        }
+
+        const originalNodeOutput = {
+          documentId: document.id,
+          segmentIds,
+          chunksAdded: segmentIds.length,
+          datasetId: inputs.datasetId,
+          success: true,
+        }
+
         // Prepare workflow resume info if waitForEmbeddings is enabled
         const workflowResume =
           inputs.waitForEmbeddings && workflowRunId
@@ -441,13 +484,7 @@ export class DatasetProcessor extends BaseNodeProcessor {
                 workflowRunId,
                 resumeFromNodeId: node.nodeId,
                 documentId: document.id,
-                originalNodeOutput: {
-                  documentId: document.id,
-                  segmentIds,
-                  chunksAdded: segmentIds.length,
-                  datasetId: inputs.datasetId,
-                  success: true,
-                },
+                originalNodeOutput,
               }
             : undefined
 
@@ -474,10 +511,25 @@ export class DatasetProcessor extends BaseNodeProcessor {
 
         // If waitForEmbeddings is enabled, pause the workflow
         if (inputs.waitForEmbeddings && workflowRunId) {
+          const timeoutMinutes = clampEmbeddingTimeoutMinutes(inputs.embeddingTimeoutMinutes)
+          const timeoutMs = timeoutMinutes * 60_000
+
           contextManager.log('INFO', node.name, 'Pausing workflow until embeddings complete', {
             documentId: document.id,
             segmentCount: segmentIds.length,
             workflowRunId,
+            timeoutMinutes,
+          })
+
+          // The safety net for a flow that never finalizes — a permanently
+          // failing embedding batch leaves the parent job waiting on children
+          // forever, and nothing else would ever resume this run.
+          await scheduleEmbeddingTimeout({
+            workflowRunId,
+            nodeId: node.nodeId,
+            documentId: document.id,
+            timeoutMs,
+            originalNodeOutput,
           })
 
           // Store partial output variables (will be completed on resume)
@@ -503,6 +555,8 @@ export class DatasetProcessor extends BaseNodeProcessor {
                 datasetId: inputs.datasetId,
                 segmentCount: segmentIds.length,
                 queuedAt: new Date().toISOString(),
+                timeoutMinutes,
+                timesOutAt: new Date(Date.now() + timeoutMs).toISOString(),
               },
             },
             output: partialOutput,
@@ -635,6 +689,7 @@ export class DatasetProcessor extends BaseNodeProcessor {
     // template or a bare picker path
     extractVariableRefs(config.skipEmbedding).forEach((v) => variables.add(v))
     extractVariableRefs(config.waitForEmbeddings).forEach((v) => variables.add(v))
+    extractVariableRefs(config.embeddingTimeoutMinutes).forEach((v) => variables.add(v))
 
     return Array.from(variables)
   }
@@ -681,10 +736,26 @@ export class DatasetProcessor extends BaseNodeProcessor {
       }
     }
 
-    // Warning for waitForEmbeddings with skipEmbedding — literals only, since a
-    // bound toggle holds a reference string that is truthy either way
-    if (config.waitForEmbeddings === true && config.skipEmbedding === true) {
+    // Warning for waitForEmbeddings with skipEmbedding. Only a literal `false`
+    // disables the wait now that it defaults ON, and only a literal comparison
+    // is meaningful either way — a bound toggle holds a reference string that
+    // is truthy whatever it resolves to.
+    if (config.skipEmbedding === true && config.waitForEmbeddings !== false) {
       warnings.push('waitForEmbeddings has no effect when skipEmbedding is true')
+    }
+
+    // Range is clamped rather than rejected at run time, so say so here instead
+    // of silently honouring something other than what the panel shows.
+    if (typeof config.embeddingTimeoutMinutes === 'number') {
+      const { MIN_TIMEOUT_MINUTES, MAX_TIMEOUT_MINUTES } = EMBEDDING_WAIT
+      if (
+        config.embeddingTimeoutMinutes < MIN_TIMEOUT_MINUTES ||
+        config.embeddingTimeoutMinutes > MAX_TIMEOUT_MINUTES
+      ) {
+        warnings.push(
+          `Embedding timeout is clamped to ${MIN_TIMEOUT_MINUTES}–${MAX_TIMEOUT_MINUTES} minutes`
+        )
+      }
     }
 
     return { valid: errors.length === 0, errors, warnings }

@@ -24,8 +24,13 @@ import { fileURLToPath } from 'node:url'
  *    `tool_${index}` is recorded as a pattern and matched on its literal stem.
  *  - `node.data.<key>` reads, including through a local alias
  *    (`const config = node.data as WaitNodeConfig` then `config.durationUnit`).
+ *  - Reads that reach `.data.<key>` through a node pulled out of the GRAPH
+ *    rather than through the processor's own `node`. Those go to
+ *    `foreignDataReads`, not `dataReads` — see `foreignNodeBindings`.
  *  - Inherited writes: `AIProcessorV2 extends BaseAiNodeProcessor`, so the
  *    base's `output` / `text` / `structured_output` writes count for `ai`.
+ *    Inherited READS additionally carry the ancestor file they came from, in
+ *    `inheritedDataReads` — see `withInherited`.
  *  - Whether every call site for a path sits inside an `else` block — see
  *    `failurePathOnlyWrites`.
  *
@@ -71,6 +76,30 @@ import { fileURLToPath } from 'node:url'
  * one call site, open it and check WHICH branch it is on. The behavioural
  * operator suite in `packages/lib` does not have this problem — it runs the real
  * processor — and that is the shape to reach for when a contract matters enough.
+ *
+ * Two more structural limits of the same family, both now DETECTED rather than
+ * silently mis-attributed — detection is not a fix, so they still need a human
+ * to read the source before an entry is filed:
+ *
+ *  1. WHICH NODE a `.data` read targets. A processor can pull another node out
+ *     of `sys.workflow.graph.nodes` and read that node's config — `manual.ts`
+ *     does exactly this for the connected form-input node's `inputType` /
+ *     `typeOptions` / `label`. Resolving the target statically needs the graph,
+ *     which only exists at run time. `foreignNodeBindings` finds the LOCAL such
+ *     a read goes through and routes it to `foreignDataReads`, so the finding
+ *     carries a NOTE instead of quietly scoring against the wrong panel.
+ *
+ *  2. WHICH FILE an inherited read lives in. `withInherited` unions a class's
+ *     reads with every ancestor's, so one legacy read on a shared base surfaces
+ *     once per subclass and reads as N bugs. `inheritedDataReads` names the
+ *     ancestor file, which collapses those N back into one.
+ *
+ * A third, still open and NOT detected: which CONFIG a node was evaluated under.
+ * `outputVariables` is a function of `node.data`, so a branch the default config
+ * never reaches advertises nothing and is never checked. That is what
+ * `CONFIG_VARIANTS` in `node-definitions.ts` exists for, and it is hand-written —
+ * a missing variant is an assertion that silently never runs. `manual.inputs`
+ * was real drift hidden that way for the whole first pass of the burn-down.
  */
 
 /** Walk up from this file until the monorepo root (the one with `packages/lib`). */
@@ -148,6 +177,20 @@ const NODE_TYPE_VALUES = { ...TRIGGER_TYPE_VALUES, ...ACTION_TYPE_VALUES }
  */
 const EXTRA_ENGINE_SOURCES: Record<string, string[]> = {
   loop: ['core/loop-context-extensions.ts'],
+  // A form-input node WIRED INTO A TRIGGER is NON_EXECUTABLE — its own processor
+  // never runs (`form-input/form-input-processor.ts:83`). The manual trigger
+  // publishes that node's variables instead, keyed by the FORM-INPUT node's id
+  // (`trigger-nodes/manual.ts`: `setFileVariables(nodeId, …)` and
+  // `applyFormInputOutputVariables({ nodeId, … })` over `Object.entries(triggerData)`).
+  // Without this, `fileCount` — which only manual.ts writes; the processor's own
+  // multi-file arm writes `files.count` — reads as drift on a variable that is in
+  // fact populated on the only path that runs.
+  //
+  // The cost is over-attribution: manual.ts's own `timestamp` / `userId` /
+  // `inputs` are folded in too. Bounded and acceptable here because `form-input`
+  // advertises none of them; it would NOT be acceptable for a large shared file,
+  // which is why `human-confirmation` is a blind-spot entry instead.
+  'form-input': ['nodes/trigger-nodes/manual.ts'],
 }
 
 export interface EngineNodeContract {
@@ -172,6 +215,18 @@ export interface EngineNodeContract {
   unresolvedBulkWrites: string[]
   /** Top-level `node.data.<key>` reads, including via a local alias. */
   dataReads: string[]
+  /**
+   * Reads that reach `.data.<key>` through a local bound to a node pulled OUT of
+   * the graph, not through the processor's own `node` parameter. Key -> the
+   * expression the local was bound from. See `foreignNodeBindings`.
+   */
+  foreignDataReads: Record<string, string>
+  /**
+   * Reads contributed by an ANCESTOR class rather than by this node's own file.
+   * Key -> the engine-root-relative path of the file that actually contains the
+   * read. See `withInherited`.
+   */
+  inheritedDataReads: Record<string, string>
   /** Whether a processor for this type is constructed in `initializeWithDefaults`. */
   registered: boolean
 }
@@ -186,6 +241,7 @@ interface FileFacts {
   dynamicWrites: string[]
   unresolvedBulkWrites: string[]
   dataReads: string[]
+  foreignDataReads: Record<string, string>
 }
 
 /**
@@ -382,6 +438,67 @@ function resolveLocalObject(
   return objectLiteralKeys(source.slice(best))
 }
 
+/**
+ * Locals bound to a node pulled OUT of the workflow graph, rather than to the
+ * processor's own `node` parameter. Identifier -> the binding expression.
+ *
+ * This is the fix for a real mis-file. `manual.ts` reads `inputType` /
+ * `typeOptions` / `label` off the connected FORM-INPUT node it fetches from
+ * `sys.workflow.graph.nodes` — three keys the form-input panel declares and
+ * writes. The reader attributed them to `manual`, whose panel of course declares
+ * none of them, and two of the three were filed as `manual` config drift. They
+ * were never drift; they were a read of a different node's data.
+ *
+ * The binding shapes that occur in the engine today, all rooted at a `nodes`
+ * collection or a `.graph.nodes` access:
+ *   `const x = nodes.find(…)` / `.filter(…)[0]` / `nodes[i]`
+ *   `for (const x of nodes)` / `nodes.map((x) => …)`
+ *
+ * Note what this does NOT do: it does not resolve WHICH node type the local
+ * holds. Statically that needs the graph, which only exists at run time. So a
+ * read through one of these is reported, not dropped — with a `NOTE:` telling
+ * whoever regenerates the allowlist to open the file before filing it as drift.
+ * Dropping it would be worse: an unread key is a silent hole, and this reader's
+ * whole job is to have no silent holes.
+ */
+function foreignNodeBindings(source: string): Record<string, string> {
+  const bindings: Record<string, string> = {}
+  // `nodes`, `graph?.nodes`, `workflow.graph.nodes`, `transformedNodes`, …
+  const collection = '(?:[\\w.?]*[Nn]odes)\\b'
+
+  // `const x = nodes.find(...)`, `= graph?.nodes[0]`, `= workflow.nodes.at(i)`
+  for (const m of source.matchAll(
+    new RegExp(
+      `(?:const|let)\\s+(\\w+)\\s*(?::[^=]*)?=\\s*(?:await\\s+)?${collection}\\s*\\??\\.?\\s*(?:\\.(?:find|at)\\s*\\(|\\[)`,
+      'g'
+    )
+  )) {
+    bindings[m[1] as string] = (m[0] as string).trim()
+  }
+
+  // `for (const x of nodes)` / `for (const [, x] of nodes)`
+  for (const m of source.matchAll(
+    new RegExp(
+      `for\\s*\\(\\s*(?:const|let)\\s+(?:\\[\\s*[\\w,\\s]*?(\\w+)\\s*\\]|(\\w+))\\s+of\\s+${collection}\\b`,
+      'g'
+    )
+  )) {
+    bindings[(m[1] ?? m[2]) as string] = (m[0] as string).trim()
+  }
+
+  // `nodes.map((x) => …)` / `nodes.filter((x) => …)` / `.forEach((x) => …)`
+  for (const m of source.matchAll(
+    new RegExp(
+      `${collection}\\s*\\??\\.\\s*(?:map|filter|forEach|find|some|every)\\s*\\(\\s*\\(?\\s*(\\w+)`,
+      'g'
+    )
+  )) {
+    bindings[m[1] as string] = (m[0] as string).trim()
+  }
+
+  return bindings
+}
+
 /** Character spans of every `else { ... }` block in a source file. */
 function elseBlockSpans(source: string): Array<[number, number]> {
   const spans: Array<[number, number]> = []
@@ -495,17 +612,43 @@ function scanFile(path: string): FileFacts {
       (m) => m[1] as string
     )
   )
+  // Locals holding a node fetched out of the graph. A read through one of these
+  // is about SOME OTHER node, so it must not be scored against this processor's
+  // own panel — it is collected separately and reported with a NOTE.
+  const foreign = foreignNodeBindings(source)
+
   const dataReads = new Set<string>()
-  for (const m of source.matchAll(/node\.data\??\.(\w+)/g)) dataReads.add(m[1] as string)
+  const foreignDataReads: Record<string, string> = {}
+  const record = (key: string, binding: string | undefined) => {
+    if (binding) foreignDataReads[key] = binding
+    else dataReads.add(key)
+  }
+
+  // `node` itself can be the foreign binding — `for (const node of graph.nodes)`
+  // shadows the processor's own parameter, and `form-input-validator.ts` is
+  // exactly that shape. When it is, every `node.data.<key>` read in the file is
+  // suspect, because the reader has no scopes to tell the two apart.
+  for (const m of source.matchAll(/node\.data\??\.(\w+)/g)) record(m[1] as string, foreign.node)
   for (const alias of aliases) {
     // The lookbehind keeps `t.config?.enabledTools` (a TOOLSET's config, not the
     // node's) from being read as `node.data.enabledTools` when the alias happens
     // to be named `config`.
     for (const m of source.matchAll(new RegExp(`(?<![.\\w])${alias}\\??\\.(\\w+)`, 'g'))) {
-      dataReads.add(m[1] as string)
+      record(m[1] as string, foreign.node)
+    }
+  }
+  for (const [identifier, binding] of Object.entries(foreign)) {
+    if (identifier === 'node') continue // already handled above
+    for (const m of source.matchAll(
+      new RegExp(`(?<![.\\w])${identifier}\\??\\.data\\??\\.(\\w+)`, 'g')
+    )) {
+      const key = m[1] as string
+      // A key the processor also reads off its OWN node is not a foreign read.
+      if (!dataReads.has(key)) foreignDataReads[key] = binding
     }
   }
 
+  const ownKeys = Array.from(dataReads).filter((key) => !FRAMEWORK_DATA_KEYS.has(key))
   return {
     path,
     className: classMatch?.[1],
@@ -515,7 +658,12 @@ function scanFile(path: string): FileFacts {
     failurePathOnly: Array.from(onlyElse).filter((path) => !anywhere.has(path)),
     dynamicWrites,
     unresolvedBulkWrites,
-    dataReads: Array.from(dataReads).filter((key) => !FRAMEWORK_DATA_KEYS.has(key)),
+    dataReads: ownKeys,
+    foreignDataReads: Object.fromEntries(
+      Object.entries(foreignDataReads).filter(
+        ([key]) => !FRAMEWORK_DATA_KEYS.has(key) && !ownKeys.includes(key)
+      )
+    ),
   }
 }
 
@@ -546,42 +694,71 @@ export function readEngineContracts(): Map<string, EngineNodeContract> {
     Array.from(registrySource.matchAll(/new\s+(\w+)\s*\(/g), (m) => m[1] as string)
   )
 
-  /** Union a class's own facts with every ancestor's. */
+  /**
+   * Union a class's own facts with every ancestor's, RECORDING which reads came
+   * from an ancestor and from where.
+   *
+   * The provenance is not decoration. A single legacy read on a shared base class
+   * is unioned into every subclass, so it surfaces once PER SUBCLASS and reads as
+   * N independent bugs. `config:ai.outputVariable` and
+   * `config:text-classifier.outputVariable` were one read, on `base-ai-node.ts`,
+   * reported as two entries — two people chased it, and the second could only
+   * ever have resolved it inside the first's file. Naming the ancestor turns that
+   * into one obviously-shared finding.
+   */
   function withInherited(fact: FileFacts) {
     const writes = [...fact.writes]
     const failurePathOnly = [...fact.failurePathOnly]
     const dynamic = [...fact.dynamicWrites]
     const unresolvedBulk = [...fact.unresolvedBulkWrites]
     const reads = [...fact.dataReads]
+    const foreign = { ...fact.foreignDataReads }
+    const inheritedFrom: Record<string, string> = {}
+    const own = new Set(fact.dataReads)
     const seen = new Set<string>([fact.className ?? fact.path])
     let parent = fact.superClass ? byClass.get(fact.superClass) : undefined
     while (parent && !seen.has(parent.className ?? parent.path)) {
       seen.add(parent.className ?? parent.path)
+      const relative = parent.path.replace(`${ENGINE_ROOT}/`, '')
       writes.push(...parent.writes)
       failurePathOnly.push(...parent.failurePathOnly)
       dynamic.push(...parent.dynamicWrites)
       unresolvedBulk.push(...parent.unresolvedBulkWrites)
       reads.push(...parent.dataReads)
+      for (const key of parent.dataReads) {
+        if (!own.has(key) && !(key in inheritedFrom)) inheritedFrom[key] = relative
+      }
+      for (const [key, binding] of Object.entries(parent.foreignDataReads)) {
+        if (!own.has(key) && !(key in foreign)) foreign[key] = `${binding} (in ${relative})`
+      }
       parent = parent.superClass ? byClass.get(parent.superClass) : undefined
     }
-    return { writes, failurePathOnly, dynamic, unresolvedBulk, reads }
+    return { writes, failurePathOnly, dynamic, unresolvedBulk, reads, foreign, inheritedFrom }
   }
 
   // When two files declare the same node type, the REGISTERED one wins outright.
-  // `ai.ts` (the superseded `AIProcessor`) and `ai-v2.ts` (`AIProcessorV2`, the
-  // one actually constructed) both declare `WorkflowNodeType.AI`; merging them
-  // would report the dead processor's `data.prompt` / `data.systemPrompt` reads
-  // as builder drift, when in fact no code path reads them.
+  // This was landed for `ai.ts` (the superseded `AIProcessor`) alongside
+  // `ai-v2.ts` (`AIProcessorV2`, the one actually constructed): both declared
+  // `WorkflowNodeType.AI`, and merging them reported the dead processor's
+  // `data.prompt` / `data.systemPrompt` reads as builder drift when no code path
+  // read them. `ai.ts` has since been deleted, so nothing exercises this today —
+  // it is kept because a superseded-but-still-present processor is a recurring
+  // shape, and without it the next one silently poisons its node's contract.
   const registeredTypes = new Set(
     facts.filter((f) => f.className && registered.has(f.className)).flatMap((f) => f.nodeTypeValues)
   )
 
   const contracts = new Map<string, EngineNodeContract>()
+  /** Node type -> keys read off the processor's OWN `node.data`, not inherited. */
+  const ownReads = new Map<string, Set<string>>()
   for (const fact of facts) {
     const isRegistered = fact.className ? registered.has(fact.className) : false
     for (const nodeType of fact.nodeTypeValues) {
       if (!isRegistered && registeredTypes.has(nodeType)) continue
       const inherited = withInherited(fact)
+      const own = ownReads.get(nodeType) ?? new Set<string>()
+      for (const key of fact.dataReads) own.add(key)
+      ownReads.set(nodeType, own)
       const existing = contracts.get(nodeType)
       contracts.set(nodeType, {
         files: [...(existing?.files ?? []), fact.path.replace(`${ENGINE_ROOT}/`, '')],
@@ -596,6 +773,11 @@ export function readEngineContracts(): Map<string, EngineNodeContract> {
           ...inherited.unresolvedBulk,
         ],
         dataReads: [...(existing?.dataReads ?? []), ...inherited.reads],
+        foreignDataReads: { ...(existing?.foreignDataReads ?? {}), ...inherited.foreign },
+        inheritedDataReads: {
+          ...(existing?.inheritedDataReads ?? {}),
+          ...inherited.inheritedFrom,
+        },
         registered: (existing?.registered ?? false) || isRegistered,
       })
     }
@@ -621,6 +803,19 @@ export function readEngineContracts(): Map<string, EngineNodeContract> {
     contract.dynamicWrites = Array.from(new Set(contract.dynamicWrites)).sort()
     contract.unresolvedBulkWrites = Array.from(new Set(contract.unresolvedBulkWrites)).sort()
     contract.dataReads = Array.from(new Set(contract.dataReads)).sort()
+  }
+
+  // A key that ANY file attributed to this type reads off the processor's own
+  // `node` is neither foreign nor inherited, whatever a sibling file does with a
+  // same-named local. `dataReads` alone cannot decide this — it already holds the
+  // ancestors' keys — so the own-reads are tracked separately during the merge.
+  for (const [nodeType, own] of ownReads) {
+    const contract = contracts.get(nodeType)
+    if (!contract) continue
+    for (const key of own) {
+      delete contract.foreignDataReads[key]
+      delete contract.inheritedDataReads[key]
+    }
   }
 
   cached = contracts

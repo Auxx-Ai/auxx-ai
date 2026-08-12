@@ -34,6 +34,16 @@ export {
   type WorkflowTriggerEvent,
   WorkflowTriggerType,
 } from './core/types'
+// The one rule for telling a variable reference from a literal. The builder's
+// dependency extraction and the engine's field resolution must draw that line in
+// exactly the same place, or a picker-bound field declares no dependency on
+// either side and the parity suite cannot see the gap.
+export {
+  BARE_VARIABLE_PATH_PATTERN,
+  extractVariableRefs,
+  isBareVariablePath,
+  isVariableTemplate,
+} from './nodes/utils/variable-refs'
 // Input mode utilities - for workflow variable inputs
 export { type InputConfig, InputMode, resolveInputConfig } from './operators/input-modes'
 // Operators (Type-Operator Map) - for BaseType lookups in workflow variables

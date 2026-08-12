@@ -2,6 +2,7 @@
 
 import type { NodeDefinition } from '~/components/workflow/types'
 import { NodeType } from '~/components/workflow/types/node-types'
+import { BaseType } from '~/components/workflow/types/variable-types'
 import { aiDefinition } from '../nodes/core/ai/schema'
 import { answerDefinition } from '../nodes/core/answer/schema'
 import { chunkerDefinition } from '../nodes/core/chunker/schema'
@@ -151,12 +152,35 @@ export const BUILDER_NODE_DEFINITIONS: Array<{
 ]
 
 /**
+ * A minimal JSON schema for the three nodes that derive their advertised paths
+ * from one (`ai.structured_output`, `information-extractor.structured_output`,
+ * `webhook.bodySchema`). Two levels deep, so the nested-path walk in
+ * `schemaToUnifiedVariable` is exercised and not just its top-level object.
+ */
+const OBJECT_SCHEMA = {
+  type: 'object',
+  properties: {
+    field: { type: 'string' },
+    nested: { type: 'object', properties: { inner: { type: 'string' } } },
+    items: { type: 'array', items: { type: 'string' } },
+  },
+}
+
+/**
  * Extra configurations to evaluate `outputVariables` under, beyond
  * `defaultData`.
  *
  * `outputVariables` is a FUNCTION of the node's config, so the advertised set is
  * config-dependent and the default config does not reach every branch. Each
  * entry names a branch that advertises a materially different set.
+ *
+ * A MISSING variant is not a gap in coverage, it is an assertion that silently
+ * never runs — the advertised paths behind that flag are never compared against
+ * anything. `manual.inputs` sat unasserted for the whole first pass of the
+ * burn-down for exactly this reason, and it WAS real drift: the engine published
+ * the payload under a global `manualInputs` key that had no readers at all.
+ * So: when a node gates an advertisement on a config flag, it needs a variant
+ * here that turns the flag on.
  *
  * Not exhaustive, and deliberately so: `crud`/`find` in resource mode need a
  * populated `Resource` (fields, relationships, entity-definition id) that only
@@ -168,11 +192,97 @@ export const CONFIG_VARIANTS: Record<
   string,
   Array<{ label: string; data: Record<string, unknown> }>
 > = {
+  // `toolsEnabled` gates the whole `tool_results` subtree (`ai/schema.ts:389`),
+  // and it defaults to `false`, so nothing else reaches it.
+  [NodeType.AI]: [
+    { label: 'tools enabled', data: { toolsEnabled: true } },
+    {
+      label: 'structured output',
+      data: { structured_output: { enabled: true, schema: OBJECT_SCHEMA } },
+    },
+  ],
+
   [NodeType.CRUD]: [
     { label: 'thread mode', data: { resourceType: 'thread', mode: 'update' } },
     {
       label: 'thread mode, default error strategy',
       data: { resourceType: 'thread', mode: 'update', error_strategy: 'default' },
+    },
+  ],
+
+  // The URL arm advertises `metadata.sourceUrl` / `metadata.contentLength`, which
+  // the default FILE arm does not (`document-extractor/output-variables.ts:31`).
+  [NodeType.DOCUMENT_EXTRACTOR]: [{ label: 'url source', data: { sourceType: 'url' } }],
+
+  // Only `split` advertises an ARRAY `result` with a `result[*]` item; the
+  // default `combine` advertises a bare STRING (`format/output-variables.ts:17`).
+  [NodeType.FORMAT]: [{ label: 'split operation', data: { operation: 'split' } }],
+
+  // `form-input/output-variables.ts:21` switches on `inputType` and the default
+  // (`string`) hits the `default:` case, so five whole shapes — address, single
+  // file, multi file, tags/array, currency — are otherwise never advertised.
+  [NodeType.FORM_INPUT]: [
+    { label: 'address input', data: { inputType: BaseType.ADDRESS } },
+    { label: 'currency input', data: { inputType: BaseType.CURRENCY } },
+    { label: 'tags input', data: { inputType: BaseType.TAGS } },
+    { label: 'array input', data: { inputType: BaseType.ARRAY } },
+    { label: 'single file input', data: { inputType: BaseType.FILE } },
+    {
+      label: 'multi file input',
+      data: { inputType: BaseType.FILE, typeOptions: { file: { allowMultiple: true } } },
+    },
+  ],
+
+  // `extracted_data` and everything under it exists only with a schema
+  // (`information-extractor/schema.ts:253`); the default ships `enabled: false`.
+  [NodeType.INFORMATION_EXTRACTOR]: [
+    {
+      label: 'structured output',
+      data: { structured_output: { enabled: true, schema: OBJECT_SCHEMA } },
+    },
+  ],
+
+  // `accumulateResults` defaults to true, which advertises `results`/`lastResult`;
+  // the false arm advertises `result` instead (`loop/schema.ts:153`).
+  [NodeType.LOOP]: [{ label: 'without accumulation', data: { accumulateResults: false } }],
+
+  // `inputs` is advertised only when a form-input node is wired into the trigger
+  // (`manual/schema.ts`, `if (data.inputNodes?.length)`), and `defaultData` seeds
+  // `inputNodes: []`. The id is never dereferenced by `outputVariables`, so any
+  // non-empty array reaches the branch.
+  [NodeType.MANUAL]: [{ label: 'with connected inputs', data: { inputNodes: ['form-input-1'] } }],
+
+  // `cron_expression` replaces `interval_config` on the custom-cron arm
+  // (`scheduled/schema.ts:222`); the default interval is `hours`.
+  [NodeType.SCHEDULED]: [
+    {
+      label: 'custom cron',
+      data: { config: { triggerInterval: 'custom', cronExpression: '0 * * * *' } },
+    },
+  ],
+
+  // The default seeds ONE assignment with an empty `name`, and `outputVariables`
+  // filters those out — so by default this node advertises nothing at all and the
+  // assertion never runs. Both arms need a named assignment to be reached.
+  [NodeType.VAR_ASSIGN]: [
+    {
+      label: 'named scalar variable',
+      data: { variables: [{ id: 'v1', name: 'myVar', type: BaseType.STRING, value: '' }] },
+    },
+    {
+      label: 'named array variable',
+      data: {
+        variables: [{ id: 'v1', name: 'myList', type: BaseType.STRING, value: '', isArray: true }],
+      },
+    },
+  ],
+
+  // A declared body schema replaces the generic OBJECT `body` with the schema's
+  // own nested paths (`webhook/schema.ts:106`).
+  [NodeType.WEBHOOK]: [
+    {
+      label: 'declared body schema',
+      data: { bodySchema: { enabled: true, schema: OBJECT_SCHEMA } },
     },
   ],
 }

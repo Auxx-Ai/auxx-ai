@@ -50,6 +50,31 @@ interface MessageAttachmentOutput {
   url: string | null
 }
 
+/** Output shape for a single `message.from` / `message.to[*]` participant. */
+interface MessageParticipantOutput {
+  email: string
+  name: string
+}
+
+/**
+ * Output shape for the `message` node variable — the object the builder's
+ * picker advertises (`nodes/core/message-received/schema.ts`), key for key.
+ * Written as one container so both the container paths (`message`,
+ * `message.from`) and every leaf resolve; see the write site for why.
+ */
+interface MessageOutput {
+  id: string
+  thread_id: string
+  from: MessageParticipantOutput | null
+  to: MessageParticipantOutput[]
+  subject: string
+  body: string
+  html: string
+  received_at: string
+  has_attachments: boolean
+  attachments: MessageAttachmentOutput[]
+}
+
 /**
  * Lazily resolve attachments for `message.attachments` — only queried when
  * `hasAttachments` is true. One row-listing query plus one `getDownloadInfo`
@@ -94,6 +119,19 @@ async function loadMessageAttachments(
       }
     })
   )
+}
+
+/**
+ * Normalise `Message.receivedAt` (a `Date` column, or a string once the row has
+ * been through JSON) into the ISO string the builder advertises `received_at`
+ * as. A `Date` would interpolate as `Mon Aug 11 2026 10:00:00 GMT+0200 (…)`,
+ * which no downstream date operator can parse; an unparseable value falls back
+ * to now rather than throwing out of the trigger.
+ */
+function toIsoTimestamp(value: Date | string | null | undefined): string {
+  if (!value) return new Date().toISOString()
+  const date = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString()
 }
 
 /**
@@ -181,49 +219,15 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
     contextManager.setVariable('isInbound', context.message.isInbound)
     contextManager.setVariable('hasAttachments', context.message.hasAttachments)
 
-    // Set node-scoped message output variables (matching frontend output variable definitions)
-    contextManager.setNodeVariable(node.nodeId, 'message.id', context.message.id)
-    contextManager.setNodeVariable(node.nodeId, 'message.thread_id', context.message.threadId || '')
-    contextManager.setNodeVariable(node.nodeId, 'message.subject', context.message.subject || '')
-    contextManager.setNodeVariable(
-      node.nodeId,
-      'message.body',
-      context.message.textPlain || context.message.textHtml || ''
-    )
-    contextManager.setNodeVariable(node.nodeId, 'message.html', context.message.textHtml || '')
-    contextManager.setNodeVariable(
-      node.nodeId,
-      'message.received_at',
-      context.message.receivedAt || new Date().toISOString()
-    )
-    contextManager.setNodeVariable(
-      node.nodeId,
-      'message.has_attachments',
-      context.message.hasAttachments
-    )
-    if (context.message.from) {
-      contextManager.setNodeVariable(
-        node.nodeId,
-        'message.from.email',
-        context.message.from.identifier || ''
-      )
-      contextManager.setNodeVariable(
-        node.nodeId,
-        'message.from.name',
-        context.message.from.name || ''
-      )
-    }
-
     // `message.to` — derive from the hydrated MessageParticipant join rows
     // (populated by `loadProcessedMessage` for real triggers; empty for the
     // stale test-runner mock, which is fine — an empty recipients list).
-    const toRecipients = (context.message.participants || [])
+    const toRecipients: MessageParticipantOutput[] = (context.message.participants || [])
       .filter((p) => p.role === ParticipantRole.TO && p.participant)
       .map((p) => ({
         email: p.participant?.identifier || '',
         name: p.participant?.name || '',
       }))
-    contextManager.setNodeVariable(node.nodeId, 'message.to', toRecipients)
 
     // `message.attachments` — lazy, only queried when the message actually
     // has attachments (see `loadMessageAttachments` above for the URL-
@@ -236,7 +240,33 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
           context.db ?? defaultDb
         )
       : []
-    contextManager.setNodeVariable(node.nodeId, 'message.attachments', attachments)
+
+    // The whole message object, written ONCE at `message`. The picker advertises
+    // `message` and `message.from` as selectable OBJECT variables — a field with
+    // no type filter (an AI prompt, for one) accepts any variable, so a user can
+    // and does insert `{{trigger.message}}` — and the store is flat-keyed, so a
+    // per-leaf write would leave both container paths resolving to nothing.
+    // Writing the container instead covers every leaf too: `resolveVariablePath`
+    // falls back to the longest stored prefix and walks INTO its value, which is
+    // the same shape `webhook-processor.ts` relies on for `body`/`headers`/`query`.
+    const messageOutput: MessageOutput = {
+      id: context.message.id,
+      thread_id: context.message.threadId || '',
+      from: context.message.from
+        ? {
+            email: context.message.from.identifier || '',
+            name: context.message.from.name || '',
+          }
+        : null,
+      to: toRecipients,
+      subject: context.message.subject || '',
+      body: context.message.textPlain || context.message.textHtml || '',
+      html: context.message.textHtml || '',
+      received_at: toIsoTimestamp(context.message.receivedAt),
+      has_attachments: context.message.hasAttachments,
+      attachments,
+    }
+    contextManager.setNodeVariable(node.nodeId, 'message', messageOutput)
 
     // Set thread-related variables — use TEST_RECORD_ID as fallback for test/manual mode
     const threadId = context.message.threadId || TEST_RECORD_ID
