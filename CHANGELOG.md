@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.202](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.201...auxx-v0.1.202) (2026-08-12)
+
+
+### Features
+
+* **workflow:** flag app nodes with no usable connection ([#1553](https://github.com/Auxx-Ai/auxx-ai/issues/1553)) ([7edc7fe](https://github.com/Auxx-Ai/auxx-ai/commit/7edc7fefb8db79bfc1334921ba91797f729eaa16))
+
 ## [0.1.201](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.200...auxx-v0.1.201) (2026-08-12)
 
 
