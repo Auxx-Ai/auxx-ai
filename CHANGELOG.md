@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.201](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.200...auxx-v0.1.201) (2026-08-12)
+
+
+### Bug Fixes
+
+* **workflow:** burn down the remaining builder↔engine drift to zero ([#1552](https://github.com/Auxx-Ai/auxx-ai/issues/1552)) ([84e679d](https://github.com/Auxx-Ai/auxx-ai/commit/84e679d3306a570ca64a1ec55a3a18444c618199))
+* **workflow:** close builder↔engine contract drift across the node set ([#1551](https://github.com/Auxx-Ai/auxx-ai/issues/1551)) ([7d9440f](https://github.com/Auxx-Ai/auxx-ai/commit/7d9440f76bca4414be7e3e20911cfe8534733416))
+* **workflow:** resolve builder↔engine variable path drift ([#1549](https://github.com/Auxx-Ai/auxx-ai/issues/1549)) ([d850376](https://github.com/Auxx-Ai/auxx-ai/commit/d85037614369af12cee610dbbd8b04d7fb1eba08))
+
 ## [0.1.200](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.199...auxx-v0.1.200) (2026-08-12)
 
 
