@@ -1,7 +1,7 @@
 {
   "slug": "shopify-order-lookup",
   "name": "Shopify Order Lookup & Reply",
-  "description": "When a customer emails about an order, this workflow extracts the order number, looks it up in Shopify, and generates a contextual AI reply with real order details (status, tracking, items). If the number can't be found it asks the customer to confirm it, if no number was given it asks for one, and if the email isn't order-related it stays silent. No AI-generated signatures.",
+  "description": "When a customer emails about an order, this workflow extracts the order number, looks it up in Shopify, and checks the order was placed from the address that emailed us before sharing anything. Verified customers get a contextual AI reply with real order details (status, tracking, items). If the order belongs to a different email it asks them to write from that address instead, if the number can't be found it asks the customer to confirm it, if no number was given it asks for one, and if the email isn't order-related it stays silent. No AI-generated signatures.",
   "categories": ["customer-service", "shopify", "ai"],
   "status": "public",
   "popularity": 95,
@@ -168,17 +168,35 @@
         "height": 100
       },
       {
-        "id": "ifelse_order_found",
+        "id": "format_order_email",
         "type": "standard",
         "position": {
           "x": 1500,
           "y": 150
         },
         "data": {
+          "id": "format_order_email",
+          "type": "format",
+          "title": "Normalize Order Email",
+          "desc": "Lowercase the email on the order so it can be compared to the sender's address",
+          "operation": "lowercase",
+          "input": "{{shopify_get_order.order.email}}"
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ifelse_order_found",
+        "type": "standard",
+        "position": {
+          "x": 1850,
+          "y": 150
+        },
+        "data": {
           "id": "ifelse_order_found",
           "type": "if-else",
           "title": "Order Found?",
-          "desc": "The extracted number may not match a real order — check Shopify actually returned one",
+          "desc": "The extracted number may not match a real order — and an order that does exist may belong to someone else. Only take the reply path when the order exists AND was placed from the address that emailed us. The order email is normalized upstream because this comparison is case-sensitive; the sender address is already lowercased at ingest.",
           "cases": [
             {
               "id": "case_order_found",
@@ -187,7 +205,28 @@
               "conditions": [
                 {
                   "id": "cond_order_found",
-                  "variableId": "shopify_get_order.name",
+                  "variableId": "shopify_get_order.order.name",
+                  "comparison_operator": "not empty",
+                  "logical_operator": "and"
+                },
+                {
+                  "id": "cond_order_email_matches",
+                  "variableId": "format_order_email.result",
+                  "comparison_operator": "is",
+                  "value": "{{trigger_1.message.from.email}}",
+                  "isConstant": false,
+                  "logical_operator": "and"
+                }
+              ]
+            },
+            {
+              "id": "case_email_mismatch",
+              "case_id": "case_email_mismatch",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond_order_found_unverified",
+                  "variableId": "shopify_get_order.order.name",
                   "comparison_operator": "not empty",
                   "logical_operator": "and"
                 }
@@ -197,7 +236,12 @@
           "_targetBranches": [
             {
               "id": "true",
-              "name": "Found",
+              "name": "Found & Verified",
+              "type": "default"
+            },
+            {
+              "id": "case_email_mismatch",
+              "name": "Email Mismatch",
               "type": "default"
             },
             {
@@ -214,7 +258,7 @@
         "id": "ai_order_reply",
         "type": "standard",
         "position": {
-          "x": 1850,
+          "x": 2200,
           "y": 40
         },
         "data": {
@@ -291,7 +335,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.name"
+                          "variableId": "shopify_get_order.order.name"
                         }
                       },
                       {
@@ -304,7 +348,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.financialStatus"
+                          "variableId": "shopify_get_order.order.financialStatus"
                         }
                       },
                       {
@@ -317,7 +361,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.fulfillmentStatus"
+                          "variableId": "shopify_get_order.order.fulfillmentStatus"
                         }
                       },
                       {
@@ -330,7 +374,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.totalPrice"
+                          "variableId": "shopify_get_order.order.totalPrice"
                         }
                       },
                       {
@@ -340,7 +384,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.currency"
+                          "variableId": "shopify_get_order.order.currency"
                         }
                       },
                       {
@@ -353,7 +397,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.lineItems"
+                          "variableId": "shopify_get_order.order.lineItems"
                         }
                       },
                       {
@@ -366,7 +410,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.orderStatusUrl"
+                          "variableId": "shopify_get_order.order.orderStatusUrl"
                         }
                       },
                       {
@@ -379,7 +423,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.createdAt"
+                          "variableId": "shopify_get_order.order.createdAt"
                         }
                       }
                     ]
@@ -528,7 +572,7 @@
         "id": "ifelse_reply_order",
         "type": "standard",
         "position": {
-          "x": 2200,
+          "x": 2550,
           "y": 40
         },
         "data": {
@@ -573,7 +617,7 @@
         "id": "answer_order",
         "type": "standard",
         "position": {
-          "x": 2550,
+          "x": 2900,
           "y": 40
         },
         "data": {
@@ -599,11 +643,306 @@
         "height": 100
       },
       {
+        "id": "ai_order_mismatch",
+        "type": "standard",
+        "position": {
+          "x": 2200,
+          "y": 300
+        },
+        "data": {
+          "id": "ai_order_mismatch",
+          "type": "ai",
+          "title": "AI: Verify Order Owner",
+          "desc": "The order exists but was placed from a different email — ask them to write from that address",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a friendly, professional customer support agent for a Shopify store. The customer referenced order number "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.order_number"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "text": ", and an order with that number does exist — but it was placed from a different email address than the one this message came from. You cannot share any details of that order with them."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer intent: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.intent"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Urgency: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.urgency"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Guidelines:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Acknowledge their message warmly and without suspicion"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Explain that for the account holder’s privacy you can only discuss an order with the email address it was placed from"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Ask them to reply from the email used at checkout, or to forward the order confirmation email"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Offer the alternative that they may have used a second address, or that the order was a gift placed by someone else"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- NEVER reveal anything about the order: not the email on file (not even partially masked), the customer name, items, totals, status, tracking, or dates. Do not confirm who placed it."
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Do not accuse them of anything. Most of these are honest mismatches."
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep it concise — don’t over-explain"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Never add a signature or sign-off (no \"Best regards\", no name). The email system adds signatures separately."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Output: set respond to true and put the reply in email_message. If the email clearly isn’t a genuine customer request (spam, an automated bounce/out-of-office, or nothing to answer), set respond to false and leave email_message empty."
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "respond": {
+                  "type": "boolean",
+                  "description": "Whether to send a reply at all. Set false only if the email is not a genuine customer request that warrants a response (spam, automated bounce, out-of-office)."
+                },
+                "email_message": {
+                  "type": ["string", "null"],
+                  "description": "The reply body to send. Null when respond is false. Never include a signature or sign-off, and never include any detail of the order."
+                }
+              },
+              "required": ["respond", "email_message"]
+            }
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ifelse_reply_mismatch",
+        "type": "standard",
+        "position": {
+          "x": 2550,
+          "y": 300
+        },
+        "data": {
+          "id": "ifelse_reply_mismatch",
+          "type": "if-else",
+          "title": "Should Reply?",
+          "desc": "Only send if the AI decided a reply is warranted",
+          "cases": [
+            {
+              "id": "case_reply_mismatch",
+              "case_id": "true",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond_reply_mismatch",
+                  "variableId": "ai_order_mismatch.respond",
+                  "comparison_operator": "is",
+                  "value": true,
+                  "isConstant": true,
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "true",
+              "name": "Yes",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "No",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_mismatch",
+        "type": "standard",
+        "position": {
+          "x": 2900,
+          "y": 300
+        },
+        "data": {
+          "id": "answer_mismatch",
+          "type": "answer",
+          "title": "Send Verification Reply",
+          "desc": "Ask the customer to write from the address the order was placed from",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_order_mismatch.email_message}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
         "id": "ai_order_not_found",
         "type": "standard",
         "position": {
-          "x": 1850,
-          "y": 300
+          "x": 2200,
+          "y": 560
         },
         "data": {
           "id": "ai_order_not_found",
@@ -809,8 +1148,8 @@
         "id": "ifelse_reply_not_found",
         "type": "standard",
         "position": {
-          "x": 2200,
-          "y": 300
+          "x": 2550,
+          "y": 560
         },
         "data": {
           "id": "ifelse_reply_not_found",
@@ -854,8 +1193,8 @@
         "id": "answer_not_found",
         "type": "standard",
         "position": {
-          "x": 2550,
-          "y": 300
+          "x": 2900,
+          "y": 560
         },
         "data": {
           "id": "answer_not_found",
@@ -884,7 +1223,7 @@
         "type": "standard",
         "position": {
           "x": 1150,
-          "y": 560
+          "y": 820
         },
         "data": {
           "id": "ai_no_order_reply",
@@ -1081,7 +1420,7 @@
         "type": "standard",
         "position": {
           "x": 1500,
-          "y": 560
+          "y": 820
         },
         "data": {
           "id": "ifelse_reply_no_order",
@@ -1126,7 +1465,7 @@
         "type": "standard",
         "position": {
           "x": 1850,
-          "y": 560
+          "y": 820
         },
         "data": {
           "id": "answer_no_order",
@@ -1174,8 +1513,15 @@
         "targetHandle": "target"
       },
       {
-        "id": "e_shopify_order_found",
+        "id": "e_shopify_format_email",
         "source": "shopify_get_order",
+        "target": "format_order_email",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_format_email_order_found",
+        "source": "format_order_email",
         "target": "ifelse_order_found",
         "sourceHandle": "source",
         "targetHandle": "target"
@@ -1198,6 +1544,27 @@
         "id": "e_gate_answer_order",
         "source": "ifelse_reply_order",
         "target": "answer_order",
+        "sourceHandle": "true",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_order_mismatch_ai",
+        "source": "ifelse_order_found",
+        "target": "ai_order_mismatch",
+        "sourceHandle": "case_email_mismatch",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_gate_mismatch",
+        "source": "ai_order_mismatch",
+        "target": "ifelse_reply_mismatch",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_gate_answer_mismatch",
+        "source": "ifelse_reply_mismatch",
+        "target": "answer_mismatch",
         "sourceHandle": "true",
         "targetHandle": "target"
       },

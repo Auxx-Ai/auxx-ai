@@ -191,11 +191,11 @@
           "inputs": [
             {
               "name": "fulfillmentStatus",
-              "variableId": "shopify_get_order.fulfillmentStatus"
+              "variableId": "shopify_get_order.order.fulfillmentStatus"
             },
             {
               "name": "createdAt",
-              "variableId": "shopify_get_order.createdAt"
+              "variableId": "shopify_get_order.order.createdAt"
             }
           ],
           "outputs": [
@@ -276,7 +276,7 @@
           "type": "human-confirmation",
           "title": "Approve Return",
           "description": "Return request meets policy — approve to proceed",
-          "message": "A customer has requested a return that meets policy requirements.\n\nOrder: #{{shopify_get_order.name}}\nItem: {{extractor_1.extracted_data.item_name}}\nReason: {{extractor_1.extracted_data.return_reason}}\nFulfillment: {{shopify_get_order.fulfillmentStatus}}\nDays since order: {{code_check_policy.daysSinceOrder}}\n\nApprove to send the return confirmation to the customer.",
+          "message": "A customer has requested a return that meets policy requirements.\n\nOrder: #{{shopify_get_order.order.name}}\nItem: {{extractor_1.extracted_data.item_name}}\nReason: {{extractor_1.extracted_data.return_reason}}\nFulfillment: {{shopify_get_order.order.fulfillmentStatus}}\nDays since order: {{code_check_policy.daysSinceOrder}}\n\nApprove to send the return confirmation to the customer.",
           "assignees": {
             "actorIds": []
           },
@@ -354,7 +354,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.name"
+                          "variableId": "shopify_get_order.order.name"
                         }
                       },
                       {
@@ -393,7 +393,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.totalPrice"
+                          "variableId": "shopify_get_order.order.totalPrice"
                         }
                       },
                       {
@@ -403,7 +403,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.currency"
+                          "variableId": "shopify_get_order.order.currency"
                         }
                       }
                     ]
@@ -602,7 +602,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.name"
+                          "variableId": "shopify_get_order.order.name"
                         }
                       },
                       {

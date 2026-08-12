@@ -38,6 +38,8 @@ import {
 const CONSTANTS = {
   DEBOUNCE_MS: 300,
   DEFAULT_MAX_HEIGHT: 400,
+  /** Floor for the scrollable list so it never collapses behind the surrounding bars. */
+  MIN_LIST_HEIGHT: 120,
   FOCUS_DELAY_MS: 0,
   CMDK_ROOT_SELECTOR: '[cmdk-root]' as const,
 } as const
@@ -135,6 +137,12 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [hasManuallyNavigated, setHasManuallyNavigated] = useState(false)
   const commandRef = useRef<HTMLDivElement>(null)
+
+  // Height of everything around the list (search input, breadcrumb bar, hint bar).
+  // The scroll viewport has to be capped at `maxHeight` MINUS this — cap it at the
+  // full `maxHeight` and the column overflows its own container, whose
+  // `overflow-hidden` then clips the last rows somewhere no scroll can reach.
+  const [chromeHeight, setChromeHeight] = useState(0)
 
   const { variables, groups, allVariables } = useAvailableVariables({ nodeId })
 
@@ -412,6 +420,30 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
     }
   }, [selected, hasManuallyNavigated, allVariables, buildNavigationStack])
 
+  // Measure the fixed bars around the list so the list can be capped at the space
+  // actually left for it. Re-runs when the breadcrumb bar swaps for the search bar.
+  useEffect(() => {
+    const root = commandRef.current
+    if (!root) return
+
+    const measure = () => {
+      let height = 0
+      for (const child of Array.from(root.children)) {
+        if (!(child instanceof HTMLElement)) continue
+        if (child.dataset.slot === 'command-list') continue
+        height += child.getBoundingClientRect().height
+      }
+      setChromeHeight(Math.ceil(height))
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(root)
+    return () => observer.disconnect()
+  }, [])
+
+  const listMaxHeight = Math.max(CONSTANTS.MIN_LIST_HEIGHT, maxHeight - chromeHeight)
+
   return (
     <div className={cn('flex flex-1 flex-col overflow-hidden', className)}>
       <Command
@@ -545,8 +577,13 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
 
         {/* Variable List */}
         <CommandList
-          className='flex-1 overflow-y-auto min-h-[200px] outline-none'
-          scrollAreaStyle={{ maxHeight }}>
+          className='outline-none'
+          // `className` lands on the inner cmdk list, where height utilities are a dead
+          // letter — the scroll viewport is the ScrollArea Root, which only `scrollArea*`
+          // reaches. Cap it at the space left after the surrounding bars, not the whole
+          // popover height, or the column overflows and the last rows get clipped.
+          scrollAreaClassName='max-h-none'
+          scrollAreaStyle={{ maxHeight: listMaxHeight }}>
           {getCurrentLevelItems.length === 0 ? (
             <CommandEmpty className='py-8 flex flex-col items-center'>
               <Search className='size-8 mx-auto mb-2 opacity-50' />

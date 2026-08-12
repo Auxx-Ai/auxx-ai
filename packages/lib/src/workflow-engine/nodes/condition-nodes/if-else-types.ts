@@ -19,6 +19,13 @@ export interface NodeCondition {
   comparison_operator: Operator
   // Value to compare against
   value?: string | number | boolean | any[] | Record<string, any>
+  /**
+   * `false` when `value` holds a variable reference rather than a literal — the
+   * builder sets it when the right-hand side is switched out of constant mode.
+   * A `{{…}}` template is resolved regardless of this flag; it only matters for
+   * a bare path (`node_1.total`), which is otherwise a plausible literal string.
+   */
+  isConstant?: boolean
 }
 
 /**

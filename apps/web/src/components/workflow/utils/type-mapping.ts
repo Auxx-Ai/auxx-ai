@@ -77,26 +77,46 @@ export function mapFieldTypeToBaseType(fieldType: string | undefined): BaseType 
  *
  * @param field - The field to convert
  * @param nodeId - The node ID this output belongs to
+ * @param parentPath - Path of the enclosing struct/array, relative to the node. Nested
+ *   fields only carry their own key (`name`), so without this the variable ID collapses
+ *   to `<nodeId>.<key>` and the picker hands out a path the engine can't resolve — the
+ *   runtime stores the top-level output only (`<nodeId>.order`), and reads walk into it.
  * @returns A UnifiedVariable for the variable system
  */
 export function convertFieldToOutputVariable(
   field: WorkflowBlockField,
-  nodeId: string
+  nodeId: string,
+  parentPath?: string
 ): UnifiedVariable {
   // Captured before the guard: `field` narrows to `never` in the invalid branch,
   // but this function is deliberately defensive about malformed runtime input.
   const fieldName: string | undefined = field?.name
+  const path = parentPath ? `${parentPath}.${fieldName ?? 'unknown'}` : (fieldName ?? 'unknown')
 
+  return buildOutputVariable(field, nodeId, path)
+}
+
+/**
+ * Convert a field whose path within the node is already known.
+ * Split out so array items can claim the `<array>[*]` path instead of appending their
+ * own (synthetic) name to it.
+ */
+function buildOutputVariable(
+  field: WorkflowBlockField,
+  nodeId: string,
+  path: string
+): UnifiedVariable {
   // Validate field structure
   if (!isValidWorkflowBlockField(field)) {
     console.error('[Type Mapping] Invalid field passed to convertFieldToOutputVariable:', {
       field,
       nodeId,
+      path,
     })
     // Return a fallback variable to prevent crashes
     return createUnifiedOutputVariable({
       nodeId,
-      path: fieldName || 'unknown', // Changed from 'name' to 'path'
+      path,
       type: BaseType.ANY,
       description: 'Invalid field definition - missing required properties',
     })
@@ -136,19 +156,20 @@ export function convertFieldToOutputVariable(
   if (field.properties) {
     properties = {}
     for (const [key, prop] of Object.entries(field.properties)) {
-      properties[key] = convertFieldToOutputVariable(prop, nodeId)
+      properties[key] = buildOutputVariable(prop, nodeId, `${path}.${prop?.name || key}`)
     }
   }
 
-  // Build items recursively for array types
+  // Build items recursively for array types. The item IS the array at `[*]`, so it takes
+  // that path outright rather than appending its own (synthetic) name to the parent.
   let items: UnifiedVariable | undefined
   if (field.items) {
-    items = convertFieldToOutputVariable(field.items, nodeId)
+    items = buildOutputVariable(field.items, nodeId, `${path}[*]`)
   }
 
   return createUnifiedOutputVariable({
     nodeId,
-    path: field.name, // Changed from 'name' to 'path'
+    path,
     type: baseType, // Now format-aware
     description: field.description,
     properties,

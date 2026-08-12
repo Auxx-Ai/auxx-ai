@@ -60,11 +60,15 @@ export class IfElseProcessor extends BaseNodeProcessor {
         // Resolve values for all conditions in this case in parallel
         const resolvedConditions = await Promise.all(
           caseItem.conditions.map(async (condition) => {
-            const variableValue = await contextManager.getVariable(condition.variableId)
+            const [variableValue, targetValue] = await Promise.all([
+              contextManager.getVariable(condition.variableId),
+              this.resolveConditionTarget(condition, contextManager),
+            ])
 
             return {
               condition, // Original NodeCondition
               resolvedValue: variableValue,
+              targetValue,
             }
           })
         )
@@ -119,11 +123,13 @@ export class IfElseProcessor extends BaseNodeProcessor {
 
       // Evaluate all conditions in this case
       const conditions: EvaluatedCondition[] = resolvedConditions.map(
-        ({ condition, resolvedValue }: any) => ({
+        ({ condition, resolvedValue, targetValue }: any) => ({
           operator: condition.comparison_operator,
-          target: condition.value ?? null,
+          // The *resolved* target, so the trace shows what was actually compared
+          // rather than the `{{…}}` template the author typed.
+          target: targetValue ?? null,
           resolvedValue: resolvedValue ?? null,
-          result: this.evaluateCondition(condition, resolvedValue, contextManager),
+          result: this.evaluateCondition(condition, resolvedValue, targetValue, contextManager),
         })
       )
 
@@ -209,6 +215,33 @@ export class IfElseProcessor extends BaseNodeProcessor {
   }
 
   /**
+   * Resolve the right-hand side of a condition.
+   *
+   * The comparison value is not always a literal — the builder lets you compare a
+   * variable against another variable (`isConstant: false`), and templates ship
+   * `{{env.HIGH_VALUE_THRESHOLD}}`-style targets. Left unresolved these compare as
+   * the literal string `"{{…}}"`, which silently fails every match rather than
+   * erroring, so the branch just never fires.
+   *
+   * Only strings are resolved; numbers, booleans and the array targets used by the
+   * `in` / `not in` operators are already literal values and pass straight through.
+   */
+  private async resolveConditionTarget(
+    condition: NodeCondition,
+    contextManager: ExecutionContextManager
+  ): Promise<NodeCondition['value']> {
+    const { value } = condition
+    if (typeof value !== 'string' || value.length === 0) return value
+
+    const isTemplate = value.includes('{{') && value.includes('}}')
+    // A bare path is only a reference when the author said so — otherwise
+    // "shipped.today" is a perfectly good string to compare against.
+    if (!isTemplate && condition.isConstant !== false) return value
+
+    return this.resolveVariableValue(value, contextManager)
+  }
+
+  /**
    * Extract variables from condition expressions
    */
   protected extractRequiredVariables(node: WorkflowNode): string[] {
@@ -221,6 +254,14 @@ export class IfElseProcessor extends BaseNodeProcessor {
         caseItem.conditions?.forEach((condition) => {
           if (condition.variableId) {
             variables.add(condition.variableId)
+          }
+          // The comparison value can reference a variable too — declare it, or the
+          // node looks independent of an upstream it actually reads.
+          if (typeof condition.value === 'string') {
+            this.extractVariableIds(condition.value).forEach((v) => variables.add(v))
+            if (condition.isConstant === false && !condition.value.includes('{{')) {
+              variables.add(condition.value)
+            }
           }
         })
       })
@@ -286,9 +327,10 @@ export class IfElseProcessor extends BaseNodeProcessor {
   private evaluateCondition(
     condition: NodeCondition,
     resolvedValue: any,
+    value: NodeCondition['value'],
     contextManager: ExecutionContextManager
   ): boolean {
-    const { comparison_operator, value } = condition
+    const { comparison_operator } = condition
     const def = getOperatorDefinition(comparison_operator)
 
     if (!def) {

@@ -569,13 +569,13 @@
           "resourceType": "@entity:orders",
           "mode": "create",
           "data": {
-            "@field:orderNumber": "{{shopify-order-003.name}}",
-            "@field:orderTotal": "{{shopify-order-003.totalPrice}}",
+            "@field:orderNumber": "{{shopify-order-003.order.name}}",
+            "@field:orderTotal": "{{shopify-order-003.order.totalPrice}}",
             "@field:status": "Processing",
             "@field:priority": "Normal",
-            "@field:orderDate": "{{shopify-order-003.createdAt}}",
+            "@field:orderDate": "{{shopify-order-003.order.createdAt}}",
             "@field:shippingAddress": "",
-            "@field:trackingUrl": "{{shopify-order-003.orderStatusUrl}}",
+            "@field:trackingUrl": "{{shopify-order-003.order.orderStatusUrl}}",
             "@field:itemsOrdered": "",
             "@field:requiresFollowUp": true,
             "@field:internalNotes": "Auto-created from customer support message"
@@ -808,7 +808,7 @@
           "mode": "create",
           "data": {
             "@field:dealName": "Upsell: {{extractor-002.extracted_data.firstName}} {{extractor-002.extracted_data.lastName}} — {{extractor-002.extracted_data.orderNumber}}",
-            "@field:value": "{{shopify-order-003.totalPrice}}",
+            "@field:value": "{{shopify-order-003.order.totalPrice}}",
             "@field:stage": "Discovery",
             "@field:probability": 25,
             "@field:expectedCloseDate": ""
@@ -854,7 +854,7 @@
               "id": "set-vars-017-2",
               "name": "orderValue",
               "type": "NUMBER",
-              "value": "{{shopify-order-003.totalPrice}}",
+              "value": "{{shopify-order-003.order.totalPrice}}",
               "isConstantMode": false
             }
           ],
@@ -887,7 +887,7 @@
               "conditions": [
                 {
                   "id": "cond-high-value",
-                  "variableId": "shopify-order-003.totalPrice",
+                  "variableId": "shopify-order-003.order.totalPrice",
                   "comparison_operator": ">",
                   "value": "{{env.HIGH_VALUE_THRESHOLD}}",
                   "isConstant": false,
@@ -928,7 +928,7 @@
           "title": "Escalate to Slack",
           "desc": "Send high-value order alert to the escalation Slack channel",
           "channel": "{{env.ESCALATION_SLACK_CHANNEL}}",
-          "message": "High-value order issue from {{extractor-002.extracted_data.firstName}} {{extractor-002.extracted_data.lastName}} (Order: {{extractor-002.extracted_data.orderNumber}}, Value: ${{shopify-order-003.totalPrice}})\n\nIssue: {{extractor-002.extracted_data.issueDescription}}\nCategory: {{classifier-013.output.category}}",
+          "message": "High-value order issue from {{extractor-002.extracted_data.firstName}} {{extractor-002.extracted_data.lastName}} (Order: {{extractor-002.extracted_data.orderNumber}}, Value: ${{shopify-order-003.order.totalPrice}})\n\nIssue: {{extractor-002.extracted_data.issueDescription}}\nCategory: {{classifier-013.output.category}}",
           "fieldModes": {
             "channel": false,
             "message": false
@@ -1057,7 +1057,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify-order-003.fulfillmentStatus"
+                          "variableId": "shopify-order-003.order.fulfillmentStatus"
                         }
                       },
                       {
@@ -1070,7 +1070,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify-order-003.orderStatusUrl"
+                          "variableId": "shopify-order-003.order.orderStatusUrl"
                         }
                       }
                     ]

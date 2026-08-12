@@ -143,7 +143,7 @@
               "conditions": [
                 {
                   "id": "cond_status",
-                  "variableId": "shopify_get_order.fulfillmentStatus",
+                  "variableId": "shopify_get_order.order.fulfillmentStatus",
                   "comparison_operator": "is",
                   "value": "fulfilled",
                   "isConstant": true,
@@ -221,7 +221,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.name"
+                          "variableId": "shopify_get_order.order.name"
                         }
                       },
                       {
@@ -234,7 +234,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.fulfillmentStatus"
+                          "variableId": "shopify_get_order.order.fulfillmentStatus"
                         }
                       },
                       {
@@ -247,7 +247,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.totalPrice"
+                          "variableId": "shopify_get_order.order.totalPrice"
                         }
                       },
                       {
@@ -257,7 +257,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.currency"
+                          "variableId": "shopify_get_order.order.currency"
                         }
                       },
                       {
@@ -270,7 +270,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.lineItems"
+                          "variableId": "shopify_get_order.order.lineItems"
                         }
                       },
                       {
@@ -283,7 +283,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.orderStatusUrl"
+                          "variableId": "shopify_get_order.order.orderStatusUrl"
                         }
                       },
                       {
@@ -296,7 +296,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.createdAt"
+                          "variableId": "shopify_get_order.order.createdAt"
                         }
                       }
                     ]
@@ -522,7 +522,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.name"
+                          "variableId": "shopify_get_order.order.name"
                         }
                       },
                       {
@@ -535,7 +535,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.lineItems"
+                          "variableId": "shopify_get_order.order.lineItems"
                         }
                       }
                     ]
@@ -602,7 +602,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.name"
+                          "variableId": "shopify_get_order.order.name"
                         }
                       },
                       {
@@ -711,7 +711,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.name"
+                          "variableId": "shopify_get_order.order.name"
                         }
                       },
                       {
@@ -724,7 +724,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.financialStatus"
+                          "variableId": "shopify_get_order.order.financialStatus"
                         }
                       },
                       {
@@ -737,7 +737,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.fulfillmentStatus"
+                          "variableId": "shopify_get_order.order.fulfillmentStatus"
                         }
                       },
                       {
@@ -750,7 +750,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.totalPrice"
+                          "variableId": "shopify_get_order.order.totalPrice"
                         }
                       },
                       {
@@ -760,7 +760,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.currency"
+                          "variableId": "shopify_get_order.order.currency"
                         }
                       },
                       {
@@ -773,7 +773,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.lineItems"
+                          "variableId": "shopify_get_order.order.lineItems"
                         }
                       },
                       {
@@ -786,7 +786,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "shopify_get_order.createdAt"
+                          "variableId": "shopify_get_order.order.createdAt"
                         }
                       }
                     ]
