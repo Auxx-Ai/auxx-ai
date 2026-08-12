@@ -61,8 +61,8 @@ export interface HumanConfirmationNodeData extends BaseNodeData {
   require_login: boolean
 
   // Test mode configuration
-  /** Behavior when running in test mode */
-  test_behavior?: 'always_approve' | 'always_deny' | 'random' | 'live'
+  /** Behavior when running in test mode ('delayed' takes the timeout branch) */
+  test_behavior?: 'always_approve' | 'always_deny' | 'random' | 'delayed' | 'live'
   /** Delay in seconds for 'delayed' test behavior */
   test_delay?: number
 

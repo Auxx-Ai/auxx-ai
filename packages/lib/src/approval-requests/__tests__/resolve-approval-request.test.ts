@@ -9,6 +9,7 @@
 
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { isApprovalOutcome, outcomeForAction } from '../client'
 
 // The default lib setup mocks `schema` as a Proxy of empty objects, which makes
 // every Drizzle predicate unreadable — and the atomic claim IS a predicate. Swap in
@@ -396,7 +397,16 @@ describe('kind dispatch (plan 28 H4)', () => {
     expect(applyAccessDecision).toHaveBeenCalledTimes(1)
   })
 
-  it('a WORKFLOW decision still resumes on BOTH approve and deny', async () => {
+  /**
+   * The resume payload speaks OUTCOMES, not the reviewer's verb: `action` is
+   * `'approve' | 'deny'` (the API input and the `ApprovalResponse.action`
+   * column), the payload is `'approved' | 'denied'` — the same vocabulary as
+   * `ApprovalRequest.status`, the node's branch handles and its `outcome`
+   * variable. Passing `action` straight through, as this used to, made
+   * `getHumanConfirmationNextNodes` the only translator and left the decision
+   * variables empty.
+   */
+  it('a WORKFLOW decision resumes on BOTH verbs, in the outcome vocabulary', async () => {
     const { resolveApprovalRequest } = await import('../approval-request-mutations')
     for (const action of ['approve', 'deny'] as const) {
       resumeWorkflow.mockClear()
@@ -409,7 +419,7 @@ describe('kind dispatch (plan 28 H4)', () => {
       expect(resumeWorkflow).toHaveBeenCalledTimes(1)
       expect(
         (resumeWorkflow.mock.calls as unknown as Array<[unknown, unknown, unknown]>)[0]![2]
-      ).toMatchObject({ outcome: action })
+      ).toMatchObject({ outcome: outcomeForAction(action) })
     }
   })
 
@@ -422,6 +432,73 @@ describe('kind dispatch (plan 28 H4)', () => {
       action: 'approve',
     })
     expect(applyAccessDecision).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * An administrative cancel is the third producer of a workflow resume payload,
+ * and the one that used to disagree with the router: it sent the past-tense
+ * `'denied'` while `getHumanConfirmationNextNodes` matched the reviewer's verb
+ * `'deny'`, so the run fell through to the `source` handle — which a human node
+ * does not have — and simply stopped.
+ *
+ * Where that payload lands once it reaches the engine is pinned in
+ * `workflow-engine/core/__tests__/approval-outcome-vocabulary.test.ts`.
+ */
+describe('administrative cancel', () => {
+  it('resumes the run on the DENIED outcome', async () => {
+    const { cancelApprovalRequest } = await import('../approval-request-mutations')
+    const { db } = makeDb(WORKFLOW_ROW)
+
+    await cancelApprovalRequest(db as never, {
+      approvalRequestId: 'req-1',
+      cancelledBy: 'admin1',
+      reason: 'workflow retired',
+    })
+
+    expect(resumeWorkflow).toHaveBeenCalledTimes(1)
+    const [runId, nodeId, payload] = (
+      resumeWorkflow.mock.calls as unknown as Array<[string, string, Record<string, unknown>]>
+    )[0]!
+    expect(runId).toBe('run-1')
+    expect(nodeId).toBe('node-1')
+    expect(payload).toMatchObject({
+      outcome: 'denied',
+      cancelledBy: 'admin1',
+      cancelReason: 'workflow retired',
+    })
+    expect(isApprovalOutcome(payload.outcome)).toBe(true)
+  })
+
+  it('takes the row to `withdrawn`, not `timeout` — it did not lapse', async () => {
+    const { cancelApprovalRequest } = await import('../approval-request-mutations')
+    const { db, calls } = makeDb(WORKFLOW_ROW)
+
+    await cancelApprovalRequest(db as never, {
+      approvalRequestId: 'req-1',
+      cancelledBy: 'admin1',
+    })
+
+    expect(calls.statusSets).toHaveLength(1)
+    expect(calls.statusSets[0]).toMatchObject({ status: 'withdrawn' })
+    // The branch and the row answer different questions: the run routes as
+    // denied, the row records that a person retracted it.
+    expect((calls.statusSets[0] as { metadata: Record<string, unknown> }).metadata).toMatchObject({
+      cancelled: true,
+      cancelledBy: 'admin1',
+    })
+  })
+
+  it('does not resume anything for an access-kind row', async () => {
+    const { cancelApprovalRequest } = await import('../approval-request-mutations')
+    const { db } = makeDb(ACCESS_ROW)
+
+    await cancelApprovalRequest(db as never, {
+      approvalRequestId: 'req-1',
+      cancelledBy: 'admin1',
+    })
+
+    expect(resumeWorkflow).not.toHaveBeenCalled()
   })
 })
 

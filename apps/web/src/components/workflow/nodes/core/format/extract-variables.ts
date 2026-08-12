@@ -38,8 +38,14 @@ export function extractFormatVariables(data: Partial<FormatNodeData>): string[] 
     extractVarIdsFromString(data.splitConfig.delimiter).forEach((v) => ids.add(v))
   }
 
-  // Variable-mode numeric fields
+  // Variable-mode config fields (numeric fields track their own flag; the
+  // boolean/enum toggles track theirs in `fieldModes`)
+  const fieldModes = data.fieldModes ?? {}
   const varFields = [
+    { value: data.trimConfig?.trimAll, isConstant: fieldModes.trimAll ?? true },
+    { value: data.replaceConfig?.replaceAll, isConstant: fieldModes.replaceAll ?? true },
+    { value: data.currencyConfig?.currencyCode, isConstant: fieldModes.currencyCode ?? true },
+    { value: data.stripHtmlConfig?.keepLineBreaks, isConstant: fieldModes.keepLineBreaks ?? true },
     { value: data.padConfig?.length, isConstant: data.padConfig?.isLengthConstant },
     { value: data.truncateConfig?.maxLength, isConstant: data.truncateConfig?.isMaxLengthConstant },
     { value: data.substringConfig?.start, isConstant: data.substringConfig?.isStartConstant },

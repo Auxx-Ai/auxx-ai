@@ -1,6 +1,6 @@
 // packages/lib/src/conditions/evaluate.ts
 
-import { isEmpty } from '@auxx/utils/objects'
+import { evaluateOperator, isKnownOperator } from './evaluate-operator'
 import type { Operator } from './operator-definitions'
 import type { ConditionContext } from './resolve-context'
 import type { Condition, ConditionGroup } from './types'
@@ -20,8 +20,37 @@ export const FIELD_NOT_RESOLVABLE = Symbol.for('FIELD_NOT_RESOLVABLE')
 export type FieldResolver<T> = (entity: T, fieldId: string) => unknown
 
 /**
+ * Why a condition could not be evaluated as written.
+ *
+ * - `unknown-operator` — the operator is not a key of `OPERATOR_DEFINITIONS`, so it
+ *   evaluates `false` and can never match.
+ * - `unresolved-value-source` — a `valueSource` placeholder (e.g. `currentUser`) had
+ *   no value in the evaluation context, so the condition was dropped from its group.
+ */
+export interface ConditionDiagnostic {
+  conditionId: string
+  fieldId: string
+  operator: string
+  reason: 'unknown-operator' | 'unresolved-value-source'
+}
+
+/** Result of a diagnostics-carrying evaluation. */
+export interface ConditionEvaluation {
+  matched: boolean
+  diagnostics: ConditionDiagnostic[]
+}
+
+/**
  * Evaluate if an entity matches all condition groups.
  * Groups are AND'd together at the top level.
+ *
+ * Operator semantics live in `conditions/evaluate-operator.ts` — one implementation
+ * shared with the workflow if-else node and the list-filter node.
+ *
+ * 🔴 An unrecognised operator evaluates FALSE (it used to evaluate `true`, i.e. a
+ * typo'd or retired operator matched every record). Anything that MUTATES on a match
+ * must call {@link evaluateConditionsWithDiagnostics} instead and refuse to act when
+ * `diagnostics` is non-empty — otherwise fail-closed just moves the silent failure.
  *
  * @param entity - The entity to evaluate
  * @param groups - Condition groups to evaluate against
@@ -47,11 +76,37 @@ export function evaluateConditions<T>(
   resolver: FieldResolver<T>,
   context?: ConditionContext
 ): boolean {
-  // Empty groups = match all
-  if (groups.length === 0) return true
+  return evaluateConditionsWithDiagnostics(entity, groups, resolver, context).matched
+}
 
-  // Groups are AND'd at top level
-  return groups.every((group) => evaluateGroup(entity, group, resolver, context))
+/**
+ * `evaluateConditions` plus the list of conditions that could not be evaluated as
+ * written.
+ *
+ * Read paths (rendering a filtered list) can ignore diagnostics. Write paths must
+ * not: a condition set that does not fully compile no longer expresses what its
+ * author wrote, and acting on the remainder is how "filter matched everything and we
+ * mutated the whole mailbox" happens (mail-filters invariant 19).
+ */
+export function evaluateConditionsWithDiagnostics<T>(
+  entity: T,
+  groups: ConditionGroup[],
+  resolver: FieldResolver<T>,
+  context?: ConditionContext
+): ConditionEvaluation {
+  const diagnostics: ConditionDiagnostic[] = []
+
+  // Empty groups = match all
+  if (groups.length === 0) return { matched: true, diagnostics }
+
+  // Groups are AND'd at top level. `every` short-circuits, so evaluate first and
+  // reduce after — a diagnostic from a later group is worth reporting even when an
+  // earlier one already decided the answer.
+  const groupResults = groups.map((group) =>
+    evaluateGroup(entity, group, resolver, context, diagnostics)
+  )
+
+  return { matched: groupResults.every(Boolean), diagnostics }
 }
 
 /**
@@ -61,14 +116,15 @@ function evaluateGroup<T>(
   entity: T,
   group: ConditionGroup,
   resolver: FieldResolver<T>,
-  context?: ConditionContext
+  context: ConditionContext | undefined,
+  diagnostics: ConditionDiagnostic[]
 ): boolean {
   const { conditions, logicalOperator } = group
 
   if (conditions.length === 0) return true
 
   const results = conditions
-    .map((c) => evaluateCondition(entity, c, resolver, context))
+    .map((c) => evaluateCondition(entity, c, resolver, context, diagnostics))
     .filter((r): r is boolean => r !== undefined)
 
   if (results.length === 0) return true
@@ -84,14 +140,18 @@ function evaluateCondition<T>(
   entity: T,
   condition: Condition,
   resolver: FieldResolver<T>,
-  context?: ConditionContext
+  context: ConditionContext | undefined,
+  diagnostics: ConditionDiagnostic[]
 ): boolean | undefined {
   const { fieldId, operator, value, valueSource } = condition
 
   // Resolve valueSource placeholders (currently just `currentUser`).
   let effectiveValue: unknown = value
   if (valueSource === 'currentUser') {
-    if (!context?.currentUserId) return undefined
+    if (!context?.currentUserId) {
+      diagnostics.push(describe(condition, 'unresolved-value-source'))
+      return undefined
+    }
     effectiveValue = context.currentUserId
   }
 
@@ -102,7 +162,25 @@ function evaluateCondition<T>(
   // Field can't be evaluated client-side — trust the server's filtering
   if (fieldValue === FIELD_NOT_RESOLVABLE) return true
 
+  if (!isKnownOperator(operator as string)) {
+    diagnostics.push(describe(condition, 'unknown-operator'))
+    return false
+  }
+
   return evaluateOperator(fieldValue, operator as Operator, effectiveValue)
+}
+
+/** Build a diagnostic entry for a condition that could not be evaluated as written. */
+function describe(
+  condition: Condition,
+  reason: ConditionDiagnostic['reason']
+): ConditionDiagnostic {
+  return {
+    conditionId: condition.id,
+    fieldId: Array.isArray(condition.fieldId) ? condition.fieldId.join('::') : condition.fieldId,
+    operator: String(condition.operator),
+    reason,
+  }
 }
 
 /**
@@ -123,301 +201,6 @@ function extractFieldId(fieldId: string | string[]): string {
 function extractSimpleField(fieldId: string): string {
   const colonIndex = fieldId.indexOf(':')
   return colonIndex === -1 ? fieldId : fieldId.slice(colonIndex + 1)
-}
-
-/**
- * Evaluate an operator against field value and condition value.
- * Supports all common operators from OPERATOR_DEFINITIONS.
- */
-function evaluateOperator(
-  fieldValue: unknown,
-  operator: Operator,
-  conditionValue: unknown
-): boolean {
-  switch (operator) {
-    // ═══════════════════════════════════════════════════════════════
-    // EQUALITY OPERATORS
-    // ═══════════════════════════════════════════════════════════════
-    case 'is':
-      return isEqual(fieldValue, conditionValue)
-
-    case 'is not':
-      return !isEqual(fieldValue, conditionValue)
-
-    // ═══════════════════════════════════════════════════════════════
-    // SET OPERATORS
-    // ═══════════════════════════════════════════════════════════════
-    case 'in': {
-      const values = Array.isArray(conditionValue) ? conditionValue : [conditionValue]
-      // If fieldValue is array, check if ANY element is in the set
-      if (Array.isArray(fieldValue)) {
-        return fieldValue.some((v) => values.some((cv) => isEqual(v, cv)))
-      }
-      return values.some((v) => isEqual(fieldValue, v))
-    }
-
-    case 'not in': {
-      const values = Array.isArray(conditionValue) ? conditionValue : [conditionValue]
-      if (Array.isArray(fieldValue)) {
-        return !fieldValue.some((v) => values.some((cv) => isEqual(v, cv)))
-      }
-      return !values.some((v) => isEqual(fieldValue, v))
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // EXISTENCE OPERATORS
-    // ═══════════════════════════════════════════════════════════════
-    case 'empty':
-      return isEmpty(fieldValue)
-
-    case 'not empty':
-      return !isEmpty(fieldValue)
-
-    // ═══════════════════════════════════════════════════════════════
-    // STRING OPERATORS
-    // ═══════════════════════════════════════════════════════════════
-    case 'contains': {
-      const str = String(fieldValue ?? '').toLowerCase()
-      const search = String(conditionValue ?? '').toLowerCase()
-      return str.includes(search)
-    }
-
-    case 'not contains': {
-      const str = String(fieldValue ?? '').toLowerCase()
-      const search = String(conditionValue ?? '').toLowerCase()
-      return !str.includes(search)
-    }
-
-    case 'starts with': {
-      const str = String(fieldValue ?? '').toLowerCase()
-      const prefix = String(conditionValue ?? '').toLowerCase()
-      return str.startsWith(prefix)
-    }
-
-    case 'ends with': {
-      const str = String(fieldValue ?? '').toLowerCase()
-      const suffix = String(conditionValue ?? '').toLowerCase()
-      return str.endsWith(suffix)
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // COMPARISON OPERATORS
-    // ═══════════════════════════════════════════════════════════════
-    case '>':
-      return toNumber(fieldValue) > toNumber(conditionValue)
-
-    case '<':
-      return toNumber(fieldValue) < toNumber(conditionValue)
-
-    case '>=':
-      return toNumber(fieldValue) >= toNumber(conditionValue)
-
-    case '<=':
-      return toNumber(fieldValue) <= toNumber(conditionValue)
-
-    // ═══════════════════════════════════════════════════════════════
-    // DATE OPERATORS
-    // ═══════════════════════════════════════════════════════════════
-    case 'before': {
-      const fieldDate = toDate(fieldValue)
-      const compareDate = toDate(conditionValue)
-      return fieldDate !== null && compareDate !== null && fieldDate < compareDate
-    }
-
-    case 'after': {
-      const fieldDate = toDate(fieldValue)
-      const compareDate = toDate(conditionValue)
-      return fieldDate !== null && compareDate !== null && fieldDate > compareDate
-    }
-
-    case 'today': {
-      const fieldDate = toDate(fieldValue)
-      if (!fieldDate) return false
-      const today = new Date()
-      return isSameDay(fieldDate, today)
-    }
-
-    case 'yesterday': {
-      const fieldDate = toDate(fieldValue)
-      if (!fieldDate) return false
-      const yesterday = new Date()
-      yesterday.setDate(yesterday.getDate() - 1)
-      return isSameDay(fieldDate, yesterday)
-    }
-
-    case 'this_week': {
-      const fieldDate = toDate(fieldValue)
-      if (!fieldDate) return false
-      return isThisWeek(fieldDate)
-    }
-
-    case 'this_month': {
-      const fieldDate = toDate(fieldValue)
-      if (!fieldDate) return false
-      return isThisMonth(fieldDate)
-    }
-
-    case 'within_days': {
-      const fieldDate = toDate(fieldValue)
-      const days = toNumber(conditionValue)
-      if (!fieldDate || Number.isNaN(days)) return false
-      const now = new Date()
-      const diffDays = (now.getTime() - fieldDate.getTime()) / (1000 * 60 * 60 * 24)
-      return diffDays >= 0 && diffDays <= days
-    }
-
-    case 'older_than_days': {
-      const fieldDate = toDate(fieldValue)
-      const days = toNumber(conditionValue)
-      if (!fieldDate || Number.isNaN(days)) return false
-      const now = new Date()
-      const diffDays = (now.getTime() - fieldDate.getTime()) / (1000 * 60 * 60 * 24)
-      return diffDays > days
-    }
-
-    case 'on_date': {
-      const fieldDate = toDate(fieldValue)
-      const condDate = toDate(conditionValue)
-      return fieldDate !== null && condDate !== null && isSameDay(fieldDate, condDate)
-    }
-
-    case 'not_on_date': {
-      const fieldDate = toDate(fieldValue)
-      const condDate = toDate(conditionValue)
-      return fieldDate !== null && condDate !== null && !isSameDay(fieldDate, condDate)
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // ARRAY LENGTH OPERATORS
-    // ═══════════════════════════════════════════════════════════════
-    case 'length =':
-      return Array.isArray(fieldValue) && fieldValue.length === toNumber(conditionValue)
-
-    case 'length >':
-      return Array.isArray(fieldValue) && fieldValue.length > toNumber(conditionValue)
-
-    case 'length <':
-      return Array.isArray(fieldValue) && fieldValue.length < toNumber(conditionValue)
-
-    case 'length >=':
-      return Array.isArray(fieldValue) && fieldValue.length >= toNumber(conditionValue)
-
-    case 'length <=':
-      return Array.isArray(fieldValue) && fieldValue.length <= toNumber(conditionValue)
-
-    // ═══════════════════════════════════════════════════════════════
-    // OBJECT OPERATORS
-    // ═══════════════════════════════════════════════════════════════
-    case 'has key':
-      return (
-        typeof fieldValue === 'object' &&
-        fieldValue !== null &&
-        String(conditionValue) in fieldValue
-      )
-
-    // ═══════════════════════════════════════════════════════════════
-    // DEFAULT: Unknown operator - don't filter (return true)
-    // ═══════════════════════════════════════════════════════════════
-    default:
-      console.warn(`Unknown operator for client-side evaluation: ${operator}`)
-      return true
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Deep equality check for primitive values, arrays, and objects.
- * Handles RecordId comparison (extracts instance ID if needed).
- */
-function isEqual(a: unknown, b: unknown): boolean {
-  // Handle null/undefined
-  if (a === b) return true
-  if (a == null || b == null) return false
-
-  // Handle RecordId format ("entityDef:instanceId")
-  const aStr = String(a)
-  const bStr = String(b)
-
-  // If either looks like a RecordId, compare instance IDs
-  if (aStr.includes(':') || bStr.includes(':')) {
-    const aId = aStr.includes(':') ? aStr.split(':')[1] : aStr
-    const bId = bStr.includes(':') ? bStr.split(':')[1] : bStr
-    if (aId === bId) return true
-  }
-
-  // Handle ActorId objects ({ type, id })
-  if (typeof a === 'object' && typeof b === 'object') {
-    const aObj = a as Record<string, unknown>
-    const bObj = b as Record<string, unknown>
-    if ('type' in aObj && 'id' in aObj && 'type' in bObj && 'id' in bObj) {
-      return aObj.type === bObj.type && aObj.id === bObj.id
-    }
-  }
-
-  // String comparison (case-insensitive for flexibility)
-  if (typeof a === 'string' && typeof b === 'string') {
-    return a.toLowerCase() === b.toLowerCase()
-  }
-
-  return aStr === bStr
-}
-
-/**
- * Convert value to number.
- */
-function toNumber(value: unknown): number {
-  if (typeof value === 'number') return value
-  if (typeof value === 'string') return parseFloat(value) || 0
-  return 0
-}
-
-/**
- * Convert value to Date.
- */
-function toDate(value: unknown): Date | null {
-  if (value instanceof Date) return value
-  if (typeof value === 'string' || typeof value === 'number') {
-    const date = new Date(value)
-    return Number.isNaN(date.getTime()) ? null : date
-  }
-  return null
-}
-
-/**
- * Check if two dates are the same day.
- */
-function isSameDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  )
-}
-
-/**
- * Check if date is in the current week.
- */
-function isThisWeek(date: Date): boolean {
-  const now = new Date()
-  const startOfWeek = new Date(now)
-  startOfWeek.setDate(now.getDate() - now.getDay())
-  startOfWeek.setHours(0, 0, 0, 0)
-
-  const endOfWeek = new Date(startOfWeek)
-  endOfWeek.setDate(startOfWeek.getDate() + 7)
-
-  return date >= startOfWeek && date < endOfWeek
-}
-
-/**
- * Check if date is in the current month.
- */
-function isThisMonth(date: Date): boolean {
-  const now = new Date()
-  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

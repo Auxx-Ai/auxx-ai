@@ -102,7 +102,11 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
 
   /**
    * Handle extraction option changes (boolean fields)
-   * Value comes as boolean from BooleanInput via ConstantInputAdapter
+   *
+   * Constant mode gets a real boolean from BooleanInput; variable mode gets the
+   * variable reference, which must be stored as-is so the engine can resolve it
+   * at run time. Collapsing both to `value === true` would pin every bound
+   * toggle to `false`.
    */
   const handleOptionChange = useCallback(
     (
@@ -111,8 +115,18 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
       isConstantMode: boolean
     ) => {
       const newData = produce(nodeData, (draft) => {
-        // Value is already a boolean from BooleanInput
-        draft[field] = value === true
+        const wasConstantMode = draft.fieldModes?.[field] ?? true
+
+        if (wasConstantMode !== isConstantMode) {
+          // Clear the value when switching modes — a reference is meaningless
+          // as a literal, and vice versa
+          draft[field] = isConstantMode ? false : undefined
+        } else if (isConstantMode) {
+          draft[field] = value === true
+        } else {
+          draft[field] = varEditorText(value) || undefined
+        }
+
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes[field] = isConstantMode
       })

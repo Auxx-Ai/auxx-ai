@@ -18,6 +18,11 @@ const datasetEntrySchema = z.object({
 
 /**
  * Zod schema for Knowledge Retrieval node data validation
+ *
+ * Bindable search settings accept the variable reference string the panel
+ * stores in variable mode alongside their literal type — the engine schema
+ * (`workflow-engine/nodes/dataset/knowledge-retrieval.ts`) is widened the same
+ * way.
  */
 export const knowledgeRetrievalNodeDataSchema = baseNodeDataSchema.extend({
   title: z.string().min(1),
@@ -31,9 +36,9 @@ export const knowledgeRetrievalNodeDataSchema = baseNodeDataSchema.extend({
   datasets: z.array(datasetEntrySchema).optional(),
 
   // Search configuration
-  searchType: z.enum(['vector', 'text', 'hybrid']).optional().default('hybrid'),
-  limit: z.number().min(1).max(100).optional().default(20),
-  similarityThreshold: z.number().min(0).max(1).optional().default(0.7),
+  searchType: z.union([z.enum(['vector', 'text', 'hybrid']), z.string()]).optional(),
+  limit: z.union([z.number().min(1).max(100), z.string()]).optional(),
+  similarityThreshold: z.union([z.number().min(0).max(1), z.string()]).optional(),
 
   // Field modes
   fieldModes: z.record(z.string(), z.boolean()).optional(),
@@ -87,6 +92,15 @@ export function extractKnowledgeRetrievalVariables(
         }
       }
     })
+  }
+
+  // Extract from searchType (if in variable mode)
+  if (
+    data.searchType &&
+    isVariableMode(fieldModes, 'searchType') &&
+    isNodeVariable(data.searchType)
+  ) {
+    variableIds.add(data.searchType)
   }
 
   // Extract from limit (if in variable mode)

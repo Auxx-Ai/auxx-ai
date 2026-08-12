@@ -103,6 +103,7 @@ const ListPanelComponent: React.FC<ListPanelProps> = ({ nodeId, data }) => {
         switch (operation) {
           case 'filter':
             draft.filterConfig = {
+              logic: 'AND',
               conditions: [
                 {
                   id: generateId(),

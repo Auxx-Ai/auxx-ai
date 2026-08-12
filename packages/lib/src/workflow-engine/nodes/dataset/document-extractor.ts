@@ -14,6 +14,7 @@ import type {
 import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
 import type { WorkflowFileData } from '../../types/file-variable'
 import { BaseNodeProcessor } from '../base-node'
+import { extractVariableRefs, resolveBooleanConfig, variableBound } from './config-value'
 
 const logger = createScopedLogger('document-extractor-processor')
 
@@ -38,8 +39,9 @@ interface DocumentExtractorConfig {
   url?: string // Variable reference or constant - URL to fetch
 
   // Extraction options
-  preserveFormatting?: boolean
-  extractImages?: boolean
+  // Both toggles carry a variable reference string when bound to a variable
+  preserveFormatting?: boolean | string
+  extractImages?: boolean | string
   language?: string // Language hint for OCR
 
   // Field modes tracking (constant vs variable)
@@ -59,6 +61,12 @@ interface ExtractionOutput {
 
 /**
  * Validation schema for Document Extractor configuration
+ *
+ * The extraction toggles are widened with {@link variableBound}: in variable
+ * mode the builder stores a reference string (`"trigger_1.preserveFormatting"`),
+ * which a bare `z.boolean()` would reject — failing the node before the
+ * variable is ever looked up. The reference is resolved and coerced in
+ * `preprocessNode`.
  */
 const documentExtractorConfigSchema = z.object({
   title: z.string().optional().default('Document Extractor'),
@@ -66,8 +74,8 @@ const documentExtractorConfigSchema = z.object({
   sourceType: z.nativeEnum(DocumentSourceType).default(DocumentSourceType.FILE),
   fileId: z.string().optional(),
   url: z.string().optional(),
-  preserveFormatting: z.boolean().optional().default(false),
-  extractImages: z.boolean().optional().default(false),
+  preserveFormatting: variableBound(z.boolean()).optional(),
+  extractImages: variableBound(z.boolean()).optional(),
   language: z.string().optional(),
   fieldModes: z.record(z.string(), z.boolean()).optional(),
 })
@@ -157,6 +165,23 @@ export class DocumentExtractorProcessor extends BaseNodeProcessor {
       this.extractVariableIds(config.url).forEach((v) => usedVariables.add(v))
     }
 
+    // Resolve extraction toggles — a literal boolean in constant mode; in
+    // variable mode a reference string that must be resolved and coerced,
+    // never read for truthiness (the string "false" is truthy).
+    const resolveValue = (raw: string) => this.resolveVariableValue(raw, contextManager)
+    const resolvedPreserveFormatting = await resolveBooleanConfig(
+      config.preserveFormatting,
+      false,
+      resolveValue
+    )
+    const resolvedExtractImages = await resolveBooleanConfig(
+      config.extractImages,
+      false,
+      resolveValue
+    )
+    extractVariableRefs(config.preserveFormatting).forEach((v) => usedVariables.add(v))
+    extractVariableRefs(config.extractImages).forEach((v) => usedVariables.add(v))
+
     // Get organization ID from context
     const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
     if (!organizationId) {
@@ -168,8 +193,8 @@ export class DocumentExtractorProcessor extends BaseNodeProcessor {
         sourceType: config.sourceType,
         fileId: resolvedFileId,
         url: resolvedUrl,
-        preserveFormatting: config.preserveFormatting ?? false,
-        extractImages: config.extractImages ?? false,
+        preserveFormatting: resolvedPreserveFormatting,
+        extractImages: resolvedExtractImages,
         language: config.language,
         organizationId,
         variablesUsed: Array.from(usedVariables),
@@ -210,6 +235,7 @@ export class DocumentExtractorProcessor extends BaseNodeProcessor {
         // Fallback: process configuration directly
         const config = node.data as unknown as DocumentExtractorConfig
         const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
+        const resolveValue = (raw: string) => this.resolveVariableValue(raw, contextManager)
 
         inputs = {
           sourceType: config.sourceType,
@@ -217,8 +243,12 @@ export class DocumentExtractorProcessor extends BaseNodeProcessor {
             ? await this.interpolateVariables(config.fileId, contextManager)
             : undefined,
           url: config.url ? await this.interpolateVariables(config.url, contextManager) : undefined,
-          preserveFormatting: config.preserveFormatting ?? false,
-          extractImages: config.extractImages ?? false,
+          preserveFormatting: await resolveBooleanConfig(
+            config.preserveFormatting,
+            false,
+            resolveValue
+          ),
+          extractImages: await resolveBooleanConfig(config.extractImages, false, resolveValue),
           language: config.language,
           organizationId,
         }
@@ -459,6 +489,11 @@ export class DocumentExtractorProcessor extends BaseNodeProcessor {
     if (config.sourceType === DocumentSourceType.URL && config.url) {
       this.extractVariableIds(config.url).forEach((v) => variables.add(v))
     }
+
+    // Bindable extraction toggles — a bound field carries either a {{…}}
+    // template or a bare picker path
+    extractVariableRefs(config.preserveFormatting).forEach((v) => variables.add(v))
+    extractVariableRefs(config.extractImages).forEach((v) => variables.add(v))
 
     return Array.from(variables)
   }

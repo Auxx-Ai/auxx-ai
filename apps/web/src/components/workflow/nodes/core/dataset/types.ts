@@ -35,8 +35,8 @@ export interface DatasetNodeData extends BaseNodeData {
   fileId?: string
 
   // === Processing Options ===
-  /** Skip embedding generation (default: false) */
-  skipEmbedding?: boolean
+  /** Skip embedding generation (default: false). A string when bound to a variable. */
+  skipEmbedding?: boolean | string
   /** Additional metadata to store with the document */
   metadata?: Record<string, unknown>
 

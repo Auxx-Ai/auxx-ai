@@ -242,6 +242,186 @@ describe('LoopProcessor', () => {
     })
   })
 
+  describe('Output Variables', () => {
+    /**
+     * The builder advertises `totalIterations`, `completedIterations`, `results` and
+     * `lastResult` for an accumulating loop (`getLoopOutputVariables`). Every one of them
+     * has to resolve as a `<nodeId>.<path>` variable, not just sit in `result.output`.
+     */
+    it('should publish every advertised output as a node variable', async () => {
+      ;(loopProcessor as any).executeLoopBodyCallback = vi
+        .fn()
+        .mockImplementation(async () => ({ processed: await contextManager.getVariable('item') }))
+
+      const preprocessed = await loopProcessor.preprocessNode(mockNode, contextManager)
+      await loopProcessor.execute(mockNode, contextManager, preprocessed)
+
+      expect(await contextManager.getVariable('loop-1.totalIterations')).toBe(3)
+      expect(await contextManager.getVariable('loop-1.completedIterations')).toBe(3)
+      expect(await contextManager.getVariable('loop-1.results')).toEqual([
+        { processed: 'apple' },
+        { processed: 'banana' },
+        { processed: 'orange' },
+      ])
+      expect(await contextManager.getVariable('loop-1.lastResult')).toEqual({
+        processed: 'orange',
+      })
+    })
+
+    /**
+     * The regression this exists for: `injectLoopVariables` writes `results` at the TOP of
+     * each iteration, so the published array always trailed the pushed one by a single
+     * element — the last iteration's result was never visible downstream.
+     */
+    it('should include the LAST iteration in results', async () => {
+      ;(loopProcessor as any).executeLoopBodyCallback = vi
+        .fn()
+        .mockImplementation(async () => ({ item: await contextManager.getVariable('item') }))
+
+      const preprocessed = await loopProcessor.preprocessNode(mockNode, contextManager)
+      const result = await loopProcessor.execute(mockNode, contextManager, preprocessed)
+
+      const published = await contextManager.getVariable('loop-1.results')
+      expect(published).toHaveLength(3)
+      expect(published).toEqual(result.output.results)
+      expect(published[2]).toEqual({ item: 'orange' })
+    })
+
+    it('should publish results for a single-iteration loop', async () => {
+      contextManager.setVariable('one', ['solo'])
+      const singleNode = {
+        ...mockNode,
+        data: { ...mockNode.data, itemsSource: '{{one}}' },
+      }
+      ;(loopProcessor as any).executeLoopBodyCallback = vi.fn().mockResolvedValue({ done: true })
+
+      const preprocessed = await loopProcessor.preprocessNode(singleNode, contextManager)
+      await loopProcessor.execute(singleNode, contextManager, preprocessed)
+
+      expect(await contextManager.getVariable('loop-1.results')).toEqual([{ done: true }])
+    })
+
+    it('should publish `result` instead of `results` when not accumulating', async () => {
+      const nonAccumulating = {
+        ...mockNode,
+        data: { ...mockNode.data, accumulateResults: false },
+      }
+      ;(loopProcessor as any).executeLoopBodyCallback = vi
+        .fn()
+        .mockImplementation(async () => ({ item: await contextManager.getVariable('item') }))
+
+      const preprocessed = await loopProcessor.preprocessNode(nonAccumulating, contextManager)
+      const result = await loopProcessor.execute(nonAccumulating, contextManager, preprocessed)
+
+      expect(await contextManager.getVariable('loop-1.result')).toEqual({ item: 'orange' })
+      expect(result.output.results).toBeUndefined()
+      expect(result.output.result).toEqual({ item: 'orange' })
+    })
+
+    it('should publish empty results and null lastResult for an empty array', async () => {
+      contextManager.setVariable('emptyArray', [])
+      const nodeWithEmpty = {
+        ...mockNode,
+        data: { ...mockNode.data, itemsSource: '{{emptyArray}}' },
+      }
+
+      const preprocessed = await loopProcessor.preprocessNode(nodeWithEmpty, contextManager)
+      await loopProcessor.execute(nodeWithEmpty, contextManager, preprocessed)
+
+      expect(await contextManager.getVariable('loop-1.results')).toEqual([])
+      expect(await contextManager.getVariable('loop-1.lastResult')).toBeNull()
+      expect(await contextManager.getVariable('loop-1.completedIterations')).toBe(0)
+    })
+
+    it('should publish results collected before an early break', async () => {
+      let iterationCount = 0
+      ;(loopProcessor as any).executeLoopBodyCallback = vi.fn().mockImplementation(() => {
+        iterationCount++
+        if (iterationCount === 2) {
+          LoopContextManager.requestLoopBreak(contextManager, mockNode.nodeId)
+        }
+        return { n: iterationCount }
+      })
+
+      const preprocessed = await loopProcessor.preprocessNode(mockNode, contextManager)
+      await loopProcessor.execute(mockNode, contextManager, preprocessed)
+
+      expect(await contextManager.getVariable('loop-1.results')).toEqual([{ n: 1 }, { n: 2 }])
+      expect(await contextManager.getVariable('loop-1.lastResult')).toEqual({ n: 2 })
+      expect(await contextManager.getVariable('loop-1.completedIterations')).toBe(2)
+    })
+
+    /**
+     * Nested loops keep separate result sets because every write is `nodeId`-scoped — and
+     * the inner loop's own last iteration must land too, on every outer pass.
+     */
+    it('should keep results complete and separate for nested loops', async () => {
+      contextManager.setVariable('outer', ['a', 'b'])
+      contextManager.setVariable('inner', [1, 2, 3])
+
+      const outerNode = {
+        ...mockNode,
+        nodeId: 'loop-outer',
+        data: { ...mockNode.data, itemsSource: '{{outer}}' },
+      }
+      const innerNode = {
+        ...mockNode,
+        nodeId: 'loop-inner',
+        data: { ...mockNode.data, itemsSource: '{{inner}}' },
+      }
+
+      const innerProcessor = new LoopProcessor()
+      const innerResultsPerOuterPass: any[][] = []
+
+      ;(innerProcessor as any).executeLoopBodyCallback = vi.fn().mockImplementation(async () => ({
+        n: await contextManager.getVariable('loop-inner.item'),
+      }))
+      ;(loopProcessor as any).executeLoopBodyCallback = vi.fn().mockImplementation(async () => {
+        const outerItem = await contextManager.getVariable('loop-outer.item')
+        const preprocessedInner = await innerProcessor.preprocessNode(innerNode, contextManager)
+        await innerProcessor.execute(innerNode, contextManager, preprocessedInner)
+        innerResultsPerOuterPass.push(await contextManager.getVariable('loop-inner.results'))
+        return { outerItem }
+      })
+
+      const preprocessedOuter = await loopProcessor.preprocessNode(outerNode, contextManager)
+      await loopProcessor.execute(outerNode, contextManager, preprocessedOuter)
+
+      // Inner loop: all three iterations on BOTH outer passes
+      expect(innerResultsPerOuterPass).toEqual([
+        [{ n: 1 }, { n: 2 }, { n: 3 }],
+        [{ n: 1 }, { n: 2 }, { n: 3 }],
+      ])
+      expect(await contextManager.getVariable('loop-inner.results')).toHaveLength(3)
+
+      // Outer loop: both iterations, under its own node id
+      expect(await contextManager.getVariable('loop-outer.results')).toEqual([
+        { outerItem: 'a' },
+        { outerItem: 'b' },
+      ])
+      expect(await contextManager.getVariable('loop-outer.totalIterations')).toBe(2)
+      expect(await contextManager.getVariable('loop-outer.completedIterations')).toBe(2)
+    })
+
+    /**
+     * The iterator variables were audited clean — this pins them against the new
+     * result-publishing writes.
+     */
+    it('should not disturb the iterator variables', async () => {
+      ;(loopProcessor as any).executeLoopBodyCallback = vi.fn().mockResolvedValue({ ok: true })
+
+      const preprocessed = await loopProcessor.preprocessNode(mockNode, contextManager)
+      await loopProcessor.execute(mockNode, contextManager, preprocessed)
+
+      expect(await contextManager.getVariable('loop-1.index')).toBe(2)
+      expect(await contextManager.getVariable('loop-1.count')).toBe(3)
+      expect(await contextManager.getVariable('loop-1.total')).toBe(3)
+      expect(await contextManager.getVariable('loop-1.isFirst')).toBe(false)
+      expect(await contextManager.getVariable('loop-1.isLast')).toBe(true)
+      expect(await contextManager.getVariable('loop-1.item')).toBe('orange')
+    })
+  })
+
   describe('Error Handling', () => {
     it('should throw on error with default error strategy', async () => {
       let callCount = 0

@@ -28,6 +28,9 @@ const conditionSchema = z.object({
  */
 const filterConfigSchema = z.object({
   conditions: z.array(conditionSchema),
+  // How the conditions combine — mirrors the condition list's AND/OR toggle and is
+  // what the engine's list processor reads. Defaults to AND when absent.
+  logic: z.enum(['AND', 'OR']).optional(),
 })
 
 /**
@@ -162,6 +165,7 @@ export const createListDefaultData = (): Partial<ListNodeData> => ({
   inputList: '',
   filterConfig: {
     conditions: [],
+    logic: 'AND',
   },
 })
 

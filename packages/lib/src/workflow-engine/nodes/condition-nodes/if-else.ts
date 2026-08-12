@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/nodes/condition-nodes/if-else.ts
 
-import { getOperatorDefinition, type Operator } from '../../../conditions/operator-definitions'
+import { evaluateOperator } from '../../../conditions/evaluate-operator'
+import { getOperatorDefinition } from '../../../conditions/operator-definitions'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -9,24 +10,7 @@ import type {
   WorkflowNode,
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
-import {
-  analyzeFileName,
-  isExtensionInCategory,
-  isFileValid,
-  isUploadedToday,
-  isUploadedWithinDays,
-  isWithinSizeLimit,
-  type WorkflowFileData,
-} from '../../types/file-variable'
 import { BaseNodeProcessor } from '../base-node'
-import {
-  isOlderThanDays,
-  isSameDay,
-  isThisMonth,
-  isThisWeek,
-  isWithinDays,
-  parseDate,
-} from '../utils/date-helpers'
 import type {
   EvaluatedCase,
   EvaluatedCondition,
@@ -321,8 +305,12 @@ export class IfElseProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * Evaluate a single condition using category-based routing
-   * This is the main entry point for condition evaluation
+   * Evaluate a single condition.
+   *
+   * The operator semantics themselves live in `conditions/evaluate-operator.ts` — one
+   * implementation shared with the mail/record-rule evaluator (`conditions/evaluate.ts`)
+   * and the list node's filter, so `is` cannot mean one thing in a workflow branch and
+   * another in a mail filter. This method only adds the node's tracing.
    */
   private evaluateCondition(
     condition: NodeCondition,
@@ -346,358 +334,7 @@ export class IfElseProcessor extends BaseNodeProcessor {
       compareValue: value,
     })
 
-    // Route by operator category
-    switch (def.category) {
-      case 'equality':
-        return this.evaluateEqualityOperator(resolvedValue, comparison_operator, value)
-
-      case 'comparison':
-        return this.evaluateComparisonOperator(resolvedValue, comparison_operator, value)
-
-      case 'string':
-        return this.evaluateStringOperator(resolvedValue, comparison_operator, value)
-
-      case 'set':
-        return this.evaluateSetOperator(resolvedValue, comparison_operator, value)
-
-      case 'existence':
-        return this.evaluateExistenceOperator(resolvedValue, comparison_operator)
-
-      case 'file':
-        return this.evaluateFileOperator(resolvedValue, comparison_operator, value)
-
-      case 'date':
-        return this.evaluateDateOperator(resolvedValue, comparison_operator, value)
-
-      case 'array':
-        return this.evaluateArrayOperator(resolvedValue, comparison_operator, value)
-
-      case 'object':
-        return this.evaluateObjectOperator(resolvedValue, comparison_operator, value)
-
-      default:
-        contextManager.log('WARN', undefined, `Unknown operator category: ${def.category}`)
-        return false
-    }
-  }
-
-  /**
-   * EQUALITY: is, is not
-   */
-  private evaluateEqualityOperator(
-    resolvedValue: any,
-    operator: Operator,
-    compareValue: any
-  ): boolean {
-    switch (operator) {
-      case 'is':
-        return resolvedValue == compareValue
-      case 'is not':
-        return resolvedValue != compareValue
-      default:
-        return false
-    }
-  }
-
-  /**
-   * COMPARISON: >, <, >=, <= (ONLY for numbers!)
-   */
-  private evaluateComparisonOperator(
-    resolvedValue: any,
-    operator: Operator,
-    compareValue: any
-  ): boolean {
-    const num1 = Number(resolvedValue)
-    const num2 = Number(compareValue)
-
-    switch (operator) {
-      case '>':
-        return num1 > num2
-      case '<':
-        return num1 < num2
-      case '>=':
-        return num1 >= num2
-      case '<=':
-        return num1 <= num2
-      default:
-        return false
-    }
-  }
-
-  /**
-   * STRING: contains, not contains, starts with, ends with
-   */
-  private evaluateStringOperator(
-    resolvedValue: any,
-    operator: Operator,
-    compareValue: any
-  ): boolean {
-    const str = String(resolvedValue)
-    const val = String(compareValue)
-
-    switch (operator) {
-      case 'contains':
-        return str.includes(val)
-      case 'not contains':
-        return !str.includes(val)
-      case 'starts with':
-        return str.startsWith(val)
-      case 'ends with':
-        return str.endsWith(val)
-      default:
-        return false
-    }
-  }
-
-  /**
-   * SET: in, not in (for multiple values)
-   */
-  private evaluateSetOperator(resolvedValue: any, operator: Operator, compareValue: any): boolean {
-    if (!Array.isArray(compareValue)) {
-      return operator === 'not in' // If not array, "not in" is true, "in" is false
-    }
-
-    switch (operator) {
-      case 'in':
-        return compareValue.includes(resolvedValue)
-      case 'not in':
-        return !compareValue.includes(resolvedValue)
-      default:
-        return false
-    }
-  }
-
-  /**
-   * EXISTENCE: empty, not empty
-   */
-  private evaluateExistenceOperator(resolvedValue: any, operator: Operator): boolean {
-    switch (operator) {
-      case 'empty':
-        return this.isEmpty(resolvedValue)
-      case 'not empty':
-        return !this.isEmpty(resolvedValue)
-      default:
-        return false
-    }
-  }
-
-  /**
-   * DATE: is, is not, before, after, within_days, older_than_days, today, yesterday, etc.
-   * NO comparison operators (>, <, etc.) - those are for numbers only!
-   */
-  private evaluateDateOperator(
-    resolvedValue: any,
-    operator: Operator,
-    compareValue?: any
-  ): boolean {
-    const date = parseDate(resolvedValue)
-
-    if (!date) {
-      return false
-    }
-
-    switch (operator) {
-      case 'is':
-      case 'on_date': {
-        const targetDate = parseDate(compareValue)
-        return targetDate ? isSameDay(date, targetDate) : false
-      }
-
-      case 'is not':
-      case 'not_on_date': {
-        const targetDate = parseDate(compareValue)
-        return targetDate ? !isSameDay(date, targetDate) : true
-      }
-
-      case 'before': {
-        const beforeDate = parseDate(compareValue)
-        return beforeDate ? date.getTime() < beforeDate.getTime() : false
-      }
-
-      case 'after': {
-        const afterDate = parseDate(compareValue)
-        return afterDate ? date.getTime() > afterDate.getTime() : false
-      }
-
-      case 'within_days':
-        return isWithinDays(date, Number(compareValue))
-
-      case 'older_than_days':
-        return isOlderThanDays(date, Number(compareValue))
-
-      case 'today':
-        return isSameDay(date, new Date())
-
-      case 'yesterday': {
-        const yesterday = new Date()
-        yesterday.setDate(yesterday.getDate() - 1)
-        return isSameDay(date, yesterday)
-      }
-
-      case 'this_week':
-        return isThisWeek(date)
-
-      case 'this_month':
-        return isThisMonth(date)
-
-      default:
-        return false
-    }
-  }
-
-  /**
-   * ARRAY: contains, not contains, empty, not empty, length operators
-   */
-  private evaluateArrayOperator(
-    resolvedValue: any,
-    operator: Operator,
-    compareValue?: any
-  ): boolean {
-    // Array-category operators (contains / length …) never hold for a non-array.
-    // 'empty' / 'not empty' are existence-category and route elsewhere.
-    if (!Array.isArray(resolvedValue)) {
-      return false
-    }
-
-    switch (operator) {
-      case 'contains':
-        return resolvedValue.includes(compareValue)
-      case 'not contains':
-        return !resolvedValue.includes(compareValue)
-      case 'empty':
-        return resolvedValue.length === 0
-      case 'not empty':
-        return resolvedValue.length > 0
-      case 'length =':
-        return resolvedValue.length === Number(compareValue)
-      case 'length >':
-        return resolvedValue.length > Number(compareValue)
-      case 'length <':
-        return resolvedValue.length < Number(compareValue)
-      case 'length >=':
-        return resolvedValue.length >= Number(compareValue)
-      case 'length <=':
-        return resolvedValue.length <= Number(compareValue)
-      default:
-        return false
-    }
-  }
-
-  /**
-   * OBJECT: empty, not empty, has key, key equals
-   */
-  private evaluateObjectOperator(
-    resolvedValue: any,
-    operator: Operator,
-    compareValue?: any
-  ): boolean {
-    const isObject =
-      resolvedValue !== null && typeof resolvedValue === 'object' && !Array.isArray(resolvedValue)
-
-    // Object-category operators (has key / key equals …) never hold for a
-    // non-object. 'empty' / 'not empty' are existence-category and route elsewhere.
-    if (!isObject) {
-      return false
-    }
-
-    switch (operator) {
-      case 'empty':
-        return Object.keys(resolvedValue).length === 0
-      case 'not empty':
-        return Object.keys(resolvedValue).length > 0
-      case 'has key':
-        return String(compareValue) in resolvedValue
-      case 'key equals': {
-        // Format: "key:value"
-        const [key, ...valueParts] = String(compareValue).split(':')
-        if (!key) return false
-        const value = valueParts.join(':') // Handle values with colons
-        return resolvedValue[key] == value
-      }
-      default:
-        return false
-    }
-  }
-
-  /**
-   * FILE: All file-specific operators
-   */
-  private evaluateFileOperator(
-    resolvedValue: any,
-    operator: Operator,
-    compareValue?: any
-  ): boolean {
-    if (!this.isFileVariable(resolvedValue)) {
-      return false
-    }
-
-    switch (operator) {
-      // Validation
-      case 'is_valid':
-        return isFileValid(resolvedValue)
-      case 'is_invalid':
-        return !isFileValid(resolvedValue)
-
-      // Upload date
-      case 'uploaded_today':
-        return isUploadedToday(resolvedValue)
-      case 'uploaded_within_days':
-        return isUploadedWithinDays(resolvedValue, Number(compareValue))
-
-      // Pattern matching
-      case 'matches_pattern':
-        return this.evaluateFilePattern(resolvedValue, compareValue)
-      case 'contains_numbers':
-        return analyzeFileName(resolvedValue.filename).hasNumbers
-      case 'contains_date':
-        return analyzeFileName(resolvedValue.filename).hasDate
-      case 'has_version':
-        return analyzeFileName(resolvedValue.filename).hasVersion
-
-      // Extension categories
-      case 'is_office_document':
-        return isExtensionInCategory(resolvedValue.filename, 'office_document')
-      case 'is_image_format':
-        return isExtensionInCategory(resolvedValue.filename, 'image_format')
-      case 'is_text_format':
-        return isExtensionInCategory(resolvedValue.filename, 'text_format')
-      case 'is_compressed':
-        return isExtensionInCategory(resolvedValue.filename, 'compressed')
-      case 'is_executable':
-        return isExtensionInCategory(resolvedValue.filename, 'executable')
-
-      // Size
-      case 'within_size_limit':
-        return isWithinSizeLimit(resolvedValue, Number(compareValue))
-      case 'exceeds_limit':
-        return !isWithinSizeLimit(resolvedValue, Number(compareValue))
-
-      default:
-        return false
-    }
-  }
-
-  /**
-   * Helper: Evaluate file pattern matching
-   */
-  private evaluateFilePattern(fileData: any, pattern: any): boolean {
-    try {
-      const regex = new RegExp(String(pattern), 'i')
-      return regex.test(fileData.filename)
-    } catch (error) {
-      return false
-    }
-  }
-
-  /**
-   * Check if a value is empty
-   */
-  private isEmpty(value: any): boolean {
-    if (value === null || value === undefined) return true
-    if (typeof value === 'string') return value.trim().length === 0
-    if (Array.isArray(value)) return value.length === 0
-    if (typeof value === 'object') return Object.keys(value).length === 0
-    return false
+    return evaluateOperator(resolvedValue, comparison_operator, value)
   }
 
   /**
@@ -752,19 +389,5 @@ export class IfElseProcessor extends BaseNodeProcessor {
       return Object.values(connection)[0] as string
     }
     return undefined
-  }
-
-  /**
-   * Check if a value is a file variable
-   */
-  private isFileVariable(value: any): value is WorkflowFileData {
-    return (
-      value &&
-      typeof value === 'object' &&
-      'filename' in value &&
-      'mimeType' in value &&
-      'size' in value &&
-      'url' in value
-    )
   }
 }

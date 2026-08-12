@@ -29,10 +29,10 @@ export interface DocumentExtractorNodeData extends BaseNodeData {
   url?: string
 
   /** Extraction options */
-  /** Attempt to preserve document formatting in extracted text */
-  preserveFormatting?: boolean
-  /** Extract image descriptions using OCR/AI */
-  extractImages?: boolean
+  /** Preserve document formatting in extracted text. A string when bound to a variable. */
+  preserveFormatting?: boolean | string
+  /** Extract image descriptions using OCR/AI. A string when bound to a variable. */
+  extractImages?: boolean | string
   /** Language hint for OCR (e.g., 'en', 'es') */
   language?: string
 

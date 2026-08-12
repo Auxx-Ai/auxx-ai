@@ -2,7 +2,23 @@
 
 import { useCallback } from 'react'
 import type { Condition } from '~/components/conditions'
-import type { ListNodeData } from '../types'
+import type { FilterConfig, ListNodeData } from '../types'
+
+/**
+ * Derive the node-level AND/OR key from the condition rows.
+ *
+ * The shared condition list owns the AND/OR selector and writes the choice onto every
+ * condition after the first. The engine reads a single `filterConfig.logic`, so mirror
+ * the toggle here instead of adding a second control that could disagree with it.
+ */
+function deriveFilterLogic(conditions: Condition[]): NonNullable<FilterConfig['logic']> {
+  for (let index = 1; index < conditions.length; index++) {
+    const logicalOperator = conditions[index]?.logicalOperator
+    if (logicalOperator) return logicalOperator
+  }
+
+  return 'AND'
+}
 
 /**
  * Hook to manage filter conditions for the List node.
@@ -12,7 +28,7 @@ import type { ListNodeData } from '../types'
  *
  * @param nodeData - Current node data
  * @param setNodeData - Function to update node data
- * @returns Conditions array and handler to update conditions
+ * @returns Conditions array, the resolved AND/OR logic and a handler to update conditions
  */
 export function useFilterConditions(
   nodeData: ListNodeData,
@@ -28,6 +44,7 @@ export function useFilterConditions(
         filterConfig: {
           ...nodeData.filterConfig,
           conditions,
+          logic: deriveFilterLogic(conditions),
         },
       })
     },
@@ -37,6 +54,8 @@ export function useFilterConditions(
   return {
     /** Current filter conditions */
     conditions: nodeData.filterConfig?.conditions || [],
+    /** How those conditions combine — persisted on `filterConfig.logic` */
+    logic: nodeData.filterConfig?.logic ?? 'AND',
     /** Handler to update conditions */
     handleConditionsChange,
   }

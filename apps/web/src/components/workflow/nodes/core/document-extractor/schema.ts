@@ -23,9 +23,9 @@ export const documentExtractorNodeDataSchema = baseNodeDataSchema.extend({
   fileId: z.string().optional(),
   url: z.string().optional(),
 
-  // Extraction options
-  preserveFormatting: z.boolean().optional().default(false),
-  extractImages: z.boolean().optional().default(false),
+  // Extraction options — a variable reference string when bound to a variable
+  preserveFormatting: z.union([z.boolean(), z.string()]).optional(),
+  extractImages: z.union([z.boolean(), z.string()]).optional(),
   language: z.string().optional(),
 
   // Field modes

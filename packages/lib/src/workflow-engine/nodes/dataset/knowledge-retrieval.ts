@@ -13,6 +13,12 @@ import type {
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
+import {
+  extractVariableRefs,
+  resolveEnumConfig,
+  resolveNumberConfig,
+  variableBound,
+} from './config-value'
 
 const logger = createScopedLogger('knowledge-retrieval-processor')
 
@@ -37,9 +43,10 @@ interface KnowledgeRetrievalConfig {
   datasets?: DatasetEntry[]
 
   // Search configuration
-  searchType?: SearchType
-  limit?: number
-  similarityThreshold?: number
+  // Each carries a variable reference string when bound to a variable
+  searchType?: SearchType | string
+  limit?: number | string
+  similarityThreshold?: number | string
 
   // Field modes tracking (constant vs variable)
   fieldModes?: Record<string, boolean>
@@ -83,14 +90,31 @@ const datasetEntrySchema = z.object({
   datasetId: z.string(),
 })
 
+/** Search types the retrieval node knows how to dispatch */
+const SEARCH_TYPES = ['vector', 'text', 'hybrid'] as const
+
+/** Defaults applied when a search-configuration field is unset or unresolvable */
+const DEFAULT_SEARCH_TYPE: SearchType = 'hybrid'
+const DEFAULT_LIMIT = 20
+const DEFAULT_SIMILARITY_THRESHOLD = 0.7
+
+/**
+ * Validation schema for Knowledge Retrieval configuration
+ *
+ * The bindable search-configuration fields are widened with
+ * {@link variableBound}: in variable mode the builder stores a reference string
+ * (`"trigger_1.limit"`), which a bare `z.number()` / `z.enum()` would reject —
+ * failing the node before the variable is ever looked up. Ranges are enforced
+ * in `preprocessNode` against the resolved value instead.
+ */
 const knowledgeRetrievalConfigSchema = z.object({
   title: z.string().optional().default('Knowledge Retrieval'),
   desc: z.string().optional(),
   query: z.string().optional(),
   datasets: z.array(datasetEntrySchema).optional(),
-  searchType: z.enum(['vector', 'text', 'hybrid']).optional().default('hybrid'),
-  limit: z.number().min(1).max(100).optional().default(20),
-  similarityThreshold: z.number().min(0).max(1).optional().default(0.7),
+  searchType: variableBound(z.enum(SEARCH_TYPES)).optional(),
+  limit: variableBound(z.number().min(1).max(100)).optional(),
+  similarityThreshold: variableBound(z.number().min(0).max(1)).optional(),
   fieldModes: z.record(z.string(), z.boolean()).optional(),
 })
 
@@ -125,6 +149,7 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
 
     const config = configResult.data as KnowledgeRetrievalConfig
     const usedVariables = new Set<string>()
+    const resolveValue = (raw: string) => this.resolveVariableValue(raw, contextManager)
 
     // === Resolve query ===
     if (!config.query) {
@@ -143,8 +168,8 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
       // Also check if it's a direct variable reference
       if (config.query.includes('.')) {
         const directValue = await contextManager.getVariable(config.query)
-        if (directValue !== undefined && typeof directValue === 'string') {
-          resolvedQuery = directValue
+        if (typeof directValue === 'string' || typeof directValue === 'number') {
+          resolvedQuery = String(directValue)
           usedVariables.add(config.query)
         }
       }
@@ -196,51 +221,30 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
     }
 
     // === Resolve search configuration ===
-    let resolvedSearchType: SearchType = 'hybrid'
-    if (config.searchType) {
-      const isConstant = config.fieldModes?.searchType !== false
-      if (isConstant) {
-        resolvedSearchType = config.searchType
-      } else {
-        const searchTypeValue = await this.interpolateVariables(config.searchType, contextManager)
-        if (['vector', 'text', 'hybrid'].includes(searchTypeValue)) {
-          resolvedSearchType = searchTypeValue as SearchType
-        }
-        this.extractVariableIds(config.searchType).forEach((v) => usedVariables.add(v))
-      }
-    }
+    // Each of these is a literal in constant mode and a variable reference
+    // string in variable mode; resolution happens before the range check so a
+    // bound field is judged on its resolved value, never on the raw reference.
+    const resolvedSearchType = await resolveEnumConfig(
+      config.searchType,
+      SEARCH_TYPES,
+      DEFAULT_SEARCH_TYPE,
+      resolveValue
+    )
+    extractVariableRefs(config.searchType).forEach((v) => usedVariables.add(v))
 
-    let resolvedLimit = 20
-    if (config.limit !== undefined) {
-      const isConstant = config.fieldModes?.limit !== false
-      if (isConstant) {
-        resolvedLimit = config.limit
-      } else {
-        const limitStr = String(config.limit)
-        const limitValue = await this.interpolateVariables(limitStr, contextManager)
-        const parsed = parseInt(limitValue, 10)
-        if (!Number.isNaN(parsed) && parsed >= 1 && parsed <= 100) {
-          resolvedLimit = parsed
-        }
-        this.extractVariableIds(limitStr).forEach((v) => usedVariables.add(v))
-      }
+    let resolvedLimit = DEFAULT_LIMIT
+    const limitValue = await resolveNumberConfig(config.limit, resolveValue)
+    if (limitValue !== undefined && limitValue >= 1 && limitValue <= 100) {
+      resolvedLimit = Math.floor(limitValue)
     }
+    extractVariableRefs(config.limit).forEach((v) => usedVariables.add(v))
 
-    let resolvedSimilarityThreshold = 0.7
-    if (config.similarityThreshold !== undefined) {
-      const isConstant = config.fieldModes?.similarityThreshold !== false
-      if (isConstant) {
-        resolvedSimilarityThreshold = config.similarityThreshold
-      } else {
-        const thresholdStr = String(config.similarityThreshold)
-        const thresholdValue = await this.interpolateVariables(thresholdStr, contextManager)
-        const parsed = parseFloat(thresholdValue)
-        if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 1) {
-          resolvedSimilarityThreshold = parsed
-        }
-        this.extractVariableIds(thresholdStr).forEach((v) => usedVariables.add(v))
-      }
+    let resolvedSimilarityThreshold = DEFAULT_SIMILARITY_THRESHOLD
+    const thresholdValue = await resolveNumberConfig(config.similarityThreshold, resolveValue)
+    if (thresholdValue !== undefined && thresholdValue >= 0 && thresholdValue <= 1) {
+      resolvedSimilarityThreshold = thresholdValue
     }
+    extractVariableRefs(config.similarityThreshold).forEach((v) => usedVariables.add(v))
 
     // Get organization and user IDs from context
     const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
@@ -442,20 +446,11 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
       })
     }
 
-    // Extract from limit (if variable mode)
-    if (config.limit !== undefined && config.fieldModes?.limit === false) {
-      const limitStr = String(config.limit)
-      this.extractVariableIds(limitStr).forEach((v) => variables.add(v))
-    }
-
-    // Extract from similarityThreshold (if variable mode)
-    if (
-      config.similarityThreshold !== undefined &&
-      config.fieldModes?.similarityThreshold === false
-    ) {
-      const thresholdStr = String(config.similarityThreshold)
-      this.extractVariableIds(thresholdStr).forEach((v) => variables.add(v))
-    }
+    // Bindable search settings — a bound field carries either a {{…}} template
+    // or a bare picker path, both of which extractVariableRefs recognises
+    extractVariableRefs(config.searchType).forEach((v) => variables.add(v))
+    extractVariableRefs(config.limit).forEach((v) => variables.add(v))
+    extractVariableRefs(config.similarityThreshold).forEach((v) => variables.add(v))
 
     return Array.from(variables)
   }
@@ -486,14 +481,14 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
       errors.push('At least one dataset must be selected')
     }
 
-    // Validate limit range
-    if (config.limit !== undefined && (config.limit < 1 || config.limit > 100)) {
+    // Validate literal ranges only — a bound field holds a variable reference
+    // whose value is not known until the run, and is range-checked there
+    if (typeof config.limit === 'number' && (config.limit < 1 || config.limit > 100)) {
       errors.push('Limit must be between 1 and 100')
     }
 
-    // Validate similarity threshold range
     if (
-      config.similarityThreshold !== undefined &&
+      typeof config.similarityThreshold === 'number' &&
       (config.similarityThreshold < 0 || config.similarityThreshold > 1)
     ) {
       errors.push('Similarity threshold must be between 0 and 1')

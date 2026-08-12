@@ -116,6 +116,57 @@ function stripHtml(s: string, keepLineBreaks: boolean): string {
 export class FormatProcessor extends BaseNodeProcessor {
   readonly type = WorkflowNodeType.FORMAT
 
+  /**
+   * Resolve a config field that the panel can put in either constant or variable mode.
+   *
+   * `fieldModes[key]` is written by the panel's constant/variable toggle and defaults to
+   * constant. In variable mode the stored value is either a `{{…}}` template or a bare
+   * variable id (`node-1.result`) — the variable picker writes the latter.
+   */
+  private async resolveModedField(
+    value: unknown,
+    isConstant: boolean | undefined,
+    contextManager: ExecutionContextManager
+  ): Promise<unknown> {
+    if ((isConstant ?? true) || typeof value !== 'string' || !value) return value
+    if (value.includes('{{') && value.includes('}}')) {
+      return this.interpolateVariables(value, contextManager)
+    }
+    return this.resolveVariablePath(value, contextManager)
+  }
+
+  /** Resolve a boolean toggle that may be bound to a variable. */
+  private async resolveBooleanField(
+    value: unknown,
+    isConstant: boolean | undefined,
+    fallback: boolean,
+    contextManager: ExecutionContextManager
+  ): Promise<boolean> {
+    const resolved = await this.resolveModedField(value, isConstant, contextManager)
+    if (resolved == null || resolved === '') return fallback
+    if (typeof resolved === 'boolean') return resolved
+    if (typeof resolved === 'number') return resolved !== 0
+    if (typeof resolved === 'string') {
+      const normalized = resolved.trim().toLowerCase()
+      if (['true', '1', 'yes', 'on'].includes(normalized)) return true
+      if (['false', '0', 'no', 'off'].includes(normalized)) return false
+      return fallback
+    }
+    return fallback
+  }
+
+  /** Resolve a string/enum field that may be bound to a variable. */
+  private async resolveStringField(
+    value: unknown,
+    isConstant: boolean | undefined,
+    fallback: string,
+    contextManager: ExecutionContextManager
+  ): Promise<string> {
+    const resolved = await this.resolveModedField(value, isConstant, contextManager)
+    if (resolved == null || resolved === '') return fallback
+    return String(resolved)
+  }
+
   protected async executeNode(
     node: WorkflowNode,
     contextManager: ExecutionContextManager
@@ -124,6 +175,7 @@ export class FormatProcessor extends BaseNodeProcessor {
       const data = node.data as Record<string, any>
       const operation = data.operation as string
       const ctx = contextManager
+      const fieldModes = (data.fieldModes ?? {}) as Record<string, boolean | undefined>
 
       // Interpolate main input — resolves {{variable}} references
       const input = await this.interpolateField(data.input, ctx)
@@ -162,9 +214,16 @@ export class FormatProcessor extends BaseNodeProcessor {
           break
 
         // --- Trim & Pad ---
-        case 'trim':
-          result = data.trimConfig?.trimAll ? input.replace(/\s+/g, ' ').trim() : input.trim()
+        case 'trim': {
+          const trimAll = await this.resolveBooleanField(
+            data.trimConfig?.trimAll,
+            fieldModes.trimAll,
+            false,
+            ctx
+          )
+          result = trimAll ? input.replace(/\s+/g, ' ').trim() : input.trim()
           break
+        }
         case 'pad_start': {
           const len = await this.resolveNumberField(
             data.padConfig?.length,
@@ -211,9 +270,15 @@ export class FormatProcessor extends BaseNodeProcessor {
         case 'replace': {
           const find = await this.interpolateField(data.replaceConfig?.find, ctx)
           const replaceWith = await this.interpolateField(data.replaceConfig?.replaceWith, ctx)
+          const replaceAll = await this.resolveBooleanField(
+            data.replaceConfig?.replaceAll,
+            fieldModes.replaceAll,
+            false,
+            ctx
+          )
           if (!find) {
             result = input
-          } else if (data.replaceConfig?.replaceAll) {
+          } else if (replaceAll) {
             result = input.replaceAll(find, replaceWith)
           } else {
             result = input.replace(find, replaceWith)
@@ -245,7 +310,12 @@ export class FormatProcessor extends BaseNodeProcessor {
             result = input
           } else {
             const locale = String(data.currencyConfig?.locale ?? 'en-US')
-            const currency = String(data.currencyConfig?.currencyCode ?? 'USD')
+            const currency = await this.resolveStringField(
+              data.currencyConfig?.currencyCode,
+              fieldModes.currencyCode,
+              'USD',
+              ctx
+            )
             result = new Intl.NumberFormat(locale, { style: 'currency', currency }).format(num)
           }
           break
@@ -379,7 +449,12 @@ export class FormatProcessor extends BaseNodeProcessor {
           break
         }
         case 'strip_html': {
-          const keepBreaks = data.stripHtmlConfig?.keepLineBreaks ?? true
+          const keepBreaks = await this.resolveBooleanField(
+            data.stripHtmlConfig?.keepLineBreaks,
+            fieldModes.keepLineBreaks,
+            true,
+            ctx
+          )
           result = stripHtml(input, keepBreaks)
           break
         }
@@ -431,8 +506,16 @@ export class FormatProcessor extends BaseNodeProcessor {
       }
     }
 
-    // Extract from variable-mode numeric fields
+    // Extract from variable-mode config fields
+    const fieldModes = (data.fieldModes ?? {}) as Record<string, boolean | undefined>
     const varFields = [
+      { value: data.trimConfig?.trimAll, isConstant: fieldModes.trimAll ?? true },
+      { value: data.replaceConfig?.replaceAll, isConstant: fieldModes.replaceAll ?? true },
+      { value: data.currencyConfig?.currencyCode, isConstant: fieldModes.currencyCode ?? true },
+      {
+        value: data.stripHtmlConfig?.keepLineBreaks,
+        isConstant: fieldModes.keepLineBreaks ?? true,
+      },
       { value: data.padConfig?.length, isConstant: data.padConfig?.isLengthConstant },
       {
         value: data.truncateConfig?.maxLength,

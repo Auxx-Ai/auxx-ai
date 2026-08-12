@@ -2,9 +2,10 @@
 
 import { schema } from '@auxx/database'
 import { IdentifierType, ParticipantRole } from '@auxx/database/enums'
+import type { DraftAttachment } from '@auxx/types/draft'
 import type { RecordId } from '@auxx/types/resource'
 import { getDefinitionId, getInstanceId, isRecordId } from '@auxx/types/resource'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { DraftService } from '../../../drafts/draft-service'
 import { MessageSenderService } from '../../../messages/message-sender.service'
 import type {
@@ -42,7 +43,13 @@ interface AnswerNodeData extends NodeData {
   bccModes?: boolean[]
   text: string
   subject?: string
-  attachments?: Array<{ name: string; url: string }>
+  /**
+   * Attachment picker values, one per row, as the panel's `VarEditorArray`
+   * writes them: a constant row is a `file:<id>` reference (or a JSON array of
+   * them, when several files were picked into one row), a variable row is a
+   * `{{…}}` reference resolved at execution time. `attachmentFilesModes` marks
+   * which is which, positionally.
+   */
   attachmentFiles?: string[]
   attachmentFilesModes?: boolean[]
   saveAsDraft?: boolean
@@ -54,6 +61,38 @@ interface AnswerNodeData extends NodeData {
    * - 'draft': persist as a thread draft instead of sending
    */
   test_behavior?: 'default' | 'live' | 'dry_run' | 'draft'
+}
+
+/**
+ * Flatten one attachment row into bare file ids.
+ *
+ * A row reaches here as a `file:<id>` string, a JSON array of them (the picker
+ * writes several files into one row that way), a resolved variable that may be an
+ * array, an `{ id }` object, or a comma-joined string. The `file:` prefix is the
+ * picker's own marker — `MessageSenderService.prepareAttachments` resolves the
+ * bare id against `MediaAsset` first and `FolderFile` second, so it must come off.
+ */
+function toFileIds(value: unknown): string[] {
+  if (value == null) return []
+  if (Array.isArray(value)) return value.flatMap(toFileIds)
+  if (typeof value === 'object') {
+    const id = (value as { id?: unknown }).id
+    return typeof id === 'string' ? toFileIds(id) : []
+  }
+  if (typeof value !== 'string') return []
+  const raw = value.trim()
+  if (!raw) return []
+  if (raw.startsWith('[')) {
+    try {
+      return toFileIds(JSON.parse(raw))
+    } catch {
+      // Not JSON after all — fall through to the plain-string handling
+    }
+  }
+  return raw
+    .split(',')
+    .map((part) => part.trim().replace(/^file:/, ''))
+    .filter(Boolean)
 }
 
 /**
@@ -83,8 +122,9 @@ export class AnswerProcessor extends BaseNodeProcessor {
     const messageType = config.messageType || 'reply'
     const isReply = messageType === 'reply' || messageType === 'replyAll'
 
-    // 2. Resolve variables in text
+    // 2. Resolve variables in text and in the attachment picker rows
     const resolvedText = await this.interpolateVariables(config.text, contextManager)
+    const attachmentIds = await this.resolveAttachmentIds(config, contextManager)
 
     // 3. Get thread context based on messageType
     let threadId: string | undefined
@@ -329,7 +369,11 @@ export class AnswerProcessor extends BaseNodeProcessor {
               identifierType: IdentifierType.EMAIL,
             })),
           },
-          attachments: [],
+          attachments: await this.loadDraftAttachments(
+            attachmentIds,
+            context.organizationId,
+            context.db
+          ),
         }
 
         contextManager.log('INFO', node.name, 'Creating draft', {
@@ -338,6 +382,7 @@ export class AnswerProcessor extends BaseNodeProcessor {
           threadId,
           subject: resolvedSubject,
           recipientCount: resolvedTo.length,
+          attachmentCount: draftContent.attachments.length,
         })
 
         const draft = await draftService.upsert({
@@ -374,6 +419,7 @@ export class AnswerProcessor extends BaseNodeProcessor {
             cc: resolvedCc.length > 0 ? resolvedCc : undefined,
             bcc: resolvedBcc.length > 0 ? resolvedBcc : undefined,
             text: resolvedText,
+            attachmentIds,
             timestamp: new Date().toISOString(),
             recipientCount: resolvedTo.length + resolvedCc.length + resolvedBcc.length,
           },
@@ -402,6 +448,7 @@ export class AnswerProcessor extends BaseNodeProcessor {
         ccCount: ccParticipants?.length || 0,
         bccCount: bccParticipants?.length || 0,
         textLength: resolvedText.length,
+        attachmentCount: attachmentIds.length,
       })
 
       const fakeMessageId = `dry-run-${node.nodeId}-${Date.now()}`
@@ -430,6 +477,7 @@ export class AnswerProcessor extends BaseNodeProcessor {
           cc: resolvedCc.length > 0 ? resolvedCc : undefined,
           bcc: resolvedBcc.length > 0 ? resolvedBcc : undefined,
           text: resolvedText,
+          attachmentIds,
           timestamp: new Date().toISOString(),
           recipientCount: resolvedTo.length + resolvedCc.length + resolvedBcc.length,
         },
@@ -465,6 +513,7 @@ export class AnswerProcessor extends BaseNodeProcessor {
         bcc: bccParticipants,
         signatureId: undefined,
         draftMessageId: undefined,
+        attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
       }
 
       contextManager.log('INFO', node.name, 'Sending message', {
@@ -473,6 +522,7 @@ export class AnswerProcessor extends BaseNodeProcessor {
         threadId,
         subject: resolvedSubject,
         recipientCount: toParticipants.length,
+        attachmentCount: attachmentIds.length,
       })
 
       const result = await messageSender.sendMessage(sendInput)
@@ -505,6 +555,7 @@ export class AnswerProcessor extends BaseNodeProcessor {
           cc: resolvedCc.length > 0 ? resolvedCc : undefined,
           bcc: resolvedBcc.length > 0 ? resolvedBcc : undefined,
           text: resolvedText,
+          attachmentIds,
           timestamp: new Date().toISOString(),
           recipientCount:
             toParticipants.length + (ccParticipants?.length || 0) + (bccParticipants?.length || 0),
@@ -554,6 +605,104 @@ export class AnswerProcessor extends BaseNodeProcessor {
     }
 
     return resolved
+  }
+
+  /**
+   * Resolve the attachment picker rows to bare file ids.
+   *
+   * Constant rows carry the picker's `file:<id>` references; variable rows are
+   * resolved first and may come back as an array, a single id, or a comma-joined
+   * string. Ids are deduped — the same file picked twice must attach once.
+   */
+  private async resolveAttachmentIds(
+    config: AnswerNodeData,
+    contextManager: ExecutionContextManager
+  ): Promise<string[]> {
+    const rows = config.attachmentFiles ?? []
+    const ids: string[] = []
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      if (!row) continue
+      const isConstant = config.attachmentFilesModes?.[i] ?? true
+      // A row that IS a single reference is read as a value, not interpolated:
+      // an upstream node's file list is an array, and interpolation would
+      // stringify it before it could be flattened.
+      const soleReference = row.trim().match(/^\{\{\s*([^{}]+?)\s*\}\}$/)
+      const value = soleReference
+        ? await contextManager.getVariable(soleReference[1] as string)
+        : isConstant && !row.includes('{{')
+          ? row
+          : await this.resolveVariableValue(row, contextManager)
+      ids.push(...toFileIds(value))
+    }
+    return [...new Set(ids)]
+  }
+
+  /**
+   * Hydrate file ids into the `DraftAttachment` shape the draft editor renders.
+   *
+   * A draft stores denormalized name/size/mimeType, so the send path's lazy
+   * `prepareAttachments` resolution isn't enough here. Ids are looked up in both
+   * tables the picker can produce — `FolderFile` (the file browser) and
+   * `MediaAsset` (uploads) — and an id that resolves to neither is dropped rather
+   * than failing the node, matching the send path's behaviour for a missing file.
+   */
+  private async loadDraftAttachments(
+    ids: string[],
+    organizationId: string,
+    db: any
+  ): Promise<DraftAttachment[]> {
+    if (ids.length === 0 || !db) return []
+
+    const [files, assets] = await Promise.all([
+      db
+        .select({
+          id: schema.FolderFile.id,
+          name: schema.FolderFile.name,
+          size: schema.FolderFile.size,
+          mimeType: schema.FolderFile.mimeType,
+        })
+        .from(schema.FolderFile)
+        .where(
+          and(
+            inArray(schema.FolderFile.id, ids),
+            eq(schema.FolderFile.organizationId, organizationId)
+          )
+        ),
+      db
+        .select({
+          id: schema.MediaAsset.id,
+          name: schema.MediaAsset.name,
+          size: schema.MediaAsset.size,
+          mimeType: schema.MediaAsset.mimeType,
+        })
+        .from(schema.MediaAsset)
+        .where(
+          and(
+            inArray(schema.MediaAsset.id, ids),
+            eq(schema.MediaAsset.organizationId, organizationId)
+          )
+        ),
+    ])
+
+    const byId = new Map<string, DraftAttachment>()
+    const collect = (rows: any[], type: 'file' | 'asset') => {
+      for (const row of rows ?? []) {
+        if (!row?.id || byId.has(row.id)) continue
+        byId.set(row.id, {
+          id: row.id,
+          name: row.name || 'attachment',
+          size: Number(row.size || 0),
+          mimeType: row.mimeType || 'application/octet-stream',
+          type,
+        })
+      }
+    }
+    collect(files, 'file')
+    collect(assets, 'asset')
+
+    // Preserve the configured order
+    return ids.map((id) => byId.get(id)).filter((a): a is DraftAttachment => !!a)
   }
 
   /**
@@ -758,6 +907,15 @@ export class AnswerProcessor extends BaseNodeProcessor {
     if (config.bccIsAuto === false) {
       extractFromEmailArray(config.bcc, config.bccModes)
     }
+
+    // Variable-mode attachment rows
+    config.attachmentFiles?.forEach((row, i) => {
+      const isConstant = config.attachmentFilesModes?.[i] ?? true
+      if (!row) return
+      const ids = this.extractVariableIds(row)
+      if (ids.length > 0) ids.forEach((v) => variables.add(v))
+      else if (!isConstant) variables.add(row)
+    })
 
     return Array.from(variables)
   }

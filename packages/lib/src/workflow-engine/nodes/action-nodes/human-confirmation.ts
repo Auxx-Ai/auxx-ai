@@ -17,6 +17,11 @@ import { publisher } from '../../../events/publisher'
 import { enqueueEmailJob } from '../../../jobs/email'
 import { getQueue, Queues } from '../../../jobs/queues'
 import type { ExecutionContextManager } from '../../core/execution-context'
+import {
+  type ApprovalOutcome,
+  buildApprovalDecisionVariables,
+  handleForApprovalOutcome,
+} from '../../core/pause-resume'
 import type {
   NodeExecutionResult,
   PreprocessedNodeData,
@@ -49,9 +54,20 @@ interface HumanConfirmationNodeData {
     in_app: boolean
     email: boolean
   }
-  // Timeout settings
+  /**
+   * Expiry settings.
+   *
+   * `enabled: false` means **no expiry at all** — the panel's Timeout section
+   * switch, which also removes the node's `timeout` branch from the canvas. The
+   * request then has no `expiresAt` and no timeout job, and only a decision (or
+   * an administrative cancel) can resume the run.
+   *
+   * `duration` is either a constant number or the `{ id }` variable reference the
+   * panel's VarEditor writes in variable mode.
+   */
   timeout: {
-    duration: number
+    enabled?: boolean
+    duration: number | { id?: string; varName?: string }
     unit: 'minutes' | 'hours' | 'days'
   }
   reminders?: {
@@ -88,15 +104,15 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
       : 'Human confirmation required'
     // 2. Resolve assignees early
     const assignees = await this.resolveAssignees(config.assignees, contextManager)
-    // 3. Calculate timeout once
+    // 3. Calculate the expiry once — null when the node's timeout is switched off
     const timeoutMs = await this.calculateTimeoutMs(config.timeout, contextManager)
-    const expiresAt = new Date(Date.now() + timeoutMs)
+    const expiresAt = timeoutMs === null ? null : new Date(Date.now() + timeoutMs)
     return {
       inputs: { message, assignees, expiresAt, timeoutMs },
       metadata: {
         nodeType: 'human-confirmation',
         assigneeCount: assignees.userIds.length + assignees.groups.length,
-        hasTimeout: true,
+        hasTimeout: timeoutMs !== null,
         preprocessedAt: new Date().toISOString(),
       },
     }
@@ -129,12 +145,12 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
         userIds: string[]
         groups: string[]
       }
-      let expiresAt: Date
+      let expiresAt: Date | null
       if (preprocessedData?.inputs) {
         // Use preprocessed values
         message = preprocessedData.inputs.message
         assignees = preprocessedData.inputs.assignees
-        expiresAt = preprocessedData.inputs.expiresAt
+        expiresAt = preprocessedData.inputs.expiresAt ?? null
       } else {
         // Fallback to runtime computation
         assignees = await this.resolveAssignees(config.assignees, contextManager)
@@ -142,7 +158,7 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
           ? await this.interpolateVariables(config.message, contextManager)
           : undefined
         const timeoutMs = await this.calculateTimeoutMs(config.timeout, contextManager)
-        expiresAt = new Date(Date.now() + timeoutMs)
+        expiresAt = timeoutMs === null ? null : new Date(Date.now() + timeoutMs)
       }
       // Validate assignees exist
       if (assignees.userIds.length === 0 && assignees.groups.length === 0) {
@@ -196,7 +212,9 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
       contextManager.log(
         'INFO',
         node.nodeId,
-        `Created approval request ${approvalRequest.id}, expires at ${expiresAt.toISOString()}${isTestMode ? ' (LIVE TEST MODE)' : ''}`
+        `Created approval request ${approvalRequest.id}, ${
+          expiresAt ? `expires at ${expiresAt.toISOString()}` : 'no expiry'
+        }${isTestMode ? ' (LIVE TEST MODE)' : ''}`
       )
       // Send notifications
       await this.sendNotifications(
@@ -206,8 +224,10 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
         contextManager,
         config.require_login
       )
-      // Schedule timeout job
-      await this.scheduleTimeout(approvalRequest.id, workflowRunId, node.nodeId, expiresAt)
+      // Schedule the timeout job — skipped entirely when the node has no expiry
+      if (expiresAt) {
+        await this.scheduleTimeout(approvalRequest.id, workflowRunId, node.nodeId, expiresAt)
+      }
       // Schedule reminders if enabled
       // TODO: Uncomment when approvalReminder table is added to database schema
       // if (config.reminders?.enabled) {
@@ -227,7 +247,7 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
           workflowRunId,
           organizationId,
           pausedNodeId: node.nodeId,
-          resumeAt: expiresAt.toISOString(),
+          resumeAt: expiresAt?.toISOString() ?? null,
           pauseReason: 'manual_confirmation',
           approvalRequestId: approvalRequest.id,
         },
@@ -239,7 +259,7 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
         message: message || 'Manual confirmation required',
         metadata: {
           approvalRequestId: approvalRequest.id,
-          expiresAt: expiresAt.toISOString(),
+          expiresAt: expiresAt?.toISOString() ?? null,
           assigneeCount: assignees.userIds.length + assignees.groups.length,
         },
       }
@@ -248,9 +268,14 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
         pauseReason,
         output: {
           approval_request_id: approvalRequest.id,
-          expires_at: expiresAt.toISOString(),
+          expires_at: expiresAt?.toISOString() ?? null,
           assignee_count: assignees.userIds.length + assignees.groups.length,
           notification_methods: config.notification_methods,
+          // When the request was raised. The resume path reads this back off the
+          // paused node's own output to derive `response_time` — none of the three
+          // producers of a resume payload carries it, and *when we asked* is the
+          // node's fact, not the resolver's.
+          requested_at: (approvalRequest.createdAt ?? new Date()).toISOString(),
         },
         metadata: { approvalRequestId: approvalRequest.id },
       }
@@ -270,6 +295,7 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
   ): Promise<Partial<NodeExecutionResult>> {
     const behavior = config.test_behavior || 'always_approve'
     const delay = config.test_delay || 0
+    const requestedAt = Date.now()
     contextManager.log(
       'DEBUG',
       node.nodeId,
@@ -279,37 +305,33 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     if (delay > 0) {
       await new Promise((resolve) => setTimeout(resolve, delay * 1000))
     }
-    // Determine test outcome
-    let approved: boolean
+    const respondedBy = contextManager.getContext().userId ?? ''
+    const finish = (outcome: ApprovalOutcome): Partial<NodeExecutionResult> => {
+      const decision = buildApprovalDecisionVariables({
+        outcome,
+        // A timeout has no responder, by definition.
+        respondedBy: outcome === 'timeout' ? null : respondedBy,
+        respondedAt: Date.now(),
+        requestedAt,
+      })
+      contextManager.setNodeVariables(node.nodeId, decision)
+      return {
+        status: NodeRunningStatus.Succeeded,
+        output: { test_mode: true, test_behavior: behavior, ...decision },
+        // The same outcome→handle mapping production takes on resume.
+        outputHandle: handleForApprovalOutcome(outcome),
+      }
+    }
     switch (behavior) {
-      case 'always_approve':
-        approved = true
-        break
       case 'always_deny':
-        approved = false
-        break
+        return finish('denied')
       case 'random':
-        approved = Math.random() >= 0.5
-        break
+        return finish(Math.random() >= 0.5 ? 'approved' : 'denied')
       case 'delayed':
         // Follow timeout path for delayed behavior
-        return {
-          status: NodeRunningStatus.Succeeded,
-          output: { test_mode: true, outcome: 'timeout' },
-          outputHandle: 'timeout',
-        }
+        return finish('timeout')
       default:
-        approved = true
-    }
-    // Return appropriate next node based on test outcome
-    return {
-      status: NodeRunningStatus.Succeeded,
-      output: {
-        test_mode: true,
-        outcome: approved ? 'approved' : 'denied',
-        test_behavior: behavior,
-      },
-      outputHandle: approved ? 'approved' : 'denied',
+        return finish('approved')
     }
   }
   private async resolveAssignees(
@@ -347,19 +369,26 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
 
     return { userIds: [...new Set(userIds)], groups: [...new Set(groups)] }
   }
+  /**
+   * Resolve the configured expiry to milliseconds, or `null` when the node's
+   * timeout is switched off (`timeout.enabled === false`, the panel's Timeout
+   * section switch — which also removes the node's `timeout` branch).
+   *
+   * @throws When an enabled timeout resolves to something that is not a positive
+   *         number. A dynamic duration that resolved to nothing is a real
+   *         configuration failure: silently substituting a default would expire
+   *         (or never expire) a request on a schedule nobody asked for.
+   */
   private async calculateTimeoutMs(
     timeout: HumanConfirmationNodeData['timeout'],
     contextManager: ExecutionContextManager
-  ): Promise<number> {
-    let duration: number
-    if (typeof timeout.duration === 'object') {
-      // It's a variable
-      duration = Number(await this.resolveVariableValue(timeout.duration, contextManager))
-    } else {
-      duration = timeout.duration
+  ): Promise<number | null> {
+    if (!timeout || timeout.enabled === false) {
+      return null
     }
+    const duration = await this.resolveTimeoutDuration(timeout.duration, contextManager)
     if (Number.isNaN(duration) || duration <= 0) {
-      throw new Error('Invalid timeout duration')
+      throw new Error(`Invalid timeout duration: ${JSON.stringify(timeout.duration)}`)
     }
     // Convert to milliseconds based on unit
     switch (timeout.unit) {
@@ -372,6 +401,36 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
       default:
         throw new Error(`Invalid timeout unit: ${timeout.unit}`)
     }
+  }
+  /**
+   * Resolve the duration half of the expiry.
+   *
+   * Constant mode stores a plain number. Variable mode stores the panel's
+   * `UnifiedVariable` — `{ id: '<nodeId>.<path>' }` — which the base
+   * `resolveVariableValue` returns untouched (it only resolves strings), so a
+   * variable-mode timeout used to reach `Number({…})` and fail the node with
+   * "Invalid timeout duration" every time.
+   */
+  private async resolveTimeoutDuration(
+    duration: HumanConfirmationNodeData['timeout']['duration'],
+    contextManager: ExecutionContextManager
+  ): Promise<number> {
+    if (typeof duration === 'number') {
+      return duration
+    }
+    const ref =
+      typeof duration === 'object' && duration !== null
+        ? (duration.id ?? duration.varName)
+        : duration
+    if (typeof ref !== 'string' || ref.length === 0) {
+      return Number.NaN
+    }
+    const resolved = ref.includes('{{')
+      ? await this.interpolateVariables(ref, contextManager)
+      : await contextManager.getVariable(ref)
+    // A reference that resolves to nothing but reads as a number was a constant
+    // typed into the variable slot; anything else stays NaN and fails the node.
+    return Number(resolved ?? ref)
   }
   private async sendNotifications(
     approvalRequest: any,
@@ -603,6 +662,13 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
       variables.add(config.assignees.variable.id)
     }
 
+    // Extract from a variable-mode timeout duration
+    const duration = config.timeout?.duration
+    if (typeof duration === 'object' && duration !== null) {
+      const ref = duration.id ?? duration.varName
+      if (ref) variables.add(ref)
+    }
+
     return Array.from(variables)
   }
 
@@ -618,8 +684,9 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
     if (!config.notification_methods?.in_app && !config.notification_methods?.email) {
       errors.push('At least one notification method must be enabled')
     }
-    // Validate timeout
-    if (!config.timeout?.duration || !config.timeout?.unit) {
+    // Validate timeout — only when it is switched on (the panel's Timeout
+    // section switch, which also drops the node's `timeout` branch)
+    if (config.timeout?.enabled !== false && (!config.timeout?.duration || !config.timeout?.unit)) {
       errors.push('Timeout duration and unit are required')
     }
     // Note: Connection validation removed - workflow uses edges instead of node.connections

@@ -15,6 +15,13 @@ import { extractUserInputs } from './extract-user-inputs'
  *
  * This processor reads the pre-populated triggerData from the execution
  * context and maps each field to node output variables for downstream nodes.
+ *
+ * Run inputs are the `{ event, _meta }` envelope built by
+ * `execution/trigger-app-workflow.ts`; `event` is the delivery verbatim. Each
+ * field of an object event is fanned out to `{{<node>.<field>}}` — the same
+ * variable surface the builder advertises from the app's declared
+ * `schema.outputs` — and the whole payload stays addressable as
+ * `{{<node>.event}}` (which matters when the delivery is not an object).
  */
 export class AppWorkflowTriggerProcessor extends BaseNodeProcessor {
   readonly type: WorkflowNodeType = WorkflowNodeType.APP_TRIGGER
@@ -37,6 +44,14 @@ export class AppWorkflowTriggerProcessor extends BaseNodeProcessor {
       throw new Error('No trigger data found in execution context for app trigger')
     }
 
+    // Unwrap the `{ event, _meta }` envelope. Only an object event has fields to
+    // fan out; an array/string/null delivery is addressable as `event` alone.
+    const event = (triggerData as Record<string, unknown>).event
+    const eventFields: Record<string, unknown> =
+      typeof event === 'object' && event !== null && !Array.isArray(event)
+        ? (event as Record<string, unknown>)
+        : {}
+
     contextManager.log('INFO', node.name, 'App trigger activated', {
       appId: node.data.appId,
       triggerId: node.data.triggerId,
@@ -45,7 +60,7 @@ export class AppWorkflowTriggerProcessor extends BaseNodeProcessor {
 
     // Apply trigger filters if configured (e.g., update type, chat ID, user ID)
     const triggerFilters = node.data.triggerFilters as Record<string, string[]> | undefined
-    if (triggerFilters && typeof triggerData === 'object' && triggerData !== null) {
+    if (triggerFilters) {
       for (const [field, allowedValues] of Object.entries(triggerFilters)) {
         if (!Array.isArray(allowedValues)) continue
 
@@ -58,7 +73,7 @@ export class AppWorkflowTriggerProcessor extends BaseNodeProcessor {
           }
         }
 
-        const actualValue = String((triggerData as Record<string, unknown>)[field] ?? '')
+        const actualValue = String(eventFields[field] ?? '')
         if (!allowedValues.map(String).includes(actualValue)) {
           contextManager.log('INFO', node.name, 'Trigger filtered out', {
             field,
@@ -86,19 +101,21 @@ export class AppWorkflowTriggerProcessor extends BaseNodeProcessor {
     // Map each trigger event data field to a node variable for downstream access
     // e.g., {{triggerNodeId.orderId}}, {{triggerNodeId.customerEmail}}
     // Event data takes precedence over configured inputs for same-named fields
-    if (typeof triggerData === 'object' && triggerData !== null) {
-      for (const [key, value] of Object.entries(triggerData)) {
-        if (key.startsWith('_')) continue
-        contextManager.setNodeVariable(node.nodeId, key, value)
-      }
+    for (const [key, value] of Object.entries(eventFields)) {
+      contextManager.setNodeVariable(node.nodeId, key, value)
     }
 
-    // Build clean output: configured inputs + event data (without platform metadata)
-    const eventOutput =
-      typeof triggerData === 'object' && triggerData !== null
-        ? Object.fromEntries(Object.entries(triggerData).filter(([k]) => !k.startsWith('_')))
-        : triggerData
-    const output = { ...configuredInputs, ...eventOutput }
+    // Build clean output: configured inputs + event data (platform metadata stays
+    // in `_meta`, which is never unwrapped here)
+    const output: Record<string, unknown> = { ...configuredInputs, ...eventFields }
+
+    // The raw delivery, under a stable alias — the only way to reach a non-object
+    // payload. An app field genuinely named `event` wins, so app data is never shadowed.
+    if (event !== undefined && !('event' in output)) {
+      output.event = event
+      contextManager.setNodeVariable(node.nodeId, 'event', event)
+    }
+
     contextManager.setNodeVariable(node.nodeId, 'output', output)
 
     return {

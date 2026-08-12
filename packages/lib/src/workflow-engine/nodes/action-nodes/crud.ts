@@ -10,7 +10,13 @@ import {
   type RelationUpdateMode as RelationUpdateModeType,
 } from '@auxx/types/custom-field'
 import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import { isRecordId, normalizeToRecordIds, type RecordId, toRecordId } from '@auxx/types/resource'
+import {
+  getInstanceId,
+  isRecordId,
+  normalizeToRecordIds,
+  type RecordId,
+  toRecordId,
+} from '@auxx/types/resource'
 import { isMultiRelationship } from '@auxx/utils/relationships'
 import { findCachedResource, requireCachedEntityDefId } from '../../../cache'
 import { FieldValueService } from '../../../field-values/field-value-service'
@@ -30,6 +36,11 @@ import {
 import type { TableId } from '../../../resources/registry/field-registry'
 import { getFieldOutputKey, type ResourceField } from '../../../resources/registry/field-types'
 import type { CustomResource } from '../../../resources/registry/types'
+import {
+  canLinkThread,
+  clearPrimaryEntity,
+  linkEntityToThread,
+} from '../../../threads/links.service'
 import { ThreadMutationService, type ThreadUpdates } from '../../../threads/thread-mutation.service'
 import { UnreadService } from '../../../threads/unread-service'
 import type { ExecutionContextManager } from '../../core/execution-context'
@@ -66,6 +77,18 @@ interface CrudDefaultValue {
   type: 'string' | 'number' | 'boolean' | 'object' | 'array'
   value: string
 }
+
+/**
+ * Relation update mode (what the panel's mode badge writes) → the tag operation
+ * `ThreadMutationService.tagThreadsBulk` takes. `dynamic` is resolved to a
+ * runtime mode in `preprocessNode` and defaults to `replace`, so it maps the same.
+ */
+const TAG_OPERATION_BY_UPDATE_MODE: Record<RelationUpdateModeType, 'add' | 'remove' | 'set'> = {
+  [RelationUpdateMode.REPLACE]: 'set',
+  [RelationUpdateMode.ADD]: 'add',
+  [RelationUpdateMode.REMOVE]: 'remove',
+  [RelationUpdateMode.DYNAMIC]: 'set',
+}
 /**
  * CRUD node processor for handling create, read, update, delete operations
  * Supports both system resources (contact, ticket) and custom entities
@@ -93,11 +116,15 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
         })
       }
 
-      // Validate that ID was extracted for update/delete operations
+      // Validate that ID was extracted for update/delete operations.
+      // Name the configured value in the message — the usual cause is a
+      // `{{node.path}}` that does not exist on the upstream node, and without
+      // the raw value the run trace gives no way to tell which path was wrong.
       if ((config.mode === 'update' || config.mode === 'delete') && !resolvedResourceId) {
         throw new Error(
-          'Resource ID is required for update and delete operations. ' +
-            'Please select a valid resource or ID from a previous node.'
+          `Resource ID is required for ${config.mode} operations, but "${config.resourceId}" ` +
+            'resolved to nothing. Select a valid resource, or a variable from a previous node ' +
+            'that actually produces an ID.'
         )
       }
     }
@@ -554,8 +581,19 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
 
         const ref = createResourceReference(resourceType, result.id, organizationId)
 
+        // Threads are action-based, not field-based: the result is a set of action
+        // flags. Every one of them is advertised as an individual output variable by
+        // the builder (`nodes/core/crud/output-variables.ts`), so write them all —
+        // leaving them inside `output` alone makes the picker hand out paths that
+        // resolve to nothing.
+        if (resourceType === 'thread') {
+          contextManager.setNodeVariable(node.nodeId, 'thread', ref)
+          for (const [key, value] of Object.entries(result.thread ?? {})) {
+            contextManager.setNodeVariable(node.nodeId, key, value)
+          }
+        }
         // For entities (custom IDs and entity definition types), use setEntityVariables
-        if (isCustomResourceId(resourceType) || isEntityDefinitionType(resourceType)) {
+        else if (isCustomResourceId(resourceType) || isEntityDefinitionType(resourceType)) {
           const entityDefId = result.entityInstance?.entityDefinitionId ?? resourceType
           const entityData = {
             id: result.id,
@@ -934,10 +972,28 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     )
     const unreadService = new UnreadService(organizationId, userId, viewer)
 
-    // Track results for each action
+    // Track results for each action. Every key the builder advertises is
+    // seeded here so the variable always resolves — an action that was skipped
+    // reports `false`/`null` rather than disappearing from the picker.
     const results: Record<string, any> = {
       id: resourceId,
+      success: true,
+      statusUpdated: false,
+      subjectUpdated: false,
+      assigneeUpdated: false,
+      readStatusUpdated: false,
+      tagsUpdated: false,
+      inboxUpdated: false,
+      primaryEntityUpdated: false,
+      newStatus: null,
+      newSubject: null,
+      newAssigneeId: null,
+      newReadStatus: null,
+      newInboxId: null,
+      newPrimaryEntityId: null,
+      actionCount: 0,
       actionsPerformed: [] as string[],
+      errors: [] as string[],
     }
     const errors: string[] = []
 
@@ -951,11 +1007,15 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     if (data.subject !== undefined && data.subject !== '') {
       unifiedUpdates.subject = data.subject
     }
-    if (data.assigneeId !== undefined) {
-      // Empty string or null means unassign. The relation picker hands back a bare
-      // user id; ThreadMutationService parses this as an ActorId and THROWS on a
-      // bare one, so prefix it here.
-      const rawAssignee = data.assigneeId === '' ? null : String(data.assigneeId)
+    if (data.assignee !== undefined) {
+      // `assignee` is the registry field key the panel writes (it is an ACTOR
+      // field, so `preprocessNode` does NOT rename it to its `assigneeId`
+      // dbColumn the way it renames RELATION fields like `inbox`).
+      //
+      // Empty/null means unassign. The picker hands back a bare user id;
+      // ThreadMutationService parses this as an ActorId and THROWS on a bare
+      // one, so prefix it here.
+      const [rawAssignee] = parseRelationInput(data.assignee)
       unifiedUpdates.assigneeId = rawAssignee
         ? isActorId(rawAssignee)
           ? rawAssignee
@@ -963,12 +1023,18 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
         : null
     }
     if (data.inboxId !== undefined && data.inboxId !== '') {
-      // Same shape mismatch: ThreadMutationService takes the instance half off a
-      // RecordId, so a bare inbox id would be written as an empty string.
-      const rawInbox = String(data.inboxId)
-      unifiedUpdates.inboxId = isRecordId(rawInbox as RecordId)
-        ? (rawInbox as RecordId)
-        : toRecordId('inbox', rawInbox)
+      // A cleared relation field arrives as `null` (preprocessNode maps an empty
+      // picker to `ids[0] ?? null`), which means unassign — `String(null)` would
+      // otherwise write the literal id `'null'` and blow the FK.
+      //
+      // Same shape mismatch as assignee: ThreadMutationService takes the instance
+      // half off a RecordId, so a bare inbox id would be written as an empty string.
+      const [rawInbox] = parseRelationInput(data.inboxId)
+      unifiedUpdates.inboxId = rawInbox
+        ? isRecordId(rawInbox as RecordId)
+          ? (rawInbox as RecordId)
+          : toRecordId('inbox', rawInbox)
+        : null
     }
 
     // Execute actions in parallel
@@ -1029,10 +1095,55 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       )
     }
 
+    // SPECIAL: Link/unlink the primary record (uses the thread links service).
+    //
+    // The registry's `thread.ticket` field is `dbColumn`-backed by
+    // `Thread.primaryEntityInstanceId`, so `preprocessNode` renames it to that
+    // column. The pointer is NOT ticket-only (schema `thread.ts`: deal, lead or
+    // ticket), and its definition half must be written alongside it or the row
+    // is inconsistent — which is exactly what `linkEntityToThread` guarantees:
+    // it reads `entityDefinitionId` off the EntityInstance rather than trusting
+    // input, and demotes any existing primary to a secondary `ThreadEntityLink`
+    // in the same transaction instead of dropping it.
+    if (data.primaryEntityInstanceId !== undefined) {
+      const [rawPrimary] = parseRelationInput(data.primaryEntityInstanceId)
+      const primaryInstanceId = rawPrimary
+        ? isRecordId(rawPrimary as RecordId)
+          ? getInstanceId(rawPrimary as RecordId)
+          : rawPrimary
+        : null
+
+      actionPromises.push(
+        (async () => {
+          // §7 link gate — the same predicate `thread.linkToTicket` applies. An
+          // invisible thread is indistinguishable from a nonexistent one.
+          if (!(await canLinkThread(database, organizationId, viewer, resourceId))) {
+            throw new Error('thread not found')
+          }
+          if (primaryInstanceId) {
+            await linkEntityToThread({
+              threadId: resourceId,
+              entityInstanceId: primaryInstanceId,
+              role: 'primary',
+              organizationId,
+              actorId: userId,
+            })
+            results.actionsPerformed.push(`Linked record ${primaryInstanceId}`)
+          } else {
+            await clearPrimaryEntity({ threadId: resourceId, organizationId, actorId: userId })
+            results.actionsPerformed.push('Unlinked primary record')
+          }
+          results.primaryEntityUpdated = true
+          results.newPrimaryEntityId = primaryInstanceId
+        })().catch((err) => {
+          errors.push(`Record link failed: ${err.message}`)
+        })
+      )
+    }
+
     // SPECIAL: Update Tags (uses tagThreadsBulk with operation mode)
     if (data.tags !== undefined && data.tags !== '') {
-      const tagOperation = data.tagOperation || 'add'
-      const { tagIds } = this.parseTagsInputForThread(data.tags)
+      const { tagIds, operation } = this.parseTagsInputForThread(data.tags)
       if (tagIds.length > 0) {
         actionPromises.push(
           (async () => {
@@ -1041,13 +1152,15 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
               requireCachedEntityDefId(organizationId, 'tag'),
             ])
             const threadRecordIds = [toRecordId(threadEntityDefId, resourceId)]
-            const tagRecordIds = tagIds.map((id) => toRecordId(tagEntityDefId, id))
+            // Tag ids arrive either bare or already as RecordIds (the picker and
+            // upstream node variables disagree); normalize so neither double-prefixes.
+            const tagRecordIds = normalizeToRecordIds(tagIds, tagEntityDefId)
             return mutationService
-              .tagThreadsBulk(threadRecordIds, tagRecordIds, tagOperation)
+              .tagThreadsBulk(threadRecordIds, tagRecordIds, operation)
               .then((result) => {
                 results.tagsUpdated = true
                 results.tagsResult = result
-                results.actionsPerformed.push(`Tags ${tagOperation}: ${tagIds.length} tag(s)`)
+                results.actionsPerformed.push(`Tags ${operation}: ${tagIds.length} tag(s)`)
               })
               .catch((err) => {
                 errors.push(`Tags update failed: ${err.message}`)
@@ -1075,22 +1188,38 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
 
   /**
    * Parse tags input for thread operations which can come in various formats:
-   * - Array of tag IDs: ['tag1', 'tag2']
+   * - Update-mode envelope: `{ values: [...], updateMode: 'add' | 'remove' | 'replace' }`
+   *   — what `preprocessNode` emits for a multi-relation field in update mode,
+   *   which is every thread tag write the panel produces
+   * - Array of tag IDs / entity objects: ['tag1', { id: 'tag2' }]
    * - Comma-separated string: 'tag1,tag2'
    */
-  private parseTagsInputForThread(value: any): { tagIds: string[] } {
-    let tagIds: string[] = []
-
-    if (typeof value === 'string') {
-      tagIds = value
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
-    } else if (Array.isArray(value)) {
-      tagIds = value
+  private parseTagsInputForThread(value: any): {
+    tagIds: string[]
+    operation: 'add' | 'remove' | 'set'
+  } {
+    if (value && typeof value === 'object' && !Array.isArray(value) && 'values' in value) {
+      const { values, updateMode } = value as {
+        values: unknown
+        updateMode?: RelationUpdateModeType
+      }
+      return {
+        tagIds: parseRelationInput(values),
+        operation: TAG_OPERATION_BY_UPDATE_MODE[updateMode ?? RelationUpdateMode.REPLACE],
+      }
     }
 
-    return { tagIds }
+    if (typeof value === 'string') {
+      return {
+        tagIds: value
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean),
+        operation: 'add',
+      }
+    }
+
+    return { tagIds: parseRelationInput(value), operation: 'add' }
   }
 
   /**
@@ -1163,6 +1292,10 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
           Object.entries(defaultResult).forEach(([key, value]) => {
             contextManager.setNodeVariable(node.nodeId, key, value)
           })
+          // Both of these are advertised by the builder whenever the strategy is
+          // `default`, for every resource type — write them, not just `output`.
+          contextManager.setNodeVariable(node.nodeId, 'usedDefaults', true)
+          contextManager.setNodeVariable(node.nodeId, 'defaultValues', defaultResult)
           contextManager.log('INFO', node.name, `${mode} operation failed, using default values`, {
             defaultValueCount: config.default_values.length,
           })

@@ -8,6 +8,7 @@ import {
   toResourceFieldId,
 } from '@auxx/types/field'
 import { getCachedResourceFields } from '../../../cache'
+import { evaluateOperator, isKnownOperator } from '../../../conditions/evaluate-operator'
 import type { ResourceField } from '../../../resources/registry/field-types'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
@@ -15,6 +16,9 @@ import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { isResourceReference, type ResourceReference } from '../../types/resource-reference'
 import { BaseNodeProcessor } from '../base-node'
 import type { SortConfig } from '../types/list-types'
+
+/** How multiple filter conditions combine. */
+type FilterLogic = 'AND' | 'OR'
 
 export class ListProcessor extends BaseNodeProcessor {
   readonly type = WorkflowNodeType.LIST
@@ -227,20 +231,54 @@ export class ListProcessor extends BaseNodeProcessor {
       return list
     }
 
-    return list.filter((item) => {
-      const results: boolean[] = config.conditions.map((condition: any) => {
-        const fieldKey = this.resolveFilterField(condition.fieldId ?? condition.field)
-        const fieldValue = this.getNestedValue(item, fieldKey)
-        return this.evaluateCondition(
-          fieldValue,
-          condition.operator,
-          condition.value,
-          condition.caseSensitive
-        )
-      })
+    const logic = this.resolveFilterLogic(config)
 
-      return config.logic === 'AND' ? results.every((r) => r) : results.some((r) => r)
+    contextManager.log('DEBUG', undefined, 'Applying list filter', {
+      logic,
+      conditions: config.conditions.map((c: any) => ({
+        fieldId: Array.isArray(c?.fieldId) ? c.fieldId.join('::') : c?.fieldId,
+        operator: c?.operator,
+      })),
     })
+
+    // Operator semantics come from `conditions/evaluate-operator.ts` — the same
+    // implementation the if-else node and mail/record-rule filters use, so `is` cannot
+    // mean one thing here and another there.
+    const matches = (item: any, condition: any): boolean => {
+      const fieldKey = this.resolveFilterField(condition.fieldId ?? condition.field)
+      const fieldValue = this.getNestedValue(item, fieldKey)
+      return evaluateOperator(fieldValue, condition.operator, condition.value)
+    }
+
+    return list.filter((item) =>
+      logic === 'OR'
+        ? config.conditions.some((condition: any) => matches(item, condition))
+        : config.conditions.every((condition: any) => matches(item, condition))
+    )
+  }
+
+  /**
+   * Resolve how the filter's conditions combine.
+   *
+   * The builder's condition list writes the AND/OR choice onto every condition after
+   * the first (`logicalOperator`) and the list panel mirrors that onto
+   * `filterConfig.logic`. Read the node-level key first, fall back to the per-condition
+   * marker, and default to AND — which is what the panel writes (and displays) the
+   * moment a second condition is added.
+   */
+  private resolveFilterLogic(config: any): FilterLogic {
+    const explicit = typeof config.logic === 'string' ? config.logic.toUpperCase() : undefined
+    if (explicit === 'AND' || explicit === 'OR') return explicit
+
+    for (const condition of config.conditions ?? []) {
+      const perCondition =
+        typeof condition?.logicalOperator === 'string'
+          ? condition.logicalOperator.toUpperCase()
+          : undefined
+      if (perCondition === 'AND' || perCondition === 'OR') return perCondition
+    }
+
+    return 'AND'
   }
 
   /**
@@ -647,74 +685,6 @@ export class ListProcessor extends BaseNodeProcessor {
   }
 
   /**
-   * Helper: Evaluate a condition
-   */
-  private evaluateCondition(
-    value: any,
-    operator: string,
-    compareValue: any,
-    caseSensitive?: boolean
-  ): boolean {
-    // If value is an array (from has_many relationship), check if ANY element matches
-    if (Array.isArray(value) && operator !== 'is_empty' && operator !== 'is_not_empty') {
-      return value.some((v) => this.evaluateCondition(v, operator, compareValue, caseSensitive))
-    }
-
-    // Handle null/undefined checks first
-    if (operator === 'is_null') return value == null
-    if (operator === 'is_not_null') return value != null
-    if (operator === 'is_empty') {
-      return (
-        value === '' ||
-        value === null ||
-        value === undefined ||
-        (Array.isArray(value) && value.length === 0) ||
-        (typeof value === 'object' && Object.keys(value).length === 0)
-      )
-    }
-    if (operator === 'is_not_empty') {
-      return !this.evaluateCondition(value, 'is_empty', null)
-    }
-
-    // Convert values for comparison
-    let val = value
-    let cmp = compareValue
-
-    // Handle string comparisons
-    if (typeof val === 'string' || typeof cmp === 'string') {
-      val = String(val)
-      cmp = String(cmp)
-
-      if (!caseSensitive) {
-        val = val.toLowerCase()
-        cmp = cmp.toLowerCase()
-      }
-    }
-
-    // Evaluate operators
-    switch (operator) {
-      case 'equals':
-        return val === cmp
-      case 'not_equals':
-        return val !== cmp
-      case 'contains':
-        return String(val).includes(String(cmp))
-      case 'not_contains':
-        return !String(val).includes(String(cmp))
-      case 'greater_than':
-        return Number(val) > Number(cmp)
-      case 'less_than':
-        return Number(val) < Number(cmp)
-      case 'greater_than_or_equal':
-        return Number(val) >= Number(cmp)
-      case 'less_than_or_equal':
-        return Number(val) <= Number(cmp)
-      default:
-        return false
-    }
-  }
-
-  /**
    * Determine which FieldReferences this list operation needs.
    * Used to batch-prefetch field values before operating on ResourceReference arrays.
    *
@@ -889,6 +859,16 @@ export class ListProcessor extends BaseNodeProcessor {
             : node.data.findConfig?.conditions
         if (!conditions || conditions.length === 0) {
           errors.push('At least one condition is required')
+        } else {
+          // An operator the registry doesn't know evaluates to "no match" for every
+          // item, which reads as an empty result rather than a broken config — so say so.
+          conditions.forEach((condition: any, index: number) => {
+            if (!condition?.operator) {
+              errors.push(`Condition ${index + 1}: Missing operator`)
+            } else if (!isKnownOperator(condition.operator)) {
+              errors.push(`Condition ${index + 1}: Unknown operator "${condition.operator}"`)
+            }
+          })
         }
         break
       }

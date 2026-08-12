@@ -28,11 +28,13 @@ export const dateTimeNodeSchema = z.object({
   isInputDateConstant: z.boolean().default(true),
 
   // Operation-specific fields
+  // `duration` and `unit` hold a variable reference (string) when the matching
+  // `fieldModes` entry is false — see the panel's constant/variable toggles.
   addSubtract: z
     .object({
       action: z.enum(['add', 'subtract']),
-      duration: z.number().min(0, 'Duration must be positive'),
-      unit: z.enum(TimeUnit),
+      duration: z.union([z.number().min(0, 'Duration must be positive'), z.string()]).optional(),
+      unit: z.union([z.enum(TimeUnit), z.string()]),
     })
     .optional(),
 
@@ -58,6 +60,9 @@ export const dateTimeNodeSchema = z.object({
       customFormat: z.string().optional(),
     })
     .optional(),
+
+  // Field mode tracking (true = constant, false = bound to a variable)
+  fieldModes: z.record(z.string(), z.boolean()).optional(),
 
   // Additional settings
   timezone: z.string().optional(),

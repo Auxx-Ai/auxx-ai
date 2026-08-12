@@ -36,6 +36,7 @@ import { ManualTriggerProcessor } from '../nodes/trigger-nodes/manual'
 // Import all processors at the top
 import { MessageReceivedProcessor } from '../nodes/trigger-nodes/message-received'
 import { ScheduledTriggerProcessor } from '../nodes/trigger-nodes/scheduled'
+import { WebhookEndpointTriggerProcessor } from '../nodes/trigger-nodes/webhook-endpoint'
 import { WebhookProcessor } from '../nodes/trigger-nodes/webhook-processor'
 import { ResourceTriggerBase } from '../nodes/triggers/resource-trigger-base'
 import { WaitNodeProcessor } from '../nodes/wait'
@@ -178,6 +179,7 @@ export class NodeProcessorRegistry {
       const defaultProcessors = [
         new MessageReceivedProcessor(),
         new WebhookProcessor(),
+        new WebhookEndpointTriggerProcessor(), // Inbound WebhookEndpoint delivery trigger
         new ManualTriggerProcessor(),
         new ScheduledTriggerProcessor(),
         new ResourceTriggerBase(), // Unified resource trigger for all resource types

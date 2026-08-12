@@ -81,6 +81,13 @@ function generateThreadActionVariables(nodeId: string): UnifiedVariable[] {
       category: 'node',
       description: 'Whether the thread was moved to a different inbox',
     },
+    {
+      id: `${nodeId}.primaryEntityUpdated`,
+      label: 'Record Link Updated',
+      type: BaseType.BOOLEAN,
+      category: 'node',
+      description: 'Whether the linked primary record was changed',
+    },
 
     // New values (for chaining)
     {
@@ -117,6 +124,13 @@ function generateThreadActionVariables(nodeId: string): UnifiedVariable[] {
       type: BaseType.STRING,
       category: 'node',
       description: 'The new inbox ID (if moved)',
+    },
+    {
+      id: `${nodeId}.newPrimaryEntityId`,
+      label: 'New Record ID',
+      type: BaseType.STRING,
+      category: 'node',
+      description: 'The newly linked primary record ID (null if unlinked)',
     },
 
     // Summary

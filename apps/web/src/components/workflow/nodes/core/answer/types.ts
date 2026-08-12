@@ -29,10 +29,12 @@ export interface AnswerNodeData extends BaseNodeData {
   bccModes?: boolean[]
   text: string
   subject?: string
-  attachments?: Array<{
-    name: string
-    url: string
-  }>
+  /**
+   * Attachment picker rows — a constant row is a `file:<id>` reference, a
+   * variable row a `{{…}}` reference. `attachmentFilesModes` marks which is
+   * which, positionally. The engine resolves both to file ids and hands them to
+   * the send path as `attachmentIds`.
+   */
   attachmentFiles?: string[]
   attachmentFilesModes?: boolean[]
   saveAsDraft?: boolean // When true, creates a draft instead of sending

@@ -232,12 +232,46 @@ const FormatPanelComponent = ({ nodeId, data }: FormatPanelProps) => {
     [nodeData, setInputs]
   )
 
-  // Field mode helper
+  // Field mode helper — true = constant, false = bound to a variable
   const getFieldMode = useCallback(
     (fieldKey: string, defaultValue = true): boolean => {
       return nodeData.fieldModes?.[fieldKey] ?? defaultValue
     },
     [nodeData.fieldModes]
+  )
+
+  /**
+   * Write a field that carries a constant/variable toggle, persisting both the value and
+   * the chosen mode in one update.
+   *
+   * `VarEditor` reports the *new* mode through `onChange`'s second argument whenever the
+   * toggle is flipped, so the mode has to be stored here — a separate
+   * `onConstantModeChange` writer would produce from a stale `nodeData` and clobber it.
+   * In variable mode the raw variable id is kept verbatim; the processor resolves it.
+   */
+  const updateModedField = useCallback(
+    <K extends keyof FormatNodeData>(
+      configKey: K,
+      fieldKey: string,
+      value: unknown,
+      isConstant: boolean,
+      kind: 'boolean' | 'string'
+    ) => {
+      const newData = produce(nodeData, (draft) => {
+        if (!draft.fieldModes) draft.fieldModes = {}
+        draft.fieldModes[fieldKey] = isConstant
+
+        const constantValue =
+          kind === 'boolean' ? value === true || value === 'true' : String(value ?? '')
+        const current = (draft[configKey] ?? {}) as Record<string, unknown>
+        ;(draft as any)[configKey] = {
+          ...current,
+          [fieldKey]: isConstant ? constantValue : String(value ?? ''),
+        }
+      })
+      setInputs(newData)
+    },
+    [nodeData, setInputs]
   )
 
   // Compute output variables
@@ -258,9 +292,9 @@ const FormatPanelComponent = ({ nodeId, data }: FormatPanelProps) => {
             <VarEditor
               nodeId={nodeId}
               value={nodeData.trimConfig?.trimAll ?? false}
-              onChange={(value) => {
-                updateConfig('trimConfig', { trimAll: value === true || value === 'true' })
-              }}
+              onChange={(value, isConstant) =>
+                updateModedField('trimConfig', 'trimAll', value, isConstant, 'boolean')
+              }
               fieldOptions={{ variant: 'switch' }}
               varType={BaseType.BOOLEAN}
               mode={VAR_MODE.PICKER}
@@ -492,9 +526,9 @@ const FormatPanelComponent = ({ nodeId, data }: FormatPanelProps) => {
               <VarEditor
                 nodeId={nodeId}
                 value={nodeData.replaceConfig?.replaceAll ?? true}
-                onChange={(value) => {
-                  updateConfig('replaceConfig', { replaceAll: value === true || value === 'true' })
-                }}
+                onChange={(value, isConstant) =>
+                  updateModedField('replaceConfig', 'replaceAll', value, isConstant, 'boolean')
+                }
                 fieldOptions={{ variant: 'switch' }}
                 varType={BaseType.BOOLEAN}
                 mode={VAR_MODE.PICKER}
@@ -610,13 +644,14 @@ const FormatPanelComponent = ({ nodeId, data }: FormatPanelProps) => {
               <VarEditor
                 nodeId={nodeId}
                 value={nodeData.currencyConfig?.currencyCode ?? 'USD'}
-                onChange={(value) =>
-                  updateConfig('currencyConfig', { currencyCode: String(value) })
+                onChange={(value, isConstant) =>
+                  updateModedField('currencyConfig', 'currencyCode', value, isConstant, 'string')
                 }
                 varType={BaseType.ENUM}
                 mode={VAR_MODE.PICKER}
                 allowedTypes={[BaseType.ENUM, BaseType.STRING]}
                 fieldOptions={{ enum: CURRENCY_ENUM_OPTIONS }}
+                placeholder='Pick variable'
                 placeholderConstant='Select currency'
                 allowConstant
                 isConstantMode={getFieldMode('currencyCode')}
@@ -971,11 +1006,9 @@ const FormatPanelComponent = ({ nodeId, data }: FormatPanelProps) => {
             <VarEditor
               nodeId={nodeId}
               value={nodeData.stripHtmlConfig?.keepLineBreaks ?? true}
-              onChange={(value) => {
-                updateConfig('stripHtmlConfig', {
-                  keepLineBreaks: value === true || value === 'true',
-                })
-              }}
+              onChange={(value, isConstant) =>
+                updateModedField('stripHtmlConfig', 'keepLineBreaks', value, isConstant, 'boolean')
+              }
               fieldOptions={{ variant: 'switch' }}
               varType={BaseType.BOOLEAN}
               mode={VAR_MODE.PICKER}

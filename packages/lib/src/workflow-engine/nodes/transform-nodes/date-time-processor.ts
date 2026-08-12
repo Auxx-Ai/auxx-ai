@@ -1,6 +1,6 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/date-time-processor.ts
 
-import type { Duration } from 'date-fns'
+import type { Duration, Locale } from 'date-fns'
 import {
   add,
   differenceInMilliseconds,
@@ -24,7 +24,7 @@ import {
   startOfYear,
   sub,
 } from 'date-fns'
-import { enUS } from 'date-fns/locale'
+import * as dateFnsLocales from 'date-fns/locale'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -97,6 +97,31 @@ enum ParseDateFormatType {
   UNIX = 'unix',
   UNIX_MS = 'unix_ms',
   CUSTOM = 'custom',
+}
+
+const LOCALE_REGISTRY = dateFnsLocales as unknown as Record<string, Locale | undefined>
+
+/**
+ * Map a BCP-47 locale tag (`de-DE`, `pt-BR`, `en-US`) onto a date-fns locale.
+ *
+ * date-fns names its exports `enUS`, `ptBR`, `de` — so try the camel-cased tag first
+ * (`pt-BR` → `ptBR`), then the bare language (`de-DE` → `de`), then fall back to en-US.
+ */
+function resolveDateFnsLocale(tag: string | undefined): Locale {
+  const fallback = dateFnsLocales.enUS
+  if (!tag) return fallback
+
+  const parts = tag.trim().replace(/_/g, '-').split('-').filter(Boolean)
+  const language = parts[0]?.toLowerCase()
+  if (!language) return fallback
+
+  if (parts.length > 1) {
+    const camelCased = language + parts.slice(1).join('').toUpperCase()
+    const regional = LOCALE_REGISTRY[camelCased]
+    if (regional) return regional
+  }
+
+  return LOCALE_REGISTRY[language] ?? fallback
 }
 
 /**
@@ -571,29 +596,12 @@ export class DateTimeProcessor extends BaseNodeProcessor {
       throw new Error('Add/subtract configuration is required')
     }
 
-    // Resolve duration — may be a variable reference (string) or a constant (number)
-    let resolvedDuration: number
-    const isDurationConstant = config.fieldModes?.['duration'] ?? true
-    if (!isDurationConstant && typeof config.addSubtract.duration === 'string') {
-      const resolved = await this.resolveVariablePath(config.addSubtract.duration, contextManager)
-      resolvedDuration = typeof resolved === 'number' ? resolved : parseInt(String(resolved), 10)
-      if (Number.isNaN(resolvedDuration)) {
-        throw new Error(`Invalid duration value resolved from variable: ${resolved}`)
-      }
-    } else {
-      resolvedDuration =
-        typeof config.addSubtract.duration === 'number' ? config.addSubtract.duration : 0
+    // Duration and unit can each be bound to a variable — `fieldModes` records which.
+    const resolvedDuration = await this.resolveAddSubtractDuration(config, contextManager)
+    if (Number.isNaN(resolvedDuration)) {
+      throw new Error(`Invalid duration value: ${config.addSubtract.duration}`)
     }
-
-    // Resolve unit — may be a variable reference (string) or a constant TimeUnit
-    let resolvedUnit: TimeUnit
-    const isUnitConstant = config.fieldModes?.['unit'] ?? true
-    if (!isUnitConstant) {
-      const resolved = await this.resolveVariablePath(config.addSubtract.unit, contextManager)
-      resolvedUnit = String(resolved) as TimeUnit
-    } else {
-      resolvedUnit = config.addSubtract.unit as TimeUnit
-    }
+    const resolvedUnit = (await this.resolveAddSubtractUnit(config, contextManager)) as TimeUnit
 
     const duration = this.convertDuration(resolvedDuration, resolvedUnit)
 
@@ -613,7 +621,7 @@ export class DateTimeProcessor extends BaseNodeProcessor {
       throw new Error('Format configuration is required')
     }
 
-    const locale = config.locale ? { locale: enUS } : undefined
+    const locale = { locale: resolveDateFnsLocale(config.locale) }
 
     switch (config.format.type) {
       case DateFormatType.ISO:
@@ -963,13 +971,17 @@ export class DateTimeProcessor extends BaseNodeProcessor {
       throw new Error('Add/subtract configuration is required for ADD_SUBTRACT operation')
     }
 
-    const { action, duration, unit } = config.addSubtract
+    const { action } = config.addSubtract
 
     if (!action || !['add', 'subtract'].includes(action)) {
       throw new Error('Action must be either "add" or "subtract"')
     }
 
-    if (typeof duration !== 'number' || duration <= 0) {
+    // Duration and unit can each be bound to a variable — `fieldModes` records which.
+    const duration = await this.resolveAddSubtractDuration(config, contextManager)
+    const unit = await this.resolveAddSubtractUnit(config, contextManager)
+
+    if (typeof duration !== 'number' || Number.isNaN(duration) || duration <= 0) {
       throw new Error('Duration must be a positive number')
     }
 
@@ -984,6 +996,53 @@ export class DateTimeProcessor extends BaseNodeProcessor {
       unit: timeUnit,
       durationObject: this.createDurationObject(duration, timeUnit),
     }
+  }
+
+  /**
+   * Resolve the add/subtract duration, following the panel's `fieldModes.duration` flag.
+   * In variable mode the stored value is a variable id (or a `{{…}}` template).
+   */
+  private async resolveAddSubtractDuration(
+    config: DateTimeNodeConfig,
+    contextManager: ExecutionContextManager
+  ): Promise<number> {
+    const raw = config.addSubtract?.duration
+    const isConstant = config.fieldModes?.['duration'] ?? true
+
+    if (isConstant || typeof raw !== 'string') {
+      return typeof raw === 'number' ? raw : Number(raw)
+    }
+
+    const resolved =
+      raw.includes('{{') && raw.includes('}}')
+        ? await this.interpolateVariables(raw, contextManager)
+        : await this.resolveVariablePath(raw, contextManager)
+
+    if (resolved === undefined || resolved === null || resolved === '') {
+      throw new Error(`Duration variable resolved to no value: ${raw}`)
+    }
+
+    return typeof resolved === 'number' ? resolved : Number(resolved)
+  }
+
+  /**
+   * Resolve the add/subtract time unit, following the panel's `fieldModes.unit` flag.
+   */
+  private async resolveAddSubtractUnit(
+    config: DateTimeNodeConfig,
+    contextManager: ExecutionContextManager
+  ): Promise<string> {
+    const raw = config.addSubtract?.unit
+    const isConstant = config.fieldModes?.['unit'] ?? true
+
+    if (isConstant || typeof raw !== 'string' || !raw) return String(raw ?? '')
+
+    const resolved =
+      raw.includes('{{') && raw.includes('}}')
+        ? await this.interpolateVariables(raw, contextManager)
+        : await this.resolveVariablePath(raw, contextManager)
+
+    return resolved === undefined || resolved === null ? '' : String(resolved)
   }
 
   /**
@@ -1309,7 +1368,9 @@ export class DateTimeProcessor extends BaseNodeProcessor {
   private isOperationConstant(config: DateTimeNodeConfig): boolean {
     switch (config.operation) {
       case DateTimeOperation.ADD_SUBTRACT:
-        return true // Duration and unit are constants
+        // Variable-mode duration/unit are resolved during preprocessing, which runs
+        // immediately before execution against the same context.
+        return true
 
       case DateTimeOperation.FORMAT:
         return true // Format configuration is constant
@@ -1349,15 +1410,16 @@ export class DateTimeProcessor extends BaseNodeProcessor {
 
       case DateTimeOperation.FORMAT: {
         const { type, formatString } = operationConfig
+        const locale = resolveDateFnsLocale(localizationConfig?.locale)
 
         if (type === DateFormatType.RELATIVE) {
-          return formatRelative(inputDate as Date, new Date(), { locale: enUS })
+          return formatRelative(inputDate as Date, new Date(), { locale })
         } else if (type === DateFormatType.UNIX) {
           return Math.floor((inputDate as Date).getTime() / 1000)
         } else if (type === DateFormatType.UNIX_MS) {
           return (inputDate as Date).getTime()
         } else {
-          return format(inputDate as Date, formatString)
+          return format(inputDate as Date, formatString, { locale })
         }
       }
 

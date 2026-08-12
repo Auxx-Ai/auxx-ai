@@ -22,6 +22,7 @@ import { publisher } from '../events/publisher'
 import { getQueue, Queues } from '../jobs/queues'
 import { NotificationService } from '../notifications/notification-service'
 import { getApprovalAssigneeUserIds } from './approval-recipients'
+import { type ApprovalOutcome, outcomeForAction } from './client'
 import { guard } from './guard'
 import { allowsTokenResolution, getApprovalKindHandler } from './registry'
 import type { ApprovalAudience, ApprovalRequestEntity, ApprovalResponseResult } from './types'
@@ -216,7 +217,8 @@ export async function resolveApprovalRequest(
         }
 
         // ── THE CLAIM ──
-        const newStatus = action === 'approve' ? ApprovalStatus.approved : ApprovalStatus.denied
+        // The status a decision writes IS the outcome — same vocabulary, one mapping.
+        const newStatus = outcomeForAction(action)
         const [claimed] = await tx
           .update(schema.ApprovalRequest)
           .set({ status: newStatus })
@@ -268,7 +270,7 @@ export async function resolveApprovalRequest(
         return {
           success: true,
           message: handled.message,
-          nextPath: action === 'approve' ? 'approved' : 'denied',
+          nextPath: outcomeForAction(action),
         }
       })
       return result
@@ -400,7 +402,12 @@ export async function cancelApprovalRequest(
           approvalRequest.workflowRunId,
           approvalRequest.nodeId as string,
           {
-            outcome: 'denied',
+            // A cancelled request will never be approved, so the run takes the
+            // denied branch — in the `ApprovalOutcome` vocabulary, which is what
+            // `getHumanConfirmationNextNodes` routes on. This used to be the only
+            // producer spelling it in past tense while the router matched the
+            // reviewer's verb, so a cancel fell through to the `source` handle.
+            outcome: 'denied' satisfies ApprovalOutcome,
             approvalRequestId,
             cancelledBy,
             cancelledAt: new Date().toISOString(),
@@ -412,7 +419,13 @@ export async function cancelApprovalRequest(
       await db
         .update(schema.ApprovalRequest)
         .set({
-          status: ApprovalStatus.timeout,
+          // `withdrawn`, not `timeout`: the row did not lapse, a person retracted
+          // it. The access lane already writes this status and every reader
+          // handles it (`getApprovalStats`, the notification `decided-row`), so a
+          // cancelled request stops being indistinguishable from an expired one.
+          // The run still routes as `denied` — the branch and the row answer
+          // different questions.
+          status: ApprovalStatus.withdrawn,
           metadata: {
             ...((approvalRequest.metadata as Record<string, unknown>) || {}),
             cancelled: true,

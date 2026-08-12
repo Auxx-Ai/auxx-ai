@@ -312,6 +312,25 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
+      // Dangling right half, deliberately — same shape as `inbox` above.
+      //
+      // `ticket_threads` is not a key in `TICKET_FIELDS`; there is no inverse
+      // field on the ticket definition, so `resolveInverseReferences`
+      // (`cache/providers/resources-provider.ts`) finds nothing in its lookup
+      // map and leaves the static form untouched. A real inverse would have to
+      // be a mutual pair (`ticket:contact` ↔ `contact:tickets`) — an
+      // `isInverse: true`, dbColumn-less `has_many` field on TICKET_FIELDS —
+      // and adding one materializes a new CustomField row, so it needs
+      // `ensureCustomFields` plus a cache flush, not just a registry edit.
+      //
+      // The LEFT half is load-bearing and must stay: `getRelatedEntityDefinitionId`
+      // derives this field's target purely from it, so dropping the declaration
+      // would leave the picker with no target ("Missing field reference") and
+      // strand `preprocessNode`'s relation branch.
+      //
+      // Caveat worth knowing: `dbColumn` here is `primaryEntityInstanceId`, which
+      // the schema says may hold a deal or lead as well as a ticket. The `ticket:`
+      // prefix therefore narrows the picker more than the column does.
       inverseResourceFieldId: 'ticket:ticket_threads' as ResourceFieldId,
       relationshipType: 'belongs_to',
       isInverse: false,

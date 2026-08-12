@@ -102,44 +102,40 @@ export const validateWaitConfig = (data: WaitNodeData): ValidationResult => {
 }
 
 /**
- * Get output variables for wait node
+ * Get output variables for wait node.
+ *
+ * All four are advertised unconditionally, because `WaitNodeProcessor` writes all four on
+ * both execution paths. Which path a wait takes (setTimeout vs the delay queue) is a
+ * RUNTIME decision — a variable duration, delivery-window snapping or dry-run capping can
+ * each flip it — so gating `paused_at`/`resume_at` on the configured duration would offer
+ * the author a variable that resolves to nothing on half their runs.
  */
-const getWaitOutputVariables = (data: WaitNodeData, nodeId: string): any[] => {
-  const outputs = [
-    createUnifiedOutputVariable({
-      nodeId,
-      path: 'wait_duration_ms', // Changed from 'name' to 'path'
-      type: BaseType.NUMBER,
-      description: 'Total wait time in milliseconds',
-    }),
-    createUnifiedOutputVariable({
-      nodeId,
-      path: 'wait_method', // Changed from 'name' to 'path'
-      type: BaseType.STRING,
-      description: 'Method used for waiting (short_delay or queue_delay)',
-    }),
-  ]
-
-  // Add additional outputs for long delays
-  if (data.duration * 1000 >= WAIT_CONSTANTS.EXECUTION.SHORT_DELAY_THRESHOLD_MS) {
-    outputs.push(
-      createUnifiedOutputVariable({
-        nodeId,
-        path: 'paused_at', // Changed from 'name' to 'path'
-        type: BaseType.STRING,
-        description: 'ISO timestamp when the wait started',
-      }),
-      createUnifiedOutputVariable({
-        nodeId,
-        path: 'resume_at', // Changed from 'name' to 'path'
-        type: BaseType.STRING,
-        description: 'ISO timestamp when execution will resume',
-      })
-    )
-  }
-
-  return outputs
-}
+const getWaitOutputVariables = (_data: WaitNodeData, nodeId: string): any[] => [
+  createUnifiedOutputVariable({
+    nodeId,
+    path: 'wait_duration_ms',
+    type: BaseType.NUMBER,
+    description: 'Total wait time in milliseconds',
+  }),
+  createUnifiedOutputVariable({
+    nodeId,
+    path: 'wait_method',
+    type: BaseType.STRING,
+    description: 'Method used for waiting (short_delay or queue_delay)',
+  }),
+  createUnifiedOutputVariable({
+    nodeId,
+    path: 'paused_at',
+    type: BaseType.STRING,
+    description: 'ISO timestamp when the wait started',
+  }),
+  createUnifiedOutputVariable({
+    nodeId,
+    path: 'resume_at',
+    type: BaseType.STRING,
+    description: 'ISO timestamp when execution resumes',
+  }),
+]
 
 /**
  * Wait node definition
