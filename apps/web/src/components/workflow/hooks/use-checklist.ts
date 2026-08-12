@@ -5,6 +5,7 @@ import { useStoreApi } from '@xyflow/react'
 import { useMemo } from 'react'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import { NodeType } from '../types/node-types'
+import { useAppConnectionIssueResolver } from './use-app-connection-issue'
 
 export interface NodeIssue {
   severity: 'error' | 'warning'
@@ -35,6 +36,7 @@ export const useChecklist = (): UseChecklistReturn => {
   // Get nodes and edges from stores
   const state = useStoreApi()
   const { nodes, edges } = state.getState()
+  const resolveAppConnectionIssue = useAppConnectionIssueResolver()
 
   const { nodesWithIssues, warningCount, errorCount } = useMemo(() => {
     const nodeIssuesMap = new Map<string, NodeWithIssues>()
@@ -123,6 +125,16 @@ export const useChecklist = (): UseChecklistReturn => {
         return
       }
 
+      // App nodes: no usable connection means the executor cannot run this node
+      const connectionIssue = resolveAppConnectionIssue(node.data)
+      if (connectionIssue) {
+        addIssueToNode(node.id, nodeType, node.data, {
+          severity: connectionIssue.type,
+          message: connectionIssue.message,
+          unConnected: false,
+        })
+      }
+
       // Validate node data
       const validationResult = unifiedNodeRegistry.validateNode(nodeType, node.data)
 
@@ -180,7 +192,7 @@ export const useChecklist = (): UseChecklistReturn => {
       warningCount: warnings,
       errorCount: errors,
     }
-  }, [nodes, edges])
+  }, [nodes, edges, resolveAppConnectionIssue])
 
   return {
     nodesWithIssues,
