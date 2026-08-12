@@ -237,9 +237,173 @@ export function resolveFieldsFromInstallerResult(
   return result
 }
 
+// ── Placeholder rewriting inside variable references ─────────────────
+
 /**
- * Resolve @entity: and @field: references in CRUD/Find nodes.
- * MUTATES the graph in place (caller should clone first).
+ * A single `@entity:<slug>` or `@field:<ref>` placeholder token.
+ * The character class stops at `.`, `[`, `}` and whitespace, so a token only ever
+ * consumes one path segment and ordinary prose containing a bare `@` is untouched.
+ */
+const PLACEHOLDER_TOKEN = /@(entity|field):([A-Za-z0-9_-]+)/g
+
+/** A `{{ … }}` variable span. Mirrors the engine's own pattern (`execution-context.ts`). */
+const VARIABLE_SPAN = /\{\{([^}]+)\}\}/g
+
+/** Everything the path rewriter needs to turn a placeholder into a concrete id. */
+interface PlaceholderContext {
+  /** `@entity:<slug>` → entityTemplateId */
+  entityRefToTemplateId: Map<string, string>
+  /** entityTemplateId → entityDefinitionId */
+  entityIdMap: Record<string, string>
+  /** entityTemplateId → { fieldRef → customFieldId } */
+  fieldIdMap: Record<string, Record<string, string>>
+  /** nodeId → the `@entity:<slug>` that node operates on (captured before rewriting) */
+  nodeEntityRefs: Map<string, string>
+  /** Called with the owning node id whenever a placeholder can't be resolved. */
+  markUnresolved: (nodeId: string) => void
+}
+
+/**
+ * Resolve `@entity:<slug>` to the value the engine actually keys variables by:
+ * the system type string for system entities, the entity-definition id otherwise.
+ * Mirrors how `resourceType` is rewritten so both stay in lockstep.
+ */
+function resolveEntityPlaceholder(
+  slug: string,
+  ctx: PlaceholderContext
+): { templateId: string; value: string } | null {
+  const templateId = ctx.entityRefToTemplateId.get(`@entity:${slug}`)
+  if (!templateId) return null
+
+  const entityDefId = ctx.entityIdMap[templateId]
+  if (!entityDefId) return null
+
+  return {
+    templateId,
+    // System entities use the type string directly; custom entities use the ID
+    value: templateId.startsWith('__system:') ? templateId.replace('__system:', '') : entityDefId,
+  }
+}
+
+/** The first path segment of a variable reference (`find-1.orders[0].x` → `find-1`). */
+function firstPathSegment(path: string): string {
+  return path.trim().split(/[.[]/)[0] ?? ''
+}
+
+/**
+ * Rewrite the placeholders inside one variable path (the text between `{{` and `}}`,
+ * or a bare variable reference such as a Tiptap `variable-node` `variableId`).
+ *
+ * `@field:` resolves against the nearest preceding `@entity:` token in the same path;
+ * with no such token it falls back to the entity of the node the path starts at, so
+ * both `{{find-1.@entity:orders.@field:orderNumber}}` and
+ * `{{find-1.orders[0].@field:orderNumber}}` resolve. Unresolvable tokens are left
+ * verbatim and the owning node is reported as unresolved — the same fail-soft
+ * behaviour the `resourceType` path already has.
+ */
+function rewriteVariablePath(path: string, nodeId: string, ctx: PlaceholderContext): string {
+  const originRef = ctx.nodeEntityRefs.get(firstPathSegment(path))
+  let currentTemplateId = originRef ? ctx.entityRefToTemplateId.get(originRef) : undefined
+
+  return path.replace(PLACEHOLDER_TOKEN, (match, kind: string, ref: string) => {
+    if (kind === 'entity') {
+      const resolved = resolveEntityPlaceholder(ref, ctx)
+      if (!resolved) {
+        ctx.markUnresolved(nodeId)
+        return match
+      }
+      currentTemplateId = resolved.templateId
+      return resolved.value
+    }
+
+    const fieldId = currentTemplateId ? ctx.fieldIdMap[currentTemplateId]?.[ref] : undefined
+    if (!fieldId) {
+      ctx.markUnresolved(nodeId)
+      return match
+    }
+    return fieldId
+  })
+}
+
+/**
+ * Apply `visit` to every variable path inside a single string, and only there —
+ * the text between `{{` and `}}`, or the whole string when it is a bare variable
+ * reference starting with a node id in this graph (the same shape
+ * `TemplateGraphTransformer.cloneGraph` remaps node ids in, e.g. a Tiptap
+ * `variable-node` `attrs.variableId`). Ordinary prose is returned untouched, so an
+ * `@` that isn't a placeholder inside a variable reference can never be corrupted.
+ */
+function mapStringVariablePaths(
+  value: string,
+  nodeIds: Set<string>,
+  visit: (path: string) => string
+): string {
+  if (!value.includes('@entity:') && !value.includes('@field:')) return value
+
+  if (value.includes('{{')) {
+    return value.replace(VARIABLE_SPAN, (_full, inner: string) => `{{${visit(inner)}}}`)
+  }
+
+  if (nodeIds.has(firstPathSegment(value))) {
+    return visit(value)
+  }
+
+  return value
+}
+
+/**
+ * Walk every value under a node's `data` and run `visit` over the variable paths
+ * found in each string, substituting whatever it returns.
+ *
+ * Object *keys* are deliberately left alone — `data` / `fieldModes` /
+ * `fieldUpdateModes*` keys are rewritten by the config pass, and `$comment` is
+ * template-authoring prose that must never be touched.
+ */
+function mapVariablePaths(
+  value: unknown,
+  nodeIds: Set<string>,
+  visit: (path: string) => string
+): unknown {
+  if (typeof value === 'string') {
+    return mapStringVariablePaths(value, nodeIds, visit)
+  }
+
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      value[i] = mapVariablePaths(value[i], nodeIds, visit)
+    }
+    return value
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    for (const key of Object.keys(record)) {
+      if (key === '$comment') continue
+      record[key] = mapVariablePaths(record[key], nodeIds, visit)
+    }
+    return record
+  }
+
+  return value
+}
+
+/**
+ * Resolve `@entity:` and `@field:` references throughout a workflow graph.
+ *
+ * Two passes, both mutating the graph in place (caller should clone first):
+ *
+ * 1. **Config pass** — CRUD/Find nodes only: `resourceType`, `data` /
+ *    `fieldModes` / `fieldUpdateModes` / `fieldUpdateModeVars` keys, and find-node
+ *    `conditionGroups[].conditions[].fieldId` (compound `entityDefId:fieldId`).
+ * 2. **Variable pass** — every node: placeholders inside `{{ … }}` spans and bare
+ *    variable references anywhere in `node.data`. This is what makes CUID-keyed
+ *    engine variables expressible from a template: a find node's `findOne` on a
+ *    custom entity publishes under the entity-definition id, so a template writes
+ *    `{{find-order.@entity:orders}}` and gets `{{find-order.<entityDefId>}}`.
+ *
+ * Runs after `TemplateGraphTransformer.cloneGraph`, so the node ids embedded in
+ * variable references are already the new ones — placeholder rewriting and node-id
+ * remapping touch disjoint parts of the string and compose in either direction.
  */
 export function resolveEntityRefsInGraph(
   graph: WorkflowGraph,
@@ -247,7 +411,7 @@ export function resolveEntityRefsInGraph(
   entityIdMap: Record<string, string>,
   fieldIdMap: Record<string, Record<string, string>>
 ): { graph: WorkflowGraph; unresolvedNodes: string[] } {
-  const unresolvedNodes: string[] = []
+  const unresolved = new Set<string>()
 
   // Build @entity:slug → entityTemplateId lookup
   const entityRefToTemplateId = new Map<string, string>()
@@ -263,6 +427,18 @@ export function resolveEntityRefsInGraph(
     }
   }
 
+  // Capture each node's declared entity BEFORE the config pass rewrites resourceType —
+  // the variable pass uses it to give a bare `@field:` its entity context.
+  const nodeIds = new Set<string>()
+  const nodeEntityRefs = new Map<string, string>()
+  for (const node of graph.nodes) {
+    nodeIds.add(node.id)
+    const resourceType = node.data?.resourceType
+    if (typeof resourceType === 'string' && resourceType.startsWith('@entity:')) {
+      nodeEntityRefs.set(node.id, resourceType)
+    }
+  }
+
   for (const node of graph.nodes) {
     if (node.data.type !== 'crud' && node.data.type !== 'find') continue
 
@@ -271,14 +447,14 @@ export function resolveEntityRefsInGraph(
 
     const templateId = entityRefToTemplateId.get(resourceType)
     if (!templateId) {
-      unresolvedNodes.push(node.id)
+      unresolved.add(node.id)
       continue
     }
 
     // Resolve entity definition ID
     const entityDefId = entityIdMap[templateId]
     if (!entityDefId) {
-      unresolvedNodes.push(node.id)
+      unresolved.add(node.id)
       node.data.resourceType = ''
       continue
     }
@@ -372,7 +548,23 @@ export function resolveEntityRefsInGraph(
     }
   }
 
-  return { graph, unresolvedNodes }
+  // ── Pass 2: placeholders inside variable references, on every node ──
+  const placeholderCtx: PlaceholderContext = {
+    entityRefToTemplateId,
+    entityIdMap,
+    fieldIdMap,
+    nodeEntityRefs,
+    markUnresolved: (nodeId) => unresolved.add(nodeId),
+  }
+
+  for (const node of graph.nodes) {
+    if (!node.data || typeof node.data !== 'object') continue
+    mapVariablePaths(node.data, nodeIds, (path) =>
+      rewriteVariablePath(path, node.id, placeholderCtx)
+    )
+  }
+
+  return { graph, unresolvedNodes: Array.from(unresolved) }
 }
 
 /**
@@ -407,6 +599,36 @@ export function extractRequiredEntities(graph: WorkflowGraph): Partial<RequiredE
     }
 
     entityMap.set(slug, fieldRefs)
+  }
+
+  // Scan variable references for refs that never appear as a resourceType or a
+  // dictionary key — e.g. `{{find-order.@entity:orders.@field:orderNumber}}`.
+  const nodeIds = new Set(graph.nodes.map((n) => n.id))
+  const nodeSlugs = new Map<string, string>()
+  for (const node of graph.nodes) {
+    const resourceType = node.data?.resourceType
+    if (typeof resourceType === 'string' && resourceType.startsWith('@entity:')) {
+      nodeSlugs.set(node.id, resourceType.replace('@entity:', ''))
+    }
+  }
+
+  for (const node of graph.nodes) {
+    if (!node.data || typeof node.data !== 'object') continue
+    mapVariablePaths(node.data, nodeIds, (path) => {
+      let currentSlug = nodeSlugs.get(firstPathSegment(path))
+      for (const match of path.matchAll(PLACEHOLDER_TOKEN)) {
+        const [, kind, ref] = match as unknown as [string, string, string]
+        if (kind === 'entity') {
+          currentSlug = ref
+          if (!entityMap.has(ref)) entityMap.set(ref, new Set())
+        } else if (currentSlug) {
+          const refs = entityMap.get(currentSlug) ?? new Set<string>()
+          refs.add(ref)
+          entityMap.set(currentSlug, refs)
+        }
+      }
+      return path
+    })
   }
 
   return Array.from(entityMap.entries()).map(([slug, fieldRefs]) => {

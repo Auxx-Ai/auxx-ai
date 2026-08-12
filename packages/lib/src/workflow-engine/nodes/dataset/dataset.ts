@@ -16,6 +16,7 @@ import type {
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
+import { extractVariableRefs, resolveBooleanConfig, variableBound } from './config-value'
 
 const logger = createScopedLogger('dataset-processor')
 
@@ -40,8 +41,9 @@ interface DatasetConfig {
   fileId?: string
 
   // Processing options
-  skipEmbedding?: boolean
-  waitForEmbeddings?: boolean
+  // Both carry a variable reference string when bound to a variable
+  skipEmbedding?: boolean | string
+  waitForEmbeddings?: boolean | string
   metadata?: Record<string, any>
 
   // Field modes tracking (constant vs variable)
@@ -67,6 +69,11 @@ interface DatasetOutput {
 
 /**
  * Validation schema for Dataset configuration
+ *
+ * The processing toggles are widened with {@link variableBound}: in variable
+ * mode the builder stores a reference string (`"extractor_1.success"`), which a
+ * bare `z.boolean()` would reject — failing the node before the variable is
+ * ever looked up. The reference is resolved and coerced in `preprocessNode`.
  */
 const datasetConfigSchema = z.object({
   title: z.string().optional().default('Dataset'),
@@ -78,8 +85,8 @@ const datasetConfigSchema = z.object({
   documentType: z.string().optional(),
   sourceUrl: z.string().optional(),
   fileId: z.string().optional(),
-  skipEmbedding: z.boolean().optional().default(false),
-  waitForEmbeddings: z.boolean().optional().default(false),
+  skipEmbedding: variableBound(z.boolean()).optional(),
+  waitForEmbeddings: variableBound(z.boolean()).optional(),
   metadata: z.record(z.string(), z.any()).optional(),
   fieldModes: z.record(z.string(), z.boolean()).optional(),
 })
@@ -118,6 +125,7 @@ export class DatasetProcessor extends BaseNodeProcessor {
 
     const config = configResult.data as DatasetConfig
     const usedVariables = new Set<string>()
+    const resolveValue = (raw: string) => this.resolveVariableValue(raw, contextManager)
 
     // === Resolve datasetId ===
     if (!config.datasetId) {
@@ -236,6 +244,23 @@ export class DatasetProcessor extends BaseNodeProcessor {
       }
     }
 
+    // === Resolve processing toggles ===
+    // A literal boolean in constant mode; in variable mode a reference string
+    // that must be resolved and coerced — never read for truthiness, since the
+    // string "false" is truthy and would invert the switch.
+    const resolvedSkipEmbedding = await resolveBooleanConfig(
+      config.skipEmbedding,
+      false,
+      resolveValue
+    )
+    const resolvedWaitForEmbeddings = await resolveBooleanConfig(
+      config.waitForEmbeddings,
+      false,
+      resolveValue
+    )
+    extractVariableRefs(config.skipEmbedding).forEach((v) => usedVariables.add(v))
+    extractVariableRefs(config.waitForEmbeddings).forEach((v) => usedVariables.add(v))
+
     // Get organization and user IDs from context
     const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
     const userId = (await contextManager.getVariable('sys.userId')) as string
@@ -253,8 +278,8 @@ export class DatasetProcessor extends BaseNodeProcessor {
         documentType: resolvedDocumentType,
         sourceUrl: resolvedSourceUrl,
         fileId: resolvedFileId,
-        skipEmbedding: config.skipEmbedding ?? false,
-        waitForEmbeddings: config.waitForEmbeddings ?? false,
+        skipEmbedding: resolvedSkipEmbedding,
+        waitForEmbeddings: resolvedWaitForEmbeddings,
         metadata: config.metadata,
         organizationId,
         userId,
@@ -264,8 +289,8 @@ export class DatasetProcessor extends BaseNodeProcessor {
         nodeType: 'dataset',
         datasetId: resolvedDatasetId,
         chunkCount: resolvedChunks.length,
-        skipEmbedding: config.skipEmbedding ?? false,
-        waitForEmbeddings: config.waitForEmbeddings ?? false,
+        skipEmbedding: resolvedSkipEmbedding,
+        waitForEmbeddings: resolvedWaitForEmbeddings,
         variableCount: usedVariables.size,
         preprocessingComplete: true,
       },
@@ -606,6 +631,11 @@ export class DatasetProcessor extends BaseNodeProcessor {
       }
     }
 
+    // Bindable processing toggles — a bound field carries either a {{…}}
+    // template or a bare picker path
+    extractVariableRefs(config.skipEmbedding).forEach((v) => variables.add(v))
+    extractVariableRefs(config.waitForEmbeddings).forEach((v) => variables.add(v))
+
     return Array.from(variables)
   }
 
@@ -651,8 +681,9 @@ export class DatasetProcessor extends BaseNodeProcessor {
       }
     }
 
-    // Warning for waitForEmbeddings with skipEmbedding
-    if (config.waitForEmbeddings && config.skipEmbedding) {
+    // Warning for waitForEmbeddings with skipEmbedding — literals only, since a
+    // bound toggle holds a reference string that is truthy either way
+    if (config.waitForEmbeddings === true && config.skipEmbedding === true) {
       warnings.push('waitForEmbeddings has no effect when skipEmbedding is true')
     }
 

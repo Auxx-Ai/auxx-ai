@@ -11,9 +11,9 @@ import type { TraceRendererProps } from '~/components/workflow/types/registry'
 
 interface WaitOutputs {
   wait_duration_ms?: number
+  /** `short_delay` (setTimeout) or `queue_delay` (the node paused onto the delay queue). */
   wait_method?: string
   dryRun?: boolean
-  /** Present only when the wait was queued (long delay) and the node paused. */
   paused_at?: string
   resume_at?: string
 }
@@ -31,7 +31,9 @@ export function WaitTraceRenderer({ execution }: TraceRendererProps) {
   }
 
   const duration = o.wait_duration_ms !== undefined ? humanizeMs(o.wait_duration_ms) : null
-  const isQueued = !!o.resume_at
+  // Both paths now report `resume_at`, so the method is what distinguishes a queued wait
+  // (still pending) from a completed setTimeout one.
+  const isQueued = o.wait_method === 'queue_delay'
 
   return (
     <BlockCard

@@ -97,6 +97,9 @@ function makeContextManager(db: any, debug: boolean) {
     isDebugMode: () => debug,
     log: vi.fn(),
     getAllVariables: () => ({}),
+    getVariable: vi.fn(),
+    setNodeVariable: vi.fn(),
+    setNodeVariables: vi.fn(),
     serialize: () => ({}),
   } as any
 }

@@ -257,5 +257,16 @@ function getMessageReceivedOutputVariables(
     resourceId: 'message',
   })
 
-  return [messageVariable, threadRelation, messageRelation]
+  // Ticket relation — the thread's linked ticket. Empty unless the thread was
+  // already linked to one: receiving mail never creates or links a ticket.
+  const ticketRelation = createUnifiedOutputVariable({
+    nodeId,
+    path: 'ticket',
+    type: BaseType.RELATION,
+    label: 'Ticket',
+    description: "The ticket linked to this message's thread (empty when none is linked)",
+    resourceId: 'ticket',
+  })
+
+  return [messageVariable, threadRelation, messageRelation, ticketRelation]
 }

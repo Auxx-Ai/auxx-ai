@@ -8,7 +8,7 @@ import { BaseNodeProcessor } from '../base-node'
 interface VariableAssignment {
   id: string
   name: string
-  type: 'string' | 'number' | 'boolean' | 'object' | 'array'
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array' | 'date' | 'datetime'
   isArray?: boolean
   value: string | string[]
   isConstantMode?: boolean // UI-only: for single values
@@ -110,7 +110,10 @@ export class VarAssignProcessor extends BaseNodeProcessor {
       // Process results
       for (const result of assignmentResults) {
         if (result.success) {
+          // Global name — kept for templates and expressions that reference the bare name.
           contextManager.setVariable(result.name, result.value)
+          // Node-scoped path — this is what the builder's picker advertises.
+          contextManager.setNodeVariable(node.nodeId, result.name, result.value)
           results[result.name] = result.value
 
           if (result.isWarning) {
@@ -133,7 +136,7 @@ export class VarAssignProcessor extends BaseNodeProcessor {
         throw new Error(errors.join('; '))
       }
 
-      // Set output variables for the node
+      // Aggregate map, written last so it wins if someone names a variable "variables"
       contextManager.setNodeVariable(node.nodeId, 'variables', results)
 
       return {
@@ -191,6 +194,18 @@ export class VarAssignProcessor extends BaseNodeProcessor {
             // If not valid JSON, treat as single-item array
             return [value]
           }
+
+        case 'date':
+        case 'datetime': {
+          const trimmed = String(value).trim()
+          if (!trimmed) throw new Error('Cannot convert an empty value to a date')
+          const numeric = Number(trimmed)
+          const parsed = new Date(Number.isNaN(numeric) ? trimmed : numeric)
+          if (Number.isNaN(parsed.getTime())) {
+            throw new Error(`Cannot convert '${value}' to a date`)
+          }
+          return parsed
+        }
 
         default:
           return value

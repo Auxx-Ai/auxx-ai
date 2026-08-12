@@ -15,6 +15,12 @@ import type {
 } from '../../core/types'
 import { NodeRunningStatus, WorkflowActionType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
+import {
+  extractVariableRefs,
+  resolveBooleanConfig,
+  resolveNumberConfig,
+  variableBound,
+} from './config-value'
 
 const logger = createScopedLogger('chunker-processor')
 
@@ -29,11 +35,12 @@ interface ChunkerConfig {
   content?: string
 
   // Chunking configuration
-  chunkSize?: number
-  chunkOverlap?: number
+  // Numeric/boolean fields carry a variable reference string when bound
+  chunkSize?: number | string
+  chunkOverlap?: number | string
   delimiter?: string
-  normalizeWhitespace?: boolean
-  removeUrlsAndEmails?: boolean
+  normalizeWhitespace?: boolean | string
+  removeUrlsAndEmails?: boolean | string
 
   // Field modes tracking (constant vs variable)
   fieldModes?: Record<string, boolean>
@@ -65,18 +72,29 @@ interface ChunkerOutput {
   error?: string
 }
 
+/** Default chunk size in characters when the field is unset */
+const DEFAULT_CHUNK_SIZE = 1000
+/** Default overlap between adjacent chunks in characters when the field is unset */
+const DEFAULT_CHUNK_OVERLAP = 50
+
 /**
  * Validation schema for Chunker configuration
+ *
+ * Every field the panel lets you bind to a variable is widened with
+ * {@link variableBound}: in variable mode the builder stores a reference string
+ * (`"extractor_1.wordCount"`), which a bare `z.number()` / `z.boolean()` would
+ * reject — failing the node before the variable is ever looked up. Ranges are
+ * enforced in `preprocessNode` against the resolved value instead.
  */
 const chunkerConfigSchema = z.object({
   title: z.string().optional().default('Chunker'),
   desc: z.string().optional(),
   content: z.string().optional(),
-  chunkSize: z.number().positive().optional().default(1000),
-  chunkOverlap: z.number().nonnegative().optional().default(50),
+  chunkSize: variableBound(z.number().positive()).optional(),
+  chunkOverlap: variableBound(z.number().nonnegative()).optional(),
   delimiter: z.string().optional().default('\\n\\n'),
-  normalizeWhitespace: z.boolean().optional().default(true),
-  removeUrlsAndEmails: z.boolean().optional().default(false),
+  normalizeWhitespace: variableBound(z.boolean()).optional(),
+  removeUrlsAndEmails: variableBound(z.boolean()).optional(),
   fieldModes: z.record(z.string(), z.boolean()).optional(),
 })
 
@@ -148,35 +166,35 @@ export class ChunkerProcessor extends BaseNodeProcessor {
       })
     }
 
-    // Resolve numeric fields (may be variables)
-    let resolvedChunkSize = config.chunkSize ?? 1000
-    let resolvedChunkOverlap = config.chunkOverlap ?? 50
+    // Resolve numeric fields — a literal number in constant mode, a variable
+    // reference string when bound through the picker
+    const resolveValue = (raw: string) => this.resolveVariableValue(raw, contextManager)
 
-    // Handle chunkSize as potential variable
-    if (typeof config.chunkSize === 'string') {
-      const interpolated = await this.interpolateVariables(config.chunkSize, contextManager)
-      resolvedChunkSize = parseInt(interpolated, 10)
-      if (Number.isNaN(resolvedChunkSize) || resolvedChunkSize <= 0) {
+    let resolvedChunkSize = DEFAULT_CHUNK_SIZE
+    if (config.chunkSize !== undefined) {
+      const resolved = await resolveNumberConfig(config.chunkSize, resolveValue)
+      if (resolved === undefined || resolved <= 0) {
         throw this.createProcessingError('Invalid chunk size: must be a positive number', node, {
           originalValue: config.chunkSize,
-          resolvedValue: interpolated,
+          resolvedValue: resolved,
         })
       }
-      this.extractVariableIds(config.chunkSize).forEach((v) => usedVariables.add(v))
+      resolvedChunkSize = resolved
+      extractVariableRefs(config.chunkSize).forEach((v) => usedVariables.add(v))
     }
 
-    // Handle chunkOverlap as potential variable
-    if (typeof config.chunkOverlap === 'string') {
-      const interpolated = await this.interpolateVariables(config.chunkOverlap, contextManager)
-      resolvedChunkOverlap = parseInt(interpolated, 10)
-      if (Number.isNaN(resolvedChunkOverlap) || resolvedChunkOverlap < 0) {
+    let resolvedChunkOverlap = DEFAULT_CHUNK_OVERLAP
+    if (config.chunkOverlap !== undefined) {
+      const resolved = await resolveNumberConfig(config.chunkOverlap, resolveValue)
+      if (resolved === undefined || resolved < 0) {
         throw this.createProcessingError(
           'Invalid chunk overlap: must be a non-negative number',
           node,
-          { originalValue: config.chunkOverlap, resolvedValue: interpolated }
+          { originalValue: config.chunkOverlap, resolvedValue: resolved }
         )
       }
-      this.extractVariableIds(config.chunkOverlap).forEach((v) => usedVariables.add(v))
+      resolvedChunkOverlap = resolved
+      extractVariableRefs(config.chunkOverlap).forEach((v) => usedVariables.add(v))
     }
 
     // Validate overlap vs size relationship
@@ -200,11 +218,37 @@ export class ChunkerProcessor extends BaseNodeProcessor {
     // Resolve delimiter - use shared interpretEscapeSequences utility
     let resolvedDelimiter: string | undefined
     if (config.delimiter) {
-      resolvedDelimiter = await this.interpolateVariables(config.delimiter, contextManager)
+      // Constant mode keeps the literal (a delimiter like "." must not be read
+      // as a variable path); variable mode goes through full resolution so the
+      // picker's bare paths resolve alongside {{…}} templates.
+      const isDelimiterConstant = config.fieldModes?.delimiter !== false
+      const raw = isDelimiterConstant
+        ? await this.interpolateVariables(config.delimiter, contextManager)
+        : await resolveValue(config.delimiter)
+      resolvedDelimiter = typeof raw === 'string' ? raw : String(raw ?? '')
       // Use shared utility for escape sequence interpretation (same as DocumentProcessor)
       resolvedDelimiter = interpretEscapeSequences(resolvedDelimiter)
-      this.extractVariableIds(config.delimiter).forEach((v) => usedVariables.add(v))
+      if (isDelimiterConstant) {
+        this.extractVariableIds(config.delimiter).forEach((v) => usedVariables.add(v))
+      } else {
+        extractVariableRefs(config.delimiter).forEach((v) => usedVariables.add(v))
+      }
     }
+
+    // Resolve boolean toggles — a real boolean in constant mode, a variable
+    // reference string when bound
+    const resolvedNormalizeWhitespace = await resolveBooleanConfig(
+      config.normalizeWhitespace,
+      true,
+      resolveValue
+    )
+    const resolvedRemoveUrlsAndEmails = await resolveBooleanConfig(
+      config.removeUrlsAndEmails,
+      false,
+      resolveValue
+    )
+    extractVariableRefs(config.normalizeWhitespace).forEach((v) => usedVariables.add(v))
+    extractVariableRefs(config.removeUrlsAndEmails).forEach((v) => usedVariables.add(v))
 
     return {
       inputs: {
@@ -212,8 +256,8 @@ export class ChunkerProcessor extends BaseNodeProcessor {
         chunkSize: resolvedChunkSize,
         chunkOverlap: resolvedChunkOverlap,
         delimiter: resolvedDelimiter,
-        normalizeWhitespace: config.normalizeWhitespace ?? true,
-        removeUrlsAndEmails: config.removeUrlsAndEmails ?? false,
+        normalizeWhitespace: resolvedNormalizeWhitespace,
+        removeUrlsAndEmails: resolvedRemoveUrlsAndEmails,
         variablesUsed: Array.from(usedVariables),
       },
       metadata: {
@@ -375,27 +419,28 @@ export class ChunkerProcessor extends BaseNodeProcessor {
     const config = node.data as unknown as ChunkerConfig
     const variables = new Set<string>()
 
-    // Extract from content
-    if (config.content) {
+    // Extract from content (variable mode is the default for this field)
+    if (config.content && config.fieldModes?.content !== true) {
       this.extractVariableIds(config.content).forEach((v) => variables.add(v))
       if (config.content.includes('.')) {
         variables.add(config.content)
       }
     }
 
-    // Extract from chunkSize (if string/variable)
-    if (typeof config.chunkSize === 'string') {
-      this.extractVariableIds(config.chunkSize).forEach((v) => variables.add(v))
-    }
-
-    // Extract from chunkOverlap (if string/variable)
-    if (typeof config.chunkOverlap === 'string') {
-      this.extractVariableIds(config.chunkOverlap).forEach((v) => variables.add(v))
-    }
+    // Bindable settings — a bound field carries either a {{…}} template or a
+    // bare picker path, both of which extractVariableRefs recognises
+    extractVariableRefs(config.chunkSize).forEach((v) => variables.add(v))
+    extractVariableRefs(config.chunkOverlap).forEach((v) => variables.add(v))
+    extractVariableRefs(config.normalizeWhitespace).forEach((v) => variables.add(v))
+    extractVariableRefs(config.removeUrlsAndEmails).forEach((v) => variables.add(v))
 
     // Extract from delimiter
     if (config.delimiter) {
-      this.extractVariableIds(config.delimiter).forEach((v) => variables.add(v))
+      if (config.fieldModes?.delimiter === false) {
+        extractVariableRefs(config.delimiter).forEach((v) => variables.add(v))
+      } else {
+        this.extractVariableIds(config.delimiter).forEach((v) => variables.add(v))
+      }
     }
 
     return Array.from(variables)

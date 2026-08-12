@@ -24,7 +24,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { getCachedResourceFields } from '../cache'
 import {
-  evaluateConditions,
+  evaluateConditionsWithDiagnostics,
   FIELD_NOT_RESOLVABLE,
   type FieldResolver,
   normalizeStatusConditions,
@@ -66,9 +66,13 @@ function readSnapshotValue(snapshot: any, key: string): unknown {
 /**
  * Evaluate a sequence's `enrollmentFilter` against a subject's root entity record.
  * `groups` empty/null ⇒ `true` (enroll everything, the default). Fails OPEN on internal
- * errors (logged) — a filter-evaluation bug should not silently block every enrollment; the
- * "recipient missing" / "not enabled" guards already in front of this call in
+ * errors (logged) — a thrown resolver/fetch bug should not silently block every enrollment;
+ * the "recipient missing" / "not enabled" guards already in front of this call in
  * `enrollSubjectInSequence` are the real safety net.
+ *
+ * A filter that *evaluates* but does not compile as written (unknown operator) is the
+ * opposite case and fails CLOSED with an error log — an uncompiled filter reduces to
+ * "no conditions", and enrolling on that basis mails everyone.
  */
 export async function evaluateEnrollmentFilter(
   organizationId: string,
@@ -157,7 +161,25 @@ export async function evaluateEnrollmentFilter(
     const resolver: FieldResolver<unknown> = (_entity, fieldId) =>
       values.has(fieldId) ? values.get(fieldId) : FIELD_NOT_RESOLVABLE
 
-    return evaluateConditions(rootResource, normalized, resolver)
+    // Diagnostics variant: enrolling is a MUTATION (it starts sending email). A filter
+    // the evaluator cannot read as written no longer expresses what its author wrote,
+    // and "enroll anyway" is the version of that mistake that mails the whole list.
+    const { matched, diagnostics } = evaluateConditionsWithDiagnostics(
+      rootResource,
+      normalized,
+      resolver
+    )
+    if (diagnostics.length > 0) {
+      logger.error('Enrollment filter did not evaluate as written — not enrolling', {
+        organizationId,
+        rootEntityDefinitionId,
+        rootEntityInstanceId,
+        diagnostics,
+      })
+      return false
+    }
+
+    return matched
   } catch (error) {
     logger.error('Enrollment filter evaluation failed — failing open (enroll)', {
       organizationId,

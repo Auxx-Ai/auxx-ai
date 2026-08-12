@@ -11,6 +11,43 @@
 export const APPROVAL_KINDS = ['workflow', 'access'] as const
 export type ApprovalKind = (typeof APPROVAL_KINDS)[number]
 
+/**
+ * ── THE APPROVAL OUTCOME VOCABULARY, DEFINED ONCE ───────────────────────────
+ *
+ * Two vocabularies exist and they are NOT interchangeable:
+ *
+ * - **`ApprovalAction`** (`'approve' | 'deny'`, `@auxx/database/enums`) — the
+ *   imperative verb a reviewer performs. It is the API input and the
+ *   `ApprovalResponse.action` column. Nothing else.
+ * - **`ApprovalOutcome`** (here) — the past-tense state a request ENDED in, and
+ *   the only vocabulary allowed downstream of a decision: the resume payload's
+ *   `outcome`, the human-confirmation node's branch handles, and its `outcome`
+ *   workflow variable.
+ *
+ * The outcomes are the terminal `ApprovalStatusValues` a workflow can route on,
+ * and they are already the names of the node's three canvas handles
+ * (`nodes/core/human/node.tsx`) and of the `ApprovalRequest.status` a decision
+ * writes. Producers converge on them via {@link outcomeForAction}; consumers
+ * must never re-spell them.
+ *
+ * `withdrawn` and `superseded` are terminal too but are access-lane statuses
+ * with no workflow branch, so they are deliberately not outcomes — an
+ * administratively cancelled workflow request routes as `denied` (it will never
+ * be approved) while its row goes to `withdrawn`.
+ */
+export const APPROVAL_OUTCOMES = ['approved', 'denied', 'timeout'] as const
+export type ApprovalOutcome = (typeof APPROVAL_OUTCOMES)[number]
+
+/** The outcome a reviewer's verb produces. The ONLY action→outcome mapping. */
+export function outcomeForAction(action: 'approve' | 'deny'): ApprovalOutcome {
+  return action === 'approve' ? 'approved' : 'denied'
+}
+
+/** Whether an unknown value is one of the three routable outcomes. */
+export function isApprovalOutcome(value: unknown): value is ApprovalOutcome {
+  return typeof value === 'string' && (APPROVAL_OUTCOMES as readonly string[]).includes(value)
+}
+
 /** What an `access`-kind request targets. */
 export const ACCESS_TARGET_KINDS = ['area', 'def', 'instance'] as const
 export type AccessTargetKind = (typeof ACCESS_TARGET_KINDS)[number]

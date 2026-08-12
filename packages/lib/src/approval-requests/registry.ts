@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { BadRequestError } from '../errors'
+import { outcomeForAction } from './client'
 import type { ApprovalKind, ApprovalKindHandler, ApprovalResolveContext } from './types'
 
 const logger = createScopedLogger('approval-requests')
@@ -42,7 +43,12 @@ const HANDLERS: Record<ApprovalKind, ApprovalKindHandler> = {
       const executionService = new WorkflowExecutionService(tx as never)
       try {
         await executionService.resumeWorkflow(request.workflowRunId, request.nodeId, {
-          outcome: action,
+          // The reviewer's VERB becomes the request's OUTCOME here, and only here.
+          // `action` ('approve'/'deny') is the API input and the
+          // `ApprovalResponse.action` column; everything downstream of a decision
+          // — branch handles, the `outcome` variable, the run's resume reason —
+          // speaks `ApprovalOutcome` ('approved'/'denied'/'timeout').
+          outcome: outcomeForAction(action),
           approvalRequestId: request.id,
           respondedBy: approverUserId,
           respondedAt: new Date().toISOString(),

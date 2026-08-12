@@ -196,7 +196,8 @@ const WaitNodePanelComponent: React.FC<WaitNodePanelProps> = ({ nodeId, data }) 
               future
             </p>
             <p className='mt-1 text-xs text-muted-foreground'>
-              If not specified, the account timezone will be used
+              The time is read as wall-clock time in this timezone. If not specified, the server
+              timezone is used.
             </p>
           </Field>
         )}

@@ -31,8 +31,8 @@ export const datasetNodeDataSchema = baseNodeDataSchema.extend({
   sourceUrl: z.string().optional(),
   fileId: z.string().optional(),
 
-  // Processing options
-  skipEmbedding: z.boolean().optional().default(false),
+  // Processing options — a variable reference string when bound to a variable
+  skipEmbedding: z.union([z.boolean(), z.string()]).optional(),
   metadata: z.record(z.string(), z.any()).optional(),
 
   // Field modes
@@ -96,6 +96,15 @@ export function extractDatasetVariables(data: Partial<DatasetNodeData>): string[
     if (isNodeVariable(data.fileId)) {
       variableIds.add(data.fileId)
     }
+  }
+
+  // Extract from skipEmbedding (a boolean toggle bound to a variable)
+  if (
+    typeof data.skipEmbedding === 'string' &&
+    isVariableMode(fieldModes, 'skipEmbedding') &&
+    isNodeVariable(data.skipEmbedding)
+  ) {
+    variableIds.add(data.skipEmbedding)
   }
 
   return Array.from(variableIds)

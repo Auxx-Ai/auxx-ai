@@ -175,6 +175,23 @@ export function getVarAssignOutputVariables(
       // Generate description based on type and isArray
       const typeDescription = variable.isArray ? `Array of ${variable.type}` : variable.type
 
+      // The engine writes an array for `isArray` assignments — advertise it as one, with
+      // the declared type as the item type, so the picker offers `<node>.<name>[*]`.
+      if (variable.isArray) {
+        return createUnifiedOutputVariable({
+          nodeId,
+          path: variable.name,
+          type: BaseType.ARRAY,
+          description: `Custom variable of type ${typeDescription}`,
+          items: {
+            id: `${nodeId}.${variable.name}[*]`,
+            type: variable.type,
+            label: 'Item',
+            category: 'node',
+          },
+        })
+      }
+
       return createUnifiedOutputVariable({
         nodeId,
         path: variable.name, // Changed from 'name' to 'path'

@@ -5,11 +5,17 @@
 
 // Condition evaluation (pure TypeScript, safe for client)
 export {
+  type ConditionDiagnostic,
+  type ConditionEvaluation,
   evaluateConditions,
+  evaluateConditionsWithDiagnostics,
   FIELD_NOT_RESOLVABLE,
   type FieldResolver,
   normalizeStatusConditions,
 } from './evaluate'
+// THE operator evaluator — shared by mail/record-rule filters, the workflow if-else
+// node and the list-filter node.
+export { evaluateOperator, isEmptyValue, isKnownOperator, looseEquals } from './evaluate-operator'
 export type { FieldInputConfig } from './field-input-modes'
 // Field input modes for resource-based conditions
 export { FieldInputMode, resolveFieldInputConfig } from './field-input-modes'

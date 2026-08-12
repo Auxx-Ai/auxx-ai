@@ -79,22 +79,20 @@
         "assignedTo": "assignedTo"
       },
       "requiredFields": ["orderNumber", "status"],
-      "companionTemplateIds": ["company", "return-request", "shipment"],
+      "companionTemplateIds": ["return-request", "shipment"],
       "required": true
     },
     {
-      "$comment": "TECHNIQUE 4: Custom entity — required, with a subset of fields. Not every template field needs to be in fieldMapping — only those referenced by CRUD/Find nodes in this workflow.",
-      "entityTemplateId": "company",
+      "$comment": "TECHNIQUE 4: System entity with a subset of fields — like contact and ticket above, company is a system entity definition, so it always exists and needs no installation. Field keys are systemAttribute values from COMPANY_FIELDS. Only the fields referenced by CRUD/Find nodes need to be in fieldMapping.",
+      "entityTemplateId": "__system:company",
       "name": "Company",
-      "apiSlug": "companies",
-      "icon": "building-2",
-      "color": "blue",
+      "apiSlug": "company",
       "fieldMapping": {
-        "companyName": "companyName",
-        "website": "website",
-        "industry": "industry"
+        "company_name": "company_name",
+        "company_website": "company_website",
+        "company_industry": "company_industry"
       },
-      "requiredFields": ["companyName"],
+      "requiredFields": ["company_name"],
       "companionTemplateIds": ["deal"],
       "required": true
     },
@@ -224,6 +222,10 @@
                   "type": "string",
                   "enum": ["low", "normal", "high", "urgent"],
                   "description": "Urgency level of the issue"
+                },
+                "companyName": {
+                  "type": "string",
+                  "description": "The customer's company or organisation name, from the email signature, the sender's domain, or the message body. Empty string if this is clearly a private individual."
                 }
               },
               "required": ["orderNumber", "email", "issueDescription"]
@@ -234,7 +236,7 @@
           },
           "instruction": {
             "enabled": true,
-            "text": "Extract the following from the customer message:\n- Order number\n- Customer name (first and last)\n- Customer email\n- Issue description\n- Urgency level (low, normal, high, urgent)"
+            "text": "Extract the following from the customer message:\n- Order number\n- Customer name (first and last)\n- Customer email\n- Issue description\n- Urgency level (low, normal, high, urgent)\n- Company name, if the customer is writing on behalf of a business"
           }
         },
         "width": 244,
@@ -462,7 +464,7 @@
         "height": 100
       },
       {
-        "$comment": "── FIND NODE (custom entity: order) ── TECHNIQUE 3: @entity:orders resolves to entity definition ID via entityDefSlugs cache (apiSlug 'orders'). @field:orderNumber resolves via entity template's templateFieldId.",
+        "$comment": "── FIND NODE (custom entity: order) ── TECHNIQUE 3: @entity:orders resolves to entity definition ID via entityDefSlugs cache (apiSlug 'orders'). @field:orderNumber resolves via entity template's templateFieldId. findOne publishes its result under the entity-definition CUID (`<node>.<entityDefId>`), which a template addresses as `{{find-order-009.@entity:orders}}` — @entity: placeholders are rewritten inside {{…}} strings too, so the CUID never has to be known at authoring time.",
         "id": "find-order-009",
         "type": "standard",
         "position": {
@@ -616,7 +618,7 @@
           "desc": "Update existing order with follow-up flag and priority",
           "resourceType": "@entity:orders",
           "mode": "update",
-          "resourceId": "{{find-order-009.order}}",
+          "resourceId": "{{find-order-009.@entity:orders}}",
           "data": {
             "@field:requiresFollowUp": true,
             "@field:priority": "{{extractor-002.extracted_data.urgency}}",
@@ -740,7 +742,7 @@
           "desc": "Update the ticket with urgency and open status",
           "resourceType": "@entity:ticket",
           "mode": "update",
-          "resourceId": "{{trigger-001.output.ticketId}}",
+          "resourceId": "{{trigger-001.ticket}}",
           "data": {
             "@field:ticket_priority": "{{extractor-002.extracted_data.urgency}}",
             "@field:ticket_status": "open"
@@ -760,7 +762,7 @@
         "height": 100
       },
       {
-        "$comment": "── CRUD CREATE (custom entity: company) ── TECHNIQUE 4: Create company record with subset of fields. Only 3 of company template's many fields are mapped — that's fine, only mapped fields need resolution.",
+        "$comment": "── CRUD CREATE (system entity: company) ── TECHNIQUE 4: Create company record with a subset of fields. Only 3 of COMPANY_FIELDS' many fields are mapped — that's fine, only mapped fields need resolution.",
         "id": "create-company-015",
         "type": "standard",
         "position": {
@@ -772,15 +774,15 @@
           "type": "crud",
           "title": "Create Company Record",
           "desc": "Create a company record from Shopify customer data",
-          "resourceType": "@entity:companies",
+          "resourceType": "@entity:company",
           "mode": "create",
           "data": {
-            "@field:companyName": "",
-            "@field:industry": "E-commerce"
+            "@field:company_name": "{{extractor-002.extracted_data.companyName}}",
+            "@field:company_industry": "E-commerce"
           },
           "fieldModes": {
-            "@field:companyName": true,
-            "@field:industry": true
+            "@field:company_name": false,
+            "@field:company_industry": true
           },
           "error_strategy": "fail",
           "default_values": [],
@@ -846,14 +848,14 @@
             {
               "id": "set-vars-017-1",
               "name": "issueCategory",
-              "type": "STRING",
-              "value": "{{classifier-013.output.category}}",
+              "type": "string",
+              "value": "{{classifier-013.category}}",
               "isConstantMode": false
             },
             {
               "id": "set-vars-017-2",
               "name": "orderValue",
-              "type": "NUMBER",
+              "type": "number",
               "value": "{{shopify-order-003.order.totalPrice}}",
               "isConstantMode": false
             }
@@ -928,7 +930,7 @@
           "title": "Escalate to Slack",
           "desc": "Send high-value order alert to the escalation Slack channel",
           "channel": "{{env.ESCALATION_SLACK_CHANNEL}}",
-          "message": "High-value order issue from {{extractor-002.extracted_data.firstName}} {{extractor-002.extracted_data.lastName}} (Order: {{extractor-002.extracted_data.orderNumber}}, Value: ${{shopify-order-003.order.totalPrice}})\n\nIssue: {{extractor-002.extracted_data.issueDescription}}\nCategory: {{classifier-013.output.category}}",
+          "message": "High-value order issue from {{extractor-002.extracted_data.firstName}} {{extractor-002.extracted_data.lastName}} (Order: {{extractor-002.extracted_data.orderNumber}}, Value: ${{shopify-order-003.order.totalPrice}})\n\nIssue: {{extractor-002.extracted_data.issueDescription}}\nCategory: {{classifier-013.category}}",
           "fieldModes": {
             "channel": false,
             "message": false
@@ -1031,7 +1033,7 @@
                       {
                         "type": "variable-node",
                         "attrs": {
-                          "variableId": "classifier-013.output.category"
+                          "variableId": "classifier-013.category"
                         }
                       },
                       {

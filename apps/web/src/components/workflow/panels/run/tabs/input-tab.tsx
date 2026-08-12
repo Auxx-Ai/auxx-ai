@@ -225,14 +225,19 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
         finalInputs = formatManualTriggerInputs(finalInputs)
       }
 
-      // Transform inputs for app triggers — parse JSON triggerData and spread as top-level inputs
+      // Transform inputs for app triggers — parse JSON triggerData and nest it under
+      // `event`, matching the envelope `executeAppTriggeredWorkflow` builds for a real
+      // delivery. Spreading it here instead would leave the run with no `event` key, so
+      // the trigger processor fans out nothing and every downstream variable resolves
+      // empty. Nesting also keeps non-object payloads (arrays, scalars) intact.
       if (
         triggerType === WorkflowTriggerType.APP_TRIGGER ||
-        triggerType === WorkflowTriggerType.APP_POLLING_TRIGGER
+        triggerType === WorkflowTriggerType.APP_POLLING_TRIGGER ||
+        triggerType === WorkflowTriggerType.WEBHOOK_ENDPOINT
       ) {
         const raw = inputs.triggerData
         const parsed = typeof raw === 'string' ? JSON.parse(raw) : (raw ?? {})
-        finalInputs = { ...parsed }
+        finalInputs = { event: parsed }
       }
 
       // Transform inputs for RESOURCE_TRIGGER to match expected format

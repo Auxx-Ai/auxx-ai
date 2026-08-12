@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/__tests__/list-processor.test.ts
 
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ALL_OPERATOR_KEYS } from '../../../../conditions/operator-definitions'
 import { ExecutionContextManager } from '../../../core/execution-context'
 import type { WorkflowNode } from '../../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../../core/types'
@@ -467,6 +468,548 @@ describe('ListProcessor - Sort Operation', () => {
 
       // Should fail because input list is required
       expect(result.status).toBe(NodeRunningStatus.Failed)
+    })
+  })
+})
+
+/**
+ * Build a filter condition in the shape the builder's condition panel emits.
+ */
+function createCondition(
+  fieldId: string,
+  operator: string,
+  value?: any,
+  extra: Record<string, any> = {}
+) {
+  return { id: `${fieldId}-${operator}`, fieldId, operator, value, isConstant: true, ...extra }
+}
+
+/**
+ * Run the filter operation over `items` and return the surviving items.
+ */
+async function runFilter(
+  items: any[],
+  conditions: any[],
+  filterConfigExtras: Record<string, any> = {}
+): Promise<any[]> {
+  const processor = new ListProcessor()
+  const node = createMockListNode('filter', {
+    filterConfig: { conditions, ...filterConfigExtras },
+  })
+  const result = await processor.execute(node, createMockContext({ testList: items }))
+
+  expect(result.status).toBe(NodeRunningStatus.Succeeded)
+  return result.output?.result as any[]
+}
+
+/**
+ * Assert an operator keeps the item it should match and drops the one it should not.
+ */
+async function expectOperatorSelects(
+  operator: string,
+  matching: any,
+  notMatching: any,
+  compareValue?: any
+) {
+  const survivors = await runFilter(
+    [
+      { id: 'yes', value: matching },
+      { id: 'no', value: notMatching },
+    ],
+    [createCondition('value', operator, compareValue)]
+  )
+
+  expect(survivors.map((item) => item.id)).toEqual(['yes'])
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+const daysAgo = (days: number) => new Date(Date.now() - days * DAY_MS)
+
+/**
+ * A workflow file variable, as the FILE operators expect it.
+ */
+function createFile(overrides: Record<string, any> = {}) {
+  return {
+    id: 'file-1',
+    fileId: 'file-1',
+    assetId: 'asset-1',
+    versionId: 'version-1',
+    filename: 'notes.txt',
+    mimeType: 'text/plain',
+    size: 1024,
+    url: 'https://example.com/notes.txt',
+    nodeId: 'upload-1',
+    uploadedAt: new Date(),
+    ...overrides,
+  }
+}
+
+const MB = 1024 * 1024
+
+/**
+ * Every operator the builder's list filter panel can offer, with a value that must
+ * match and a value that must not. The panel derives its operator options straight
+ * from OPERATOR_DEFINITIONS (`getOperatorsForFieldType` / `getOperatorsForBaseType`),
+ * so this table is asserted to be exhaustive below.
+ */
+const OPERATOR_CASES: Array<{
+  operator: string
+  matching: any
+  notMatching: any
+  compareValue?: any
+}> = [
+  // EQUALITY
+  { operator: 'is', matching: 'Open', notMatching: 'Closed', compareValue: 'open' },
+  { operator: 'is not', matching: 'Closed', notMatching: 'Open', compareValue: 'Open' },
+
+  // COMPARISON
+  { operator: '>', matching: 10, notMatching: 3, compareValue: 5 },
+  { operator: '<', matching: 3, notMatching: 10, compareValue: 5 },
+  { operator: '>=', matching: 5, notMatching: 4, compareValue: 5 },
+  { operator: '<=', matching: 5, notMatching: 6, compareValue: 5 },
+
+  // STRING
+  {
+    operator: 'contains',
+    matching: 'Urgent request',
+    notMatching: 'all good',
+    compareValue: 'URGENT',
+  },
+  {
+    operator: 'not contains',
+    matching: 'all good',
+    notMatching: 'urgent request',
+    compareValue: 'urgent',
+  },
+  {
+    operator: 'starts with',
+    matching: 'Refund me please',
+    notMatching: 'please refund me',
+    compareValue: 'refund',
+  },
+  {
+    operator: 'ends with',
+    matching: 'please refund',
+    notMatching: 'refund please',
+    compareValue: 'refund',
+  },
+
+  // SET
+  { operator: 'in', matching: 'high', notMatching: 'low', compareValue: ['HIGH', 'medium'] },
+  { operator: 'not in', matching: 'low', notMatching: 'high', compareValue: ['high', 'medium'] },
+
+  // DATE
+  {
+    operator: 'before',
+    matching: new Date(2020, 0, 1),
+    notMatching: new Date(2030, 0, 1),
+    compareValue: new Date(2025, 0, 1),
+  },
+  {
+    operator: 'after',
+    matching: new Date(2030, 0, 1),
+    notMatching: new Date(2020, 0, 1),
+    compareValue: new Date(2025, 0, 1),
+  },
+  {
+    operator: 'on_date',
+    matching: new Date(2025, 5, 15, 9),
+    notMatching: new Date(2025, 5, 16, 9),
+    compareValue: new Date(2025, 5, 15, 18),
+  },
+  {
+    operator: 'not_on_date',
+    matching: new Date(2025, 5, 16, 9),
+    notMatching: new Date(2025, 5, 15, 9),
+    compareValue: new Date(2025, 5, 15, 18),
+  },
+  { operator: 'within_days', matching: daysAgo(2), notMatching: daysAgo(30), compareValue: 7 },
+  { operator: 'older_than_days', matching: daysAgo(30), notMatching: daysAgo(1), compareValue: 7 },
+  { operator: 'today', matching: new Date(), notMatching: daysAgo(3) },
+  { operator: 'yesterday', matching: daysAgo(1), notMatching: new Date() },
+  { operator: 'this_week', matching: new Date(), notMatching: daysAgo(60) },
+  { operator: 'this_month', matching: new Date(), notMatching: daysAgo(60) },
+
+  // EXISTENCE
+  { operator: 'empty', matching: '', notMatching: 'something' },
+  { operator: 'not empty', matching: 'something', notMatching: '' },
+
+  // ARRAY
+  { operator: 'length =', matching: [1, 2], notMatching: [1], compareValue: 2 },
+  { operator: 'length >', matching: [1, 2, 3], notMatching: [1], compareValue: 2 },
+  { operator: 'length <', matching: [1], notMatching: [1, 2, 3], compareValue: 2 },
+  { operator: 'length >=', matching: [1, 2], notMatching: [1], compareValue: 2 },
+  { operator: 'length <=', matching: [1], notMatching: [1, 2, 3], compareValue: 1 },
+
+  // OBJECT
+  {
+    operator: 'has key',
+    matching: { sku: 'A1' },
+    notMatching: { name: 'A1' },
+    compareValue: 'sku',
+  },
+  {
+    operator: 'key equals',
+    matching: { status: 'open' },
+    notMatching: { status: 'closed' },
+    compareValue: 'status:open',
+  },
+
+  // FILE
+  {
+    operator: 'is_valid',
+    matching: createFile(),
+    notMatching: createFile({ filename: '  ' }),
+  },
+  {
+    operator: 'is_invalid',
+    matching: createFile({ filename: '  ' }),
+    notMatching: createFile(),
+  },
+  {
+    operator: 'uploaded_today',
+    matching: createFile(),
+    notMatching: createFile({ uploadedAt: daysAgo(5) }),
+  },
+  {
+    operator: 'uploaded_within_days',
+    matching: createFile({ uploadedAt: daysAgo(2) }),
+    notMatching: createFile({ uploadedAt: daysAgo(40) }),
+    compareValue: 7,
+  },
+  {
+    operator: 'matches_pattern',
+    matching: createFile({ filename: 'invoice-903.pdf' }),
+    notMatching: createFile({ filename: 'notes.txt' }),
+    compareValue: '^invoice',
+  },
+  {
+    operator: 'contains_numbers',
+    matching: createFile({ filename: 'report7.pdf' }),
+    notMatching: createFile({ filename: 'report.pdf' }),
+  },
+  {
+    operator: 'contains_date',
+    matching: createFile({ filename: 'report-2024-01-02.pdf' }),
+    notMatching: createFile({ filename: 'report.pdf' }),
+  },
+  {
+    operator: 'has_version',
+    matching: createFile({ filename: 'app-v2.zip' }),
+    notMatching: createFile({ filename: 'app.zip' }),
+  },
+  {
+    operator: 'is_office_document',
+    matching: createFile({ filename: 'contract.docx' }),
+    notMatching: createFile({ filename: 'contract.txt' }),
+  },
+  {
+    operator: 'is_image_format',
+    matching: createFile({ filename: 'logo.png' }),
+    notMatching: createFile({ filename: 'logo.txt' }),
+  },
+  {
+    operator: 'is_text_format',
+    matching: createFile({ filename: 'notes.txt' }),
+    notMatching: createFile({ filename: 'notes.png' }),
+  },
+  {
+    operator: 'is_compressed',
+    matching: createFile({ filename: 'bundle.zip' }),
+    notMatching: createFile({ filename: 'bundle.txt' }),
+  },
+  {
+    operator: 'is_executable',
+    matching: createFile({ filename: 'installer.exe' }),
+    notMatching: createFile({ filename: 'installer.txt' }),
+  },
+  {
+    operator: 'within_size_limit',
+    matching: createFile({ size: 1 * MB }),
+    notMatching: createFile({ size: 20 * MB }),
+    compareValue: 5,
+  },
+  {
+    operator: 'exceeds_limit',
+    matching: createFile({ size: 20 * MB }),
+    notMatching: createFile({ size: 1 * MB }),
+    compareValue: 5,
+  },
+]
+
+/**
+ * Mail-search scope operators. They live in OPERATOR_DEFINITIONS but describe a
+ * mailbox scope rather than an item value, so they never select a list item.
+ */
+const SCOPE_OPERATORS = ['this_mailbox', 'everywhere']
+
+describe('ListProcessor - Filter Operation', () => {
+  describe('Operator vocabulary (registry keys emitted by the builder)', () => {
+    it('handles every operator OPERATOR_DEFINITIONS exposes', () => {
+      const covered = new Set([...OPERATOR_CASES.map((c) => c.operator), ...SCOPE_OPERATORS])
+      const uncovered = ALL_OPERATOR_KEYS.filter((key) => !covered.has(key))
+
+      expect(uncovered).toEqual([])
+    })
+
+    it.each(
+      OPERATOR_CASES.map((c) => [c.operator, c] as const)
+    )('"%s" keeps matching items and drops the rest', async (_operator, testCase) => {
+      await expectOperatorSelects(
+        testCase.operator,
+        testCase.matching,
+        testCase.notMatching,
+        testCase.compareValue
+      )
+    })
+
+    it.each(SCOPE_OPERATORS)('scope operator "%s" matches nothing', async (operator) => {
+      const survivors = await runFilter(
+        [
+          { id: 'a', value: 'x' },
+          { id: 'b', value: 'y' },
+        ],
+        [createCondition('value', operator)]
+      )
+
+      expect(survivors).toEqual([])
+    })
+
+    it('does not silently drop everything for the builder default operator', async () => {
+      // Regression: the processor used to switch on `equals`/`greater_than`/`is_empty`
+      // while the builder emitted `is`/`>`/`empty`, so every filter returned [].
+      const survivors = await runFilter(
+        [
+          { id: 'a', status: 'open' },
+          { id: 'b', status: 'closed' },
+        ],
+        [createCondition('status', 'is', 'open')]
+      )
+
+      expect(survivors.map((item) => item.id)).toEqual(['a'])
+    })
+
+    it('refuses to run an operator the registry does not define', async () => {
+      // `equals` is the legacy vocabulary — no longer a registry key. It must fail
+      // loudly instead of evaluating to "no match" for every item.
+      const processor = new ListProcessor()
+      const node = createMockListNode('filter', {
+        filterConfig: { conditions: [createCondition('status', 'equals', 'open')] },
+      })
+      const context = createMockContext({ testList: [{ id: 'a', status: 'open' }] })
+
+      await expect(processor.execute(node, context)).rejects.toThrow('Unknown operator "equals"')
+    })
+
+    it('reports an unknown operator during validation', async () => {
+      const processor = new ListProcessor()
+      const node = createMockListNode('filter', {
+        filterConfig: { conditions: [createCondition('status', 'equals', 'open')] },
+      })
+
+      const result = await processor.validate(node)
+
+      expect(result.valid).toBe(false)
+      expect(result.errors.some((e) => e.includes('Unknown operator "equals"'))).toBe(true)
+    })
+
+    it('reports a missing operator during validation', async () => {
+      const processor = new ListProcessor()
+      const node = createMockListNode('filter', {
+        filterConfig: { conditions: [{ id: 'c1', fieldId: 'status', value: 'open' }] },
+      })
+
+      const result = await processor.validate(node)
+
+      expect(result.valid).toBe(false)
+      expect(result.errors.some((e) => e.includes('Missing operator'))).toBe(true)
+    })
+  })
+
+  describe('Value shapes', () => {
+    it('matches ANY element of an array-valued field for positive operators', async () => {
+      const survivors = await runFilter(
+        [
+          { id: 'a', tags: ['vip', 'refund'] },
+          { id: 'b', tags: ['newsletter'] },
+        ],
+        [createCondition('tags', 'is', 'refund')]
+      )
+
+      expect(survivors.map((item) => item.id)).toEqual(['a'])
+    })
+
+    it('requires EVERY element of an array-valued field to satisfy a negated operator', async () => {
+      const survivors = await runFilter(
+        [
+          { id: 'a', tags: ['vip', 'newsletter'] },
+          { id: 'b', tags: ['vip', 'refund'] },
+        ],
+        [createCondition('tags', 'is not', 'refund')]
+      )
+
+      expect(survivors.map((item) => item.id)).toEqual(['a'])
+    })
+
+    it('treats an empty array, whitespace and an empty object as empty', async () => {
+      const survivors = await runFilter(
+        [
+          { id: 'empty-array', value: [] },
+          { id: 'whitespace', value: '   ' },
+          { id: 'empty-object', value: {} },
+          { id: 'null', value: null },
+          { id: 'filled', value: ['x'] },
+        ],
+        [createCondition('value', 'empty')]
+      )
+
+      expect(survivors.map((item) => item.id)).toEqual([
+        'empty-array',
+        'whitespace',
+        'empty-object',
+        'null',
+      ])
+    })
+
+    it('compares RecordId values against the bare instance id', async () => {
+      const survivors = await runFilter(
+        [
+          { id: 'a', contact: 'contact:inst-1' },
+          { id: 'b', contact: 'contact:inst-2' },
+        ],
+        [createCondition('contact', 'is', 'inst-1')]
+      )
+
+      expect(survivors.map((item) => item.id)).toEqual(['a'])
+    })
+
+    it('reads values out of a custom entity instance fieldValues bag', async () => {
+      const survivors = await runFilter(
+        [
+          { id: 'a', fieldValues: { priority: 'high' } },
+          { id: 'b', fieldValues: { priority: 'low' } },
+        ],
+        [createCondition('ticket:priority', 'is', 'high')]
+      )
+
+      expect(survivors.map((item) => item.id)).toEqual(['a'])
+    })
+  })
+
+  describe('Multi-condition logic (AND / OR)', () => {
+    const items = [
+      { id: 'both', status: 'open', priority: 'high' },
+      { id: 'status-only', status: 'open', priority: 'low' },
+      { id: 'priority-only', status: 'closed', priority: 'high' },
+      { id: 'neither', status: 'closed', priority: 'low' },
+    ]
+
+    const conditions = [
+      createCondition('status', 'is', 'open'),
+      createCondition('priority', 'is', 'high'),
+    ]
+
+    it('defaults to AND when nothing declares the logic', async () => {
+      const survivors = await runFilter(items, conditions)
+
+      expect(survivors.map((item) => item.id)).toEqual(['both'])
+    })
+
+    it('honours the per-condition logicalOperator the builder writes (AND)', async () => {
+      const survivors = await runFilter(items, [
+        conditions[0],
+        { ...conditions[1], logicalOperator: 'AND' },
+      ])
+
+      expect(survivors.map((item) => item.id)).toEqual(['both'])
+    })
+
+    it('honours the per-condition logicalOperator the builder writes (OR)', async () => {
+      const survivors = await runFilter(items, [
+        conditions[0],
+        { ...conditions[1], logicalOperator: 'OR' },
+      ])
+
+      expect(survivors.map((item) => item.id)).toEqual(['both', 'status-only', 'priority-only'])
+    })
+
+    it('honours the node-level filterConfig.logic key (OR)', async () => {
+      const survivors = await runFilter(items, conditions, { logic: 'OR' })
+
+      expect(survivors.map((item) => item.id)).toEqual(['both', 'status-only', 'priority-only'])
+    })
+
+    it('honours the node-level filterConfig.logic key (AND)', async () => {
+      const survivors = await runFilter(items, conditions, { logic: 'AND' })
+
+      expect(survivors.map((item) => item.id)).toEqual(['both'])
+    })
+
+    it('accepts lowercase logic values', async () => {
+      const survivors = await runFilter(items, conditions, { logic: 'or' })
+
+      expect(survivors.map((item) => item.id)).toEqual(['both', 'status-only', 'priority-only'])
+    })
+
+    it('prefers the node-level logic key over the per-condition marker', async () => {
+      const survivors = await runFilter(
+        items,
+        [conditions[0], { ...conditions[1], logicalOperator: 'OR' }],
+        { logic: 'AND' }
+      )
+
+      expect(survivors.map((item) => item.id)).toEqual(['both'])
+    })
+
+    it('rejects a filter with no conditions rather than passing the list through', async () => {
+      const processor = new ListProcessor()
+      const node = createMockListNode('filter', { filterConfig: { conditions: [] } })
+      const context = createMockContext({ testList: items })
+
+      await expect(processor.execute(node, context)).rejects.toThrow(
+        'At least one condition is required'
+      )
+    })
+  })
+
+  describe('Case sensitivity', () => {
+    // There is no per-condition case-sensitivity writer in the builder, so the
+    // processor no longer reads a `caseSensitive` key: string comparisons are always
+    // case-insensitive, matching conditions/evaluate.ts.
+    it('compares equality case-insensitively', async () => {
+      const survivors = await runFilter(
+        [
+          { id: 'a', status: 'OPEN' },
+          { id: 'b', status: 'closed' },
+        ],
+        [createCondition('status', 'is', 'open')]
+      )
+
+      expect(survivors.map((item) => item.id)).toEqual(['a'])
+    })
+
+    it('compares substrings case-insensitively', async () => {
+      const survivors = await runFilter(
+        [
+          { id: 'a', subject: 'URGENT: refund' },
+          { id: 'b', subject: 'newsletter' },
+        ],
+        [createCondition('subject', 'contains', 'urgent')]
+      )
+
+      expect(survivors.map((item) => item.id)).toEqual(['a'])
+    })
+
+    it('ignores a stale caseSensitive flag on a condition', async () => {
+      const survivors = await runFilter(
+        [
+          { id: 'a', status: 'OPEN' },
+          { id: 'b', status: 'closed' },
+        ],
+        [createCondition('status', 'is', 'open', { caseSensitive: true })]
+      )
+
+      expect(survivors.map((item) => item.id)).toEqual(['a'])
     })
   })
 })

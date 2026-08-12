@@ -24,8 +24,29 @@ import type {
 } from '../core/types'
 import { NodeRunningStatus } from '../core/types'
 import { BaseNodeProcessor } from './base-node'
+import { isAppInputField } from './utils/app-input-fields'
 
 const logger = createScopedLogger('app-workflow-block-processor')
+
+/**
+ * Strip the platform envelope off trigger data before handing it to app code.
+ *
+ * App-triggered runs (`app-trigger`, `app-polling-trigger`, `webhook-endpoint`)
+ * store their inputs as `{ event, _meta }` — see `executeAppTriggeredWorkflow`.
+ * To a third-party app, "trigger data" means the delivered payload, not our
+ * transport wrapper, and this is what surfaces as `sdk.getTriggerData()`.
+ *
+ * Every other trigger (`message-received`, `scheduled`, `manual`, the plain
+ * `webhook`, resource triggers) writes its own un-enveloped shape, and an app
+ * block can sit in any of those workflows — so pass those through untouched
+ * rather than unwrapping a key they never had.
+ */
+function unwrapTriggerEnvelope(triggerData: unknown): unknown {
+  if (triggerData && typeof triggerData === 'object' && 'event' in triggerData) {
+    return (triggerData as { event: unknown }).event
+  }
+  return triggerData
+}
 
 /**
  * Metadata for a workflow block from an app
@@ -170,33 +191,11 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
     const resolvedInputs: Record<string, any> = {}
     const fieldModes: Record<string, boolean> = node.data.fieldModes || {}
 
-    // When the metadata schema has a populated inputs map, use it as an allowlist so only
-    // declared input fields are forwarded to the Lambda.  When the schema is empty (the
-    // permissive-defaults path in fetchBlockMetadata), fall back to a denylist of known
-    // platform-injected node-data keys so that all app-authored fields are forwarded.
-    const schemaInputKeys = Object.keys(this.blockMetadata.schema.inputs)
-    const hasSchema = schemaInputKeys.length > 0
-    const platformMetadataFields = new Set([
-      'title',
-      'desc',
-      'appId',
-      'blockId',
-      'installationId',
-      'connectionId',
-      'type',
-    ])
+    const schemaInputs = this.blockMetadata?.schema?.inputs
 
     for (const [fieldName, fieldValue] of Object.entries(node.data)) {
-      // Skip metadata fields (prefixed with _)
-      if (fieldName.startsWith('_')) continue
-      // Skip fieldModes itself
-      if (fieldName === 'fieldModes') continue
-      // Skip non-input fields — strategy depends on whether we have a real schema
-      if (hasSchema) {
-        if (!this.blockMetadata.schema.inputs[fieldName]) continue
-      } else {
-        if (platformMetadataFields.has(fieldName)) continue
-      }
+      // Forward app-authored fields only — never builder-owned node-data keys
+      if (!isAppInputField(fieldName, schemaInputs)) continue
 
       // Mode-driven resolution: fieldModes[field] !== false means constant (pass through)
       const isConstant = fieldModes[fieldName] !== false
@@ -229,7 +228,7 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
       variables: contextManager.getAllVariables(),
       environmentVariables: contextManager.getEnvironmentVariables(),
       systemVariables: contextManager.getSystemVariables(),
-      triggerData: contextManager.getTriggerData(),
+      triggerData: unwrapTriggerEnvelope(contextManager.getTriggerData()),
 
       // Node outputs (entire objects per node)
       nodeOutputs: contextManager.getAllNodeVariables(),
@@ -393,10 +392,11 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
     const fieldModes: Record<string, boolean> = config.fieldModes || {}
     const variables = new Set<string>()
 
+    const schemaInputs = this.blockMetadata?.schema?.inputs
+
     for (const [fieldName, fieldValue] of Object.entries(config)) {
-      if (fieldName.startsWith('_')) continue
-      if (fieldName === 'fieldModes') continue
-      if (!this.blockMetadata?.schema?.inputs?.[fieldName]) continue
+      // Same notion of "app input" as preprocessNode — the two must never diverge
+      if (!isAppInputField(fieldName, schemaInputs)) continue
 
       // Only extract variables from fields in variable mode
       const isConstant = fieldModes[fieldName] !== false

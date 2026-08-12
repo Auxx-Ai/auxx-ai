@@ -257,9 +257,25 @@ export const validateAiData = (data: Partial<AiNodeData>): ValidationResult => {
 }
 
 /**
- * Convert JSON Schema to UnifiedVariable recursively
+ * Convert a JSON Schema fragment into a `UnifiedVariable`, recursively.
+ *
+ * @param schema - The JSON Schema fragment
+ * @param nodeId - The node this output belongs to
+ * @param path - Full path of this fragment **relative to the node**, e.g.
+ *   `structured_output.order.lines[*].sku`. Nested fragments only carry their own key,
+ *   so without the enclosing path the variable ID collapses to `<nodeId>.<key>` and the
+ *   picker hands out a path the engine can't resolve. At run time the AI node stores the
+ *   whole object once, at `<nodeId>.structured_output` (see `storeAIResponse` in
+ *   `base-ai-node.ts`), and reads walk into it by prefix — only the TOP-LEVEL keys get a
+ *   flat copy, so anything deeper must be addressed through `structured_output`.
+ * @param key - Leaf key, used only as the description fallback
  */
-const schemaToUnifiedVariable = (schema: any, nodeId: string, name: string): UnifiedVariable => {
+const schemaToUnifiedVariable = (
+  schema: any,
+  nodeId: string,
+  path: string,
+  key: string
+): UnifiedVariable => {
   // Determine the base type
   const getBaseType = (schemaType: string): BaseType => {
     switch (schemaType) {
@@ -281,9 +297,9 @@ const schemaToUnifiedVariable = (schema: any, nodeId: string, name: string): Uni
 
   const variable = createUnifiedOutputVariable({
     nodeId,
-    path: name, // Changed from 'name' to 'path'
+    path,
     type: getBaseType(schema.type || 'string'),
-    description: schema.description || name,
+    description: schema.description || key,
   })
 
   // Handle object properties
@@ -291,22 +307,24 @@ const schemaToUnifiedVariable = (schema: any, nodeId: string, name: string): Uni
     variable.properties = {}
 
     for (const [propKey, propSchema] of Object.entries(schema.properties as Record<string, any>)) {
-      variable.properties[propKey] = schemaToUnifiedVariable(propSchema, nodeId, propKey)
+      variable.properties[propKey] = schemaToUnifiedVariable(
+        propSchema,
+        nodeId,
+        `${path}.${propKey}`,
+        propKey
+      )
     }
   }
 
-  // Handle array items
+  // Handle array items. The item IS the array at `[*]`, so it claims that path outright
+  // rather than appending a synthetic name to the parent.
   if (schema.type === 'array' && schema.items) {
-    variable.items = schemaToUnifiedVariable(schema.items, nodeId, `${name}_item`)
+    variable.items = schemaToUnifiedVariable(schema.items, nodeId, `${path}[*]`, key)
   }
 
   // Handle enum values
   if (schema.enum) {
     variable.enum = schema.enum
-  }
-
-  // Generate children after all properties and items are set
-  if (variable.properties || variable.items) {
   }
 
   return variable
@@ -333,6 +351,7 @@ const getAiOutputVariables = (data: Partial<AiNodeData>, nodeId: string): Unifie
     const structuredVar = schemaToUnifiedVariable(
       data.structured_output.schema,
       nodeId,
+      'structured_output',
       'structured_output'
     )
     structuredVar.description = 'Structured output based on the defined schema'

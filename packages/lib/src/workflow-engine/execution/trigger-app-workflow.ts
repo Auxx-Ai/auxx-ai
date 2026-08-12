@@ -18,7 +18,14 @@ const logger = createScopedLogger('trigger-app-workflow')
 export async function executeAppTriggeredWorkflow(params: {
   workflowAppId: string
   organizationId: string
-  triggerData: Record<string, unknown>
+  /**
+   * The delivery, verbatim. Deliberately `unknown`: an app trigger emits a
+   * structured object, but a webhook-endpoint delivery is whatever the sender
+   * posted — an object, an array, a raw non-JSON string, or `null`. It is
+   * stored under `inputs.event` and never spread, so none of those shapes is
+   * mangled on the way to the trigger processor.
+   */
+  triggerData: unknown
   /** App-trigger provenance (omitted for a webhook-endpoint trigger). */
   appId?: string
   triggerId?: string
@@ -96,8 +103,12 @@ export async function executeAppTriggeredWorkflow(params: {
     const workflowRun = await executionService.createRun({
       workflowId: publishedWorkflow.id,
       inputs: {
-        // App's trigger data becomes node output variables
-        ...triggerData,
+        // The delivery, nested under an explicit key. It is NOT spread: spreading
+        // coerced every non-object payload (a raw string became index-keyed
+        // characters, an array lost its array-ness, `null` vanished), and it let a
+        // payload field named `message` masquerade as the run's ProcessedMessage.
+        // The trigger processors unwrap this and fan it out to node variables.
+        event: triggerData,
         // Platform metadata nested under _meta to avoid polluting node outputs
         _meta: {
           trigger_type: publishedWorkflow.triggerType,

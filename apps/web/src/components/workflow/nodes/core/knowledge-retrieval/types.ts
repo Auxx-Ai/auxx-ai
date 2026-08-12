@@ -35,8 +35,11 @@ export interface KnowledgeRetrievalNodeData extends BaseNodeData {
   datasets?: DatasetEntry[]
 
   // === Search Configuration ===
-  /** Search strategy: 'vector', 'text', or 'hybrid' (default: 'hybrid') */
-  searchType?: SearchType
+  /**
+   * Search strategy: 'vector', 'text', or 'hybrid' (default: 'hybrid').
+   * A variable reference string when bound to a variable.
+   */
+  searchType?: SearchType | string
   /** Maximum number of results to return (default: 20). A string when bound to a variable. */
   limit?: number | string
   /**

@@ -189,7 +189,7 @@
           "type": "end",
           "title": "Error",
           "description": "Notification failed",
-          "message": "Failed to send notification: {{http_1.error}}",
+          "message": "Failed to send notification (HTTP {{http_1.status}}): {{http_1.body}}",
           "status": "error"
         },
         "width": 244,

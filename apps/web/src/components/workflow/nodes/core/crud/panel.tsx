@@ -129,7 +129,12 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
   const handleFieldChange = useCallback(
     (fieldKey: string, value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
-        draft.data[fieldKey] = varEditorText(value)
+        // A multi-relation / multi-select picker hands back an array of RecordIds.
+        // `varEditorText` would JSON.stringify it, and neither side can read that
+        // back: `RelationInput` re-hydrates its chips from `Array.isArray(value)`,
+        // and the engine's `parseRelationInput` would treat the whole JSON string
+        // as one id. Store the array as an array.
+        draft.data[fieldKey] = Array.isArray(value) ? value : varEditorText(value)
 
         if (!draft.fieldModes) {
           draft.fieldModes = {}

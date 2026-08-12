@@ -20,6 +20,7 @@ import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
 import { snapToDeliveryWindow } from './delivery-window'
 import { buildWorkflowResumeJobId } from './resume-job-id'
+import { resolveTargetTime } from './target-time'
 import { DurationUnit, type WaitAnchorConfig, type WaitNodeConfig, WaitType } from './types'
 
 /**
@@ -87,7 +88,7 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
         contextManager
       )
 
-      const resumeAt = new Date(timeValue)
+      const resumeAt = resolveTargetTime(timeValue, config.timezone)
       if (Number.isNaN(resumeAt.getTime())) {
         throw new Error('Invalid target time format')
       }
@@ -231,7 +232,12 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
           config.isTimeConstant ?? true,
           contextManager
         )
-        resumeAt = new Date(timeValue)
+        // The configured timezone is what the builder's picker writes; a bare wall-clock
+        // string is read as local to it (see `./target-time.ts`).
+        resumeAt = resolveTargetTime(timeValue, config.timezone)
+        if (Number.isNaN(resumeAt.getTime())) {
+          throw new Error('Invalid target time format')
+        }
         waitDurationMs = resumeAt.getTime() - Date.now()
 
         if (waitDurationMs < 0) {
@@ -309,19 +315,44 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
       `Using short delay method (setTimeout) for ${waitDurationMs}ms`
     )
 
+    const pausedAt = new Date()
+    const resumeAt = new Date(pausedAt.getTime() + waitDurationMs)
+
     // For short delays, we pause execution synchronously
     await new Promise((resolve) => setTimeout(resolve, waitDurationMs))
 
     return {
       status: NodeRunningStatus.Succeeded,
-      output: {
+      output: this.publishWaitOutputs(node, contextManager, {
+        // `paused_at`/`resume_at` are advertised for EVERY wait, not just queued ones —
+        // whether a wait lands on the setTimeout or the queue path depends on runtime
+        // values (variable durations, delivery-window snapping, dry-run capping), so a
+        // conditionally-written variable would resolve to nothing for half the runs.
+        paused_at: pausedAt.toISOString(),
+        resume_at: resumeAt.toISOString(),
         wait_duration_ms: waitDurationMs,
         wait_method: 'short_delay',
         dryRun: contextManager.getOptions()?.dryRun || false,
         ...(originalDurationMs !== undefined && { original_duration_ms: originalDurationMs }),
-      },
+      }),
       outputHandle: 'source', // Continue after delay
     }
+  }
+
+  /**
+   * Mirror the wait node's output onto the variable store so the paths the builder
+   * advertises (`<node>.wait_duration_ms`, `.wait_method`, `.paused_at`, `.resume_at`)
+   * actually resolve downstream — node `output` alone is never copied into variables.
+   *
+   * @returns The same output object, for use as the execution result's `output`.
+   */
+  private publishWaitOutputs<T extends Record<string, unknown>>(
+    node: WorkflowNode,
+    contextManager: ExecutionContextManager,
+    output: T
+  ): T {
+    contextManager.setNodeVariables(node.nodeId, output)
+    return output
   }
 
   private async handleLongDelay(
@@ -355,13 +386,13 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
     return {
       status: NodeRunningStatus.Paused,
       pauseReason,
-      output: {
+      output: this.publishWaitOutputs(node, contextManager, {
         paused_at: new Date().toISOString(),
         resume_at: resumeAt.toISOString(),
         wait_duration_ms: waitDurationMs,
         wait_method: 'queue_delay',
         dryRun: contextManager.getOptions()?.dryRun || false,
-      },
+      }),
       outputHandle: 'source', // Continue after wait completes
     }
   }
@@ -685,12 +716,17 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
       `Using short delay method (setTimeout) for ${waitDurationMs}ms`
     )
 
+    const pausedAt = new Date()
+    const resumeAt = new Date(pausedAt.getTime() + waitDurationMs)
+
     // For short delays, we pause execution synchronously
     await new Promise((resolve) => setTimeout(resolve, waitDurationMs))
 
     return {
       status: NodeRunningStatus.Succeeded,
-      output: {
+      output: this.publishWaitOutputs(node, contextManager, {
+        paused_at: pausedAt.toISOString(),
+        resume_at: resumeAt.toISOString(),
         wait_duration_ms: waitDurationMs,
         wait_method: 'short_delay',
         waitType: inputs.waitType,
@@ -700,7 +736,7 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
         ...(inputs.enableMetrics && {
           metrics: { actualWaitTime: waitDurationMs, waitMethod: 'setTimeout' },
         }),
-      },
+      }),
       outputHandle: 'source', // Continue after delay
     }
   }
@@ -747,7 +783,7 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
     return {
       status: NodeRunningStatus.Paused,
       pauseReason,
-      output: {
+      output: this.publishWaitOutputs(node, contextManager, {
         paused_at: new Date().toISOString(),
         resume_at: resumeAt.toISOString(),
         wait_duration_ms: waitDurationMs,
@@ -762,7 +798,7 @@ export class WaitNodeProcessor extends BaseNodeProcessor {
             scheduledAt: new Date().toISOString(),
           },
         }),
-      },
+      }),
       outputHandle: 'source', // Continue after wait completes
     }
   }

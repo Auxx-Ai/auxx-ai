@@ -32,7 +32,11 @@ import { JoinStateCache } from './join-state-cache'
 import { LoopContextManager } from './loop-context-extensions'
 import { LoopExecutionManager } from './loop-execution-manager'
 import { NodeProcessorRegistry } from './node-processor-registry'
-import { determineNextNodesForResume, shouldPauseBeTerminal } from './pause-resume'
+import {
+  approvalDecisionVariablesFromResume,
+  determineNextNodesForResume,
+  shouldPauseBeTerminal,
+} from './pause-resume'
 import { StatePersistenceManager } from './state-persistence-manager'
 import type {
   BranchConvergenceResult,
@@ -2033,15 +2037,16 @@ export class WorkflowEngine {
         if (state.pauseReason.type === 'wait') {
           resumeReason = 'wait_completed'
         } else if (state.pauseReason.type === 'human_confirmation') {
-          if (nodeOutput?.outcome === 'approve') {
-            resumeReason = 'manual_approved'
-          } else if (nodeOutput?.outcome === 'deny') {
-            resumeReason = 'manual_denied'
-          } else if (nodeOutput?.outcome === 'timeout') {
-            resumeReason = 'manual_timeout'
-          } else {
-            resumeReason = 'manual_resumed'
-          }
+          // `ApprovalOutcome` vocabulary (`approval-requests/client.ts`) — the
+          // past-tense state the request ended in, never the reviewer's verb.
+          resumeReason =
+            nodeOutput?.outcome === 'approved'
+              ? 'manual_approved'
+              : nodeOutput?.outcome === 'denied'
+                ? 'manual_denied'
+                : nodeOutput?.outcome === 'timeout'
+                  ? 'manual_timeout'
+                  : 'manual_resumed'
         }
       }
       await reporter.emit(WorkflowEventType.WORKFLOW_RESUMED, {
@@ -2137,6 +2142,27 @@ export class WorkflowEngine {
         status: NodeRunningStatus.Succeeded,
       }
       state.nodeResults[fromNodeId] = resumedResult
+
+      // A resumed node's processor is NEVER re-entered, so this is the only place
+      // a decision made while the run was paused can become addressable. Without
+      // it the human-confirmation node's five advertised variables
+      // (`approved_by`, `denied_by`, `response_time`, `outcome`,
+      // `response_message`) resolve to nothing in production, however the
+      // decision arrived — reviewer, expiry job or administrative cancel.
+      //
+      // `requested_at` is read off the node's OWN pause output, which no producer
+      // has to remember to send; it is what makes `response_time` real.
+      const approvalVariables = approvalDecisionVariablesFromResume(
+        nodeOutput,
+        originalOutput.requested_at
+      )
+      if (approvalVariables) {
+        contextManager.setNodeVariables(fromNodeId, approvalVariables)
+        logger.info('Wrote approval decision variables for resumed node', {
+          fromNodeId,
+          outcome: approvalVariables.outcome,
+        })
+      }
       logger.info('Updated node result for resumed node', {
         fromNodeId,
         finalOutput,

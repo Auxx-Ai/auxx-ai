@@ -2,8 +2,10 @@
 
 import { type Database, database as defaultDb, schema } from '@auxx/database'
 import { ParticipantRole } from '@auxx/database/enums'
+import type { ThreadEntity } from '@auxx/database/types'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
+import { getCachedEntityDefId } from '../../../cache'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, TEST_RECORD_ID, WorkflowNodeType } from '../../core/types'
@@ -92,6 +94,45 @@ async function loadMessageAttachments(
       }
     })
   )
+}
+
+/**
+ * Output shape for the `ticket` node variable. Deliberately the entity-object
+ * shape the downstream nodes already read an id out of — CRUD's `resourceId`
+ * (`BaseNodeProcessor.extractIdFromValue`) and relation inputs
+ * (`parseRelationInput`) both take `.id` — which a bare `RecordId` string is
+ * not (it would reach `UnifiedCrudHandler` as `"<defId>:<instanceId>"`).
+ */
+interface LinkedTicketOutput {
+  id: string
+  entityDefinitionId: string
+}
+
+/**
+ * Resolve the ticket linked to the message's thread.
+ *
+ * A thread carries one primary linked record (`Thread.primaryEntityInstanceId`,
+ * which replaced the legacy ticket-only column) and that record can be any
+ * entity definition — deal, lead, ticket — so the def is checked against the
+ * org's `ticket` definition before it is published under a `ticket` name.
+ *
+ * Returns `null` when the thread has no primary record or its primary record is
+ * not a ticket. Mail ingest never mints or links one (`ingest/store-message.ts`
+ * writes no primary-entity columns), so this only resolves on a thread someone
+ * has already linked a ticket to.
+ */
+async function resolveLinkedTicket(
+  thread: ThreadEntity | undefined,
+  organizationId: string
+): Promise<LinkedTicketOutput | null> {
+  const instanceId = thread?.primaryEntityInstanceId
+  const definitionId = thread?.primaryEntityDefinitionId
+  if (!instanceId || !definitionId) return null
+
+  const ticketDefinitionId = await getCachedEntityDefId(organizationId, 'ticket')
+  if (!ticketDefinitionId || ticketDefinitionId !== definitionId) return null
+
+  return { id: instanceId, entityDefinitionId: definitionId }
 }
 
 /**
@@ -205,6 +246,16 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
     // Set RELATION output variables using RecordId format (entityDefinitionId:entityInstanceId)
     contextManager.setNodeVariable(node.nodeId, 'thread', toRecordId('thread', threadId))
     contextManager.setNodeVariable(node.nodeId, 'message_ref', toRecordId('message', messageId))
+
+    // `ticket` — the thread's linked ticket, or `null` when it has none. The
+    // miss is written deliberately (same reason the Find node writes its own):
+    // a downstream `{{trigger.ticket}}` has to read as "no ticket" rather than
+    // as a variable that does not exist.
+    contextManager.setNodeVariable(
+      node.nodeId,
+      'ticket',
+      await resolveLinkedTicket(context.message.thread, context.organizationId)
+    )
 
     // Set organization context
     contextManager.setVariable('organizationId', context.organizationId)

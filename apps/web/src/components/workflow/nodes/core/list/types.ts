@@ -38,6 +38,12 @@ export type JoinType = 'concat' | 'merge' | 'zip' | 'cross'
  */
 export interface FilterConfig {
   conditions: Condition[]
+  /**
+   * How the conditions combine. Mirrors the AND/OR toggle the shared condition list
+   * writes onto `Condition.logicalOperator`, so the engine has one node-level key to
+   * read instead of inferring it from the condition rows. Defaults to AND.
+   */
+  logic?: 'AND' | 'OR'
 }
 
 /**

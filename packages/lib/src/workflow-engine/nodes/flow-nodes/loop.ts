@@ -181,7 +181,7 @@ export class LoopProcessor extends BaseNodeProcessor {
     this.registerLoopState(contextManager, loopState)
 
     // Execute iterations
-    const results = await this.executeLoopIterations(
+    const { results, lastResult } = await this.executeLoopIterations(
       node,
       inputs as {
         items: any[]
@@ -196,18 +196,41 @@ export class LoopProcessor extends BaseNodeProcessor {
 
     this.unregisterLoopState(contextManager, node.nodeId)
 
+    const output = {
+      totalIterations: loopState.totalIterations,
+      completedIterations:
+        loopState.totalIterations === 0
+          ? 0
+          : loopState.currentIteration + (loopState.breakRequested ? 0 : 1),
+      ...this.buildResultOutputs(inputs.accumulateResults, results, lastResult),
+    }
+
+    // Publish every advertised output as a node variable so `{{loop-1.results}}` and friends
+    // resolve downstream. Written AFTER the last iteration, so `results` is complete —
+    // `LoopContextManager.injectLoopVariables` only runs at the TOP of each iteration and
+    // therefore always trails the final push by one element.
+    contextManager.setNodeVariables(node.nodeId, output)
+
     return {
       status: NodeRunningStatus.Succeeded,
-      output: {
-        totalIterations: loopState.totalIterations,
-        completedIterations:
-          loopState.totalIterations === 0
-            ? 0
-            : loopState.currentIteration + (loopState.breakRequested ? 0 : 1),
-        ...(inputs.accumulateResults && { results }),
-      },
+      output,
       outputHandle: 'source',
     }
+  }
+
+  /**
+   * The result-shaped half of the loop's advertised outputs. Mirrors the builder schema
+   * (`getLoopOutputVariables`): accumulating loops expose `results` + `lastResult`, a
+   * non-accumulating loop exposes only `result`.
+   */
+  private buildResultOutputs(
+    accumulateResults: boolean,
+    results: any[],
+    lastResult: any
+  ): Record<string, any> {
+    return accumulateResults
+      ? { results, lastResult: lastResult ?? null }
+      : { result: lastResult ?? null }
   }
 
   /**
@@ -275,12 +298,6 @@ export class LoopProcessor extends BaseNodeProcessor {
     contextManager: ExecutionContextManager,
     loopState: LoopExecutionState
   ): Promise<any> {
-    console.log('🔍 LoopProcessor.executeLoopBody called', {
-      nodeId: node.nodeId,
-      iteration: loopState.currentIteration,
-      hasCallback: !!(this as any).executeLoopBodyCallback,
-    })
-
     contextManager.log(
       'DEBUG',
       node.name,
@@ -290,13 +307,16 @@ export class LoopProcessor extends BaseNodeProcessor {
     // Use the callback provided by WorkflowEngine
     const processor = this as any
     if (processor.executeLoopBodyCallback) {
-      console.log('🔍 Calling executeLoopBodyCallback...')
-      const result = await processor.executeLoopBodyCallback(node, contextManager)
-      console.log('🔍 executeLoopBodyCallback returned:', { hasResult: !!result })
-      return result
+      return await processor.executeLoopBodyCallback(node, contextManager)
     }
 
-    console.warn('⚠️ No executeLoopBodyCallback - using fallback!')
+    // The engine always supplies the callback; reaching this means the loop body
+    // never ran, so the "result" below is a placeholder, not real output.
+    contextManager.log(
+      'WARN',
+      node.name,
+      'No executeLoopBodyCallback provided — loop body was not executed'
+    )
     // Fallback if no callback provided
     return {
       iteration: loopState.currentIteration,
@@ -318,7 +338,7 @@ export class LoopProcessor extends BaseNodeProcessor {
    * @param inputs - Preprocessed loop inputs (items, totalIterations, etc.)
    * @param loopState - Current loop execution state
    * @param contextManager - Execution context manager
-   * @returns Array of results from each iteration (if accumulating)
+   * @returns The accumulated results (if accumulating) and the last iteration's result
    */
   private async executeLoopIterations(
     node: WorkflowNode,
@@ -331,8 +351,9 @@ export class LoopProcessor extends BaseNodeProcessor {
     },
     loopState: LoopExecutionState,
     contextManager: ExecutionContextManager
-  ): Promise<any[]> {
+  ): Promise<{ results: any[]; lastResult: any }> {
     const results: any[] = []
+    let lastResult: any
     const options = contextManager.getOptions()
 
     // Record baseline memory before loop execution starts
@@ -422,10 +443,18 @@ export class LoopProcessor extends BaseNodeProcessor {
         // Execute loop body
         const iterationResult = await this.executeLoopBody(node, contextManager, loopState)
 
+        lastResult = iterationResult
         if (inputs.accumulateResults) {
           results.push(iterationResult)
           loopState.results = results
         }
+        this.publishResultOutputs(
+          node,
+          contextManager,
+          inputs.accumulateResults,
+          results,
+          lastResult
+        )
 
         // Reset consecutive error counter on success
         if (this.errorHandler) {
@@ -457,10 +486,18 @@ export class LoopProcessor extends BaseNodeProcessor {
         )
 
         if (errorResult.success) {
+          lastResult = errorResult.result
           if (inputs.accumulateResults) {
             results.push(errorResult.result)
             loopState.results = results
           }
+          this.publishResultOutputs(
+            node,
+            contextManager,
+            inputs.accumulateResults,
+            results,
+            lastResult
+          )
         } else {
           contextManager.log(
             'ERROR',
@@ -468,9 +505,18 @@ export class LoopProcessor extends BaseNodeProcessor {
             `Iteration ${i} failed: ${errorResult.error?.message}`
           )
 
+          lastResult = { error: errorResult.error?.message || 'Unknown error', iteration: i }
           if (inputs.accumulateResults) {
-            results.push({ error: errorResult.error?.message || 'Unknown error', iteration: i })
+            results.push(lastResult)
+            loopState.results = results
           }
+          this.publishResultOutputs(
+            node,
+            contextManager,
+            inputs.accumulateResults,
+            results,
+            lastResult
+          )
 
           if (progressTracker) {
             await progressTracker.updateProgress(
@@ -503,6 +549,23 @@ export class LoopProcessor extends BaseNodeProcessor {
       })
     }
 
-    return results
+    return { results, lastResult }
+  }
+
+  /**
+   * Publish `results`/`lastResult` (or `result`) after an iteration settles, so a node reading
+   * `{{loop-1.results}}` mid-loop sees every iteration that has actually finished.
+   */
+  private publishResultOutputs(
+    node: WorkflowNode,
+    contextManager: ExecutionContextManager,
+    accumulateResults: boolean,
+    results: any[],
+    lastResult: any
+  ): void {
+    contextManager.setNodeVariables(
+      node.nodeId,
+      this.buildResultOutputs(accumulateResults, [...results], lastResult)
+    )
   }
 }

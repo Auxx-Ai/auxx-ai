@@ -11,7 +11,10 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { type RecordId, toRecordId, toRecordIds } from '@auxx/types/resource'
-import { evaluateConditions, normalizeStatusConditions } from '../conditions/evaluate'
+import {
+  evaluateConditionsWithDiagnostics,
+  normalizeStatusConditions,
+} from '../conditions/evaluate'
 import { executeRuleAction, getNativeRuleHandler } from './actions'
 import { makeSnapshotResolver, type RecordSnapshot } from './resolver'
 import { insertRecordRuleRun, insertRecordRuleRuns } from './store'
@@ -84,12 +87,25 @@ export async function fireRecordRules(
           const fields = await getCachedResourceFields(ctx.organizationId, ctx.entityDefinitionId)
           resolver = makeSnapshotResolver(fields)
         }
-        const matched = evaluateConditions(
+        // Diagnostics variant, not the plain one: this gates ACTIONS. A condition the
+        // evaluator cannot read as written (unknown operator, unresolved `currentUser`)
+        // is now false rather than true, so the rule would simply stop firing — silently.
+        // Refuse the rule and say so instead.
+        const { matched, diagnostics } = evaluateConditionsWithDiagnostics(
           snapshot,
           normalizeStatusConditions(rule.condition),
           resolver,
           ctx.userId ? { currentUserId: ctx.userId } : undefined
         )
+        if (diagnostics.length > 0) {
+          logger.error('Record-rule condition did not evaluate as written — rule skipped', {
+            organizationId: ctx.organizationId,
+            entityInstanceId: ctx.entityInstanceId,
+            ruleId: rule.id,
+            diagnostics,
+          })
+          continue
+        }
         if (!matched) continue
       }
 

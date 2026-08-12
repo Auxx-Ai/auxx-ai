@@ -2,14 +2,8 @@
 
 import { type Database, database, schema } from '@auxx/database'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import { isEntityDefinitionType } from '@auxx/types/resource'
 import type { SQL } from 'drizzle-orm'
-import {
-  findCachedResource,
-  getCachedResource,
-  getCachedResourceFields,
-  requireCachedEntityDefId,
-} from '../../../cache'
+import { findCachedResource, getCachedResource, getCachedResourceFields } from '../../../cache'
 import type { Condition, ConditionGroup as MailConditionGroup } from '../../../conditions/types'
 import { buildConditionGroupsQueryWithDiagnostics } from '../../../mail-query/condition-query-builder'
 import { getAutomationVisibility } from '../../../permissions/visibility/automation-visibility'
@@ -581,12 +575,17 @@ export class FindProcessor extends BaseNodeProcessor {
         throw new Error(`Unknown resource type: ${resourceType}`)
       }
 
-      // Entity definition types (contact, ticket, part, etc.) store data in EntityInstance/FieldValue.
-      // Resolve the entityType string to the actual entityDefinitionId UUID so all downstream code
-      // (condition building, variable setting) treats them as custom entities.
-      if (isEntityDefinitionType(resourceType)) {
-        resourceType = await requireCachedEntityDefId(organizationId, resourceType)
-      }
+      // From here on there is exactly ONE identity for this resource: the cached
+      // resource's own id. The configured `resourceType` is only a lookup key —
+      // `findCachedResource` accepts an id, an `entityType` slug or an `apiSlug` —
+      // and every lane below (query building, output keying) has to agree on the
+      // resolved value or they disagree by construction.
+      //
+      // For an entity-definition-backed type (contact, ticket, part, order, …)
+      // that id IS the `EntityDefinition` cuid, which is what routes it down the
+      // custom-entity lane; for a static system table it is the `TableId`
+      // ('thread', 'message', 'kb').
+      resourceType = resource.id
 
       // Fold the legacy flat array into a group, then rewrite every field
       // reference into the form the builders resolve — both BEFORE validation,
@@ -691,10 +690,12 @@ export class FindProcessor extends BaseNodeProcessor {
         `Found ${resultCount} ${resource.plural.toLowerCase()}`
       )
 
-      // Prepare output object using resource's plural name
+      // The trace output carries the result under the SAME key the variable does
+      // (see the keying note below), so a run trace and a `{{…}}` path never name
+      // the same value differently.
       const pluralName = resource.plural.toLowerCase()
       const outputData = {
-        [pluralName]: result,
+        [findMode === 'findOne' ? resourceType : pluralName]: result,
         count: resultCount,
         query_info: {
           resource_type: resourceType,
@@ -707,7 +708,21 @@ export class FindProcessor extends BaseNodeProcessor {
         },
       }
 
-      // Store outputs as variables based on findMode and resource plural name
+      // Output keying — the contract the builder's variable picker advertises:
+      //
+      // - `findOne`  → `<node>.<resource.id>`     (`generateFindNodeVariablesFromFields`
+      //                                            uses `resourceMeta.id` as the base path)
+      // - `findMany` → `<node>.<resource.plural>` (same generator, `plural.toLowerCase()`)
+      //
+      // `findOne` deliberately does NOT key by `resource.label`. A label is
+      // user-editable, so renaming an entity would silently break every workflow
+      // reading its result, and the nine multi-word labels ('Knowledge Base',
+      // 'Work Order', 'Product / Service', …) lowercase into keys no `{{…}}` path
+      // can even address. `resource.id` is stable, addressable, and is already the
+      // key `setResourceVariables`/`setEntityVariables` use for triggers and CRUD.
+      //
+      // A template addresses a custom entity's result as `{{<node>.@entity:<slug>}}`;
+      // `@entity:` refs are rewritten to the installing org's EntityDefinition cuid.
       if (findMode === 'findOne') {
         if (isCustomResourceId(resourceType) && result) {
           // Store ResourceReference under entityDefinitionId key (matches frontend variable paths)
@@ -720,8 +735,11 @@ export class FindProcessor extends BaseNodeProcessor {
           }
           setEntityVariables(resourceType, entityData, contextManager, node.nodeId)
         } else {
-          // System resources or null custom entity result
-          contextManager.setNodeVariable(node.nodeId, resource.label.toLowerCase(), result)
+          // Same key, minus the lazy-loading reference: a system-resource row, or
+          // the explicit `null` of a custom-entity lookup that matched nothing.
+          // Writing the miss matters — a downstream `{{find_1.<resource>}}` has to
+          // resolve to "nothing found" rather than to no variable at all.
+          contextManager.setNodeVariable(node.nodeId, resourceType, result ?? null)
         }
       } else {
         if (isCustomResourceId(resourceType) && Array.isArray(result)) {

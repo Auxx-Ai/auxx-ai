@@ -101,6 +101,9 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
 
     const isAssigneesConstantMode = !inputs.assignees?.variable
 
+    /** Test-mode behaviors that carry extra configuration in the section body. */
+    const hasTestDetails = inputs.test_behavior === 'live' || inputs.test_behavior === 'delayed'
+
     /** Parse VarEditor value back to storage format */
     const handleAssigneesChange = useCallback(
       (value: VarEditorValue, isConstant: boolean) => {
@@ -161,12 +164,13 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
     )
 
     /**
-     * Handler for test delay changes
+     * Handler for test delay changes — the seconds a test run waits before it
+     * settles on its simulated outcome.
      */
     const handleTestDelayChange = useCallback(
-      (value: string, isConstant: boolean) =>
+      (value: VarEditorValue) =>
         updateInputs((draft) => {
-          draft.test_delay = isConstant ? parseInt(value, 10) || 5 : 5
+          draft.test_delay = Number.parseInt(varEditorText(value), 10) || 0
         }),
       [updateInputs]
     )
@@ -388,9 +392,9 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
           title='Test Mode'
           description='Behavior during workflow testing'
           initialOpen={false}
-          open={inputs.test_behavior === 'live'}
-          collapsible={inputs.test_behavior === 'live'}
-          className={inputs.test_behavior === 'live' ? undefined : '[&_[data-slot=section]]:pb-0'}
+          open={hasTestDetails}
+          collapsible={hasTestDetails}
+          className={hasTestDetails ? undefined : '[&_[data-slot=section]]:pb-0'}
           actions={
             <Select
               value={inputs.test_behavior || 'always_approve'}
@@ -409,6 +413,9 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
                 <SelectItem value='always_approve'>Always Approve</SelectItem>
                 <SelectItem value='always_deny'>Always Deny</SelectItem>
                 <SelectItem value='random'>Random</SelectItem>
+                <SelectItem value='delayed' disabled={inputs.timeout?.enabled === false}>
+                  Timeout
+                </SelectItem>
                 <SelectItem value='live'>Live Mode (Real Approvals)</SelectItem>
               </SelectContent>
             </Select>
@@ -421,6 +428,25 @@ export const HumanConfirmationNodePanel = memo<HumanConfirmationNodePanelProps>(
                 as test data for tracking purposes.
               </AlertDescription>
             </Alert>
+          )}
+          {inputs.test_behavior === 'delayed' && (
+            <Field
+              title='Simulated Delay'
+              description='Seconds a test run waits before taking the Timeout branch'>
+              <VarEditorField className='pe-1'>
+                <VarEditor
+                  value={String(inputs.test_delay ?? 0)}
+                  nodeId={nodeId}
+                  onChange={handleTestDelayChange}
+                  varType={BaseType.NUMBER}
+                  placeholderConstant='Enter seconds...'
+                  allowConstant
+                  allowVariable={false}
+                  isConstantMode
+                  disabled={isReadOnly}
+                />
+              </VarEditorField>
+            </Field>
           )}
         </Section>
       </BasePanel>

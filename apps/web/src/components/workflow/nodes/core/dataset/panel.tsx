@@ -77,11 +77,26 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
 
   /**
    * Handle boolean field change
+   *
+   * Constant mode stores a real boolean; variable mode stores the variable
+   * reference so the engine can resolve it at run time. Collapsing both to
+   * `value === true` would pin every bound toggle to `false`.
    */
   const handleBooleanChange = useCallback(
-    (field: 'skipEmbedding', value: unknown, isConstantMode: boolean) => {
+    (field: 'skipEmbedding', value: VarEditorValue, isConstantMode: boolean) => {
       const newData = produce(nodeData, (draft) => {
-        draft[field] = value === true
+        const wasConstantMode = draft.fieldModes?.[field] ?? true
+
+        if (wasConstantMode !== isConstantMode) {
+          // Clear the value when switching modes — a reference is meaningless
+          // as a literal, and vice versa
+          draft[field] = isConstantMode ? false : undefined
+        } else if (isConstantMode) {
+          draft[field] = value === true
+        } else {
+          draft[field] = varEditorText(value) || undefined
+        }
+
         if (!draft.fieldModes) draft.fieldModes = {}
         draft.fieldModes[field] = isConstantMode
       })

@@ -16,6 +16,10 @@ import type { ChunkerNodeData } from './types'
 /**
  * Zod schema for Chunker node data validation
  * Extends baseNodeDataSchema with chunker-specific fields
+ *
+ * Bindable fields accept the variable reference string the panel stores in
+ * variable mode alongside their literal type — the engine schema
+ * (`workflow-engine/nodes/dataset/chunker.ts`) is widened the same way.
  */
 export const chunkerNodeDataSchema = baseNodeDataSchema.extend({
   title: z.string().min(1),
@@ -26,11 +30,11 @@ export const chunkerNodeDataSchema = baseNodeDataSchema.extend({
   content: z.string().optional(),
 
   // Chunking configuration
-  chunkSize: z.number().positive().optional().default(1000),
-  chunkOverlap: z.number().nonnegative().optional().default(50),
+  chunkSize: z.union([z.number().positive(), z.string()]).optional(),
+  chunkOverlap: z.union([z.number().nonnegative(), z.string()]).optional(),
   delimiter: z.string().optional().default('\\n\\n'),
-  normalizeWhitespace: z.boolean().optional().default(true),
-  removeUrlsAndEmails: z.boolean().optional().default(false),
+  normalizeWhitespace: z.union([z.boolean(), z.string()]).optional(),
+  removeUrlsAndEmails: z.union([z.boolean(), z.string()]).optional(),
 
   // Field modes
   fieldModes: z.record(z.string(), z.boolean()).optional(),

@@ -2,6 +2,7 @@
 
 'use client'
 
+import { type ApprovalOutcome, isApprovalOutcome } from '@auxx/lib/approval-requests/client'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { UserCheck } from 'lucide-react'
 import { BlockCard, StatusIndicator } from '~/components/kopilot/ui/blocks/block-card'
@@ -10,15 +11,21 @@ import type { TraceRendererProps } from '~/components/workflow/types/registry'
 
 /**
  * `outputs` shape varies by phase (verified against
- * action-nodes/human-confirmation.ts + the resume-side services):
- * - Live, still paused: `{ approval_request_id, expires_at, assignee_count, notification_methods }`.
- * - Live, resumed (approval-response-service.ts / approval-timeout-job.ts): the paused
- *   fields above merged with `{ outcome, approvalRequestId, respondedBy?, respondedAt?,
- *   comment?, timedOutAt?, cancelledBy?, cancelledAt?, cancelReason? }`. `outcome` is an
- *   unnormalized string across call sites: 'approve' | 'deny' (respond), 'denied' (cancel),
- *   'timeout' (timeout job).
- * - Test/dry-run mode (handleTestMode): `{ test_mode: true, outcome: 'approved' | 'denied'
- *   | 'timeout', test_behavior }`.
+ * action-nodes/human-confirmation.ts + the three resume producers):
+ * - Live, still paused: `{ approval_request_id, expires_at, assignee_count,
+ *   notification_methods, requested_at }`.
+ * - Live, resumed (approval-requests/registry.ts, approval-timeout-job.ts,
+ *   cancelApprovalRequest): the paused fields above merged with the resume payload
+ *   `{ outcome, approvalRequestId, respondedBy?, respondedAt?, comment?, timedOutAt?,
+ *   cancelledBy?, cancelledAt?, cancelReason? }` and the five decision variables the
+ *   engine derives from it.
+ * - Test/dry-run mode (handleTestMode): `{ test_mode: true, test_behavior, … }` plus the
+ *   same five decision variables.
+ *
+ * `outcome` is ONE vocabulary across every phase and producer — `ApprovalOutcome`
+ * from `@auxx/lib/approval-requests/client`. It used to arrive as 'approve' | 'deny'
+ * from the respond path, 'denied' from cancel and 'timeout' from the job, which is
+ * why this file used to prefix-match it.
  */
 interface HumanConfirmationOutputs {
   approval_request_id?: string
@@ -38,18 +45,7 @@ interface HumanConfirmationOutputs {
   test_behavior?: string
 }
 
-type Outcome = 'approved' | 'denied' | 'timeout'
-
-/** Normalize the inconsistent `outcome` casing across call sites (see above). */
-function normalizeOutcome(raw?: string): Outcome | undefined {
-  if (!raw) return undefined
-  if (raw.startsWith('approv')) return 'approved'
-  if (raw.startsWith('den')) return 'denied'
-  if (raw === 'timeout') return 'timeout'
-  return undefined
-}
-
-const OUTCOME_BADGES: Record<Outcome, { label: string; variant: Variant }> = {
+const OUTCOME_BADGES: Record<ApprovalOutcome, { label: string; variant: Variant }> = {
   approved: { label: 'Approved', variant: 'green' },
   denied: { label: 'Denied', variant: 'red' },
   timeout: { label: 'Timed out', variant: 'amber' },
@@ -70,7 +66,7 @@ export function HumanConfirmationTraceRenderer({ execution }: TraceRendererProps
     return <TraceRawJson value={execution.outputs} />
   }
 
-  const outcome = normalizeOutcome(outputs.outcome)
+  const outcome = isApprovalOutcome(outputs.outcome) ? outputs.outcome : undefined
   const badge = outcome ? OUTCOME_BADGES[outcome] : undefined
   const indicatorStatus: 'pending' | 'approved' | 'rejected' =
     outcome === 'approved' ? 'approved' : outcome === 'denied' ? 'rejected' : 'pending'
