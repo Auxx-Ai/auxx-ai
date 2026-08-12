@@ -124,11 +124,17 @@ function calculateHeight(
 
 // `JSX.HTMLAttributes` is the element-agnostic base and has no `value` — the
 // textarea-specific attribute set is what carries `value` / `rows` / `wrap`.
-interface AutosizeTextareaProps extends Omit<JSX.IntrinsicElements['textarea'], 'style'> {
+//
+// `value` is then re-declared rather than inherited: how the intrinsic type
+// resolves through `forwardRef`'s `PropsWithoutRef` is not stable here (a
+// byte-identical copy of `composer.tsx` typechecks while the original does not),
+// and the measurement code reads `value` as a plain string anyway.
+interface AutosizeTextareaProps extends Omit<JSX.IntrinsicElements['textarea'], 'style' | 'value'> {
   minRows?: number
   maxRows?: number
   cacheMeasurements?: boolean
   style?: CSSProperties
+  value?: string
 }
 
 export const AutosizeTextarea = forwardRef<HTMLTextAreaElement, AutosizeTextareaProps>(

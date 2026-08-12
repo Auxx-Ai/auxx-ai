@@ -60,7 +60,13 @@ describe('tracking-tokens', () => {
 
   it('fails verification for a tampered token', async () => {
     const token = await issueOpenToken({ organizationId: 'org_1', messageId: 'msg_1' })
-    const tampered = `${token.slice(0, -2)}zz`
+    // Flip the FIRST character of the signature segment. The last character
+    // carries only 2 significant bits of a 32-byte HS256 signature (43 base64url
+    // chars encode 258 bits), so several values there decode to identical bytes
+    // and "tampering" with it hands the verifier a still-valid token.
+    const [header, payload, signature] = token.split('.')
+    const flipped = `${signature.startsWith('A') ? 'B' : 'A'}${signature.slice(1)}`
+    const tampered = `${header}.${payload}.${flipped}`
 
     const result = await verifyTrackingToken(tampered)
     expect(Result.isOk(result)).toBe(false)

@@ -264,6 +264,9 @@ describe('invariant 9 — what body conditions actually depend on', () => {
    * `Thread.searchText`, so no ingest ORDERING affects it — which is what makes
    * `body` safe on a brand-new thread.
    */
+  // `importActual` loads the REAL builder and the schema behind it — ~4.5s warm,
+  // past the 10s project default once the rest of the suite is competing for the
+  // machine. The budget is for that import, not for the three assertions.
   it('compiles `body contains` to a correlated EXISTS, with nothing dropped', async () => {
     const { buildConditionGroupsQueryWithDiagnostics } = await vi.importActual<
       typeof import('../mail-query/condition-query-builder')
@@ -274,7 +277,7 @@ describe('invariant 9 — what body conditions actually depend on', () => {
     expect(built.droppedConditions).toEqual([])
     expect(built.allConditionsDropped).toBe(false)
     expect(render(built.sql)).toMatch(/exists/i)
-  })
+  }, 30_000)
 
   /**
    * The subquery's target is not observable from a rendered clause here — the

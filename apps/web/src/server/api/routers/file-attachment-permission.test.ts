@@ -105,7 +105,17 @@ vi.mock('drizzle-orm', () => ({
   isNull: vi.fn((a: unknown) => ({ op: 'isNull', a })),
 }))
 
-vi.mock('@auxx/lib/cache', () => ({ getOrgCache: vi.fn() }))
+// `getOrgCache()` must return a usable cache, not a bare `vi.fn()`:
+// `protectedProcedure` runs `organizationDisabledMiddleware`, which reads
+// `getOrRecompute(orgId, ['orgProfile'])` before any router code. A stub that
+// resolves to `undefined` turns every expected 4xx into an INTERNAL_SERVER_ERROR
+// and the suite stops asserting anything about permissions.
+vi.mock('@auxx/lib/cache', () => ({
+  getOrgCache: () => ({
+    get: vi.fn(async () => ({})),
+    getOrRecompute: vi.fn(async () => ({ orgProfile: {}, features: {} })),
+  }),
+}))
 vi.mock('@auxx/lib/members', () => ({ isOwner: vi.fn() }))
 vi.mock('@auxx/lib/utils/rate-limiter/redis-rate-limiter', () => ({
   RedisRateLimiter: class {
