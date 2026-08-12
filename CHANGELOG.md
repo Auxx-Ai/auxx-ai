@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.200](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.199...auxx-v0.1.200) (2026-08-12)
+
+
+### Bug Fixes
+
+* **fields:** correct update capabilities on ticket type and dialogs ([#1546](https://github.com/Auxx-Ai/auxx-ai/issues/1546)) ([1a655f4](https://github.com/Auxx-Ai/auxx-ai/commit/1a655f481f9072d5124d4966a960c6333fc1cd1c))
+* green the test suite and close the typecheck gaps outside CI ([#1548](https://github.com/Auxx-Ai/auxx-ai/issues/1548)) ([3d5214d](https://github.com/Auxx-Ai/auxx-ai/commit/3d5214da42f03398a832105a237adc4c78e86129))
+
 ## [0.1.199](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.198...auxx-v0.1.199) (2026-08-11)
 
 
