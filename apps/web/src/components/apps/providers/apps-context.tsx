@@ -53,6 +53,13 @@ interface AppsContextValue {
    */
   mcpServers: ClientMcpServer[]
   isLoading: boolean
+  /**
+   * `appConnections` resolves on its own query, so it is still empty while
+   * `isLoading` (installations) is already false. Consumers that read
+   * "no connection exists" as an error state must gate on this flag or they
+   * flash that error on every cold load.
+   */
+  isLoadingConnections: boolean
   isError: boolean
   /** Refetch installed apps. Call after installing/uninstalling an app. */
   refreshInstallations: () => Promise<void>
@@ -74,6 +81,7 @@ export function AppsContextProvider({
   appConnections,
   mcpServers,
   isLoading,
+  isLoadingConnections,
   isError,
   refreshInstallations,
   refreshMcpServers,
@@ -83,6 +91,7 @@ export function AppsContextProvider({
   appConnections: AppConnection[]
   mcpServers: ClientMcpServer[]
   isLoading: boolean
+  isLoadingConnections: boolean
   isError: boolean
   refreshInstallations: () => Promise<void>
   refreshMcpServers: () => Promise<void>
@@ -95,6 +104,7 @@ export function AppsContextProvider({
         appConnections,
         mcpServers,
         isLoading,
+        isLoadingConnections,
         isError,
         refreshInstallations,
         refreshMcpServers,
@@ -116,4 +126,13 @@ export function useAppsContext() {
   }
 
   return context
+}
+
+/**
+ * Same as {@link useAppsContext} but returns `null` outside the provider instead
+ * of throwing. For shared components that also render outside `(protected)/app`
+ * — the workflow viewer mounts the same nodes on pages with no AppsProvider.
+ */
+export function useOptionalAppsContext() {
+  return useContext(AppsContext)
 }

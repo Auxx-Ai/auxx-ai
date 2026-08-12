@@ -106,9 +106,10 @@ export function AppsProvider({ children }: AppsProviderProps) {
     await utils.apps.listInstalled.invalidate()
   }, [utils])
 
-  const { data: connectionsResult } = api.apps.listConnections.useQuery(undefined, {
-    staleTime: ORG_STATIC_STALE_TIME,
-  })
+  const { data: connectionsResult, isPending: isLoadingConnections } =
+    api.apps.listConnections.useQuery(undefined, {
+      staleTime: ORG_STATIC_STALE_TIME,
+    })
   const connections = connectionsResult ?? []
 
   // MCP servers — pure data, mapped to the client-safe `ClientMcpServer` shape the builder
@@ -168,6 +169,7 @@ export function AppsProvider({ children }: AppsProviderProps) {
         appConnections={connections}
         mcpServers={mcpServers}
         isLoading={isLoading}
+        isLoadingConnections={isLoadingConnections}
         isError={!!error}
         refreshInstallations={refreshInstallations}
         refreshMcpServers={refreshMcpServers}>
