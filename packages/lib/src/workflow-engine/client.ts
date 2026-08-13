@@ -82,6 +82,31 @@ export {
   type WorkflowRetryConfig,
 } from './catalog/node-base'
 export {
+  type AiCompletionParams,
+  type AiFiles,
+  type AiModel,
+  AiModelMode,
+  AiModelProvider,
+  type AiNodeData as CatalogAiNodeData,
+  aiManifest,
+  aiNodeDataSchema,
+  completionParamsSchema,
+  EMPTY_PROMPT_DOC,
+  extractAIVariableIds,
+  PromptRole,
+  type PromptTemplate,
+  type StructuredOutputConfig,
+  structuredOutputSchema,
+  validateAiData,
+} from './catalog/nodes/ai'
+export {
+  type AnswerNodeData as CatalogAnswerNodeData,
+  answerManifest,
+  answerNodeDataSchema,
+  extractAnswerVariables,
+  validateAnswerConfig,
+} from './catalog/nodes/answer'
+export {
   type CodeNodeData as CatalogCodeNodeData,
   type CodeNodeInput,
   type CodeNodeOutput,
@@ -157,6 +182,17 @@ export {
   validateIfElseConfig,
 } from './catalog/nodes/if-else'
 export {
+  createInformationExtractorDefaultData,
+  extractInformationExtractorVariables,
+  type InformationExtractorInstruction,
+  type InformationExtractorModel,
+  type InformationExtractorNodeData as CatalogInformationExtractorNodeData,
+  type InformationExtractorVision,
+  informationExtractorManifest,
+  informationExtractorSchema,
+  validateInformationExtractor,
+} from './catalog/nodes/information-extractor'
+export {
   CONFIG_KEY_BY_OPERATION,
   extractListVariables,
   type FilterConfig,
@@ -207,6 +243,20 @@ export {
   scheduledTriggerUIConfigSchema,
   validateScheduledTriggerData,
 } from './catalog/nodes/scheduled'
+export {
+  type Category as TextClassifierCategory,
+  type ClassificationResult,
+  type CompletionParams as TextClassifierCompletionParams,
+  extractTextClassifierVariables,
+  type InstructionConfig as TextClassifierInstructionConfig,
+  type ModelConfig as TextClassifierModelConfig,
+  type TextClassifierNodeData as CatalogTextClassifierNodeData,
+  type TextClassifierOutputMode,
+  textClassifierManifest,
+  textClassifierSchema,
+  type VisionConfig as TextClassifierVisionConfig,
+  validateTextClassifierData,
+} from './catalog/nodes/text-classifier'
 export {
   extractVarAssignVariables,
   type VarAssignNodeData as CatalogVarAssignNodeData,

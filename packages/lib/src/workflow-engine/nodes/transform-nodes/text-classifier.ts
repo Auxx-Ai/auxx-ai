@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/text-classifier.ts
 
 import type { Message } from '../../../ai/clients/base/types'
+import type { TextClassifierNodeData } from '../../catalog/nodes/text-classifier'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
@@ -18,22 +19,19 @@ import {
 } from '../utils/ai-response-utils'
 
 /**
- * Text classifier configuration interface
+ * Text classifier configuration — the config subset of the catalog's
+ * `TextClassifierNodeData` (node-catalog Phase 1; this file previously
+ * shadowed it). `model` stays the engine's tolerant `BaseAiModelConfig`, and
+ * `vision`/`instruction` stay optional — old rows may lack them.
  */
-interface TextClassifierConfig {
-  title?: string
-  desc?: string
+type TextClassifierConfig = Pick<
+  TextClassifierNodeData,
+  'title' | 'desc' | 'text' | 'categories' | 'outputMode'
+> & {
   model: BaseAiModelConfig
-  text: string // Preprocessed text with {{variables}}
   textEditorContent?: string // Tiptap JSON content
-  categories: Category[]
-  vision?: { enabled: boolean }
-  instruction?: {
-    enabled: boolean
-    text: string // Preprocessed text
-    editorContent?: string // Tiptap JSON
-  }
-  outputMode?: 'branches' | 'variable'
+  vision?: TextClassifierNodeData['vision']
+  instruction?: TextClassifierNodeData['instruction'] & { editorContent?: string }
 }
 
 /**

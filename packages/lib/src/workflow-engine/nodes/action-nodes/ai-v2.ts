@@ -6,6 +6,7 @@ import { LLMClient } from '../../../ai/clients/base/llm-client'
 import type { Message, MultiModalContent } from '../../../ai/clients/base/types'
 import { buildInstructionReferenceResolver } from '../../../ai/kopilot/prompts/resolve-instruction-references'
 import { collectVariableIds, docToText } from '../../../tiptap'
+import type { AiNodeData } from '../../catalog/nodes/ai'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -54,42 +55,26 @@ export interface AiToolsetEntry {
 }
 
 /**
- * Flat AI-node data shape — see `plans/workflow/ai/phase-2-ai-processor-migration.md`.
- * No legacy `tools: AiToolsConfig` block; per `project_no_production_users.md`
- * we break the shape outright.
+ * Flat AI-node data shape — the config subset of the catalog's `AiNodeData`
+ * (node-catalog Phase 1; this file previously shadowed it). The engine keeps
+ * its tolerant/extended projections: `model` admits the provider-specific
+ * params `AiModelConfig` adds, `files` members are optional on old rows (plus
+ * the reserved maxFiles/maxTotalSize), `prompt_template` is ai-node-utils'
+ * literal-role shape, and `toolsets` is the narrowed `AiToolsetEntry`.
  */
-interface AiNodeConfig {
-  title?: string
-  desc?: string
+type AiNodeConfig = Pick<
+  AiNodeData,
+  'title' | 'desc' | 'toolsEnabled' | 'appAccounts' | 'approvalMode' | 'maxIterations'
+> & {
   model: AiModelConfig
   prompt_template: PromptTemplate[]
-  files?: {
-    enabled: boolean
-    input?: string
-    isConstant?: boolean
+  files?: Partial<AiNodeData['files']> & {
     maxFiles?: number
     maxTotalSize?: number
   }
-  structured_output?: {
-    enabled: boolean
-    schema?: {
-      type: 'object'
-      properties: Record<string, any>
-      required?: string[]
-      additionalProperties?: boolean
-    }
-  }
-
-  /** Master gate for the entire tool surface on this node. */
-  toolsEnabled?: boolean
+  structured_output?: AiNodeData['structured_output']
   /** Per-toolset enablement. */
   toolsets?: AiToolsetEntry[]
-  /** Per-app explicit credential pin. */
-  appAccounts?: Record<string, { credId: string }>
-  /** Approval mode reserved for future use; v1 is always `auto`. */
-  approvalMode?: 'auto'
-  /** Default 10 for AI node; agent default is 30. */
-  maxIterations?: number
 }
 
 /**

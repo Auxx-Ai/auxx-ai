@@ -14,6 +14,7 @@ import type {
 } from '../../../messages/types/message-sending.types'
 import { ProviderRegistryService } from '../../../providers/provider-registry-service'
 import { executeResourceQuery } from '../../../resources/resource-fetcher'
+import type { AnswerNodeData as CatalogAnswerNodeData } from '../../catalog/nodes/answer'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeData,
@@ -25,43 +26,33 @@ import { NodeRunningStatus, TEST_RECORD_ID, WorkflowNodeType } from '../../core/
 import { BaseNodeProcessor } from '../base-node'
 
 /**
- * Configuration interface for Answer node
+ * Configuration for the Answer node — the config subset of the catalog's
+ * `AnswerNodeData` (node-catalog Phase 1; this file previously shadowed it),
+ * over the engine's `NodeData` base.
  */
-interface AnswerNodeData extends NodeData {
-  messageType: 'new' | 'reply' | 'replyAll'
-  integrationId?: string
-  recordId?: string // Format: "entityDefinitionId:id" (e.g. "thread:abc123")
-  toIsAuto?: boolean
-  ccIsAuto?: boolean
-  bccIsAuto?: boolean
-  subjectIsAuto?: boolean
-  to?: string[]
-  toModes?: boolean[]
-  cc?: string[]
-  ccModes?: boolean[]
-  bcc?: string[]
-  bccModes?: boolean[]
-  text: string
-  subject?: string
-  /**
-   * Attachment picker values, one per row, as the panel's `VarEditorArray`
-   * writes them: a constant row is a `file:<id>` reference (or a JSON array of
-   * them, when several files were picked into one row), a variable row is a
-   * `{{…}}` reference resolved at execution time. `attachmentFilesModes` marks
-   * which is which, positionally.
-   */
-  attachmentFiles?: string[]
-  attachmentFilesModes?: boolean[]
-  saveAsDraft?: boolean
-  /**
-   * Per-node send behavior override (mirrors the human-in-the-loop node's Test Mode).
-   * - 'default': send in production, dry-run in builder test runs
-   * - 'live': always really send, even in test runs
-   * - 'dry_run': never send, trace-only
-   * - 'draft': persist as a thread draft instead of sending
-   */
-  test_behavior?: 'default' | 'live' | 'dry_run' | 'draft'
-}
+type AnswerNodeData = NodeData &
+  Pick<
+    CatalogAnswerNodeData,
+    | 'messageType'
+    | 'integrationId'
+    | 'recordId'
+    | 'toIsAuto'
+    | 'ccIsAuto'
+    | 'bccIsAuto'
+    | 'subjectIsAuto'
+    | 'to'
+    | 'toModes'
+    | 'cc'
+    | 'ccModes'
+    | 'bcc'
+    | 'bccModes'
+    | 'text'
+    | 'subject'
+    | 'attachmentFiles'
+    | 'attachmentFilesModes'
+    | 'saveAsDraft'
+    | 'test_behavior'
+  >
 
 /**
  * Flatten one attachment row into bare file ids.
