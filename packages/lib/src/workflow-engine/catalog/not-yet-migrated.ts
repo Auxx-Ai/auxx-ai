@@ -37,8 +37,8 @@ export const NOT_YET_MIGRATED: readonly string[] = [
   // Condition nodes
   // 'if-else' — migrated (catalog/nodes/if-else.ts)
   // Action nodes
-  'answer',
-  'ai',
+  // 'answer' — migrated (catalog/nodes/answer.ts)
+  // 'ai' — migrated (catalog/nodes/ai.ts)
   'find',
   // 'http' — migrated (catalog/nodes/http.ts)
   'crud',
@@ -48,8 +48,8 @@ export const NOT_YET_MIGRATED: readonly string[] = [
   'knowledge-retrieval',
   // Transform nodes
   // 'code' — migrated (catalog/nodes/code.ts)
-  'text-classifier',
-  'information-extractor',
+  // 'text-classifier' — migrated (catalog/nodes/text-classifier.ts)
+  // 'information-extractor' — migrated (catalog/nodes/information-extractor.ts)
   // 'var-assign' — migrated (catalog/nodes/var-assign.ts)
   // 'date-time' — migrated (catalog/nodes/date-time.ts)
   // 'list' — migrated (catalog/nodes/list.ts)

@@ -19,42 +19,28 @@ import { extractModelConfig, resolveModelConfig } from '../utils/ai-node-utils'
 
 const logger = createScopedLogger('information-extractor-processor')
 
+import type {
+  InformationExtractorModel,
+  InformationExtractorNodeData,
+} from '../../catalog/nodes/information-extractor'
+
 /**
- * Information extractor configuration interface
+ * Information extractor configuration — the config subset of the catalog's
+ * `InformationExtractorNodeData` (node-catalog Phase 1; this file previously
+ * shadowed it). The engine stays tolerant of old rows: `mode` and every
+ * completion param are optional here, `vision`/`instruction` may be absent.
  */
-interface InformationExtractorConfig {
-  title?: string
-  desc?: string
-  model: {
-    useDefault?: boolean
-    provider: string
-    name: string
-    mode?: 'chat' | 'completion'
-    completion_params?: {
-      temperature?: number
-      max_tokens?: number
-      top_p?: number
-      frequency_penalty?: number
-      presence_penalty?: number
-    }
+type InformationExtractorConfig = Pick<
+  InformationExtractorNodeData,
+  'title' | 'desc' | 'text' | 'structured_output'
+> & {
+  model: Omit<InformationExtractorModel, 'mode' | 'completion_params'> & {
+    mode?: InformationExtractorModel['mode']
+    completion_params?: Partial<NonNullable<InformationExtractorModel['completion_params']>>
   }
-  text: string // Preprocessed text with {{variables}}
   textEditorContent?: string // Tiptap JSON content
-  structured_output: {
-    enabled: boolean
-    schema?: {
-      type: 'object'
-      properties: Record<string, any>
-      required?: string[]
-      additionalProperties?: boolean
-    }
-  }
-  vision?: { enabled: boolean }
-  instruction?: {
-    enabled: boolean
-    text: string // Preprocessed text
-    editorContent?: string // Tiptap JSON
-  }
+  vision?: InformationExtractorNodeData['vision']
+  instruction?: InformationExtractorNodeData['instruction'] & { editorContent?: string }
 }
 
 /**

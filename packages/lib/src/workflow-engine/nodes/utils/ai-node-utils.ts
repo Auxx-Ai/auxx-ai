@@ -5,6 +5,7 @@ import type { AICallbacks } from '../../../ai/orchestrator/types'
 import { ModelType } from '../../../ai/providers/types'
 import { getCachedDefaultModel } from '../../../cache/org-cache-helpers'
 import { docToText, type TiptapDoc } from '../../../tiptap'
+import type { PromptRole } from '../../catalog/nodes/ai'
 import type { ExecutionContextManager } from '../../core/execution-context'
 
 /**
@@ -14,9 +15,12 @@ import type { ExecutionContextManager } from '../../core/execution-context'
  * full single-walk resolver — for now `buildMessagesFromTemplates` flattens
  * via `docToText(json)` which yields `{{varId}}` placeholders that the
  * existing `interpolateVariables` regex picks up (legacy-equivalent).
+ *
+ * The role vocabulary is the catalog's `PromptRole` (node-catalog Phase 1),
+ * projected to its literal values — the engine reads persisted strings.
  */
 export interface PromptTemplate {
-  role: 'system' | 'user' | 'assistant'
+  role: `${PromptRole}`
   json: TiptapDoc
 }
 

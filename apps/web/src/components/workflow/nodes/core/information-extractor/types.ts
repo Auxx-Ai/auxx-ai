@@ -1,8 +1,23 @@
 // apps/web/src/components/workflow/nodes/core/information-extractor/types.ts
 
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types'
+import type { CatalogInformationExtractorNodeData } from '@auxx/lib/workflow-engine/client'
+import type { SpecificNode } from '~/components/workflow/types'
+import type { NodeType } from '~/components/workflow/types/node-types'
 import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import type { UnifiedVariable } from '../if-else'
+
+// The data half moved to the node catalog (node-catalog Phase 1 —
+// `@auxx/lib/workflow-engine/catalog/nodes/information-extractor`);
+// re-exported here so no web import churns. The node data narrows `type` to
+// the web NodeType enum and `structured_output.schema` to the schema editor's
+// `SchemaRoot` (the catalog keeps that member loose for exactly this reason).
+export type {
+  InformationExtractorInstruction,
+  InformationExtractorModel,
+  InformationExtractorVision,
+} from '@auxx/lib/workflow-engine/client'
+
+import type { InformationExtractorModel } from '@auxx/lib/workflow-engine/client'
 
 /**
  * Structured output configuration
@@ -13,48 +28,11 @@ export interface StructuredOutputConfig {
 }
 
 /**
- * Model configuration
- */
-export interface InformationExtractorModel {
-  useDefault?: boolean
-  provider: string
-  name: string
-  mode: 'chat' | 'completion'
-  completion_params?: {
-    temperature: number
-    max_tokens?: number
-    top_p?: number
-    frequency_penalty?: number
-    presence_penalty?: number
-  }
-}
-
-/**
- * Vision configuration
- */
-export interface InformationExtractorVision {
-  enabled: boolean
-}
-
-/**
- * Instruction configuration
- */
-export interface InformationExtractorInstruction {
-  enabled: boolean
-  text: string
-  // editorContent?: string
-}
-
-/**
  * Node data interface - flattened structure
  */
-export interface InformationExtractorNodeData extends BaseNodeData {
-  model: InformationExtractorModel
-  text: string // Preprocessed text with variables
-  // textEditorContent?: string // Tiptap JSON content
+export interface InformationExtractorNodeData extends CatalogInformationExtractorNodeData {
+  type: NodeType
   structured_output: StructuredOutputConfig
-  vision: InformationExtractorVision
-  instruction: InformationExtractorInstruction
 }
 
 /**
@@ -87,6 +65,5 @@ export interface InformationExtractorContextValue {
   updateInstruction: (enabled: boolean, text?: string) => void
 
   // Utilities
-  // preprocessPrompt: (editorContent: string) => { text: string; variables: string[] }
   getOutputVariables: () => UnifiedVariable[]
 }

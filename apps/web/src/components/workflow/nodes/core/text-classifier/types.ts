@@ -1,28 +1,23 @@
 // apps/web/src/components/workflow/nodes/core/text-classifier/types.ts
 
-import type { TargetBranch } from '~/components/workflow/types'
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
+import type { CatalogTextClassifierNodeData } from '@auxx/lib/workflow-engine/client'
+import type { SpecificNode } from '~/components/workflow/types/node-base'
+import type { NodeType } from '~/components/workflow/types/node-types'
 import { AiModelMode } from '../ai/types'
 
-export type TextClassifierOutputMode = 'branches' | 'variable'
-
-/**
- * Text Classifier node data interface - flattened structure
- */
-export interface TextClassifierNodeData extends BaseNodeData {
-  model: ModelConfig
-  text: string // Preprocessed text
-  categories: Category[]
-  vision: VisionConfig
-  instruction: InstructionConfig
-  outputMode?: TextClassifierOutputMode
-  _targetBranches?: TargetBranch[]
-}
-
-/**
- * Full Text Classifier node type for React Flow
- */
-export type TextClassifierNode = SpecificNode<'text-classifier', TextClassifierNodeData>
+// The data half moved to the node catalog (node-catalog Phase 1 —
+// `@auxx/lib/workflow-engine/catalog/nodes/text-classifier`); re-exported
+// here under the historical local names so no web import churns.
+// TextClassifierNodeData narrows `type` to the web NodeType enum.
+export type {
+  ClassificationResult,
+  TextClassifierCategory as Category,
+  TextClassifierCompletionParams as CompletionParams,
+  TextClassifierInstructionConfig as InstructionConfig,
+  TextClassifierModelConfig as ModelConfig,
+  TextClassifierOutputMode,
+  TextClassifierVisionConfig as VisionConfig,
+} from '@auxx/lib/workflow-engine/client'
 
 /**
  * Model mode enum. Re-exported from the AI node rather than redeclared —
@@ -32,59 +27,13 @@ export type TextClassifierNode = SpecificNode<'text-classifier', TextClassifierN
 export { AiModelMode }
 
 /**
- * Model configuration interface
+ * Text Classifier node data interface - flattened structure
  */
-export interface ModelConfig {
-  useDefault?: boolean
-  provider: string
-  name: string
-  mode: AiModelMode
-  completion_params?: CompletionParams
+export interface TextClassifierNodeData extends CatalogTextClassifierNodeData {
+  type: NodeType
 }
 
 /**
- * Completion parameters interface
+ * Full Text Classifier node type for React Flow
  */
-export interface CompletionParams {
-  temperature?: number
-  max_tokens?: number
-  top_p?: number
-  frequency_penalty?: number
-  presence_penalty?: number
-}
-
-/**
- * Category interface for classification
- */
-export interface Category {
-  id: string
-  name: string
-  description?: string // Preprocessed text with {{variables}}
-  text: string
-  // editorContent?: string        // Tiptap JSON content
-}
-
-/**
- * Vision configuration interface
- */
-export interface VisionConfig {
-  enabled: boolean
-}
-
-/**
- * Instruction configuration interface
- */
-export interface InstructionConfig {
-  enabled: boolean
-  text: string // Preprocessed text
-  // editorContent?: string // Tiptap JSON content
-}
-
-/**
- * Classification result interface (for backend processing)
- */
-export interface ClassificationResult {
-  category: string
-  confidence: number
-  reasoning: string
-}
+export type TextClassifierNode = SpecificNode<'text-classifier', TextClassifierNodeData>

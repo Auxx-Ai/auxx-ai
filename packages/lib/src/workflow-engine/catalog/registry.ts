@@ -1,5 +1,7 @@
 // packages/lib/src/workflow-engine/catalog/registry.ts
 
+import { aiManifest } from './nodes/ai'
+import { answerManifest } from './nodes/answer'
 import { codeManifest } from './nodes/code'
 import { dateTimeManifest } from './nodes/date-time'
 import { endManifest } from './nodes/end'
@@ -7,11 +9,13 @@ import { formatManifest } from './nodes/format'
 import { httpManifest } from './nodes/http'
 import { humanConfirmationManifest } from './nodes/human'
 import { ifElseManifest } from './nodes/if-else'
+import { informationExtractorManifest } from './nodes/information-extractor'
 import { listManifest } from './nodes/list'
 import { loopManifest } from './nodes/loop'
 import { manualManifest } from './nodes/manual'
 import { noteManifest } from './nodes/note'
 import { scheduledTriggerManifest } from './nodes/scheduled'
+import { textClassifierManifest } from './nodes/text-classifier'
 import { varAssignManifest } from './nodes/var-assign'
 import { waitManifest } from './nodes/wait'
 import type { NodeManifest } from './types'
@@ -28,6 +32,8 @@ import type { NodeManifest } from './types'
  * two-file change: add the manifest here, delete the list entry.
  */
 const ALL_MANIFESTS: NodeManifest<any>[] = [
+  aiManifest,
+  answerManifest,
   codeManifest,
   dateTimeManifest,
   endManifest,
@@ -35,11 +41,13 @@ const ALL_MANIFESTS: NodeManifest<any>[] = [
   httpManifest,
   humanConfirmationManifest,
   ifElseManifest,
+  informationExtractorManifest,
   listManifest,
   loopManifest,
   manualManifest,
   noteManifest,
   scheduledTriggerManifest,
+  textClassifierManifest,
   varAssignManifest,
   waitManifest,
 ]
