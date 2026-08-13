@@ -49,6 +49,12 @@ export enum FeatureKey {
   dispatch = 'dispatch',
   sequences = 'sequences',
   granularPermissions = 'granularPermissions',
+  /**
+   * Google Workspace Limited Use compliance control, not a purchasable feature.
+   * `false` on every plan tier; set per-org only for orgs with no connected Google
+   * account. Absent MUST be read as `false` — see `plans/google-limited-use-provider-gate.md`.
+   */
+  unrestrictedAiProviders = 'unrestrictedAiProviders',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -215,6 +221,16 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     description:
       'Configure per-member capability grants beyond the built-in role defaults, plus inbox access levels, conversation sharing, and inbox manager delegation.',
     group: 'Security',
+  },
+  {
+    key: FeatureKey.unrestrictedAiProviders,
+    type: 'boolean',
+    label: 'Unrestricted AI Providers',
+    // Compliance control, not a plan feature. OFF everywhere by default; enabling it on an
+    // org with a connected Google account would breach the Limited Use requirements.
+    description:
+      'Allow AI providers whose terms permit training on submitted data. Off for every plan; enable only for organizations with no connected Google account.',
+    group: 'AI',
   },
 
   // ── Static limits ──

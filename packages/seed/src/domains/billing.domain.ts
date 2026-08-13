@@ -126,7 +126,21 @@ const STATIC_LIMITS = {
   },
 } as const
 
-/** Boolean gates (on/off) keyed by plan tier */
+/**
+ * Boolean gates (on/off) keyed by plan tier.
+ *
+ * `unrestrictedAiProviders` is not a plan feature and is deliberately `false` on every
+ * tier, including enterprise. It is a compliance control for the Google Workspace API
+ * User Data Policy (Limited Use), which bars transferring Workspace data to third parties
+ * that train on it. OFF means the org may only reach AI providers whose terms forbid
+ * training (see `LIMITED_USE_SAFE_PROVIDERS`); ON re-opens the full provider list and must
+ * only ever be set on an org with **no connected Google account**.
+ *
+ * It lives here so it can be flipped per-org without a deploy — not because it is
+ * purchasable. Do not promote it to a paid tier, and do not read it through a helper that
+ * treats a missing key as permitted: the read site inverts the usual default so that
+ * absent means restricted. See `plans/google-limited-use-provider-gate.md`.
+ */
 const BOOLEAN_GATES = {
   demo: {
     knowledgeBase: true,
@@ -158,6 +172,9 @@ const BOOLEAN_GATES = {
     // Demo carried `mailPermissions: true` before plan v3/03 §7.6 folded that key
     // into this one, so the demo org keeps demoing sharing (D9).
     granularPermissions: true,
+    // Google Workspace Limited Use gate. OFF on every tier by design — see the note
+    // above `BOOLEAN_GATES`. Flip per-org only for an org with no Google connection.
+    unrestrictedAiProviders: false,
   },
   free: {
     knowledgeBase: true,
@@ -182,6 +199,7 @@ const BOOLEAN_GATES = {
     dispatch: false,
     sequences: false,
     granularPermissions: false,
+    unrestrictedAiProviders: false,
   },
   starter: {
     knowledgeBase: true,
@@ -207,6 +225,7 @@ const BOOLEAN_GATES = {
     // On at a metered 3 (`sequencesLimit`) — the upgrade lever into Growth's 25.
     sequences: true,
     granularPermissions: false,
+    unrestrictedAiProviders: false,
   },
   growth: {
     knowledgeBase: true,
@@ -231,6 +250,7 @@ const BOOLEAN_GATES = {
     dispatch: true,
     sequences: true,
     granularPermissions: true,
+    unrestrictedAiProviders: false,
   },
   enterprise: {
     knowledgeBase: true,
@@ -255,6 +275,7 @@ const BOOLEAN_GATES = {
     dispatch: true,
     sequences: true,
     granularPermissions: true,
+    unrestrictedAiProviders: false,
   },
 } as const
 
