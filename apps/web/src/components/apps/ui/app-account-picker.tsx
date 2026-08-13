@@ -23,6 +23,8 @@ interface AppAccountPickerProps {
   appId: string | null
   /** Currently-selected credId(s). String for single-select, array for multi-select. */
   value: string | string[] | undefined
+  /** True when `value` is the host's fallback default rather than a stored binding. */
+  valueIsDefault?: boolean
   /** Fires once per pick with the picked credId. Host decides single vs multi semantics. */
   onPick: (credId: string) => void
   /** Fires when the connect flow returns a new credential. */
@@ -53,6 +55,7 @@ interface AppAccountPickerProps {
 export function AppAccountPicker({
   appId,
   value,
+  valueIsDefault,
   onPick,
   onConnected,
   allowPersonal = true,
@@ -118,6 +121,7 @@ export function AppAccountPicker({
                   cred={c}
                   avatarUrl={avatarUrl}
                   selected={isSelected(c.id)}
+                  isDefault={!!valueIsDefault}
                   onSelect={() => onPick(c.id)}
                   onReconnect={reconnectHandler(c.id, 'user')}
                   onRemove={onRemove ? () => onRemove(c.id) : undefined}
@@ -134,6 +138,7 @@ export function AppAccountPicker({
                   cred={c}
                   avatarUrl={avatarUrl}
                   selected={isSelected(c.id)}
+                  isDefault={!!valueIsDefault}
                   onSelect={() => onPick(c.id)}
                   onReconnect={reconnectHandler(c.id, 'organization')}
                   onRemove={onRemove ? () => onRemove(c.id) : undefined}
@@ -185,6 +190,7 @@ function AccountRow({
   cred,
   avatarUrl,
   selected,
+  isDefault,
   onSelect,
   onReconnect,
   onRemove,
@@ -192,6 +198,8 @@ function AccountRow({
   cred: AppConnection
   avatarUrl: string | null
   selected: boolean
+  /** The row is checked because it is the host's default, not because it was picked. */
+  isDefault: boolean
   onSelect: () => void
   /** When set, the row shows a "Reconnect" action for expired/disconnected creds. */
   onReconnect?: () => void
@@ -216,6 +224,7 @@ function AccountRow({
       <span className='truncate'>{cred.label ?? cred.appName}</span>
       {needsReconnect && <TriangleAlert className='size-3.5 shrink-0 text-amber-600' />}
       <div className='ml-auto flex items-center gap-1.5'>
+        {selected && isDefault && <span className='text-xs text-muted-foreground'>Default</span>}
         {needsReconnect && onReconnect && (
           <Button
             type='button'

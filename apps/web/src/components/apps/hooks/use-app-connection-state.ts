@@ -25,20 +25,30 @@ export interface AppConnectionInfo {
   requiresConnection: boolean
   /** Label of the resolved credential, when one resolved. */
   label: string | null
+  /**
+   * Id of the credential the run will actually use — the node's own
+   * `connectionId` when bound, otherwise the org's primary. Callers render this
+   * as the picker's implicit selection so an unbound node shows what it uses.
+   */
+  id: string | null
 }
 
-const LOADING: AppConnectionInfo = { state: 'loading', requiresConnection: false, label: null }
+const LOADING: AppConnectionInfo = {
+  state: 'loading',
+  requiresConnection: false,
+  label: null,
+  id: null,
+}
 
 /**
  * Resolve a node's connection state the same way the engine does at run time:
- * an explicit `connectionId` wins, otherwise any credential for the app (user-
- * or org-scoped) is a candidate — mirrors `resolveAppConnectionForRuntime`,
- * which falls back to whatever exists for the app when nothing is bound.
+ * an explicit `connectionId` wins, otherwise the org's *primary* credential for
+ * the app — `resolveAppConnectionForRuntime` bottoms out in `findCredential`,
+ * which orders by `isDefault` then newest and takes one row. Nothing here may
+ * accept a healthier credential than the one the run is going to get.
  *
- * Deliberately fails *open*: `listConnections` returns every user's credentials,
- * so a user-scoped app that somebody has connected reads as `ok` even though the
- * run's own user may not have connected. Only "nothing exists at all" is
- * reported as `missing`.
+ * Still fails open across users: `listConnections` returns every user's
+ * credentials, so a user-scoped app somebody else connected can win the pick.
  */
 export function deriveAppConnectionState({
   appId,
@@ -59,42 +69,33 @@ export function deriveAppConnectionState({
   )
 
   if (!requiresConnection) {
-    return { state: 'not_required', requiresConnection: false, label: null }
+    return { state: 'not_required', requiresConnection: false, label: null, id: null }
   }
 
-  // Explicit binding: that row is the only candidate. A bound id with no row is
-  // a deleted credential, which the engine cannot resolve either.
-  if (connectionId) {
-    const bound = appConnections.find((c) => c.id === connectionId)
-    if (!bound) return { state: 'missing', requiresConnection: true, label: null }
-    const label = bound.label ?? bound.appName ?? null
-    if (bound.connectionStatus === 'connected') {
-      return { state: 'ok', requiresConnection: true, label }
-    }
-    return {
-      state: bound.connectionStatus === 'expired' ? 'expired' : 'missing',
-      requiresConnection: true,
-      label,
-    }
-  }
+  // Bound: that row is the only candidate. A bound id with no row is a deleted
+  // credential, which the engine cannot resolve either. Unbound: the org's
+  // primary, newest as tiebreak — same order `findCredential` applies.
+  const picked = connectionId
+    ? appConnections.find((c) => c.id === connectionId)
+    : appConnections
+        .filter((c) => c.appId === appId)
+        .sort(
+          (a, b) =>
+            Number(b.isDefault) - Number(a.isDefault) ||
+            (b.connectedAt?.getTime() ?? 0) - (a.connectedAt?.getTime() ?? 0)
+        )[0]
 
-  // Unbound: any credential for the app can serve the run.
-  const candidates = appConnections.filter((c) => c.appId === appId)
-  if (candidates.length === 0) {
-    return { state: 'missing', requiresConnection: true, label: null }
-  }
-  const usable = candidates.find((c) => c.connectionStatus === 'connected')
-  if (usable) {
-    return {
-      state: 'ok',
-      requiresConnection: true,
-      label: usable.label ?? usable.appName ?? null,
-    }
-  }
+  if (!picked) return { state: 'missing', requiresConnection: true, label: null, id: null }
   return {
-    state: 'expired',
+    state:
+      picked.connectionStatus === 'connected'
+        ? 'ok'
+        : picked.connectionStatus === 'expired'
+          ? 'expired'
+          : 'missing',
     requiresConnection: true,
-    label: candidates[0]?.label ?? candidates[0]?.appName ?? null,
+    label: picked.label ?? picked.appName ?? null,
+    id: picked.id,
   }
 }
 
