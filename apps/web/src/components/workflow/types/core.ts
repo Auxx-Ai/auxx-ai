@@ -55,6 +55,8 @@ export type FetchWorkflowResponse = {
   version: number
   triggerType: WorkflowTriggerType
   graph: { nodes: Node[]; edges: Edge[]; viewport: Viewport }
+  /** Content hash of `graph` — the save path's optimistic-concurrency token. */
+  graphHash?: string | null
   envVars: EnvVar[]
   variables: InputVariable[]
   organizationId: string

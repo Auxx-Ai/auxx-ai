@@ -7,9 +7,10 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
 import { getCachedResources } from '../cache/org-cache-helpers'
 import { getCachedWorkflowAppsList } from '../cache/workflow-app-queries'
-import { NotFoundError } from '../errors'
+import { ConflictError, NotFoundError } from '../errors'
 import { getQueue, Queues } from '../jobs/queues'
 import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
+import { hashWorkflowGraph } from './graph-hash'
 import { assertMailTriggerNotPersonal } from './mail-trigger-guard'
 import { PollingTriggerService } from './polling-trigger-service'
 import { ScheduledTriggerService } from './scheduled-trigger-service'
@@ -42,6 +43,8 @@ export function toWorkflowAppResponse(workflowApp: WorkflowWithDetails) {
     entityDefinitionId: workflowData?.entityDefinitionId,
     version: workflowData?.version || 1,
     graph: workflowData?.graph,
+    // Seed for the editor's optimistic-concurrency token (see WorkflowUpdateInput.expectedGraphHash)
+    graphHash: workflowData?.graph ? hashWorkflowGraph(workflowData.graph) : null,
     variables: workflowData?.variables || [],
     envVars: workflowData?.envVars,
     organizationId: workflowApp.organizationId,
@@ -393,6 +396,7 @@ export class WorkflowService {
         graph,
         envVars,
         variables,
+        expectedGraphHash,
         webEnabled,
         apiEnabled,
         accessMode,
@@ -448,8 +452,36 @@ export class WorkflowService {
 
         // Update draft workflow (always update draft, not published)
         if (existingWorkflowApp.draftWorkflow) {
+          let draftVersion = existingWorkflowApp.draftWorkflow.version
+
+          // Compare-and-swap draft write: lock the draft row so a concurrent
+          // save can't slip between read and write, then verify the stored
+          // graph still hashes to what this caller loaded. Without this, two
+          // editor tabs silently clobber each other — the stale tab's autosave
+          // overwrites the other tab's changes. Callers that don't send
+          // `expectedGraphHash` (template install, system paths) keep the
+          // unconditional write.
+          if (expectedGraphHash !== undefined) {
+            const [lockedDraft] = await tx
+              .select({ graph: schema.Workflow.graph, version: schema.Workflow.version })
+              .from(schema.Workflow)
+              .where(eq(schema.Workflow.id, existingWorkflowApp.draftWorkflow.id))
+              .for('update')
+              .limit(1)
+            if (!lockedDraft) {
+              throw new NotFoundError(`Draft for workflow "${existingWorkflowApp.name}" not found`)
+            }
+            const currentHash = hashWorkflowGraph(lockedDraft.graph)
+            if (currentHash !== expectedGraphHash) {
+              throw new ConflictError(
+                `The draft of workflow "${existingWorkflowApp.name}" changed while you were editing. Reload the workflow to get the latest version — saving now would overwrite those changes.`
+              )
+            }
+            draftVersion = lockedDraft.version
+          }
+
           const workflowUpdates: any = {
-            version: existingWorkflowApp.draftWorkflow.version + 1,
+            version: draftVersion + 1,
             updatedAt: new Date(),
           }
 
@@ -623,6 +655,9 @@ export class WorkflowService {
           triggerType: workflowData?.triggerType,
           entityDefinitionId: workflowData?.entityDefinitionId,
           graph: workflowData?.graph,
+          // New optimistic-concurrency token — the client chains its next
+          // save's `expectedGraphHash` from this.
+          graphHash: workflowData?.graph ? hashWorkflowGraph(workflowData.graph) : null,
           envVars: workflowData?.envVars,
           variables: workflowData?.variables || [],
           organizationId: result.organizationId,

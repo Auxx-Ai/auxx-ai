@@ -73,7 +73,16 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     if (error instanceof TRPCError) {
       return NextResponse.json(
         { error: error.message },
-        { status: error.code === 'NOT_FOUND' ? 404 : error.code === 'UNAUTHORIZED' ? 401 : 400 }
+        {
+          status:
+            error.code === 'NOT_FOUND'
+              ? 404
+              : error.code === 'UNAUTHORIZED'
+                ? 401
+                : error.code === 'CONFLICT'
+                  ? 409
+                  : 400,
+        }
       )
     }
 
@@ -109,7 +118,16 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     if (error instanceof TRPCError) {
       return NextResponse.json(
         { error: error.message },
-        { status: error.code === 'NOT_FOUND' ? 404 : error.code === 'UNAUTHORIZED' ? 401 : 400 }
+        {
+          status:
+            error.code === 'NOT_FOUND'
+              ? 404
+              : error.code === 'UNAUTHORIZED'
+                ? 401
+                : error.code === 'CONFLICT'
+                  ? 409
+                  : 400,
+        }
       )
     }
 

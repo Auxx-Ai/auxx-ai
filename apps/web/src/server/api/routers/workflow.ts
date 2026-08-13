@@ -33,6 +33,7 @@ import { recordAuditFromCtx } from '~/server/api/audit-context'
 import {
   capabilityProcedure,
   createTRPCRouter,
+  isAuxxError,
   notDemo,
   permissionProcedure,
 } from '~/server/api/trpc'
@@ -114,6 +115,13 @@ const updateWorkflowSchema = z.object({
     )
     .optional(),
   variables: z.array(z.any()).optional(),
+  /**
+   * Optimistic-concurrency token for draft graph saves: the `graphHash` the
+   * editor loaded (or got back from its last save). When present, the service
+   * compare-and-swaps against the stored draft graph and rejects with 409
+   * CONFLICT if another editor saved in between. Absent → unconditional write.
+   */
+  expectedGraphHash: z.string().optional(),
 
   // Access settings fields
   webEnabled: z.boolean().optional(),
@@ -451,6 +459,9 @@ export const workflowRouter = createTRPCRouter({
       try {
         return await workflowService.update(ctx.session.organizationId, input)
       } catch (error) {
+        // Let AuxxErrors (e.g. the draft-save ConflictError → 409) reach
+        // `auxxErrorMiddleware` instead of flattening them into a generic 500.
+        if (isAuxxError(error)) throw error
         if (error instanceof Error && error.message === 'Workflow not found') {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
         }
