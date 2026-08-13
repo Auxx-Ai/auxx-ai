@@ -12,7 +12,8 @@ import {
   type ProviderConfigurations,
 } from '../types'
 import { getSortedProviders } from '../utils'
-import type { AiProviderCtx } from './context'
+import { type AiProviderCtx, isProviderLimitedUseBlocked } from './context'
+import { isOrgLimitedUseGated } from './limited-use'
 import { resolveCredentials } from './runtime-credentials'
 
 const logger = createScopedLogger('ai-provider-config-cache')
@@ -23,11 +24,26 @@ const logger = createScopedLogger('ai-provider-config-cache')
  * except as a miss-fallback to the compute layer's `resolveCredentials`.
  */
 
-/** All provider configurations for the org, from the `aiProviderConfigs` cache key. */
+/**
+ * All provider configurations for the org, from the `aiProviderConfigs` cache key.
+ *
+ * Limited-Use-blocked providers are dropped HERE rather than in the compute layer, so the
+ * cached blob stays the full truth and the gate is evaluated against the org's current
+ * state on every read. That means connecting or disconnecting a Google channel, or toggling
+ * `unrestrictedAiProviders`, takes effect immediately — no `aiProviderConfigs` invalidation
+ * to get wrong, and no stale blob that fails open.
+ */
 export async function getProviderConfigs(ctx: AiProviderCtx): Promise<ProviderConfigurations> {
   try {
     const configurations = await getOrgCache().get(ctx.organizationId, 'aiProviderConfigs')
-    return { organizationId: ctx.organizationId, configurations }
+    const gated = await isOrgLimitedUseGated(ctx.organizationId)
+    if (!gated) return { organizationId: ctx.organizationId, configurations }
+
+    const allowed: typeof configurations = {}
+    for (const [provider, config] of Object.entries(configurations)) {
+      if (!isProviderLimitedUseBlocked(provider, gated)) allowed[provider] = config
+    }
+    return { organizationId: ctx.organizationId, configurations: allowed }
   } catch (error) {
     logger.error('Failed to get provider configurations', {
       organizationId: ctx.organizationId,
@@ -49,6 +65,16 @@ export async function getProviderConfig(
   const configurations = await getOrgCache().get(ctx.organizationId, 'aiProviderConfigs')
   const config = configurations[provider]
   if (!config) {
+    throw new ProviderConfigurationError(
+      `Provider '${provider}' not found in configurations`,
+      provider,
+      'PROVIDER_NOT_FOUND'
+    )
+  }
+  // A Limited-Use-blocked provider reads as absent rather than as a distinct error, so
+  // callers treat it exactly like an unconfigured provider. `createClient` is what
+  // produces the explicit LIMITED_USE_BLOCKED failure if something calls it anyway.
+  if (isProviderLimitedUseBlocked(provider, await isOrgLimitedUseGated(ctx.organizationId))) {
     throw new ProviderConfigurationError(
       `Provider '${provider}' not found in configurations`,
       provider,

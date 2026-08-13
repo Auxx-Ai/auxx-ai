@@ -4,6 +4,7 @@ import { createScopedLogger } from '../../logger'
 import { ANTHROPIC_CAPABILITIES, ANTHROPIC_MODELS } from './anthropic/anthropic-defaults'
 import type { ProviderClient, ProviderClientConstructor } from './base/provider-client'
 import { ProviderError } from './base/types'
+import { assertProviderAllowed } from './config/limited-use'
 import { DEEPSEEK_CAPABILITIES, DEEPSEEK_MODELS } from './deepseek/deepseek-defaults'
 import { GOOGLE_CAPABILITIES, GOOGLE_MODELS } from './google/google-defaults'
 import { GROK_CAPABILITIES, GROK_MODELS } from './grok/grok-defaults'
@@ -369,6 +370,12 @@ export class ProviderRegistry {
     cache?: any
   ): Promise<ProviderClient> {
     await ProviderRegistry.initialize()
+
+    // Google Workspace Limited Use gate. Enforced here because this is the single
+    // construction site for every provider client, so a blocked provider cannot be reached
+    // through a stored model id, a pinned agent version, a workflow node or a scheduled
+    // job — regardless of what any UI or cached config offers.
+    await assertProviderAllowed(providerId, organizationId)
 
     const registration = ProviderRegistry.providers[providerId]
 
