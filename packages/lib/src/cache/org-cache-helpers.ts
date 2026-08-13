@@ -1,6 +1,7 @@
 // packages/lib/src/cache/org-cache-helpers.ts
 
 import type { CustomFieldEntity } from '@auxx/database/types'
+import { isEntityDefinitionType } from '@auxx/types/resource'
 import type { KbCatalogEntry } from '../kb/catalog/kb-catalog'
 import type { CachedMailFilter } from '../mail-filters/types'
 import type { CachedPermissionProfile } from '../permissions/profiles/types'
@@ -136,6 +137,33 @@ export async function getCachedEntityDefId(
 ): Promise<string | undefined> {
   const entityDefs = await getOrgCache().get(orgId, 'entityDefs')
   return entityDefs[entityType]
+}
+
+/**
+ * Normalize an `entityDefinitionId` value to the org's EntityDefinition id,
+ * tolerating either keyspace this column is written in.
+ *
+ * Values arrive in two forms: the per-org CUID (what the resource picker,
+ * `toCustomResourceBase` and `toRecordId` write) and, for the legacy
+ * `ticket:*` / `contact:*` event family, the bare entityType slug — those
+ * events are the only ones whose payload omits the definition id. Every
+ * consumer compares with strict equality, so an unnormalized slug matches
+ * nothing and the trigger silently never fires.
+ *
+ * The gate is `isEntityDefinitionType`, **not** "the entityDefs cache resolved
+ * it": `thread` and `article` have an EntityDefinition row in every org but are
+ * table-backed system resources that stay slug-keyed everywhere (`thread:<id>`
+ * RecordIds), because canonicalization is gated on the same predicate.
+ * Resolving those would break references that work today.
+ *
+ * A CUID, a tier-A slug, or an unresolvable value is returned unchanged.
+ */
+export async function canonicalizeEntityDefinitionId(
+  orgId: string,
+  value: string
+): Promise<string> {
+  if (!isEntityDefinitionType(value)) return value
+  return (await getCachedEntityDefId(orgId, value)) ?? value
 }
 
 /**

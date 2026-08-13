@@ -100,7 +100,10 @@ export interface CustomFieldGroupAccessor extends ArrayAccessor<CustomFieldEntit
 /** WorkflowApps accessor — ArrayAccessor + trigger matching + list view sugar methods */
 export interface WorkflowAppsAccessor extends ArrayAccessor<CachedWorkflowApp> {
   /** Find enabled apps matching trigger criteria */
-  byTrigger(triggerType: string, entityDefinitionId?: string): Promise<CachedWorkflowApp[]>
+  byTrigger(
+    triggerType: string,
+    entityDefinitionIds?: readonly string[]
+  ): Promise<CachedWorkflowApp[]>
   /** Find enabled app by ID */
   byAppId(workflowAppId: string): Promise<CachedWorkflowApp | null>
   /** Find enabled apps matching app trigger fields */

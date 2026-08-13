@@ -5,7 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils/generateId'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
-import { getCachedResources } from '../cache/org-cache-helpers'
+import { canonicalizeEntityDefinitionId, getCachedResources } from '../cache/org-cache-helpers'
 import { getCachedWorkflowAppsList } from '../cache/workflow-app-queries'
 import { ConflictError, NotFoundError } from '../errors'
 import { getQueue, Queues } from '../jobs/queues'
@@ -192,6 +192,13 @@ export class WorkflowService {
       variables,
     } = input
     const finalTriggerType = triggerType || WorkflowTriggerType.MESSAGE_RECEIVED
+    // This column is written by a dozen callers (builder save, template install,
+    // seed, duplicate, the REST door) and read with strict equality by every
+    // dispatcher. Canonicalize on the way in so the row only ever holds one
+    // keyspace — see `canonicalizeEntityDefinitionId` for the tier-A gate.
+    const finalEntityDefinitionId = entityDefinitionId
+      ? await canonicalizeEntityDefinitionId(organizationId, entityDefinitionId)
+      : entityDefinitionId
 
     logger.info('Creating workflow app', { organizationId, userId, name })
 
@@ -222,7 +229,7 @@ export class WorkflowService {
             name: `${name} (Draft)`,
             description,
             triggerType: finalTriggerType,
-            entityDefinitionId,
+            entityDefinitionId: finalEntityDefinitionId,
             enabled: false, // Draft is always disabled
             organizationId,
             createdById: userId,
@@ -405,6 +412,16 @@ export class WorkflowService {
         rateLimit,
         ...basicUpdateData
       } = updateData
+
+      // Same canonicalization as `create` — one keyspace in the column.
+      // `null` is the explicit clear (the builder posts it when the graph has
+      // no resource trigger); `undefined` still means "leave alone".
+      if (basicUpdateData.entityDefinitionId) {
+        basicUpdateData.entityDefinitionId = await canonicalizeEntityDefinitionId(
+          organizationId,
+          basicUpdateData.entityDefinitionId
+        )
+      }
 
       const result = await this.db.transaction(async (tx: Transaction) => {
         // Update WorkflowApp fields (including share settings)

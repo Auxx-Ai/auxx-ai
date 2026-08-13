@@ -7,31 +7,30 @@
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId } from '@auxx/types/resource'
 import type { AuxxEvent } from '../types'
-import { getEventRecordId, getResourceTriggerMatch } from './trigger-resource-workflows'
+import { getEventRecordId, resolveResourceTriggerMatch } from './trigger-resource-workflows'
 
 const logger = createScopedLogger('record-rules-lifecycle')
 
 export const handleRecordRules = async ({ data: event }: { data: AuxxEvent }) => {
   try {
-    const match = getResourceTriggerMatch(event)
-    if (!match || match.triggerType === 'updated') {
-      if (!match) logger.debug('No resource trigger match — skipping', { eventType: event.type })
-      return
-    }
-
     const organizationId = event.data.organizationId
     if (!organizationId) {
       logger.debug('Event has no organizationId — skipping', { eventType: event.type })
       return
     }
 
-    const { getCachedRecordRules, getCachedEntityDefId } = await import('../../cache')
-
     // Legacy-shape events carry an entityType ('ticket'/'contact') where modern
-    // events carry the real definition id — normalize via the entityDefs cache.
-    const entityDefinitionId =
-      (await getCachedEntityDefId(organizationId, match.entityDefinitionId)) ??
-      match.entityDefinitionId
+    // events carry the real definition id; the shared resolver normalizes it.
+    const match = await resolveResourceTriggerMatch(event, organizationId)
+    if (!match || match.triggerType === 'updated') {
+      if (!match) logger.debug('No resource trigger match — skipping', { eventType: event.type })
+      return
+    }
+    // Canonical id for the work below; `matchIds` for filtering stored rows,
+    // which may be keyed by either form.
+    const { entityDefinitionId, matchIds } = match
+
+    const { getCachedRecordRules } = await import('../../cache')
 
     const on = match.triggerType === 'created' ? 'created' : 'deleted'
     const allRules = await getCachedRecordRules(organizationId)
@@ -40,7 +39,7 @@ export const handleRecordRules = async ({ data: event }: { data: AuxxEvent }) =>
         rule.enabled &&
         rule.fieldId === null &&
         rule.on === on &&
-        rule.entityDefinitionId === entityDefinitionId
+        matchIds.includes(rule.entityDefinitionId)
     )
     logger.debug('Lifecycle event matched against cached rules', {
       eventType: event.type,

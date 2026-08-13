@@ -155,6 +155,7 @@
     "react-resizable-panels": "^2.1.7",
     "react-select": "^5.10.0",
     "recharts": "^2.15.4",
+    "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
     "server-only": "catalog:",
     "sharp": "catalog:",
