@@ -1,7 +1,36 @@
-// apps/web/src/components/workflow/store/var-graph.ts
+// packages/lib/src/workflow-engine/catalog/graph-vars.ts
 
-import { BaseType } from '../types/unified-types'
-import type { LoopContext } from './use-var-store'
+import { BaseType } from '../core/types'
+
+/**
+ * Lightweight node representation for graph computation. React Flow nodes,
+ * engine nodes and agent-authored graphs all satisfy it structurally — same
+ * pattern as `TriggerDerivationNode` in `derive-trigger.ts`.
+ */
+export interface NodeMeta {
+  id: string
+  type: string
+  data: any
+  parentId?: string
+}
+
+/** Lightweight edge representation for graph computation */
+export interface EdgeMeta {
+  id: string
+  source: string
+  target: string
+  sourceHandle?: string | null
+  data?: { isLoopBackEdge?: boolean }
+}
+
+/** Loop ancestry entry computed for a node by `computeLoopAncestry`. */
+export interface GraphLoopContext {
+  loopNodeId: string
+  iteratorName: string
+  iteratorType?: BaseType
+  depth: number
+  parentLoopContext?: GraphLoopContext
+}
 
 /**
  * Filter out edges that form intentional cycles in loops:
@@ -20,23 +49,6 @@ function getForwardEdges(edges: EdgeMeta[], nodes: NodeMeta[]): EdgeMeta[] {
     }
     return true
   })
-}
-
-/** Lightweight node representation for graph computation */
-export interface NodeMeta {
-  id: string
-  type: string
-  data: any
-  parentId?: string
-}
-
-/** Lightweight edge representation for graph computation */
-export interface EdgeMeta {
-  id: string
-  source: string
-  target: string
-  sourceHandle?: string | null
-  data?: { isLoopBackEdge?: boolean }
 }
 
 /**
@@ -117,12 +129,12 @@ export function buildDownstreamMap(
  * Compute loop ancestry for all nodes.
  * For each node, walks the parentId chain to find loop ancestors.
  */
-export function computeLoopAncestry(nodes: NodeMeta[]): Map<string, LoopContext[]> {
+export function computeLoopAncestry(nodes: NodeMeta[]): Map<string, GraphLoopContext[]> {
   const nodeMap = new Map(nodes.map((n) => [n.id, n]))
-  const ancestry = new Map<string, LoopContext[]>()
+  const ancestry = new Map<string, GraphLoopContext[]>()
 
   for (const node of nodes) {
-    const contexts: LoopContext[] = []
+    const contexts: GraphLoopContext[] = []
     let current: NodeMeta | undefined = node
 
     while (current?.parentId) {

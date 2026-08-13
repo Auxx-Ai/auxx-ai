@@ -75,10 +75,23 @@ export * from './utils/terminal-nodes'
 // tracker, and the pure variable-inference helpers split out of apps/web
 // utils/variable-utils.ts (the store-reading display helpers stayed there).
 export {
+  buildOutputContext,
+  buildOutputContextFromResources,
+} from './catalog/build-output-context'
+export {
   type DerivedTriggerColumns,
   deriveTriggerColumns,
   type TriggerDerivationNode,
 } from './catalog/derive-trigger'
+export {
+  buildDownstreamMap,
+  buildUpstreamMap,
+  computeLoopAncestry,
+  type EdgeMeta,
+  type GraphLoopContext,
+  type NodeMeta,
+  topologicalSort,
+} from './catalog/graph-vars'
 export {
   type BaseNodeData as CatalogBaseNodeData,
   type BranchType,
@@ -311,6 +324,19 @@ export {
   getManifest,
   listManifests,
 } from './catalog/registry'
+export {
+  resolveGraphOutputs,
+  resolveNodeOutputs,
+  type WorkflowOutputGraph,
+} from './catalog/resolve-outputs'
+export {
+  extractSchemaPropertyPaths,
+  generateSampleFromSchema,
+  schemaRootToUnifiedVariables,
+  schemaToUnifiedVariable,
+  schemaTypeToBaseType,
+  validateAgainstSchema,
+} from './catalog/schema-to-variable'
 export {
   type NodeAgentDocs,
   type NodeBranch,
