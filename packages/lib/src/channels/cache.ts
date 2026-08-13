@@ -38,16 +38,25 @@ export async function getOrgChannelBidirectionalSyncMap(
 }
 
 /**
- * Org-wide "us" address set — see `buildOrgOwnEmailAddressSet`. Convenience
- * wrapper for callers that don't already hold the `channels` cache rows (e.g.
- * the SES inbound processor, which has no other reason to read this cache).
- * Ingest's own publish gate (`store-message.ts`) reads the `channels` cache
- * directly instead of going through this wrapper, to keep its cache
- * dependency to a single mockable call on the hot path.
+ * Org-wide "us" address set for message DIRECTION — see
+ * `buildOrgOwnEmailAddressSet`. Convenience wrapper for callers that don't
+ * already hold the `channels` cache rows (currently only the SES inbound
+ * processor, which has no other reason to read this cache). Ingest stamps
+ * `fromOwnAddress` from the same builder but reads the `channels` cache
+ * directly, to keep its cache dependency to a single mockable call on the hot
+ * path.
+ *
+ * Personal-inbox channels are EXCLUDED: their addresses belong to a human who
+ * also writes mail by hand, so a message from one arriving at a shared channel
+ * is inbound on that channel, not the org replying to itself.
  */
 export async function getOrgOwnEmailAddresses(organizationId: string): Promise<Set<string>> {
-  const channels = await getOrgCache().get(organizationId, 'channels')
-  return buildOrgOwnEmailAddressSet(channels)
+  const [channels, inboxes] = await Promise.all([
+    getOrgCache().get(organizationId, 'channels'),
+    getOrgCache().get(organizationId, 'inboxes'),
+  ])
+  const personalInboxIds = new Set(inboxes.filter((inbox) => inbox.isPersonal).map((i) => i.id))
+  return buildOrgOwnEmailAddressSet(channels, { excludeInboxIds: personalInboxIds })
 }
 
 /**

@@ -14,7 +14,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  cachedChannels: [] as Array<{ id: string; email: string | null; metadata: unknown }>,
+  cachedChannels: [] as Array<{
+    id: string
+    email: string | null
+    metadata: unknown
+    inboxId?: string | null
+  }>,
   published: [] as Array<{ type: string; data: Record<string, unknown> }>,
   senderIdentifier: 'sender@example.com',
   threadRow: {} as Record<string, unknown>,
@@ -192,8 +197,17 @@ beforeEach(() => {
   }
 })
 
-describe('storeMessage — org-wide own-address loop guard (§6 #1)', () => {
-  it('suppresses the publish when From matches a channel primary email', async () => {
+/**
+ * Own-address mail is FLAGGED, never suppressed. The address level cannot tell
+ * a cross-channel echo from a teammate writing in off their own connected
+ * mailbox, so the publish always happens and `fromOwnAddress` lets each
+ * workflow trigger decide (`trigger-message-workflows.ts`, default: fire). The
+ * hard loop guard is `ownEcho` — see the sibling echoed-message-id suite.
+ */
+describe('storeMessage — own-address signal on message:received', () => {
+  const publishedData = () => (h.published[0] as any)?.data
+
+  it('flags fromOwnAddress when From matches a channel primary email', async () => {
     h.senderIdentifier = 'shopify-demo@mail.auxx.ai'
     h.cachedChannels = [
       { id: 'int_ses', email: 'shopify-demo@mail.auxx.ai', metadata: { systemManaged: true } },
@@ -202,14 +216,16 @@ describe('storeMessage — org-wide own-address loop guard (§6 #1)', () => {
 
     await storeMessage(c, messageData())
 
-    expect(h.published).toEqual([])
+    expect(h.published).toHaveLength(1)
+    expect(publishedData()).toMatchObject({ fromOwnAddress: true })
+    expect(publishedData().ownEcho).toBeUndefined()
     expect(c.logger.info).toHaveBeenCalledWith(
-      expect.stringContaining('Suppressing message:received publish'),
-      expect.objectContaining({ from: 'shopify-demo@mail.auxx.ai' })
+      expect.stringContaining('Publishing message:received with loop signals attached'),
+      expect.objectContaining({ fromOwnAddress: true, from: 'shopify-demo@mail.auxx.ai' })
     )
   })
 
-  it('suppresses the publish when From matches an Outlook alias (metadata.emailAliases)', async () => {
+  it('flags fromOwnAddress when From matches an Outlook alias (metadata.emailAliases)', async () => {
     h.senderIdentifier = 'alias@outlook.example.com'
     h.cachedChannels = [
       {
@@ -221,10 +237,11 @@ describe('storeMessage — org-wide own-address loop guard (§6 #1)', () => {
 
     await storeMessage(ctx(), messageData())
 
-    expect(h.published).toEqual([])
+    expect(h.published).toHaveLength(1)
+    expect(publishedData()).toMatchObject({ fromOwnAddress: true })
   })
 
-  it('suppresses the publish when From matches a Gmail send-as alias (metadata.userEmails)', async () => {
+  it('flags fromOwnAddress when From matches a Gmail send-as alias (metadata.userEmails)', async () => {
     h.senderIdentifier = 'sendas@gmail.example.com'
     h.cachedChannels = [
       {
@@ -236,7 +253,8 @@ describe('storeMessage — org-wide own-address loop guard (§6 #1)', () => {
 
     await storeMessage(ctx(), messageData())
 
-    expect(h.published).toEqual([])
+    expect(h.published).toHaveLength(1)
+    expect(publishedData()).toMatchObject({ fromOwnAddress: true })
   })
 
   it('matches case-insensitively', async () => {
@@ -245,10 +263,24 @@ describe('storeMessage — org-wide own-address loop guard (§6 #1)', () => {
 
     await storeMessage(ctx(), messageData())
 
-    expect(h.published).toEqual([])
+    expect(h.published).toHaveLength(1)
+    expect(publishedData()).toMatchObject({ fromOwnAddress: true })
   })
 
-  it('publishes for a genuinely external sender, carrying integrationId + inboxId', async () => {
+  it('flags a teammate mailing in from a personal channel — publish is never suppressed', async () => {
+    h.senderIdentifier = 'alice@company.com'
+    h.cachedChannels = [
+      { id: 'int_support', email: 'support@company.com', metadata: null },
+      { id: 'int_alice', email: 'alice@company.com', metadata: null, inboxId: 'inbox_personal' },
+    ]
+
+    await storeMessage(ctx(), messageData())
+
+    expect(h.published).toHaveLength(1)
+    expect(publishedData()).toMatchObject({ from: 'alice@company.com', fromOwnAddress: true })
+  })
+
+  it('publishes for a genuinely external sender, carrying integrationId + inboxId and no signals', async () => {
     h.senderIdentifier = 'customer@external.com'
     h.cachedChannels = [{ id: 'int_ses', email: 'shopify-demo@mail.auxx.ai', metadata: null }]
 
@@ -263,18 +295,21 @@ describe('storeMessage — org-wide own-address loop guard (§6 #1)', () => {
         inboxId: INBOX_ID,
       }),
     })
+    expect(publishedData().fromOwnAddress).toBeUndefined()
+    expect(publishedData().ownEcho).toBeUndefined()
   })
 
-  it('publishes when the org has no configured channels (empty own-address set)', async () => {
+  it('publishes unflagged when the org has no configured channels (empty own-address set)', async () => {
     h.senderIdentifier = 'customer@external.com'
     h.cachedChannels = []
 
     await storeMessage(ctx(), messageData())
 
     expect(h.published).toHaveLength(1)
+    expect(publishedData().fromOwnAddress).toBeUndefined()
   })
 
-  it('does not suppress a DIFFERENT channel that merely shares no aliases with the sender', async () => {
+  it('does not flag a DIFFERENT channel that merely shares no aliases with the sender', async () => {
     h.senderIdentifier = 'customer@external.com'
     h.cachedChannels = [
       {
@@ -288,5 +323,6 @@ describe('storeMessage — org-wide own-address loop guard (§6 #1)', () => {
     await storeMessage(ctx(), messageData())
 
     expect(h.published).toHaveLength(1)
+    expect(publishedData().fromOwnAddress).toBeUndefined()
   })
 })

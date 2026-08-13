@@ -30,11 +30,13 @@ import { BaseNodeProcessor } from '../base-node'
  *
  * `machineMail` is likewise a dispatcher gate: `'exclude'` (default when
  * absent) skips soft machine mail, hard-tier machine mail (bounces/NDRs) is
- * always skipped regardless.
+ * always skipped regardless. So is `ownAddress`: `'include'` (default when
+ * absent) fires on mail from the org's own channel addresses, `'exclude'`
+ * skips it; a proven echo of mail this org sent is always skipped regardless.
  */
 export type MessageReceivedTriggerConfig = Pick<
   MessageReceivedNodeData,
-  'conditions' | 'machineMail'
+  'conditions' | 'machineMail' | 'ownAddress'
 >
 
 /** Output shape for the `message.attachments` node variable. */

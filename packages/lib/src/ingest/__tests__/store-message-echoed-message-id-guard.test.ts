@@ -248,60 +248,74 @@ beforeEach(() => {
   }
 })
 
-describe('storeMessage — X-AuxxAi-Message-Id echo guard (§6 supplement)', () => {
-  it('suppresses when the header resolves to a sent message in this org', async () => {
+/**
+ * `ownEcho` is the HARD loop signal: the header resolved to a row this org
+ * actually sent, so the message is a literal copy of our own outbound mail.
+ * The publish still happens (timeline, filters, bounce ingest and signals all
+ * describe the message as it exists) — the dispatcher and mail classification
+ * are what skip on the flag.
+ */
+describe('storeMessage — X-AuxxAi-Message-Id echo signal', () => {
+  const publishedData = () => (h.published[0] as any)?.data
+
+  it('flags ownEcho when the header resolves to a sent message in this org', async () => {
     h.messageRows = [{ id: 'm_sent_1', organizationId: ORG, sendToken: 'tok_1' }]
 
     await storeMessage(ctx(), messageData({ echoedMessageId: 'm_sent_1' }))
 
-    expect(h.published).toEqual([])
+    expect(h.published).toHaveLength(1)
+    expect(publishedData()).toMatchObject({ ownEcho: { sentMessageId: 'm_sent_1' } })
   })
 
-  it('logs the suppression with a reason', async () => {
+  it('logs the signal with the resolved sent-message id', async () => {
     h.messageRows = [{ id: 'm_sent_1', organizationId: ORG, sendToken: 'tok_1' }]
     const c = ctx()
 
     await storeMessage(c, messageData({ echoedMessageId: 'm_sent_1' }))
 
     expect(c.logger.info).toHaveBeenCalledWith(
-      expect.stringContaining('X-AuxxAi-Message-Id'),
+      expect.stringContaining('loop signals attached'),
       expect.objectContaining({ echoedMessageId: 'm_sent_1', sentMessageId: 'm_sent_1' })
     )
   })
 
-  it('does NOT suppress when the header is absent', async () => {
+  it('does NOT flag when the header is absent', async () => {
     h.messageRows = [{ id: 'm_sent_1', organizationId: ORG, sendToken: 'tok_1' }]
 
     await storeMessage(ctx(), messageData())
 
     expect(h.published).toHaveLength(1)
+    expect(publishedData().ownEcho).toBeUndefined()
   })
 
-  it('does NOT suppress when the id is unknown (no matching row)', async () => {
+  it('does NOT flag when the id is unknown (no matching row)', async () => {
     h.messageRows = [{ id: 'm_sent_1', organizationId: ORG, sendToken: 'tok_1' }]
 
     await storeMessage(ctx(), messageData({ echoedMessageId: 'm_unknown' }))
 
     expect(h.published).toHaveLength(1)
+    expect(publishedData().ownEcho).toBeUndefined()
   })
 
-  it('does NOT suppress a match belonging to a different org', async () => {
+  it('does NOT flag a match belonging to a different org', async () => {
     h.messageRows = [{ id: 'm_sent_1', organizationId: OTHER_ORG, sendToken: 'tok_1' }]
 
     await storeMessage(ctx(), messageData({ echoedMessageId: 'm_sent_1' }))
 
     expect(h.published).toHaveLength(1)
+    expect(publishedData().ownEcho).toBeUndefined()
   })
 
-  it('does NOT suppress when sendToken is null (not a message we sent)', async () => {
+  it('does NOT flag when sendToken is null (not a message we sent)', async () => {
     h.messageRows = [{ id: 'm_sent_1', organizationId: ORG, sendToken: null }]
 
     await storeMessage(ctx(), messageData({ echoedMessageId: 'm_sent_1' }))
 
     expect(h.published).toHaveLength(1)
+    expect(publishedData().ownEcho).toBeUndefined()
   })
 
-  it('does not run the header lookup at all when own-address suppression already fired', async () => {
+  it('carries both signals when the sender is also one of our addresses', async () => {
     h.senderIdentifier = 'shopify-demo@mail.auxx.ai'
     h.cachedChannels = [
       { id: 'int_ses', email: 'shopify-demo@mail.auxx.ai', metadata: { systemManaged: true } },
@@ -311,13 +325,21 @@ describe('storeMessage — X-AuxxAi-Message-Id echo guard (§6 supplement)', () 
 
     await storeMessage(c, messageData({ echoedMessageId: 'm_sent_1' }))
 
-    expect(h.published).toEqual([])
-    expect(c.db.query.Message.findFirst).not.toHaveBeenCalled()
+    expect(h.published).toHaveLength(1)
+    expect(publishedData()).toMatchObject({
+      fromOwnAddress: true,
+      ownEcho: { sentMessageId: 'm_sent_1' },
+    })
+    // The two signals are independent now — an own-address sender no longer
+    // short-circuits the header lookup, because each drives a different gate.
+    expect(c.db.query.Message.findFirst).toHaveBeenCalled()
   })
 
-  it('publishes for a genuinely external sender carrying no header at all', async () => {
+  it('publishes unflagged for a genuinely external sender carrying no header at all', async () => {
     await storeMessage(ctx(), messageData())
 
     expect(h.published).toHaveLength(1)
+    expect(publishedData().ownEcho).toBeUndefined()
+    expect(publishedData().fromOwnAddress).toBeUndefined()
   })
 })

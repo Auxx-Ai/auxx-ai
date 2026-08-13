@@ -28,6 +28,26 @@ function includesSoftMachineMail(publishedWorkflow: CachedPublishedWorkflow): bo
 }
 
 /**
+ * Read the message-received trigger node's own-address opt-out off the
+ * published workflow graph. Default `'include'` — mail sent from one of the
+ * org's own connected channel addresses DOES start a workflow, because at the
+ * address level a teammate mailing the shared inbox from their own connected
+ * mailbox is indistinguishable from a cross-channel echo, and the former is
+ * real mail that should be automated. A workflow that genuinely must ignore
+ * its own org's mail sets `ownAddress: 'exclude'`. The proven-echo case
+ * (`ownEcho`) is not covered by this toggle — it is always skipped.
+ * Returns `true` when the workflow should be dispatched for own-address mail.
+ */
+function includesOwnAddressMail(publishedWorkflow: CachedPublishedWorkflow): boolean {
+  const nodes = (publishedWorkflow.graph as { nodes?: any[] } | null | undefined)?.nodes
+  if (!Array.isArray(nodes)) return true
+  const triggerNode = nodes.find(
+    (node) => (node?.data?.type ?? node?.type) === WorkflowNodeType.MESSAGE_RECEIVED
+  )
+  return (triggerNode?.data?.ownAddress ?? 'include') === 'include'
+}
+
+/**
  * Read the message-received trigger node's channel scope off the published
  * workflow graph (message-trigger-scoping plan §4). `data.channelIds` is a
  * `string[]` of `Integration.id`s the builder's channel/inbox scope picker
@@ -65,9 +85,31 @@ function matchesChannelScope(
  */
 export const triggerMessageWorkflows = async ({ data: event }: { data: AuxxEvent }) => {
   if (event.type !== 'message:received') return
-  const { messageId, organizationId, threadId, machineMail, integrationId, inboxId } = (
-    event as MessageReceivedEvent
-  ).data
+  const {
+    messageId,
+    organizationId,
+    threadId,
+    machineMail,
+    integrationId,
+    inboxId,
+    ownEcho,
+    fromOwnAddress,
+  } = (event as MessageReceivedEvent).data
+
+  // Proven self-send — the inbound copy's `X-AuxxAi-Message-Id` resolved to a
+  // message THIS org sent (`store-message.ts`). Hard, no per-trigger opt-in:
+  // it is a literal duplicate of our own outbound mail, so there is no
+  // workflow for which running on it is correct. This is the only remaining
+  // unconditional loop guard on the dispatch path — the address-level signal
+  // below is the workflow author's call.
+  if (ownEcho) {
+    logger.info('Skipping MESSAGE_RECEIVED workflows — message is an echo of our own sent mail', {
+      messageId,
+      organizationId,
+      sentMessageId: ownEcho.sentMessageId,
+    })
+    return
+  }
 
   // Hard-tier machine mail (bounces/NDRs) is loop-forming — never dispatch any
   // workflow. There is nothing sensible for an Answer node to say to a daemon.
@@ -122,6 +164,25 @@ export const triggerMessageWorkflows = async ({ data: event }: { data: AuxxEvent
       })
       return
     }
+  }
+
+  // Own-address mail: the sender is one of the org's connected channel
+  // addresses. Opt-OUT (default include), the inverse of machineMail above —
+  // most such mail is a teammate writing to the shared inbox, which should
+  // automate normally. Only a workflow that would loop on its org's own mail
+  // sets `ownAddress: 'exclude'`.
+  if (fromOwnAddress) {
+    matchingWorkflows = matchingWorkflows.filter((workflow) => {
+      const includes = includesOwnAddressMail(workflow.publishedWorkflow)
+      if (!includes) {
+        logger.info('Skipping MESSAGE_RECEIVED workflow — opted out of own-address mail', {
+          messageId,
+          organizationId,
+          workflowAppId: workflow.workflowApp.id,
+        })
+      }
+      return includes
+    })
   }
 
   // Channel scope (§4): a workflow whose trigger is restricted to specific

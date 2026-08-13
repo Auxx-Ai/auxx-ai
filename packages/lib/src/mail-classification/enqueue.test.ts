@@ -82,6 +82,20 @@ describe('enqueueMailClassification', () => {
     expect(h.add).not.toHaveBeenCalled()
   })
 
+  // Ingest publishes `message:received` for a proven echo of our own sent mail
+  // rather than suppressing it, so the four subscribers that describe the
+  // message as it exists keep working. Classification is the one that opts out:
+  // it would spend a model call tagging our own text.
+  it('never queues a proven echo of our own sent mail', async () => {
+    await enqueueMailClassification(event({ ownEcho: { sentMessageId: 'm_sent_1' } }))
+    expect(h.add).not.toHaveBeenCalled()
+  })
+
+  it('DOES queue own-address mail — a teammate writing in is classifiable', async () => {
+    await enqueueMailClassification(event({ fromOwnAddress: true }))
+    expect(h.add).toHaveBeenCalledTimes(1)
+  })
+
   it('swallows an enqueue failure rather than failing the fan-out', async () => {
     h.add.mockRejectedValue(new Error('redis down'))
     await expect(enqueueMailClassification(event())).resolves.toBeUndefined()

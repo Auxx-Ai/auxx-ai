@@ -213,6 +213,13 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
     setNodeData(newData)
   }
 
+  const setOwnAddress = (value: 'exclude' | 'include') => {
+    const newData = produce(nodeData, (draft) => {
+      draft.ownAddress = value
+    })
+    setNodeData(newData)
+  }
+
   return (
     <BasePanel nodeId={nodeId} data={data}>
       <Section
@@ -321,6 +328,33 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
           </Select>
           <p className='text-xs text-muted-foreground'>
             Bounce and delivery-failure emails never trigger workflows, regardless of this setting.
+          </p>
+        </div>
+      </Section>
+
+      <Section
+        title='Mail from your own channels'
+        description='Controls whether mail sent from one of your connected channel addresses — a teammate writing in from their own mailbox, or a reply arriving on a second channel — can start this workflow.'
+        initialOpen={false}>
+        <div className='space-y-2'>
+          <Select
+            value={nodeData.ownAddress ?? 'include'}
+            onValueChange={(value: 'exclude' | 'include') => setOwnAddress(value)}
+            disabled={isReadOnly}>
+            <SelectTrigger className='w-full'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='include'>
+                Also trigger on mail from your own channel addresses
+              </SelectItem>
+              <SelectItem value='exclude'>
+                Skip mail sent from your own channel addresses
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p className='text-xs text-muted-foreground'>
+            Copies of mail this workflow sent never trigger it again, regardless of this setting.
           </p>
         </div>
       </Section>

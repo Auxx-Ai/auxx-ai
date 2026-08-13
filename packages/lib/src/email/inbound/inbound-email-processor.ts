@@ -127,10 +127,12 @@ export class InboundEmailProcessor {
 
     // Loop-guard plan §6 #2 — SES used to hardcode `isInbound: true` with no
     // sender check at all, so a reply sent on the Gmail or Outlook channel
-    // that re-arrived through this org's forwarding alias published
-    // `message:received` for its own outbound mail. Consult the same
-    // org-wide own-address set the ingest publish gate uses
-    // (`buildOrgOwnEmailAddressSet` / `store-message.ts`) instead.
+    // that re-arrived through this org's forwarding alias was stored as fresh
+    // inbound mail. Consult the org's own-address set instead. This is a
+    // DIRECTION decision, not a loop verdict: `getOrgOwnEmailAddresses`
+    // excludes personal-inbox channels, because a teammate mailing the shared
+    // inbox from their own connected mailbox is genuinely inbound here and
+    // marking it outbound renders it as an org reply in the thread.
     const fromAddress = parsedEmail.from.address.trim().toLowerCase()
     const ownAddresses = await getOrgOwnEmailAddresses(organizationId)
     const isInbound = !ownAddresses.has(fromAddress)

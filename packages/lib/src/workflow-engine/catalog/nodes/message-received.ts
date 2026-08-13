@@ -41,6 +41,19 @@ export interface MessageReceivedNodeData extends BaseNodeData {
    */
   machineMail?: 'exclude' | 'include'
   /**
+   * Mail sent from one of the org's own connected channel addresses (any
+   * channel's email or provider alias, personal mailboxes included).
+   * `'include'` — the default when absent — fires the workflow: at the address
+   * level a teammate mailing the shared inbox off their own connected mailbox
+   * is indistinguishable from a cross-channel echo, and that mail should
+   * automate like any other. `'exclude'` skips it, for a workflow that would
+   * otherwise act on its own org's mail. Read off the published graph by the
+   * `triggerMessageWorkflows` dispatcher. A PROVEN echo of a message this org
+   * sent (`X-AuxxAi-Message-Id` resolving to our own row) is always skipped,
+   * regardless of this setting.
+   */
+  ownAddress?: 'exclude' | 'include'
+  /**
    * Content conditions, replaces the deleted "Message Filters" UI. Evaluated
    * by the engine with the shared `evaluateConditionsWithDiagnostics` against
    * message-resolvable fields (from/to/subject/body/hasAttachments).
@@ -67,6 +80,7 @@ export const messageReceivedNodeDataSchema = z.object({
   variables: z.array(z.any()).optional(),
   channelIds: z.array(z.string()).optional(),
   machineMail: z.enum(['exclude', 'include']).optional(),
+  ownAddress: z.enum(['exclude', 'include']).optional(),
   conditions: conditionGroupsSchema.optional(),
 
   // Other node data properties
@@ -280,7 +294,10 @@ export const messageReceivedManifest: NodeManifest<MessageReceivedNodeData> = {
       'warning; relay it and push toward scoping). `conditions` filter on message content ' +
       '(from/to/subject/body/hasAttachments, shared ConditionGroup dialect, fail-closed); channel ' +
       "scoping lives ONLY in `channelIds`. `machineMail: 'include'` opts into soft machine mail " +
-      '(out-of-office, list mail); bounces are always skipped.',
+      '(out-of-office, list mail); bounces are always skipped. ' +
+      "`ownAddress: 'exclude'` stops the workflow firing on mail sent from the org's own connected " +
+      'channel addresses — leave it unset (defaults to include) unless the user says this workflow ' +
+      "must ignore their own team's mail; echoes of mail this org sent are always skipped anyway.",
     examples: [
       {
         description: 'Fire on support-inbox mail that mentions a refund',

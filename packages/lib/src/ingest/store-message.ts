@@ -871,32 +871,46 @@ export async function storeMessage(
     //    branches (see `sync-messages.ts` / `outlook-provider.ts`); live
     //    webhook ingest (SES inbound, OpenPhone/Facebook/Instagram routes)
     //    never touches sync mode, so it stays `false` and always fires.
-    //  - not one of the org's own addresses (loop-guard plan §6 #1): a
-    //    single-channel echo is already `isInbound: false` per-provider, but
-    //    a reply sent on one channel can re-arrive `isInbound: true` on a
-    //    DIFFERENT channel — a second connected mailbox, or the SES
-    //    forwarding alias. `ownAddresses` is the ORG-WIDE union (every
-    //    non-deleted Integration's email + aliases — see
-    //    `buildOrgOwnEmailAddressSet`), not just this integration's, so it
-    //    catches that case too. Hard guard, no toggle: there is no legitimate
-    //    reason to fire any of the five `message:received` subscribers off
-    //    the org's own outbound mail.
-    //  - not an echo of our own sent mail via `X-AuxxAi-Message-Id` (loop-guard
-    //    plan §6 supplement): complementary to the own-address check above,
-    //    not a replacement — that check catches it while `From` is still one
-    //    of our addresses; this catches it when an intermediate forwarder
-    //    REWROTE `From` to something unrecognizable, which is exactly where
-    //    the own-address check fails. Gmail, SES, and Outlook all stamp the
-    //    header on send now (see `channel-provider.interface.ts:50-56`), so
-    //    an inbound copy that carries it back resolves to the `Message` row
-    //    we sent. Suppress-only: no merge, no thread grafting, no
-    //    reconciliation. This is a PLAIN org-scoped existence check on the
-    //    primary key — it does not reuse or relax Strategy 0's
-    //    integration-scoped reconciliation predicate
-    //    (`message-reconciler.service.ts`, a security guard against a forged
-    //    header grafting inbound mail onto an arbitrary row). One indexed
-    //    lookup, and only when the header is present — the common case has
-    //    no header and costs nothing here.
+    // Loop signals ride ALONG on the event rather than vetoing the publish.
+    // They used to suppress it outright, which took out the four subscribers
+    // that have nothing to do with loops (timeline, mail filters, bounce
+    // ingest, signals) as collateral — and, worse, the own-address arm could
+    // not tell a cross-channel echo from a teammate mailing the shared inbox
+    // off their own connected mailbox, so real human mail vanished. Two
+    // signals now, mirroring `machineMail`'s hard/soft split:
+    //  - `ownEcho` (HARD, no toggle): the inbound copy carries
+    //    `X-AuxxAi-Message-Id` resolving to a `Message` row in THIS org with a
+    //    `sendToken` — proof it is a copy of mail we sent, not an inference
+    //    from an address. Gmail, Outlook, SES and (as of this change) IMAP/SMTP
+    //    all stamp it on send, see `channel-provider.interface.ts:50-56`.
+    //    Read-only: no merge, no thread grafting, no reconciliation. A PLAIN
+    //    org-scoped existence check on the primary key — it deliberately does
+    //    not reuse or relax Strategy 0's integration-scoped reconciliation
+    //    predicate (`message-reconciler.service.ts`, a security guard against
+    //    a forged header grafting inbound mail onto an arbitrary row). One
+    //    indexed lookup, and only when the header is present — the common case
+    //    has no header and costs nothing here.
+    //  - `fromOwnAddress` (SOFT, per-trigger): the sender is one of the org's
+    //    connected channel addresses. Genuinely ambiguous, so the trigger
+    //    decides (`MessageReceivedNodeData.ownAddress`, default `'include'`).
+    // Both are computed only for a message that is already publishing, so the
+    // remaining gates below are unchanged:
+    //  - inbound only: `storeMessage` is never on the compose/send path (that's
+    //    `MessageComposerService.createPendingMessage`); the only outbound
+    //    traffic here is provider sync echoing our own sent mail, so gating on
+    //    `isInbound` fully covers "a workflow that sends mail must not
+    //    re-trigger itself" for the SINGLE-channel case.
+    //  - genuinely NEW row only: every dedup/reconciliation branch above
+    //    (internetMessageId match, `reconcileMessage` match, duplicate-key
+    //    catch) returns early with `isNew: false` — this line only runs on
+    //    the fresh-insert path, so re-ingest of an already-stored message
+    //    never re-emits.
+    //  - `!ctx.isInitialSync`: a first-connect Gmail/Outlook backfill must not
+    //    fire thousands of workflow runs. Gmail/Outlook set this via
+    //    `MessageStorageService.setInitialSyncMode` on their backfill
+    //    branches (see `sync-messages.ts` / `outlook-provider.ts`); live
+    //    webhook ingest (SES inbound, OpenPhone/Facebook/Instagram routes)
+    //    never touches sync mode, so it stays `false` and always fires.
     // Best-effort — `publisher.publishLater` swallows its own errors and
     // never throws, so this can't fail message ingestion.
     if (messageData.isInbound && !ctx.isInitialSync) {
@@ -904,15 +918,10 @@ export async function storeMessage(
       const ownAddresses = buildOrgOwnEmailAddressSet(
         await getOrgCache().get(messageData.organizationId, 'channels')
       )
+      const fromOwnAddress = !!fromAddress && ownAddresses.has(fromAddress)
 
-      let suppressReason: { message: string; fields: Record<string, unknown> } | null = null
-      if (fromAddress && ownAddresses.has(fromAddress)) {
-        suppressReason = {
-          message:
-            "Suppressing message:received publish — sender is one of the org's own channel addresses (cross-channel echo)",
-          fields: { from: fromAddress },
-        }
-      } else if (messageData.echoedMessageId) {
+      let ownEcho: { sentMessageId: string } | null = null
+      if (messageData.echoedMessageId) {
         const echoedSentMessage = await ctx.db.query.Message.findFirst({
           where: (messages, { eq, and, isNotNull }) =>
             and(
@@ -922,45 +931,42 @@ export async function storeMessage(
             ),
           columns: { id: true },
         })
-        if (echoedSentMessage) {
-          suppressReason = {
-            message:
-              'Suppressing message:received publish — inbound carries X-AuxxAi-Message-Id resolving to our own sent message in this org (cross-channel echo via forwarder)',
-            fields: {
-              echoedMessageId: messageData.echoedMessageId,
-              sentMessageId: echoedSentMessage.id,
-            },
-          }
-        }
+        if (echoedSentMessage) ownEcho = { sentMessageId: echoedSentMessage.id }
       }
 
-      if (suppressReason) {
-        ctx.logger.info(suppressReason.message, {
+      if (ownEcho || fromOwnAddress) {
+        ctx.logger.info('Publishing message:received with loop signals attached', {
           messageId: messageRecord.id,
           organizationId: messageData.organizationId,
           integrationId: messageData.integrationId,
           threadId: thread.id,
-          ...suppressReason.fields,
+          ...(fromOwnAddress && { fromOwnAddress: true, from: fromAddress }),
+          ...(ownEcho && {
+            echoedMessageId: messageData.echoedMessageId,
+            sentMessageId: ownEcho.sentMessageId,
+          }),
         })
-      } else {
-        await publisher.publishLater({
-          type: 'message:received',
-          data: {
-            messageId: messageRecord.id,
-            organizationId: messageData.organizationId,
-            ...(senderParticipant.entityInstanceId && {
-              recordId: toRecordId('contact', senderParticipant.entityInstanceId),
-            }),
-            threadId: thread.id,
-            integrationId: messageData.integrationId,
-            ...(inboxIdForChannel && { inboxId: inboxIdForChannel }),
-            subject: messageData.subject ?? undefined,
-            from: senderParticipant.identifier,
-            snippet: messageData.snippet ?? undefined,
-            ...(machineMailResult && { machineMail: machineMailResult }),
-          },
-        } as MessageReceivedEvent)
       }
+
+      await publisher.publishLater({
+        type: 'message:received',
+        data: {
+          messageId: messageRecord.id,
+          organizationId: messageData.organizationId,
+          ...(senderParticipant.entityInstanceId && {
+            recordId: toRecordId('contact', senderParticipant.entityInstanceId),
+          }),
+          threadId: thread.id,
+          integrationId: messageData.integrationId,
+          ...(inboxIdForChannel && { inboxId: inboxIdForChannel }),
+          subject: messageData.subject ?? undefined,
+          from: senderParticipant.identifier,
+          snippet: messageData.snippet ?? undefined,
+          ...(machineMailResult && { machineMail: machineMailResult }),
+          ...(ownEcho && { ownEcho }),
+          ...(fromOwnAddress && { fromOwnAddress: true as const }),
+        },
+      } as MessageReceivedEvent)
     }
 
     ctx.logger.info('Message stored successfully (Revised Schema v2)', {
