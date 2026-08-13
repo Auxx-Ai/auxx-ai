@@ -49,6 +49,36 @@ export function getTargetsFromHandle(
 }
 
 /**
+ * Find the edge a failed node should route to, if any.
+ *
+ * Preference order:
+ * 1. The handle the processor emitted on failure (e.g. 'fail'), which matches
+ *    what the builder renders and persists for wired fail branches.
+ * 2. The legacy 'onError' handle, kept for back-compat with older graphs.
+ *
+ * The default 'source' handle is deliberately excluded — a failed node must
+ * never route down its success path. Returns undefined when no failure edge
+ * is wired (caller should treat the failure as fatal, as before).
+ */
+export function findFailureEdge(
+  workflow: Workflow,
+  nodeId: string,
+  outputHandle?: string
+): WorkflowEdge | undefined {
+  const edges = workflow.graph?.edges
+  if (!edges) return undefined
+
+  if (outputHandle && outputHandle !== 'source') {
+    const emittedEdge = edges.find(
+      (edge) => edge.source === nodeId && edge.sourceHandle === outputHandle
+    )
+    if (emittedEdge) return emittedEdge
+  }
+
+  return edges.find((edge) => edge.source === nodeId && edge.sourceHandle === 'onError')
+}
+
+/**
  * Get next node IDs based on node execution result and output handle
  *
  * All nodes return a single outputHandle (not the plural outputHandles array).

@@ -427,8 +427,10 @@ export class HttpProcessor extends BaseNodeProcessor {
       if (config.error_strategy === 'none') {
         return {
           status: NodeRunningStatus.Succeeded,
+          // Continue on error: 'none' renders no fail handle in the builder, so
+          // execution proceeds down the success path with the error as output.
           output: { error: errorMessage, status: 0 },
-          outputHandle: 'error', // Error output handle
+          outputHandle: 'source',
         }
       } else if (config.error_strategy === 'default' && config.default_value.length > 0) {
         const defaultValues = await this.processDefaultValues(config.default_value, contextManager)
@@ -441,11 +443,12 @@ export class HttpProcessor extends BaseNodeProcessor {
         }
       }
 
-      // Default: fail
+      // Default: fail — 'fail' is the handle the builder renders and persists
+      // for the Fail Branch, so the engine can route to a wired handler.
       return {
         status: NodeRunningStatus.Failed,
         error: errorMessage,
-        outputHandle: 'error', // Error output handle
+        outputHandle: 'fail',
       }
     }
   }

@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/core/loop-execution-manager.ts
 
 import type { ExecutionContextManager } from './execution-context'
-import { findNodeById, getTargetsFromHandle } from './graph-navigation'
+import { findFailureEdge, findNodeById, getTargetsFromHandle } from './graph-navigation'
 import type { LoopProgressUpdate } from './loop-progress-tracker'
 import type {
   NodeExecutionResult,
@@ -305,10 +305,8 @@ export class LoopExecutionManager {
 
       // Handle node failure
       if (result.status === NodeRunningStatus.Failed) {
-        // Check for error handling using edges
-        const errorEdge = workflow.graph?.edges?.find(
-          (edge) => edge.source === currentNode!.nodeId && edge.sourceHandle === 'onError'
-        )
+        // Route to a wired fail branch (emitted handle first, legacy 'onError' fallback)
+        const errorEdge = findFailureEdge(workflow, currentNode.nodeId, result.outputHandle)
 
         if (errorEdge) {
           const errorNode = findNodeById(workflow, errorEdge.target)

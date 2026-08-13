@@ -23,7 +23,7 @@ import {
 import { ExecutionContextManager } from './execution-context'
 import { ExecutionTrackingManager } from './execution-tracking'
 import { calculateTotalTokens } from './execution-utils'
-import { findEntryNode, findNodeById, getNextNodeIds } from './graph-navigation'
+import { findEntryNode, findFailureEdge, findNodeById, getNextNodeIds } from './graph-navigation'
 import {
   type BranchArrivalStatus,
   JoinExecutionManager,
@@ -512,15 +512,15 @@ export class WorkflowEngine {
         break
       }
       if (result.status === NodeRunningStatus.Failed) {
-        // Check for error handling using edges
-        const errorEdge = workflow.graph?.edges?.find(
-          (edge) => edge.source === currentNode!.nodeId && edge.sourceHandle === 'onError'
-        )
+        // Route to a wired fail branch (emitted handle first, legacy 'onError' fallback)
+        const errorEdge = findFailureEdge(workflow, currentNode.nodeId, result.outputHandle)
         if (errorEdge) {
           const errorNode = findNodeById(workflow, errorEdge.target)
           if (errorNode) {
             currentNode = errorNode
-            contextManager.log('INFO', currentNode.name, 'Moving to error handler node')
+            contextManager.log('INFO', currentNode.name, 'Moving to error handler node', {
+              failureHandle: errorEdge.sourceHandle,
+            })
             continue
           }
         }
