@@ -1,5 +1,10 @@
 // packages/lib/src/workflow-engine/nodes/flow-nodes/end.ts
 
+/**
+ * End node configuration — the message/status subset of the catalog's
+ * `EndNodeData` (node-catalog Phase 1; this file previously shadowed it).
+ */
+import type { EndNodeData } from '../../catalog/nodes/end'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -16,17 +21,7 @@ import {
 } from '../../types/content-segment'
 import { BaseNodeProcessor } from '../base-node'
 
-/**
- * End node configuration interface
- * Minimal configuration for workflow termination
- */
-interface EndNodeConfig {
-  /** Message to display when workflow ends */
-  message?: string
-
-  /** Status of workflow completion */
-  status?: 'success' | 'error'
-}
+type EndNodeConfig = Pick<EndNodeData, 'message' | 'status'>
 
 /**
  * Flow control node that explicitly ends workflow execution

@@ -1,5 +1,8 @@
 // packages/lib/src/workflow-engine/catalog/registry.ts
 
+import { endManifest } from './nodes/end'
+import { noteManifest } from './nodes/note'
+import { varAssignManifest } from './nodes/var-assign'
 import { waitManifest } from './nodes/wait'
 import type { NodeManifest } from './types'
 
@@ -14,7 +17,12 @@ import type { NodeManifest } from './types'
  * builder's `NodeType` enum, so migrating a type is always an explicit
  * two-file change: add the manifest here, delete the list entry.
  */
-const ALL_MANIFESTS: NodeManifest<any>[] = [waitManifest]
+const ALL_MANIFESTS: NodeManifest<any>[] = [
+  endManifest,
+  noteManifest,
+  varAssignManifest,
+  waitManifest,
+]
 
 const manifests = new Map<string, NodeManifest<any>>(ALL_MANIFESTS.map((m) => [m.id, m]))
 if (manifests.size !== ALL_MANIFESTS.length) {
