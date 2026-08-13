@@ -851,6 +851,12 @@ export class WorkflowGraphBuilder {
 }
 
 /**
+ * Output handles that signal a failure/error outcome. Used to log loudly when
+ * such a handle has no wired edge and routing falls back to the success path.
+ */
+const ERROR_LIKE_HANDLES = new Set(['fail', 'error', 'onError'])
+
+/**
  * Helper functions for working with the workflow graph
  */
 export class WorkflowGraphHelper {
@@ -880,11 +886,25 @@ export class WorkflowGraphHelper {
     // Fallback to 'source' if specific handle not found
     if (!route && outputHandle !== 'source') {
       route = routeInfo.routes.get('source')
-      logger.debug('Fallback to source handle', {
-        nodeId,
-        originalHandle: outputHandle,
-        foundSourceRoute: !!route,
-      })
+      if (ERROR_LIKE_HANDLES.has(outputHandle)) {
+        // A succeeded result carrying an error-ish handle with no wired edge
+        // continues down the success path (e.g. http error_strategy 'none').
+        // Log loudly so this never silently masks a mis-wired fail branch.
+        // Failed results never reach this fallback — the engine routes them
+        // via findFailureEdge before consulting getNextNodes.
+        logger.warn('Unmatched error-ish output handle falling back to success path', {
+          nodeId,
+          originalHandle: outputHandle,
+          availableRoutes: Array.from(routeInfo.routes.keys()),
+          foundSourceRoute: !!route,
+        })
+      } else {
+        logger.debug('Fallback to source handle', {
+          nodeId,
+          originalHandle: outputHandle,
+          foundSourceRoute: !!route,
+        })
+      }
     }
 
     const result = route?.targetNodes || []

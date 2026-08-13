@@ -626,6 +626,81 @@ describe('LoopExecutionManager', () => {
         )
       ).rejects.toThrow('Node body-1 failed within loop')
     })
+
+    it('should route a failed body node to its wired fail branch', async () => {
+      const loopNode = createNode('loop-1', WorkflowNodeType.LOOP, 'Test Loop')
+      const bodyNode = createNode('body-1', WorkflowNodeType.CODE, 'Body Node')
+      const handlerNode = createNode('handler-1', WorkflowNodeType.CODE, 'Fail Handler')
+
+      const workflowWithFailBranch = {
+        ...mockWorkflow,
+        nodes: [loopNode, bodyNode, handlerNode],
+        graph: {
+          nodes: [loopNode, bodyNode, handlerNode],
+          edges: [
+            {
+              id: 'e1',
+              source: 'loop-1',
+              target: 'body-1',
+              sourceHandle: 'loop-start',
+              targetHandle: 'target',
+            },
+            {
+              id: 'e2',
+              source: 'body-1',
+              target: 'handler-1',
+              sourceHandle: 'fail',
+              targetHandle: 'target',
+            },
+            {
+              id: 'e3',
+              source: 'handler-1',
+              target: 'loop-1',
+              sourceHandle: 'source',
+              targetHandle: 'loop-back',
+            },
+          ],
+        },
+      }
+
+      executeNodeCallback.mockImplementation(async (node: WorkflowNode) => {
+        if (node.nodeId === 'body-1') {
+          return {
+            nodeId: node.nodeId,
+            status: NodeRunningStatus.Failed,
+            error: 'boom',
+            outputHandle: 'fail',
+            executionTime: 50,
+          }
+        }
+        return {
+          nodeId: node.nodeId,
+          status: NodeRunningStatus.Succeeded,
+          output: { handled: true },
+          executionTime: 50,
+        }
+      })
+
+      const mockProcessor: LoopProcessorMock = {
+        preprocessNode: vi.fn().mockResolvedValue({}),
+        execute: vi.fn().mockImplementation(async () => {
+          return await runLoopBody(mockProcessor, loopNode, contextManager)
+        }),
+      }
+
+      const options: WorkflowExecutionOptions = {}
+
+      await manager.setupLoopExecution(
+        loopNode,
+        mockProcessor,
+        contextManager,
+        options,
+        workflowWithFailBranch
+      )
+
+      expect(executeNodeCallback).toHaveBeenCalledWith(bodyNode, contextManager, options)
+      expect(executeNodeCallback).toHaveBeenCalledWith(handlerNode, contextManager, options)
+    })
   })
 
   describe('isLoopBackConnection', () => {
