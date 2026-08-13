@@ -58,7 +58,7 @@ export const NOT_YET_MIGRATED: readonly string[] = [
   'note',
   // Control nodes
   'end',
-  'wait',
+  // 'wait' — migrated (catalog/nodes/wait.ts)
   'loop',
   'human-confirmation',
 ] as const

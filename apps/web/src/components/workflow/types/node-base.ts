@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/types/node-base.ts
 
+import type { CatalogBaseNodeData } from '@auxx/lib/workflow-engine/client'
 import { NodeRunningStatus } from '@auxx/lib/workflow-engine/client'
 import type {
   CoordinateExtent,
@@ -8,29 +9,24 @@ import type {
   Node as ReactFlowNode,
   XYPosition,
 } from '@xyflow/react'
-import { z } from 'zod'
 import type { NodeType } from './node-types'
 
 // Re-export for convenience
 export { NodeRunningStatus }
 
-/**
- * Error handling strategy
- */
-export enum ErrorHandleType {
-  Continue = 'continue',
-  Stop = 'stop',
-  Retry = 'retry',
-}
-
-/**
- * Workflow retry configuration
- */
-export interface WorkflowRetryConfig {
-  maxRetries: number
-  retryInterval: number
-  backoffMultiplier?: number
-}
+// The pure half of this module (base data shape, its zod schema, the error
+// and runtime-state types) moved to lib with the node catalog
+// (`@auxx/lib/workflow-engine/catalog/node-base`); re-exported here so no web
+// import churns. This file keeps the React Flow node/edge types and a
+// `BaseNodeData` that narrows `type` to the web `NodeType` enum.
+export {
+  baseNodeDataSchema,
+  ErrorHandleType,
+  type NodeConnectionMetadata,
+  type NodeLoopContext,
+  type NodeRuntimeState,
+  type WorkflowRetryConfig,
+} from '@auxx/lib/workflow-engine/client'
 
 /**
  * Base configuration that all node configs must extend
@@ -42,87 +38,12 @@ export interface BaseNodeConfig {
 }
 
 /**
- * Connection tracking metadata
- * Properties from ui/node-handle/types.ts
+ * Base data structure for all workflow nodes.
+ * The field set lives in lib (`CatalogBaseNodeData`); this narrows `type`
+ * from `string` to the web `NodeType` enum.
  */
-export interface NodeConnectionMetadata {
-  _connectedSourceHandleIds?: string[]
-  _connectedTargetHandleIds?: string[]
-}
-
-/**
- * Runtime/UI state properties for nodes
- */
-export interface NodeRuntimeState extends NodeConnectionMetadata {
-  // Selection and UI state
-  _isBundled?: boolean
-  _inParallelHovering?: boolean
-  _isEntering?: boolean
-  _isCandidate?: boolean
-  collapsed?: boolean // Collapsed state for visual compaction
-
-  // Execution state
-  _runningStatus?: NodeRunningStatus
-  _waitingRun?: boolean
-  _singleRun?: boolean
-  _singleRunningStatus?: NodeRunningStatus
-  _runningBranchId?: string
-  _retryIndex?: number
-
-  // Container relationships
-  _children?: { nodeId: string; nodeType: string }[]
-}
-
-/**
- * Loop/iteration context for nodes
- */
-export interface NodeLoopContext {
-  isInLoop?: boolean
-  loopId?: string
-  isInIteration?: boolean
-  iterationId?: string
-  _iterationLength?: number
-  _iterationIndex?: number
-  _loopLength?: number
-  _loopIndex?: number
-}
-
-/**
- * Base data structure for all workflow nodes
- * Consolidates properties from multiple locations
- */
-export interface BaseNodeData extends NodeRuntimeState, NodeLoopContext {
-  // Core properties
-  id: string
+export interface BaseNodeData extends CatalogBaseNodeData {
   type: NodeType
-  title: string
-  desc?: string
-  description?: string // Alias for desc
-
-  // Visual properties
-  icon?: string
-  color?: string
-
-  // Validation state
-  isValid?: boolean
-  errors?: string[]
-  disabled?: boolean
-
-  // Output tracking
-  outputVariables?: string[]
-
-  // Credential connection
-  credentialId?: string | null
-
-  // Error handling
-  errorStrategy?: ErrorHandleType
-  retryConfig?: WorkflowRetryConfig
-
-  // Selection state (from NodeHandleProps)
-  selected: boolean
-
-  // Additional properties for React Flow compatibility
-  [key: string]: any
 }
 
 /**
@@ -267,67 +188,3 @@ export type SpecificNode<TType extends string, TData extends BaseNodeData> = {
       ? TData & { id: string; _inParallelHovering?: boolean }
       : CommonNodeType<TData>[K]
 }
-
-/**
- * Zod schema for base node data
- * This schema includes all common fields that every node should have
- */
-export const baseNodeDataSchema = z.object({
-  // Core properties
-  id: z.string(),
-  type: z.string() as unknown as z.ZodType<NodeType>,
-  title: z.string(),
-  desc: z.string().optional(),
-  description: z.string().optional(), // Alias for desc
-
-  // Visual properties
-  icon: z.string().optional(),
-  color: z.string().optional(),
-
-  // Validation state
-  isValid: z.boolean().optional(),
-  errors: z.array(z.string()).optional(),
-  disabled: z.boolean().optional(),
-
-  // Output tracking
-  outputVariables: z.array(z.string()).optional(),
-
-  // Error handling
-  errorStrategy: z.enum(ErrorHandleType).optional(),
-  retryConfig: z
-    .object({
-      maxRetries: z.number(),
-      retryInterval: z.number(),
-      backoffMultiplier: z.number().optional(),
-    })
-    .optional(),
-
-  // Selection state
-  selected: z.boolean().default(false),
-
-  // Runtime state properties (all optional)
-  _isBundled: z.boolean().optional(),
-  _inParallelHovering: z.boolean().optional(),
-  _isEntering: z.boolean().optional(),
-  _isCandidate: z.boolean().optional(),
-  _runningStatus: z.enum(NodeRunningStatus).optional(),
-  _waitingRun: z.boolean().optional(),
-  _singleRun: z.boolean().optional(),
-  _singleRunningStatus: z.enum(NodeRunningStatus).optional(),
-  _runningBranchId: z.string().optional(),
-  _retryIndex: z.number().optional(),
-  _children: z.array(z.object({ nodeId: z.string(), nodeType: z.string() })).optional(),
-  _connectedSourceHandleIds: z.array(z.string()).optional(),
-  _connectedTargetHandleIds: z.array(z.string()).optional(),
-  collapsed: z.boolean().optional(),
-
-  // Loop context
-  isInLoop: z.boolean().optional(),
-  loopId: z.string().optional(),
-  isInIteration: z.boolean().optional(),
-  iterationId: z.string().optional(),
-  _iterationLength: z.number().optional(),
-  _iterationIndex: z.number().optional(),
-  _loopLength: z.number().optional(),
-  _loopIndex: z.number().optional(),
-})

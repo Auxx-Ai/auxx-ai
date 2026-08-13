@@ -1,105 +1,15 @@
 // apps/web/src/components/workflow/nodes/core/wait/schema.ts
 
-import { WAIT_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
-import { z } from 'zod'
-import {
-  NodeCategory,
-  type NodeDefinition,
-  type ValidationResult,
-} from '~/components/workflow/types'
-import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
-import { NodeType } from '~/components/workflow/types/node-types'
+import { type NodeManifest, waitManifest } from '@auxx/lib/workflow-engine/client'
+import type { NodeDefinition } from '~/components/workflow/types'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { defineFromManifest } from '../../define-from-manifest'
 import { BaseType } from '../if-else'
-import { DurationUnit, type WaitNodeData, WaitType } from './types'
+import type { WaitNodeData } from './types'
 
-/**
- * Zod schema for wait node data
- */
-export const waitNodeDataSchema = baseNodeDataSchema
-  .extend({
-    waitType: z.enum(WaitType),
-    durationAmount: z
-      .union([
-        z.number().min(WAIT_CONSTANTS.DURATION.MIN).max(WAIT_CONSTANTS.DURATION.MAX),
-        z.string(),
-        z.object({ id: z.string(), nodeId: z.string().optional(), path: z.string() }), // UnifiedVariable
-      ])
-      .optional(),
-    isDurationConstant: z.boolean().default(true),
-    durationUnit: z.enum(DurationUnit).optional(),
-    time: z
-      .union([
-        z.string(),
-        z.object({ id: z.string(), nodeId: z.string().optional(), path: z.string() }), // UnifiedVariable
-      ])
-      .optional(),
-    isTimeConstant: z.boolean().default(true),
-    timezone: z.string().optional(),
-  })
-  .refine(
-    (data) => {
-      if (data.waitType === WaitType.DURATION) {
-        return data.durationAmount !== undefined && data.durationUnit !== undefined
-      }
-      return data.time !== undefined
-    },
-    { message: 'Required fields missing for selected wait type' }
-  )
-
-/**
- * Default configuration for new wait nodes
- */
-export const waitDefaultData: Partial<WaitNodeData> = {
-  title: 'Wait',
-  description: '',
-  waitType: WaitType.DURATION,
-  durationAmount: 5,
-  isDurationConstant: true,
-  durationUnit: DurationUnit.SECONDS,
-  time: undefined,
-  isTimeConstant: true,
-}
-
-/**
- * Validation function for wait configuration
- */
-export const validateWaitConfig = (data: WaitNodeData): ValidationResult => {
-  const errors: Array<{ field: string; message: string; type?: 'warning' | 'error' }> = []
-
-  // Validate title
-  if (!data.title?.trim()) {
-    errors.push({ field: 'title', message: 'Title is required', type: 'error' })
-  }
-
-  // Validate wait type
-  if (!data.waitType) {
-    errors.push({ field: 'waitType', message: 'Wait type is required', type: 'error' })
-  } else if (data.waitType === WaitType.DURATION) {
-    // Validate duration-based wait
-    if (!data.durationAmount) {
-      errors.push({
-        field: 'durationAmount',
-        message: 'Duration amount is required',
-        type: 'error',
-      })
-    }
-    if (!data.durationUnit) {
-      errors.push({ field: 'durationUnit', message: 'Duration unit is required', type: 'error' })
-    }
-  } else if (data.waitType === WaitType.SPECIFIC_TIME) {
-    // Validate specific time wait
-    if (!data.time) {
-      errors.push({
-        field: 'time',
-        message: 'Time is required for specific time wait',
-        type: 'error',
-      })
-    }
-  }
-
-  return { isValid: errors.filter((e) => e.type === 'error').length === 0, errors }
-}
+// The data half (enums, data interface, zod schema, defaults, validator)
+// lives in the node catalog (`@auxx/lib/workflow-engine/catalog/nodes/wait`).
+// This file is the merge site: manifest + the web-only output resolver.
 
 /**
  * Get output variables for wait node.
@@ -138,19 +48,21 @@ const getWaitOutputVariables = (_data: WaitNodeData, nodeId: string): any[] => [
 ]
 
 /**
- * Wait node definition
+ * Wait node definition.
+ *
+ * The cast bridges lib's `type: string` to the web `NodeType` narrowing —
+ * safe because the manifest's defaults never set `type` (the node factory
+ * assigns identity).
  */
-export const waitDefinition: NodeDefinition<WaitNodeData> = {
-  id: NodeType.WAIT,
-  category: NodeCategory.UTILITY,
-  displayName: 'Wait',
-  description: 'Pause workflow execution for a specified duration',
-  icon: 'clock',
-  color: '#3B82F6', // UTILITY category color
-  defaultData: waitDefaultData,
-  schema: waitNodeDataSchema,
-  validator: validateWaitConfig,
-  canRunSingle: true,
-  extractVariables: () => [], // Wait node doesn't use any variables
-  outputVariables: getWaitOutputVariables,
-}
+export const waitDefinition: NodeDefinition<WaitNodeData> = defineFromManifest(
+  waitManifest as unknown as NodeManifest<WaitNodeData>,
+  { outputVariables: getWaitOutputVariables }
+)
+
+// Back-compat re-exports so no panel or consumer import churns:
+export { validateWaitConfig, waitNodeDataSchema } from '@auxx/lib/workflow-engine/client'
+
+/**
+ * Default configuration for new wait nodes
+ */
+export const waitDefaultData = waitManifest.defaultData() as Partial<WaitNodeData>

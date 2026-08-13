@@ -70,6 +70,23 @@ export * from './utils/terminal-nodes'
 // NOTE: Operator definitions moved to @auxx/lib/conditions
 // Import OPERATOR_DEFINITIONS, Operator, etc. from '@auxx/lib/conditions' or '@auxx/lib/conditions/client'
 
+export {
+  type BaseNodeData as CatalogBaseNodeData,
+  baseNodeDataSchema,
+  ErrorHandleType,
+  type NodeConnectionMetadata,
+  type NodeLoopContext,
+  type NodeRuntimeState,
+  type WorkflowRetryConfig,
+} from './catalog/node-base'
+export {
+  DurationUnit,
+  validateWaitConfig,
+  type WaitNodeData as CatalogWaitNodeData,
+  WaitType,
+  waitManifest,
+  waitNodeDataSchema,
+} from './catalog/nodes/wait'
 // ── Node catalog (Phase 1 of the node-catalog migration) ─────────────────────
 // The server-safe node contract: manifest types, the registry, the migration
 // tracker, and the pure variable-inference helpers split out of apps/web
@@ -79,7 +96,6 @@ export {
   getAuthorableManifests,
   getManifest,
   listManifests,
-  registerManifest,
 } from './catalog/registry'
 export {
   type NodeAgentDocs,

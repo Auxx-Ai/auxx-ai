@@ -1,26 +1,24 @@
 // packages/lib/src/workflow-engine/catalog/registry.ts
 
+import { waitManifest } from './nodes/wait'
 import type { NodeManifest } from './types'
 
 /**
- * The catalog registry — a plain module-level map, no class (lib-module
- * convention). Node manifests register themselves at module load via
- * `registerManifest`; consumers read through `getManifest` / `listManifests`.
+ * The catalog registry — a plain module-level map built from an explicit
+ * manifest list, no class and no registration side effects (import order can
+ * never change what's registered).
  *
  * Migration discipline: a node type lives EITHER here or on the
  * `NOT_YET_MIGRATED` list (`not-yet-migrated.ts`) — never both, never
  * neither. The catalog coverage test asserts exact set equality against the
  * builder's `NodeType` enum, so migrating a type is always an explicit
- * two-file change: register the manifest, delete the list entry.
+ * two-file change: add the manifest here, delete the list entry.
  */
-const manifests = new Map<string, NodeManifest<any>>()
+const ALL_MANIFESTS: NodeManifest<any>[] = [waitManifest]
 
-/** Register a node manifest. Throws on duplicate ids — two declarations of one type is the drift this catalog exists to end. */
-export function registerManifest(manifest: NodeManifest<any>): void {
-  if (manifests.has(manifest.id)) {
-    throw new Error(`Node manifest already registered for type "${manifest.id}"`)
-  }
-  manifests.set(manifest.id, manifest)
+const manifests = new Map<string, NodeManifest<any>>(ALL_MANIFESTS.map((m) => [m.id, m]))
+if (manifests.size !== ALL_MANIFESTS.length) {
+  throw new Error('Duplicate node manifest id in ALL_MANIFESTS')
 }
 
 /** Look up one node type's manifest. Undefined ⇒ not yet migrated (check `NOT_YET_MIGRATED`). */
