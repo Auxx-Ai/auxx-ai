@@ -25,9 +25,12 @@ import type {
   WrapConfig,
 } from '../../constants'
 import { DEFAULT_OPERATION, FormatOperation } from '../../constants'
+import { BaseType } from '../../core/types'
 import { extractVariableRefs } from '../../nodes/utils/variable-refs'
+import type { UnifiedVariable } from '../../types/unified-variable'
 import type { BaseNodeData } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 import { extractVarIdsFromString } from '../variable-inference'
 
 /** Main node data */
@@ -191,6 +194,41 @@ export function extractFormatVariables(data: Partial<FormatNodeData>): string[] 
 }
 
 /**
+ * Compute output variables for the format node.
+ * All operations output STRING except `split` which outputs ARRAY.
+ */
+export function computeFormatOutputVariables(
+  data: FormatNodeData,
+  nodeId: string
+): UnifiedVariable[] {
+  if (data.operation === FormatOperation.SPLIT) {
+    return [
+      createUnifiedOutputVariable({
+        nodeId,
+        path: 'result',
+        type: BaseType.ARRAY,
+        description: 'Split result array',
+        items: {
+          id: `${nodeId}.result[*]`,
+          type: BaseType.STRING,
+          label: 'Item',
+          category: 'node',
+        },
+      }),
+    ]
+  }
+
+  return [
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'result',
+      type: BaseType.STRING,
+      description: `Formatted result (${data.operation})`,
+    }),
+  ]
+}
+
+/**
  * Format node manifest
  */
 export const formatManifest: NodeManifest<FormatNodeData> = {
@@ -209,6 +247,7 @@ export const formatManifest: NodeManifest<FormatNodeData> = {
   configSchema: formatNodeSchema as unknown as z.ZodType<FormatNodeData>,
   validate: validateFormatNodeData,
   extractVariables: extractFormatVariables,
+  resolveOutputs: computeFormatOutputVariables,
   connection: {
     canRunSingle: true,
   },

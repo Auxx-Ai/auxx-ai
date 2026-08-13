@@ -1,9 +1,11 @@
 // packages/lib/src/workflow-engine/catalog/nodes/manual.ts
 
 import { z } from 'zod'
-import { WorkflowTriggerType } from '../../core/types'
+import { BaseType, WorkflowTriggerType } from '../../core/types'
+import type { UnifiedVariable } from '../../types/unified-variable'
 import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 
 /**
  * Manual trigger node data interface
@@ -38,6 +40,47 @@ export function validateManualData(data: ManualNodeData): NodeValidationResult {
 }
 
 /**
+ * Define output variables for manual trigger node
+ */
+function getManualOutputVariables(data: ManualNodeData, nodeId: string): UnifiedVariable[] {
+  const variables: UnifiedVariable[] = []
+
+  // Add trigger timestamp
+  variables.push(
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'timestamp',
+      type: BaseType.DATETIME,
+      description: 'When the workflow was manually triggered',
+    })
+  )
+
+  // Add user ID who triggered
+  variables.push(
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'userId',
+      type: BaseType.STRING,
+      description: 'ID of the user who triggered the workflow',
+    })
+  )
+
+  // Add input data if there are connected input nodes
+  if (data.inputNodes && data.inputNodes.length > 0) {
+    variables.push(
+      createUnifiedOutputVariable({
+        nodeId,
+        path: 'inputs',
+        type: BaseType.OBJECT,
+        description: 'Data collected from connected input nodes',
+      })
+    )
+  }
+
+  return variables
+}
+
+/**
  * Manual trigger node manifest.
  * Note: the trigger-column derivation maps `manual` to `TriggerType.FORM`
  * (not MANUAL) — see use-workflow-save.ts; `triggerType` here is the
@@ -58,6 +101,7 @@ export const manualManifest: NodeManifest<ManualNodeData> = {
   }),
   configSchema: manualNodeDataSchema as unknown as z.ZodType<ManualNodeData>,
   validate: validateManualData,
+  resolveOutputs: getManualOutputVariables,
   connection: {
     canRunSingle: false, // Triggers cannot be run individually
     acceptsInputNodes: true, // This node accepts input-node connections

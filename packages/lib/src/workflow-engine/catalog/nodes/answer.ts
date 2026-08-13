@@ -1,8 +1,10 @@
 // packages/lib/src/workflow-engine/catalog/nodes/answer.ts
 
 import { z } from 'zod'
+import { BaseType } from '../../core/types'
 import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 import { extractVarIdsFromString } from '../variable-inference'
 
 /**
@@ -186,6 +188,62 @@ export function extractAnswerVariables(data: AnswerNodeData): string[] {
 }
 
 /**
+ * Define output variables for answer node
+ */
+const getAnswerOutputVariables = (_data: AnswerNodeData, nodeId: string): any[] => {
+  return [
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'sent',
+      type: BaseType.BOOLEAN,
+      description: 'Whether the message was sent successfully',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'message_id',
+      type: BaseType.STRING,
+      description: 'ID of the sent message',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'thread_id',
+      type: BaseType.STRING,
+      description: 'ID of the email thread',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'timestamp',
+      type: BaseType.DATETIME,
+      description: 'Timestamp when the message was sent',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'integration_id',
+      type: BaseType.STRING,
+      description: 'ID of the integration used to send',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'message_type',
+      type: BaseType.STRING,
+      description: 'Type of message sent (new, reply, or replyAll)',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'is_draft',
+      type: BaseType.BOOLEAN,
+      description: 'Whether the message was saved as draft',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'draft_id',
+      type: BaseType.STRING,
+      description: 'Draft ID (empty if sent directly)',
+    }),
+  ]
+}
+
+/**
  * Answer node manifest
  */
 export const answerManifest: NodeManifest<AnswerNodeData> = {
@@ -219,6 +277,7 @@ export const answerManifest: NodeManifest<AnswerNodeData> = {
   configSchema: answerNodeDataSchema as unknown as z.ZodType<AnswerNodeData>,
   validate: validateAnswerConfig,
   extractVariables: extractAnswerVariables,
+  resolveOutputs: getAnswerOutputVariables,
   connection: {
     canRunSingle: true,
   },

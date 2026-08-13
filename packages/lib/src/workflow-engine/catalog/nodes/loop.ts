@@ -8,6 +8,7 @@ import {
   type NodeManifest,
   type NodeValidationResult,
 } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 import { extractVarIdsFromString } from '../variable-inference'
 
 export const LOOP_CONSTANTS = {
@@ -112,6 +113,58 @@ export function extractLoopVariables(data: Partial<LoopNodeData>): string[] {
 }
 
 /**
+ * Define output variables for the loop node
+ */
+function getLoopOutputVariables(data: Partial<LoopNodeData>, nodeId: string) {
+  const outputs = []
+
+  // Loop metadata outputs
+  outputs.push(
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'totalIterations',
+      type: 'number' as any,
+      description: 'Total number of iterations executed',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'completedIterations',
+      type: 'number' as any,
+      description: 'Number of iterations completed',
+    })
+  )
+
+  // Results based on accumulation setting
+  if (data.accumulateResults) {
+    outputs.push(
+      createUnifiedOutputVariable({
+        nodeId,
+        path: 'results',
+        type: 'array' as any,
+        description: 'Accumulated results from all iterations',
+      }),
+      createUnifiedOutputVariable({
+        nodeId,
+        path: 'lastResult',
+        type: 'any' as any,
+        description: 'Result from the last iteration',
+      })
+    )
+  } else {
+    outputs.push(
+      createUnifiedOutputVariable({
+        nodeId,
+        path: 'result',
+        type: 'any' as any,
+        description: 'Result from the last iteration',
+      })
+    )
+  }
+
+  return outputs
+}
+
+/**
  * Loop node manifest
  */
 export const loopManifest: NodeManifest<LoopNodeData> = {
@@ -132,6 +185,7 @@ export const loopManifest: NodeManifest<LoopNodeData> = {
   configSchema: loopConfigSchema as unknown as z.ZodType<LoopNodeData>,
   validate: validateLoop,
   extractVariables: extractLoopVariables,
+  resolveOutputs: getLoopOutputVariables,
   connection: {
     canRunSingle: false, // Loops need context, can't run in isolation
     /**

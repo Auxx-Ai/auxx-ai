@@ -1,8 +1,10 @@
 // packages/lib/src/workflow-engine/catalog/nodes/end.ts
 
 import { z } from 'zod'
+import { BaseType } from '../../core/types'
 import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 import { extractVarIdsFromString } from '../variable-inference'
 
 /**
@@ -58,6 +60,26 @@ export const validateEndConfig = (data: EndNodeData): NodeValidationResult => {
 }
 
 /**
+ * Define output variables for the end/output node
+ */
+const getEndOutputVariables = (_data: Partial<EndNodeData>, nodeId: string) => {
+  return [
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'message',
+      type: BaseType.STRING,
+      description: 'The output message',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'status',
+      type: BaseType.STRING,
+      description: 'The output status (success or error)',
+    }),
+  ]
+}
+
+/**
  * End node manifest
  */
 export const endManifest: NodeManifest<EndNodeData> = {
@@ -76,6 +98,7 @@ export const endManifest: NodeManifest<EndNodeData> = {
   configSchema: endNodeDataSchema as unknown as z.ZodType<EndNodeData>,
   validate: validateEndConfig,
   extractVariables: extractEndVariables,
+  resolveOutputs: getEndOutputVariables,
   connection: {
     canRunSingle: true,
   },

@@ -1,9 +1,11 @@
 // packages/lib/src/workflow-engine/catalog/nodes/scheduled.ts
 
 import { z } from 'zod'
-import { WorkflowTriggerType } from '../../core/types'
+import { BaseType, WorkflowTriggerType } from '../../core/types'
+import type { UnifiedVariable } from '../../types/unified-variable'
 import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 
 /**
  * Frontend-facing interface that matches user requirements
@@ -171,6 +173,74 @@ export function extractScheduledTriggerVariables(data: ScheduledTriggerNodeData)
 }
 
 /**
+ * Define output variables for scheduled trigger node
+ */
+function getScheduledTriggerOutputVariables(
+  data: ScheduledTriggerNodeData,
+  nodeId: string
+): UnifiedVariable[] {
+  const variables: UnifiedVariable[] = []
+
+  // Triggered at timestamp
+  variables.push(
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'triggered_at',
+      type: BaseType.STRING,
+      description: 'ISO timestamp when the scheduled trigger was executed',
+    })
+  )
+
+  // Schedule type
+  variables.push(
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'schedule_type',
+      type: BaseType.STRING,
+      // Vocabulary defined once, engine-side, in `SCHEDULE_KINDS`
+      // (`packages/lib/src/workflow-engine/nodes/trigger-nodes/scheduled.ts`).
+      // This is the kind of schedule, never the interval unit — the unit is
+      // published separately as `interval_config.unit`.
+      description: "Kind of schedule this trigger runs on: 'interval' or 'cron'",
+    })
+  )
+
+  // Test run indicator
+  variables.push(
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'is_test_run',
+      type: BaseType.BOOLEAN,
+      description: 'Whether this is a manual test run or actual scheduled execution',
+    })
+  )
+
+  // Schedule configuration
+  if (data.config.triggerInterval === 'custom') {
+    variables.push(
+      createUnifiedOutputVariable({
+        nodeId,
+        path: 'cron_expression',
+        type: BaseType.STRING,
+        description: 'The cron expression used for scheduling',
+      })
+    )
+  } else {
+    variables.push(
+      createUnifiedOutputVariable({
+        nodeId,
+        path: 'interval_config',
+        type: BaseType.OBJECT,
+        description:
+          "The interval used for scheduling: `{ unit, value }`, where `unit` is 'minutes' | 'hours' | 'days' | 'weeks'",
+      })
+    )
+  }
+
+  return variables
+}
+
+/**
  * Scheduled trigger node manifest
  */
 export const scheduledTriggerManifest: NodeManifest<ScheduledTriggerNodeData> = {
@@ -192,6 +262,7 @@ export const scheduledTriggerManifest: NodeManifest<ScheduledTriggerNodeData> = 
   configSchema: scheduledTriggerNodeDataSchema as unknown as z.ZodType<ScheduledTriggerNodeData>,
   validate: validateScheduledTriggerData,
   extractVariables: extractScheduledTriggerVariables,
+  resolveOutputs: getScheduledTriggerOutputVariables,
   connection: {
     canRunSingle: false,
   },

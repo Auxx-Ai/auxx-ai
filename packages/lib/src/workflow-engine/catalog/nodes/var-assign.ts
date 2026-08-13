@@ -3,8 +3,10 @@
 import { generateId } from '@auxx/utils/generateId'
 import { z } from 'zod'
 import { BaseType } from '../../core/types'
+import type { UnifiedVariable } from '../../types/unified-variable'
 import type { BaseNodeData } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 import { extractVarIdsFromString } from '../variable-inference'
 
 /**
@@ -166,6 +168,45 @@ export function extractVarAssignVariables(data: VarAssignNodeData): string[] {
 }
 
 /**
+ * Get output variables for this node
+ */
+function getVarAssignOutputVariables(data: VarAssignNodeData, nodeId: string): UnifiedVariable[] {
+  // Support both old config format and new flattened format
+  const variables = 'config' in data ? (data as any).config.variables : data.variables
+
+  return variables
+    .filter((v: VariableAssignment) => v.name.trim())
+    .map((variable: VariableAssignment) => {
+      // Generate description based on type and isArray
+      const typeDescription = variable.isArray ? `Array of ${variable.type}` : variable.type
+
+      // The engine writes an array for `isArray` assignments — advertise it as one, with
+      // the declared type as the item type, so the picker offers `<node>.<name>[*]`.
+      if (variable.isArray) {
+        return createUnifiedOutputVariable({
+          nodeId,
+          path: variable.name,
+          type: BaseType.ARRAY,
+          description: `Custom variable of type ${typeDescription}`,
+          items: {
+            id: `${nodeId}.${variable.name}[*]`,
+            type: variable.type,
+            label: 'Item',
+            category: 'node',
+          },
+        })
+      }
+
+      return createUnifiedOutputVariable({
+        nodeId,
+        path: variable.name, // Changed from 'name' to 'path'
+        type: variable.type,
+        description: `Custom variable of type ${typeDescription}`,
+      })
+    })
+}
+
+/**
  * Var-assign node manifest
  */
 export const varAssignManifest: NodeManifest<VarAssignNodeData> = {
@@ -184,6 +225,7 @@ export const varAssignManifest: NodeManifest<VarAssignNodeData> = {
   configSchema: varAssignNodeDataSchema as unknown as z.ZodType<VarAssignNodeData>,
   validate: validateVarAssign,
   extractVariables: extractVarAssignVariables,
+  resolveOutputs: getVarAssignOutputVariables,
   connection: {
     canRunSingle: true,
   },

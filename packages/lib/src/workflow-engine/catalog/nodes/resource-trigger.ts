@@ -7,8 +7,12 @@ import {
   isKnownOperator,
   operatorRequiresValue,
 } from '../../../conditions/client'
+import type { ResourceField } from '../../../resources/client'
+import { generateResourceTriggerVariablesFromFields } from '../../../resources/variable-generators'
 import { WorkflowTriggerType } from '../../core/types'
+import type { UnifiedVariable } from '../../types/unified-variable'
 import type { BaseNodeData } from '../node-base'
+import type { OutputContext } from '../output-context'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
 
 /**
@@ -210,6 +214,53 @@ function isBlank(value: unknown): boolean {
   return Array.isArray(value) && value.length === 0
 }
 
+/** Resource shape for variable generation (matches Find node) */
+type ResourceWithFields = {
+  id: string
+  label: string
+  plural: string
+  fields: ResourceField[]
+  entityDefinitionId?: string
+}
+
+/**
+ * Get output variables for a resource trigger node
+ * Unified function for both system resources and custom entities
+ *
+ * Pattern: Same as Find node - requires resource with fields for generation
+ *
+ * @param data - Resource trigger node data
+ * @param nodeId - Node ID
+ * @param context - Output variable context with resource access
+ */
+export function getResourceTriggerOutputVariables(
+  data: ResourceTriggerData,
+  nodeId: string,
+  context: OutputContext
+): UnifiedVariable[] {
+  const resource = context.resource as ResourceWithFields | undefined
+  const allResources = context.allResources as ResourceWithFields[]
+  // No resource selected yet - return empty (same as Find node)
+  if (!resource) {
+    return []
+  }
+
+  // Build resources map for relationship lookup
+  const resourcesMap = new Map(allResources?.map((r) => [r.id, r]) ?? [])
+
+  return generateResourceTriggerVariablesFromFields(
+    resource.fields,
+    {
+      id: resource.entityDefinitionId ?? resource.id,
+      label: resource.label,
+      plural: resource.plural,
+    },
+    nodeId,
+    data.operation,
+    { resourcesMap, maxDepth: 2 }
+  )
+}
+
 /**
  * Resource trigger node manifest
  */
@@ -224,6 +275,7 @@ export const resourceTriggerManifest: NodeManifest<ResourceTriggerData> = {
   defaultData: () => createResourceTriggerDefaultData('contact', 'created'),
   configSchema: resourceTriggerNodeDataSchema as unknown as z.ZodType<ResourceTriggerData>,
   validate: validateResourceTriggerConfig,
+  resolveOutputs: getResourceTriggerOutputVariables,
   connection: {},
   agent: {
     authorable: true,

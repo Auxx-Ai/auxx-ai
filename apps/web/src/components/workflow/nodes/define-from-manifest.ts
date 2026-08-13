@@ -16,12 +16,14 @@ export interface ManifestComponents<TData> {
   panel?: ComponentType<NodePanelProps<TData>>
   traceRenderer?: ComponentType<TraceRendererProps>
   /**
-   * Output resolver. Still declared web-side because manifests deliberately
-   * defer `resolveOutputs` until output resolution gets a server-callable
-   * context (Phase 2) — at which point this becomes optional and defaults to
-   * the manifest's resolver.
+   * Web-only output-resolver override. Since Phase 2 the manifest carries
+   * `resolveOutputs` (same signature — `OutputVariableContext` is an alias of
+   * the catalog's `OutputContext`), so most merge sites omit this. Pass it
+   * only while a node's resolver cannot move to lib yet
+   * (information-extractor until `schema-to-variable` splits; crud/find until
+   * their Phase 2 context lands).
    */
-  outputVariables: UnifiedOutputVariablesFunction<TData>
+  outputVariables?: UnifiedOutputVariablesFunction<TData>
 }
 
 /**
@@ -51,7 +53,9 @@ export function defineFromManifest<TData>(
     validator: manifest.validate,
     triggerType: manifest.triggerType,
     extractVariables: manifest.extractVariables,
-    outputVariables: parts.outputVariables,
+    // Web override first, then the manifest's resolver. A node type that
+    // declares neither exposes nothing downstream — same contract as note.
+    outputVariables: parts.outputVariables ?? manifest.resolveOutputs ?? (() => []),
     canConnect: manifest.connection.canConnect,
     canRunSingle: manifest.connection.canRunSingle,
     acceptsInputNodes: manifest.connection.acceptsInputNodes,

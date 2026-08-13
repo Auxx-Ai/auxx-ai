@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/catalog/nodes/human.ts
 
 import { z } from 'zod'
+import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
 import { type BaseNodeData, baseNodeDataSchema, type TargetBranch } from '../node-base'
 import {
@@ -9,6 +10,7 @@ import {
   type NodeManifest,
   type NodeValidationResult,
 } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 
 /**
  * Configuration data for the Human Confirmation node
@@ -199,6 +201,47 @@ export const validateHumanConfirmationConfig = (
 }
 
 /**
+ * Output variables function for human confirmation node
+ */
+const getHumanConfirmationOutputVariables = (
+  _data: HumanConfirmationNodeData,
+  nodeId: string
+): any[] => {
+  return [
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'approved_by',
+      type: BaseType.STRING,
+      description: 'User ID of the approver (empty if denied or timeout)',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'denied_by',
+      type: BaseType.STRING,
+      description: 'User ID of the denier (empty if approved or timeout)',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'response_time',
+      type: BaseType.NUMBER,
+      description: 'Time taken to respond in seconds',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'outcome',
+      type: BaseType.STRING,
+      description: 'The outcome: approved, denied, or timeout',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'response_message',
+      type: BaseType.STRING,
+      description: 'Optional message from the reviewer',
+    }),
+  ]
+}
+
+/**
  * Human confirmation node manifest.
  * Note: the type id is 'human-confirmation'; the web folder is `core/human`.
  */
@@ -223,6 +266,7 @@ export const humanConfirmationManifest: NodeManifest<HumanConfirmationNodeData> 
   configSchema: humanConfirmationNodeDataSchema as unknown as z.ZodType<HumanConfirmationNodeData>,
   validate: validateHumanConfirmationConfig,
   extractVariables: () => [], // Human confirmation doesn't extract variables
+  resolveOutputs: getHumanConfirmationOutputVariables,
   connection: {
     canRunSingle: false,
     /** Three-way outcome routing — not two-way. */

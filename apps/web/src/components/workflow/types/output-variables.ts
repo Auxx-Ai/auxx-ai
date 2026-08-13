@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/types/output-variables.ts
 
-import type { Resource } from '@auxx/lib/resources/client'
+import type { OutputContext } from '@auxx/lib/workflow-engine/client'
 import type { WorkflowBlockField } from '~/components/workflow/types/block-types'
 import type { UnifiedVariable } from './variable-types'
 
@@ -31,16 +31,12 @@ export interface OutputVariable {
 }
 
 /**
- * Context passed to outputVariables functions for resource access and upstream variable resolution
+ * Context passed to outputVariables functions for resource access and upstream
+ * variable resolution. Relocated to the catalog as `OutputContext` (Phase 2 —
+ * `@auxx/lib/workflow-engine/catalog/output-context`); this alias keeps every
+ * web import working.
  */
-export interface OutputVariableContext {
-  /** Resource for this node (if resourceType is set) */
-  resource?: Resource
-  /** All available resources */
-  allResources: Resource[]
-  /** Resolve any upstream variable by ID. Returns undefined if not yet computed. */
-  resolveVariable: (variableId: string) => UnifiedVariable | undefined
-}
+export type OutputVariableContext = OutputContext
 
 /**
  * Function type that returns UnifiedVariable[] for node outputs

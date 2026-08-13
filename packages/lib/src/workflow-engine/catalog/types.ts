@@ -2,6 +2,7 @@
 
 import type { z } from 'zod'
 import type { WorkflowTriggerType } from '../core/types'
+import type { OutputResolver } from './output-context'
 
 /**
  * The node catalog: one server-safe declaration of what a workflow node *is*,
@@ -124,11 +125,14 @@ export interface NodeManifest<TConfig = unknown> {
   validate: (config: TConfig) => NodeValidationResult
   extractVariables?: (config: TConfig) => string[]
 
-  // resolveOutputs: OutputResolver<TConfig>
-  // ^ deliberately deferred — output resolution gets a server-callable context
-  //   in the next phase; adding the member now would force a design under
-  //   time pressure. The web merge falls back to the legacy `outputVariables`
-  //   until then.
+  /**
+   * Output resolver: what variables does this node expose downstream, for a
+   * given persisted config (Phase 2)? Optional only while `crud`/`find`
+   * migrate — their context-reading resolvers land with the server context.
+   * The web merge (`defineFromManifest`) uses this unless the merge site
+   * passes a web-only override.
+   */
+  resolveOutputs?: OutputResolver<TConfig>
 
   connection: NodeConnectionRules<TConfig>
   agent?: NodeAgentDocs

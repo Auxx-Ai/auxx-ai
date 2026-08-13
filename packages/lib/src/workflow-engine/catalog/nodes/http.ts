@@ -2,6 +2,8 @@
 
 import { z } from 'zod'
 import { HTTP_NODE_CONSTANTS } from '../../constants'
+import { BaseType } from '../../core/types'
+import type { UnifiedVariable } from '../../types/unified-variable'
 import type { BaseNodeData, TargetBranch } from '../node-base'
 import {
   type NodeBranch,
@@ -9,6 +11,7 @@ import {
   type NodeManifest,
   type NodeValidationResult,
 } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 import { extractVarIdsFromString } from '../variable-inference'
 
 /**
@@ -379,6 +382,48 @@ export function extractHttpVariableIds(data: HttpNodeData): string[] {
   return Array.from(variableIds)
 }
 
+/** Output variables for HTTP node */
+export function getHttpOutputVariables(data: HttpNodeData, nodeId: string): UnifiedVariable[] {
+  return [
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'status',
+      type: BaseType.NUMBER,
+      description: 'HTTP response status code',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'headers',
+      type: BaseType.OBJECT,
+      description: 'HTTP response headers',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'body',
+      type: BaseType.ANY,
+      description: 'HTTP response body',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'success',
+      type: BaseType.BOOLEAN,
+      description: 'Whether the HTTP request was successful',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'error',
+      type: BaseType.STRING,
+      description: 'Error message if the request failed',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'response',
+      type: BaseType.OBJECT,
+      description: 'Full HTTP response object',
+    }),
+  ]
+}
+
 /**
  * HTTP node manifest
  */
@@ -416,6 +461,7 @@ export const httpManifest: NodeManifest<HttpNodeData> = {
   configSchema: httpNodeDataSchema as unknown as z.ZodType<HttpNodeData>,
   validate: validateHttpNodeData,
   extractVariables: extractHttpVariableIds,
+  resolveOutputs: getHttpOutputVariables,
   connection: {
     canRunSingle: true,
     /**

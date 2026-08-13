@@ -1,8 +1,10 @@
 // packages/lib/src/workflow-engine/catalog/nodes/date-time.ts
 
 import { z } from 'zod'
+import { BaseType } from '../../core/types'
 import type { BaseNodeData } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 
 /**
  * Available date/time operations
@@ -272,6 +274,62 @@ export function extractDateTimeNodeVariables(data: DateTimeNodeData): string[] {
 }
 
 /**
+ * Output variables definition
+ */
+function getDateTimeNodeOutputVariables(data: DateTimeNodeData, nodeId: string): any[] {
+  // The date-producing operations emit an ISO 8601 string in the node's
+  // timezone, or epoch milliseconds when `outputAsTimestamp` is set.
+  const dateOutputType = data.outputAsTimestamp ? BaseType.NUMBER : BaseType.DATETIME
+  const dateOutputSuffix = data.outputAsTimestamp ? ' (epoch milliseconds)' : ''
+
+  switch (data.operation) {
+    case DateTimeOperation.ADD_SUBTRACT:
+    case DateTimeOperation.ROUND:
+      return [
+        createUnifiedOutputVariable({
+          nodeId,
+          path: 'result',
+          type: dateOutputType,
+          description: `Modified date/time${dateOutputSuffix}`,
+        }),
+      ]
+
+    case DateTimeOperation.FORMAT:
+      return [
+        createUnifiedOutputVariable({
+          nodeId,
+          path: 'result',
+          type: BaseType.STRING,
+          description: 'Formatted date string',
+        }),
+      ]
+
+    case DateTimeOperation.TIME_BETWEEN:
+      return [
+        createUnifiedOutputVariable({
+          nodeId,
+          path: 'result',
+          type: BaseType.NUMBER,
+          description: `Duration in ${data.timeBetween?.unit || 'days'}`,
+        }),
+      ]
+
+    case DateTimeOperation.PARSE_DATE:
+      return [
+        createUnifiedOutputVariable({
+          nodeId,
+          path: 'result',
+          type: dateOutputType,
+          description: `Parsed date${dateOutputSuffix}`,
+        }),
+      ]
+
+    default:
+      return []
+  }
+}
+
+/**
  * Date-time node manifest
  */
 export const dateTimeManifest: NodeManifest<DateTimeNodeData> = {
@@ -292,6 +350,7 @@ export const dateTimeManifest: NodeManifest<DateTimeNodeData> = {
   configSchema: dateTimeNodeSchema as unknown as z.ZodType<DateTimeNodeData>,
   validate: validateDateTimeNodeData,
   extractVariables: extractDateTimeNodeVariables,
+  resolveOutputs: getDateTimeNodeOutputVariables,
   connection: {
     canRunSingle: true,
   },

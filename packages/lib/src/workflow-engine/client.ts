@@ -146,6 +146,7 @@ export {
   validateEndConfig,
 } from './catalog/nodes/end'
 export {
+  computeFormatOutputVariables,
   extractFormatVariables,
   type FormatNodeData as CatalogFormatNodeData,
   formatManifest,
@@ -163,6 +164,7 @@ export {
   type DefaultValueItem,
   ErrorStrategy,
   extractHttpVariableIds,
+  getHttpOutputVariables,
   type HttpNodeData as CatalogHttpNodeData,
   httpManifest,
   httpNodeDataSchema,
@@ -203,6 +205,7 @@ export {
 } from './catalog/nodes/information-extractor'
 export {
   CONFIG_KEY_BY_OPERATION,
+  computeListOutputVariables,
   extractListVariables,
   type FilterConfig,
   type JoinConfig,
@@ -252,6 +255,7 @@ export {
 } from './catalog/nodes/note'
 export {
   createResourceTriggerDefaultData,
+  getResourceTriggerOutputVariables,
   type ResourceTriggerData as CatalogResourceTriggerData,
   resourceTriggerManifest,
   resourceTriggerNodeDataSchema,
@@ -298,6 +302,11 @@ export {
 } from './catalog/nodes/wait'
 export { NOT_YET_MIGRATED } from './catalog/not-yet-migrated'
 export {
+  type OutputContext,
+  type OutputResolver,
+  staticOutputContext,
+} from './catalog/output-context'
+export {
   getAuthorableManifests,
   getManifest,
   listManifests,
@@ -310,6 +319,16 @@ export {
   type NodeManifest,
   type NodeValidationResult,
 } from './catalog/types'
+export {
+  assignVariableIds,
+  cloneAndRewriteVariableIds,
+} from './catalog/variable-cloning'
+export {
+  createNestedVariable,
+  createUnifiedOutputVariable,
+  deduplicateVariables,
+  isNavigableVariable,
+} from './catalog/variable-conversion'
 export {
   type ArraySegmentInfo,
   buildVariableId,

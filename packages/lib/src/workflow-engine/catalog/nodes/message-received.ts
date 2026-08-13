@@ -2,9 +2,11 @@
 
 import { z } from 'zod'
 import { type ConditionGroup, conditionGroupsSchema } from '../../../conditions/client'
-import { WorkflowTriggerType } from '../../core/types'
+import { BaseType, WorkflowTriggerType } from '../../core/types'
+import type { UnifiedVariable } from '../../types/unified-variable'
 import type { BaseNodeData } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import { createNestedVariable, createUnifiedOutputVariable } from '../variable-conversion'
 
 /**
  * The message-received node's catalog manifest. Carries the #1555 scoping
@@ -112,6 +114,145 @@ export const validateMessageReceivedConfig = (
 }
 
 /**
+ * Define output variables for message-received node
+ */
+function getMessageReceivedOutputVariables(
+  data: MessageReceivedNodeData,
+  nodeId: string
+): UnifiedVariable[] {
+  // Message object with all nested properties using createNestedVariable
+  const messageVariable = createNestedVariable({
+    nodeId,
+    basePath: 'message',
+    type: BaseType.OBJECT,
+    label: 'Email Message',
+    description: 'The received email message object',
+    properties: {
+      id: {
+        type: BaseType.STRING,
+        description: 'Unique message identifier',
+      },
+      thread_id: {
+        type: BaseType.STRING,
+        description: 'Email thread identifier',
+      },
+      from: {
+        type: BaseType.OBJECT,
+        label: 'From',
+        description: 'Sender information',
+        properties: {
+          email: {
+            type: BaseType.EMAIL,
+            description: 'Sender email address',
+          },
+          name: {
+            type: BaseType.STRING,
+            description: 'Sender display name',
+          },
+        },
+      },
+      to: {
+        type: BaseType.ARRAY,
+        label: 'To',
+        description: 'Recipients list',
+        items: {
+          type: BaseType.OBJECT,
+          label: 'Recipient',
+          properties: {
+            email: {
+              type: BaseType.EMAIL,
+              description: 'Recipient email address',
+            },
+            name: {
+              type: BaseType.STRING,
+              description: 'Recipient display name',
+            },
+          },
+        },
+      },
+      subject: {
+        type: BaseType.STRING,
+        description: 'Email subject line',
+      },
+      body: {
+        type: BaseType.STRING,
+        description: 'Email body content (plain text)',
+      },
+      html: {
+        type: BaseType.STRING,
+        description: 'Email body content (HTML)',
+      },
+      received_at: {
+        type: BaseType.DATETIME,
+        description: 'Timestamp when message was received',
+      },
+      has_attachments: {
+        type: BaseType.BOOLEAN,
+        description: 'Whether the message has attachments',
+      },
+      attachments: {
+        type: BaseType.ARRAY,
+        label: 'Attachments',
+        description: 'List of message attachments',
+        items: {
+          type: BaseType.OBJECT,
+          label: 'Attachment',
+          properties: {
+            name: {
+              type: BaseType.STRING,
+              description: 'Attachment filename',
+            },
+            size: {
+              type: BaseType.NUMBER,
+              description: 'Attachment size in bytes',
+            },
+            type: {
+              type: BaseType.STRING,
+              description: 'MIME type of attachment',
+            },
+            url: {
+              type: BaseType.URL,
+              description: 'Download URL for attachment',
+            },
+          },
+        },
+      },
+    },
+  })
+
+  // Thread relation, points to the thread this message belongs to
+  const threadRelation = createUnifiedOutputVariable({
+    nodeId,
+    path: 'thread',
+    type: BaseType.RELATION,
+    description: 'The email thread this message belongs to',
+    resourceId: 'thread',
+  })
+
+  // Message relation, points to the received message itself
+  const messageRelation = createUnifiedOutputVariable({
+    nodeId,
+    path: 'message_ref',
+    type: BaseType.RELATION,
+    description: 'The received message (for replying to)',
+    resourceId: 'message',
+  })
+
+  // Ticket relation, the thread's linked ticket. Empty unless the thread was
+  // already linked to one: receiving mail never creates or links a ticket.
+  const ticketRelation = createUnifiedOutputVariable({
+    nodeId,
+    path: 'ticket',
+    type: BaseType.RELATION,
+    label: 'Ticket',
+    description: "The ticket linked to this message's thread (empty when none is linked)",
+    resourceId: 'ticket',
+  })
+
+  return [messageVariable, threadRelation, messageRelation, ticketRelation]
+}
+
+/**
  * Message-received node manifest
  */
 export const messageReceivedManifest: NodeManifest<MessageReceivedNodeData> = {
@@ -129,6 +270,7 @@ export const messageReceivedManifest: NodeManifest<MessageReceivedNodeData> = {
   }),
   configSchema: messageReceivedNodeDataSchema as unknown as z.ZodType<MessageReceivedNodeData>,
   validate: validateMessageReceivedConfig,
+  resolveOutputs: getMessageReceivedOutputVariables,
   connection: {},
   agent: {
     authorable: true,
