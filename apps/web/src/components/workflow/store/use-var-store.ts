@@ -1,6 +1,15 @@
 // apps/web/src/components/workflow/store/use-var-store.ts
 
 import type { Resource } from '@auxx/lib/resources/client'
+import {
+  buildDownstreamMap,
+  buildUpstreamMap,
+  computeLoopAncestry,
+  type EdgeMeta,
+  type GraphLoopContext,
+  type NodeMeta,
+  topologicalSort,
+} from '@auxx/lib/workflow-engine/client'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
@@ -16,23 +25,15 @@ import {
   flattenVariableForStorage,
   type NodeOutput,
 } from './var-availability'
-import {
-  buildDownstreamMap,
-  buildUpstreamMap,
-  computeLoopAncestry,
-  type EdgeMeta,
-  type NodeMeta,
-  topologicalSort,
-} from './var-graph'
 import { useWorkflowStore } from './workflow-store'
 
-export interface LoopContext {
-  loopNodeId: string
-  iteratorName: string
-  iteratorType?: BaseType
-  depth: number
-  parentLoopContext?: LoopContext
-}
+/**
+ * Alias, not a copy. `computeLoopAncestry` now lives in
+ * `catalog/graph-vars.ts` and produces `GraphLoopContext`; re-declaring the
+ * same shape here would typecheck (it is structurally identical) and then
+ * silently drift the moment one side gains a field.
+ */
+export type LoopContext = GraphLoopContext
 
 interface AvailabilityEntry {
   variables: UnifiedVariable[]

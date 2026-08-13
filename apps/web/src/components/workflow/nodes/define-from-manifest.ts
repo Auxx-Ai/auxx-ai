@@ -19,8 +19,7 @@ export interface ManifestComponents<TData> {
    * Web-only output-resolver override. Since Phase 2 the manifest carries
    * `resolveOutputs` (same signature — `OutputVariableContext` is an alias of
    * the catalog's `OutputContext`), so most merge sites omit this. Pass it
-   * only while a node's resolver cannot move to lib yet
-   * (information-extractor until `schema-to-variable` splits; crud/find until
+   * only while a node's resolver cannot move to lib yet (crud/find until
    * their Phase 2 context lands).
    */
   outputVariables?: UnifiedOutputVariablesFunction<TData>

@@ -1,10 +1,10 @@
 // apps/web/src/components/workflow/hooks/use-var-store-sync.ts
 
+import type { EdgeMeta, NodeMeta } from '@auxx/lib/workflow-engine/client'
 import { useStoreApi } from '@xyflow/react'
 import { useEffect } from 'react'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import { useVarStore } from '../store/use-var-store'
-import type { EdgeMeta, NodeMeta } from '../store/var-graph'
 import type { FlowEdge, FlowNode } from '../types'
 
 /**

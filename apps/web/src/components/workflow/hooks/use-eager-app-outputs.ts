@@ -1,12 +1,12 @@
 // apps/web/src/components/workflow/hooks/use-eager-app-outputs.ts
 
+import type { NodeMeta } from '@auxx/lib/workflow-engine/client'
 import { useStoreApi } from '@xyflow/react'
 import { produce } from 'immer'
 import { useCallback, useEffect, useRef } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { useAppStore } from '~/components/apps/runtime/hooks/use-app-store'
 import { useVarStore } from '../store/use-var-store'
-import type { NodeMeta } from '../store/var-graph'
 
 /**
  * Eagerly fetches computed outputs for app nodes that don't have them yet.

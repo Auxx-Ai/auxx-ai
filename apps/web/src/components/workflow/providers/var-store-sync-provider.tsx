@@ -1,11 +1,11 @@
 // apps/web/src/components/workflow/providers/var-store-sync-provider.tsx
 
+import type { EdgeMeta, NodeMeta } from '@auxx/lib/workflow-engine/client'
 import { useNodesInitialized, useStoreApi } from '@xyflow/react'
 import type React from 'react'
 import { useEffect, useRef } from 'react'
 import { useVarStoreSync } from '../hooks/use-var-store-sync'
 import { useVarStore } from '../store/use-var-store'
-import type { EdgeMeta, NodeMeta } from '../store/var-graph'
 
 interface VarStoreSyncProviderProps {
   children: React.ReactNode

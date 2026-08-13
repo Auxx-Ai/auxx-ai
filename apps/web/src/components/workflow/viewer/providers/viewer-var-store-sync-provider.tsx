@@ -2,11 +2,11 @@
 
 'use client'
 
+import type { EdgeMeta, NodeMeta } from '@auxx/lib/workflow-engine/client'
 import { useNodesInitialized, useStoreApi } from '@xyflow/react'
 import type React from 'react'
 import { useEffect, useRef } from 'react'
 import { useVarStore } from '../../store/use-var-store'
-import type { EdgeMeta, NodeMeta } from '../../store/var-graph'
 
 /** Sanitized environment variable from public API */
 interface SanitizedEnvVar {

@@ -9,13 +9,21 @@ import type { UnifiedVariable } from '../types/unified-variable'
  * verbatim, so the ~29 pure resolvers move without edits and the four
  * context-reading ones keep reading the same field names (Phase 2 §2).
  *
- * Browser: `computeNodeOutputs` builds it from the resource store. Server
- * (Phase 2 §2): an adapter builds it from the org cache — and must reproduce
- * the resource TIERS, not just fetch: static-registry resources resolve
- * without a cache read, entity-backed ones key by EntityDefinition CUID, and
- * `allResources` needs the same multi-alias entries the front-end store
- * supplies (id / apiSlug / entityType), or relation expansion silently
- * degrades. See `05-resource-model.md` §1.
+ * Browser: `computeNodeOutputs` builds it from the resource store, which
+ * stores each resource under multiple alias keys (id / apiSlug / entityType)
+ * for its own map lookups. That aliasing never reaches a resolver: every
+ * context-reading resolver (`crud`, `find`, `resource-trigger`) immediately
+ * re-keys `allResources` by `r.id` alone
+ * (`new Map(allResources.map((r) => [r.id, r]))`) before doing anything with
+ * it, so a multi-alias map is dead weight by the time it would matter.
+ *
+ * Server (`build-output-context.ts`): `buildOutputContext(orgId, params)`
+ * builds this straight from `getCachedResources(orgId)` — no alias map, no
+ * per-tier branching. `getCachedResources` already covers both resource
+ * tiers (static-registry and entity-backed; `resource-registry-service.ts`'s
+ * `getAll()` concatenates them), and `resource` is looked up with the same
+ * `id | entityType | apiSlug` match `findCachedResource` uses, which already
+ * matches whatever key a node's `resourceType` config holds.
  */
 export interface OutputContext {
   /** The resource this node is bound to, if its config names one. */

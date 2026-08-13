@@ -2,8 +2,12 @@
 
 import { z } from 'zod'
 import { AI_NODE_CONSTANTS } from '../../constants'
+import { BaseType } from '../../core/types'
+import type { UnifiedVariable } from '../../types/unified-variable'
 import type { BaseNodeData } from '../node-base'
+import { schemaToUnifiedVariable } from '../schema-to-variable'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 import { extractVarIdsFromString } from '../variable-inference'
 import { completionParamsSchema, structuredOutputSchema } from './ai'
 
@@ -224,6 +228,42 @@ export function extractInformationExtractorVariables(data: InformationExtractorN
 }
 
 /**
+ * Define output variables for information extractor node
+ * Follows the same pattern as the AI node's getAiOutputVariables
+ */
+function getInformationExtractorOutputVariables(
+  data: InformationExtractorNodeData,
+  nodeId: string
+): UnifiedVariable[] {
+  const outputs: UnifiedVariable[] = []
+
+  // Always include raw extraction result
+  outputs.push(
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'raw_extraction',
+      type: BaseType.STRING,
+      description: 'Raw extraction result as text',
+    })
+  )
+
+  // Add extracted_data if structured output is enabled and schema is defined
+  if (data.structured_output.enabled && data.structured_output.schema) {
+    const extractedData = schemaToUnifiedVariable(
+      data.structured_output.schema,
+      nodeId,
+      'extracted_data'
+    )
+    extractedData.label = 'Extracted Data'
+    extractedData.description = 'Structured data extracted from the input'
+
+    outputs.push(extractedData)
+  }
+
+  return outputs
+}
+
+/**
  * Information extractor node manifest
  */
 export const informationExtractorManifest: NodeManifest<InformationExtractorNodeData> = {
@@ -237,6 +277,7 @@ export const informationExtractorManifest: NodeManifest<InformationExtractorNode
   configSchema: informationExtractorSchema as unknown as z.ZodType<InformationExtractorNodeData>,
   validate: validateInformationExtractor,
   extractVariables: extractInformationExtractorVariables,
+  resolveOutputs: getInformationExtractorOutputVariables,
   connection: {
     canRunSingle: true,
   },
