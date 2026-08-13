@@ -2,17 +2,22 @@
 
 import { describe, expect, it } from 'vitest'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
+import { BUILDER_RENDERED_HANDLES } from './builder-rendered-handles'
 import {
   EXTRACTION_BLIND_SPOTS,
   KNOWN_BROKEN_CONFIG_KEYS,
   KNOWN_BROKEN_FAILURE_PATH_WRITES,
+  KNOWN_BROKEN_OUTPUT_HANDLES,
   KNOWN_BROKEN_OUTPUT_VARIABLES,
+  KNOWN_BROKEN_UNADVERTISED_WRITES,
 } from './contract-drift-allowlist'
 import {
   advertisedPath,
   builderDeclaredKeys,
   isPathWritten,
+  isWriteAdvertised,
   readEngineContracts,
+  readEngineRoutedHandleLiterals,
 } from './engine-contract'
 import { BUILDER_NODE_DEFINITIONS, CONFIG_VARIANTS } from './node-definitions'
 
@@ -23,19 +28,32 @@ import { BUILDER_NODE_DEFINITIONS, CONFIG_VARIANTS } from './node-definitions'
 // — at audit time the only assertion in the repo that "everything the UI offers
 // actually dispatches", and the only condition surface that had not drifted.
 //
-// The workflow builder and the workflow engine agree on two contracts, and
-// neither is expressed in a type:
+// The workflow builder and the workflow engine agree on three contracts, and
+// none of them is expressed in a type:
 //
 //   1. OUTPUT VARIABLES. The builder's `outputVariables(config, nodeId, ctx)`
 //      is what the variable picker offers downstream nodes. The engine makes a
 //      value addressable ONLY by calling `setNodeVariable(nodeId, path, value)`.
 //      A path the picker offers that the engine never writes resolves to `''`
 //      (or `undefined`) at run time — no error, no warning, just a branch that
-//      never fires or an email with a hole in it.
+//      never fires or an email with a hole in it. Asserted in BOTH directions:
+//      advertised-but-never-written (a picker entry that resolves to nothing)
+//      and written-but-never-advertised (a real value no picker will ever
+//      offer — crud's create/update outputs shipped this way).
 //
 //   2. CONFIG KEYS. The panel writes `node.data.<key>`; the processor reads it.
 //      A rename on one side is a silent no-op on the other — the audit's
 //      `data.assigneeId` vs `data.assignee` and `config.logic` findings.
+//
+//   3. BRANCH HANDLES. A processor picks its outgoing edge by returning
+//      `outputHandle`; the canvas can only draw edges from handles the node's
+//      UI renders; and the engine core additionally goes LOOKING for literal
+//      handles of its own (`sourceHandle === 'onError'` on the Failed path).
+//      Three vocabularies, no shared declaration — which is how crud came to
+//      emit `fail`, http `error`, the UI to render `fail`, and the Failed path
+//      to search for `onError`, with no two of them meeting. The builder half
+//      is the hand-verified table in `builder-rendered-handles.ts` (interim
+//      until a lib-side handle manifest exists).
 //
 // This half lives in `apps/web` and not beside the engine because the
 // declarations it reads are here: `nodes/core/*/schema.ts`. `packages/lib` is
@@ -246,6 +264,39 @@ describe('engine reader — attributes a .data read to the right node and the ri
   })
 })
 
+describe('engine reader — extracts the outputHandle values a processor can emit', () => {
+  it('collects both arms of a conditional emission', () => {
+    // document-extractor.ts:294 `outputHandle: extractionResult.success ?
+    // 'source' : 'error'` — one expression, two emittable handles. A reader
+    // that only accepted a bare literal would see neither.
+    expect(ENGINE.get('document-extractor')?.outputHandles).toEqual(
+      expect.arrayContaining(['error', 'source'])
+    )
+  })
+
+  it('does not read a ternary CONDITION literal as an emission', () => {
+    // text-classifier.ts:117 `config.outputMode === 'variable' ? 'source' :
+    // getOutputHandleForCategory(…)` — `'variable'` is a comparison operand.
+    // Collecting it would invent a handle the node can never emit and file a
+    // phantom mismatch against a panel that is entirely correct.
+    const classifier = ENGINE.get('text-classifier')
+    expect(classifier?.outputHandles).toContain('source')
+    expect(classifier?.outputHandles).not.toContain('variable')
+  })
+
+  it('records a computed handle as dynamic rather than guessing at its values', () => {
+    // human-confirmation.ts:322 routes via `handleForApprovalOutcome(outcome)`
+    // (resolved in core/pause-resume.ts — approved/denied/timeout/source) and
+    // if-else.ts:178 via `outputHandle = matchedCaseId`. Neither is readable
+    // here, so both must surface as gaps, not as empty emission sets silently
+    // passing.
+    expect(ENGINE.get('human-confirmation')?.dynamicOutputHandles.join(' ')).toContain(
+      'handleForApprovalOutcome'
+    )
+    expect(ENGINE.get('if-else')?.dynamicOutputHandles.join(' ')).toContain('matchedCaseId')
+  })
+})
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. OUTPUT VARIABLES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -361,6 +412,58 @@ describe('output variables — every path the picker offers is one the engine wr
       EXTRACTION_BLIND_SPOTS
     )
   })
+
+  it('advertises every path the engine writes — the reverse direction', () => {
+    // The forward assertion proves the picker never promises what the engine
+    // does not deliver. This one proves the engine never delivers what the
+    // picker does not offer: a `setNodeVariable` path `outputVariables` omits
+    // is a real value at run time that no variable picker will ever show, so
+    // downstream nodes can only reach it by typing the path blind. crud's
+    // create/update outputs shipped exactly this way — `.id` and `.record`
+    // written on every create, advertised for none of them.
+    //
+    // Same floor as the forward direction: the advertised set is the union over
+    // `defaultData` plus CONFIG_VARIANTS, so a path advertised only under a
+    // config that cannot be pinned here (crud/find in resource mode need a live
+    // Resource) reads as unadvertised and belongs in the blind-spot map, not in
+    // the burn-down list.
+    const observed = new Map<string, string>()
+
+    for (const { nodeType, definition } of BUILDER_NODE_DEFINITIONS) {
+      const contract = ENGINE.get(nodeType)
+      if (!contract) continue
+
+      const advertised = new Set<string>()
+      let threw = false
+      for (const config of configsFor(nodeType, definition.defaultData ?? {})) {
+        try {
+          for (const id of flatten(
+            definition.outputVariables(config.data, NODE_ID, outputVariableContext) ?? []
+          )) {
+            advertised.add(advertisedPath(id, NODE_ID))
+          }
+        } catch {
+          threw = true // reported by the forward assertion
+        }
+      }
+      if (threw) continue
+
+      for (const write of contract.writes) {
+        if (isWriteAdvertised(write, advertised)) continue
+        observed.set(
+          `written:${nodeType}.${write}`,
+          `engine writes this path (${contract.files.join(', ')}) but outputVariables never advertises it under any pinned config — invisible in the variable picker`
+        )
+      }
+    }
+
+    assertAgainstAllowlist(
+      observed,
+      'written:',
+      KNOWN_BROKEN_UNADVERTISED_WRITES,
+      EXTRACTION_BLIND_SPOTS
+    )
+  })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -409,5 +512,87 @@ describe('config keys — every node.data key the engine reads has a builder wri
     }
 
     assertAgainstAllowlist(observed, 'config:', KNOWN_BROKEN_CONFIG_KEYS, EXTRACTION_BLIND_SPOTS)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3. BRANCH HANDLES
+//
+// A processor returns `outputHandle` and the engine follows the edge whose
+// `sourceHandle` matches it (graph-navigation.ts:67-68) — falling back to
+// 'source' when unset. The canvas can only draw an edge FROM a handle the
+// node's UI renders. So an emitted handle the UI does not render is a branch no
+// user can wire: the result routes to a handle with no possible edge and the
+// run simply stops there. No error, no warning — the exact failure mode of the
+// live `fail`/`error`/`onError` mismatch these assertions pin down.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('branch handles — every handle the engine can emit is one the builder renders', () => {
+  it('declares rendered handles for exactly the palette', () => {
+    // The table is hand-written, so its completeness is itself an assertion —
+    // a palette node without an entry would silently skip the handle check the
+    // same way a missing CONFIG_VARIANTS entry silently skips a branch.
+    const palette = BUILDER_NODE_DEFINITIONS.map(({ nodeType }) => nodeType).sort()
+    expect(Object.keys(BUILDER_RENDERED_HANDLES).sort()).toEqual(palette)
+  })
+
+  it('emits only handles the builder renders, or the default source', () => {
+    // 'source' is always acceptable: it is the engine-wide fallback
+    // (`result.outputHandle || 'source'`) and edge sourceHandles default to it
+    // too (workflow-graph-builder.ts:442), so even a node whose UI names its
+    // handle differently (form-input's `input-output`) routes a plain 'source'
+    // result over its only edge.
+    const observed = new Map<string, string>()
+
+    for (const { nodeType } of BUILDER_NODE_DEFINITIONS) {
+      const contract = ENGINE.get(nodeType)
+      const rendered = BUILDER_RENDERED_HANDLES[nodeType]
+      if (!contract || !rendered) continue
+
+      for (const handle of contract.outputHandles) {
+        if (handle === 'source' || rendered.sources.includes(handle)) continue
+        // Computed handles are named in the detail for the same reason the
+        // variable assertion names unresolvable bulk payloads: whoever
+        // regenerates the allowlist must know the literal set is a floor.
+        const dynamicNote = contract.dynamicOutputHandles.length
+          ? ` — NOTE: this node also emits computed handles (${contract.dynamicOutputHandles.join('; ')}), which are not asserted`
+          : ''
+        observed.set(
+          `handle:${nodeType}.${handle}`,
+          `engine can emit outputHandle '${handle}' (${contract.files.join(', ')}) but the UI renders only [${[
+            ...rendered.sources,
+            ...(rendered.dynamicSources ? ['<dynamic>'] : []),
+          ].join(', ')}] — no edge can ever leave this branch${dynamicNote}`
+        )
+      }
+    }
+
+    assertAgainstAllowlist(observed, 'handle:', KNOWN_BROKEN_OUTPUT_HANDLES, EXTRACTION_BLIND_SPOTS)
+  })
+
+  it('searches for edges only on handles some node renders', () => {
+    // The engine core's own literal lookups — today the Failed-path recovery,
+    // which hunts for an `onError` edge. A literal here that no node's UI ever
+    // renders is a recovery path that cannot fire on any canvas a user can
+    // build.
+    const rendered = new Set(
+      Object.values(BUILDER_RENDERED_HANDLES).flatMap(({ sources }) => sources)
+    )
+    const observed = new Map<string, string>()
+
+    for (const { handle, file } of readEngineRoutedHandleLiterals()) {
+      if (handle === 'source' || rendered.has(handle)) continue
+      observed.set(
+        `routing:engine-core.${handle}`,
+        `the engine core looks for an edge with sourceHandle === '${handle}' (${file}) but no node's UI renders that handle, so the lookup can never match`
+      )
+    }
+
+    assertAgainstAllowlist(
+      observed,
+      'routing:',
+      KNOWN_BROKEN_OUTPUT_HANDLES,
+      EXTRACTION_BLIND_SPOTS
+    )
   })
 })
