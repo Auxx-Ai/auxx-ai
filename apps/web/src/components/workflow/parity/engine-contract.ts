@@ -33,6 +33,14 @@ import { fileURLToPath } from 'node:url'
  *    `inheritedDataReads` — see `withInherited`.
  *  - Whether every call site for a path sits inside an `else` block — see
  *    `failurePathOnlyWrites`.
+ *  - Literal `outputHandle` values a processor can emit — `outputHandle: '<lit>'`
+ *    properties, `outputHandle = <expr>` assignments, and every string literal in
+ *    the VALUE arms of a conditional (`ok ? 'source' : 'error'` contributes
+ *    both; the literal in a ternary's CONDITION is compared against, never
+ *    emitted, and is not collected). Routing follows
+ *    `result.outputHandle || 'source'` (graph-navigation.ts:67), so an emitted
+ *    handle with no edge whose `sourceHandle` matches it is a dead end for that
+ *    branch — no error, the run just stops there.
  *
  * ── WHAT IT CANNOT SEE ──────────────────────────────────────────────────────
  *  - Dynamically-computed paths: `setNodeVariable(nodeId, key, value)` inside a
@@ -51,6 +59,14 @@ import { fileURLToPath } from 'node:url'
  *    `executeFilter(list, node.data.filterConfig)` then `config.logic`. Only the
  *    TOP-LEVEL key (`filterConfig`) is seen, so the config-key assertion is a
  *    floor, not a ceiling.
+ *  - A COMPUTED `outputHandle`: `outputHandle = matchedCaseId` (if-else.ts),
+ *    `handleForApprovalOutcome(outcome)` (human-confirmation.ts, resolved in
+ *    core/pause-resume.ts), `getOutputHandleForCategory(…)` (text-classifier.ts).
+ *    The values those can take are invisible to a textual reader, so they are
+ *    recorded as `dynamicOutputHandles` — they satisfy nothing and fail nothing,
+ *    exactly like `dynamicWrites`. The handle-parity assertion is therefore a
+ *    floor too: a green run proves the LITERAL emissions are renderable, not
+ *    that every computed one is.
  *  - Anything written outside `packages/lib/src/workflow-engine/`. A node's
  *    variables are not always published by its own processor —
  *    `human-confirmation`'s are written by `core/workflow-engine.ts` on resume,
@@ -213,6 +229,21 @@ export interface EngineNodeContract {
    * blind-spot map, never in the burn-down list.
    */
   unresolvedBulkWrites: string[]
+  /**
+   * Literal `outputHandle` values this node's processor can emit. The engine
+   * routes a result over the edge whose `sourceHandle` equals this value
+   * (falling back to `'source'` when unset — graph-navigation.ts:67), so every
+   * entry here is a branch the node can actually take.
+   */
+  outputHandles: string[]
+  /**
+   * `outputHandle` expressions with no readable literal value — a computed
+   * handle (`matchedCaseId`, `handleForApprovalOutcome(outcome)`). What those
+   * evaluate to is invisible here, so like `dynamicWrites` they satisfy nothing
+   * and fail nothing; they are carried so a finding's detail can say "this node
+   * also emits computed handles" instead of implying the literal set is total.
+   */
+  dynamicOutputHandles: string[]
   /** Top-level `node.data.<key>` reads, including via a local alias. */
   dataReads: string[]
   /**
@@ -240,6 +271,8 @@ interface FileFacts {
   failurePathOnly: string[]
   dynamicWrites: string[]
   unresolvedBulkWrites: string[]
+  outputHandles: string[]
+  dynamicOutputHandles: string[]
   dataReads: string[]
   foreignDataReads: Record<string, string>
 }
@@ -499,6 +532,118 @@ function foreignNodeBindings(source: string): Record<string, string> {
   return bindings
 }
 
+/**
+ * Capture the value expression that starts at `start` — the right-hand side of
+ * an `outputHandle:` property or an `outputHandle =` assignment.
+ *
+ * There is no parser here, so the boundary is structural: a top-level `,` or `;`
+ * ends it, an unbalanced closer (`}` `)` `]`) ends it, and a top-level newline
+ * ends it UNLESS the expression is visibly unfinished — it trails an operator, or
+ * the next line leads with one. That last rule is what keeps a multi-line
+ * ternary together (text-classifier.ts breaks before its `?` and `:`) without
+ * swallowing the statement after a single-line assignment.
+ */
+function captureValueExpression(source: string, start: number): string {
+  let out = ''
+  let depth = 0
+  for (let i = start; i < source.length; i++) {
+    const ch = source[i] as string
+    if (ch === "'" || ch === '"' || ch === '`') {
+      out += ch
+      for (i++; i < source.length; i++) {
+        out += source[i]
+        if (source[i] === '\\') {
+          i++
+          out += source[i] ?? ''
+        } else if (source[i] === ch) break
+      }
+      continue
+    }
+    if (ch === '(' || ch === '{' || ch === '[') depth++
+    else if (ch === ')' || ch === '}' || ch === ']') {
+      if (depth === 0) break
+      depth--
+    } else if ((ch === ',' || ch === ';') && depth === 0) break
+    else if (ch === '\n' && depth === 0) {
+      const trailing = out.trimEnd()
+      const lead = source.slice(i + 1).match(/^\s*([?:.]|\|\||&&)/)
+      if (!/[=?:.|&(+]$/.test(trailing) && !lead) break
+    }
+    out += ch
+  }
+  return out.trim()
+}
+
+/**
+ * The `outputHandle` values a file can emit.
+ *
+ * Two shapes cover every emission site in the engine today:
+ *   `outputHandle: <expr>`   — a result-object property
+ *   `outputHandle = <expr>`  — an assignment later returned via shorthand
+ *
+ * From the captured expression, every string literal in its VALUE position is an
+ * emittable handle — and for a conditional that means the arms only. The literal
+ * in `config.outputMode === 'variable' ? 'source' : …` is a comparison operand,
+ * not a handle, so collection starts after the first top-level `?`. Whatever
+ * non-literal remains (an identifier, a call) makes the expression a
+ * `dynamic` entry as well, because it can evaluate to handles no literal names.
+ */
+function extractOutputHandles(source: string): { literals: string[]; dynamic: string[] } {
+  const literals: string[] = []
+  const dynamic: string[] = []
+
+  const record = (expression: string) => {
+    // `let outputHandle: string` — the property regex also matches a type
+    // annotation, which names no value at all.
+    if (/^(?:string|number|boolean|any|unknown|undefined|null)$/.test(expression)) return
+    // `outputHandle=${outputHandle}` inside a log's TEMPLATE LITERAL (if-else.ts)
+    // also matches the assignment regex; the capture then starts at `${` and
+    // swallows string fragments. Prose in a template is not an emission site.
+    if (expression.startsWith('$') || expression.includes('`')) return
+
+    // First top-level `?` (skipping strings and brackets; `?.`/`??` are not
+    // ternaries). Everything before it is condition, not value.
+    let valueStart = 0
+    let depth = 0
+    for (let i = 0; i < expression.length; i++) {
+      const ch = expression[i] as string
+      if (ch === "'" || ch === '"' || ch === '`') {
+        for (i++; i < expression.length; i++) {
+          if (expression[i] === '\\') i++
+          else if (expression[i] === ch) break
+        }
+        continue
+      }
+      if (ch === '(' || ch === '{' || ch === '[') depth++
+      else if (ch === ')' || ch === '}' || ch === ']') depth--
+      else if (ch === '?' && depth === 0) {
+        const next = expression[i + 1]
+        if (next === '.' || next === '?') {
+          i++
+          continue
+        }
+        valueStart = i + 1
+        break
+      }
+    }
+
+    const value = expression.slice(valueStart)
+    for (const m of value.matchAll(/'([^']*)'/g)) literals.push(m[1] as string)
+    if (/[\w$]/.test(value.replace(/'[^']*'/g, ''))) dynamic.push(expression)
+  }
+
+  for (const m of source.matchAll(/\boutputHandle\s*:\s*/g)) {
+    record(captureValueExpression(source, (m.index ?? 0) + (m[0] as string).length))
+  }
+  // `=` but not `==`/`===` (the left `outputHandle ===` of a comparison) and not
+  // `!==` (no match: `!` sits between the identifier and the `=`).
+  for (const m of source.matchAll(/\boutputHandle\s*=(?!=)\s*/g)) {
+    record(captureValueExpression(source, (m.index ?? 0) + (m[0] as string).length))
+  }
+
+  return { literals, dynamic }
+}
+
 /** Character spans of every `else { ... }` block in a source file. */
 function elseBlockSpans(source: string): Array<[number, number]> {
   const spans: Array<[number, number]> = []
@@ -648,6 +793,8 @@ function scanFile(path: string): FileFacts {
     }
   }
 
+  const handles = extractOutputHandles(source)
+
   const ownKeys = Array.from(dataReads).filter((key) => !FRAMEWORK_DATA_KEYS.has(key))
   return {
     path,
@@ -658,6 +805,8 @@ function scanFile(path: string): FileFacts {
     failurePathOnly: Array.from(onlyElse).filter((path) => !anywhere.has(path)),
     dynamicWrites,
     unresolvedBulkWrites,
+    outputHandles: handles.literals,
+    dynamicOutputHandles: handles.dynamic,
     dataReads: ownKeys,
     foreignDataReads: Object.fromEntries(
       Object.entries(foreignDataReads).filter(
@@ -711,6 +860,8 @@ export function readEngineContracts(): Map<string, EngineNodeContract> {
     const failurePathOnly = [...fact.failurePathOnly]
     const dynamic = [...fact.dynamicWrites]
     const unresolvedBulk = [...fact.unresolvedBulkWrites]
+    const outputHandles = [...fact.outputHandles]
+    const dynamicOutputHandles = [...fact.dynamicOutputHandles]
     const reads = [...fact.dataReads]
     const foreign = { ...fact.foreignDataReads }
     const inheritedFrom: Record<string, string> = {}
@@ -724,6 +875,8 @@ export function readEngineContracts(): Map<string, EngineNodeContract> {
       failurePathOnly.push(...parent.failurePathOnly)
       dynamic.push(...parent.dynamicWrites)
       unresolvedBulk.push(...parent.unresolvedBulkWrites)
+      outputHandles.push(...parent.outputHandles)
+      dynamicOutputHandles.push(...parent.dynamicOutputHandles)
       reads.push(...parent.dataReads)
       for (const key of parent.dataReads) {
         if (!own.has(key) && !(key in inheritedFrom)) inheritedFrom[key] = relative
@@ -733,7 +886,17 @@ export function readEngineContracts(): Map<string, EngineNodeContract> {
       }
       parent = parent.superClass ? byClass.get(parent.superClass) : undefined
     }
-    return { writes, failurePathOnly, dynamic, unresolvedBulk, reads, foreign, inheritedFrom }
+    return {
+      writes,
+      failurePathOnly,
+      dynamic,
+      unresolvedBulk,
+      outputHandles,
+      dynamicOutputHandles,
+      reads,
+      foreign,
+      inheritedFrom,
+    }
   }
 
   // When two files declare the same node type, the REGISTERED one wins outright.
@@ -772,6 +935,11 @@ export function readEngineContracts(): Map<string, EngineNodeContract> {
           ...(existing?.unresolvedBulkWrites ?? []),
           ...inherited.unresolvedBulk,
         ],
+        outputHandles: [...(existing?.outputHandles ?? []), ...inherited.outputHandles],
+        dynamicOutputHandles: [
+          ...(existing?.dynamicOutputHandles ?? []),
+          ...inherited.dynamicOutputHandles,
+        ],
         dataReads: [...(existing?.dataReads ?? []), ...inherited.reads],
         foreignDataReads: { ...(existing?.foreignDataReads ?? {}), ...inherited.foreign },
         inheritedDataReads: {
@@ -793,6 +961,8 @@ export function readEngineContracts(): Map<string, EngineNodeContract> {
       contract.writes.push(...fact.writes)
       contract.dynamicWrites.push(...fact.dynamicWrites)
       contract.unresolvedBulkWrites.push(...fact.unresolvedBulkWrites)
+      contract.outputHandles.push(...fact.outputHandles)
+      contract.dynamicOutputHandles.push(...fact.dynamicOutputHandles)
     }
   }
 
@@ -802,6 +972,8 @@ export function readEngineContracts(): Map<string, EngineNodeContract> {
     contract.failurePathOnlyWrites = Array.from(new Set(contract.failurePathOnlyWrites)).sort()
     contract.dynamicWrites = Array.from(new Set(contract.dynamicWrites)).sort()
     contract.unresolvedBulkWrites = Array.from(new Set(contract.unresolvedBulkWrites)).sort()
+    contract.outputHandles = Array.from(new Set(contract.outputHandles)).sort()
+    contract.dynamicOutputHandles = Array.from(new Set(contract.dynamicOutputHandles)).sort()
     contract.dataReads = Array.from(new Set(contract.dataReads)).sort()
   }
 
@@ -843,6 +1015,33 @@ export function isPathWritten(path: string, writes: string[]): boolean {
 }
 
 /**
+ * Literal `sourceHandle` values the engine CORE compares edges against when it
+ * routes — the third leg of the handle contract, beside what processors emit
+ * and what the builder renders.
+ *
+ * A literal here is a handle the engine goes LOOKING for on the canvas: the
+ * Failed-path recovery in `workflow-engine.ts` (and its loop-manager twin)
+ * searches for an edge with `sourceHandle === 'onError'`, and a literal no node
+ * ever renders is a code path that can never fire — the exact shape of the live
+ * fail-branch bug this suite exists to keep out.
+ *
+ * Comparisons against a VARIABLE (`edge.sourceHandle === outputHandle`) are the
+ * normal result-routing and prove nothing either way, so only string-literal
+ * comparisons are collected.
+ */
+export function readEngineRoutedHandleLiterals(): Array<{ handle: string; file: string }> {
+  const coreDir = join(ENGINE_ROOT, 'core')
+  const lookups: Array<{ handle: string; file: string }> = []
+  for (const path of listSources(coreDir)) {
+    const source = stripComments(readFileSync(path, 'utf8'))
+    for (const m of source.matchAll(/\bsourceHandle\s*===\s*'([^']+)'/g)) {
+      lookups.push({ handle: m[1] as string, file: path.replace(`${ENGINE_ROOT}/`, '') })
+    }
+  }
+  return lookups
+}
+
+/**
  * Property names declared in a builder node's `types.ts`.
  *
  * The zod schema alone is NOT the builder's writable surface. Several nodes
@@ -863,6 +1062,32 @@ export function builderDeclaredKeys(builderDir: string): Set<string> {
   if (!existsSync(path)) return new Set()
   const source = stripComments(readFileSync(path, 'utf8'))
   return new Set(Array.from(source.matchAll(/^\s+(\w+)\??\s*:/gm), (m) => m[1] as string))
+}
+
+/**
+ * Is a path the engine WRITES surfaced anywhere in the picker — the reverse of
+ * `isPathWritten`?
+ *
+ * A write is discoverable when the advertised set contains the path itself, a
+ * DEEPER path under it (the picker's `record.contact.email` proves `record` is
+ * populated and offered, if only partially), or a SHALLOWER prefix of it (an
+ * advertised `record` object lets a user reach `record.name` by typing into it —
+ * `resolveVariablePath` walks into the stored value). Only a write with no
+ * prefix relation to anything advertised is truly invisible: it exists at run
+ * time and nothing in the UI will ever offer it.
+ *
+ * Template-literal writes (`tool_${index}`) match on their literal stem, the
+ * same convention `isPathWritten` uses.
+ */
+export function isWriteAdvertised(write: string, advertised: Set<string>): boolean {
+  if (write.includes('${')) {
+    const stem = write.slice(0, write.indexOf('${'))
+    return stem.length > 0 && Array.from(advertised).some((path) => path.startsWith(stem))
+  }
+  for (const path of advertised) {
+    if (path === write || path.startsWith(`${write}.`) || write.startsWith(`${path}.`)) return true
+  }
+  return false
 }
 
 /**
