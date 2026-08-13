@@ -80,6 +80,28 @@ export {
   type WorkflowRetryConfig,
 } from './catalog/node-base'
 export {
+  type EndNodeData as CatalogEndNodeData,
+  endManifest,
+  endNodeDataSchema,
+  extractEndVariables,
+  validateEndConfig,
+} from './catalog/nodes/end'
+export {
+  type NoteNodeData as CatalogNoteNodeData,
+  type NoteTheme,
+  noteManifest,
+  noteNodeDataSchema,
+  validateNoteConfig,
+} from './catalog/nodes/note'
+export {
+  extractVarAssignVariables,
+  type VarAssignNodeData as CatalogVarAssignNodeData,
+  type VariableAssignment,
+  validateVarAssign,
+  varAssignManifest,
+  varAssignNodeDataSchema,
+} from './catalog/nodes/var-assign'
+export {
   DurationUnit,
   validateWaitConfig,
   type WaitNodeData as CatalogWaitNodeData,
@@ -110,6 +132,7 @@ export {
   buildVariableId,
   buildVariableLabelPath,
   containsVariableReference,
+  extractVarIdsFromString,
   getArrayAccessorCompactLabel,
   getArrayAccessorMenuLabel,
   getArrayItemVariable,

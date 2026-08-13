@@ -125,6 +125,29 @@ export function containsVariableReference(text: string | null | undefined): bool
 }
 
 /**
+ * Extract all tag varIds from string content ({{varId}} format) — used by
+ * the non-AI workflow nodes that persist prompt-ish fields as `text: string`.
+ * (Relocated from apps/web ui/input-editor/tiptap-converters.ts, which
+ * re-exports it.)
+ */
+export function extractVarIdsFromString(text: string): string[] {
+  if (!text) return []
+
+  const varIds: string[] = []
+  const varPattern = /\{\{([^}]+)\}\}/g
+  let match: RegExpExecArray | null
+
+  while ((match = varPattern.exec(text)) !== null) {
+    const varId = match[1]?.trim()
+    if (varId) {
+      varIds.push(varId)
+    }
+  }
+
+  return [...new Set(varIds)] // Remove duplicates
+}
+
+/**
  * Get the nodeId from a variable ID
  * Examples:
  *   "webhook-123.body.email" → "webhook-123"

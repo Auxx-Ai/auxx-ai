@@ -50,14 +50,14 @@ export const NOT_YET_MIGRATED: readonly string[] = [
   'code',
   'text-classifier',
   'information-extractor',
-  'var-assign',
+  // 'var-assign' — migrated (catalog/nodes/var-assign.ts)
   'date-time',
   'list',
   'format',
   // Data nodes
-  'note',
+  // 'note' — migrated (catalog/nodes/note.ts)
   // Control nodes
-  'end',
+  // 'end' — migrated (catalog/nodes/end.ts)
   // 'wait' — migrated (catalog/nodes/wait.ts)
   'loop',
   'human-confirmation',

@@ -1,18 +1,18 @@
 // apps/web/src/components/workflow/nodes/core/note/types.ts
 
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
+import type { CatalogNoteNodeData } from '@auxx/lib/workflow-engine/client'
+import type { SpecificNode } from '~/components/workflow/types/node-base'
+import type { NodeType } from '~/components/workflow/types/node-types'
 
-export type NoteTheme = 'yellow' | 'blue' | 'purple' | 'pink' | 'green'
+// The data half moved to the node catalog (node-catalog Phase 1 —
+// `@auxx/lib/workflow-engine/catalog/nodes/note`).
+export type { NoteTheme } from '@auxx/lib/workflow-engine/client'
 
 /**
  * Note node data interface with flattened structure
  */
-export interface NoteNodeData extends BaseNodeData {
-  text: string
-  theme: NoteTheme
-  showAuthor: boolean
-  author: string
-  fontSize: number
+export interface NoteNodeData extends CatalogNoteNodeData {
+  type: NodeType
 }
 
 /**

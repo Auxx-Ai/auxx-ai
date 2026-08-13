@@ -40,22 +40,9 @@ export function isJsonObject(value: unknown): value is Record<string, unknown> {
 
 // Extract all tag varIds from string content ({{varId}} format) — used by
 // the 9 non-AI workflow nodes that still persist as `text: string`.
-export function extractVarIdsFromString(text: string): string[] {
-  if (!text) return []
-
-  const varIds: string[] = []
-  const varPattern = /\{\{([^}]+)\}\}/g
-  let match
-
-  while ((match = varPattern.exec(text)) !== null) {
-    const varId = match[1]?.trim()
-    if (varId) {
-      varIds.push(varId)
-    }
-  }
-
-  return [...new Set(varIds)] // Remove duplicates
-}
+// Relocated to lib with the node catalog so manifests can extract variables;
+// re-exported here so no web import churns.
+export { extractVarIdsFromString } from '@auxx/lib/workflow-engine/client'
 
 // Insert a variable tag at current cursor position
 export function insertTag(editor: any, variableId: string, _label?: string) {

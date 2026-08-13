@@ -1,19 +1,12 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/var-assign-processor.ts
 
+// Assignment shape single-sourced from the node catalog (node-catalog
+// Phase 1) — this file previously shadowed it with a narrower local copy.
+import type { VariableAssignment } from '../../catalog/nodes/var-assign'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
-
-interface VariableAssignment {
-  id: string
-  name: string
-  type: 'string' | 'number' | 'boolean' | 'object' | 'array' | 'date' | 'datetime'
-  isArray?: boolean
-  value: string | string[]
-  isConstantMode?: boolean // UI-only: for single values
-  itemConstantModes?: boolean[] // UI-only: for array items
-}
 
 interface VarAssignConfig {
   variables: VariableAssignment[]
