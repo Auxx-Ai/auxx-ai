@@ -1,8 +1,12 @@
 // apps/web/src/components/workflow/parity/output-resolution-parity.test.ts
 
+import { buildOutputContextFromResources } from '@auxx/lib/workflow-engine/catalog/build-output-context'
+import {
+  resolveGraphOutputs,
+  type WorkflowOutputGraph,
+} from '@auxx/lib/workflow-engine/catalog/resolve-outputs'
 import {
   BaseType,
-  buildOutputContextFromResources,
   type EdgeMeta,
   getNodeIdFromVariableId,
   listManifests,
@@ -10,10 +14,8 @@ import {
   type NodeMeta,
   type Resource,
   type ResourceField,
-  resolveGraphOutputs,
   topologicalSort,
   type UnifiedVariable,
-  type WorkflowOutputGraph,
 } from '@auxx/lib/workflow-engine/client'
 import { describe, expect, it, vi } from 'vitest'
 import { NodeType } from '~/components/workflow/types/node-types'
