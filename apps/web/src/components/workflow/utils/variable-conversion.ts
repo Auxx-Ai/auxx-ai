@@ -1,8 +1,14 @@
 // apps/web/src/components/workflow/utils/variable-conversion.ts
 
-import type { BaseType } from '~/components/workflow/types/unified-types'
-import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
-import { buildVariableId, getLabelFromVariableId } from './variable-utils'
+// Deliberately zero `~/` imports: this module sits on the import path of ~24
+// node schema files, and the node-catalog migration needs that path free of
+// stores and React barrels (node-catalog Phase 1 step 0).
+import {
+  type BaseType,
+  buildVariableId,
+  getLabelFromVariableId,
+  type UnifiedVariable,
+} from '@auxx/lib/workflow-engine/client'
 
 /**
  * Deduplicate variables by their fullPath (id in new system)

@@ -8,17 +8,8 @@
  * type systems with one unified approach.
  */
 
+// ValidationRules moved to lib with UnifiedVariable (node-catalog Phase 1);
+// re-exported here so existing imports keep working.
+export type { ValidationRules } from '@auxx/lib/workflow-engine/client'
 // Import BaseType from backend (single source of truth)
 export { BaseType } from '@auxx/lib/workflow-engine/client'
-
-/**
- * Validation rules for type values
- */
-export interface ValidationRules {
-  min?: number
-  max?: number
-  minLength?: number
-  maxLength?: number
-  pattern?: string | RegExp
-  custom?: (value: any) => boolean | string
-}
