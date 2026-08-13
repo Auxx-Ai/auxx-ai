@@ -36,10 +36,10 @@
  * Two assertions landed later, each against code that had already drifted, so
  * each carries its own burn-down:
  *   - `KNOWN_BROKEN_OUTPUT_HANDLES` — the `error`-vs-`fail`-vs-`onError` handle
- *     mismatch family. A PR renaming the emitted handles and fixing the
- *     Failed-path routing is IN FLIGHT in parallel with this suite; when it
- *     lands, these entries start passing and the stale-entry failure forces
- *     their deletion in that PR. Do not burn these down independently.
+ *     mismatch family. The engine half was fixed in #1560 (Failed results
+ *     route via `findFailureEdge`; http emits the handles its UI renders).
+ *     What remains are processors whose UI renders no error handle at all —
+ *     unwirable until a node manifest gives them one.
  *   - `KNOWN_BROKEN_UNADVERTISED_WRITES` — the Phase 2 fix list: real values
  *     the engine publishes that no variable picker will ever offer.
  *
