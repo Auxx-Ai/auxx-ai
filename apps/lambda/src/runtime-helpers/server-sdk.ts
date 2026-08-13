@@ -132,7 +132,7 @@ class ConflictError extends Error {
  *
  * @interface Connection
  * @property {string} id - Unique connection identifier
- * @property {('oauth2-code'|'secret')} type - Authentication type
+ * @property {('oauth2-code'|'client-credentials'|'secret'|'hosted-provision')} type - Authentication type
  * @property {string} value - The access token or secret value
  * @property {Object} [metadata] - Additional connection metadata
  * @property {string} [metadata.scope] - OAuth2 scopes granted
@@ -166,7 +166,7 @@ class ConflictError extends Error {
  */
 export interface Connection {
   id: string
-  type: 'oauth2-code' | 'secret'
+  type: 'oauth2-code' | 'client-credentials' | 'secret' | 'hosted-provision'
   value: string
   /** Connection variables (plain + decrypted secret-flagged), keyed by variable key. */
   fields?: Record<string, string>

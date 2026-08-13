@@ -233,10 +233,14 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
       // Node outputs (entire objects per node)
       nodeOutputs: contextManager.getAllNodeVariables(),
 
-      // User and organization context
+      // User and organization context. `email` falls back to null, never '' —
+      // trigger-driven runs (message/resource/schedule) have no invoking user,
+      // and the lambda envelope types `context.userEmail` as
+      // `z.email().nullish()`, which accepts null but rejects the empty string.
+      // Coercing to '' rejects the whole event before the block ever loads.
       user: {
         id: context.userId || '',
-        email: (await contextManager.getVariable('sys.userEmail')) || '',
+        email: (await contextManager.getVariable('sys.userEmail')) || null,
         name: (await contextManager.getVariable('sys.userName')) || '',
       },
       organization: {
@@ -706,7 +710,28 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
 
       if (lambdaResult.isErr()) {
         const error = lambdaResult.error
-        const lambdaError = Object.assign(new Error(`Lambda execution failed: ${error.message}`), {
+
+        // Envelope rejections (`VALIDATION_ERROR`) carry the offending fields in
+        // `details`; without them the message is a bare "Validation failed" and
+        // the lambda logs nothing on that branch. Same treatment as the code node.
+        let message = `Lambda execution failed: ${error.message}`
+        if (error.code === 'VALIDATION_ERROR' && error.details) {
+          const validationErrors = error.details
+            .map((err: any) => `  - ${err.field}: ${err.message}`)
+            .join('\n')
+          message += `\n\nValidation errors:\n${validationErrors}`
+        }
+
+        logger.error('Lambda invocation failed', {
+          appId,
+          blockId,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          statusCode: error.statusCode,
+        })
+
+        const lambdaError = Object.assign(new Error(message), {
           consoleLogs: error.consoleLogs,
         })
         throw lambdaError
