@@ -48,6 +48,15 @@ import {
 } from 'date-fns'
 import * as dateFnsLocales from 'date-fns/locale'
 import { formatInTimeZone, fromZonedTime, toZonedTime } from 'date-fns-tz'
+// Operation/unit/format vocabularies single-sourced from the node catalog
+// (node-catalog Phase 1) — this file previously re-declared all four enums
+// verbatim.
+import {
+  DateFormatType,
+  DateTimeOperation,
+  ParseDateFormatType,
+  TimeUnit,
+} from '../../catalog/nodes/date-time'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -59,70 +68,6 @@ import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
 import { resolveModedValue } from '../utils/moded-field'
 import { resolveTargetTime } from '../wait/target-time'
-
-/**
- * Date time operation types
- */
-enum DateTimeOperation {
-  ADD_SUBTRACT = 'add_subtract',
-  FORMAT = 'format',
-  TIME_BETWEEN = 'time_between',
-  ROUND = 'round',
-  PARSE_DATE = 'parse_date',
-}
-
-/**
- * Time units supported
- */
-enum TimeUnit {
-  YEARS = 'years',
-  QUARTERS = 'quarters',
-  MONTHS = 'months',
-  WEEKS = 'weeks',
-  DAYS = 'days',
-  HOURS = 'hours',
-  MINUTES = 'minutes',
-  SECONDS = 'seconds',
-  MILLISECONDS = 'milliseconds',
-}
-
-/**
- * Date format types
- */
-enum DateFormatType {
-  CUSTOM = 'custom',
-  ISO = 'iso',
-  MM_DD_YYYY = 'mm_dd_yyyy',
-  DD_MM_YYYY = 'dd_mm_yyyy',
-  YYYY_MM_DD = 'yyyy_mm_dd',
-  MM_DD_YYYY_DASH = 'mm-dd-yyyy',
-  DD_MM_YYYY_DASH = 'dd-mm-yyyy',
-  YYYY_MM_DD_DASH = 'yyyy-mm-dd',
-  UNIX = 'unix',
-  UNIX_MS = 'unix_ms',
-  RELATIVE = 'relative',
-  LONG = 'long',
-  SHORT = 'short',
-  TIME_ONLY = 'time_only',
-  DATE_ONLY = 'date_only',
-}
-
-/**
- * Parse date format types for PARSE_DATE operation
- */
-enum ParseDateFormatType {
-  AUTO = 'auto',
-  ISO = 'iso',
-  MM_DD_YYYY = 'mm_dd_yyyy',
-  DD_MM_YYYY = 'dd_mm_yyyy',
-  YYYY_MM_DD = 'yyyy_mm_dd',
-  MM_DD_YYYY_DASH = 'mm-dd-yyyy',
-  DD_MM_YYYY_DASH = 'dd-mm-yyyy',
-  YYYY_MM_DD_DASH = 'yyyy-mm-dd',
-  UNIX = 'unix',
-  UNIX_MS = 'unix_ms',
-  CUSTOM = 'custom',
-}
 
 /**
  * The timezone every operation is evaluated in when the node does not name one.

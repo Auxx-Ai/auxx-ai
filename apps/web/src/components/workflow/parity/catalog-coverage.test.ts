@@ -50,15 +50,17 @@ describe('node catalog coverage', () => {
     // The legacy NodeDefinition.schema was `any` and never parsed — the code
     // node's dead `output.type?.type` read and resource-trigger's
     // schema-failing defaults both hid behind that. Manifests don't get to.
-    // Node identity (`id`, `type`) is factory-assigned at add time, never part
-    // of defaults, so the fixture supplies it — everything else must come from
-    // `defaultData()` itself.
+    // Node identity (`id`, `type`, and `title` when defaults omit it) is
+    // factory-assigned at add time (node-factory falls back to
+    // `definition.displayName` for the title), so the fixture supplies it —
+    // everything else must come from `defaultData()` itself.
     const failures = listManifests()
       .map((manifest) => ({
         id: manifest.id,
         result: manifest.configSchema.safeParse({
           id: 'test-node',
           type: manifest.id,
+          title: manifest.displayName,
           ...manifest.defaultData(),
         }),
       }))

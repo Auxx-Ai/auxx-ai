@@ -1,22 +1,18 @@
-// apps/web/src/components/workflow/nodes/core/scheduled-trigger/types.ts
+// apps/web/src/components/workflow/nodes/core/scheduled/types.ts
 
-import type { BaseNodeData } from '~/components/workflow/types/node-base'
+import type { CatalogScheduledTriggerNodeData } from '@auxx/lib/workflow-engine/client'
+import type { NodeType } from '~/components/workflow/types/node-types'
+
+// The data half moved to the node catalog (node-catalog Phase 1 —
+// `@auxx/lib/workflow-engine/catalog/nodes/scheduled`). The processed/preview
+// helper types below are web-only and stay.
+export type { ScheduledTriggerUIConfig } from '@auxx/lib/workflow-engine/client'
 
 /**
- * Frontend-facing interface that matches user requirements
+ * Node data structure for scheduled trigger
  */
-export interface ScheduledTriggerUIConfig {
-  triggerInterval: 'minutes' | 'hours' | 'days' | 'weeks' | 'custom'
-  timeBetweenTriggers: {
-    minutes?: number | string
-    hours?: number | string
-    days?: number | string
-    weeks?: number | string
-    isConstant?: boolean
-  }
-  customCron?: string
-  timezone?: string
-  startDate?: string // Optional start date for scheduling
+export interface ScheduledTriggerNodeData extends CatalogScheduledTriggerNodeData {
+  type: NodeType
 }
 
 /**
@@ -31,14 +27,6 @@ export interface ProcessedScheduleConfig {
   }
   date?: string
   timezone?: string
-}
-
-/**
- * Node data structure for scheduled trigger
- */
-export interface ScheduledTriggerNodeData extends BaseNodeData {
-  config: ScheduledTriggerUIConfig
-  isEnabled: boolean
 }
 
 /**

@@ -1058,10 +1058,22 @@ export function readEngineRoutedHandleLiterals(): Array<{ handle: string; file: 
  * and over-collecting only makes this assertion more conservative.
  */
 export function builderDeclaredKeys(builderDir: string): Set<string> {
-  const path = join(BUILDER_ROOT, builderDir, 'types.ts')
-  if (!existsSync(path)) return new Set()
-  const source = stripComments(readFileSync(path, 'utf8'))
-  return new Set(Array.from(source.matchAll(/^\s+(\w+)\??\s*:/gm), (m) => m[1] as string))
+  const keys = new Set<string>()
+
+  // Migrated node types (node-catalog Phase 1) declare their data interface in
+  // the lib catalog; the web types.ts shrinks to a `type: NodeType` narrowing
+  // wrapper over it. Read the catalog file first when it exists — it IS the
+  // builder declaration for those types.
+  const catalogPath = join(ENGINE_ROOT, 'catalog/nodes', `${builderDir.replace(/^core\//, '')}.ts`)
+  const paths = [catalogPath, join(BUILDER_ROOT, builderDir, 'types.ts')]
+  for (const path of paths) {
+    if (!existsSync(path)) continue
+    const source = stripComments(readFileSync(path, 'utf8'))
+    for (const m of source.matchAll(/^\s+(\w+)\??\s*:/gm)) {
+      keys.add(m[1] as string)
+    }
+  }
+  return keys
 }
 
 /**

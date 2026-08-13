@@ -1,7 +1,11 @@
 // packages/lib/src/workflow-engine/catalog/registry.ts
 
+import { dateTimeManifest } from './nodes/date-time'
 import { endManifest } from './nodes/end'
+import { formatManifest } from './nodes/format'
+import { manualManifest } from './nodes/manual'
 import { noteManifest } from './nodes/note'
+import { scheduledTriggerManifest } from './nodes/scheduled'
 import { varAssignManifest } from './nodes/var-assign'
 import { waitManifest } from './nodes/wait'
 import type { NodeManifest } from './types'
@@ -18,8 +22,12 @@ import type { NodeManifest } from './types'
  * two-file change: add the manifest here, delete the list entry.
  */
 const ALL_MANIFESTS: NodeManifest<any>[] = [
+  dateTimeManifest,
   endManifest,
+  formatManifest,
+  manualManifest,
   noteManifest,
+  scheduledTriggerManifest,
   varAssignManifest,
   waitManifest,
 ]
