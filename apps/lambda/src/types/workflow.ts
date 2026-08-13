@@ -147,7 +147,7 @@ export interface WorkflowSDK {
  */
 export interface Connection {
   id: string
-  type: 'oauth2-code' | 'secret'
+  type: 'oauth2-code' | 'client-credentials' | 'secret' | 'hosted-provision'
   value: string
   metadata?: Record<string, any>
   expiresAt?: Date

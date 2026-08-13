@@ -7,10 +7,19 @@
 
 import { z } from 'zod'
 
-/** Connection data schema */
+/**
+ * Connection data schema.
+ *
+ * `type` must stay in sync with `ConnectionType` in
+ * `packages/lib/src/connections/resolve-connection-for-runtime.ts` — that
+ * resolver is what fills this field. A type it emits but this enum omits
+ * rejects the whole invocation envelope with a bare "Validation failed",
+ * before the app bundle ever loads. Nothing branches on the value; it is
+ * descriptive only.
+ */
 const ConnectionDataSchema = z.object({
   id: z.string(),
-  type: z.enum(['oauth2-code', 'secret']),
+  type: z.enum(['oauth2-code', 'client-credentials', 'secret', 'hosted-provision']),
   value: z.string(),
   fields: z.record(z.string(), z.string()).optional(),
   metadata: z.record(z.string(), z.any()).optional(),

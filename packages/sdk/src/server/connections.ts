@@ -7,8 +7,15 @@ export interface Connection {
   /** Unique connection ID */
   id: string
 
-  /** Connection type (oauth2, api_key, secret) */
-  type: 'oauth2-code' | 'secret'
+  /**
+   * How the credential behind this connection was produced. Descriptive only —
+   * read `value`/`fields` to authenticate, not this.
+   * - `oauth2-code` — user-authorized OAuth2, auto-refreshed
+   * - `client-credentials` — server-minted bearer (no user, no browser)
+   * - `secret` — API key or multi-field secret
+   * - `hosted-provision` — platform-provisioned; no token semantics
+   */
+  type: 'oauth2-code' | 'client-credentials' | 'secret' | 'hosted-provision'
 
   /**
    * The credential value (access token, API key, or secret)
