@@ -13,10 +13,12 @@ const h = vi.hoisted(() => ({
   getCachedWorkflowAppsByTrigger: vi.fn(),
   getQueueAdd: vi.fn(),
   loadProcessedMessage: vi.fn(),
+  orgCacheGet: vi.fn(),
 }))
 
 vi.mock('../../cache', () => ({
   getCachedWorkflowAppsByTrigger: h.getCachedWorkflowAppsByTrigger,
+  getOrgCache: () => ({ get: h.orgCacheGet }),
 }))
 vi.mock('../../jobs/queues', () => ({
   getQueue: () => ({ add: h.getQueueAdd }),
@@ -77,6 +79,7 @@ function event(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks()
   h.loadProcessedMessage.mockResolvedValue({ id: MESSAGE_ID })
+  h.orgCacheGet.mockResolvedValue([])
 })
 
 describe('triggerMessageWorkflows — channel scope (§4)', () => {
@@ -139,6 +142,25 @@ describe('triggerMessageWorkflows — channel scope (§4)', () => {
     await triggerMessageWorkflows(event({ integrationId: undefined }))
 
     expect(h.getQueueAdd).not.toHaveBeenCalled()
+  })
+
+  it('never dispatches for a message on a personal channel, even to unscoped workflows', async () => {
+    h.getCachedWorkflowAppsByTrigger.mockResolvedValue([app('unscoped')])
+    h.orgCacheGet.mockResolvedValue([{ id: 'ibx_personal', isPersonal: true }])
+
+    await triggerMessageWorkflows(event({ inboxId: 'ibx_personal' }))
+
+    expect(h.getQueueAdd).not.toHaveBeenCalled()
+    expect(h.loadProcessedMessage).not.toHaveBeenCalled()
+  })
+
+  it('dispatches normally for a message on a shared inbox', async () => {
+    h.getCachedWorkflowAppsByTrigger.mockResolvedValue([app('unscoped')])
+    h.orgCacheGet.mockResolvedValue([{ id: 'ibx_shared', isPersonal: false }])
+
+    await triggerMessageWorkflows(event({ inboxId: 'ibx_shared' }))
+
+    expect(h.getQueueAdd).toHaveBeenCalledTimes(1)
   })
 
   it('applies channel scope alongside the existing soft machine-mail gate', async () => {

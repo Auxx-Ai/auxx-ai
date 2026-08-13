@@ -302,8 +302,12 @@ export const useEdgeStore = create<EdgeStore>()(
         Date.now(),
       ].join('-')
 
-      // Determine if this is a loop back edge
-      const isLoopBackEdge = targetNode?.type === 'loop' && connection.targetHandle === 'loop-back'
+      // Determine if this is a loop back edge. The workflow node type lives in
+      // data.type — node.type is the React Flow renderer type ('standard' on
+      // every loaded graph), so checking it alone never matches.
+      const isLoopBackEdge =
+        (targetNode?.data?.type ?? targetNode?.type) === 'loop' &&
+        connection.targetHandle === 'loop-back'
 
       // Import graph utils for loop detection
       const { isNodeInLoop, getContainingLoopId } = require('../utils/graph-utils')

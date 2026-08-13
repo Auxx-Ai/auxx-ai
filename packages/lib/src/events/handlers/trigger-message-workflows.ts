@@ -1,7 +1,7 @@
 // packages/lib/src/events/handlers/trigger-message-workflows.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { getCachedWorkflowAppsByTrigger } from '../../cache'
+import { getCachedWorkflowAppsByTrigger, getOrgCache } from '../../cache'
 import type { CachedPublishedWorkflow } from '../../cache/providers/workflow-apps-provider'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
@@ -65,7 +65,7 @@ function matchesChannelScope(
  */
 export const triggerMessageWorkflows = async ({ data: event }: { data: AuxxEvent }) => {
   if (event.type !== 'message:received') return
-  const { messageId, organizationId, threadId, machineMail, integrationId } = (
+  const { messageId, organizationId, threadId, machineMail, integrationId, inboxId } = (
     event as MessageReceivedEvent
   ).data
 
@@ -78,6 +78,23 @@ export const triggerMessageWorkflows = async ({ data: event }: { data: AuxxEvent
       reason: machineMail.reason,
     })
     return
+  }
+
+  // Personal channels are not automatable (§8.2/§11): a message that landed in
+  // a personal mailbox never dispatches message-received workflows. The
+  // save-time guard (`mail-trigger-guard.ts`) blocks explicitly targeting a
+  // personal channel; this covers unscoped triggers, whose scope defaults to
+  // every channel in the org.
+  if (inboxId) {
+    const inboxes = await getOrgCache().get(organizationId, 'inboxes')
+    if (inboxes.some((inbox) => inbox.id === inboxId && inbox.isPersonal)) {
+      logger.info('Skipping MESSAGE_RECEIVED workflows — message is on a personal channel', {
+        messageId,
+        organizationId,
+        inboxId,
+      })
+      return
+    }
   }
 
   const matchingApps = await getCachedWorkflowAppsByTrigger({

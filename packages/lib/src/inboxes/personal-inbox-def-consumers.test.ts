@@ -219,13 +219,21 @@ describe('ABSENT — automation scope excludes the personal mailbox (HEADLESS)',
 })
 
 describe('ABSENT — workflow mail triggers reject a personal inbox', () => {
+  // Persisted nodes carry the workflow type in data.type — node.type is the
+  // React Flow renderer type ('standard'). The scope is data.channelIds
+  // (message-trigger-scoping); data.filters.integrationId is the legacy shape.
   const graph = {
-    nodes: [{ type: 'message-received', data: { filters: { integrationId: 'int_1' } } }],
+    nodes: [{ type: 'standard', data: { type: 'message-received', channelIds: ['int_1'] } }],
+  }
+  const legacyGraph = {
+    nodes: [
+      { type: 'standard', data: { type: 'message-received', filters: { integrationId: 'int_1' } } },
+    ],
   }
   const dbWithLink = (inboxId: string) =>
     ({
       select: () => ({
-        from: () => ({ where: () => ({ limit: async () => [{ inboxId }] }) }),
+        from: () => ({ where: async () => [{ inboxId }] }),
       }),
     }) as never
 
@@ -238,10 +246,25 @@ describe('ABSENT — workflow mail triggers reject a personal inbox', () => {
     })
   }
 
+  it('refuses a legacy filters.integrationId trigger on a personal channel', async () => {
+    mockCache([sharedInbox, personalOnNewDef])
+    await expect(
+      assertMailTriggerNotPersonal(dbWithLink(PERSONAL_ID), ORG, legacyGraph)
+    ).rejects.toMatchObject({ name: 'BadRequestError', statusCode: 400 })
+  })
+
   it('allows a trigger on a shared inbox (positive control)', async () => {
     mockCache([sharedInbox, personalOnNewDef])
     await expect(
       assertMailTriggerNotPersonal(dbWithLink(SHARED_ID), ORG, graph)
+    ).resolves.toBeUndefined()
+  })
+
+  it('ignores an unscoped trigger (dispatcher owns that exclusion)', async () => {
+    mockCache([sharedInbox, personalOnNewDef])
+    const unscoped = { nodes: [{ type: 'standard', data: { type: 'message-received' } }] }
+    await expect(
+      assertMailTriggerNotPersonal(dbWithLink(PERSONAL_ID), ORG, unscoped)
     ).resolves.toBeUndefined()
   })
 })
