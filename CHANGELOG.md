@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.1.204](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.203...auxx-v0.1.204) (2026-08-13)
+
+
+### Features
+
+* **ai:** gate training-permissive providers for google-connected orgs ([#1572](https://github.com/Auxx-Ai/auxx-ai/issues/1572)) ([66957b4](https://github.com/Auxx-Ai/auxx-ai/commit/66957b491247cb44b7c1f51f1fe2524a567dc6a6))
+* **apps:** resolve unbound app nodes to the org default connection ([#1575](https://github.com/Auxx-Ai/auxx-ai/issues/1575)) ([a779268](https://github.com/Auxx-Ai/auxx-ai/commit/a779268c41a1ab3930bb7e6f036449c055153808))
+* **workflow:** migrate ai, answer, information-extractor and text-classifier to the catalog ([#1570](https://github.com/Auxx-Ai/auxx-ai/issues/1570)) ([7ff1cf0](https://github.com/Auxx-Ai/auxx-ai/commit/7ff1cf030e04582a769da88a62a3503d261599d1))
+* **workflow:** migrate end, note and var-assign to the catalog ([#1566](https://github.com/Auxx-Ai/auxx-ai/issues/1566)) ([7b7eb7f](https://github.com/Auxx-Ai/auxx-ai/commit/7b7eb7f131076bfec93d921d44e3633a4a11c04f))
+* **workflow:** migrate http, code and list to the catalog ([#1569](https://github.com/Auxx-Ai/auxx-ai/issues/1569)) ([5a6184a](https://github.com/Auxx-Ai/auxx-ai/commit/5a6184a50801f16098e2c05a61309091a56580ba))
+* **workflow:** migrate if-else, loop and human-confirmation to the catalog ([#1568](https://github.com/Auxx-Ai/auxx-ai/issues/1568)) ([4eb338d](https://github.com/Auxx-Ai/auxx-ai/commit/4eb338d25a9ebcf088ad0024baf893a404c18590))
+* **workflow:** migrate manual, scheduled, date-time and format to the catalog ([#1567](https://github.com/Auxx-Ai/auxx-ai/issues/1567)) ([27c8ead](https://github.com/Auxx-Ai/auxx-ai/commit/27c8ead6c6f4b56f629cd7bbf21e830477b7062f))
+* **workflow:** migrate the trigger nodes to the catalog and lift the trigger derivation ([#1571](https://github.com/Auxx-Ai/auxx-ai/issues/1571)) ([4ecc822](https://github.com/Auxx-Ai/auxx-ai/commit/4ecc822464380abe3e396ab1575a23adf197123e))
+* **workflow:** migrate the wait node to the catalog ([#1565](https://github.com/Auxx-Ai/auxx-ai/issues/1565)) ([2ec6b56](https://github.com/Auxx-Ai/auxx-ai/commit/2ec6b567969077150615a76c700a06ba00be3c5a))
+* **workflow:** move the output resolvers into the catalog manifests ([#1573](https://github.com/Auxx-Ai/auxx-ai/issues/1573)) ([95ce228](https://github.com/Auxx-Ai/auxx-ai/commit/95ce2287a2568848a096bd919d53b3864d4f2c62))
+* **workflow:** node catalog skeleton and the variable-inference split ([#1564](https://github.com/Auxx-Ai/auxx-ai/issues/1564)) ([a87bad2](https://github.com/Auxx-Ai/auxx-ai/commit/a87bad2dd75e7e62ba598b3f5db21bb78d5375e6))
+
+
+### Bug Fixes
+
+* **workflow:** guard draft saves with a content-hash cas ([#1561](https://github.com/Auxx-Ai/auxx-ai/issues/1561)) ([6243e7e](https://github.com/Auxx-Ai/auxx-ai/commit/6243e7e625f328ccd3496edfd9b0250e6d139648))
+* **workflow:** nested run tracing, edge status colours and node status badge ([#1574](https://github.com/Auxx-Ai/auxx-ai/issues/1574)) ([f3abd7c](https://github.com/Auxx-Ai/auxx-ai/commit/f3abd7ccbc1f7debd3623dda0e5fd4bbcec14ded))
+* **workflow:** revive the personal mail-trigger guard and loop-back edge detection ([#1558](https://github.com/Auxx-Ai/auxx-ai/issues/1558)) ([d91ae0a](https://github.com/Auxx-Ai/auxx-ai/commit/d91ae0aafa6c5d8e21d0f54ce3eab3de35ce7c94))
+* **workflow:** route failed nodes to their wired fail branch ([#1560](https://github.com/Auxx-Ai/auxx-ai/issues/1560)) ([5956aa8](https://github.com/Auxx-Ai/auxx-ai/commit/5956aa84233679c67e6ee821aa153249066f7699))
+
 ## [0.1.203](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.202...auxx-v0.1.203) (2026-08-13)
 
 
