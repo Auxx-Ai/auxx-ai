@@ -10,8 +10,8 @@ import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/nod
 export interface MessageReceivedNodeData extends BaseNodeData {
   desc?: string // Legacy field, prefer description
   /**
-   * Channel scope — which channels' inbound mail can start this workflow.
-   * `undefined`/empty means **all channels** (the default — publish never
+   * Channel scope, which channels' inbound mail can start this workflow.
+   * `undefined`/empty means **all channels** (the default, publish never
    * forces a choice). Read by the `triggerMessageWorkflows` dispatcher off the
    * published graph (`triggerNode.data.channelIds`), not by the runtime node
    * itself. The "Inboxes" picker in the panel is UI sugar only: picking an
@@ -28,10 +28,10 @@ export interface MessageReceivedNodeData extends BaseNodeData {
    */
   machineMail?: 'exclude' | 'include'
   /**
-   * Content conditions — replaces the deleted "Message Filters" UI. Evaluated
+   * Content conditions, replaces the deleted "Message Filters" UI. Evaluated
    * by the engine with the shared `evaluateConditionsWithDiagnostics` against
    * message-resolvable fields (from/to/subject/body/hasAttachments).
-   * Deliberately excludes `channel`/`isInbound` — channel scoping lives only
+   * Deliberately excludes `channel`/`isInbound`, channel scoping lives only
    * in `channelIds` above. Undefined/empty means "runs on every message".
    */
   conditions?: ConditionGroup[]

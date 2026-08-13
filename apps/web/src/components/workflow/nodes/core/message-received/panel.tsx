@@ -4,6 +4,7 @@
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { getMessageConditionFields } from '@auxx/lib/message-trigger-conditions/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { getInstanceId, isRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -18,6 +19,7 @@ import { Plus } from 'lucide-react'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
 import { useChannelStore } from '~/components/channels/store/channel-store'
+import { ChannelBadge } from '~/components/channels/ui/channel-badge'
 import {
   type Condition,
   ConditionContainer,
@@ -31,7 +33,9 @@ import {
   INTEGRATION_SELECT_ALL_VALUE,
   IntegrationPicker,
 } from '~/components/pickers/integration-picker'
+import { RecordBadge } from '~/components/resources/ui'
 import { useInboxes } from '~/components/threads/hooks'
+import { PickerTrigger } from '~/components/ui/picker-trigger'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '../../../ui/section'
@@ -40,8 +44,12 @@ import { staticOutputVariableContext } from '../output-variable-context'
 import { messageReceivedDefinition, UNSCOPED_MESSAGE_TRIGGER_WARNING } from './schema'
 import type { MessageReceivedNodeData } from './types'
 
-/** The flush-in-a-FieldPanelRow trigger sizing shared by every panel using this pattern. */
-const TRIGGER_PROPS = { className: 'w-full ps-0 pe-1' } as const
+/**
+ * The flush-in-a-FieldPanelRow trigger sizing shared by every panel using this
+ * pattern, plus h-auto so the button grows when selection chips wrap to
+ * multiple lines instead of clipping them.
+ */
+const TRIGGER_CLASS = 'w-full ps-0 pe-1 h-auto min-h-8'
 
 /** The provider drives groups here; the flat condition list stays empty (mirrors mail-filter-configure-page). */
 const EMPTY_CONDITIONS: Condition[] = []
@@ -73,7 +81,7 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
   )
 
   // ── Run on: channel/inbox scope (§4) ────────────────────────────────────
-  // `channelIds` is the ONLY thing persisted — the inbox picker below is a
+  // `channelIds` is the ONLY thing persisted, the inbox picker below is a
   // write-only shortcut that expands to that inbox's channel ids.
   const channels = useChannelStore((s) => s.channels)
   const { inboxes } = useInboxes()
@@ -93,7 +101,7 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
   const channelIdSet = useMemo(() => new Set(channelIds), [channelIds])
 
   // An inbox reads as "selected" when every one of its channels is currently
-  // in scope — purely derived, nothing about inbox selection is stored.
+  // in scope. Purely derived; nothing about inbox selection is stored.
   const selectedInboxRecordIds = useMemo(() => {
     if (channelIds.length === 0) return []
     return nonPersonalInboxes
@@ -103,6 +111,19 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
       })
       .map((inbox) => inbox.recordId as string)
   }, [nonPersonalInboxes, channelIdsByInboxId, channelIds.length, channelIdSet])
+
+  // Unscoped (= all channels) must read back as "All shared inboxes" checked,
+  // exactly like the Channels row below, without this the select-all row can
+  // never appear checked, since clicking it sets the already-current state.
+  const displayedInboxSelection = useMemo(
+    () => (channelIds.length === 0 ? [INBOX_SELECT_ALL_VALUE] : selectedInboxRecordIds),
+    [channelIds.length, selectedInboxRecordIds]
+  )
+
+  const selectedChannels = useMemo(
+    () => channelIds.map((id) => channels.find((c) => c.id === id)).filter((c) => c != null),
+    [channelIds, channels]
+  )
 
   const handleInboxesChange = useCallback(
     (nextSelected: string[]) => {
@@ -136,7 +157,7 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
     [setChannelIds]
   )
 
-  // ── Content conditions (§3) — shared condition builder, replaces Message Filters ──
+  // ── Content conditions (§3): shared condition builder, replaces Message Filters ──
   const conditionFields = useMemo(() => getMessageConditionFields(), [])
 
   const conditionConfig: ConditionSystemConfig = useMemo(
@@ -153,7 +174,7 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
       showGroupSubtext: false,
       showGroupName: false,
       defaultGroupName: '',
-      // Constants only — a trigger fires before any node has run, so there is
+      // Constants only, a trigger fires before any node has run, so there is
       // no workflow variable to reference.
       allowVarEditor: false,
       allowConstantToggle: false,
@@ -205,15 +226,29 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
           className='p-0'>
           <FieldPanelRow
             title='Inboxes'
-            description='Shortcut — selects every channel linked to the chosen inbox(es).'>
+            description='Shortcut: selects every channel linked to the chosen inbox(es).'>
             <InboxPicker
               allowMultiple
               selectAll
               selectAllLabel='All shared inboxes'
-              selected={selectedInboxRecordIds}
-              onChange={handleInboxesChange}
-              triggerProps={TRIGGER_PROPS}
-            />
+              selected={displayedInboxSelection}
+              onChange={handleInboxesChange}>
+              <PickerTrigger hasValue className={TRIGGER_CLASS}>
+                {channelIds.length === 0 ? (
+                  <span className='truncate text-sm'>All shared inboxes</span>
+                ) : selectedInboxRecordIds.length > 0 ? (
+                  <div className='flex flex-wrap items-center gap-1 py-1'>
+                    {selectedInboxRecordIds.map((recordId) => (
+                      <RecordBadge key={recordId} recordId={recordId as RecordId} />
+                    ))}
+                  </div>
+                ) : (
+                  <span className='truncate text-sm text-muted-foreground'>
+                    Custom channel selection
+                  </span>
+                )}
+              </PickerTrigger>
+            </InboxPicker>
           </FieldPanelRow>
 
           <FieldPanelRow
@@ -225,9 +260,19 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
               selectAll
               selectAllLabel='All channels'
               selected={channelIds.length === 0 ? [INTEGRATION_SELECT_ALL_VALUE] : channelIds}
-              onChange={handleChannelsChange}
-              triggerProps={TRIGGER_PROPS}
-            />
+              onChange={handleChannelsChange}>
+              <PickerTrigger hasValue className={TRIGGER_CLASS}>
+                {selectedChannels.length === 0 ? (
+                  <span className='truncate text-sm'>All channels</span>
+                ) : (
+                  <div className='flex flex-wrap items-center gap-1 py-1'>
+                    {selectedChannels.map((channel) => (
+                      <ChannelBadge key={channel.id} channel={channel} />
+                    ))}
+                  </div>
+                )}
+              </PickerTrigger>
+            </IntegrationPicker>
           </FieldPanelRow>
         </FieldPanel>
       </Section>
@@ -244,7 +289,7 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
         getFieldDefinition={getConditionFieldDefinition}>
         <Section
           title='Conditions'
-          description='Match on message content — sender, subject, body, attachments. Channel scope is set above, not here.'
+          description='Match on message content: sender, subject, body, attachments. Channel scope is set above, not here.'
           initialOpen={false}
           actions={<AddConditionGroupButton />}>
           <ConditionContainer
@@ -294,7 +339,7 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
   )
 }
 
-/** "Add group" trigger for the conditions header — lives inside the ConditionProvider. */
+/** "Add group" trigger for the conditions header, lives inside the ConditionProvider. */
 function AddConditionGroupButton() {
   const { addGroup } = useConditionActions()
   if (!addGroup) return null

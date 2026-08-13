@@ -47,7 +47,7 @@ interface IntegrationPickerProps {
    * Passed through to the default trigger `<Button>` (variant/className/size/…)
    * when no custom `children` trigger is given. Lets callers match the shared
    * `w-full ps-0 pe-1` flush-in-a-`FieldPanelRow` sizing convention without
-   * hand-rolling a trigger — see `docs/ui-design-guide.md` §5.
+   * hand-rolling a trigger, see `docs/ui-design-guide.md` §5.
    */
   triggerProps?: React.ComponentProps<typeof Button>
 }
@@ -73,12 +73,13 @@ export function IntegrationPicker({
   const storeChannels = useChannelStore((s) => s.channels)
   const integrations = externalIntegrations || storeChannels
 
-  // Local state for managing selected integrations
-  const [localSelected, setLocalSelected] = useState<string[]>(selected)
+  // Fully controlled: `selected` is the single source of truth, like InboxPicker.
+  // A local useState copy went stale whenever the caller changed the selection
+  // from outside the picker (e.g. the inbox shortcut on the message trigger).
   const [searchValue, setSearchValue] = useState('')
 
   // Check if "Select all" is currently selected
-  const isSelectAllChecked = localSelected.includes(INTEGRATION_SELECT_ALL_VALUE)
+  const isSelectAllChecked = selected.includes(INTEGRATION_SELECT_ALL_VALUE)
 
   // Handle integration selection
   const handleIntegrationSelect = (integrationId: string) => {
@@ -105,9 +106,9 @@ export function IntegrationPicker({
           newSelected = [integrationId]
         } else {
           // Normal multi-select behavior
-          newSelected = localSelected.includes(integrationId)
-            ? localSelected.filter((id) => id !== integrationId)
-            : [...localSelected, integrationId]
+          newSelected = selected.includes(integrationId)
+            ? selected.filter((id) => id !== integrationId)
+            : [...selected, integrationId]
         }
       }
     }
@@ -118,7 +119,6 @@ export function IntegrationPicker({
         onOpenChange(false)
       }
     }
-    setLocalSelected(newSelected)
     onChange?.(newSelected)
   }
 
@@ -189,13 +189,11 @@ export function IntegrationPicker({
                     </div>
                     {allowMultiple ? (
                       <Checkbox
-                        checked={!isSelectAllChecked && localSelected.includes(integration.id)}
+                        checked={!isSelectAllChecked && selected.includes(integration.id)}
                         onCheckedChange={() => handleIntegrationSelect(integration.id)}
                       />
                     ) : (
-                      localSelected.includes(integration.id) && (
-                        <Check className='ml-auto h-4 w-4' />
-                      )
+                      selected.includes(integration.id) && <Check className='ml-auto h-4 w-4' />
                     )}
                   </CommandItem>
                 )
@@ -203,35 +201,37 @@ export function IntegrationPicker({
             </CommandGroup>
           </CommandList>
         </Command>
-        {allowMultiple && localSelected.length > 0 && (
+        {allowMultiple && selected.length > 0 && (
           <div className='flex flex-wrap gap-1 border-t p-2'>
             {isSelectAllChecked ? (
               <Badge variant='secondary' className='flex items-center'>
                 All Channels Selected
               </Badge>
             ) : (
-              localSelected.map((selectedId) => {
-                const selectedIntegration = integrations.find(
-                  (integration) => integration.id === selectedId
-                )
-                if (!selectedIntegration) return null
+              selected
+                .filter((id) => id !== INTEGRATION_SELECT_ALL_VALUE)
+                .map((selectedId) => {
+                  const selectedIntegration = integrations.find(
+                    (integration) => integration.id === selectedId
+                  )
+                  if (!selectedIntegration) return null
 
-                const Icon = getIntegrationIconClass(selectedIntegration.provider)
-                const color = getIntegrationColor(selectedIntegration.provider)
-                const displayName =
-                  selectedIntegration.name || `${selectedIntegration.provider} Integration`
+                  const Icon = getIntegrationIconClass(selectedIntegration.provider)
+                  const color = getIntegrationColor(selectedIntegration.provider)
+                  const displayName =
+                    selectedIntegration.name || `${selectedIntegration.provider} Integration`
 
-                return (
-                  <Badge key={selectedId} variant='secondary' className='flex items-center'>
-                    <div
-                      className='mr-2 flex h-3 w-3 items-center justify-center rounded'
-                      style={{ backgroundColor: `${color}20` }}>
-                      <Icon className='h-2 w-2' style={{ color }} />
-                    </div>
-                    {displayName}
-                  </Badge>
-                )
-              })
+                  return (
+                    <Badge key={selectedId} variant='secondary' className='flex items-center'>
+                      <div
+                        className='mr-2 flex h-3 w-3 items-center justify-center rounded'
+                        style={{ backgroundColor: `${color}20` }}>
+                        <Icon className='h-2 w-2' style={{ color }} />
+                      </div>
+                      {displayName}
+                    </Badge>
+                  )
+                })
             )}
           </div>
         )}

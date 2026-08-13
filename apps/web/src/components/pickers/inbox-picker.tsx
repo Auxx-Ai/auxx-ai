@@ -34,7 +34,7 @@ interface InboxPickerProps {
    * Passed through to the default trigger `<Button>` (variant/className/size/…)
    * when no custom `children` trigger is given. Lets callers match the shared
    * `w-full ps-0 pe-1` flush-in-a-`FieldPanelRow` sizing convention without
-   * hand-rolling a trigger — see `docs/ui-design-guide.md` §5.
+   * hand-rolling a trigger, see `docs/ui-design-guide.md` §5.
    */
   triggerProps?: React.ComponentProps<typeof Button>
 }
@@ -73,7 +73,7 @@ export function InboxPicker({
   const setIsOpen = controlledOnOpenChange || setInternalOpen
 
   // Fetch inboxes if not provided. Personal inboxes are never valid
-  // routing/move targets (mail-permissions §11) — exclude them everywhere.
+  // routing/move targets (mail-permissions §11), exclude them everywhere.
   const { inboxes: fetchedInboxes } = useInboxes()
   const inboxes = (externalInboxes || fetchedInboxes || []).filter((inbox) => !inbox.isPersonal)
 
