@@ -4,7 +4,7 @@ import { Badge, type Variant as BadgeVariant } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, ChevronRight, GitBranch } from 'lucide-react'
 import type React from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NodeRunningStatus } from '~/components/workflow/types'
 
 /**
@@ -17,8 +17,6 @@ interface BranchGroupProps {
   children: React.ReactNode
   /** Overall status of nodes in this branch */
   status?: NodeRunningStatus
-  /** Depth for indentation */
-  depth: number
   /** Optional custom label */
   label?: string
   /** Optional branch index for numbering parallel branches */
@@ -62,21 +60,15 @@ function getStatusVariant(status?: NodeRunningStatus): BadgeVariant {
       return 'destructive'
     case NodeRunningStatus.Running:
       return 'amber'
+    case NodeRunningStatus.Skipped:
+      // Folded shut and inert — reads flatter than a branch still to come
+      return 'outline'
     case NodeRunningStatus.Pending:
     case NodeRunningStatus.Waiting:
-    case NodeRunningStatus.Skipped:
       return 'secondary'
     default:
       return 'default'
   }
-}
-
-/**
- * Human-readable label for a branch status badge
- */
-function getStatusLabel(status: NodeRunningStatus): string {
-  if (status === NodeRunningStatus.Skipped) return 'Skipped'
-  return status
 }
 
 /**
@@ -105,15 +97,22 @@ function getBorderColor(status?: NodeRunningStatus): string {
  * Branch grouping component for execution tree
  * Visually groups nodes that belong to the same branch path
  */
-export function BranchGroup({
-  branchId,
-  children,
-  status,
-  depth,
-  label,
-  branchIndex,
-}: BranchGroupProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false)
+export function BranchGroup({ branchId, children, status, label, branchIndex }: BranchGroupProps) {
+  // A branch folds away until the run actually enters it: Pending has not been
+  // reached yet, Skipped never will be. It unfolds on its own the moment the
+  // branch starts running, and stays open once it has run.
+  const collapsedByStatus =
+    status === NodeRunningStatus.Pending || status === NodeRunningStatus.Skipped
+
+  // Toggling the header pins the branch open or shut, overriding the status.
+  const [override, setOverride] = useState<boolean | null>(null)
+  const isCollapsed = override ?? collapsedByStatus
+
+  // Back at Pending means a new run started — drop the last run's toggle so the
+  // branch follows the new run again.
+  useEffect(() => {
+    if (status === NodeRunningStatus.Pending) setOverride(null)
+  }, [status])
 
   const displayLabel = label || formatBranchLabel(branchId, branchIndex)
   const borderColor = getBorderColor(status)
@@ -122,14 +121,13 @@ export function BranchGroup({
   return (
     <div
       className={cn(
-        'relative border-l-2 pl-3 py-1 my-1',
+        'relative border-l-2 ml-3 pl-3 py-1 my-1',
         borderColor,
         'transition-colors duration-200'
-      )}
-      style={{ marginLeft: `${depth * 24}px` }}>
+      )}>
       {/* Branch header */}
       <button
-        onClick={() => setIsCollapsed(!isCollapsed)}
+        onClick={() => setOverride(!isCollapsed)}
         className={cn(
           'flex items-center gap-2 mb-2 text-sm font-medium',
           'hover:text-primary transition-colors',
@@ -144,7 +142,7 @@ export function BranchGroup({
         <span className='text-muted-foreground'>{displayLabel}</span>
         {status && (
           <Badge variant={statusVariant} className='text-xs px-1.5 py-0'>
-            {getStatusLabel(status)}
+            {status}
           </Badge>
         )}
       </button>
