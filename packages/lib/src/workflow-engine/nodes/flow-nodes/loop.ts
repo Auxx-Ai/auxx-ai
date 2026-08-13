@@ -20,15 +20,15 @@ import { BaseNodeProcessor } from '../base-node'
 const logger = createScopedLogger('loop-processor')
 
 /**
- * Loop node configuration - simplified to match frontend implementation
+ * Loop node configuration — the config subset of the catalog's `LoopNodeData`
+ * (node-catalog Phase 1; this file previously shadowed it).
  */
-interface LoopNodeConfig {
-  title: string
-  description?: string
-  itemsSource: string // Array variable path like "{{customers}}"
-  maxIterations: number // Safety limit (default: 100, max: 1000)
-  accumulateResults: boolean // Collect results from iterations (default: true)
-}
+import type { LoopNodeData } from '../../catalog/nodes/loop'
+
+type LoopNodeConfig = Pick<
+  LoopNodeData,
+  'title' | 'description' | 'itemsSource' | 'maxIterations' | 'accumulateResults'
+>
 
 /**
  * Processor for loop nodes that iterate over arrays (foreach loops)

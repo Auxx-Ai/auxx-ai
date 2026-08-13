@@ -35,7 +35,7 @@ export const NOT_YET_MIGRATED: readonly string[] = [
   'number-input',
   'file-upload',
   // Condition nodes
-  'if-else',
+  // 'if-else' — migrated (catalog/nodes/if-else.ts)
   // Action nodes
   'answer',
   'ai',
@@ -59,6 +59,6 @@ export const NOT_YET_MIGRATED: readonly string[] = [
   // Control nodes
   // 'end' — migrated (catalog/nodes/end.ts)
   // 'wait' — migrated (catalog/nodes/wait.ts)
-  'loop',
-  'human-confirmation',
+  // 'loop' — migrated (catalog/nodes/loop.ts)
+  // 'human-confirmation' — migrated (catalog/nodes/human.ts)
 ] as const

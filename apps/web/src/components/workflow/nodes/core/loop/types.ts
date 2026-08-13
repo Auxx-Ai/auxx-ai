@@ -1,15 +1,17 @@
 // apps/web/src/components/workflow/nodes/core/loop/types.ts
 
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
+import type { CatalogLoopNodeData } from '@auxx/lib/workflow-engine/client'
+import type { SpecificNode } from '~/components/workflow/types/node-base'
+import type { NodeType } from '~/components/workflow/types/node-types'
+
+// The data half moved to the node catalog (node-catalog Phase 1 —
+// `@auxx/lib/workflow-engine/catalog/nodes/loop`).
 
 /**
  * Node data for loop nodes (flattened structure)
  */
-export interface LoopNodeData extends BaseNodeData {
-  itemsSource: string // variable path to array like "{{customers}}"
-  iteratorName?: string // @deprecated - always 'item' now, kept for backwards compatibility
-  maxIterations: number // safety limit
-  accumulateResults: boolean
+export interface LoopNodeData extends CatalogLoopNodeData {
+  type: NodeType
 }
 
 /**

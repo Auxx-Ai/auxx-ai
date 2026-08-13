@@ -72,11 +72,13 @@ export * from './utils/terminal-nodes'
 
 export {
   type BaseNodeData as CatalogBaseNodeData,
+  type BranchType,
   baseNodeDataSchema,
   ErrorHandleType,
   type NodeConnectionMetadata,
   type NodeLoopContext,
   type NodeRuntimeState,
+  type TargetBranch,
   type WorkflowRetryConfig,
 } from './catalog/node-base'
 export {
@@ -104,6 +106,32 @@ export {
   formatNodeSchema,
   validateFormatNodeData,
 } from './catalog/nodes/format'
+export {
+  type HumanConfirmationNodeData as CatalogHumanConfirmationNodeData,
+  humanConfirmationManifest,
+  humanConfirmationNodeDataSchema,
+  validateHumanConfirmationConfig,
+} from './catalog/nodes/human'
+export {
+  branchNameCorrect,
+  extractIfElseVariableIds,
+  type IfElseCondition,
+  type IfElseNodeData as CatalogIfElseNodeData,
+  ifElseManifest,
+  ifElseNodeDataSchema,
+  type NodeCase,
+  type NodeCondition,
+  validateIfElseConfig,
+} from './catalog/nodes/if-else'
+export {
+  extractLoopVariables,
+  LOOP_CONSTANTS,
+  LOOP_HANDLES,
+  type LoopNodeData as CatalogLoopNodeData,
+  loopConfigSchema,
+  loopManifest,
+  validateLoop,
+} from './catalog/nodes/loop'
 export {
   type ManualNodeData as CatalogManualNodeData,
   manualManifest,

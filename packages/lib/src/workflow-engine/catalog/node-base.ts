@@ -14,6 +14,13 @@ import { NodeRunningStatus } from '../core/types'
  */
 
 /**
+ * Branch classification for a node's outgoing handles.
+ * Relocated from apps/web types/core.ts (which re-exports both).
+ */
+export type BranchType = 'default' | 'fail'
+export type TargetBranch = { id: string; name: string; type: BranchType }
+
+/**
  * Error handling strategy
  */
 export enum ErrorHandleType {
