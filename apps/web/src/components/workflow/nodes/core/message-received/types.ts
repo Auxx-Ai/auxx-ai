@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/message-received/types.ts
 
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { ExecutionResult } from '~/components/workflow/types'
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
 
@@ -8,7 +9,15 @@ import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/nod
  */
 export interface MessageReceivedNodeData extends BaseNodeData {
   desc?: string // Legacy field, prefer description
-  filters?: { from?: string[]; subject_contains?: string[]; body_contains?: string[] }
+  /**
+   * Channel scope — which channels' inbound mail can start this workflow.
+   * `undefined`/empty means **all channels** (the default — publish never
+   * forces a choice). Read by the `triggerMessageWorkflows` dispatcher off the
+   * published graph (`triggerNode.data.channelIds`), not by the runtime node
+   * itself. The "Inboxes" picker in the panel is UI sugar only: picking an
+   * inbox writes that inbox's channel ids in here.
+   */
+  channelIds?: string[]
   /**
    * Soft-tier machine-mail handling (out-of-office replies, mailing-list /
    * notification mail). `'exclude'` (the default when absent) skips this
@@ -18,14 +27,14 @@ export interface MessageReceivedNodeData extends BaseNodeData {
    * regardless of this setting.
    */
   machineMail?: 'exclude' | 'include'
-  message_filter?: {
-    enabled: boolean
-    conditions: Array<{
-      field: 'from' | 'subject' | 'body'
-      operator: 'contains' | 'equals' | 'regex'
-      value: string
-    }>
-  }
+  /**
+   * Content conditions — replaces the deleted "Message Filters" UI. Evaluated
+   * by the engine with the shared `evaluateConditionsWithDiagnostics` against
+   * message-resolvable fields (from/to/subject/body/hasAttachments).
+   * Deliberately excludes `channel`/`isInbound` — channel scoping lives only
+   * in `channelIds` above. Undefined/empty means "runs on every message".
+   */
+  conditions?: ConditionGroup[]
 }
 
 /**

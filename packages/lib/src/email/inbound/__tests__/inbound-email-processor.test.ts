@@ -12,8 +12,13 @@ const mocks = vi.hoisted(() => {
     storeMessage: vi.fn(),
     ingestBody: vi.fn(),
     ingestAll: vi.fn(),
+    getOrgOwnEmailAddresses: vi.fn(),
   }
 })
+
+vi.mock('../../../channels/cache', () => ({
+  getOrgOwnEmailAddresses: (...args: unknown[]) => mocks.getOrgOwnEmailAddresses(...args),
+}))
 
 vi.mock('../raw-email-parser', () => {
   /**
@@ -124,6 +129,7 @@ const parsedEmailFixture = {
   headers: {
     from: 'Alice Sender <alice@example.com>',
   },
+  echoedMessageId: null,
   attachments: [],
 }
 
@@ -160,12 +166,14 @@ describe('InboundEmailProcessor', () => {
     mocks.storeMessage.mockReset()
     mocks.ingestBody.mockReset()
     mocks.ingestAll.mockReset()
+    mocks.getOrgOwnEmailAddresses.mockReset()
 
     mocks.parse.mockResolvedValue(parsedEmailFixture)
     mocks.resolve.mockResolvedValue(resolvedIntegrationFixture)
     mocks.storeMessage.mockResolvedValue({ messageId: 'message_123', isNew: true })
     mocks.ingestBody.mockResolvedValue({ htmlBodyStorageLocationId: 'sl_body_123' })
     mocks.ingestAll.mockResolvedValue([])
+    mocks.getOrgOwnEmailAddresses.mockResolvedValue(new Set())
   })
 
   it('uses the injected raw email store when processing a queue message', async () => {
@@ -217,5 +225,51 @@ describe('InboundEmailProcessor', () => {
         }),
       })
     )
+  })
+
+  // Loop-guard plan §6 #2 — SES used to hardcode `isInbound: true` unconditionally.
+  describe('own-address loop guard (§6 #2)', () => {
+    it("marks the message inbound when the sender is not one of the org's own addresses", async () => {
+      const rawEmailStore = { getRawEmailString: vi.fn().mockResolvedValue('raw mime fixture') }
+      mocks.getOrgOwnEmailAddresses.mockResolvedValue(new Set(['someone-else@mail.auxx.ai']))
+
+      await new InboundEmailProcessor({ rawEmailStore }).processFromQueueMessage(
+        queueMessageFixture
+      )
+
+      expect(mocks.getOrgOwnEmailAddresses).toHaveBeenCalledWith(
+        resolvedIntegrationFixture.organizationId
+      )
+      expect(mocks.storeMessage).toHaveBeenCalledWith(expect.objectContaining({ isInbound: true }))
+    })
+
+    it("marks the message outbound when From is one of the org's own channel addresses (cross-channel echo)", async () => {
+      const rawEmailStore = { getRawEmailString: vi.fn().mockResolvedValue('raw mime fixture') }
+      // parsedEmailFixture.from.address === 'alice@example.com'
+      mocks.getOrgOwnEmailAddresses.mockResolvedValue(new Set(['alice@example.com']))
+
+      await new InboundEmailProcessor({ rawEmailStore }).processFromQueueMessage(
+        queueMessageFixture
+      )
+
+      expect(mocks.storeMessage).toHaveBeenCalledWith(expect.objectContaining({ isInbound: false }))
+    })
+
+    it('matches the sender address case-insensitively (MIME From can arrive mixed-case)', async () => {
+      const rawEmailStore = { getRawEmailString: vi.fn().mockResolvedValue('raw mime fixture') }
+      mocks.parse.mockResolvedValue({
+        ...parsedEmailFixture,
+        from: { address: 'Alice@Example.COM', name: 'Alice Sender' },
+      })
+      // The own-address set is itself already normalized lowercase — see
+      // `buildOrgOwnEmailAddressSet` — so only the incoming From needs folding.
+      mocks.getOrgOwnEmailAddresses.mockResolvedValue(new Set(['alice@example.com']))
+
+      await new InboundEmailProcessor({ rawEmailStore }).processFromQueueMessage(
+        queueMessageFixture
+      )
+
+      expect(mocks.storeMessage).toHaveBeenCalledWith(expect.objectContaining({ isInbound: false }))
+    })
   })
 })

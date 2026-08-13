@@ -58,6 +58,12 @@ export interface ParsedInboundEmail {
   references: string | null
   sentAt: Date | null
   headers: Record<string, string | string[]>
+  /**
+   * Our own `Message.id`, echoed back via `X-AuxxAi-Message-Id` on a message
+   * we sent (loop-guard plan §6 supplement) — see `pickEchoedMessageId` in
+   * `ingest/filtering/echoed-message-id.ts`. Transient; never persisted.
+   */
+  echoedMessageId: string | null
   attachments: InboundEmailAttachment[]
 }
 

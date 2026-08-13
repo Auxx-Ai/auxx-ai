@@ -174,6 +174,14 @@ export type MessageReceivedEvent = AuxxEventGeneric<
     // recordId — drives timeline routing.
     recordId?: RecordId
     threadId?: string
+    /** The channel (`Integration.id`) this message arrived on. Hydrated at the
+     * publish site (`store-message.ts`) — already in hand there, zero extra
+     * query — so the dispatcher (`trigger-message-workflows.ts`) can gate a
+     * workflow's channel scope without loading the message. */
+    integrationId?: string
+    /** The thread's inbox at publish time. Same zero-extra-query rationale as
+     * `integrationId`. */
+    inboxId?: string
     subject?: string
     from?: string
     snippet?: string

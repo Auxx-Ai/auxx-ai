@@ -300,6 +300,33 @@ export class SequenceSendEmailProcessor extends BaseNodeProcessor {
       // ── Subject: step 1 opens the thread; steps 2..N reply into it ─────────
       const subject = await this.resolveSubject(config, run, database)
 
+      // ── Builder test runs never really send ──────────────────────────────────
+      // Defense in depth beside the Answer node's mode resolution. This node has no
+      // `test_behavior` surface of its own (there is no palette node for it), so the
+      // run-level debug flag alone gates it. Returning here also skips the success
+      // bookkeeping below — `lastCompletedStep`/`lastSentAt`, the `message:sent`
+      // signal and the visit `timeConfirmedAt` stamp must never record a mail that
+      // was not actually sent.
+      if (contextManager.isDebugMode()) {
+        contextManager.log('INFO', node.name, 'DryRun: skipping sequence step send', {
+          sequenceRunId: run.id,
+          stepIndex: config.stepIndex,
+          integrationId: config.integrationId,
+          recipientEmail,
+          subject,
+        })
+        return {
+          status: NodeRunningStatus.Succeeded,
+          output: {
+            skipped: true,
+            dryRun: true,
+            reason: 'debug-run',
+            stepIndex: config.stepIndex,
+          },
+          outputHandle: 'source',
+        }
+      }
+
       // ── Send ─────────────────────────────────────────────────────────────────
       const providerRegistry = new ProviderRegistryService(organizationId)
       const messageSender = new MessageSenderService(organizationId, providerRegistry, database)

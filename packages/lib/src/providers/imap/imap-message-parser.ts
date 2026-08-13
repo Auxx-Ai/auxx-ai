@@ -3,6 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import type { ImapFlow } from 'imapflow'
 import PostalMime from 'postal-mime'
+import { pickEchoedMessageId } from '../../ingest/filtering/echoed-message-id'
 import { pickPersistedHeaders } from '../../ingest/filtering/persisted-headers'
 import type { ParsedEmail } from './types'
 
@@ -45,6 +46,10 @@ export class ImapMessageParserService {
         inReplyTo: parsed.inReplyTo || undefined,
         references: parsed.headers?.find((h) => h.key === 'references')?.value || undefined,
         headers: pickPersistedHeaders(parsed.headers),
+        // Cross-channel echo correlation key (loop-guard plan §6 supplement) — read off
+        // the FULL raw header list, before `pickPersistedHeaders` narrows it to the
+        // machine-mail/bulk-mail allowlist. Transient only; never persisted.
+        echoedMessageId: pickEchoedMessageId(parsed.headers),
         date: parsed.date || undefined,
         subject: parsed.subject || undefined,
         from: parsed.from

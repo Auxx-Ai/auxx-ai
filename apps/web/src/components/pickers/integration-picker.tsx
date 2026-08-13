@@ -43,6 +43,13 @@ interface IntegrationPickerProps {
   align?: 'start' | 'center' | 'end' // Alignment for the popover
   side?: 'top' | 'right' | 'bottom' | 'left' // Side for the popover
   sideOffset?: number // Offset for the popover
+  /**
+   * Passed through to the default trigger `<Button>` (variant/className/size/…)
+   * when no custom `children` trigger is given. Lets callers match the shared
+   * `w-full ps-0 pe-1` flush-in-a-`FieldPanelRow` sizing convention without
+   * hand-rolling a trigger — see `docs/ui-design-guide.md` §5.
+   */
+  triggerProps?: React.ComponentProps<typeof Button>
 }
 
 export const INTEGRATION_SELECT_ALL_VALUE = '__all__'
@@ -58,6 +65,7 @@ export function IntegrationPicker({
   className,
   integrations: externalIntegrations,
   children,
+  triggerProps,
   ...props
 }: IntegrationPickerProps) {
   // Read channels from the hydrated store (kept opt-in via externalIntegrations
@@ -125,7 +133,9 @@ export function IntegrationPicker({
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         {children || (
-          <Button variant='outline'>Select Integration{allowMultiple ? 's' : ''}</Button>
+          <Button variant='outline' {...triggerProps}>
+            Select Integration{allowMultiple ? 's' : ''}
+          </Button>
         )}
       </PopoverTrigger>
       <PopoverContent className={cn('w-[300px] p-0', className)} {...props}>

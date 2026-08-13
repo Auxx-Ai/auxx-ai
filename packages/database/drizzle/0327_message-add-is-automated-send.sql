@@ -1,0 +1,1 @@
+ALTER TABLE "Message" ADD COLUMN "isAutomatedSend" boolean DEFAULT false NOT NULL;

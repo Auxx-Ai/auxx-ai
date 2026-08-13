@@ -31,6 +31,12 @@ export interface CreateEmailMessageInput {
   unsubscribe?: { url: string }
   /** RFC 3834 loop-prevention headers — matches `SendMessageOptions['automated']`. */
   automated?: boolean
+  /** Row id of the freshly composed `Message` — matches `SendMessageOptions['internalMessageId']`.
+   * Gmail already sets the wire `Message-ID` from our own value (`messageId` above), so unlike
+   * Outlook this isn't the primary correlation key — it's additive, for the case where an
+   * intermediate rewrites `Message-ID` (loop-guard plan §6 supplement). See
+   * `channel-provider.interface.ts:50-56`. */
+  internalMessageId?: string
 }
 
 /**
@@ -55,6 +61,7 @@ export async function createEmailMessage(input: CreateEmailMessageInput): Promis
     messageId,
     unsubscribe,
     automated,
+    internalMessageId,
   } = input
 
   // Generate boundaries
@@ -114,6 +121,15 @@ export async function createEmailMessage(input: CreateEmailMessageInput): Promis
   if (automated) {
     headers.push(`Auto-Submitted: auto-replied`)
     headers.push(`X-Auto-Response-Suppress: All`)
+  }
+
+  // Cross-channel echo correlation key (loop-guard plan §6 supplement). Gmail already
+  // threads `Message-ID` from `messageId` above, so this is a supplement, not the primary
+  // key — it lets an inbound copy that arrived on a DIFFERENT channel (e.g. an SES
+  // forwarding alias, after an intermediate rewrote `Message-ID`) still be recognized as
+  // our own outbound at the `store-message.ts` publish gate.
+  if (internalMessageId) {
+    headers.push(`X-AuxxAi-Message-Id: ${internalMessageId}`)
   }
 
   headers.push(`X-Mailer: Auxx-AI-Mailer/2.0`)

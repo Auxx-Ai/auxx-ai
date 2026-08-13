@@ -123,6 +123,12 @@ export class EmailForwardingProvider
             'X-Auto-Response-Suppress': 'All',
           }
         : {}),
+      // Cross-channel echo correlation key (loop-guard plan §6 supplement). This
+      // provider already sets the wire `Message-ID` from our own value
+      // (`params.messageId`), so this is additive — for the case an intermediate
+      // rewrites `Message-ID` before the org-scoped publish gate in
+      // `store-message.ts` ever sees it. See `channel-provider.interface.ts:50-56`.
+      ...(params.internalMessageId ? { 'X-AuxxAi-Message-Id': params.internalMessageId } : {}),
     }
 
     const emailResult = await NodemailerService.getInstance().sendEmail({

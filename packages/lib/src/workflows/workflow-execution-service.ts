@@ -865,6 +865,12 @@ export class WorkflowExecutionService {
         organizationId: workflowRun.organizationId, // Required for creating node execution records
         reporter,
         skipValidation: false,
+        // Re-derived from the run row, identical to the initial execution above — NOT
+        // read back out of `serializedState`. A run already paused when this shipped has
+        // no debug flag in its blob, and re-deriving covers those too. Without it the
+        // second half of a builder test run (anything after a Wait/approval pause) ran
+        // as a production run and the Answer node really sent mail to the customer.
+        debug: workflowRun.triggeredFrom === WorkflowTriggerSource.DEBUGGING,
       }
 
       logger.info('Resuming workflow execution via engine', {

@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/message-received/schema.ts
 
+import { conditionGroupsSchema } from '@auxx/lib/conditions/client'
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { z } from 'zod'
 import {
@@ -22,13 +23,6 @@ import type { MessageReceivedNodeData } from './types'
 export const messageReceivedSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
-  filters: z
-    .object({
-      from: z.array(z.string()).optional(),
-      subject_contains: z.array(z.string()).optional(),
-      body_contains: z.array(z.string()).optional(),
-    })
-    .optional(),
 })
 
 /**
@@ -45,26 +39,9 @@ export const messageReceivedNodeDataSchema = z.object({
   desc: z.string().optional(),
   description: z.string().optional(),
   variables: z.array(z.any()).optional(),
-  filters: z
-    .object({
-      from: z.array(z.string()).optional(),
-      subject_contains: z.array(z.string()).optional(),
-      body_contains: z.array(z.string()).optional(),
-    })
-    .optional(),
+  channelIds: z.array(z.string()).optional(),
   machineMail: z.enum(['exclude', 'include']).optional(),
-  message_filter: z
-    .object({
-      enabled: z.boolean(),
-      conditions: z.array(
-        z.object({
-          field: z.enum(['from', 'subject', 'body']),
-          operator: z.enum(['contains', 'equals', 'regex']),
-          value: z.string(),
-        })
-      ),
-    })
-    .optional(),
+  conditions: conditionGroupsSchema.optional(),
 
   // Other node data properties
   isValid: z.boolean().optional(),
@@ -80,8 +57,16 @@ export const messageReceivedDefaultData: Partial<MessageReceivedNodeData> = {
   title: 'Message Received',
   desc: 'Triggered when a new message is received',
   variables: [],
-  filters: { from: [], subject_contains: [], body_contains: [] },
 }
+
+/**
+ * Warning shown (on the node badge and inline in the panel) when a trigger has
+ * no channel scope. Unscoped is a valid, supported state — publish never
+ * forces a choice — but it must stay visible: the dispatcher fans this
+ * workflow out to every channel in the org.
+ */
+export const UNSCOPED_MESSAGE_TRIGGER_WARNING =
+  'Unscoped — runs on every channel in the org. Select channels or an inbox under "Run on" to limit it.'
 
 /**
  * Validation function for message-received configuration
@@ -97,18 +82,12 @@ export const validateMessageReceivedConfig = (data: MessageReceivedNodeData): Va
     errors.push({ field: 'title', message: 'Title is required', type: 'error' })
   }
 
-  // Validate email addresses in filters
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-  if (dataToValidate.filters?.from && dataToValidate.filters.from.length > 0) {
-    dataToValidate.filters.from.forEach((email: string, index: number) => {
-      if (!emailRegex.test(email)) {
-        errors.push({
-          field: `filters.from.${index}`,
-          message: `Invalid email address: ${email}`,
-          type: 'error',
-        })
-      }
+  // Unscoped trigger — allowed, but must be an unmissable warning (§4).
+  if (!dataToValidate.channelIds || dataToValidate.channelIds.length === 0) {
+    errors.push({
+      field: 'channelIds',
+      message: UNSCOPED_MESSAGE_TRIGGER_WARNING,
+      type: 'warning',
     })
   }
 

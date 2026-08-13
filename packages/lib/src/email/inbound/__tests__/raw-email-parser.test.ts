@@ -69,4 +69,36 @@ describe('RawEmailParser', () => {
       inline: false,
     })
   })
+
+  // loop-guard plan §6 supplement — `normalizeHeaders` used to run
+  // `Object.entries()` over postal-mime's header ARRAY (`{ key, value }[]`)
+  // rather than its entries, so every header silently vanished into array
+  // indices (`{ '0': '[object Object]', ... }`). These pin the fix and the
+  // `X-AuxxAi-Message-Id` extraction that depends on reading headers correctly.
+  it('normalizes headers into a lowercased key → value record, not array indices', async () => {
+    const parser = new RawEmailParser()
+    const parsed = await parser.parse(fixtureMime)
+
+    expect(parsed.headers.from).toBe('Alice Sender <alice@example.com>')
+    expect(parsed.headers.subject).toBe('Test inbound email')
+    expect(parsed.headers['0']).toBeUndefined()
+  })
+
+  it('extracts echoedMessageId from X-AuxxAi-Message-Id when present', async () => {
+    const mimeWithEcho = fixtureMime.replace(
+      'MIME-Version: 1.0',
+      'X-AuxxAi-Message-Id: msg_abc123\r\nMIME-Version: 1.0'
+    )
+    const parser = new RawEmailParser()
+    const parsed = await parser.parse(mimeWithEcho)
+
+    expect(parsed.echoedMessageId).toBe('msg_abc123')
+  })
+
+  it('echoedMessageId is null when the header is absent', async () => {
+    const parser = new RawEmailParser()
+    const parsed = await parser.parse(fixtureMime)
+
+    expect(parsed.echoedMessageId).toBeNull()
+  })
 })

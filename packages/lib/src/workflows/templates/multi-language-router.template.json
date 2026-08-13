@@ -28,12 +28,7 @@
           "type": "message-received",
           "title": "Customer Email",
           "desc": "Triggered when a new customer email arrives",
-          "variables": [],
-          "filters": {
-            "from": [],
-            "subject_contains": [],
-            "body_contains": []
-          }
+          "variables": []
         },
         "width": 244,
         "height": 48

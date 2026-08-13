@@ -723,6 +723,15 @@ export interface ResumeOptions {
   workflowAppId?: string // Required for creating node execution records
   organizationId?: string // Required for creating node execution records
   reporter?: import('../execution-reporter').WorkflowExecutionReporter
+  /**
+   * Builder (test) run. Re-derived by the caller from `WorkflowRun.triggeredFrom`
+   * exactly as the initial run derives it — it is deliberately NOT read back out of
+   * the persisted state blob, so a run that was already paused before this existed
+   * still resumes with the right character. A run must not change character
+   * mid-flight: without this, the half of a test run after a Wait node resolved
+   * `test_behavior: 'default'` to a REAL send.
+   */
+  debug?: boolean
 }
 
 /**
