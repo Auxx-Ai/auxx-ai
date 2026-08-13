@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.205](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.204...auxx-v0.1.205) (2026-08-13)
+
+
+### Bug Fixes
+
+* **workflow:** match resource triggers on both entity keyspaces ([#1578](https://github.com/Auxx-Ai/auxx-ai/issues/1578)) ([17cb976](https://github.com/Auxx-Ai/auxx-ai/commit/17cb9766f1fc4b089879d82adbf775bbae3c9e65))
+* **workflow:** stop app blocks failing lambda envelope validation ([#1576](https://github.com/Auxx-Ai/auxx-ai/issues/1576)) ([1377f65](https://github.com/Auxx-Ai/auxx-ai/commit/1377f653446af11628ec6f6fd42e1c6e1b926aa8))
+
 ## [0.1.204](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.203...auxx-v0.1.204) (2026-08-13)
 
 
