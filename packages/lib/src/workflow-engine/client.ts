@@ -70,6 +70,15 @@ export * from './utils/terminal-nodes'
 // NOTE: Operator definitions moved to @auxx/lib/conditions
 // Import OPERATOR_DEFINITIONS, Operator, etc. from '@auxx/lib/conditions' or '@auxx/lib/conditions/client'
 
+// ── Node catalog (Phase 1 of the node-catalog migration) ─────────────────────
+// The server-safe node contract: manifest types, the registry, the migration
+// tracker, and the pure variable-inference helpers split out of apps/web
+// utils/variable-utils.ts (the store-reading display helpers stayed there).
+export {
+  type DerivedTriggerColumns,
+  deriveTriggerColumns,
+  type TriggerDerivationNode,
+} from './catalog/derive-trigger'
 export {
   type BaseNodeData as CatalogBaseNodeData,
   type BranchType,
@@ -228,12 +237,26 @@ export {
   validateManualData,
 } from './catalog/nodes/manual'
 export {
+  type MessageReceivedNodeData as CatalogMessageReceivedNodeData,
+  messageReceivedManifest,
+  messageReceivedNodeDataSchema,
+  UNSCOPED_MESSAGE_TRIGGER_WARNING,
+  validateMessageReceivedConfig,
+} from './catalog/nodes/message-received'
+export {
   type NoteNodeData as CatalogNoteNodeData,
   type NoteTheme,
   noteManifest,
   noteNodeDataSchema,
   validateNoteConfig,
 } from './catalog/nodes/note'
+export {
+  createResourceTriggerDefaultData,
+  type ResourceTriggerData as CatalogResourceTriggerData,
+  resourceTriggerManifest,
+  resourceTriggerNodeDataSchema,
+  validateResourceTriggerConfig,
+} from './catalog/nodes/resource-trigger'
 export {
   extractScheduledTriggerVariables,
   type ScheduledTriggerNodeData as CatalogScheduledTriggerNodeData,
@@ -273,10 +296,6 @@ export {
   waitManifest,
   waitNodeDataSchema,
 } from './catalog/nodes/wait'
-// ── Node catalog (Phase 1 of the node-catalog migration) ─────────────────────
-// The server-safe node contract: manifest types, the registry, the migration
-// tracker, and the pure variable-inference helpers split out of apps/web
-// utils/variable-utils.ts (the store-reading display helpers stayed there).
 export { NOT_YET_MIGRATED } from './catalog/not-yet-migrated'
 export {
   getAuthorableManifests,

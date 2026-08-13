@@ -6,43 +6,36 @@ import type { ThreadEntity } from '@auxx/database/types'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../../../cache'
-import type { ConditionGroup } from '../../../conditions/types'
 import { evaluateMessageConditions } from '../../../message-trigger-conditions'
+import type { MessageReceivedNodeData } from '../../catalog/nodes/message-received'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, TEST_RECORD_ID, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
 
 /**
- * Config (`node.data`) for the MESSAGE_RECEIVED trigger node.
+ * Config (`node.data`) for the MESSAGE_RECEIVED trigger node — the config
+ * subset of the catalog's `MessageReceivedNodeData` (node-catalog Phase 1;
+ * this file previously shadowed it). Deliberately WITHOUT `channelIds`: the
+ * `triggerMessageWorkflows` dispatcher reads channel scope off the published
+ * graph; the runtime processor never re-checks it.
+ *
+ * `conditions` are evaluated via `message-trigger-conditions/evaluate.ts`'s
+ * `evaluateMessageConditions`, which fails CLOSED (non-match) on any condition
+ * that doesn't evaluate as written. The legacy `filters` (single-valued
+ * domain/keyword matchers) and `message_filter` (dead builder toggle) keys are
+ * ignored if still present on an old graph — the runtime path that evaluated
+ * them was deleted outright (plan
+ * `2026-08-12-message-trigger-scoping-and-send-safety.md` §3).
+ *
+ * `machineMail` is likewise a dispatcher gate: `'exclude'` (default when
+ * absent) skips soft machine mail, hard-tier machine mail (bounces/NDRs) is
+ * always skipped regardless.
  */
-export interface MessageReceivedTriggerConfig {
-  /**
-   * Content conditions gating the trigger — the shared condition-group shape
-   * the condition builder writes (mail filters, record rules, if-else nodes).
-   * `undefined` or empty matches every message. Evaluated via
-   * `message-trigger-conditions/evaluate.ts`'s `evaluateMessageConditions`,
-   * which fails CLOSED (non-match) on any condition that doesn't evaluate as
-   * written — see that module for why.
-   *
-   * Replaces the legacy `filters` (single-valued domain/keyword matchers) and
-   * `message_filter` (dead builder toggle, never read) keys. Both are ignored
-   * if still present on an old graph — the runtime path that evaluated them
-   * has been deleted outright (plan
-   * `2026-08-12-message-trigger-scoping-and-send-safety.md` §3; no published
-   * message workflows existed to migrate).
-   */
-  conditions?: ConditionGroup[]
-  /**
-   * Soft-tier machine-mail handling (OOO auto-replies, list/notification mail).
-   * `'exclude'` (the default when absent) skips this workflow for soft machine
-   * mail; `'include'` opts it in. Hard-tier machine mail (bounces/NDRs) is always
-   * skipped at the dispatcher regardless of this setting. Read by
-   * `triggerMessageWorkflows` off the published graph — the runtime processor
-   * does not re-check it (the dispatcher is the gate).
-   */
-  machineMail?: 'exclude' | 'include'
-}
+export type MessageReceivedTriggerConfig = Pick<
+  MessageReceivedNodeData,
+  'conditions' | 'machineMail'
+>
 
 /** Output shape for the `message.attachments` node variable. */
 interface MessageAttachmentOutput {

@@ -17,12 +17,12 @@
  */
 export const NOT_YET_MIGRATED: readonly string[] = [
   // Triggers
-  'message-received',
+  // 'message-received' — migrated (catalog/nodes/message-received.ts)
   'webhook',
   'webhook-endpoint',
   // 'scheduled' — migrated (catalog/nodes/scheduled.ts)
   // 'manual' — migrated (catalog/nodes/manual.ts)
-  'resource-trigger',
+  // 'resource-trigger' — migrated (catalog/nodes/resource-trigger.ts)
   // Legacy per-resource triggers (kept for backwards compatibility)
   'contact-created-trigger',
   'contact-updated-trigger',

@@ -1,81 +1,25 @@
 // apps/web/src/components/workflow/nodes/core/resource-trigger/types.ts
 
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { conditionGroupsSchema } from '@auxx/lib/conditions/client'
-import { z } from 'zod'
+import type { CatalogResourceTriggerData } from '@auxx/lib/workflow-engine/client'
 import type { ExecutionResult } from '~/components/workflow/types'
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
-import { NodeType } from '~/components/workflow/types/node-types'
+import type { SpecificNode } from '~/components/workflow/types/node-base'
+import type { NodeType } from '~/components/workflow/types/node-types'
+
+// The data half moved to the node catalog (node-catalog Phase 1 —
+// `@auxx/lib/workflow-engine/catalog/nodes/resource-trigger`); re-exported
+// here so no web import churns. ResourceTriggerData narrows `type` to the web
+// NodeType enum and re-requires `entityDefinitionId` — the catalog admits the
+// pre-backfill draft state, but the panel backfills it on mount, so the web
+// view is always post-backfill.
+export { resourceTriggerNodeDataSchema } from '@auxx/lib/workflow-engine/client'
 
 /**
  * Node data for resource trigger nodes (flattened structure)
  */
-export interface ResourceTriggerData extends BaseNodeData {
-  // Base node properties (inherited from BaseNodeData)
-  id: string
+export interface ResourceTriggerData extends CatalogResourceTriggerData {
   type: NodeType.RESOURCE_TRIGGER
-  selected: boolean
-
-  // Resource trigger configuration
-  resourceType: string // Resource ID for display (e.g., 'contact', 'ticket', 'entity_vendors')
-  entityDefinitionId: string // Actual entity definition ID: 'contact', 'ticket', 'clq1abc123'
-  operation: 'created' | 'updated' | 'deleted' | 'manual'
-
-  // Node configuration (flattened structure like other nodes)
-  title: string
-  desc?: string
-  description?: string
-  variables?: any[]
-
-  /**
-   * Trigger filter — the gate that decides whether the workflow runs at all.
-   *
-   * Groups are AND'd; conditions inside a group combine by the group's
-   * `logicalOperator`. An empty/absent filter means "fire on every record".
-   *
-   * Read by `resource-trigger-base.ts`, which evaluates it with the shared
-   * `evaluateConditionsWithDiagnostics` and REFUSES to fire when any condition
-   * does not evaluate as written. Values are constants only — a trigger fires
-   * before any node has run, so there is no workflow variable to reference.
-   */
-  filters?: ConditionGroup[]
-
-  // Standard node data properties
-  isValid?: boolean
-  errors?: string[]
-  disabled?: boolean
-  outputVariables?: string[]
+  entityDefinitionId: string
 }
-
-/**
- * Zod schema for validation
- */
-export const resourceTriggerNodeDataSchema = z.object({
-  // Base node properties
-  id: z.string(),
-  type: z.literal(NodeType.RESOURCE_TRIGGER),
-  selected: z.boolean(),
-
-  // Resource trigger configuration
-  resourceType: z.string().min(1, 'Resource type is required'),
-  entityDefinitionId: z.string().min(1, 'Entity definition ID is required'),
-  operation: z.enum(['created', 'updated', 'deleted', 'manual']),
-
-  // Flattened config properties
-  title: z.string().min(1),
-  desc: z.string().optional(),
-  description: z.string().optional(),
-  variables: z.array(z.any()).optional(),
-
-  // Trigger filter — condition groups, AND'd at the top level
-  filters: conditionGroupsSchema.optional(),
-
-  // Standard properties
-  isValid: z.boolean().optional(),
-  errors: z.array(z.string()).optional(),
-  disabled: z.boolean().optional(),
-  outputVariables: z.array(z.string()).optional(),
-})
 
 /**
  * Full Resource Trigger node type for React Flow
