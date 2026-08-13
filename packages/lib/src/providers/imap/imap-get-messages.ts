@@ -112,6 +112,9 @@ export class ImapGetMessagesService {
               internetMessageId: parsed.messageId || null,
               inReplyTo: parsed.inReplyTo || null,
               references: parsed.references || null,
+              // Cross-channel echo correlation key (loop-guard plan §6 supplement) —
+              // see `ImapMessageParserService.parseMessage`.
+              echoedMessageId: parsed.echoedMessageId,
               labelIds: [folderPath],
               folderId: folderPath,
             }

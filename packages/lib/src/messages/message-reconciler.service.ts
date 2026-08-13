@@ -130,7 +130,15 @@ export class MessageReconcilerService {
 
     // Strategy 0: Check by the echoed `Message.id` (exact, and the cheapest).
     //
-    // We stamp `X-AuxxAi-Message-Id: <our Message.id>` on every outbound message.
+    // Gmail, SES (Nodemailer), and Outlook all stamp `X-AuxxAi-Message-Id: <our
+    // Message.id>` on outbound now. Outlook needs it to work at all: Graph mints its
+    // own `Message-ID` and returns nothing from `/me/sendMail`, so a custom `x-`
+    // header is the ONLY correlation key available for its Sent Items copy — see
+    // `channel-provider.interface.ts:50-56`. Gmail and SES already set the wire
+    // `Message-ID` from our own value, so for THEM the header is a supplement, not
+    // the primary key: it's what lets the org-scoped suppress-only check in
+    // `store-message.ts` (loop-guard plan §6 supplement) still recognize an echo
+    // whose `Message-ID` an intermediate forwarder rewrote.
     // Microsoft Graph strips every transport header from the Sent Items copy but
     // preserves custom `x-` names (verified 2026-08-01: the copy came back carrying
     // only `X-AuxxAi-Message`), so when the provider reads that header back into

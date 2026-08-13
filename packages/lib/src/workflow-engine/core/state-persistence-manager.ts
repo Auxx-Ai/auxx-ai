@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/core/state-persistence-manager.ts
 
+import { database as db } from '@auxx/database'
 import { ExecutionContextManager } from './execution-context'
 import type {
   ExecutionState,
@@ -155,7 +156,14 @@ export class StatePersistenceManager {
       state.context.systemVariables['sys.userEmail'] as string,
       state.context.systemVariables['sys.userName'] as string,
       state.context.systemVariables['sys.organizationName'] as string,
-      state.context.systemVariables['sys.organizationHandle'] as string
+      state.context.systemVariables['sys.organizationHandle'] as string,
+      // `db` is not serializable, so it is absent from the state blob — but the context
+      // still needs one after a resume. Re-attach the same module singleton
+      // `executeWorkflow` passes on the first half of the run (`workflow-engine.ts:199`).
+      // Without it `context.db` is `undefined` and every node that reads the database
+      // throws on resume — e.g. the Answer node's reply path
+      // (`getLatestInboundMessage(threadId, context.db)`).
+      db
     )
 
     // Initialize system variables to populate sys.* variables in the variables map

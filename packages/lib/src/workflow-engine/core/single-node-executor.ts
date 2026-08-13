@@ -85,6 +85,14 @@ export async function executeSingleNode(
     db
   )
 
+  // 2.5. A single-node run is by definition a builder run — the only caller is
+  // `WorkflowExecutionService.runSingleNode` (tRPC `workflow.runSingleNode`, the "Run"
+  // button on a node panel). Mark it as a debug run so side-effecting nodes simulate
+  // instead of acting for real: the Answer node's `test_behavior: 'default'` resolves to
+  // a dry run only when `isDebugMode()` is true, and without this a node-panel "Run"
+  // emailed the real customer resolved off the selected thread.
+  contextManager.setDebugMode(true)
+
   // 3. Initialize system variables
   contextManager.initializeSystemVariables()
 

@@ -38,6 +38,9 @@ export function MessageReceivedTriggerInput({ inputs, errors, onChange }: Trigge
   // does not carry one, so read it from the same hook the mount site uses.
   const { triggerNode } = useWorkflowTrigger()
   const triggerNodeId = triggerNode?.id ?? ''
+  // Same channel scope the trigger publishes with (§4/§5 of the message-trigger
+  // scoping plan) — undefined/empty means "all channels", unchanged.
+  const triggerChannelIds = (triggerNode?.data as { channelIds?: string[] } | undefined)?.channelIds
 
   const isAutoMode = inputs._isAutoMode ?? true
   const selectedThreadId = inputs._threadId as string | undefined
@@ -158,6 +161,7 @@ export function MessageReceivedTriggerInput({ inputs, errors, onChange }: Trigge
             {isAutoMode ? (
               <ThreadCombobox
                 selectedThreadId={selectedThreadId}
+                channelIds={triggerChannelIds}
                 onChange={(threadId) => {
                   onChange('_threadId', threadId)
                   if (!threadId) {
@@ -401,16 +405,29 @@ function ThreadCombobox({
   selectedThreadId,
   onChange,
   isLoading,
+  channelIds,
 }: {
   selectedThreadId?: string
   onChange: (threadId: string) => void
   isLoading: boolean
+  /** The trigger's own channel scope (§4/§5) — undefined/empty means "all". */
+  channelIds?: string[]
 }) {
   const filter = useMemo(() => buildConditionGroups({ contextType: 'all' }), [])
-  const { threads, isLoading: threadsLoading } = useThreadList({
+  const { threads: allThreads, isLoading: threadsLoading } = useThreadList({
     filter,
     sort: { field: 'lastMessageAt', direction: 'desc' },
   })
+
+  // Only offer threads the trigger would actually match — mail-query has no
+  // channel-scoped condition field, so this filters client-side on the
+  // already-fetched list rather than adding one (out of scope here; see
+  // plan §5). Empty/undefined scope = all, unchanged.
+  const threads = useMemo(() => {
+    if (!channelIds || channelIds.length === 0) return allThreads
+    const scope = new Set(channelIds)
+    return allThreads.filter((t) => scope.has(t.integrationId))
+  }, [allThreads, channelIds])
 
   const options = useMemo(
     () => threads.map((t) => ({ value: t.id, label: t.subject || 'No subject' })),

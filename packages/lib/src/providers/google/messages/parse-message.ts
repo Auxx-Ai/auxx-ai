@@ -244,6 +244,11 @@ export function convertMessagesToMessageData(
           keywords: [],
           inReplyTo: message.headers['in-reply-to'],
           references: message.headers['references'],
+          // Cross-channel echo correlation key (loop-guard plan §6 supplement). Gmail
+          // already persists ALL raw headers here (unlike Outlook/IMAP, which only keep
+          // an allowlisted subset), so the header Gmail's own `sendMessage` now stamps
+          // (`create-message.ts`) is directly readable — no separate picker needed.
+          echoedMessageId: message.headers['x-auxxai-message-id'] || null,
           metadata: { headers: message.headers },
           isInbound,
         } satisfies MessageData

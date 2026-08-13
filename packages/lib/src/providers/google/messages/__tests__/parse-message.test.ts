@@ -2,7 +2,8 @@
 
 import type { gmail_v1 } from 'googleapis'
 import { describe, expect, it } from 'vitest'
-import { extractPayloadAttachments } from '../parse-message'
+import type { ParsedGmailMessage } from '../../types'
+import { convertMessagesToMessageData, extractPayloadAttachments } from '../parse-message'
 
 function makeHeader(name: string, value: string): gmail_v1.Schema$MessagePartHeader {
   return { name, value }
@@ -360,5 +361,67 @@ describe('extractPayloadAttachments', () => {
     expect(result).toHaveLength(1)
     expect(result[0]!.filename).toBe('attachment')
     expect(result[0]!.mimeType).toBe('application/octet-stream')
+  })
+})
+
+// loop-guard plan §6 supplement — Gmail already persists ALL raw headers
+// (`message.headers`, unlike Outlook/IMAP's allowlisted subset), so once
+// Gmail's own `sendMessage` stamps `X-AuxxAi-Message-Id` (`create-message.ts`)
+// it's directly readable here with no separate picker.
+describe('convertMessagesToMessageData — echoedMessageId', () => {
+  function makeParsedMessage(overrides: Partial<ParsedGmailMessage> = {}): ParsedGmailMessage {
+    return {
+      id: 'msg_1',
+      threadId: 'thread_1',
+      labelIds: ['INBOX'],
+      snippet: 'snippet',
+      historyId: '1',
+      internalDate: '1700000000000',
+      attachments: [],
+      headers: {
+        from: 'Customer <customer@example.com>',
+        to: 'support@example.com',
+        subject: 'Re: Order',
+        ...overrides.headers,
+      },
+      textPlain: 'body',
+      ...overrides,
+    }
+  }
+
+  function makeRawMessage(id: string): any {
+    return { id, threadId: 'thread_1', payload: { headers: [], body: { size: 0 } } }
+  }
+
+  it('extracts echoedMessageId when X-AuxxAi-Message-Id is present', () => {
+    const parsed = makeParsedMessage({
+      headers: { from: 'a@example.com', 'x-auxxai-message-id': 'msg_abc123' } as any,
+    })
+    const result = convertMessagesToMessageData(
+      [parsed],
+      [makeRawMessage('msg_1')],
+      'integration_1',
+      'inbox_1',
+      'org_1',
+      []
+    )
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.echoedMessageId).toBe('msg_abc123')
+  })
+
+  it('echoedMessageId is null when the header is absent', () => {
+    const parsed = makeParsedMessage()
+    const result = convertMessagesToMessageData(
+      [parsed],
+      [makeRawMessage('msg_1')],
+      'integration_1',
+      'inbox_1',
+      'org_1',
+      []
+    )
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.echoedMessageId).toBeNull()
   })
 })

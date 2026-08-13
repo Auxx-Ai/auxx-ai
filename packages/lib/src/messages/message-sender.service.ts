@@ -213,6 +213,12 @@ export class MessageSenderService {
       })
       // Step 2: Process participants
       const participants = await this.processParticipants(input)
+      const isAutomatedSend = !this.viewer || isSystemViewer(this.viewer)
+      // Step 2.4: §6 fix #3 — per-thread auto-reply alternation. Existing threads only;
+      // a freshly-created (pending) thread has no prior message to alternate against.
+      if (isAutomatedSend && !threadContext.isPending) {
+        await this.assertAlternation(threadContext.id, input.organizationId)
+      }
       // Step 2.5: Send-time suppression + List-Unsubscribe context (signals plan 02
       // "Send-time enforcement", decided 2026-07-13). No-op for non-email providers/chat
       // or when the primary recipient has no linked contact — cheap early-out before the
@@ -221,7 +227,6 @@ export class MessageSenderService {
         provider: capabilities.provider,
         participants,
       })
-      const isAutomatedSend = !this.viewer || isSystemViewer(this.viewer)
       if (emailContext && isAutomatedSend) {
         const suppressed = await isSuppressed(
           this.db ?? db,
@@ -233,11 +238,23 @@ export class MessageSenderService {
             `Recipient ${emailContext.email} is unsubscribed or bounced; automated send blocked`
           )
         }
+      }
+      // Step 2.6: §6 fix #4 — rate limit every automated send with a valid recipient
+      // address, not only ones with a linked Contact. Hoisted out of the suppression
+      // block: suppression + List-Unsubscribe are genuinely contact-scoped (they need
+      // `emailContext`), but the rate limiter keys on a raw address and needs no contact
+      // — the `entityInstanceId` requirement it inherited from that block was an accident
+      // of nesting, not a decision, and left unlinked recipients with no rate limiting.
+      const recipientAddress = this.resolveOutboundEmailAddress({
+        provider: capabilities.provider,
+        participants,
+      })
+      if (isAutomatedSend && recipientAddress) {
         // Rate limits for automated sends (machine-mail plan Phase 3) — per-recipient
         // cooldown + org circuit breaker. Defense-in-depth behind machine-mail detection.
         const rateLimit = await checkAutomatedSendLimits({
           organizationId: input.organizationId,
-          recipientEmail: emailContext.email,
+          recipientEmail: recipientAddress,
         })
         if (!rateLimit.allowed) {
           if (rateLimit.scope === 'org' && rateLimit.firstTrip) {
@@ -248,7 +265,7 @@ export class MessageSenderService {
           }
           throw new ForbiddenError(
             rateLimit.scope === 'recipient'
-              ? `Automated send to ${emailContext.email} blocked: recipient received ` +
+              ? `Automated send to ${recipientAddress} blocked: recipient received ` +
                   `${rateLimit.limit} automated emails in the last hour (possible loop)`
               : `Automated send blocked: organization exceeded ${rateLimit.limit} automated ` +
                   'emails in 15 minutes (circuit breaker tripped, admins notified)'
@@ -271,6 +288,7 @@ export class MessageSenderService {
         inReplyTo: await this.getInReplyTo(threadContext.id),
         references: await this.getReferences(threadContext.id),
         attachmentIds: input.attachmentIds, // Pass attachment IDs to composer
+        isAutomatedSend, // §6 fix #3 — persisted for the per-thread alternation guard
       })
       logger.info('Message composed', {
         messageId: composed.id,
@@ -565,6 +583,24 @@ export class MessageSenderService {
     }
   }
   /**
+   * Resolves the primary recipient's raw email address for the §6 fix #4 rate limiter.
+   * Returns `null` for non-email providers (chat/SMS/social DMs) or when the primary `to`
+   * participant isn't an email identifier. Deliberately does NOT require a linked
+   * Contact — the rate limiter keys on a raw address and needs no contact; that
+   * requirement belongs to `resolveOutboundEmailContext` below (suppression +
+   * List-Unsubscribe, which genuinely are contact-scoped).
+   */
+  private resolveOutboundEmailAddress(params: {
+    provider: string
+    participants: ProcessedParticipants
+  }): string | null {
+    if (!EMAIL_PROVIDER_TYPES.has(params.provider)) return null
+    const primary = params.participants.to[0]
+    if (!primary || primary.identifierType !== 'EMAIL') return null
+    return primary.identifier
+  }
+
+  /**
    * Resolves the outbound-email context needed for send-time suppression + the
    * List-Unsubscribe header (signals plan 02). Returns `null` for non-email providers
    * (chat/SMS/social DMs), or when the primary `to` participant isn't an email identifier
@@ -580,6 +616,41 @@ export class MessageSenderService {
     if (!primary || primary.identifierType !== 'EMAIL') return null
     if (!primary.entityInstanceId) return null
     return { email: primary.identifier, contactEntityInstanceId: primary.entityInstanceId }
+  }
+
+  /**
+   * §6 fix #3 — per-thread auto-reply alternation. Never send an automated message
+   * twice in a row on a thread without an intervening message from someone else
+   * (inbound, or a human/agent-assisted outbound). A loop dies on the second hop
+   * instead of drifting under a per-recipient/org cap.
+   *
+   * A durable DB read, not Redis — a Redis-only ledger would inherit the same
+   * fail-open-when-Redis-is-down weakness this plan criticizes in the rate limiter.
+   * Only called for automated sends on an existing (non-pending) thread; new threads
+   * have no prior message and always pass by construction (no row found → return).
+   */
+  private async assertAlternation(threadId: string, organizationId: string): Promise<void> {
+    const [lastMessage] = await (this.db ?? db)
+      .select({
+        isInbound: schema.Message.isInbound,
+        isAutomatedSend: schema.Message.isAutomatedSend,
+      })
+      .from(schema.Message)
+      .where(eq(schema.Message.threadId, threadId))
+      .orderBy(desc(schema.Message.sentAt))
+      .limit(1)
+    if (!lastMessage) return
+    if (!lastMessage.isInbound && lastMessage.isAutomatedSend) {
+      logger.warn('Automated send blocked: alternation guard', {
+        threadId,
+        organizationId,
+      })
+      throw new ForbiddenError(
+        'Automated send blocked: the previous message on this thread was also an ' +
+          'automated send (alternation guard — a workflow, sequence, or agent must not ' +
+          'reply twice in a row without an intervening message from someone else)'
+      )
+    }
   }
 
   /**

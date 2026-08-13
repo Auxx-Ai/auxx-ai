@@ -2,8 +2,10 @@
 
 'use client'
 
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { getMessageConditionFields } from '@auxx/lib/message-trigger-conditions/client'
+import { getInstanceId, isRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
 import {
   Select,
   SelectContent,
@@ -12,16 +14,37 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { produce } from 'immer'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import type React from 'react'
-import { memo } from 'react'
+import { memo, useCallback, useMemo } from 'react'
+import { useChannelStore } from '~/components/channels/store/channel-store'
+import {
+  type Condition,
+  ConditionContainer,
+  ConditionProvider,
+  type ConditionSystemConfig,
+  useConditionActions,
+} from '~/components/conditions'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { INBOX_SELECT_ALL_VALUE, InboxPicker } from '~/components/pickers/inbox-picker'
+import {
+  INTEGRATION_SELECT_ALL_VALUE,
+  IntegrationPicker,
+} from '~/components/pickers/integration-picker'
+import { useInboxes } from '~/components/threads/hooks'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '../../../ui/section'
 import { BasePanel } from '../../shared/base/base-panel'
 import { staticOutputVariableContext } from '../output-variable-context'
-import { messageReceivedDefinition } from './schema'
+import { messageReceivedDefinition, UNSCOPED_MESSAGE_TRIGGER_WARNING } from './schema'
 import type { MessageReceivedNodeData } from './types'
+
+/** The flush-in-a-FieldPanelRow trigger sizing shared by every panel using this pattern. */
+const TRIGGER_PROPS = { className: 'w-full ps-0 pe-1' } as const
+
+/** The provider drives groups here; the flat condition list stays empty (mirrors mail-filter-configure-page). */
+const EMPTY_CONDITIONS: Condition[] = []
 
 interface MessageReceivedPanelProps {
   nodeId: string
@@ -36,62 +59,131 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
     data
   )
 
-  const addCondition = () => {
-    const newData = produce(nodeData, (draft) => {
-      if (!draft.message_filter) {
-        draft.message_filter = { enabled: true, conditions: [] }
-      }
-      draft.message_filter.conditions.push({ field: 'subject', operator: 'contains', value: '' })
-    })
-    setNodeData(newData)
-  }
+  const channelIds = nodeData.channelIds ?? []
 
-  const removeCondition = (index: number) => {
-    const newData = produce(nodeData, (draft) => {
-      if (draft.message_filter?.conditions) {
-        draft.message_filter.conditions.splice(index, 1)
-      }
-    })
-    setNodeData(newData)
-  }
+  const setChannelIds = useCallback(
+    (next: string[]) => {
+      setNodeData(
+        produce(nodeData, (draft) => {
+          draft.channelIds = next
+        })
+      )
+    },
+    [nodeData, setNodeData]
+  )
 
-  const updateConditionField = (index: number, field: 'from' | 'subject' | 'body') => {
-    const newData = produce(nodeData, (draft) => {
-      if (draft.message_filter?.conditions?.[index]) {
-        draft.message_filter.conditions[index].field = field
-      }
-    })
-    setNodeData(newData)
-  }
+  // ── Run on: channel/inbox scope (§4) ────────────────────────────────────
+  // `channelIds` is the ONLY thing persisted — the inbox picker below is a
+  // write-only shortcut that expands to that inbox's channel ids.
+  const channels = useChannelStore((s) => s.channels)
+  const { inboxes } = useInboxes()
+  const nonPersonalInboxes = useMemo(() => inboxes.filter((i) => !i.isPersonal), [inboxes])
 
-  const updateConditionOperator = (index: number, operator: 'contains' | 'equals' | 'regex') => {
-    const newData = produce(nodeData, (draft) => {
-      if (draft.message_filter?.conditions?.[index]) {
-        draft.message_filter.conditions[index].operator = operator
-      }
-    })
-    setNodeData(newData)
-  }
+  const channelIdsByInboxId = useMemo(() => {
+    const map = new Map<string, string[]>()
+    for (const channel of channels) {
+      if (!channel.inboxId) continue
+      const list = map.get(channel.inboxId) ?? []
+      list.push(channel.id)
+      map.set(channel.inboxId, list)
+    }
+    return map
+  }, [channels])
 
-  const updateConditionValue = (index: number, value: string) => {
-    const newData = produce(nodeData, (draft) => {
-      if (draft.message_filter?.conditions?.[index]) {
-        draft.message_filter.conditions[index].value = value
-      }
-    })
-    setNodeData(newData)
-  }
+  const channelIdSet = useMemo(() => new Set(channelIds), [channelIds])
 
-  const toggleFilterEnabled = (enabled: boolean) => {
-    const newData = produce(nodeData, (draft) => {
-      if (!draft.message_filter) {
-        draft.message_filter = { enabled, conditions: [] }
-      } else {
-        draft.message_filter.enabled = enabled
+  // An inbox reads as "selected" when every one of its channels is currently
+  // in scope — purely derived, nothing about inbox selection is stored.
+  const selectedInboxRecordIds = useMemo(() => {
+    if (channelIds.length === 0) return []
+    return nonPersonalInboxes
+      .filter((inbox) => {
+        const ids = channelIdsByInboxId.get(inbox.id) ?? []
+        return ids.length > 0 && ids.every((id) => channelIdSet.has(id))
+      })
+      .map((inbox) => inbox.recordId as string)
+  }, [nonPersonalInboxes, channelIdsByInboxId, channelIds.length, channelIdSet])
+
+  const handleInboxesChange = useCallback(
+    (nextSelected: string[]) => {
+      if (nextSelected.includes(INBOX_SELECT_ALL_VALUE)) {
+        setChannelIds([])
+        return
       }
-    })
-    setNodeData(newData)
-  }
+      // InboxPicker emits `inbox.recordId` though typed as bare `string[]`
+      // (noted at `components/mail/thread-header.tsx:228`).
+      const nextInboxIds = new Set(nextSelected.filter(isRecordId).map(getInstanceId))
+      const prevInboxIds = new Set(selectedInboxRecordIds.filter(isRecordId).map(getInstanceId))
+
+      const next = new Set(channelIds)
+      for (const inboxId of nextInboxIds) {
+        if (prevInboxIds.has(inboxId)) continue
+        for (const cid of channelIdsByInboxId.get(inboxId) ?? []) next.add(cid)
+      }
+      for (const inboxId of prevInboxIds) {
+        if (nextInboxIds.has(inboxId)) continue
+        for (const cid of channelIdsByInboxId.get(inboxId) ?? []) next.delete(cid)
+      }
+      setChannelIds(Array.from(next))
+    },
+    [selectedInboxRecordIds, channelIdsByInboxId, channelIds, setChannelIds]
+  )
+
+  const handleChannelsChange = useCallback(
+    (selected: string[]) => {
+      setChannelIds(selected.includes(INTEGRATION_SELECT_ALL_VALUE) ? [] : selected)
+    },
+    [setChannelIds]
+  )
+
+  // ── Content conditions (§3) — shared condition builder, replaces Message Filters ──
+  const conditionFields = useMemo(() => getMessageConditionFields(), [])
+
+  const conditionConfig: ConditionSystemConfig = useMemo(
+    () => ({
+      mode: 'resource',
+      fields: conditionFields,
+      allowNesting: false,
+      allowReordering: true,
+      showLogicalOperators: true,
+      showGrouping: true,
+      allowGroupNaming: false,
+      allowGroupCollapse: false,
+      allowGroupReordering: true,
+      showGroupSubtext: false,
+      showGroupName: false,
+      defaultGroupName: '',
+      // Constants only — a trigger fires before any node has run, so there is
+      // no workflow variable to reference.
+      allowVarEditor: false,
+      allowConstantToggle: false,
+      allowCurrentUserPlaceholder: false,
+      display: 'inline',
+      readOnly: isReadOnly,
+    }),
+    [conditionFields, isReadOnly]
+  )
+
+  const conditionGroups = nodeData.conditions ?? []
+
+  const handleGroupsChange = useCallback(
+    (groups: ConditionGroup[]) => {
+      setNodeData(
+        produce(nodeData, (draft) => {
+          draft.conditions = groups
+        })
+      )
+    },
+    [nodeData, setNodeData]
+  )
+
+  const getConditionFieldDefinition = useCallback(
+    (id: string | string[]) =>
+      Array.isArray(id) ? undefined : conditionFields.find((f) => f.id === id),
+    [conditionFields]
+  )
+
+  const getAvailableConditionFields = useCallback(() => conditionFields, [conditionFields])
 
   const setMachineMail = (value: 'exclude' | 'include') => {
     const newData = produce(nodeData, (draft) => {
@@ -103,75 +195,65 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
   return (
     <BasePanel nodeId={nodeId} data={data}>
       <Section
-        title='Message Filters'
-        description='Configure filters to control when this trigger activates.'
-        showEnable
-        onEnableChange={toggleFilterEnabled}
-        enabled={nodeData.message_filter?.enabled || false}
-        initialOpen={nodeData.message_filter?.enabled || false}>
-        <div className='space-y-2'>
-          {(nodeData.message_filter?.conditions || []).map((condition, index) => (
-            <div key={index} className='flex gap-2 items-center'>
-              <Select
-                value={condition.field}
-                onValueChange={(value: 'from' | 'subject' | 'body') =>
-                  updateConditionField(index, value)
-                }
-                disabled={isReadOnly}>
-                <SelectTrigger className='w-24'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='from'>From</SelectItem>
-                  <SelectItem value='subject'>Subject</SelectItem>
-                  <SelectItem value='body'>Body</SelectItem>
-                </SelectContent>
-              </Select>
+        title='Run on'
+        description='Which channels can start this workflow. Unscoped (the default) means every channel.'
+        initialOpen>
+        <FieldPanel
+          orientation='responsive'
+          breakpoint='md'
+          resizeId='message-received-scope'
+          className='p-0'>
+          <FieldPanelRow
+            title='Inboxes'
+            description='Shortcut — selects every channel linked to the chosen inbox(es).'>
+            <InboxPicker
+              allowMultiple
+              selectAll
+              selectAllLabel='All shared inboxes'
+              selected={selectedInboxRecordIds}
+              onChange={handleInboxesChange}
+              triggerProps={TRIGGER_PROPS}
+            />
+          </FieldPanelRow>
 
-              <Select
-                value={condition.operator}
-                onValueChange={(value: 'contains' | 'equals' | 'regex') =>
-                  updateConditionOperator(index, value)
-                }
-                disabled={isReadOnly}>
-                <SelectTrigger className='w-24'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='contains'>Contains</SelectItem>
-                  <SelectItem value='equals'>Equals</SelectItem>
-                  <SelectItem value='regex'>Regex</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Input
-                value={condition.value}
-                onChange={(e) => updateConditionValue(index, e.target.value)}
-                placeholder='Value'
-                className='flex-1'
-                disabled={isReadOnly}
-              />
-
-              <Button
-                size='icon'
-                variant='ghost'
-                onClick={() => removeCondition(index)}
-                disabled={isReadOnly}>
-                <Trash2 />
-              </Button>
-            </div>
-          ))}
-
-          <Button
-            size='sm'
-            variant='outline'
-            onClick={addCondition}
-            className='w-full'
-            disabled={isReadOnly}>
-            <Plus /> Add Condition
-          </Button>
-        </div>
+          <FieldPanelRow
+            title='Channels'
+            validationError={channelIds.length === 0 ? UNSCOPED_MESSAGE_TRIGGER_WARNING : undefined}
+            validationType='warning'>
+            <IntegrationPicker
+              allowMultiple
+              selectAll
+              selectAllLabel='All channels'
+              selected={channelIds.length === 0 ? [INTEGRATION_SELECT_ALL_VALUE] : channelIds}
+              onChange={handleChannelsChange}
+              triggerProps={TRIGGER_PROPS}
+            />
+          </FieldPanelRow>
+        </FieldPanel>
       </Section>
+
+      <ConditionProvider
+        conditions={EMPTY_CONDITIONS}
+        groups={conditionGroups}
+        config={conditionConfig}
+        nodeId={nodeId}
+        readOnly={isReadOnly}
+        onConditionsChange={() => {}}
+        onGroupsChange={handleGroupsChange}
+        getAvailableFields={getAvailableConditionFields}
+        getFieldDefinition={getConditionFieldDefinition}>
+        <Section
+          title='Conditions'
+          description='Match on message content — sender, subject, body, attachments. Channel scope is set above, not here.'
+          initialOpen={false}
+          actions={<AddConditionGroupButton />}>
+          <ConditionContainer
+            emptyStateText='No conditions. Runs on every message that matches the channel scope above.'
+            showAddButton={false}
+            showGrouping
+          />
+        </Section>
+      </ConditionProvider>
 
       <Section
         title='Automated emails'
@@ -209,6 +291,18 @@ const MessageReceivedPanelComponent: React.FC<MessageReceivedPanelProps> = ({ no
         initialOpen={false}
       />
     </BasePanel>
+  )
+}
+
+/** "Add group" trigger for the conditions header — lives inside the ConditionProvider. */
+function AddConditionGroupButton() {
+  const { addGroup } = useConditionActions()
+  if (!addGroup) return null
+  return (
+    <Button variant='ghost' size='xs' type='button' onClick={() => addGroup()}>
+      <Plus />
+      Add group
+    </Button>
   )
 }
 

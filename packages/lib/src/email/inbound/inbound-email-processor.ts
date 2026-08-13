@@ -1,6 +1,7 @@
 // packages/lib/src/email/inbound/inbound-email-processor.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import { getOrgOwnEmailAddresses } from '../../channels/cache'
 import type { MessageData, ParticipantInputData } from '../email-storage'
 import { MessageStorageService } from '../email-storage'
 import { InboundAttachmentIngestService } from './attachment-ingest.service'
@@ -124,6 +125,24 @@ export class InboundEmailProcessor {
     const organizationId = resolvedIntegration.organizationId
     const contentScopeId = message.sesMessageId
 
+    // Loop-guard plan §6 #2 — SES used to hardcode `isInbound: true` with no
+    // sender check at all, so a reply sent on the Gmail or Outlook channel
+    // that re-arrived through this org's forwarding alias published
+    // `message:received` for its own outbound mail. Consult the same
+    // org-wide own-address set the ingest publish gate uses
+    // (`buildOrgOwnEmailAddressSet` / `store-message.ts`) instead.
+    const fromAddress = parsedEmail.from.address.trim().toLowerCase()
+    const ownAddresses = await getOrgOwnEmailAddresses(organizationId)
+    const isInbound = !ownAddresses.has(fromAddress)
+    if (!isInbound) {
+      logger.info('SES inbound message is an own-address echo — marking outbound, not inbound', {
+        organizationId,
+        integrationId: resolvedIntegration.integrationId,
+        sesMessageId: message.sesMessageId,
+        from: fromAddress,
+      })
+    }
+
     const receivedAt = new Date(message.receivedAt)
     const sentAt = parsedEmail.sentAt ?? receivedAt
     const fallbackRecipients =
@@ -149,7 +168,7 @@ export class InboundEmailProcessor {
       inboxId: resolvedIntegration.inboxId ?? undefined,
       integrationId: resolvedIntegration.integrationId,
       organizationId,
-      isInbound: true,
+      isInbound,
       subject: parsedEmail.subject,
       textHtml: parsedEmail.textHtml,
       textPlain: parsedEmail.textPlain,
@@ -179,6 +198,10 @@ export class InboundEmailProcessor {
       internetMessageId: parsedEmail.internetMessageId,
       inReplyTo: parsedEmail.inReplyTo,
       references: parsedEmail.references,
+      // Cross-channel echo correlation key (loop-guard plan §6 supplement) — consulted
+      // by the org-scoped suppress-only check in `store-message.ts`, complementary to
+      // the own-address check above (catches the case where a forwarder rewrote `From`).
+      echoedMessageId: parsedEmail.echoedMessageId,
     }
 
     const storageService = new MessageStorageService(organizationId)

@@ -30,6 +30,13 @@ interface InboxPickerProps {
   side?: 'top' | 'right' | 'bottom' | 'left'
   sideOffset?: number
   style?: React.CSSProperties
+  /**
+   * Passed through to the default trigger `<Button>` (variant/className/size/…)
+   * when no custom `children` trigger is given. Lets callers match the shared
+   * `w-full ps-0 pe-1` flush-in-a-`FieldPanelRow` sizing convention without
+   * hand-rolling a trigger — see `docs/ui-design-guide.md` §5.
+   */
+  triggerProps?: React.ComponentProps<typeof Button>
 }
 
 /** Special value for "Select All" option */
@@ -57,6 +64,7 @@ export function InboxPicker({
   className,
   inboxes: externalInboxes,
   children,
+  triggerProps,
   ...props
 }: InboxPickerProps) {
   // Internal state for uncontrolled mode
@@ -140,7 +148,11 @@ export function InboxPicker({
     <>
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
-          {children || <Button variant='outline'>Select Inbox{allowMultiple ? 'es' : ''}</Button>}
+          {children || (
+            <Button variant='outline' {...triggerProps}>
+              Select Inbox{allowMultiple ? 'es' : ''}
+            </Button>
+          )}
         </PopoverTrigger>
         <PopoverContent
           className={cn('w-[300px] p-0 backdrop-blur-sm bg-popover/60', className)}

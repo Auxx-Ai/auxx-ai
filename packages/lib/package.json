@@ -820,6 +820,12 @@
       "import": "./dist/members/index.mjs",
       "default": "./src/members/index.ts"
     },
+    "./message-trigger-conditions/client": {
+      "types": "./src/message-trigger-conditions/client.ts",
+      "source": "./src/message-trigger-conditions/client.ts",
+      "import": "./dist/message-trigger-conditions/client.mjs",
+      "default": "./src/message-trigger-conditions/client.ts"
+    },
     "./messages": {
       "types": "./src/messages/index.ts",
       "source": "./src/messages/index.ts",

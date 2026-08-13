@@ -55,6 +55,14 @@ export interface ParsedEmail {
    * allowlists merged; see `pickMachineMailHeaders` / `pickBulkMailHeaders`.
    */
   headers: Record<string, string> | undefined
+  /**
+   * Our own `Message.id`, echoed back via `X-AuxxAi-Message-Id` on a message
+   * we sent (loop-guard plan §6 supplement) — see `pickEchoedMessageId` in
+   * `ingest/filtering/echoed-message-id.ts`. Extracted separately from
+   * `headers` above because that allowlist is the machine-mail/bulk-mail
+   * input contract and must not grow an unrelated header.
+   */
+  echoedMessageId: string | null
   date: string | undefined
   subject: string | undefined
   from: { address: string; name: string }[]

@@ -105,6 +105,13 @@ export const Message = pgTable(
     // absence of the header is not a pass, and coercing it to one is how you end up
     // POSTing to a spammer's confirmation endpoint.
     senderAuthenticated: boolean(),
+    // Durable per-thread auto-reply alternation guard (message-trigger-scoping plan §6
+    // fix #3). Set at send time by MessageSenderService for every automated send
+    // (`!viewer || isSystemViewer(viewer)`) — mirrors the same runtime determination
+    // that already drives suppression/rate-limiting, just persisted this time. Default
+    // false + backfill: historical rows count as not-automated, which is the accepted
+    // semantics (nothing to alternate against before this column existed).
+    isAutomatedSend: boolean().default(false).notNull(),
   },
   (table) => [
     index('Message_createdById_idx').using('btree', table.createdById.asc().nullsLast()),

@@ -3,6 +3,7 @@
 import type { Database } from '@auxx/database'
 import { getOrgCache, onCacheEvent } from '../cache'
 import type { ChannelProviderType } from '../providers/types'
+import { buildOrgOwnEmailAddressSet } from './own-addresses'
 
 /**
  * Get cached provider map for an organization.
@@ -34,6 +35,19 @@ export async function getOrgChannelBidirectionalSyncMap(
 ): Promise<Map<string, boolean>> {
   const channels = await getOrgCache().get(organizationId, 'channels')
   return new Map(channels.map((c) => [c.id, c.settings?.bidirectionalSyncEnabled !== false]))
+}
+
+/**
+ * Org-wide "us" address set — see `buildOrgOwnEmailAddressSet`. Convenience
+ * wrapper for callers that don't already hold the `channels` cache rows (e.g.
+ * the SES inbound processor, which has no other reason to read this cache).
+ * Ingest's own publish gate (`store-message.ts`) reads the `channels` cache
+ * directly instead of going through this wrapper, to keep its cache
+ * dependency to a single mockable call on the hot path.
+ */
+export async function getOrgOwnEmailAddresses(organizationId: string): Promise<Set<string>> {
+  const channels = await getOrgCache().get(organizationId, 'channels')
+  return buildOrgOwnEmailAddressSet(channels)
 }
 
 /**

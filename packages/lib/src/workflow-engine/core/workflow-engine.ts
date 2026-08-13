@@ -2024,7 +2024,8 @@ export class WorkflowEngine {
     state: ExecutionState,
     options: ResumeOptions
   ): Promise<WorkflowExecutionResult> {
-    const { fromNodeId, nodeOutput, variables, skipValidation, workflowRunId, reporter } = options
+    const { fromNodeId, nodeOutput, variables, skipValidation, workflowRunId, reporter, debug } =
+      options
     logger.info('Resuming workflow execution', {
       executionId: state.executionId,
       fromNodeId,
@@ -2062,6 +2063,13 @@ export class WorkflowEngine {
     }
     // Restore execution context
     const contextManager = this.persistenceManager.restoreContext(state)
+    // Re-apply the run's debug flag, exactly as `executeWorkflow` does for the first
+    // half of the run. `debug` is not part of the persisted state — the caller
+    // re-derives it from `WorkflowRun.triggeredFrom` — so a builder test run stays a
+    // dry run across a pause instead of resuming as a production run that really sends.
+    if (debug) {
+      contextManager.setDebugMode(true)
+    }
     // Restore execution tracking state for proper depth and index continuation
     if (state.executionTracking) {
       this.trackingManager.importState(state.executionTracking)

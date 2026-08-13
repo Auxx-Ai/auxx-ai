@@ -59,6 +59,11 @@ vi.mock('drizzle-orm', async (importOriginal) => {
 
 vi.mock('../inbox-meta', () => ({ isPersonalInbox: async () => false }))
 vi.mock('../../inbox-record-ids', () => ({ toInboxRecordId: async () => 'inbox:i_1' }))
+// Own-address loop guard (message-trigger-scoping plan §6 #1) reads the
+// `channels` org cache at the publish gate. No channels configured here means
+// no address is ever "our own", matching every test in this file's intent —
+// they're all about thread resolution, not the loop guard.
+vi.mock('../../cache', () => ({ getOrgCache: () => ({ get: async () => [] }) }))
 vi.mock('../../realtime', () => ({
   getRealtimeService: () => ({}),
   publishThreadCreated: vi.fn(),

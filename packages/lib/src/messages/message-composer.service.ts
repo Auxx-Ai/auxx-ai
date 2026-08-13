@@ -59,6 +59,9 @@ export class MessageComposerService {
     inReplyTo?: string | null
     references?: string | null
     attachmentIds?: string[] // MediaAsset IDs to attach
+    /** §6 fix #3 — persisted so the per-thread alternation guard can read the last
+     * outbound message's origin durably instead of re-deriving it at runtime. */
+    isAutomatedSend?: boolean
   }): Promise<ComposedMessage> {
     const messageId = input.messageId || this.generateMessageId()
     const sendToken = this.generateSendToken()
@@ -94,6 +97,7 @@ export class MessageComposerService {
     inReplyTo?: string | null
     references?: string | null
     attachmentIds?: string[]
+    isAutomatedSend?: boolean
   }): Promise<ComposedMessage> {
     logger.info('Creating pending message', {
       threadId: input.threadId,
@@ -160,6 +164,7 @@ export class MessageComposerService {
           // Flags
           isInbound: false,
           hasAttachments: input.attachmentIds && input.attachmentIds.length > 0,
+          isAutomatedSend: input.isAutomatedSend ?? false,
 
           // Initialize send tracking
           attempts: 0,

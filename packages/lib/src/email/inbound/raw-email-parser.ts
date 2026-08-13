@@ -1,6 +1,7 @@
 // packages/lib/src/email/inbound/raw-email-parser.ts
 
 import PostalMime from 'postal-mime'
+import { pickEchoedMessageId } from '../../ingest/filtering/echoed-message-id'
 import type { InboundEmailAddress, InboundEmailAttachment, ParsedInboundEmail } from './types'
 
 /**
@@ -79,22 +80,35 @@ function normalizeAttachments(attachments: unknown): InboundEmailAttachment[] {
 }
 
 /**
- * normalizeHeaders converts the parser header output to a plain record.
+ * normalizeHeaders converts postal-mime's header output — an array of
+ * `{ key, value }` pairs (already-lowercased key, one entry per occurrence,
+ * repeated headers like `Received` appear multiple times) — into a plain
+ * record, merging repeats of the same key into a `string[]`.
+ *
+ * Was previously `Object.entries()` over the array itself, which reads array
+ * INDICES as keys ('0', '1', …) rather than header names — every header
+ * silently vanished into `{ '0': '[object Object]', … }`. Nothing downstream
+ * asserted on the shape, so it went unnoticed.
  */
-function normalizeHeaders(headers: unknown): Record<string, string | string[]> {
-  if (!headers || typeof headers !== 'object') return {}
+function normalizeHeaders(
+  headers: Array<{ key?: string | null; value?: string | null }> | undefined
+): Record<string, string | string[]> {
+  if (!headers?.length) return {}
 
-  const normalizedEntries = Object.entries(headers as Record<string, unknown>).map(
-    ([key, value]) => {
-      if (Array.isArray(value)) {
-        return [key.toLowerCase(), value.map((item) => String(item))]
-      }
-
-      return [key.toLowerCase(), String(value)]
+  const result: Record<string, string | string[]> = {}
+  for (const { key, value } of headers) {
+    if (!key || value == null) continue
+    const name = key.toLowerCase()
+    const existing = result[name]
+    if (existing === undefined) {
+      result[name] = value
+    } else if (Array.isArray(existing)) {
+      existing.push(value)
+    } else {
+      result[name] = [existing, value]
     }
-  )
-
-  return Object.fromEntries(normalizedEntries)
+  }
+  return result
 }
 
 /**
@@ -140,6 +154,10 @@ export class RawEmailParser {
       references: parsed.references?.trim() || null,
       sentAt: parsed.date ? new Date(parsed.date) : null,
       headers: normalizeHeaders(parsed.headers),
+      // Cross-channel echo correlation key (loop-guard plan §6 supplement) — read off
+      // the raw header list directly rather than `headers` above, since that map
+      // collapses repeats into `string[]`.
+      echoedMessageId: pickEchoedMessageId(parsed.headers),
       attachments: normalizeAttachments(parsed.attachments),
     }
   }

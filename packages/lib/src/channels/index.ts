@@ -1,6 +1,10 @@
 // packages/lib/src/channels/index.ts
 
-export { getOrgChannelProviderMap, invalidateOrgChannelProviderMap } from './cache'
+export {
+  getOrgChannelProviderMap,
+  getOrgOwnEmailAddresses,
+  invalidateOrgChannelProviderMap,
+} from './cache'
 export { PLATFORM_CAPABILITIES, type PlatformCapabilities } from './capabilities'
 export {
   CHANNEL_PROVIDER_TO_KEY,
@@ -17,6 +21,7 @@ export {
   listManageableChannelIds,
   requireChannelManageAccess,
 } from './manage-access'
+export { buildOrgOwnEmailAddressSet } from './own-addresses'
 export {
   claimPersonalInbox,
   deleteOwnPersonalInbox,
