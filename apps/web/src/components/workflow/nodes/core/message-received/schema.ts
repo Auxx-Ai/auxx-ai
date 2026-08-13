@@ -61,12 +61,12 @@ export const messageReceivedDefaultData: Partial<MessageReceivedNodeData> = {
 
 /**
  * Warning shown (on the node badge and inline in the panel) when a trigger has
- * no channel scope. Unscoped is a valid, supported state — publish never
- * forces a choice — but it must stay visible: the dispatcher fans this
+ * no channel scope. Unscoped is a valid, supported state, publish never
+ * forces a choice, but it must stay visible: the dispatcher fans this
  * workflow out to every channel in the org.
  */
 export const UNSCOPED_MESSAGE_TRIGGER_WARNING =
-  'Unscoped — runs on every channel in the org. Select channels or an inbox under "Run on" to limit it.'
+  'Unscoped: runs on every channel in the org. Select channels or an inbox under "Run on" to limit it.'
 
 /**
  * Validation function for message-received configuration
@@ -82,7 +82,7 @@ export const validateMessageReceivedConfig = (data: MessageReceivedNodeData): Va
     errors.push({ field: 'title', message: 'Title is required', type: 'error' })
   }
 
-  // Unscoped trigger — allowed, but must be an unmissable warning (§4).
+  // Unscoped trigger, allowed, but must be an unmissable warning (§4).
   if (!dataToValidate.channelIds || dataToValidate.channelIds.length === 0) {
     errors.push({
       field: 'channelIds',
@@ -218,7 +218,7 @@ function getMessageReceivedOutputVariables(
     },
   })
 
-  // Thread relation — points to the thread this message belongs to
+  // Thread relation, points to the thread this message belongs to
   const threadRelation = createUnifiedOutputVariable({
     nodeId,
     path: 'thread',
@@ -227,7 +227,7 @@ function getMessageReceivedOutputVariables(
     resourceId: 'thread',
   })
 
-  // Message relation — points to the received message itself
+  // Message relation, points to the received message itself
   const messageRelation = createUnifiedOutputVariable({
     nodeId,
     path: 'message_ref',
@@ -236,7 +236,7 @@ function getMessageReceivedOutputVariables(
     resourceId: 'message',
   })
 
-  // Ticket relation — the thread's linked ticket. Empty unless the thread was
+  // Ticket relation, the thread's linked ticket. Empty unless the thread was
   // already linked to one: receiving mail never creates or links a ticket.
   const ticketRelation = createUnifiedOutputVariable({
     nodeId,
