@@ -41,8 +41,12 @@ export class EdgeValidationService {
    * Create edge data based on source and target nodes
    */
   static createEdgeData(sourceNode: Node, targetNode: Node, connection: Connection) {
-    // Determine if this is a loop back edge
-    const isLoopBackEdge = targetNode?.type === 'loop' && connection.targetHandle === 'loop-back'
+    // Determine if this is a loop back edge. The workflow node type lives in
+    // data.type — node.type is the React Flow renderer type ('standard' on
+    // every loaded graph), so checking it alone never matches.
+    const isLoopBackEdge =
+      (targetNode?.data?.type ?? targetNode?.type) === 'loop' &&
+      connection.targetHandle === 'loop-back'
 
     return {
       sourceType: sourceNode?.data?.type || '',

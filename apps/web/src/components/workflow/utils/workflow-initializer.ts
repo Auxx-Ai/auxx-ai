@@ -317,10 +317,14 @@ export const initialEdges = (edges: FlowEdge[], nodes: FlowNode[]): FlowEdge[] =
       updatedEdge.data.loopId = sourceLoopId
     }
 
-    // Check if this is a loop back edge (from loop exit to loop node)
+    // Check if this is a loop back edge. Match both the live-draw predicate
+    // (targetHandle === 'loop-back', see edge-store.ts) and the containment
+    // shape (source parented inside the target loop) — an edge wired to the
+    // loop-back handle whose source lacks parentId must still be recognized,
+    // or var-graph.ts stops filtering it and upstream traversal sees a cycle.
     if (
       targetNode?.data.type === NodeType.LOOP &&
-      sourceNode?.parentId === targetNode.id &&
+      (sourceNode?.parentId === targetNode.id || edge.targetHandle === 'loop-back') &&
       updatedEdge.data
     ) {
       updatedEdge.data.isLoopBackEdge = true
