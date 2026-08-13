@@ -13,7 +13,9 @@ import { informationExtractorManifest } from './nodes/information-extractor'
 import { listManifest } from './nodes/list'
 import { loopManifest } from './nodes/loop'
 import { manualManifest } from './nodes/manual'
+import { messageReceivedManifest } from './nodes/message-received'
 import { noteManifest } from './nodes/note'
+import { resourceTriggerManifest } from './nodes/resource-trigger'
 import { scheduledTriggerManifest } from './nodes/scheduled'
 import { textClassifierManifest } from './nodes/text-classifier'
 import { varAssignManifest } from './nodes/var-assign'
@@ -45,7 +47,9 @@ const ALL_MANIFESTS: NodeManifest<any>[] = [
   listManifest,
   loopManifest,
   manualManifest,
+  messageReceivedManifest,
   noteManifest,
+  resourceTriggerManifest,
   scheduledTriggerManifest,
   textClassifierManifest,
   varAssignManifest,

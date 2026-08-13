@@ -1,10 +1,6 @@
 // apps/web/src/components/workflow/hooks/use-workflow-save.ts
 
-import {
-  RESOURCE_OPERATION_TO_TRIGGER_TYPE,
-  type ResourceTriggerOperation,
-  WorkflowTriggerType as TriggerType,
-} from '@auxx/lib/workflow-engine/client'
+import { deriveTriggerColumns } from '@auxx/lib/workflow-engine/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { debounce } from '@auxx/utils'
 import { useStoreApi } from '@xyflow/react'
@@ -144,39 +140,18 @@ export const useWorkflowSave = () => {
         return { ...edge, data: Object.keys(cleanData).length > 0 ? cleanData : undefined }
       })
 
-      // Detect trigger type from node definitions (registry-based)
-      let triggerType = workflow.triggerType
-      let entityDefinitionId: string | undefined
-
-      const triggerNode = cleanNodes.find((n) => {
-        const def = unifiedNodeRegistry.getDefinition(n.data.type as string)
-        return def?.triggerType !== undefined
+      // Detect trigger type from the graph. The derivation and its two
+      // load-bearing quirks (manual → FORM; resource-trigger only counts when
+      // both operation and entityDefinitionId are set) live in lib
+      // (`deriveTriggerColumns`, node-catalog §6b) so every writer computes
+      // the same columns. The registry-backed resolver covers what the
+      // catalog cannot see yet: not-yet-migrated triggers (webhook,
+      // webhook-endpoint) and dynamic app triggers.
+      const derived = deriveTriggerColumns(cleanNodes, {
+        resolveTriggerType: (nodeType) => unifiedNodeRegistry.getDefinition(nodeType)?.triggerType,
       })
-
-      if (triggerNode) {
-        const def = unifiedNodeRegistry.getDefinition(triggerNode.data.type as string)
-        if (def?.triggerType) {
-          triggerType = def.triggerType
-        }
-
-        // Resource triggers need special handling for entityDefinitionId
-        if (triggerNode.data.type === 'resource-trigger') {
-          const { operation, entityDefinitionId: nodeEntityDefId } = triggerNode.data
-          if (operation && nodeEntityDefId) {
-            const mappedTriggerType =
-              RESOURCE_OPERATION_TO_TRIGGER_TYPE[operation as ResourceTriggerOperation]
-            if (mappedTriggerType) {
-              triggerType = mappedTriggerType
-              entityDefinitionId = nodeEntityDefId
-            }
-          }
-        }
-
-        // Manual trigger maps to FORM
-        if (triggerNode.data.type === 'manual') {
-          triggerType = TriggerType.FORM
-        }
-      }
+      const triggerType = derived.triggerType ?? workflow.triggerType
+      const entityDefinitionId = derived.entityDefinitionId
 
       payload.graph = { nodes: cleanNodes, edges: cleanEdges, viewport: { x, y, zoom } }
       payload.triggerType = triggerType
