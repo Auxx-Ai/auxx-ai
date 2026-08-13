@@ -502,12 +502,6 @@
       "import": "./dist/field-values/client.mjs",
       "default": "./src/field-values/client.ts"
     },
-    "./field-values/converters": {
-      "types": "./src/field-values/converters/index.ts",
-      "source": "./src/field-values/converters/index.ts",
-      "import": "./dist/field-values/converters/index.mjs",
-      "default": "./src/field-values/converters/index.ts"
-    },
     "./files": {
       "types": "./src/files/index.ts",
       "source": "./src/files/index.ts",
