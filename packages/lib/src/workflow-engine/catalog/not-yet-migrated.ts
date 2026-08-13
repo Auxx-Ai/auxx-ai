@@ -40,19 +40,19 @@ export const NOT_YET_MIGRATED: readonly string[] = [
   'answer',
   'ai',
   'find',
-  'http',
+  // 'http' — migrated (catalog/nodes/http.ts)
   'crud',
   'document-extractor',
   'chunker',
   'dataset',
   'knowledge-retrieval',
   // Transform nodes
-  'code',
+  // 'code' — migrated (catalog/nodes/code.ts)
   'text-classifier',
   'information-extractor',
   // 'var-assign' — migrated (catalog/nodes/var-assign.ts)
   // 'date-time' — migrated (catalog/nodes/date-time.ts)
-  'list',
+  // 'list' — migrated (catalog/nodes/list.ts)
   // 'format' — migrated (catalog/nodes/format.ts)
   // Data nodes
   // 'note' — migrated (catalog/nodes/note.ts)

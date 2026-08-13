@@ -1,27 +1,32 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/code.ts
 
+import type { CodeNodeData as CatalogCodeNodeData } from '../../catalog/nodes/code'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
 
-interface CodeNodeData {
-  // Base node properties (actual structure from workflow engine)
-  id: string
-  code: string
-  desc?: string
-  icon?: string
-  color?: string
-  code_language: 'javascript' | 'python3'
-  inputs?: Array<{ name: string; variableId: string }>
-  outputs?: Array<{ name: string; type: any; description?: string }>
-
-  // Additional node data properties
-  isValid?: boolean
-  errors?: string[]
-  isInLoop?: boolean
-  variables?: any[]
-}
+/**
+ * Code node configuration — the config subset of the catalog's `CodeNodeData`
+ * (node-catalog Phase 1; this file previously shadowed it). `outputs[].type`
+ * stays unread here: the executor only matches output NAMES against the
+ * returned object.
+ */
+type CodeNodeData = Pick<
+  CatalogCodeNodeData,
+  | 'id'
+  | 'code'
+  | 'desc'
+  | 'icon'
+  | 'color'
+  | 'code_language'
+  | 'inputs'
+  | 'outputs'
+  | 'isValid'
+  | 'errors'
+  | 'isInLoop'
+  | 'variables'
+>
 
 /**
  * Code node that executes custom JavaScript or Python code

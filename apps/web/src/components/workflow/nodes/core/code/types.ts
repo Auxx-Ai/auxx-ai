@@ -1,50 +1,25 @@
 // apps/web/src/components/workflow/nodes/core/code/types.ts
 
-import type { BaseNodeData, ExecutionResult, SpecificNode, VariableSelector } from '../../../types'
-import type { BaseType } from '../../../types/unified-types'
+import type { CatalogCodeNodeData } from '@auxx/lib/workflow-engine/client'
+import type { ExecutionResult, SpecificNode } from '../../../types'
+import type { NodeType } from '../../../types/node-types'
 
-/**
- * Variable input for code execution
- */
-export interface CodeVariable {
-  variable: string
-  value_selector: VariableSelector
-}
-
-/**
- * Output definition for code node
- */
-export interface CodeNodeOutput {
-  name: string
-  type: BaseType
-  description?: string
-}
-
-/**
- * Legacy output format
- */
-export interface CodeOutput {
-  [key: string]: { type: 'string' | 'number' | 'object' | 'array'; children?: any }
-}
-
-/**
- * Input definition for code node
- */
-export interface CodeNodeInput {
-  name: string
-  variableId: string
-}
+// The data half moved to the node catalog (node-catalog Phase 1 —
+// `@auxx/lib/workflow-engine/catalog/nodes/code`); re-exported here so no web
+// import churns. CodeNodeData narrows `type` to the web NodeType enum, same
+// as BaseNodeData does over its lib counterpart.
+export type {
+  CodeNodeInput,
+  CodeNodeOutput,
+  CodeOutput,
+  CodeVariable,
+} from '@auxx/lib/workflow-engine/client'
 
 /**
  * Node data for code nodes (flattened structure)
  */
-export interface CodeNodeData extends BaseNodeData {
-  variables?: CodeVariable[]
-  code_language: 'python3' | 'javascript'
-  code: string
-  inputs?: CodeNodeInput[]
-  outputs?: CodeNodeOutput[]
-  legacyOutputs?: CodeOutput
+export interface CodeNodeData extends CatalogCodeNodeData {
+  type: NodeType
 }
 
 /**

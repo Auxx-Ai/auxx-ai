@@ -1,118 +1,37 @@
 // apps/web/src/components/workflow/nodes/core/list/types.ts
 
-import type { Condition } from '~/components/conditions'
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types'
+import type { CatalogListNodeData } from '@auxx/lib/workflow-engine/client'
+import type { SpecificNode } from '~/components/workflow/types'
+import type { NodeType } from '~/components/workflow/types/node-types'
 
-/**
- * Available list operations
- */
-export type ListOperation = 'filter' | 'sort' | 'slice' | 'pluck' | 'reverse' | 'join' | 'unique'
+// The data half moved to the node catalog (node-catalog Phase 1 —
+// `@auxx/lib/workflow-engine/catalog/nodes/list`); re-exported here so no web
+// import churns. ListNodeData narrows `type` to the web NodeType enum, same
+// as BaseNodeData does over its lib counterpart. `OPERATION_METADATA` below is
+// UI display metadata (picker labels/icons), not part of the node contract, so
+// it stays web-side.
+export type {
+  FilterConfig,
+  JoinConfig,
+  JoinType,
+  ListOperation,
+  NullHandling,
+  PluckConfig,
+  SliceConfig,
+  SliceMode,
+  SortConfig,
+  SortDirection,
+  UniqueBy,
+  UniqueConfig,
+} from '@auxx/lib/workflow-engine/client'
 
-/**
- * Sort direction
- */
-export type SortDirection = 'asc' | 'desc'
-
-/**
- * Null handling options for sorting
- */
-export type NullHandling = 'first' | 'last'
-
-/**
- * Slice operation modes
- */
-export type SliceMode = 'first' | 'last' | 'range'
-
-/**
- * Unique comparison modes
- */
-export type UniqueBy = 'whole' | 'field'
-
-/**
- * Join operation types
- */
-export type JoinType = 'concat' | 'merge' | 'zip' | 'cross'
-
-/**
- * Filter configuration using modern ConditionProvider system
- */
-export interface FilterConfig {
-  conditions: Condition[]
-  /**
-   * How the conditions combine. Mirrors the AND/OR toggle the shared condition list
-   * writes onto `Condition.logicalOperator`, so the engine has one node-level key to
-   * read instead of inferring it from the condition rows. Defaults to AND.
-   */
-  logic?: 'AND' | 'OR'
-}
-
-/**
- * Sort configuration (simplified single field sort)
- */
-export interface SortConfig {
-  field: string
-  direction: SortDirection
-  nullHandling?: NullHandling
-}
-
-/**
- * Slice configuration
- */
-export interface SliceConfig {
-  mode: SliceMode
-
-  // First/Last mode
-  count?: number | string
-  isCountConstant?: boolean
-
-  // Range mode
-  start?: number | string
-  isStartConstant?: boolean
-  end?: number | string
-  isEndConstant?: boolean
-}
-
-/**
- * Unique configuration
- */
-export interface UniqueConfig {
-  by: UniqueBy
-  field?: string | string[]
-  keepFirst?: boolean
-  caseSensitive?: boolean
-}
-
-/**
- * Join configuration - converts array to string with delimiter
- */
-export interface JoinConfig {
-  /** Delimiter to join elements with (e.g., ", " or "\n") */
-  delimiter: string
-  /** Optional field to extract from objects before joining (FieldReference: single or path) */
-  field?: string | string[]
-}
-
-/**
- * Pluck configuration
- */
-export interface PluckConfig {
-  /** Field to pluck (FieldReference: single ResourceFieldId or FieldPath array) */
-  field: string | string[]
-  flatten?: boolean
-}
+import type { ListOperation } from '@auxx/lib/workflow-engine/client'
 
 /**
  * List node data - flattened structure
  */
-export interface ListNodeData extends BaseNodeData {
-  operation: ListOperation
-  inputList: string
-  filterConfig?: FilterConfig
-  sortConfig?: SortConfig
-  sliceConfig?: SliceConfig
-  uniqueConfig?: UniqueConfig
-  joinConfig?: JoinConfig
-  pluckConfig?: PluckConfig
+export interface ListNodeData extends CatalogListNodeData {
+  type: NodeType
 }
 
 /**

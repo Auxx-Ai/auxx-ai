@@ -1,10 +1,13 @@
 // packages/lib/src/workflow-engine/catalog/registry.ts
 
+import { codeManifest } from './nodes/code'
 import { dateTimeManifest } from './nodes/date-time'
 import { endManifest } from './nodes/end'
 import { formatManifest } from './nodes/format'
+import { httpManifest } from './nodes/http'
 import { humanConfirmationManifest } from './nodes/human'
 import { ifElseManifest } from './nodes/if-else'
+import { listManifest } from './nodes/list'
 import { loopManifest } from './nodes/loop'
 import { manualManifest } from './nodes/manual'
 import { noteManifest } from './nodes/note'
@@ -25,11 +28,14 @@ import type { NodeManifest } from './types'
  * two-file change: add the manifest here, delete the list entry.
  */
 const ALL_MANIFESTS: NodeManifest<any>[] = [
+  codeManifest,
   dateTimeManifest,
   endManifest,
   formatManifest,
+  httpManifest,
   humanConfirmationManifest,
   ifElseManifest,
+  listManifest,
   loopManifest,
   manualManifest,
   noteManifest,
