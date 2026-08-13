@@ -1,6 +1,6 @@
-// packages/services/src/app-connections/interpolate-connection.ts
+// packages/credentials/src/connections/interpolate-connection.ts
 
-import { decryptValue } from '@auxx/credentials/crypto'
+import { decryptValue } from '../crypto'
 
 /**
  * Resolve {key} placeholders across all OAuth connection fields.

@@ -1,4 +1,4 @@
-// packages/lib/src/workflows/__tests__/oauth2-refresh-request.test.ts
+// packages/credentials/src/connections/__tests__/oauth2-refresh-request.test.ts
 //
 // Covers the MCP branch of `refreshCredentialTokens`: the RFC 8707 `resource` indicator on the
 // refresh request, the conditional `client_secret` (DCR public clients have none), and the
@@ -29,7 +29,7 @@ const storeState = {
   secrets: {} as Record<string, unknown>,
 }
 
-vi.mock('@auxx/credentials/store', () => ({
+vi.mock('../../store', () => ({
   insertCredential: async () => ok({ id: 'cred-1' }),
   recordRefreshFailure: async (
     _id: string,
@@ -86,7 +86,7 @@ const interpolated = {
   refreshUrl: '' as string,
 }
 
-vi.mock('@auxx/services/app-connections', () => ({
+vi.mock('../interpolate-connection', () => ({
   interpolateConnectionFields: () => ({
     authorizeUrl: 'https://as.example.com/authorize',
     accessTokenUrl: 'https://as.example.com/token',

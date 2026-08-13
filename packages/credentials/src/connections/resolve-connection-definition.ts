@@ -1,12 +1,12 @@
-// packages/lib/src/connections/resolve-connection-definition.ts
+// packages/credentials/src/connections/resolve-connection-definition.ts
 // Load the ConnectionDefinition backing a credential (any owner) and resolve its
 // OAuth2 refresh config. This is the single lookup that replaces the old
 // `kind`-branch in refreshCredentialTokens — every credential resolves its
 // definition the same way, by connectionDefinitionId or by owner.
 
 import { type AuthApply, type ConnectionVariable, database as db, schema } from '@auxx/database'
-import { interpolateConnectionFields } from '@auxx/services/app-connections'
 import { and, eq } from 'drizzle-orm'
+import { interpolateConnectionFields } from './interpolate-connection'
 
 /** Columns the refresh + resolve paths need off a ConnectionDefinition. */
 export interface ConnectionDefinitionForRefresh {

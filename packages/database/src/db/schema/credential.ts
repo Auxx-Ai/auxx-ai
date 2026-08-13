@@ -98,6 +98,12 @@ export const Credential = pgTable(
     lastRefreshAt: timestamp({ precision: 3 }), // Last successful token refresh
     lastRefreshFailureAt: timestamp({ precision: 3 }), // Last failed refresh attempt
     consecutiveRefreshFailures: integer().default(0).notNull(), // Circuit breaker counter
+    // Raw diagnostic text from the most recent failed refresh — the provider's own message,
+    // unclassified, recorded for EVERY failure (transient included). Distinct from lastAuthError
+    // below, which is a classified signal the UI reads: without this, a credential that fails
+    // refresh for a non-invalid_grant reason accumulates failures with no recoverable cause.
+    // Cleared by recordRefreshSuccess.
+    lastRefreshError: text(),
 
     // Classified, user-facing auth-failure layer (the breaker above stays for retry
     // mechanics). AuthErrorHandler classifies provider errors into AuthErrorType and

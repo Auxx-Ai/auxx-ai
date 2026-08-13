@@ -1,0 +1,1 @@
+ALTER TABLE "Credential" ADD COLUMN "lastRefreshError" text;

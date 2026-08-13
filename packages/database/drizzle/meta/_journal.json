@@ -2297,6 +2297,13 @@
       "when": 1786584827445,
       "tag": "0327_message-add-is-automated-send",
       "breakpoints": true
+    },
+    {
+      "idx": 328,
+      "version": "7",
+      "when": 1786661305050,
+      "tag": "0328_credential_last_refresh_error",
+      "breakpoints": true
     }
   ]
 }

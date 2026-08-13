@@ -41,14 +41,7 @@ type UnwrapOk<T> = Awaited<T> extends Result<infer O, any> ? O : never
  * @property {string} [expiresAt] - ISO 8601 timestamp indicating when the access token expires.
  *                                  Primarily used for OAuth2 connections.
  */
-export interface DecryptedConnectionData {
-  accessToken?: string
-  refreshToken?: string
-  secret?: string
-  fields?: Record<string, string>
-  metadata?: Record<string, unknown>
-  expiresAt?: string
-}
+export type { DecryptedConnectionData } from '@auxx/credentials/connections'
 
 /**
  * Connection definition with only public-facing fields
@@ -103,6 +96,10 @@ export interface AppConnection {
   appName: string
   label: string | null
   connectionStatus: 'connected' | 'not_connected' | 'expired'
+  /** Raw provider text from the most recent failed refresh — the reason behind `expired`. */
+  lastRefreshError?: string
+  /** When that failure happened. */
+  lastRefreshFailureAt?: Date
   connectedBy?: string // User name
   connectedAt?: Date
   expiresAt?: Date

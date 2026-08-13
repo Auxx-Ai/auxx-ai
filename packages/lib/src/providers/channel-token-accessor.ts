@@ -1,5 +1,6 @@
 // packages/lib/src/providers/channel-token-accessor.ts
 
+import { ensureFreshCredentialToken } from '@auxx/credentials/connections'
 import {
   deleteCredential,
   insertCredential,
@@ -12,7 +13,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull } from 'drizzle-orm'
 import { channelProviderKey, resolveChannelDefinitionId } from '../channels/channel-connection-def'
 import { resolveConnectionForRuntime } from '../connections/resolve-connection-for-runtime'
-import { ensureFreshCredentialToken } from '../credentials/ensure-fresh-credential-token'
+import { credentialLock } from '../credentials/credential-lock'
 
 const logger = createScopedLogger('channel-tokens')
 
@@ -135,6 +136,7 @@ export async function forceRefreshChannelToken(integrationId: string): Promise<v
     organizationId: integ.organizationId,
     hasRefreshToken: true,
     force: true,
+    lock: credentialLock,
   })
 }
 

@@ -1,7 +1,7 @@
 // packages/lib/src/jobs/oauth2-refresh/oauth2-token-refresh-job.ts
 
+import { refreshCredentialTokens } from '@auxx/credentials/connections'
 import { createScopedLogger } from '@auxx/logger'
-import { refreshCredentialTokens } from '../../connections/oauth2-token-grants'
 import type { JobContext } from '../types'
 
 const logger = createScopedLogger('oauth2-token-refresh-job')

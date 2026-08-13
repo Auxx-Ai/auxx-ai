@@ -49,7 +49,7 @@ import { decryptSecrets, encryptSecrets } from '../../crypto'
 import { insertCredential } from '../insert-credential'
 import { mergeSecretFields } from '../merge-secret-fields'
 import { mergeSecrets } from '../merge-secrets'
-import { recordRefreshFailure } from '../record-refresh'
+import { recordRefreshFailure, recordRefreshSuccess } from '../record-refresh'
 import { revealSecrets } from '../reveal-secrets'
 import { rotateSecrets } from '../rotate-secrets'
 
@@ -182,5 +182,48 @@ describe('recordRefreshFailure', () => {
     const set = state.updated[0]!
     expect(set.lastRefreshFailureAt).toBeInstanceOf(Date)
     expect(set.consecutiveRefreshFailures).toBeDefined() // SQL increment expression
+  })
+
+  // The whole point of lastRefreshError: a transient-classified failure must still leave a
+  // recoverable reason behind. The breaker latches at 5 and the scanner then skips the credential
+  // for 24h, so without this a credential dies silently and the cause is only ever in the logs.
+  it('records the diagnostic reason on a TRANSIENT failure, without flagging reauth', async () => {
+    state.writeReturning = [{ id: 'cred-1' }]
+    await recordRefreshFailure('cred-1', 'org-1', { authError: 'Token refresh failed: 503 <html>' })
+    const set = state.updated[0]!
+    expect(set.lastRefreshError).toBe('Token refresh failed: 503 <html>')
+    expect(set.requiresReauth).toBeUndefined()
+    expect(set.lastAuthError).toBeUndefined()
+  })
+
+  it('keeps lastAuthError classified on a permanent failure, raw text in lastRefreshError', async () => {
+    state.writeReturning = [{ id: 'cred-1' }]
+    await recordRefreshFailure('cred-1', 'org-1', {
+      permanent: true,
+      authError: 'Token refresh failed: 400 {"error":"invalid_grant"}',
+      authErrorType: 'invalid_grant',
+    })
+    const set = state.updated[0]!
+    expect(set.requiresReauth).toBe(true)
+    expect(set.lastAuthError).toBe('invalid_grant') // classified, not the raw body
+    expect(set.lastRefreshError).toBe('Token refresh failed: 400 {"error":"invalid_grant"}')
+  })
+
+  it('falls back to a generic classified code when the endpoint gave none', async () => {
+    state.writeReturning = [{ id: 'cred-1' }]
+    await recordRefreshFailure('cred-1', 'org-1', { permanent: true, authError: 'socket hang up' })
+    expect(state.updated[0]!.lastAuthError).toBe('refresh_failed')
+  })
+})
+
+describe('recordRefreshSuccess', () => {
+  it('clears the diagnostic reason along with the reauth state', async () => {
+    state.writeReturning = [{ id: 'cred-1' }]
+    await recordRefreshSuccess('cred-1', 'org-1', { expiresAt: new Date() })
+    const set = state.updated[0]!
+    expect(set.lastRefreshError).toBeNull()
+    expect(set.lastAuthError).toBeNull()
+    expect(set.requiresReauth).toBe(false)
+    expect(set.consecutiveRefreshFailures).toBe(0)
   })
 })

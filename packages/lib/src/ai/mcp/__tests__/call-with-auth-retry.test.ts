@@ -46,7 +46,9 @@ vi.mock('../client', () => ({
   },
 }))
 
-vi.mock('../../../credentials/ensure-fresh-credential-token', () => ({
+vi.mock('../../../credentials/credential-lock', () => ({ credentialLock: null }))
+
+vi.mock('@auxx/credentials/connections', () => ({
   ensureFreshCredentialToken: async (input: { credentialId: string; force?: boolean }) => {
     state.refreshCalls.push(input)
     return true
@@ -105,8 +107,16 @@ describe('callMcpToolWithAuthRetry', () => {
     state.callOutcomes = ['auth', 'ok']
     const outcome = await callMcpToolWithAuthRetry(opts)
     expect(outcome.ok).toBe(true)
+    // `lock` is the injected single-flight provider (stubbed null here) — the refresh seam moved
+    // to @auxx/credentials, which takes the lock as a parameter rather than importing Redis.
     expect(state.refreshCalls).toEqual([
-      { credentialId: 'cred-1', organizationId: 'org-1', hasRefreshToken: true, force: true },
+      {
+        credentialId: 'cred-1',
+        organizationId: 'org-1',
+        hasRefreshToken: true,
+        force: true,
+        lock: null,
+      },
     ])
     expect(state.markedFailed).toHaveLength(0)
   })

@@ -1,40 +1,41 @@
-// packages/lib/src/credentials/__tests__/ensure-fresh-credential-token.test.ts
+// packages/credentials/src/connections/__tests__/ensure-fresh-credential-token.test.ts
 //
-// Redis and the (lazily imported) oauth2-token-grants are mocked wholesale; the tests assert the
-// skip/refresh/lock decisions and the adaptive expiry skew.
+// The lock provider is injected (a fake, here) and the lazily imported oauth2-token-grants is
+// mocked wholesale; the tests assert the skip/refresh/lock decisions and the adaptive expiry skew.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CredentialLockProvider } from '../ensure-fresh-credential-token'
 
 const refreshCalls: { credentialId: string; organizationId: string }[] = []
 const mintCalls: { credentialId: string; organizationId: string }[] = []
-const redisState = {
-  available: true,
-  /** Lock value returned by `set NX` — null simulates "already held". */
-  setResult: 'OK' as string | null,
-  /** Values returned by successive `get` polls on the lock key. */
-  getResults: [] as (string | null)[],
-  setCalls: [] as unknown[][],
-  delCalls: [] as string[],
+const lockState = {
+  /** When true every method rejects — simulates Redis being unreachable. */
+  unavailable: false,
+  /** Result of `acquire` — false simulates "already held". */
+  acquireResult: true,
+  /** Values returned by successive `isHeld` polls. */
+  isHeldResults: [] as boolean[],
+  acquireCalls: [] as { key: string; ttlSeconds: number }[],
+  releaseCalls: [] as string[],
 }
 
-vi.mock('@auxx/redis', () => ({
-  getRedisClient: async () => {
-    if (!redisState.available) return undefined
-    return {
-      set: async (...args: unknown[]) => {
-        redisState.setCalls.push(args)
-        return redisState.setResult
-      },
-      get: async () => redisState.getResults.shift() ?? null,
-      del: async (key: string) => {
-        redisState.delCalls.push(key)
-        return 1
-      },
-    }
+const lock: CredentialLockProvider = {
+  async acquire(key, ttlSeconds) {
+    if (lockState.unavailable) throw new Error('Redis unavailable')
+    lockState.acquireCalls.push({ key, ttlSeconds })
+    return lockState.acquireResult
   },
-}))
+  async isHeld() {
+    if (lockState.unavailable) throw new Error('Redis unavailable')
+    return lockState.isHeldResults.shift() ?? false
+  },
+  async release(key) {
+    if (lockState.unavailable) throw new Error('Redis unavailable')
+    lockState.releaseCalls.push(key)
+  },
+}
 
-vi.mock('../../connections/oauth2-token-grants', () => ({
+vi.mock('../oauth2-token-grants', () => ({
   refreshCredentialTokens: async (credentialId: string, organizationId: string) => {
     refreshCalls.push({ credentialId, organizationId })
     return { success: true, expiresAt: new Date(Date.now() + 3600_000) }
@@ -51,16 +52,17 @@ const base = {
   credentialId: 'cred-1',
   organizationId: 'org-1',
   hasRefreshToken: true,
+  lock,
 }
 
 beforeEach(() => {
   refreshCalls.length = 0
   mintCalls.length = 0
-  redisState.available = true
-  redisState.setResult = 'OK'
-  redisState.getResults = []
-  redisState.setCalls = []
-  redisState.delCalls = []
+  lockState.unavailable = false
+  lockState.acquireResult = true
+  lockState.isHeldResults = []
+  lockState.acquireCalls = []
+  lockState.releaseCalls = []
 })
 
 describe('ensureFreshCredentialToken', () => {
@@ -98,8 +100,8 @@ describe('ensureFreshCredentialToken', () => {
     })
     expect(changed).toBe(true)
     expect(refreshCalls).toEqual([{ credentialId: 'cred-1', organizationId: 'org-1' }])
-    expect(redisState.setCalls[0]?.[0]).toBe('credential:token-refresh:cred-1')
-    expect(redisState.delCalls).toEqual(['credential:token-refresh:cred-1'])
+    expect(lockState.acquireCalls[0]?.key).toBe('credential:token-refresh:cred-1')
+    expect(lockState.releaseCalls).toEqual(['credential:token-refresh:cred-1'])
   })
 
   it('refreshes a 1h token inside the 120s window', async () => {
@@ -129,8 +131,8 @@ describe('ensureFreshCredentialToken', () => {
   })
 
   it('waits out a held lock without refreshing, and reports a possible rotation', async () => {
-    redisState.setResult = null // lock held elsewhere
-    redisState.getResults = ['1', null] // released on the second poll
+    lockState.acquireResult = false // lock held elsewhere
+    lockState.isHeldResults = [true, false] // released on the second poll
     const changed = await ensureFreshCredentialToken({
       ...base,
       expiresAt: new Date(Date.now() - 1000),
@@ -138,13 +140,24 @@ describe('ensureFreshCredentialToken', () => {
     })
     expect(changed).toBe(true)
     expect(refreshCalls).toHaveLength(0)
-    expect(redisState.delCalls).toHaveLength(0)
+    expect(lockState.releaseCalls).toHaveLength(0)
   })
 
-  it('still refreshes when Redis is unavailable', async () => {
-    redisState.available = false
+  it('still refreshes when the lock provider is unavailable', async () => {
+    lockState.unavailable = true
     const changed = await ensureFreshCredentialToken({
       ...base,
+      expiresAt: new Date(Date.now() - 1000),
+      createdAt: new Date(Date.now() - 3600_000),
+    })
+    expect(changed).toBe(true)
+    expect(refreshCalls).toHaveLength(1)
+  })
+
+  it('still refreshes when no lock provider is supplied at all', async () => {
+    const changed = await ensureFreshCredentialToken({
+      ...base,
+      lock: undefined,
       expiresAt: new Date(Date.now() - 1000),
       createdAt: new Date(Date.now() - 3600_000),
     })
@@ -183,8 +196,8 @@ describe('ensureFreshCredentialToken', () => {
     })
 
     it('reports a possible rotation under lock contention without minting', async () => {
-      redisState.setResult = null // lock held elsewhere
-      redisState.getResults = ['1', null]
+      lockState.acquireResult = false // lock held elsewhere
+      lockState.isHeldResults = [true, false]
       const changed = await ensureFreshCredentialToken({ ...cc, expiresAt: null })
       expect(changed).toBe(true)
       expect(mintCalls).toHaveLength(0)

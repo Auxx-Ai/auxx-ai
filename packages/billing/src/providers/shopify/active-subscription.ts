@@ -1,7 +1,8 @@
 // packages/billing/src/providers/shopify/active-subscription.ts
 
 import { configService } from '@auxx/credentials'
-import { getAppConnection } from '@auxx/services/app-connections'
+import { getAppConnection } from '@auxx/credentials/connections'
+import { credentialLock } from '../../credential-lock'
 import { createShopifyAdminClient } from './client'
 
 /** Shopify Admin billing interval, as exposed on `AppRecurringPricing.interval`. */
@@ -102,7 +103,7 @@ export async function getActiveSubscription(input: {
   // The Shopify billing connection is org-scoped (written by saveAppConnection at
   // install). Passing an empty userId falls through getAppConnection's user-scoped
   // lookup to the org-scoped row.
-  const conn = await getAppConnection(appId, input.organizationId, '')
+  const conn = await getAppConnection(appId, input.organizationId, '', { lock: credentialLock })
   if (conn.isErr()) throw conn.error
   const accessToken = conn.value.accessToken
   if (!accessToken) throw new Error('Shopify connection has no access token')

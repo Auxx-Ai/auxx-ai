@@ -30,6 +30,7 @@ export async function recordRefreshSuccess(
         requiresReauth: false,
         lastAuthError: null,
         lastAuthErrorAt: null,
+        lastRefreshError: null,
         lastRefreshAt: now,
         expiresAt: options.expiresAt,
         updatedAt: now,
@@ -48,16 +49,25 @@ export async function recordRefreshSuccess(
 
 /**
  * Record a failed token refresh: increment the breaker (a `permanent` failure jumps straight to
- * the reconnect threshold) and stamp `lastRefreshFailureAt`. A permanent failure (revoked/invalid
- * refresh token — e.g. OAuth2 `invalid_grant`) also sets the classified reauth state
- * (`requiresReauth` / `lastAuthError`), since no retry can recover it — only a reconnect. That
- * flag is what surfaces the Reconnect action in the UI; `recordRefreshSuccess` clears it.
- * Org-scoped.
+ * the reconnect threshold), stamp `lastRefreshFailureAt`, and persist `authError` as
+ * `lastRefreshError` — the raw diagnostic text, kept for **every** failure.
+ *
+ * That last part is the difference between a diagnosable outage and a silent one. The breaker
+ * latches at 5 failures and the scanner then skips the credential for 24h, so a credential failing
+ * for a *transient*-classified reason can sit dead indefinitely; before `lastRefreshError` existed
+ * the provider's message went only to the logger, and by the time anyone looked the logs had
+ * rotated. Keep writing it unconditionally.
+ *
+ * A permanent failure (revoked/invalid refresh token — e.g. OAuth2 `invalid_grant`) *additionally*
+ * sets the classified reauth state (`requiresReauth` / `lastAuthError` / `lastAuthErrorAt`), since
+ * no retry can recover it — only a reconnect. `lastAuthError` stays a **classified** signal the UI
+ * reads (an AuthErrorType such as `'invalid_grant'`); raw provider text belongs in
+ * `lastRefreshError`, never here. `recordRefreshSuccess` clears both. Org-scoped.
  */
 export async function recordRefreshFailure(
   id: string,
   organizationId: string,
-  options?: { permanent?: boolean; authError?: string }
+  options?: { permanent?: boolean; authError?: string; authErrorType?: string }
 ): Promise<Result<void, CredentialStoreError>> {
   const now = new Date()
   const nextFailures = options?.permanent
@@ -70,10 +80,14 @@ export async function recordRefreshFailure(
       .set({
         consecutiveRefreshFailures: nextFailures,
         lastRefreshFailureAt: now,
+        // Always recorded — this is the forensic trail for transient failures.
+        lastRefreshError: options?.authError ?? 'Token refresh failed',
         updatedAt: now,
         ...(options?.permanent && {
           requiresReauth: true,
-          lastAuthError: options.authError ?? 'Token refresh permanently failed',
+          // Classified type when the caller knows it; the generic marker otherwise. Never the raw
+          // provider message — that is what lastRefreshError is for.
+          lastAuthError: options.authErrorType ?? 'refresh_failed',
           lastAuthErrorAt: now,
         }),
       })

@@ -5,6 +5,7 @@
 // tokens. Because it resolves by connectionType (not `kind`), workflow/platform
 // credentials get auto-refresh-on-use for free.
 
+import { ensureFreshCredentialToken } from '@auxx/credentials/connections'
 import { findCredential, revealSecrets } from '@auxx/credentials/store'
 import { type AuthApply, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -14,7 +15,7 @@ import {
 } from '@auxx/services/app-connections'
 import { interpolateTemplate } from '@auxx/utils'
 import { err, ok, type Result } from 'neverthrow'
-import { ensureFreshCredentialToken } from '../credentials/ensure-fresh-credential-token'
+import { credentialLock } from '../credentials/credential-lock'
 import { defaultAuthApply } from './auth-apply'
 import {
   getDefinitionRuntimeById,
@@ -134,6 +135,7 @@ async function refreshIfNeeded(
     createdAt: record.createdAt,
     hasRefreshToken: !!secrets.refreshToken,
     grant: isClientCredentials ? 'client-credentials' : 'refresh_token',
+    lock: credentialLock,
   })
   if (!changed) return revealed
 

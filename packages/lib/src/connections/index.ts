@@ -3,6 +3,26 @@
 // apps, MCP servers, and platform built-ins, plus the shared runtime resolver,
 // auth-apply helper, and refresh-config loader.
 
+// The OAuth2 token-production + definition-resolution cluster moved to
+// `@auxx/credentials/connections` so consumers below the lib tier (notably `@auxx/billing`) can
+// refresh on use too. Re-exported here so existing `@auxx/lib/connections` imports keep working.
+export {
+  BYO_CLIENT_KEYS,
+  BYO_CLIENT_VARS,
+  type ConnectionDefinitionForRefresh,
+  type CredentialLockProvider,
+  type CredentialOwner,
+  ensureFreshCredentialToken,
+  gateConnectionVariables,
+  loadDefinitionForCredential,
+  makeClientCredentialsRequest,
+  mintClientCredentialToken,
+  type RefreshTokensResult,
+  refreshCredentialTokens,
+  resolveOAuth2Client,
+  resolveOAuth2RefreshConfig,
+  resolveOwnClientRequirement,
+} from '@auxx/credentials/connections'
 export {
   type AuthApply,
   applyAuth,
@@ -17,28 +37,11 @@ export {
   resolveHostedProvisionHandler,
 } from './hosted-provision'
 export {
-  makeClientCredentialsRequest,
-  mintClientCredentialToken,
-  type RefreshTokensResult,
-  refreshCredentialTokens,
-} from './oauth2-token-grants'
-export {
   type PostConnectHook,
   type PostConnectHookContext,
   registerPostConnectHook,
   runPostConnectHook,
 } from './post-connect-hooks'
-export {
-  BYO_CLIENT_KEYS,
-  BYO_CLIENT_VARS,
-  type ConnectionDefinitionForRefresh,
-  type CredentialOwner,
-  gateConnectionVariables,
-  loadDefinitionForCredential,
-  resolveOAuth2Client,
-  resolveOAuth2RefreshConfig,
-  resolveOwnClientRequirement,
-} from './resolve-connection-definition'
 export {
   type ResolveConnectionError,
   type RuntimeConnectionData,

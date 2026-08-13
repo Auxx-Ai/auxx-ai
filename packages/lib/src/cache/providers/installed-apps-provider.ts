@@ -1,13 +1,10 @@
 // packages/lib/src/cache/providers/installed-apps-provider.ts
 
+import { gateConnectionVariables, resolveOwnClientRequirement } from '@auxx/credentials/connections'
 import { schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getBuiltinAuxxInstalledRow } from '../../agents/builtin-installed-row'
 import { getRegisteredToolName } from '../../ai/kopilot/capabilities/apps/tool-naming'
-import {
-  gateConnectionVariables,
-  resolveOwnClientRequirement,
-} from '../../connections/resolve-connection-definition'
 import type { CachedAction, CachedAgentTool, CachedInstalledApp } from '../org-cache-keys'
 import type { CacheProvider } from '../org-cache-provider'
 

@@ -1,5 +1,6 @@
 // packages/lib/src/apps/get-app-details.ts
 
+import { gateConnectionVariables, resolveOwnClientRequirement } from '@auxx/credentials/connections'
 import type { CatalogPayload, Database } from '@auxx/database'
 import {
   type ConnectionDefinitionSummary,
@@ -8,10 +9,6 @@ import {
   listAppConnectionDefinitions,
 } from '@auxx/services/app-connections'
 import { getCachedAppBySlug } from '../cache/app-cache-helpers'
-import {
-  gateConnectionVariables,
-  resolveOwnClientRequirement,
-} from '../connections/resolve-connection-definition'
 
 /**
  * Input parameters for getAppWithInstallationStatus

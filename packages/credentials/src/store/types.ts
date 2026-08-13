@@ -30,6 +30,8 @@ export interface CredentialRecord {
   expiresAt: Date | null
   lastRefreshAt: Date | null
   lastRefreshFailureAt: Date | null
+  /** Raw provider text from the most recent failed refresh — recorded for every failure. */
+  lastRefreshError: string | null
   consecutiveRefreshFailures: number
   createdById: string | null
   createdAt: Date

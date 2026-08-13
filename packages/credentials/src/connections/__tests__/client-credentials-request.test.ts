@@ -1,4 +1,4 @@
-// packages/lib/src/connections/__tests__/client-credentials-request.test.ts
+// packages/credentials/src/connections/__tests__/client-credentials-request.test.ts
 //
 // Covers `makeClientCredentialsRequest`: the `grant_type=client_credentials` body, scope joining,
 // `request-body` vs `basic-auth` client authentication, and non-2xx error surfacing. The heavy
@@ -17,14 +17,14 @@ vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
   eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
 }))
-vi.mock('@auxx/credentials/store', () => ({
+vi.mock('../../store', () => ({
   recordRefreshFailure: async () => undefined,
   recordRefreshSuccess: async () => undefined,
   revealSecrets: async () => undefined,
   rotateSecrets: async () => undefined,
 }))
 vi.mock('@auxx/database', () => ({ database: { query: {} }, schema: {} }))
-vi.mock('@auxx/services/app-connections', () => ({
+vi.mock('../interpolate-connection', () => ({
   interpolateConnectionFields: () => ({}),
   mergeConnectionVariables: () => ({}),
 }))
