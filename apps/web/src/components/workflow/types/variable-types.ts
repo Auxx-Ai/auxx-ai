@@ -1,101 +1,14 @@
 // apps/web/src/components/workflow/types/variable-types.ts
 
-import type { FieldOptions } from '@auxx/lib/field-values/converters'
-import type { TableId } from '@auxx/lib/workflow-engine/client'
-import type { ResourceFieldId } from '@auxx/types/field'
-import type { BaseType, ValidationRules } from './unified-types'
+import type { TableId, UnifiedVariable } from '@auxx/lib/workflow-engine/client'
 
+// UnifiedVariable and AllowedVarType moved to lib (node-catalog Phase 1 —
+// `@auxx/lib/workflow-engine/types/unified-variable`) so node manifests and
+// server-side output resolution can share them. Re-exported here so the ~100
+// existing web imports keep working; the React-carrying picker/UI types below
+// stay in this file.
+export type { AllowedVarType, UnifiedVariable } from '@auxx/lib/workflow-engine/client'
 export { BaseType } from './unified-types'
-
-/**
- * One entry of a variable picker's `allowedTypes` / `expectedTypes` filter.
- *
- * Either a {@link BaseType}, or a **resource identifier** used to filter
- * relation/reference variables. That identifier is not restricted to the system
- * `TableId` union — it may equally be an `EntityDefinition` id or a resource
- * slug, which `isVariableTypeCompatible` cross-resolves through the resource
- * store. Hence `string` rather than `TableId`.
- */
-export type AllowedVarType = BaseType | string
-
-/**
- * Unified variable type that merges all legacy variable formats
- * This is the single source of truth for variables across the workflow system
- */
-export interface UnifiedVariable {
-  // Core identification
-  id: string // Unique identifier (full path: "node-123.content", "env.API_KEY")
-  nodeId?: string
-
-  // Display information
-  label: string // Human-readable label
-  description?: string // Optional description
-
-  type: BaseType // Base type from unified type system
-
-  // ─────────────────────────────────────────────────────────────
-  // FIELD REFERENCE (typed, replaces untyped `reference`)
-  // ─────────────────────────────────────────────────────────────
-
-  /**
-   * Typed field reference using ResourceFieldId system.
-   * Format: `${entityDefinitionId}:${fieldId}`
-   *
-   * Examples:
-   * - "contact:email" (system field on contact)
-   * - "ticket:cm1abc123xyz" (custom field on ticket)
-   *
-   * Use parseResourceFieldId() to extract components - NO manual .split(':')
-   */
-  fieldReference?: ResourceFieldId
-
-  /**
-   * For direct resource references (e.g., "contact", "ticket")
-   * When the variable IS a resource, not a field ON a resource.
-   */
-  resourceId?: string
-
-  /**
-   * Field options using unified FieldOptions structure.
-   * Same format as custom fields for consistency.
-   */
-  options?: FieldOptions
-
-  /**
-   * Allowed values for `BaseType.ENUM` variables.
-   *
-   * Sourced from a JSON Schema `enum`, which permits both strings and numbers —
-   * see `schemaToUnifiedVariable` in utils/schema-to-variable.ts.
-   */
-  enum?: (string | number)[]
-
-  // ─────────────────────────────────────────────────────────────
-  // STRUCTURAL TYPES
-  // ─────────────────────────────────────────────────────────────
-
-  // For arrays: type of items
-  items?: UnifiedVariable // Replaces itemType, now recursive
-
-  // For objects: property definitions with key preservation
-  properties?: Record<string, UnifiedVariable> // Object properties by key
-
-  // ─────────────────────────────────────────────────────────────
-  // METADATA
-  // ─────────────────────────────────────────────────────────────
-
-  // Categorization
-  category: 'node' | 'environment' | 'system'
-
-  // Value constraints
-  required?: boolean // Is this variable required?
-  default?: any // Default value
-  example?: any // Example value
-  validation?: ValidationRules
-
-  // UI hints (optional)
-  icon?: string // Icon for UI display
-  color?: string // Color for UI display
-}
 
 export const VAR_MODE = { PICKER: 'picker', RICH: 'rich' } as const
 export type VarMode = (typeof VAR_MODE)[keyof typeof VAR_MODE]

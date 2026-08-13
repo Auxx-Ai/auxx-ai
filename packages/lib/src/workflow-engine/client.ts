@@ -70,6 +70,53 @@ export * from './utils/terminal-nodes'
 // NOTE: Operator definitions moved to @auxx/lib/conditions
 // Import OPERATOR_DEFINITIONS, Operator, etc. from '@auxx/lib/conditions' or '@auxx/lib/conditions/client'
 
+// ── Node catalog (Phase 1 of the node-catalog migration) ─────────────────────
+// The server-safe node contract: manifest types, the registry, the migration
+// tracker, and the pure variable-inference helpers split out of apps/web
+// utils/variable-utils.ts (the store-reading display helpers stayed there).
+export { NOT_YET_MIGRATED } from './catalog/not-yet-migrated'
+export {
+  getAuthorableManifests,
+  getManifest,
+  listManifests,
+  registerManifest,
+} from './catalog/registry'
+export {
+  type NodeAgentDocs,
+  type NodeBranch,
+  NodeCategory,
+  type NodeConnectionRules,
+  type NodeManifest,
+  type NodeValidationResult,
+} from './catalog/types'
+export {
+  type ArraySegmentInfo,
+  buildVariableId,
+  buildVariableLabelPath,
+  containsVariableReference,
+  getArrayAccessorCompactLabel,
+  getArrayAccessorMenuLabel,
+  getArrayItemVariable,
+  getLabelFromVariableId,
+  getNodeIdFromVariableId,
+  getPathFromVariableId,
+  inferPluckOutputType,
+  isEnvironmentVariable,
+  isNodeVariable,
+  isSystemVariable,
+  isVariableMode,
+  parseArraySegmentsFromId,
+  parseResourceFieldFromVariableId,
+  preserveArrayStructure,
+  replaceArrayAccessor,
+  resolveFieldPath,
+  VARIABLE_PATTERN,
+} from './catalog/variable-inference'
+export type {
+  AllowedVarType,
+  UnifiedVariable,
+  ValidationRules,
+} from './types/unified-variable'
 // Field type mapping utilities
 export {
   extractEnumOptions,

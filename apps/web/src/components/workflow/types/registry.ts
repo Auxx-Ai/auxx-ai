@@ -1,38 +1,25 @@
 // apps/web/src/components/workflow/types/registry.ts
 
 import type { WorkflowNodeExecutionEntity } from '@auxx/database/types'
-import type { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
+import type {
+  NodeCategory,
+  NodeValidationResult as ValidationResult,
+  WorkflowTriggerType,
+} from '@auxx/lib/workflow-engine/client'
 import type { ComponentType } from 'react'
 import type { BaseNodeData } from './node-base'
 import type { UnifiedOutputVariablesFunction } from './output-variables'
 
 // Simplified typing approach to avoid Zod complexity
 
-/**
- * UI node categories for organization
- */
-export enum NodeCategory {
-  TRIGGER = 'trigger',
-  INPUT = 'input',
-  CONDITION = 'condition',
-  ACTION = 'action',
-  TRANSFORM = 'transform',
-  FLOW_CONTROL = 'flow_control',
-  DATA = 'data',
-  DATASET = 'dataset',
-  INTEGRATION = 'integration',
-  AI = 'ai',
-  DEBUG = 'debug',
-  UTILITY = 'utility',
-}
-
-/**
- * Validation result interface
- */
-export interface ValidationResult {
-  isValid: boolean
-  errors: Array<{ field: string; message: string; type?: 'warning' | 'error' }>
-}
+export type { NodeValidationResult as ValidationResult } from '@auxx/lib/workflow-engine/client'
+// NodeCategory and ValidationResult relocated to the lib node catalog
+// (node-catalog Phase 1 — `@auxx/lib/workflow-engine/catalog/types`), where
+// they are the manifest's category and validator-result types. Re-exported
+// here so no web import churns; lib names the validator result
+// `NodeValidationResult` to avoid colliding with the engine's own
+// whole-workflow `ValidationResult`.
+export { NodeCategory } from '@auxx/lib/workflow-engine/client'
 
 /**
  * Props every node configuration panel receives.
