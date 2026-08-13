@@ -4,16 +4,19 @@
 // (resolve/save/delete/mark) moved to `@auxx/lib/apps` — see
 // plans/apps/oauth/app-connection-lazy-refresh-plan.md §2.
 
-export { getAppConnection } from './get-app-connection'
-
-// Export service functions
-export { getAppConnectionDefinition } from './get-app-connection-definition'
-// Export interpolation utilities
+// Export types
+export type { DecryptedConnectionData } from '@auxx/credentials/connections'
+// Re-exported for compatibility — `getAppConnection` and the interpolation helpers now live in
+// `@auxx/credentials/connections`, alongside the store/crypto primitives they are built from.
+// Prefer importing them from there directly.
 export {
   extractPlaceholders,
+  getAppConnection,
   interpolateConnectionFields,
   mergeConnectionVariables,
-} from './interpolate-connection'
+} from '@auxx/credentials/connections'
+// Export service functions
+export { getAppConnectionDefinition } from './get-app-connection-definition'
 export {
   type ConnectionMethod,
   getConnectionDefinitionById,
@@ -21,11 +24,6 @@ export {
 } from './list-app-connection-definitions'
 export { listAppConnections } from './list-app-connections'
 export { renameAppConnection } from './rename-app-connection'
-// Export types
-export type {
-  AppConnection,
-  ConnectionDefinitionSummary,
-  DecryptedConnectionData,
-} from './types'
+export type { AppConnection, ConnectionDefinitionSummary } from './types'
 // Export utility functions
 export { logger, safeSerializeMetadata } from './utils'

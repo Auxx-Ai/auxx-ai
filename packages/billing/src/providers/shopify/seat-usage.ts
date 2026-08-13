@@ -1,11 +1,12 @@
 // packages/billing/src/providers/shopify/seat-usage.ts
 
 import { configService } from '@auxx/credentials'
+import { getAppConnection } from '@auxx/credentials/connections'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { getAppConnection } from '@auxx/services/app-connections'
 import { eq } from 'drizzle-orm'
+import { credentialLock } from '../../credential-lock'
 import { postSeatDayEvent } from './app-events-client'
 import { createShopifyAdminClient } from './client'
 
@@ -115,7 +116,7 @@ async function resolveShopGid(
 
   // Org-scoped Shopify connection (written at install). Empty userId falls through to the
   // org-scoped row — same pattern as active-subscription.ts.
-  const conn = await getAppConnection(appId, input.organizationId, '')
+  const conn = await getAppConnection(appId, input.organizationId, '', { lock: credentialLock })
   if (conn.isErr()) throw conn.error
   const accessToken = conn.value.accessToken
   if (!accessToken) throw new Error('Shopify connection has no access token')

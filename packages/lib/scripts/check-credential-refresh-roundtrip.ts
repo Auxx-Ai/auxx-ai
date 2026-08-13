@@ -24,7 +24,7 @@ const { eq } = await import('drizzle-orm')
 const { getCredential, revealSecrets, updateCredential } = await import('@auxx/credentials/store')
 const { encryptValue } = await import('@auxx/credentials/crypto')
 const { saveMcpConnection, resolveMcpConnectionForRuntime } = await import('../src/ai/mcp')
-const { refreshCredentialTokens } = await import('../src/connections/oauth2-token-grants')
+const { refreshCredentialTokens } = await import('@auxx/credentials/connections')
 
 const organizationId = process.argv[2] ?? 'abgwpa1l81reht2zmwrcihfu' // DemoOrg
 

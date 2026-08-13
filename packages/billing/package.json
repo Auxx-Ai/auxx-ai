@@ -28,6 +28,7 @@
     "@auxx/types": "workspace:*",
     "@auxx/deployment": "workspace:*",
     "@auxx/logger": "workspace:*",
+    "@auxx/redis": "workspace:*",
     "@auxx/services": "workspace:*",
     "@shopify/admin-api-client": "catalog:",
     "drizzle-orm": "catalog:",

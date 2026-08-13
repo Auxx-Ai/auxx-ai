@@ -16,6 +16,7 @@ export default defineConfig({
     'src/crypto/index.ts',
     'src/crypto/client.ts',
     'src/store/index.ts',
+    'src/connections/index.ts',
     'src/lambda-auth/index.ts',
   ],
   format: 'esm',

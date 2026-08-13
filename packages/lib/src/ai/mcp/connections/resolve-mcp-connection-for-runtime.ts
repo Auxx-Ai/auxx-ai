@@ -1,10 +1,11 @@
 // packages/lib/src/ai/mcp/connections/resolve-mcp-connection-for-runtime.ts
 
+import { ensureFreshCredentialToken } from '@auxx/credentials/connections'
 import { findCredential, revealSecrets } from '@auxx/credentials/store'
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
-import { ensureFreshCredentialToken } from '../../../credentials/ensure-fresh-credential-token'
+import { credentialLock } from '../../../credentials/credential-lock'
 import type { McpConnectionError, McpRuntimeConnection } from './types'
 
 const logger = createScopedLogger('resolve-mcp-connection-for-runtime')
@@ -91,6 +92,7 @@ export async function resolveMcpConnectionForRuntime(input: {
       lastRefreshAt: record.lastRefreshAt,
       createdAt: record.createdAt,
       hasRefreshToken: true,
+      lock: credentialLock,
     })
     if (maybeRotated) {
       const refreshed = await revealSecrets<McpSecrets>(credential.id, organizationId)

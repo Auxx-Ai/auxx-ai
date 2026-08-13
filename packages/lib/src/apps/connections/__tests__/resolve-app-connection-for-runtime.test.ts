@@ -11,7 +11,9 @@ const revealCalls: string[] = []
 let revealQueue: unknown[] = []
 const connDef = { value: { connectionType: 'oauth2-code' } as Record<string, unknown> | null }
 
-vi.mock('../../../credentials/ensure-fresh-credential-token', () => ({
+vi.mock('../../../credentials/credential-lock', () => ({ credentialLock: null }))
+
+vi.mock('@auxx/credentials/connections', () => ({
   ensureFreshCredentialToken: (input: unknown) => ensureFresh(input),
 }))
 

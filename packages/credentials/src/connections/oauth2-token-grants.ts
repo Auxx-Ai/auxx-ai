@@ -1,4 +1,4 @@
-// packages/lib/src/connections/oauth2-token-grants.ts
+// packages/credentials/src/connections/oauth2-token-grants.ts
 //
 // OAuth2 token production for a credential — the two grants that mint/renew its access token:
 // `refresh_token` (refresh an existing token) and `client_credentials` (mint server-side, no user
@@ -6,16 +6,11 @@
 // surface. Lives beside `resolve-connection-definition.ts` because both grants resolve their
 // provider config the same way (by ConnectionDefinition).
 
-import {
-  recordRefreshFailure,
-  recordRefreshSuccess,
-  revealSecrets,
-  rotateSecrets,
-} from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { mergeConnectionVariables } from '@auxx/services/app-connections'
 import { eq } from 'drizzle-orm'
+import { recordRefreshFailure, recordRefreshSuccess, revealSecrets, rotateSecrets } from '../store'
+import { mergeConnectionVariables } from './interpolate-connection'
 import {
   loadDefinitionForCredential,
   resolveOAuth2RefreshConfig,
@@ -170,7 +165,11 @@ export async function refreshCredentialTokens(
       (errorMessage.includes('refresh token') && errorMessage.includes('invalid'))
     await recordRefreshFailure(credentialId, organizationId, {
       permanent: isPermanentFailure,
+      // Raw provider text → lastRefreshError (kept for every failure, transient included).
       authError: errorMessage,
+      // Classified code → lastAuthError, but only when the token endpoint actually gave us one.
+      authErrorType:
+        error instanceof OAuth2TokenRequestError ? (error.oauthError ?? undefined) : undefined,
     })
 
     const newFailureCount = isPermanentFailure ? CIRCUIT_OPEN_THRESHOLD : previousFailureCount + 1
@@ -256,7 +255,9 @@ export async function mintClientCredentialToken(
     const errorMessage = error instanceof Error ? error.message : String(error)
     logger.error('Client credentials mint failed', { credentialId, error: errorMessage })
 
-    await recordRefreshFailure(credentialId, organizationId)
+    // Never permanent — there is no refresh token to revoke; the next call re-mints from the
+    // org's id/secret. Still record the reason, or a repeatedly failing mint is undiagnosable.
+    await recordRefreshFailure(credentialId, organizationId, { authError: errorMessage })
 
     const newFailureCount = previousFailureCount + 1
     return {

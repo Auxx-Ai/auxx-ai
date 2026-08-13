@@ -120,6 +120,10 @@ export async function listAppConnections(organizationId: string, userId?: string
       appName: (cred.appId && titleById.get(cred.appId)) || 'Unknown App',
       label: cred.label,
       connectionStatus: status,
+      // Why it went `expired`. Without this the list can say a connection is broken but not what
+      // broke it — the state that let a dead Shopify credential sit unnoticed for 8 days.
+      lastRefreshError: cred.lastRefreshError ?? undefined,
+      lastRefreshFailureAt: cred.lastRefreshFailureAt ?? undefined,
       connectedBy: cred.createdByName || undefined,
       connectedAt: cred.createdAt,
       expiresAt,

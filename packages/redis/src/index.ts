@@ -20,5 +20,8 @@ export {
 // Core classes
 export { RedisEventRouter } from './core/redis-event-router'
 
+// Credential single-flight lock (implements @auxx/credentials/connections' CredentialLockProvider)
+export { createCredentialLockProvider } from './credential-lock'
+
 // Type exports
 export type { RedisClient } from './types'

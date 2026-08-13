@@ -12,10 +12,10 @@
 //   packages/lib/scripts/probe-outlook-rolling-refresh.ts <integrationId>
 
 import { createHash } from 'node:crypto'
+import { refreshCredentialTokens } from '@auxx/credentials/connections'
 import { revealSecrets } from '@auxx/credentials/store'
 import { closePools, database as db, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { refreshCredentialTokens } from '../src/connections/oauth2-token-grants'
 
 /* eslint-disable no-console */
 

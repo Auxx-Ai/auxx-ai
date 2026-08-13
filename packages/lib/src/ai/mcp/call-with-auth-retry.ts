@@ -1,7 +1,8 @@
 // packages/lib/src/ai/mcp/call-with-auth-retry.ts
 
+import { ensureFreshCredentialToken } from '@auxx/credentials/connections'
 import { createScopedLogger } from '@auxx/logger'
-import { ensureFreshCredentialToken } from '../../credentials/ensure-fresh-credential-token'
+import { credentialLock } from '../../credentials/credential-lock'
 import { buildMcpRequestContext } from './auth'
 import { mcpCallTool } from './client'
 import { markMcpConnectionFailed } from './connections'
@@ -60,6 +61,7 @@ export async function callMcpToolWithAuthRetry(opts: {
         organizationId,
         hasRefreshToken: true,
         force: true,
+        lock: credentialLock,
       })
       const retryCtx = await buildMcpRequestContext({ mcpServerId, organizationId })
       if (retryCtx.isOk()) {

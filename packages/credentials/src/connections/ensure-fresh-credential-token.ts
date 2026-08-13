@@ -1,7 +1,6 @@
-// packages/lib/src/credentials/ensure-fresh-credential-token.ts
+// packages/credentials/src/connections/ensure-fresh-credential-token.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { getRedisClient } from '@auxx/redis'
 
 const logger = createScopedLogger('ensure-fresh-credential-token')
 
@@ -16,6 +15,25 @@ const LOCK_POLL_DELAY_MS = 500
 
 /** One lock space for all credential kinds — the refresh path (`refreshCredentialTokens`) is shared. */
 const lockKey = (credentialId: string) => `credential:token-refresh:${credentialId}`
+
+/**
+ * Minimal distributed-lock surface used to make refreshes single-flight per credential.
+ *
+ * Injected rather than imported: this package sits below `@auxx/redis` in the dependency graph
+ * (redis itself imports `configService` from here), so a direct redis import would be a cycle.
+ * `@auxx/redis` ships the canonical implementation — see `createCredentialLockProvider`.
+ *
+ * Every method may reject; callers treat a throwing provider as "no lock available" and refresh
+ * anyway, so an implementation never needs to swallow its own errors.
+ */
+export interface CredentialLockProvider {
+  /** Set-if-absent with a TTL. Resolves `false` when another holder already has the key. */
+  acquire(key: string, ttlSeconds: number): Promise<boolean>
+  /** Whether the key is currently held. Used to wait out a competing refresh. */
+  isHeld(key: string): Promise<boolean>
+  /** Best-effort release. */
+  release(key: string): Promise<void>
+}
 
 /**
  * Refresh-ahead window: `min(120s, 25% of token lifetime)`. A fixed window would make any token
@@ -36,8 +54,8 @@ function expirySkewMs(input: {
 
 /**
  * Ensure the credential carries a fresh access token, producing one when it's expired/near expiry
- * (single-flight per credential via a Redis NX lock — concurrent mints/refreshes would persist a
- * dead rotation). Two grants share this seam:
+ * (single-flight per credential via the injected `lock` — concurrent mints/refreshes would persist
+ * a dead rotation). Two grants share this seam:
  *
  * - `refresh_token` (default): refresh only when a refresh token exists and the token is at/near
  *   expiry. `!expiresAt` means "can't tell" → leave it to the caller's 401 path.
@@ -49,6 +67,10 @@ function expirySkewMs(input: {
  * `true` when the stored secrets may have changed (work ran here, or another process held the
  * lock) so the caller knows to re-reveal; `false` means nothing happened. Never throws: a failure
  * leaves the stored token in place for the caller's 401 path, and the workflow stamps the breaker.
+ *
+ * `lock` is optional and best-effort by design: omitted or throwing, the refresh still proceeds
+ * unserialised — correctness beats stampede protection, and that is the pre-existing behaviour
+ * when Redis is unreachable.
  */
 export async function ensureFreshCredentialToken(input: {
   credentialId: string
@@ -61,6 +83,8 @@ export async function ensureFreshCredentialToken(input: {
   grant?: 'refresh_token' | 'client-credentials'
   /** Skip the expiry check — used by the 401 retry path where the token just failed live. */
   force?: boolean
+  /** Single-flight lock. Omit to refresh without serialisation. */
+  lock?: CredentialLockProvider | null
 }): Promise<boolean> {
   const { credentialId, organizationId, expiresAt, hasRefreshToken, force } = input
   const grant = input.grant ?? 'refresh_token'
@@ -81,34 +105,31 @@ export async function ensureFreshCredentialToken(input: {
     }
   }
 
-  let redis: Awaited<ReturnType<typeof getRedisClient>> | null = null
-  try {
-    redis = await getRedisClient(false)
-  } catch {
-    // Redis unavailable → refresh without the lock; correctness beats stampede protection.
-  }
+  let lock: CredentialLockProvider | null = input.lock ?? null
+  const key = lockKey(credentialId)
 
-  if (redis) {
+  if (lock) {
+    const held = lock
     try {
-      const acquired = await redis.set(lockKey(credentialId), '1', 'EX', LOCK_TTL_SECONDS, 'NX')
+      const acquired = await held.acquire(key, LOCK_TTL_SECONDS)
       if (!acquired) {
         // Someone else is refreshing — wait for the lock to clear, then let the caller re-read
         // whatever the winner persisted. Never fail the call over lock contention.
         for (let i = 0; i < LOCK_POLLS; i++) {
           await new Promise((resolve) => setTimeout(resolve, LOCK_POLL_DELAY_MS))
-          if (!(await redis.get(lockKey(credentialId)))) break
+          if (!(await held.isHeld(key))) break
         }
         return true
       }
     } catch {
-      redis = null // lock machinery failed — refresh anyway
+      lock = null // lock machinery failed — refresh anyway
     }
   }
 
   try {
-    // Lazy import: oauth2-token-grants pulls in the heavy workflow-nodes/services graph, which a
-    // low-level credentials module must not load statically (breaks test mock interception too).
-    const grants = await import('../connections/oauth2-token-grants')
+    // Lazy import: oauth2-token-grants pulls in the heavy workflow-nodes graph, which this
+    // low-level module must not load statically (breaks test mock interception too).
+    const grants = await import('./oauth2-token-grants')
     const result =
       grant === 'client-credentials'
         ? await grants.mintClientCredentialToken(credentialId, organizationId)
@@ -122,9 +143,9 @@ export async function ensureFreshCredentialToken(input: {
       error: error instanceof Error ? error.message : String(error),
     })
   } finally {
-    if (redis) {
+    if (lock) {
       try {
-        await redis.del(lockKey(credentialId))
+        await lock.release(key)
       } catch {}
     }
   }
