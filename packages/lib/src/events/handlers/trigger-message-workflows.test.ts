@@ -38,7 +38,11 @@ const INT_B = 'int_b'
 /** A published workflow app with a MESSAGE_RECEIVED trigger node, optionally channel-scoped. */
 function app(
   id: string,
-  overrides: { channelIds?: string[]; machineMail?: 'include' | 'exclude' } = {}
+  overrides: {
+    channelIds?: string[]
+    machineMail?: 'include' | 'exclude'
+    ownAddress?: 'include' | 'exclude'
+  } = {}
 ) {
   return {
     id: `app_${id}`,
@@ -53,6 +57,7 @@ function app(
               type: 'message-received',
               ...(overrides.channelIds !== undefined && { channelIds: overrides.channelIds }),
               ...(overrides.machineMail !== undefined && { machineMail: overrides.machineMail }),
+              ...(overrides.ownAddress !== undefined && { ownAddress: overrides.ownAddress }),
             },
           },
         ],
@@ -177,6 +182,87 @@ describe('triggerMessageWorkflows — channel scope (§4)', () => {
     expect(h.getQueueAdd).toHaveBeenCalledWith(
       'executeMessageTrigger',
       expect.objectContaining({ workflowAppId: 'app_scoped-opted-in' })
+    )
+  })
+})
+
+// The loop guards moved off the publish site and onto the dispatcher: ingest
+// now always publishes and attaches signals, so this handler is where a loop
+// actually stops. `ownEcho` is hard (proof the message is a copy of one we
+// sent); `fromOwnAddress` is the author's call and defaults to firing.
+describe('triggerMessageWorkflows — loop signals', () => {
+  it('never dispatches for a proven echo of our own sent mail', async () => {
+    h.getCachedWorkflowAppsByTrigger.mockResolvedValue([app('unscoped')])
+
+    await triggerMessageWorkflows(event({ ownEcho: { sentMessageId: 'm_sent_1' } }))
+
+    expect(h.getQueueAdd).not.toHaveBeenCalled()
+    expect(h.loadProcessedMessage).not.toHaveBeenCalled()
+  })
+
+  it('skips an echo even for a workflow that opted into own-address mail', async () => {
+    h.getCachedWorkflowAppsByTrigger.mockResolvedValue([app('opted-in', { ownAddress: 'include' })])
+
+    await triggerMessageWorkflows(
+      event({ ownEcho: { sentMessageId: 'm_sent_1' }, fromOwnAddress: true })
+    )
+
+    expect(h.getQueueAdd).not.toHaveBeenCalled()
+  })
+
+  it('dispatches own-address mail by default — a teammate writing in is real mail', async () => {
+    h.getCachedWorkflowAppsByTrigger.mockResolvedValue([app('unscoped')])
+
+    await triggerMessageWorkflows(event({ fromOwnAddress: true }))
+
+    expect(h.getQueueAdd).toHaveBeenCalledTimes(1)
+    expect(h.getQueueAdd).toHaveBeenCalledWith(
+      'executeMessageTrigger',
+      expect.objectContaining({ workflowAppId: 'app_unscoped' })
+    )
+  })
+
+  it("dispatches own-address mail for a trigger with an explicit 'include'", async () => {
+    h.getCachedWorkflowAppsByTrigger.mockResolvedValue([app('opted-in', { ownAddress: 'include' })])
+
+    await triggerMessageWorkflows(event({ fromOwnAddress: true }))
+
+    expect(h.getQueueAdd).toHaveBeenCalledTimes(1)
+  })
+
+  it("skips a trigger that opted out with ownAddress: 'exclude'", async () => {
+    h.getCachedWorkflowAppsByTrigger.mockResolvedValue([
+      app('opted-out', { ownAddress: 'exclude' }),
+    ])
+
+    await triggerMessageWorkflows(event({ fromOwnAddress: true }))
+
+    expect(h.getQueueAdd).not.toHaveBeenCalled()
+    expect(h.loadProcessedMessage).not.toHaveBeenCalled()
+  })
+
+  it("still dispatches an 'exclude' trigger for mail that is NOT own-address", async () => {
+    h.getCachedWorkflowAppsByTrigger.mockResolvedValue([
+      app('opted-out', { ownAddress: 'exclude' }),
+    ])
+
+    await triggerMessageWorkflows(event())
+
+    expect(h.getQueueAdd).toHaveBeenCalledTimes(1)
+  })
+
+  it('filters per workflow — one opted out, one on the default', async () => {
+    h.getCachedWorkflowAppsByTrigger.mockResolvedValue([
+      app('opted-out', { ownAddress: 'exclude' }),
+      app('default'),
+    ])
+
+    await triggerMessageWorkflows(event({ fromOwnAddress: true }))
+
+    expect(h.getQueueAdd).toHaveBeenCalledTimes(1)
+    expect(h.getQueueAdd).toHaveBeenCalledWith(
+      'executeMessageTrigger',
+      expect.objectContaining({ workflowAppId: 'app_default' })
     )
   })
 })

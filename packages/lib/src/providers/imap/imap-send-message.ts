@@ -54,6 +54,14 @@ export class ImapSmtpSendService {
         references: options.references,
         headers: {
           ...(options.messageId ? { 'Message-ID': options.messageId } : {}),
+          // Our own `Message.id`, so an inbound copy of this send arriving on
+          // another channel resolves back to the row we sent and is recognised
+          // as an echo (`store-message.ts`'s `ownEcho`). Gmail, Outlook and SES
+          // stamp the same header — SMTP was the one door that didn't, leaving
+          // IMAP channels with no cross-channel echo detection at all.
+          ...(options.internalMessageId
+            ? { 'X-AuxxAi-Message-Id': options.internalMessageId }
+            : {}),
           // RFC 3834 loop prevention for automated sends (machine-mail plan Phase 2)
           ...(options.automated
             ? { 'Auto-Submitted': 'auto-replied', 'X-Auto-Response-Suppress': 'All' }

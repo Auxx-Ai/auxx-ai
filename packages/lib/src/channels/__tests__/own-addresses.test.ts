@@ -93,4 +93,48 @@ describe('buildOrgOwnEmailAddressSet', () => {
     const set = buildOrgOwnEmailAddressSet([channel({ email: null, metadata: null })])
     expect(set).toEqual(new Set())
   })
+
+  // `excludeInboxIds` exists for message DIRECTION at the SES door: a personal
+  // mailbox's address belongs to a human who also writes mail by hand, so mail
+  // from one arriving at a shared channel is inbound there, not the org
+  // replying to itself. Ingest's `fromOwnAddress` signal passes no exclusions —
+  // it wants the full "is the sender one of ours" answer.
+  describe('excludeInboxIds', () => {
+    it('drops a channel whose inbox is excluded, aliases included', () => {
+      const set = buildOrgOwnEmailAddressSet(
+        [
+          channel({ id: 'shared', email: 'support@company.com', inboxId: 'ibx_shared' }),
+          channel({
+            id: 'personal',
+            email: 'alice@company.com',
+            inboxId: 'ibx_personal',
+            metadata: { userEmails: ['alice.alias@company.com'] },
+          }),
+        ],
+        { excludeInboxIds: new Set(['ibx_personal']) }
+      )
+      expect(set).toEqual(new Set(['support@company.com']))
+    })
+
+    it('keeps every channel when no exclusions are passed', () => {
+      const channels = [
+        channel({ id: 'shared', email: 'support@company.com', inboxId: 'ibx_shared' }),
+        channel({ id: 'personal', email: 'alice@company.com', inboxId: 'ibx_personal' }),
+      ]
+      expect(buildOrgOwnEmailAddressSet(channels)).toEqual(
+        new Set(['support@company.com', 'alice@company.com'])
+      )
+      expect(buildOrgOwnEmailAddressSet(channels, {})).toEqual(
+        new Set(['support@company.com', 'alice@company.com'])
+      )
+    })
+
+    it('keeps an unlinked channel (null inboxId) regardless of the exclusion set', () => {
+      const set = buildOrgOwnEmailAddressSet(
+        [channel({ email: 'orphan@company.com', inboxId: null })],
+        { excludeInboxIds: new Set(['ibx_personal']) }
+      )
+      expect(set).toEqual(new Set(['orphan@company.com']))
+    })
+  })
 })

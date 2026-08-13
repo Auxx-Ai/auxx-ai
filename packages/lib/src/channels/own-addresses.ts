@@ -7,11 +7,22 @@ import type { CachedChannel } from '../cache/providers/channels-provider'
  * primary `email` plus its provider-reported aliases — Outlook
  * `metadata.emailAliases` and Gmail send-as `metadata.userEmails`
  * (`fetchAllUserEmails()`, persisted on the integration). This is the "us"
- * set for the ingest own-address loop guard
- * (`plans/workflow/2026-08-12-message-trigger-scoping-and-send-safety.md`
- * §6 #1): an inbound message whose `From` address is in this set is our own
- * outbound mail echoing back through a different door (a second connected
- * channel, the SES forwarding alias, ...), not real inbound mail.
+ * set: an inbound message whose `From` address is in it was sent from a
+ * mailbox this org has connected.
+ *
+ * Two consumers, two readings — the set answers "is the sender one of ours",
+ * which is NOT the same question as "is this a loop":
+ *  - `store-message.ts` stamps `fromOwnAddress` on the `message:received`
+ *    event and lets each workflow's trigger decide (default: fire). A
+ *    teammate mailing the shared inbox from their own connected mailbox is in
+ *    this set and is perfectly real mail, so membership alone must never
+ *    suppress anything. The loop guard proper is `ownEcho`, which resolves
+ *    `X-AuxxAi-Message-Id` to a row we actually sent.
+ *  - `inbound-email-processor.ts` uses it for SES message DIRECTION, and
+ *    passes `excludeInboxIds` covering the org's personal inboxes: mail from
+ *    a teammate's personal mailbox arriving at a shared channel through the
+ *    forwarding alias is inbound ON THAT CHANNEL, and marking it outbound
+ *    renders it as an org reply in the thread.
  *
  * The SES forwarding address needs no special case — it is itself an
  * `Integration.email` row (provider `email`, `metadata.systemManaged: true`,
@@ -23,9 +34,13 @@ import type { CachedChannel } from '../cache/providers/channels-provider'
  * control the cache-vs-query decision (see `getOrgOwnEmailAddresses` in
  * `./cache.ts` for the cache-backed convenience wrapper).
  */
-export function buildOrgOwnEmailAddressSet(channels: readonly CachedChannel[]): Set<string> {
+export function buildOrgOwnEmailAddressSet(
+  channels: readonly CachedChannel[],
+  options?: { excludeInboxIds?: ReadonlySet<string> }
+): Set<string> {
   const addresses = new Set<string>()
   for (const channel of channels) {
+    if (channel.inboxId && options?.excludeInboxIds?.has(channel.inboxId)) continue
     if (channel.email) addresses.add(channel.email.trim().toLowerCase())
     const metadata = channel.metadata as Record<string, unknown> | null
     addAliasArray(addresses, metadata?.emailAliases) // Outlook proxy addresses

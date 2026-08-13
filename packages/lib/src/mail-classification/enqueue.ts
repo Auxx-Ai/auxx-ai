@@ -35,12 +35,18 @@ const logger = createScopedLogger('mail-classification')
 export const enqueueMailClassification = async ({ data: event }: { data: AuxxEvent }) => {
   if (event.type !== 'message:received') return
 
-  const { organizationId, messageId, threadId, machineMail, from } = (event as MessageReceivedEvent)
-    .data
+  const { organizationId, messageId, threadId, machineMail, from, ownEcho } = (
+    event as MessageReceivedEvent
+  ).data
 
   // Payload-only exits 1 and 2 (§3.1). Everything past here costs a queue write,
-  // so the two free checks happen on this side of it.
+  // so the free checks happen on this side of it.
   if (machineMail?.tier === 'hard') return
+  // A proven copy of mail this org sent (`store-message.ts`'s `ownEcho`) is our
+  // own text coming back — classifying it burns a model call to tag ourselves.
+  // The only other subscriber that opts out; timeline, filters, bounce ingest
+  // and signals all describe the message as it exists and run normally.
+  if (ownEcho) return
   if (!threadId) return
 
   const data: MailClassificationJobData = {

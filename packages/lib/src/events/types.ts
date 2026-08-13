@@ -191,6 +191,21 @@ export type MessageReceivedEvent = AuxxEventGeneric<
      * mail) — excluded from workflows by default, per-trigger opt-in. The same object
      * is persisted at `Message.metadata.machineMail`. */
     machineMail?: { tier: 'hard' | 'soft'; reason: string }
+    /** Set when this inbound row is PROVEN to be a copy of a message we sent —
+     * its `X-AuxxAi-Message-Id` header resolved to a `Message` row in this org
+     * carrying a `sendToken`. The hard tier of the loop guard: the workflow
+     * dispatcher and mail classification both skip it unconditionally, because
+     * a literal duplicate of our own outbound mail is not a new event. Carries
+     * the id of the row we sent, for log correlation. */
+    ownEcho?: { sentMessageId: string }
+    /** Set when the sender address is one of the org's connected channel
+     * addresses (`buildOrgOwnEmailAddressSet` — every non-deleted channel's
+     * email plus provider aliases, personal mailboxes included). Descriptive,
+     * NOT a verdict: a teammate mailing the shared inbox from their connected
+     * mailbox looks identical to a cross-channel echo at the address level, so
+     * the trigger decides via `MessageReceivedNodeData.ownAddress` (default
+     * `'include'` — it fires). The proven case is `ownEcho` above. */
+    fromOwnAddress?: true
   }
 >
 export type MessageSentEvent = AuxxEventGeneric<
