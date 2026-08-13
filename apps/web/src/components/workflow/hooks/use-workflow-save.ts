@@ -45,6 +45,15 @@ export const useWorkflowSave = () => {
   const posthog = useAnalytics()
   const pendingRef = useRef<PendingChanges>({})
 
+  /**
+   * Set when a save was rejected with 409 CONFLICT — another tab/user saved the
+   * draft after this editor loaded it. Once conflicted, this editor stops
+   * saving entirely (autosave, beacon, manual): its in-memory graph is stale
+   * and every retry would just re-conflict (or clobber). The user reloads to
+   * continue; a reload remounts the hook and clears the flag.
+   */
+  const conflictRef = useRef(false)
+
   const workflowAppId = useWorkflowStore((s) => s.workflowAppId)
   const isDirty = useWorkflowStore((s) => s.isDirty)
   const markClean = useWorkflowStore((s) => s.markClean)
@@ -56,6 +65,14 @@ export const useWorkflowSave = () => {
   // Single tRPC mutation for all updates
   const updateMutation = api.workflow.update.useMutation({
     onError: (error) => {
+      if (error.data?.code === 'CONFLICT') {
+        conflictRef.current = true
+        toastError({
+          title: 'Workflow changed elsewhere',
+          description: `${error.message} Your unsaved changes here will not be saved automatically.`,
+        })
+        return
+      }
       toastError({
         title: 'Failed to save',
         description: error.message,
@@ -164,6 +181,13 @@ export const useWorkflowSave = () => {
       payload.graph = { nodes: cleanNodes, edges: cleanEdges, viewport: { x, y, zoom } }
       payload.triggerType = triggerType
       payload.entityDefinitionId = entityDefinitionId
+
+      // Optimistic-concurrency token: hash of the graph this editor loaded or
+      // last saved (seeded by `getById`, refreshed from each save's response
+      // via `setWorkflow`). The server compare-and-swaps against it and
+      // rejects with 409 if another editor saved in between.
+      const graphHash = (workflow as { graphHash?: string | null }).graphHash
+      if (graphHash) payload.expectedGraphHash = graphHash
     }
 
     // Metadata fields
@@ -192,6 +216,9 @@ export const useWorkflowSave = () => {
    */
   const executeSave = useCallback(async () => {
     if (isReadOnly) return false
+
+    // A conflicted editor never retries — see conflictRef.
+    if (conflictRef.current) return false
 
     // Check for error state in workflow store
     const workflowError = useWorkflowStore.getState().error
@@ -344,6 +371,10 @@ export const useWorkflowSave = () => {
    * This ensures workflow changes are saved even when the page is closed abruptly
    */
   const syncWorkflowWhenPageClose = useCallback(() => {
+    // A conflicted editor's graph is stale — a beacon save would clobber the
+    // other editor's changes (and marks the store clean on mere enqueue).
+    if (conflictRef.current) return
+
     // Check read-only state
     const canvasReadOnly = useCanvasStore.getState().readOnly
     const isViewerMode = useWorkflowStore.getState().isViewerMode

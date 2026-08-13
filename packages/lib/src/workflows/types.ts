@@ -69,6 +69,14 @@ export interface WorkflowUpdateInput {
   graph?: WorkflowGraph
   envVars?: EnvironmentVariable[]
   variables?: any[]
+  /**
+   * Optimistic-concurrency token for draft saves: the {@link hashWorkflowGraph}
+   * of the graph the caller loaded (or last saved). When present, the update
+   * locks the draft row, recomputes the stored graph's hash and rejects with a
+   * `ConflictError` (409) on mismatch — a concurrent editor saved in between.
+   * When absent, the write is unconditional (template install / system paths).
+   */
+  expectedGraphHash?: string
 
   // Access settings
   webEnabled?: boolean
