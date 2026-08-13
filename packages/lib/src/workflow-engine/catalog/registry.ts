@@ -3,6 +3,9 @@
 import { dateTimeManifest } from './nodes/date-time'
 import { endManifest } from './nodes/end'
 import { formatManifest } from './nodes/format'
+import { humanConfirmationManifest } from './nodes/human'
+import { ifElseManifest } from './nodes/if-else'
+import { loopManifest } from './nodes/loop'
 import { manualManifest } from './nodes/manual'
 import { noteManifest } from './nodes/note'
 import { scheduledTriggerManifest } from './nodes/scheduled'
@@ -25,6 +28,9 @@ const ALL_MANIFESTS: NodeManifest<any>[] = [
   dateTimeManifest,
   endManifest,
   formatManifest,
+  humanConfirmationManifest,
+  ifElseManifest,
+  loopManifest,
   manualManifest,
   noteManifest,
   scheduledTriggerManifest,

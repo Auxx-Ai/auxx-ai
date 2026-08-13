@@ -28,8 +28,9 @@ export type VariableSelector = string[]
  */
 export type ComparisonOperator = Operator
 
-export type BranchType = 'default' | 'fail'
-export type TargetBranch = { id: string; name: string; type: BranchType }
+// Relocated to the lib node catalog (node-catalog Phase 1); re-exported so no
+// web import churns.
+export type { BranchType, TargetBranch } from '@auxx/lib/workflow-engine/client'
 
 export type EnvVarType = 'string' | 'number' | 'boolean' | 'array' | 'secret'
 export type EnvVar = {
