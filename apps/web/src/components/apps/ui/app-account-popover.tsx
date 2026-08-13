@@ -14,6 +14,12 @@ interface AppAccountPopoverProps {
   appId: string | null
   /** Currently-selected credId(s). Renders as the trigger's value when single. */
   value: string | string[] | undefined
+  /**
+   * True when `value` is the workspace default the host falls back to rather
+   * than a binding the host stored. The row is still checked — it is the
+   * connection that will be used — but is labelled as the default.
+   */
+  valueIsDefault?: boolean
   /** Fires once per pick with the picked credId. Host decides single vs multi semantics. */
   onPick: (credId: string) => void
   /** Fires when the connect flow returns a new credential. */
@@ -55,6 +61,7 @@ interface AppAccountPopoverProps {
 export function AppAccountPopover({
   appId,
   value,
+  valueIsDefault,
   onPick,
   onConnected,
   onRemove,
@@ -103,6 +110,7 @@ export function AppAccountPopover({
           <AppAccountPicker
             appId={appId}
             value={value}
+            valueIsDefault={valueIsDefault}
             onPick={(credId) => {
               onPick(credId)
               setOpen(false)

@@ -42,6 +42,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import { useAppConnectionResolver } from '~/components/apps/hooks/use-app-connection-state'
 import { useBoundCredential } from '~/components/apps/hooks/use-bound-credential'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { AppAccountPopover } from '~/components/apps/ui/app-account-popover'
@@ -101,10 +102,10 @@ const KeyboardShortcut = ({ shortcut }: { shortcut: string }) => (
 )
 
 /**
- * Drawer-header icon for app nodes. Derives status from the node's *bound*
- * connection (the same source `AppSettingsTrigger` uses) so the header icon and
- * the trigger button never disagree — and so neither goes green off an unrelated
- * connection the node isn't actually bound to. See
+ * Drawer-header icon for app nodes. Both this and `AppSettingsTrigger` are
+ * handed the node's *effective* connection — its own binding, or the org primary
+ * the run would fall back to — so the header icon, the dot and the canvas
+ * warning always report the same credential. See
  * plans/kopilot/apps/agent-credentials.md §5.9.
  */
 function AppPanelIcon({
@@ -207,6 +208,13 @@ export const BasePanel = memo<BasePanelProps>(
     const { isReadOnly } = useReadOnly()
     const pathname = usePathname()
     const nodeType = data.type
+
+    // An unbound app node still runs against the org's primary connection, so
+    // report status and preselect the picker off that one — otherwise the panel
+    // reads "no connection" for a node that has one.
+    const resolveAppConnection = useAppConnectionResolver()
+    const effectiveConnectionId =
+      appContext?.connectionId ?? resolveAppConnection(appContext?.appId, undefined).id ?? undefined
 
     // Get all non-trigger definitions for node replacement
     const nonTriggerDefinitions = useNonTriggerDefinitions()
@@ -394,7 +402,7 @@ export const BasePanel = memo<BasePanelProps>(
           icon={
             appContext ? (
               <AppPanelIcon
-                connectionId={appContext.connectionId}
+                connectionId={effectiveConnectionId}
                 iconId={nodeIconName}
                 color={nodeColor}
               />
@@ -578,14 +586,21 @@ export const BasePanel = memo<BasePanelProps>(
                 <div className='ml-auto'>
                   <AppAccountPopover
                     appId={appContext.appId}
-                    value={appContext.connectionId}
+                    value={effectiveConnectionId}
+                    valueIsDefault={!appContext.connectionId}
                     onPick={(credId) => appContext.onConnectionChange?.(credId)}
                     onConnected={(credId) => appContext.onConnectionChange?.(credId)}
-                    onRemove={() => appContext.onConnectionChange?.(undefined)}
+                    // Only a pinned node has something to unpin — an unbound one
+                    // already follows the default, so "Remove" would be a no-op.
+                    onRemove={
+                      appContext.connectionId
+                        ? () => appContext.onConnectionChange?.(undefined)
+                        : undefined
+                    }
                     trigger={
                       <AppSettingsTrigger
                         appId={appContext.appId}
-                        connectionId={appContext.connectionId}
+                        connectionId={effectiveConnectionId}
                       />
                     }
                     appSettings={{
