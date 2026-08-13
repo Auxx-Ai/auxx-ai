@@ -50,10 +50,17 @@ describe('node catalog coverage', () => {
     // The legacy NodeDefinition.schema was `any` and never parsed — the code
     // node's dead `output.type?.type` read and resource-trigger's
     // schema-failing defaults both hid behind that. Manifests don't get to.
+    // Node identity (`id`, `type`) is factory-assigned at add time, never part
+    // of defaults, so the fixture supplies it — everything else must come from
+    // `defaultData()` itself.
     const failures = listManifests()
       .map((manifest) => ({
         id: manifest.id,
-        result: manifest.configSchema.safeParse(manifest.defaultData()),
+        result: manifest.configSchema.safeParse({
+          id: 'test-node',
+          type: manifest.id,
+          ...manifest.defaultData(),
+        }),
       }))
       .filter(({ result }) => !result.success)
       .map(({ id, result }) => ({ id, error: (result as { error?: unknown }).error }))
@@ -96,7 +103,8 @@ describe('defineFromManifest', () => {
     expect(definition.validator?.({ title: 'ok' }).isValid).toBe(true)
   })
 
-  it('keeps getManifest empty-safe for unmigrated types', () => {
-    expect(getManifest('wait')).toBeUndefined()
+  it('resolves migrated types and stays undefined-safe for unmigrated ones', () => {
+    expect(getManifest('wait')?.displayName).toBe('Wait')
+    expect(getManifest('loop')).toBeUndefined()
   })
 })

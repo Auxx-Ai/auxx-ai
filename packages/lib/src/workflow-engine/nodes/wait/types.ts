@@ -1,20 +1,10 @@
-/**
- * Wait type options
- */
-export enum WaitType {
-  DURATION = 'duration',
-  SPECIFIC_TIME = 'specific_time',
-}
+// WaitType / DurationUnit now single-sourced from the node catalog
+// (node-catalog Phase 1 — the wait node's manifest). This file keeps only the
+// engine's compiled extensions: the sequence compiler writes deliveryWindow /
+// anchor onto the persisted config; the builder never authors them.
+export { DurationUnit, WaitType } from '../../catalog/nodes/wait'
 
-/**
- * Duration unit options
- */
-export enum DurationUnit {
-  SECONDS = 'seconds',
-  MINUTES = 'minutes',
-  HOURS = 'hours',
-  DAYS = 'days',
-}
+import type { DurationUnit, WaitType } from '../../catalog/nodes/wait'
 /**
  * Sequences plan §3.3 — an optional delivery window applied to the computed
  * `resumeAt`, snapping it forward into business hours/days. See

@@ -1,41 +1,20 @@
 // apps/web/src/components/workflow/nodes/core/wait/types.ts
 
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
+import type { CatalogWaitNodeData } from '@auxx/lib/workflow-engine/client'
+import type { SpecificNode } from '~/components/workflow/types/node-base'
+import type { NodeType } from '~/components/workflow/types/node-types'
 
-/**
- * Wait type options
- */
-export enum WaitType {
-  DURATION = 'duration',
-  SPECIFIC_TIME = 'specific_time',
-}
-
-/**
- * Duration unit options
- */
-export enum DurationUnit {
-  SECONDS = 'seconds',
-  MINUTES = 'minutes',
-  HOURS = 'hours',
-  DAYS = 'days',
-}
+// The data half moved to the node catalog (node-catalog Phase 1 —
+// `@auxx/lib/workflow-engine/catalog/nodes/wait`); re-exported here so no web
+// import churns. WaitNodeData narrows `type` to the web NodeType enum, same
+// as BaseNodeData does over its lib counterpart.
+export { DurationUnit, WaitType } from '@auxx/lib/workflow-engine/client'
 
 /**
  * Wait node data interface with complete structure
  */
-export interface WaitNodeData extends BaseNodeData {
-  /** Type of wait operation */
-  waitType: WaitType
-  /** Duration amount for duration-based wait */
-  durationAmount?: number | string
-  isDurationConstant: boolean
-  /** Duration unit for duration-based wait */
-  durationUnit?: DurationUnit
-  /** Specific time for time-based wait */
-  time?: string
-  isTimeConstant: boolean
-  /** Timezone for specific time wait */
-  timezone?: string
+export interface WaitNodeData extends CatalogWaitNodeData {
+  type: NodeType
 }
 
 /**
