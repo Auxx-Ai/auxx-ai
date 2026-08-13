@@ -2,8 +2,10 @@
 
 import { z } from 'zod'
 import { BaseType } from '../../core/types'
+import type { UnifiedVariable } from '../../types/unified-variable'
 import type { BaseNodeData } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 
 /**
  * The code node's catalog manifest.
@@ -170,6 +172,47 @@ export function extractCodeVariables(data: CodeNodeData): string[] {
 }
 
 /**
+ * Define output variables for code node.
+ *
+ * Drift fix (node-catalog Phase 1, plan §6): this used to read
+ * `output.type?.type` — an object shape only the legacy `CodeOutput` map ever
+ * used — while the output editor writes a plain `BaseType` string, so every
+ * output resolved as STRING regardless of what the user picked.
+ * `normalizeCodeOutputType` reads the string first and tolerates the legacy
+ * object shape. User-visible: code-node outputs now show their configured type
+ * in the variable picker.
+ */
+const getCodeOutputVariables = (data: CodeNodeData, nodeId: string): UnifiedVariable[] => {
+  const outputs: UnifiedVariable[] = []
+
+  // Use new outputs format if available
+  if (data.outputs && Array.isArray(data.outputs)) {
+    data.outputs.forEach((output) => {
+      outputs.push(
+        createUnifiedOutputVariable({
+          nodeId,
+          path: output.name,
+          type: normalizeCodeOutputType(output.type),
+          description: output.description || `Output: ${output.name}`,
+        })
+      )
+    })
+  } else {
+    // Default output if no outputs defined
+    outputs.push(
+      createUnifiedOutputVariable({
+        nodeId,
+        path: 'output1',
+        type: BaseType.OBJECT,
+        description: 'Result from code execution',
+      })
+    )
+  }
+
+  return outputs
+}
+
+/**
  * Code node manifest
  */
 export const codeManifest: NodeManifest<CodeNodeData> = {
@@ -202,6 +245,7 @@ export const codeManifest: NodeManifest<CodeNodeData> = {
   configSchema: codeNodeDataSchema as unknown as z.ZodType<CodeNodeData>,
   validate: validateCodeConfig,
   extractVariables: extractCodeVariables,
+  resolveOutputs: getCodeOutputVariables,
   connection: {
     canRunSingle: true,
   },

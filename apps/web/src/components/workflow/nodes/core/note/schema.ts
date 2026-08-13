@@ -14,7 +14,7 @@ import type { NoteNodeData } from './types'
  */
 export const noteDefinition: NodeDefinition<NoteNodeData> = defineFromManifest(
   noteManifest as unknown as NodeManifest<NoteNodeData>,
-  { outputVariables: () => [] } // Notes are annotations — they expose nothing downstream
+  {}
 )
 
 // Back-compat re-exports so no consumer import churns:

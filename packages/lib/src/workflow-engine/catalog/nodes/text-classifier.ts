@@ -3,6 +3,7 @@
 import { generateId } from '@auxx/utils/generateId'
 import { z } from 'zod'
 import { AI_NODE_CONSTANTS } from '../../constants'
+import { BaseType } from '../../core/types'
 import type { BaseNodeData, TargetBranch } from '../node-base'
 import {
   type NodeBranch,
@@ -10,6 +11,7 @@ import {
   type NodeManifest,
   type NodeValidationResult,
 } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 import { extractVarIdsFromString } from '../variable-inference'
 import { AiModelMode, completionParamsSchema } from './ai'
 
@@ -265,6 +267,36 @@ export const extractTextClassifierVariables = (data: TextClassifierNodeData): st
 }
 
 /**
+ * Define output variables for text classifier node
+ */
+const getTextClassifierOutputVariables = (data: TextClassifierNodeData, nodeId: string): any[] => {
+  // Create enum type from categories
+  const categoryNames = data?.categories?.map((c) => c.name) || []
+
+  return [
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'category',
+      type: categoryNames.length > 0 ? BaseType.ENUM : BaseType.STRING,
+      description: 'The matched category name',
+      enum: categoryNames.length > 0 ? categoryNames : undefined,
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'confidence',
+      type: BaseType.NUMBER,
+      description: 'Confidence score of the classification (0-1)',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'reasoning',
+      type: BaseType.STRING,
+      description: 'AI explanation for the classification',
+    }),
+  ]
+}
+
+/**
  * Text classifier node manifest
  */
 export const textClassifierManifest: NodeManifest<TextClassifierNodeData> = {
@@ -300,6 +332,7 @@ export const textClassifierManifest: NodeManifest<TextClassifierNodeData> = {
   configSchema: textClassifierSchema as unknown as z.ZodType<TextClassifierNodeData>,
   validate: validateTextClassifierData,
   extractVariables: extractTextClassifierVariables,
+  resolveOutputs: getTextClassifierOutputVariables,
   connection: {
     canRunSingle: true,
     /**

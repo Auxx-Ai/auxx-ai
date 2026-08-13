@@ -59,6 +59,7 @@ export const noteManifest: NodeManifest<NoteNodeData> = {
   configSchema: noteNodeDataSchema as unknown as z.ZodType<NoteNodeData>,
   validate: validateNoteConfig,
   extractVariables: () => [], // Note nodes don't extract variables
+  resolveOutputs: () => [], // Notes are annotations — they expose nothing downstream
   connection: {
     canConnect: false, // Notes can be added to canvas but cannot connect to other blocks
   },

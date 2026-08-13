@@ -3,6 +3,7 @@
 import { generateId } from '@auxx/utils/generateId'
 import { z } from 'zod'
 import { ALL_OPERATOR_KEYS, type Operator } from '../../../conditions/client'
+import { BaseType } from '../../core/types'
 import type { BaseNodeData, TargetBranch } from '../node-base'
 import {
   type NodeBranch,
@@ -10,6 +11,7 @@ import {
   type NodeManifest,
   type NodeValidationResult,
 } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 import { extractVarIdsFromString } from '../variable-inference'
 
 /**
@@ -227,6 +229,33 @@ export function extractIfElseVariableIds(data: IfElseNodeData): string[] {
 }
 
 /**
+ * Define output variables for if-else node
+ */
+function getIfElseOutputVariables(_data: IfElseNodeData, nodeId: string): any[] {
+  return [
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'matched_condition',
+      type: BaseType.STRING,
+      description: 'Which condition was matched (case ID)',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'condition_index',
+      type: BaseType.NUMBER,
+      description: 'Index of the matched condition (0-based)',
+    }),
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'branch_taken',
+      type: BaseType.STRING,
+      description: 'Which branch was taken (true/false)',
+      enum: ['true', 'false'],
+    }),
+  ]
+}
+
+/**
  * If-else node manifest
  */
 export const ifElseManifest: NodeManifest<IfElseNodeData> = {
@@ -255,6 +284,7 @@ export const ifElseManifest: NodeManifest<IfElseNodeData> = {
   configSchema: ifElseNodeDataSchema as unknown as z.ZodType<IfElseNodeData>,
   validate: validateIfElseConfig,
   extractVariables: extractIfElseVariableIds,
+  resolveOutputs: getIfElseOutputVariables,
   connection: {
     canRunSingle: true,
     /**

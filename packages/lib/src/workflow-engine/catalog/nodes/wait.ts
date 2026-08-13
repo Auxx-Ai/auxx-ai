@@ -2,8 +2,10 @@
 
 import { z } from 'zod'
 import { WAIT_CONSTANTS } from '../../constants'
+import { BaseType } from '../../core/types'
 import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import { createUnifiedOutputVariable } from '../variable-conversion'
 
 /**
  * The wait node's catalog manifest — the first migrated node type and the
@@ -130,6 +132,42 @@ export const validateWaitConfig = (data: WaitNodeData): NodeValidationResult => 
 }
 
 /**
+ * Get output variables for wait node.
+ *
+ * All four are advertised unconditionally, because `WaitNodeProcessor` writes all four on
+ * both execution paths. Which path a wait takes (setTimeout vs the delay queue) is a
+ * RUNTIME decision — a variable duration, delivery-window snapping or dry-run capping can
+ * each flip it — so gating `paused_at`/`resume_at` on the configured duration would offer
+ * the author a variable that resolves to nothing on half their runs.
+ */
+const getWaitOutputVariables = (_data: WaitNodeData, nodeId: string): any[] => [
+  createUnifiedOutputVariable({
+    nodeId,
+    path: 'wait_duration_ms',
+    type: BaseType.NUMBER,
+    description: 'Total wait time in milliseconds',
+  }),
+  createUnifiedOutputVariable({
+    nodeId,
+    path: 'wait_method',
+    type: BaseType.STRING,
+    description: 'Method used for waiting (short_delay or queue_delay)',
+  }),
+  createUnifiedOutputVariable({
+    nodeId,
+    path: 'paused_at',
+    type: BaseType.STRING,
+    description: 'ISO timestamp when the wait started',
+  }),
+  createUnifiedOutputVariable({
+    nodeId,
+    path: 'resume_at',
+    type: BaseType.STRING,
+    description: 'ISO timestamp when execution resumes',
+  }),
+]
+
+/**
  * Wait node manifest
  */
 export const waitManifest: NodeManifest<WaitNodeData> = {
@@ -152,6 +190,7 @@ export const waitManifest: NodeManifest<WaitNodeData> = {
   configSchema: waitNodeDataSchema as unknown as z.ZodType<WaitNodeData>,
   validate: validateWaitConfig,
   extractVariables: () => [], // Wait node doesn't use any variables
+  resolveOutputs: getWaitOutputVariables,
   connection: {
     canRunSingle: true,
   },
