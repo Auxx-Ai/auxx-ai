@@ -7,34 +7,17 @@ import { useRunStore } from '../store/run-store'
 import { useSingleNodeRunStore } from '../store/single-node-run-store'
 
 /**
- * Maps workflow execution status to NodeRunningStatus enum
- * Note: This is only needed for workflow executions which use uppercase status strings
- * Single node results now use NodeRunningStatus directly
- */
-function mapWorkflowStatusToNodeRunningStatus(
-  status: string | null
-): NodeRunningStatus | undefined {
-  switch (status) {
-    case 'RUNNING':
-      return NodeRunningStatus.Running
-    case 'SUCCEEDED':
-      return NodeRunningStatus.Succeeded
-    case 'FAILED':
-      return NodeRunningStatus.Failed
-    default:
-      return undefined
-  }
-}
-
-/**
- * Hook that updates edge statuses based on connected node statuses
- * Monitors both workflow runs and single node runs
+ * Hook that colours edges from the status of the node each one feeds into.
+ * Monitors both workflow runs and single node runs.
+ *
+ * An edge's `_targetRunningStatus` is the single input the custom edge styles
+ * from. `undefined` means "no run in view" (normal editor edge); every other
+ * value comes straight off the execution — the statuses are already
+ * `NodeRunningStatus` on both paths, there is nothing to translate.
  */
 export function useEdgeStatusUpdater() {
   const { getEdges, setEdges } = useReactFlow()
-  const prevStatusesRef = useRef<
-    Map<string, { source?: NodeRunningStatus; target?: NodeRunningStatus }>
-  >(new Map())
+  const prevStatusesRef = useRef<Map<string, NodeRunningStatus | undefined>>(new Map())
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: updateEdgeStatuses uses getEdges/setEdges internally; getEdges and setEdges are stable ReactFlow refs
   useEffect(() => {
@@ -78,85 +61,49 @@ export function useEdgeStatusUpdater() {
 
   function updateEdgeStatuses(data: any, source: 'workflow' | 'single') {
     const edges = getEdges()
-    const updates: Array<{ id: string; data: any }> = []
-    const currentStatuses = new Map<
-      string,
-      { source?: NodeRunningStatus; target?: NodeRunningStatus }
-    >()
+    const updates: Array<{ id: string; status: NodeRunningStatus | undefined }> = []
+    const currentStatuses = new Map<string, NodeRunningStatus | undefined>()
 
-    // Process each edge
+    // A run is in view once it has executions. Targets missing from the map are
+    // then nodes the run never reached (historical runs only store executed
+    // nodes), which is Pending — NOT "no run", which would undim the edge.
+    const runInView = source === 'workflow' ? data.size > 0 : data.results.size > 0
+
     edges.forEach((edge) => {
-      let sourceStatus: NodeRunningStatus | undefined
       let targetStatus: NodeRunningStatus | undefined
 
       if (source === 'workflow') {
-        // Get status from workflow executions
-        const sourceExecution = data.get(edge.source)
-        const targetExecution = data.get(edge.target)
-
-        if (sourceExecution) {
-          sourceStatus = mapWorkflowStatusToNodeRunningStatus(sourceExecution.status)
-        }
-
-        if (targetExecution) {
-          targetStatus = mapWorkflowStatusToNodeRunningStatus(targetExecution.status)
-        }
+        targetStatus = data.get(edge.target)?.status
+      } else if (data.running.has(edge.target)) {
+        targetStatus = NodeRunningStatus.Running
       } else {
-        // Get status from single node runs
-        const sourceResult = data.results.get(edge.source)
-        const targetResult = data.results.get(edge.target)
-        const sourceRunning = data.running.has(edge.source)
-        const targetRunning = data.running.has(edge.target)
-
-        if (sourceRunning) {
-          sourceStatus = NodeRunningStatus.Running
-        } else if (sourceResult) {
-          // Single node results now use NodeRunningStatus directly
-          sourceStatus = sourceResult.status
-        }
-
-        if (targetRunning) {
-          targetStatus = NodeRunningStatus.Running
-        } else if (targetResult) {
-          // Single node results now use NodeRunningStatus directly
-          targetStatus = targetResult.status
-        }
+        targetStatus = data.results.get(edge.target)?.status
       }
 
-      // Store current statuses
-      currentStatuses.set(edge.id, { source: sourceStatus, target: targetStatus })
+      if (!targetStatus && runInView) {
+        targetStatus = NodeRunningStatus.Pending
+      }
 
-      // Check if status changed
-      const prevStatus = prevStatusesRef.current.get(edge.id) || {}
-      const hasChanged = prevStatus.source !== sourceStatus || prevStatus.target !== targetStatus
+      currentStatuses.set(edge.id, targetStatus)
 
-      if (hasChanged) {
-        updates.push({
-          id: edge.id,
-          data: {
-            ...edge.data,
-            _sourceRunningStatus: sourceStatus,
-            _targetRunningStatus: targetStatus,
-          },
-        })
+      if (prevStatusesRef.current.get(edge.id) !== targetStatus) {
+        updates.push({ id: edge.id, status: targetStatus })
       }
     })
 
     // Apply updates if any
     if (updates.length > 0) {
-      // Update edges with new status data
       setEdges((currentEdges) =>
         currentEdges.map((edge) => {
           const update = updates.find((u) => u.id === edge.id)
           if (update) {
-            return { ...edge, data: update.data }
+            return { ...edge, data: { ...edge.data, _targetRunningStatus: update.status } }
           }
           return edge
         })
       )
-
-      // Update previous statuses reference
-      prevStatusesRef.current = currentStatuses
     }
+
+    prevStatusesRef.current = currentStatuses
   }
 }

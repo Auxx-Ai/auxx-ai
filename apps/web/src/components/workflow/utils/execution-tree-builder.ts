@@ -7,18 +7,37 @@ import { NodeRunningStatus } from '../types'
 import { NodeType } from '../types/node-types'
 
 /**
- * Minimal execution tree node - stores only order and depth
+ * One branch taken out of a fork node.
+ *
+ * `key` identifies the branch (fork node + handle + the node it leads to, so
+ * two edges leaving the same unnamed handle stay separate branches); `handle`
+ * is what the UI labels it with.
+ */
+export interface BranchSegment {
+  key: string
+  handle: string
+  forkNodeId: string
+}
+
+/**
+ * Minimal execution tree node - stores only order and branch lineage
  * All other node data is looked up from the graph when needed
  */
 export interface ExecutionTreeNode {
   // Essential execution data
   nodeId: string // Node identifier - lookup key to graph
   nodeType: string // Node type - needed for isTrigger(), mock execution
-  order: number // Execution order (BFS traversal index)
-  depth: number // Visual indentation level (0 = root)
+  order: number // Execution order (DFS traversal index)
 
-  // Branch context (only for multi-branch nodes)
-  branchId?: string // Which output handle led here (e.g., 'true', 'case_1')
+  /**
+   * Fork lineage of this node, outermost first.
+   *
+   * This is the ONLY thing the tracing UI needs to nest branches: two nodes
+   * are in the same branch iff their paths are equal, and a branch is nested
+   * inside another iff its path extends the outer one. An empty array means
+   * the node is on the workflow's main line.
+   */
+  branchPath: BranchSegment[]
 
   // Loop context (for nodes inside loop bodies)
   parentLoopId?: string // ID of parent loop node if this node is inside a loop
@@ -29,23 +48,19 @@ export interface ExecutionTreeNode {
 
 /**
  * Build execution tree from workflow graph
- * Uses DFS-per-branch traversal to group parallel branches together
+ * Uses DFS-per-branch traversal so a branch and everything nested inside it
+ * stay contiguous in the returned list.
  *
- * Depth Calculation Rules:
- * - Root/trigger: depth 0
- * - All child nodes: parent.depth + 1 (creates visual hierarchy)
- * - Branch detection: outgoingEdges.length > 1 marks branching node
- * - Loop children: parent.depth + 1
- * - Join points: depth from first encountered predecessor
- *
- * Branch Tracking:
- * - branchId stored for nodes in parallel paths (e.g., 'true', 'false', 'source')
- * - Parallel branches are fully traversed (DFS) before moving to next branch
- * - Used by UI to group and visualize branch executions
+ * Branch tracking:
+ * - Taking a named output handle (`true`, `false`, `case_1`, `fail`, …) or any
+ *   edge out of a multi-output node pushes a segment onto `branchPath`
+ * - Sequential edges (single `source` handle) inherit the parent's path
+ * - Loop children carry `parentLoopId` and are rendered inside the loop card,
+ *   so they keep their parent's branch path
  *
  * @param nodes - Workflow nodes from React Flow
  * @param edges - Workflow edges from React Flow
- * @returns Execution tree with correct depth, order, and branch tracking
+ * @returns Execution tree in DFS order with branch lineage per node
  */
 export function buildExecutionTree(nodes: FlowNode[], edges: FlowEdge[]): ExecutionTreeNode[] {
   // Find entry node (trigger node with no incoming edges)
@@ -62,10 +77,8 @@ export function buildExecutionTree(nodes: FlowNode[], edges: FlowEdge[]): Execut
   // DFS traversal context
   interface TraversalContext {
     nodeId: string
-    depth: number
-    parentNodeId: string | null
+    branchPath: BranchSegment[]
     predecessorNodeIds: string[]
-    branchId?: string
     parentLoopId?: string // ID of parent loop if we're inside a loop body
   }
 
@@ -90,104 +103,55 @@ export function buildExecutionTree(nodes: FlowNode[], edges: FlowEdge[]): Execut
     if (!node) return
 
     // Create minimal tree node - lookup details from graph when needed
-    const treeNode: ExecutionTreeNode = {
+    tree.push({
       nodeId: context.nodeId,
       nodeType: node.data.type,
       order: order++,
-      depth: context.depth,
+      branchPath: [...context.branchPath],
       predecessorNodeIds: [...context.predecessorNodeIds],
-      branchId: context.branchId,
       parentLoopId: context.parentLoopId,
-    }
-
-    tree.push(treeNode)
+    })
 
     // Find outgoing edges from this node
     const allOutgoingEdges = edges.filter((e) => e.source === context.nodeId)
 
-    // Split edges into loop-child edges and true graph edges
-    // Loop-child edges are internal to the loop body (target has parentId === loopNodeId)
-    // True graph edges connect to nodes outside the loop (sequential flow)
-    const loopChildEdges = allOutgoingEdges.filter((e) => {
-      const targetNode = nodes.find((n) => n.id === e.target)
-      return targetNode && targetNode.parentId === context.nodeId
-    })
-
-    const graphEdges = allOutgoingEdges.filter((e) => {
+    // Loop-child edges are internal to the loop body (target has parentId ===
+    // loopNodeId). They must not count as branches — only edges leaving the
+    // loop are part of the sequential flow.
+    const outgoingEdges = allOutgoingEdges.filter((e) => {
       const targetNode = nodes.find((n) => n.id === e.target)
       return !targetNode || targetNode.parentId !== context.nodeId
     })
 
-    // Use only graph edges for branching detection and sequential traversal
-    // This prevents loop children from being counted as branches
-    const outgoingEdges = graphEdges
+    // A fork is either a node with several outputs, or a single edge leaving
+    // through a named handle (an if/else with only one side wired still forks).
+    const isFork = outgoingEdges.length > 1
 
-    console.log('[ExecutionTreeBuilder] Processing node:', {
-      nodeId: context.nodeId,
-      nodeType: node.data.type,
-      depth: context.depth,
-      allOutgoingEdgesCount: allOutgoingEdges.length,
-      loopChildEdgesCount: loopChildEdges.length,
-      graphEdgesCount: graphEdges.length,
-      outgoingEdges: outgoingEdges.map((e) => ({
-        target: e.target,
-        sourceHandle: e.sourceHandle,
-      })),
+    outgoingEdges.forEach((edge) => {
+      if (!nodes.some((n) => n.id === edge.target)) return
+
+      const handle = edge.sourceHandle && edge.sourceHandle !== 'source' ? edge.sourceHandle : null
+      const forksHere = isFork || handle !== null
+
+      traverseBranch({
+        nodeId: edge.target,
+        branchPath: forksHere
+          ? [
+              ...context.branchPath,
+              {
+                key: `${context.nodeId}:${handle ?? 'source'}:${edge.target}`,
+                handle: handle ?? 'source',
+                forkNodeId: context.nodeId,
+              },
+            ]
+          : context.branchPath,
+        predecessorNodeIds: [context.nodeId],
+        parentLoopId: context.parentLoopId, // Inherit parent loop context
+      })
     })
-
-    // Check if this is a branching node (count only graph edges, not loop-child edges)
-    const hasBranches = outgoingEdges.length > 1
-
-    if (hasBranches) {
-      console.log('[ExecutionTreeBuilder] Node has branches, increasing depth for children')
-      // Multi-branch node - this is a fork point, depth increases for all children
-      outgoingEdges.forEach((edge) => {
-        const targetNode = nodes.find((n) => n.id === edge.target)
-        if (!targetNode) return
-
-        const branchId = edge.sourceHandle || 'source'
-
-        traverseBranch({
-          nodeId: edge.target,
-          depth: context.depth + 1, // Fork point: all branches increase depth
-          parentNodeId: context.nodeId,
-          predecessorNodeIds: [context.nodeId],
-          branchId, // Store which handle led here
-          parentLoopId: context.parentLoopId, // Inherit parent loop context
-        })
-      })
-    } else {
-      // Sequential node (single output) - continue at same depth unless it's a fork handle
-      outgoingEdges.forEach((edge) => {
-        const targetNode = nodes.find((n) => n.id === edge.target)
-        if (!targetNode) return
-
-        // Check if this edge creates a cycle (back edge to already-visited node)
-        const isBackEdge = visited.has(edge.target)
-        if (isBackEdge) {
-          // Don't traverse back edges (would create infinite queue)
-          return
-        }
-
-        // Check if this edge represents a fork (non-source handle like 'true', 'false', 'fail')
-        // Only use edge's sourceHandle if it's not 'source', otherwise inherit parent's branchId
-        const isForkHandle = edge.sourceHandle && edge.sourceHandle !== 'source'
-        const edgeBranchId = isForkHandle ? (edge.sourceHandle ?? undefined) : context.branchId
-
-        traverseBranch({
-          nodeId: edge.target,
-          depth: isForkHandle ? context.depth + 1 : context.depth, // Only fork handles increase depth
-          parentNodeId: context.nodeId,
-          predecessorNodeIds: [context.nodeId],
-          branchId: edgeBranchId, // Use fork handle, or inherit parent's branch context
-          parentLoopId: context.parentLoopId, // Inherit parent loop context
-        })
-      })
-    }
 
     // Handle loop nodes: process children
     if (node.data.type === NodeType.LOOP) {
-      console.log('Processing loop children for node:', node.data.type)
       const loopChildren = nodes.filter((n) => n.parentId === context.nodeId)
 
       // Find loop entry nodes (children with no incoming edges from other children)
@@ -203,8 +167,7 @@ export function buildExecutionTree(nodes: FlowNode[], edges: FlowEdge[]): Execut
       entryChildren.forEach((child) => {
         traverseBranch({
           nodeId: child.id,
-          depth: context.depth + 1, // Increase depth for loop body
-          parentNodeId: context.nodeId,
+          branchPath: context.branchPath, // Loop body renders inside the loop card
           predecessorNodeIds: [context.nodeId],
           parentLoopId: context.nodeId, // Set current loop node as parent loop
         })
@@ -215,12 +178,10 @@ export function buildExecutionTree(nodes: FlowNode[], edges: FlowEdge[]): Execut
   // Start DFS traversal from entry node
   traverseBranch({
     nodeId: entryNode.id,
-    depth: 0,
-    parentNodeId: null,
+    branchPath: [],
     predecessorNodeIds: [],
   })
 
-  console.log('TREE:', tree)
   return tree
 }
 
@@ -273,8 +234,7 @@ export function treeToExecutions(
         // Merge tree metadata with execution metadata
         executionMetadata: {
           ...(execution.executionMetadata || {}),
-          depth: treeNode.depth,
-          branchId: treeNode.branchId,
+          branchPath: treeNode.branchPath,
           predecessorNodeIds: treeNode.predecessorNodeIds,
           ...(loopInfo ? { loopInfo } : {}),
         },
@@ -319,8 +279,7 @@ export function treeToExecutions(
       predecessorNodeId: treeNode.predecessorNodeIds[0] || null,
       index: treeNode.order,
       executionMetadata: {
-        depth: treeNode.depth,
-        branchId: treeNode.branchId,
+        branchPath: treeNode.branchPath,
         predecessorNodeIds: treeNode.predecessorNodeIds,
         ...(loopInfo ? { loopInfo } : {}),
       },

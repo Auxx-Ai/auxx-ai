@@ -12,12 +12,15 @@ export const EDGE_ANIMATION_DURATION = 300
 export const EDGE_COLORS = {
   default: '#94a3b8', // slate-400
   running: '#3b82f6', // blue-500
+  waiting: '#f59e0b', // amber-500 — held (waiting / paused)
   succeeded: '#10b981', // emerald-500
-  failed: '#ef4444', // red-500
-  exception: '#f97316', // orange-500
-  error: '#ec4899', // red-600
+  exception: '#f97316', // orange-500 — input-node edges only
+  error: '#ec4899', // pink-500 — failed / exception nodes and fail branches
   hover: '#6366f1', // indigo-500
 } as const
+
+/** Opacity for edges a run has not reached (pending / skipped / stopped) */
+export const EDGE_OPACITY_UNREACHED = 0.7
 
 /**
  * Constants for adaptive edge routing (n8n-style)

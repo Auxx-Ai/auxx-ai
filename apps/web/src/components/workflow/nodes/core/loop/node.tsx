@@ -126,16 +126,16 @@ export const LoopNode: FC<NodeProps<LoopNodeData>> = memo((props) => {
           <div className=''>{data.title}</div>
         </div>
         {nodeStatus === NodeRunningStatus.Succeeded ? (
-          <div className='me-3 rounded-full border p-0.5 border-good-500 bg-good-50'>
-            <Check className='size-3 text-green-500' />
+          <div className='me-3 rounded-full border p-0.5 border-good-500 bg-background'>
+            <Check className='size-3 text-good-500' />
           </div>
         ) : nodeStatus === NodeRunningStatus.Failed ? (
-          <div className='me-3 rounded-full border p-0.5 border-destructive-500 bg-destructive-50'>
-            <XCircle className='size-3 text-destructive-500' />
+          <div className='me-3 rounded-full border p-0.5 border-bad-500 bg-background'>
+            <XCircle className='size-3 text-bad-500' />
           </div>
         ) : nodeStatus === NodeRunningStatus.Running ? (
-          <div className='me-3 rounded-full border p-0.5 border-warning-500 bg-warning-50'>
-            <Clock className='size-3 text-warning-500' />
+          <div className='me-3 rounded-full border p-0.5 border-blue-500 bg-background'>
+            <Clock className='size-3 text-blue-500' />
           </div>
         ) : null}
       </div>

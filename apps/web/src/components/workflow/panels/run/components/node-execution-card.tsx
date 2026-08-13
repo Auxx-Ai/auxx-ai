@@ -15,6 +15,8 @@ import {
   Check,
   CheckCircle,
   ChevronRight,
+  Circle,
+  CircleSlash,
   Clock,
   Coins,
   Copy,
@@ -72,8 +74,17 @@ const computeDisplayStatus = (
   }
 
   // Workflow is in terminal state (FAILED, SUCCEEDED, STOPPED, WAITING)
-  // Override nodes still showing as Running or Pending
-  if (nodeStatus === NodeRunningStatus.Running || nodeStatus === NodeRunningStatus.Pending) {
+
+  // Still Pending on a finished run means the run never reached this node —
+  // its branch was not taken, or the run ended first. That is Skipped however
+  // the run itself ended; only a node that was actually in flight can be said
+  // to have failed or been stopped.
+  if (nodeStatus === NodeRunningStatus.Pending) {
+    return NodeRunningStatus.Skipped
+  }
+
+  // Still Running on a finished run means the run died mid-node
+  if (nodeStatus === NodeRunningStatus.Running) {
     if (workflowStatus === WorkflowRunStatusEnum.FAILED) {
       // If node has error, mark as Failed, otherwise Stopped (didn't complete)
       return hasError ? NodeRunningStatus.Failed : NodeRunningStatus.Stopped
@@ -81,7 +92,6 @@ const computeDisplayStatus = (
     if (workflowStatus === WorkflowRunStatusEnum.STOPPED) {
       return NodeRunningStatus.Stopped
     }
-    // For SUCCEEDED/WAITING, if node never finished, mark as Skipped
     return NodeRunningStatus.Skipped
   }
 
@@ -102,13 +112,15 @@ const getStatusIcon = (status: NodeRunningStatus) => {
     case NodeRunningStatus.Failed:
       return <AlertCircle className='size-4 text-red-500' />
     case NodeRunningStatus.Pending:
-      return <Loader2 className='size-4 text-yellow-500 animate-pulse' />
+      // Queued, not a warning — stays neutral until it actually starts
+      return <Circle className='size-4 text-muted-foreground/60' />
     case NodeRunningStatus.Paused:
       return <Clock className='size-4 text-orange-500' />
     case NodeRunningStatus.Stopped:
       return <AlertCircle className='size-4 text-orange-500' />
     case NodeRunningStatus.Skipped:
-      return <CheckCircle className='size-4 text-muted-foreground' />
+      // Never ran — a check mark here reads as "done", which it is not
+      return <CircleSlash className='size-4 text-muted-foreground' />
     default:
       return null
   }
@@ -150,7 +162,12 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
     !!execution.error
   )
 
-  const showChildren = expanded && displayStatus !== NodeRunningStatus.Pending
+  // A node the run never reached has no inputs, outputs or timings to show, so
+  // there is nothing to open — it renders dimmed and inert.
+  const unreached =
+    displayStatus === NodeRunningStatus.Pending || displayStatus === NodeRunningStatus.Skipped
+
+  const showChildren = expanded && !unreached
 
   // Raw outputs JSON — shared between the Outputs tab and the Preview fallback
   const rawOutputs = execution.outputs ? (
@@ -175,7 +192,7 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
         'group/node node-execution-card  rounded-lg  bg-background relative',
         // displayStatus === NodeRunningStatus.Failed && 'border-destructive/20 ',
         // displayStatus === NodeRunningStatus.Running && 'border-blue-500/50 ',
-        displayStatus === NodeRunningStatus.Pending && 'opacity-30'
+        unreached && 'opacity-40'
       )}>
       <div
         className={cn(
@@ -190,11 +207,14 @@ export function NodeExecutionCard({ execution, workflowStatus, children }: NodeE
           displayStatus === NodeRunningStatus.Skipped && 'border-muted/30 bg-muted/5'
         )}></div>
       <div
-        className='cursor-pointer py-0 hover:bg-muted/50 transition-colors pe-2'
-        onClick={() => setExpanded(!expanded)}>
+        className={cn(
+          'py-0 transition-colors pe-2',
+          unreached ? 'cursor-default' : 'cursor-pointer hover:bg-muted/50'
+        )}
+        onClick={unreached ? undefined : () => setExpanded(!expanded)}>
         <div className='flex items-center justify-between'>
           <div className='flex items-center'>
-            <Button variant='ghost' size='icon-sm' className=''>
+            <Button variant='ghost' size='icon-sm' className={cn(unreached && 'invisible')}>
               <ChevronRight
                 className={cn(
                   'text-primary-200 transition-transform duration-200 group-hover/node:text-primary-400',

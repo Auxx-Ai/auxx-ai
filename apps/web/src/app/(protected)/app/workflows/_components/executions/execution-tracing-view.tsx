@@ -4,10 +4,8 @@ import { WorkflowRunStatus } from '@auxx/database/enums'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { AlertCircle, CheckCircle, Clock, StopCircle } from 'lucide-react'
 import { useMemo } from 'react'
-import { BranchGroup } from '~/components/workflow/panels/run/components/branch-group'
-import { LoopExecutionCard } from '~/components/workflow/panels/run/components/loop-execution-card'
-import { NodeExecutionCard } from '~/components/workflow/panels/run/components/node-execution-card'
-import { groupExecutionsByBranch } from '~/components/workflow/panels/run/utils/group-executions'
+import { TraceTreeView } from '~/components/workflow/panels/run/components/trace-tree-view'
+import { buildTraceTree } from '~/components/workflow/panels/run/utils/trace-tree'
 import { useRunStore } from '~/components/workflow/store/run-store'
 import type { FlowNode } from '~/components/workflow/types'
 
@@ -36,9 +34,9 @@ export function ExecutionTracingView() {
     activeRun?.status === WorkflowRunStatus.FAILED ||
     activeRun?.status === WorkflowRunStatus.STOPPED
 
-  // Cache grouped executions to avoid recomputing on every render
-  const groupedExecutions = useMemo(
-    () => groupExecutionsByBranch(displayExecutions, nodes, runFinished),
+  // Cache the nested trace to avoid rebuilding it on every render
+  const traceItems = useMemo(
+    () => buildTraceTree(displayExecutions, nodes, runFinished),
     [displayExecutions, nodes, runFinished]
   )
 
@@ -123,74 +121,12 @@ export function ExecutionTracingView() {
         </Alert>
       )}
 
-      {/* Node execution cards with branch grouping */}
-      <div className='space-y-0.5'>
-        {groupedExecutions.map((group, index) => {
-          if (group.type === 'single') {
-            // Single execution (not part of a grouped branch)
-            const depth = (group.execution.executionMetadata as any)?.depth ?? 0
-
-            // Check if this is a loop node
-            if (group.execution.nodeType === 'loop') {
-              const iterations = getLoopIterations(group.execution.nodeId)
-              return (
-                <div key={group.execution.id} style={{ paddingLeft: `${depth * 24}px` }}>
-                  <LoopExecutionCard
-                    loopNodeExecution={group.execution}
-                    iterations={iterations}
-                    workflowStatus={activeRun.status}
-                  />
-                </div>
-              )
-            }
-
-            // Regular node
-            return (
-              <div key={group.execution.id} style={{ paddingLeft: `${depth * 24}px` }}>
-                <NodeExecutionCard execution={group.execution} workflowStatus={activeRun.status} />
-              </div>
-            )
-          } else {
-            // Branch group (multiple executions in same branch)
-            // Calculate branch index for parallel branches at same depth using cached groups
-            const parallelBranchIndex = groupedExecutions
-              .filter((g) => g.type === 'branch' && g.depth === group.depth)
-              .findIndex((g) => g === group)
-
-            return (
-              <BranchGroup
-                key={`branch-${group.branchId}-${index}`}
-                branchId={group.branchId}
-                depth={group.depth}
-                status={group.status}
-                branchIndex={parallelBranchIndex}>
-                {group.executions.map((execution) => {
-                  // Check if this is a loop node inside a branch
-                  if (execution.nodeType === 'loop') {
-                    const iterations = getLoopIterations(execution.nodeId)
-                    return (
-                      <LoopExecutionCard
-                        key={execution.id}
-                        loopNodeExecution={execution}
-                        iterations={iterations}
-                        workflowStatus={activeRun.status}
-                      />
-                    )
-                  }
-
-                  return (
-                    <NodeExecutionCard
-                      key={execution.id}
-                      execution={execution}
-                      workflowStatus={activeRun.status}
-                    />
-                  )
-                })}
-              </BranchGroup>
-            )
-          }
-        })}
-      </div>
+      {/* Node execution cards, nested by branch */}
+      <TraceTreeView
+        items={traceItems}
+        workflowStatus={activeRun.status}
+        getLoopIterations={getLoopIterations}
+      />
     </div>
   )
 }

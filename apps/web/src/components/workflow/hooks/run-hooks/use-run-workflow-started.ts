@@ -1,7 +1,6 @@
 // apps/web/src/components/workflow/hooks/run-hooks/use-run-workflow-started.ts
 
 import { useStoreApi } from '@xyflow/react'
-import { produce } from 'immer'
 import { useCallback } from 'react'
 import { NodeRunningStatus } from '~/components/workflow/types'
 import type { ExecutionEvent, NodeExecutionState } from '../../store/run-store'
@@ -15,7 +14,7 @@ export const useRunWorkflowStarted = () => {
   const handleWorkflowStarted = useCallback(
     (event: ExecutionEvent) => {
       // Get current workflow nodes from ReactFlow store
-      const { nodes, edges, setEdges } = reactFlowStore.getState()
+      const { nodes } = reactFlowStore.getState()
       // Initialize nodeExecutions for all nodes in the workflow
       // Optimistic placeholders: the backend has not written any row yet, so the
       // ownership columns are blank — the same convention `treeToExecutions`
@@ -48,23 +47,11 @@ export const useRunWorkflowStarted = () => {
         }
         nodeExecutions.set(node.id, nodeExecution)
       })
-      // Update run store state using helper methods
+      // Seeding every node as Pending is what resets the edges too:
+      // `useEdgeStatusUpdater` recomputes each edge from this map, so the
+      // previous run's colours clear without touching edges here.
       setNodeExecutions(nodeExecutions)
       setIsRunning(true)
-      // The run flags live on `edge.data` — that is where the custom edge reads
-      // them. Setting them on the edge itself left every edge un-styled for the
-      // whole run.
-      const newEdges = produce(edges, (draft) => {
-        draft.forEach((edge) => {
-          edge.data = {
-            ...edge.data,
-            _waitingRun: true,
-            _sourceRunningStatus: undefined,
-            _targetRunningStatus: undefined,
-          }
-        })
-      })
-      setEdges(newEdges)
       console.log(`[Run Event] Initialized ${nodeExecutions.size} node executions`)
     },
     [reactFlowStore, setNodeExecutions, setIsRunning]

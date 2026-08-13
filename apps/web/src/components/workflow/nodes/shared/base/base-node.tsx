@@ -27,32 +27,34 @@ interface BaseNodeProps {
   nodeType?: 'standard' | 'input'
 }
 
-/** Status indicator component */
-const StatusIndicator = ({
-  status,
-  size = 3,
-}: {
-  status: NodeRunningStatus | null
-  size?: 2 | 3
-}) => {
+/**
+ * Run status badge. Sized to match `NodeValidationWarning` so the two sit
+ * together as one cluster on the node's corner.
+ */
+const StatusIndicator = ({ status }: { status: NodeRunningStatus | null }) => {
+  // Opaque background so edges routed behind the corner cannot show through.
+  // Border and icon carry the status; `destructive-*` and `warning-*` are not
+  // real tokens in this theme, so the semantic good/bad scales are used.
+  const badge = 'flex items-center justify-center size-5 border rounded-full bg-background'
+
   if (status === NodeRunningStatus.Succeeded) {
     return (
-      <div className='rounded-full border p-0.5 border-good-500 bg-good-50'>
-        <Check className={cn(size === 2 ? 'size-2' : 'size-3', 'text-green-500')} />
+      <div className={cn(badge, 'border-good-500')}>
+        <Check className='size-3 text-good-500' />
       </div>
     )
   }
   if (status === NodeRunningStatus.Failed) {
     return (
-      <div className='rounded-full border p-0.5 border-destructive-500 bg-destructive-50'>
-        <XCircle className={cn(size === 2 ? 'size-2' : 'size-3', 'text-destructive-500')} />
+      <div className={cn(badge, 'border-bad-500')}>
+        <XCircle className='size-3 text-bad-500' />
       </div>
     )
   }
   if (status === NodeRunningStatus.Running) {
     return (
-      <div className='rounded-full border p-0.5 border-warning-500 bg-warning-50'>
-        <Clock className={cn(size === 2 ? 'size-2' : 'size-3', 'text-warning-500')} />
+      <div className={cn(badge, 'border-blue-500')}>
+        <Clock className='size-3 text-blue-500' />
       </div>
     )
   }
@@ -143,11 +145,6 @@ export const BaseNode = memo<BaseNodeProps>(
           style={
             isEffectivelyCollapsed ? { width: COLLAPSED_WIDTH, height: collapsedHeight } : undefined
           }>
-          {/* Validation warnings - hidden when collapsed */}
-          {!isEffectivelyCollapsed && validation.hasIssues && !isDisabled && (
-            <NodeValidationWarning issues={validation.issues} />
-          )}
-
           {/* Parallel node indicator - hidden when collapsed */}
           {!isEffectivelyCollapsed && data._inParallelHovering && (
             <div className='uppercase font-mono text-[8px] absolute -top-2.5 left-2 z-10 text-primary-400'>
@@ -166,6 +163,16 @@ export const BaseNode = memo<BaseNodeProps>(
 
           {/* Selection border */}
           {selected && <div className={selectedBorderClassName} />}
+
+          {/* Corner badges — run status, plus validation warnings when expanded.
+              Rendered after the border layers and lifted above them so the
+              ShineBorder and selection ring cannot paint over the badge. */}
+          <div className='absolute -top-2 -right-2 z-20 flex items-center gap-1'>
+            {!isEffectivelyCollapsed && validation.hasIssues && !isDisabled && (
+              <NodeValidationWarning issues={validation.issues} />
+            )}
+            <StatusIndicator status={status} />
+          </div>
 
           {/* Main content wrapper */}
           <div className='group relative shadow-xs flex h-full w-full flex-col rounded-2xl'>
@@ -216,11 +223,6 @@ export const BaseNode = memo<BaseNodeProps>(
                     <ChevronDown className='size-4 text-muted-foreground' />
                   </button>
                 )}
-              </div>
-
-              {/* Status indicator */}
-              <div className={cn(!isEffectivelyCollapsed && 'me-0')}>
-                <StatusIndicator status={status} size={isEffectivelyCollapsed ? 2 : 3} />
               </div>
             </div>
 

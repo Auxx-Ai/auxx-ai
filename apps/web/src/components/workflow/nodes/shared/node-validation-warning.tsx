@@ -60,23 +60,23 @@ export function NodeValidationWarning({ issues }: NodeValidationWarningProps) {
     </div>
   )
 
+  // Positioned by the caller — BaseNode clusters this with the run status
+  // badge in the node's top-right corner.
   return (
-    <div className='absolute -top-2 -right-2 z-1'>
-      <Tooltip
-        contentComponent={tooltipContent}
-        side='top'
-        align='end'
-        sideOffset={8}
-        className='p-0'>
-        <div
-          className={cn(
-            'flex items-center justify-center size-5 border rounded-full',
-            bgColor,
-            borderColor
-          )}>
-          <Icon className={cn('size-3', iconColor)} />
-        </div>
-      </Tooltip>
-    </div>
+    <Tooltip
+      contentComponent={tooltipContent}
+      side='top'
+      align='end'
+      sideOffset={8}
+      className='p-0'>
+      <div
+        className={cn(
+          'flex items-center justify-center size-5 border rounded-full',
+          bgColor,
+          borderColor
+        )}>
+        <Icon className={cn('size-3', iconColor)} />
+      </div>
+    </Tooltip>
   )
 }
