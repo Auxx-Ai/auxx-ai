@@ -82,6 +82,18 @@ export {
   type WorkflowRetryConfig,
 } from './catalog/node-base'
 export {
+  type CodeNodeData as CatalogCodeNodeData,
+  type CodeNodeInput,
+  type CodeNodeOutput,
+  type CodeOutput,
+  type CodeVariable,
+  codeManifest,
+  codeNodeDataSchema,
+  extractCodeVariables,
+  normalizeCodeOutputType,
+  validateCodeConfig,
+} from './catalog/nodes/code'
+export {
   DateFormatType,
   type DateTimeNodeData as CatalogDateTimeNodeData,
   DateTimeOperation,
@@ -107,6 +119,27 @@ export {
   validateFormatNodeData,
 } from './catalog/nodes/format'
 export {
+  type Authorization,
+  AuthType,
+  type Body,
+  type BodyPayload,
+  type BodyPayloadItem,
+  BodyPayloadValueType,
+  BodyType,
+  type DefaultValueItem,
+  ErrorStrategy,
+  extractHttpVariableIds,
+  type HttpNodeData as CatalogHttpNodeData,
+  httpManifest,
+  httpNodeDataSchema,
+  type KeyValue,
+  Method,
+  type RetryConfig as HttpRetryConfig,
+  type Timeout as HttpTimeout,
+  type ValueSelector,
+  validateHttpNodeData,
+} from './catalog/nodes/http'
+export {
   type HumanConfirmationNodeData as CatalogHumanConfirmationNodeData,
   humanConfirmationManifest,
   humanConfirmationNodeDataSchema,
@@ -123,6 +156,26 @@ export {
   type NodeCondition,
   validateIfElseConfig,
 } from './catalog/nodes/if-else'
+export {
+  CONFIG_KEY_BY_OPERATION,
+  extractListVariables,
+  type FilterConfig,
+  type JoinConfig,
+  type JoinType,
+  type ListNodeData as CatalogListNodeData,
+  type ListOperation,
+  listManifest,
+  listNodeDataSchema,
+  type NullHandling,
+  type PluckConfig,
+  type SliceConfig,
+  type SliceMode,
+  type SortConfig,
+  type SortDirection,
+  type UniqueBy,
+  type UniqueConfig,
+  validateListNodeData,
+} from './catalog/nodes/list'
 export {
   extractLoopVariables,
   LOOP_CONSTANTS,

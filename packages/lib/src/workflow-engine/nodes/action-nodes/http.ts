@@ -17,6 +17,15 @@
 
 import { z } from 'zod'
 import { applyAuth, resolveConnectionForRuntime } from '../../../connections'
+import type {
+  Authorization,
+  Body,
+  DefaultValueItem,
+  ErrorStrategy,
+  HttpNodeData,
+  Method,
+  Timeout,
+} from '../../catalog/nodes/http'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -27,66 +36,48 @@ import type {
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
 
-// Type definitions
-// TipTap content is now stored as simple strings with {{variableId}} syntax
-// No need for complex TipTap document parsing
+// Config types — the config subset of the catalog's `HttpNodeData`
+// (node-catalog Phase 1; this file previously shadowed it with its own
+// `Http*Config` interfaces). The processor stays tolerant of one legacy shape
+// the builder has never offered: 'api-key' authorization (with its `api_key`
+// field), which the runtime schema below still accepts on old rows.
 
-interface HttpBodyConfig {
-  type: 'none' | 'raw-text' | 'json' | 'form-data' | 'x-www-form-urlencoded' | 'binary'
+// Template-literal projections of the catalog enums: the runtime zod schema
+// below parses plain strings, so the executor works with the enum VALUES.
+
+type HttpAuthConfig = Omit<Authorization, 'type'> & {
+  type: `${Authorization['type']}` | 'api-key'
+  api_key?: string
+}
+
+type BodyPayloadItem = Omit<Body['data'][number], 'type'> & {
+  type: `${Body['data'][number]['type']}`
+}
+
+type HttpBodyConfig = {
+  type: `${Body['type']}`
   data: BodyPayloadItem[]
 }
 
-interface BodyPayloadItem {
-  id: string
-  type: 'text' | 'file'
-  value?: string // For text type - contains string with {{variableId}} syntax
-  file?: string[] // For file type - variable selector path
-  key?: string // For form-data and x-www-form-urlencoded
-}
+type HttpTimeoutConfig = Timeout
+type DefaultValueConfig = DefaultValueItem
 
-interface HttpAuthConfig {
-  type: 'none' | 'basic' | 'bearer' | 'custom' | 'api-key' | 'connection'
-  username?: string
-  password?: string
-  token?: string
-  header?: string
-  api_key?: string
-  /** Bound Credential id when type is 'connection' — resolved + applied at execute time. */
-  connectionId?: string
-}
-
-interface HttpTimeoutConfig {
-  connect?: number
-  read?: number
-  write?: number
-}
-
-interface HttpRetryConfig {
-  retry_enabled: boolean
-  max_retries: number
-  retry_interval: number // in milliseconds
-}
-
-interface DefaultValueConfig {
-  key: string
-  type: string
-  value: string // String with {{variableId}} syntax
-}
-
-interface HttpNodeConfig {
-  title?: string
-  desc?: string
-  url: string // String with {{variableId}} syntax
-  method: 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head'
-  headers: string // Newline-separated key:value pairs with {{variableId}} support
-  params: string // Newline-separated key:value pairs with {{variableId}} support
+type HttpNodeConfig = Pick<
+  HttpNodeData,
+  | 'title'
+  | 'desc'
+  | 'url'
+  | 'headers'
+  | 'params'
+  | 'timeout'
+  | 'ssl_verify'
+  | 'retry_config'
+  | 'default_value'
+> & {
+  method: `${Method}`
   body: HttpBodyConfig
   authorization: HttpAuthConfig
-  timeout: HttpTimeoutConfig
-  ssl_verify: boolean
-  retry_config: HttpRetryConfig
-  error_strategy: 'fail' | 'none' | 'default'
-  default_value: DefaultValueConfig[]
+  error_strategy: `${ErrorStrategy}`
 }
 
 // Validation schema

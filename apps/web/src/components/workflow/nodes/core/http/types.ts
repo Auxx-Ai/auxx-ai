@@ -1,60 +1,37 @@
 // apps/web/src/components/workflow/nodes/core/http/types.ts
 
-import type { Authorization, Body, Method } from '~/components/global/http-request/types'
-import type { TargetBranch } from '~/components/workflow/types'
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
+import type { CatalogHttpNodeData } from '@auxx/lib/workflow-engine/client'
+import type { SpecificNode } from '~/components/workflow/types/node-base'
+import type { NodeType } from '~/components/workflow/types/node-types'
 
+// The data half moved to the node catalog (node-catalog Phase 1 —
+// `@auxx/lib/workflow-engine/catalog/nodes/http`); re-exported here so no web
+// import churns. HttpNodeData narrows `type` to the web NodeType enum, same
+// as BaseNodeData does over its lib counterpart.
 export type {
   Authorization,
   Body,
   BodyPayload,
   BodyPayloadItem,
+  DefaultValueItem,
+  HttpRetryConfig as RetryConfig,
+  HttpTimeout as Timeout,
   KeyValue,
   ValueSelector,
-} from '~/components/global/http-request/types'
-// Re-export the pure request-shape types/enums from their shared home so
-// existing in-node imports (`./types`) keep working after the extraction.
+} from '@auxx/lib/workflow-engine/client'
 export {
   AuthType,
   BodyPayloadValueType,
   BodyType,
+  ErrorStrategy,
   Method,
-} from '~/components/global/http-request/types'
+} from '@auxx/lib/workflow-engine/client'
 
-// Error handling strategy (workflow-node only)
-export enum ErrorStrategy {
-  none = 'none',
-  fail = 'fail',
-  default = 'default',
-}
-
-// Timeout configuration
-export type Timeout = { connect?: number; read?: number; write?: number }
-
-// Retry configuration
-export type RetryConfig = { retry_enabled: boolean; max_retries: number; retry_interval: number }
-
-// Default value item
-export type DefaultValueItem = { key: string; type: string; value: string }
-
-// HTTP node data interface with flattened structure
-export interface HttpNodeData extends BaseNodeData {
-  // Base fields
-  title: string
-  desc?: string
-  // HTTP-specific fields
-  method: Method
-  url: string
-  authorization: Authorization
-  headers: string // newline-separated key:value pairs
-  params: string // newline-separated key:value pairs
-  body: Body
-  timeout: Timeout
-  retry_config: RetryConfig
-  ssl_verify: boolean
-  error_strategy: ErrorStrategy
-  default_value: DefaultValueItem[]
-  _targetBranches: TargetBranch[]
+/**
+ * HTTP node data interface with flattened structure
+ */
+export interface HttpNodeData extends CatalogHttpNodeData {
+  type: NodeType
 }
 
 /**
