@@ -182,12 +182,13 @@ export const KNOWN_BROKEN_UNADVERTISED_WRITES: Record<string, string> = {
  * lookup) targets a handle no canvas can have an edge on, so the path dies
  * silently — no error, the run just stops.
  *
- * 🔶 COORDINATION: every entry below is one bug family, and a PR fixing it —
- * renaming the `error` emissions toward the `fail` handle the UI renders, and
- * making the engine route Failed results — is IN FLIGHT in parallel with the
- * PR that landed this assertion. That PR must delete these entries as it fixes
- * them; the stale-entry failure enforces this at its rebase. Do not fix these
- * independently.
+ * The engine side of this family was fixed in #1560: a Failed result now
+ * routes via `findFailureEdge` (emitted handle first, legacy `onError`
+ * fallback), and http's emissions were renamed to the handles its UI renders.
+ * The entries below are the remainder: processors that emit `'error'` while
+ * their UI renders no error handle at all, so the branch is unwirable until a
+ * node manifest gives them one (Phase 1). Fixing one means renaming its
+ * emission to a rendered handle (or rendering a handle) AND deleting its entry.
  */
 export const KNOWN_BROKEN_OUTPUT_HANDLES: Record<string, string> = {
   'handle:chunker.error':
@@ -197,14 +198,12 @@ export const KNOWN_BROKEN_OUTPUT_HANDLES: Record<string, string> = {
     "document-extractor.ts:294/:319 emits 'error' on extraction failure; the UI renders only [source].",
   'handle:format.error':
     "format-processor.ts:429 emits 'error' on failure; the UI renders only [source].",
-  'handle:http.error':
-    "http.ts:431/:448 emits 'error' on the error path — but the UI renders the failure branch as `fail` (http/node.tsx:50), so the handle the panel draws and the handle the engine emits never meet. The closest thing to the whole bug family in one node.",
   'handle:knowledge-retrieval.error':
     "knowledge-retrieval.ts:394 emits 'error' on failure; the UI renders only [source].",
   'handle:list.error':
     "list-processor.ts:181 emits 'error' on failure; the UI renders only [source].",
   'routing:engine-core.onError':
-    "workflow-engine.ts:517 (and its twin loop-execution-manager.ts:310) recovers a Failed node by hunting for an edge with sourceHandle === 'onError' — a handle NO node's UI has ever rendered, so the Failed path can never route and always falls through to the throw. The engine side of the same family.",
+    "graph-navigation.ts `findFailureEdge` keeps 'onError' as a deliberate legacy fallback behind the emitted-handle lookup (#1560) — but no node's UI has ever rendered an onError handle, so the literal remains unrenderable. Listed until either a graph is shown to contain one (keep) or the fallback is retired (delete).",
 }
 
 /**
