@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.203](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.202...auxx-v0.1.203) (2026-08-13)
+
+
+### Features
+
+* **workflow:** message trigger scoping, loop guards, and builder send safety ([#1555](https://github.com/Auxx-Ai/auxx-ai/issues/1555)) ([8b64a1a](https://github.com/Auxx-Ai/auxx-ai/commit/8b64a1abb28c47ced63b4f2d241d2a6bd7034f9b))
+
+
+### Bug Fixes
+
+* **workflow:** message trigger scope picker fixes and selection chips ([#1557](https://github.com/Auxx-Ai/auxx-ai/issues/1557)) ([d91fcb8](https://github.com/Auxx-Ai/auxx-ai/commit/d91fcb884e75fcf2c1be9d0793f8dcd0bd8726a0))
+
 ## [0.1.202](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.201...auxx-v0.1.202) (2026-08-12)
 
 
