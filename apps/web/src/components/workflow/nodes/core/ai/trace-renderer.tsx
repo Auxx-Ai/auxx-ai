@@ -4,6 +4,7 @@
 
 import { Sparkles, TriangleAlert } from 'lucide-react'
 import Markdown from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { BlockCard } from '~/components/kopilot/ui/blocks/block-card'
 import { CollapsedJson, FieldRows } from '~/components/workflow/nodes/shared/trace-primitives'
@@ -71,7 +72,9 @@ export function AiTraceRenderer({ execution }: TraceRendererProps) {
         ) : (
           outputs.text && (
             <div className='prose prose-sm dark:prose-invert max-w-none text-sm'>
-              <Markdown remarkPlugins={[remarkGfm]}>{outputs.text}</Markdown>
+              {/* remarkBreaks: single newlines are soft breaks in markdown and
+                  would collapse to spaces — see the End trace renderer. */}
+              <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{outputs.text}</Markdown>
             </div>
           )
         )}

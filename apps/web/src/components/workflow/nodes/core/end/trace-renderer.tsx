@@ -6,6 +6,7 @@ import type { ContentSegment, WorkflowFileData } from '@auxx/lib/workflow-engine
 import { Badge } from '@auxx/ui/components/badge'
 import { Flag, Paperclip } from 'lucide-react'
 import Markdown from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { BlockCard } from '~/components/kopilot/ui/blocks/block-card'
 import { TraceRawJson } from '~/components/workflow/panels/run/components/trace-render-boundary'
@@ -55,9 +56,15 @@ export function EndTraceRenderer({ execution }: TraceRendererProps) {
       secondaryText={badge}
       hasFooter={false}>
       <div className='space-y-2 p-1'>
+        {/* `remarkBreaks` renders a single newline as a <br>. Without it the
+            markdown soft break survives into the DOM as a literal "\n" that
+            `white-space: normal` collapses to a space, so a multi-line
+            completion message reads as one run-on line — while the same text in
+            the Outputs tab (a <pre>) and in the share view
+            (`whitespace-pre-wrap`) shows its line breaks. */}
         {outputs.message && (
           <div className='prose prose-sm dark:prose-invert max-w-none text-sm'>
-            <Markdown remarkPlugins={[remarkGfm]}>{outputs.message}</Markdown>
+            <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{outputs.message}</Markdown>
           </div>
         )}
         {files.length > 0 && (
