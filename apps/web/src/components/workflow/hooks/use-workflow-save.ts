@@ -151,7 +151,11 @@ export const useWorkflowSave = () => {
         resolveTriggerType: (nodeType) => unifiedNodeRegistry.getDefinition(nodeType)?.triggerType,
       })
       const triggerType = derived.triggerType ?? workflow.triggerType
-      const entityDefinitionId = derived.entityDefinitionId
+      // `null`, not `undefined` — the service only writes the column when the
+      // key is not `undefined`, so posting `undefined` for a graph that no
+      // longer has a resource trigger left the OLD entity id on the row next
+      // to the new trigger type. `null` is the explicit clear.
+      const entityDefinitionId = derived.entityDefinitionId ?? null
 
       payload.graph = { nodes: cleanNodes, edges: cleanEdges, viewport: { x, y, zoom } }
       payload.triggerType = triggerType

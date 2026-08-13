@@ -150,16 +150,24 @@ export const workflowAppsProvider = {
 
     return Object.assign(accessor, {
       /** Find enabled apps matching trigger criteria */
+      /**
+       * `entityDefinitionIds` is a set, not a single value: the column holds the
+       * org's EntityDefinition CUID on some rows and the bare entityType slug on
+       * others, and a workflow saved either way must keep firing. Callers pass
+       * every accepted form — see `ResourceTriggerMatch.matchIds`.
+       */
       async byTrigger(
         triggerType: string,
-        entityDefinitionId?: string
+        entityDefinitionIds?: readonly string[]
       ): Promise<CachedWorkflowApp[]> {
         const data = await dataFn()
         return data.filter(
           (app) =>
             app.enabled &&
             app.publishedWorkflow?.triggerType === triggerType &&
-            (!entityDefinitionId || app.publishedWorkflow.entityDefinitionId === entityDefinitionId)
+            (!entityDefinitionIds?.length ||
+              (app.publishedWorkflow.entityDefinitionId !== null &&
+                entityDefinitionIds.includes(app.publishedWorkflow.entityDefinitionId)))
         )
       },
 

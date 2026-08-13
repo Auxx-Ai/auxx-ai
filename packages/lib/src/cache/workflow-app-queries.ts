@@ -16,15 +16,18 @@ export async function getCachedWorkflowApp(
 
 /**
  * Get all enabled workflow apps matching trigger criteria from cache.
+ *
+ * `entityDefinitionIds` accepts every form the stored column may hold for the
+ * same entity (CUID and entityType slug) — pass `ResourceTriggerMatch.matchIds`.
  */
 export async function getCachedWorkflowAppsByTrigger(params: {
   organizationId: string
   triggerType: string
-  entityDefinitionId?: string
+  entityDefinitionIds?: readonly string[]
 }): Promise<CachedWorkflowApp[]> {
   return getOrgCache()
     .from(params.organizationId, 'workflowApps')
-    .byTrigger(params.triggerType, params.entityDefinitionId)
+    .byTrigger(params.triggerType, params.entityDefinitionIds)
 }
 
 /**

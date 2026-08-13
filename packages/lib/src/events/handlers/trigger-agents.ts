@@ -10,8 +10,8 @@ import { parseRecordId } from '../../resources/resource-id'
 import type { AuxxEvent } from '../types'
 import {
   getEventRecordId,
-  getResourceTriggerMatch,
   type ResourceFetcher,
+  resolveResourceTriggerMatch,
 } from './trigger-resource-workflows'
 
 const logger = createScopedLogger('trigger-agents')
@@ -22,7 +22,7 @@ const logger = createScopedLogger('trigger-agents')
  * and enqueue an autonomous agent run for each.
  *
  * Two independent branches:
- *   1. CRUD: reuse `getResourceTriggerMatch` and match by `{triggerType, entityDefinitionId}`.
+ *   1. CRUD: reuse `resolveResourceTriggerMatch` and match by `{triggerType, entityDefinitionId}`.
  *   2. Direct: match by `eventType` literal.
  *
  * The two branches are independent; one event may match both kinds of
@@ -50,8 +50,10 @@ export const dispatchAgentTriggers = async (event: AuxxEvent, fetchResource: Res
   const queue = getQueue(Queues.scheduledTriggerQueue)
   let totalFired = 0
 
-  // CRUD branch
-  const match = getResourceTriggerMatch(event)
+  // CRUD branch. Normalized to the org's EntityDefinition id before the strict
+  // compare below — agent triggers store the picker's CUID, while `ticket:*` /
+  // `contact:*` events report the slug (see `resolveResourceTriggerMatch`).
+  const match = await resolveResourceTriggerMatch(event, organizationId)
   if (match) {
     const crudMatches: Array<{
       agentId: string
@@ -62,7 +64,10 @@ export const dispatchAgentTriggers = async (event: AuxxEvent, fetchResource: Res
       for (const trigger of agent.triggers) {
         if (trigger.kind !== 'event' || !trigger.enabled) continue
         if (trigger.triggerType !== match.triggerType) continue
-        if (trigger.entityDefinitionId !== match.entityDefinitionId) continue
+        // `matchIds`, not the canonical id — agent triggers store the CUID on
+        // some rows and the bare slug on others.
+        if (!trigger.entityDefinitionId || !match.matchIds.includes(trigger.entityDefinitionId))
+          continue
         crudMatches.push({
           agentId: agent.id,
           triggerId: trigger.id,

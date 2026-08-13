@@ -2,7 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
-import { getCachedWorkflowAppsByTrigger } from '../../cache'
+import { canonicalizeEntityDefinitionId, getCachedWorkflowAppsByTrigger } from '../../cache'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
 import { fetchResourceById, getRecordIdField } from '../../resources/resource-fetcher'
@@ -14,12 +14,34 @@ export type ResourceTriggerType = 'created' | 'updated' | 'deleted'
 
 export type ResourceTriggerMatch = {
   triggerType: ResourceTriggerType
+  /**
+   * The canonical form — the org's EntityDefinition id where one exists. Use it
+   * for work that needs a single answer (RecordIds, record-rule dispatch).
+   * Do NOT filter stored trigger rows with it; use {@link matchIds}.
+   */
   entityDefinitionId: string
+  /**
+   * Every form a stored trigger row may legitimately hold for this entity:
+   * the canonical id AND the bare entityType slug. Both are in production —
+   * the resource picker writes `resource.entityDefinitionId || resourceType`,
+   * which is the CUID for some paths and the slug for others, and a workflow
+   * saved either way must keep firing. Filter with `matchIds.includes(...)`.
+   */
+  matchIds: readonly string[]
 }
+
+/** What the event alone can say, before the org's definition ids are known. */
+export type RawResourceTriggerMatch = Pick<
+  ResourceTriggerMatch,
+  'triggerType' | 'entityDefinitionId'
+>
 
 /**
  * Resolve which resource CRUD trigger this event maps to. Shared with the
  * agent-trigger dispatcher (see `./trigger-agents.ts`).
+ *
+ * Prefer {@link resolveResourceTriggerMatch} — this reports the legacy family
+ * under its slug, which is only one of the two forms stored triggers use.
  *
  * Modern-shape events (emitted from unified-handler-mutations) carry
  * `entityDefinitionId` directly in the payload — including custom-entity
@@ -28,7 +50,7 @@ export type ResourceTriggerMatch = {
  *
  * Returns null when the event is not a resource CRUD trigger.
  */
-export function getResourceTriggerMatch(event: AuxxEvent): ResourceTriggerMatch | null {
+export function getResourceTriggerMatch(event: AuxxEvent): RawResourceTriggerMatch | null {
   const payload = event.data as Record<string, unknown>
   const payloadEntityDefinitionId =
     typeof payload.entityDefinitionId === 'string' ? payload.entityDefinitionId : undefined
@@ -76,6 +98,48 @@ export function getResourceTriggerMatch(event: AuxxEvent): ResourceTriggerMatch 
 }
 
 /**
+ * Resolve an event to its resource-trigger criteria **in the keyspace triggers
+ * are actually stored in** — the org's EntityDefinition id.
+ *
+ * `getResourceTriggerMatch` reports the legacy `ticket:*`/`contact:*` family
+ * under its slug, because those are the only events whose payload omits
+ * `entityDefinitionId` (`publishEvent`'s perspective branch in
+ * `resources/crud/unified-handler-mutations.ts`). Every writer stores the CUID —
+ * the resource picker via `toCustomResourceBase`, agent triggers, and
+ * `toRecordId(entityDef.id, …)` — and every consumer compares with strict
+ * equality, so an unnormalized slug matches nothing and the trigger silently
+ * never fires.
+ *
+ * `canonicalizeEntityDefinitionId` carries the tier gate — it deliberately
+ * leaves `thread`/`article` alone; see its docblock.
+ *
+ * Both forms are returned, and **filtering must use `matchIds`, not
+ * `entityDefinitionId`**: the column holds the CUID on some rows and the slug on
+ * others (the picker writes `resource.entityDefinitionId || resourceType`), and
+ * normalizing only the event side turns a working slug-keyed trigger into a
+ * dead one. Canonicalizing on save fixes a row the next time it is saved; it
+ * cannot fix the rows already out there.
+ *
+ * The value written as an execution-context key must come from the matched
+ * workflow's OWN stored id, not from here — that is what its graph declared its
+ * `{{node.<id>.field}}` paths against.
+ */
+export async function resolveResourceTriggerMatch(
+  event: AuxxEvent,
+  organizationId: string
+): Promise<ResourceTriggerMatch | null> {
+  const raw = getResourceTriggerMatch(event)
+  if (!raw) return null
+  const canonical = await canonicalizeEntityDefinitionId(organizationId, raw.entityDefinitionId)
+  return {
+    triggerType: raw.triggerType,
+    entityDefinitionId: canonical,
+    matchIds:
+      canonical === raw.entityDefinitionId ? [canonical] : [canonical, raw.entityDefinitionId],
+  }
+}
+
+/**
  * Resolve the RecordId for the event's subject resource.
  *
  * Modern-shape events already carry `recordId`. Legacy events don't —
@@ -115,18 +179,11 @@ export const dispatchResourceWorkflows = async (
   event: AuxxEvent,
   fetchResource: ResourceFetcher
 ) => {
-  // 1. Map event to workflow trigger criteria
-  const match = getResourceTriggerMatch(event)
-  if (!match) {
-    logger.debug('No workflow trigger mapping for event', { eventType: event.type })
-    return
-  }
-  const { triggerType, entityDefinitionId } = match
-
   // A handful of payloads (`integration:connection_failed`) fire before a
   // session is resolved and carry no org id. None of them map to a resource
   // trigger, so this is unreachable today — but workflow lookup is org-scoped
-  // and must never run unscoped.
+  // and must never run unscoped, and the entity normalization below is
+  // per-org, so the check comes first.
   const organizationId = event.data.organizationId
   if (!organizationId) {
     logger.debug('Event has no organizationId; skipping workflow dispatch', {
@@ -135,11 +192,20 @@ export const dispatchResourceWorkflows = async (
     return
   }
 
-  // 2. Query workflows via org cache
+  // 1. Map event to workflow trigger criteria — see `resolveResourceTriggerMatch`.
+  const match = await resolveResourceTriggerMatch(event, organizationId)
+  if (!match) {
+    logger.debug('No workflow trigger mapping for event', { eventType: event.type })
+    return
+  }
+  const { triggerType, entityDefinitionId, matchIds } = match
+
+  // 2. Query workflows via org cache. Match on EVERY form the column may hold —
+  //    a workflow saved with the bare slug must keep firing (see `matchIds`).
   const matchingApps = await getCachedWorkflowAppsByTrigger({
     organizationId,
     triggerType,
-    entityDefinitionId,
+    entityDefinitionIds: matchIds,
   })
 
   const matchingWorkflows = matchingApps
@@ -181,7 +247,12 @@ export const dispatchResourceWorkflows = async (
       workflowAppId: workflow.workflowApp.id,
       workflowId: workflow.publishedWorkflow.id,
       organizationId: event.data.organizationId,
-      entityDefinitionId,
+      // The workflow's OWN stored id, not the event's — the job keys the
+      // trigger's output under this (`resource-trigger-job.ts`), and the graph
+      // declared its `{{node.<id>.field}}` paths against whatever this row
+      // holds. Sending the canonical id to a slug-keyed workflow would fire it
+      // with unresolvable variables.
+      entityDefinitionId: workflow.publishedWorkflow.entityDefinitionId ?? entityDefinitionId,
       resourceData,
       triggerType,
       triggeredAt: new Date().toISOString(),

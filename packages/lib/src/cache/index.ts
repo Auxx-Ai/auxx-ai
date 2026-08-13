@@ -51,6 +51,7 @@ export {
 export type { CacheEvent } from './invalidation-graph'
 // ── Cache Helpers ──
 export {
+  canonicalizeEntityDefinitionId,
   findCachedResource,
   getAllCachedAgents,
   getAllCachedCustomFields,
