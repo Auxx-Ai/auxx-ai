@@ -1336,6 +1336,18 @@
       "import": "./dist/workflow-engine/index.mjs",
       "default": "./src/workflow-engine/index.ts"
     },
+    "./workflow-engine/catalog/build-output-context": {
+      "types": "./src/workflow-engine/catalog/build-output-context.ts",
+      "source": "./src/workflow-engine/catalog/build-output-context.ts",
+      "import": "./dist/workflow-engine/catalog/build-output-context.mjs",
+      "default": "./src/workflow-engine/catalog/build-output-context.ts"
+    },
+    "./workflow-engine/catalog/resolve-outputs": {
+      "types": "./src/workflow-engine/catalog/resolve-outputs.ts",
+      "source": "./src/workflow-engine/catalog/resolve-outputs.ts",
+      "import": "./dist/workflow-engine/catalog/resolve-outputs.mjs",
+      "default": "./src/workflow-engine/catalog/resolve-outputs.ts"
+    },
     "./workflow-engine/client": {
       "types": "./src/workflow-engine/client.ts",
       "source": "./src/workflow-engine/client.ts",

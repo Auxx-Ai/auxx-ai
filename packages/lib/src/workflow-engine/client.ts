@@ -74,10 +74,9 @@ export * from './utils/terminal-nodes'
 // The server-safe node contract: manifest types, the registry, the migration
 // tracker, and the pure variable-inference helpers split out of apps/web
 // utils/variable-utils.ts (the store-reading display helpers stayed there).
-export {
-  buildOutputContext,
-  buildOutputContextFromResources,
-} from './catalog/build-output-context'
+// NOTE: `catalog/build-output-context` and `catalog/resolve-outputs` are
+// SERVER-ONLY (they import the org cache, which pulls in bullmq) and must
+// never be exported here — import them via their own subpaths instead.
 export {
   type DerivedTriggerColumns,
   deriveTriggerColumns,
@@ -324,11 +323,6 @@ export {
   getManifest,
   listManifests,
 } from './catalog/registry'
-export {
-  resolveGraphOutputs,
-  resolveNodeOutputs,
-  type WorkflowOutputGraph,
-} from './catalog/resolve-outputs'
 export {
   extractSchemaPropertyPaths,
   generateSampleFromSchema,
