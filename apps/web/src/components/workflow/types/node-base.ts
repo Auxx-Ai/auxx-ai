@@ -67,9 +67,8 @@ export interface EdgeData {
   _connectedNodeIsSelected?: boolean
   _isBundled?: boolean
 
-  // Execution state
-  _waitingRun?: boolean
-  _sourceRunningStatus?: NodeRunningStatus
+  // Execution state — status of the node this edge feeds into, which is what
+  // the edge is coloured from. `undefined` means no run is in view.
   _targetRunningStatus?: NodeRunningStatus
 
   // Allow additional properties for React Flow compatibility

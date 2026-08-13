@@ -10,14 +10,15 @@ import type { EdgeData } from '~/components/workflow/types'
 import { NodeRunningStatus } from '~/components/workflow/types'
 import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
 import {
+  EDGE_COLORS,
+  EDGE_OPACITY_UNREACHED,
   EDGE_ROUTING,
   EDGE_STROKE_WIDTH,
   EDGE_STROKE_WIDTH_HOVER,
   EDGE_STROKE_WIDTH_SELECTED,
 } from '../constants'
-import { CustomEdgeLinearGradient } from './linear-gradient'
 import { getAdaptiveEdgePath } from './path-utils'
-import { getEdgeColor, shouldShowGradient } from './utils'
+import { getEdgeColor, isInFlight, isUnreached } from './utils'
 
 /**
  * Custom edge component with visual status indicators and node insertion capability
@@ -48,11 +49,9 @@ const CustomEdge = memo<EdgeProps>(
         targetType: '',
         isInIteration: false,
         isInLoop: false,
-        _sourceRunningStatus: undefined,
         _targetRunningStatus: undefined,
         _hovering: false,
         _connectedNodeIsHovering: false,
-        _waitingRun: false,
       }
       return { ...defaultData, ...(data || {}) } as EdgeData
     }, [data])
@@ -121,14 +120,7 @@ const CustomEdge = memo<EdgeProps>(
       }
     }, [isBackwardEdge, labelX, labelY, sourceX, sourceY, targetX, targetY])
 
-    const { _sourceRunningStatus, _targetRunningStatus, _hovering } = edgeData
-
-    // Determine if gradient should be shown
-    const showGradient = useMemo(() => {
-      return shouldShowGradient(_sourceRunningStatus, _targetRunningStatus)
-    }, [_sourceRunningStatus, _targetRunningStatus])
-
-    const linearGradientId = showGradient ? id : undefined
+    const { _targetRunningStatus } = edgeData
 
     // Memoize error branch check to avoid repeated calculations
     const isErrorBranch = useMemo(() => {
@@ -141,16 +133,19 @@ const CustomEdge = memo<EdgeProps>(
       //   return '#8B5CF6' // Purple for loop edges
       // }
 
+      // Input-node edges are always taken when the flow starts, so they never
+      // report a run status of their own — they stay orange throughout.
       if (isInput) {
-        return getEdgeColor(NodeRunningStatus.Exception)
+        return EDGE_COLORS.exception
       }
 
       if (selected) {
         return getEdgeColor(NodeRunningStatus.Running, isErrorBranch)
       }
 
-      if (linearGradientId) {
-        return `url(#${linearGradientId})`
+      // Run status outranks hover: mid-run the canvas should read as the run.
+      if (_targetRunningStatus && !isUnreached(_targetRunningStatus)) {
+        return getEdgeColor(_targetRunningStatus)
       }
 
       if (edgeData._connectedNodeIsHovering || isHovering) {
@@ -162,7 +157,7 @@ const CustomEdge = memo<EdgeProps>(
     }, [
       edgeData._connectedNodeIsHovering,
       isHovering,
-      linearGradientId,
+      _targetRunningStatus,
       selected,
       isErrorBranch,
       isInput,
@@ -175,15 +170,17 @@ const CustomEdge = memo<EdgeProps>(
       return EDGE_STROKE_WIDTH
     }, [selected, isHovering, edgeData._connectedNodeIsHovering])
 
-    // console.log('CustomEdge render', { _sourceRunningStatus: edgeData._sourceRunningStatus })
+    // A node mid-flight (running, or held at a wait/pause) draws its incoming
+    // edge as a flowing dashed line; everything else is solid.
+    const flowing = isInFlight(_targetRunningStatus)
 
     const strokeDasharray = useMemo(() => {
-      return edgeData._sourceRunningStatus ? '5' : undefined
-    }, [edgeData._sourceRunningStatus])
+      return flowing || selected ? '5' : undefined
+    }, [flowing, selected])
 
     const animation = useMemo(() => {
-      return selected ? '.5s linear infinite dashdraw' : 'none'
-    }, [selected])
+      return flowing || selected ? '.5s linear infinite dashdraw' : 'none'
+    }, [flowing, selected])
 
     // Callback for when a node is added via AddNodeTrigger
     const handleNodeAdded = useCallback((nodeId: string, nodeType: string) => {
@@ -203,7 +200,7 @@ const CustomEdge = memo<EdgeProps>(
       () => ({
         stroke,
         strokeWidth,
-        opacity: edgeData._waitingRun ? 0.7 : 1,
+        opacity: isUnreached(_targetRunningStatus) ? EDGE_OPACITY_UNREACHED : 1,
         strokeDasharray,
         animation,
         // zIndex: edgeData.zIndex || 0,
@@ -211,7 +208,7 @@ const CustomEdge = memo<EdgeProps>(
         transition:
           'opacity 0.3s cubic-bezier(0.4,0,0.2,1), stroke 0.3s cubic-bezier(0.4,0,0.2,1), stroke-width 0.3s cubic-bezier(0.4,0,0.2,1)',
       }),
-      [stroke, strokeWidth, strokeDasharray, animation, edgeData._waitingRun]
+      [stroke, strokeWidth, strokeDasharray, animation, _targetRunningStatus]
     )
 
     // Get intersection of available blocks - optimized calculation
@@ -226,15 +223,6 @@ const CustomEdge = memo<EdgeProps>(
 
     return (
       <>
-        {linearGradientId && (
-          <CustomEdgeLinearGradient
-            id={linearGradientId}
-            startColor={getEdgeColor(_sourceRunningStatus)}
-            stopColor={getEdgeColor(_targetRunningStatus)}
-            position={{ x1: sourceX, y1: sourceY, x2: targetX, y2: targetY }}
-          />
-        )}
-
         <g className='cursor-pointer group'>
           <BaseEdge
             id={id}
