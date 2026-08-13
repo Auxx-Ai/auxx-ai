@@ -80,6 +80,17 @@ export {
   type WorkflowRetryConfig,
 } from './catalog/node-base'
 export {
+  DateFormatType,
+  type DateTimeNodeData as CatalogDateTimeNodeData,
+  DateTimeOperation,
+  dateTimeManifest,
+  dateTimeNodeSchema,
+  extractDateTimeNodeVariables,
+  ParseDateFormatType,
+  TimeUnit,
+  validateDateTimeNodeData,
+} from './catalog/nodes/date-time'
+export {
   type EndNodeData as CatalogEndNodeData,
   endManifest,
   endNodeDataSchema,
@@ -87,12 +98,34 @@ export {
   validateEndConfig,
 } from './catalog/nodes/end'
 export {
+  extractFormatVariables,
+  type FormatNodeData as CatalogFormatNodeData,
+  formatManifest,
+  formatNodeSchema,
+  validateFormatNodeData,
+} from './catalog/nodes/format'
+export {
+  type ManualNodeData as CatalogManualNodeData,
+  manualManifest,
+  manualNodeDataSchema,
+  validateManualData,
+} from './catalog/nodes/manual'
+export {
   type NoteNodeData as CatalogNoteNodeData,
   type NoteTheme,
   noteManifest,
   noteNodeDataSchema,
   validateNoteConfig,
 } from './catalog/nodes/note'
+export {
+  extractScheduledTriggerVariables,
+  type ScheduledTriggerNodeData as CatalogScheduledTriggerNodeData,
+  type ScheduledTriggerUIConfig,
+  scheduledTriggerManifest,
+  scheduledTriggerNodeDataSchema,
+  scheduledTriggerUIConfigSchema,
+  validateScheduledTriggerData,
+} from './catalog/nodes/scheduled'
 export {
   extractVarAssignVariables,
   type VarAssignNodeData as CatalogVarAssignNodeData,

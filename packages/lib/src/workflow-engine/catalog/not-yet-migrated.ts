@@ -20,8 +20,8 @@ export const NOT_YET_MIGRATED: readonly string[] = [
   'message-received',
   'webhook',
   'webhook-endpoint',
-  'scheduled',
-  'manual',
+  // 'scheduled' — migrated (catalog/nodes/scheduled.ts)
+  // 'manual' — migrated (catalog/nodes/manual.ts)
   'resource-trigger',
   // Legacy per-resource triggers (kept for backwards compatibility)
   'contact-created-trigger',
@@ -51,9 +51,9 @@ export const NOT_YET_MIGRATED: readonly string[] = [
   'text-classifier',
   'information-extractor',
   // 'var-assign' — migrated (catalog/nodes/var-assign.ts)
-  'date-time',
+  // 'date-time' — migrated (catalog/nodes/date-time.ts)
   'list',
-  'format',
+  // 'format' — migrated (catalog/nodes/format.ts)
   // Data nodes
   // 'note' — migrated (catalog/nodes/note.ts)
   // Control nodes

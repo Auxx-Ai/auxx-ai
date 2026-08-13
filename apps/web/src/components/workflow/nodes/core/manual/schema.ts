@@ -1,61 +1,15 @@
 // apps/web/src/components/workflow/nodes/core/manual/schema.ts
 
-import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
-import { z } from 'zod'
-import {
-  NodeCategory,
-  type NodeDefinition,
-  type ValidationResult,
-} from '~/components/workflow/types'
-import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
-import { NodeType } from '~/components/workflow/types/node-types'
+import { manualManifest, type NodeManifest } from '@auxx/lib/workflow-engine/client'
+import type { NodeDefinition } from '~/components/workflow/types'
 import { BaseType, type UnifiedVariable } from '~/components/workflow/types/variable-types'
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
+import { defineFromManifest } from '../../define-from-manifest'
 import type { ManualNodeData } from './types'
 
-/**
- * Zod schema for manual trigger node data
- */
-export const manualNodeDataSchema = baseNodeDataSchema.extend({
-  inputNodes: z.array(z.string()).optional(),
-})
-
-/**
- * Create default data for manual trigger node
- */
-export const createManualDefaultData = (): Partial<ManualNodeData> => ({
-  title: 'Manual Trigger',
-  desc: 'Manually trigger workflow with user inputs',
-  inputNodes: [],
-})
-
-export const manualDefaultData = createManualDefaultData()
-
-/**
- * Validate manual trigger node data
- */
-export function validateManualData(data: ManualNodeData): ValidationResult {
-  try {
-    manualNodeDataSchema.parse(data)
-    return { isValid: true, errors: [] }
-  } catch (error) {
-    console.error('Manual trigger validation error:', error)
-    if (error instanceof z.ZodError) {
-      return {
-        isValid: false,
-        errors: error.issues.map((e) => ({
-          field: e.path.join('.'),
-          message: e.message,
-          type: 'error' as const,
-        })),
-      }
-    }
-    return {
-      isValid: false,
-      errors: [{ field: 'general', message: 'Invalid configuration', type: 'error' as const }],
-    }
-  }
-}
+// The data half (schema, defaults, validator) lives in the node catalog
+// (`@auxx/lib/workflow-engine/catalog/nodes/manual`). This file is the merge
+// site: manifest + the web-only output resolver.
 
 /**
  * Define output variables for manual trigger node
@@ -67,7 +21,7 @@ function getManualOutputVariables(data: ManualNodeData, nodeId: string): Unified
   variables.push(
     createUnifiedOutputVariable({
       nodeId,
-      path: 'timestamp', // Changed from 'name' to 'path'
+      path: 'timestamp',
       type: BaseType.DATETIME,
       description: 'When the workflow was manually triggered',
     })
@@ -77,7 +31,7 @@ function getManualOutputVariables(data: ManualNodeData, nodeId: string): Unified
   variables.push(
     createUnifiedOutputVariable({
       nodeId,
-      path: 'userId', // Changed from 'name' to 'path'
+      path: 'userId',
       type: BaseType.STRING,
       description: 'ID of the user who triggered the workflow',
     })
@@ -88,7 +42,7 @@ function getManualOutputVariables(data: ManualNodeData, nodeId: string): Unified
     variables.push(
       createUnifiedOutputVariable({
         nodeId,
-        path: 'inputs', // Changed from 'name' to 'path'
+        path: 'inputs',
         type: BaseType.OBJECT,
         description: 'Data collected from connected input nodes',
       })
@@ -101,18 +55,18 @@ function getManualOutputVariables(data: ManualNodeData, nodeId: string): Unified
 /**
  * Manual trigger node definition
  */
-export const manualDefinition: NodeDefinition<ManualNodeData> = {
-  id: NodeType.MANUAL,
-  category: NodeCategory.TRIGGER,
-  displayName: 'Manual Trigger',
-  description: 'Manually trigger workflow with user inputs',
-  icon: 'play',
-  color: '#10b981', // TRIGGER category color
-  schema: manualNodeDataSchema,
-  defaultData: manualDefaultData,
-  canRunSingle: false, // Triggers cannot be run individually
-  triggerType: WorkflowTriggerType.MANUAL,
-  validator: validateManualData,
-  outputVariables: getManualOutputVariables as any,
-  acceptsInputNodes: true, // Special property to indicate this node accepts input connections
-}
+export const manualDefinition: NodeDefinition<ManualNodeData> = defineFromManifest(
+  manualManifest as unknown as NodeManifest<ManualNodeData>,
+  { outputVariables: getManualOutputVariables as any }
+)
+
+// Back-compat re-exports so no consumer import churns:
+export { manualNodeDataSchema, validateManualData } from '@auxx/lib/workflow-engine/client'
+
+/**
+ * Create default data for manual trigger node
+ */
+export const createManualDefaultData = (): Partial<ManualNodeData> =>
+  manualManifest.defaultData() as Partial<ManualNodeData>
+
+export const manualDefaultData = createManualDefaultData()
