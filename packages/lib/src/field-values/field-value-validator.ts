@@ -35,17 +35,26 @@ const numberSchema = z
   })
   .pipe(z.number().finite())
 
-const booleanSchema = z.unknown().transform((v) => {
+// `ctx.addIssue` is load-bearing here, exactly as it is on `phone` below: a bare
+// transform that returns `z.NEVER` does NOT fail the parse — see the comment on
+// `phone` for the full mechanism. `numberSchema` above gets away with the bare
+// form only because its `.pipe(z.number().finite())` rejects the sentinel
+// downstream; these two have no pipe, so they must report the issue themselves.
+const booleanSchema = z.unknown().transform((v, ctx) => {
   if (typeof v === 'boolean') return v
   if (v === 'true' || v === '1' || v === 1) return true
   if (v === 'false' || v === '0' || v === 0) return false
+  ctx.addIssue({ code: 'custom', message: 'Invalid boolean value' })
   return z.NEVER
 })
 
-const dateSchema = z.unknown().transform((v) => {
+const dateSchema = z.unknown().transform((v, ctx) => {
   if (v instanceof Date) return v.toISOString()
   const date = new Date(String(v))
-  if (Number.isNaN(date.getTime())) return z.NEVER
+  if (Number.isNaN(date.getTime())) {
+    ctx.addIssue({ code: 'custom', message: 'Invalid date value' })
+    return z.NEVER
+  }
   return date.toISOString()
 })
 
