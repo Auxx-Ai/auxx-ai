@@ -35,10 +35,12 @@ import {
   createRecordViewCapabilities,
   createSuggestRepliesGlobalCapability,
   createTaskCapabilities,
+  createWorkflowBuilderCapabilities,
   generateSessionTitle,
   LAST_CONTEXT_KEY,
   LAST_PAGE_KEY,
   resolveContinuationSurface,
+  WORKFLOW_BUILDER_PAGE,
 } from '@auxx/lib/ai/kopilot'
 import {
   createLearnedKbCapabilities,
@@ -780,6 +782,17 @@ async function runInProcessPath(params: {
   // client-side, so no legitimate session loses tools here.
   if (page === 'agents.builder' && (await isAdminOrOwner(organizationId, userId, db))) {
     registry.register(await createAgentsBuilderCapabilities(getToolDeps, organizationId))
+  }
+  // Workflow-builder graph tools (plans/kopilot/workflow/04 §5). Unlike
+  // agents-builder there is no admin gate here: workflow authoring is
+  // per-workflow instance access, not an org rank, and every tool re-asserts
+  // the full ladder itself (`resolveWorkflowAuthoring` — fail-closed on absent
+  // capabilities, `workflowsView` area rung, org scope, per-instance
+  // view/edit, system-owned lockdown, dirty gate). `page` therefore only
+  // decides whether the tools are built and advertised, exactly like the
+  // page-gated registration above.
+  if (page === WORKFLOW_BUILDER_PAGE) {
+    registry.register(createWorkflowBuilderCapabilities(getToolDeps))
   }
   // Explicit "remember this" door into the AI memory (learned KB). The tool is
   // approval-gated in-chat; the flag keeps the whole AI-memory feature per-org.

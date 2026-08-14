@@ -14,6 +14,7 @@ import {
   useRunDeepLink,
   useWorkflowAccess,
   useWorkflowBlocks,
+  useWorkflowDraftRealtime,
   useWorkflowInit,
   useWorkflowShortcuts,
 } from '../hooks'
@@ -60,6 +61,10 @@ const WorkflowEditorInner = memo<{
 
   // Rehydrate a historical run from the `runId` URL param (survives remounts)
   useRunDeepLink()
+
+  // Rehydrate the canvas when the draft changes server-side (Kopilot graph
+  // mutations / turn reverts publish `workflow:draft-updated`)
+  useWorkflowDraftRealtime()
 
   // Initialize test input sync
   useTestInputSync()

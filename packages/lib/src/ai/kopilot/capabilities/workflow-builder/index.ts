@@ -90,8 +90,12 @@ export function createWorkflowBuilderCapabilities(getDeps: GetToolDeps): PageCap
       // A workflow turn is a turn-scoped transaction against the open draft:
       // the first mutation captures a pre-turn snapshot in Redis
       // (`graph-edit/turn-snapshot.ts`, inside `runGraphMutation`); turn end
-      // must keep it (completed — it backs the per-turn Undo card, KB parity)
-      // or revert (restore the pre-turn graph, guarded by `expectedTurnId`).
+      // discards it (completed — the turn committed atomically) or reverts
+      // (restore the pre-turn graph, guarded by `expectedTurnId`). Undo of a
+      // successful turn is the CANVAS's job: the builder's realtime subscriber
+      // records each Kopilot edit as a normal client-side history entry, so
+      // the snapshot exists only for failed-turn atomicity — there is no
+      // per-turn Undo card and no server-side undo of a completed turn.
       // The snapshot keyed by `(workflowAppId, turnId)` IS the "did THIS turn
       // write" record: `readWorkflowTurnSnapshot` with the turn id returns
       // null unless this turn wrote, which also stops a prior turn's
@@ -104,17 +108,18 @@ export function createWorkflowBuilderCapabilities(getDeps: GetToolDeps): PageCap
         // path) the persist seam; neither belongs in this capability's
         // import-time graph, and the laziness keeps tests free to mock the
         // graph-edit module wholesale.
-        const { readWorkflowTurnSnapshot, revertWorkflowTurn } = await import(
+        const { finalizeWorkflowTurn, readWorkflowTurnSnapshot, revertWorkflowTurn } = await import(
           '../../../../workflows/graph-edit/turn-snapshot'
         )
         const snapshot = await readWorkflowTurnSnapshot(workflowAppId, turnId)
         if (!snapshot) return
         try {
           if (outcome === 'completed') {
-            // Deliberately NOT `finalizeWorkflowTurn` (a discard): the snapshot
-            // is KEPT so the Undo card can call `revertWorkflowTurn` after a
-            // successful turn. Cleanup = next turn's capture, the TTL, or a
-            // manual canvas save clearing it (`clearWorkflowTurnSnapshot`).
+            // The turn committed — discard its snapshot (turn-checked, so a
+            // fresher turn's slot is never cleared). Keeping it would only
+            // leave a stale revert target around; client-side canvas history
+            // owns undo from here.
+            await finalizeWorkflowTurn(workflowAppId, turnId)
             return
           }
           // `expectedTurnId` (the third argument) is load-bearing: it rejects

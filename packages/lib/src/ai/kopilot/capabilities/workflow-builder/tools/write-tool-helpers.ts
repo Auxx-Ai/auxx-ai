@@ -11,8 +11,9 @@ export type WriteResolution = { ok: true; scope: GraphMutationScope } | { ok: fa
 /**
  * Shared preamble of every graph mutation tool: the edit-tier guard (incl. the
  * dirty gate) plus the turn id the snapshot lifecycle keys on. A write without
- * a `turnId` would take no pre-turn snapshot — no Undo, no revert-on-failure —
- * so it is refused outright (KB `runBlockCrudOp` parity).
+ * a `turnId` would take no pre-turn snapshot — no revert-on-failure, so a
+ * half-applied turn couldn't be rolled back — so it is refused outright (KB
+ * `runBlockCrudOp` parity).
  */
 export async function resolveWorkflowWrite(
   getDeps: GetToolDeps,

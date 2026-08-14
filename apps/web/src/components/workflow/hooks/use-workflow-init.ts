@@ -16,8 +16,66 @@ import { initializeWorkflow } from '../utils/workflow-initializer'
  * so the global wins. The route really returns canvas nodes; correct it here
  * rather than trusting the declared shape.
  */
-type FetchedWorkflow = Omit<FetchWorkflowResponse, 'graph'> & {
+export type FetchedWorkflow = Omit<FetchWorkflowResponse, 'graph'> & {
   graph: { nodes: FlowNode[]; edges: FlowEdge[]; viewport: Viewport }
+}
+
+/**
+ * Apply a fetched workflow response to the module-level stores and produce the
+ * canvas-ready graph — THE graph→store mapping. Shared by the initial load
+ * below and the `workflow:draft-updated` realtime rehydrate
+ * (`use-workflow-draft-realtime.ts`) so a second mapping never drifts.
+ *
+ * Marks the store clean (`isDirty: false`) — callers only run this against a
+ * server draft that IS the canvas's new truth. Does not apply the viewport;
+ * callers decide (initial load seeds it, the realtime rehydrate keeps the
+ * user's current view).
+ */
+export function applyFetchedWorkflow(workflow: FetchedWorkflow): {
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+  viewport: Viewport | null
+  metadata: WorkflowMetadata
+} {
+  const metadata: WorkflowMetadata = {
+    id: workflow.id,
+    name: workflow.name,
+    description: workflow.description || '',
+    version: workflow.version,
+    lastModified: new Date(workflow.updatedAt),
+    createdBy: workflow.createdBy,
+    tags: [],
+  }
+  // Update workflow store — `workflow` carries the fresh `graphHash`, which is
+  // the CAS token every subsequent canvas save posts as `expectedGraphHash`.
+  useWorkflowStore.setState({
+    workflow: workflow as any,
+    workflowId: workflow.workflowId, // Use the actual workflow ID, not the WorkflowApp ID
+    metadata,
+    workflowAppId: workflow.workflowAppId,
+    hasPublishedVersion: !!(workflow as any).hasPublishedVersion,
+    isDirty: false,
+    isLoading: false,
+  })
+  // Process environment variables if present
+  if (workflow.envVars && Array.isArray(workflow.envVars)) {
+    const varStore = useVarStore.getState()
+    varStore.actions.initializeStore({
+      environmentVariables: workflow.envVars.map((envVar: any) => ({
+        id: envVar.id || `env.${envVar.name}`,
+        name: envVar.name,
+        value: envVar.value,
+        type: envVar.type || 'string',
+        description: envVar.description,
+      })),
+    })
+  }
+  if (workflow.graph) {
+    const { nodes: graphNodes, edges: graphEdges, viewport: graphViewport } = workflow.graph
+    const { nodes, edges } = initializeWorkflow(graphNodes || [], graphEdges || [])
+    return { nodes, edges, viewport: graphViewport || null, metadata }
+  }
+  return { nodes: [], edges: [], viewport: null, metadata }
 }
 
 interface UseWorkflowInitOptions {
@@ -94,66 +152,22 @@ export const useWorkflowInit = (options?: UseWorkflowInitOptions): UseWorkflowIn
       }
       const workflow = (await response.json()) as FetchedWorkflow
       setWorkflowData(workflow)
-      // Create metadata
-      const metadata: WorkflowMetadata = {
-        id: workflow.id,
-        name: workflow.name,
-        description: workflow.description || '',
-        version: workflow.version,
-        lastModified: new Date(workflow.updatedAt),
-        createdBy: workflow.createdBy,
-        tags: [],
-      }
-      // Update workflow store
-      useWorkflowStore.setState({
-        workflow: workflow as any,
-        workflowId: workflow.workflowId, // Use the actual workflow ID, not the WorkflowApp ID
-        metadata,
-        workflowAppId: workflow.workflowAppId,
-        hasPublishedVersion: !!(workflow as any).hasPublishedVersion,
-        isDirty: false,
-        isLoading: false,
-      })
-      // Process environment variables if present
+      // Apply to stores + build the canvas graph — shared with the realtime
+      // rehydrate, see `applyFetchedWorkflow` above.
+      const applied = applyFetchedWorkflow(workflow)
+      // Set environment variables for backward compatibility
       if (workflow.envVars && Array.isArray(workflow.envVars)) {
-        const varStore = useVarStore.getState()
-        // Initialize the var store with workflow data including environment variables
-        varStore.actions.initializeStore({
-          environmentVariables: workflow.envVars.map((envVar: any) => ({
-            id: envVar.id || `env.${envVar.name}`,
-            name: envVar.name,
-            value: envVar.value,
-            type: envVar.type || 'string',
-            // isSecret: envVar.type === 'secret' || envVar.isSecret,
-            description: envVar.description,
-          })),
-        })
-        // Set environment variables for backward compatibility
         setEnvironmentVariables(workflow.envVars)
       }
       console.log('Workflow data loaded:', workflow)
-      // Extract nodes and edges if present
-      if (workflow.graph) {
-        const { nodes: graphNodes, edges: graphEdges, viewport: graphViewport } = workflow.graph
-        // Initialize nodes and edges with proper metadata
-        const { nodes: initializedNodes, edges: initializedEdges } = initializeWorkflow(
-          graphNodes || [],
-          graphEdges || []
-        )
-
-        // Note: App metadata (appId, installationId, blockId) is parsed directly
-        // in AppWorkflowNode from data.type when needed.
-        // StandardNode has a fallback to use AppWorkflowNode for unregistered app node types.
-        setNodes(initializedNodes)
-        setEdges(initializedEdges)
-        setViewport(graphViewport || null)
-        // Variable syncing now happens automatically via VarStoreSyncProvider
-        // The ReactFlow subscription will handle node variable updates
-      } else {
-        setNodes([])
-        setEdges([])
-        setViewport(null)
-      }
+      // Note: App metadata (appId, installationId, blockId) is parsed directly
+      // in AppWorkflowNode from data.type when needed.
+      // StandardNode has a fallback to use AppWorkflowNode for unregistered app node types.
+      setNodes(applied.nodes)
+      setEdges(applied.edges)
+      setViewport(applied.viewport)
+      // Variable syncing now happens automatically via VarStoreSyncProvider
+      // The ReactFlow subscription will handle node variable updates
     } catch (err) {
       console.error('Error loading workflow:', err)
       setError(err as Error)
