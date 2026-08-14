@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/hooks/use-node-interactions.ts
 
+import { firstPathSegment, rewriteVariableRefs } from '@auxx/lib/workflows/variable-ref-rewriter'
 import { toastError, toastInfo, toastSuccess } from '@auxx/ui/components/toast'
 import { uniqueBy } from '@auxx/utils'
 import { generateId } from '@auxx/utils/generateId'
@@ -269,15 +270,42 @@ export const useNodesInteractions = () => {
       const offsetX = pastePosition.x - minX
       const offsetY = pastePosition.y - minY
 
-      // Create ID mapping for nodes
+      // Create ID mapping for nodes. Assigned in its own pass, up front, so that
+      // every pasted node's new id is known before any node.data gets rewritten —
+      // a pasted node can reference another pasted node regardless of clipboard
+      // iteration order.
       const idMapping: Record<string, string> = {}
+      clipboardElements.forEach((node) => {
+        idMapping[node.id] = generateId()
+      })
+      // The OLD ids being pasted — gates which bare (non-`{{…}}`) strings in
+      // node.data are treated as variable references at all (see
+      // `rewriteVariableRefs`). Refs to nodes outside this set (e.g. an upstream
+      // node that stayed put) are left untouched.
+      const pastedOldNodeIds = new Set(Object.keys(idMapping))
+      const mapVariablePath = (path: string): string => {
+        const segment = firstPathSegment(path)
+        const mappedSegment = idMapping[segment]
+        return mappedSegment ? mappedSegment + path.slice(segment.length) : path
+      }
+
       const nodesToPaste: FlowNode[] = []
 
       // Paste nodes with new IDs
       clipboardElements.forEach((node) => {
-        const nodeData = node.data
-        const newId = generateId()
-        idMapping[node.id] = newId
+        const newId = idMapping[node.id]
+        // Guaranteed present — idMapping was built from this same clipboardElements
+        // list above. Guard only to satisfy noUncheckedIndexedAccess.
+        if (!newId) return
+        // Deep-clone before rewriting: clipboard nodes hold direct references to
+        // the copied nodes' data (see handleCopyNode), and rewriteVariableRefs
+        // mutates in place — without this, pasting would rewrite the ORIGINAL
+        // node's `{{…}}` refs too.
+        const nodeData = rewriteVariableRefs(
+          structuredClone(node.data),
+          pastedOldNodeIds,
+          mapVariablePath
+        )
 
         // Calculate zIndex if node has parentId
         let zIndex = node.zIndex || 0
@@ -323,7 +351,7 @@ export const useNodesInteractions = () => {
       setNodes([...nodes, ...nodesToPaste])
 
       // Handle edges between pasted nodes
-      const clipboardNodeIds = new Set(clipboardElements.map((n) => n.id))
+      const clipboardNodeIds = pastedOldNodeIds
       const edgesToPaste: FlowEdge[] = []
 
       // Find all edges that connect clipboard nodes

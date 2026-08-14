@@ -1,6 +1,11 @@
 // packages/lib/src/conditions/operator-definitions.ts
 
 import { FieldType } from '@auxx/database/enums'
+// `FieldType` above is the runtime value map (used as `FieldType.TEXT` etc.
+// throughout this file); the type-level union is imported separately under
+// its own name so `mapFieldTypeToBaseType` below can be typed against it
+// without renaming the ~170 existing `FieldType.<MEMBER>` value references.
+import type { FieldType as FieldTypeValue } from '@auxx/database/types'
 import { BaseType } from '../workflow-engine/core/types'
 
 /**
@@ -856,34 +861,86 @@ export function getOperatorsByCategory(
 /**
  * Maps FieldType to BaseType for fallback operator lookup
  * Used when supportedFieldTypes is not defined on an operator
+ *
+ * The switch is exhaustive over every `FieldType` member (see `_exhaustive`
+ * below): adding a new member to the enum without a case here fails to
+ * compile, instead of silently falling through to the ANY default. NOT
+ * unified with `workflow-engine/utils/field-type-mapper.ts`'s own
+ * `mapFieldTypeToBaseType` on purpose — their `ADDRESS`/`CALC`/default
+ * outputs genuinely diverge:
+ *  - `ADDRESS` maps to `BaseType.ADDRESS` here (vs. STRING there) because
+ *    resource-condition operators key off the structured address operator
+ *    set, not the free-text one.
+ *  - `CALC` maps to `BaseType.ANY` here (calculated fields aren't typically
+ *    filterable, so every operator stays a candidate) rather than STRING.
+ *  - The default/unknown case returns `BaseType.ANY` here, not STRING —
+ *    `getOperatorsForBaseType(ANY)` returns every operator, so this is a
+ *    fail-OPEN default (an unrecognized field type still gets a full
+ *    operator list). Changing this to STRING would silently narrow which
+ *    operators resource conditions offer for any field type this function
+ *    doesn't recognize.
  */
-export function mapFieldTypeToBaseType(fieldType: string): BaseType {
-  const mapping: Record<string, BaseType> = {
-    [FieldType.TEXT]: BaseType.STRING,
-    [FieldType.NAME]: BaseType.STRING,
-    [FieldType.RICH_TEXT]: BaseType.STRING,
-    [FieldType.EMAIL]: BaseType.EMAIL,
-    [FieldType.URL]: BaseType.URL,
-    [FieldType.PHONE_INTL]: BaseType.PHONE,
-    [FieldType.NUMBER]: BaseType.NUMBER,
-    [FieldType.CURRENCY]: BaseType.CURRENCY,
-    [FieldType.CHECKBOX]: BaseType.BOOLEAN,
-    [FieldType.SINGLE_SELECT]: BaseType.ENUM,
-    [FieldType.MULTI_SELECT]: BaseType.ARRAY,
-    [FieldType.TAGS]: BaseType.TAGS,
-    [FieldType.DATE]: BaseType.DATE,
-    [FieldType.DATETIME]: BaseType.DATETIME,
-    [FieldType.TIME]: BaseType.TIME,
-    [FieldType.FILE]: BaseType.FILE,
-    [FieldType.RELATIONSHIP]: BaseType.RELATION,
-    [FieldType.ACTOR]: BaseType.ACTOR,
-    [FieldType.ADDRESS]: BaseType.ADDRESS,
-    [FieldType.ADDRESS_STRUCT]: BaseType.ADDRESS,
-    [FieldType.JSON]: BaseType.JSON,
-    [FieldType.CALC]: BaseType.ANY, // Calculated fields - not typically filterable
+export function mapFieldTypeToBaseType(fieldType: FieldTypeValue | string): BaseType {
+  // Cast only to enable switch-exhaustiveness checking against every real
+  // `FieldType` member below — the parameter still accepts arbitrary strings,
+  // and a genuinely-invalid one still flows to `default` at runtime exactly
+  // as before.
+  const type = fieldType as FieldTypeValue
+  switch (type) {
+    case FieldType.TEXT:
+    case FieldType.NAME:
+    case FieldType.RICH_TEXT:
+      return BaseType.STRING
+    case FieldType.EMAIL:
+      return BaseType.EMAIL
+    case FieldType.URL:
+      return BaseType.URL
+    case FieldType.PHONE_INTL:
+      return BaseType.PHONE
+    case FieldType.NUMBER:
+      return BaseType.NUMBER
+    case FieldType.CURRENCY:
+      return BaseType.CURRENCY
+    case FieldType.CHECKBOX:
+      return BaseType.BOOLEAN
+    case FieldType.SINGLE_SELECT:
+      return BaseType.ENUM
+    case FieldType.MULTI_SELECT:
+      return BaseType.ARRAY
+    case FieldType.TAGS:
+      return BaseType.TAGS
+    case FieldType.DATE:
+      return BaseType.DATE
+    case FieldType.DATETIME:
+      return BaseType.DATETIME
+    case FieldType.TIME:
+      return BaseType.TIME
+    case FieldType.FILE:
+      return BaseType.FILE
+    case FieldType.RELATIONSHIP:
+      return BaseType.RELATION
+    case FieldType.ACTOR:
+      return BaseType.ACTOR
+    case FieldType.ADDRESS:
+      return BaseType.ADDRESS
+    case FieldType.ADDRESS_STRUCT:
+      return BaseType.ADDRESS
+    case FieldType.JSON:
+      return BaseType.JSON
+    case FieldType.CALC:
+      // Calculated fields - not typically filterable
+      return BaseType.ANY
+    default: {
+      // Exhaustiveness guard: once every `FieldType` member has its own case
+      // above, `type` narrows to `never` here. A new enum member added
+      // without a matching case fails this assignment at compile time. Still
+      // reachable at runtime for a raw string that isn't a real FieldType —
+      // same fail-open ANY fallback as before.
+      const _exhaustive: never = type
+      void _exhaustive
+      return BaseType.ANY
+    }
   }
-
-  return mapping[fieldType] ?? BaseType.ANY
 }
 
 /**

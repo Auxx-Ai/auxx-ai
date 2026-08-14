@@ -1395,6 +1395,12 @@
       "source": "./src/workflows/index.ts",
       "import": "./dist/workflows/index.mjs",
       "default": "./src/workflows/index.ts"
+    },
+    "./workflows/variable-ref-rewriter": {
+      "types": "./src/workflows/variable-ref-rewriter.ts",
+      "source": "./src/workflows/variable-ref-rewriter.ts",
+      "import": "./dist/workflows/variable-ref-rewriter.mjs",
+      "default": "./src/workflows/variable-ref-rewriter.ts"
     }
   },
   "scripts": {

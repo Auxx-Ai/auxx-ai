@@ -277,6 +277,11 @@ describe('CRUD node resolvability', () => {
     )
     expect(declared.length).toBeGreaterThan(5)
     await assertResolvability(ctx, written, declared, 'crud.create.vendor')
+    // Retires the former `crudSuccessErrorDetailsPin` (known-broken.ts):
+    // `errorDetails` is declared unconditionally, and now the success path
+    // writes it to `null` next to `error: null`, same as the failure path
+    // (`handleCrudError`) already did.
+    expect(await ctx.resolveVariablePath(`${nodeId}.errorDetails`)).toBeNull()
   })
 
   it('update (custom entity Vendor) — declared ⊆ resolvable, written ⊆ declared, labels present', async () => {
@@ -308,6 +313,7 @@ describe('CRUD node resolvability', () => {
     )
     expect(declared.length).toBeGreaterThan(5)
     await assertResolvability(ctx, written, declared, 'crud.update.vendor')
+    expect(await ctx.resolveVariablePath(`${nodeId}.errorDetails`)).toBeNull()
   })
 
   it('delete (custom entity Vendor) — declared ⊆ resolvable, written ⊆ declared, labels present', async () => {
@@ -335,6 +341,7 @@ describe('CRUD node resolvability', () => {
       })
     )
     await assertResolvability(ctx, written, declared, 'crud.delete.vendor')
+    expect(await ctx.resolveVariablePath(`${nodeId}.errorDetails`)).toBeNull()
   })
 
   it('thread-actions update — declared ⊆ resolvable, written ⊆ declared, labels present', async () => {
@@ -359,6 +366,7 @@ describe('CRUD node resolvability', () => {
     )
     expect(declared.length).toBeGreaterThan(10)
     await assertResolvability(ctx, written, declared, 'crud.thread.update')
+    expect(await ctx.resolveVariablePath(`${nodeId}.errorDetails`)).toBeNull()
   })
 
   it('error_strategy "default" — usedDefaults/defaultValues resolve after a forced failure', async () => {
@@ -406,5 +414,45 @@ describe('CRUD node resolvability', () => {
     expect(await ctx.resolveVariablePath(`${nodeId}.defaultValues`)).toEqual({
       fallbackNote: 'applied fallback',
     })
+  })
+
+  it('error_strategy "default" with no default_values configured — falls through to fail, but usedDefaults/defaultValues still resolve', async () => {
+    updateValues.mockRejectedValueOnce(new Error('simulated update failure'))
+    const nodeId = 'crud_vendor_update_default_empty'
+    const { ctx, node, result, written } = await runCrud(nodeId, {
+      resourceType: VENDOR_DEF_ID,
+      mode: 'update',
+      resourceId: VENDOR_UPDATE_INSTANCE_ID,
+      data: { name: 'Initech Supply' },
+      error_strategy: CrudErrorStrategy.default,
+      default_values: [],
+    })
+
+    // No default_values configured — `handleCrudError`'s 'default' case falls
+    // through to 'fail' (see the `crud.ts` comment above that fall-through).
+    expect(result.status).toBe('failed')
+    // Both are declared unconditionally whenever error_strategy === 'default',
+    // same as the configured-defaults scenario above — the fall-through must
+    // not leave them permanently unresolvable.
+    expect(written).toContain(`${nodeId}.usedDefaults`)
+    expect(written).toContain(`${nodeId}.defaultValues`)
+
+    const declared = flattenDeclared(
+      crudManifest.resolveOutputs!(node.data as never, nodeId, {
+        resource: VENDOR_RESOURCE,
+        allResources: ALL_RESOURCES,
+        resolveVariable: () => undefined,
+      })
+    )
+    expect(declared.map((d) => d.id)).toContain(`${nodeId}.usedDefaults`)
+    expect(declared.map((d) => d.id)).toContain(`${nodeId}.defaultValues`)
+
+    // Same reasoning as the configured-defaults scenario: the update
+    // genuinely failed, so the full declared tree isn't resolvable — assert
+    // write/label coverage plus the two variables this scenario exists to prove.
+    assertLabelCoverage(declared, 'crud.update.default-strategy-empty')
+    assertWrittenCovered(written, declared, 'crud.update.default-strategy-empty')
+    expect(await ctx.resolveVariablePath(`${nodeId}.usedDefaults`)).toBe(false)
+    expect(await ctx.resolveVariablePath(`${nodeId}.defaultValues`)).toBeNull()
   })
 })
