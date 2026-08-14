@@ -376,6 +376,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'a7a',
     dbColumn: 'firstInteractionAt',
     nullable: true,
+    showInTable: false,
     capabilities: {
       filterable: true,
       sortable: true,
@@ -397,6 +398,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'a7b',
     dbColumn: 'lastInteractionAt',
     nullable: true,
+    showInTable: false,
     capabilities: {
       filterable: true,
       sortable: true,

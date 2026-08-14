@@ -482,6 +482,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'aCb',
     dbColumn: 'firstInteractionAt',
     nullable: true,
+    showInTable: false,
     capabilities: {
       filterable: true,
       sortable: true,
@@ -504,6 +505,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'aCc',
     dbColumn: 'lastInteractionAt',
     nullable: true,
+    showInTable: false,
     capabilities: {
       filterable: true,
       sortable: true,
