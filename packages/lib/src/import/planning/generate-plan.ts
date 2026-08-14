@@ -26,6 +26,8 @@ export interface AnalyzedRow {
   existingRecordId?: string
   fields: Record<string, unknown>
   errors: string[]
+  /** Non-fatal issues — the row still imports */
+  warnings: string[]
 }
 
 /** Options for generating a plan */
@@ -179,6 +181,7 @@ export async function generatePlan(options: GeneratePlanOptions): Promise<Genera
       existingRecordId: analysis.existingRecordId,
       fields: analysis.resolvedData,
       errors: analysis.errors,
+      warnings: analysis.warnings,
     })
 
     // Add to batch
@@ -186,6 +189,7 @@ export async function generatePlan(options: GeneratePlanOptions): Promise<Genera
       strategyId: strategy.id,
       rowIndex: analysis.rowIndex,
       existingRecordId: analysis.existingRecordId,
+      warningMessage: analysis.warnings.length > 0 ? analysis.warnings.join('; ') : undefined,
     })
 
     // Insert batch when full

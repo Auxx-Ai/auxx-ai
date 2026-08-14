@@ -39,6 +39,8 @@ export interface ImportStatistics {
   updated: number
   skipped: number
   failed: number
+  /** Rows that imported with at least one warning */
+  warnings?: number
   durationMs?: number
 }
 

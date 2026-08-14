@@ -15,6 +15,7 @@ export type ImportEventType =
   | 'planning:complete'
   | 'execution:progress'
   | 'execution:complete'
+  | 'row:warning'
   | 'error'
 
 /** Base event structure */
@@ -57,6 +58,8 @@ export interface PlanningRowEvent extends ImportEvent {
   existingRecordId?: string
   fields: Record<string, unknown>
   errors: string[]
+  /** Non-fatal issues (dropped split elements) — the row still imports */
+  warnings?: string[]
 }
 
 /** Planning progress event */
@@ -91,6 +94,13 @@ export interface ExecutionCompleteEvent extends ImportEvent {
   durationMs: number
 }
 
+/** Row warning event — the row imported, but a value was dropped or the strategy degraded */
+export interface RowWarningEvent extends ImportEvent {
+  type: 'row:warning'
+  rowIndex: number
+  message: string
+}
+
 /** Error event */
 export interface ErrorEvent extends ImportEvent {
   type: 'error'
@@ -108,4 +118,5 @@ export type AnyImportEvent =
   | PlanningCompleteEvent
   | ExecutionProgressEvent
   | ExecutionCompleteEvent
+  | RowWarningEvent
   | ErrorEvent

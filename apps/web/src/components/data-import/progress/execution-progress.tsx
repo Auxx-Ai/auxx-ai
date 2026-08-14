@@ -96,6 +96,17 @@ export function ExecutionProgress({ progress, isConnected }: ExecutionProgressPr
             </div>
             <p className='text-lg font-bold text-red-600'>{progress.failed.toLocaleString()}</p>
           </div>
+          {progress.warnings > 0 && (
+            <div className='flex items-center justify-between p-4'>
+              <div className='flex items-center gap-2'>
+                <EntityIcon iconId='alert-triangle' color='amber' size='sm' />
+                <span className='text-sm text-amber-600'>Warnings</span>
+              </div>
+              <p className='text-lg font-bold text-amber-600'>
+                {progress.warnings.toLocaleString()}
+              </p>
+            </div>
+          )}
           {/* Connection status */}
           <div className='flex items-center justify-center gap-2 p-3 bg-muted/30 text-xs text-muted-foreground'>
             <div className={`size-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />

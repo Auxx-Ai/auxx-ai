@@ -3,7 +3,7 @@
 'use client'
 
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Info } from 'lucide-react'
 import { api } from '~/trpc/react'
 
 interface ErrorSummaryProps {
@@ -36,6 +36,40 @@ export function ErrorSummary({ errorCount, planId }: ErrorSummaryProps) {
           ))}
         </ul>
         {errorCount > 5 && <p className='text-sm mt-2'>...and {errorCount - 5} more</p>}
+      </AlertDescription>
+    </Alert>
+  )
+}
+
+interface WarningSummaryProps {
+  planId: string
+}
+
+/**
+ * Summary of rows that import with non-fatal warnings (invalid values dropped
+ * from a multi-value cell, values already owned by another record).
+ */
+export function WarningSummary({ planId }: WarningSummaryProps) {
+  const { data } = api.dataImport.getPlanWarnings.useQuery({ planId, limit: 5 })
+
+  if (!data || data.total === 0) return null
+
+  return (
+    <Alert>
+      <Info className='h-4 w-4' />
+      <AlertTitle>
+        {data.total} {data.total === 1 ? 'row has' : 'rows have'} warnings
+      </AlertTitle>
+      <AlertDescription className='mt-2'>
+        <p className='mb-2'>These rows still import, but some values were skipped:</p>
+        <ul className='text-sm space-y-1'>
+          {data.warnings.map((warning, i) => (
+            <li key={i} className='font-mono'>
+              Row {warning.rowIndex + 1}: {warning.warning}
+            </li>
+          ))}
+        </ul>
+        {data.total > 5 && <p className='text-sm mt-2'>...and {data.total - 5} more</p>}
       </AlertDescription>
     </Alert>
   )

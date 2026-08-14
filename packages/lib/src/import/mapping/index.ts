@@ -18,7 +18,9 @@ export {
 } from './run-auto-map'
 export {
   type AutoMapUpdateInput,
+  assertNoDuplicateTargetMapping,
   batchUpdateMappingsFromAutoMap,
+  type MappedColumnRef,
   type RelationConfig,
   type SaveMappingInput,
   saveMappingProperty,

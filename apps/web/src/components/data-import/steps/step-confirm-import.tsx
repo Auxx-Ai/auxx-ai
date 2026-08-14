@@ -116,7 +116,7 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
   // Show completion
   if (job?.status === 'completed') {
     const stats = job.statistics as
-      | { created?: number; updated?: number; skipped?: number }
+      | { created?: number; updated?: number; skipped?: number; warnings?: number }
       | undefined
     return (
       <ImportCompleteCard
@@ -125,6 +125,7 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
           created: stats?.created ?? 0,
           updated: stats?.updated ?? 0,
           skipped: stats?.skipped ?? 0,
+          warnings: stats?.warnings ?? 0,
         }}
         onComplete={onComplete}
       />

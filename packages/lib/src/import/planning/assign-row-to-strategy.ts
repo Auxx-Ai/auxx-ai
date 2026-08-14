@@ -9,6 +9,8 @@ export interface AssignRowInput {
   strategyId: string
   rowIndex: number
   existingRecordId?: string
+  /** Non-fatal planning issues (dropped split elements) — joined with '; ' */
+  warningMessage?: string
 }
 
 /**
@@ -28,6 +30,7 @@ export async function assignRowToStrategy(
       importPlanStrategyId: input.strategyId,
       rowIndex: input.rowIndex,
       existingRecordId: input.existingRecordId,
+      warningMessage: input.warningMessage,
       status: 'planned',
       updatedAt: new Date(),
     })
@@ -45,6 +48,7 @@ export async function assignRowToStrategy(
     status: result.status as ImportPlanRow['status'],
     resultRecordId: result.resultRecordId ?? undefined,
     errorMessage: result.errorMessage ?? undefined,
+    warningMessage: result.warningMessage ?? undefined,
     executedAt: result.executedAt ?? undefined,
   }
 }
@@ -67,6 +71,7 @@ export async function batchAssignRows(db: Database, assignments: AssignRowInput[
       importPlanStrategyId: a.strategyId,
       rowIndex: a.rowIndex,
       existingRecordId: a.existingRecordId,
+      warningMessage: a.warningMessage,
       status: 'planned' as const,
       updatedAt: now,
     }))

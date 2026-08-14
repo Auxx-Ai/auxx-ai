@@ -1,0 +1,1 @@
+ALTER TABLE "ImportPlanRow" ADD COLUMN "warningMessage" text;

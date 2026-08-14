@@ -14,5 +14,6 @@ export type {
   PlanningProgressEvent,
   PlanningRowEvent,
   ResolutionProgressEvent,
+  RowWarningEvent,
   UploadProgressEvent,
 } from './event-types'

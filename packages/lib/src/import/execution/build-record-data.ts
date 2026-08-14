@@ -22,6 +22,10 @@ export function getSourceValue(row: SourceRow, mapping: ImportMappingProperty): 
       ? (row as Record<string, unknown>)[mapping.sourceFieldKey]
       : (row as Record<number, unknown>)[mapping.sourceColumnIndex]
   if (raw === null || raw === undefined) return ''
+  // Array-shaped source values (connector arrays, re-imported multi-value
+  // exports) join with ', ' — the same separator the CSV export uses — so a
+  // split resolution round-trips them instead of `String(raw)` mangling them.
+  if (Array.isArray(raw)) return raw.map((v) => String(v)).join(', ')
   return typeof raw === 'string' ? raw : String(raw)
 }
 
@@ -56,7 +60,9 @@ export function buildRecordData(
 
     if (resolution && resolution.resolvedValues.length > 0) {
       const resolvedValue = resolution.resolvedValues[0]!
-      if (resolvedValue.type === 'value') {
+      if (resolvedValue.type === 'value' || resolvedValue.type === 'warning') {
+        // 'warning' carries the valid subset of a split cell — use it; the
+        // dropped elements were already recorded as a row warning at planning.
         value = resolvedValue.value
       } else if (resolvedValue.type === 'create') {
         // For 'create' type, use the value as-is (will be created)

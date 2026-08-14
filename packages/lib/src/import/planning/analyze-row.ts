@@ -17,6 +17,11 @@ export interface AnalyzeRowContext {
 /**
  * Analyze a single row to determine its strategy and resolved data.
  *
+ * Identifier semantics for a multi-value cell (split resolutions): every
+ * element is matched independently (match-ANY). Exactly one distinct record →
+ * `update`; elements matching two DIFFERENT records → row error (ambiguous —
+ * do not guess); no match → `create` with the full array.
+ *
  * @param rowIndex - Row index
  * @param rowData - Map of columnIndex → rawValue
  * @param ctx - Analysis context
@@ -28,9 +33,10 @@ export async function analyzeRow(
   ctx: AnalyzeRowContext
 ): Promise<RowAnalysis> {
   const errors: string[] = []
+  const warnings: string[] = []
   const resolvedData: Record<string, unknown> = {}
 
-  let identifierValue: string | undefined
+  let identifierRawValue: string | undefined
 
   // Process each mapped column
   for (const mapping of ctx.mappings) {
@@ -41,10 +47,11 @@ export async function analyzeRow(
 
     const rawValue = rowData[mapping.sourceColumnIndex] ?? ''
     const hash = hashValue(rawValue)
+    const columnLabel = mapping.sourceColumnName ?? `Column ${mapping.sourceColumnIndex}`
 
     // Check if this is the identifier field
     if (mapping.targetFieldKey === ctx.identifierFieldKey) {
-      identifierValue = rawValue.trim()
+      identifierRawValue = rawValue.trim()
     }
 
     // Look up resolution for this value
@@ -55,6 +62,11 @@ export async function analyzeRow(
       if (resolution.isValid && resolution.resolvedValues.length > 0) {
         const resolved = resolution.resolvedValues[0]
         resolvedData[mapping.targetFieldKey] = resolved?.value ?? rawValue
+        // Split resolutions surface dropped elements as a non-fatal warning —
+        // the valid subset still imports.
+        if (resolved?.type === 'warning' && resolved.warning) {
+          warnings.push(`Column "${columnLabel}": ${resolved.warning}`)
+        }
       } else if (!resolution.isValid) {
         // Check if this is a user-initiated skip (no error message, empty resolved values)
         // vs an actual validation error (has error message)
@@ -65,9 +77,7 @@ export async function analyzeRow(
           // Don't add to resolvedData, don't add to errors
         } else {
           // Actual validation error - track it
-          errors.push(
-            `Column "${mapping.sourceColumnName ?? `Column ${mapping.sourceColumnIndex}`}": ${resolution.errorMessage ?? 'Resolution failed'}`
-          )
+          errors.push(`Column "${columnLabel}": ${resolution.errorMessage ?? 'Resolution failed'}`)
           resolvedData[mapping.targetFieldKey] = rawValue
         }
       } else {
@@ -83,11 +93,32 @@ export async function analyzeRow(
   let strategy: StrategyType = 'create'
   let existingRecordId: string | undefined
 
-  // If we have an identifier value and a lookup function, check for existing records
-  if (identifierValue && ctx.findExistingRecord) {
+  // Identifier values to match: a split resolution yields an array — match
+  // ANY element; a scalar identifier keeps the raw trimmed cell.
+  const identifierResolved = ctx.identifierFieldKey
+    ? resolvedData[ctx.identifierFieldKey]
+    : undefined
+  const identifierValues = Array.isArray(identifierResolved)
+    ? identifierResolved.filter((v): v is string => typeof v === 'string' && v.length > 0)
+    : identifierRawValue
+      ? [identifierRawValue]
+      : []
+
+  if (identifierValues.length > 0 && ctx.findExistingRecord) {
     try {
-      existingRecordId = (await ctx.findExistingRecord(identifierValue)) ?? undefined
-      if (existingRecordId) {
+      const matchedIds = new Set<string>()
+      for (const value of identifierValues) {
+        const matched = await ctx.findExistingRecord(value)
+        if (matched) matchedIds.add(matched)
+        if (matchedIds.size > 1) break
+      }
+
+      if (matchedIds.size > 1) {
+        errors.push(
+          'Identifier values match multiple different records — cannot determine which record to update'
+        )
+      } else if (matchedIds.size === 1) {
+        existingRecordId = [...matchedIds][0]
         strategy = 'update'
       }
     } catch {
@@ -106,5 +137,6 @@ export async function analyzeRow(
     existingRecordId,
     resolvedData,
     errors,
+    warnings,
   }
 }

@@ -22,16 +22,15 @@ export {
 // Execution
 export {
   type BatchRecord,
+  type BatchRecordData,
   buildMultipleRecordData,
   buildRecordData,
   claimImportManifestConsumed,
   type ExecuteBatchContext,
   type ExecutePlanOptions,
-  type ExecuteRowContext,
   type ExecuteStrategyContext,
   executeBatch,
   executePlan,
-  executeRow,
   executeStrategy,
   getImportManifest,
   getSourceValue,
@@ -125,11 +124,14 @@ export {
   generatePlan,
   getPlanErrors,
   getPlanPreviewRows,
+  getPlanWarnings,
   getPlanWithEstimates,
   markPlanCompleted,
   type PlanError,
   type PlanPreviewResult,
   type PlanPreviewRow,
+  type PlanWarning,
+  type PlanWarningsResult,
   type PlanWithEstimates,
 } from './planning'
 // Raw data operations
@@ -175,9 +177,11 @@ export {
   resolveDecimal,
   resolveDomain,
   resolveEmail,
+  resolveEmailSplit,
   resolveInteger,
   resolveMultiselectSplit,
   resolvePhone,
+  resolvePhoneSplit,
   resolveRelationCreate,
   // Relation lookups
   resolveRelationLookups,
@@ -187,7 +191,9 @@ export {
   resolveTextCuid,
   // Resolvers
   resolveTextValue,
+  resolveUrlSplit,
   resolveValue,
+  splitMultiValueCell,
   type UniqueValuesWithFieldConfig,
   // Types
   type UniqueValueWithResolution,

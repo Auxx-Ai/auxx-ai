@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNotNull } from 'drizzle-orm'
 import type { ImportPlanStatus, PlanEstimates } from '../types/plan'
 
 /** Plan with estimates */
@@ -108,13 +108,81 @@ export async function getPlanErrors(
   planId: string,
   limit: number = 10
 ): Promise<PlanError[]> {
-  const errorRows = await db.query.ImportPlanRow.findMany({
-    where: eq(schema.ImportPlanRow.status, 'failed'),
-    limit,
-  })
+  // Scope through the strategy join — a bare status filter would return
+  // failed rows of EVERY plan in the table.
+  const errorRows = await db
+    .select({
+      rowIndex: schema.ImportPlanRow.rowIndex,
+      errorMessage: schema.ImportPlanRow.errorMessage,
+    })
+    .from(schema.ImportPlanRow)
+    .innerJoin(
+      schema.ImportPlanStrategy,
+      eq(schema.ImportPlanRow.importPlanStrategyId, schema.ImportPlanStrategy.id)
+    )
+    .where(
+      and(
+        eq(schema.ImportPlanStrategy.importPlanId, planId),
+        eq(schema.ImportPlanRow.status, 'failed')
+      )
+    )
+    .orderBy(schema.ImportPlanRow.rowIndex)
+    .limit(limit)
 
   return errorRows.map((row) => ({
     rowIndex: row.rowIndex,
     error: row.errorMessage ?? 'Unknown error',
   }))
+}
+
+/** Plan warning entry */
+export interface PlanWarning {
+  rowIndex: number
+  warning: string
+}
+
+/** Warnings from an import plan, with the total count for the summary line. */
+export interface PlanWarningsResult {
+  total: number
+  warnings: PlanWarning[]
+}
+
+/**
+ * Get non-fatal row warnings from an import plan (dropped split elements,
+ * uniqueness conflicts dropped at execution, creates degraded to updates).
+ *
+ * @param db - Database instance
+ * @param planId - Import plan ID
+ * @param limit - Max warnings to return (default 10)
+ */
+export async function getPlanWarnings(
+  db: Database,
+  planId: string,
+  limit: number = 10
+): Promise<PlanWarningsResult> {
+  const rows = await db
+    .select({
+      rowIndex: schema.ImportPlanRow.rowIndex,
+      warningMessage: schema.ImportPlanRow.warningMessage,
+    })
+    .from(schema.ImportPlanRow)
+    .innerJoin(
+      schema.ImportPlanStrategy,
+      eq(schema.ImportPlanRow.importPlanStrategyId, schema.ImportPlanStrategy.id)
+    )
+    .where(
+      and(
+        eq(schema.ImportPlanStrategy.importPlanId, planId),
+        isNotNull(schema.ImportPlanRow.warningMessage)
+      )
+    )
+    .orderBy(schema.ImportPlanRow.rowIndex)
+
+  return {
+    total: rows.length,
+    warnings: rows.slice(0, limit).map((row) => ({
+      rowIndex: row.rowIndex,
+      warning: row.warningMessage ?? '',
+    })),
+  }
 }

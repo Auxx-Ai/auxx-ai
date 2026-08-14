@@ -156,6 +156,7 @@ export async function generatePlanJob(ctx: JobContext<GeneratePlanJobProps>): Pr
           existingRecordId: row.existingRecordId,
           fields: row.fields,
           errors: row.errors,
+          warnings: row.warnings,
         })
       },
       onProgress: async (phase, processed, total) => {

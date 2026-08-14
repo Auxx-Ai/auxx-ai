@@ -2,14 +2,19 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import { getBatchRowData } from '../raw-data/get-row-data'
-import type { ExecutionProgress } from '../types/execution'
+import type { ExecutionProgress, FieldWriteModes } from '../types/execution'
 import type { ImportMappingProperty } from '../types/mapping'
 import type { ImportPlanStrategy, StrategyType } from '../types/plan'
 import type { ValueResolution } from '../types/resolution'
 import { buildRecordData } from './build-record-data'
-import { type BatchRecord, type ExecuteBatchContext, executeBatch } from './execute-batch'
+import {
+  type BatchRecord,
+  type BatchRecordData,
+  type ExecuteBatchContext,
+  executeBatch,
+} from './execute-batch'
 
 /** Batch size for execution */
 const BATCH_SIZE = 50
@@ -23,21 +28,22 @@ export interface ExecuteStrategyContext {
   entityDefinitionId: string
   mappings: ImportMappingProperty[]
   resolutions: Map<string, ValueResolution>
+  /**
+   * Per-field write mode keyed by data key (customFieldId or targetFieldKey).
+   * Multi-value scalar targets carry `'add'` so import appends-as-alias
+   * instead of whole-field-setting; unlisted fields default to `'set'`.
+   */
+  fieldModes?: FieldWriteModes
+  /** Data keys of the identifier mapping (see ExecuteBatchContext) */
+  identifierKeys?: string[]
   /** Function to create a single record */
-  createRecord: (data: {
-    standardFields: Record<string, unknown>
-    customFields: Record<string, unknown>
-  }) => Promise<{ id: string }>
+  createRecord: (data: BatchRecordData) => Promise<{ id: string }>
   /** Function to update a single record */
-  updateRecord: (
-    id: string,
-    data: {
-      standardFields: Record<string, unknown>
-      customFields: Record<string, unknown>
-    }
-  ) => Promise<{ id: string }>
+  updateRecord: (id: string, data: BatchRecordData) => Promise<{ id: string }>
   /** Progress callback */
   onProgress?: (progress: ExecutionProgress) => void
+  /** Called when a row imports with a non-fatal warning */
+  onRowWarning?: (rowIndex: number, warning: string) => void | Promise<void>
 }
 
 /** Strategy execution result */
@@ -46,7 +52,36 @@ export interface StrategyExecutionResult {
   strategy: StrategyType
   executed: number
   failed: number
+  /** Rows that imported with at least one execution warning */
+  warnings: number
   durationMs: number
+}
+
+/** True for null / empty-string / empty-array resolved values. */
+function isBlankValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true
+  if (typeof value === 'string') return value.trim() === ''
+  if (Array.isArray(value)) return value.length === 0
+  return false
+}
+
+/**
+ * On UPDATE rows, a blank cell on a multi-value field is a NO-WRITE — the key
+ * is removed entirely. Without this a blank email cell in a re-import CLEARS
+ * the stored alias list (mode `'add'` with `null` would still be a write, and
+ * historic `'set'` behavior wiped the field outright).
+ */
+export function stripBlankMultiValues(
+  fields: Record<string, unknown>,
+  modes: FieldWriteModes | undefined
+): Record<string, unknown> {
+  if (!modes) return fields
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(fields)) {
+    if (modes[key] === 'add' && isBlankValue(value)) continue
+    result[key] = value
+  }
+  return result
 }
 
 /**
@@ -60,7 +95,17 @@ export async function executeStrategy(
   strategy: ImportPlanStrategy,
   ctx: ExecuteStrategyContext
 ): Promise<StrategyExecutionResult> {
-  const { db, jobId, mappings, resolutions, createRecord, updateRecord, onProgress } = ctx
+  const {
+    db,
+    jobId,
+    mappings,
+    resolutions,
+    fieldModes,
+    createRecord,
+    updateRecord,
+    onProgress,
+    onRowWarning,
+  } = ctx
   const startTime = Date.now()
 
   // Mark strategy as executing
@@ -90,6 +135,7 @@ export async function executeStrategy(
   const totalRows = planRows.length
   let executed = 0
   let failed = 0
+  let warned = 0
 
   // Process in batches
   for (let batchStart = 0; batchStart < planRows.length; batchStart += BATCH_SIZE) {
@@ -102,13 +148,18 @@ export async function executeStrategy(
     // Build batch records
     const batchRecords: BatchRecord[] = batchRows.map((row) => {
       const rowData = rawData.get(row.rowIndex) || {}
-      const { standardFields, customFields } = buildRecordData(rowData, mappings, resolutions)
+      let { standardFields, customFields } = buildRecordData(rowData, mappings, resolutions)
+
+      if (strategy.strategy === 'update') {
+        standardFields = stripBlankMultiValues(standardFields, fieldModes)
+        customFields = stripBlankMultiValues(customFields, fieldModes)
+      }
 
       return {
         rowIndex: row.rowIndex,
         planRowId: row.id,
         existingRecordId: row.existingRecordId ?? undefined,
-        data: { standardFields, customFields },
+        data: { standardFields, customFields, modes: fieldModes },
       }
     })
 
@@ -118,6 +169,7 @@ export async function executeStrategy(
       userId: ctx.userId,
       entityDefinitionId: ctx.entityDefinitionId,
       strategy: strategy.strategy,
+      identifierKeys: ctx.identifierKeys,
       createRecord,
       updateRecord,
     }
@@ -132,16 +184,26 @@ export async function executeStrategy(
           .update(schema.ImportPlanRow)
           .set({
             status: rowResult.success ? 'completed' : 'failed',
-            // The column has always held the bare instance id (`executeRow` writes
-            // the same thing). `rowResult.recordId` is now the branded
-            // `<defId>:<instanceId>` form, so read `instanceId` to keep the
-            // persisted value unchanged.
+            // The column has always held the bare instance id.
+            // `rowResult.recordId` is the branded `<defId>:<instanceId>` form,
+            // so read `instanceId` to keep the persisted value unchanged.
             resultRecordId: rowResult.instanceId,
             errorMessage: rowResult.error,
+            // Append execution warnings after any planning warning already on the row.
+            ...(rowResult.warning
+              ? {
+                  warningMessage: sql`CASE WHEN ${schema.ImportPlanRow.warningMessage} IS NULL THEN ${rowResult.warning} ELSE ${schema.ImportPlanRow.warningMessage} || '; ' || ${rowResult.warning} END`,
+                }
+              : {}),
             executedAt: new Date(),
             updatedAt: new Date(),
           })
           .where(eq(schema.ImportPlanRow.id, planRow.id))
+      }
+
+      if (rowResult.warning) {
+        warned++
+        await onRowWarning?.(rowResult.rowIndex, rowResult.warning)
       }
     }
 
@@ -180,6 +242,7 @@ export async function executeStrategy(
     strategy: strategy.strategy,
     executed,
     failed,
+    warnings: warned,
     durationMs: Date.now() - startTime,
   }
 }

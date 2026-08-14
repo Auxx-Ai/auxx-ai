@@ -21,6 +21,8 @@ export interface ImportableField {
   required: boolean
   isRelation: boolean
   isIdentifier: boolean
+  /** True for multi-value scalar fields (`options.multi`) — values append to the existing list */
+  multi?: boolean
   group: FieldGroup
   relationConfig?: {
     relatedEntityDefinitionId: string
@@ -78,6 +80,7 @@ export function getImportableFields(
         required: field.capabilities.required ?? false,
         isRelation: false,
         isIdentifier: false,
+        multi: field.options?.multi === true,
         group: (isCustomField ? 'custom' : 'system') as FieldGroup,
         options: field.options?.options,
       }

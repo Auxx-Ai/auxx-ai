@@ -50,6 +50,11 @@ export const ImportPlanRow = pgTable(
     // If execution failed, the error message
     errorMessage: text(),
 
+    // Non-fatal issues (invalid split elements dropped, uniqueness conflicts
+    // dropped, create degraded to update) — the row still imports. Multiple
+    // warnings are joined with '; '.
+    warningMessage: text(),
+
     // Execution timestamp
     executedAt: timestamp({ precision: 3 }),
   },

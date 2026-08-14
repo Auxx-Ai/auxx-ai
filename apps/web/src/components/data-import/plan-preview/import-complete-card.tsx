@@ -4,7 +4,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { Ban, CheckCircle2, Plus, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Ban, CheckCircle2, Plus, RefreshCw } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useAnalytics } from '~/hooks/use-analytics'
 
@@ -14,6 +14,8 @@ interface ImportCompleteCardProps {
     created: number
     updated: number
     skipped: number
+    /** Rows that imported with at least one warning (values skipped) */
+    warnings?: number
   }
   onComplete: () => void
 }
@@ -77,6 +79,17 @@ export function ImportCompleteCard({
             <p className='text-2xl font-bold'>{statistics.skipped.toLocaleString()}</p>
           </div>
         </div>
+
+        {/* Warnings notice */}
+        {(statistics.warnings ?? 0) > 0 && (
+          <div className='flex items-center gap-2 px-4 py-3 border-t text-sm text-muted-foreground'>
+            <AlertTriangle className='size-4 shrink-0 text-amber-500' />
+            <span>
+              {statistics.warnings} {statistics.warnings === 1 ? 'row' : 'rows'} imported with
+              warnings — some values were skipped
+            </span>
+          </div>
+        )}
 
         {/* Done button */}
         <div className='p-4 border-t bg-muted/30'>

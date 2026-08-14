@@ -10,6 +10,7 @@ export type {
   ExecutionContext,
   ExecutionProgress,
   ExecutionResult,
+  FieldWriteModes,
   RowExecutionResult,
 } from './execution'
 export {

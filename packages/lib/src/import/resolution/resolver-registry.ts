@@ -20,6 +20,7 @@ import {
   resolveRelationMatch,
 } from './resolvers/relation'
 import { resolveSelectCreate, resolveSelectValue } from './resolvers/select'
+import { resolveEmailSplit, resolvePhoneSplit, resolveUrlSplit } from './resolvers/split'
 import { resolveTextCuid, resolveTextValue } from './resolvers/text'
 import { resolveUrl } from './resolvers/url'
 
@@ -38,7 +39,10 @@ const RESOLVER_REGISTRY: Record<ResolutionType, ResolverFn> = {
   'datetime:custom': resolveDatetimeCustom,
   'boolean:truthy': resolveBoolean,
   'email:value': resolveEmail,
+  'email:split': resolveEmailSplit,
   'phone:value': resolvePhone,
+  'phone:split': resolvePhoneSplit,
+  'url:split': resolveUrlSplit,
   'select:value': resolveSelectValue,
   'select:create': resolveSelectCreate,
   'multiselect:split': resolveMultiselectSplit,

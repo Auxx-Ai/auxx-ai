@@ -14,7 +14,10 @@ export type ResolutionType =
   | 'datetime:custom' // Custom datetime format
   | 'boolean:truthy' // Boolean parsing
   | 'email:value' // Email validation
+  | 'email:split' // Split comma/semicolon cell into validated emails (multi fields)
   | 'phone:value' // Phone normalization
+  | 'phone:split' // Split cell into normalized phones (multi fields)
+  | 'url:split' // Split cell into normalized URLs (multi fields)
   | 'select:value' // Match enum option
   | 'select:create' // Match or create enum
   | 'multiselect:split' // Split and match

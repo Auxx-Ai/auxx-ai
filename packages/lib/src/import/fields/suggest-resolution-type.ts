@@ -42,15 +42,15 @@ export function suggestResolutionType(field: ImportableField): ResolutionType {
       return 'boolean:truthy'
 
     case 'email':
-      return 'email:value'
+      return field.multi ? 'email:split' : 'email:value'
 
     case 'phone':
-      return 'phone:value'
+      return field.multi ? 'phone:split' : 'phone:value'
 
     // URL fields keep scheme/path — `domain:value` strips them, so the value
     // could never round-trip against the write path's `https://host/...` form.
     case 'url':
-      return 'url:value'
+      return field.multi ? 'url:split' : 'url:value'
 
     case 'domain':
       return 'domain:value'
@@ -72,11 +72,11 @@ export function suggestResolutionType(field: ImportableField): ResolutionType {
       const key = field.key.toLowerCase()
 
       if (key === 'email' || key.includes('email')) {
-        return 'email:value'
+        return field.multi ? 'email:split' : 'email:value'
       }
 
       if (key === 'phone' || key.includes('phone') || key.includes('mobile')) {
-        return 'phone:value'
+        return field.multi ? 'phone:split' : 'phone:value'
       }
 
       if (key === 'id' || key === 'externalid' || key.includes('_id')) {
