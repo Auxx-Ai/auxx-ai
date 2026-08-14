@@ -2,7 +2,6 @@
 'use client'
 
 import type { FieldType } from '@auxx/database/types'
-import { extractValues } from '@auxx/lib/field-values/client'
 import { getFieldOutputKey, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { type FieldReference, fieldRefToKey } from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
@@ -16,6 +15,7 @@ import { getRecordStoreState } from '~/components/resources/store/record-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { getNormalizedRecordId } from '~/components/resources/utils/normalize-record-id'
 import { api } from '~/trpc/react'
+import { unwrapValue } from './unwrap-value'
 
 /**
  * Serializable record returned to an app's `useRecord(recordId)` hook.
@@ -30,15 +30,6 @@ interface AppRecord {
   data: Record<string, unknown>
   createdAt?: string | Date
   updatedAt?: string | Date
-}
-
-/** Unwrap a typed field value to a plain JS value for the app. */
-function unwrapValue(
-  value: TypedFieldValue | TypedFieldValue[] | null,
-  fieldType: FieldType
-): unknown {
-  const raws = extractValues(value, fieldType)
-  return raws.length <= 1 ? (raws[0] ?? null) : raws
 }
 
 /**
@@ -81,7 +72,8 @@ export function RecordDataHandler() {
           if (key in stored) {
             data[getFieldOutputKey(field)] = unwrapValue(
               stored[key] as TypedFieldValue | TypedFieldValue[] | null,
-              field.fieldType as FieldType
+              field.fieldType as FieldType,
+              field.options
             )
           } else {
             missing.push(ref)
@@ -98,7 +90,12 @@ export function RecordDataHandler() {
             })
             for (const row of result.values) {
               const field = refToField.get(fieldRefToKey(row.fieldRef))
-              if (field) data[getFieldOutputKey(field)] = unwrapValue(row.value, row.fieldType)
+              if (field)
+                data[getFieldOutputKey(field)] = unwrapValue(
+                  row.value,
+                  row.fieldType,
+                  field.options
+                )
             }
           } catch {
             // Best-effort: uncached fields are simply absent from `data`.

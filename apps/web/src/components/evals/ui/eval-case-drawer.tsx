@@ -2,6 +2,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import { primaryValue } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { AgentEvalAssertion, AgentEvalTarget, SimulationConfig } from '@auxx/types/evals'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
@@ -45,7 +46,9 @@ const CONTACT_IDENTITY_ATTRS: ('full_name' | 'primary_email')[] = ['full_name', 
 /** Coerce a system value (string, or a `{ firstName, lastName }` NAME) to a line. */
 function valueToString(value: unknown): string | undefined {
   if (typeof value === 'string') return value.trim() || undefined
-  if (Array.isArray(value)) return valueToString(value.find((v) => v != null))
+  // Multi-value fields (e.g. contact primary_email) read back as arrays —
+  // the persona identity uses the primary (first) value.
+  if (Array.isArray(value)) return valueToString(primaryValue(value))
   if (value && typeof value === 'object') {
     const n = value as { firstName?: string; lastName?: string }
     const joined = [n.firstName, n.lastName].filter(Boolean).join(' ').trim()

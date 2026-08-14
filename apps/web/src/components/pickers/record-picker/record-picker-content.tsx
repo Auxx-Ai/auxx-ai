@@ -77,6 +77,12 @@ export interface RecordPickerContentProps {
   /** Called with full item data on single-select (alternative to onSelectSingle) */
   onSelectItem?: (item: RecordPickerItem) => void
 
+  /** Called with the raw search-result items whenever they change (BEFORE
+   *  `excludeFilter` is applied). Lets a caller enrich its exclude logic with
+   *  data the picker rows don't carry (e.g. the recipient input prefetches
+   *  each contact's full multi-value email list). */
+  onResultsChange?: (items: RecordPickerItem[]) => void
+
   /** Externally controlled search string. Pair with `showInput={false}` to share a single
    *  search input across tabbed pickers (e.g. ReferencePickerContent). */
   externalSearch?: string
@@ -121,6 +127,7 @@ export function RecordPickerContent({
   excludeIds = [],
   excludeFilter,
   onSelectItem,
+  onResultsChange,
   externalSearch,
   showInput = true,
   pinnedSelectedIds,
@@ -193,6 +200,11 @@ export function RecordPickerContent({
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   })
+
+  // Surface the raw (pre-exclude) search results to the caller.
+  useEffect(() => {
+    if (searchResults?.items) onResultsChange?.(searchResults.items)
+  }, [searchResults, onResultsChange])
 
   // Hydrate items that will appear in the Selected section (snapshot + pinned)
   const { items: hydratedItems, isLoading: isHydrating } = useRelationship(selectedSectionIds)

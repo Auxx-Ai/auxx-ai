@@ -89,6 +89,10 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'company_website',
     systemSortOrder: 'a3',
     nullable: true,
+    // Multi-value: a company can hold several site URLs; the first (by
+    // sortKey) is the primary. Existing orgs are caught up by data
+    // migration 085.
+    options: { multi: true },
     capabilities: {
       filterable: true,
       sortable: true,

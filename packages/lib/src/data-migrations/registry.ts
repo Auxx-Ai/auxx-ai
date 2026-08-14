@@ -49,6 +49,7 @@ import { migration081BackfillInteractionFields } from './migrations/081-backfill
 import { migration082InteractionFieldsParticipantResolution } from './migrations/082-interaction-fields-participant-resolution'
 import { migration083FindManyPluralToIdRefs } from './migrations/083-find-many-plural-to-id-refs'
 import { migration084PrimaryEmailUnique } from './migrations/084-primary-email-unique'
+import { migration085MultiEmailWebsiteFlip } from './migrations/085-multi-email-website-flip'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -124,6 +125,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration082InteractionFieldsParticipantResolution,
     migration083FindManyPluralToIdRefs,
     migration084PrimaryEmailUnique,
+    migration085MultiEmailWebsiteFlip,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

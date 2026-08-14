@@ -1,8 +1,10 @@
 // apps/web/src/components/mail/email-editor/recipient-input.tsx
 'use client'
 import { IdentifierType } from '@auxx/database/enums'
-import type { IdentifierType as IdentifierTypeType } from '@auxx/database/types'
-import type { RecordPickerItem } from '@auxx/lib/resources/client'
+import type { FieldType, IdentifierType as IdentifierTypeType } from '@auxx/database/types'
+import { extractValues } from '@auxx/lib/field-values/client'
+import { getDefinitionId, type RecordPickerItem } from '@auxx/lib/resources/client'
+import type { TypedFieldValue } from '@auxx/types/field-value'
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Badge } from '@auxx/ui/components/badge'
 import {
@@ -19,6 +21,11 @@ import type React from 'react'
 import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { RecordPickerContent } from '~/components/pickers/record-picker/record-picker-content'
+import { useResourceStore } from '~/components/resources/store/resource-store'
+import { getNormalizedRecordId } from '~/components/resources/utils/normalize-record-id'
+import { resolveSystemAttributeRef } from '~/components/resources/utils/resolve-system-attribute'
+import { api } from '~/trpc/react'
+import { toEmailAddressList } from '../email-address-list'
 import { useEditorActiveStateContext } from './editor-active-state-context'
 
 export type RecipientField = 'TO' | 'CC' | 'BCC'
@@ -57,6 +64,13 @@ interface RecipientInputProps {
 
 const FIELD_LABELS: Record<RecipientField, string> = { TO: 'To', CC: 'Cc', BCC: 'Bcc' }
 const ALL_FIELDS: RecipientField[] = ['TO', 'CC', 'BCC']
+
+/** The picker row's own single known address (the primary) — the fallback
+ *  when the field read fails or returns nothing. */
+function itemFallbackAddresses(item: RecordPickerItem): string[] {
+  const single = toEmailAddressList(item.data?.email)[0] ?? (item.secondaryInfo || undefined)
+  return single ? [single] : []
+}
 
 function RecipientBadge({
   person,
@@ -180,6 +194,18 @@ export function RecipientInput({
   const [inputValue, setInputValue] = useState('')
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null)
   const [showPicker, setShowPicker] = useState(false)
+  // A picked contact with more than one not-yet-added address: the popover
+  // swaps to one row per address so the user picks WHICH one to add.
+  const [pendingContact, setPendingContact] = useState<{
+    id: string
+    name: string | null
+    addresses: string[]
+  } | null>(null)
+  // Full address lists prefetched for visible search results (and fetched on
+  // pick as a fallback), keyed by contact instance id. Feeds the per-address
+  // exclude: a contact stays pickable until ALL its known addresses are
+  // recipients.
+  const [contactAddresses, setContactAddresses] = useState<Map<string, string[]>>(new Map())
   const inputRef = useRef<AutosizeInputRef>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
 
@@ -216,23 +242,82 @@ export function RecipientInput({
     commitPendingInput: () => tryCommitInput(),
   }))
 
-  /** Handle contact selection from RecordPickerContent */
-  const handleContactPick = useCallback(
-    (item: RecordPickerItem) => {
-      const email = (item.data?.email as string) || item.secondaryInfo
-      if (!email) return
+  const batchGetAsync = api.fieldValue.batchGet.useMutation().mutateAsync
+  // Instance ids a fetch was already issued for — dedupes the prefetch across
+  // result batches (state alone lags in-flight requests).
+  const requestedAddressIdsRef = useRef<Set<string>>(new Set())
 
-      onContactSelect({
-        id: item.id,
-        identifier: email,
-        identifierType: IdentifierType.EMAIL,
-        name: item.displayName || null,
-      })
-      setInputValue('')
-      setShowPicker(false)
-      inputRef.current?.focus()
+  /**
+   * Fetch the FULL email list for each contact (multi-value `primary_email`
+   * reads back as one row per address, primary first) in one batch read.
+   * Falls back per item to its own row data when the field ref can't resolve
+   * or the read fails.
+   */
+  const fetchContactAddresses = useCallback(
+    async (items: RecordPickerItem[]): Promise<Map<string, string[]>> => {
+      const result = new Map<string, string[]>()
+      const fallbackAll = () => {
+        for (const item of items) result.set(item.id, itemFallbackAddresses(item))
+        return result
+      }
+      try {
+        const normalizedToItem = new Map(
+          items.map((item) => [getNormalizedRecordId(item.recordId), item] as const)
+        )
+        const { systemAttributeMap, systemAttributeByDef, ambiguousSystemAttributes } =
+          useResourceStore.getState()
+        const [firstRecordId] = normalizedToItem.keys()
+        const ref = firstRecordId
+          ? resolveSystemAttributeRef(
+              { systemAttributeMap, systemAttributeByDef, ambiguousSystemAttributes },
+              'primary_email',
+              getDefinitionId(firstRecordId)
+            )
+          : undefined
+        if (!ref) return fallbackAll()
+        const batch = await batchGetAsync({
+          recordIds: [...normalizedToItem.keys()],
+          fieldReferences: [ref],
+        })
+        for (const row of batch.values) {
+          const item = normalizedToItem.get(row.recordId)
+          if (!item) continue
+          const addresses = extractValues(
+            row.value as TypedFieldValue | TypedFieldValue[] | null,
+            row.fieldType as FieldType
+          ).filter((v): v is string => typeof v === 'string' && v.length > 0)
+          result.set(item.id, addresses.length > 0 ? addresses : itemFallbackAddresses(item))
+        }
+        for (const item of items) {
+          if (!result.has(item.id)) result.set(item.id, itemFallbackAddresses(item))
+        }
+        return result
+      } catch {
+        return fallbackAll()
+      }
     },
-    [onContactSelect]
+    [batchGetAsync]
+  )
+
+  /**
+   * Prefetch address lists for the visible search results so the exclude
+   * filter can key on ADDRESSES (a contact hides only when every address is a
+   * recipient) and a pick can expand without waiting.
+   */
+  const handlePickerResults = useCallback(
+    (items: RecordPickerItem[]) => {
+      const missing = items.filter((item) => !requestedAddressIdsRef.current.has(item.id))
+      if (missing.length === 0) return
+      for (const item of missing) requestedAddressIdsRef.current.add(item.id)
+      void fetchContactAddresses(missing).then((fetched) => {
+        setContactAddresses((prev) => {
+          const next = new Map(prev)
+          for (const [id, addresses] of fetched) next.set(id, addresses)
+          return next
+        })
+      })
+    },
+    [fetchContactAddresses]
   )
 
   // Lowercased emails of recipients already in this field — used to hide their
@@ -241,12 +326,65 @@ export function RecipientInput({
     () => new Set(recipients.map((r) => r.identifier.toLowerCase())),
     [recipients]
   )
+
+  /** Commit one address as a recipient and reset the picker state. */
+  const commitContactAddress = useCallback(
+    (contactId: string, email: string, name: string | null) => {
+      onContactSelect({
+        id: contactId,
+        identifier: email,
+        identifierType: IdentifierType.EMAIL,
+        name,
+      })
+      setInputValue('')
+      setShowPicker(false)
+      setPendingContact(null)
+      inputRef.current?.focus()
+    },
+    [onContactSelect]
+  )
+
+  /**
+   * Handle contact selection from RecordPickerContent. A picked contact is
+   * expanded into its N addresses: exactly one address not yet a recipient
+   * commits directly; several swap the popover to a per-address row list.
+   */
+  const handleContactPick = useCallback(
+    async (item: RecordPickerItem) => {
+      const name = item.displayName || null
+      let addresses = contactAddresses.get(item.id)
+      if (!addresses) {
+        // Prefetch hasn't landed for this row yet — fetch it alone.
+        requestedAddressIdsRef.current.add(item.id)
+        const fetched = await fetchContactAddresses([item])
+        addresses = fetched.get(item.id) ?? []
+        const known = addresses
+        setContactAddresses((prev) => new Map(prev).set(item.id, known))
+      }
+      const candidates = addresses.filter((a) => !excludeEmails.has(a.toLowerCase()))
+      if (candidates.length === 0) return
+      if (candidates.length === 1) {
+        commitContactAddress(item.id, candidates[0]!, name)
+        return
+      }
+      setPendingContact({ id: item.id, name, addresses: candidates })
+    },
+    [contactAddresses, fetchContactAddresses, excludeEmails, commitContactAddress]
+  )
+
   const excludeFilter = useCallback(
     (item: RecordPickerItem) => {
+      // Per-address exclude: once the contact's full list is known (results
+      // prefetch), the contact hides only when EVERY address is a recipient.
+      const known = contactAddresses.get(item.id)
+      if (known && known.length > 0) {
+        return known.every((a) => excludeEmails.has(a.toLowerCase()))
+      }
+      // Unfetched: the only known address is the primary (`secondaryInfo`).
       const email = item.secondaryInfo?.toLowerCase()
       return !!email && excludeEmails.has(email)
     },
-    [excludeEmails]
+    [contactAddresses, excludeEmails]
   )
 
   /** Forward a keyboard event to the cmdk Command inside the picker popover */
@@ -308,6 +446,7 @@ export function RecipientInput({
       case 'Escape':
         setHighlightedIndex(null)
         setShowPicker(false)
+        setPendingContact(null)
         break
       default:
         break
@@ -317,6 +456,8 @@ export function RecipientInput({
     const val = e.target.value
     setInputValue(val)
     setHighlightedIndex(null)
+    // Typing resumes the contact search — drop any pending address choice
+    setPendingContact(null)
     // Show picker when there's text to search
     setShowPicker(val.trim().length > 0)
   }
@@ -375,7 +516,12 @@ export function RecipientInput({
         />
       ))}
 
-      <Popover open={showPicker} onOpenChange={setShowPicker}>
+      <Popover
+        open={showPicker || pendingContact !== null}
+        onOpenChange={(open) => {
+          setShowPicker(open)
+          if (!open) setPendingContact(null)
+        }}>
         <PopoverAnchor asChild>
           <div className='relative grow cursor-text' onMouseDown={routeFocusToInput}>
             <AutosizeInput
@@ -416,16 +562,41 @@ export function RecipientInput({
           sideOffset={5}
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}>
-          <RecordPickerContent
-            value={[]}
-            onChange={() => {}}
-            entityDefinitionId='contact'
-            multi={false}
-            onSelectItem={handleContactPick}
-            externalSearch={inputValue}
-            excludeFilter={excludeFilter}
-            placeholder='Search contacts...'
-          />
+          {pendingContact ? (
+            <div className='py-1' role='listbox' aria-label='Choose an email address'>
+              <div className='px-3 py-1.5 text-xs text-muted-foreground'>
+                {pendingContact.name
+                  ? `${pendingContact.name} has ${pendingContact.addresses.length} addresses`
+                  : 'Choose an address'}
+              </div>
+              {pendingContact.addresses.map((address) => (
+                <button
+                  key={address}
+                  type='button'
+                  role='option'
+                  aria-selected={false}
+                  className='flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-hidden'
+                  onClick={() =>
+                    commitContactAddress(pendingContact.id, address, pendingContact.name)
+                  }>
+                  <Mail className='size-3.5 text-muted-foreground' />
+                  <span className='truncate'>{address}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <RecordPickerContent
+              value={[]}
+              onChange={() => {}}
+              entityDefinitionId='contact'
+              multi={false}
+              onSelectItem={handleContactPick}
+              onResultsChange={handlePickerResults}
+              externalSearch={inputValue}
+              excludeFilter={excludeFilter}
+              placeholder='Search contacts...'
+            />
+          )}
         </PopoverContent>
       </Popover>
     </div>

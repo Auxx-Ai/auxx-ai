@@ -67,7 +67,9 @@ function fetchRecordFromHost(recordId: string): Promise<AuxxRecord> {
  * @param recordId - The full record id (`<entityDefinitionId>:<entityInstanceId>`)
  * @returns The record, with field values keyed under `data` by each field's
  *   stable attribute key (e.g. the contact email is `data.primary_email`, not
- *   `data.email`).
+ *   `data.email`). Multi-value fields (contact `primary_email`, company
+ *   `company_website`) are STABLY `string[]` regardless of value count — the
+ *   first element is the primary. Never cast them to `string`.
  *
  * @example
  * ```typescript
@@ -75,7 +77,9 @@ function fetchRecordFromHost(recordId: string): Promise<AuxxRecord> {
  *
  * function ContactEmail({ recordId }: { recordId: string }) {
  *   const record = useRecord(recordId)
- *   return <TextBlock>{record.data.primary_email}</TextBlock>
+ *   // primary_email is a string[] — [0] is the primary address.
+ *   const [primaryEmail] = (record.data.primary_email as string[] | undefined) ?? []
+ *   return <TextBlock>{primaryEmail ?? 'No email'}</TextBlock>
  * }
  * ```
  */

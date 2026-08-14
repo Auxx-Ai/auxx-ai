@@ -1,7 +1,7 @@
 // apps/web/src/components/drawers/cards/ticket-customer-card.tsx
 'use client'
 
-import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
+import { extractRelationshipRecordIds, primaryValue } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/types/resource'
 import { getInstanceId } from '@auxx/types/resource'
 import { Avatar, AvatarFallback } from '@auxx/ui/components/avatar'
@@ -57,10 +57,10 @@ function ContactDetails({ contactRecordId }: { contactRecordId: RecordId }) {
   })
 
   const contactInstanceId = getInstanceId(contactRecordId)
-  const firstNameStr = unwrap(values.first_name) as string | undefined
-  const lastNameStr = unwrap(values.last_name) as string | undefined
-  const emailStr = unwrap(values.primary_email) as string | undefined
-  const phoneStr = unwrap(values.phone) as string | undefined
+  const firstNameStr = (primaryValue(values.first_name) as string | null) ?? undefined
+  const lastNameStr = (primaryValue(values.last_name) as string | null) ?? undefined
+  const emailStr = (primaryValue(values.primary_email) as string | null) ?? undefined
+  const phoneStr = (primaryValue(values.phone) as string | null) ?? undefined
 
   const contactName = {
     firstName: firstNameStr ?? undefined,
@@ -117,9 +117,4 @@ function ContactDetails({ contactRecordId }: { contactRecordId: RecordId }) {
       </Button>
     </div>
   )
-}
-
-/** Extract first element if value is an array. */
-function unwrap(value: unknown): unknown {
-  return Array.isArray(value) ? value[0] : value
 }

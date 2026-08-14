@@ -139,6 +139,10 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     dbColumn: 'email',
     nullable: true,
     isIdentifier: true,
+    // Multi-value: a contact can hold up to MAX_MULTI_VALUES addresses; the
+    // first (by sortKey) is the primary. Existing orgs are caught up by data
+    // migration 085. Phone stays single until the E.164 plan lands.
+    options: { multi: true },
     capabilities: {
       filterable: true,
       sortable: true,
