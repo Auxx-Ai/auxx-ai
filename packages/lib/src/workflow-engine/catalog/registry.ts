@@ -3,8 +3,10 @@
 import { aiManifest } from './nodes/ai'
 import { answerManifest } from './nodes/answer'
 import { codeManifest } from './nodes/code'
+import { crudManifest } from './nodes/crud'
 import { dateTimeManifest } from './nodes/date-time'
 import { endManifest } from './nodes/end'
+import { findManifest } from './nodes/find'
 import { formatManifest } from './nodes/format'
 import { httpManifest } from './nodes/http'
 import { humanConfirmationManifest } from './nodes/human'
@@ -37,8 +39,10 @@ const ALL_MANIFESTS: NodeManifest<any>[] = [
   aiManifest,
   answerManifest,
   codeManifest,
+  crudManifest,
   dateTimeManifest,
   endManifest,
+  findManifest,
   formatManifest,
   httpManifest,
   humanConfirmationManifest,

@@ -64,7 +64,7 @@ export const calculateTargetBranches = (
       const branches = [{ id: 'source', name: '', type: 'default' }]
 
       // Add fail branch if error strategy is set to fail
-      if (crudData.error_strategy === 'fail') {
+      if (`${crudData.error_strategy}` === 'fail') {
         branches.push({ id: 'fail', name: 'Fail', type: 'fail' })
       }
 

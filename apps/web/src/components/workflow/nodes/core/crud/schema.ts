@@ -1,64 +1,35 @@
 // apps/web/src/components/workflow/nodes/core/crud/schema.ts
 
-import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
-import { NodeType } from '~/components/workflow/types/node-types'
-import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
-import { isNodeVariable } from '~/components/workflow/utils/variable-utils'
-import { getCrudNodeOutputVariables } from './output-variables'
-import { type CrudNodeData, createCrudNodeDefaultData, crudNodeDataSchema } from './types'
-import { validateCrudNodeConfig } from './validation'
+import {
+  crudManifest,
+  crudNodeDataSchema,
+  type NodeManifest,
+} from '@auxx/lib/workflow-engine/client'
+import type { NodeDefinition } from '~/components/workflow/types'
+import { defineFromManifest } from '../../define-from-manifest'
+import type { CrudNodeData } from './types'
+
+// The data half (data interface, zod schema, defaults, validator, variable
+// extractor, output resolver) lives in the node catalog
+// (`@auxx/lib/workflow-engine/catalog/nodes/crud`). This file is the merge
+// site: manifest + the React parts.
+
 /**
  * Zod schema for CRUD node validation
  */
 export const crudSchema = crudNodeDataSchema
 
 /**
- * Extract variables from CRUD operation data
- * Matches backend implementation in packages/lib/src/workflow-engine/nodes/action-nodes/crud.ts:129-157
+ * CRUD node definition.
+ *
+ * The cast bridges lib's `type: string` to the web `NodeType` narrowing —
+ * safe because the manifest's defaults never set `type` (the node factory
+ * assigns identity).
  */
-export function extractCrudVariables(data: Partial<CrudNodeData>): string[] {
-  const variableIds = new Set<string>()
+export const crudDefinition: NodeDefinition<CrudNodeData> = defineFromManifest(
+  crudManifest as unknown as NodeManifest<CrudNodeData>,
+  {}
+)
 
-  // Extract from resourceId (for update/delete operations)
-  if (isNodeVariable(data.resourceId)) {
-    variableIds.add(data.resourceId!)
-  }
-
-  // Extract from field values (for create/update operations)
-  if (data.data) {
-    Object.values(data.data).forEach((fieldValue: any) => {
-      if (typeof fieldValue === 'string') {
-        // String values may contain {{variable}} patterns
-        extractVarIdsFromString(fieldValue).forEach((id) => variableIds.add(id))
-      } else if (fieldValue && typeof fieldValue === 'object') {
-        // VarEditor format: { variable: 'nodeId.path' }
-        if (fieldValue.variable) {
-          variableIds.add(fieldValue.variable)
-        }
-        // Also check if the object contains string values with variables
-        if (typeof fieldValue.value === 'string') {
-          extractVarIdsFromString(fieldValue.value).forEach((id) => variableIds.add(id))
-        }
-      }
-    })
-  }
-  return Array.from(variableIds)
-}
-
-/**
- * CRUD node definition for the workflow system
- */
-export const crudDefinition: NodeDefinition<CrudNodeData> = {
-  id: NodeType.CRUD,
-  category: NodeCategory.ACTION,
-  displayName: 'CRUD',
-  description: 'Create, update, or delete records in the database',
-  icon: 'database',
-  color: '#10b981', // ACTION category color
-  canRunSingle: true,
-  defaultData: createCrudNodeDefaultData(),
-  schema: crudNodeDataSchema,
-  validator: validateCrudNodeConfig,
-  extractVariables: extractCrudVariables,
-  outputVariables: getCrudNodeOutputVariables,
-}
+// Back-compat re-exports so no panel or consumer import churns:
+export { extractCrudVariables, validateCrudNodeConfig } from '@auxx/lib/workflow-engine/client'

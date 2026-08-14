@@ -1,0 +1,517 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`variable-generators golden snapshots (FROZEN — pre-refactor baseline) > generateCrudNodeVariablesFromFields — create 1`] = `
+[
+  {
+    "category": "node",
+    "description": "The created ticket",
+    "id": "node-3.ticket",
+    "label": "Ticket",
+    "properties": {
+      "assignee": {
+        "category": "node",
+        "description": "Assignee of the resource",
+        "fieldReference": "ticket:assignee",
+        "id": "node-3.ticket.assignee",
+        "label": "Assignee",
+        "options": {
+          "actor": {
+            "multiple": false,
+            "target": "user",
+          },
+        },
+        "type": "actor",
+      },
+      "ticket_status": {
+        "category": "node",
+        "description": "Status of the resource",
+        "id": "node-3.ticket.ticket_status",
+        "label": "Status",
+        "options": {
+          "options": [
+            {
+              "label": "Open",
+              "value": "open",
+            },
+            {
+              "label": "Closed",
+              "value": "closed",
+            },
+          ],
+        },
+        "type": "enum",
+      },
+      "title": {
+        "category": "node",
+        "description": "Title of the resource",
+        "id": "node-3.ticket.title",
+        "label": "Title",
+        "type": "string",
+      },
+      "vendor": {
+        "category": "node",
+        "fieldReference": "ticket:vendor",
+        "id": "node-3.ticket.vendor",
+        "label": "Vendor",
+        "properties": {
+          "name": {
+            "category": "node",
+            "description": "Name of the resource",
+            "id": "node-3.ticket.vendor.name",
+            "label": "Name",
+            "type": "string",
+          },
+          "referenceId": {
+            "category": "node",
+            "description": "ID of the related Vendor",
+            "id": "node-3.ticket.vendor.referenceId",
+            "label": "Reference ID",
+            "type": "string",
+          },
+        },
+        "resourceId": "entity_vendors",
+        "type": "object",
+      },
+    },
+    "resourceId": "ticket",
+    "type": "object",
+  },
+  {
+    "category": "node",
+    "description": "Whether the operation was successful",
+    "id": "node-3.success",
+    "label": "Success",
+    "type": "boolean",
+  },
+  {
+    "category": "node",
+    "description": "The CRUD operation that was performed (create/update/delete)",
+    "id": "node-3.operation",
+    "label": "Operation",
+    "type": "string",
+  },
+  {
+    "category": "node",
+    "description": "The type of resource that was operated on",
+    "id": "node-3.resourceType",
+    "label": "Resource Type",
+    "type": "string",
+  },
+  {
+    "category": "node",
+    "description": "Error message if the operation failed (null if successful)",
+    "id": "node-3.error",
+    "label": "Error Message",
+    "type": "string",
+  },
+  {
+    "category": "node",
+    "description": "Detailed error information for debugging (null if successful)",
+    "id": "node-3.errorDetails",
+    "label": "Error Details",
+    "type": "object",
+  },
+]
+`;
+
+exports[`variable-generators golden snapshots (FROZEN — pre-refactor baseline) > generateCrudNodeVariablesFromFields — delete 1`] = `
+[
+  {
+    "category": "node",
+    "description": "Whether the resource was successfully deleted",
+    "id": "node-4.deleted",
+    "label": "Deleted",
+    "type": "boolean",
+  },
+  {
+    "category": "node",
+    "description": "ID of the deleted resource",
+    "id": "node-4.id",
+    "label": "Deleted Resource ID",
+    "type": "string",
+  },
+  {
+    "category": "node",
+    "description": "Whether the operation was successful",
+    "id": "node-4.success",
+    "label": "Success",
+    "type": "boolean",
+  },
+  {
+    "category": "node",
+    "description": "The CRUD operation that was performed (create/update/delete)",
+    "id": "node-4.operation",
+    "label": "Operation",
+    "type": "string",
+  },
+  {
+    "category": "node",
+    "description": "The type of resource that was operated on",
+    "id": "node-4.resourceType",
+    "label": "Resource Type",
+    "type": "string",
+  },
+  {
+    "category": "node",
+    "description": "Error message if the operation failed (null if successful)",
+    "id": "node-4.error",
+    "label": "Error Message",
+    "type": "string",
+  },
+  {
+    "category": "node",
+    "description": "Detailed error information for debugging (null if successful)",
+    "id": "node-4.errorDetails",
+    "label": "Error Details",
+    "type": "object",
+  },
+]
+`;
+
+exports[`variable-generators golden snapshots (FROZEN — pre-refactor baseline) > generateFindNodeVariablesFromFields — findMany 1`] = `
+[
+  {
+    "category": "node",
+    "description": "Array of ticket records",
+    "id": "node-2.tickets",
+    "items": {
+      "category": "node",
+      "description": "Ticket record",
+      "id": "node-2.tickets[*]",
+      "label": "Ticket",
+      "properties": {
+        "assignee": {
+          "category": "node",
+          "description": "Assignee of the resource",
+          "fieldReference": "ticket:assignee",
+          "id": "node-2.tickets[*].assignee",
+          "label": "Assignee",
+          "options": {
+            "actor": {
+              "multiple": false,
+              "target": "user",
+            },
+          },
+          "type": "actor",
+        },
+        "ticket_status": {
+          "category": "node",
+          "description": "Status of the resource",
+          "id": "node-2.tickets[*].ticket_status",
+          "label": "Status",
+          "options": {
+            "options": [
+              {
+                "label": "Open",
+                "value": "open",
+              },
+              {
+                "label": "Closed",
+                "value": "closed",
+              },
+            ],
+          },
+          "type": "enum",
+        },
+        "title": {
+          "category": "node",
+          "description": "Title of the resource",
+          "id": "node-2.tickets[*].title",
+          "label": "Title",
+          "type": "string",
+        },
+        "vendor": {
+          "category": "node",
+          "fieldReference": "ticket:vendor",
+          "id": "node-2.tickets[*].vendor",
+          "label": "Vendor",
+          "properties": {
+            "name": {
+              "category": "node",
+              "description": "Name of the resource",
+              "id": "node-2.tickets[*].vendor.name",
+              "label": "Name",
+              "type": "string",
+            },
+            "referenceId": {
+              "category": "node",
+              "description": "ID of the related Vendor",
+              "id": "node-2.tickets[*].vendor.referenceId",
+              "label": "Reference ID",
+              "type": "string",
+            },
+          },
+          "resourceId": "entity_vendors",
+          "type": "object",
+        },
+      },
+      "resourceId": "ticket",
+      "type": "object",
+    },
+    "label": "Tickets",
+    "type": "array",
+  },
+  {
+    "category": "node",
+    "description": "Number of ticket records found",
+    "id": "node-2.count",
+    "label": "Count",
+    "type": "number",
+  },
+  {
+    "category": "node",
+    "description": "Information about the executed query",
+    "id": "node-2.query_info",
+    "label": "Query Info",
+    "properties": {
+      "find_mode": {
+        "category": "node",
+        "description": "Whether findOne or findMany was used",
+        "id": "node-2.query_info.find_mode",
+        "label": "Find Mode",
+        "type": "string",
+      },
+      "limit_applied": {
+        "category": "node",
+        "description": "Maximum number of results returned",
+        "id": "node-2.query_info.limit_applied",
+        "label": "Limit Applied",
+        "type": "number",
+      },
+      "order_by": {
+        "category": "node",
+        "description": "Field used for sorting (if any)",
+        "id": "node-2.query_info.order_by",
+        "label": "Order By",
+        "type": "string",
+      },
+      "resource_type": {
+        "category": "node",
+        "description": "The type of resource that was searched",
+        "id": "node-2.query_info.resource_type",
+        "label": "Resource Type",
+        "type": "string",
+      },
+    },
+    "type": "object",
+  },
+]
+`;
+
+exports[`variable-generators golden snapshots (FROZEN — pre-refactor baseline) > generateFindNodeVariablesFromFields — findOne 1`] = `
+[
+  {
+    "category": "node",
+    "description": "Found ticket (null if not found)",
+    "id": "node-1.ticket",
+    "label": "Ticket",
+    "properties": {
+      "assignee": {
+        "category": "node",
+        "description": "Assignee of the resource",
+        "fieldReference": "ticket:assignee",
+        "id": "node-1.ticket.assignee",
+        "label": "Assignee",
+        "options": {
+          "actor": {
+            "multiple": false,
+            "target": "user",
+          },
+        },
+        "type": "actor",
+      },
+      "ticket_status": {
+        "category": "node",
+        "description": "Status of the resource",
+        "id": "node-1.ticket.ticket_status",
+        "label": "Status",
+        "options": {
+          "options": [
+            {
+              "label": "Open",
+              "value": "open",
+            },
+            {
+              "label": "Closed",
+              "value": "closed",
+            },
+          ],
+        },
+        "type": "enum",
+      },
+      "title": {
+        "category": "node",
+        "description": "Title of the resource",
+        "id": "node-1.ticket.title",
+        "label": "Title",
+        "type": "string",
+      },
+      "vendor": {
+        "category": "node",
+        "fieldReference": "ticket:vendor",
+        "id": "node-1.ticket.vendor",
+        "label": "Vendor",
+        "properties": {
+          "name": {
+            "category": "node",
+            "description": "Name of the resource",
+            "id": "node-1.ticket.vendor.name",
+            "label": "Name",
+            "type": "string",
+          },
+          "referenceId": {
+            "category": "node",
+            "description": "ID of the related Vendor",
+            "id": "node-1.ticket.vendor.referenceId",
+            "label": "Reference ID",
+            "type": "string",
+          },
+        },
+        "resourceId": "entity_vendors",
+        "type": "object",
+      },
+    },
+    "resourceId": "ticket",
+    "type": "object",
+  },
+  {
+    "category": "node",
+    "description": "Number of ticket records found",
+    "id": "node-1.count",
+    "label": "Count",
+    "type": "number",
+  },
+  {
+    "category": "node",
+    "description": "Information about the executed query",
+    "id": "node-1.query_info",
+    "label": "Query Info",
+    "properties": {
+      "find_mode": {
+        "category": "node",
+        "description": "Whether findOne or findMany was used",
+        "id": "node-1.query_info.find_mode",
+        "label": "Find Mode",
+        "type": "string",
+      },
+      "limit_applied": {
+        "category": "node",
+        "description": "Maximum number of results returned",
+        "id": "node-1.query_info.limit_applied",
+        "label": "Limit Applied",
+        "type": "number",
+      },
+      "order_by": {
+        "category": "node",
+        "description": "Field used for sorting (if any)",
+        "id": "node-1.query_info.order_by",
+        "label": "Order By",
+        "type": "string",
+      },
+      "resource_type": {
+        "category": "node",
+        "description": "The type of resource that was searched",
+        "id": "node-1.query_info.resource_type",
+        "label": "Resource Type",
+        "type": "string",
+      },
+    },
+    "type": "object",
+  },
+]
+`;
+
+exports[`variable-generators golden snapshots (FROZEN — pre-refactor baseline) > generateResourceTriggerVariablesFromFields — created 1`] = `
+[
+  {
+    "category": "node",
+    "description": "The ticket that was created",
+    "id": "node-5.ticket",
+    "label": "Ticket",
+    "properties": {
+      "assignee": {
+        "category": "node",
+        "description": "Assignee of the resource",
+        "fieldReference": "ticket:assignee",
+        "id": "node-5.ticket.assignee",
+        "label": "Assignee",
+        "options": {
+          "actor": {
+            "multiple": false,
+            "target": "user",
+          },
+        },
+        "type": "actor",
+      },
+      "ticket_status": {
+        "category": "node",
+        "description": "Status of the resource",
+        "id": "node-5.ticket.ticket_status",
+        "label": "Status",
+        "options": {
+          "options": [
+            {
+              "label": "Open",
+              "value": "open",
+            },
+            {
+              "label": "Closed",
+              "value": "closed",
+            },
+          ],
+        },
+        "type": "enum",
+      },
+      "title": {
+        "category": "node",
+        "description": "Title of the resource",
+        "id": "node-5.ticket.title",
+        "label": "Title",
+        "type": "string",
+      },
+      "vendor": {
+        "category": "node",
+        "fieldReference": "ticket:vendor",
+        "id": "node-5.ticket.vendor",
+        "label": "Vendor",
+        "properties": {
+          "name": {
+            "category": "node",
+            "description": "Name of the resource",
+            "id": "node-5.ticket.vendor.name",
+            "label": "Name",
+            "type": "string",
+          },
+          "referenceId": {
+            "category": "node",
+            "description": "ID of the related Vendor",
+            "id": "node-5.ticket.vendor.referenceId",
+            "label": "Reference ID",
+            "type": "string",
+          },
+        },
+        "resourceId": "entity_vendors",
+        "type": "object",
+      },
+    },
+    "resourceId": "ticket",
+    "type": "object",
+  },
+  {
+    "category": "node",
+    "description": "Information about the trigger event",
+    "id": "node-5.trigger",
+    "label": "Trigger Info",
+    "properties": {
+      "timestamp": {
+        "category": "node",
+        "description": "When the resource was created",
+        "id": "node-5.trigger.timestamp",
+        "label": undefined,
+        "type": "datetime",
+      },
+    },
+    "type": "object",
+  },
+]
+`;

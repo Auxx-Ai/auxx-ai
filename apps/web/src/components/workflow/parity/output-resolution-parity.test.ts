@@ -78,21 +78,11 @@ vi.mock('@auxx/lib/cache/org-cache-helpers', async (importOriginal) => ({
 }))
 
 /**
- * `crud` and `find` are excluded from this suite, on purpose and by name.
- * They're on `NOT_YET_MIGRATED`
- * (`packages/lib/src/workflow-engine/catalog/not-yet-migrated.ts`) — no
- * catalog manifest exists for either, so there is no server-side
- * `resolveOutputs` for `resolveGraphOutputs` to call; it returns `[]` for them
- * today (the "Not-yet-migrated or unknown type" branch in
- * `catalog/resolve-outputs.ts`). Asserting parity against an always-`[]`
- * server side would be trivially true, not meaningful.
- *
- * What removes this exclusion: registering a manifest for `crud`/`find` in
- * `catalog/registry.ts` and deleting their `NOT_YET_MIGRATED` entries. Nothing
- * else needs to change here — `listManifests()` (the same source
- * `catalog-coverage.test.ts` asserts is exhaustive against the builder's
- * `NodeType` enum) is what defines "migrated" below, so migrating either type
- * pulls it into `MIGRATED_TYPES` and this suite's fixture graph automatically.
+ * `listManifests()` (the same source `catalog-coverage.test.ts` asserts is
+ * exhaustive against the builder's `NodeType` enum) is what defines
+ * "migrated" below, so migrating a type pulls it into `MIGRATED_TYPES` and
+ * this suite's fixture graph automatically — `crud` and `find` (the last
+ * wave-1 types) included, now that both have catalog manifests.
  */
 const MIGRATED_TYPES = new Set(listManifests().map((manifest) => manifest.id))
 
@@ -172,6 +162,11 @@ const NODE_DATA_OVERRIDES: Record<string, Record<string, unknown>> = {
   [NodeType.VAR_ASSIGN]: varAssignArrayVariant.data,
   [NodeType.LIST]: { inputList: `{{${nodeIdFor(NodeType.VAR_ASSIGN)}.myList}}` },
   [NodeType.RESOURCE_TRIGGER]: { resourceType: FIXTURE_RESOURCE.id },
+  // Context-reading resolvers, same as resource-trigger above — the default
+  // `resourceType: 'contact'` doesn't match anything in `FIXTURE_RESOURCES`,
+  // which would make both sides resolve to `[]` and the comparison vacuous.
+  [NodeType.FIND]: { resourceType: FIXTURE_RESOURCE.id },
+  [NodeType.CRUD]: { resourceType: FIXTURE_RESOURCE.id },
 }
 
 const FIXTURE_NODES: NodeMeta[] = listManifests().map((manifest) => {
@@ -298,10 +293,10 @@ function sortedVariables(variables: UnifiedVariable[]): UnifiedVariable[] {
 describe('output resolution parity: browser vs server', () => {
   const orgId = 'org-parity-test'
 
-  it('keeps crud/find on NOT_YET_MIGRATED, not silently dropped from either set', () => {
-    expect(NOT_YET_MIGRATED).toEqual(expect.arrayContaining(['crud', 'find']))
-    expect(MIGRATED_TYPES.has('crud')).toBe(false)
-    expect(MIGRATED_TYPES.has('find')).toBe(false)
+  it('crud and find are migrated — not left on NOT_YET_MIGRATED nor missing a manifest', () => {
+    expect(NOT_YET_MIGRATED).not.toEqual(expect.arrayContaining(['crud', 'find']))
+    expect(MIGRATED_TYPES.has('crud')).toBe(true)
+    expect(MIGRATED_TYPES.has('find')).toBe(true)
   })
 
   it('resolves an identical output-variable tree on both sides for every migrated node type', async () => {

@@ -43,6 +43,10 @@ import {
 } from '../../../threads/links.service'
 import { ThreadMutationService, type ThreadUpdates } from '../../../threads/thread-mutation.service'
 import { UnreadService } from '../../../threads/unread-service'
+import type {
+  CrudNodeData as CatalogCrudNodeData,
+  CrudDefaultValue,
+} from '../../catalog/nodes/crud'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -53,30 +57,32 @@ import type {
 import { BaseType, NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { createResourceReference } from '../../types/resource-reference'
 import { BaseNodeProcessor } from '../base-node'
+import { resolveCanonicalResource } from '../utils/canonical-resource'
 import { parseRelationInput } from './relation-utils'
 
 /**
- * CRUD node data interface
- * Supports both system resources (contact, ticket) and custom entities (UUID/CUID format)
+ * Engine-side view of the CRUD node's persisted config — a `Pick` off the
+ * catalog's `CrudNodeData` (imported directly, not via `client.ts`: engine
+ * code never goes through the client barrel). `error_strategy` is now the
+ * catalog's `CrudErrorStrategy` enum rather than a bare string union; the
+ * string-literal comparisons below project it through a template literal
+ * (`` `${config.error_strategy}` ``) where TS would otherwise reject the
+ * enum-vs-literal comparison — no runtime behavior changes, since the enum's
+ * values are the same strings the literals always were.
+ *
+ * Supports both system resources (contact, ticket) and custom entities (UUID/CUID format).
  */
-interface CrudNodeData {
-  resourceType: string // System: 'contact', 'ticket' | Custom: UUID/CUID like 'f08vj083a926klhzkr2tbfvy'
-  mode: 'create' | 'update' | 'delete'
-  resourceId?: string // For update/delete operations
-  data: Record<string, any> // Field values
-  error_strategy: 'fail' | 'continue' | 'default'
-  default_values: CrudDefaultValue[]
-  fieldUpdateModes?: Record<string, RelationUpdateModeType> // Relation update mode per field
-  fieldUpdateModeVars?: Record<string, string> // Dynamic mode variable per field
-}
-/**
- * CRUD default value configuration
- */
-interface CrudDefaultValue {
-  key: string
-  type: 'string' | 'number' | 'boolean' | 'object' | 'array'
-  value: string
-}
+type CrudNodeData = Pick<
+  CatalogCrudNodeData,
+  | 'resourceType' // System: 'contact', 'ticket' | Custom: UUID/CUID like 'f08vj083a926klhzkr2tbfvy'
+  | 'mode'
+  | 'resourceId' // For update/delete operations
+  | 'data' // Field values
+  | 'error_strategy'
+  | 'default_values'
+  | 'fieldUpdateModes' // Relation update mode per field
+  | 'fieldUpdateModeVars' // Dynamic mode variable per field
+>
 
 /**
  * Relation update mode (what the panel's mode badge writes) → the tag operation
@@ -488,12 +494,15 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     }
 
     // Validate error strategy
-    if (config.error_strategy && !['fail', 'continue', 'default'].includes(config.error_strategy)) {
+    if (
+      config.error_strategy &&
+      !['fail', 'continue', 'default'].includes(`${config.error_strategy}`)
+    ) {
       errors.push('Error strategy must be fail, continue, or default')
     }
 
     // Validate default values if using default strategy
-    if (config.error_strategy === 'default') {
+    if (`${config.error_strategy}` === 'default') {
       if (!config.default_values || config.default_values.length === 0) {
         warnings.push('Default error strategy selected but no default values configured')
       } else {
@@ -557,44 +566,79 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       fieldCount: Object.keys(data).length,
     })
     try {
+      // Get organization ID up front — needed for canonicalization AND the
+      // resource reference below.
+      const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
+
+      // Canonicalize `resourceType` to the cached resource's own id, same as
+      // find.ts, so execution, error reporting and output keying all agree on
+      // ONE identity regardless of which alias (id | entityType slug |
+      // apiSlug) the node was configured with.
+      //
+      // 'thread' short-circuits BEFORE resolution: it is a static system
+      // resource, not an EntityDefinition-backed one, so canonicalizing it
+      // would be a no-op anyway — but keeping the guard explicit here (rather
+      // than relying on resolveCanonicalResource being a no-op for it) means
+      // thread's action-based path never depends on a cache lookup
+      // succeeding. This lives inside the try/catch on purpose: an unknown
+      // resourceType now throws from here instead of from
+      // `executeCrudOperation`'s own `findCachedResource` check, but either
+      // way the throw is caught below and routed through `handleCrudError`,
+      // so the configured `error_strategy` is honored exactly as before.
+      const canonicalResourceType =
+        resourceType === 'thread'
+          ? resourceType
+          : (await resolveCanonicalResource(organizationId, resourceType)).id
+
       const result = await this.executeCrudOperation(
-        resourceType,
+        canonicalResourceType,
         mode,
         resourceId,
         data,
         contextManager
       )
 
-      // Get organization ID for resource reference
-      const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
-
       // Set success variables
       contextManager.setNodeVariable(node.nodeId, 'operation', mode)
-      contextManager.setNodeVariable(node.nodeId, 'resourceType', resourceType)
+      contextManager.setNodeVariable(node.nodeId, 'resourceType', canonicalResourceType)
       contextManager.setNodeVariable(node.nodeId, 'success', true)
       contextManager.setNodeVariable(node.nodeId, 'error', null)
+
+      // Delete: write the variables `generateCrudNodeVariablesFromFields` declares
+      // for delete mode (`deleted`, `id`) — the operation returns exactly this shape
+      // (`{ deleted: true, id: resourceId }`, see `executeCrudOperation`'s delete case).
+      if (mode === 'delete') {
+        contextManager.setNodeVariable(node.nodeId, 'deleted', Boolean(result.deleted))
+        contextManager.setNodeVariable(node.nodeId, 'id', result.id)
+      }
 
       // Store resource reference for create/update operations
       if (result.id && mode !== 'delete') {
         // Store commonly accessed fields directly for performance
         contextManager.setNodeVariable(node.nodeId, 'id', result.id)
 
-        const ref = createResourceReference(resourceType, result.id, organizationId)
+        const ref = createResourceReference(canonicalResourceType, result.id, organizationId)
 
         // Threads are action-based, not field-based: the result is a set of action
         // flags. Every one of them is advertised as an individual output variable by
         // the builder (`nodes/core/crud/output-variables.ts`), so write them all —
         // leaving them inside `output` alone makes the picker hand out paths that
         // resolve to nothing.
-        if (resourceType === 'thread') {
+        if (canonicalResourceType === 'thread') {
           contextManager.setNodeVariable(node.nodeId, 'thread', ref)
           for (const [key, value] of Object.entries(result.thread ?? {})) {
             contextManager.setNodeVariable(node.nodeId, key, value)
           }
         }
         // For entities (custom IDs and entity definition types), use setEntityVariables
-        else if (isCustomResourceId(resourceType) || isEntityDefinitionType(resourceType)) {
-          const entityDefId = result.entityInstance?.entityDefinitionId ?? resourceType
+        else if (
+          isCustomResourceId(canonicalResourceType) ||
+          isEntityDefinitionType(canonicalResourceType)
+        ) {
+          // Safe: `canonicalResourceType` is always `resource.id` post-resolution
+          // (see `resolveCanonicalResource`), never a raw slug/apiSlug — so this
+          // fallback can no longer hand `setEntityVariables` a value it rejects.
+          const entityDefId = result.entityInstance?.entityDefinitionId ?? canonicalResourceType
           const entityData = {
             id: result.id,
             entityDefinitionId: entityDefId,
@@ -612,11 +656,15 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
           // Also store under 'record' key for convenience
           contextManager.setNodeVariable(node.nodeId, 'record', ref)
         } else {
-          // System resources (thread) - existing behavior
-          contextManager.setNodeVariable(node.nodeId, resourceType, ref)
+          // Reachable only for a genuine static system resource other than
+          // 'thread' (e.g. 'message', 'user') — every entity-backed
+          // resourceType, whatever alias (id | entityType slug | apiSlug) it
+          // was configured with, is now canonicalized to `resource.id` and
+          // routed through the branch above instead of falling through here.
+          contextManager.setNodeVariable(node.nodeId, canonicalResourceType, ref)
 
           // Store commonly accessed scalar fields directly to avoid lazy loading overhead
-          const resourceData = result[resourceType] || result.entityInstance
+          const resourceData = result[canonicalResourceType] || result.entityInstance
           if (resourceData) {
             const commonFields = ['title', 'status', 'email', 'firstName', 'lastName', 'name']
             commonFields.forEach((fieldName) => {
@@ -634,7 +682,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
         outputHandle: 'source', // Success handle
         metadata: {
           operation: mode,
-          resourceType,
+          resourceType: canonicalResourceType,
           success: true,
         },
       }
@@ -1256,7 +1304,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     contextManager.setNodeVariable(node.nodeId, 'errorDetails', errorDetails)
     contextManager.setNodeVariable(node.nodeId, 'operation', mode)
     contextManager.setNodeVariable(node.nodeId, 'resourceType', resourceType)
-    switch (config.error_strategy) {
+    switch (`${config.error_strategy}`) {
       case 'continue':
         // Continue workflow with error information
         contextManager.log('WARN', node.name, `${mode} operation failed but continuing`, {

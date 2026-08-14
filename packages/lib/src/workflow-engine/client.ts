@@ -140,6 +140,17 @@ export {
   validateCodeConfig,
 } from './catalog/nodes/code'
 export {
+  type CrudDefaultValue,
+  CrudErrorStrategy,
+  type CrudNodeData as CatalogCrudNodeData,
+  createCrudNodeDefaultData,
+  crudManifest,
+  crudNodeDataSchema,
+  extractCrudVariables,
+  getCrudNodeOutputVariables,
+  validateCrudNodeConfig,
+} from './catalog/nodes/crud'
+export {
   DateFormatType,
   type DateTimeNodeData as CatalogDateTimeNodeData,
   DateTimeOperation,
@@ -157,6 +168,15 @@ export {
   extractEndVariables,
   validateEndConfig,
 } from './catalog/nodes/end'
+export {
+  createFindNodeDefaultData,
+  extractFindVariables,
+  type FindNodeData as CatalogFindNodeData,
+  findManifest,
+  findNodeDataSchema,
+  getFindNodeOutputVariables,
+  validateFindNodeConfig,
+} from './catalog/nodes/find'
 export {
   computeFormatOutputVariables,
   extractFormatVariables,
