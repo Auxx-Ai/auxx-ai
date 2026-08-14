@@ -48,6 +48,7 @@ export type {
   ThreadMeta,
   ThreadUpdatedEvent,
   VisibilityChangedEvent,
+  WorkflowDraftUpdatedEvent,
 } from './events'
 export { shapeMailEventForLens } from './mail-event-shaping'
 export {
@@ -73,6 +74,7 @@ export {
   publishThreadCreated,
   publishThreadDeleted,
   publishThreadUpdated,
+  publishWorkflowDraftUpdated,
 } from './publish-helpers'
 export { RealtimeService } from './realtime-service'
 export {
