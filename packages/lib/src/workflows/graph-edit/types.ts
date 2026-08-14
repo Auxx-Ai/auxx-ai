@@ -64,3 +64,106 @@ export interface RefCorrection {
   /** The corrected reference. */
   to: string
 }
+
+/** Canvas coordinates. */
+export interface Point {
+  x: number
+  y: number
+}
+
+/**
+ * A persisted graph node as the draft `Workflow.graph` column stores it —
+ * `NodeMeta` plus the layout fields the canvas persists. Only the durable
+ * contract (`07-remaining-mechanics.md` §0): `data.type` + config, `position`,
+ * top-level `parentId`; every `_`-prefixed key is derived state and never
+ * authored here.
+ */
+export interface GraphNode extends NodeMeta {
+  position: Point
+  width?: number | null
+  height?: number | null
+  /** React Flow containment clamp — set alongside `parentId` (NodeFactory parity). */
+  extent?: string
+  selected?: boolean
+}
+
+/** A persisted graph edge — `EdgeMeta` plus the target handle and open data. */
+export interface GraphEdge extends EdgeMeta {
+  targetHandle?: string | null
+  data?: { isLoopBackEdge?: boolean; [key: string]: unknown }
+}
+
+/** The draft `Workflow.graph` document. */
+export interface DraftGraph {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+  viewport?: { x: number; y: number; zoom: number }
+}
+
+/**
+ * One node, rendered for a caller: friendly `ref` (unique title, else id) and
+ * `config` with every variable/resource reference in `{{Title.path}}` / slug
+ * form — a model reading this never sees a raw node id or per-org CUID it
+ * might try to invent.
+ */
+export interface NodeSummary {
+  /** Friendly reference (`formatNodeRef`) — echoing it back is a valid `ref`. */
+  ref: string
+  id: string
+  type: string
+  title: string
+  /** Friendly ref of the loop container this node lives inside, if any. */
+  inside?: string
+  position: Point
+  /** Node config, friendly-rendered, bookkeeping keys stripped. */
+  config: Record<string, unknown>
+}
+
+/** One edge, rendered for a caller with friendly node refs. */
+export interface EdgeSummary {
+  from: string
+  to: string
+  /** Source branch handle when not the default `source`. */
+  branch?: string
+  isLoopBack?: boolean
+}
+
+/** Compact whole-graph shape returned with every operation. */
+export interface GraphSummary {
+  nodeCount: number
+  edgeCount: number
+  nodes: Array<{ ref: string; type: string; inside?: string }>
+  edges: EdgeSummary[]
+  /** The draft row's trigger type column (what the workflow fires on). */
+  triggerType?: string | null
+}
+
+/**
+ * What every graph mutation returns. `applied: false` means blocking issues
+ * (structural, or unresolvable references) prevented the write and the draft
+ * is untouched — the issues say what to fix. `applied: true` may still carry
+ * non-blocking config/reference issues: a half-built workflow is legitimate
+ * and persists, mirroring the canvas.
+ */
+export interface GraphMutationResult {
+  applied: boolean
+  /** The touched node, when the operation targets one. */
+  node?: NodeSummary
+  /** The touched node's resolved outputs, friendly-rendered — wire refs from these. */
+  outputs?: unknown[]
+  issues: Issue[]
+  graphSummary: GraphSummary
+}
+
+/** What `readDraft` returns: the whole draft, friendly-rendered. */
+export interface DraftSummary {
+  workflowAppId: string
+  name: string
+  triggerType?: string | null
+  nodes: NodeSummary[]
+  edges: EdgeSummary[]
+  /** Resolved outputs per node, keyed by friendly ref, friendly-rendered. */
+  outputs: Record<string, unknown[]>
+  issues: Issue[]
+  graphSummary: GraphSummary
+}
