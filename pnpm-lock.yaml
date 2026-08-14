@@ -2774,6 +2774,9 @@ importers:
       date-fns-tz:
         specifier: ^3.2.0
         version: 3.2.0(date-fns@4.1.0)
+      libphonenumber-js:
+        specifier: 'catalog:'
+        version: 1.12.38
       nanoid:
         specifier: ^5.1.5
         version: 5.1.6

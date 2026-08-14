@@ -1,3 +1,7 @@
+// packages/utils/src/contact.ts
+
+import { type CountryCode, parsePhoneNumberFromString } from 'libphonenumber-js'
+
 export type ContactName = {
   id?: string
   name?: string | null
@@ -63,20 +67,32 @@ export const getInitialsFromName = (name: string | null, empty: string = 'U'): s
   return name[0]!.charAt(0).toUpperCase()
 }
 
-export const formatPhoneNumber = (phone: string | null): string | null => {
-  if (!phone) return null // Handle empty input
+/**
+ * Normalize a phone number to E.164 (`+4930901820`).
+ *
+ * This is THE phone normalizer — the write-path validator
+ * (`fieldValueSchemas.phone`), read-side `normalizeForLookup` and the import
+ * resolver all funnel through it, so write and lookup normalization can never
+ * drift apart.
+ *
+ * National numbers with no country code are parsed as `defaultCountry`
+ * (US in v1; org-profile-based inference is the v2 lever). Validation uses
+ * `isValid()` — the per-country numbering-plan check, not just a length check —
+ * so impossible numbers are rejected rather than blessed with a `+1`.
+ *
+ * @param phone Raw user/CSV/provider input, any formatting.
+ * @param defaultCountry Country assumed for numbers written without a `+` prefix.
+ * @returns The E.164 string, or `null` when the input is unparseable or invalid.
+ */
+export const formatPhoneNumber = (
+  phone: string | null,
+  defaultCountry: CountryCode = 'US'
+): string | null => {
+  if (!phone) return null
 
-  // Remove all non-numeric characters
-  const digits: string = phone.replace(/\D/g, '')
+  const parsed = parsePhoneNumberFromString(phone.trim(), defaultCountry)
 
-  // Handle different cases
-  if (digits.length === 10) {
-    return `+1${digits}` // Assume US number without country code
-  } else if (digits.length === 11 && digits.startsWith('1')) {
-    return `+${digits}` // Already has country code
-  } else {
-    return null // Invalid number
-  }
+  return parsed?.isValid() ? parsed.number : null
 }
 
 export const formatStreetAddress = (street: string | null): string | null => {

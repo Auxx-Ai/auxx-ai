@@ -177,6 +177,7 @@
     "@auxx/types": "workspace:*",
     "date-fns": "catalog:",
     "date-fns-tz": "^3.2.0",
+    "libphonenumber-js": "catalog:",
     "nanoid": "^5.1.5"
   },
   "devDependencies": {

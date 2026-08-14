@@ -41,7 +41,7 @@ import { generateId } from '@auxx/utils/generateId'
 - `getContactDisplayName` - Get displayable contact name
 - `getInitials` - Get initials from a full name
 - `getInitialsFromName` - Get initials from first/last name
-- `formatPhoneNumber` - Format phone number for display
+- `formatPhoneNumber` - Normalize a phone number to E.164 (null when invalid)
 - `formatStreetAddress` - Format street address
 - `formatCompanyName` - Format company name
 - `formatComplexName` - Format complex name formats
