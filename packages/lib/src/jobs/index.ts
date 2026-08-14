@@ -235,6 +235,12 @@ export {
 } from './mcp/mcp-tools-resync-job'
 // Messages
 export {
+  enqueueGooglePushSync,
+  GOOGLE_PUSH_DEBOUNCE_WINDOW_MS,
+  type GooglePushSyncJobData,
+  googlePushSyncJob,
+} from './messages/google-push-sync-job'
+export {
   MONITOR_RECHECK_DELAY_MS,
   type MonitorMessageSyncJobData,
   monitorMessageSyncJob,

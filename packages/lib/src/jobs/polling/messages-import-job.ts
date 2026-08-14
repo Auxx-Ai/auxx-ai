@@ -36,7 +36,7 @@ const BASE_THROTTLE_BACKOFF_MS = 30_000
  * Guarded to a no-op unless the row has a cutoff stamp and no completion stamp
  * yet, so ordinary polling cycles (every later IDLE transition) never rewrite
  * it. Provider-agnostic on purpose — only rows a provider has actually stamped
- * `backfillCutoffAt` on (currently just Outlook) ever match.
+ * `backfillCutoffAt` on (Outlook always; Gmail on its polling path) ever match.
  */
 async function stampInitialBackfillCompleted(integrationId: string, now: Date): Promise<void> {
   await db
