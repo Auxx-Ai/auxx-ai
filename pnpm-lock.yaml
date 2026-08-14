@@ -1990,6 +1990,9 @@ importers:
       csv-parser:
         specifier: ^3.2.0
         version: 3.2.0
+      dagre:
+        specifier: ^0.8.5
+        version: 0.8.5
       date-fns:
         specifier: 'catalog:'
         version: 4.1.0
@@ -2174,6 +2177,9 @@ importers:
       '@types/addressparser':
         specifier: ^1.0.3
         version: 1.0.3
+      '@types/dagre':
+        specifier: ^0.7.52
+        version: 0.7.54
       '@types/email-reply-parser':
         specifier: ^1.4.2
         version: 1.4.2
