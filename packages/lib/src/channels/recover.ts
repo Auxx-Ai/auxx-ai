@@ -81,6 +81,32 @@ export async function recoverChannel(
 
   await clearCredentialReauth(channelId)
 
+  // Reconnect settles through TWO paths and only the OAuth popup runs the post-connect
+  // provisioning hook (webhook-push-migration plan Phase 2.7) — the silent token-refresh path
+  // that `useConnectFlow.attemptRefreshThenOAuth` tries first lands here instead, so without
+  // this an Outlook channel that recovers silently never re-arms its Graph subscription and
+  // stays dark. Best-effort: recovery of enabled/breaker state must not fail because Graph
+  // happens to be down.
+  if (channel.provider === 'outlook') {
+    const { resolveEffectiveSyncMode } = await import('../providers/sync-mode-resolver')
+    const effectiveMode = resolveEffectiveSyncMode({
+      syncMode: channel.syncMode,
+      provider: 'outlook',
+    })
+    if (effectiveMode === 'webhook') {
+      const { armOutlookSubscription } = await import('../providers/outlook/outlook-subscription')
+      await armOutlookSubscription({
+        integrationId: channelId,
+        organizationId: ctx.organizationId,
+      }).catch((error) =>
+        logger.warn('Outlook re-arm failed during channel recovery', {
+          channelId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      )
+    }
+  }
+
   // After the metadata write, not before: `toggle`'s own invalidation fires
   // while the stale `auth` block is still on the row, and the cached channel
   // list carries both `metadata` and `enabled`.

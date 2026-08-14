@@ -1,67 +1,25 @@
 // apps/web/src/app/api/outlook/webhook/route.ts
 
-import { database as db, schema } from '@auxx/database'
-import { type ChannelProviderType, MessageService } from '@auxx/lib/email'
-import { timingSafeStringEqual } from '@auxx/lib/webhooks'
+import { enqueueOutlookPushSync } from '@auxx/lib/jobs'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, sql } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
-
-// Note: env import removed as not currently used
+import {
+  type GraphWebhookNotification,
+  type GraphWebhookPayload,
+  getStoredClientState,
+  resolveIntegrationBySubscriptionId,
+  validationResponse,
+  verifyClientState,
+} from './shared'
 
 const logger = createScopedLogger('outlook-webhook')
 
-// Microsoft Graph webhook notification interface
-interface GraphWebhookNotification {
-  subscriptionId: string
-  clientState?: string
-  changeType: 'created' | 'updated' | 'deleted'
-  resource: string
-  resourceData?: {
-    '@odata.type': string
-    '@odata.id': string
-    id?: string
-  }
-  subscriptionExpirationDateTime: string
-  tenantId?: string
-}
-
-interface GraphWebhookPayload {
-  value: GraphWebhookNotification[]
-}
-
 /**
- * Verifies Microsoft Graph webhook notification by checking client state
- * @param notification - The webhook notification to verify
- * @param expectedClientState - The expected client state from integration metadata
- * @returns boolean indicating if verification passed
+ * Microsoft Graph change-notification endpoint for Outlook mail. Shape: validate → enqueue →
+ * `202 Accepted`, all inside Graph's 3-second ack window (plan §2.3) — anything slower and the
+ * endpoint gets marked slow/drop and mail is silently lost. The actual delta walk + ingest runs
+ * out-of-band in `outlookPushSyncJob` on the message-sync queue; this route never syncs inline.
  */
-function verifyClientState(
-  notification: GraphWebhookNotification,
-  expectedClientState: string
-): boolean {
-  if (!notification.clientState) {
-    logger.warn('Missing clientState in webhook notification')
-    return false
-  }
-
-  return timingSafeStringEqual(notification.clientState, expectedClientState)
-}
-
-/**
- * Build the subscription-validation handshake response.
- *
- * Graph requires HTTP 200, `text/plain`, and the URL-decoded token as the entire
- * body, within 10 seconds — anything else and the subscription is never created.
- * `searchParams.get` already returns the decoded value.
- */
-function validationResponse(validationToken: string): NextResponse {
-  logger.info('Received Microsoft Graph subscription validation request')
-  return new NextResponse(validationToken, {
-    status: 200,
-    headers: { 'Content-Type': 'text/plain' },
-  })
-}
 
 /**
  * GET handler - health check, plus the validation handshake for good measure.
@@ -101,130 +59,80 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid payload format' }, { status: 400 })
   }
 
+  if (!body || !body.value || !Array.isArray(body.value)) {
+    logger.error('Invalid Microsoft Graph webhook payload format', { body })
+    return NextResponse.json({ error: 'Invalid payload format' }, { status: 400 })
+  }
+
+  // One DB lookup per subscription, not per notification (plan §3.4/Phase 3.4) — a busy mailbox
+  // can send several notifications in one batch, all sharing the same subscriptionId.
+  const bySubscriptionId = new Map<string, GraphWebhookNotification[]>()
+  for (const notification of body.value) {
+    const group = bySubscriptionId.get(notification.subscriptionId) ?? []
+    group.push(notification)
+    bySubscriptionId.set(notification.subscriptionId, group)
+  }
+
+  let dropped = 0
+
   try {
-    if (!body || !body.value || !Array.isArray(body.value)) {
-      logger.error('Invalid Microsoft Graph webhook payload format', { body })
-      return NextResponse.json({ error: 'Invalid payload format' }, { status: 400 })
-    }
+    for (const [subscriptionId, notifications] of bySubscriptionId) {
+      const integration = await resolveIntegrationBySubscriptionId(subscriptionId)
+      if (!integration) {
+        logger.warn('No active Outlook integration found for subscription ID', {
+          subscriptionId,
+        })
+        dropped += notifications.length
+        continue
+      }
 
-    // Process each notification in the payload
-    const results = await Promise.allSettled(
-      body.value.map((notification) => processNotification(notification))
-    )
+      const storedClientState = getStoredClientState(integration.metadata)
+      if (!storedClientState) {
+        logger.error('No stored clientState — rejecting notifications; channel needs re-arming', {
+          integrationId: integration.id,
+          subscriptionId,
+        })
+        dropped += notifications.length
+        continue
+      }
 
-    // Log any failures but still acknowledge the webhook
-    const failures = results.filter((result) => result.status === 'rejected')
-    if (failures.length > 0) {
-      logger.warn('Some notifications failed to process', {
-        total: body.value.length,
-        failures: failures.length,
+      const verified = notifications.filter((notification) => {
+        const ok = verifyClientState(notification, storedClientState)
+        if (!ok) {
+          logger.error('Client state verification failed — dropping notification', {
+            integrationId: integration.id,
+            subscriptionId,
+          })
+        }
+        return ok
       })
-    }
+      dropped += notifications.length - verified.length
 
-    return NextResponse.json({
-      success: true,
-      processed: body.value.length,
-      failures: failures.length,
-    })
-  } catch (error: any) {
-    logger.error('Error processing Microsoft Graph webhook:', {
-      error: error.message,
-      stack: error.stack,
+      const hasSyncTrigger = verified.some(
+        (notification) =>
+          notification.changeType === 'created' || notification.changeType === 'updated'
+      )
+      if (hasSyncTrigger) {
+        // Once per integration — the jobId's debounce window dedupes anything finer.
+        await enqueueOutlookPushSync({
+          integrationId: integration.id,
+          organizationId: integration.organizationId,
+        })
+      }
+    }
+  } catch (error) {
+    // An enqueue failing means work was NOT durably queued — 5xx so Graph retries the whole
+    // batch, rather than acknowledging notifications we never acted on (plan §2.3/Phase 3.3).
+    logger.error('Error enqueuing Outlook push sync from webhook notification', {
+      error: error instanceof Error ? error.message : String(error),
     })
     return NextResponse.json({ error: 'Internal server error processing webhook' }, { status: 500 })
   }
-}
 
-/**
- * Process a single Microsoft Graph webhook notification
- * @param notification - The notification to process
- */
-async function processNotification(notification: GraphWebhookNotification): Promise<void> {
-  logger.debug('Processing notification', {
-    subscriptionId: notification.subscriptionId,
-    changeType: notification.changeType,
-    resource: notification.resource,
-  })
-
-  // Find the integration by subscription ID
-  const [integration] = await db
-    .select({
-      id: schema.Integration.id,
-      organizationId: schema.Integration.organizationId,
-      metadata: schema.Integration.metadata,
-      updatedAt: schema.Integration.updatedAt,
-    })
-    .from(schema.Integration)
-    .where(
-      and(
-        eq(schema.Integration.provider, 'outlook'),
-        eq(schema.Integration.enabled, true),
-        sql`${schema.Integration.metadata} ->> 'graphSubscriptionId' = ${notification.subscriptionId}`
-      )
-    )
-    .limit(1)
-
-  if (!integration) {
-    logger.warn('No active Outlook integration found for subscription ID', {
-      subscriptionId: notification.subscriptionId,
-    })
-    // Don't throw error - acknowledge the webhook to prevent retries
-    return
-  }
-
-  // Verify client state if present
-  const metadata = integration.metadata as Record<string, any> | null
-  const webhookSecret = metadata?.webhookSecret as string | undefined
-  if (webhookSecret && !verifyClientState(notification, webhookSecret)) {
-    logger.error('Client state verification failed', {
-      integrationId: integration.id,
-      subscriptionId: notification.subscriptionId,
-    })
-    throw new Error('Client state verification failed')
-  }
-
-  // Handle subscription expiration notifications
-  const expirationTime = new Date(notification.subscriptionExpirationDateTime)
-  const now = new Date()
-  const hoursUntilExpiration = (expirationTime.getTime() - now.getTime()) / (1000 * 60 * 60)
-
-  if (hoursUntilExpiration < 24) {
-    logger.warn('Microsoft Graph subscription expiring soon', {
-      integrationId: integration.id,
-      subscriptionId: notification.subscriptionId,
-      expiresAt: notification.subscriptionExpirationDateTime,
-      hoursUntilExpiration: Math.round(hoursUntilExpiration * 100) / 100,
-    })
-    // TODO: Trigger subscription renewal logic
-  }
-
-  // Only process created and updated messages
-  if (notification.changeType === 'created' || notification.changeType === 'updated') {
-    logger.info('Triggering Outlook sync for integration', {
-      integrationId: integration.id,
-      organizationId: integration.organizationId,
-      changeType: notification.changeType,
-    })
-
-    // Initialize message service and trigger sync
-    const messageService = new MessageService(integration.organizationId)
-
-    try {
-      await messageService.syncMessages('outlook' as ChannelProviderType, integration.id)
-      logger.info('Outlook sync initiated successfully via webhook', {
-        integrationId: integration.id,
-      })
-    } catch (syncError) {
-      logger.error('Error during Outlook sync initiated by webhook', {
-        error: syncError,
-        integrationId: integration.id,
-      })
-      // Don't throw - log error but acknowledge webhook to prevent retries
-    }
-  } else {
-    logger.debug('Ignoring notification with changeType', {
-      changeType: notification.changeType,
-      integrationId: integration.id,
-    })
-  }
+  // Dropped/skipped notifications are still counted as processed-and-acknowledged — they must
+  // NOT cause Graph to retry a notification we will never accept.
+  return NextResponse.json(
+    { success: true, processed: body.value.length, dropped },
+    { status: 202 }
+  )
 }

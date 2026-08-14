@@ -1,0 +1,2 @@
+ALTER TABLE "Integration" ADD COLUMN "webhookRouteKey" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "Integration_provider_webhookRouteKey_key" ON "Integration" USING btree ("provider","webhookRouteKey") WHERE "Integration"."webhookRouteKey" IS NOT NULL AND "Integration"."deletedAt" IS NULL;

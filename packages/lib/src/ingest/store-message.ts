@@ -871,6 +871,10 @@ export async function storeMessage(
     //    branches (see `sync-messages.ts` / `outlook-provider.ts`); live
     //    webhook ingest (SES inbound, OpenPhone/Facebook/Instagram routes)
     //    never touches sync mode, so it stays `false` and always fires.
+    //  - not backfill-cutoff-suppressed: during a first-connect backfill,
+    //    historical mail (received before metadata.backfillCutoffAt) must not
+    //    fire subscribers no matter which walker ingested it — see
+    //    plans/outlook/webhook-push-migration.md Phase 2.5.
     // Loop signals ride ALONG on the event rather than vetoing the publish.
     // They used to suppress it outright, which took out the four subscribers
     // that have nothing to do with loops (timeline, mail filters, bounce
@@ -911,9 +915,17 @@ export async function storeMessage(
     //    branches (see `sync-messages.ts` / `outlook-provider.ts`); live
     //    webhook ingest (SES inbound, OpenPhone/Facebook/Instagram routes)
     //    never touches sync mode, so it stays `false` and always fires.
+    //  - not backfill-cutoff-suppressed: during a first-connect backfill,
+    //    historical mail (received before metadata.backfillCutoffAt) must not
+    //    fire subscribers no matter which walker ingested it — see
+    //    plans/outlook/webhook-push-migration.md Phase 2.5.
     // Best-effort — `publisher.publishLater` swallows its own errors and
     // never throws, so this can't fail message ingestion.
-    if (messageData.isInbound && !ctx.isInitialSync) {
+    const suppressedByBackfillCutoff =
+      !!ctx.backfillCutoffAt &&
+      !!messageData.receivedAt &&
+      messageData.receivedAt < ctx.backfillCutoffAt
+    if (messageData.isInbound && !ctx.isInitialSync && !suppressedByBackfillCutoff) {
       const fromAddress = senderParticipant.identifier?.trim().toLowerCase()
       const ownAddresses = buildOrgOwnEmailAddressSet(
         await getOrgCache().get(messageData.organizationId, 'channels')

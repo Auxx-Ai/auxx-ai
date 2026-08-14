@@ -9,7 +9,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { Client } from '@microsoft/microsoft-graph-client'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { google } from 'googleapis'
 import { onCacheEvent } from '../cache'
 import type { PostConnectHook, PostConnectHookContext } from '../connections/post-connect-hooks'
@@ -254,9 +254,11 @@ async function upsertIntegration(args: {
 
 /**
  * Seed sync after a connect.
- * - New integration: arm Gmail watch (webhook mode) or kick the initial polling backfill.
- * - Reconnect/reauth: only re-arm the Gmail watch (it may have expired); never re-trigger a
- *   full backfill, matching the old handleReauth behavior.
+ * - New integration: arm the Gmail watch / Outlook subscription (webhook mode) and kick the
+ *   initial polling backfill — Outlook's push door only covers mail from the arm point on, so
+ *   a new channel still needs the backfill for its history.
+ * - Reconnect/reauth: only re-arm the watch/subscription (it may have expired); never
+ *   re-trigger a full backfill, matching the old handleReauth behavior.
  */
 async function seedSync(args: {
   integrationId: string
@@ -268,11 +270,10 @@ async function seedSync(args: {
   const { integrationId, organizationId, provider, isCustomClient, isNew } = args
 
   // Force polling for connections that have no usable webhook path:
-  //  - Outlook: Graph-subscription arming isn't wired into this hook yet (real-time Outlook is a
-  //    follow-up), so without polling the scanner would skip it (it ignores webhook-mode rows) and
-  //    the channel would never sync.
   //  - Google with a customer's own OAuth app: can't use our shared Pub/Sub topic.
-  const forcePolling = provider === 'outlook' || (provider === 'google' && isCustomClient)
+  // Outlook arming is wired below (armOutlookSubscription) — it is left on 'auto' here so it
+  // resolves to 'webhook' and takes the branch further down.
+  const forcePolling = provider === 'google' && isCustomClient
   if (forcePolling) {
     await db
       .update(schema.Integration)
@@ -306,10 +307,52 @@ async function seedSync(args: {
     }
   }
 
+  if (effectiveMode === 'webhook' && provider === 'outlook') {
+    const { armOutlookSubscription } = await import('../providers/outlook/outlook-subscription')
+    try {
+      const connectEpoch = new Date()
+      if (isNew) {
+        // Stamp the received-time trigger cutoff BEFORE seeding, with the SAME epoch the
+        // cursor is seeded from — history stays silent during the backfill, overlap mail
+        // fires exactly once (webhook-push-migration plan Phase 2.5). jsonb MERGE, not replace.
+        await db
+          .update(schema.Integration)
+          .set({
+            metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb) || jsonb_build_object('backfillCutoffAt', ${connectEpoch.toISOString()}::text)`,
+            updatedAt: connectEpoch,
+          })
+          .where(eq(schema.Integration.id, integrationId))
+      }
+      await armOutlookSubscription({ integrationId, organizationId, seedSince: connectEpoch })
+      // A previous arm failure may have stamped syncMode 'polling'; a successful arm
+      // returns the row to 'auto' (resolves to webhook) so the polling scanner skips it —
+      // otherwise poll + push would run the double pipeline §3.2 forbids.
+      await db
+        .update(schema.Integration)
+        .set({ syncMode: 'auto', updatedAt: new Date() })
+        .where(eq(schema.Integration.id, integrationId))
+      // Deliberately NO return: a new channel still needs its history — fall through to
+      // the isNew backfill kick below. Reconnects exit via the !isNew return.
+    } catch (error) {
+      logger.warn('Outlook subscription arming failed — falling back to polling', {
+        integrationId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      // 'polling', NOT 'auto' — auto re-resolves to webhook and the polling scanner
+      // would skip the row forever (same trick as the Gmail branch above).
+      await db
+        .update(schema.Integration)
+        .set({ syncMode: 'polling', updatedAt: new Date() })
+        .where(eq(schema.Integration.id, integrationId))
+    }
+  }
+
   // Reconnect on a polling channel needs no backfill re-kick — the existing sync state stands.
   if (!isNew) return
 
-  // Initial polling pipeline (Outlook always; Google with custom client or polling mode).
+  // Initial polling pipeline — imports history for a new channel regardless of sync mode:
+  // Outlook is armed for push above but still backfills; Google with a custom client or on
+  // polling mode has no other way to get its history.
   await db
     .update(schema.Integration)
     .set({ syncStage: 'MESSAGE_LIST_FETCH_PENDING', updatedAt: new Date() })
