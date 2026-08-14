@@ -409,11 +409,16 @@ export function PropertyProvider({
       setCurrentValue(newValue)
       setIsDirty(false)
 
-      // Use async save path
+      // Use async save path. Only advance serverValue on success — a failed
+      // save rolls the store back, and advancing here would make the next
+      // commit's "did it change" diff compare against a value the server
+      // never accepted.
       const result = await storeSaveAsync(recordId, field.id, newValue, field.fieldType, {
         fieldOptions: field.options,
       })
-      setServerValue(newValue)
+      if (result?.success) {
+        setServerValue(newValue)
+      }
       return result
     },
     [recordId, serverValue, storeSaveAsync, field.id, field.fieldType, field.options]

@@ -412,42 +412,52 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         })
       }
 
-      // try {
-      const result = await setMutateAsync({
-        recordId: normalizedRecordId,
-        fieldId,
-        value,
-        ...(ai ? { ai: true } : {}),
-      })
+      try {
+        const result = await setMutateAsync({
+          recordId: normalizedRecordId,
+          fieldId,
+          value,
+          ...(ai ? { ai: true } : {}),
+        })
 
-      // Check if stale (a newer mutation was fired)
-      const store = useFieldValueStore.getState()
-      if (prep.mutationVersion < store.getMutationVersion(prep.key)) {
-        return { success: true }
+        // Check if stale (a newer mutation was fired)
+        const store = useFieldValueStore.getState()
+        if (prep.mutationVersion < store.getMutationVersion(prep.key)) {
+          return { success: true }
+        }
+
+        // Apply server result
+        const firstValueId = result?.values?.[0]?.id
+        handleMutationSuccess(
+          prep.key,
+          prep.mutationVersion,
+          result,
+          fieldType,
+          saveOpts?.fieldOptions
+        )
+        onSuccess?.()
+        return { success: true, id: firstValueId }
+      } catch (error: unknown) {
+        // Check if superseded — a newer mutation owns the store state now.
+        const store = useFieldValueStore.getState()
+        if (prep.mutationVersion < store.getMutationVersion(prep.key)) {
+          return undefined
+        }
+
+        // Roll back the optimistic value and surface the server error
+        // (e.g. a uniqueness conflict on a multi-value EMAIL field) —
+        // without this the UI silently keeps a value the server rejected.
+        handleMutationError(
+          prep.key,
+          prep.mutationVersion,
+          prep,
+          normalizedRecordId,
+          syncInverseCache,
+          error,
+          ai
+        )
+        return { success: false }
       }
-
-      // Apply server result
-      const firstValueId = result?.values?.[0]?.id
-      handleMutationSuccess(
-        prep.key,
-        prep.mutationVersion,
-        result,
-        fieldType,
-        saveOpts?.fieldOptions
-      )
-      onSuccess?.()
-      return { success: true, id: firstValueId }
-      // } catch (error: unknown) {
-      //   console.log('ON ERROR ASYNC:', { error })
-      //   // Check if superseded
-      //   const store = useFieldValueStore.getState()
-      //   if (prep.mutationVersion < store.getMutationVersion(prep.key)) {
-      //     return undefined
-      //   }
-
-      //   handleMutationError(prep.key, prep.mutationVersion, prep, recordId, syncInverseCache, error)
-      //   return undefined
-      // }
     },
     [setMutateAsync, onSuccess, getFieldMetadata, syncInverseCache]
   )

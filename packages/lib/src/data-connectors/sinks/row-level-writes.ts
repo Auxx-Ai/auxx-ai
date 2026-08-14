@@ -210,8 +210,6 @@ export async function planRowLevelWrites(
             fieldId: w.fieldUuid,
             value: typed,
             organizationId: ctx.orgId,
-            modelType: w.field.modelType as never,
-            entityDefinitionId,
             excludeEntityId: instanceId,
           },
           ctx.db
