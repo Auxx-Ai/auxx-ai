@@ -33,6 +33,12 @@ const LOG_EVERY = 20
  *
  * **Idempotent and live-safe.** Pure min/max recompute under the same
  * first-wins/last-wins guards the live path uses.
+ *
+ * **One UPDATE per pass, not one per direction.** Postgres does not support two
+ * data-modifying CTEs touching the same row in a single statement — only one of
+ * the writes is applied, silently. Separate `first_upd`/`last_upd` CTEs left
+ * every backfilled row with `lastInteractionAt` NULL. Both column pairs are
+ * therefore written by a single UPDATE with per-pair CASE guards.
  */
 export const migration082InteractionFieldsParticipantResolution: DataMigrationDef = {
   id: '082-interaction-fields-participant-resolution',
@@ -41,16 +47,14 @@ export const migration082InteractionFieldsParticipantResolution: DataMigrationDe
     // ── Pass 1: contacts, batched by participant ───────────────────────────
     let cursor = ''
     let scanned = 0
-    let stampedFirst = 0
-    let stampedLast = 0
+    let stamped = 0
     let batches = 0
 
     for (;;) {
       const result = await db.execute<{
         lastId: string | null
         scanned: number
-        first: number
-        last: number
+        stamped: number
       }>(sql`
         WITH batch AS MATERIALIZED (
           SELECT id, "entityInstanceId", "organizationId"
@@ -83,30 +87,43 @@ export const migration082InteractionFieldsParticipantResolution: DataMigrationDe
           FROM msgs ORDER BY contact_id, sent_at ASC
         ),
         last_targets AS (
-          SELECT DISTINCT ON (contact_id) contact_id, org_id, sent_at, msg_id
+          SELECT DISTINCT ON (contact_id) contact_id, sent_at, msg_id
           FROM msgs ORDER BY contact_id, sent_at DESC
         ),
-        first_upd AS (
-          UPDATE "EntityInstance" ei
-          SET "firstInteractionAt" = t.sent_at, "firstInteractionMessageId" = t.msg_id
-          FROM first_targets t
-          WHERE ei.id = t.contact_id AND ei."organizationId" = t.org_id
-            AND (ei."firstInteractionAt" IS NULL OR ei."firstInteractionAt" > t.sent_at)
-          RETURNING ei.id
+        -- Every contact in first_targets is in last_targets (same source), so
+        -- this inner join always pairs both extremes for the single UPDATE.
+        targets AS (
+          SELECT f.contact_id, f.org_id,
+            f.sent_at AS first_at, f.msg_id AS first_msg_id,
+            l.sent_at AS last_at, l.msg_id AS last_msg_id
+          FROM first_targets f
+          JOIN last_targets l ON l.contact_id = f.contact_id
         ),
-        last_upd AS (
+        upd AS (
           UPDATE "EntityInstance" ei
-          SET "lastInteractionAt" = t.sent_at, "lastInteractionMessageId" = t.msg_id
-          FROM last_targets t
+          SET
+            "firstInteractionAt" = CASE
+              WHEN ei."firstInteractionAt" IS NULL OR ei."firstInteractionAt" > t.first_at
+              THEN t.first_at ELSE ei."firstInteractionAt" END,
+            "firstInteractionMessageId" = CASE
+              WHEN ei."firstInteractionAt" IS NULL OR ei."firstInteractionAt" > t.first_at
+              THEN t.first_msg_id ELSE ei."firstInteractionMessageId" END,
+            "lastInteractionAt" = CASE
+              WHEN ei."lastInteractionAt" IS NULL OR ei."lastInteractionAt" < t.last_at
+              THEN t.last_at ELSE ei."lastInteractionAt" END,
+            "lastInteractionMessageId" = CASE
+              WHEN ei."lastInteractionAt" IS NULL OR ei."lastInteractionAt" < t.last_at
+              THEN t.last_msg_id ELSE ei."lastInteractionMessageId" END
+          FROM targets t
           WHERE ei.id = t.contact_id AND ei."organizationId" = t.org_id
-            AND (ei."lastInteractionAt" IS NULL OR ei."lastInteractionAt" < t.sent_at)
+            AND (ei."firstInteractionAt" IS NULL OR ei."firstInteractionAt" > t.first_at
+              OR ei."lastInteractionAt" IS NULL OR ei."lastInteractionAt" < t.last_at)
           RETURNING ei.id
         )
         SELECT
           (SELECT max(id) FROM batch) AS "lastId",
           (SELECT count(*) FROM batch)::int AS "scanned",
-          (SELECT count(*) FROM first_upd)::int AS "first",
-          (SELECT count(*) FROM last_upd)::int AS "last"
+          (SELECT count(*) FROM upd)::int AS "stamped"
       `)
 
       const row = result.rows[0]
@@ -114,21 +131,20 @@ export const migration082InteractionFieldsParticipantResolution: DataMigrationDe
 
       cursor = row.lastId
       scanned += Number(row.scanned)
-      stampedFirst += Number(row.first)
-      stampedLast += Number(row.last)
+      stamped += Number(row.stamped)
       batches += 1
 
       if (batches % LOG_EVERY === 0) {
-        logger.info('Backfilling contact interaction stamps', { scanned, stampedFirst, cursor })
+        logger.info('Backfilling contact interaction stamps', { scanned, stamped, cursor })
       }
 
       if (Number(row.scanned) < BATCH_SIZE) break
     }
 
-    logger.info('Contact interaction pass done', { scanned, stampedFirst, stampedLast, batches })
+    logger.info('Contact interaction pass done', { scanned, stamped, batches })
 
     // ── Pass 2: propagate contact stamps to their linked companies ─────────
-    const companies = await db.execute<{ first: number; last: number }>(sql`
+    const companies = await db.execute<{ stamped: number }>(sql`
       WITH links AS (
         SELECT
           fv."relatedEntityId" AS company_id,
@@ -145,32 +161,42 @@ export const migration082InteractionFieldsParticipantResolution: DataMigrationDe
         FROM links WHERE first_at IS NOT NULL ORDER BY company_id, first_at ASC
       ),
       last_targets AS (
-        SELECT DISTINCT ON (company_id) company_id, org_id, last_at, last_msg_id
+        SELECT DISTINCT ON (company_id) company_id, last_at, last_msg_id
         FROM links WHERE last_at IS NOT NULL ORDER BY company_id, last_at DESC
       ),
-      first_upd AS (
-        UPDATE "EntityInstance" ei
-        SET "firstInteractionAt" = t.first_at, "firstInteractionMessageId" = t.first_msg_id
-        FROM first_targets t
-        WHERE ei.id = t.company_id AND ei."organizationId" = t.org_id
-          AND (ei."firstInteractionAt" IS NULL OR ei."firstInteractionAt" > t.first_at)
-        RETURNING ei.id
+      -- Contacts carry both stamps or neither (single-UPDATE write above and on
+      -- the live path), so the inner join pairs both extremes per company.
+      targets AS (
+        SELECT f.company_id, f.org_id,
+          f.first_at, f.first_msg_id, l.last_at, l.last_msg_id
+        FROM first_targets f
+        JOIN last_targets l ON l.company_id = f.company_id
       ),
-      last_upd AS (
+      upd AS (
         UPDATE "EntityInstance" ei
-        SET "lastInteractionAt" = t.last_at, "lastInteractionMessageId" = t.last_msg_id
-        FROM last_targets t
+        SET
+          "firstInteractionAt" = CASE
+            WHEN ei."firstInteractionAt" IS NULL OR ei."firstInteractionAt" > t.first_at
+            THEN t.first_at ELSE ei."firstInteractionAt" END,
+          "firstInteractionMessageId" = CASE
+            WHEN ei."firstInteractionAt" IS NULL OR ei."firstInteractionAt" > t.first_at
+            THEN t.first_msg_id ELSE ei."firstInteractionMessageId" END,
+          "lastInteractionAt" = CASE
+            WHEN ei."lastInteractionAt" IS NULL OR ei."lastInteractionAt" < t.last_at
+            THEN t.last_at ELSE ei."lastInteractionAt" END,
+          "lastInteractionMessageId" = CASE
+            WHEN ei."lastInteractionAt" IS NULL OR ei."lastInteractionAt" < t.last_at
+            THEN t.last_msg_id ELSE ei."lastInteractionMessageId" END
+        FROM targets t
         WHERE ei.id = t.company_id AND ei."organizationId" = t.org_id
-          AND (ei."lastInteractionAt" IS NULL OR ei."lastInteractionAt" < t.last_at)
+          AND (ei."firstInteractionAt" IS NULL OR ei."firstInteractionAt" > t.first_at
+            OR ei."lastInteractionAt" IS NULL OR ei."lastInteractionAt" < t.last_at)
         RETURNING ei.id
       )
-      SELECT
-        (SELECT count(*) FROM first_upd)::int AS "first",
-        (SELECT count(*) FROM last_upd)::int AS "last"
+      SELECT (SELECT count(*) FROM upd)::int AS "stamped"
     `)
     logger.info('Company propagation pass done', {
-      first: Number(companies.rows[0]?.first ?? 0),
-      last: Number(companies.rows[0]?.last ?? 0),
+      stamped: Number(companies.rows[0]?.stamped ?? 0),
     })
   },
 }
