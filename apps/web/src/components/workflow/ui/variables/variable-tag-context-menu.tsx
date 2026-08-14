@@ -2,59 +2,61 @@
 
 'use client'
 
+import { setSegmentAccessor } from '@auxx/lib/workflow-engine/client'
 import {
   ContextMenu,
-  ContextMenuCheckboxItem,
   ContextMenuContent,
+  ContextMenuItem,
   ContextMenuLabel,
-  ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@auxx/ui/components/context-menu'
 import { Input } from '@auxx/ui/components/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Check, ChevronDown, ChevronRight } from 'lucide-react'
+import { Fragment, useState } from 'react'
 import {
-  type ArraySegmentInfo,
-  getArrayAccessorMenuLabel,
-  parseArraySegmentsFromId,
-  replaceArrayAccessor,
-} from '~/components/workflow/utils/variable-utils'
+  getAccessorLabel,
+  useVariableArraySegments,
+  type VariableArraySegment,
+} from './use-variable-array-segments'
 
-/** Standard accessor options shown in the menu */
-const STANDARD_ACCESSORS = [
-  { value: '*', label: 'All items' },
-  { value: '0', label: 'First item' },
-  { value: '-1', label: 'Last item' },
-] as const
+/**
+ * Accessor options offered for a segment.
+ *
+ * `null` (the array itself) is offered **only on a terminal segment** —
+ * stripping a bracket mid-path leaves `orders.sku`, i.e. dotting into an array.
+ *
+ * A terminal segment deliberately does NOT offer `[*]`. At the end of a path a
+ * wildcard returns the array unmapped (`ExecutionContextManager.walkProjection`
+ * returns `items` when nothing follows), so `X` and `X[*]` are the same value —
+ * but `X` is declared `ARRAY` while `X[*]` is the item's shape, and the item
+ * shape is the wrong answer for every array-accepting input. Offering both
+ * would be two identical-looking options where one silently mistypes.
+ */
+function accessorOptions(segment: VariableArraySegment): (string | null)[] {
+  return segment.isTerminal ? [null, '0', '-1'] : ['*', '0', '-1']
+}
 
-// ---------------------------------------------------------------------------
-// Shared props
-// ---------------------------------------------------------------------------
-
-type ArrayAccessorMenuProps = {
+type VariableTagContextMenuProps = {
   variableId: string
   onVariableIdChange?: (newId: string) => void
   children: React.ReactNode
 }
 
-// ---------------------------------------------------------------------------
-// Right-click context menu variant
-// ---------------------------------------------------------------------------
-
 /**
- * Context menu wrapper for variable tags that contain array segments.
- * Right-click shows accessor options per array segment in the variable path.
+ * Right-click menu for changing how each array in a variable's path is accessed.
+ *
+ * Renders nothing when the path has no arrays — the chip falls through to the
+ * browser's own menu rather than showing an empty or disabled panel.
  */
 export function VariableTagContextMenu({
   variableId,
   onVariableIdChange,
   children,
-}: ArrayAccessorMenuProps) {
-  const arraySegments = useMemo(() => parseArraySegmentsFromId(variableId), [variableId])
+}: VariableTagContextMenuProps) {
+  const segments = useVariableArraySegments(variableId)
 
-  if (arraySegments.length === 0 || !onVariableIdChange) {
+  if (segments.length === 0 || !onVariableIdChange) {
     return <>{children}</>
   }
 
@@ -63,80 +65,146 @@ export function VariableTagContextMenu({
       <ContextMenuTrigger asChild>
         <span className='inline-flex'>{children}</span>
       </ContextMenuTrigger>
-      <ContextMenuContent className='w-56'>
-        <div onClick={(e) => e.stopPropagation()}>
-          {arraySegments.map((seg, i) => (
-            <ContextMenuSegmentSection
-              key={`${seg.path}-${i}`}
-              segment={seg}
-              variableId={variableId}
-              onVariableIdChange={onVariableIdChange}
-              showSeparator={i < arraySegments.length - 1}
-            />
-          ))}
-        </div>
+      <ContextMenuContent
+        className='w-64'
+        // Radix portals this content to `document.body`, but React synthetic
+        // events propagate along the REACT tree — where it is still a descendant
+        // of whatever wraps the chip. Every consumer wraps the chip in a
+        // `PopoverTrigger` (the variable explorer), so without this, clicking any
+        // row in here bubbles out and toggles that popover open on top of us.
+        onClick={(e) => e.stopPropagation()}>
+        <ArrayAccessPanel
+          segments={segments}
+          variableId={variableId}
+          onVariableIdChange={onVariableIdChange}
+        />
       </ContextMenuContent>
     </ContextMenu>
   )
 }
 
-/** Context menu section for a single array segment */
-function ContextMenuSegmentSection({
+/**
+ * Inline accordion over the path's arrays.
+ *
+ * Every array is listed by name with its current selection; clicking one expands
+ * its options in place below it, one at a time. A single array is always
+ * expanded, so the common case stays one click deep.
+ *
+ * The menu deliberately stays open across selections — with several arrays in a
+ * path you routinely set two accessors in one visit. That is what every
+ * `onSelect`'s `preventDefault` buys.
+ */
+function ArrayAccessPanel({
+  segments,
+  variableId,
+  onVariableIdChange,
+}: {
+  segments: VariableArraySegment[]
+  variableId: string
+  onVariableIdChange: (newId: string) => void
+}) {
+  const isSingle = segments.length === 1
+  // Keyed on `ordinal`, never `basePath`: editing one accessor rewrites the ids
+  // of every segment after it, so a basePath key would collapse or jump the
+  // accordion on each selection.
+  const [expandedOrdinal, setExpandedOrdinal] = useState<number | null>(0)
+
+  return (
+    <>
+      <ContextMenuLabel className='text-xs text-muted-foreground'>Array access</ContextMenuLabel>
+
+      {segments.map((segment) => {
+        const isExpanded = isSingle || expandedOrdinal === segment.ordinal
+
+        return (
+          <Fragment key={segment.ordinal}>
+            {isSingle ? (
+              <ContextMenuLabel className='flex items-center justify-between gap-2 font-medium'>
+                <span className='truncate'>{segment.label}</span>
+                <span className='shrink-0 text-xs text-muted-foreground'>
+                  {getAccessorLabel(segment.accessor)}
+                </span>
+              </ContextMenuLabel>
+            ) : (
+              <ContextMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  setExpandedOrdinal(isExpanded ? null : segment.ordinal)
+                }}>
+                <div className='flex w-full items-center gap-2'>
+                  {isExpanded ? (
+                    <ChevronDown className='size-3.5 shrink-0 opacity-60' />
+                  ) : (
+                    <ChevronRight className='size-3.5 shrink-0 opacity-60' />
+                  )}
+                  <span className='truncate font-medium'>{segment.label}</span>
+                  <span className='ml-auto shrink-0 text-xs text-muted-foreground'>
+                    {getAccessorLabel(segment.accessor)}
+                  </span>
+                </div>
+              </ContextMenuItem>
+            )}
+
+            {isExpanded && (
+              <SegmentOptions
+                segment={segment}
+                variableId={variableId}
+                onVariableIdChange={onVariableIdChange}
+                indented={!isSingle}
+              />
+            )}
+          </Fragment>
+        )
+      })}
+    </>
+  )
+}
+
+/** The expanded option list for one array segment. */
+function SegmentOptions({
   segment,
   variableId,
   onVariableIdChange,
-  showSeparator,
+  indented,
 }: {
-  segment: ArraySegmentInfo
+  segment: VariableArraySegment
   variableId: string
   onVariableIdChange: (newId: string) => void
-  showSeparator: boolean
+  indented: boolean
 }) {
   const [showCustomIndex, setShowCustomIndex] = useState(false)
   const [customIndex, setCustomIndex] = useState('')
 
-  const isCustomAccessor =
-    segment.accessor !== '*' && segment.accessor !== '0' && segment.accessor !== '-1'
+  const options = accessorOptions(segment)
+  const isCustom = segment.accessor !== null && !options.includes(segment.accessor)
 
-  const handleSelect = (newAccessor: string) => {
+  const select = (accessor: string | null) => {
     setShowCustomIndex(false)
     setCustomIndex('')
-    const newId = replaceArrayAccessor(variableId, segment.path, newAccessor)
-    onVariableIdChange(newId)
+    onVariableIdChange(setSegmentAccessor(variableId, segment.basePath, accessor))
   }
 
-  const handleCustomSubmit = () => {
+  const submitCustom = () => {
     const parsed = Number.parseInt(customIndex, 10)
-    if (!Number.isNaN(parsed)) {
-      handleSelect(String(parsed))
-    }
+    if (!Number.isNaN(parsed)) select(String(parsed))
   }
 
   return (
-    <>
-      <ContextMenuLabel className='text-xs text-muted-foreground'>
-        "{segment.label}" access
-      </ContextMenuLabel>
-
-      {STANDARD_ACCESSORS.map((opt) => (
-        <ContextMenuCheckboxItem
-          key={opt.value}
-          multi={false}
-          checked={segment.accessor === opt.value}
-          onSelect={(e) => {
-            e.preventDefault()
-            handleSelect(opt.value)
-          }}>
-          {opt.label}
-          <span className='ml-auto text-xs text-muted-foreground'>[{opt.value}]</span>
-        </ContextMenuCheckboxItem>
+    <div className={cn(indented && 'ml-3 border-l pl-1')}>
+      {options.map((accessor) => (
+        <OptionRow
+          key={accessor ?? 'bare'}
+          checked={segment.accessor === accessor}
+          onSelect={() => select(accessor)}
+          hint={accessor === null ? undefined : `[${accessor}]`}>
+          {getAccessorLabel(accessor)}
+        </OptionRow>
       ))}
 
-      {isCustomAccessor && (
-        <ContextMenuCheckboxItem multi={false} checked>
-          {getArrayAccessorMenuLabel(segment.accessor)}
-          <span className='ml-auto text-xs text-muted-foreground'>[{segment.accessor}]</span>
-        </ContextMenuCheckboxItem>
+      {isCustom && (
+        <OptionRow checked hint={`[${segment.accessor}]`}>
+          {getAccessorLabel(segment.accessor)}
+        </OptionRow>
       )}
 
       {showCustomIndex ? (
@@ -149,8 +217,9 @@ function ContextMenuSegmentSection({
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault()
-                handleCustomSubmit()
+                submitCustom()
               }
+              // The menu's typeahead would otherwise swallow the digits.
               e.stopPropagation()
             }}
             className='h-7 text-xs'
@@ -158,179 +227,48 @@ function ContextMenuSegmentSection({
           />
         </div>
       ) : (
-        <ContextMenuCheckboxItem
-          multi={false}
-          checked={false}
-          onSelect={(e) => {
-            e.preventDefault()
-            setShowCustomIndex(true)
-          }}>
+        <OptionRow checked={false} onSelect={() => setShowCustomIndex(true)}>
           Specific index...
-        </ContextMenuCheckboxItem>
+        </OptionRow>
       )}
-
-      {showSeparator && <ContextMenuSeparator />}
-    </>
+    </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Left-click dropdown variant
-// ---------------------------------------------------------------------------
 
 /**
- * Dropdown (popover) wrapper for variable tags that contain array segments.
- * Left-click shows accessor options per array segment in the variable path.
+ * One selectable accessor. `preventDefault` is what keeps the menu open after a
+ * selection — without it Radix dismisses on every activation.
  */
-export function VariableTagDropdown({
-  variableId,
-  onVariableIdChange,
-  children,
-}: ArrayAccessorMenuProps) {
-  const [open, setOpen] = useState(false)
-  const arraySegments = useMemo(() => parseArraySegmentsFromId(variableId), [variableId])
-
-  if (arraySegments.length === 0 || !onVariableIdChange) {
-    return <>{children}</>
-  }
-
-  const handleChange = (newId: string) => {
-    onVariableIdChange(newId)
-    setOpen(false)
-  }
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <span className='inline-flex cursor-pointer'>{children}</span>
-      </PopoverTrigger>
-      <PopoverContent
-        side='bottom'
-        align='start'
-        className='w-56 p-1'
-        onOpenAutoFocus={(e) => e.preventDefault()}>
-        {arraySegments.map((seg, i) => (
-          <DropdownSegmentSection
-            key={`${seg.path}-${i}`}
-            segment={seg}
-            variableId={variableId}
-            onVariableIdChange={handleChange}
-            showSeparator={i < arraySegments.length - 1}
-          />
-        ))}
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-/** Dropdown section for a single array segment */
-function DropdownSegmentSection({
-  segment,
-  variableId,
-  onVariableIdChange,
-  showSeparator,
-}: {
-  segment: ArraySegmentInfo
-  variableId: string
-  onVariableIdChange: (newId: string) => void
-  showSeparator: boolean
-}) {
-  const [showCustomIndex, setShowCustomIndex] = useState(false)
-  const [customIndex, setCustomIndex] = useState('')
-
-  const isCustomAccessor =
-    segment.accessor !== '*' && segment.accessor !== '0' && segment.accessor !== '-1'
-
-  const handleSelect = (newAccessor: string) => {
-    setShowCustomIndex(false)
-    setCustomIndex('')
-    const newId = replaceArrayAccessor(variableId, segment.path, newAccessor)
-    onVariableIdChange(newId)
-  }
-
-  const handleCustomSubmit = () => {
-    const parsed = Number.parseInt(customIndex, 10)
-    if (!Number.isNaN(parsed)) {
-      handleSelect(String(parsed))
-    }
-  }
-
-  return (
-    <>
-      <div className='px-2 py-1.5 text-xs font-semibold text-muted-foreground'>
-        "{segment.label}" access
-      </div>
-
-      {STANDARD_ACCESSORS.map((opt) => (
-        <DropdownCheckItem
-          key={opt.value}
-          checked={segment.accessor === opt.value}
-          onSelect={() => handleSelect(opt.value)}>
-          {opt.label}
-          <span className='ml-auto text-xs text-muted-foreground'>[{opt.value}]</span>
-        </DropdownCheckItem>
-      ))}
-
-      {isCustomAccessor && (
-        <DropdownCheckItem checked>
-          {getArrayAccessorMenuLabel(segment.accessor)}
-          <span className='ml-auto text-xs text-muted-foreground'>[{segment.accessor}]</span>
-        </DropdownCheckItem>
-      )}
-
-      {showCustomIndex ? (
-        <div className='px-2 py-1.5'>
-          <Input
-            type='number'
-            placeholder='Enter index...'
-            value={customIndex}
-            onChange={(e) => setCustomIndex(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                handleCustomSubmit()
-              }
-              e.stopPropagation()
-            }}
-            className='h-7 text-xs'
-            autoFocus
-          />
-        </div>
-      ) : (
-        <DropdownCheckItem checked={false} onSelect={() => setShowCustomIndex(true)}>
-          Specific index...
-        </DropdownCheckItem>
-      )}
-
-      {showSeparator && <div className='-mx-1 my-1 h-px bg-border' />}
-    </>
-  )
-}
-
-/** Simple check item for the dropdown variant — mirrors ContextMenuCheckboxItem with multi=false */
-function DropdownCheckItem({
+function OptionRow({
   checked,
   onSelect,
+  hint,
   children,
 }: {
   checked?: boolean
   onSelect?: () => void
+  hint?: string
   children: React.ReactNode
 }) {
   return (
-    <button
-      type='button'
-      className={cn(
-        'relative flex w-full cursor-default select-none items-center justify-between rounded-full px-2 py-1 text-sm outline-hidden transition-colors',
-        'hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground'
-      )}
-      onClick={onSelect}>
-      <div className='flex items-center gap-2'>{children}</div>
-      {checked && (
-        <div className='flex size-4 items-center justify-center rounded-full border border-blue-800 bg-info'>
-          <Check className='size-2.5! text-white' strokeWidth={4} />
-        </div>
-      )}
-    </button>
+    <ContextMenuItem
+      onSelect={(e) => {
+        e.preventDefault()
+        onSelect?.()
+      }}>
+      <div className='flex w-full items-center gap-2'>
+        <span className='truncate'>{children}</span>
+        {hint && <span className='ml-auto text-xs text-muted-foreground'>{hint}</span>}
+        {checked && (
+          <div
+            className={cn(
+              'flex size-4 shrink-0 items-center justify-center rounded-full border border-blue-800 bg-info',
+              !hint && 'ml-auto'
+            )}>
+            <Check className='size-2.5! text-white' strokeWidth={4} />
+          </div>
+        )}
+      </div>
+    </ContextMenuItem>
   )
 }

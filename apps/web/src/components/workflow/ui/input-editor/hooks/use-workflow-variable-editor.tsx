@@ -352,12 +352,21 @@ export function useWorkflowVariableEditor({
     },
   })
 
-  // Store nodeId in editor storage for variable-node access
+  // Store nodeId + the field's type contract in editor storage. A NodeView only
+  // receives `node`/`getPos`/`editor`/`selected`, so this is the only channel by
+  // which the variable chip can learn what types its field accepts.
+  //
+  // Keyed on the joined types rather than the array identity — callers build
+  // `expectedTypes` inline, so a reference dep would re-fire every render.
+  const expectedTypesKey = expectedTypes.join('|')
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on expectedTypesKey, not the unstable array
   useEffect(() => {
     if (editor && nodeId !== undefined) {
       editor.storage.nodeId = nodeId
+      editor.storage.expectedTypes = expectedTypes
     }
-  }, [editor, nodeId])
+  }, [editor, nodeId, expectedTypesKey])
 
   // Insert a variable at trigger position
   const insertVariable = useCallback(

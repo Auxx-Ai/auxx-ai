@@ -24,8 +24,27 @@ export interface ArraySegmentInfo {
   accessor: string
   /** The full segment string (e.g., "to[*]") */
   fullSegment: string
-  /** Human-readable label for the property */
+  /**
+   * Human-readable label for the property.
+   *
+   * This module is pure — it has no access to the variable store — so this
+   * falls back to the raw key. A raw key is frequently a CUID (a findMany
+   * output is keyed on `resource.id`, see `generateFindNodeVariablesFromFields`),
+   * so **UI must not render this directly**. Resolve `basePath` through the
+   * store and use the resolved `variable.label`, exactly as
+   * {@link buildVariableLabelPath} does.
+   */
   label: string
+  /**
+   * The variable id up to and including this segment's key, bracket excluded
+   * (e.g. `find_1.orders` for `find_1.orders[*].sku`). Unique within an id by
+   * construction, which makes it the stable handle for
+   * {@link setSegmentAccessor} — the bare key is not, because one path can
+   * nest two arrays of the same name (`items[*].items[0]`).
+   */
+  basePath: string
+  /** Zero-based position among the array segments of this id, in path order. */
+  ordinal: number
 }
 
 /** Pattern matching array bracket notation in variable IDs */
@@ -79,11 +98,20 @@ export function parseVariablePath(path: string): PathSegment[] {
 }
 
 /**
- * Parse all array segments from a variable ID
+ * Parse all **bracketed** array segments from a variable ID.
+ *
+ * Only finds segments that already carry a `[…]`. A bare array — a terminal
+ * segment whose variable is `ARRAY`-typed but has no bracket, e.g. `find_1.orders`
+ * feeding a List node — is invisible here, because deciding that requires the
+ * variable store. UI that needs both walks the path against the store instead
+ * (see `useVariableArraySegments` in apps/web).
+ *
  * @example
  * parseArraySegmentsFromId("nodeId.message.to[*].items[0].name")
- * // → [{ path: "to", accessor: "*", fullSegment: "to[*]", label: "to" },
- * //    { path: "items", accessor: "0", fullSegment: "items[0]", label: "items" }]
+ * // → [{ path: "to",    accessor: "*", fullSegment: "to[*]",
+ * //      label: "to",    basePath: "nodeId.message.to",          ordinal: 0 },
+ * //    { path: "items", accessor: "0", fullSegment: "items[0]",
+ * //      label: "items", basePath: "nodeId.message.to[*].items", ordinal: 1 }]
  */
 export function parseArraySegmentsFromId(variableId: string): ArraySegmentInfo[] {
   const segments: ArraySegmentInfo[] = []
@@ -92,30 +120,54 @@ export function parseArraySegmentsFromId(variableId: string): ArraySegmentInfo[]
   // Reset lastIndex for global regex
   ARRAY_SEGMENT_PATTERN.lastIndex = 0
   while ((match = ARRAY_SEGMENT_PATTERN.exec(variableId)) !== null) {
+    const key = match[1]!
     segments.push({
-      path: match[1]!,
+      path: key,
       accessor: match[2]!,
       fullSegment: match[0],
-      label: match[1]!,
+      label: key,
+      basePath: variableId.slice(0, match.index + key.length),
+      ordinal: segments.length,
     })
   }
   return segments
 }
 
 /**
- * Replace the accessor for a specific array segment in a variable ID
+ * Set, swap, or strip the array accessor on one segment of a variable ID.
+ *
+ * Addressed by `basePath` (the id up to and including the segment's key,
+ * bracket excluded) rather than by the bare key, so a path that nests two
+ * arrays of the same name edits the intended one:
+ * `setSegmentAccessor("n.items[*].items[0]", "n.items[*].items", "*")` touches
+ * the second `items`, not the first.
+ *
+ * Passing `null` removes the bracket entirely, yielding the array itself —
+ * which is a different declared type from `[*]` (`ARRAY` vs the item's shape)
+ * and what array-accepting inputs such as the List node's Input List want. Only
+ * meaningful on a terminal segment: stripping a bracket mid-path leaves
+ * `orders.sku`, i.e. dotting into an array.
+ *
  * @example
- * replaceArrayAccessor("nodeId.msg.to[*].name", "to", "0")
- * // → "nodeId.msg.to[0].name"
+ * setSegmentAccessor("nodeId.msg.to[*].name", "nodeId.msg.to", "0")  // → "nodeId.msg.to[0].name"
+ * setSegmentAccessor("find_1.orders[*]",      "find_1.orders",      null) // → "find_1.orders"
+ * setSegmentAccessor("find_1.orders",         "find_1.orders",      "-1") // → "find_1.orders[-1]"
  */
-export function replaceArrayAccessor(
+export function setSegmentAccessor(
   variableId: string,
-  segmentPath: string,
-  newAccessor: string
+  basePath: string,
+  accessor: string | null
 ): string {
-  // Match the specific segment[accessor] and replace the accessor
-  const pattern = new RegExp(`(${escapeRegExp(segmentPath)})\\[(-?\\d+|\\*)\\]`)
-  return variableId.replace(pattern, `$1[${newAccessor}]`)
+  if (!variableId.startsWith(basePath)) return variableId
+
+  const rest = variableId.slice(basePath.length)
+  const existing = rest.match(/^\[(-?\d+|\*)\]/)
+  // A `basePath` must land on a segment boundary — anything else is a caller
+  // bug (a truncated prefix), and rewriting there would corrupt the key.
+  if (!existing && rest !== '' && !rest.startsWith('.')) return variableId
+
+  const tail = existing ? rest.slice(existing[0].length) : rest
+  return `${basePath}${accessor === null ? '' : `[${accessor}]`}${tail}`
 }
 
 /**
@@ -142,11 +194,6 @@ function ordinal(n: number): string {
   const s = ['th', 'st', 'nd', 'rd']
   const v = n % 100
   return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`
-}
-
-/** Escape special regex characters in a string */
-function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 /**

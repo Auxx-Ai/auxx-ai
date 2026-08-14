@@ -394,8 +394,8 @@ export {
   parseArraySegmentsFromId,
   parseResourceFieldFromVariableId,
   preserveArrayStructure,
-  replaceArrayAccessor,
   resolveFieldPath,
+  setSegmentAccessor,
   VARIABLE_PATTERN,
 } from './catalog/variable-inference'
 export type {
