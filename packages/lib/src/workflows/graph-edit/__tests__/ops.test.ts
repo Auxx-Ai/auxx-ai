@@ -46,8 +46,9 @@ const {
   setTrigger,
   updateNode,
 } = await import('../ops')
-const { readDraft } = await import('../read')
+const { buildNodeSummary, readDraft } = await import('../read')
 
+import { hashWorkflowGraph } from '../../graph-hash'
 import type { DraftGraph, GraphEdge, GraphNode } from '../types'
 
 const ORG = 'org_1'
@@ -670,6 +671,104 @@ describe('updateNode / disconnectNodes', () => {
     const loop = persistedGraph().nodes.find((n) => n.id === LOOP_ID)
     expect(loop?.data?.title).toBe('Every Morning')
     expect(loop?.data?.desc).toBe('Every Morning')
+  })
+
+  it('deep-patches nested config atomically, preserves siblings, and durably unsets fields', async () => {
+    const trigger = triggerNode()
+    const graph: DraftGraph = { nodes: [trigger], edges: [] }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'Every Morning',
+      expectedConfigHash: hashWorkflowGraph(trigger.data),
+      patches: [
+        {
+          op: 'set',
+          path: ['config', 'timeBetweenTriggers', 'days'],
+          value: 2,
+        },
+        { op: 'unset', path: ['config', 'timezone'] },
+      ],
+    })
+
+    expect(result.isOk()).toBe(true)
+    const persisted = persistedGraph().nodes[0]
+    expect(persisted?.data?.config).toEqual({
+      triggerInterval: 'days',
+      timeBetweenTriggers: { days: 2, isConstant: true },
+    })
+    expect(result._unsafeUnwrap().node?.configHash).not.toBe(hashWorkflowGraph(trigger.data))
+  })
+
+  it('patches an array entry without replacing its siblings', async () => {
+    const conditional = ifElseNode()
+    conditional.data._targetBranches = [{ id: 'true', name: 'IF', type: 'default' }]
+    const graph: DraftGraph = { nodes: [triggerNode(), conditional], edges: [] }
+    const configHash = buildNodeSummary(graph, conditional).configHash
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'Check Priority',
+      expectedConfigHash: configHash,
+      patches: [{ op: 'set', path: ['cases', 0, 'logical_operator'], value: 'or' }],
+    })
+
+    expect(result.isOk()).toBe(true)
+    const persisted = persistedGraph().nodes.find((node) => node.id === IFELSE_ID)
+    expect(persisted?.data?.cases).toEqual([
+      { id: 'c1', case_id: 'true', logical_operator: 'or', conditions: [] },
+    ])
+    expect(result._unsafeUnwrap().node?.configHash).not.toBe(configHash)
+  })
+
+  it('adds a dynamic dotted key while re-normalizing the complete friendly config', async () => {
+    const crudId = 'crud-aaaaaaaaaaaaaaaaaaaaa'
+    const crud: GraphNode = {
+      id: crudId,
+      type: 'standard',
+      position: { x: 500, y: 200 },
+      data: {
+        id: crudId,
+        type: 'crud',
+        title: 'Create Ticket',
+        resourceType: TICKET_ID,
+        mode: 'create',
+        data: { subject: 'Original' },
+        error_strategy: 'fail',
+        default_values: [],
+      },
+    }
+    const graph: DraftGraph = { nodes: [triggerNode(), crud], edges: [] }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'Create Ticket',
+      expectedConfigHash: hashWorkflowGraph(crud.data),
+      patches: [{ op: 'set', path: ['data', 'customer.email'], value: 'person@example.com' }],
+    })
+
+    expect(result.isOk()).toBe(true)
+    const persisted = persistedGraph().nodes.find((node) => node.id === crudId)
+    expect(persisted?.data?.resourceType).toBe(TICKET_ID)
+    expect(persisted?.data?.data).toEqual({
+      subject: 'Original',
+      'customer.email': 'person@example.com',
+    })
+  })
+
+  it('rejects a patch based on a stale get_node configHash without persisting', async () => {
+    const graph: DraftGraph = { nodes: [triggerNode(), loopNode()], edges: [] }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'For each order',
+      expectedConfigHash: 'stale',
+      patches: [{ op: 'set', path: ['maxIterations'], value: 5 }],
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('Re-read the node')
+    expect(serviceUpdate).not.toHaveBeenCalled()
   })
 
   it('disconnectNodes removes the edge and errors when none exists', async () => {

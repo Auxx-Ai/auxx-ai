@@ -61,6 +61,11 @@ export {
   updateNode,
 } from './ops'
 export {
+  applyConfigPatches,
+  type ConfigPatch,
+  type ConfigPathSegment,
+} from './patch-config'
+export {
   cleanGraphForSave,
   type PersistDraftInput,
   type PersistDraftOutcome,
@@ -82,6 +87,7 @@ export {
   buildNodeSummary,
   type DraftContext,
   type GraphEditScope,
+  hashNodeConfig,
   loadDraftContext,
   readDraft,
   renderFriendlyOutputs,

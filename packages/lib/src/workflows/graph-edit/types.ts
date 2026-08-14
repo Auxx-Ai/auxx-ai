@@ -112,6 +112,8 @@ export interface NodeSummary {
   id: string
   type: string
   title: string
+  /** Opaque token guarding deep patches against a stale `get_node` snapshot. */
+  configHash: string
   /** Friendly ref of the loop container this node lives inside, if any. */
   inside?: string
   position: Point

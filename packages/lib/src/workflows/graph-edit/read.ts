@@ -116,6 +116,13 @@ const NON_CONFIG_KEYS = new Set([
   'outputVariables',
 ])
 
+/** Hash durable node data only; `_` keys are regenerated and stripped on save. */
+export function hashNodeConfig(data: Record<string, unknown>): string {
+  return hashWorkflowGraph(
+    Object.fromEntries(Object.entries(data).filter(([key]) => !key.startsWith('_')))
+  )
+}
+
 /** One node's summary: friendly ref + friendly-rendered config. */
 export function buildNodeSummary(
   graph: DraftGraph,
@@ -133,6 +140,7 @@ export function buildNodeSummary(
     id: node.id,
     type: nodeType(node),
     title: typeof node.data?.title === 'string' ? node.data.title : '',
+    configHash: hashNodeConfig((node.data ?? {}) as Record<string, unknown>),
     ...(container ? { inside: formatNodeRef(graph.nodes, container) } : {}),
     position: node.position ?? { x: 0, y: 0 },
     config: renderPersistedRefs(config, { nodes: graph.nodes, resourceAliases: aliases }),

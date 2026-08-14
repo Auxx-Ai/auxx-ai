@@ -20,9 +20,13 @@ vi.mock('../../../../../../workflows/workflow-app-access-guard', () => ({
 
 const addNodeMock = vi.fn()
 const connectNodesMock = vi.fn()
+const updateNodeMock = vi.fn()
+const readDraftMock = vi.fn()
 vi.mock('../../../../../../workflows/graph-edit', () => ({
   addNode: (...a: unknown[]) => addNodeMock(...a),
   connectNodes: (...a: unknown[]) => connectNodesMock(...a),
+  updateNode: (...a: unknown[]) => updateNodeMock(...a),
+  readDraft: (...a: unknown[]) => readDraftMock(...a),
 }))
 
 const runNodeMock = vi.fn()
@@ -37,7 +41,9 @@ vi.mock('../../../../../../demo', () => ({
 
 import { createAddNodeTool } from '../add-node'
 import { createConnectNodesTool } from '../connect-nodes'
+import { createGetNodeTool } from '../get-node'
 import { createRunNodeTool } from '../run-node'
+import { createUpdateNodeTool } from '../update-node'
 
 const ORG = 'org-1'
 const WF = 'wfapp-1'
@@ -78,6 +84,7 @@ const APPLIED: GraphMutationResult = {
     id: 'http-abc',
     type: 'http',
     title: 'HTTP Request',
+    configHash: 'config-hash-1',
     position: { x: 500, y: 250 },
     config: { url: 'https://example.com', method: 'POST' },
   },
@@ -93,6 +100,19 @@ beforeEach(() => {
   assertNotSystemOwned.mockReset().mockResolvedValue(undefined)
   addNodeMock.mockReset().mockResolvedValue(ok(APPLIED))
   connectNodesMock.mockReset().mockResolvedValue(ok(APPLIED))
+  updateNodeMock.mockReset().mockResolvedValue(ok(APPLIED))
+  readDraftMock.mockReset().mockResolvedValue(
+    ok({
+      workflowAppId: WF,
+      name: 'My Flow',
+      triggerType: 'manual',
+      nodes: [APPLIED.node],
+      edges: [],
+      outputs: { 'HTTP Request': APPLIED.outputs },
+      issues: [],
+      graphSummary: APPLIED.graphSummary,
+    })
+  )
   runNodeMock
     .mockReset()
     .mockResolvedValue(
@@ -174,6 +194,48 @@ describe('add_node', () => {
     const result = await run(createAddNodeTool(getDeps), { type: 'http' })
     expect(result.success).toBe(false)
     expect(result.error).toMatch(/re-read/i)
+  })
+})
+
+describe('get_node / update_node deep patches', () => {
+  it('returns configHash and threads guarded patches into graph-edit', async () => {
+    const read = await run(createGetNodeTool(getDeps), { ref: 'HTTP Request' })
+    expect(read.success).toBe(true)
+    expect((read.output as { node: { configHash: string } }).node.configHash).toBe('config-hash-1')
+
+    const patches = [{ op: 'set', path: ['body', 'data', 0, 'value'], value: 'updated' }]
+    const updated = await run(createUpdateNodeTool(getDeps), {
+      ref: 'HTTP Request',
+      expectedConfigHash: 'config-hash-1',
+      patches,
+    })
+    expect(updated.success).toBe(true)
+    expect(updateNodeMock.mock.calls[0]?.[1]).toMatchObject({
+      workflowAppId: WF,
+      organizationId: ORG,
+      turnId: TURN,
+      ref: 'HTTP Request',
+      expectedConfigHash: 'config-hash-1',
+      patches,
+    })
+  })
+
+  it('requires exactly one update mode and a hash for patches', async () => {
+    const both = await run(createUpdateNodeTool(getDeps), {
+      ref: 'HTTP Request',
+      config: { method: 'POST' },
+      patches: [{ op: 'set', path: ['method'], value: 'POST' }],
+    })
+    expect(both.success).toBe(false)
+    expect(both.error).toContain('exactly one')
+
+    const unhashed = await run(createUpdateNodeTool(getDeps), {
+      ref: 'HTTP Request',
+      patches: [{ op: 'set', path: ['method'], value: 'POST' }],
+    })
+    expect(unhashed.success).toBe(false)
+    expect(unhashed.error).toContain('expectedConfigHash')
+    expect(updateNodeMock).not.toHaveBeenCalled()
   })
 })
 
