@@ -37,6 +37,9 @@ const ARG_TO_REF_KIND: Record<string, SessionRefKind> = {
   articleId: 'article',
   knowledgeBaseId: 'kb',
   actorId: 'actor',
+  // Unlike `record`, a workflow chip has no ambiguity — the builder page has
+  // exactly one open workflow — so binding it is always right (04 §2).
+  workflowId: 'workflow',
 }
 
 /**

@@ -30,6 +30,7 @@ const KNOWN_SLUGS = new Set<string>([
   'auxx:docs',
   'auxx:actors',
   'workflow.variable',
+  'workflow.builder',
 ])
 
 const ALWAYS_ON_TOOLS = new Set<string>([

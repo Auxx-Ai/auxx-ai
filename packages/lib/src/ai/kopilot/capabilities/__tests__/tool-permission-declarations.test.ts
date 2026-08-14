@@ -80,6 +80,7 @@ import { createRecordViewCapabilities } from '../record-views'
 import { createCapabilityRegistry } from '../registry'
 import { createTaskCapabilities } from '../tasks'
 import { createNativeWorkflowCapabilities } from '../workflow'
+import { createWorkflowBuilderCapabilities } from '../workflow-builder'
 
 const ORG = 'org-1'
 
@@ -116,6 +117,7 @@ async function collectNativeCapabilities(): Promise<PageCapability[]> {
     createLearnedKbCapabilities(getDeps),
     createRecordViewCapabilities(getDeps),
     createNativeWorkflowCapabilities(getDeps),
+    createWorkflowBuilderCapabilities(getDeps),
     createSuggestRepliesGlobalCapability(getDeps),
     await createAgentsBuilderCapabilities(getDeps, ORG),
   ]
@@ -179,6 +181,12 @@ const NO_AUTHORIZATION_REQUIRED: readonly string[] = [
   'assign_variable',
   'suggest_replies',
   'search_docs',
+  // workflow.builder discovery — static product data (the node-type registry
+  // and the public template gallery), identical for every org. Everything that
+  // touches the workflow itself routes through `resolveWorkflowAuthoring`.
+  'list_node_types',
+  'describe_node_type',
+  'find_workflow_templates',
 ]
 
 const AREA_SLUGS = new Set<string>(Object.values(Area))

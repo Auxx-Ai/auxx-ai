@@ -406,6 +406,7 @@ export class WorkflowService {
         envVars,
         variables,
         expectedGraphHash,
+        preserveTurnSnapshot,
         webEnabled,
         apiEnabled,
         accessMode,
@@ -584,6 +585,20 @@ export class WorkflowService {
       })
 
       logger.info('Workflow app updated successfully', { workflowAppId: id, organizationId })
+
+      // A non-Kopilot graph write invalidates the per-turn Undo snapshot (KB
+      // parity: KBService clears on every manual save unless the agent path
+      // bypasses). Only the graph-edit persist seam sets `preserveTurnSnapshot`.
+      // Best-effort + lazy — the snapshot module pulls @auxx/redis, which must
+      // not become an import-time dependency of every WorkflowService caller.
+      if (graph !== undefined && !preserveTurnSnapshot) {
+        try {
+          const { clearWorkflowTurnSnapshot } = await import('./graph-edit/turn-snapshot')
+          await clearWorkflowTurnSnapshot(id)
+        } catch {
+          // A leftover snapshot expires via TTL; never fail the save over it.
+        }
+      }
 
       await onCacheEvent('workflow.updated', { orgId: organizationId })
 

@@ -189,6 +189,22 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<CachedAgentToolset> = [
     subGroupIconId: 'workflow',
     subGroupColor: 'indigo',
   },
+  {
+    // The Kopilot workflow-builder graph tools (`capabilities/workflow-builder/`).
+    // Builder-surface only — every tool in the set declares `surfaces: ['builder']`,
+    // so chat/email catalogs drop the whole toolset. NOT the AI node's runtime
+    // toolset (`workflow.variable` above): a runtime AI node must never inherit
+    // graph-editing tools.
+    slug: 'workflow.builder',
+    subGroup: 'Workflow',
+    name: 'Workflow — Builder',
+    shortLabel: 'Builder',
+    iconKey: 'workflow',
+    color: 'indigo',
+    isDefault: false,
+    isPopular: false,
+    description: 'Read, build, and edit the open workflow draft on the builder page.',
+  },
 ]
 
 /** Lookup helper — fast path for tag-side code that already has a slug. */

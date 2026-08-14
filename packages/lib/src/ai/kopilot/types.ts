@@ -15,6 +15,7 @@ export type SessionRefKind =
   | 'article' // article id
   | 'actor' // `user:<id>` or `group:<id>`
   | 'agent' // user-authored agent id — present on the builder page
+  | 'workflow' // WorkflowApp id — present on the workflow builder page
 
 /**
  * A single thing the user has in focus this turn — either because a page
@@ -33,6 +34,14 @@ export interface SessionRef {
    * precedence (mention wins over surface).
    */
   origin: 'surface' | 'mention'
+  /**
+   * ADVISORY dirty flag contributed by the `workflow` builder chip: the open
+   * canvas has unsaved changes, so the DB draft the graph-edit tools would
+   * mutate is stale relative to what the user sees. Workflow mutations refuse
+   * while it is true. Tolerate absence — the chip is a courtesy; the hash-CAS
+   * inside graph-edit is the real concurrency guard.
+   */
+  isDirty?: boolean
 }
 
 /** Open-ended UI context bag. Known fields provide autocomplete; any key is valid. */

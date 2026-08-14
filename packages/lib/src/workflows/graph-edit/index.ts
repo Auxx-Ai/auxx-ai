@@ -105,6 +105,7 @@ export {
 } from './run-node'
 export {
   captureWorkflowTurnSnapshot,
+  clearWorkflowTurnSnapshot,
   finalizeWorkflowTurn,
   readWorkflowTurnSnapshot,
   revertWorkflowTurn,

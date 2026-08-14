@@ -36,3 +36,40 @@ export function takeSample<T>(items: readonly T[] | undefined, n = DIGEST_SAMPLE
   if (!items || !Array.isArray(items)) return []
   return items.slice(0, n)
 }
+
+/**
+ * Shared digest shape for the workflow-builder graph tools' status pills.
+ * `label` is the human line ("Added HTTP Request", "Connected Find Contact →
+ * Send Email"); the counts let the card flag a blocked edit or open issues
+ * without storing the whole graph summary.
+ */
+export const WorkflowEditDigest = z.object({
+  label: z.string(),
+  /** False when blocking issues rejected the edit and the draft is untouched. */
+  applied: z.boolean().optional(),
+  issueCount: z.number().optional(),
+  nodeCount: z.number().optional(),
+})
+export type WorkflowEditDigest = z.infer<typeof WorkflowEditDigest>
+
+/**
+ * Build a {@link WorkflowEditDigest} from a graph tool's output. `label` should
+ * name the completed action with the touched node's friendly title(s) — e.g.
+ * "Added HTTP Request" — falling back to the verb alone when the output carries
+ * no node. Pure + deterministic (persisted on the tool-call part).
+ */
+export function buildWorkflowEditDigest(label: string, output: unknown): WorkflowEditDigest {
+  const out = (output ?? {}) as {
+    applied?: boolean
+    issues?: unknown[]
+    graphSummary?: { nodeCount?: number }
+  }
+  return {
+    label,
+    ...(typeof out.applied === 'boolean' ? { applied: out.applied } : {}),
+    ...(Array.isArray(out.issues) ? { issueCount: out.issues.length } : {}),
+    ...(typeof out.graphSummary?.nodeCount === 'number'
+      ? { nodeCount: out.graphSummary.nodeCount }
+      : {}),
+  }
+}

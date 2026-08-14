@@ -5,7 +5,9 @@
  * (`03-graph-edit-service.md` §7, `07-remaining-mechanics.md` §6): first
  * mutation of a turn captures the pre-edit graph, a second mutation of the
  * SAME turn does not overwrite it, a failed turn's revert restores the exact
- * prior graph, a PRIOR turn's stale snapshot is rejected, the
+ * prior graph, a PRIOR turn's stale snapshot is rejected (NOTE: a COMPLETED
+ * turn deliberately keeps its snapshot for the per-turn Undo card — the
+ * capability lifecycle never calls `finalizeWorkflowTurn` on success), the
  * `workflow:draft-updated` signal fires after a successful persist (and never
  * on a rejected mutation), and a hash-CAS conflict surfaces as a typed,
  * actionable `ConflictError` — never a generic 500, never a silent overwrite.
