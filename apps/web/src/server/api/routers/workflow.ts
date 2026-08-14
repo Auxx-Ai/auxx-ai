@@ -23,6 +23,7 @@ import {
   WorkflowStatsService,
   WorkflowVersionService,
 } from '@auxx/lib/workflows'
+import { readWorkflowTurnLock } from '@auxx/lib/workflows/graph-edit'
 import { getWorkflowAppsByTrigger } from '@auxx/services/workflows'
 import { type RecordId, recordIdSchema } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils/generateId'
@@ -354,6 +355,26 @@ export const workflowRouter = createTRPCRouter({
         }
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to fetch workflow' })
       }
+    }),
+  /**
+   * Whether a Kopilot turn currently holds this workflow's draft.
+   *
+   * The builder's canvas edit lock is driven by the `workflow:kopilot-turn`
+   * realtime event; this is the RE-DERIVE path for the cases where a local flag
+   * cannot be trusted — first mount, and socket reconnect (a release published
+   * while the client was disconnected is simply never delivered, which would
+   * otherwise leave the canvas read-only until reload).
+   *
+   * `view` rung, not `edit`: a viewer who cannot edit still renders the canvas
+   * and still needs to know the agent is working, and this leaks nothing beyond
+   * "a turn is open" on a workflow the caller can already read.
+   */
+  kopilotTurnStatus: permissionProcedure(PermissionKey.workflowsView)
+    .input(z.object({ workflowAppId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      ctx.capabilities.assertViewInstance('workflow', input.workflowAppId)
+      const lock = await readWorkflowTurnLock(input.workflowAppId)
+      return { active: lock !== null, turnId: lock?.turnId ?? null }
     }),
   /**
    * Create a new workflow app with initial workflow version

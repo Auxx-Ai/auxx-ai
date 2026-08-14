@@ -107,6 +107,25 @@ export function createWorkflowBuilderCapabilities(getDeps: GetToolDeps): PageCap
         const { db, sessionContext, organizationId } = getDeps()
         const workflowAppId = findRef(sessionContext, 'workflow')?.id
         if (!workflowAppId) return
+
+        // Release the canvas edit lock FIRST, and outside the snapshot branch
+        // below. A turn that read but never wrote has no snapshot yet still
+        // holds the lock (it is claimed on the first tool call of any kind), so
+        // releasing inside the `if (!snapshot)` path would strand the canvas
+        // read-only for the whole of every question-only turn. Turn-checked
+        // inside, and its own try/catch so a Redis failure cannot stop the
+        // revert that follows.
+        const { endWorkflowTurnLock } = await import('../../../../workflows/graph-edit/turn-lock')
+        try {
+          await endWorkflowTurnLock(organizationId, workflowAppId, turnId)
+        } catch (err) {
+          logger.error('Kopilot workflow turn-lock release failed', {
+            workflowAppId,
+            turnId,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+
         // Lazy import — turn-snapshot pulls @auxx/redis and (via the revert
         // path) the persist seam; neither belongs in this capability's
         // import-time graph, and the laziness keeps tests free to mock the

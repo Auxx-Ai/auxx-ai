@@ -110,6 +110,14 @@ export {
   runNode,
 } from './run-node'
 export {
+  acquireWorkflowTurnLock,
+  beginWorkflowTurnLock,
+  endWorkflowTurnLock,
+  readWorkflowTurnLock,
+  releaseWorkflowTurnLock,
+  type WorkflowTurnLock,
+} from './turn-lock'
+export {
   captureWorkflowTurnSnapshot,
   clearWorkflowTurnSnapshot,
   finalizeWorkflowTurn,

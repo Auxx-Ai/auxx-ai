@@ -16,6 +16,7 @@ import {
   useWorkflowBlocks,
   useWorkflowDraftRealtime,
   useWorkflowInit,
+  useWorkflowKopilotTurn,
   useWorkflowShortcuts,
 } from '../hooks'
 import { WorkflowPanelDrawer } from '../panels/workflow-panel-drawer'
@@ -58,6 +59,10 @@ const WorkflowEditorInner = memo<{
   // Rehydrate the canvas when the draft changes server-side (Kopilot graph
   // mutations / turn reverts publish `workflow:draft-updated`)
   useWorkflowDraftRealtime()
+
+  // Clamp the canvas read-only while a Kopilot turn holds the draft. Mounted
+  // HERE, not in the Kopilot panel: closing the drawer must not drop the lock.
+  useWorkflowKopilotTurn(workflow?.id)
 
   // Initialize test input sync
   useTestInputSync()

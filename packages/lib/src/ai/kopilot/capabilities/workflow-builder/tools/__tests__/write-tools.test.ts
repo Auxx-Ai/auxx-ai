@@ -34,6 +34,15 @@ vi.mock('../../../../../../workflows/graph-edit/run-node', () => ({
   runNode: (...a: unknown[]) => runNodeMock(...a),
 }))
 
+// The shared authorization gate claims the canvas edit lock on every tool call
+// (plan 14 §6.7). Unmocked it reaches live Redis AND publishes to Pusher, which
+// added ~5s to this file. Its own behaviour is covered by
+// `workflows/graph-edit/__tests__/turn-lock.test.ts`.
+const beginWorkflowTurnLock = vi.fn(async (..._a: unknown[]) => {})
+vi.mock('../../../../../../workflows/graph-edit/turn-lock', () => ({
+  beginWorkflowTurnLock: (...a: unknown[]) => beginWorkflowTurnLock(...a),
+}))
+
 const requireNotDemo = vi.fn(async (..._args: unknown[]) => {})
 vi.mock('../../../../../../demo', () => ({
   DemoGuard: { requireNotDemo: (...a: unknown[]) => requireNotDemo(...a) },
