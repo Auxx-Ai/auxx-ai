@@ -26,6 +26,8 @@ const h = vi.hoisted(() => ({
   >(),
   threadPrimary: null as string | null,
   threadLinkIds: [] as string[],
+  /** Pre-shaped resolver rows for the message's participant-linked contacts. */
+  messageContactRows: [] as Array<{ contactId: string | null }>,
   /** contactId → companyId rows behind the `contact_employer` field. */
   employerLinks: [] as Array<{ entityId: string; companyId: string }>,
   employerField: { id: 'cf_employer' } as { id: string } | null,
@@ -84,6 +86,10 @@ vi.mock('@auxx/database', async () => {
         h.selectedTables.push('FieldValue')
         return h.employerLinks.map((l) => ({ companyId: l.companyId }))
       }
+      if (table === schema.MessageParticipant) {
+        h.selectedTables.push('MessageParticipant')
+        return h.messageContactRows
+      }
       return []
     }
     const chain: any = new Proxy(
@@ -102,6 +108,7 @@ vi.mock('@auxx/database', async () => {
 
   const database = {
     select: () => ({ from: (table: unknown) => makeSelectChain(table) }),
+    selectDistinct: () => ({ from: (table: unknown) => makeSelectChain(table) }),
     update: () => ({
       set: (vals: Record<string, unknown>) => ({
         where: (cond: unknown) => {
@@ -136,7 +143,7 @@ vi.mock('@auxx/database', async () => {
   return { database, schema, Database: class {}, Transaction: class {} }
 })
 
-import { touchEntityInteraction, touchInteractionForThreadLinks } from '../activity'
+import { touchEntityInteraction, touchInteractionForMessage } from '../activity'
 
 const ORG = 'org_1'
 
@@ -152,8 +159,9 @@ beforeEach(() => {
   h.entities.clear()
   h.entities.set('contact_1', entityRow())
   h.entities.set('company_1', entityRow())
-  h.threadPrimary = 'contact_1'
+  h.threadPrimary = 'ticket_1'
   h.threadLinkIds = []
+  h.messageContactRows = []
   h.employerLinks = []
   h.employerField = { id: 'cf_employer' }
   h.selectedTables = []
@@ -211,35 +219,41 @@ describe('touchEntityInteraction', () => {
   })
 })
 
-describe('touchInteractionForThreadLinks', () => {
+describe('touchInteractionForMessage', () => {
   const SENT = new Date('2026-05-01T09:00:00Z')
 
-  it('stamps the thread-linked entities AND their linked companies', async () => {
+  it('stamps the participant-linked contacts AND their companies — never the thread links', async () => {
+    // The thread's primary is a ticket; interaction targets come from the
+    // message's own correspondents, so the ticket stays untouched and the
+    // thread tables are never consulted.
+    h.entities.set('ticket_1', entityRow())
+    h.messageContactRows = [{ contactId: 'contact_1' }]
     h.employerLinks = [{ entityId: 'contact_1', companyId: 'company_1' }]
-    await touchInteractionForThreadLinks('t_1', ORG, 'm_x', SENT)
+    await touchInteractionForMessage('m_x', ORG, SENT)
     expect(h.entities.get('contact_1')!.lastInteractionAt).toEqual(SENT)
     expect(h.entities.get('company_1')!.lastInteractionAt).toEqual(SENT)
     expect(h.entities.get('company_1')!.lastInteractionMessageId).toBe('m_x')
+    expect(h.entities.get('ticket_1')!.lastInteractionAt).toBeNull()
+    expect(h.selectedTables).not.toContain('Thread')
+    expect(h.selectedTables).not.toContain('ThreadEntityLink')
   })
 
   it('does not stamp companies with no contact link', async () => {
-    await touchInteractionForThreadLinks('t_1', ORG, 'm_x', SENT)
+    h.messageContactRows = [{ contactId: 'contact_1' }]
+    await touchInteractionForMessage('m_x', ORG, SENT)
     expect(h.entities.get('contact_1')!.lastInteractionAt).toEqual(SENT)
     expect(h.entities.get('company_1')!.lastInteractionAt).toBeNull()
   })
 
-  it('reuses a pre-resolved entity set without re-querying the thread links', async () => {
-    await touchInteractionForThreadLinks('t_1', ORG, 'm_x', SENT, {
-      entityInstanceIds: ['contact_1'],
-    })
-    expect(h.selectedTables).not.toContain('Thread')
-    expect(h.selectedTables).not.toContain('ThreadEntityLink')
+  it('reuses pre-resolved contact ids without querying MessageParticipant', async () => {
+    await touchInteractionForMessage('m_x', ORG, SENT, { contactIds: ['contact_1'] })
+    expect(h.selectedTables).not.toContain('MessageParticipant')
     expect(h.entities.get('contact_1')!.firstInteractionAt).toEqual(SENT)
   })
 
-  it('no-ops when the thread has no linked entities', async () => {
-    h.threadPrimary = null
-    await touchInteractionForThreadLinks('t_1', ORG, 'm_x', SENT)
+  it('no-ops when the message has no participant-linked contacts', async () => {
+    h.messageContactRows = []
+    await touchInteractionForMessage('m_x', ORG, SENT)
     expect(h.updateCalls).toBe(0)
   })
 })

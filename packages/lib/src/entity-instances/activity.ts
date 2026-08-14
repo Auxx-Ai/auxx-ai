@@ -171,10 +171,41 @@ export async function touchEntityInteraction(
 }
 
 /**
- * Companies are usually not thread-linked, so interaction stamps propagate from
- * stamped contacts to their linked companies via the `contact_employer` field
- * (maintained by `ingest/companies/link-contact.ts`). Non-contact ids simply have
- * no employer rows and contribute nothing.
+ * Resolve the contacts that were actually ON a message's correspondence: its
+ * non-internal participants' `Participant.entityInstanceId`. This — not thread
+ * links — is how contacts attach to mail (thread primaries are tickets/quotes,
+ * and `ThreadEntityLink` rows exist only for manual links/merges/workflows; a
+ * manually linked record wasn't part of the correspondence and must not get
+ * interaction stamps).
+ */
+export async function resolveMessageContactIds(
+  messageId: string,
+  organizationId: string,
+  tx?: DbOrTx
+): Promise<string[]> {
+  const db = tx ?? database
+  const rows = await db
+    .selectDistinct({ contactId: schema.Participant.entityInstanceId })
+    .from(schema.MessageParticipant)
+    .innerJoin(
+      schema.Participant,
+      eq(schema.Participant.id, schema.MessageParticipant.participantId)
+    )
+    .where(
+      and(
+        eq(schema.MessageParticipant.messageId, messageId),
+        eq(schema.Participant.organizationId, organizationId),
+        eq(schema.Participant.isInternal, false),
+        isNotNull(schema.Participant.entityInstanceId)
+      )
+    )
+  return rows.map((r) => r.contactId).filter((id): id is string => Boolean(id))
+}
+
+/**
+ * Interaction stamps propagate from stamped contacts to their linked companies
+ * via the `contact_employer` field (maintained by
+ * `ingest/companies/link-contact.ts`).
  */
 async function resolveLinkedCompanyIds(
   entityInstanceIds: string[],
@@ -209,37 +240,34 @@ async function resolveLinkedCompanyIds(
 }
 
 /**
- * Stamp first/last interaction for every entity linked to a thread (primary +
- * active secondaries), plus the stamped contacts' linked companies. Call sites:
- * ingest (`store-message.ts`, qualifying messages only) and the sender
- * (`message-sender.service.ts`, successful sends with the reconciler-confirmed
- * `sentAt`) — Auxx-sent mail never reaches ingest's fresh-insert path, and the
- * sync echo early-returns before the ingest touch.
+ * Stamp first/last interaction for the contacts on a message's correspondence
+ * (non-internal participants with a linked contact), plus those contacts'
+ * linked companies. Call sites: ingest (`store-message.ts`, qualifying messages
+ * only) and the sender (`message-sender.service.ts`, successful sends with the
+ * reconciler-confirmed `sentAt`) — Auxx-sent mail never reaches ingest's
+ * fresh-insert path, and the sync echo early-returns before the ingest touch.
  *
- * Pass `opts.entityInstanceIds` when the caller already resolved the thread-link
- * set (e.g. for the activity touch) to avoid re-running the SELECTs.
+ * Pass `opts.contactIds` when the caller already holds the message's resolved
+ * participants (ingest does) to skip the MessageParticipant lookup.
  */
-export async function touchInteractionForThreadLinks(
-  threadId: string,
-  organizationId: string,
+export async function touchInteractionForMessage(
   messageId: string,
+  organizationId: string,
   sentAt: Date,
-  opts?: { entityInstanceIds?: string[]; tx?: DbOrTx }
+  opts?: { contactIds?: string[]; tx?: DbOrTx }
 ): Promise<void> {
   try {
-    const linked =
-      opts?.entityInstanceIds ??
-      (await resolveThreadLinkedEntityIds(threadId, organizationId, opts?.tx))
-    if (linked.length === 0) return
+    const contactIds =
+      opts?.contactIds ?? (await resolveMessageContactIds(messageId, organizationId, opts?.tx))
+    if (contactIds.length === 0) return
 
-    const companyIds = await resolveLinkedCompanyIds(linked, organizationId, opts?.tx)
-    const all = Array.from(new Set([...linked, ...companyIds]))
+    const companyIds = await resolveLinkedCompanyIds(contactIds, organizationId, opts?.tx)
+    const all = Array.from(new Set([...contactIds, ...companyIds]))
     await touchEntityInteraction(all, organizationId, messageId, sentAt, opts?.tx)
   } catch (error) {
     // Same contract as the activity touch: log and swallow.
-    logger.warn('Failed to touch interaction for thread links', {
+    logger.warn('Failed to touch interaction for message', {
       organizationId,
-      threadId,
       messageId,
       error: error instanceof Error ? error.message : error,
     })
