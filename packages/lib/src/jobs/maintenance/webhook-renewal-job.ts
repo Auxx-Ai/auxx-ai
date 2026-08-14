@@ -1,10 +1,10 @@
 // packages/lib/src/jobs/maintenance/webhook-renewal-job.ts
 
-import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull } from 'drizzle-orm'
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
+import { providerWebhookCallbackUrl } from '../../providers/webhook-callback-base'
 import type { JobContext } from '../types'
 
 const logger = createScopedLogger('webhook-renewal-job')
@@ -71,9 +71,10 @@ export const webhookRenewalJob = async (
       const providerRegistry = new ProviderRegistryService(organizationId)
       const emailProvider = await providerRegistry.getProvider(integrationId)
 
-      // Build callback URL (same logic as WebhookManagerService). Google uses the Pub/Sub
-      // topic from env and ignores callbackUrl; Outlook uses it for the Graph subscription.
-      const callbackUrl = `${WEBAPP_URL}/api/${provider}/webhook`
+      // Build callback URL (same helper as WebhookManagerService, NGROK_URL-aware in dev).
+      // Google uses the Pub/Sub topic from env and ignores callbackUrl; Outlook uses it for
+      // the Graph subscription.
+      const callbackUrl = providerWebhookCallbackUrl(provider)
 
       await emailProvider.setupWebhook(callbackUrl)
       result.webhookRenewed = true
