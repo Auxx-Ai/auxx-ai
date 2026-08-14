@@ -345,7 +345,7 @@ export const EXTRACTION_BLIND_SPOTS: Record<string, string> = {
 
   // ── Handle the reader can see but production can never emit ───────────────
   'handle:if-else.true':
-    "Dead arm, not drift: `outputHandle = conditionResult ? 'true' : 'false'` (if-else.ts:181) runs only when matchedCaseId is null, and buildExecutionResult is only ever called with (true, case_id, …) on a match (if-else.ts:138) or (false, null, …) on none (if-else.ts:150) — so the 'true' literal is unreachable. Production emits case ids and 'false', both rendered. The reachability hole in the reader's net (engine-contract.ts header) seen from the other side: it proves a write EXISTS, never that it runs.",
+    "Dead arm, not drift: `outputHandle = conditionResult ? 'true' : 'false'` (if-else.ts:181) runs only when matchedCaseId is null, and buildExecutionResult is only ever called with (true, case_id, …) on a match (if-else.ts:138) or (false, null, …) on none (if-else.ts:150) — so the 'true' literal is unreachable. Production emits case ids and 'false', both rendered. The reachability hole in the reader's net (engine-write-scrape.ts header) seen from the other side: it proves a write EXISTS, never that it runs.",
 
   // ── Internal bookkeeping, deliberately not picker material ────────────────
   'written:ai._resolvedPromptVars':

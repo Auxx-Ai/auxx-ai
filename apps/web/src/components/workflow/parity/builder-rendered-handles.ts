@@ -4,7 +4,7 @@ import { NodeType } from '~/components/workflow/types/node-types'
 
 /**
  * The handles each builder node's UI actually renders — the builder half of the
- * HANDLE contract, beside the engine half `engine-contract.ts` extracts
+ * HANDLE contract, beside the engine half `engine-write-scrape.ts` extracts
  * (`outputHandles` per processor, plus `readEngineRoutedHandleLiterals` for the
  * core's own edge lookups).
  *

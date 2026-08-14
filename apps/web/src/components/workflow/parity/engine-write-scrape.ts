@@ -1,16 +1,41 @@
-// apps/web/src/components/workflow/parity/engine-contract.ts
+// apps/web/src/components/workflow/parity/engine-write-scrape.ts
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { WorkflowNodeType } from '@auxx/lib/workflow-engine/client'
+import { ENGINE_ROOT, listSources, stripComments } from './monorepo-paths'
 
 /**
- * Static reader for the workflow ENGINE's side of the builder↔engine contract.
+ * Static reader for the workflow ENGINE's side of the builder↔engine contract —
+ * the successor to `engine-contract.ts` (deleted; node-catalog Phase 1 exit
+ * criterion, `plans/kopilot/workflow/01-node-catalog.md`).
  *
- * The engine lives in `packages/lib` (tier 3) and the builder's declarations in
- * `apps/web` (tier 5). lib must never import upward, so the parity test lives
- * here — and here we cannot *execute* a processor (they pull in bullmq, redis,
- * the database and live AI providers). What we can do is read their source.
+ * Phase 1 gave every builder node type (wave 1: 22 types) a manifest in
+ * `packages/lib/src/workflow-engine/catalog/`, so `builder-declared-keys.ts`
+ * (formerly this file's `builderDeclaredKeys`) now reads the catalog file
+ * instead of scraping `nodes/core/<type>/schema.ts`'s source text — that half
+ * of the old extractor is genuinely gone.
+ *
+ * This half is not, and manifests are not the reason why. A `NodeManifest`
+ * (`catalog/types.ts`) is the BUILDER's declared contract — `configSchema`,
+ * `defaultData`, `validate`, `resolveOutputs`, `connection` — it says nothing
+ * about what a processor's `setNodeVariable` calls actually write, what
+ * `node.data` keys it actually reads, or what `outputHandle` values it can
+ * actually emit at runtime. Those are ENGINE (`packages/lib`) processor
+ * internals, and the engine lives at dependency tier 3 while the builder's
+ * declarations live in `apps/web` at tier 5 — lib must never import upward, so
+ * the parity test lives here, and here we cannot *execute* a processor (they
+ * pull in bullmq, redis, the database and live AI providers). What we can do
+ * is read their source, same as before.
+ *
+ * **This is expected to shrink, not stay forever.** The planned replacement is
+ * the "resolvability suite" — `plans/kopilot/workflow/10-variable-resolution-deep-dive.md`
+ * §10b step 2, sequenced as the next item after this file's introduction —
+ * which executes real processors against fixtures instead of reading their
+ * source text (`find-output-keying.test.ts` already does this for one
+ * processor; that is the shape the suite generalizes). When it lands, the
+ * assertions this file powers move to it and this file's scanning apparatus
+ * goes with `engine-contract.ts` did.
  *
  * ── WHAT THIS EXTRACTION SEES ───────────────────────────────────────────────
  *  - `contextManager.setNodeVariable(<any>, '<literal>', ...)` and the bulk
@@ -118,68 +143,17 @@ import { fileURLToPath } from 'node:url'
  * was real drift hidden that way for the whole first pass of the burn-down.
  */
 
-/** Walk up from this file until the monorepo root (the one with `packages/lib`). */
-function repoRoot(): string {
-  let dir = dirname(fileURLToPath(import.meta.url))
-  while (!existsSync(join(dir, 'packages', 'lib', 'package.json'))) {
-    const parent = dirname(dir)
-    if (parent === dir) throw new Error('could not locate the monorepo root')
-    dir = parent
-  }
-  return dir
-}
-
-const ENGINE_ROOT = join(repoRoot(), 'packages/lib/src/workflow-engine')
-const BUILDER_ROOT = join(repoRoot(), 'apps/web/src/components/workflow/nodes')
-
-function listSources(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry)
-    if (statSync(full).isDirectory()) listSources(full, out)
-    else if (full.endsWith('.ts') && !/\.(test|spec)\.ts$/.test(full)) out.push(full)
-  }
-  return out
-}
-
 /**
- * Strip comments before scanning.
- *
- * Not cosmetic: `form-input-processor.ts` documents `setNodeVariable(` inside a
- * JSDoc block, and without this the scanner reads the prose that follows it as
- * an argument list.
- *
- * Offsets are preserved (comments are blanked, not removed) because the
- * `else`-block analysis below compares call-site offsets against block spans.
+ * `readonly type = WorkflowNodeType.X` / `WorkflowActionType.X` in a processor
+ * file all resolve through the SAME merged const at runtime —
+ * `WorkflowNodeType` is `{ ...WorkflowTriggerType, ...WorkflowActionType }`
+ * (`core/types.ts`), and the two source enums share no member names — so one
+ * imported lookup table replaces what `engine-contract.ts` used to get by
+ * regex-parsing `core/types.ts`'s enum bodies as text (`parseEnum`). This is a
+ * real category-(a) win: `apps/web` (tier 5) can import this const directly
+ * from the client-safe barrel, no text-scraping needed for it.
  */
-function stripComments(source: string): string {
-  const blank = (text: string) => text.replace(/[^\n]/g, ' ')
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, blank)
-    .replace(/(^|[^:])\/\/[^\n]*/g, (_m, lead: string) => lead + blank(_m.slice(lead.length)))
-}
-
-/** Parse `enum X { A = 'a', ... }` out of a source file: member name -> value. */
-function parseEnum(source: string, name: string): Record<string, string> {
-  const start = source.indexOf(`enum ${name} {`)
-  if (start === -1) throw new Error(`enum ${name} not found in core/types.ts`)
-  const end = source.indexOf('\n}', start)
-  const body = source.slice(start, end)
-  return Object.fromEntries(
-    Array.from(body.matchAll(/(\w+)\s*=\s*'([^']*)'/g), (m) => [m[1] as string, m[2] as string])
-  )
-}
-
-const CORE_TYPES = stripComments(readFileSync(join(ENGINE_ROOT, 'core/types.ts'), 'utf8'))
-
-/**
- * `WorkflowNodeType` is not an enum — it is `{ ...WorkflowTriggerType,
- * ...WorkflowActionType }`, so a member reference has to be resolved against
- * both. `WorkflowActionType` is kept separate as well because several dataset
- * processors declare `readonly type = WorkflowActionType.X`.
- */
-const ACTION_TYPE_VALUES = parseEnum(CORE_TYPES, 'WorkflowActionType')
-const TRIGGER_TYPE_VALUES = parseEnum(CORE_TYPES, 'WorkflowTriggerType')
-const NODE_TYPE_VALUES = { ...TRIGGER_TYPE_VALUES, ...ACTION_TYPE_VALUES }
+const NODE_TYPE_VALUES: Record<string, string> = WorkflowNodeType
 
 /**
  * Engine files whose `setNodeVariable` calls target a node type OTHER than the
@@ -679,8 +653,9 @@ function scanFile(path: string): FileFacts {
       nodeTypeValues.push(m[3])
       continue
     }
-    const table = m[1] === 'WorkflowActionType' ? ACTION_TYPE_VALUES : NODE_TYPE_VALUES
-    const value = table[m[2] as string]
+    // `m[1]` (`WorkflowNodeType` vs `WorkflowActionType`) no longer changes
+    // which table is consulted — see `NODE_TYPE_VALUES` above.
+    const value = NODE_TYPE_VALUES[m[2] as string]
     if (value) nodeTypeValues.push(value)
   }
 
@@ -1039,41 +1014,6 @@ export function readEngineRoutedHandleLiterals(): Array<{ handle: string; file: 
     }
   }
   return lookups
-}
-
-/**
- * Property names declared in a builder node's `types.ts`.
- *
- * The zod schema alone is NOT the builder's writable surface. Several nodes
- * declare only a handful of keys in zod while the panel writes the full
- * TypeScript interface — `format`'s schema has four keys, its `FormatNodeData`
- * has eighteen `*Config` objects that the panel and validator both use. Reading
- * the interface keeps the config-key assertion pointed at genuine
- * name-mismatches (`data.assigneeId` vs `data.assignee`) rather than at zod
- * schemas that are merely incomplete — which is a different bug, and not this
- * suite's.
- *
- * Deliberately a flat property-line scan rather than a parse: it over-collects
- * slightly (nested object types in the same file contribute their keys too),
- * and over-collecting only makes this assertion more conservative.
- */
-export function builderDeclaredKeys(builderDir: string): Set<string> {
-  const keys = new Set<string>()
-
-  // Migrated node types (node-catalog Phase 1) declare their data interface in
-  // the lib catalog; the web types.ts shrinks to a `type: NodeType` narrowing
-  // wrapper over it. Read the catalog file first when it exists — it IS the
-  // builder declaration for those types.
-  const catalogPath = join(ENGINE_ROOT, 'catalog/nodes', `${builderDir.replace(/^core\//, '')}.ts`)
-  const paths = [catalogPath, join(BUILDER_ROOT, builderDir, 'types.ts')]
-  for (const path of paths) {
-    if (!existsSync(path)) continue
-    const source = stripComments(readFileSync(path, 'utf8'))
-    for (const m of source.matchAll(/^\s+(\w+)\??\s*:/gm)) {
-      keys.add(m[1] as string)
-    }
-  }
-  return keys
 }
 
 /**
