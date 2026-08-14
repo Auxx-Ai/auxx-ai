@@ -58,10 +58,22 @@ describe('resolveEmailSplit', () => {
 })
 
 describe('resolvePhoneSplit', () => {
-  it('normalizes each element', () => {
-    const result = resolvePhoneSplit('+1 (555) 123-4567; 555 987 6543', {})
+  it('normalizes each element to E.164', () => {
+    const result = resolvePhoneSplit('+1 (415) 555-1234; 212 555 0100', {})
     expect(result.type).toBe('value')
-    expect(result.value).toEqual(['+15551234567', '5559876543'])
+    expect(result.value).toEqual(['+14155551234', '+12125550100'])
+  })
+
+  it('mixes international and national elements', () => {
+    const result = resolvePhoneSplit('+49 30 901820, (415) 555-1234', {})
+    expect(result.type).toBe('value')
+    expect(result.value).toEqual(['+4930901820', '+14155551234'])
+  })
+
+  it('drops an invalid element with a warning', () => {
+    const result = resolvePhoneSplit('(415) 555-1234, 12345', {})
+    expect(result.type).toBe('warning')
+    expect(result.value).toEqual(['+14155551234'])
   })
 })
 

@@ -5,6 +5,7 @@ import {
   ParticipantRole as ParticipantRoleEnum,
 } from '@auxx/database/enums'
 import type { ParticipantEntity as Participant, ParticipantRole } from '@auxx/database/types'
+import { formatPhoneNumber } from '@auxx/utils'
 import { linkContactToCompanyByDomain } from '../companies/link-contact'
 import type { IngestContext } from '../context'
 import { getOwnDomains } from '../domain/classifier'
@@ -68,11 +69,29 @@ export async function findOrCreateContactForParticipant(
     // skip the identifier-keyed lookup and rely on `Participant.entityInstanceId`
     // for dedupe on the caller side.
     const isChatVisitor = participant.identifierType === 'CHAT_VISITOR'
-    const systemAttr = isChatVisitor
-      ? null
-      : participant.identifierType === IdentifierTypeEnum.PHONE
-        ? 'phone'
-        : 'primary_email'
+
+    // A PHONE participant is not guaranteed to carry a dialable number: SMS
+    // short codes (`12345`) and alphanumeric sender IDs (`AUXX`) arrive with
+    // the same identifier type. The write validator normalizes to E.164 and
+    // REJECTS those, so writing one would throw inside ingest. Treat them like
+    // chat visitors — no phone value, no identifier-keyed dedupe.
+    const isAddressablePhone =
+      participant.identifierType !== IdentifierTypeEnum.PHONE ||
+      formatPhoneNumber(participant.identifier) !== null
+
+    if (!isAddressablePhone) {
+      ctx.logger.debug('Participant phone identifier is not a dialable number', {
+        participantId: participant.id,
+        identifier: participant.identifier,
+      })
+    }
+
+    const systemAttr =
+      isChatVisitor || !isAddressablePhone
+        ? null
+        : participant.identifierType === IdentifierTypeEnum.PHONE
+          ? 'phone'
+          : 'primary_email'
 
     // Never auto-create a contact for the integration owner's own addresses.
     // `force` is the documented escape hatch for the user-initiated
@@ -122,7 +141,7 @@ export async function findOrCreateContactForParticipant(
       contact_status: 'ACTIVE',
     }
 
-    if (participant.identifierType === IdentifierTypeEnum.PHONE) {
+    if (participant.identifierType === IdentifierTypeEnum.PHONE && isAddressablePhone) {
       // Array-wrapped for shape consistency with multi-value fields
       // (options.multi) — the write path auto-unwraps length-1 arrays on
       // single-value fields. Create-only: matched contacts never get their

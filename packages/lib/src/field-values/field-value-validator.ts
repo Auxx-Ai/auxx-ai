@@ -70,10 +70,18 @@ export const fieldValueSchemas = {
     })
     .pipe(z.url('Invalid URL format')),
 
-  // PHONE_INTL - format to E.164
-  phone: z.unknown().transform((v) => {
+  // PHONE_INTL - normalize to E.164 via the shared `formatPhoneNumber`
+  //
+  // `ctx.addIssue` is load-bearing: returning `z.NEVER` from a bare transform
+  // does NOT fail the parse — `z.NEVER` is the `{status:'aborted'}` sentinel,
+  // which without a reported issue becomes the parsed DATA (`success: true`),
+  // so an unparseable number reached storage as an object instead of a 400.
+  phone: z.unknown().transform((v, ctx) => {
     const formatted = formatPhoneNumber(String(v).trim())
-    if (!formatted) return z.NEVER
+    if (!formatted) {
+      ctx.addIssue({ code: 'custom', message: 'Invalid phone number' })
+      return z.NEVER
+    }
     return formatted
   }),
 

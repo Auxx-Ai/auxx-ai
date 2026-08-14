@@ -17,6 +17,16 @@ interface CompanyRoster {
 }
 
 /**
+ * Assigned NANP area codes used for seeded phone numbers. Curated because the
+ * write validator rejects anything `libphonenumber-js` calls invalid — an
+ * arithmetically generated area code lands on unassigned or service prefixes
+ * roughly half the time. See {@link CrmDomain.generatePhone}.
+ */
+const CRM_SEED_AREA_CODES: readonly number[] = [
+  212, 415, 312, 617, 206, 305, 702, 646, 718, 213, 404, 512, 720, 857,
+]
+
+/**
  * COMPANY_ROSTER is a hand-picked set of recognizable real companies used for
  * demo seeding. Entries are consumed in order — scenarios with `scales.companies = N`
  * take the first N rows. Keep entries distinct by domain.
@@ -1031,13 +1041,24 @@ export class CrmDomain {
     return titles[index % titles.length]!
   }
 
-  /** generatePhone creates realistic phone numbers. */
+  /**
+   * generatePhone creates realistic phone numbers.
+   *
+   * Numbers must be VALID under `libphonenumber-js`, not merely well-shaped:
+   * the write validator (`fieldValueSchemas.phone` → `formatPhoneNumber`) runs
+   * `isValid()`, so an arbitrary `+1<NPA><NXX><line>` is rejected outright.
+   * Hence the curated area codes and the two guards below — the previous
+   * arithmetic generator emitted N11 service codes (`+1211…`) and other
+   * unassigned prefixes for ~46% of seeded contacts.
+   */
   private generatePhone(index: number): string | null {
     if (index % 3 === 0) {
       return null // 33% no phone
     }
-    const areaCode = 200 + (index % 800)
-    const exchange = 200 + (index % 800)
+    const areaCode = CRM_SEED_AREA_CODES[index % CRM_SEED_AREA_CODES.length]!
+    let exchange = 200 + (index % 700)
+    if (exchange % 100 === 11) exchange += 1 // N11 (211, 311, …) are service codes
+    if (exchange === 555) exchange = 556 // 555 is reserved for fictional numbers
     const number = 1000 + (index % 9000)
     return `+1${areaCode}${exchange}${number}`
   }

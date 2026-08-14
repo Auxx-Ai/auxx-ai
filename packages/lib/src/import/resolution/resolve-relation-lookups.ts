@@ -205,7 +205,7 @@ async function resolveLookupsForTable(
  * Normalize a relation search value to write-path shape so it can match stored
  * values: EMAIL lowercased, URL `https://`-prefixed + lowercased, PHONE E.164.
  * Lowercase-only normalization can never match a stored URL/phone — the write
- * path stores `https://acme.com` and `+15551234567`. Falls back to
+ * path stores `https://acme.com` and `+14155551234`. Falls back to
  * lowercase+trim when the value doesn't parse (it then simply finds no match)
  * or when the field type carries no normalization.
  */
