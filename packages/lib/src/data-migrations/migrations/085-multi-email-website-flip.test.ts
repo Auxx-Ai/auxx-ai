@@ -52,7 +52,10 @@ describe('mergeMultiIntoOptions', () => {
 })
 
 describe('MULTI_FLIP_SYSTEM_ATTRIBUTES', () => {
-  it('flips EMAIL + WEBSITE only — phone waits on the E.164 plan', () => {
+  // Phone is flipped by migration 086, not by extending this list: 085 has
+  // already run everywhere, and a data migration is applied once — a new
+  // attribute added here would silently no-op for every existing org.
+  it('flips EMAIL + WEBSITE only', () => {
     expect([...MULTI_FLIP_SYSTEM_ATTRIBUTES]).toEqual(['primary_email', 'company_website'])
     expect(MULTI_FLIP_SYSTEM_ATTRIBUTES).not.toContain('phone')
   })
