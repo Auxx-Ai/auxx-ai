@@ -19,8 +19,8 @@ export interface LayoutNode {
   id: string
   parentId?: string
   type?: string
-  width?: number
-  height?: number
+  width?: number | null
+  height?: number | null
   data?: { type?: string }
 }
 

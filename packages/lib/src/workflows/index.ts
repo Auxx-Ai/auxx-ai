@@ -6,6 +6,7 @@ export {
   type TemplateWorkflowData,
 } from './create-from-template'
 export { normalizeTemplateGraph } from './normalize-template-graph'
+export { type ResolvedTemplate, resolveTemplateById } from './resolve-template'
 export { type SystemWorkflowRun, startSystemWorkflowRun } from './system-workflow-run'
 export type { WorkflowGraph } from './template-graph-transformer'
 export { TemplateGraphTransformer } from './template-graph-transformer'

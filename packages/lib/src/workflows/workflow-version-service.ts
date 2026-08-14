@@ -90,13 +90,25 @@ function toEngineFormat(dbWorkflow: any): EngineWorkflow {
 }
 
 /**
+ * Run the real publish gate (`WorkflowEngine.validateWorkflowForPublish`)
+ * against a draft `Workflow` row WITHOUT publishing — the seam graph-edit's
+ * `validateWorkflow` wraps so an agent can check publishability. Non-throwing:
+ * returns the engine's verdict verbatim.
+ */
+export async function validateDraftWorkflowForPublish(
+  draftWorkflow: any
+): Promise<{ valid: boolean; errors: string[]; warnings?: string[] }> {
+  const engine = new WorkflowEngine()
+  await engine.getNodeRegistry().initializeWithDefaults()
+  return await engine.validateWorkflowForPublish(toEngineFormat(draftWorkflow))
+}
+
+/**
  * Validate a draft workflow for publishing. Throws {@link BadRequestError} with
  * the collected validation errors when the workflow is not publishable.
  */
 async function assertDraftIsPublishable(draftWorkflow: any): Promise<void> {
-  const engine = new WorkflowEngine()
-  await engine.getNodeRegistry().initializeWithDefaults()
-  const result = await engine.validateWorkflowForPublish(toEngineFormat(draftWorkflow))
+  const result = await validateDraftWorkflowForPublish(draftWorkflow)
   if (!result.valid) {
     logger.error('Workflow validation failed for publish', {
       workflowId: draftWorkflow?.id,
