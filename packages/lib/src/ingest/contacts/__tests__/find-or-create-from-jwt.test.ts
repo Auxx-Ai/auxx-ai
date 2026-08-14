@@ -118,6 +118,24 @@ describe('findOrCreateContactFromJwt — chat (app-less) visitor', () => {
     expect(result).toEqual({ contactId: 'new_contact', resolution: 'created' })
   })
 
+  it('never lets a caller attribute override the signed JWT email on create', async () => {
+    const result = await findOrCreateContactFromJwt({
+      organizationId: 'org_1',
+      userId: 'visitor_new',
+      email: 'jane@example.com',
+      // Defense in depth: `primary_email` is already stripped upstream by
+      // resolveChatAttributes, but even a raw bag must not win over the JWT.
+      attributes: { primary_email: 'attacker@evil.com', first_name: 'Jane' },
+    })
+
+    expect(create).toHaveBeenCalledWith('contact', {
+      contact_status: 'ACTIVE',
+      first_name: 'Jane',
+      primary_email: 'jane@example.com',
+    })
+    expect(result.resolution).toBe('created')
+  })
+
   it('email-folds onto an existing contact and mirrors the chat link (no duplicate)', async () => {
     findByField.mockResolvedValueOnce({ id: 'existing_contact' })
 

@@ -1,14 +1,29 @@
 // packages/lib/src/chat/attribute-resolution.ts
 
 /**
- * JWT claim names that are never written as generic Contact attributes.
+ * Claim/attribute names that are never written as generic Contact attributes.
  *
  * - `user_id` is resolved upstream into the Contact's multi-value
  *   `external_id` (as `chat:<user_id>`).
  * - `email` is written to `Contact.primary_email`.
  * - `exp`, `iat`, `nbf`, `iss`, `aud`, `sub` are JWT framing.
+ * - `primary_email`, `phone`, `company_website` are Contact identity fields —
+ *   only server-derived values (e.g. the signed JWT `email` claim) may set
+ *   them, never a spoofable `Auxx.boot()` attribute.
  */
-const RESERVED_CLAIMS = new Set(['user_id', 'email', 'exp', 'iat', 'nbf', 'iss', 'aud', 'sub'])
+const RESERVED_CLAIMS = new Set([
+  'user_id',
+  'email',
+  'exp',
+  'iat',
+  'nbf',
+  'iss',
+  'aud',
+  'sub',
+  'primary_email',
+  'phone',
+  'company_website',
+])
 
 /**
  * Split a display name on the first whitespace.
