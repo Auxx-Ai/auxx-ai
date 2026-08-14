@@ -69,6 +69,35 @@ export class ConflictError extends AuxxError {
   public name = AuxxErrorCodes.ConflictError
 }
 
+/**
+ * A unique-value conflict that identifies WHICH value collided. Thrown by
+ * per-value uniqueness checks on multi-value fields (contact email hooks,
+ * `checkUniqueValueTyped`), where callers that write several values in one
+ * operation (connector sink, import) must drop only the offending value and
+ * keep the rest. Serializes as a plain 409 ConflictError over the API.
+ */
+export class UniqueValueConflictError extends ConflictError {
+  public conflictingValue: string
+  public fieldId?: string
+  public existingEntityId?: string
+
+  constructor(params: {
+    message: string
+    conflictingValue: string
+    fieldId?: string
+    existingEntityId?: string
+  }) {
+    super(params.message, {
+      conflictingValue: params.conflictingValue,
+      fieldId: params.fieldId,
+      existingEntityId: params.existingEntityId,
+    })
+    this.conflictingValue = params.conflictingValue
+    this.fieldId = params.fieldId
+    this.existingEntityId = params.existingEntityId
+  }
+}
+
 export class UnprocessableEntityError extends AuxxError {
   public statusCode = 422
   public name = AuxxErrorCodes.UnprocessableEntityError

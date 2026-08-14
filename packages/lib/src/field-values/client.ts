@@ -45,6 +45,8 @@ export {
   type SelectFieldOptions,
   type TextFieldOptions,
 } from './formatter'
+// Multi-value scalar helpers (first-is-primary convention)
+export { MAX_MULTI_VALUES, primaryValue } from './primary-value'
 // Relationship utilities
 // Re-export RecordId utilities from resources
 export {
