@@ -10,11 +10,10 @@
  * empirically-verified exceptions.
  *
  * REAL: `FindProcessor`, `ExecutionContextManager` (constructed for real,
- * never stubbed — that's the whole point: `resolveVariablePath`'s lazy-load
- * ladder has to actually run), `analyzePathForRelationships`,
- * `fetchResourceWithRelationships`, `fetchResourceById` (all from
- * `resources/resource-fetcher.ts` — unmocked, they run for real against the
- * mocked edges below).
+ * never stubbed — that's the whole point: `resolveVariablePath`'s segment
+ * walker has to actually run), `fetchResourceWithRelationships`,
+ * `fetchResourceById` (both from `resources/resource-fetcher.ts` —
+ * unmocked, they run for real against the mocked edges below).
  *
  * MOCKED (external edges only):
  * - `@auxx/database` — `schema.Thread`'s select chain resolves to a fixture
@@ -175,6 +174,10 @@ vi.mock('../../field-values/field-value-queries', () => ({
 
 const { FindProcessor } = await import('../nodes/action-nodes/find')
 const { findManifest } = await import('../catalog/nodes/find')
+// The SAME mock instance the `vi.mock` factory above created — import (not
+// re-declare) it to assert call counts against the exact fn `getFieldValue`/
+// `prefetchFields` call.
+const { batchGetValues } = await import('../../field-values/field-value-queries')
 
 function buildFindNode(nodeId: string, data: Record<string, unknown>): WorkflowNode {
   return {
@@ -346,5 +349,91 @@ describe('Find node resolvability', () => {
     )
     expect(declared.length).toBeGreaterThan(5)
     await assertResolvability(ctx, written, declared, 'find.findMany.thread')
+  })
+
+  // §11-segment-walk-resolver §8 additions — the deliberate behavior changes
+  // §7 lists, each asserted directly (not just "resolves ⊆ declared").
+  describe('segment-walk resolver — §7 behavior changes', () => {
+    it("hop-2 relation path resolves to the SECOND hop's ACTUAL value (Vendor → region → parentRegion)", async () => {
+      entityFindMany.mockResolvedValueOnce([
+        {
+          id: VENDOR_HIT_INSTANCE_ID,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-02'),
+        },
+      ])
+      const nodeId = 'find_vendor_hop2'
+      const { ctx, result } = await runFind(nodeId, {
+        resourceType: VENDOR_DEF_ID,
+        findMode: 'findOne',
+      })
+      expect(result.status).toBe('succeeded')
+
+      // Was: the first hop's OWN value (`buildFieldPath`'s compounding bug —
+      // reads a `RelationshipConfig` property that doesn't exist, falls back
+      // to treating `region` as a direct field). Now: the real second-hop
+      // field, hydrated by walking one relation at a time.
+      const secondHop = await ctx.resolveVariablePath(
+        `${nodeId}.${VENDOR_DEF_ID}.region.parentRegion.name`
+      )
+      expect(secondHop).toBe('Western Europe')
+
+      // The first hop's own field must still resolve too (proves the walker
+      // didn't just skip to hop 2 — both levels hydrate independently).
+      const firstHop = await ctx.resolveVariablePath(`${nodeId}.${VENDOR_DEF_ID}.region.name`)
+      expect(firstHop).toBe('EMEA')
+    })
+
+    it('`[*]` projects field VALUES, not raw rows (the tail-drop fix)', async () => {
+      entityFindMany.mockResolvedValueOnce([
+        {
+          id: VENDOR_HIT_INSTANCE_ID,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-02'),
+        },
+        {
+          id: VENDOR_CREATE_INSTANCE_ID,
+          createdAt: new Date('2026-02-01'),
+          updatedAt: new Date('2026-02-01'),
+        },
+      ])
+      const nodeId = 'find_vendor_many_project'
+      const { ctx } = await runFind(nodeId, { resourceType: VENDOR_DEF_ID, findMode: 'findMany' })
+
+      // Was: `resolveNestedObject`'s `[*]`-early-return returned the raw
+      // ResourceReference array untouched, discarding `.code`. Now: the
+      // walker maps each item through the remaining path.
+      const codes = await ctx.resolveVariablePath(`${nodeId}.vendors[*].code`)
+      expect(codes).toEqual(['V-042', 'V-100'])
+
+      const names = await ctx.resolveVariablePath(`${nodeId}.vendors[*].region.name`)
+      expect(names).toEqual(['EMEA', null])
+    })
+
+    it('`[*].<scalar>` batches ONE batchGetValues call for N items (no N+1)', async () => {
+      entityFindMany.mockResolvedValueOnce([
+        {
+          id: VENDOR_HIT_INSTANCE_ID,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-02'),
+        },
+        {
+          id: VENDOR_CREATE_INSTANCE_ID,
+          createdAt: new Date('2026-02-01'),
+          updatedAt: new Date('2026-02-01'),
+        },
+      ])
+      const nodeId = 'find_vendor_many_batch'
+      const { ctx } = await runFind(nodeId, { resourceType: VENDOR_DEF_ID, findMode: 'findMany' })
+
+      vi.mocked(batchGetValues).mockClear()
+      const codes = await ctx.resolveVariablePath(`${nodeId}.vendors[*].code`)
+
+      expect(codes).toEqual(['V-042', 'V-100'])
+      // Was: one `batchGetValues` call PER ITEM (`resolveFieldFromResourceRef`
+      // run inside the array-map branch). Now: `walkProjection` prefetches
+      // every item's field in one call before mapping the walk.
+      expect(batchGetValues).toHaveBeenCalledOnce()
+    })
   })
 })

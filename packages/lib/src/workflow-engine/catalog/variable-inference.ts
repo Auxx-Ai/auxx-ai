@@ -32,6 +32,53 @@ export interface ArraySegmentInfo {
 const ARRAY_SEGMENT_PATTERN = /([^.[]+)\[(-?\d+|\*)\]/g
 
 /**
+ * One parsed segment of a variable path — the atom the segment-walk resolver
+ * (`ExecutionContextManager.resolveVariablePath`) recurses over.
+ */
+export interface PathSegment {
+  /** The segment's key, bracket stripped (e.g. "to" from "to[*]", "knowledge bases" as-is). */
+  key: string
+  /** The bracket's accessor, if this segment carried one. */
+  index?: number | '*'
+}
+
+/** Matches ONE trailing `[<int>|*]` bracket on a single dot-segment — never more than one per segment. */
+const SEGMENT_BRACKET_RE = /^(.*)\[(-?\d+|\*)\]$/
+
+/**
+ * Parse a full variable path into an ordered list of segments — the sole
+ * parser for the segment-walk resolver. Grammar:
+ *   path    := segment ("." segment)*
+ *   segment := key bracket?
+ *   bracket := "[" ("*" | "-"? digit+) "]"
+ *
+ * Structural characters are ONLY "." (segment separator) and one trailing
+ * "[...]" per segment — everything else (spaces, "&", "/") is a legal key
+ * character (multi-word findMany plural keys like "knowledge bases" are live
+ * prod data; `find-output-keying.test.ts` pins them). `first`/`last`/a bare
+ * digit are NOT part of this grammar — they're runtime-contextual array
+ * accessors the resolver applies only when the value being navigated is
+ * already an array; a plain object property literally named "first" parses
+ * here as an ordinary `{ key: "first" }` segment.
+ *
+ * @example
+ * parseVariablePath("find-1.vendors[*].region.name")
+ * // → [{ key: "find-1" }, { key: "vendors", index: "*" },
+ * //    { key: "region" }, { key: "name" }]
+ */
+export function parseVariablePath(path: string): PathSegment[] {
+  if (!path) return []
+  return path.split('.').map((raw) => {
+    const match = raw.match(SEGMENT_BRACKET_RE)
+    if (!match) return { key: raw }
+    const [, key, accessor] = match
+    return accessor === '*'
+      ? { key: key!, index: '*' as const }
+      : { key: key!, index: Number.parseInt(accessor!, 10) }
+  })
+}
+
+/**
  * Parse all array segments from a variable ID
  * @example
  * parseArraySegmentsFromId("nodeId.message.to[*].items[0].name")
