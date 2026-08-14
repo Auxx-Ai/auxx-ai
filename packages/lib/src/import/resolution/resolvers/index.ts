@@ -24,3 +24,4 @@ export {
 } from './relation'
 export { resolveSelectCreate, resolveSelectValue } from './select'
 export { resolveTextCuid, resolveTextValue } from './text'
+export { resolveUrl } from './url'

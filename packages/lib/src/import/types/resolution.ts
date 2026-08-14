@@ -22,6 +22,7 @@ export type ResolutionType =
   | 'relation:match' // Match related record by a field value (e.g., name, email)
   | 'relation:create' // Match or create related record if not found
   | 'domain:value' // Parse domain
+  | 'url:value' // URL validation (scheme/path preserved — write-path normalized)
   | 'array:split' // Split to array
 
 /** Configuration for resolution */

@@ -42,6 +42,7 @@ import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { formatToDisplayValue } from './formatter'
+import { MAX_MULTI_VALUES, primaryValue } from './primary-value'
 import type { InverseFieldInfo } from './relationship-sync'
 import { isSearchTextIndexedFieldType, updateSearchText } from './search-text'
 import { toFieldType } from './stored-field-type'
@@ -605,6 +606,13 @@ export async function validateAndConvertValue(
       }
     }
 
+    // Value cap: bounds the multi-value injection vector and the UI.
+    if (converted.length > MAX_MULTI_VALUES) {
+      throw new BadRequestError(
+        `Field ${field.id} accepts at most ${MAX_MULTI_VALUES} values; received ${converted.length}`
+      )
+    }
+
     return converted.length > 0 ? converted : null
   }
 
@@ -1131,12 +1139,16 @@ export async function maybeUpdateDisplayValue(
         }
       }
     } else {
-      // Use centralized formatter for display value computation
-      displayValue = formatToDisplayValue(
-        typedValue,
-        toFieldType(field.type),
-        field.options as any
-      ) as string | null
+      // Use centralized formatter for display value computation. Multi-value
+      // fields render their PRIMARY (first) value — `formatToDisplayValue`
+      // maps over arrays, and writing that array into the display column
+      // would corrupt `displayName`/`secondaryDisplayValue`.
+      const primaryTyped = primaryValue(typedValue)
+      displayValue = primaryTyped
+        ? (formatToDisplayValue(primaryTyped, toFieldType(field.type), field.options as any) as
+            | string
+            | null)
+        : null
     }
   }
 

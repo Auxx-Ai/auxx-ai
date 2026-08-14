@@ -76,6 +76,7 @@ import {
 } from './field-value-helpers'
 import { getValue } from './field-value-queries'
 import { formatToTypedInput } from './formatter'
+import { MAX_MULTI_VALUES } from './primary-value'
 import {
   type BulkRelationshipUpdate,
   batchGetExistingRelatedIds,
@@ -1394,6 +1395,14 @@ export async function addValues(
       return existingRows.map((r) => rowToTypedValue(r, fieldType))
     }
 
+    // Value cap: existing rows + surviving (deduped) additions must fit.
+    if (existingRows.length + survivors.length > MAX_MULTI_VALUES) {
+      throw new BadRequestError(
+        `Field ${fieldId} accepts at most ${MAX_MULTI_VALUES} values; ` +
+          `record has ${existingRows.length} and ${survivors.length} more were submitted`
+      )
+    }
+
     // Generate sortKeys appended after the current max.
     // `nextKeyAfter` tolerates a corrupt last-row sortKey by degrading to 'a0'.
     let prevKey: string | null =
@@ -1667,6 +1676,15 @@ export async function addValuesBulk(
         if (seen.has(key) || localSeen.has(key)) {
           skippedCount++
           continue
+        }
+        // Value cap: adding this value would push the record past the cap.
+        // Throwing aborts the whole transaction — a partial bulk add on some
+        // records but not others would be harder to reason about than a rerun.
+        if (existing.length + insertedTyped.length + 1 > MAX_MULTI_VALUES) {
+          throw new BadRequestError(
+            `Field ${fieldId} accepts at most ${MAX_MULTI_VALUES} values; ` +
+              `record ${entityId} would exceed the cap`
+          )
         }
         localSeen.add(key)
         const sortKey = nextKeyAfter(prevKey)
