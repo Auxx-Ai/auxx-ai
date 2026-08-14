@@ -94,17 +94,6 @@ export interface DebugLogEntry {
 }
 
 /**
- * Panel state
- */
-export interface PanelState {
-  activePanel: 'properties' | 'variables' | 'debug' | 'history' | null
-  panelData?: any
-  isPanelOpen: boolean
-  panelWidth: number
-  isPinned: boolean
-}
-
-/**
  * Canvas view state
  */
 export interface CanvasViewport {

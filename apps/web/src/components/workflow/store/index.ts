@@ -114,9 +114,8 @@ export function resetStores() {
   // Variables are cleared by var store initialization
   stores.selectionStore.deselectAll()
   stores.canvasStore.resetView()
-  stores.panelStore.closePanel()
+  stores.panelStore.closeDrawer()
   stores.panelStore.closeModal()
-  stores.panelStore.closeRunPanel()
   useRunStore.getState().clearRun()
   // Clear test-run inputs when tearing down / switching workflows
   useRunStore.getState().setRunInputs({})

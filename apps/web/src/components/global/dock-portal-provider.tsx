@@ -11,75 +11,44 @@ import {
   useState,
 } from 'react'
 
-/** Identifies which panel slot to use */
-type PanelSlot = 'primary' | 'secondary'
-
 /**
- * Context value for dock portal - provides refs to docked panel containers
+ * Context value for dock portal - provides a ref to the docked panel container.
  */
 interface DockPortalContextValue {
-  /** Ref to the primary docked panel container */
-  primaryPanelRef: RefObject<HTMLDivElement | null>
-  /** Ref to the secondary docked panel container */
-  secondaryPanelRef: RefObject<HTMLDivElement | null>
-  /** Get the appropriate ref for a panel slot */
-  getPanelRef: (slot: PanelSlot) => RefObject<HTMLDivElement | null>
-  /** Callback ref for primary panel */
-  setPrimaryRef: (el: HTMLDivElement | null) => void
-  /** Callback ref for secondary panel */
-  setSecondaryRef: (el: HTMLDivElement | null) => void
-
-  /** @deprecated Use primaryPanelRef instead */
-  dockedPanelRef: RefObject<HTMLDivElement | null>
+  /** Ref to the docked panel container. */
+  panelRef: RefObject<HTMLDivElement | null>
+  /** Callback ref for the panel target. */
+  setPanelRef: (el: HTMLDivElement | null) => void
 }
 
 const DockPortalContext = createContext<DockPortalContextValue | null>(null)
 
 /**
- * Provider that creates portal targets for docked panels.
- * Supports both single panel and side-by-side panel layouts.
- * Uses callback refs to trigger re-render when portal targets become available.
+ * Provider that creates the portal target for the docked panel.
+ *
+ * There is exactly **one** target. An earlier version had a primary/secondary
+ * pair for side-by-side panels, which meant a panel could portal into a target
+ * the page had stopped rendering — the callback ref below ignores `null`, so the
+ * ref kept pointing at a detached node and the panel silently vanished. One
+ * permanent target makes that unrepresentable.
  */
 export function DockPortalProvider({ children }: { children: ReactNode }) {
-  const primaryPanelRef = useRef<HTMLDivElement>(null)
-  const secondaryPanelRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
-  // Force re-render when refs become available so portals can attach
+  // Force re-render when the ref becomes available so portals can attach.
   const [, forceUpdate] = useState(0)
 
-  // Callback ref for primary panel - triggers re-render when mounted.
-  // Ignores null to prevent AnimatePresence exit unmounts from wiping
-  // a ref that was already updated by a newly mounted target.
-  const setPrimaryRef = useCallback((el: HTMLDivElement | null) => {
+  // Ignores null so an AnimatePresence exit unmount can't wipe a ref that a
+  // newly mounted target has already claimed.
+  const setPanelRef = useCallback((el: HTMLDivElement | null) => {
     if (el) {
-      primaryPanelRef.current = el
+      panelRef.current = el
       forceUpdate((n) => n + 1)
     }
   }, [])
-
-  // Callback ref for secondary panel - same guard as primary
-  const setSecondaryRef = useCallback((el: HTMLDivElement | null) => {
-    if (el) {
-      secondaryPanelRef.current = el
-      forceUpdate((n) => n + 1)
-    }
-  }, [])
-
-  const getPanelRef = (slot: PanelSlot) => {
-    return slot === 'primary' ? primaryPanelRef : secondaryPanelRef
-  }
 
   return (
-    <DockPortalContext.Provider
-      value={{
-        primaryPanelRef,
-        secondaryPanelRef,
-        getPanelRef,
-        setPrimaryRef,
-        setSecondaryRef,
-        // Legacy alias
-        dockedPanelRef: primaryPanelRef,
-      }}>
+    <DockPortalContext.Provider value={{ panelRef, setPanelRef }}>
       {children}
     </DockPortalContext.Provider>
   )
@@ -87,7 +56,7 @@ export function DockPortalProvider({ children }: { children: ReactNode }) {
 
 /**
  * Hook to access the dock portal context.
- * Returns refs to the docked panel containers for use with createPortal.
+ * Returns the ref to the docked panel container for use with createPortal.
  */
 export function useDockPortal() {
   const context = useContext(DockPortalContext)
@@ -98,32 +67,11 @@ export function useDockPortal() {
 }
 
 /**
- * Props for DockedPanelTarget
+ * Portal target for the docked panel.
+ * Place inside a PanelFrame where docked content should appear.
  */
-interface DockedPanelTargetProps {
-  /** Which slot this target is for */
-  slot?: PanelSlot
-  /** Panel type filter for tabbed mode */
-  panelFilter?: 'property' | 'run' | 'settings'
+export function DockedPanelTarget() {
+  const { setPanelRef } = useDockPortal()
+
+  return <div ref={setPanelRef} className='contents h-full' />
 }
-
-/**
- * Portal target for docked panels.
- * Place inside a PanelFrame where you want docked content to appear.
- * Uses callback refs to trigger re-render when mounted.
- */
-export function DockedPanelTarget({ slot = 'primary', panelFilter }: DockedPanelTargetProps) {
-  const { setPrimaryRef, setSecondaryRef } = useDockPortal()
-  const setRef = slot === 'primary' ? setPrimaryRef : setSecondaryRef
-
-  return (
-    <div
-      ref={setRef}
-      data-panel-filter={panelFilter}
-      data-panel-slot={slot}
-      className='contents h-full'
-    />
-  )
-}
-
-export type { PanelSlot }

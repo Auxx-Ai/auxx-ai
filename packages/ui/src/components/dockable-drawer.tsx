@@ -1,7 +1,6 @@
 // packages/ui/src/components/dockable-drawer.tsx
 'use client'
 
-import { cn } from '@auxx/ui/lib/utils'
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { Drawer, DrawerContent, DrawerHandle, DrawerOverlay, DrawerTitle } from './drawer'
@@ -35,9 +34,6 @@ export const useDockableDrawer = () => {
   return context
 }
 
-/** Panel type for filtering in tabbed/side-by-side mode */
-type PanelType = 'property' | 'run' | 'settings'
-
 /**
  * Props for DockableDrawer component
  */
@@ -68,8 +64,6 @@ interface DockableDrawerProps {
   overlay?: boolean
   /** Optional portal target ref for docked mode - content will be portaled here when docked */
   portalTarget?: React.RefObject<HTMLElement | null>
-  /** Identifies which panel this is (for filtering in tabbed/side-by-side mode) */
-  panelType?: PanelType
 }
 
 /**
@@ -91,7 +85,6 @@ export function DockableDrawer({
   title = 'Details',
   overlay = true,
   portalTarget,
-  panelType,
 }: DockableDrawerProps) {
   const contextValue = React.useMemo(
     () => ({ isDocked, width, setWidth: onWidthChange, minWidth, maxWidth }),
@@ -100,13 +93,6 @@ export function DockableDrawer({
 
   // When docked with portal target, portal content to the target element
   if (isDocked && open && portalTarget?.current) {
-    // Check if there's a panel filter on the target and if it matches our type
-    const filter = portalTarget.current.dataset?.panelFilter
-    // If there's a filter and it doesn't match our type, don't render
-    if (filter && panelType && filter !== panelType) {
-      return null
-    }
-
     // When docked, no handle needed - resize is handled by PanelFrame gap
     return createPortal(
       <DockableDrawerContext.Provider value={contextValue}>
@@ -152,48 +138,4 @@ export function DockableDrawer({
   }
 
   return null
-}
-
-/**
- * Resize handle for docked mode
- */
-function DockableDrawerHandle() {
-  const { setWidth, width, minWidth, maxWidth } = useDockableDrawer()
-  const [isDragging, setIsDragging] = React.useState(false)
-
-  const handleMouseDown = React.useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault()
-      setIsDragging(true)
-
-      const startX = e.clientX
-      const startWidth = width
-
-      const handleMouseMove = (moveEvent: MouseEvent) => {
-        const deltaX = startX - moveEvent.clientX
-        const newWidth = Math.min(maxWidth, Math.max(minWidth, startWidth + deltaX))
-        setWidth(newWidth)
-      }
-
-      const handleMouseUp = () => {
-        setIsDragging(false)
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-      }
-
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-    },
-    [setWidth, minWidth, maxWidth, width]
-  )
-
-  return (
-    <div
-      className={cn(
-        'absolute -left-[3px] top-1/2 -translate-y-1/2 h-12 w-1.5 bg-primary-300 cursor-ew-resize rounded-full hover:bg-primary-400/70 z-50',
-        isDragging && 'bg-primary-500'
-      )}
-      onMouseDown={handleMouseDown}
-    />
-  )
 }

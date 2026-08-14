@@ -18,11 +18,8 @@ import {
   useWorkflowInit,
   useWorkflowShortcuts,
 } from '../hooks'
-import { PropertyPanel } from '../panels/property-panel'
-import { WorkflowRunPanel } from '../panels/run/workflow-run-panel'
-import { WorkflowSettingsPanel } from '../panels/settings'
+import { WorkflowPanelDrawer } from '../panels/workflow-panel-drawer'
 import { VarStoreSyncProvider, WorkflowResourceProvider } from '../providers'
-import { usePanelStore } from '../store/panel-store'
 import { useTestInputSync } from '../store/test-input-store'
 import { useWebhookTestStore } from '../store/webhook-test-store'
 import { WorkflowHistoryProvider } from '../store/workflow-history-provider'
@@ -48,10 +45,6 @@ const WorkflowEditorInner = memo<{
   initialViewport?: Viewport | null
 }>(({ readOnly = false, workflowId, initialNodes, initialEdges, initialViewport }) => {
   const workflow = useWorkflowStore((state) => state.workflow)
-  const activePanel = usePanelStore((state) => state.activePanel)
-  const rightSidebarOpen = usePanelStore((state) => state.rightSidebarOpen)
-  const runPanelOpen = usePanelStore((state) => state.runPanelOpen)
-  const settingsPanelOpen = usePanelStore((state) => state.settingsPanelOpen)
 
   // Load workflow blocks from installed apps (side effect only)
   useWorkflowBlocks()
@@ -94,26 +87,12 @@ const WorkflowEditorInner = memo<{
             initialViewport={initialViewport}
           />
 
-          {/* Right sidebar - Properties/Variables/Debug */}
-          {rightSidebarOpen && activePanel && <PropertyPanel className='h-full' />}
-
-          {/* Run Panel */}
-          {runPanelOpen && (
-            <WorkflowRunPanel
-              className='h-full border-l'
-              workflowId={(workflow as any)?.workflowId}
-              workflowAppId={workflow?.id}
-            />
-          )}
-
-          {/* Settings Panel */}
-          {settingsPanelOpen && (
-            <WorkflowSettingsPanel
-              className='h-full border-l'
-              workflowId={(workflow as any)?.workflowId}
-              workflowAppId={workflow?.id}
-            />
-          )}
+          {/* One drawer for every panel — node properties, Test and Settings
+              are frames inside its NavStack, not separate docked panels. */}
+          <WorkflowPanelDrawer
+            workflowId={(workflow as any)?.workflowId}
+            workflowAppId={workflow?.id}
+          />
         </div>
       </div>
     </>

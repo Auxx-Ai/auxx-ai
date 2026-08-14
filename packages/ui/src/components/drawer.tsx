@@ -197,6 +197,15 @@ interface DrawerHeaderProps extends Omit<React.HTMLAttributes<HTMLDivElement>, '
   /** Callback when the back chevron is clicked. Rendered before `icon` when provided
    * (dispatch v4/04 §Phase 2 — record peek stack back navigation). */
   onBack?: () => void
+  /**
+   * Optional label rendered beside the back chevron — the name of the screen the
+   * chevron returns to (e.g. "Send Email").
+   *
+   * A bare chevron only says a way back exists; a labelled one says *what* you go
+   * back to, which is what matters when the target isn't visible behind the
+   * drawer. Ignored without `onBack`. Truncates rather than crowding the title.
+   */
+  backLabel?: string
 }
 
 /**
@@ -210,6 +219,7 @@ const DrawerHeader = ({
   actions,
   onClose,
   onBack,
+  backLabel,
   children,
   ...props
 }: DrawerHeaderProps) => (
@@ -221,16 +231,27 @@ const DrawerHeader = ({
     {...props}>
     <div className='flex items-center ps-2 pe-1 pt-1.5 pb-1 relative z-10'>
       {/* Back chevron (record peek stack — dispatch v4/04) */}
-      {onBack && (
-        <Button
-          variant='ghost'
-          size='icon-xs'
-          className='rounded-md mr-1 shrink-0'
-          onClick={onBack}
-          tabIndex={-1}>
-          <ChevronLeft />
-        </Button>
-      )}
+      {onBack &&
+        (backLabel ? (
+          <Button
+            variant='ghost'
+            size='xs'
+            className='rounded-md mr-1 shrink-0 max-w-[40%] ps-1 pe-1.5 text-muted-foreground'
+            onClick={onBack}
+            tabIndex={-1}>
+            <ChevronLeft />
+            <span className='truncate'>{backLabel}</span>
+          </Button>
+        ) : (
+          <Button
+            variant='ghost'
+            size='icon-xs'
+            className='rounded-md mr-1 shrink-0'
+            onClick={onBack}
+            tabIndex={-1}>
+            <ChevronLeft />
+          </Button>
+        ))}
 
       {/* Icon */}
       {icon && <div className='mr-1 shrink-0'>{icon}</div>}

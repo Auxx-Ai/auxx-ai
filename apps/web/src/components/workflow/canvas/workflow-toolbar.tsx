@@ -28,7 +28,7 @@ import {
 import { useChecklist } from '~/components/workflow/hooks/use-checklist'
 import { RunHistory } from '~/components/workflow/panels/run/run-history'
 import { useCanvasStore } from '~/components/workflow/store/canvas-store'
-import { usePanelStore } from '~/components/workflow/store/panel-store'
+import { selectIsOverlayOpen, usePanelStore } from '~/components/workflow/store/panel-store'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
 import { WorkflowChecklist } from '~/components/workflow/ui/workflow-checklist'
@@ -84,11 +84,11 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
   const helpOverlayOpen = usePanelStore((state) => state.helpOverlayOpen)
   const toggleHelpOverlay = usePanelStore((state) => state.toggleHelpOverlay)
 
-  // Settings panel state
-  const runPanelOpen = usePanelStore((state) => state.runPanelOpen)
-  const settingsPanelOpen = usePanelStore((state) => state.settingsPanelOpen)
-  const openSettingsPanel = usePanelStore((state) => state.openSettingsPanel)
-  const closeSettingsPanel = usePanelStore((state) => state.closeSettingsPanel)
+  // Which panel frame is on top — drives the toolbar button's active state.
+  const runPanelOpen = usePanelStore(selectIsOverlayOpen('run'))
+  const settingsPanelOpen = usePanelStore(selectIsOverlayOpen('settings'))
+  const openOverlay = usePanelStore((state) => state.openOverlay)
+  const popOverlay = usePanelStore((state) => state.popOverlay)
 
   // Publish mutation
   const publishMutation = api.workflow.publish.useMutation({
@@ -120,13 +120,13 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
 
   const handleTest = () => {
     // Open the run panel with input tab selected
-    usePanelStore.getState().openRunPanel()
+    usePanelStore.getState().openOverlay('run')
     usePanelStore.getState().setRunPanelTab('input')
   }
 
   const handleRunSelect = useCallback((_runId: string) => {
     // Open the run panel with detail tab to show the selected run
-    usePanelStore.getState().openRunPanel()
+    usePanelStore.getState().openOverlay('run')
     usePanelStore.getState().setRunPanelTab('detail')
     // Close the history popover
     setHistoryPopoverOpen(false)
@@ -297,7 +297,7 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
             <Button
               size='sm'
               variant={settingsPanelOpen ? 'secondary' : 'ghost'}
-              onClick={() => (settingsPanelOpen ? closeSettingsPanel() : openSettingsPanel())}>
+              onClick={() => (settingsPanelOpen ? popOverlay() : openOverlay('settings'))}>
               <Settings />
               <span className='hidden sm:inline'>Settings</span>
             </Button>

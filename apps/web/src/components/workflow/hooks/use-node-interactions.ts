@@ -62,7 +62,7 @@ export const useNodesInteractions = () => {
   const { debouncedSave } = useWorkflowSave()
   const { isValidConnection } = useNodeValidation()
   const { selectNode } = useSelectionActions()
-  const closePanel = usePanelStore((state) => state.closePanel)
+  const closeDrawer = usePanelStore((state) => state.closeDrawer)
   const isPinned = usePanelStore((state) => state.isPinned)
   const { saveStateToHistory } = useWorkflowHistory()
   // const { handleNodeLoopChildDrag } = useLoopConfig()
@@ -486,9 +486,9 @@ export const useNodesInteractions = () => {
         saveStateToHistory(WorkflowHistoryEvent.NoteDelete)
       else saveStateToHistory(WorkflowHistoryEvent.NodeDelete)
 
-      closePanel()
+      closeDrawer()
     },
-    [getNodesReadOnly, store, debouncedSave, saveStateToHistory, closePanel]
+    [getNodesReadOnly, store, debouncedSave, saveStateToHistory, closeDrawer]
   )
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reactFlow is stable from useReactFlow hook
