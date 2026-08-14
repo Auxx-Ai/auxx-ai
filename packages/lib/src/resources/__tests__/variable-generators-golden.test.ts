@@ -176,6 +176,14 @@ describe('variable-generators golden snapshots (FROZEN — pre-refactor baseline
     expect(result).toMatchSnapshot()
   })
 
+  // SANCTIONED snapshot change (§10/§10b step 5,
+  // plans/kopilot/workflow/10-variable-resolution-deep-dive.md): the findMany
+  // array/item variable ids now key on `resourceMeta.id` ("node-2.ticket…")
+  // instead of `resourceMeta.plural.toLowerCase()` ("node-2.tickets…") — the
+  // plural is a user-editable string, so keying on it silently broke every
+  // `{{node.<plural>…}}` ref on rename. `label` still reports the plural
+  // ("Tickets") — only the id segment changed. Any OTHER snapshot in this
+  // file changing means something else broke.
   it('generateFindNodeVariablesFromFields — findMany', () => {
     const result = generateFindNodeVariablesFromFields(
       fields,

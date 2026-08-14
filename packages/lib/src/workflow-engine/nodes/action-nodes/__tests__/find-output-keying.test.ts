@@ -268,20 +268,36 @@ describe('findOne keys the result by the resource id', () => {
   })
 })
 
-describe('findMany keeps keying by the plural name the builder advertises', () => {
-  it('keys a system-resource array by the lowercased plural', async () => {
+describe('findMany dual-writes the canonical id key and a legacy plural alias', () => {
+  /**
+   * Flips the old "findMany keeps keying by the plural name" pin — see
+   * `plans/kopilot/workflow/10-variable-resolution-deep-dive.md` §10/§10b step
+   * 5. The plural is a USER-EDITABLE string (entity settings), so keying
+   * findMany's array by it silently broke every `{{node.<plural>…}}` ref on
+   * rename. The array is now written under the CANONICAL `resource.id` key
+   * (what `generateFindNodeVariablesFromFields` declares going forward) AND
+   * the legacy `resource.plural.toLowerCase()` key — same array reference —
+   * so refs stored before the plural→id DataMigration keep resolving. Retire
+   * the legacy assertions here together with the engine's legacy write once
+   * that migration has run everywhere.
+   */
+  it('keys a system-resource array by the id, plus a legacy plural-keyed alias (same array)', async () => {
     executeResourceQuery.mockResolvedValue([{ id: 'row_1' }, { id: 'row_2' }])
     const { written } = await run('kb', 'findMany')
 
-    // Unchanged, and unchanged deliberately: both sides already agree on the
-    // plural for findMany (`generateFindNodeVariablesFromFields` builds the array
-    // variable id from `plural.toLowerCase()`).
+    expect(written['find_1.kb']).toHaveLength(2)
+    // Legacy alias, multi-word plural — the space is still legal here (it's
+    // the pre-migration back-compat key, never the advertised one).
     expect(written['find_1.knowledge bases']).toHaveLength(2)
+    // Dual-write, not a copy: same array reference on both keys.
+    expect(written['find_1.kb']).toBe(written['find_1.knowledge bases'])
   })
 
-  it('keys a custom-entity array by the lowercased plural', async () => {
+  it('keys a custom-entity array by the id, plus a legacy plural-keyed alias', async () => {
     const { written } = await run('orders', 'findMany')
 
+    expect(written['find_1.entitydefcuidorders000000']).toHaveLength(1)
     expect(written['find_1.orders']).toHaveLength(1)
+    expect(written['find_1.entitydefcuidorders000000']).toBe(written['find_1.orders'])
   })
 })
