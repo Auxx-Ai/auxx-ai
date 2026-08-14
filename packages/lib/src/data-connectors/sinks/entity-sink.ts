@@ -17,6 +17,7 @@ import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../../agents/bindings/resolve'
 import { getCachedFieldMap } from '../../cache'
 import { UniqueValueConflictError } from '../../errors'
+import { fieldValueSchemas } from '../../field-values/field-value-validator'
 import { upsertRecordIdentity } from '../../identity'
 import type { ManifestFieldChange } from '../../record-rules/sync-manifest-types'
 import { toRecordId } from '../../resources/resource-id'
@@ -66,6 +67,43 @@ function rawOf(v: TypedFieldValue | TypedFieldValue[] | undefined): unknown {
 
 function isBlank(value: unknown): boolean {
   return value === undefined || value === null || value === ''
+}
+
+/**
+ * Format-validated scalar field types: the write path normalizes these through a
+ * zod schema that REJECTS unparseable input (`fieldValueSchemas`), and the
+ * rejection surfaces as a bare `Error` from `validateSingleValue` — no field
+ * identity, so the write-time catch cannot attribute it and fails the whole
+ * record.
+ */
+const FORMAT_VALIDATED_TYPES: Record<string, keyof typeof fieldValueSchemas> = {
+  EMAIL: 'email',
+  URL: 'url',
+  PHONE_INTL: 'phone',
+}
+
+/**
+ * Would this scalar value be REJECTED by the write path's format validation?
+ *
+ * Providers send free-form contact data — a Shopify customer's `phone` is not
+ * guaranteed to be a dialable number, and E.164 normalization refuses what it
+ * can't parse. Without this pre-flight the throw happens inside
+ * `handler.update`, where the catch can only special-case
+ * `UniqueValueConflictError`; everything else costs the ENTIRE record (no
+ * contact created or updated, just a `failed` counter). Dropping the one value
+ * instead mirrors what the row-level multi path already does per value, and
+ * keeps the sync green.
+ *
+ * Scoped to the three format-validated types on purpose: it is a pure zod parse
+ * (no ctx, no DB), unlike the relation/file validators.
+ */
+function rejectsFormat(fieldType: string | undefined, value: unknown): boolean {
+  // Arrays have their own guards on both paths (a connector cannot source one);
+  // never let `String([…])` decide a drop here.
+  if (!fieldType || isBlank(value) || Array.isArray(value)) return false
+  const schemaKey = FORMAT_VALIDATED_TYPES[fieldType]
+  if (!schemaKey) return false
+  return !fieldValueSchemas[schemaKey].safeParse(value).success
 }
 
 /**
@@ -340,6 +378,21 @@ async function buildWriteSet(
     const isMulti =
       !identityRefs.has(rawRef) &&
       (fieldRow?.options as { multi?: boolean } | null | undefined)?.multi === true
+
+    // Pre-flight the format-validated types (EMAIL/URL/PHONE_INTL): a value the
+    // write path would refuse costs the WHOLE record if it throws inside
+    // `handler.update`. Drop the one value and keep syncing — the multi path
+    // below reaches the same outcome per value (`row-level-writes.ts`), so the
+    // record's fate no longer depends on whether the field happens to be multi.
+    if (rejectsFormat(fieldRow?.type, value)) {
+      logger.warn('source value rejected by field format validation — value dropped', {
+        mappingId: mapping.row.id,
+        externalId: record.externalId,
+        field: rawRef,
+        fieldType: fieldRow?.type,
+      })
+      continue
+    }
 
     if (isMulti && strategy !== 'manual_review') {
       // Never write null/empty over a multi field: a source key present-but-null
