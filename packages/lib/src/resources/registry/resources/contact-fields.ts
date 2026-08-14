@@ -145,6 +145,11 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
       creatable: true,
       updatable: true,
       configurable: false,
+      // Org-wide per-value uniqueness. `isUnique` on the seeded CustomField row
+      // arms the FieldValueService gate (`checkUniqueValueTyped`) — the ONLY
+      // uniqueness door for panel/bulk-edit writes, which never run contact
+      // hooks. Existing orgs are caught up by data migration 084.
+      unique: true,
     },
     placeholder: 'Enter email address',
     validation: {

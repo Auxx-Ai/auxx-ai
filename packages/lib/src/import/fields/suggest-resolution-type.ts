@@ -47,7 +47,11 @@ export function suggestResolutionType(field: ImportableField): ResolutionType {
     case 'phone':
       return 'phone:value'
 
+    // URL fields keep scheme/path — `domain:value` strips them, so the value
+    // could never round-trip against the write path's `https://host/...` form.
     case 'url':
+      return 'url:value'
+
     case 'domain':
       return 'domain:value'
 
@@ -123,6 +127,8 @@ export function getValidResolutionTypes(fieldType: string): ResolutionType[] {
       return ['phone:value', 'text:value']
 
     case 'url':
+      return ['url:value', 'domain:value', 'text:value']
+
     case 'domain':
       return ['domain:value', 'text:value']
 

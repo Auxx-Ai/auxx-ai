@@ -1,7 +1,7 @@
 // packages/services/src/custom-fields/check-unique-value.ts
 
 import { database, schema } from '@auxx/database'
-import { and, eq, ne, or, sql } from 'drizzle-orm'
+import { and, eq, isNull, ne, or, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 
 /**
@@ -28,6 +28,8 @@ export interface UniqueViolation {
   message: string
   fieldId: string
   existingEntityId: string
+  /** Display name of the existing record (free — the check already joins EntityInstance). */
+  existingDisplayName: string | null
 }
 
 /**
@@ -74,8 +76,6 @@ export async function checkUniqueValue(
     return ok(null)
   }
 
-  let existingEntityId: string | null = null
-
   // Build the value match condition - check text and number columns
   // (unique fields are typically TEXT, EMAIL, NUMBER, etc.)
   const valueMatchCondition = or(
@@ -90,8 +90,15 @@ export async function checkUniqueValue(
   // The entityDefinitionId filter scopes to the correct entity type.
   const effectiveEntityDefId = entityDefinitionId ?? modelType
 
+  // Archived records are excluded: merge archives sources but their FieldValue
+  // rows survive, so post-merge the same value legitimately exists on the target
+  // AND the archived source. Counting the archived row would false-conflict any
+  // future edit of the surviving record.
   const result = await database
-    .select({ entityId: schema.FieldValue.entityId })
+    .select({
+      entityId: schema.FieldValue.entityId,
+      displayName: schema.EntityInstance.displayName,
+    })
     .from(schema.FieldValue)
     .innerJoin(schema.EntityInstance, eq(schema.FieldValue.entityId, schema.EntityInstance.id))
     .where(
@@ -99,20 +106,22 @@ export async function checkUniqueValue(
         eq(schema.FieldValue.fieldId, fieldId),
         eq(schema.FieldValue.organizationId, organizationId),
         eq(schema.EntityInstance.entityDefinitionId, effectiveEntityDefId),
+        isNull(schema.EntityInstance.archivedAt),
         valueMatchCondition,
         excludeEntityId ? ne(schema.FieldValue.entityId, excludeEntityId) : sql`true`
       )
     )
     .limit(1)
 
-  existingEntityId = result[0]?.entityId ?? null
+  const existing = result[0]
 
-  if (existingEntityId) {
+  if (existing) {
     return err({
       code: 'UNIQUE_VIOLATION',
       message: 'A record with this value already exists',
       fieldId,
-      existingEntityId,
+      existingEntityId: existing.entityId,
+      existingDisplayName: existing.displayName ?? null,
     })
   }
 

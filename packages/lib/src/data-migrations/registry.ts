@@ -48,6 +48,7 @@ import { migration080OutlookWebhookCutover } from './migrations/080-outlook-webh
 import { migration081BackfillInteractionFields } from './migrations/081-backfill-interaction-fields'
 import { migration082InteractionFieldsParticipantResolution } from './migrations/082-interaction-fields-participant-resolution'
 import { migration083FindManyPluralToIdRefs } from './migrations/083-find-many-plural-to-id-refs'
+import { migration084PrimaryEmailUnique } from './migrations/084-primary-email-unique'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -122,6 +123,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration081BackfillInteractionFields,
     migration082InteractionFieldsParticipantResolution,
     migration083FindManyPluralToIdRefs,
+    migration084PrimaryEmailUnique,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

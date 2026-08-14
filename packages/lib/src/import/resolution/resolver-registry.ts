@@ -21,6 +21,7 @@ import {
 } from './resolvers/relation'
 import { resolveSelectCreate, resolveSelectValue } from './resolvers/select'
 import { resolveTextCuid, resolveTextValue } from './resolvers/text'
+import { resolveUrl } from './resolvers/url'
 
 /** Resolver function type */
 type ResolverFn = (rawValue: string, config: ResolutionConfig) => ResolvedValue
@@ -45,6 +46,7 @@ const RESOLVER_REGISTRY: Record<ResolutionType, ResolverFn> = {
   'relation:match': resolveRelationMatch,
   'relation:create': resolveRelationCreate,
   'domain:value': resolveDomain,
+  'url:value': resolveUrl,
   'array:split': resolveArraySplit,
 }
 

@@ -3,29 +3,19 @@
 import type { Database } from '@auxx/database'
 import { database as defaultDatabase, schema } from '@auxx/database'
 import type { Rung } from '@auxx/database/enums'
-import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { checkUniqueValue } from '@auxx/services/custom-fields'
 import { getEntityInstance, listEntityInstances } from '@auxx/services/entity-instances'
 import { ModelTypes } from '@auxx/types/custom-field'
-import type { FieldId } from '@auxx/types/field'
-import { createTypedValueInput } from '@auxx/types/field-value'
 import { isEntityDefinitionType } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { type AnyColumn, and, eq, type SQL } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import {
-  findCachedResource,
-  getCachedCustomFields,
-  getCachedFieldMap,
-  getCachedResources,
-} from '../../cache'
+import { findCachedResource, getCachedCustomFields, getCachedResources } from '../../cache'
 import { type ConditionGroup, resolveConditionContext } from '../../conditions'
-import { BadRequestError, ForbiddenError } from '../../errors'
+import { ForbiddenError, UniqueValueConflictError } from '../../errors'
 import { publisher } from '../../events/publisher'
 import { FieldValueService } from '../../field-values'
-import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
-import { typedColumnMatch } from '../../field-values/typed-column-match'
 import { upsertRecordIdentity } from '../../identity'
 import { systemTableVisibilityScope } from '../../permissions/capabilities/article-visibility-scope'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
@@ -39,6 +29,12 @@ import {
 import { buildDefIdToSlug } from '../../permissions/capabilities/resolve-capability-inputs'
 import { resolveResourceAccessGrantees } from '../../resource-access/grantee-resolution'
 import { getCommonHooks, getSystemHooks } from '../hooks'
+import {
+  type LookupByFieldResult,
+  type LookupCandidate,
+  lookupEntitiesByFieldValue,
+  parseExternalIdentity,
+} from '../lookup'
 import { RecordPickerService } from '../picker'
 import { isMailLensTableId, MAIL_LENS_REFUSAL } from '../picker/mail-lens-tables'
 import type { RecordPickerItem } from '../picker/types'
@@ -76,62 +72,13 @@ import {
   resolveEntityIdFromCache,
 } from './unified-handler-queries'
 
-/** Inferred type for CustomField select (not exported from schema) */
-type CustomFieldEntity = typeof schema.CustomField.$inferSelect
 type EntityInstanceEntity = typeof schema.EntityInstance.$inferSelect
 
 const lookupLogger = createScopedLogger('unified-handler-lookup')
 
-/**
- * Parse an `external_id` value (`"<source>:<value>"`, e.g. `"gmail:jane@x.com"`,
- * `"website:acme.com"`) into a `RecordIdentity` `(source, externalId)`. The
- * `external_id` array attribute is retired; app-less external ids now live in
- * the identity index, so both the extension dedupe lookup and its create-write
- * route through this. Returns `null` for unprefixed / malformed values.
- */
-function parseExternalIdentity(raw: unknown): { source: string; externalId: string } | null {
-  if (typeof raw !== 'string') return null
-  const idx = raw.indexOf(':')
-  if (idx <= 0 || idx >= raw.length - 1) return null
-  return { source: raw.slice(0, idx), externalId: raw.slice(idx + 1) }
-}
-
-/**
- * Candidate for `lookupByField` — one field reference + value to try. Two shapes,
- * resolved through the same `customFields` org-cache:
- *  - `{ systemAttribute }` → matched by `CustomField.systemAttribute` (system
- *    fields / legacy callers: extension, `record.lookupByField`, `findByField`).
- *  - `{ fieldId }` → matched by `CustomField.id` directly — the only path that
- *    resolves connector-provisioned custom fields, whose `systemAttribute` is null.
- */
-export type LookupCandidate =
-  | { systemAttribute: string; value: unknown }
-  | { fieldId: FieldId; value: unknown }
-
-/**
- * Single match returned by `lookupByField`. `matchedBy` echoes the candidate that
- * hit this record (its `systemAttribute` or `fieldId`), useful when callers want
- * to know whether dedup succeeded via externalId vs. primary_email. The
- * denormalized display columns from EntityInstance ride along so list-style
- * consumers (e.g. the extension's "N similar found" view) can render an avatar +
- * name + subtitle without a second round-trip.
- */
-export type LookupMatch = {
-  recordId: RecordId
-  matchedBy: { systemAttribute?: string; fieldId?: FieldId; value: unknown }
-  displayName: string | null
-  secondaryDisplayValue: string | null
-  avatarUrl: string | null
-}
-
-/**
- * Result envelope for `lookupByField`. `hasMore` is set when the server
- * found more than `limit` distinct records across the candidate list.
- */
-export type LookupByFieldResult = {
-  items: LookupMatch[]
-  hasMore: boolean
-}
+// Lookup core extracted to `../lookup` — re-exported here so existing importers
+// of the crud barrel keep working.
+export type { LookupByFieldResult, LookupCandidate, LookupMatch } from '../lookup'
 
 /**
  * Helper to unwrap neverthrow Result and throw on error.
@@ -588,49 +535,15 @@ export class UnifiedCrudHandler {
   }
 
   /**
-   * Build a typed equality condition on the right FieldValue column for a
-   * given field + raw value. Returns `null` when the value can't be
-   * coerced / normalized (uncoercible inputs like `Number('foo')` leak
-   * through `createTypedValueInput` as NaN and would silently match zero
-   * rows — gate explicitly instead).
-   */
-  private buildLookupCondition(field: CustomFieldEntity, rawValue: unknown): SQL | null {
-    const normalized = normalizeForLookup(field.type as FieldType, rawValue)
-    if (normalized === null || normalized === undefined) return null
-
-    const typedInput = createTypedValueInput(field.type, normalized)
-    if (typedInput === null) return null
-
-    // `createTypedValueInput` does `Number(raw)` / `new Date(raw)` without
-    // validating the result — gate explicitly.
-    if (typedInput.type === 'number' && !Number.isFinite(typedInput.value)) return null
-    if (typedInput.type === 'date' && Number.isNaN(new Date(typedInput.value).getTime())) {
-      return null
-    }
-
-    const { column, value } = typedColumnMatch(typedInput)
-    return eq(schema.FieldValue[column] as AnyColumn, value as string | number | boolean)
-  }
-
-  /**
    * Lookup record IDs by one or more `(systemAttribute, value)` candidates,
-   * tried in priority order. Column-aware (routes through `typedColumnMatch`)
-   * and value-normalizing (mirrors write-path formatting). Deduplicates hits
-   * across candidates by recordId; the earliest-priority candidate wins
-   * attribution.
-   *
-   * Candidate failure handling: a candidate whose field doesn't exist OR
-   * whose value can't be coerced / normalized is **skipped with a warning
-   * log**, not thrown. Only throws `BadRequestError` when ALL candidates
-   * fail — otherwise one garbage input would take down a best-effort
-   * fallback chain (e.g. externalId → email).
+   * tried in priority order. Thin wrapper over
+   * {@link lookupEntitiesByFieldValue} — see its docs for candidate handling,
+   * normalization and determinism.
    *
    * Does not filter on archived records: re-capture of an archived contact
    * should link to the same row rather than create a duplicate. Callers
-   * needing only-active records should post-filter via `record.getById`.
-   *
-   * Does not filter on `capabilities.hidden`: the extension is a system
-   * integration and is allowed to address hidden fields (externalId).
+   * needing only-active records should post-filter via `record.getById` (or
+   * use the core with `excludeArchived`).
    */
   async lookupByField(params: {
     entityDefinitionId: string
@@ -638,163 +551,21 @@ export class UnifiedCrudHandler {
     limit: number
   }): Promise<LookupByFieldResult> {
     // Read enforcement (§5.1): arm 4 yields no matches without a query; the two
-    // middle arms narrow both lookup queries below (both inner-join
+    // middle arms narrow both lookup queries in the core (both inner-join
     // EntityInstance, so the predicate correlates directly).
     const lookupScope = await this.recordScope(params.entityDefinitionId)
     if (lookupScope.arm === 'none') return { items: [], hasMore: false }
     const entityDef = await this.resolveEntityDefinition(params.entityDefinitionId)
-    const seen = new Set<RecordId>()
-    const items: LookupMatch[] = []
-    let hasMore = false
-    let anyValid = false
-    const skipped: Array<{ candidate: LookupCandidate; reason: string }> = []
 
-    // `{ fieldId }` candidates resolve through the same `customFields` cache
-    // `getFieldBySystemAttribute` reads — fetched once here, not per candidate.
-    // Keyed by `CustomField.id` (every DB-backed field, incl. system fields whose
-    // ResourceFieldId carries the UUID); a systemAttribute fallback covers the
-    // pure-static-field edge so a `{ fieldId }` candidate never silently misses.
-    const hasFieldIdCandidate = params.candidates.some((c) => 'fieldId' in c)
-    const fieldMap = hasFieldIdCandidate
-      ? await getCachedFieldMap(this.organizationId, entityDef.id)
-      : null
-    const resolveByFieldId = (fieldId: FieldId): CustomFieldEntity | null => {
-      const byId = fieldMap!.get(fieldId)
-      if (byId) return byId
-      for (const f of fieldMap!.values()) if (f.systemAttribute === fieldId) return f
-      return null
-    }
-
-    for (const candidate of params.candidates) {
-      if (items.length >= params.limit) break
-
-      // `external_id` is retired as a FieldValue attribute — resolve it against
-      // the `RecordIdentity` index instead (app-less link, source-scoped).
-      if ('systemAttribute' in candidate && candidate.systemAttribute === 'external_id') {
-        const parsed = parseExternalIdentity(candidate.value)
-        if (!parsed) {
-          skipped.push({ candidate, reason: 'unparseable external_id' })
-          continue
-        }
-        anyValid = true
-        const remaining = params.limit - items.length
-        const rows = await this.db
-          .select({
-            entityId: schema.RecordIdentity.entityInstanceId,
-            displayName: schema.EntityInstance.displayName,
-            secondaryDisplayValue: schema.EntityInstance.secondaryDisplayValue,
-            avatarUrl: schema.EntityInstance.avatarUrl,
-          })
-          .from(schema.RecordIdentity)
-          .innerJoin(
-            schema.EntityInstance,
-            eq(schema.EntityInstance.id, schema.RecordIdentity.entityInstanceId)
-          )
-          .where(
-            and(
-              eq(schema.RecordIdentity.organizationId, this.organizationId),
-              eq(schema.RecordIdentity.entityDefinitionId, entityDef.id),
-              eq(schema.RecordIdentity.source, parsed.source),
-              eq(schema.RecordIdentity.externalId, parsed.externalId),
-              lookupScope.where
-            )
-          )
-          .limit(remaining + 1)
-        for (const row of rows) {
-          const recordId = toRecordId(entityDef.id, row.entityId)
-          if (seen.has(recordId)) continue
-          if (items.length >= params.limit) {
-            hasMore = true
-            break
-          }
-          seen.add(recordId)
-          items.push({
-            recordId,
-            matchedBy: { systemAttribute: candidate.systemAttribute, value: candidate.value },
-            displayName: row.displayName,
-            secondaryDisplayValue: row.secondaryDisplayValue,
-            avatarUrl: row.avatarUrl,
-          })
-        }
-        continue
-      }
-
-      const field =
-        'fieldId' in candidate
-          ? resolveByFieldId(candidate.fieldId)
-          : await this.getFieldBySystemAttribute(entityDef.id, candidate.systemAttribute)
-      if (!field) {
-        skipped.push({ candidate, reason: 'field not found' })
-        continue
-      }
-
-      const condition = this.buildLookupCondition(field, candidate.value)
-      if (condition === null) {
-        skipped.push({ candidate, reason: 'uncoercible value' })
-        continue
-      }
-      anyValid = true
-
-      // Fetch `remaining + 1` to detect hasMore. DISTINCT ON collapses
-      // duplicate FieldValue rows on the same entity (e.g. belt-and-braces
-      // against two rows with the same externalId after mode:'add' dedup).
-      // Inner-join EntityInstance so each match carries the denormalized
-      // displayName / secondaryDisplayValue / avatarUrl columns that the
-      // FieldValueService write path keeps in sync.
-      const remaining = params.limit - items.length
-      const rows = await this.db
-        .selectDistinctOn([schema.FieldValue.entityId], {
-          entityId: schema.FieldValue.entityId,
-          displayName: schema.EntityInstance.displayName,
-          secondaryDisplayValue: schema.EntityInstance.secondaryDisplayValue,
-          avatarUrl: schema.EntityInstance.avatarUrl,
-        })
-        .from(schema.FieldValue)
-        .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
-        .where(
-          and(
-            eq(schema.FieldValue.fieldId, field.id),
-            eq(schema.FieldValue.organizationId, this.organizationId),
-            condition,
-            lookupScope.where
-          )
-        )
-        .limit(remaining + 1)
-
-      for (const row of rows) {
-        const recordId = toRecordId(entityDef.id, row.entityId)
-        if (seen.has(recordId)) continue
-        if (items.length >= params.limit) {
-          hasMore = true
-          break
-        }
-        seen.add(recordId)
-        items.push({
-          recordId,
-          matchedBy:
-            'fieldId' in candidate
-              ? { fieldId: candidate.fieldId, value: candidate.value }
-              : { systemAttribute: candidate.systemAttribute, value: candidate.value },
-          displayName: row.displayName,
-          secondaryDisplayValue: row.secondaryDisplayValue,
-          avatarUrl: row.avatarUrl,
-        })
-      }
-    }
-
-    if (!anyValid && params.candidates.length > 0) {
-      throw new BadRequestError(
-        `lookupByField: no candidate was valid. Skipped: ${JSON.stringify(skipped)}`
-      )
-    }
-    if (skipped.length > 0) {
-      lookupLogger.warn('lookupByField: skipped candidates', {
-        entityDef: entityDef.id,
-        skipped,
-      })
-    }
-
-    return { items, hasMore }
+    const result = await lookupEntitiesByFieldValue(this.db, {
+      organizationId: this.organizationId,
+      entityDefinitionId: entityDef.id,
+      candidates: params.candidates,
+      limit: params.limit,
+      scopeWhere: lookupScope.where,
+    })
+    if (result.isErr()) throw result.error
+    return result.value
   }
 
   /**
@@ -1556,17 +1327,31 @@ export class UnifiedCrudHandler {
       const value = values[field.id]
       if (value === undefined || value === null || value === '') continue
 
-      const result = await checkUniqueValue({
-        fieldId: field.id,
-        value,
-        organizationId: this.organizationId,
-        modelType: ModelTypes.ENTITY,
-        entityDefinitionId,
-        excludeEntityId,
-      })
+      // Multi-value fields (`options.multi`) arrive as arrays — check each
+      // value individually; passing the array through would silently pass
+      // (`normalizeValueForComparison` can't stringify it).
+      const candidates = Array.isArray(value) ? value : [value]
+      for (const candidate of candidates) {
+        if (candidate === undefined || candidate === null || candidate === '') continue
 
-      if (result.isErr()) {
-        throw new Error(`${field.name} must be unique: value already exists`)
+        const result = await checkUniqueValue({
+          fieldId: field.id,
+          value: candidate,
+          organizationId: this.organizationId,
+          modelType: ModelTypes.ENTITY,
+          entityDefinitionId,
+          excludeEntityId,
+        })
+
+        if (result.isErr()) {
+          const violation = result.error
+          throw new UniqueValueConflictError({
+            message: `${field.name} must be unique: value already exists`,
+            conflictingValue: typeof candidate === 'string' ? candidate : String(candidate),
+            fieldId: field.id,
+            existingEntityId: violation.existingEntityId,
+          })
+        }
       }
     }
   }

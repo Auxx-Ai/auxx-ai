@@ -702,6 +702,10 @@ export class CrmDomain {
     // Re-seeding must not double up contacts: generated emails are deterministic by
     // index and persona emails are fixed, so skip any whose primary_email already
     // exists on the org (the historical duplicate-contact source).
+    // Keys mirror the contact-hook write normalization (`formatEmail`: trim +
+    // lowercase) so this dedupe can never disagree with the org-wide per-value
+    // uniqueness gate the hooks enforce.
+    const emailKey = (email: string): string => email.trim().toLowerCase()
     const existingEmailRows = await db
       .select({ valueText: schema.FieldValue.valueText })
       .from(schema.FieldValue)
@@ -711,12 +715,18 @@ export class CrmDomain {
       )
     const existingEmails = new Set(
       existingEmailRows
-        .map((row: any) => row.valueText?.toLowerCase())
+        .map((row: any) => (row.valueText ? emailKey(row.valueText) : undefined))
         .filter((email: string | undefined) => !!email)
     )
-    const newContactValues = contactValues.filter(
-      (value) => !existingEmails.has(value.primary_email.toLowerCase())
-    )
+    // Also dedupe within the batch itself — with primary_email unique org-wide,
+    // a second in-batch duplicate would otherwise fail its create.
+    const batchEmails = new Set<string>()
+    const newContactValues = contactValues.filter((value) => {
+      const key = emailKey(value.primary_email)
+      if (existingEmails.has(key) || batchEmails.has(key)) return false
+      batchEmails.add(key)
+      return true
+    })
     const skippedCount = contactValues.length - newContactValues.length
     if (skippedCount > 0) {
       console.log(`  ↩️  Skipped ${skippedCount} contacts whose email already exists in the org`)

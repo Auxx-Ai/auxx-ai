@@ -3,7 +3,8 @@
 import type { ModelType } from '@auxx/database'
 import { type Database, database, schema, type Transaction } from '@auxx/database'
 import type { TypedFieldValueInput } from '@auxx/types'
-import { and, eq, ne, sql } from 'drizzle-orm'
+import { and, eq, isNull, ne, sql } from 'drizzle-orm'
+import { UniqueValueConflictError } from '../errors'
 import { parseRecordId } from '../resources/resource-id'
 
 /**
@@ -22,8 +23,13 @@ export interface CheckUniqueValueTypedInput {
  * Check if a typed field value is unique within its scope.
  * Uses the new FieldValue table with typed columns.
  *
+ * Array inputs (multi-value fields, `options.multi`) are checked PER VALUE —
+ * every element must be unique org-wide. Archived records are excluded (merge
+ * archives sources whose FieldValue rows survive; counting them would
+ * false-conflict edits of the surviving record).
+ *
  * @param input - Check parameters
- * @returns True if value is unique, throws error if not
+ * @returns True if value is unique, throws {@link UniqueValueConflictError} if not
  */
 export async function checkUniqueValueTyped(
   input: CheckUniqueValueTypedInput,
@@ -36,8 +42,13 @@ export async function checkUniqueValueTyped(
     return true
   }
 
-  // For arrays, we don't support uniqueness checking on multi-value fields
+  // Multi-value fields: every element must individually pass. This is the
+  // panel/bulk-edit door's ONLY uniqueness gate for arrays — returning true
+  // here would let a claimed email in via `fieldValue.set`.
   if (Array.isArray(value)) {
+    for (const element of value) {
+      await checkUniqueValueTyped({ ...input, value: element }, db)
+    }
     return true
   }
 
@@ -82,16 +93,22 @@ export async function checkUniqueValueTyped(
     return true
   }
 
-  // Query for existing values with the same value
+  // Query for existing values with the same value. The EntityInstance join
+  // excludes archived records from the check.
   const query = db
-    .select({ entityId: schema.FieldValue.entityId })
+    .select({
+      entityId: schema.FieldValue.entityId,
+      displayName: schema.EntityInstance.displayName,
+    })
     .from(schema.FieldValue)
     .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
+    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
     .where(
       and(
         eq(schema.FieldValue.fieldId, fieldId),
         eq(schema.FieldValue.organizationId, organizationId),
         eq(schema.CustomField.modelType, modelType),
+        isNull(schema.EntityInstance.archivedAt),
         entityDefinitionId
           ? eq(schema.CustomField.entityDefinitionId, entityDefinitionId)
           : undefined,
@@ -103,8 +120,23 @@ export async function checkUniqueValueTyped(
 
   const result = await query
 
-  if (result.length > 0) {
-    throw new Error('Value already exists')
+  const existing = result[0]
+  if (existing) {
+    const conflictingValue =
+      value.type === 'option'
+        ? value.optionId
+        : value.type === 'relationship'
+          ? value.recordId
+          : 'value' in value
+            ? String(value.value)
+            : JSON.stringify(value)
+    const owner = existing.displayName ? ` on "${existing.displayName}"` : ''
+    throw new UniqueValueConflictError({
+      message: `Value already exists${owner}: ${conflictingValue}`,
+      conflictingValue,
+      fieldId,
+      existingEntityId: existing.entityId,
+    })
   }
 
   return true

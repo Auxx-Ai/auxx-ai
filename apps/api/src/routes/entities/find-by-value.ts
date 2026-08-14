@@ -8,9 +8,9 @@
  * key resolves "customer #456" only within the bound store (parent §8).
  */
 
-import { database, schema } from '@auxx/database'
+import { database } from '@auxx/database'
 import { getCachedEntityDefId } from '@auxx/lib/cache'
-import { and, eq, type SQL } from 'drizzle-orm'
+import { type LookupCandidate, lookupEntitiesByFieldValue } from '@auxx/lib/resources'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { verifyCallbackAuth } from '../../lib/callback-auth'
@@ -25,22 +25,6 @@ const FindByValueSchema = z.object({
   fieldKey: z.string().min(1),
   value: z.string(),
 })
-
-/** Match `value` against the FieldValue column for the field's type. */
-function valueCondition(fieldType: string, value: string): SQL | null {
-  switch (fieldType) {
-    case 'NUMBER':
-    case 'CURRENCY': {
-      const n = Number(value)
-      return Number.isFinite(n) ? eq(schema.FieldValue.valueNumber, n) : null
-    }
-    case 'CHECKBOX':
-      return eq(schema.FieldValue.valueBoolean, value === 'true')
-    default:
-      // TEXT, EMAIL, URL, PHONE_INTL, NAME, … all live in valueText.
-      return eq(schema.FieldValue.valueText, value)
-  }
-}
 
 findByValue.post('/find-by-value', async (c) => {
   const auth = verifyCallbackAuth(c, 'entities')
@@ -73,31 +57,29 @@ findByValue.post('/find-by-value', async (c) => {
   )
   if (!field) return c.json(errorResponse('FORBIDDEN', `Field not owned: ${fieldKey}`), 403)
 
-  const condition = valueCondition(field.type, value)
-  if (!condition) return c.json({ entity: null })
+  // The SDK sends strings; `createTypedValueInput` does `Boolean('false') ===
+  // true`, so coerce checkbox values here (matching this route's historical
+  // `value === 'true'` behavior).
+  const candidateValue: unknown = field.type === 'CHECKBOX' ? value === 'true' : value
 
-  const row = await database
-    .select({
-      instanceId: schema.EntityInstance.id,
-      displayName: schema.EntityInstance.displayName,
-    })
-    .from(schema.FieldValue)
-    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, auth.organizationId),
-        eq(schema.FieldValue.fieldId, field.id),
-        condition
-      )
-    )
-    .limit(1)
+  // Shared lookup core: column-aware typed match + write-path normalization
+  // (EMAIL lowercased, URL protocol-prefixed, PHONE E.164 — a raw `eq` on
+  // valueText could never match those), deterministic ordering. Keeps
+  // include-archived, matching the historical behavior of this route.
+  const result = await lookupEntitiesByFieldValue(database, {
+    organizationId: auth.organizationId,
+    entityDefinitionId: defId,
+    candidates: [{ fieldId: field.id, value: candidateValue } as LookupCandidate],
+    limit: 1,
+  })
+  if (result.isErr()) return c.json({ entity: null })
 
-  const hit = row[0]
+  const hit = result.value.items[0]
   if (!hit) return c.json({ entity: null })
 
   return c.json({
     entity: {
-      recordId: `${defId}:${hit.instanceId}`,
+      recordId: hit.recordId,
       displayName: hit.displayName,
     },
   })

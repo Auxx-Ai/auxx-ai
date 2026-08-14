@@ -5,6 +5,7 @@ import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm'
 import { getCachedResource } from '../../cache'
+import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
 import type { CustomResource, Resource, SystemResource } from '../../resources/registry/types'
 import { BaseType } from '../../resources/types'
 
@@ -135,7 +136,8 @@ async function resolveLookupsForTable(
   const results: RelationLookupResult[] = []
 
   for (const [matchField, fieldLookups] of byMatchField) {
-    const searchValues = fieldLookups.map((l) => l.searchValue.toLowerCase().trim())
+    const fieldType = resource.fields.find((f) => f.key === matchField)?.type
+    const searchValues = fieldLookups.map((l) => normalizeSearchValue(l.searchValue, fieldType))
 
     // Query records matching any of the search values
     const records = await queryRecordsByField(
@@ -146,26 +148,37 @@ async function resolveLookupsForTable(
       searchValues
     )
 
-    // Build lookup map: normalizedSearchValue -> recordId
-    const recordMap = new Map<string, string>()
+    // Build lookup map: normalizedSearchValue -> recordIds. A value carried by
+    // MORE than one record is an ambiguity — resolved as a row error below,
+    // never last-write-wins (silently linking to an arbitrary record).
+    const recordMap = new Map<string, Set<string>>()
     for (const record of records) {
       const fieldValue = record[matchField]
       if (fieldValue != null) {
         const normalizedKey = String(fieldValue).toLowerCase().trim()
-        recordMap.set(normalizedKey, record.id)
+        const ids = recordMap.get(normalizedKey) ?? new Set<string>()
+        ids.add(record.id)
+        recordMap.set(normalizedKey, ids)
       }
     }
 
     // Map results
-    for (const lookup of fieldLookups) {
-      const normalizedSearch = lookup.searchValue.toLowerCase().trim()
-      const recordId = recordMap.get(normalizedSearch) ?? null
+    for (let i = 0; i < fieldLookups.length; i++) {
+      const lookup = fieldLookups[i]!
+      const matched = recordMap.get(searchValues[i]!)
 
-      if (recordId) {
+      if (matched && matched.size > 1) {
         results.push({
           hash: lookup.hash,
           jobPropertyId: lookup.jobPropertyId,
-          recordId,
+          recordId: null,
+          error: `Ambiguous match for "${lookup.searchValue}": ${matched.size} records share this value`,
+        })
+      } else if (matched && matched.size === 1) {
+        results.push({
+          hash: lookup.hash,
+          jobPropertyId: lookup.jobPropertyId,
+          recordId: [...matched][0]!,
         })
       } else if (lookup.createIfNotFound) {
         results.push({
@@ -189,6 +202,30 @@ async function resolveLookupsForTable(
 }
 
 /**
+ * Normalize a relation search value to write-path shape so it can match stored
+ * values: EMAIL lowercased, URL `https://`-prefixed + lowercased, PHONE E.164.
+ * Lowercase-only normalization can never match a stored URL/phone — the write
+ * path stores `https://acme.com` and `+15551234567`. Falls back to
+ * lowercase+trim when the value doesn't parse (it then simply finds no match)
+ * or when the field type carries no normalization.
+ */
+function normalizeSearchValue(rawValue: string, fieldType: BaseType | undefined): string {
+  const fallback = rawValue.toLowerCase().trim()
+  const dbType =
+    fieldType === BaseType.EMAIL
+      ? ('EMAIL' as const)
+      : fieldType === BaseType.URL
+        ? ('URL' as const)
+        : fieldType === BaseType.PHONE
+          ? ('PHONE_INTL' as const)
+          : null
+  if (!dbType) return fallback
+  const normalized = normalizeForLookup(dbType, rawValue)
+  // The SQL side compares LOWER(column) — keep the key lowercase.
+  return typeof normalized === 'string' ? normalized.toLowerCase() : fallback
+}
+
+/**
  * Query records by field value using IN clause for batch efficiency.
  * Uses cached resource data from ResourceRegistryService.
  */
@@ -206,9 +243,12 @@ async function queryRecordsByField(
   if (resource.type === 'system') {
     return querySystemResource(db, organizationId, resource, matchField, searchValues)
   } else {
-    return queryCustomEntity(db, resource, matchField, searchValues)
+    return queryCustomEntity(db, organizationId, resource, matchField, searchValues)
   }
 }
+
+/** Conservative SQL-identifier shape for interpolated column names. */
+const SAFE_SQL_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/
 
 /**
  * Query system resource (contact, ticket, etc.)
@@ -224,6 +264,20 @@ async function querySystemResource(
   // Use raw SQL query for flexibility with dynamic table/column names
   // This avoids TypeScript issues with dynamic schema access
   const tableName = resource.dbName
+
+  // `matchField` is mapping-supplied and reaches `sql.raw` — gate it against
+  // the resource's registered fields (plus identifier shape) so a crafted
+  // mapping cannot inject SQL through the column position.
+  const isKnownField =
+    matchField === 'id' ||
+    resource.fields.some((f) => f.key === matchField || f.dbColumn === matchField)
+  if (!isKnownField || !SAFE_SQL_IDENTIFIER.test(matchField)) {
+    logger.warn('Rejected unsafe or unknown matchField for system resource lookup', {
+      resourceId: resource.id,
+      matchField,
+    })
+    return []
+  }
 
   // Build the SQL query with proper escaping
   const results = await db.execute<{ id: string; [key: string]: unknown }>(
@@ -243,6 +297,7 @@ async function querySystemResource(
  */
 async function queryCustomEntity(
   db: Database,
+  organizationId: string,
   resource: CustomResource,
   matchField: string,
   searchValues: string[]
@@ -253,6 +308,7 @@ async function queryCustomEntity(
   if (matchField === 'id') {
     const instances = await db.query.EntityInstance.findMany({
       where: and(
+        eq(schema.EntityInstance.organizationId, organizationId),
         eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
         inArray(schema.EntityInstance.id, searchValues),
         isNull(schema.EntityInstance.archivedAt)
@@ -304,7 +360,10 @@ async function queryCustomEntity(
     return []
   }
 
-  // Query with type-appropriate condition using FieldValue typed columns
+  // Query with type-appropriate condition using FieldValue typed columns.
+  // The organizationId predicate is load-bearing: FieldValue.fieldId alone
+  // does scope to one org's CustomField row, but belt-and-braces here keeps
+  // the query index-friendly and future-proof against shared field ids.
   const results = await db
     .select({
       entityId: schema.FieldValue.entityId,
@@ -320,7 +379,13 @@ async function queryCustomEntity(
         isNull(schema.EntityInstance.archivedAt)
       )
     )
-    .where(and(eq(schema.FieldValue.fieldId, field.id), matchCondition))
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, field.id),
+        matchCondition
+      )
+    )
 
   return results.map((r) => {
     // Extract the appropriate value based on column type

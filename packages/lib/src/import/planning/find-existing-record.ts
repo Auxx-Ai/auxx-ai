@@ -3,10 +3,11 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { getValueType } from '@auxx/types'
 import { and, eq, ilike } from 'drizzle-orm'
 import type { PgTableWithColumns } from 'drizzle-orm/pg-core'
 import type { Resource, ResourceField } from '../../resources'
+import { lookupEntitiesByFieldValue } from '../../resources/lookup'
+import { parseRecordId } from '../../resources/resource-id'
 import { BaseType } from '../../workflow-engine/core/types'
 
 const logger = createScopedLogger('find-existing-record')
@@ -82,8 +83,8 @@ export function createFindExistingRecord(options: FindExistingRecordOptions) {
     if (resource.type === 'custom' && resource.entityDefinitionId) {
       const result = await findInCustomEntity(
         db,
-        resource.entityDefinitionId,
         organizationId,
+        resource.entityDefinitionId,
         identifierField,
         value
       )
@@ -133,52 +134,44 @@ async function findInSystemTable(
 }
 
 /**
- * Find a record in a custom entity by unique field value.
- * Queries FieldValue table using typed columns to find the entityId.
+ * Find a record in a custom entity by identifier field value.
+ *
+ * Routes through the shared lookup core so the comparison mirrors write-path
+ * normalization (EMAIL lowercased, URL protocol-prefixed, PHONE E.164 —
+ * previously the raw CSV cell was compared against the normalized stored value
+ * and could never match a `Foo@Bar.com` cell, the historic "uniqueness breaks
+ * imports" root cause). Archived records are excluded — an import must never
+ * resolve a row to a merged-away/archived record — and matching is
+ * deterministic (entityId, sortKey ordering).
  */
 async function findInCustomEntity(
   db: Database,
-  entityDefinitionId: string,
   organizationId: string,
+  entityDefinitionId: string,
   identifierField: ResourceField,
   value: string
 ): Promise<string | null> {
   if (!identifierField.id) return null
 
-  // Determine which typed column to query based on field type
-  const dbFieldType = identifierField.fieldType || 'TEXT'
-  const valueType = getValueType(dbFieldType)
+  const result = await lookupEntitiesByFieldValue(db, {
+    organizationId,
+    entityDefinitionId,
+    candidates: [{ fieldId: identifierField.id, value }],
+    limit: 1,
+    excludeArchived: true,
+  })
 
-  // Build the value comparison based on type
-  let valueComparison
-  switch (valueType) {
-    case 'text':
-      valueComparison = eq(schema.FieldValue.valueText, value)
-      break
-    case 'number':
-      valueComparison = eq(schema.FieldValue.valueNumber, parseFloat(value))
-      break
-    case 'option':
-      valueComparison = eq(schema.FieldValue.optionId, value)
-      break
-    default:
-      // For other types, use text column
-      valueComparison = eq(schema.FieldValue.valueText, value)
+  if (result.isErr()) {
+    // Sole candidate uncoercible (e.g. malformed email cell) — no match.
+    logger.debug('Identifier value not coercible for lookup', {
+      entityDefinitionId,
+      identifierField: identifierField.key,
+      value,
+    })
+    return null
   }
 
-  const result = await db
-    .select({ entityId: schema.FieldValue.entityId })
-    .from(schema.FieldValue)
-    .innerJoin(schema.EntityInstance, eq(schema.FieldValue.entityId, schema.EntityInstance.id))
-    .where(
-      and(
-        eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, identifierField.id),
-        valueComparison
-      )
-    )
-    .limit(1)
-
-  return result[0]?.entityId ?? null
+  const match = result.value.items[0]
+  if (!match) return null
+  return parseRecordId(match.recordId).entityInstanceId
 }
