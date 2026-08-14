@@ -18,6 +18,7 @@ import {
 import { batchGetRelatedDisplayNames } from './field-value-helpers'
 import { FieldValueService } from './field-value-service'
 import { formatToDisplayValue } from './formatter'
+import { primaryValue } from './primary-value'
 import { updateSearchTextForEntityDefinition } from './search-text'
 
 const BATCH_SIZE = 100
@@ -280,8 +281,15 @@ export class DisplayFieldService {
     // Use fieldType from ResourceField (properly typed FieldType enum)
     const fieldType = field.fieldType ?? 'TEXT'
 
+    // Multi-value fields (`options.multi`) read back as arrays ordered by
+    // sortKey — the subtitle shows the primary (first) value, never a joined
+    // array. Without the unwrap the string guard below nulls every array and
+    // a batch recalc wipes subtitles for multi-value display fields.
+    const single = primaryValue(typedValue)
+    if (!single) return null
+
     // Use centralized formatter with properly typed options
-    const displayValue = formatToDisplayValue(typedValue, fieldType, field.options)
+    const displayValue = formatToDisplayValue(single, fieldType, field.options)
 
     return typeof displayValue === 'string' ? displayValue : null
   }

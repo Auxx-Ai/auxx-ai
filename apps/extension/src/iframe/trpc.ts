@@ -237,7 +237,11 @@ const LookupByFieldOutputSchema = z.object({
       // render an avatar + name + subtitle for each "similar found" row
       // without an N+1 record.getById fan-out.
       displayName: z.string().nullable(),
-      secondaryDisplayValue: z.string().nullable(),
+      // Forward-compat: multi-value display fields (`options.multi` email)
+      // may surface the subtitle as an array. A strict `z.string()` here
+      // would fail the whole parse, which lookups.ts swallows as "no match"
+      // — and the user saves a duplicate contact.
+      secondaryDisplayValue: z.union([z.string(), z.array(z.string())]).nullable(),
       avatarUrl: z.string().nullable(),
     })
   ),

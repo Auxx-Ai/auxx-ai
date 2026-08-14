@@ -8,6 +8,7 @@
     "build": "vite build",
     "package": "pnpm build && node scripts/package.mjs",
     "preview": "vite preview",
+    "test": "vitest run",
     "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo *.zip"
   },
   "dependencies": {
@@ -39,6 +40,7 @@
     "postcss": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }
