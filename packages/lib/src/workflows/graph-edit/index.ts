@@ -12,8 +12,9 @@
  *
  * Surface: §2 reference resolution (`refs.ts`), §3 normalization
  * (`normalize/`), §1 operations (`ops.ts` writes + `read.ts` reads), §4
- * layout/placement, §5 validation. The Redis turn snapshot, realtime event
- * and `runNode` land in the next slice and wrap `persistDraft`.
+ * layout/placement, §5 validation, §7 turn snapshot/revert
+ * (`turn-snapshot.ts`) + the `workflow:draft-updated` refresh signal wired
+ * around `persistDraft`, §8 single-node runs (`run-node.ts`).
  */
 
 export {
@@ -49,6 +50,7 @@ export {
   type DisconnectNodesInput,
   deleteNodes,
   disconnectNodes,
+  type GraphMutationScope,
   type ReplaceGraphEdgeSpec,
   type ReplaceGraphInput,
   type ReplaceGraphNodeSpec,
@@ -63,6 +65,7 @@ export {
   type PersistDraftInput,
   type PersistDraftOutcome,
   persistDraft,
+  publishDraftUpdatedSignal,
 } from './persist'
 export {
   DEFAULT_NODE_SIZE,
@@ -95,6 +98,18 @@ export {
   nodeTitle,
   resolveNodeRef,
 } from './refs'
+export {
+  type RunNodeInput,
+  type RunNodeSummary,
+  runNode,
+} from './run-node'
+export {
+  captureWorkflowTurnSnapshot,
+  finalizeWorkflowTurn,
+  readWorkflowTurnSnapshot,
+  revertWorkflowTurn,
+  type WorkflowPreTurnSnapshot,
+} from './turn-snapshot'
 export type {
   DraftGraph,
   DraftSummary,

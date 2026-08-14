@@ -17,9 +17,11 @@
  * so a mutation that adds/edits/removes a trigger node can never leave
  * `Workflow.triggerType`/`entityDefinitionId` stale.
  *
- * NEXT-SLICE SEAM: the Redis turn snapshot wraps this function BEFORE the
- * write and the `workflow:draft-updated` realtime event fires AFTER it —
- * both belong in a wrapper around `persistDraft`, not inside it.
+ * THE SEAM: the Redis turn snapshot (`turn-snapshot.ts`) is captured BEFORE
+ * this write and the `workflow:draft-updated` realtime signal
+ * ({@link publishDraftUpdatedSignal}) fires AFTER it — both wrap `persistDraft`
+ * in the mutation pipeline (`ops.ts` `runGraphMutation`) and the turn-revert
+ * path, never inside it, so non-pipeline callers keep a bare persist.
  */
 
 import type { Database } from '@auxx/database'
@@ -129,5 +131,27 @@ export async function persistDraft(
     const message = error instanceof Error ? error.message : String(error)
     if (message === 'Workflow not found') return err(new NotFoundError('Workflow not found'))
     return err(new UnprocessableEntityError(`Failed to save the workflow draft: ${message}`))
+  }
+}
+
+/**
+ * Fire the `workflow:draft-updated` refresh signal on the org channel AFTER a
+ * successful persist. Signal only — open canvases refetch the draft; nothing
+ * in the payload is applied directly. Fire-and-forget: a realtime hiccup never
+ * fails the mutation that already persisted.
+ *
+ * The realtime barrel is lazy-imported on purpose: statically importing it
+ * breaks `vi.mock` at collection as the module graph grows
+ * (`project_realtime_barrel_import_cycle`).
+ */
+export async function publishDraftUpdatedSignal(
+  organizationId: string,
+  data: { workflowAppId: string; nodeIds?: string[]; reason: 'kopilot' | 'system' }
+): Promise<void> {
+  try {
+    const { getRealtimeService, publishWorkflowDraftUpdated } = await import('../../realtime')
+    await publishWorkflowDraftUpdated(getRealtimeService(), organizationId, data)
+  } catch {
+    // Fire-and-forget — the draft write already succeeded.
   }
 }

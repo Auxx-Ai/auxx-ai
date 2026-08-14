@@ -504,6 +504,19 @@ export interface TableViewChangedEvent {
   data: { tableId?: string; kind: 'created' | 'updated' | 'defaultChanged' | 'deleted' }
 }
 
+/**
+ * A workflow's DRAFT graph changed server-side outside the canvas's own save
+ * path (today: the graph-edit ops — Kopilot mutations and the turn-revert
+ * lifecycle). Refresh signal only: an open builder refetches the draft; the
+ * payload carries nothing the client applies directly. `nodeIds` scopes which
+ * nodes the mutation touched (for focus/highlight), `reason` distinguishes an
+ * agent edit from platform machinery (e.g. a turn revert).
+ */
+export interface WorkflowDraftUpdatedEvent {
+  event: 'workflow:draft-updated'
+  data: { workflowAppId: string; nodeIds?: string[]; reason: 'kopilot' | 'system' }
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Workflow approval events (per-assignee user channel)
 // ════════════════════════════════════════════════════════════════════════════

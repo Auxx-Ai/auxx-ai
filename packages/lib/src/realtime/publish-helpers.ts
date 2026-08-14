@@ -16,6 +16,7 @@ import type {
   ParticipantMeta,
   ThreadCreatedEvent,
   ThreadMeta,
+  WorkflowDraftUpdatedEvent,
 } from './events'
 import { shapeMailEventForLens } from './mail-event-shaping'
 import type { RealtimeService } from './realtime-service'
@@ -730,6 +731,37 @@ export async function publishTableViewChanged(
       rooms.orgPresence(organizationId),
       'tableView:changed',
       { tableId: args.tableId, kind: args.kind },
+      options
+    )
+    .catch(() => {})
+}
+
+/**
+ * Publish `workflow:draft-updated` on the org channel. Fires AFTER a
+ * successful graph-edit persist (Kopilot mutations, turn revert) so an open
+ * builder canvas refetches the draft. Signal only — clients never apply the
+ * payload directly (`feedback_builder_ui_refresh_via_realtime`). The canvas's
+ * own save path must NOT emit this: it would invalidate the author's in-flight
+ * editing.
+ *
+ * Fire-and-forget: errors are swallowed so a Pusher hiccup never blocks the
+ * underlying draft write.
+ */
+export async function publishWorkflowDraftUpdated(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: WorkflowDraftUpdatedEvent['data'],
+  options?: { excludeSocketId?: string }
+) {
+  await realtimeService
+    .publish(
+      rooms.orgPresence(organizationId),
+      'workflow:draft-updated',
+      {
+        workflowAppId: args.workflowAppId,
+        ...(args.nodeIds ? { nodeIds: args.nodeIds } : {}),
+        reason: args.reason,
+      },
       options
     )
     .catch(() => {})

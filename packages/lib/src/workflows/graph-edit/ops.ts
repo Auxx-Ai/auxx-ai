@@ -20,7 +20,7 @@ import type { Database } from '@auxx/database'
 import { incrementTitle } from '@auxx/utils'
 import { generateId } from '@auxx/utils/generateId'
 import { err, ok, type Result } from 'neverthrow'
-import { AuxxError, BadRequestError, NotFoundError } from '../../errors'
+import { AuxxError, BadRequestError, ConflictError, NotFoundError } from '../../errors'
 import { LOOP_HANDLES } from '../../workflow-engine/catalog/nodes/loop'
 import { getAuthorableManifests, getManifest } from '../../workflow-engine/catalog/registry'
 import { resolveGraphOutputs } from '../../workflow-engine/catalog/resolve-outputs'
@@ -34,7 +34,7 @@ import { normalizeFriendlyRefs, type ResourceAliasIndex } from './normalize/frie
 import { normalizeAiPromptConfig } from './normalize/prompt'
 import { checkVariableRefsAgainstOutputs } from './normalize/ref-check'
 import { buildResourceAliasIndex, normalizeResourceConfig } from './normalize/resource-refs'
-import { persistDraft } from './persist'
+import { persistDraft, publishDraftUpdatedSignal } from './persist'
 import {
   DEFAULT_NODE_SIZE,
   findNearestEmptySpace,
@@ -51,8 +51,20 @@ import {
   renderFriendlyOutputs,
 } from './read'
 import { describeNode, formatNodeRef, resolveNodeRef } from './refs'
+import { captureWorkflowTurnSnapshot } from './turn-snapshot'
 import type { DraftGraph, GraphEdge, GraphMutationResult, GraphNode, Issue, Point } from './types'
 import { isTriggerNode, nodeType, validateGraphStructure, validateNodeConfigs } from './validate'
+
+/**
+ * Scope every MUTATION takes — `GraphEditScope` plus the optional turn id.
+ * With `turnId`, the pipeline captures the pre-edit graph before the turn's
+ * first write (`turn-snapshot.ts`) so the turn lifecycle can revert on
+ * failure; without it (non-turn callers: system paths, scripts) no snapshot
+ * is taken and the write is plain.
+ */
+export interface GraphMutationScope extends GraphEditScope {
+  turnId?: string
+}
 
 /** The plan a specific mutation hands the shared pipeline. */
 interface MutationPlan {
@@ -76,11 +88,14 @@ interface MutationPlan {
  * The shared mutation pipeline. Blocking tiers (normalize errors, structural
  * errors, the mail-trigger guard) return `applied: false` with the original
  * graph untouched; everything else persists through the one seam
- * (`persistDraft`) and reports.
+ * (`persistDraft`) and reports. The turn snapshot is captured immediately
+ * before the persist (first write of a turn only) and the
+ * `workflow:draft-updated` signal fires immediately after a successful one —
+ * ALL the snapshot/realtime wiring lives here, not in the individual ops.
  */
 async function runGraphMutation(
   db: Database,
-  scope: GraphEditScope,
+  scope: GraphMutationScope,
   build: (
     ctx: DraftContext,
     aliases: ResourceAliasIndex
@@ -131,6 +146,16 @@ async function runGraphMutation(
     issues.push(...checkVariableRefsAgainstOutputs({ graph, outputs: outputsMap }).issues)
   }
 
+  // Pre-turn snapshot — captured only now that the write is certain to be
+  // attempted, so a rejected mutation never marks the turn as "wrote
+  // something". Idempotent per turn: only the FIRST write captures.
+  if (scope.turnId !== undefined) {
+    await captureWorkflowTurnSnapshot(scope.workflowAppId, scope.turnId, {
+      graph: ctx.graph,
+      triggerType: ctx.triggerType,
+    })
+  }
+
   const persisted = await persistDraft(db, scope, {
     graph,
     ...(ctx.graphHash !== undefined ? { expectedGraphHash: ctx.graphHash } : {}),
@@ -140,7 +165,38 @@ async function runGraphMutation(
     ...(plan.variables !== undefined ? { variables: plan.variables as never } : {}),
     ...(plan.icon !== undefined ? { icon: plan.icon } : {}),
   })
-  if (persisted.isErr()) return err(persisted.error)
+  if (persisted.isErr()) {
+    // Hash-CAS conflict (`07-remaining-mechanics.md` §6): a concurrent save
+    // landed between load and write. Surface it typed and actionable — the
+    // caller re-reads the draft and retries; never a silent overwrite, never
+    // a generic 500.
+    if (persisted.error instanceof ConflictError) {
+      return err(
+        new ConflictError(
+          'The workflow draft changed while this edit was being prepared — another save ' +
+            'landed first. Re-read the draft and retry the operation on the fresh graph. ' +
+            'Nothing was overwritten.'
+        )
+      )
+    }
+    return err(persisted.error)
+  }
+
+  // Refresh signal AFTER the successful persist — open canvases refetch.
+  await publishDraftUpdatedSignal(scope.organizationId, {
+    workflowAppId: scope.workflowAppId,
+    ...(plan.touchedNodeId || plan.newNodeIds?.size
+      ? {
+          nodeIds: [
+            ...new Set([
+              ...(plan.touchedNodeId ? [plan.touchedNodeId] : []),
+              ...(plan.newNodeIds ?? []),
+            ]),
+          ],
+        }
+      : {}),
+    reason: scope.turnId !== undefined ? 'kopilot' : 'system',
+  })
 
   const touched = plan.touchedNodeId
     ? graph.nodes.find((n) => n.id === plan.touchedNodeId)
@@ -263,7 +319,7 @@ function resizeContainer(node: GraphNode, size: { width: number; height: number 
 }
 
 /** Input for {@link addNode}. */
-export interface AddNodeInput extends GraphEditScope {
+export interface AddNodeInput extends GraphMutationScope {
   /** Authorable node type (`data.type`), e.g. `'find'`. */
   type: string
   /** Friendly config — `{{Title.path}}` refs, resource slugs, plain prompts. */
@@ -419,7 +475,7 @@ export async function addNode(
 }
 
 /** Input for {@link updateNode}. */
-export interface UpdateNodeInput extends GraphEditScope {
+export interface UpdateNodeInput extends GraphMutationScope {
   /** Node title or id. */
   ref: string
   /** Friendly config, shallow-merged over the node's current data. */
@@ -464,7 +520,7 @@ export async function updateNode(
 }
 
 /** Input for {@link deleteNodes}. */
-export interface DeleteNodesInput extends GraphEditScope {
+export interface DeleteNodesInput extends GraphMutationScope {
   /** Node titles or ids. */
   refs: string[]
   /** Bridge each deleted node's incoming edges to its downstream targets. */
@@ -558,7 +614,7 @@ export async function deleteNodes(
 }
 
 /** Input for {@link connectNodes}. */
-export interface ConnectNodesInput extends GraphEditScope {
+export interface ConnectNodesInput extends GraphMutationScope {
   from: string
   to: string
   /** Branch of `from` to leave on — resolved through the manifest's branches. */
@@ -612,7 +668,7 @@ export async function connectNodes(
 }
 
 /** Input for {@link disconnectNodes}. */
-export interface DisconnectNodesInput extends GraphEditScope {
+export interface DisconnectNodesInput extends GraphMutationScope {
   from: string
   to: string
 }
@@ -648,7 +704,7 @@ export async function disconnectNodes(
 }
 
 /** Input for {@link setTrigger}. */
-export interface SetTriggerInput extends GraphEditScope {
+export interface SetTriggerInput extends GraphMutationScope {
   /** In-graph trigger NODE type: manual, scheduled, resource-trigger, message-received. */
   triggerType: string
   /** Friendly trigger config (e.g. `{ operation: 'created', resourceType: 'ticket' }`). */
@@ -778,7 +834,7 @@ export interface ReplaceGraphEdgeSpec {
 }
 
 /** Input for {@link replaceGraph}. */
-export interface ReplaceGraphInput extends GraphEditScope {
+export interface ReplaceGraphInput extends GraphMutationScope {
   nodes: ReplaceGraphNodeSpec[]
   edges: ReplaceGraphEdgeSpec[]
 }
@@ -927,7 +983,7 @@ export async function replaceGraph(
 }
 
 /** Input for {@link applyTemplate}. */
-export interface ApplyTemplateInput extends GraphEditScope {
+export interface ApplyTemplateInput extends GraphMutationScope {
   /** File template id (`file:<slug>`) or DB template row id. */
   templateId: string
   /** Stamped onto cloned graph metadata by the template transformer. */
