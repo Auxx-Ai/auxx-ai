@@ -1396,6 +1396,12 @@
       "import": "./dist/workflows/index.mjs",
       "default": "./src/workflows/index.ts"
     },
+    "./workflows/graph-edit": {
+      "types": "./src/workflows/graph-edit/index.ts",
+      "source": "./src/workflows/graph-edit/index.ts",
+      "import": "./dist/workflows/graph-edit/index.mjs",
+      "default": "./src/workflows/graph-edit/index.ts"
+    },
     "./workflows/graph-edit/layout": {
       "types": "./src/workflows/graph-edit/layout.ts",
       "source": "./src/workflows/graph-edit/layout.ts",

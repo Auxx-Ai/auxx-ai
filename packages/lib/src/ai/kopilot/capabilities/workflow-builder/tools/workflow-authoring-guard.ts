@@ -4,6 +4,7 @@ import { schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { ForbiddenError } from '../../../../../errors'
 import { PermissionKey } from '../../../../../permissions/capabilities/registry'
+import { beginWorkflowTurnLock } from '../../../../../workflows/graph-edit/turn-lock'
 import { assertWorkflowAppNotSystemOwned } from '../../../../../workflows/workflow-app-access-guard'
 import type { AgentDeps } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
@@ -153,6 +154,21 @@ export async function resolveWorkflowAuthoring(
   // (6) Dirty gate — advisory, mutations only, after every real check.
   if (opts.mutation && workflowRef.isDirty === true) {
     return { ok: false, error: DIRTY_CANVAS_ERROR }
+  }
+
+  // (7) Canvas edit lock. Claimed on the FIRST tool call of the turn — reads
+  // included, deliberately. Locking only on the first *mutation* would leave
+  // the exact window this closes: the dirty gate above reads `isDirty` off the
+  // session ref captured when the message was SENT, so a user who dirties the
+  // canvas after send but before the first write is invisible to it, the
+  // mutation proceeds, and the builder then drops the rest of the turn's
+  // refresh events. The cost is that a pure read turn also locks; the pill
+  // wording ("working" vs "editing") is what stays honest about that.
+  //
+  // After every authorization check so an unauthorized caller can never move
+  // the lock, and non-blocking: a lock failure must not fail the tool.
+  if (agentDeps.turnId) {
+    await beginWorkflowTurnLock(organizationId, workflowAppId, agentDeps.turnId)
   }
 
   return { ok: true, workflowAppId }

@@ -21,6 +21,11 @@ vi.mock('../../../../../../workflows/graph-edit/turn-snapshot', () => ({
   finalizeWorkflowTurn: (...a: unknown[]) => finalizeWorkflowTurn(...a),
 }))
 
+const endWorkflowTurnLock = vi.fn()
+vi.mock('../../../../../../workflows/graph-edit/turn-lock', () => ({
+  endWorkflowTurnLock: (...a: unknown[]) => endWorkflowTurnLock(...a),
+}))
+
 import { createWorkflowBuilderCapabilities } from '../../index'
 
 const ORG = 'org-1'
@@ -53,6 +58,7 @@ beforeEach(() => {
     .mockResolvedValue({ turnId: TURN, graph: { nodes: [], edges: [] }, capturedAt: 1 })
   revertWorkflowTurn.mockReset().mockResolvedValue(ok({ graphHash: 'h' }))
   finalizeWorkflowTurn.mockReset().mockResolvedValue(undefined)
+  endWorkflowTurnLock.mockReset().mockResolvedValue(undefined)
 })
 
 describe('workflow.builder onTurnEnd', () => {
@@ -98,5 +104,44 @@ describe('workflow.builder onTurnEnd', () => {
     refs = []
     await lifecycle()('completed', { turnId: TURN })
     expect(readWorkflowTurnSnapshot).not.toHaveBeenCalled()
+  })
+})
+
+// The canvas edit lock is claimed on a turn's FIRST TOOL CALL of any kind, so
+// its release cannot live behind the snapshot branch above — a turn that only
+// read holds the lock but has no snapshot. See plan 14 §6.7.
+describe('workflow.builder onTurnEnd — canvas edit lock', () => {
+  it('releases the lock on a completed turn', async () => {
+    await lifecycle()('completed', { turnId: TURN })
+    expect(endWorkflowTurnLock).toHaveBeenCalledTimes(1)
+    expect(endWorkflowTurnLock).toHaveBeenCalledWith(ORG, WF, TURN)
+  })
+
+  it('releases the lock on a failed turn', async () => {
+    await lifecycle()('error', { turnId: TURN })
+    expect(endWorkflowTurnLock).toHaveBeenCalledWith(ORG, WF, TURN)
+  })
+
+  // The regression this guards: releasing inside the `if (!snapshot) return`
+  // path would strand the canvas read-only for the whole of every
+  // question-only turn ("what does this workflow do?"), which writes nothing
+  // and therefore never captures a snapshot.
+  it('releases even when the turn never wrote — a read-only turn still held it', async () => {
+    readWorkflowTurnSnapshot.mockResolvedValue(null)
+    await lifecycle()('completed', { turnId: TURN })
+    expect(finalizeWorkflowTurn).not.toHaveBeenCalled()
+    expect(endWorkflowTurnLock).toHaveBeenCalledWith(ORG, WF, TURN)
+  })
+
+  it('a failing release cannot stop the revert — turn end must still roll back', async () => {
+    endWorkflowTurnLock.mockRejectedValue(new Error('redis down'))
+    await expect(lifecycle()('error', { turnId: TURN })).resolves.toBeUndefined()
+    expect(revertWorkflowTurn).toHaveBeenCalledTimes(1)
+  })
+
+  it('no workflow ref ⇒ nothing to release', async () => {
+    refs = []
+    await lifecycle()('completed', { turnId: TURN })
+    expect(endWorkflowTurnLock).not.toHaveBeenCalled()
   })
 })

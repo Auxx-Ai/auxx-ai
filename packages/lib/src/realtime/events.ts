@@ -517,6 +517,27 @@ export interface WorkflowDraftUpdatedEvent {
   data: { workflowAppId: string; nodeIds?: string[]; reason: 'kopilot' | 'system' }
 }
 
+/**
+ * A Kopilot turn opened or closed on a workflow's draft. The builder locks its
+ * canvas for the span between the two phases — while a turn holds the draft,
+ * user edits would go dirty and make the builder DROP the remaining
+ * `workflow:draft-updated` events of that turn, stranding a half-applied turn
+ * that the next manual save then commits over. See
+ * `workflows/graph-edit/turn-lock.ts` for why the boundary is server-published
+ * rather than derived from the chat client's streaming state (short version:
+ * `isStreaming` goes false during an approval pause, which is still inside the
+ * turn).
+ *
+ * `started` fires on a turn's first workflow tool call, `ended` from the
+ * capability's `onTurnEnd` — which the engine guarantees on completion, error,
+ * abort and client disconnect alike. `turnId` lets a receiver ignore an `ended`
+ * belonging to a turn it never saw start.
+ */
+export interface WorkflowKopilotTurnEvent {
+  event: 'workflow:kopilot-turn'
+  data: { workflowAppId: string; turnId: string; phase: 'started' | 'ended' }
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Workflow approval events (per-assignee user channel)
 // ════════════════════════════════════════════════════════════════════════════

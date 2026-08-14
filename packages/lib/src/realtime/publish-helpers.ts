@@ -17,6 +17,7 @@ import type {
   ThreadCreatedEvent,
   ThreadMeta,
   WorkflowDraftUpdatedEvent,
+  WorkflowKopilotTurnEvent,
 } from './events'
 import { shapeMailEventForLens } from './mail-event-shaping'
 import type { RealtimeService } from './realtime-service'
@@ -764,5 +765,31 @@ export async function publishWorkflowDraftUpdated(
       },
       options
     )
+    .catch(() => {})
+}
+
+/**
+ * Publish `workflow:kopilot-turn` on the org channel — the builder's canvas
+ * edit lock engages on `started` and releases on `ended`.
+ *
+ * Carries no `excludeSocketId` on purpose, exactly like `draft-updated`: the
+ * write comes from the server and the *editing user's own* builder is the
+ * primary audience.
+ *
+ * Fire-and-forget. A dropped publish is survivable in both directions — a lost
+ * `started` leaves the canvas editable (the hash-CAS still guards the write), a
+ * lost `ended` is caught by the client watchdog and the Redis TTL.
+ */
+export async function publishWorkflowKopilotTurn(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: WorkflowKopilotTurnEvent['data']
+) {
+  await realtimeService
+    .publish(rooms.orgPresence(organizationId), 'workflow:kopilot-turn', {
+      workflowAppId: args.workflowAppId,
+      turnId: args.turnId,
+      phase: args.phase,
+    })
     .catch(() => {})
 }

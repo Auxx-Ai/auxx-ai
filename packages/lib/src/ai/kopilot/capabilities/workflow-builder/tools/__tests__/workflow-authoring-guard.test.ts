@@ -84,6 +84,11 @@ vi.mock('../../../../../../workflows/graph-edit/turn-snapshot', () => ({
   revertWorkflowTurn: vi.fn(async () => ok({ graphHash: 'h' })),
 }))
 
+const beginWorkflowTurnLock = vi.fn(async (..._a: unknown[]) => {})
+vi.mock('../../../../../../workflows/graph-edit/turn-lock', () => ({
+  beginWorkflowTurnLock: (...a: unknown[]) => beginWorkflowTurnLock(...a),
+}))
+
 const loadDraftContext = vi.fn(async () =>
   ok({
     workflowAppId: 'wfapp-1',
@@ -236,6 +241,7 @@ beforeEach(() => {
   loadDraftContext.mockClear()
   updateWorkflowDetails.mockClear()
   publishDraftUpdatedSignal.mockClear()
+  beginWorkflowTurnLock.mockClear()
 })
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -397,6 +403,38 @@ describe('dirty gate', () => {
     const result = await run(tool('add_node'), VALID_ARGS.add_node)
     expect(result.success).toBe(true)
     expect(opMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+// The canvas edit lock (plan 14 §6.7). Claimed by the shared gate rather than
+// per-tool, so every graph tool locks the canvas identically.
+describe('canvas edit lock', () => {
+  it('is claimed on READ tools too, not just mutations', async () => {
+    // Locking only on the first mutation would leave the window this closes:
+    // the dirty gate reads `isDirty` off the ref captured at message SEND, so a
+    // user who dirties the canvas mid-turn is invisible to it.
+    await run(tool('get_workflow'), VALID_ARGS.get_workflow)
+    expect(beginWorkflowTurnLock).toHaveBeenCalledWith(ORG, WF, expect.any(String))
+  })
+
+  it('is claimed on mutations', async () => {
+    await run(tool('add_node'), VALID_ARGS.add_node)
+    expect(beginWorkflowTurnLock).toHaveBeenCalledWith(ORG, WF, expect.any(String))
+  })
+
+  // An unauthorized caller must never be able to move the lock — that would let
+  // any authenticated member freeze another member's canvas by POSTing a
+  // crafted workflow ref at the stream route.
+  it('is NOT claimed when authorization fails', async () => {
+    caps!.can.mockReturnValue(false)
+    await expect(run(tool('add_node'), VALID_ARGS.add_node)).rejects.toThrow(ForbiddenError)
+    expect(beginWorkflowTurnLock).not.toHaveBeenCalled()
+  })
+
+  it('is NOT claimed without a workflow ref', async () => {
+    refs = []
+    await run(tool('get_workflow'), VALID_ARGS.get_workflow)
+    expect(beginWorkflowTurnLock).not.toHaveBeenCalled()
   })
 })
 

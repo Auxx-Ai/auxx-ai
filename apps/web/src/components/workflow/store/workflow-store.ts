@@ -59,6 +59,31 @@ interface WorkflowStore extends DragState {
   /** Set the per-workflow instance-access read-only clamp. */
   setInstanceReadOnly: (readOnly: boolean) => void
 
+  /**
+   * Whether a Kopilot turn currently holds this workflow's draft, which clamps
+   * the canvas read-only for its duration (plan 14 §6.7).
+   *
+   * WHY A LOCK: Kopilot publishes one `workflow:draft-updated` per mutation and
+   * the builder's subscriber DROPS every event that arrives while the canvas is
+   * dirty, with no queue and no catch-up. One user edit mid-turn therefore
+   * strands the canvas on a half-applied turn, and the next manual save commits
+   * that over the rest of the agent's work.
+   *
+   * SEPARATE FROM {@link instanceReadOnly} deliberately: that field is owned by
+   * `WorkflowEditor`'s permission effect, which writes `false` on every
+   * recompute — sharing it would silently unlock the canvas mid-turn.
+   *
+   * Written only by `useWorkflowKopilotTurn`, which derives it from the
+   * server-published `workflow:kopilot-turn` event. It must stay a bare boolean:
+   * every canvas affordance re-renders through `useReadOnly` when it flips, and
+   * that is only affordable because it flips exactly twice per turn. Adding
+   * per-mutation detail here (turn id, node ids, a progress count) would turn
+   * two re-renders into one per mutation across the whole canvas.
+   */
+  kopilotEditing: boolean
+  /** Set the Kopilot turn clamp. See {@link kopilotEditing}. */
+  setKopilotEditing: (editing: boolean) => void
+
   // Helpline state
   helpLineHorizontal: HelpLineHorizontalPosition | null
   helpLineVertical: HelpLineVerticalPosition | null
@@ -192,6 +217,9 @@ export const useWorkflowStore = create<WorkflowStore>()(
     // Per-workflow instance access (plan 30 §4)
     instanceReadOnly: false,
     setInstanceReadOnly: (readOnly) => set({ instanceReadOnly: readOnly }),
+
+    kopilotEditing: false,
+    setKopilotEditing: (editing) => set({ kopilotEditing: editing }),
 
     // Helpline initial state
     helpLineHorizontal: null,

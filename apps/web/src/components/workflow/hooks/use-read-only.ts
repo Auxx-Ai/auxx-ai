@@ -17,10 +17,17 @@ import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
  *     `view` on this workflow but not `edit` (plan 30 §4). `WorkflowEditor`
  *     resolves it and pushes it into the store; see the store field's doc for
  *     why it isn't read from `useAccess()` here.
+ *  5. `kopilotEditing` — a Kopilot turn currently holds the draft (plan 14
+ *     §6.7). Server-published boundary, NOT the chat's streaming flag; see
+ *     `use-workflow-kopilot-turn.ts`.
  *
- * Because every canvas affordance already keys off this hook, (4) covers the
- * whole Edit tier — canvas, add-node triggers, node context menus, handles,
+ * Because every canvas affordance already keys off this hook, (4) and (5) cover
+ * the whole Edit tier — canvas, add-node triggers, node context menus, handles,
  * every `nodes/core/*` panel, and `useWorkflowSave` — with no per-call-site work.
+ *
+ * That reach is also the cost model: a flip here re-renders every one of those.
+ * (5) is affordable only because it is edge-triggered twice per turn. Keep any
+ * new source equally coarse — nothing that changes mid-turn belongs in this hook.
  */
 export function useReadOnly() {
   // Get read-only state from canvas store (used for version previews)
@@ -31,6 +38,9 @@ export function useReadOnly() {
 
   // Per-workflow instance access: `view` without `edit` (plan 30 §4)
   const instanceReadOnly = useWorkflowStore((state) => state.instanceReadOnly)
+
+  // A Kopilot turn holds the draft (plan 14 §6.7)
+  const kopilotEditing = useWorkflowStore((state) => state.kopilotEditing)
 
   // Get run state to determine if we're in a mode that should disable editing
   const runViewMode = useRunStore((state) => state.runViewMode)
@@ -43,7 +53,8 @@ export function useReadOnly() {
   // Note: single-node mode is excluded - should still allow editing/saving
 
   // Combine all read-only conditions
-  const isReadOnly = canvasReadOnly || isViewerMode || instanceReadOnly || runStateReadOnly
+  const isReadOnly =
+    canvasReadOnly || isViewerMode || instanceReadOnly || runStateReadOnly || kopilotEditing
 
   // Memoize the return object to prevent unnecessary re-renders in consumers
   return useMemo(

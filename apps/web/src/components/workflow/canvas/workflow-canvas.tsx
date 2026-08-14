@@ -42,6 +42,7 @@ import { useCanvasStore } from '~/components/workflow/store/canvas-store'
 import { storeEventBus } from '~/components/workflow/store/event-bus'
 import { useInteractionStore } from '~/components/workflow/store/interaction-store'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
+import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import type { FlowEdge, FlowNode } from '~/components/workflow/types'
 import { EmptyTriggerButton } from '~/components/workflow/ui/empty-trigger-button'
 import { GettingStartedOverlay } from '~/components/workflow/ui/getting-started-overlay'
@@ -52,6 +53,7 @@ import { CanvasNodeInfo } from '../ui/canvas-node-info'
 import { NodeContextMenu } from '../ui/node-context-menu'
 import { PaneContextMenu } from '../ui/pane-context-menu'
 import { RunInfo } from '../ui/run-info'
+import { KopilotTurnPill } from './kopilot-turn-pill'
 import { WorkflowOperators } from './workflow-operators'
 
 // Context to provide canvas state to operations hooks
@@ -92,6 +94,9 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
     // the last place a `view`-level member could still mutate the graph.
     const { isReadOnly } = useReadOnly()
     const versionPreviewData = useCanvasStore((state) => state.versionPreviewData)
+
+    // Which of the read-only sources is active decides which badge shows.
+    const kopilotEditing = useWorkflowStore((state) => state.kopilotEditing)
 
     // Determine final read-only state
     const readOnly = propReadOnly || isReadOnly
@@ -372,16 +377,25 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
             {/* Empty trigger button — hidden when getting started overlay is showing */}
             {!readOnly && nodeCount > 0 && <EmptyTriggerButton />}
             <RunInfo />
-            {readOnly && (
+            {/* A Kopilot turn also reads as `readOnly`, so its pill takes
+                precedence — "Read Only" alone would be true but would say
+                nothing about why the canvas just froze. */}
+            {kopilotEditing ? (
               <div>
-                <Badge variant='zinc'>
-                  <Eye className='size-3 mr-1.5' />
-                  Read Only
-                  {versionPreviewData && (
-                    <span className='ml-1 text-xs'>- {versionPreviewData.title}</span>
-                  )}
-                </Badge>
+                <KopilotTurnPill />
               </div>
+            ) : (
+              readOnly && (
+                <div>
+                  <Badge variant='zinc'>
+                    <Eye className='size-3 mr-1.5' />
+                    Read Only
+                    {versionPreviewData && (
+                      <span className='ml-1 text-xs'>- {versionPreviewData.title}</span>
+                    )}
+                  </Badge>
+                </div>
+              )
             )}
           </Panel>
 
