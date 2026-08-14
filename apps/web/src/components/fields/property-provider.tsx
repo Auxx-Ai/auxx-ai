@@ -137,6 +137,18 @@ function extractRawValue(val: StoredFieldValue | null | undefined, fieldType: Fi
 }
 
 /**
+ * Whether this field's array values are ORDER-sensitive.
+ *
+ * True only for `options.multi` scalar fields (EMAIL/URL/PHONE), where the list
+ * is ordered and index 0 is the primary — the value outbound mail/SMS actually
+ * uses. Every other array-valued type (MULTI_SELECT, TAGS, RELATIONSHIP, ACTOR)
+ * stores an unordered set, where a reshuffle carries no meaning.
+ */
+export function isOrderSensitive(field: any): boolean {
+  return field?.options?.multi === true
+}
+
+/**
  * Normalize a value for comparison purposes.
  * Treats empty strings, null, and undefined as equivalent "empty" values.
  */
@@ -150,8 +162,12 @@ function normalizeForComparison(val: any): any {
  * Check if a value has changed compared to another value
  * Handles arrays, objects, and primitives
  * Treats empty strings and null/undefined as equivalent (no change)
+ *
+ * @param orderSensitive - When true, arrays that differ only in ORDER count as
+ *   changed. Required for `options.multi` scalar fields (EMAIL/URL/PHONE), where
+ *   position is data: index 0 IS the primary value. See {@link isOrderSensitive}.
  */
-function hasValueChanged(newValue: any, originalVal: any): boolean {
+export function hasValueChanged(newValue: any, originalVal: any, orderSensitive = false): boolean {
   // Normalize both values - empty strings are treated as null
   const normalizedNew = normalizeForComparison(newValue)
   const normalizedOrig = normalizeForComparison(originalVal)
@@ -170,6 +186,13 @@ function hasValueChanged(newValue: any, originalVal: any): boolean {
     if (normalizedNew.length !== normalizedOrig.length) return true
     // Empty arrays are equal
     if (normalizedNew.length === 0) return false
+    // Order-insensitive by default: MULTI_SELECT/TAGS/RELATIONSHIP carry a SET
+    // of values, so a reshuffle is not an edit. Multi-value scalars are the
+    // opposite — set-as-primary reorders the same members, and sorting here
+    // would report "unchanged" and silently drop the write.
+    if (orderSensitive) {
+      return JSON.stringify(normalizedNew) !== JSON.stringify(normalizedOrig)
+    }
     const sortedNew = [...normalizedNew].sort()
     const sortedOrig = [...normalizedOrig].sort()
     return JSON.stringify(sortedNew) !== JSON.stringify(sortedOrig)
@@ -201,6 +224,10 @@ export function PropertyProvider({
   showTitle = true,
   children,
 }: PropertyProviderProps) {
+  // Derived once as a primitive so the commit callbacks depend on a stable
+  // boolean rather than the whole `field` object.
+  const orderSensitive = isOrderSensitive(field)
+
   // ─── Store Integration ───
   // Get value from store using RecordId directly with auto-fetch
   const { value: storeValue, isLoading: storeLoading } = useFieldValue(recordId, field.id, {
@@ -270,7 +297,7 @@ export function PropertyProvider({
   const commitValue = useCallback(
     (newValue: any) => {
       // Check if value actually changed
-      if (!hasValueChanged(newValue, serverValue)) {
+      if (!hasValueChanged(newValue, serverValue, orderSensitive)) {
         setIsDirty(false)
         return
       }
@@ -333,7 +360,16 @@ export function PropertyProvider({
       // Store handles the optimistic update, so also update local serverValue
       setServerValue(newValue)
     },
-    [recordId, serverValue, storeSave, storeSaveMultiple, field.id, field.fieldType, field.options]
+    [
+      recordId,
+      serverValue,
+      storeSave,
+      storeSaveMultiple,
+      field.id,
+      field.fieldType,
+      field.options,
+      orderSensitive,
+    ]
   )
 
   /**
@@ -349,11 +385,11 @@ export function PropertyProvider({
    * Commit current dirty value and close popover.
    */
   const commitAndClose = useCallback(() => {
-    if (isDirty && hasValueChanged(currentValue, serverValue)) {
+    if (isDirty && hasValueChanged(currentValue, serverValue, orderSensitive)) {
       commitValue(currentValue)
     }
     setIsOpen(false)
-  }, [isDirty, currentValue, serverValue, commitValue])
+  }, [isDirty, currentValue, serverValue, commitValue, orderSensitive])
 
   /**
    * Commit explicit value and close popover atomically.
@@ -367,7 +403,7 @@ export function PropertyProvider({
         return
       }
 
-      if (!hasValueChanged(newValue, serverValue)) {
+      if (!hasValueChanged(newValue, serverValue, orderSensitive)) {
         setIsDirty(false)
         setIsOpen(false)
         isOutsideClick.current = false
@@ -384,7 +420,16 @@ export function PropertyProvider({
       storeSave(recordId, field.id, newValue, field.fieldType, { fieldOptions: field.options })
       setServerValue(newValue)
     },
-    [recordId, isSaving, serverValue, storeSave, field.id, field.fieldType, field.options]
+    [
+      recordId,
+      isSaving,
+      serverValue,
+      storeSave,
+      field.id,
+      field.fieldType,
+      field.options,
+      orderSensitive,
+    ]
   )
 
   /**
@@ -400,7 +445,7 @@ export function PropertyProvider({
         !Array.isArray(newValue) &&
         Object.keys(newValue).length === 0
 
-      if (!isEmptyObject && !hasValueChanged(newValue, serverValue)) {
+      if (!isEmptyObject && !hasValueChanged(newValue, serverValue, orderSensitive)) {
         setIsDirty(false)
         return undefined
       }
@@ -421,7 +466,15 @@ export function PropertyProvider({
       }
       return result
     },
-    [recordId, serverValue, storeSaveAsync, field.id, field.fieldType, field.options]
+    [
+      recordId,
+      serverValue,
+      storeSaveAsync,
+      field.id,
+      field.fieldType,
+      field.options,
+      orderSensitive,
+    ]
   )
 
   /**
@@ -444,14 +497,14 @@ export function PropertyProvider({
    * Close the popover (cancels if dirty via Esc key)
    */
   const close = useCallback(() => {
-    if (isDirty && hasValueChanged(currentValue, serverValue)) {
+    if (isDirty && hasValueChanged(currentValue, serverValue, orderSensitive)) {
       // Esc key was pressed while dirty - cancel instead of save
       setCurrentValue(serverValue)
       setIsDirty(false)
     }
     setIsOpen(false)
     isOutsideClick.current = false
-  }, [isDirty, currentValue, serverValue])
+  }, [isDirty, currentValue, serverValue, orderSensitive])
 
   /**
    * Force close the popover
