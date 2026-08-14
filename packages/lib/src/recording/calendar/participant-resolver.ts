@@ -116,7 +116,7 @@ export async function findCompanyByDomain(
           ilike(schema.FieldValue.valueText, `%${normalizedDomain}%`)
         )
       )
-      .orderBy(asc(schema.FieldValue.entityId))
+      .orderBy(asc(schema.FieldValue.sortKey), asc(schema.FieldValue.entityId))
       .limit(1)
 
     return ok(match?.entityId ?? null)
@@ -203,15 +203,22 @@ export async function resolveContactEmails(
         inArray(schema.FieldValue.entityId, entityInstanceIds)
       )
     )
+    .orderBy(asc(schema.FieldValue.sortKey))
 
-  return rows
-    .filter((r) => r.email)
-    .map((r) => ({
-      email: r.email!,
-      name: null,
-      responseStatus: null,
-      organizer: false as const,
-    }))
+  // One attendee per contact: the primary email (first row by sortKey).
+  const seen = new Set<string>()
+  const attendees: Array<{
+    email: string
+    name: null
+    responseStatus: null
+    organizer: false
+  }> = []
+  for (const row of rows) {
+    if (!row.email || seen.has(row.entityId)) continue
+    seen.add(row.entityId)
+    attendees.push({ email: row.email, name: null, responseStatus: null, organizer: false })
+  }
+  return attendees
 }
 
 /**
@@ -276,6 +283,7 @@ async function findContactEntityInstanceIdByEmail(
           isNull(schema.EntityInstance.archivedAt)
         )
       )
+      .orderBy(asc(schema.FieldValue.sortKey), asc(schema.EntityInstance.id))
       .limit(1)
 
     return ok(match?.entityId ?? null)

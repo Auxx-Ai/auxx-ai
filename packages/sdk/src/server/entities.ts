@@ -166,12 +166,12 @@ export async function findByIntegrationId(input: {
   return sdkOrThrow().findByIntegrationId(input)
 }
 
-/** Resolve a contact by its primary email. */
+/** Resolve a contact by any of its email addresses (case-insensitive). */
 export async function findContactByEmail(input: { email: string }): Promise<EntityRef | null> {
   return sdkOrThrow().findContactByEmail(input)
 }
 
-/** Resolve a contact by its primary phone (normalized to E.164 server-side). */
+/** Resolve a contact by any of its phone numbers (normalized to E.164 server-side). */
 export async function findContactByPhone(input: { phone: string }): Promise<EntityRef | null> {
   return sdkOrThrow().findContactByPhone(input)
 }

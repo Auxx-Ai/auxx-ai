@@ -3,7 +3,7 @@
 import { schema } from '@auxx/database'
 import type { IdentifierType } from '@auxx/database/types'
 import { isRecordId, parseRecordId, type RecordId } from '@auxx/types/resource'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import type { IntegrationCatalogEntry } from '../../../../cache/integration-catalog'
 import { getCachedCustomFields } from '../../../../cache/org-cache-helpers'
 import { Result, type TypedResult } from '../../../../result'
@@ -86,6 +86,8 @@ function systemAttributeForChannel(
  * is the canonical place where a contact's email lives — the `Participant`
  * table only has a row when a thread/message has actually been recorded with
  * that contact, which isn't true for brand-new CRM contacts.
+ *
+ * The primary value is the FIRST row by ascending `sortKey`.
  */
 async function lookupIdentifierFromFieldValue(
   ctx: ToolContext,
@@ -105,7 +107,7 @@ async function lookupIdentifierFromFieldValue(
       eq(schema.FieldValue.entityId, entityInstanceId),
       inArray(schema.FieldValue.fieldId, matchingFieldIds)
     ),
-    orderBy: [desc(schema.FieldValue.updatedAt)],
+    orderBy: [asc(schema.FieldValue.sortKey)],
   })
   for (const row of rows) {
     const value = row.valueText?.trim()
@@ -127,8 +129,9 @@ function detectFormat(entry: string): 'recordId' | 'participantId' | 'email' | '
  * identifiers) into concrete `ResolvedRecipient` rows for the given channel.
  *
  * - **recordId**: looks up the contact's participants matching the channel's
- *   `recipientModel`, picks the most recently used (no primary flag exists on
- *   `Participant` today).
+ *   `recipientModel`, prefers the one matching the contact's primary
+ *   identifier (first FieldValue row by sortKey), else the most recently
+ *   used in a stable order (no primary flag exists on `Participant` today).
  * - **participantId**: fetches by id, validates `identifierType` matches the
  *   channel.
  * - **raw**: validated for shape; passed through with no participantId.
@@ -170,7 +173,11 @@ export async function resolveRecipients(
           inArray(schema.Participant.entityInstanceId, instanceIds),
           inArray(schema.Participant.identifierType, acceptableTypes as IdentifierType[])
         ),
-        orderBy: [desc(schema.Participant.lastSentMessageAt), desc(schema.Participant.updatedAt)],
+        orderBy: [
+          desc(schema.Participant.lastSentMessageAt),
+          desc(schema.Participant.updatedAt),
+          asc(schema.Participant.id),
+        ],
       })
     : []
 
@@ -200,7 +207,22 @@ export async function resolveRecipients(
       case 'recordId': {
         const parsed = parseRecordId(entry.value as RecordId)
         const matches = byInstance.get(parsed.entityInstanceId)
-        const pick = matches?.[0]
+        // The contact's primary identifier: first FieldValue row by sortKey.
+        const sysAttr = systemAttributeForChannel(integration)
+        const primaryIdentifier = sysAttr
+          ? await lookupIdentifierFromFieldValue(
+              ctx,
+              parsed.entityDefinitionId,
+              parsed.entityInstanceId,
+              sysAttr.systemAttributes
+            )
+          : undefined
+        // Prefer the participant matching the primary identifier; otherwise
+        // fall back to the stable most-recently-used ordering above.
+        const pick =
+          (primaryIdentifier &&
+            matches?.find((p) => p.identifier.toLowerCase() === primaryIdentifier.toLowerCase())) ||
+          matches?.[0]
         if (pick) {
           resolved.push({
             recordId: entry.value,
@@ -213,31 +235,23 @@ export async function resolveRecipients(
           break
         }
         // Fallback: no Participant row yet (brand-new contact with only the
-        // identifier set as a field value). Read directly from FieldValue via
-        // the contact's primary_email / phone systemAttribute.
-        const sysAttr = systemAttributeForChannel(integration)
-        if (sysAttr) {
-          const identifier = await lookupIdentifierFromFieldValue(
-            ctx,
-            parsed.entityDefinitionId,
-            parsed.entityInstanceId,
-            sysAttr.systemAttributes
-          )
-          if (identifier) {
-            resolved.push({
-              recordId: entry.value,
-              identifier:
-                sysAttr.identifierType === 'EMAIL'
-                  ? identifier.toLowerCase()
-                  : sysAttr.identifierType === 'PHONE'
-                    ? identifier.replace(/[\s().-]/g, '')
-                    : identifier,
-              identifierType: sysAttr.identifierType,
-              role: entry.role,
-              displayName: identifier,
-            })
-            break
-          }
+        // identifier set as a field value). Use the primary identifier read
+        // from FieldValue via the contact's primary_email / phone
+        // systemAttribute above.
+        if (sysAttr && primaryIdentifier) {
+          resolved.push({
+            recordId: entry.value,
+            identifier:
+              sysAttr.identifierType === 'EMAIL'
+                ? primaryIdentifier.toLowerCase()
+                : sysAttr.identifierType === 'PHONE'
+                  ? primaryIdentifier.replace(/[\s().-]/g, '')
+                  : primaryIdentifier,
+            identifierType: sysAttr.identifierType,
+            role: entry.role,
+            displayName: primaryIdentifier,
+          })
+          break
         }
         return Result.error(
           new RecipientResolutionError(
