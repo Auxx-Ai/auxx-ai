@@ -603,6 +603,12 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       contextManager.setNodeVariable(node.nodeId, 'resourceType', canonicalResourceType)
       contextManager.setNodeVariable(node.nodeId, 'success', true)
       contextManager.setNodeVariable(node.nodeId, 'error', null)
+      // `generateCrudNodeVariablesFromFields` declares `errorDetails`
+      // unconditionally for every crud mode, but only `handleCrudError` (the
+      // catch branch) used to write it — a run that succeeds outright left it
+      // permanently unresolvable. Write it here, next to `error`, so it
+      // resolves to null on success too.
+      contextManager.setNodeVariable(node.nodeId, 'errorDetails', null)
 
       // Delete: write the variables `generateCrudNodeVariablesFromFields` declares
       // for delete mode (`deleted`, `id`) — the operation returns exactly this shape
@@ -1366,6 +1372,13 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
             },
           }
         }
+        // No default values configured — `usedDefaults`/`defaultValues` are
+        // declared by the builder whenever the strategy is `default`, for
+        // every resource type, same as the branch above. Write them here too
+        // before falling through to `fail`, so they still resolve on this run
+        // instead of being left permanently unresolvable.
+        contextManager.setNodeVariable(node.nodeId, 'usedDefaults', false)
+        contextManager.setNodeVariable(node.nodeId, 'defaultValues', null)
       // Fall through to fail if no defaults configured
       case 'fail':
       default:

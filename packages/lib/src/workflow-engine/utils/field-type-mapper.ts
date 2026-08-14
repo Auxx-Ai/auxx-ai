@@ -8,9 +8,23 @@ import { BaseType } from '../types'
  * Map database FieldType to BaseType for workflow operations
  * Used by workflow nodes (CRUD, Find, etc.) to convert custom field types
  * to the workflow type system.
+ *
+ * The switch is exhaustive over every `FieldType` member (see `_exhaustive`
+ * below): adding a new member to the enum without a case here fails to
+ * compile, instead of silently falling through to the STRING default. This
+ * mirrors `conditions/operator-definitions.ts`'s own `mapFieldTypeToBaseType`
+ * — the two are NOT unified (see that file's comment) because their
+ * `CALC`/default behavior is deliberately different: this one only ever runs
+ * against real custom-field types wired into the workflow engine, so an
+ * unrecognized value is a bug worth a console warning.
  */
 export function mapFieldTypeToBaseType(fieldType: FieldType | string): BaseType {
-  switch (fieldType) {
+  // Cast only to enable switch-exhaustiveness checking against every real
+  // `FieldType` member below — the parameter still accepts arbitrary strings,
+  // and a genuinely-invalid one still flows to `default` at runtime exactly
+  // as before.
+  const type = fieldType as FieldType
+  switch (type) {
     case FieldTypeEnum.TEXT:
     case FieldTypeEnum.NAME:
       return BaseType.STRING
@@ -52,9 +66,25 @@ export function mapFieldTypeToBaseType(fieldType: FieldType | string): BaseType 
       return BaseType.ACTOR
     case FieldTypeEnum.JSON:
       return BaseType.JSON
-    default:
+    case FieldTypeEnum.CALC:
+      // CALC was never a distinct case here — it used to fall through to
+      // `default` and hit the same warn+STRING fallback below. Kept as an
+      // explicit case with identical output only so the switch can be
+      // exhaustive; NOT a behavior change (intentionally left un-aligned
+      // with operator-definitions.ts's CALC -> ANY — see module comment).
       console.warn(`Unknown FieldType: ${fieldType}, defaulting to STRING`)
       return BaseType.STRING
+    default: {
+      // Exhaustiveness guard: once every `FieldType` member has its own case
+      // above, `type` narrows to `never` here. A new enum member added
+      // without a matching case fails this assignment at compile time. Still
+      // reachable at runtime for a raw string that isn't a real FieldType
+      // (the `| string` half of the parameter type) — same fallback as before.
+      const _exhaustive: never = type
+      void _exhaustive
+      console.warn(`Unknown FieldType: ${fieldType}, defaulting to STRING`)
+      return BaseType.STRING
+    }
   }
 }
 

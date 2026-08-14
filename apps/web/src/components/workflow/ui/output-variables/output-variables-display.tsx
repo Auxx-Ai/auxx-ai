@@ -25,8 +25,12 @@ function unifiedVariableToDisplayVariable(variable: UnifiedVariable): DisplayVar
   // Handle object types with properties - recursively process each property
   if (variable.type === BaseType.OBJECT && variable.properties) {
     displayVar.subItems = Object.entries(variable.properties).map(([key, prop]) => {
-      // Create a child variable with proper label and recursively convert it
-      const childVariable: UnifiedVariable = { ...prop, label: key }
+      // Prefer the property's own label over its record key: for custom-entity
+      // fields the key IS the CustomField CUID (rename-proof by design,
+      // `resource-registry-service.ts` `key: field.id`), so rendering the key
+      // shows an id where a name belongs. The key is only a fallback for
+      // properties that genuinely carry no label.
+      const childVariable: UnifiedVariable = { ...prop, label: prop.label || key }
       return unifiedVariableToDisplayVariable(childVariable)
     })
   }

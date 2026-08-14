@@ -123,48 +123,17 @@ function tierAFieldPathPin(id: string): string | undefined {
   )
 }
 
-/**
- * NEW BUG (undocumented before this suite): `errorDetails` is declared
- * unconditionally for every crud mode (`generateCrudNodeVariablesFromFields`
- * always pushes it), but `executeNode`'s SUCCESS path never writes it — only
- * `handleCrudError` (the catch branch) does. A crud run that succeeds
- * outright therefore has a declared `errorDetails` id with nothing ever
- * written under it; `resolveVariablePath` correctly reports `undefined`.
- *
- * This is the shape `contract-drift-allowlist.ts`'s `KNOWN_BROKEN_FAILURE_PATH_WRITES`
- * category exists for ("every setNodeVariable call site sits inside an else
- * block") — that map is empty there because its suite checks declared-vs-written
- * statically per one fixed config, not by actually running both the success
- * and failure arms and resolving the result the way this suite does.
- *
- * Scoped to this suite's own SUCCESS-scenario node ids: the `error_strategy:
- * 'default'` scenario's forced-failure run DOES write `errorDetails` (every
- * `handleCrudError` branch sets it unconditionally), so the same id resolves
- * there — the id string alone can't distinguish "this run succeeded" from
- * "this run failed and recovered," only which scenario produced it can.
- */
-function crudSuccessErrorDetailsPin(id: string): string | undefined {
-  if (!id.endsWith('.errorDetails')) return undefined
-  // `crud_vendor_update.` (with trailing dot) deliberately does not match the
-  // `crud_vendor_update_default` scenario's node id (no dot follows
-  // `crud_vendor_update` there) — see the doc comment above.
-  const matchesSuccessNode =
-    id.startsWith('crud_vendor_create.') ||
-    id.startsWith('crud_vendor_update.') ||
-    id.startsWith('crud_vendor_delete.') ||
-    id.startsWith('crud_thread_update.')
-  if (!matchesSuccessNode) return undefined
-  return (
-    "NEW BUG: errorDetails is declared unconditionally but executeNode's success path never " +
-    'writes it — only handleCrudError (the catch branch) does. See doc comment above ' +
-    'crudSuccessErrorDetailsPin in known-broken.ts.'
-  )
-}
+// A former `crudSuccessErrorDetailsPin` entry lived here: `errorDetails` is
+// declared unconditionally for every crud mode
+// (`generateCrudNodeVariablesFromFields` always pushes it), but `executeNode`'s
+// SUCCESS path never wrote it — only `handleCrudError` (the catch branch) did,
+// so a crud run that succeeded outright left the declared `errorDetails` id
+// with nothing written under it. RETIRED (§10c) by writing `errorDetails: null`
+// next to the existing `error: null` write in `executeNode`'s success path
+// (`action-nodes/crud.ts`) — the id now resolves to `null` on success too,
+// same shape the catch branch already produced on failure.
 
-const DECLARED_UNRESOLVABLE_PINS: Array<(id: string) => string | undefined> = [
-  tierAFieldPathPin,
-  crudSuccessErrorDetailsPin,
-]
+const DECLARED_UNRESOLVABLE_PINS: Array<(id: string) => string | undefined> = [tierAFieldPathPin]
 
 // A former §3.4 hop-two entry lived here (`hopTwoRelationPin`) — defined but
 // deliberately never registered above, since `buildFieldPath`'s independent
