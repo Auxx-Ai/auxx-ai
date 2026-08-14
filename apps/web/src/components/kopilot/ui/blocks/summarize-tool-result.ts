@@ -109,6 +109,31 @@ function summaryFromDigest(toolName: string, digest: unknown): ToolSummary | nul
       const title = typeof d.title === 'string' ? d.title : ''
       return { summary: title ? `Task created: "${truncate(title, 50)}"` : 'Task created' }
     }
+    case 'list_node_types': {
+      const count = typeof d.resultCount === 'number' ? d.resultCount : 0
+      return { summary: `${count} node type${count === 1 ? '' : 's'} listed` }
+    }
+    case 'find_workflow_templates': {
+      const count = typeof d.resultCount === 'number' ? d.resultCount : 0
+      return { summary: `${count} template${count === 1 ? '' : 's'} found` }
+    }
+    case 'get_workflow': {
+      const count = typeof d.nodeCount === 'number' ? d.nodeCount : 0
+      return { summary: `${count} node${count === 1 ? '' : 's'}` }
+    }
+    case 'validate_workflow': {
+      const errors = typeof d.errorCount === 'number' ? d.errorCount : 0
+      const warnings = typeof d.warningCount === 'number' ? d.warningCount : 0
+      if (errors === 0 && warnings === 0) return { summary: 'No issues' }
+      return {
+        summary: [
+          errors > 0 ? `${errors} error${errors === 1 ? '' : 's'}` : null,
+          warnings > 0 ? `${warnings} warning${warnings === 1 ? '' : 's'}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      }
+    }
   }
   return null
 }

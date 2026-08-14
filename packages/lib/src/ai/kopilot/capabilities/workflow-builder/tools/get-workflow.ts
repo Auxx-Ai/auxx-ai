@@ -36,6 +36,18 @@ export function createGetWorkflowTool(getDeps: GetToolDeps): AgentToolDefinition
     description:
       'Read the open workflow draft: trigger, every node (type, title, one-line config summary, resolved output refs), edges, and current issues. Use get_node for a node’s full config.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { nodeCount?: unknown; nodes?: unknown[] }
+      return {
+        label: 'Workflow loaded',
+        nodeCount:
+          typeof out.nodeCount === 'number'
+            ? out.nodeCount
+            : Array.isArray(out.nodes)
+              ? out.nodes.length
+              : 0,
+      }
+    },
     execute: async (_args, agentDeps) => {
       const auth = await resolveWorkflowAuthoring(getDeps, agentDeps, 'view')
       if (!auth.ok) return { success: false, output: null, error: auth.error }

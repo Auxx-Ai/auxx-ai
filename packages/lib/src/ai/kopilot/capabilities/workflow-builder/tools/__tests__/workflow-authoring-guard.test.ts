@@ -424,6 +424,60 @@ describe('discovery tools', () => {
     expect(types.every((t) => typeof t.authorable === 'boolean')).toBe(true)
   })
 
+  it('list_node_types searches id, display name, description, and category', async () => {
+    const byId = await run(tool('list_node_types'), { query: 'if-else' })
+    expect(byId.success).toBe(true)
+    expect((byId.output as { types: Array<{ type: string }> }).types.map((t) => t.type)).toEqual([
+      'if-else',
+    ])
+
+    const byDescription = await run(tool('list_node_types'), { query: 'HTTP REQUESTS' })
+    expect(byDescription.success).toBe(true)
+    expect(
+      (byDescription.output as { types: Array<{ type: string }> }).types.map((t) => t.type)
+    ).toContain('http')
+
+    const byCategory = await run(tool('list_node_types'), {
+      category: 'utility',
+      query: 'date',
+    })
+    expect(byCategory.success).toBe(true)
+    expect((byCategory.output as { types: Array<{ type: string }> }).types).toHaveLength(1)
+  })
+
+  it('list_node_types reports an actionable error when filters match nothing', async () => {
+    const result = await run(tool('list_node_types'), { query: 'quantum-blockchain' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('quantum-blockchain')
+    expect(result.error).toContain('without filters')
+  })
+
+  it('read and discovery tools build compact count digests', () => {
+    expect(tool('list_node_types').buildDigest?.({ types: [{}, {}] })).toEqual({
+      label: 'Node types listed',
+      resultCount: 2,
+    })
+    expect(tool('find_workflow_templates').buildDigest?.({ templates: [{}] })).toEqual({
+      label: 'Workflow templates found',
+      resultCount: 1,
+    })
+    expect(tool('get_workflow').buildDigest?.({ nodeCount: 4, nodes: [] })).toEqual({
+      label: 'Workflow loaded',
+      nodeCount: 4,
+    })
+    expect(
+      tool('validate_workflow').buildDigest?.({
+        publishErrors: ['Missing trigger'],
+        publishWarnings: ['Unused node'],
+        issues: [
+          { severity: 'error', message: 'Missing trigger' },
+          { severity: 'error', message: 'Broken reference' },
+          { severity: 'warning', message: 'Unused node' },
+        ],
+      })
+    ).toEqual({ label: 'Workflow validated', errorCount: 2, warningCount: 1 })
+  })
+
   it('describe_node_type returns the agent-facing schema and connection rules', async () => {
     const result = await run(tool('describe_node_type'), { type: 'wait' })
     expect(result.success).toBe(true)

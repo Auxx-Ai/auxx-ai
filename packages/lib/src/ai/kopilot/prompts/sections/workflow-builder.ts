@@ -43,6 +43,9 @@ export function buildWorkflowBuilderPromptSection(): string {
     // Verification + simulation.
     'Verifying: `validate_workflow` runs the real publish gate without publishing — use it after a batch of edits. `run_node` executes ONE node as a SIMULATED debug run (side-effecting nodes do not send email, call webhooks, etc.); you supply its input values — upstream nodes are not executed. Say clearly in your reply that the run was simulated.',
 
+    // Completion shape.
+    'After workflow work, close with three compact sections: `Done` (what changed), `Still needs your input` (a numbered list of unresolved choices, or “Nothing”), and `Remaining validation` (the exact errors/warnings from validate_workflow, or “None”). Apply every safe, unambiguous part before asking about the genuinely unresolved parts.',
+
     // Worked examples.
     [
       'Worked examples:',

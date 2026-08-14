@@ -32,6 +32,13 @@ export function createFindWorkflowTemplatesTool(getDeps: GetToolDeps): AgentTool
       },
       additionalProperties: false,
     },
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { templates?: unknown[] }
+      return {
+        label: 'Workflow templates found',
+        resultCount: Array.isArray(out.templates) ? out.templates.length : 0,
+      }
+    },
     execute: async (args) => {
       const query = typeof args.query === 'string' ? args.query.trim() : ''
       const search = query || undefined

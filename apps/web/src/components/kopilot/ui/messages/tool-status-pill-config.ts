@@ -213,6 +213,47 @@ const configs: Record<string, ToolPillConfig> = {
       error: () => ({ label: 'Failed to update records' }),
     },
   },
+  list_node_types: {
+    icon: 'ListTree',
+    labels: {
+      running: (args) => ({
+        label: 'Listing node types',
+        secondary: args.query ? `"${args.query}"` : undefined,
+      }),
+      completed: (_args, summary) => ({ label: 'Node types listed', secondary: summary }),
+      error: () => ({ label: 'Failed to list node types' }),
+    },
+  },
+  find_workflow_templates: {
+    icon: 'Search',
+    labels: {
+      running: (args) => ({
+        label: 'Searching workflow templates',
+        secondary: args.query ? `"${args.query}"` : undefined,
+      }),
+      completed: (_args, summary) => ({
+        label: 'Workflow templates found',
+        secondary: summary,
+      }),
+      error: () => ({ label: 'Failed to find workflow templates' }),
+    },
+  },
+  get_workflow: {
+    icon: 'Workflow',
+    labels: {
+      running: () => ({ label: 'Reading workflow' }),
+      completed: (_args, summary) => ({ label: 'Workflow loaded', secondary: summary }),
+      error: () => ({ label: 'Failed to read workflow' }),
+    },
+  },
+  validate_workflow: {
+    icon: 'BadgeCheck',
+    labels: {
+      running: () => ({ label: 'Validating workflow' }),
+      completed: (_args, summary) => ({ label: 'Workflow validated', secondary: summary }),
+      error: () => ({ label: 'Failed to validate workflow' }),
+    },
+  },
   run_eval_suite: {
     icon: 'FlaskConical',
     labels: {
