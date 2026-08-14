@@ -28,6 +28,7 @@ export const pollingRelaunchFailedJob = async (_ctx: JobContext<PollingRelaunchF
       id: schema.Integration.id,
       provider: schema.Integration.provider,
       syncMode: schema.Integration.syncMode,
+      metadata: schema.Integration.metadata,
       requiresReauth: schema.Credential.requiresReauth,
       throttleRetryAfter: schema.Integration.throttleRetryAfter,
     })
@@ -45,13 +46,25 @@ export const pollingRelaunchFailedJob = async (_ctx: JobContext<PollingRelaunchF
   let relaunchedCount = 0
 
   for (const integration of failedIntegrations) {
-    // Only relaunch polling-mode integrations
     const effectiveMode = resolveEffectiveSyncMode({
       syncMode: integration.syncMode,
       provider: integration.provider,
     })
 
-    if (effectiveMode !== 'polling') continue
+    // Relaunch polling-mode rows, plus webhook-mode rows whose INITIAL BACKFILL died —
+    // the two-phase pipeline is their only way to get history, and the scanner (which
+    // drives in-flight pipelines regardless of mode) can't act on a FAILED stage. The
+    // incomplete-backfill predicate is what keeps this narrow: an arm-failure FAILED
+    // stamped by outlookSubscriptionHealthJob has a completed backfill, and re-running
+    // list-fetch would not fix a subscription problem. (Gmail webhook rows never carry
+    // backfillCutoffAt today, so their behavior is unchanged until they adopt the
+    // received-time cutoff mechanism.)
+    if (effectiveMode !== 'polling') {
+      const metadata = integration.metadata as Record<string, unknown> | null
+      const backfillIncomplete =
+        !!metadata?.backfillCutoffAt && !metadata?.initialBackfillCompletedAt
+      if (!backfillIncomplete) continue
+    }
 
     // Skip channels needing re-authentication
     if (integration.requiresReauth) continue
