@@ -402,4 +402,50 @@ describe('mapRecord', () => {
     // entirely, never evaluated against the (irrelevant) source subtree.
     expect(writes[0]?.projected?.fields).toEqual({ 'def1:total': '49.99' })
   })
+
+  it('drops an array-shaped source value (no write) instead of evaluating it to null', () => {
+    // A provider `emails[]` field on a scalar mapping: the CALC evaluator would
+    // flatten it to null and the write path would CLEAR the target field. The
+    // guard turns it into a no-write — the key is absent from the projection.
+    const m = mapping({
+      fieldMappings: [
+        {
+          id: 'e1',
+          targetFieldRef: toResourceFieldId('def1', 'email'),
+          expression: '{emails}',
+          sourceFields: { emails: 'emails' },
+        },
+        {
+          id: 'e2',
+          targetFieldRef: toResourceFieldId('def1', 'name'),
+          expression: '{name}',
+          sourceFields: { name: 'name' },
+        },
+      ],
+    })
+
+    const writes = mapRecord([m], source({ emails: ['a@x.com', 'b@x.com'], name: 'Jane' }))
+
+    expect(writes[0]?.projected?.fields).toEqual({ 'def1:name': 'Jane' })
+    expect(writes[0]?.projected?.fields).not.toHaveProperty('def1:email')
+  })
+
+  it('drops the degenerate whole-subtree `{source}` binding when the subtree is an array', () => {
+    const m = mapping({
+      id: 'tags',
+      rootPath: 'meta',
+      fieldMappings: [
+        {
+          id: 'e1',
+          targetFieldRef: toResourceFieldId('def1', 'tags'),
+          expression: '{source}',
+          sourceFields: {},
+        },
+      ],
+    })
+
+    const writes = mapRecord([m], source({ meta: ['red', 'blue'] }))
+
+    expect(writes[0]?.projected?.fields).toEqual({})
+  })
 })

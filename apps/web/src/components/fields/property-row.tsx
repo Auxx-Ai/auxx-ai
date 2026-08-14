@@ -129,6 +129,7 @@ function PropertyRow({
                 <ConnectorLockBadge
                   connectorId={managedConnectorId}
                   mode='contributing'
+                  multi={(field.options as { multi?: boolean } | null | undefined)?.multi === true}
                   className='ms-1'
                 />
               )

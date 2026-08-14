@@ -756,9 +756,12 @@ async function fetchFieldValueResults(
     const firstRow = fieldRows[0]!
     const aiStatus = (firstRow.aiStatus ?? null) as AiStatus | null
     const aiMetadata = readAiMetadata(firstRow)
-    // Contributing data-connector provenance marker (per-cell). Single marker
-    // per (entity, field), so — like aiStatus — take the first row's value.
-    const managedByConnectorId = firstRow.managedByConnectorId ?? null
+    // Contributing data-connector provenance marker (cell-grained badge). Multi
+    // fields stamp ROW-accurately (the connector's own row may not be first), so
+    // take ANY row's marker — else the badge vanishes whenever the primary row
+    // happens to be user-owned. Scalar fields have one row; same answer.
+    const managedByConnectorId =
+      fieldRows.find((row) => row.managedByConnectorId != null)?.managedByConnectorId ?? null
 
     results.push({
       recordId,

@@ -114,7 +114,11 @@ export const CustomFieldCell = memo(function CustomFieldCell({
     <div className='relative h-full w-full'>
       {content}
       <div className='absolute top-0.5 right-0.5 z-10 opacity-60'>
-        <ConnectorLockBadge connectorId={managedConnectorId} mode='contributing' />
+        <ConnectorLockBadge
+          connectorId={managedConnectorId}
+          mode='contributing'
+          multi={(options as { multi?: boolean } | null | undefined)?.multi === true}
+        />
       </div>
     </div>
   )

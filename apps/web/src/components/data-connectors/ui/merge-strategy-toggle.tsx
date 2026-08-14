@@ -22,13 +22,15 @@ const MERGE_STRATEGIES: Array<{
     value: 'overwrite',
     label: 'Always update',
     variant: 'default',
-    description: 'Always replace the current value with the latest synced value.',
+    description:
+      'Always keep this field at the latest synced value. On a multi-value field only the synced value is updated — other values are kept.',
   },
   {
     value: 'fill_blank',
     label: 'Only if empty',
     variant: 'sky',
-    description: 'Only fill this in when the field is empty; never replace an existing value.',
+    description:
+      'Only fill this in when the field is empty; never replace an existing value. On a multi-value field, only when the list is empty.',
   },
   {
     value: 'connector_owned_only',
