@@ -48,7 +48,7 @@ export function useRunDeepLink() {
     if (runId && activeRun?.id === runId) {
       if (openedForRef.current !== runId) {
         openedForRef.current = runId
-        usePanelStore.getState().openRunPanel()
+        usePanelStore.getState().openOverlay('run')
       }
     } else if (!runId) {
       openedForRef.current = null

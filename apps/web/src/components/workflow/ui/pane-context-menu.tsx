@@ -122,7 +122,7 @@ export const PaneContextMenu = memo(() => {
    * Handle test run - opens run panel with input tab
    */
   const handleTestRun = () => {
-    usePanelStore.getState().openRunPanel()
+    usePanelStore.getState().openOverlay('run')
     usePanelStore.getState().setRunPanelTab('input')
     handlePaneContextMenuClose()
   }

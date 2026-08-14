@@ -44,7 +44,7 @@ export function WorkflowExecutionDetailDrawer({
   const isDocked = useEffectiveDockState()
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const { primaryPanelRef } = useDockPortal()
+  const { panelRef } = useDockPortal()
   const [activeTab, setActiveTab] = useState('detail')
 
   // Store actions
@@ -92,7 +92,7 @@ export function WorkflowExecutionDetailDrawer({
       onWidthChange={setDockedWidth}
       minWidth={350}
       maxWidth={600}
-      portalTarget={primaryPanelRef}
+      portalTarget={panelRef}
       title={`Workflow Run #${run.sequenceNumber}`}>
       {/* Content */}
       <div className='flex-1 min-h-0 flex flex-col rounded-t-xl'>

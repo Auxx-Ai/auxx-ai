@@ -3,8 +3,6 @@
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Button } from '@auxx/ui/components/button'
-import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
-import { DrawerHeader } from '@auxx/ui/components/drawer'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,57 +18,39 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Copy, Info, MoreHorizontal, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import type React from 'react'
-import { memo, useCallback, useEffect, useState } from 'react'
-import { useDockPortal } from '~/components/global/dock-portal-provider'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { DuplicateWorkflowDialog } from '~/components/workflow/dialogs/duplicate-workflow-dialog'
 import { useWorkflowAccess } from '~/components/workflow/hooks/use-workflow-access'
 import { useWorkflowSave } from '~/components/workflow/hooks/use-workflow-save'
 import { useWorkflowTrigger } from '~/components/workflow/hooks/use-workflow-trigger'
+import { PanelFrameHeader } from '~/components/workflow/panels/panel-frame-chrome'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import Section from '../../ui/section'
 import { WorkflowAccessSettings, WorkflowMemberAccessSection } from './workflow-access-settings'
 
 interface WorkflowSettingsPanelProps {
-  className?: string
   workflowId?: string
   workflowAppId?: string
 }
 
 /**
- * Panel for workflow settings configuration.
- * Supports both overlay (drawer) and docked modes via portal.
+ * The `settings` panel frame — workflow name, icon, enable state and sharing.
+ *
+ * Body only: the drawer, width and portal are owned by `WorkflowPanelDrawer`,
+ * and the header portals into it via `PanelFrameHeader`.
  */
 export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
-  className,
   workflowId,
   workflowAppId,
 }: WorkflowSettingsPanelProps) {
   const router = useRouter()
-  const closeSettingsPanel = usePanelStore((state) => state.closeSettingsPanel)
-  const panelWidth = usePanelStore((state) => state.getSettingsPanelWidth())
-  const setPanelWidth = usePanelStore((state) => state.setPanelWidth)
-
-  // Dock state
-  const isDocked = useEffectiveDockState()
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-  const secondaryWidth = useDockStore((state) => state.secondaryWidth)
-  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const setSecondaryWidth = useDockStore((state) => state.setSecondaryWidth)
-  const minWidth = useDockStore((state) => state.minWidth)
-  const maxWidth = useDockStore((state) => state.maxWidth)
-
-  // Portal target for docked mode
-  const { primaryPanelRef, secondaryPanelRef } = useDockPortal()
-  const panelStack = usePanelStore((state) => state.panelStack)
-  const layoutMode = useDockStore((state) => state.layoutMode)
+  const closeDrawer = usePanelStore((state) => state.closeDrawer)
 
   // Workflow info
   const workflow = useWorkflowStore((state) => state.workflow)
@@ -96,7 +76,21 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
   const posthog = useAnalytics()
 
   // Unified save hook for metadata, icon, and share settings
-  const { saveMetadata, saveIcon } = useWorkflowSave()
+  const { saveMetadata, saveIcon, saveNow } = useWorkflowSave()
+
+  // This frame unmounts whenever you navigate to another panel frame — NavStack
+  // keeps only the top panel mounted — and `useWorkflowSave` cancels its
+  // debounce *and* drops its component-local `pendingRef` on unmount. Without a
+  // flush, a rename typed a moment before hitting Test would be silently lost.
+  // `saveNow` no-ops when the workflow isn't dirty, so this is free otherwise.
+  const saveNowRef = useRef(saveNow)
+  saveNowRef.current = saveNow
+  useEffect(
+    () => () => {
+      void saveNowRef.current()
+    },
+    []
+  )
 
   // Check if workflow has a manual trigger (required for sharing)
   const { triggerType } = useWorkflowTrigger()
@@ -126,35 +120,13 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
   const deleteWorkflow = api.workflow.delete.useMutation({
     onSuccess: () => {
       toastSuccess({ description: 'Workflow deleted' })
-      closeSettingsPanel()
+      closeDrawer()
       router.push('/app/workflows')
     },
     onError: (error) => {
       toastError({ title: 'Failed to delete workflow', description: error.message })
     },
   })
-
-  // Determine if using secondary slot (side-by-side mode with run panel open)
-  const useSecondarySlot = panelStack.includes('run') && layoutMode !== 'tabbed'
-
-  // Use secondary slot if run panel is open and in side-by-side mode
-  const portalRef = useSecondarySlot ? secondaryPanelRef : primaryPanelRef
-
-  // Use appropriate width based on slot
-  const currentDockedWidth = useSecondarySlot ? secondaryWidth : dockedWidth
-  const setCurrentDockedWidth = useSecondarySlot ? setSecondaryWidth : setDockedWidth
-
-  /** Handle width changes - update appropriate store based on dock state */
-  const handleWidthChange = useCallback(
-    (width: number) => {
-      if (isDocked) {
-        setCurrentDockedWidth(width)
-      } else {
-        setPanelWidth(width)
-      }
-    },
-    [isDocked, setCurrentDockedWidth, setPanelWidth]
-  )
 
   /** Toggle workflow enabled state */
   const handleToggleEnabled = async () => {
@@ -280,9 +252,6 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
     [saveIcon]
   )
 
-  // Safety check - don't render if not in panel stack
-  if (panelWidth === 0) return null
-
   return (
     <>
       <ConfirmDialog />
@@ -292,182 +261,169 @@ export const WorkflowSettingsPanel = memo(function WorkflowSettingsPanel({
         workflowId={workflowAppId || ''}
         workflowName={workflow?.name || 'Workflow'}
       />
-      <DockableDrawer
-        open={true}
-        onOpenChange={(open) => !open && closeSettingsPanel()}
-        isDocked={isDocked}
-        width={isDocked ? currentDockedWidth : panelWidth}
-        onWidthChange={handleWidthChange}
-        minWidth={minWidth}
-        maxWidth={maxWidth}
-        title='Workflow Settings'
-        portalTarget={portalRef}
-        panelType='settings'>
-        {/* Header */}
-        <DrawerHeader
-          icon={<EntityIcon iconId='settings' color='gray' className='size-6' />}
-          title='Workflow Settings'
-          onClose={closeSettingsPanel}
-          actions={
-            canAdmin ? (
-              <>
-                {/* Enable/Disable Toggle */}
-                <Tooltip content={workflow?.enabled ? 'Disable workflow' : 'Enable workflow'}>
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    className='rounded-full gap-1.5 text-xs'
-                    onClick={handleToggleEnabled}
-                    disabled={toggleWorkflow.isPending}
-                    tabIndex={-1}>
-                    <div
-                      className={`size-2 rounded-full ${workflow?.enabled ? 'bg-good-500' : 'bg-bad-500'}`}
-                    />
-                    {workflow?.enabled ? 'Enabled' : 'Disabled'}
-                  </Button>
-                </Tooltip>
+      {/* Header */}
+      <PanelFrameHeader
+        icon={<EntityIcon iconId='settings' color='gray' className='size-6' />}
+        title='Settings'
+        actions={
+          canAdmin ? (
+            <>
+              {/* Enable/Disable Toggle */}
+              <Tooltip content={workflow?.enabled ? 'Disable workflow' : 'Enable workflow'}>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='rounded-full gap-1.5 text-xs'
+                  onClick={handleToggleEnabled}
+                  disabled={toggleWorkflow.isPending}
+                  tabIndex={-1}>
+                  <div
+                    className={`size-2 rounded-full ${workflow?.enabled ? 'bg-good-500' : 'bg-bad-500'}`}
+                  />
+                  {workflow?.enabled ? 'Enabled' : 'Disabled'}
+                </Button>
+              </Tooltip>
 
-                {/* More Actions Dropdown */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant='ghost' size='icon-sm' className='rounded-full' tabIndex={-1}>
-                      <MoreHorizontal />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align='end'>
-                    <DropdownMenuItem onClick={() => setDuplicateDialogOpen(true)}>
-                      <Copy />
-                      Duplicate
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleDelete} variant='destructive'>
-                      <Trash2 />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
-            ) : (
-              // Status stays visible at every rung — it's a read, and knowing a
-              // workflow is disabled explains why a manual run does nothing.
-              <span className='flex items-center gap-1.5 pr-1 text-xs text-muted-foreground'>
-                <span
-                  className={`size-2 rounded-full ${workflow?.enabled ? 'bg-good-500' : 'bg-bad-500'}`}
-                />
-                {workflow?.enabled ? 'Enabled' : 'Disabled'}
-              </span>
-            )
-          }
-        />
-        {/* Content */}
-        <div className='flex-1 flex-col flex overflow-y-auto'>
-          <CollapseWrap
-            minHeight={60}
-            isCollapsed={isDescriptionCollapsed}
-            onCollapsedChange={setIsDescriptionCollapsed}
-            className='sticky top-0 z-12 border-b bg-primary-50/90 backdrop-blur-sm'>
-            <div className='relative flex flex-row gap-1 px-2 py-1.5'>
-              {/* Renaming and re-iconing the workflow is the `admin` rung — the
+              {/* More Actions Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant='ghost' size='icon-sm' className='rounded-full' tabIndex={-1}>
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end'>
+                  <DropdownMenuItem onClick={() => setDuplicateDialogOpen(true)}>
+                    <Copy />
+                    Duplicate
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleDelete} variant='destructive'>
+                    <Trash2 />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          ) : (
+            // Status stays visible at every rung — it's a read, and knowing a
+            // workflow is disabled explains why a manual run does nothing.
+            <span className='flex items-center gap-1.5 pr-1 text-xs text-muted-foreground'>
+              <span
+                className={`size-2 rounded-full ${workflow?.enabled ? 'bg-good-500' : 'bg-bad-500'}`}
+              />
+              {workflow?.enabled ? 'Enabled' : 'Disabled'}
+            </span>
+          )
+        }
+      />
+      {/* Content */}
+      <div className='flex-1 flex-col flex overflow-y-auto'>
+        <CollapseWrap
+          minHeight={60}
+          isCollapsed={isDescriptionCollapsed}
+          onCollapsedChange={setIsDescriptionCollapsed}
+          className='sticky top-0 z-12 border-b bg-primary-50/90 backdrop-blur-sm'>
+          <div className='relative flex flex-row gap-1 px-2 py-1.5'>
+            {/* Renaming and re-iconing the workflow is the `admin` rung — the
                   icon stays visible, just not pickable (plan 30 §4). */}
-              {canAdmin ? (
-                <IconPicker
-                  value={
-                    localIcon
-                      ? { icon: localIcon.iconId, color: localIcon.color }
-                      : { icon: 'text', color: 'blue' }
-                  }
-                  onChange={handleIconChange}>
-                  <button
-                    type='button'
-                    className='rounded-md p-0.5 hover:bg-primary-100 transition-colors'>
-                    <EntityIcon
-                      iconId={localIcon?.iconId ?? 'text'}
-                      color={localIcon?.color ?? 'blue'}
-                      className='size-6'
-                    />
-                  </button>
-                </IconPicker>
-              ) : (
-                <div className='p-0.5'>
+            {canAdmin ? (
+              <IconPicker
+                value={
+                  localIcon
+                    ? { icon: localIcon.iconId, color: localIcon.color }
+                    : { icon: 'text', color: 'blue' }
+                }
+                onChange={handleIconChange}>
+                <button
+                  type='button'
+                  className='rounded-md p-0.5 hover:bg-primary-100 transition-colors'>
                   <EntityIcon
                     iconId={localIcon?.iconId ?? 'text'}
                     color={localIcon?.color ?? 'blue'}
                     className='size-6'
                   />
-                </div>
-              )}
-              <Input
-                id='title'
-                variant='transparent'
-                value={localTitle}
-                onChange={handleTitleChange}
-                onBlur={handleTitleBlur}
-                onKeyDown={handleTitleKeyDown}
-                placeholder='Enter workflow title'
-                readOnly={!canAdmin}
-                tabIndex={-1}
-                className={cn(
-                  'h-7 min-w-0 w-full appearance-none rounded-md border px-1 outline-none focus-visible:ring-1 focus-visible:ring-blue-500',
-                  titleError ? 'border-red-500 ring-1 ring-red-500' : 'border-transparent',
-                  'focus:shadow-xs'
-                )}
-              />
-              {titleError && (
-                <div className='absolute left-9 top-full z-20 mt-0.5 text-xs text-red-500'>
-                  Title cannot be empty
-                </div>
-              )}
-            </div>
-            <div className='leading-0 group flex rounded-lg px-2 py-[5px]'>
-              <AutosizeTextarea
-                id='description'
-                minHeight={1}
-                value={localDescription}
-                onChange={handleDescriptionChange}
-                onKeyDown={handleDescriptionKeyDown}
-                onFocus={() => setIsDescriptionCollapsed(false)}
-                onBlur={() => setIsDescriptionCollapsed(true)}
-                readOnly={!canAdmin}
-                className='w-full resize-none appearance-none border-none py-1 px-2 bg-transparent text-xs leading-[18px] caret-[#295EFF] outline-none dark:bg-transparent'
-                placeholder='Enter workflow description'
-              />
-            </div>
-          </CollapseWrap>
-          <div className='flex-1'>
-            {/* Who inside the workspace can reach this workflow. Shown at every
-                rung — the card is read-only for non-admins (plan 30 §4). */}
-            {workflowAppId && <WorkflowMemberAccessSection workflowAppId={workflowAppId} />}
-            {/* Public link + API keys are outside access, and Full-only. */}
-            {workflowAppId && canAdmin && isManualTrigger && (
-              <WorkflowAccessSettings
-                workflowAppId={workflowAppId}
-                shareToken={workflowAppData?.shareToken}
-                webEnabled={workflowAppData?.webEnabled}
-                apiEnabled={workflowAppData?.apiEnabled}
-                accessMode={workflowAppData?.accessMode ?? undefined}
-                config={workflowAppData?.config ?? undefined}
-                rateLimit={workflowAppData?.rateLimit ?? undefined}
-                hasPublishedVersion={hasPublishedVersion}
-                workflowEnabled={workflow?.enabled}
-              />
+                </button>
+              </IconPicker>
+            ) : (
+              <div className='p-0.5'>
+                <EntityIcon
+                  iconId={localIcon?.iconId ?? 'text'}
+                  color={localIcon?.color ?? 'blue'}
+                  className='size-6'
+                />
+              </div>
             )}
-            {workflowAppId && canAdmin && !isManualTrigger && (
-              <Section title='Sharing' collapsible={false}>
-                <div className='flex items-start gap-3 p-3 bg-muted/50 rounded-lg'>
-                  <Info className='size-5 text-muted-foreground shrink-0 mt-0.5' />
-                  <div className='space-y-1'>
-                    <p className='text-sm font-medium'>Sharing not available</p>
-                    <p className='text-xs text-muted-foreground'>
-                      Only workflows with a Manual trigger can be shared publicly. Change the
-                      trigger type to Manual to enable sharing.
-                    </p>
-                  </div>
-                </div>
-              </Section>
+            <Input
+              id='title'
+              variant='transparent'
+              value={localTitle}
+              onChange={handleTitleChange}
+              onBlur={handleTitleBlur}
+              onKeyDown={handleTitleKeyDown}
+              placeholder='Enter workflow title'
+              readOnly={!canAdmin}
+              tabIndex={-1}
+              className={cn(
+                'h-7 min-w-0 w-full appearance-none rounded-md border px-1 outline-none focus-visible:ring-1 focus-visible:ring-blue-500',
+                titleError ? 'border-red-500 ring-1 ring-red-500' : 'border-transparent',
+                'focus:shadow-xs'
+              )}
+            />
+            {titleError && (
+              <div className='absolute left-9 top-full z-20 mt-0.5 text-xs text-red-500'>
+                Title cannot be empty
+              </div>
             )}
           </div>
+          <div className='leading-0 group flex rounded-lg px-2 py-[5px]'>
+            <AutosizeTextarea
+              id='description'
+              minHeight={1}
+              value={localDescription}
+              onChange={handleDescriptionChange}
+              onKeyDown={handleDescriptionKeyDown}
+              onFocus={() => setIsDescriptionCollapsed(false)}
+              onBlur={() => setIsDescriptionCollapsed(true)}
+              readOnly={!canAdmin}
+              className='w-full resize-none appearance-none border-none py-1 px-2 bg-transparent text-xs leading-[18px] caret-[#295EFF] outline-none dark:bg-transparent'
+              placeholder='Enter workflow description'
+            />
+          </div>
+        </CollapseWrap>
+        <div className='flex-1'>
+          {/* Who inside the workspace can reach this workflow. Shown at every
+                rung — the card is read-only for non-admins (plan 30 §4). */}
+          {workflowAppId && <WorkflowMemberAccessSection workflowAppId={workflowAppId} />}
+          {/* Public link + API keys are outside access, and Full-only. */}
+          {workflowAppId && canAdmin && isManualTrigger && (
+            <WorkflowAccessSettings
+              workflowAppId={workflowAppId}
+              shareToken={workflowAppData?.shareToken}
+              webEnabled={workflowAppData?.webEnabled}
+              apiEnabled={workflowAppData?.apiEnabled}
+              accessMode={workflowAppData?.accessMode ?? undefined}
+              config={workflowAppData?.config ?? undefined}
+              rateLimit={workflowAppData?.rateLimit ?? undefined}
+              hasPublishedVersion={hasPublishedVersion}
+              workflowEnabled={workflow?.enabled}
+            />
+          )}
+          {workflowAppId && canAdmin && !isManualTrigger && (
+            <Section title='Sharing' collapsible={false}>
+              <div className='flex items-start gap-3 p-3 bg-muted/50 rounded-lg'>
+                <Info className='size-5 text-muted-foreground shrink-0 mt-0.5' />
+                <div className='space-y-1'>
+                  <p className='text-sm font-medium'>Sharing not available</p>
+                  <p className='text-xs text-muted-foreground'>
+                    Only workflows with a Manual trigger can be shared publicly. Change the trigger
+                    type to Manual to enable sharing.
+                  </p>
+                </div>
+              </div>
+            </Section>
+          )}
         </div>
-      </DockableDrawer>
+      </div>
     </>
   )
 })

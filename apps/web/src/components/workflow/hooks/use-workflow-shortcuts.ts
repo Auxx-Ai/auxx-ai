@@ -5,7 +5,7 @@ import { useReactFlow, useStoreApi } from '@xyflow/react'
 import React from 'react'
 import { useCanvasStore } from '../store/canvas-store'
 import { useInteractionStore } from '../store/interaction-store'
-import { usePanelStore } from '../store/panel-store'
+import { selectIsOverlayOpen, usePanelStore } from '../store/panel-store'
 import { useHistoryManager } from '../store/workflow-store-provider'
 import { useEdgeInteractions } from './use-edge-interactions'
 import { useNodesInteractions } from './use-node-interactions'
@@ -66,11 +66,10 @@ export function useWorkflowShortcuts() {
 
   // Panel management
   const toggleLeftSidebar = usePanelStore((state) => state.toggleLeftSidebar)
-  const openRunPanel = usePanelStore((state) => state.openRunPanel)
+  const openOverlay = usePanelStore((state) => state.openOverlay)
+  const popOverlay = usePanelStore((state) => state.popOverlay)
   const setRunPanelTab = usePanelStore((state) => state.setRunPanelTab)
-  const settingsPanelOpen = usePanelStore((state) => state.settingsPanelOpen)
-  const openSettingsPanel = usePanelStore((state) => state.openSettingsPanel)
-  const closeSettingsPanel = usePanelStore((state) => state.closeSettingsPanel)
+  const settingsPanelOpen = usePanelStore(selectIsOverlayOpen('settings'))
   const toggleHistoryPopover = usePanelStore((state) => state.toggleHistoryPopover)
   const toggleVariableEditor = usePanelStore((state) => state.toggleVariableEditor)
   const toggleHelpOverlay = usePanelStore((state) => state.toggleHelpOverlay)
@@ -94,8 +93,8 @@ export function useWorkflowShortcuts() {
 
   // Test: Mod+Enter — opens run panel if closed (when open, input-tab handles run)
   useHotkey('Mod+Enter', () => {
-    if (!usePanelStore.getState().runPanelOpen) {
-      openRunPanel()
+    if (!selectIsOverlayOpen('run')(usePanelStore.getState())) {
+      openOverlay('run')
       setRunPanelTab('input')
     }
   })
@@ -235,9 +234,9 @@ export function useWorkflowShortcuts() {
   // Toggle Settings Panel: Mod+P
   useHotkey('Mod+P', () => {
     if (settingsPanelOpen) {
-      closeSettingsPanel()
+      popOverlay()
     } else {
-      openSettingsPanel()
+      openOverlay('settings')
     }
   })
 
@@ -250,7 +249,7 @@ export function useWorkflowShortcuts() {
 
   // Test: T
   useHotkey('T', () => {
-    openRunPanel()
+    openOverlay('run')
     setRunPanelTab('input')
   })
 

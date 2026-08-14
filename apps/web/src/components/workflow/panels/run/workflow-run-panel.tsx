@@ -2,19 +2,15 @@
 
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
-import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
 import { Clock, ListChecks, Medal, Play, Route, TextCursorInput } from 'lucide-react'
-import { memo, useCallback, useState } from 'react'
-import { useDockPortal } from '~/components/global/dock-portal-provider'
+import { memo, useState } from 'react'
+import { PanelFrameHeader } from '~/components/workflow/panels/panel-frame-chrome'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 import { useRunStore } from '~/components/workflow/store/run-store'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useDockStore } from '~/stores/dock-store'
 import { RunHistory } from './run-history'
 import { DetailTab } from './tabs/detail-tab'
 import { InputTab } from './tabs/input-tab'
@@ -22,88 +18,37 @@ import { ResultTab } from './tabs/result-tab'
 import { TracingTab } from './tabs/tracing-tab'
 
 interface WorkflowRunPanelProps {
-  className?: string
   workflowId?: string
   workflowAppId?: string
 }
 
 /**
- * Panel for running and testing workflows.
- * Supports both overlay (drawer) and docked modes via portal.
+ * The `run` panel frame — workflow-level test input, run history and tracing.
+ *
+ * Per-node output is NOT here: it lives on each node panel's Result tab, fed by
+ * the same `useRunStore` node executions. Body only — the drawer, width and
+ * portal are owned by `WorkflowPanelDrawer`, and the header portals into it via
+ * `PanelFrameHeader`.
  */
 export const WorkflowRunPanel = memo(function WorkflowRunPanel({
-  className,
   workflowId,
   workflowAppId,
 }: WorkflowRunPanelProps) {
   const [historyOpen, setHistoryOpen] = useState(false)
 
-  const closeRunPanel = usePanelStore((state) => state.closeRunPanel)
   const runPanelTab = usePanelStore((state) => state.runPanelTab)
   const setRunPanelTab = usePanelStore((state) => state.setRunPanelTab)
-  const panelWidth = usePanelStore((state) => state.getRunPanelWidth())
-  const setPanelWidth = usePanelStore((state) => state.setPanelWidth)
-
-  // Dock state
-  const isDocked = useEffectiveDockState()
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-  const secondaryWidth = useDockStore((state) => state.secondaryWidth)
-  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const setSecondaryWidth = useDockStore((state) => state.setSecondaryWidth)
-  const minWidth = useDockStore((state) => state.minWidth)
-  const maxWidth = useDockStore((state) => state.maxWidth)
-
-  // Portal target for docked mode
-  const { primaryPanelRef, secondaryPanelRef } = useDockPortal()
-  const panelStack = usePanelStore((state) => state.panelStack)
-  const layoutMode = useDockStore((state) => state.layoutMode)
-
-  // Determine if using secondary slot (side-by-side mode with property panel open)
-  const useSecondarySlot = panelStack.includes('property') && layoutMode !== 'tabbed'
-
-  // Use secondary slot if property panel is open and in side-by-side mode
-  const portalRef = useSecondarySlot ? secondaryPanelRef : primaryPanelRef
-
-  // Use appropriate width based on slot
-  const currentDockedWidth = useSecondarySlot ? secondaryWidth : dockedWidth
-  const setCurrentDockedWidth = useSecondarySlot ? setSecondaryWidth : setDockedWidth
-
-  /** Handle width changes - update appropriate store based on dock state */
-  const handleWidthChange = useCallback(
-    (width: number) => {
-      if (isDocked) {
-        setCurrentDockedWidth(width)
-      } else {
-        setPanelWidth(width)
-      }
-    },
-    [isDocked, setCurrentDockedWidth, setPanelWidth]
-  )
 
   const activeRun = useRunStore((state) => state.activeRun)
   const isRunning = useRunStore((state) => state.isRunning)
   const executionProgress = useRunStore((state) => state.getExecutionProgress())
   const runViewMode = useRunStore((state) => state.runViewMode)
 
-  // Safety check - don't render if not in panel stack
-  if (panelWidth === 0) return null
-
   return (
-    <DockableDrawer
-      open={true}
-      onOpenChange={(open) => !open && closeRunPanel()}
-      isDocked={isDocked}
-      width={isDocked ? currentDockedWidth : panelWidth}
-      onWidthChange={handleWidthChange}
-      minWidth={minWidth}
-      maxWidth={maxWidth}
-      title='Run Panel'
-      portalTarget={portalRef}
-      panelType='run'>
-      <DrawerHeader
+    <>
+      <PanelFrameHeader
         icon={<Play className='size-4 text-muted-foreground' />}
         title='Test Workflow'
-        onClose={closeRunPanel}
         actions={
           isRunning ? (
             <Badge
@@ -234,6 +179,6 @@ export const WorkflowRunPanel = memo(function WorkflowRunPanel({
           )}
         </div>
       </div>
-    </DockableDrawer>
+    </>
   )
 })

@@ -1,114 +1,71 @@
 // apps/web/src/components/workflow/panels/property-panel.tsx
 
-import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { useStore } from '@xyflow/react'
 import React, { useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/shallow'
-import { useDockPortal } from '~/components/global/dock-portal-provider'
 import { isWorkflowNode, NodeType } from '~/components/workflow/types'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
-import { useDockStore } from '~/stores/dock-store'
 import { useRegistryVersion } from '../hooks'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import { usePanelStore } from '../store/panel-store'
 
-interface PropertyPanelProps {
-  className?: string
+interface NodePanelBodyProps {
+  /** The node this frame is for — supplied by the panel stack, not by selection. */
+  nodeId: string
 }
 
 /**
- * Property panel that displays node configuration.
- * Supports both overlay (drawer) and docked modes via portal.
- * In docked mode, content portals to the DockedPanelTarget while preserving React context.
+ * Body of the `node` panel frame: resolves the node's registered panel component
+ * from the unified registry and renders it.
+ *
+ * The node comes from the frame (`nodeId`), not from React Flow's selection, so
+ * the frame stays stable while an overlay is on top of it — the node is still
+ * the thing the back chevron returns to even though it isn't selected-and-visible.
+ * The header is rendered by the node panel itself via `PanelFrameHeader`.
  */
-const PropertyPanel: React.FC<PropertyPanelProps> = React.memo(() => {
-  const panelWidth = usePanelStore((state) => state.getPropertyPanelWidth())
-  const setPanelWidth = usePanelStore((state) => state.setPanelWidth)
-  const closePanel = usePanelStore((state) => state.closePanel)
-
-  // Dock state
-  const isDocked = useEffectiveDockState()
-  const dockedWidth = useDockStore((state) => state.dockedWidth)
-  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
-  const minWidth = useDockStore((state) => state.minWidth)
-  const maxWidth = useDockStore((state) => state.maxWidth)
-
-  /** Handle width changes - update appropriate store based on dock state */
-  const handleWidthChange = React.useCallback(
-    (width: number) => {
-      if (isDocked) {
-        setDockedWidth(width)
-      } else {
-        setPanelWidth(width)
-      }
-    },
-    [isDocked, setDockedWidth, setPanelWidth]
-  )
-
-  // Portal target for docked mode
-  const { primaryPanelRef } = useDockPortal()
+const NodePanelBody: React.FC<NodePanelBodyProps> = React.memo(({ nodeId }) => {
+  const closeDrawer = usePanelStore((state) => state.closeDrawer)
 
   // Subscribe to registry updates to detect when app blocks are loaded
   const registryVersion = useRegistryVersion()
 
-  const selectedNode = useStore(
+  const node = useStore(
     useShallow((s) => {
-      const currentNode = s.nodes.find((node) => node.selected)
+      const current = s.nodes.find((n) => n.id === nodeId)
       // React Flow types every node's data as `Record<string, unknown>`; the
       // guard is what recovers the `BaseNodeData` the panels are written against.
-      if (currentNode && isWorkflowNode(currentNode)) {
-        return { id: currentNode.id, type: currentNode.data.type, data: currentNode.data }
+      if (current && isWorkflowNode(current)) {
+        return { id: current.id, type: current.data.type, data: current.data }
       }
     })
   )
 
-  const nodeType = selectedNode?.type
+  const nodeType = node?.type
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: registryVersion triggers re-fetch when registry updates
   const PanelComponent = useMemo(() => {
     if (nodeType && typeof nodeType === 'string' && nodeType !== NodeType.NOTE) {
-      const panel = unifiedNodeRegistry.getPanel(nodeType)
-      return panel
+      return unifiedNodeRegistry.getPanel(nodeType)
     }
     return null
   }, [nodeType, registryVersion])
 
-  // Determine if panel should be shown
-  const shouldShowPanel = !!(
-    selectedNode &&
-    nodeType !== NodeType.NOTE &&
-    panelWidth !== 0 &&
-    PanelComponent
-  )
-  // Close panel in effect when conditions change (avoids state update during render)
+  const shouldShowPanel = !!(node && nodeType !== NodeType.NOTE && PanelComponent)
+
+  // A node that vanished (deleted, or a note) has no frame to show — close the
+  // drawer in an effect rather than during render.
   useEffect(() => {
     if (!shouldShowPanel) {
-      closePanel()
+      closeDrawer()
     }
-  }, [shouldShowPanel, closePanel])
+  }, [shouldShowPanel, closeDrawer])
 
-  // Early return without side effects
   if (!shouldShowPanel) {
     return null
   }
 
-  return (
-    <DockableDrawer
-      open={true}
-      onOpenChange={(open) => !open && closePanel()}
-      isDocked={isDocked}
-      width={isDocked ? dockedWidth : panelWidth}
-      onWidthChange={handleWidthChange}
-      minWidth={minWidth}
-      maxWidth={maxWidth}
-      title='Properties'
-      portalTarget={primaryPanelRef}
-      panelType='property'>
-      <PanelComponent key={selectedNode.id} nodeId={selectedNode.id} data={selectedNode.data} />
-    </DockableDrawer>
-  )
+  return <PanelComponent key={node.id} nodeId={node.id} data={node.data} />
 })
 
-PropertyPanel.displayName = 'PropertyPanel'
+NodePanelBody.displayName = 'NodePanelBody'
 
-export { PropertyPanel }
+export { NodePanelBody }

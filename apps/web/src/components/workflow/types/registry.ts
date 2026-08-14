@@ -24,8 +24,8 @@ export { NodeCategory } from '@auxx/lib/workflow-engine/client'
 /**
  * Props every node configuration panel receives.
  *
- * `PropertyPanel` (workflow/panels/property-panel.tsx) is the only mount site and
- * it always passes BOTH the selected node's id and its data — the panels have
+ * `NodePanelBody` (workflow/panels/property-panel.tsx) is the only mount site and
+ * it always passes BOTH the frame's node id and its data — the panels have
  * always destructured `data`, the slot type just never admitted it.
  */
 export interface NodePanelProps<TData = BaseNodeData> {

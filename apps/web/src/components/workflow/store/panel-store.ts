@@ -6,26 +6,58 @@ import { safeLocalStorage } from '~/lib/safe-localstorage'
 import { useDockStore } from '~/stores/dock-store'
 import { storeEventBus } from './event-bus'
 import { useSelectionStore } from './selection-store'
-import type { PanelState } from './types'
 import { useWorkflowStore } from './workflow-store'
 
-/** Type for panel types in docked tabbed mode */
-type DockPanelType = 'property' | 'run' | 'settings'
+/**
+ * One screen of the editor panel's navigation stack.
+ *
+ * The stack is `[base]` or `[base, overlay]` and never deeper — Test and Settings
+ * are *peers*, so opening one while the other is up replaces it rather than
+ * burying it. That keeps the back chevron unambiguous: it always returns to the
+ * node. See `plans/workflow/panel-nav-stack.md` §3.
+ */
+export type PanelFrame =
+  | { kind: 'node'; nodeId: string }
+  | { kind: 'empty' }
+  | { kind: 'run' }
+  | { kind: 'settings' }
 
-// import { useNodeStore } from './node-store'
-interface PanelStore extends PanelState {
-  // Panel actions
-  openPanel: (panel: PanelState['activePanel'], data?: any) => void
-  closePanel: () => void
-  togglePanel: (panel: PanelState['activePanel']) => void
-  togglePinned: () => void
+/** Frames pushed *over* the base by a toolbar action. */
+export type OverlayKind = 'run' | 'settings'
 
-  // Panel size
+/** Stable NavStack key for a frame. Base and overlay kinds draw from disjoint
+ *  keyspaces, so a key can never appear twice in one stack. */
+export function frameKey(frame: PanelFrame): string {
+  return frame.kind === 'node' ? `node:${frame.nodeId}` : frame.kind
+}
+
+const EMPTY_BASE: PanelFrame = { kind: 'empty' }
+
+interface PanelStore {
+  /** `[]` = drawer closed. `[base]` or `[base, overlay]` otherwise. */
+  frames: PanelFrame[]
+
+  /** Replace the base frame. Pops any overlay — clicking a node means "show me
+   *  that node", and its run output already lives on the node's Result tab. */
+  setBase: (frame: PanelFrame) => void
+  /** Canvas deselect. Keeps the base when pinned. Drops the drawer entirely when
+   *  no overlay is up, since a bare "Select a node" panel is just noise. */
+  clearBase: () => void
+  /** Push (or replace) the overlay above whatever base is current. */
+  openOverlay: (kind: OverlayKind) => void
+  /** Drop the overlay, revealing the base. */
+  popOverlay: () => void
+  /** Close the whole drawer. */
+  closeDrawer: () => void
+  /** Close `kind` if it is the current overlay; no-op otherwise. */
+  closeOverlay: (kind: OverlayKind) => void
+
+  // Panel size (overlay mode; docked width lives in `useDockStore`)
+  panelWidth: number
   setPanelWidth: (width: number) => void
 
-  // Panel data
-  setPanelData: (data: any) => void
-  updatePanelData: (updates: any) => void
+  isPinned: boolean
+  togglePinned: () => void
 
   // Sidebar panels
   leftSidebarOpen: boolean
@@ -39,19 +71,9 @@ interface PanelStore extends PanelState {
   openModal: (modal: string, data?: any) => void
   closeModal: () => void
 
-  // Run panel
-  runPanelOpen: boolean
+  // Run panel tab
   runPanelTab: 'input' | 'result' | 'detail' | 'tracing'
-  openRunPanel: () => void
-  closeRunPanel: () => void
   setRunPanelTab: (tab: 'input' | 'result' | 'detail' | 'tracing') => void
-
-  // Settings panel
-  settingsPanelOpen: boolean
-  openSettingsPanel: () => void
-  closeSettingsPanel: () => void
-  getSettingsPanelWidth: () => number
-  getSettingsPanelNested: () => boolean
 
   // History popover
   historyPopoverOpen: boolean
@@ -71,35 +93,39 @@ interface PanelStore extends PanelState {
   // Base panel tab state
   basePanelActiveTab: 'settings' | 'input' | 'result'
   setBasePanelTab: (tab: 'settings' | 'input' | 'result') => void
-
-  // Panel stacking
-  panelStack: Array<DockPanelType>
-  addToStack: (panel: DockPanelType) => void
-  removeFromStack: (panel: DockPanelType) => void
-  clearStack: () => void
-  getPanelPosition: (panel: DockPanelType) => number
-  getPropertyPanelWidth: () => number
-  getRunPanelWidth: () => number
-  getPropertyPanelNested: () => boolean
-  getRunPanelNested: () => boolean
-
-  // Active dock tab (for tabbed mode when multiple panels are open)
-  activeDockTab: DockPanelType
-  setActiveDockTab: (tab: DockPanelType) => void
 }
 
-export type { DockPanelType }
+// ── Selectors ────────────────────────────────────────────────────────────────
+
+/** The frame the drawer is currently showing. */
+export const selectTopFrame = (s: PanelStore): PanelFrame | undefined =>
+  s.frames[s.frames.length - 1]
+
+/** The frame underneath the overlay, if any. */
+export const selectBaseFrame = (s: PanelStore): PanelFrame | undefined => s.frames[0]
+
+/** True when `kind` is the frame on top. */
+export const selectIsOverlayOpen =
+  (kind: OverlayKind) =>
+  (s: PanelStore): boolean =>
+    selectTopFrame(s)?.kind === kind
+
+/**
+ * Whether the header should offer a back chevron. Depth alone isn't enough: an
+ * overlay opened with nothing selected sits on an `empty` base, and "back to
+ * nothing" is not a destination — those frames get a close button only.
+ */
+export const selectCanGoBack = (s: PanelStore): boolean =>
+  s.frames.length > 1 && s.frames[0]?.kind !== 'empty'
 
 /**
  * Create the panel store for managing UI panels
  */
 export const usePanelStore = create<PanelStore>()(
   subscribeWithSelector((set, get) => ({
-    activePanel: null,
-    panelData: null,
-    isPanelOpen: false,
+    frames: [],
+
     isPinned: safeLocalStorage.get('workflow-panel-pinned') === 'true',
-    // panelWidth: 320,
     panelWidth: safeLocalStorage.get('workflow-node-panel-width')
       ? Number.parseFloat(safeLocalStorage.get('workflow-node-panel-width')!)
       : 500,
@@ -110,10 +136,7 @@ export const usePanelStore = create<PanelStore>()(
     activeModal: null,
     modalData: null,
 
-    runPanelOpen: false,
     runPanelTab: 'input',
-
-    settingsPanelOpen: false,
 
     historyPopoverOpen: false,
 
@@ -123,108 +146,37 @@ export const usePanelStore = create<PanelStore>()(
 
     basePanelActiveTab: 'settings',
 
-    // Panel stacking
-    panelStack: [],
-
-    // Active dock tab
-    activeDockTab: 'property',
-
-    addToStack: (panel) => {
-      set((state) => {
-        const newStack = state.panelStack.filter((p) => p !== panel) // Remove if exists
-        return {
-          panelStack: [...newStack, panel], // Add to end
-          activeDockTab: panel, // Auto-select the newly opened panel
-        }
-      })
+    setBase: (frame) => {
+      set({ frames: [frame] })
     },
 
-    removeFromStack: (panel) => {
-      set((state) => ({ panelStack: state.panelStack.filter((p) => p !== panel) }))
+    clearBase: () => {
+      const { frames, isPinned } = get()
+      if (frames.length === 0) return
+      if (isPinned) return
+      // An overlay is up: keep it, but drop the record beneath it.
+      set({ frames: frames.length > 1 ? [EMPTY_BASE, frames[1]!] : [] })
     },
 
-    clearStack: () => {
-      set({ panelStack: [] })
+    openOverlay: (kind) => {
+      const { frames } = get()
+      set({ frames: [frames[0] ?? EMPTY_BASE, { kind }] })
     },
 
-    getPanelPosition: (panel) => {
-      const state = get()
-      return state.panelStack.indexOf(panel)
+    popOverlay: () => {
+      const { frames } = get()
+      if (frames.length < 2) return
+      const base = frames[0]!
+      set({ frames: base.kind === 'empty' ? [] : [base] })
     },
 
-    getPropertyPanelWidth: () => {
-      const state = get()
-      const position = state.panelStack.indexOf('property')
-      if (position === -1) return 0 // Panel closed
-      return position === 0 ? state.panelWidth : state.panelWidth - 30
+    closeOverlay: (kind) => {
+      if (selectTopFrame(get())?.kind !== kind) return
+      get().popOverlay()
     },
 
-    getRunPanelWidth: () => {
-      const state = get()
-      const position = state.panelStack.indexOf('run')
-      if (position === -1) return 0 // Panel closed
-      return position === 0 ? state.panelWidth : state.panelWidth - 30
-    },
-
-    getPropertyPanelNested: () => {
-      const state = get()
-      const position = state.panelStack.indexOf('property')
-      return position > 0 // nested if not first
-    },
-
-    getRunPanelNested: () => {
-      const state = get()
-      const position = state.panelStack.indexOf('run')
-      return position > 0 // nested if not first
-    },
-
-    getSettingsPanelWidth: () => {
-      const state = get()
-      const position = state.panelStack.indexOf('settings')
-      if (position === -1) return 0 // Panel closed
-      return position === 0 ? state.panelWidth : state.panelWidth - 30
-    },
-
-    getSettingsPanelNested: () => {
-      const state = get()
-      const position = state.panelStack.indexOf('settings')
-      return position > 0 // nested if not first
-    },
-
-    openPanel: (panel, data) => {
-      const actions = get()
-      // Close settings panel when opening property panel - they are mutually exclusive
-      if (panel === 'properties' && get().settingsPanelOpen) {
-        actions.closeSettingsPanel()
-      }
-      set({ activePanel: panel, panelData: data, isPanelOpen: true })
-      if (panel === 'properties') {
-        actions.addToStack('property')
-      }
-    },
-
-    closePanel: () => {
-      const actions = get()
-      const currentPanel = get().activePanel
-      set({
-        activePanel: null,
-        panelData: null,
-        isPanelOpen: false,
-        basePanelActiveTab: 'settings',
-      })
-      if (currentPanel === 'properties') {
-        actions.removeFromStack('property')
-      }
-    },
-
-    togglePanel: (panel) => {
-      const state = get()
-
-      if (state.activePanel === panel && state.isPanelOpen) {
-        get().closePanel()
-      } else {
-        get().openPanel(panel)
-      }
+    closeDrawer: () => {
+      set({ frames: [], basePanelActiveTab: 'settings' })
     },
 
     togglePinned: () => {
@@ -236,7 +188,7 @@ export const usePanelStore = create<PanelStore>()(
     },
 
     setPanelWidth: (width) => {
-      localStorage.setItem('workflow-node-panel-width', `${width}`)
+      safeLocalStorage.set('workflow-node-panel-width', `${width}`)
       const newWidth = Math.max(200, Math.min(600, width))
       set({ panelWidth: newWidth })
 
@@ -262,16 +214,6 @@ export const usePanelStore = create<PanelStore>()(
       }
     },
 
-    setPanelData: (data) => {
-      set({ panelData: data })
-    },
-
-    updatePanelData: (updates) => {
-      set((state) => ({
-        panelData: state.panelData ? { ...state.panelData, ...updates } : updates,
-      }))
-    },
-
     toggleLeftSidebar: () => {
       set((state) => ({ leftSidebarOpen: !state.leftSidebarOpen }))
     },
@@ -286,18 +228,6 @@ export const usePanelStore = create<PanelStore>()(
 
     closeModal: () => {
       set({ activeModal: null, modalData: null })
-    },
-
-    openRunPanel: () => {
-      const actions = get()
-      set({ runPanelOpen: true })
-      actions.addToStack('run')
-    },
-
-    closeRunPanel: () => {
-      const actions = get()
-      set({ runPanelOpen: false })
-      actions.removeFromStack('run')
     },
 
     setRunPanelTab: (tab) => {
@@ -328,99 +258,51 @@ export const usePanelStore = create<PanelStore>()(
       set((state) => ({ helpOverlayOpen: !state.helpOverlayOpen }))
     },
 
-    openSettingsPanel: () => {
-      const actions = get()
-      // Close property panel - settings and property are mutually exclusive
-      if (get().activePanel === 'properties') {
-        actions.closePanel()
-      }
-      set({ settingsPanelOpen: true })
-      actions.addToStack('settings')
-    },
-
-    closeSettingsPanel: () => {
-      const actions = get()
-      set({ settingsPanelOpen: false })
-      actions.removeFromStack('settings')
-    },
-
     setBasePanelTab: (tab) => {
       set({ basePanelActiveTab: tab })
     },
-
-    setActiveDockTab: (tab: DockPanelType) => {
-      set({ activeDockTab: tab })
-    },
   }))
 )
+
+/** Center the canvas on a node, offsetting for the overlay panel when undocked. */
+const centerOnNode = (nodeId: string, duration: number) => {
+  const panelWidth = usePanelStore.getState().panelWidth
+  const isDocked = useDockStore.getState().isDocked
+  const isDesktop = window.matchMedia('(min-width: 1024px)').matches
+  // When docked the canvas is already shrunk, so no offset is needed.
+  const effectivelyDocked = isDocked && isDesktop
+
+  setTimeout(() => {
+    window.dispatchEvent(
+      new CustomEvent('workflow:centerOnNode', {
+        detail: {
+          nodeId,
+          offset: effectivelyDocked ? { x: 0, y: 0 } : { x: -panelWidth / 2, y: 0 },
+          animation: { duration },
+        },
+      })
+    )
+  }, 100)
+}
 
 // Helper function to handle panel logic based on selection
 const handleSelectionPanelLogic = (nodes: string[], edges: string[]) => {
   const store = usePanelStore.getState()
 
-  // Open property panel for single node selection
+  // Single node selection — this becomes the base frame, replacing any overlay.
   if (nodes.length === 1 && edges.length === 0) {
-    // Import NodeStore to check node type
-    // const { useNodeStore } = require('./node-store')
-    // const nodeStore = useNodeStore.getState()
-    // const node = nodeStore.getNode(nodes[0])
-
-    // Skip opening panel for note nodes
-    // if (node?.type === 'note') {
-    //   // Close panel if it's open
-    //   if (store.activePanel === 'properties') {
-    //     store.closePanel()
-    //   }
-    //   // Just center the node without panel offset
-    //   setTimeout(() => {
-    //     window.dispatchEvent(
-    //       new CustomEvent('workflow:centerOnNode', {
-    //         detail: { nodeId: nodes[0], animation: { duration: 300 } },
-    //       })
-    //     )
-    //   }, 100)
-    //   return
-    // }
-
-    store.openPanel('properties', { nodeId: nodes[0] })
-
-    // Center the node with offset to account for the property panel
-    // Use the panel width from the store which is already synced with localStorage
-    const panelWidth = store.panelWidth
-
-    // Check if docked - when docked, canvas is already shrunk so no offset needed
-    const isDocked = useDockStore.getState().isDocked
-    const isDesktop = window.matchMedia('(min-width: 1024px)').matches
-    const effectivelyDocked = isDocked && isDesktop
-
-    // Dispatch center event with offset (negative x to shift left)
-    // We offset by half the panel width to center in the visible area
-    // When docked, no offset is needed since canvas is already shrunk
-    setTimeout(() => {
-      window.dispatchEvent(
-        new CustomEvent('workflow:centerOnNode', {
-          detail: {
-            nodeId: nodes[0],
-            offset: effectivelyDocked ? { x: 0, y: 0 } : { x: -panelWidth / 2, y: 0 },
-            animation: { duration: 300 },
-          },
-        })
-      )
-    }, 100) // Small delay to ensure panel is opening
+    store.setBase({ kind: 'node', nodeId: nodes[0]! })
+    centerOnNode(nodes[0]!, 300)
   }
-  // Open property panel for single edge selection
-  else if (edges.length === 1 && nodes.length === 0) {
-    store.openPanel('properties', { edgeId: edges[0] })
-  }
-  // Close panel for no selection, multi-selection, or any other case (unless pinned)
+  // Anything else — no selection, an edge, or a multi-selection. Edges have no
+  // panel of their own (the node panel is resolved from the selected *node*), so
+  // they clear the base rather than opening an empty frame.
   else {
-    if (store.activePanel === 'properties' && !store.isPinned) {
-      store.closePanel()
-    }
+    store.clearBase()
   }
 }
 
-// Listen for selection changes to update property panel
+// Listen for selection changes to update the base frame
 storeEventBus.on('selection:changed', ({ nodes, edges }) => {
   const workflowStore = useWorkflowStore.getState()
 
@@ -437,20 +319,9 @@ storeEventBus.on('selection:changed', ({ nodes, edges }) => {
 storeEventBus.on('drag:ended', ({ nodeIds }) => {
   // Small delay to ensure ReactFlow selection state is settled
   setTimeout(() => {
-    // For single node drag, open the panel for that node
+    // For single node drag, show the panel for that node
     if (nodeIds && nodeIds.length === 1) {
-      const store = usePanelStore.getState()
-
-      // Import NodeStore to check node type
-      // const nodeStore = useNodeStore.getState()
-      // const node = nodeStore.getNode(nodeIds[0])
-
-      // Skip opening panel for note nodes
-      // if (node?.type === 'note') {
-      //   return
-      // }
-
-      store.openPanel('properties', { nodeId: nodeIds[0] })
+      usePanelStore.getState().setBase({ kind: 'node', nodeId: nodeIds[0]! })
     }
   }, 50) // Small delay to ensure state is settled
 })

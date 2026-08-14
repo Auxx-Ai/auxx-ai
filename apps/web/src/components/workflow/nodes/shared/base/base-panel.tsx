@@ -3,7 +3,6 @@
 import type { JsonSchema } from '@auxx/lib/json-schema/client'
 import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Button } from '@auxx/ui/components/button'
-import { DrawerHeader } from '@auxx/ui/components/drawer'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,7 +47,6 @@ import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { AppAccountPopover } from '~/components/apps/ui/app-account-popover'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { AppWithStatusIcon } from '~/components/apps/ui/app-with-status-icon'
-import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 // Hooks
 import {
@@ -60,6 +58,7 @@ import {
   useRunSingleNode,
   useTitleValidation,
 } from '~/components/workflow/hooks'
+import { PanelFrameHeader } from '~/components/workflow/panels/panel-frame-chrome'
 // Store imports
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 // types
@@ -197,7 +196,6 @@ export const BasePanel = memo<BasePanelProps>(
     // Debounce setInputs to prevent double renders (local state + nodeData update)
     const debouncedSetInputs = useDebouncedCallback(setInputs, 300)
 
-    const closePanel = usePanelStore((state) => state.closePanel)
     const isPinned = usePanelStore((state) => state.isPinned)
     const togglePinned = usePanelStore((state) => state.togglePinned)
 
@@ -230,8 +228,7 @@ export const BasePanel = memo<BasePanelProps>(
     const { addNode } = useNodeAddition()
 
     // Node interaction handlers
-    const { handleCopyNode, handleDeleteNode, handleCenterOnNode, handleSelectAll } =
-      useNodesInteractions()
+    const { handleCopyNode, handleDeleteNode, handleCenterOnNode } = useNodesInteractions()
 
     const isMountedRef = useRef(true)
 
@@ -394,11 +391,12 @@ export const BasePanel = memo<BasePanelProps>(
     }, [nodeType])
 
     return (
-      <ScrollArea
-        className='flex-1 h-full w-full flex flex-col [--sticky-offset:89px]'
-        fadeClassName=''
-        scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
-        <DrawerHeader
+      <>
+        {/* Header lives OUTSIDE the ScrollArea — it portals into the panel
+            drawer's host slot, so it swaps instantly on navigation instead of
+            sliding with the body, and the tab strip below can sticky to `top-0`
+            of the scrollport instead of a hardcoded header-height offset. */}
+        <PanelFrameHeader
           icon={
             appContext ? (
               <AppPanelIcon
@@ -440,10 +438,6 @@ export const BasePanel = memo<BasePanelProps>(
               )}
             </div>
           }
-          onClose={() => {
-            handleSelectAll(false)
-            closePanel()
-          }}
           actions={
             <>
               <Tooltip content='Center viewport on this node'>
@@ -466,8 +460,6 @@ export const BasePanel = memo<BasePanelProps>(
                   {isPinned ? <PinOff /> : <Pin />}
                 </Button>
               </Tooltip>
-              <DockToggleButton size='icon-sm' />
-
               {!isReadOnly && (
                 <DropdownMenu modal={false}>
                   <DropdownMenuTrigger asChild>
@@ -553,106 +545,112 @@ export const BasePanel = memo<BasePanelProps>(
               />
             </div>
           </CollapseWrap>
-        </DrawerHeader>
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) => {
-            if (isBasePanelTab(value)) setActiveTab(value)
-          }}
-          className='flex-1 flex flex-col '>
-          <div className='w-full border-b flex flex-col flex-1'>
-            <TabsList
-              variant='outline'
-              className='sticky top-[var(--sticky-offset)] z-9 bg-background/60 backdrop-blur-sm'>
-              <TabsTrigger value='settings' variant='outline' size='sm'>
-                <Cog />
-                Settings
-              </TabsTrigger>
+        </PanelFrameHeader>
+
+        <ScrollArea
+          className='flex-1 min-h-0 w-full flex flex-col'
+          fadeClassName=''
+          scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => {
+              if (isBasePanelTab(value)) setActiveTab(value)
+            }}
+            className='flex-1 flex flex-col '>
+            <div className='w-full border-b flex flex-col flex-1'>
+              <TabsList
+                variant='outline'
+                className='sticky top-0 z-9 bg-background/60 backdrop-blur-sm'>
+                <TabsTrigger value='settings' variant='outline' size='sm'>
+                  <Cog />
+                  Settings
+                </TabsTrigger>
+                {nodeDefinition?.canRunSingle && (
+                  <>
+                    {!isReadOnly && (
+                      <TabsTrigger value='input' variant='outline' size='sm'>
+                        <TextCursorInput />
+                        Input
+                      </TabsTrigger>
+                    )}
+                    <TabsTrigger value='result' variant='outline' size='sm'>
+                      <Medal />
+                      Result
+                    </TabsTrigger>
+                  </>
+                )}
+                {appContext && (
+                  <div className='ml-auto'>
+                    <AppAccountPopover
+                      appId={appContext.appId}
+                      value={effectiveConnectionId}
+                      valueIsDefault={!appContext.connectionId}
+                      onPick={(credId) => appContext.onConnectionChange?.(credId)}
+                      onConnected={(credId) => appContext.onConnectionChange?.(credId)}
+                      // Only a pinned node has something to unpin — an unbound one
+                      // already follows the default, so "Remove" would be a no-op.
+                      onRemove={
+                        appContext.connectionId
+                          ? () => appContext.onConnectionChange?.(undefined)
+                          : undefined
+                      }
+                      trigger={
+                        <AppSettingsTrigger
+                          appId={appContext.appId}
+                          connectionId={effectiveConnectionId}
+                        />
+                      }
+                      appSettings={{
+                        appSlug: appContext.appSlug,
+                        installationType: appContext.installationType,
+                        returnTo: pathname,
+                      }}
+                    />
+                  </div>
+                )}
+              </TabsList>
+              <TabsContent value='settings' className='flex-1 flex flex-col mt-0'>
+                <div className='flex-1 flex-col flex'>
+                  <div className='flex-1 flex flex-col'>{children}</div>
+
+                  {/* Next Step Section */}
+                  {showNextStep && data && (
+                    <>
+                      {isTrigger && <ReplaceTrigger nodeId={nodeId} nodeType={nodeType} />}
+                      <div className='border-t bg-background sticky bottom-0 z-10 max-h-[211px] overflow-y-auto'>
+                        <div className='p-3'>
+                          <div className='mb-2 text-xs font-semibold uppercase text-muted-foreground'>
+                            Next Steps
+                          </div>
+                          <NextStep data={data} nodeId={nodeId} />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </TabsContent>
               {nodeDefinition?.canRunSingle && (
                 <>
                   {!isReadOnly && (
-                    <TabsTrigger value='input' variant='outline' size='sm'>
-                      <TextCursorInput />
-                      Input
-                    </TabsTrigger>
+                    <TabsContent value='input' className='flex-1 flex flex-col p-0 mt-0'>
+                      <SingleRunInputTab nodeId={nodeId} data={data} onRun={handleRun} />
+                    </TabsContent>
                   )}
-                  <TabsTrigger value='result' variant='outline' size='sm'>
-                    <Medal />
-                    Result
-                  </TabsTrigger>
+                  <TabsContent value='result' className='flex-1 flex flex-col p-0 mt-0'>
+                    <SingleRunResultTab
+                      nodeId={nodeId}
+                      nodeType={nodeType}
+                      onRun={handleRun}
+                      onApplySchema={handleApplySchema}
+                      inferredSchema={nodeData?.inferredSchema}
+                    />
+                  </TabsContent>
                 </>
               )}
-              {appContext && (
-                <div className='ml-auto'>
-                  <AppAccountPopover
-                    appId={appContext.appId}
-                    value={effectiveConnectionId}
-                    valueIsDefault={!appContext.connectionId}
-                    onPick={(credId) => appContext.onConnectionChange?.(credId)}
-                    onConnected={(credId) => appContext.onConnectionChange?.(credId)}
-                    // Only a pinned node has something to unpin — an unbound one
-                    // already follows the default, so "Remove" would be a no-op.
-                    onRemove={
-                      appContext.connectionId
-                        ? () => appContext.onConnectionChange?.(undefined)
-                        : undefined
-                    }
-                    trigger={
-                      <AppSettingsTrigger
-                        appId={appContext.appId}
-                        connectionId={effectiveConnectionId}
-                      />
-                    }
-                    appSettings={{
-                      appSlug: appContext.appSlug,
-                      installationType: appContext.installationType,
-                      returnTo: pathname,
-                    }}
-                  />
-                </div>
-              )}
-            </TabsList>
-            <TabsContent value='settings' className='flex-1 flex flex-col mt-0'>
-              <div className='flex-1 flex-col flex'>
-                <div className='flex-1 flex flex-col'>{children}</div>
-
-                {/* Next Step Section */}
-                {showNextStep && data && (
-                  <>
-                    {isTrigger && <ReplaceTrigger nodeId={nodeId} nodeType={nodeType} />}
-                    <div className='border-t bg-background sticky bottom-0 z-10 max-h-[211px] overflow-y-auto'>
-                      <div className='p-3'>
-                        <div className='mb-2 text-xs font-semibold uppercase text-muted-foreground'>
-                          Next Steps
-                        </div>
-                        <NextStep data={data} nodeId={nodeId} />
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </TabsContent>
-            {nodeDefinition?.canRunSingle && (
-              <>
-                {!isReadOnly && (
-                  <TabsContent value='input' className='flex-1 flex flex-col p-0 mt-0'>
-                    <SingleRunInputTab nodeId={nodeId} data={data} onRun={handleRun} />
-                  </TabsContent>
-                )}
-                <TabsContent value='result' className='flex-1 flex flex-col p-0 mt-0'>
-                  <SingleRunResultTab
-                    nodeId={nodeId}
-                    nodeType={nodeType}
-                    onRun={handleRun}
-                    onApplySchema={handleApplySchema}
-                    inferredSchema={nodeData?.inferredSchema}
-                  />
-                </TabsContent>
-              </>
-            )}
-          </div>
-        </Tabs>
-      </ScrollArea>
+            </div>
+          </Tabs>
+        </ScrollArea>
+      </>
     )
   }
 )
