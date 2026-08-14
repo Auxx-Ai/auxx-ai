@@ -62,22 +62,34 @@ export const pollingSyncScannerJob = async (ctx: JobContext<PollingSyncScannerJo
           eq(schema.Integration.enabled, true),
           inArray(schema.Integration.provider, ['google', 'outlook', 'imap']),
           isNull(schema.Integration.deletedAt),
-          // Effective polling mode, mirroring resolveEffectiveSyncMode: explicit
-          // 'polling', or anything-but-'webhook' when the provider's auto mode
-          // resolves to polling.
+          // Two selection arms (FAILED is the relaunch job's; active stages skip):
           or(
-            eq(schema.Integration.syncMode, 'polling'),
+            // 1. An in-flight two-phase pipeline is driven to completion REGARDLESS of
+            //    sync mode. Webhook-mode channels enter these stages too — the Outlook
+            //    arm-on-connect flow kicks messageListFetchJob for the initial backfill
+            //    (webhook-push-migration plan Phase 2.4), and only this scanner advances
+            //    MESSAGES_IMPORT_PENDING → messagesImportJob. Excluding webhook rows here
+            //    stranded that backfill at MESSAGES_IMPORT_PENDING forever with zero
+            //    messages imported. Draining ends at IDLE, which the arm below ignores
+            //    for webhook rows — so this never turns into periodic polling.
+            inArray(schema.Integration.syncStage, [
+              'MESSAGE_LIST_FETCH_PENDING',
+              'MESSAGES_IMPORT_PENDING',
+            ]),
+            // 2. New cycles (from IDLE) start ONLY for effective polling mode, mirroring
+            //    resolveEffectiveSyncMode: explicit 'polling', or anything-but-'webhook'
+            //    when the provider's auto mode resolves to polling.
             and(
-              ne(schema.Integration.syncMode, 'webhook'),
-              inArray(schema.Integration.provider, [...autoPollingProviders])
+              eq(schema.Integration.syncStage, 'IDLE'),
+              or(
+                eq(schema.Integration.syncMode, 'polling'),
+                and(
+                  ne(schema.Integration.syncMode, 'webhook'),
+                  inArray(schema.Integration.provider, [...autoPollingProviders])
+                )
+              )
             )
           ),
-          // Actionable stages only (FAILED is the relaunch job's; active stages skip)
-          inArray(schema.Integration.syncStage, [
-            'IDLE',
-            'MESSAGE_LIST_FETCH_PENDING',
-            'MESSAGES_IMPORT_PENDING',
-          ]),
           // Not throttled
           or(
             isNull(schema.Integration.throttleRetryAfter),
