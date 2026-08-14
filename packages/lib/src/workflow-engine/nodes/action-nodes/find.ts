@@ -27,6 +27,7 @@ import {
   isValidOperatorForField,
   RESOURCE_FIELD_REGISTRY,
   setEntityVariables,
+  toOutputShape,
 } from '../../../resources/registry'
 import type { TableId } from '../../../resources/registry/field-registry'
 import { getFieldOutputKey, type ResourceField } from '../../../resources/registry/field-types'
@@ -649,6 +650,30 @@ export class FindProcessor extends BaseNodeProcessor {
           result = queryResult.results
           resultCount = queryResult.results ? 1 : 0
         }
+      }
+
+      // Tier-A (static system table — thread/message/kb/…) results are raw
+      // Drizzle rows keyed by camelCase DB columns (`status`, `assigneeId`,
+      // `messageCount`, …), while the builder advertises fields by
+      // `getFieldOutputKey` (`thread_status`, `assignee_id`, …) — see §3.2/
+      // §10b step 4 of the variable-resolution deep dive. Merge in the
+      // declared aliases here, at write time, for BOTH find modes: the raw
+      // camelCase columns keep resolving (back-compat for hand-typed refs),
+      // and the declared systemAttribute paths start resolving too. A
+      // findMany item benefits the same way once assigned to `loop.item`.
+      // The custom-entity lanes (ResourceReference-backed) are untouched —
+      // they're correct today. Doing this BEFORE `outputData` is built below
+      // means the run trace shows the identical merged shape the written
+      // variable resolves to, not the raw row underneath — deliberate, since
+      // the trace already keys on the same identity as the variable (see the
+      // output-keying comment below); a findOne miss (`null`/`undefined`)
+      // passes through untouched.
+      if (!isCustomResourceId(resourceType)) {
+        result = Array.isArray(result)
+          ? result.map((row) => toOutputShape(row, resource.fields))
+          : result
+            ? toOutputShape(result, resource.fields)
+            : result
       }
 
       contextManager.log(

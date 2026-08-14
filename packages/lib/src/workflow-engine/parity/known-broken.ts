@@ -29,6 +29,10 @@
  * a fixed bug forces its own pin's removal instead of quietly rotting.
  */
 
+import { RESOURCE_FIELD_REGISTRY } from '../../resources/registry/field-registry'
+import { getFieldOutputKey } from '../../resources/registry/field-types'
+import { BaseType } from '../../resources/types'
+
 /** One pin: a predicate over the id/key, plus why it's pinned and where the fix lives. */
 interface Pin {
   test: (id: string) => boolean
@@ -45,30 +49,44 @@ function findPin(pins: Pin[], id: string): string | undefined {
 // =============================================================================
 
 /**
- * Tier-A (`thread`) findOne/findMany declared field paths, EXCEPT the two
- * coincidental matches (`id`, `subject`, whose `systemAttribute` string
- * happens to equal the raw Drizzle column name).
+ * Tier-A (`thread`) findOne/findMany declared field paths that are STILL
+ * broken after §10b step 4 (`toOutputShape`, `resources/registry/output-shape.ts`)
+ * — everything else in this family was retired by that fix.
  *
  * §3.2 (`plans/kopilot/workflow/10-variable-resolution-deep-dive.md`): the
  * palette advertises tier-A fields by `systemAttribute` (`thread_status`,
- * `assignee_id`, `message_count`, `last_message_at`, …), but find.ts stores
- * the RAW Drizzle row (camelCase columns: `status`, `assigneeId`,
- * `messageCount`, `lastMessageAt`, …) and tier-A resolution has no key
- * mapping — `resolveNestedObject` looks for `row['thread_status']`, which
- * doesn't exist. Confirmed by the real `RESOURCE_FIELD_REGISTRY.thread`
- * entries (`thread-fields.ts`): `status.systemAttribute === 'thread_status'`
- * but `status.dbColumn === 'status'`; same divergence for `assignee`,
- * `messageCount`, `lastMessageAt`, `firstMessageAt`, `closedAt`, `externalId`.
+ * `assignee_id`, `message_count`, `last_message_at`, …), but find.ts used to
+ * store the RAW Drizzle row (camelCase columns: `status`, `assigneeId`,
+ * `messageCount`, `lastMessageAt`, …) with no key mapping at all —
+ * `resolveNestedObject` looked for `row['thread_status']`, which never
+ * existed. `toOutputShape` now merges `getFieldOutputKey(field) →
+ * row[field.dbColumn]` aliases into the row at write time for every field
+ * that HAS a `dbColumn`, which retires every scalar in this family whose
+ * declared key differs from its column (`external_id`, `thread_status`,
+ * `message_count`, `first_message_at`, `last_message_at`, `closed_at`,
+ * `created_at`, `assignee_id`; `id`/`subject` already matched coincidentally
+ * and were never broken).
  *
- * Tier-A RELATION fields (`inbox`, `ticket`, `messages`, `tags`) are broken
- * for the compounding, structural reason in §3.4: tier A never stores a
- * `ResourceReference`, so there is no lazy-load lane to expand them through
- * at all — the raw row simply has no property by that name.
+ * Two field shapes remain genuinely unresolvable, both because
+ * `toOutputShape` only aliases a field that HAS a `dbColumn` — a field
+ * without one was never a candidate for this fix:
  *
- * Fix pointer: §10b step 4 — `toOutputShape(row, fields)` re-keys the row by
- * `getFieldOutputKey` at write time (the cheap, do-now fix); the full fix
- * (§10b proposal #1) unifies tier A onto the same `ResourceReference` lane
- * tier B/C already uses, which would additionally fix the relation fields.
+ * - **RELATION fields** (`inbox`, `ticket`, `messages`, `tags`): tier A never
+ *   stores a `ResourceReference`, so there is no lazy-load lane to expand
+ *   them through at all (§3.4) — the raw row simply has no property by that
+ *   name, and aliasing a nonexistent scalar column wouldn't help even if one
+ *   existed. Fix pointer: §10b proposal #1 (ResourceReference unification for
+ *   tier A).
+ * - **Scalar fields with NO `dbColumn`** (`readStatus`, the `visit*`
+ *   chat-capture fields, and the mail-builder's virtual query-only fields
+ *   `from`/`to`/`body`/`freeText`/`hasAttachments`/`hasDraft`/`sent`): these
+ *   are FieldValue-backed or cross-table-join-resolved, never present on the
+ *   raw `schema.Thread` row `find.ts` selects — there is no column for
+ *   `toOutputShape` to alias FROM. Same fix pointer as RELATION (proposal #1
+ *   would read these through the FieldValue/join lane instead of the raw row).
+ *
+ * Derived directly from the real `RESOURCE_FIELD_REGISTRY.thread` registry
+ * (not hand-copied), so a future field addition can't silently drift this set.
  *
  * findMany items go through the SAME per-element `resolveNestedObject` inside
  * the array-map branch of `resolveVariablePath` — the array itself is always
@@ -77,6 +95,12 @@ function findPin(pins: Pin[], id: string): string | undefined {
  * `harness.ts`'s `assertDeclaredResolvable`) — otherwise this whole family
  * would silently pass for findMany while genuinely broken.
  */
+const THREAD_STILL_BROKEN_OUTPUT_KEYS = new Set(
+  Object.values(RESOURCE_FIELD_REGISTRY.thread ?? {})
+    .filter((field) => field.type === BaseType.RELATION || !field.dbColumn)
+    .map((field) => getFieldOutputKey(field))
+)
+
 const TIER_A_FIELD_PATH_RE = /^[^.]+\.(thread|threads\[\*\])\.(.+)$/
 
 function tierAFieldPathPin(id: string): string | undefined {
@@ -84,12 +108,13 @@ function tierAFieldPathPin(id: string): string | undefined {
   if (!match) return undefined
   const rest = match[2]!
   const firstSegment = rest.split('.')[0]!.replace(/\[\*\]$/, '')
-  if (firstSegment === 'id' || firstSegment === 'subject') return undefined
+  if (!THREAD_STILL_BROKEN_OUTPUT_KEYS.has(firstSegment)) return undefined
   return (
-    '§3.2/§3.4: tier-A (thread) stores the raw Drizzle row, not a ResourceReference — ' +
-    'nested field access has no systemAttribute→dbColumn mapping (scalars) and no lazy-load ' +
-    'lane at all (relations). Fix: §10b step 4 (toOutputShape) for scalars, proposal #1 ' +
-    '(ResourceReference unification) for relations.'
+    '§3.2/§3.4, fixed by §10b step 4 (toOutputShape) for every scalar WITH a dbColumn — ' +
+    'this key is one of the two shapes toOutputShape cannot fix: a RELATION field (tier A ' +
+    'never stores a ResourceReference, so there is no lazy-load lane at all) or a scalar with ' +
+    'no dbColumn at all (FieldValue-backed or cross-table-join-resolved, never on the raw row). ' +
+    'Fix pointer: §10b proposal #1 (ResourceReference unification for tier A).'
   )
 }
 

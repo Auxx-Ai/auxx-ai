@@ -292,6 +292,34 @@ describe('Find node resolvability', () => {
     )
     expect(declared.length).toBeGreaterThan(5)
     await assertResolvability(ctx, written, declared, 'find.findOne.thread')
+
+    // §10b step 4 (toOutputShape) — the declared systemAttribute paths now
+    // resolve to the FIXTURE ROW'S ACTUAL VALUES, not just "not undefined".
+    // Was: `resolveNestedObject` read `row['thread_status']`, which never
+    // existed on the raw Drizzle row (`row.status` did) — every one of these
+    // interpolated to empty string. `THREAD_ROW` in `fixtures.ts` pins the
+    // exact camelCase-vs-systemAttribute divergence this proves fixed.
+    expect(await ctx.resolveVariablePath(`${nodeId}.thread.thread_status`)).toBe('OPEN')
+    expect(await ctx.resolveVariablePath(`${nodeId}.thread.assignee_id`)).toBe(
+      'usr_parity_assignee'
+    )
+    expect(await ctx.resolveVariablePath(`${nodeId}.thread.message_count`)).toBe(3)
+    expect(await ctx.resolveVariablePath(`${nodeId}.thread.last_message_at`)).toEqual(
+      THREAD_ROW.lastMessageAt
+    )
+    expect(await ctx.resolveVariablePath(`${nodeId}.thread.first_message_at`)).toEqual(
+      THREAD_ROW.firstMessageAt
+    )
+    expect(await ctx.resolveVariablePath(`${nodeId}.thread.created_at`)).toEqual(
+      THREAD_ROW.createdAt
+    )
+    // `external_id` is `null` on the fixture row (a present, resolvable
+    // `null` — not the absent-key `undefined` the bug used to produce).
+    expect(await ctx.resolveVariablePath(`${nodeId}.thread.external_id`)).toBeNull()
+    // The raw camelCase column keeps resolving too — hand-typed refs in
+    // existing workflows must not break (the merged-shape back-compat
+    // guarantee `toOutputShape`'s docblock promises).
+    expect(await ctx.resolveVariablePath(`${nodeId}.thread.status`)).toBe('OPEN')
   })
 
   it('findMany (custom entity Vendor) — declared ⊆ resolvable, written ⊆ declared, labels present', async () => {
@@ -349,6 +377,17 @@ describe('Find node resolvability', () => {
     )
     expect(declared.length).toBeGreaterThan(5)
     await assertResolvability(ctx, written, declared, 'find.findMany.thread')
+
+    // §10b step 4 — findMany items get the SAME merged shape as findOne, so
+    // `loop.item.<systemAttribute>` starts working too. Assert the actual
+    // per-item values, not just "the array is defined".
+    expect(await ctx.resolveVariablePath(`${nodeId}.threads[*].thread_status`)).toEqual([
+      'OPEN',
+      'OPEN',
+    ])
+    expect(await ctx.resolveVariablePath(`${nodeId}.threads[0].thread_status`)).toBe('OPEN')
+    expect(await ctx.resolveVariablePath(`${nodeId}.threads[1].subject`)).toBe(THREAD_ROW_2.subject)
+    expect(await ctx.resolveVariablePath(`${nodeId}.threads[*].message_count`)).toEqual([3, 3])
   })
 
   // §11-segment-walk-resolver §8 additions — the deliberate behavior changes
