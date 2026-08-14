@@ -55,6 +55,7 @@ export function useImportSSE({
     updated: 0,
     skipped: 0,
     failed: 0,
+    warnings: 0,
   })
   const [currentResolution, setCurrentResolution] = useState<SSEResolutionProgress | null>(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -149,6 +150,7 @@ export function useImportSSE({
           existingRecordId: data.existingRecordId,
           fields: data.fields,
           errors: data.errors,
+          warnings: data.warnings,
         })
       } catch (e) {
         console.error('Failed to parse planning:row event:', e)
@@ -223,7 +225,7 @@ export function useImportSSE({
     eventSource.addEventListener('execution:progress', (event) => {
       try {
         const data = JSON.parse(event.data)
-        setProgress({
+        setProgress((prev) => ({
           phase: 'executing',
           currentStrategy: data.strategy ?? null,
           rowsProcessed: data.processed ?? 0,
@@ -232,7 +234,8 @@ export function useImportSSE({
           updated: 0, // Worker doesn't distinguish yet
           skipped: 0,
           failed: data.failed ?? 0,
-        })
+          warnings: prev.warnings,
+        }))
       } catch (e) {
         console.error('Failed to parse execution:progress event:', e)
       }
@@ -253,6 +256,7 @@ export function useImportSSE({
           updated: stats.updated ?? 0,
           skipped: stats.skipped ?? 0,
           failed: stats.failed ?? 0,
+          warnings: stats.warnings ?? 0,
         })
         callbacksRef.current.onComplete?.({
           created: stats.created ?? 0,
@@ -261,6 +265,16 @@ export function useImportSSE({
         eventSource.close()
       } catch (e) {
         console.error('Failed to parse execution:complete event:', e)
+      }
+    })
+
+    // --- Row Warning Event (row imported, but a value was dropped) ---
+    eventSource.addEventListener('row:warning', (event) => {
+      try {
+        JSON.parse(event.data) // Validate payload; count is all the UI needs live
+        setProgress((prev) => ({ ...prev, warnings: prev.warnings + 1 }))
+      } catch (e) {
+        console.error('Failed to parse row:warning event:', e)
       }
     })
 

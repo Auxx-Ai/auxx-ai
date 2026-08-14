@@ -14,6 +14,8 @@ export interface PlanPreviewRow {
   existingRecordId?: string
   status: 'planned' | 'executing' | 'completed' | 'failed'
   errorMessage?: string
+  /** Non-fatal issues — the row still imports */
+  warningMessage?: string
   /** Resolved field values for display */
   fields: Record<string, unknown>
 }
@@ -135,6 +137,7 @@ export async function getPlanPreviewRows(
       existingRecordId: planRow.existingRecordId ?? undefined,
       status: (planRow.status as PlanPreviewRow['status']) ?? 'planned',
       errorMessage: planRow.errorMessage ?? undefined,
+      warningMessage: planRow.warningMessage ?? undefined,
       fields,
     }
   })

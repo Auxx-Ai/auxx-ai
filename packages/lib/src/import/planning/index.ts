@@ -21,8 +21,11 @@ export {
 } from './generate-plan'
 export {
   getPlanErrors,
+  getPlanWarnings,
   getPlanWithEstimates,
   type PlanError,
+  type PlanWarning,
+  type PlanWarningsResult,
   type PlanWithEstimates,
 } from './get-plan'
 export {

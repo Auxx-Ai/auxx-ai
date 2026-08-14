@@ -13,7 +13,12 @@ export interface RowExecutionResult {
   /** Full RecordId (entityDefinitionId:instanceId) - computed from context */
   recordId?: RecordId
   error?: string
+  /** Non-fatal issue (value dropped on conflict, create degraded to update) — the row imported */
+  warning?: string
 }
+
+/** Per-field write mode for the CRUD layer (multi fields append instead of whole-field set) */
+export type FieldWriteModes = Record<string, 'set' | 'add' | 'remove'>
 
 /** Batch execution result */
 export interface BatchExecutionResult {
@@ -33,6 +38,8 @@ export interface ExecutionResult {
     updated: number
     skipped: number
     failed: number
+    /** Rows that imported with at least one warning */
+    warnings: number
   }
   errors: Array<{
     rowIndex: number

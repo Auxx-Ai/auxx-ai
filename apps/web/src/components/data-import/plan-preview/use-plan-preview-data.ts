@@ -64,6 +64,7 @@ export function usePlanPreviewData(options: UsePlanPreviewDataOptions): UsePlanP
     dbData?.rows.map((row) => ({
       ...row,
       errors: row.errorMessage ? [row.errorMessage] : [],
+      warnings: row.warningMessage ? [row.warningMessage] : [],
     })) ?? []
   const rows = sseRows.length > 0 ? sseRows : dbRows
   const total = sseRows.length > 0 ? sseRows.length : (dbData?.total ?? 0)

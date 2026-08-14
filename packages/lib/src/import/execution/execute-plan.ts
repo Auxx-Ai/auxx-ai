@@ -3,10 +3,11 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { asc, eq } from 'drizzle-orm'
-import type { ExecutionProgress, ExecutionResult } from '../types/execution'
+import type { ExecutionProgress, ExecutionResult, FieldWriteModes } from '../types/execution'
 import type { ImportMappingProperty } from '../types/mapping'
 import type { ImportPlan, ImportPlanStrategy } from '../types/plan'
 import type { ValueResolution } from '../types/resolution'
+import type { BatchRecordData } from './execute-batch'
 import { type ExecuteStrategyContext, executeStrategy } from './execute-strategy'
 
 /** Options for executing a plan */
@@ -19,21 +20,22 @@ export interface ExecutePlanOptions {
   entityDefinitionId: string
   mappings: ImportMappingProperty[]
   resolutions: Map<string, ValueResolution>
+  /**
+   * Per-field write mode keyed by data key (customFieldId or targetFieldKey).
+   * Multi-value scalar targets carry `'add'` (append-as-alias); unlisted
+   * fields default to `'set'`.
+   */
+  fieldModes?: FieldWriteModes
+  /** Data keys of the identifier mapping (degrade-to-update on create conflicts) */
+  identifierKeys?: string[]
   /** Function to create a single record */
-  createRecord: (data: {
-    standardFields: Record<string, unknown>
-    customFields: Record<string, unknown>
-  }) => Promise<{ id: string }>
+  createRecord: (data: BatchRecordData) => Promise<{ id: string }>
   /** Function to update a single record */
-  updateRecord: (
-    id: string,
-    data: {
-      standardFields: Record<string, unknown>
-      customFields: Record<string, unknown>
-    }
-  ) => Promise<{ id: string }>
+  updateRecord: (id: string, data: BatchRecordData) => Promise<{ id: string }>
   /** Progress callback */
   onProgress?: (progress: ExecutionProgress) => void
+  /** Called when a row imports with a non-fatal warning */
+  onRowWarning?: (rowIndex: number, warning: string) => void | Promise<void>
 }
 
 /**
@@ -62,6 +64,7 @@ export async function executePlan(options: ExecutePlanOptions): Promise<Executio
   let totalUpdated = 0
   let totalSkipped = 0
   let totalFailed = 0
+  let totalWarnings = 0
   const errors: Array<{ rowIndex: number; error: string }> = []
 
   // Execute each strategy in order: create, update, skip
@@ -81,9 +84,12 @@ export async function executePlan(options: ExecutePlanOptions): Promise<Executio
       entityDefinitionId: options.entityDefinitionId,
       mappings: options.mappings,
       resolutions: options.resolutions,
+      fieldModes: options.fieldModes,
+      identifierKeys: options.identifierKeys,
       createRecord: options.createRecord,
       updateRecord: options.updateRecord,
       onProgress,
+      onRowWarning: options.onRowWarning,
     }
 
     const result = await executeStrategy(strategy as ImportPlanStrategy, ctx)
@@ -98,6 +104,7 @@ export async function executePlan(options: ExecutePlanOptions): Promise<Executio
     }
 
     totalFailed += result.failed
+    totalWarnings += result.warnings
 
     // Collect errors from failed rows
     const failedRows = await db.query.ImportPlanRow.findMany({
@@ -138,6 +145,7 @@ export async function executePlan(options: ExecutePlanOptions): Promise<Executio
       updated: totalUpdated,
       skipped: totalSkipped,
       failed: totalFailed,
+      warnings: totalWarnings,
     },
     errors,
     durationMs,

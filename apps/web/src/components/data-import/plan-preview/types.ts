@@ -19,6 +19,10 @@ export interface PlanPreviewRow {
   errors?: string[]
   /** Single error message - from DB query */
   errorMessage?: string
+  /** Non-fatal warnings — the row still imports */
+  warnings?: string[]
+  /** Single warning message - from DB query */
+  warningMessage?: string
   /** Row execution status */
   status?: 'planned' | 'executing' | 'completed' | 'failed'
 }

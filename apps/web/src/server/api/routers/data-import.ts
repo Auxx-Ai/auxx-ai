@@ -13,6 +13,7 @@ import {
   getMappedColumnsWithStats,
   getPlanErrors,
   getPlanPreviewRows,
+  getPlanWarnings,
   getPlanWithEstimates,
   getResolutionProgress,
   getUniqueValuesWithResolution,
@@ -505,6 +506,25 @@ export const dataImportRouter = createTRPCRouter({
       await requireImportJob(ctx.db, ctx.capabilities, ctx.session.organizationId, plan.importJobId)
 
       return getPlanErrors(ctx.db, input.planId, input.limit)
+    }),
+
+  /**
+   * Get plan warnings (rows that imported with non-fatal issues).
+   */
+  getPlanWarnings: capabilityProcedure
+    .input(z.object({ planId: z.string(), limit: z.number().optional().default(10) }))
+    .query(async ({ ctx, input }) => {
+      // Same plan → job resolution + gate as getPlanErrors.
+      const plan = await ctx.db.query.ImportPlan.findFirst({
+        where: eq(schema.ImportPlan.id, input.planId),
+        columns: { importJobId: true },
+      })
+      if (!plan) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Import plan not found' })
+      }
+      await requireImportJob(ctx.db, ctx.capabilities, ctx.session.organizationId, plan.importJobId)
+
+      return getPlanWarnings(ctx.db, input.planId, input.limit)
     }),
 
   /**

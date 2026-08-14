@@ -23,5 +23,11 @@ export {
   resolveRelationMatch,
 } from './relation'
 export { resolveSelectCreate, resolveSelectValue } from './select'
+export {
+  resolveEmailSplit,
+  resolvePhoneSplit,
+  resolveUrlSplit,
+  splitMultiValueCell,
+} from './split'
 export { resolveTextCuid, resolveTextValue } from './text'
 export { resolveUrl } from './url'

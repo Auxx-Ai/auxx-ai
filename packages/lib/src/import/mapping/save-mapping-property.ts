@@ -3,7 +3,8 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import type { SelectOption } from '@auxx/types/custom-field'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNotNull, ne } from 'drizzle-orm'
+import { ConflictError } from '../../errors'
 
 /** Relation configuration for a mapping */
 export interface RelationConfig {
@@ -24,14 +25,65 @@ export interface SaveMappingInput {
   options?: SelectOption[]
 }
 
+/** Minimal column shape for duplicate-target validation */
+export interface MappedColumnRef {
+  sourceColumnIndex: number
+  sourceColumnName?: string | null
+  targetFieldKey: string | null
+}
+
+/**
+ * Reject a second column mapped to the same target field. Two columns feeding
+ * one field used to be a SILENT last-mapping-wins drop in `buildRecordData` —
+ * the earlier column's data vanished without a trace. Multi-column → one-field
+ * mapping is not a feature; it is a validation error at mapping time.
+ *
+ * @throws ConflictError naming the already-mapped column
+ */
+export function assertNoDuplicateTargetMapping(
+  existing: MappedColumnRef[],
+  input: { columnIndex: number; targetFieldKey: string | null }
+): void {
+  if (!input.targetFieldKey) return
+  const duplicate = existing.find(
+    (m) => m.sourceColumnIndex !== input.columnIndex && m.targetFieldKey === input.targetFieldKey
+  )
+  if (duplicate) {
+    const columnLabel = duplicate.sourceColumnName ?? `Column ${duplicate.sourceColumnIndex + 1}`
+    throw new ConflictError(
+      `"${columnLabel}" is already mapped to this field. Unmap it first — two columns cannot feed one field.`
+    )
+  }
+}
+
 /**
  * Save a column mapping property.
  * Also resets allowPlanGeneration since mappings changed.
+ * Rejects mapping a second column to a field another column already targets.
  *
  * @param db - Database instance
  * @param input - Mapping input
  */
 export async function saveMappingProperty(db: Database, input: SaveMappingInput): Promise<void> {
+  // Duplicate-target guard: two columns must never feed one field.
+  if (input.targetFieldKey) {
+    const existing = await db
+      .select({
+        sourceColumnIndex: schema.ImportMappingProperty.sourceColumnIndex,
+        sourceColumnName: schema.ImportMappingProperty.sourceColumnName,
+        targetFieldKey: schema.ImportMappingProperty.targetFieldKey,
+      })
+      .from(schema.ImportMappingProperty)
+      .where(
+        and(
+          eq(schema.ImportMappingProperty.importMappingId, input.mappingId),
+          ne(schema.ImportMappingProperty.sourceColumnIndex, input.columnIndex),
+          isNotNull(schema.ImportMappingProperty.targetFieldKey)
+        )
+      )
+    assertNoDuplicateTargetMapping(existing, input)
+  }
+
   // Build resolution config if we have options or relation data
   let resolutionConfig: string | null = null
   if (input.matchField || input.relationConfig || input.options) {

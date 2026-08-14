@@ -43,6 +43,7 @@ export function getIdentifiableFields(resource: Resource): ImportableField[] {
         required: false,
         isRelation: !!field.relationship,
         isIdentifier: true,
+        multi: !field.relationship && field.options?.multi === true,
         group: 'identifier' as const,
       }
     })

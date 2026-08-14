@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { getPublishingClient } from '@auxx/redis'
 import { toRecordId } from '@auxx/types/resource'
 import { eq } from 'drizzle-orm'
+import { getCachedResource } from '../../cache'
 import {
   createEventPublisher,
   executePlan,
@@ -13,8 +14,9 @@ import {
   markJobExecuting,
   markJobFailed,
 } from '../../import'
-import type { ImportMappingProperty, ImportPlan } from '../../import/types'
+import type { FieldWriteModes, ImportMappingProperty, ImportPlan } from '../../import/types'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
+import { getFieldOutputKey } from '../../resources/registry/field-types'
 import type { JobContext } from '../types'
 
 const logger = createScopedLogger('execute-plan-job')
@@ -106,6 +108,33 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
     await crudHandler.warmCache(entityDefinitionId)
     logger.debug('Cache warmed for import', { entityDefinitionId })
 
+    // B3: multi-value scalar targets (`options.multi`) get write mode 'add' —
+    // matched rows APPEND new values instead of whole-field-setting (which
+    // would wipe the record's alias list). Keys mirror how buildRecordData
+    // keys the data: customFieldId for custom fields, targetFieldKey otherwise.
+    const resource = await getCachedResource(organizationId, entityDefinitionId)
+    const fieldModes: FieldWriteModes = {}
+    for (const mapping of mappings) {
+      if (!mapping.targetFieldKey || mapping.targetType === 'skip') continue
+      const field = resource?.fields.find((f) =>
+        mapping.customFieldId
+          ? f.id === mapping.customFieldId
+          : getFieldOutputKey(f) === mapping.targetFieldKey
+      )
+      if (field && !field.relationship && field.options?.multi === true) {
+        fieldModes[mapping.customFieldId ?? mapping.targetFieldKey] = 'add'
+      }
+    }
+
+    // Data keys of the identifier mapping — a uniqueness conflict here on a
+    // `create` row degrades to update-by-append (in-file duplicate emails).
+    const identifierFieldKey = importJob.importMapping.identifierFieldKey
+    const identifierKeys = identifierFieldKey
+      ? mappings
+          .filter((m) => m.targetFieldKey === identifierFieldKey)
+          .map((m) => m.customFieldId ?? m.targetFieldKey!)
+      : []
+
     // B2: the import writes with `skipEvents: true` (below), so build a manifest
     // collector to capture subscribed field/lifecycle changes for record rules. No-op
     // stub (zero cost) when the org has no enabled rules on this def.
@@ -115,6 +144,7 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
     const createRecord = async (data: {
       standardFields: Record<string, unknown>
       customFields: Record<string, unknown>
+      modes?: FieldWriteModes
     }) => {
       logger.debug('createRecord called', { entityDefinitionId })
 
@@ -166,6 +196,7 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
       data: {
         standardFields: Record<string, unknown>
         customFields: Record<string, unknown>
+        modes?: FieldWriteModes
       }
     ) => {
       logger.debug('updateRecord called', { id, entityDefinitionId, hasId: !!id })
@@ -204,10 +235,10 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
         }
       }
 
-      // Use UnifiedCrudHandler with skipEvents.
-      // `modes` is undefined — every field falls through to 'set' (today's
-      // behavior); `options` moved to the fourth positional slot.
-      const instance = await crudHandler.update(recordId, mergedData, undefined, {
+      // Use UnifiedCrudHandler with skipEvents. `data.modes` routes multi-value
+      // scalar fields through the 'add' bucket (append + server-side dedup);
+      // unlisted fields fall through to 'set' as before.
+      const instance = await crudHandler.update(recordId, mergedData, data.modes, {
         skipEvents: true,
       })
       if (captured) manifest.recordChange(recordId, captured)
@@ -234,8 +265,13 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
       entityDefinitionId: importJob.importMapping.entityDefinitionId,
       mappings,
       resolutions,
+      fieldModes,
+      identifierKeys,
       createRecord,
       updateRecord,
+      onRowWarning: async (rowIndex, message) => {
+        await publishEvent({ type: 'row:warning', rowIndex, message })
+      },
       onProgress: async (progress) => {
         const percentage = Math.round((progress.processed / progress.total) * 100)
         await job.updateProgress(percentage)

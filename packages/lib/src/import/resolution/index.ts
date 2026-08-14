@@ -43,14 +43,18 @@ export {
   resolveDecimal,
   resolveDomain,
   resolveEmail,
+  resolveEmailSplit,
   resolveInteger,
   resolveMultiselectSplit,
   resolvePhone,
+  resolvePhoneSplit,
   resolveRelationCreate,
   resolveRelationMatch,
   resolveSelectCreate,
   resolveSelectValue,
   resolveTextCuid,
   resolveTextValue,
+  resolveUrlSplit,
+  splitMultiValueCell,
 } from './resolvers'
 export { type UpdateResolutionInput, updateValueResolution } from './update-value-resolution'

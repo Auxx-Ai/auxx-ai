@@ -11,6 +11,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@auxx/ui/components/empty'
+import { toastError } from '@auxx/ui/components/toast'
 import { Loader2, Wand2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '~/trpc/react'
@@ -47,6 +48,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
 
   const saveMapping = api.dataImport.saveColumnMapping.useMutation()
   const autoMap = api.dataImport.autoMapColumns.useMutation()
+  const utils = api.useUtils()
 
   // Initialize mappings from mappable properties (includes saved mapping data from server)
   useEffect(() => {
@@ -135,28 +137,38 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
       return updated
     })
 
-    // Save to server - clear old mapping first if replacing
-    if (existingMapping) {
+    try {
+      // Save to server - clear old mapping first if replacing (the server
+      // rejects two columns mapped to one field, so the clear must land first)
+      if (existingMapping) {
+        await saveMapping.mutateAsync({
+          jobId,
+          columnIndex: existingMapping.sourceColumnIndex,
+          targetFieldKey: null,
+          customFieldId: null,
+          resolutionType: existingMapping.resolutionType,
+        })
+      }
+
+      // Save the new mapping
       await saveMapping.mutateAsync({
         jobId,
-        columnIndex: existingMapping.sourceColumnIndex,
-        targetFieldKey: null,
-        customFieldId: null,
-        resolutionType: existingMapping.resolutionType,
+        columnIndex,
+        targetFieldKey: fieldKey,
+        customFieldId: targetField?.id ?? null,
+        resolutionType: finalResolutionType,
+        matchField,
+        relationConfig: targetField?.relationConfig,
+        options: targetField?.options,
       })
+    } catch (error) {
+      toastError({
+        title: 'Could not save mapping',
+        description: error instanceof Error ? error.message : 'Unknown error',
+      })
+      // Resync local state with what the server actually holds
+      await utils.dataImport.getMappableProperties.invalidate({ jobId })
     }
-
-    // Save the new mapping
-    await saveMapping.mutateAsync({
-      jobId,
-      columnIndex,
-      targetFieldKey: fieldKey,
-      customFieldId: targetField?.id ?? null,
-      resolutionType: finalResolutionType,
-      matchField,
-      relationConfig: targetField?.relationConfig,
-      options: targetField?.options,
-    })
   }
 
   const handleAutoMap = async () => {

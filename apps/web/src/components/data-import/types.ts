@@ -128,6 +128,8 @@ export interface ExecutionProgress {
   updated: number
   skipped: number
   failed: number
+  /** Rows that imported with at least one warning */
+  warnings: number
 }
 
 /** SSE Resolution progress event data */
@@ -186,4 +188,6 @@ export interface PlanPreviewRow {
   fields: Record<string, unknown>
   /** Error messages (for skip strategy) */
   errors: string[]
+  /** Non-fatal warnings — the row still imports */
+  warnings?: string[]
 }

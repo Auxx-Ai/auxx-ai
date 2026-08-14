@@ -57,6 +57,8 @@ export interface ImportPlanRow {
   status: 'planned' | 'executing' | 'completed' | 'failed'
   resultRecordId?: string
   errorMessage?: string
+  /** Non-fatal issues (dropped values, degraded strategy) — the row still imported */
+  warningMessage?: string
   executedAt?: Date
 }
 
@@ -76,4 +78,6 @@ export interface RowAnalysis {
   existingRecordId?: string
   resolvedData: Record<string, unknown>
   errors: string[]
+  /** Non-fatal issues (e.g. invalid split elements dropped) — the row still imports */
+  warnings: string[]
 }

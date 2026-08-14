@@ -5,7 +5,7 @@
 import { StatCard } from '@auxx/ui/components/stat-card'
 import { Ban, Plus, RefreshCw, Rows3 } from 'lucide-react'
 import type { ImportPlan } from '../types'
-import { ErrorSummary } from './error-summary'
+import { ErrorSummary, WarningSummary } from './error-summary'
 
 interface ImportPlanSummaryProps {
   plan?: ImportPlan
@@ -61,6 +61,9 @@ export function ImportPlanSummary({ plan, loading = false }: ImportPlanSummaryPr
       {!loading && estimates && estimates.withErrors > 0 && plan && (
         <ErrorSummary errorCount={estimates.withErrors} planId={plan.id} />
       )}
+
+      {/* Warnings (rows that still import, but with skipped values) */}
+      {!loading && plan && <WarningSummary planId={plan.id} />}
     </div>
   )
 }

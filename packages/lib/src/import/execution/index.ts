@@ -6,9 +6,13 @@ export {
   getSourceValue,
   type SourceRow,
 } from './build-record-data'
-export { type BatchRecord, type ExecuteBatchContext, executeBatch } from './execute-batch'
+export {
+  type BatchRecord,
+  type BatchRecordData,
+  type ExecuteBatchContext,
+  executeBatch,
+} from './execute-batch'
 export { type ExecutePlanOptions, executePlan } from './execute-plan'
-export { type ExecuteRowContext, executeRow } from './execute-row'
 export {
   type ExecuteStrategyContext,
   executeStrategy,
