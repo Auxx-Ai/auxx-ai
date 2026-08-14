@@ -1,7 +1,11 @@
 // apps/web/src/components/resources/hooks/use-seed-created-record.ts
 
 import type { FieldType } from '@auxx/database/types'
-import { formatToTypedInput } from '@auxx/lib/field-values/client'
+import {
+  type FieldOptions,
+  formatToTypedInput,
+  isArrayReturnFieldType,
+} from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { useCallback } from 'react'
 import {
@@ -32,6 +36,14 @@ export interface SeedFieldValue {
   fieldId: string
   value: unknown
   fieldType?: FieldType
+  /**
+   * Field options (`options.multi`, `actor.multiple`, …). Without them a
+   * multi-value scalar field (EMAIL/URL/PHONE with `options.multi`) seeds
+   * through the scalar converter branch, which joins the array into ONE
+   * comma string (`String(array)`) — the table cell then renders
+   * "a@x.io,b@y.io" in a single chip until a full page reload.
+   */
+  fieldOptions?: FieldOptions
 }
 
 /**
@@ -81,15 +93,24 @@ export function useSeedCreatedRecord() {
       if (listKey) recordStore.appendCreatedRecord(listKey, instance.id)
 
       const resourceState = useResourceStore.getState()
-      const entries = values.map(({ fieldId, value, fieldType }) => {
+      const entries = values.map(({ fieldId, value, fieldType, fieldOptions }) => {
         const resourceFieldId = (resolveSystemAttributeForRecord(
           resourceState,
           fieldId,
           recordId
         ) ?? fieldId) as FieldReference
+        // Stable array shape for array-return fields (options.multi scalars,
+        // multi ACTOR): normalize a scalar to a one-element array so the seeded
+        // shape matches what `fieldValue.batchGet` delivers on refetch — cell
+        // renderers branch on Array.isArray. `fieldOptions` also routes arrays
+        // through the per-item converter instead of `String(array)`.
+        const isArrayReturn = fieldType ? isArrayReturnFieldType(fieldType, fieldOptions) : false
+        const normalized = isArrayReturn && value != null && !Array.isArray(value) ? [value] : value
         return {
           key: buildFieldValueKey(recordId, resourceFieldId),
-          value: fieldType ? formatToTypedInput(value, fieldType) : value,
+          value: fieldType
+            ? formatToTypedInput(normalized, fieldType, { fieldOptions })
+            : normalized,
         }
       })
       useFieldValueStore.getState().setValues(entries)

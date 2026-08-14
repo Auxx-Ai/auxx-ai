@@ -62,9 +62,11 @@ export function useCreateRecord(opts: UseCreateRecordOptions): {
   const createMutation = api.record.create.useMutation()
   const createManyMutation = api.record.createMany.useMutation()
 
-  /** Resolve each input value's `fieldType` from the resource store so the seed
-   *  builds typed field values. Keys may be systemAttribute, ResourceFieldId, or
-   *  a bare field UUID — resolve via the systemAttribute map, then by ref. */
+  /** Resolve each input value's `fieldType` + `fieldOptions` from the resource
+   *  store so the seed builds typed field values. Keys may be systemAttribute,
+   *  ResourceFieldId, or a bare field UUID — resolve via the systemAttribute
+   *  map, then by ref. `fieldOptions` (options.multi, actor.multiple) keeps the
+   *  seeded shape array-stable for multi-value scalar fields. */
   const toSeedValues = useCallback(
     (values: Record<string, unknown>): SeedFieldValue[] => {
       const store = useResourceStore.getState()
@@ -73,7 +75,12 @@ export function useCreateRecord(opts: UseCreateRecordOptions): {
         const field =
           store.getFieldByRef(ref) ??
           store.getFieldByRef(toResourceFieldId(entityDefinitionId, fieldId))
-        return { fieldId, value, fieldType: field?.fieldType as FieldType | undefined }
+        return {
+          fieldId,
+          value,
+          fieldType: field?.fieldType as FieldType | undefined,
+          fieldOptions: field?.options as SeedFieldValue['fieldOptions'],
+        }
       })
     },
     [entityDefinitionId]
