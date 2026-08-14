@@ -21,6 +21,8 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     ],
     tabCards: {
       overview: [
+        // First/last interaction rows (records/interaction-fields plan Phase 5).
+        { value: 'interactions', label: 'Interactions', position: 'after' },
         {
           value: 'billing',
           label: 'Billing',
@@ -36,6 +38,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     additionalTabs: [
       { value: 'parts', label: 'Parts', icon: 'package', recordResource: 'vendor_part' },
     ],
+    tabCards: {
+      overview: [{ value: 'interactions', label: 'Interactions', position: 'after' }],
+    },
   },
 
   ticket: {

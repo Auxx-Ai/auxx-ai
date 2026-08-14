@@ -81,6 +81,14 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('./cards/contact-shared-with-card').then((m) => ({
       default: m.ContactSharedWithCard,
     })),
+  'contact:interactions': () =>
+    import('./cards/record-interaction-card').then((m) => ({
+      default: m.RecordInteractionCard,
+    })),
+  'company:interactions': () =>
+    import('./cards/record-interaction-card').then((m) => ({
+      default: m.RecordInteractionCard,
+    })),
   'contact:billing': () =>
     import('./cards/contact-billing-overview-card').then((m) => ({
       default: m.ContactBillingOverviewCard,

@@ -11,7 +11,11 @@ import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { buildOrgOwnEmailAddressSet } from '../channels/own-addresses'
-import { touchActivityForThreadLinks } from '../entity-instances/activity'
+import {
+  resolveThreadLinkedEntityIds,
+  touchEntityActivity,
+  touchInteractionForThreadLinks,
+} from '../entity-instances/activity'
 import { publisher } from '../events/publisher'
 import type { MessageReceivedEvent } from '../events/types'
 import { toInboxRecordId } from '../inbox-record-ids'
@@ -380,7 +384,9 @@ export async function storeMessage(
       const cached = participantCache.get(cacheKey)
       if (cached) return cached
 
-      const messageContext = role ? { isInbound: messageData.isInbound, role } : undefined
+      const messageContext = role
+        ? { isInbound: messageData.isInbound, role, sentAt: messageData.sentAt }
+        : undefined
 
       const participantRecord = await findOrCreateParticipantRecord(
         ctx,
@@ -756,8 +762,24 @@ export async function storeMessage(
     }
 
     // Advance lastActivityAt for any entity linked to this thread (primary +
-    // active secondaries). Best-effort; helper logs and swallows on failure.
-    await touchActivityForThreadLinks(thread.id, messageData.organizationId, messageData.sentAt)
+    // active secondaries), and stamp first/last interaction for qualifying
+    // messages (real correspondence both directions; hard-tier machine mail
+    // never counts — mirrors the contact-graph rule above). The link set is
+    // resolved once and shared. Best-effort; helpers log and swallow.
+    const linkedEntityIds = await resolveThreadLinkedEntityIds(
+      thread.id,
+      messageData.organizationId
+    )
+    await touchEntityActivity(linkedEntityIds, messageData.organizationId, messageData.sentAt)
+    if (machineMailResult?.tier !== 'hard') {
+      await touchInteractionForThreadLinks(
+        thread.id,
+        messageData.organizationId,
+        messageRecord.id,
+        messageData.sentAt,
+        { entityInstanceIds: linkedEntityIds }
+      )
+    }
 
     // Realtime publish — message:created (and thread:created on a brand-new
     // thread). During a sync batch, suppress per-message events entirely and

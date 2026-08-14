@@ -10,7 +10,7 @@ import type {
   ParticipantEntity as Participant,
   ParticipantRole,
 } from '@auxx/database/types'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { getRealtimeService, publishParticipantUpdated } from '../../realtime'
 import type { ParticipantMeta } from '../../realtime/events'
 import { findOrCreateContactForParticipant } from '../contacts/find-or-create'
@@ -97,7 +97,7 @@ export async function findOrCreateParticipantRecord(
   ctx: IngestContext,
   participantInput: ParticipantInputData,
   identifierType: IdentifierType,
-  messageContext?: { isInbound: boolean; role: ParticipantRole },
+  messageContext?: { isInbound: boolean; role: ParticipantRole; sentAt?: Date },
   /**
    * The inbox the triggering message lands in — routes `participant:updated`
    * to that inbox's lens channels (mail-permissions §6.2). Null/undefined
@@ -168,9 +168,12 @@ export async function findOrCreateParticipantRecord(
         isInternal,
         ...(messageContext && {
           firstInteractionType: messageContext.isInbound ? 'received' : 'sent',
-          firstInteractionDate: new Date(),
+          // The MESSAGE's timestamp, not processing time — under backfill,
+          // `new Date()` dated every correspondent's first interaction as
+          // connect day. Fall back to now only when no sentAt was supplied.
+          firstInteractionDate: messageContext.sentAt ?? new Date(),
           hasReceivedMessage: isOutboundRecipient || false,
-          lastSentMessageAt: isOutboundRecipient ? new Date() : null,
+          lastSentMessageAt: isOutboundRecipient ? (messageContext.sentAt ?? new Date()) : null,
         }),
         updatedAt: new Date(),
       })
@@ -189,9 +192,20 @@ export async function findOrCreateParticipantRecord(
           // the stale-`initials` asymmetry the old per-field guards caused.
           ...(effectiveName !== null && { name: effectiveName, displayName, initials }),
           updatedAt: new Date(),
+          // First-wins on the message timestamp: backfill batches arrive in
+          // arbitrary order, so an older message must be able to claim "first"
+          // on the conflict path too — and the type must follow whichever
+          // message owns the date.
+          ...(messageContext?.sentAt && {
+            firstInteractionDate: sql`CASE WHEN ${schema.Participant.firstInteractionDate} IS NULL OR ${schema.Participant.firstInteractionDate} > ${messageContext.sentAt} THEN ${messageContext.sentAt} ELSE ${schema.Participant.firstInteractionDate} END`,
+            firstInteractionType: sql`CASE WHEN ${schema.Participant.firstInteractionDate} IS NULL OR ${schema.Participant.firstInteractionDate} > ${messageContext.sentAt} THEN ${messageContext.isInbound ? 'received' : 'sent'} ELSE ${schema.Participant.firstInteractionType} END`,
+          }),
           ...(isOutboundRecipient && {
             hasReceivedMessage: true,
-            lastSentMessageAt: new Date(),
+            // Last-wins — never rewind under out-of-order processing.
+            lastSentMessageAt: messageContext?.sentAt
+              ? sql`CASE WHEN ${schema.Participant.lastSentMessageAt} IS NULL OR ${schema.Participant.lastSentMessageAt} < ${messageContext.sentAt} THEN ${messageContext.sentAt} ELSE ${schema.Participant.lastSentMessageAt} END`
+              : new Date(),
           }),
         },
       })

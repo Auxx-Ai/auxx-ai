@@ -471,6 +471,50 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     description: 'Enrichment lifecycle marker.',
   },
 
+  firstInteractionAt: {
+    id: toFieldId('firstInteractionAt'),
+    key: 'firstInteractionAt',
+    label: 'First interaction',
+    type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemAttribute: 'first_interaction_at',
+    systemSortOrder: 'aCb',
+    dbColumn: 'firstInteractionAt',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description:
+      'Oldest real correspondence with this company (message time, propagated from contacts)',
+  },
+
+  lastInteractionAt: {
+    id: toFieldId('lastInteractionAt'),
+    key: 'lastInteractionAt',
+    label: 'Last interaction',
+    type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemAttribute: 'last_interaction_at',
+    systemSortOrder: 'aCc',
+    dbColumn: 'lastInteractionAt',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description:
+      'Newest real correspondence with this company (message time, propagated from contacts)',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

@@ -12,6 +12,9 @@ export const SYSTEM_ATTRIBUTES = [
   'updated_at',
   'created_by_id',
   'record_id',
+  // Column-backed interaction stamps (contact + company registries)
+  'first_interaction_at',
+  'last_interaction_at',
 
   // ─── Contact fields ─────────────────────────────────────────────
   'first_name',

@@ -41,12 +41,28 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     // returns null), so it's inert until an app/store/chat links the record.
     sidebarCards: [
       { value: 'external-identities', label: 'External identities' },
+      // First/last interaction rows (records/interaction-fields plan Phase 5).
+      // Renders nothing until the record has correspondence.
+      { value: 'interactions', label: 'Interactions' },
       // Mail-permissions contact sharing (UI plan §4) — grants every thread
       // this contact participates in. Admin-managed; hidden for other roles
       // unless shares already exist.
       { value: 'shared-with', label: 'Shared with' },
       { value: 'billing', label: 'Billing', permissionKey: 'dispatch.board.view' },
     ],
+  },
+
+  company: {
+    entityType: 'company',
+    mainTabs: [
+      { value: 'timeline', label: 'Timeline', icon: 'clock' },
+      { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
+    ],
+    sidebarTabs: DEFAULT_SIDEBAR_TABS,
+    defaultTab: 'timeline',
+    defaultSidebarTab: 'overview',
+    // First/last interaction rows — propagated from the company's contacts.
+    sidebarCards: [{ value: 'interactions', label: 'Interactions' }],
   },
 
   ticket: {
