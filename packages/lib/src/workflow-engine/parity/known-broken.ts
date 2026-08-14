@@ -94,43 +94,6 @@ function tierAFieldPathPin(id: string): string | undefined {
 }
 
 /**
- * §3.4: the SECOND relation hop is collected by `analyzePathForRelationships`
- * but never fetched. `fetchResourceWithRelationships` looks every entry of
- * `relationshipsNeeded` up in the BASE record's own fieldMap only — a
- * two-segment path like `region.parentRegion` produces
- * `relationshipsNeeded = ['region', 'parentRegion']`, but `parentRegion` is a
- * field on VendorRegion, not on the base Vendor record, so its fetch is
- * silently skipped (`if (value !== undefined) resource[relFieldName] = value`
- * — the entry's value is `undefined`, so nothing is ever assigned, and if it
- * were, it would land at the WRONG nesting level: `resource.parentRegion`,
- * not `resource.region.parentRegion`).
- *
- * Only pins the findOne/root lane (`resolveVariablePath`'s
- * `analyzePath`→`lazyLoadResourceWithPath`→`fetchResourceWithRelationships`
- * chain). findMany's item lane goes through a DIFFERENT resolver
- * (`resolveFieldFromResourceRef`'s `buildFieldPath`, which only builds a
- * 2-element `FieldPath` and for a 3-segment path like `region.parentRegion.name`
- * falls back to treating `region` as a direct field and returning ITS OWN raw
- * value — resolving to something non-`undefined` for the wrong reason, not
- * `undefined`). That lane's items are asserted directly, not pinned.
- *
- * Fix pointer: §10b step 3 — the segment-walk resolver hydrates-as-it-walks,
- * so arbitrary relation depth "falls out" of the design instead of needing a
- * fetch-ahead list.
- */
-function hopTwoRelationPin(id: string): string | undefined {
-  if (!id.includes('.region.parentRegion')) return undefined
-  // The findMany item lane (`vendors[*].region.parentRegion…`) does not hit
-  // this bug — see doc comment. Only the findOne/root lane is pinned.
-  if (/\[\*\]/.test(id)) return undefined
-  return (
-    "§3.4: fetchResourceWithRelationships looks relationshipsNeeded up in the BASE record's " +
-    'own fieldMap only — the second hop (parentRegion, a field on the RELATED record) is ' +
-    'silently never fetched. Fix: §10b step 3 (segment-walk resolver).'
-  )
-}
-
-/**
  * NEW BUG (undocumented before this suite): `errorDetails` is declared
  * unconditionally for every crud mode (`generateCrudNodeVariablesFromFields`
  * always pushes it), but `executeNode`'s SUCCESS path never writes it — only
@@ -173,21 +136,14 @@ const DECLARED_UNRESOLVABLE_PINS: Array<(id: string) => string | undefined> = [
   crudSuccessErrorDetailsPin,
 ]
 
-// `hopTwoRelationPin` is defined but NOT registered above — kept for its
-// documentation value. Empirically, `<node>.<VENDOR_ID>.region.parentRegion*`
-// does NOT resolve to `undefined`: `resolveNestedObject` correctly returns
-// `undefined` (confirming the §3.4 fetch gap this function documents), but
-// `resolveVariablePath` then falls back to `resolveFieldFromResourceRef`,
-// whose `buildFieldPath` has an INDEPENDENT bug (see
-// `written:crud`/`declared` notes in the suite report — it reads
-// `relationship.relatedEntityDefinitionId`, a property that does not exist
-// on `RelationshipConfig`, which only has `inverseResourceFieldId`) that
-// makes `buildFieldPath` always return `null` and fall through to a
-// SEPARATE fallback returning the FIRST hop's own raw value — non-`undefined`,
-// just wrong. Two independent bugs compound into a false "resolved". Left
-// here, unregistered, as a paper trail — see the suite's final report for
-// the full account instead of re-deriving it from this comment.
-void hopTwoRelationPin
+// A former §3.4 hop-two entry lived here (`hopTwoRelationPin`) — defined but
+// deliberately never registered above, since `buildFieldPath`'s independent
+// bug (reading a `RelationshipConfig` property that doesn't exist) made the
+// findOne/root lane resolve to the FIRST hop's own value instead of
+// `undefined`, so there was nothing to pin as "stays broken". Fixed by the
+// segment-walk resolver (`plans/kopilot/workflow/11-segment-walk-resolver.md`
+// §7 item 1) — `find.resolvability.test.ts`'s hop-2 scenario now asserts the
+// SECOND hop's actual value directly instead.
 
 /** Invariant 1: is `id` a documented, pinned resolution failure? Returns the reason, or `undefined`. */
 export function matchDeclaredUnresolvablePin(id: string): string | undefined {

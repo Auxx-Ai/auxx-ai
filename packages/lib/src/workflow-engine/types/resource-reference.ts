@@ -61,20 +61,3 @@ export interface LazyLoadCacheEntry {
    */
   resourceRef: ResourceReference
 }
-
-/**
- * Path analysis result for lazy loading
- */
-export interface PathAnalysis {
-  /** Base resource path (e.g., "crud1.ticket") */
-  baseResourcePath: string
-
-  /** Resource reference if found */
-  baseResourceRef: ResourceReference | null
-
-  /** Remaining path after base (e.g., "contact.firstName") */
-  remainingPath: string
-
-  /** Relationship fields that need fetching (e.g., ["contact"]) */
-  relationshipsNeeded: string[]
-}

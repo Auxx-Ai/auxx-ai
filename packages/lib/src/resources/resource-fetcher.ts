@@ -6,7 +6,7 @@ import { getEntityInstance } from '@auxx/services/entity-instances'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { toFieldId } from '@auxx/types/field'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq, type SQL, sql } from 'drizzle-orm'
+import { and, eq, type SQL } from 'drizzle-orm'
 import { getCachedResourceFields } from '../cache'
 import { extractFieldValueScalar } from '../field-values/field-value-scalar'
 import {
@@ -625,99 +625,4 @@ async function fetchHasManyCustomEntity(
         fieldValues,
       }
     })
-}
-
-/**
- * Analyze a path to determine which relationships need to be fetched
- * NOW ASYNC - uses ResourceRegistryService for unified field lookup (system + custom)
- *
- * Walks through path segments and identifies RELATION fields that
- * need to be loaded from the database.
- *
- * @param resourceType - Starting resource type (system or custom)
- * @param path - Path like "contact.firstName" or "Variants.first.Price"
- * @param organizationId - Organization ID for custom entity lookups
- * @param db - Database connection
- * @param _db - Database instance (unused, kept for backward compat)
- * @returns Array of relationship field names needed
- *
- * @example
- * await analyzePathForRelationships('ticket', 'contact.firstName', orgId, db)
- * // Returns: ["contact"]
- *
- * await analyzePathForRelationships('cm1abc123xyz', 'Variants.first.Price', orgId, db) // custom entity UUID
- * // Returns: ["Variants"]
- */
-export async function analyzePathForRelationships(
-  resourceType: string,
-  path: string,
-  organizationId: string,
-  _db?: Database
-): Promise<string[]> {
-  const segments = path.split('.')
-  const relationshipsNeeded: string[] = []
-  let currentResourceType: string = resourceType
-
-  logger.debug('analyzePathForRelationships: starting analysis', {
-    resourceType,
-    path,
-    segments,
-  })
-
-  for (const segment of segments) {
-    // Skip array accessors (.first, .last, [0], numeric indices)
-    if (
-      segment.match(/\[.*\]/) ||
-      segment === 'first' ||
-      segment === 'last' ||
-      /^\d+$/.test(segment)
-    ) {
-      logger.debug('analyzePathForRelationships: skipping accessor', { segment })
-      continue
-    }
-
-    // Get fields for current resource type from org cache
-    const fields = await getCachedResourceFields(organizationId, currentResourceType)
-
-    logger.debug('analyzePathForRelationships: got fields', {
-      currentResourceType,
-      segment,
-      fieldCount: fields.length,
-      relationFields: fields
-        .filter((f) => f.type === BaseType.RELATION)
-        .map((f) => ({
-          key: f.key,
-          target: f.relationship
-            ? getRelatedEntityDefinitionId(f.relationship as RelationshipConfig)
-            : undefined,
-        })),
-    })
-
-    const field = fields.find((f) => getFieldOutputKey(f) === segment || f.key === segment)
-
-    if (field?.type === BaseType.RELATION && field.relationship) {
-      // This is a relationship - needs fetching
-      const relatedEntityDefId = getRelatedEntityDefinitionId(
-        field.relationship as RelationshipConfig
-      )
-      logger.debug('analyzePathForRelationships: found relationship', {
-        segment,
-        relatedEntityDefinitionId: relatedEntityDefId,
-        relationshipType: field.relationship.relationshipType,
-      })
-      relationshipsNeeded.push(segment)
-      currentResourceType = relatedEntityDefId!
-    } else {
-      // Hit a scalar field or unknown field - stop analyzing
-      logger.debug('analyzePathForRelationships: not a relationship, stopping', {
-        segment,
-        fieldFound: !!field,
-        fieldType: field?.type,
-      })
-      break
-    }
-  }
-
-  logger.debug('analyzePathForRelationships: result', { relationshipsNeeded })
-  return relationshipsNeeded
 }

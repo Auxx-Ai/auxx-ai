@@ -268,6 +268,9 @@ export const VENDOR_UPDATE_INSTANCE_ID = 'vendor_inst_updated'
 export const VENDOR_DELETE_INSTANCE_ID = 'vendor_inst_deleted'
 export const REGION_INSTANCE_ID = 'region_inst_hit'
 
+/** The hop-2 target: `region_inst_hit`'s OWN parent, for the segment-walker's real multi-hop test. */
+export const REGION_PARENT_INSTANCE_ID = 'region_inst_parent'
+
 export const VENDOR_HIT_RECORD_ID = toRecordId(VENDOR_DEF_ID, VENDOR_HIT_INSTANCE_ID)
 export const REGION_RECORD_ID = toRecordId(REGION_DEF_ID, REGION_INSTANCE_ID)
 
@@ -355,8 +358,23 @@ export const REGION_INSTANCES: Record<
     updatedAt: new Date('2025-06-02T00:00:00Z'),
     values: [
       textRow('name', undefined, 'EMEA'),
-      // `parentRegion` deliberately unset — §3.4's hop-two bug means this
-      // record is never even fetched, so its own data is moot.
+      // `parentRegion` set to a SECOND region instance — the segment-walk
+      // resolver's hop-2 positive scenario (`region.parentRegion.name`)
+      // asserts this second hop's ACTUAL value, not just non-undefined.
+      relationRow('parentRegion', REGION_PARENT_INSTANCE_ID, REGION_DEF_ID),
+    ],
+  },
+  [REGION_PARENT_INSTANCE_ID]: {
+    id: REGION_PARENT_INSTANCE_ID,
+    entityDefinitionId: REGION_DEF_ID,
+    createdAt: new Date('2025-01-01T00:00:00Z'),
+    updatedAt: new Date('2025-01-02T00:00:00Z'),
+    values: [
+      textRow('name', undefined, 'Western Europe'),
+      // Its OWN parentRegion is deliberately unset — this is where the
+      // self-referential chain terminates (null-propagation scenario for
+      // findOne/findMany items whose region's own parentRegion isn't set;
+      // see `find.resolvability.test.ts`).
     ],
   },
 }

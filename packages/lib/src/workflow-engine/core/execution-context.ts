@@ -5,6 +5,7 @@ import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValue } from '@auxx/types'
 import type { ActorId } from '@auxx/types/actor'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import {
   type FieldReference,
   fieldRefToKey,
@@ -28,10 +29,9 @@ import {
 } from '../../field-values/field-value-helpers'
 import { batchGetValues } from '../../field-values/field-value-queries'
 import { formatToDisplayValue, formatToRawValue } from '../../field-values/formatter'
-import {
-  analyzePathForRelationships,
-  fetchResourceWithRelationships,
-} from '../../resources/resource-fetcher'
+import { getFieldOutputKey, type ResourceField } from '../../resources/registry/field-types'
+import { fetchResourceWithRelationships } from '../../resources/resource-fetcher'
+import { type PathSegment, parseVariablePath } from '../catalog/variable-inference'
 import type { FileContextService } from '../services/file-context-service'
 import type { FileContentOptions, FileReference } from '../types/file-reference'
 import {
@@ -42,7 +42,6 @@ import {
 import {
   isResourceReference,
   type LazyLoadCacheEntry,
-  type PathAnalysis,
   type ResourceReference,
 } from '../types/resource-reference'
 import { safeJsonParse, safeJsonStringify } from '../utils/serialization'
@@ -57,7 +56,7 @@ import type {
   WorkflowExecutionOptions,
   WorkflowTriggerEvent,
 } from './types'
-import { JoinState } from './types'
+import { BaseType, JoinState } from './types'
 
 const logger = createScopedLogger('execution-context')
 
@@ -68,6 +67,22 @@ const LAZY_LOAD_CACHE_CONFIG = {
   /** Time-to-live in milliseconds (5 minutes) */
   ttl: 1000 * 60 * 5,
 }
+
+/**
+ * Safety cap on the segment-walk resolver's relation-hop depth. Not a
+ * capability limit — arbitrary relation depth "falls out" of hydrate-as-
+ * you-walk by design — just a guard against a stored data cycle (or a
+ * pathological path) recursing forever.
+ */
+const MAX_RELATION_HOPS = 4
+
+/**
+ * Structural properties every fetched/entity-object-shaped value carries
+ * (never real CustomField/ResourceField registry entries) — the segment
+ * walker resolves these directly off the loaded object, skipping the org
+ * field-registry round-trip entirely. See `walkSegments`'s identity branch.
+ */
+const IDENTITY_META_KEYS = new Set(['id', 'entityDefinitionId', 'createdAt', 'updatedAt'])
 
 // =============================================================================
 // RECORD FIELD CACHE TYPES
@@ -136,10 +151,6 @@ export class ExecutionContextManager implements ContextManager {
   private loadingStack: Set<string> = new Set() // Circular reference detection
 
   // Note: ResourceRegistryService removed — using org cache via getCachedResourceFields()
-
-  // Performance optimization: Cache path analysis results
-  // Key: `${resourceType}:${remainingPath}` → relationshipsNeeded[]
-  private pathAnalysisCache: Map<string, string[]> = new Map()
 
   // Record field cache: stores TypedFieldValues per record, keyed by RecordId
   // Unified cache for field value access — replaces per-field lazy loading for custom entities
@@ -326,8 +337,20 @@ export class ExecutionContextManager implements ContextManager {
   }
 
   /**
-   * Resolve a variable path with support for nested access and arrays
-   * NOW ASYNC to support lazy loading of resource relationships
+   * Resolve a variable path with support for nested access, arrays, and
+   * arbitrary-depth relation traversal — ONE recursive segment walk (see
+   * `parseVariablePath`, `walkSegments`).
+   *
+   * Base resolution (before the walk starts) follows a fixed precedence:
+   *   1. Longest prefix holding a `ResourceReference` or `lazyLoadCache`
+   *      entry, searched longest→shortest. This runs BEFORE the exact-match
+   *      lookup, so a stored ref at `n.<def>` SHADOWS a directly-stored
+   *      scalar at `n.<def>.record_id` — crud/find write both shapes, and
+   *      the ref's tolerant field resolution is what downstream paths need.
+   *   2. Exact full-path stored value (a stored `null` — the findOne-miss
+   *      contract — resolves here, since only an ABSENT key is `undefined`).
+   *   3. Longest stored non-ref prefix, then walked (plain object/array nav).
+   *   4. Miss → `undefined` + DEBUG log.
    *
    * Examples:
    *   "webhook-123.body" → { contact: { email: "test@example.com" } }
@@ -338,121 +361,51 @@ export class ExecutionContextManager implements ContextManager {
    *   "env.API_KEY" → Environment variable value
    *   "sys.userId" → System variable value
    *   "crud1.ticket.contact.firstName" → Lazy loads contact relationship
+   *   "find1.vendor.region.parentRegion.name" → Lazy loads TWO relation hops
    */
   async resolveVariablePath(path: string): Promise<any> {
-    // Step 1: Analyze path to find resource references (async for custom entity support)
-    const analysis = await this.analyzePath(path)
+    if (!path) return undefined
 
-    if (analysis.baseResourceRef) {
-      // Found a resource reference - need to lazy load
-      const resource = await this.lazyLoadResourceWithPath(
-        analysis.baseResourceRef,
-        analysis.baseResourcePath,
-        analysis.relationshipsNeeded
-      )
+    const rawSegments = path.split('.')
+    const parsed = parseVariablePath(path)
+    const keyPathUpTo = (i: number) =>
+      parsed
+        .slice(0, i)
+        .map((s) => s.key)
+        .join('.')
 
-      if (!resource) {
-        return undefined
+    // Step 1: longest ref/cache prefix, longest→shortest (INCLUDES the full
+    // path — resolving a bare ref alone still triggers a load and returns
+    // the loaded data, never the raw reference). The BOUNDARY segment
+    // (`parsed[i - 1]`) may itself carry a `[n]`/`[*]` accessor even though
+    // the stored key never includes brackets — its `index` must still be
+    // applied to the loaded base, not silently dropped.
+    for (let i = rawSegments.length; i > 0; i--) {
+      const basePath = keyPathUpTo(i)
+      const stored = this.context.variables[basePath]
+      if (isResourceReference(stored)) {
+        return this.walkFromRef(stored, basePath, parsed[i - 1]!.index, parsed.slice(i))
       }
-
-      // Navigate remaining path on loaded resource
-      if (analysis.remainingPath) {
-        const result = this.resolveNestedObject(resource, analysis.remainingPath)
-
-        this.log('DEBUG', undefined, `resolveVariablePath: nested resolution`, {
-          remainingPath: analysis.remainingPath,
-          resultType:
-            result === undefined ? 'undefined' : Array.isArray(result) ? 'array' : typeof result,
-          isArray: Array.isArray(result),
-          arrayLength: Array.isArray(result) ? result.length : undefined,
-        })
-
-        // Fallback: if resolveNestedObject couldn't find the property,
-        // try field-registry-aware resolution (handles systemAttribute mappings)
-        if (result === undefined) {
-          return this.resolveFieldFromResourceRef(analysis.baseResourceRef, analysis.remainingPath)
-        }
-
-        return result
-      }
-
-      return resource
-    }
-
-    // No resource reference - use existing synchronous logic
-
-    // Handle array syntax
-    const arrayMatch = path.match(/^(.+?)\[(-?\d+|\*)\](.*)$/)
-    if (arrayMatch) {
-      const basePath = arrayMatch[1]
-      const index = arrayMatch[2]
-      const rest = arrayMatch[3]
-
-      if (!basePath || !index) return undefined
-
-      const baseValue = await this.resolveVariablePath(basePath)
-
-      if (!Array.isArray(baseValue)) {
-        this.log('WARN', undefined, `Attempted to access array index on non-array: ${basePath}`)
-        return undefined
-      }
-
-      if (index === '*') {
-        // Map over array
-        if (rest) {
-          const restPath = rest.startsWith('.') ? rest.slice(1) : rest
-          // Check if items are ResourceReferences — resolve via recordFieldCache
-          return Promise.all(
-            baseValue.map((item) =>
-              isResourceReference(item) && restPath
-                ? this.resolveFieldFromResourceRef(item, restPath)
-                : this.resolveNestedObject(item, restPath)
-            )
-          )
-        }
-        return baseValue
-      } else {
-        // Access specific index (supports negative: -1 = last, -2 = second to last)
-        const idx = parseInt(index, 10)
-        const resolvedIdx = idx < 0 ? baseValue.length + idx : idx
-        if (resolvedIdx < 0 || resolvedIdx >= baseValue.length) {
-          this.log('WARN', undefined, `Array index out of bounds: ${path}`)
-          return undefined
-        }
-        const item = baseValue[resolvedIdx]
-        if (rest) {
-          const restPath = rest.startsWith('.') ? rest.slice(1) : rest
-          // Check if item is a ResourceReference — resolve via recordFieldCache
-          if (isResourceReference(item) && restPath) {
-            return this.resolveFieldFromResourceRef(item, restPath)
-          }
-          return this.resolveNestedObject(item, restPath)
-        }
-        return item
+      const cachedEntry = this.lazyLoadCache.get(basePath)
+      if (cachedEntry?.resourceRef) {
+        return this.walkFromRef(
+          cachedEntry.resourceRef,
+          basePath,
+          parsed[i - 1]!.index,
+          parsed.slice(i)
+        )
       }
     }
 
-    // Try direct lookup first (fastest path for top-level variables)
-    if (this.context.variables[path] !== undefined) {
-      return this.context.variables[path]
-    }
-
-    // Try to find a stored variable that is a prefix of this path
-    // Example: If we have "webhook-123.body" stored, and we're looking up "webhook-123.body.contact.email"
-    const segments = path.split('.')
-
-    // Try increasingly shorter prefixes from longest to shortest
-    for (let i = segments.length - 1; i > 0; i--) {
-      const basePath = segments.slice(0, i).join('.')
-      const remainingPath = segments.slice(i).join('.')
-
-      if (this.context.variables[basePath] !== undefined) {
-        const baseValue = this.context.variables[basePath]
-        // Check if base value is a ResourceReference — resolve field via recordFieldCache
-        if (isResourceReference(baseValue) && remainingPath) {
-          return this.resolveFieldFromResourceRef(baseValue, remainingPath)
-        }
-        return this.resolveNestedObject(baseValue, remainingPath)
+    // Step 2/3: longest stored non-ref prefix — INCLUDING the full path
+    // itself (an exact match is just the `i === length` case of "longest
+    // stored prefix") — then walk the remainder, same boundary-index
+    // caveat as step 1.
+    for (let i = rawSegments.length; i > 0; i--) {
+      const basePath = keyPathUpTo(i)
+      const baseValue = this.context.variables[basePath]
+      if (baseValue !== undefined) {
+        return this.walkIndexed(baseValue, parsed[i - 1]!.index, parsed.slice(i), 0)
       }
     }
 
@@ -460,89 +413,299 @@ export class ExecutionContextManager implements ContextManager {
     return undefined
   }
 
+  /** Ensure `ref`'s base data is loaded, apply the boundary segment's own accessor if any, then walk. */
+  private async walkFromRef(
+    ref: ResourceReference,
+    basePath: string,
+    boundaryIndex: PathSegment['index'],
+    remaining: PathSegment[]
+  ): Promise<any> {
+    const base = await this.lazyLoadResourceWithPath(ref, basePath, [])
+    if (!base) return undefined
+    return this.walkIndexed(base, boundaryIndex, remaining, 0)
+  }
+
   /**
-   * Resolve a nested path within an object
-   * Supports array navigation with .first, .last, numeric index, and [n] syntax
-   *
-   * Examples:
-   *   resolveNestedObject({ contact: { email: "..." } }, "contact.email") → "..."
-   *   resolveNestedObject({ items: [1, 2, 3] }, "items.first") → 1
-   *   resolveNestedObject({ items: [1, 2, 3] }, "items.last") → 3
-   *   resolveNestedObject({ items: [1, 2, 3] }, "items.1") → 2
-   *   resolveNestedObject({ Variants: [{Price: 10}] }, "Variants.first.Price") → 10
-   *
-   * For custom entities, also checks fieldValues if segment not found at root
+   * The segment walker. `value` is one of: an already-loaded resource
+   * object (id + entityDefinitionId — a `ResourceReference` never reaches
+   * here directly, `walkFromRef` always loads it first), an array, a plain
+   * object, or a scalar/null/undefined. `hopCount` tracks relation hops
+   * consumed so far, capped at `MAX_RELATION_HOPS`.
    */
-  private resolveNestedObject(obj: any, path: string): any {
-    if (!path) return obj
-    if (obj === null || obj === undefined) return undefined
+  private async walkSegments(
+    value: unknown,
+    segments: PathSegment[],
+    hopCount: number
+  ): Promise<any> {
+    if (segments.length === 0) return value
+    const [seg, ...rest] = segments as [PathSegment, ...PathSegment[]]
 
-    const segments = path.split('.')
-    let current = obj
+    // Runtime-contextual array accessors (first/last/bare-digit) — NOT
+    // grammar, only meaningful when `value` is already an array and this
+    // segment carries no bracket of its own (a bracketed "items[0]" falls
+    // through to plain-object nav below, matching pre-existing behavior).
+    if (Array.isArray(value) && seg.index === undefined) {
+      return this.walkSegments(this.arrayAccessor(value, seg.key), rest, hopCount)
+    }
 
-    for (const segment of segments) {
-      if (current === null || current === undefined) {
-        return undefined
+    // A loaded resource (custom entity or fetched relation target) — every
+    // shape this codebase fetches (fetchResourceById, has_many items, …)
+    // carries `id` + `entityDefinitionId`. Classify the next segment
+    // against the org's canonical field registry with the tolerant
+    // key/id/systemAttribute triad.
+    const identity = this.identityOf(value)
+    if (identity) {
+      // The structural meta keys every fetched/entity-object-shaped value
+      // carries resolve directly off `identity.base`, with NO registry
+      // round-trip — deliberately NOT a check of arbitrary own-properties:
+      // a relation ALREADY hydrated onto `base` (e.g. `region` after a
+      // prior walk resolved it) must still go through classification below
+      // on a LATER access, so a `rest`-dependent case like `.referenceId`
+      // (see below) still gets a chance to intercept it. Some callers store
+      // a lightweight "entity-object" shape that is ONLY `{ id,
+      // entityDefinitionId }` (never lazy-loaded, e.g. `message-
+      // received.ts`'s linked-ticket output) — for those this IS the only
+      // lane that ever resolves a field, by design.
+      if (IDENTITY_META_KEYS.has(seg.key) && identity.base?.[seg.key] !== undefined) {
+        return this.walkIndexed(identity.base[seg.key], seg.index, rest, hopCount)
       }
 
-      // Handle .first accessor for arrays
-      if (segment === 'first' && Array.isArray(current)) {
-        current = current[0]
-        continue
-      }
+      const field = await this.findResourceField(identity.resourceType, seg.key)
 
-      // Handle .last accessor for arrays
-      if (segment === 'last' && Array.isArray(current)) {
-        current = current[current.length - 1]
-        continue
-      }
+      if (
+        field?.type === BaseType.RELATION &&
+        field.relationship &&
+        getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+      ) {
+        const relConfig = field.relationship as RelationshipConfig
+        // `.referenceId` is a SYNTHETIC declared property (`variable-
+        // generators.ts`'s `convertFieldToVariableProperty`), not a field on
+        // the target entity — it means "the raw related-entity id stored on
+        // THIS record". Resolve it directly off the relation field's own
+        // value; no need to hydrate the target at all.
+        if (
+          rest[0]?.key === 'referenceId' &&
+          rest[0].index === undefined &&
+          (relConfig.relationshipType === 'belongs_to' || relConfig.relationshipType === 'has_one')
+        ) {
+          const referenceId = await this.resolveReferenceId(identity, field)
+          return this.walkSegments(referenceId, rest.slice(1), hopCount)
+        }
 
-      // Handle numeric index (e.g., "0", "1", "2")
-      if (/^\d+$/.test(segment) && Array.isArray(current)) {
-        const idx = parseInt(segment, 10)
-        current = current[idx]
-        continue
-      }
-
-      // Handle [n] array access within nested path (e.g., "items[0]", "items[-1]", or "items[*]")
-      const arrayMatch = segment.match(/^(.+?)\[(-?\d+|\*)\]$/)
-      if (arrayMatch) {
-        const key = arrayMatch[1]
-        const index = arrayMatch[2]
-
-        if (!key || !index) return undefined
-
-        current = current[key]
-
-        if (!Array.isArray(current)) {
+        if (hopCount >= MAX_RELATION_HOPS) {
+          this.log('WARN', undefined, `Relation hop cap (${MAX_RELATION_HOPS}) reached`, {
+            resourceType: identity.resourceType,
+            key: seg.key,
+          })
           return undefined
         }
+        const related = await this.hydrateRelation(identity, getFieldOutputKey(field))
+        // A belongs_to/has_one that genuinely has no related record hydrates
+        // to `null` (`fetchResourceWithRelationships`'s own miss contract) —
+        // same "looked, found nothing" answer as a findOne miss (§3), so it
+        // propagates as a resolved `null` rather than `undefined` when more
+        // path remains (there's nothing further to look up either way).
+        if (related === null && rest.length > 0) return null
+        return this.walkIndexed(related, seg.index, rest, hopCount + 1)
+      }
 
-        if (index === '*') {
-          return current // Return the array itself
-        } else {
-          const idx = parseInt(index, 10)
-          current = idx < 0 ? current[current.length + idx] : current[idx]
-        }
-      } else {
-        if (typeof current !== 'object') {
-          return undefined
-        }
+      if (field) {
+        // Scalar field — through the record-field cache, unifying findOne
+        // and findMany-item resolution onto one lane.
+        const recordId = toRecordId(identity.resourceType, identity.resourceId)
+        const fieldRef = toResourceFieldId(identity.resourceType, field.id)
+        const cached = await this.getFieldValue(recordId, fieldRef)
+        const friendly = cached ? cachedToFriendlyValue(cached) : undefined
+        return this.walkIndexed(friendly, seg.index, rest, hopCount)
+      }
 
-        // Try direct property access first
-        if (current[segment] !== undefined) {
-          current = current[segment]
-        }
-        // For entity instances, check fieldValues if not found at root
-        else if (current.fieldValues && current.fieldValues[segment] !== undefined) {
-          current = current.fieldValues[segment]
-        } else {
-          current = undefined
-        }
+      // Neither relation nor known field — fall through to plain-object
+      // navigation on the loaded base record (preserves `.id`/
+      // `.entityDefinitionId` resolution on ref bases).
+      return this.walkIndexed(this.getProp(identity.base, seg.key), seg.index, rest, hopCount)
+    }
+
+    // Plain object — EXACT match only (+ fieldValues fallback). No key
+    // tolerance here: tier-A raw rows must keep failing on systemAttribute
+    // paths (§3.2 pins in parity/known-broken.ts assert broken-stays-broken).
+    if (value !== null && typeof value === 'object') {
+      return this.walkIndexed(this.getProp(value, seg.key), seg.index, rest, hopCount)
+    }
+
+    return undefined
+  }
+
+  /** Apply a segment's `[n]`/`[*]` accessor to a just-resolved value, then continue the walk. */
+  private walkIndexed(
+    value: unknown,
+    index: PathSegment['index'],
+    rest: PathSegment[],
+    hopCount: number
+  ): Promise<any> {
+    if (index === undefined) return this.walkSegments(value, rest, hopCount)
+
+    if (!Array.isArray(value)) {
+      this.log('WARN', undefined, `Attempted array access on non-array value`)
+      return Promise.resolve(undefined)
+    }
+
+    if (index === '*') return this.walkProjection(value, rest, hopCount)
+
+    const idx = index < 0 ? value.length + index : index
+    if (idx < 0 || idx >= value.length) {
+      this.log('WARN', undefined, `Array index out of bounds: [${index}]`)
+      return Promise.resolve(undefined)
+    }
+    return this.walkSegments(value[idx], rest, hopCount)
+  }
+
+  /**
+   * `[*]` — map `walkSegments(item, rest)` over every item (the tail-drop
+   * fix: the old resolver returned the raw array here). Batches the common
+   * `<plural>[*].<scalar>` case: when every item is a `ResourceReference`
+   * and the immediate next segment is a direct scalar field, one
+   * `prefetchFields` call replaces the old per-item `batchGetValues` N+1.
+   */
+  private async walkProjection(
+    items: unknown[],
+    rest: PathSegment[],
+    hopCount: number
+  ): Promise<any> {
+    if (rest.length === 0) return items
+
+    const firstSeg = rest[0]!
+    if (items.length > 0 && items.every(isResourceReference)) {
+      const refs = items as ResourceReference[]
+      const field = await this.findResourceField(refs[0]!.resourceType, firstSeg.key)
+      if (field && field.type !== BaseType.RELATION) {
+        await this.prefetchFields(refs, [toResourceFieldId(refs[0]!.resourceType, field.id)])
       }
     }
 
-    return current
+    return Promise.all(items.map((item) => this.walkSegments(item, rest, hopCount)))
+  }
+
+  /** `first`/`last`/bare-digit — runtime-contextual, applied only when `value` is already an array. */
+  private arrayAccessor(value: unknown[], key: string): unknown {
+    if (key === 'first') return value[0]
+    if (key === 'last') return value[value.length - 1]
+    if (/^\d+$/.test(key)) return value[Number.parseInt(key, 10)]
+    this.log('WARN', undefined, `Non-accessor key "${key}" on array value`)
+    return undefined
+  }
+
+  /** `obj[key]`, else `obj.fieldValues[key]`, else `undefined` — exact match only. */
+  private getProp(obj: any, key: string): unknown {
+    if (obj === null || typeof obj !== 'object') return undefined
+    if (obj[key] !== undefined) return obj[key]
+    if (obj.fieldValues && obj.fieldValues[key] !== undefined) return obj.fieldValues[key]
+    return undefined
+  }
+
+  /**
+   * Does `value` carry a resource identity the walker can classify fields
+   * against? Two shapes:
+   *   - a RAW `ResourceReference` (findMany items are stored this way —
+   *     `find.ts` never eagerly loads them; `base` comes from whatever
+   *     `cacheRecordBase`/a prior `getFieldValue` already cached, which may
+   *     be the lightweight `{id, entityDefinitionId, createdAt, updatedAt}`
+   *     shape rather than a full fetch — good enough for scalar-field
+   *     classification and the id/entityDefinitionId fallback; relation
+   *     hydration re-fetches the full base itself when needed, see
+   *     `hydrateRelation`).
+   *   - an already-LOADED resource object (id + entityDefinitionId, both
+   *     strings — every shape this codebase fetches carries these).
+   */
+  private identityOf(
+    value: unknown
+  ): { resourceType: string; resourceId: string; base: any } | null {
+    if (isResourceReference(value)) {
+      const recordId = toRecordId(value.resourceType, value.resourceId)
+      return {
+        resourceType: value.resourceType,
+        resourceId: value.resourceId,
+        base: this.recordFieldCache.get(recordId)?.base ?? {},
+      }
+    }
+    if (
+      value !== null &&
+      typeof value === 'object' &&
+      typeof (value as any).id === 'string' &&
+      typeof (value as any).entityDefinitionId === 'string'
+    ) {
+      return {
+        resourceType: (value as any).entityDefinitionId,
+        resourceId: (value as any).id,
+        base: value,
+      }
+    }
+    return null
+  }
+
+  /**
+   * The raw related-entity id stored on THIS record for a belongs_to/
+   * has_one relation field — what `.referenceId` means in the declared
+   * variable tree. Reads the relation field's own value (a `RecordId`
+   * string, `"<entityDefinitionId>:<instanceId>"`) through the record-field
+   * cache and returns just the instance-id half.
+   */
+  private async resolveReferenceId(
+    identity: { resourceType: string; resourceId: string },
+    field: ResourceField
+  ): Promise<string | undefined> {
+    const recordId = toRecordId(identity.resourceType, identity.resourceId)
+    const fieldRef = toResourceFieldId(identity.resourceType, field.id)
+    const cached = await this.getFieldValue(recordId, fieldRef)
+    if (!cached) return undefined
+    const raw = formatToRawValue(cached.typed, cached.fieldType)
+    if (typeof raw !== 'string') return undefined
+    try {
+      return parseRecordId(raw as RecordId).entityInstanceId
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * Hydrate ONE relation field onto `identity`'s resource (a nested hop —
+   * the top-level ref's own base load goes through
+   * `lazyLoadResourceWithPath`, which has its own cache; this is for hops
+   * beyond that, and for findMany items which are never eagerly loaded).
+   * Skips the fetch if `identity.base` already carries the relation. Only
+   * passes `identity.base` on as the fetch's `cachedResource` when it's a
+   * FULL loaded object (has `fieldValues`) — the lightweight
+   * `cacheRecordBase` shape isn't enough for `fetchResourceWithRelationships`
+   * to read a belongs_to's stored related-id from, so a bare `undefined`
+   * lets it fetch its own base fresh instead of reading through a hole.
+   */
+  private async hydrateRelation(
+    identity: { resourceType: string; resourceId: string; base: any },
+    outputKey: string
+  ): Promise<any> {
+    if (identity.base?.[outputKey] !== undefined) return identity.base[outputKey]
+    const recordId = toRecordId(identity.resourceType, identity.resourceId)
+    const cachedResource = identity.base?.fieldValues !== undefined ? identity.base : undefined
+    const hydrated = await fetchResourceWithRelationships(
+      recordId,
+      [outputKey],
+      this.context.organizationId,
+      database,
+      cachedResource
+    )
+    return hydrated ? hydrated[outputKey] : undefined
+  }
+
+  /**
+   * Look up a `ResourceField` by the tolerant key/id/systemAttribute triad
+   * — the single classification point the walker uses to decide relation
+   * vs scalar vs "fall through to plain-object nav".
+   */
+  private async findResourceField(
+    resourceType: string,
+    key: string
+  ): Promise<ResourceField | null> {
+    const fields = await getCachedResourceFields(this.context.organizationId, resourceType)
+    return fields?.find((f) => f.key === key || f.id === key || f.systemAttribute === key) ?? null
   }
 
   /**
@@ -618,106 +781,6 @@ export class ExecutionContextManager implements ContextManager {
     if ('value' in obj && typeof obj.value === 'string') return obj.value
 
     return JSON.stringify(value)
-  }
-
-  /**
-   * Analyze a variable path to find resource references and determine
-   * which relationships need lazy loading.
-   *
-   * FIXED: Now also checks lazyLoadCache for previously loaded resources.
-   * When a ResourceReference is first accessed, it gets replaced with loaded data.
-   * Subsequent accesses to different fields on the same resource failed because
-   * isResourceReference() returned false. By checking the cache, we can still
-   * identify resources that need additional relationships loaded.
-   *
-   * @param path - Full variable path (e.g., "crud1.ticket.contact.firstName")
-   * @returns Analysis with base resource and relationships needed
-   */
-  private async analyzePath(path: string): Promise<PathAnalysis> {
-    const segments = path.split('.')
-
-    // Try to find the longest matching base path that's a resource reference
-    // Start from full path and work backwards
-    for (let i = segments.length; i > 0; i--) {
-      const basePath = segments.slice(0, i).join('.')
-      const value = this.context.variables[basePath]
-
-      // Check if this is a ResourceReference (original, not yet loaded)
-      if (isResourceReference(value)) {
-        const remainingPath = segments.slice(i).join('.')
-
-        this.log('DEBUG', undefined, `analyzePath: found ResourceReference`, {
-          basePath,
-          remainingPath,
-          resourceType: value.resourceType,
-          resourceId: value.resourceId,
-        })
-
-        // Use cached path analysis for performance
-        let relationshipsNeeded: string[] = []
-        if (remainingPath) {
-          relationshipsNeeded = await this.getCachedPathAnalysis(value.resourceType, remainingPath)
-
-          this.log('DEBUG', undefined, `analyzePath: relationships analysis`, {
-            remainingPath,
-            relationshipsNeeded,
-          })
-        }
-
-        return {
-          baseResourcePath: basePath,
-          baseResourceRef: value,
-          remainingPath,
-          relationshipsNeeded,
-        }
-      }
-
-      // CORE BUG FIX: Check if this is a previously loaded resource in cache.
-      // When ResourceReference is replaced with data, subsequent accesses to
-      // different fields on the same resource fail. By checking the cache,
-      // we can retrieve the original ResourceReference for path analysis.
-      const cachedEntry = this.lazyLoadCache.get(basePath)
-      if (cachedEntry?.resourceRef) {
-        const remainingPath = segments.slice(i).join('.')
-
-        this.log('DEBUG', undefined, `analyzePath: found cached resource`, {
-          basePath,
-          remainingPath,
-          resourceType: cachedEntry.resourceRef.resourceType,
-          resourceId: cachedEntry.resourceRef.resourceId,
-        })
-
-        // Use cached path analysis for performance
-        let relationshipsNeeded: string[] = []
-        if (remainingPath) {
-          relationshipsNeeded = await this.getCachedPathAnalysis(
-            cachedEntry.resourceRef.resourceType,
-            remainingPath
-          )
-
-          this.log('DEBUG', undefined, `analyzePath: relationships analysis (cached resource)`, {
-            remainingPath,
-            relationshipsNeeded,
-          })
-        }
-
-        return {
-          baseResourcePath: basePath,
-          baseResourceRef: cachedEntry.resourceRef,
-          remainingPath,
-          relationshipsNeeded,
-        }
-      }
-    }
-
-    // No resource reference found
-    this.log('DEBUG', undefined, `analyzePath: no ResourceReference found`, { path })
-    return {
-      baseResourcePath: '',
-      baseResourceRef: null,
-      remainingPath: path,
-      relationshipsNeeded: [],
-    }
   }
 
   /**
@@ -834,32 +897,7 @@ export class ExecutionContextManager implements ContextManager {
   clearLazyLoadCache(): void {
     this.lazyLoadCache.clear()
     this.loadingStack.clear()
-    this.pathAnalysisCache.clear()
     this.recordFieldCache.clear()
-  }
-
-  /**
-   * Get cached path analysis result or perform analysis and cache it.
-   * Same paths analyzed repeatedly now only require one DB lookup.
-   */
-  private async getCachedPathAnalysis(
-    resourceType: string,
-    remainingPath: string
-  ): Promise<string[]> {
-    const cacheKey = `${resourceType}:${remainingPath}`
-
-    if (this.pathAnalysisCache.has(cacheKey)) {
-      return this.pathAnalysisCache.get(cacheKey)!
-    }
-
-    const relationships = await analyzePathForRelationships(
-      resourceType,
-      remainingPath,
-      this.context.organizationId
-    )
-
-    this.pathAnalysisCache.set(cacheKey, relationships)
-    return relationships
   }
 
   // =============================================================================
@@ -1153,139 +1191,6 @@ export class ExecutionContextManager implements ContextManager {
       this.log('WARN', undefined, 'Failed to batch-resolve actor names', {
         error: err instanceof Error ? err.message : String(err),
       })
-    }
-  }
-
-  /**
-   * Resolve a field value from a ResourceReference using a remaining dot-path.
-   * Converts the dot-path to a FieldReference and fetches via getFieldValue.
-   *
-   * Used by resolveVariablePath when it encounters a ResourceReference
-   * and needs to resolve a field access (e.g., "find1.contacts[0].email").
-   */
-  private async resolveFieldFromResourceRef(ref: ResourceReference, dotPath: string): Promise<any> {
-    const recordId = toRecordId(ref.resourceType, ref.resourceId)
-
-    this.log('DEBUG', undefined, 'resolveFieldFromResourceRef', {
-      resourceType: ref.resourceType,
-      resourceId: ref.resourceId,
-      dotPath,
-    })
-
-    // Single-segment path = direct field access (e.g., "email")
-    // Multi-segment path = could be relationship path or nested object access
-    const segments = dotPath.split('.')
-
-    // Try as direct field first (single segment)
-    if (segments.length === 1) {
-      const fieldRef = await this.resolveFieldKeyToRef(ref.resourceType, segments[0]!)
-      this.log('DEBUG', undefined, 'resolveFieldFromResourceRef: single segment', {
-        segment: segments[0],
-        resolvedFieldRef: fieldRef,
-      })
-      if (fieldRef) {
-        const cached = await this.getFieldValue(recordId, fieldRef)
-        if (cached) {
-          const result = cachedToFriendlyValue(cached)
-          this.log('DEBUG', undefined, 'resolveFieldFromResourceRef: resolved', {
-            fieldRef,
-            fieldType: cached.fieldType,
-            resultType: typeof result,
-            result: typeof result === 'string' ? result.slice(0, 100) : String(result),
-          })
-          return result
-        }
-      }
-      this.log('DEBUG', undefined, 'resolveFieldFromResourceRef: field not found', {
-        segment: segments[0],
-        fieldRef,
-      })
-      return undefined
-    }
-
-    // Multi-segment: try as relationship path first
-    // Build FieldPath by querying the resource registry for field definitions
-    const fieldPath = await this.buildFieldPath(ref.resourceType, segments)
-    if (fieldPath) {
-      const pathCached = await this.getFieldValue(recordId, fieldPath)
-      if (pathCached) {
-        return cachedToFriendlyValue(pathCached)
-      }
-    }
-
-    // Fallback: try first segment as direct field, navigate rest as nested object
-    const directRef = await this.resolveFieldKeyToRef(ref.resourceType, segments[0]!)
-    if (directRef) {
-      const directCached = await this.getFieldValue(recordId, directRef)
-      if (directCached) {
-        const rawValue = formatToRawValue(directCached.typed, directCached.fieldType)
-        if (typeof rawValue === 'object' && rawValue !== null && segments.length > 1) {
-          return this.resolveNestedObject(rawValue, segments.slice(1).join('.'))
-        }
-        return cachedToFriendlyValue(directCached)
-      }
-    }
-
-    return undefined
-  }
-
-  /**
-   * Resolve a field key or UUID to a ResourceFieldId by looking up the entity field registry.
-   * Field keys (e.g., "name", "email") need to be mapped to their UUID for batchGetValues.
-   */
-  private async resolveFieldKeyToRef(
-    entityDefId: string,
-    fieldKeyOrId: string
-  ): Promise<ResourceFieldId | null> {
-    try {
-      const fields = await getCachedResourceFields(this.context.organizationId, entityDefId)
-      const field = fields?.find(
-        (f) => f.key === fieldKeyOrId || f.id === fieldKeyOrId || f.systemAttribute === fieldKeyOrId
-      )
-      if (field?.id) {
-        return toResourceFieldId(entityDefId, field.id) as ResourceFieldId
-      }
-      return null
-    } catch {
-      return null
-    }
-  }
-
-  /**
-   * Try to build a FieldPath from dot-separated segments by checking the resource registry.
-   * Returns null if the segments don't form a valid relationship path.
-   */
-  private async buildFieldPath(
-    startEntityId: string,
-    segments: string[]
-  ): Promise<FieldReference | null> {
-    try {
-      const fields = await getCachedResourceFields(this.context.organizationId, startEntityId)
-
-      if (!fields || fields.length === 0) return null
-
-      // Check if first segment is a relationship field
-      const firstField = fields.find(
-        (f) => (f.key === segments[0] || f.id === segments[0]) && f.fieldType === 'RELATIONSHIP'
-      )
-      if (!firstField || !firstField.id) return null
-
-      // For single remaining segment after relationship, build 2-element path
-      if (segments.length === 2) {
-        const relConfig = (firstField.options as any)?.relationship
-        const targetEntityId = relConfig?.relatedEntityDefinitionId
-        if (!targetEntityId) return null
-
-        const firstRef = toResourceFieldId(startEntityId, firstField.id) as ResourceFieldId
-        const secondRef = toResourceFieldId(targetEntityId, segments[1]!) as ResourceFieldId
-        return [firstRef, secondRef]
-      }
-
-      // For deeper paths, recursively build
-      // (simplified: only handle 2-deep for now)
-      return null
-    } catch {
-      return null
     }
   }
 

@@ -79,14 +79,14 @@ export async function runExecuteNode(
 
 /**
  * A REAL `ExecutionContextManager` — never stubbed. `resolveVariablePath`'s
- * lazy-load ladder (`analyzePath` → `lazyLoadResourceWithPath` →
- * `fetchResourceWithRelationships`, and the record-field cache's
- * `getFieldValue` → `batchGetValues`) is the exact mechanism this suite
- * exists to exercise; a stub contextManager (as `find-output-keying.test.ts`
- * uses, for a narrower purpose) would make every resolvability assertion
- * vacuous. `initializeSystemVariables()` seeds `sys.organizationId`/
- * `sys.userId`, which both `FindProcessor` and `CrudNodeProcessor` read via
- * `contextManager.getVariable('sys.organizationId')`.
+ * segment walker (base resolution → `lazyLoadResourceWithPath` /
+ * `hydrateRelation` → `fetchResourceWithRelationships`, and the
+ * record-field cache's `getFieldValue` → `batchGetValues`) is the exact
+ * mechanism this suite exists to exercise; a stub contextManager (as
+ * `find-output-keying.test.ts` uses, for a narrower purpose) would make
+ * every resolvability assertion vacuous. `initializeSystemVariables()`
+ * seeds `sys.organizationId`/`sys.userId`, which both `FindProcessor` and
+ * `CrudNodeProcessor` read via `contextManager.getVariable('sys.organizationId')`.
  */
 export function createContextManager(executionId: string): ExecutionContextManager {
   const ctx = new ExecutionContextManager(WORKFLOW_ID, executionId, ORG_ID, USER_ID)

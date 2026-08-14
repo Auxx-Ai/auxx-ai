@@ -10,8 +10,8 @@
  * empirically-verified exceptions.
  *
  * REAL: `CrudNodeProcessor`, `ExecutionContextManager` (never stubbed),
- * `analyzePathForRelationships`, `fetchResourceWithRelationships`,
- * `fetchResourceById` — same as `find.resolvability.test.ts`.
+ * `fetchResourceWithRelationships`, `fetchResourceById` — same as
+ * `find.resolvability.test.ts`.
  *
  * MOCKED (external edges only):
  * - `../../resources/crud` — `UnifiedCrudHandler`. Mirrors
@@ -31,8 +31,8 @@
  *   resolves automation visibility unconditionally.
  * - `@auxx/database` — ONLY needed because resolving the bare `<node>.thread`
  *   reference (the thread-actions scenario's declared root) still triggers a
- *   full lazy-load hydration: `analyzePath` matches a stored
- *   `ResourceReference` even with an EMPTY remaining path, so
+ *   full lazy-load hydration: the segment walker's base-resolution step
+ *   matches a stored `ResourceReference` even with an EMPTY remaining path, so
  *   `resolveVariablePath('<node>.thread')` calls `fetchResourceWithRelationships`
  *   → `fetchResourceById` → (system resource) `executeResourceQuery` →
  *   `database.select().from(schema.Thread)`, which needs a real `PgTable`
