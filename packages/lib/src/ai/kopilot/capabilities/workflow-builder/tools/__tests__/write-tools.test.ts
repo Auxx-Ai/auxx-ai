@@ -110,6 +110,7 @@ describe('add_node', () => {
     const result = await run(createAddNodeTool(getDeps), {
       type: 'http',
       title: 'HTTP Request',
+      description: 'Notify the order system',
       after: 'Every Morning',
       config: { url: 'https://example.com' },
     })
@@ -124,6 +125,7 @@ describe('add_node', () => {
       type: 'http',
       title: 'HTTP Request',
       after: 'Every Morning',
+      config: { url: 'https://example.com', desc: 'Notify the order system' },
     })
 
     const output = result.output as {

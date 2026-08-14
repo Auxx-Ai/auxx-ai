@@ -65,6 +65,7 @@ const ALWAYS_ON_TOOLS = new Set<string>([
   'connect_nodes',
   'disconnect_nodes',
   'set_trigger',
+  'set_workflow_details',
   'replace_graph',
   'apply_template',
   'validate_workflow',

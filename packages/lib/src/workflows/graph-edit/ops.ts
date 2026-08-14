@@ -153,6 +153,8 @@ async function runGraphMutation(
     await captureWorkflowTurnSnapshot(scope.workflowAppId, scope.turnId, {
       graph: ctx.graph,
       triggerType: ctx.triggerType,
+      name: ctx.appName,
+      description: ctx.appDescription,
     })
   }
 

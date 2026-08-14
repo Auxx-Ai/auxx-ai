@@ -6,7 +6,7 @@
  * §7): the FIRST mutation of a turn stores the pre-edit graph under
  * `(workflowAppId, turnId)` with a 24h TTL. The snapshot exists ONLY for
  * failed-turn atomicity: on turn FAILURE the lifecycle reverts (restores the
- * exact prior graph through `persistDraft`); on turn SUCCESS it is discarded
+ * exact prior graph and workflow details through `persistDraft`); on turn SUCCESS it is discarded
  * via {@link finalizeWorkflowTurn}. Undo of a completed turn is client-side —
  * the builder's `workflow:draft-updated` subscriber records each Kopilot edit
  * as a normal canvas history entry, so there is no per-turn Undo card and no
@@ -46,6 +46,9 @@ const TTL_SECONDS = 24 * 60 * 60
  */
 export interface WorkflowPreTurnSnapshot {
   turnId: string
+  /** WorkflowApp metadata exactly as stored before the turn's first write. */
+  name: string
+  description: string | null
   /** The draft graph exactly as stored BEFORE the turn's first write. */
   graph: DraftGraph
   /** The draft row's trigger type column at capture time (persist fallback). */
@@ -67,7 +70,12 @@ const snapshotKey = (workflowAppId: string): string => `workflow:graph:${workflo
 export async function captureWorkflowTurnSnapshot(
   workflowAppId: string,
   turnId: string,
-  data: { graph: DraftGraph; triggerType?: string | null }
+  data: {
+    graph: DraftGraph
+    triggerType?: string | null
+    name: string
+    description: string | null
+  }
 ): Promise<boolean> {
   const existing = (await getRedisData(
     snapshotKey(workflowAppId)
@@ -76,6 +84,8 @@ export async function captureWorkflowTurnSnapshot(
 
   const snapshot: WorkflowPreTurnSnapshot = {
     turnId,
+    name: data.name,
+    description: data.description,
     graph: data.graph,
     triggerType: data.triggerType ?? null,
     capturedAt: Date.now(),
@@ -181,6 +191,8 @@ export async function revertWorkflowTurn(
   const persisted = await persistDraft(db, scope, {
     graph: snapshot.graph,
     fallbackTriggerType: snapshot.triggerType,
+    name: snapshot.name,
+    description: snapshot.description,
     ...(loaded.value.graphHash !== undefined ? { expectedGraphHash: loaded.value.graphHash } : {}),
   })
   if (persisted.isErr()) return persisted

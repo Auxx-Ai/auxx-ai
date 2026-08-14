@@ -39,6 +39,7 @@ export interface DraftContext {
   workflowAppId: string
   organizationId: string
   appName: string
+  appDescription: string | null
   /** The raw draft `Workflow` row (null when the app has no draft yet). */
   draftRow: Record<string, unknown> | null
   graph: DraftGraph
@@ -88,6 +89,7 @@ export async function loadDraftContext(
     workflowAppId,
     organizationId,
     appName: app.name,
+    appDescription: app.description,
     draftRow,
     graph: toDraftGraph(rawGraph),
     ...(rawGraph ? { graphHash: hashWorkflowGraph(rawGraph) } : {}),

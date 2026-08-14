@@ -18,6 +18,7 @@ import { createListNodeTypesTool } from './tools/list-node-types'
 import { createReplaceGraphTool } from './tools/replace-graph'
 import { createRunNodeTool } from './tools/run-node'
 import { createSetTriggerTool } from './tools/set-trigger'
+import { createSetWorkflowDetailsTool } from './tools/set-workflow-details'
 import { createUpdateNodeTool } from './tools/update-node'
 import { createValidateWorkflowTool } from './tools/validate-workflow'
 
@@ -44,6 +45,7 @@ const WRITE_TOOL_NAMES = [
   'set_trigger',
   'replace_graph',
   'apply_template',
+  'set_workflow_details',
 ]
 
 /**
@@ -75,6 +77,7 @@ export function createWorkflowBuilderCapabilities(getDeps: GetToolDeps): PageCap
       createConnectNodesTool(getDeps),
       createDisconnectNodesTool(getDeps),
       createSetTriggerTool(getDeps),
+      createSetWorkflowDetailsTool(getDeps),
       createReplaceGraphTool(getDeps),
       createApplyTemplateTool(getDeps),
       // Verify

@@ -38,6 +38,30 @@ export async function resolveWorkflowWrite(
   }
 }
 
+/** Admin-tier variant for workflow settings that are still part of an AI turn. */
+export async function resolveWorkflowAdminWrite(
+  getDeps: GetToolDeps,
+  agentDeps: AgentDeps
+): Promise<WriteResolution> {
+  const auth = await resolveWorkflowAuthoring(getDeps, agentDeps, 'admin', { mutation: true })
+  if (!auth.ok) return auth
+  const turnId = agentDeps.turnId
+  if (!turnId) {
+    return {
+      ok: false,
+      error: 'No turnId on agent deps — cannot scope kopilot workflow writes.',
+    }
+  }
+  return {
+    ok: true,
+    scope: {
+      workflowAppId: auth.workflowAppId,
+      organizationId: agentDeps.organizationId,
+      turnId,
+    },
+  }
+}
+
 /** Optional-string arg helper — trims, empty → undefined. */
 export function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined
