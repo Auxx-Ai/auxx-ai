@@ -34,6 +34,30 @@ function getRelatedEntityDefinitionId(field: ResourceField): string | undefined 
   }
 }
 
+/**
+ * Convert one field's record-row value to the typed store shape, or `undefined`
+ * to skip seeding the key entirely.
+ *
+ * `options.multi` scalar fields (EMAIL/URL/PHONE with `multi: true`) get
+ * special handling: record-row data carries at most the denormalized PRIMARY
+ * value (e.g. contact `email` via `dbColumn`), never the full FieldValue row
+ * set. Seeding that scalar would (a) store a scalar where every other feed
+ * stores an array and (b) block the authoritative `fieldValue.batchGet` fetch —
+ * the fetch queue and cell hooks skip keys that already hold a value — so the
+ * table cell would show only the primary until something else overwrote the
+ * key. Skipping leaves the key `undefined`, and autoFetch delivers the full
+ * ordered array. A genuine array in record data (a feed that does carry every
+ * value) still hydrates, through the per-item converter via `fieldOptions`.
+ */
+function toHydratedTypedValue(field: ResourceField, rawValue: unknown): StoredFieldValue | null {
+  if (field.options?.multi && !Array.isArray(rawValue)) return null
+  return formatToTypedInput(rawValue, field.fieldType as FieldType, {
+    selectOptions: field.options?.options,
+    relatedEntityDefinitionId: getRelatedEntityDefinitionId(field),
+    fieldOptions: field.options,
+  }) as StoredFieldValue | null
+}
+
 interface HydrationOptions {
   resource: Resource
   /** RecordId in format "entityDefinitionId:entityInstanceId" */
@@ -88,16 +112,14 @@ export function hydrateFieldValues({
       })
     }
 
-    // Convert to TypedFieldValue using the converter
-    const typedValue = formatToTypedInput(rawValue, field.fieldType as FieldType, {
-      selectOptions: field.options?.options,
-      relatedEntityDefinitionId: getRelatedEntityDefinitionId(field),
-    })
+    // Convert to TypedFieldValue using the converter (multi-aware — see
+    // toHydratedTypedValue for why a scalar on an options.multi field skips).
+    const typedValue = toHydratedTypedValue(field, rawValue)
 
     if (typedValue !== null) {
       // Use field identity (resourceFieldId or id) for store key — must match what cells read
       const storeKey = buildFieldValueKey(recordId, field.resourceFieldId ?? field.id)
-      entries.push({ key: storeKey, value: typedValue as StoredFieldValue })
+      entries.push({ key: storeKey, value: typedValue })
     }
   }
 
@@ -141,17 +163,14 @@ export function hydrateMultipleRecords(
         })
       }
 
-      const typedValue = formatToTypedInput(rawValue, field.fieldType as FieldType, {
-        selectOptions: field.options?.options,
-        relatedEntityDefinitionId: getRelatedEntityDefinitionId(field),
-      })
+      const typedValue = toHydratedTypedValue(field, rawValue)
 
       if (typedValue !== null) {
         const storeKey = buildFieldValueKey(
           getNormalizedRecordId(record.recordId),
           field.resourceFieldId ?? field.id
         )
-        allEntries.push({ key: storeKey, value: typedValue as StoredFieldValue })
+        allEntries.push({ key: storeKey, value: typedValue })
       }
     }
   }
