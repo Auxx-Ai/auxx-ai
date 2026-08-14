@@ -118,6 +118,8 @@ export {
 } from './formatter'
 // Read-side value normalization for lookupByField
 export { normalizeForLookup } from './normalize-for-lookup'
+// Multi-value scalar helpers (first-is-primary convention)
+export { MAX_MULTI_VALUES, primaryValue } from './primary-value'
 // Relationship error types
 export {
   createCircularReferenceError,
