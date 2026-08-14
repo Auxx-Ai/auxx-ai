@@ -24,10 +24,14 @@ export async function findOrCreateCompanyByDomain(
     return existing.id
   }
 
+  // `company_website` is array-wrapped for shape consistency with multi-value
+  // fields (the write path auto-unwraps length-1 arrays on single-value
+  // fields); `company_domain` stays single-value by design. Create-only: an
+  // existing company is never re-written here.
   const result = await crudHandler.create('company', {
     company_domain: domain,
     company_name: domain,
-    company_website: `https://${domain}`,
+    company_website: [`https://${domain}`],
   })
 
   const createdId = result.instance.id

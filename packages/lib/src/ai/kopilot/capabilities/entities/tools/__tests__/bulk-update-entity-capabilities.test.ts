@@ -20,7 +20,7 @@
 import type { Rung } from '@auxx/database/enums'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const setBulkValuesSpy = vi.fn()
+const applyBulkSpy = vi.fn()
 /** Stands in for `RecordPickerService.getResourcesByIds` — the `_access` read. */
 const stampedRead = vi.fn<(ids: string[]) => Promise<Record<string, { _access?: Rung }>>>()
 
@@ -38,8 +38,8 @@ vi.mock('../../../../../../cache/org-cache-helpers', () => ({
 
 vi.mock('../../../../../../field-values/field-value-service', () => ({
   FieldValueService: class {
-    async setBulkValues(args: unknown) {
-      return setBulkValuesSpy(args)
+    async applyBulk(args: unknown) {
+      return applyBulkSpy(args)
     }
   },
 }))
@@ -143,8 +143,8 @@ function runTool(recordIds: string[], capabilities?: CapabilityView, approvedRec
 }
 
 beforeEach(() => {
-  setBulkValuesSpy.mockReset()
-  setBulkValuesSpy.mockResolvedValue({ count: 2 })
+  applyBulkSpy.mockReset()
+  applyBulkSpy.mockResolvedValue({ count: 2 })
   stampedRead.mockReset()
   stampedRead.mockResolvedValue({})
 })
@@ -155,7 +155,7 @@ describe('absent capabilities ⇒ unrestricted', () => {
 
     expect(result.success).toBe(true)
     expect(result.output).toMatchObject({ total: 2, approved: 2, updated: 2 })
-    expect(setBulkValuesSpy).toHaveBeenCalledTimes(1)
+    expect(applyBulkSpy).toHaveBeenCalledTimes(1)
     expect(stampedRead).not.toHaveBeenCalled()
   })
 })
@@ -165,7 +165,7 @@ describe('the def gate is the fast path', () => {
     const result = await runTool([OPEN_A, OPEN_B], member(Level.Edit))
 
     expect(result.success).toBe(true)
-    expect(setBulkValuesSpy).toHaveBeenCalledTimes(1)
+    expect(applyBulkSpy).toHaveBeenCalledTimes(1)
     expect(stampedRead).not.toHaveBeenCalled()
   })
 
@@ -187,7 +187,7 @@ describe('the def gate is the fast path', () => {
 
     expect(result.success).toBe(true)
     expect(stampedRead).not.toHaveBeenCalled()
-    expect(setBulkValuesSpy).toHaveBeenCalledWith(expect.objectContaining({ recordIds: [OPEN_A] }))
+    expect(applyBulkSpy).toHaveBeenCalledWith(expect.objectContaining({ recordIds: [OPEN_A] }))
   })
 })
 
@@ -202,7 +202,7 @@ describe('§5.3 — a row the def gate refuses is judged on its own `_access`', 
 
     expect(result.success).toBe(true)
     expect(stampedRead).toHaveBeenCalledWith([CLOSED_A])
-    expect(setBulkValuesSpy).toHaveBeenCalledTimes(1)
+    expect(applyBulkSpy).toHaveBeenCalledTimes(1)
   })
 
   it('only the def-DENIED remainder is stamped in a MIXED batch', async () => {
@@ -226,7 +226,7 @@ describe('§5.3 — a row the def gate refuses is judged on its own `_access`', 
     })
 
     await expect(runTool([CLOSED_A, CLOSED_B], capabilities)).rejects.toBeInstanceOf(ForbiddenError)
-    expect(setBulkValuesSpy).not.toHaveBeenCalled()
+    expect(applyBulkSpy).not.toHaveBeenCalled()
   })
 
   it('a row denied by BOTH routes throws before any write', async () => {
@@ -235,7 +235,7 @@ describe('§5.3 — a row the def gate refuses is judged on its own `_access`', 
     stampedRead.mockResolvedValue({ [CLOSED_A]: stampedAt(capabilities, CLOSED_A, null) })
 
     await expect(runTool([OPEN_A, CLOSED_A], capabilities)).rejects.toBeInstanceOf(ForbiddenError)
-    expect(setBulkValuesSpy).not.toHaveBeenCalled()
+    expect(applyBulkSpy).not.toHaveBeenCalled()
   })
 })
 
@@ -248,7 +248,7 @@ describe('§5.2 — non-enumeration: an id the read path hid DENIES', () => {
     await expect(runTool([CLOSED_A], member(Level.Full, [CLOSED_DEF]))).rejects.toBeInstanceOf(
       ForbiddenError
     )
-    expect(setBulkValuesSpy).not.toHaveBeenCalled()
+    expect(applyBulkSpy).not.toHaveBeenCalled()
   })
 
   it('a row that comes back WITHOUT a stamp is refused', async () => {
@@ -259,7 +259,7 @@ describe('§5.2 — non-enumeration: an id the read path hid DENIES', () => {
     await expect(runTool([CLOSED_A], member(Level.Full, [CLOSED_DEF]))).rejects.toBeInstanceOf(
       ForbiddenError
     )
-    expect(setBulkValuesSpy).not.toHaveBeenCalled()
+    expect(applyBulkSpy).not.toHaveBeenCalled()
   })
 })
 
@@ -283,6 +283,6 @@ describe('a pure AGENT principal behaves exactly as it did under the def loop', 
     stampedRead.mockResolvedValue({ [CLOSED_A]: row })
 
     await expect(runTool([CLOSED_A], capabilities)).rejects.toBeInstanceOf(ForbiddenError)
-    expect(setBulkValuesSpy).not.toHaveBeenCalled()
+    expect(applyBulkSpy).not.toHaveBeenCalled()
   })
 })

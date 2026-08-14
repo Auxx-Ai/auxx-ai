@@ -21,6 +21,7 @@ import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-valu
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useDirtyCheck } from '~/hooks/use-dirty-state'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
+import { getBulkEditFieldGate } from './bulk-edit-field-gate'
 import { FieldInputRow } from './field-input-row'
 
 interface BulkUpdateEntityInstanceDialogProps {
@@ -234,20 +235,18 @@ export function BulkUpdateEntityInstanceDialog({
 
           <FieldPanel className='p-0' breakpoint='md' resizeId='bulk-update-entity-instance'>
             {editableFields.map((field) => {
-              // Disable unique fields when editing multiple instances (would violate uniqueness)
-              const isUniqueDisabled = field.isUnique && instanceCount > 1
+              // Unique fields can't be bulk edited across >1 record; multi-value
+              // EMAIL/URL/PHONE fields are excluded outright (locked decision,
+              // multi-email plan — see getBulkEditFieldGate).
+              const { disabled, description } = getBulkEditFieldGate(field, instanceCount)
               return (
                 <FieldInputRow
                   key={field.id}
-                  field={
-                    isUniqueDisabled
-                      ? { ...field, description: 'Unique fields cannot be bulk edited' }
-                      : field
-                  }
+                  field={description ? { ...field, description } : field}
                   value={values[field.id] ?? ''}
                   onChange={handleFieldChange}
                   placeholder={getPlaceholder(field.id)}
-                  disabled={isUniqueDisabled}
+                  disabled={disabled}
                 />
               )
             })}

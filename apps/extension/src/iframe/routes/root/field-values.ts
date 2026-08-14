@@ -20,8 +20,13 @@ export function buildContactFieldValues(person: ParsedPerson): Record<string, un
     // column and synthesises the NAME value on read.
     first_name: person.firstName,
     last_name: person.lastName,
-    primary_email: person.primaryEmail,
-    phone: person.phone,
+    // primary_email / phone can be multi-value fields (options.multi). Send
+    // single-element arrays for shape consistency with the multi write path —
+    // the server auto-unwraps length-1 arrays on single-value fields, so this
+    // is safe either way. The extension has no update path (re-capture
+    // short-circuits into the matches list), so create is the only writer.
+    primary_email: person.primaryEmail ? [person.primaryEmail] : undefined,
+    phone: person.phone ? [person.phone] : undefined,
     notes: person.notes,
     // externalId is multi-value (options.multi=true in the registry). Send
     // the capture's identifier as a single-element array so the server

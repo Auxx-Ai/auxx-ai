@@ -17,6 +17,7 @@ const UpdateEntityOutput = z.object({
 
 import {
   formatUnknownFieldsError,
+  isMultiValueField,
   resolveFieldLabels,
   validateFieldKeys,
 } from './field-label-helpers'
@@ -57,6 +58,10 @@ Each key in \`values\` must be an id from list_entity_fields. Unknown keys are r
 Do NOT include ids flagged \`readOnly: true\` or \`createOnly: true\` — the backend ignores
 them on update. Ids listed in \`autoFilled\` are also system-managed; don't pass them.
 
+Multi-value fields (list_entity_fields flags them): writing a value REPLACES the whole
+stored list. To append without touching existing values, pass \`modes\` with \`"add"\` for
+that field, e.g. modes: { "primary_email": "add" }.
+
 Example (ids match list_entity_fields output):
   recordId: "abc123:def456"
   values: { "company_website": "https://new-site.com" }`,
@@ -73,6 +78,12 @@ Example (ids match list_entity_fields output):
           description:
             'Object mapping field IDs to their new values. Keys MUST be exact ids from the most recent list_entity_fields call (usually systemAttribute, e.g. company_website, ticket_status). Only include fields you want to update.',
           additionalProperties: true,
+        },
+        modes: {
+          type: 'object',
+          description:
+            "Optional per-field write mode, keyed like `values`. Only 'add' is meaningful: on a multi-value field (list_entity_fields flags `multi: true`) it APPENDS the given value(s) instead of replacing the stored list. Omitted fields default to replace. Ignored for single-value fields.",
+          additionalProperties: { type: 'string', enum: ['replace', 'add'] },
         },
       },
       required: ['recordId', 'values'],
@@ -116,7 +127,9 @@ Example (ids match list_entity_fields output):
       // The LLM may nest field values under `values` or flatten them at the top level.
       const values =
         (args.values as Record<string, unknown>) ??
-        Object.fromEntries(Object.entries(args).filter(([k]) => k !== 'recordId' && k !== 'values'))
+        Object.fromEntries(
+          Object.entries(args).filter(([k]) => k !== 'recordId' && k !== 'values' && k !== 'modes')
+        )
 
       if (!values || Object.keys(values).length === 0) {
         return {
@@ -167,8 +180,20 @@ Example (ids match list_entity_fields output):
         { capabilities }
       )
 
+      // Per-field write modes: `'add'` appends on multi-value fields instead of
+      // replacing the stored list (default replace). Guarded on the field
+      // actually being multi — the append primitive throws on single-value
+      // fields, and a model-guessed 'add' on a scalar should just replace.
+      const rawModes = (args.modes ?? {}) as Record<string, unknown>
+      let modes: Record<string, 'set' | 'add' | 'remove'> | undefined
+      for (const [key, mode] of Object.entries(rawModes)) {
+        if (mode !== 'add' || !(key in resolvedValues)) continue
+        if (resource && !isMultiValueField(resource, key)) continue
+        modes = { ...modes, [key]: 'add' }
+      }
+
       try {
-        await handler.update(recordId, resolvedValues)
+        await handler.update(recordId, resolvedValues, modes)
         const fieldIds = Object.keys(resolvedValues)
         const labels = resolveFieldLabels(resource, fieldIds)
         return {

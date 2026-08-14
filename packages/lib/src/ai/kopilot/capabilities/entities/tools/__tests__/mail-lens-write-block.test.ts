@@ -87,7 +87,7 @@ vi.mock('../../../../../../resources/crud/record-row-access', () => ({
 const setBulkValuesSpy = vi.fn(async (_args: unknown) => ({ count: 1 }))
 vi.mock('../../../../../../field-values/field-value-service', () => ({
   FieldValueService: class {
-    async setBulkValues(args: unknown) {
+    async applyBulk(args: unknown) {
       return setBulkValuesSpy(args)
     }
   },
@@ -96,6 +96,7 @@ vi.mock('../../../../../../field-values/field-value-service', () => ({
 vi.mock('../field-label-helpers', () => ({
   validateFieldKeys: () => ({ unknownKeys: [], validIds: ['name'] }),
   formatUnknownFieldsError: () => 'unknown fields',
+  isMultiValueField: () => false,
   resolveFieldLabels: (_r: unknown, ids: string[]) => ids,
 }))
 

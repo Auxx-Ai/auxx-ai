@@ -41,6 +41,13 @@ function wrap(valueSchema: JsonSchema, description?: string): JsonSchema {
 export function buildJsonSchema(field: CustomFieldEntity): JsonSchema {
   const options = (field.options ?? {}) as FieldOptions
 
+  // Multi-value scalar fields are gated off autofill entirely (`isAiField`):
+  // the commit path is a whole-field replace, so a generated value would wipe
+  // the stored list. Defense in depth for callers that skipped the gate.
+  if (options.multi === true) {
+    throw new BadRequestError('AI generation is not supported for multi-value fields')
+  }
+
   switch (field.type) {
     case FieldTypeEnum.TEXT:
     case FieldTypeEnum.URL:

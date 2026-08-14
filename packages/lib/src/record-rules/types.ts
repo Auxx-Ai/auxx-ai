@@ -43,6 +43,14 @@ export interface SetFieldAction {
    * (string/number/…), written verbatim — hence `unknown` rather than `TiptapDoc | string`.
    */
   value: unknown
+  /**
+   * Write mode for MULTI-VALUE target fields (`options.multi`, MULTI_SELECT, TAGS, …).
+   * `'set'` (default) replaces the field's whole stored list with the resolved value;
+   * `'add'` appends without touching existing values. Ignored (treated as `'set'`) when
+   * the target field is single-value. No builder UI exposes this yet — rules default to
+   * replace, and the executor guards the append routing on the field actually being multi.
+   */
+  mode?: 'set' | 'add'
 }
 
 /** Enqueue a published workflow with the record snapshot as trigger payload. */

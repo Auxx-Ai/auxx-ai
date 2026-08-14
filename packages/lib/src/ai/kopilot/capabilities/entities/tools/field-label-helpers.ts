@@ -1,5 +1,6 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/field-label-helpers.ts
 
+import { isMultiValueFieldType } from '../../../../../field-values/formatter'
 import { getFieldOutputKey } from '../../../../../resources/registry/field-types'
 import type { Resource } from '../../../../../resources/registry/types'
 
@@ -19,6 +20,24 @@ export function resolveFieldLabels(
     )
     return field?.label ?? id
   })
+}
+
+/**
+ * Whether an LLM-supplied field id names a multi-value field on the resource
+ * (MULTI_SELECT/TAGS/RELATIONSHIP/FILE, multi-ACTOR, or a scalar field with
+ * `options.multi` — e.g. a multi-value email/phone/website). Used to decide
+ * whether an `'add'` write mode may route to the append primitives, which
+ * throw on single-value fields.
+ *
+ * Returns `false` when the resource or field can't be resolved — the caller
+ * then keeps the default replace mode, which is always safe to attempt.
+ */
+export function isMultiValueField(resource: Resource | null | undefined, fieldId: string): boolean {
+  const field = resource?.fields.find(
+    (f) => getFieldOutputKey(f) === fieldId || f.key === fieldId || f.id === fieldId
+  )
+  if (!field?.fieldType) return false
+  return isMultiValueFieldType(field.fieldType, field.options)
 }
 
 /**

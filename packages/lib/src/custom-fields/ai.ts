@@ -23,11 +23,17 @@ export function isAiEligible(type: FieldType): boolean {
 /**
  * Whether a specific field has AI generation turned on. Combines the
  * type-level eligibility gate with the per-field `options.ai.enabled` flag.
+ *
+ * Multi-value scalar fields (`options.multi` — e.g. multi-value email/phone/
+ * website) are NOT AI-generatable: the commit path is a whole-field replace,
+ * so a generated value would wipe the stored alias list. This gates the whole
+ * pipeline (enqueue short-circuit, worker generation, reference resolution).
  */
 export function isAiField(field: CustomFieldEntity): boolean {
   if (!isAiEligible(toFieldType(field.type))) return false
-  const ai = (field.options as { ai?: AiOptions } | null | undefined)?.ai
-  return ai?.enabled === true
+  const options = field.options as { ai?: AiOptions; multi?: boolean } | null | undefined
+  if (options?.multi === true) return false
+  return options?.ai?.enabled === true
 }
 
 /**

@@ -25,6 +25,7 @@ const BulkUpdateEntityOutput = z.object({
 
 import {
   formatUnknownFieldsError,
+  isMultiValueField,
   resolveFieldLabels,
   validateFieldKeys,
 } from './field-label-helpers'
@@ -70,6 +71,9 @@ them on update. Ids listed in \`autoFilled\` are also system-managed; don't pass
 
 Use this tool instead of update_entity when updating 2+ records with the same field values.
 
+Multi-value fields (list_entity_fields flags them \`multi: true\`): writing a value REPLACES each
+record's whole stored list. Pass \`"mode": "add"\` on that values entry to append instead.
+
 Example (ids match list_entity_fields output):
   recordIds: ["abc123:def456", "abc123:ghi789"]
   values: [{ "fieldId": "ticket_status", "value": "COMPLETED" }]`,
@@ -95,6 +99,12 @@ Example (ids match list_entity_fields output):
               },
               value: {
                 description: 'The new value for the field (null to clear)',
+              },
+              mode: {
+                type: 'string',
+                enum: ['replace', 'add'],
+                description:
+                  "Write mode for multi-value fields: 'replace' (default) replaces each record's stored list; 'add' appends without touching existing values. Ignored for single-value fields.",
               },
             },
             required: ['fieldId', 'value'],
@@ -152,7 +162,11 @@ Example (ids match list_entity_fields output):
         }
       }
 
-      const values = args.values as Array<{ fieldId: string; value: unknown }>
+      const values = args.values as Array<{
+        fieldId: string
+        value: unknown
+        mode?: 'replace' | 'add'
+      }>
 
       // inputAmendment._approvedRecordIds filters which records to actually update
       const approvedIds = args._approvedRecordIds as string[] | undefined
@@ -259,10 +273,26 @@ Example (ids match list_entity_fields output):
 
       const service = new FieldValueService(agentDeps.organizationId, agentDeps.userId, db)
 
+      // Per-field write modes: `'add'` appends on multi-value fields instead of
+      // replacing each record's stored list (default replace). Guarded on the
+      // field actually being multi — the append primitive throws on
+      // single-value fields, and a model-guessed 'add' on a scalar should just
+      // replace.
+      const addFieldIds = new Set(
+        values
+          .filter((v) => v.mode === 'add' && (!resource || isMultiValueField(resource, v.fieldId)))
+          .map((v) => v.fieldId)
+      )
+      const bulkValues = resolvedPairs.map((p) => ({
+        fieldId: p.fieldId,
+        value: p.value,
+        mode: addFieldIds.has(p.fieldId) ? ('add' as const) : ('set' as const),
+      }))
+
       try {
-        const result = await service.setBulkValues({
+        const result = await service.applyBulk({
           recordIds,
-          values: resolvedPairs,
+          values: bulkValues,
         })
 
         const fieldIds = resolvedPairs.map((v) => v.fieldId)
@@ -272,7 +302,9 @@ Example (ids match list_entity_fields output):
           output: {
             total: allRecordIds.length,
             approved: recordIds.length,
-            updated: result.count,
+            // `count` only tallies replace writes; an all-append call still
+            // touched every approved record.
+            updated: result.count > 0 ? result.count : recordIds.length,
             updatedFields: fieldLabels,
           },
         }

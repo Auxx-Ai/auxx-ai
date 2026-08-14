@@ -123,7 +123,11 @@ export async function findOrCreateContactForParticipant(
     }
 
     if (participant.identifierType === IdentifierTypeEnum.PHONE) {
-      createValues.phone = participant.identifier
+      // Array-wrapped for shape consistency with multi-value fields
+      // (options.multi) — the write path auto-unwraps length-1 arrays on
+      // single-value fields. Create-only: matched contacts never get their
+      // identifier re-written here (no-append is the locked ingest decision).
+      createValues.phone = [participant.identifier]
     }
 
     let contactId: string
@@ -134,8 +138,14 @@ export async function findOrCreateContactForParticipant(
       const { instance } = await handler.create('contact', createValues)
       contactId = instance.id
     } else {
+      // `findBy` stays scalar (it drives the lookup); the create data gets the
+      // array-wrapped identifier so a fresh contact's email/phone lands in the
+      // multi-value shape (createValues spreads after findBy in findOrCreate).
       const findBy: Record<string, unknown> = { [systemAttr]: participant.identifier }
-      const { instance } = await handler.findOrCreate('contact', findBy, createValues)
+      const { instance } = await handler.findOrCreate('contact', findBy, {
+        ...createValues,
+        [systemAttr]: [participant.identifier],
+      })
       contactId = instance.id
     }
 

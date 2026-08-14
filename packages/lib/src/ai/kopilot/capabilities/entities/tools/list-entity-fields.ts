@@ -95,6 +95,7 @@ Response shape:
 - fields[]: each entry has \`id\`, \`label\`, \`fieldType\`, plus optional flags:
     required: true       — must be set on create
     unique: true         — duplicates will be rejected
+    multi: true          — stores a LIST of values; a plain write replaces the whole list (update tools accept mode 'add' to append)
     readOnly: true       — can't be set on create or update
     createOnly: true     — set at create, never updated after
     options              — valid values for select / multi-select / status
