@@ -29,6 +29,7 @@ import {
 } from '../../field-values/field-value-helpers'
 import { batchGetValues } from '../../field-values/field-value-queries'
 import { formatToDisplayValue, formatToRawValue } from '../../field-values/formatter'
+import { primaryValue } from '../../field-values/primary-value'
 import { getFieldOutputKey, type ResourceField } from '../../resources/registry/field-types'
 import { fetchResourceWithRelationships } from '../../resources/resource-fetcher'
 import { type PathSegment, parseVariablePath } from '../catalog/variable-inference'
@@ -709,6 +710,36 @@ export class ExecutionContextManager implements ContextManager {
   }
 
   /**
+   * True when `path`'s terminal segment names a multi-value SCALAR field
+   * (`options.multi` on EMAIL/URL/PHONE/…) on a record — the case where an
+   * array-shaped resolution represents "several values of one scalar field"
+   * rather than a genuine list variable. Used by `interpolateVariables` to
+   * substitute the primary (first) value into string templates.
+   *
+   * Resolves the parent path to classify the terminal key against the field
+   * registry; both hops are cache-hits after the value resolution that
+   * preceded this call (lazyLoadCache / recordFieldCache / org cache).
+   */
+  private async isMultiValueScalarFieldPath(path: string): Promise<boolean> {
+    const segments = parseVariablePath(path)
+    if (segments.length < 2) return false
+    const last = segments[segments.length - 1]!
+    // An explicit accessor (`email[1]`) never resolves to the whole array.
+    if (last.index !== undefined) return false
+
+    const parentPath = path.split('.').slice(0, -1).join('.')
+    // A stored ResourceReference classifies without a load; otherwise resolve
+    // the parent (cache-hit) and classify the loaded shape.
+    const identity =
+      this.identityOf(this.context.variables[parentPath]) ??
+      this.identityOf(await this.resolveVariablePath(parentPath))
+    if (!identity) return false
+
+    const field = await this.findResourceField(identity.resourceType, last.key)
+    return field != null && field.type !== BaseType.RELATION && field.options?.multi === true
+  }
+
+  /**
    * Interpolate variables in a string
    * NOW ASYNC to support lazy loading
    * Example: "Hello {{webhook-123.body.name}}" → "Hello John"
@@ -730,7 +761,16 @@ export class ExecutionContextManager implements ContextManager {
       const path = match[1]?.trim()
       if (!path) continue
 
-      const value = await this.resolveVariablePath(path)
+      let value = await this.resolveVariablePath(path)
+
+      // A multi-value scalar field (`options.multi` on EMAIL/URL/PHONE/…)
+      // resolves as an array, and a string template is a scalar context — it
+      // interpolates as the primary (first) value, never a joined list (a
+      // send-email recipient of "a@x.com, b@x.com" is not an address). Genuine
+      // array variables (tags, actionsPerformed, …) keep joining below.
+      if (Array.isArray(value) && (await this.isMultiValueScalarFieldPath(path))) {
+        value = primaryValue(value)
+      }
 
       if (value === undefined || value === null) {
         this.log('WARN', undefined, `Variable not found during interpolation: ${path}`)
