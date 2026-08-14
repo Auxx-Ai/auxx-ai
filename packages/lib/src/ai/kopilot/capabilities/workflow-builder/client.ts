@@ -16,8 +16,6 @@
  */
 export const WORKFLOW_BUILDER_PAGE = 'workflow.builder'
 
-/**
- * Toolset slug grouping the graph-editing tools. `<page>.<group>` shape,
- * matching `workflow.variable` (the AI node's native toolset).
- */
-export const WORKFLOW_BUILDER_TOOLSET_SLUG = 'workflow.builder'
+// There is deliberately no toolset slug here. These tools mount by page
+// context, never by an org toolset grant — see the NOTE in
+// `tools/graph-tool-helpers.ts` for why a slug disabled the whole capability.

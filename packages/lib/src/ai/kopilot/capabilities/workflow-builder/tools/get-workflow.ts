@@ -31,7 +31,6 @@ export function createGetWorkflowTool(getDeps: GetToolDeps): AgentToolDefinition
     name: 'get_workflow',
     permission: workflowToolPermission('view'),
     displayName: 'Get workflow',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     idempotent: true,
     description:

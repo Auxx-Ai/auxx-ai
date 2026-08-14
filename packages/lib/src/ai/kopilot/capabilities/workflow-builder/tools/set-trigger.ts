@@ -20,7 +20,6 @@ export function createSetTriggerTool(getDeps: GetToolDeps): AgentToolDefinition 
     name: 'set_trigger',
     permission: workflowToolPermission('edit'),
     displayName: 'Set workflow trigger',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     description:
       "Set the open workflow's trigger (what starts it). An existing trigger node is retyped in place — its title, position, and outgoing connections survive; with no trigger yet, one is created. In-graph trigger types only (e.g. 'manual', 'scheduled', 'resource-trigger', 'message-received').",

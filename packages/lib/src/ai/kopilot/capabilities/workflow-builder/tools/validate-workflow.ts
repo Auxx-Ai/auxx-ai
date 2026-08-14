@@ -15,7 +15,6 @@ export function createValidateWorkflowTool(getDeps: GetToolDeps): AgentToolDefin
     name: 'validate_workflow',
     permission: workflowToolPermission('view'),
     displayName: 'Validate workflow',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     idempotent: true,
     description:

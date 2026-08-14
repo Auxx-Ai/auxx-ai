@@ -16,7 +16,6 @@ export function createConnectNodesTool(getDeps: GetToolDeps): AgentToolDefinitio
     name: 'connect_nodes',
     permission: workflowToolPermission('edit'),
     displayName: 'Connect workflow nodes',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     description:
       'Connect two nodes of the open workflow draft. For a branching source (if-else etc.), pass the branch NAME. Connecting a loop child back to its own loop wires the loop-back edge automatically.',

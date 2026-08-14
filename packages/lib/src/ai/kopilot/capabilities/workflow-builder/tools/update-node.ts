@@ -16,7 +16,6 @@ export function createUpdateNodeTool(getDeps: GetToolDeps): AgentToolDefinition 
     name: 'update_node',
     permission: workflowToolPermission('edit'),
     displayName: 'Update workflow node',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     description:
       'Update one node of the open workflow draft: the config is shallow-merged over its current data. Pass only the fields you want to change. Use get_node first to see the current config; the result returns the node, its resolved outputs, and any issues.',

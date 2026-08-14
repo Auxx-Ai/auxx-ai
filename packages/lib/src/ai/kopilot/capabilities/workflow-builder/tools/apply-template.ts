@@ -20,7 +20,6 @@ export function createApplyTemplateTool(getDeps: GetToolDeps): AgentToolDefiniti
     name: 'apply_template',
     permission: workflowToolPermission('edit'),
     displayName: 'Apply workflow template',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     description:
       'Install a workflow template into the open EMPTY draft (it refuses when nodes exist). Find template ids with find_workflow_templates — never invent one. Curated templates may contain node types you cannot author; those install fine but stay read-only to you.',

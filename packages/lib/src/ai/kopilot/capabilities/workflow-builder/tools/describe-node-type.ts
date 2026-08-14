@@ -35,7 +35,6 @@ export function createDescribeNodeTypeTool(getDeps: GetToolDeps): AgentToolDefin
       note: 'Static node-type manifest (schema, connection rules, usage docs) — identical for every org, no workspace data.',
     },
     displayName: 'Describe node type',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     idempotent: true,
     description:

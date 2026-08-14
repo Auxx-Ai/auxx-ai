@@ -16,7 +16,6 @@ export function createDeleteNodesTool(getDeps: GetToolDeps): AgentToolDefinition
     name: 'delete_nodes',
     permission: workflowToolPermission('edit'),
     displayName: 'Delete workflow nodes',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     description:
       'Delete nodes from the open workflow draft by title. Deleting a loop deletes its contained nodes too. Pass reconnect: true to bridge each deleted node’s predecessors to its successors.',

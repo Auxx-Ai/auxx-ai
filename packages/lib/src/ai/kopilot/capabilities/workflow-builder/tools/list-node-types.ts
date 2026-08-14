@@ -18,7 +18,6 @@ export function createListNodeTypesTool(getDeps: GetToolDeps): AgentToolDefiniti
       note: 'Static node-type catalog (the registry manifest list) — identical for every org, no workspace data.',
     },
     displayName: 'List node types',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     idempotent: true,
     description:
