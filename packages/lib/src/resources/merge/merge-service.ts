@@ -3,9 +3,9 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { getFieldId, isFieldPath, isResourceFieldId, toResourceFieldIds } from '@auxx/types/field'
-import { TRPCError } from '@trpc/server'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { touchEntityActivity } from '../../entity-instances/activity'
+import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors'
 import { formatToRawValue } from '../../field-values/client'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { parseRecordId, type RecordId } from '../resource-id'
@@ -60,15 +60,6 @@ export class EntityMergeService {
           (_rid, idx) => allValues.sources[idx]?.[field.id] ?? null
         )
 
-        // Debug TAGS field merge
-        if (field.type === 'TAGS') {
-          console.log('🏷️  TAGS field merge input:', {
-            fieldId: field.id,
-            targetValue,
-            sourceValues,
-          })
-        }
-
         const result = mergeFieldValue({
           targetValue,
           sourceValues,
@@ -76,29 +67,12 @@ export class EntityMergeService {
           fieldOptions: field.options ?? undefined,
         })
 
-        // Debug TAGS field merge result
-        if (field.type === 'TAGS') {
-          console.log('🏷️  TAGS merge result:', {
-            fieldId: field.id,
-            mergedValue: result.value,
-            wasModified: result.wasModified,
-          })
-        }
-
         if (result.wasModified) {
           mergedValues.push({ fieldId: field.id, value: result.value })
         }
       }
 
       // 4. Apply merged values to target (with explicit conversion back)
-      // Debug TAGS values being applied
-      const tagsMerged = mergedValues.filter((v) =>
-        fields.find((f) => f.id === v.fieldId && f.type === 'TAGS')
-      )
-      if (tagsMerged.length > 0) {
-        console.log('📤 Applying TAGS values:', tagsMerged)
-      }
-
       const fieldsMerged = await this.applyMergedValues(tx, targetRecordId, mergedValues, fields)
 
       // 5. Transfer task references
@@ -122,6 +96,12 @@ export class EntityMergeService {
       // app-less chat visitorId links, which have no FieldValue to carry them)
       // are stranded on the archived source and lost.
       const identitiesRedirected = await this.redirectRecordIdentities(tx, sourceIds, targetId)
+
+      // 6c. Re-point mail links and connector bindings. Archive (step 7) is a
+      // soft delete, so without this the archived source keeps all mail history
+      // (participant links only fill when NULL, so future mail stays on it too)
+      // and every subsequent connector sync rebinds to the archived source.
+      await this.redirectMailAndConnectorLinks(tx, sourceIds, targetId)
 
       // 7. Archive sources
       await this.archiveSourceInstances(tx, sourceIds)
@@ -151,10 +131,7 @@ export class EntityMergeService {
     const { sourceRecordIds, targetRecordId } = input
 
     if (sourceRecordIds.length === 0) {
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: 'At least one source entity is required for merge',
-      })
+      throw new BadRequestError('At least one source entity is required for merge')
     }
 
     // All must be same entityDefinitionId
@@ -163,18 +140,12 @@ export class EntityMergeService {
       (rid) => parseRecordId(rid).entityDefinitionId === targetParsed.entityDefinitionId
     )
     if (!allSameType) {
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: 'All entities must be of the same type to merge',
-      })
+      throw new BadRequestError('All entities must be of the same type to merge')
     }
 
     // Target cannot be in sources
     if (sourceRecordIds.includes(targetRecordId)) {
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: 'Target entity cannot be in the source list',
-      })
+      throw new BadRequestError('Target entity cannot be in the source list')
     }
 
     // Verify all instances exist and belong to organization
@@ -192,24 +163,15 @@ export class EntityMergeService {
       .where(inArray(schema.EntityInstance.id, allIds))
 
     if (instances.length !== allIds.length) {
-      throw new TRPCError({
-        code: 'NOT_FOUND',
-        message: 'One or more entities not found',
-      })
+      throw new NotFoundError('One or more entities not found')
     }
 
     if (!instances.every((i) => i.organizationId === this.organizationId)) {
-      throw new TRPCError({
-        code: 'FORBIDDEN',
-        message: 'Cannot merge entities from different organizations',
-      })
+      throw new ForbiddenError('Cannot merge entities from different organizations')
     }
 
     if (instances.some((i) => i.archivedAt !== null)) {
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: 'Cannot merge archived entities',
-      })
+      throw new BadRequestError('Cannot merge archived entities')
     }
   }
 
@@ -312,19 +274,6 @@ export class EntityMergeService {
         }
       }
       sources.push(source)
-    }
-
-    // Debug logging for TAGS fields
-    const tagsFields = fields.filter((f) => f.type === 'TAGS')
-    if (tagsFields.length > 0) {
-      console.log('📥 Loaded TAGS field values:', {
-        targetRecordId,
-        tagsFields: tagsFields.map((f) => ({
-          fieldId: f.id,
-          targetValue: target[f.id],
-          sourceValues: sources.map((s) => s[f.id]),
-        })),
-      })
     }
 
     return { target, sources }
@@ -615,6 +564,63 @@ export class EntityMergeService {
     }
 
     return idsToUpdate.length
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // MAIL & CONNECTOR LINK REDIRECT
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Re-point mail participant links, thread primaries, and connector item
+   * bindings from the sources to the target. All four are blanket UPDATEs:
+   * none of these columns participates in a unique key
+   * (`Participant` is unique on `(organizationId, identifier, identifierType)`,
+   * `ThreadParticipant` on `(threadId, email)`), and multiple
+   * `DataConnectorItem` rows sharing one instance is the documented shape.
+   */
+  private async redirectMailAndConnectorLinks(
+    tx: Transaction,
+    sourceIds: string[],
+    targetId: string
+  ): Promise<void> {
+    await tx
+      .update(schema.Participant)
+      .set({ entityInstanceId: targetId })
+      .where(
+        and(
+          inArray(schema.Participant.entityInstanceId, sourceIds),
+          eq(schema.Participant.organizationId, this.organizationId)
+        )
+      )
+
+    // ThreadParticipant has no organizationId column — instance ids are
+    // globally unique CUIDs already validated to belong to this org.
+    await tx
+      .update(schema.ThreadParticipant)
+      .set({ entityInstanceId: targetId })
+      .where(inArray(schema.ThreadParticipant.entityInstanceId, sourceIds))
+
+    // `primaryEntityDefinitionId` stays as-is: sources and target are
+    // validated to share the same definition.
+    await tx
+      .update(schema.Thread)
+      .set({ primaryEntityInstanceId: targetId })
+      .where(
+        and(
+          inArray(schema.Thread.primaryEntityInstanceId, sourceIds),
+          eq(schema.Thread.organizationId, this.organizationId)
+        )
+      )
+
+    await tx
+      .update(schema.DataConnectorItem)
+      .set({ entityInstanceId: targetId })
+      .where(
+        and(
+          inArray(schema.DataConnectorItem.entityInstanceId, sourceIds),
+          eq(schema.DataConnectorItem.organizationId, this.organizationId)
+        )
+      )
   }
 
   // ─────────────────────────────────────────────────────────────────
