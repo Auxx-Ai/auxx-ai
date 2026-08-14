@@ -2,7 +2,11 @@
 
 import { tableViewPreferenceConfigSchema } from '@auxx/lib/conditions/client'
 import { describe, expect, it } from 'vitest'
-import { hasPresentationPreference, toTableViewPreferenceConfig } from './table-view-preference'
+import {
+  hasPresentationPreference,
+  toPersonalOverlayConfig,
+  toTableViewPreferenceConfig,
+} from './table-view-preference'
 
 describe('table view preferences', () => {
   it('keeps presentation state and drops transient/shared-view state', () => {
@@ -36,6 +40,20 @@ describe('table view preferences', () => {
     })
 
     expect(hasPresentationPreference(preference)).toBe(false)
+  })
+
+  it('drops empty containers when hydrating a personal overlay', () => {
+    const overlay = toPersonalOverlayConfig({
+      columnVisibility: {},
+      columnOrder: [],
+      columnSizing: { name: 280 },
+      columnPinning: { left: ['_checkbox', 'name'] },
+    })
+
+    expect(overlay).toEqual({
+      columnSizing: { name: 280 },
+      columnPinning: { left: ['_checkbox', 'name'] },
+    })
   })
 
   it('validates only the presentation payload accepted by the router', () => {
