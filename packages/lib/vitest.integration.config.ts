@@ -13,6 +13,7 @@
 import path from 'node:path'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import { defineConfig } from 'vitest/config'
+import { auxxSourceAlias } from '../../vitest.alias'
 
 export default defineConfig({
   plugins: [tsconfigPaths()],
@@ -33,15 +34,12 @@ export default defineConfig({
   },
 
   resolve: {
+    // The shared source-alias map covers every @auxx/* workspace package (see
+    // vitest.alias.ts) — a hand-picked subset here left `@auxx/types` and
+    // `@auxx/services` resolving to a `dist/` that a fresh checkout does not
+    // have. `@auxx/test-utils` is not part of the shared map, so it stays.
     alias: {
-      '@auxx/database': path.resolve(__dirname, '../database/src'),
-      '@auxx/credentials/store': path.resolve(__dirname, '../credentials/src/store'),
-      '@auxx/credentials/crypto': path.resolve(__dirname, '../credentials/src/crypto'),
-      '@auxx/lib': path.resolve(__dirname, './src'),
-      '@auxx/utils': path.resolve(__dirname, '../utils/src'),
-      '@auxx/logger': path.resolve(__dirname, '../logger/src'),
-      '@auxx/config': path.resolve(__dirname, '../config/src'),
-      '@auxx/workflow-nodes': path.resolve(__dirname, '../workflow-nodes/src'),
+      ...auxxSourceAlias,
       '@auxx/test-utils': path.resolve(__dirname, '../test-utils/src'),
       '~/': path.resolve(__dirname, './src/'),
     },

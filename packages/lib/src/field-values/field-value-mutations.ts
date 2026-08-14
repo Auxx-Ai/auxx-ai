@@ -36,7 +36,7 @@ import {
   isBuiltInField,
 } from '../custom-fields/built-in-fields'
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
-import { BadRequestError, NotFoundError } from '../errors'
+import { BadRequestError, NotFoundError, UniqueValueConflictError } from '../errors'
 import {
   collectTriggeredFields,
   deduplicateBySystemAttribute,
@@ -353,6 +353,21 @@ export async function setValue(
     return []
   }
 
+  // Uniqueness gate — setValue writes through setMultiValue/setSingleValue
+  // directly (it does NOT route through setValueWithType), so it needs its
+  // own check before any row is touched.
+  if (field.isUnique) {
+    await checkUniqueValueTyped(
+      {
+        fieldId,
+        value: typedInput,
+        organizationId: ctx.organizationId,
+        excludeEntityId: parseRecordId(recordId).entityInstanceId,
+      },
+      ctx.db
+    )
+  }
+
   // 3. Determine strategy and execute
   let result: TypedFieldValue[]
 
@@ -424,6 +439,23 @@ export async function setValueWithType(
         )
       }
     }
+  }
+
+  // Uniqueness gate — THE gate for every set-shaped write (panel writes via
+  // setValueWithBuiltIn, setValuesForEntity/setBulkValues/applyBulk fan-outs,
+  // and direct service calls). Array values are checked per element,
+  // org-wide, excluding this record's own rows. Runs BEFORE the destructive
+  // delete below so a conflict leaves the record's existing values untouched.
+  if (field.isUnique && value !== null) {
+    await checkUniqueValueTyped(
+      {
+        fieldId,
+        value,
+        organizationId: ctx.organizationId,
+        excludeEntityId: entityInstanceId,
+      },
+      ctx.db
+    )
   }
 
   // Delete existing values for this entityInstanceId + fieldId
@@ -555,6 +587,22 @@ export async function addValue(
   // Parse RecordId to get entityInstanceId for DB queries
   const { entityInstanceId } = parseRecordId(recordId)
 
+  // Uniqueness gate — the `fieldValue.add` door appends a single value and
+  // must not be able to claim one held by another record (org-wide,
+  // excluding this record's own rows).
+  const field = await getField(ctx, fieldId)
+  if (field.isUnique) {
+    await checkUniqueValueTyped(
+      {
+        fieldId,
+        value,
+        organizationId: ctx.organizationId,
+        excludeEntityId: entityInstanceId,
+      },
+      ctx.db
+    )
+  }
+
   // Get existing values to determine sortKey position
   const existing = await ctx.db
     .select({ sortKey: schema.FieldValue.sortKey })
@@ -612,7 +660,6 @@ export async function addValue(
   const typedResult = rowToTypedValue(inserted as unknown as FieldValueRow, fieldType)
 
   // Update display value if this is a display field (e.g., avatar for FILE fields)
-  const field = await getField(ctx, fieldId)
   await maybeUpdateDisplayValue(ctx, recordId, field, value)
 
   // Re-read full field value and publish (multi-value — send complete array)
@@ -1358,6 +1405,13 @@ function buildMatchInClause(
  * `db.transaction(...)`, which is a `PgTransaction` and is not assignable to the
  * pooled `Database`.
  */
+/** Human-readable form of a typed input for uniqueness-conflict errors. */
+function typedInputDisplay(v: TypedFieldValueInput): string {
+  if (v.type === 'option') return v.optionId
+  if (v.type === 'relationship') return v.recordId
+  return 'value' in v ? String(v.value) : JSON.stringify(v)
+}
+
 async function acquireFieldValueLock(
   tx: Pick<FieldValueContext['db'], 'execute'>,
   entityId: string,
@@ -1486,6 +1540,22 @@ export async function addValues(
 
     if (survivors.length === 0) {
       return existingRows.map((r) => rowToTypedValue(r, fieldType))
+    }
+
+    // Uniqueness gate — appended values must not be claimed by another
+    // record org-wide. Checked on survivors (post-dedup) inside the lock so
+    // the check and the insert are atomic; own-record duplicates were
+    // already dropped by the dedup above.
+    if (field.isUnique) {
+      await checkUniqueValueTyped(
+        {
+          fieldId,
+          value: survivors,
+          organizationId: ctx.organizationId,
+          excludeEntityId: entityInstanceId,
+        },
+        txCtx.db
+      )
     }
 
     // Value cap: existing rows + surviving (deduped) additions must fit.
@@ -1753,6 +1823,10 @@ export async function addValuesBulk(
     }
 
     const insertRows: ReturnType<typeof buildFieldValueRow>[] = []
+    // Unique fields: one value can only land on ONE record in the whole
+    // batch — the per-entity org-wide check below can't see sibling inserts
+    // (they all flush in one statement at the end of the tx).
+    const batchClaims = new Map<string, string>()
     for (const entityId of entityIds) {
       const existing = existingByEntity.get(entityId) ?? []
       oldRowsByEntity.set(entityId, existing)
@@ -1782,6 +1856,19 @@ export async function addValuesBulk(
               `record ${entityId} would exceed the cap`
           )
         }
+        if (field.isUnique) {
+          const claimedBy = batchClaims.get(key)
+          if (claimedBy !== undefined && claimedBy !== entityId) {
+            const display = typedInputDisplay(typedInputs[i]!)
+            throw new UniqueValueConflictError({
+              message: `Value already added to another record in this batch: ${display}`,
+              conflictingValue: display,
+              fieldId,
+              existingEntityId: claimedBy,
+            })
+          }
+          batchClaims.set(key, entityId)
+        }
         localSeen.add(key)
         const sortKey = nextKeyAfter(prevKey)
         prevKey = sortKey
@@ -1797,6 +1884,20 @@ export async function addValuesBulk(
         )
         insertedTyped.push(typedInputs[i]!)
         insertedCount++
+      }
+      // Uniqueness gate — values this entity would actually insert must not
+      // be claimed by any OTHER record org-wide (archived excluded). Runs
+      // inside the tx/locks so check and insert are atomic.
+      if (field.isUnique && insertedTyped.length > 0) {
+        await checkUniqueValueTyped(
+          {
+            fieldId,
+            value: insertedTyped,
+            organizationId: ctx.organizationId,
+            excludeEntityId: entityId,
+          },
+          tx as unknown as Database
+        )
       }
       if (insertedTyped.length > 0) {
         insertedTypedByEntity.set(entityId, insertedTyped)
@@ -2148,20 +2249,9 @@ export async function setValueWithBuiltIn(
     return { state: 'complete', performedAt: new Date().toISOString(), values: [] }
   }
 
-  // 4. Check uniqueness if applicable (if field has unique constraint)
-  if (field.isUnique && typedValue !== null) {
-    await checkUniqueValueTyped(
-      {
-        fieldId,
-        value: typedValue,
-        organizationId: ctx.organizationId,
-        modelType,
-        entityDefinitionId: field.entityDefinitionId,
-        excludeEntityId: entityInstanceId,
-      },
-      ctx.db
-    )
-  }
+  // 4. Uniqueness is enforced inside setValueWithType (step 6) — one gate
+  // site, running just before the destructive delete, so hook-transformed
+  // values are what get checked and a conflict leaves existing rows intact.
 
   // 6. Set the value
   const result = await setValueWithType(ctx, {

@@ -28,8 +28,6 @@ function buildFakeDb(rows: Array<{ entityId: string; displayName: string | null 
 const baseInput = {
   fieldId: 'field-email-1',
   organizationId: 'org-1',
-  modelType: 'ENTITY' as never,
-  entityDefinitionId: 'def-contact',
   excludeEntityId: 'inst-self',
 }
 

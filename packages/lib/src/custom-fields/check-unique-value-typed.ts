@@ -1,6 +1,5 @@
 // packages/lib/src/custom-fields/check-unique-value-typed.ts
 
-import type { ModelType } from '@auxx/database'
 import { type Database, database, schema, type Transaction } from '@auxx/database'
 import type { TypedFieldValueInput } from '@auxx/types'
 import { and, eq, isNull, ne, sql } from 'drizzle-orm'
@@ -8,14 +7,20 @@ import { UniqueValueConflictError } from '../errors'
 import { parseRecordId } from '../resources/resource-id'
 
 /**
- * Input for checking if a value is unique for a field
+ * Input for checking if a value is unique for a field.
+ *
+ * `FieldValue.fieldId` is an FK to `CustomField.id` (a primary key), so
+ * `fieldId` + `organizationId` alone pin the exact field. The check
+ * deliberately takes NO `modelType`/`entityDefinitionId` scope: seeded
+ * system fields carry their entity type as `CustomField.modelType`
+ * (e.g. `'contact'`) while callers deriving a scope from the record's
+ * def id get `'entity'` — a mismatched predicate silently emptied the
+ * query and let duplicates through the `fieldValue.set` door.
  */
 export interface CheckUniqueValueTypedInput {
   fieldId: string
   value: TypedFieldValueInput | TypedFieldValueInput[] | null
   organizationId: string
-  modelType: ModelType
-  entityDefinitionId?: string | null
   excludeEntityId?: string
 }
 
@@ -35,7 +40,7 @@ export async function checkUniqueValueTyped(
   input: CheckUniqueValueTypedInput,
   db: Database | Transaction = database
 ): Promise<boolean> {
-  const { fieldId, value, organizationId, modelType, entityDefinitionId, excludeEntityId } = input
+  const { fieldId, value, organizationId, excludeEntityId } = input
 
   // Null values are always allowed (no uniqueness constraint)
   if (value === null) {
@@ -94,24 +99,21 @@ export async function checkUniqueValueTyped(
   }
 
   // Query for existing values with the same value. The EntityInstance join
-  // excludes archived records from the check.
+  // excludes archived records from the check. No CustomField join: fieldId
+  // is the CustomField PK, so any extra modelType/entityDefinitionId
+  // predicate can only wrongly EXCLUDE the conflicting row (fail open).
   const query = db
     .select({
       entityId: schema.FieldValue.entityId,
       displayName: schema.EntityInstance.displayName,
     })
     .from(schema.FieldValue)
-    .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
     .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
     .where(
       and(
         eq(schema.FieldValue.fieldId, fieldId),
         eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.CustomField.modelType, modelType),
         isNull(schema.EntityInstance.archivedAt),
-        entityDefinitionId
-          ? eq(schema.CustomField.entityDefinitionId, entityDefinitionId)
-          : undefined,
         excludeEntityId ? ne(schema.FieldValue.entityId, excludeEntityId) : undefined,
         valueCondition
       )
