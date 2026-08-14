@@ -41,8 +41,8 @@ export {
   parseArraySegmentsFromId,
   parseResourceFieldFromVariableId,
   preserveArrayStructure,
-  replaceArrayAccessor,
   resolveFieldPath,
+  setSegmentAccessor,
   VARIABLE_PATTERN,
 } from '@auxx/lib/workflow-engine/client'
 
@@ -340,6 +340,15 @@ export function hasCompatibleChildPath(
         return true
       }
     }
+  }
+
+  // Arrays hold their child shape under `items`, not `properties`. Without this
+  // branch an array-of-objects is reported as having no compatible descendant,
+  // so a typed field renders it non-selectable AND non-navigable — you could
+  // never drill into `find_1.<cuid>` to reach `[*].email` on a STRING field.
+  // `isNavigableVariable` has always honoured `items`; this keeps the two in step.
+  if (variable.items) {
+    return hasCompatibleChildPath(variable.items, allowedTypes)
   }
 
   return false

@@ -11,10 +11,7 @@ import { InlinePickerPopover } from '~/components/editor/inline-picker'
 import { Tooltip } from '~/components/global/tooltip'
 import { type UnifiedVariable, VAR_MODE } from '~/components/workflow/types'
 import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
-import {
-  VariableTagContextMenu,
-  VariableTagDropdown,
-} from '~/components/workflow/ui/variables/variable-tag-context-menu'
+import { VariableTagContextMenu } from '~/components/workflow/ui/variables/variable-tag-context-menu'
 import { containsVariableReference } from '~/components/workflow/utils/variable-utils'
 import { VariableExplorerEnhanced } from '../variables/variable-explorer-enhanced'
 import VariableTag from '../variables/variable-tag'
@@ -182,11 +179,17 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
       }
     }, [value])
 
+    // `finalAllowedTypes` is rebuilt on every render, so key the effect on its
+    // contents — not the array identity — or it re-fires continuously.
+    const allowedTypesKey = finalAllowedTypes.join('|')
+
+    // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on allowedTypesKey, not the unstable array
     useEffect(() => {
       if (editor && nodeId !== undefined) {
         editor.storage.nodeId = nodeId
+        editor.storage.expectedTypes = finalAllowedTypes
       }
-    }, [editor, nodeId])
+    }, [editor, nodeId, allowedTypesKey])
 
     // Handle component unmount - flush any pending changes
     React.useEffect(() => {
@@ -266,20 +269,16 @@ const VarEditor: React.FC<VarEditorProps> = React.memo(
             popoverHeight={500}>
             <div className='w-full h-8 flex items-center'>
               {textValue ? (
-                <VariableTagDropdown
+                <VariableTagContextMenu
                   variableId={textValue}
                   onVariableIdChange={handleVariableIdChange}>
-                  <VariableTagContextMenu
+                  <VariableTag
                     variableId={textValue}
-                    onVariableIdChange={handleVariableIdChange}>
-                    <VariableTag
-                      variableId={textValue}
-                      nodeId={nodeId}
-                      isShort
-                      onVariableIdChange={handleVariableIdChange}
-                    />
-                  </VariableTagContextMenu>
-                </VariableTagDropdown>
+                    nodeId={nodeId}
+                    isShort
+                    onVariableIdChange={handleVariableIdChange}
+                  />
+                </VariableTagContextMenu>
               ) : (
                 <span className='text-sm text-primary-400 truncate pointer-events-none'>
                   {placeholder}

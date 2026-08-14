@@ -17,7 +17,7 @@ import { Kbd } from '@auxx/ui/components/kbd'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { useStore } from '@xyflow/react'
-import { ChevronLeft, ChevronRight, Copy, Search } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Copy, Search } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TooltipExplanation } from '~/components/global/tooltip'
@@ -358,10 +358,27 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
   // Build navigation stack from variable ID path
   const buildNavigationStack = useCallback(
     (variableId: string, allVariables: UnifiedVariable[]): NavigationItem[] => {
-      const pathParts = variableId.split('.')
+      // The store only ever indexes the `[*]` form. A chip carrying `[0]`/`[-1]`
+      // — which is exactly the array case worth drilling into — would miss every
+      // intermediate lookup below and silently land back at root.
+      const pathParts = variableId.replace(/\[-?\d+\]/g, '[*]').split('.')
       const stack: NavigationItem[] = []
 
-      for (let i = 0; i < pathParts.length - 1; i++) {
+      // The first segment is the node id, but groups are keyed `node-<nodeId>`
+      // and variable ids never equal a bare node id, so looking it up in
+      // `allVariables` always missed: the breadcrumb started mid-path and one
+      // "back" jumped past the node straight to root.
+      const rootGroup = groups.find((g) => g.id === `node-${pathParts[0]}`)
+      if (rootGroup) {
+        stack.push({
+          id: rootGroup.id,
+          label: rootGroup.name,
+          type: 'group',
+          icon: rootGroup.icon,
+        })
+      }
+
+      for (let i = 1; i < pathParts.length - 1; i++) {
         const currentId = pathParts.slice(0, i + 1).join('.')
         const variable = allVariables.find((v) => v.id === currentId)
 
@@ -376,7 +393,14 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
 
       return stack
     },
-    []
+    [groups]
+  )
+
+  // Current value marker. Normalised so a chip on `[0]` still matches the `[*]`
+  // id the explorer lists.
+  const normalizedSelected = useMemo(
+    () => selected?.replace(/\[-?\d+\]/g, '[*]') ?? null,
+    [selected]
   )
 
   /**
@@ -617,7 +641,7 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
                     navigateInto(item)
                   }}
                   onCopy={copyVariable}
-                  isSelected={selectedVariables.includes(item.id)}
+                  isSelected={normalizedSelected === item.id || selectedVariables.includes(item.id)}
                   isHighlighted={selectedItemId === item.id}
                   showPath={!!search}
                   labelPath={
@@ -731,6 +755,11 @@ const VariableCommandItem: React.FC<VariableCommandItemProps> = ({
             )}>
             {isGroup ? (item as VariableGroup).name : (item as UnifiedVariable).label}
           </code>
+
+          {/* Current value marker — this is the variable the chip already points at. */}
+          {isSelected && !isGroup && (
+            <Check className='size-3.5 shrink-0 text-info' strokeWidth={3} />
+          )}
 
           {/* Show label path in search mode */}
           {showPath && labelPath && (
