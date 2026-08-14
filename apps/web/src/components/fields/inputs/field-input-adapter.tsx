@@ -29,6 +29,7 @@ import {
   StringInput,
 } from '~/components/workflow/nodes/shared/node-inputs'
 import { useAccess } from '~/providers/capabilities-provider'
+import { MultiValueFieldInput } from './multi-value-input-field'
 import { NameFieldInput, type NameValue } from './name-field-input'
 import { getSelectConfig, SelectFieldInput } from './select-input-field'
 
@@ -401,6 +402,25 @@ export function FieldInputAdapter({
       )
 
     case FieldType.EMAIL: {
+      // Multi-value fields (options.multi) edit through the value-list picker —
+      // this is the create-dialog path, so writes land as whole arrays.
+      if (fieldOptions?.multi) {
+        return (
+          <MultiValueFieldInput
+            fieldType={fieldType}
+            value={value}
+            onChange={onChange as (values: string[]) => void}
+            fieldOptions={fieldOptions}
+            placeholder={placeholder}
+            disabled={disabled}
+            triggerProps={triggerProps}
+            open={open}
+            onOpenChange={onOpenChange}
+            shouldPreventDismiss={shouldPreventDismiss}
+          />
+        )
+      }
+
       const emailOpts = fieldOptions?.email
 
       // If email options with participantType exist, use ParticipantPicker
@@ -437,7 +457,25 @@ export function FieldInputAdapter({
       )
     }
 
-    case FieldType.URL:
+    case FieldType.URL: {
+      // Multi-value URL fields (options.multi) — value-list picker, whole-array writes.
+      if (fieldOptions?.multi) {
+        return (
+          <MultiValueFieldInput
+            fieldType={fieldType}
+            value={value}
+            onChange={onChange as (values: string[]) => void}
+            fieldOptions={fieldOptions}
+            placeholder={placeholder}
+            disabled={disabled}
+            triggerProps={triggerProps}
+            open={open}
+            onOpenChange={onOpenChange}
+            shouldPreventDismiss={shouldPreventDismiss}
+          />
+        )
+      }
+
       return (
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
           <StringInput
@@ -448,6 +486,7 @@ export function FieldInputAdapter({
           />
         </FocusableInputWrapper>
       )
+    }
 
     case FieldType.RICH_TEXT:
       return (
@@ -459,12 +498,31 @@ export function FieldInputAdapter({
     // ─────────────────────────────────────────────────────────────────
     // PHONE - uses PhoneInput with focus wrapper
     // ─────────────────────────────────────────────────────────────────
-    case FieldType.PHONE_INTL:
+    case FieldType.PHONE_INTL: {
+      // Multi-value phone fields (options.multi) — value-list picker, whole-array writes.
+      if (fieldOptions?.multi) {
+        return (
+          <MultiValueFieldInput
+            fieldType={fieldType}
+            value={value}
+            onChange={onChange as (values: string[]) => void}
+            fieldOptions={fieldOptions}
+            placeholder={placeholder}
+            disabled={disabled}
+            triggerProps={triggerProps}
+            open={open}
+            onOpenChange={onOpenChange}
+            shouldPreventDismiss={shouldPreventDismiss}
+          />
+        )
+      }
+
       return (
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
           <PhoneInput {...nodeInputProps} />
         </FocusableInputWrapper>
       )
+    }
 
     // ─────────────────────────────────────────────────────────────────
     // NUMBER - uses NumberInput with focus wrapper

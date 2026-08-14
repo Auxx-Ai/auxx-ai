@@ -12,6 +12,8 @@ export const FormattedFieldSchema = z.object({
   tags: z.array(z.object({ label: z.string(), color: z.string().optional() })).optional(),
   recordId: z.string().optional(),
   recordIds: z.array(z.string()).optional(),
+  /** Per-value list for multi-value email/phone cells — renderers link each value separately. */
+  values: z.array(z.string()).optional(),
 })
 
 /** Maps FieldType → cell type hint for the auxx:table block */
@@ -35,6 +37,8 @@ export interface FormattedField {
   tags?: Array<{ label: string; color?: string }>
   recordId?: string
   recordIds?: string[]
+  /** Per-value list for multi-value email/phone cells — renderers link each value separately. */
+  values?: string[]
 }
 
 /**
@@ -63,6 +67,17 @@ export function formatEnrichedFields(
 
     if (cellType) {
       formatted.type = cellType
+    }
+
+    // Multi-value email/phone (options.multi): the joined `text` would render
+    // as ONE mailto/tel target carrying every address. Carry the per-value
+    // list so the table cell can link each value separately.
+    if (
+      (cellType === 'email' || cellType === 'phone') &&
+      Array.isArray(field.displayValue) &&
+      field.displayValue.length > 1
+    ) {
+      formatted.values = field.displayValue.map(String)
     }
 
     // ACTOR: extract actorId from converter's rawValue

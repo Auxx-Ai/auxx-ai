@@ -303,6 +303,71 @@ describe('RecordIdentityHeader — what it lets you write', () => {
   })
 })
 
+describe('RecordIdentityHeader — multi-value secondary line (options.multi)', () => {
+  // The value-list picker (cmdk + base-ui ScrollArea) needs two jsdom shims.
+  class NoopIntersectionObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() {
+      return []
+    }
+  }
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn()
+    global.IntersectionObserver = NoopIntersectionObserver as unknown as typeof IntersectionObserver
+  })
+
+  function givenMultiEmailSecondary(emails: string[]) {
+    const secondary = makeField({
+      id: SECONDARY_ID,
+      key: 'primaryEmail',
+      label: 'Email',
+      fieldType: 'EMAIL',
+      options: { multi: true },
+    })
+    h.fields = [secondary]
+    h.secondaryDisplayFieldId = SECONDARY_ID
+    h.values[SECONDARY_ID] = emails.map((value, i) => ({ id: `fv-${i}`, type: 'text', value }))
+  }
+
+  // The heading compresses a multi-value field to primary + `+N` — the full
+  // list is the panel's job, and a three-chip list does not belong in a
+  // text-xs secondary line.
+  it('renders the primary value plus a +N badge, never the full list', () => {
+    givenMultiEmailSecondary(['a@x.com', 'b@x.com', 'c@x.com'])
+
+    render(<RecordIdentityHeader recordId={RECORD_ID} />)
+
+    expect(screen.getByText('a@x.com')).toBeInTheDocument()
+    expect(screen.getByText('+2')).toBeInTheDocument()
+    expect(screen.queryByText('b@x.com')).not.toBeInTheDocument()
+    expect(screen.queryByText('c@x.com')).not.toBeInTheDocument()
+  })
+
+  // Multi leaves inline edit: the answer that routes the heading (and table
+  // cells) to the popover picker instead of a single-line input.
+  it('multi EMAIL answers popover edit mode while scalar EMAIL stays inline', () => {
+    expect(getEditModeForFieldType('EMAIL')).toBe('inline')
+    expect(getEditModeForFieldType('EMAIL', { multi: true })).toBe('popover')
+    expect(getEditModeForFieldType('URL', { multi: true })).toBe('popover')
+    expect(getEditModeForFieldType('PHONE_INTL', { multi: true })).toBe('popover')
+  })
+
+  it('editing routes to the popover value-list picker, outside the heading', async () => {
+    givenMultiEmailSecondary(['a@x.com', 'b@x.com'])
+
+    const { container } = render(<RecordIdentityHeader recordId={RECORD_ID} />)
+
+    await userEvent.click(screen.getByText('a@x.com'))
+
+    // The picker's combined filter/entry input mounts in the popover overlay —
+    // not inline inside the heading.
+    const pickerInput = screen.getByPlaceholderText('Search or add email...')
+    expect(container.contains(pickerInput)).toBe(false)
+  })
+})
+
 describe('RecordIdentityHeader — which editor the field type calls for', () => {
   // §7. Text-like types replace the value in the heading itself; everything else
   // gets the shared field popover, which is why a NAME primary field lands on

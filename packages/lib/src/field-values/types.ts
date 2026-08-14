@@ -254,6 +254,16 @@ export interface AddValueInput {
   position?: 'start' | 'end' | { after: string }
 }
 
+/**
+ * Input for promoting one value of a multi-value field to primary
+ * (position 0). `valueId` is the FieldValue row id to move to the front.
+ */
+export interface SetPrimaryValueInput {
+  recordId: RecordId
+  fieldId: string
+  valueId: string
+}
+
 /** Input for getting a single field value */
 export interface GetValueInput {
   recordId: RecordId

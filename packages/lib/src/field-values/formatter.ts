@@ -113,7 +113,8 @@ export function formatToTypedInput(
  */
 export function formatToRawValue(
   value: TypedFieldValue | TypedFieldValueInput | TypedFieldValue[] | unknown,
-  fieldType: FieldType
+  fieldType: FieldType,
+  fieldOptions?: FieldTypeOptions
 ): unknown {
   const converter = getConverter(fieldType)
 
@@ -124,7 +125,18 @@ export function formatToRawValue(
     return rawValues.filter((v) => v !== null && v !== undefined)
   }
 
-  return converter.toRawValue(value)
+  const raw = converter.toRawValue(value)
+
+  // Stable array shape for array-return fields (options.multi scalars, multi
+  // ACTOR): a single stored value must still unwrap to a one-element array so
+  // downstream array branches (cell renderers, panel displays) always see the
+  // same shape regardless of value count. Callers that omit `fieldOptions`
+  // keep the historic scalar passthrough.
+  if (fieldOptions && isArrayReturnType(fieldType, fieldOptions)) {
+    return raw === null || raw === undefined || raw === '' ? [] : [raw]
+  }
+
+  return raw
 }
 
 /**

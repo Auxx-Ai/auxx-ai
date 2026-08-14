@@ -108,6 +108,45 @@ export const fieldValueRouter = createTRPCRouter({
     }),
 
   /**
+   * Promote one value of a multi-value field to primary (position 0).
+   * Single-row sortKey move — recomputes display columns and publishes the
+   * full array server-side. Gated exactly like `set`.
+   */
+  setPrimary: capabilityProcedure
+    .input(
+      z.object({
+        recordId: z.string(), // RecordId format
+        fieldId: fieldIdSchema,
+        /** FieldValue row id to move to the front. */
+        valueId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertFieldValueHostsWritable({
+        db: ctx.db,
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        hosts: [input.recordId as RecordId],
+      })
+
+      const service = new FieldValueService(
+        ctx.session.organizationId,
+        ctx.session.user.id,
+        ctx.db,
+        ctx.headers.get('x-realtime-socket-id') ?? undefined,
+        { capabilities: ctx.capabilities }
+      )
+
+      const values = await service.setPrimaryValue({
+        recordId: input.recordId as RecordId,
+        fieldId: input.fieldId,
+        valueId: input.valueId,
+      })
+      return { state: 'complete' as const, performedAt: new Date().toISOString(), values }
+    }),
+
+  /**
    * Set values for multiple resources (bulk operation).
    * Expects recordIds in RecordId format.
    */

@@ -326,8 +326,10 @@ export function PropertyProvider({
       setCurrentValue(newValue)
       setIsDirty(false)
 
-      // 2. Fire mutation in BACKGROUND (optimistic + background mutation)
-      storeSave(recordId, field.id, newValue, field.fieldType)
+      // 2. Fire mutation in BACKGROUND (optimistic + background mutation).
+      // `fieldOptions` keeps options.multi fields array-shaped through the
+      // optimistic store write and the post-save shaping.
+      storeSave(recordId, field.id, newValue, field.fieldType, { fieldOptions: field.options })
       // Store handles the optimistic update, so also update local serverValue
       setServerValue(newValue)
     },
@@ -379,10 +381,10 @@ export function PropertyProvider({
       isOutsideClick.current = false
 
       // Fire mutation in background (optimistic + background mutation)
-      storeSave(recordId, field.id, newValue, field.fieldType)
+      storeSave(recordId, field.id, newValue, field.fieldType, { fieldOptions: field.options })
       setServerValue(newValue)
     },
-    [recordId, isSaving, serverValue, storeSave, field.id, field.fieldType]
+    [recordId, isSaving, serverValue, storeSave, field.id, field.fieldType, field.options]
   )
 
   /**
@@ -408,11 +410,13 @@ export function PropertyProvider({
       setIsDirty(false)
 
       // Use async save path
-      const result = await storeSaveAsync(recordId, field.id, newValue, field.fieldType)
+      const result = await storeSaveAsync(recordId, field.id, newValue, field.fieldType, {
+        fieldOptions: field.options,
+      })
       setServerValue(newValue)
       return result
     },
-    [recordId, serverValue, storeSaveAsync, field.id, field.fieldType]
+    [recordId, serverValue, storeSaveAsync, field.id, field.fieldType, field.options]
   )
 
   /**

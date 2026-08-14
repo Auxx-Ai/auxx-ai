@@ -356,10 +356,35 @@ export function renderCurrencyValue(
 }
 
 /**
- * Render email value as copyable link
+ * Normalize a multi-value cell value (options.multi EMAIL/URL/PHONE) into a
+ * string list. Returns null for scalar values so callers keep their scalar
+ * rendering path.
+ */
+function toMultiValueList(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null
+  return value.filter((v): v is string => typeof v === 'string' && v !== '')
+}
+
+/**
+ * Render email value as copyable link. Arrays (options.multi fields) render as
+ * a chip list via ItemsCellView — primary first, `+N` overflow.
  */
 export function renderEmailValue(value: unknown): React.ReactNode {
   if (value == null || value === '') return <EmptyCell />
+
+  const values = toMultiValueList(value)
+  if (values) {
+    if (values.length === 0) return <EmptyCell />
+    return (
+      <ItemsCellView
+        items={values.map((email, index) => ({ id: `${index}:${email}`, email }))}
+        renderItem={(item) => (
+          <CopyableLinkCell displayText={item.email} value={item.email} type='email' />
+        )}
+        maxDisplay={3}
+      />
+    )
+  }
 
   const email = String(value)
   return (
@@ -382,8 +407,6 @@ export function renderPhoneValue(
 ): React.ReactNode {
   if (value == null || value === '') return <EmptyCell />
 
-  const phone = String(value)
-
   // Merge column formatting with field options (column takes precedence)
   const opts: PhoneFieldOptions = {
     ...(config?.options as PhoneFieldOptions | undefined),
@@ -394,17 +417,34 @@ export function renderPhoneValue(
   // Use converter for display formatting. `formatToDisplayValue` is typed for
   // the full DB entity, but the PHONE_INTL converter only reads `.value`, so the
   // input shape is sufficient here.
-  const formatted =
+  const formatPhone = (phone: string) =>
     (formatToDisplayValue(
       { type: 'text', value: phone } as TypedFieldValue,
       'PHONE_INTL',
       opts
     ) as string) || phone
 
+  // Multi-value branch (options.multi fields) — chip list, primary first.
+  const values = toMultiValueList(value)
+  if (values) {
+    if (values.length === 0) return <EmptyCell />
+    return (
+      <ItemsCellView
+        items={values.map((phone, index) => ({ id: `${index}:${phone}`, phone }))}
+        renderItem={(item) => (
+          <CopyableLinkCell displayText={formatPhone(item.phone)} value={item.phone} type='phone' />
+        )}
+        maxDisplay={3}
+      />
+    )
+  }
+
+  const phone = String(value)
+
   return (
     <ExpandableCell mode='horizontal'>
       <div>
-        <CopyableLinkCell displayText={formatted} value={phone} type='phone' />
+        <CopyableLinkCell displayText={formatPhone(phone)} value={phone} type='phone' />
       </div>
     </ExpandableCell>
   )
@@ -416,6 +456,25 @@ export function renderPhoneValue(
  */
 export function renderUrlValue(value: unknown, config?: CellConfig): React.ReactNode {
   if (value == null || value === '') return <EmptyCell />
+
+  // Multi-value branch (options.multi fields) — chip list, primary first.
+  const values = toMultiValueList(value)
+  if (values) {
+    if (values.length === 0) return <EmptyCell />
+    return (
+      <ItemsCellView
+        items={values.map((itemUrl, index) => ({ id: `${index}:${itemUrl}`, url: itemUrl }))}
+        renderItem={(item) => (
+          <CopyableLinkCell
+            displayText={item.url}
+            value={item.url.startsWith('http') ? item.url : `https://${item.url}`}
+            type='url'
+          />
+        )}
+        maxDisplay={3}
+      />
+    )
+  }
 
   const url = String(value)
   const href = url.startsWith('http') ? url : `https://${url}`
@@ -737,9 +796,17 @@ function isFieldType(type: string): type is FieldType {
   return (FieldTypeValues as readonly string[]).includes(type)
 }
 
-function unwrapValue(value: unknown, fieldType: string): unknown {
+function unwrapValue(value: unknown, fieldType: string, options?: CellConfig['options']): unknown {
   if (value === null || value === undefined) return null
-  return isFieldType(fieldType) ? formatToRawValue(value, fieldType) : value
+  if (!isFieldType(fieldType)) return value
+  // Thread `multi` through so options.multi fields unwrap to a STABLE array —
+  // without it a single stored value unwraps to a scalar and the renderers'
+  // array branches never fire. Scoped to `multi` so legacy array-return types
+  // (TAGS, SINGLE_SELECT, RELATIONSHIP, …) keep their historic shapes.
+  const fieldOptions = (options as { multi?: boolean } | undefined)?.multi
+    ? { multi: true }
+    : undefined
+  return formatToRawValue(value, fieldType, fieldOptions)
 }
 
 /**
@@ -755,7 +822,7 @@ export function renderCellValue(
   const type = fieldType ?? 'TEXT'
 
   // Extract raw value from TypedFieldValue using centralized formatter
-  const actualValue = unwrapValue(value, type)
+  const actualValue = unwrapValue(value, type, config?.options)
 
   // Get renderer for field type, fallback to TEXT
   const renderer = cellRenderers[type] ?? TEXT_CELL_RENDERER

@@ -22,6 +22,37 @@ import type { BlockRendererProps } from './block-registry'
 import type { TableBlockData, TableCellData, TableColumnData } from './block-schemas'
 import { tableBodyCellClass, tableClass, tableHeaderCellClass, tableRowClass } from './table-styles'
 
+/**
+ * Render an email/phone cell as one link PER value. Prefers the explicit
+ * `values` list; falls back to splitting the joined `text` on commas (safe for
+ * these two types — neither a valid email nor a phone number contains one).
+ */
+function renderLinkedValues(cell: TableCellData, hrefPrefix: 'mailto:' | 'tel:') {
+  const values =
+    cell.values && cell.values.length > 0
+      ? cell.values
+      : cell.text
+          .split(/\s*,\s*/)
+          .map((v) => v.trim())
+          .filter(Boolean)
+  if (values.length === 0) return <>{cell.text}</>
+  return (
+    <span className='inline-flex flex-wrap gap-x-1'>
+      {values.map((value, i) => (
+        <span key={`${value}-${i}`}>
+          <a
+            href={`${hrefPrefix}${value}`}
+            className='text-primary hover:underline'
+            onClick={(e) => e.stopPropagation()}>
+            {value}
+          </a>
+          {i < values.length - 1 && <span className='text-muted-foreground'>,</span>}
+        </span>
+      ))}
+    </span>
+  )
+}
+
 function CellContent({ cell }: { cell: TableCellData }) {
   // Entity record link. Cell ids are model-authored, so a malformed id falls
   // through to the plain-text branch rather than rendering a badge that can
@@ -78,28 +109,17 @@ function CellContent({ cell }: { cell: TableCellData }) {
     }
   }
 
-  // Email — clickable mailto
+  // Email — clickable mailto. Multi-value cells (options.multi fields) carry
+  // `values`; a joined text without it is split on commas as a fallback (a
+  // valid email cannot contain an unquoted comma), so each address links
+  // separately instead of one mailto carrying the whole list.
   if (cell.type === 'email') {
-    return (
-      <a
-        href={`mailto:${cell.text}`}
-        className='text-primary hover:underline'
-        onClick={(e) => e.stopPropagation()}>
-        {cell.text}
-      </a>
-    )
+    return renderLinkedValues(cell, 'mailto:')
   }
 
-  // Phone — clickable tel
+  // Phone — clickable tel, same per-value treatment as email.
   if (cell.type === 'phone') {
-    return (
-      <a
-        href={`tel:${cell.text}`}
-        className='text-primary hover:underline'
-        onClick={(e) => e.stopPropagation()}>
-        {cell.text}
-      </a>
-    )
+    return renderLinkedValues(cell, 'tel:')
   }
 
   // External link

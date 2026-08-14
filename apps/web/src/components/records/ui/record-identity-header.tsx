@@ -2,10 +2,16 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { isValueEmpty } from '@auxx/lib/field-values/client'
+import {
+  type FieldOptions,
+  formatToDisplayValue,
+  isValueEmpty,
+} from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
+import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
+import { formatUrlForDisplay, normalizeUrl } from '@auxx/utils'
 import { formatDistanceToNow } from 'date-fns'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react'
 import { DisplayField } from '~/components/fields/displays/display-field'
@@ -277,6 +283,46 @@ function HeaderValue({
 }
 
 /**
+ * Compact heading rendering for a multi-value field (options.multi): the
+ * primary value plus a `+N` badge for the rest. The full list is the panel's
+ * job; clicking the heading opens the popover picker.
+ */
+function HeaderMultiValue({
+  values,
+  fieldType,
+  options,
+}: {
+  values: string[]
+  fieldType?: string
+  options?: FieldOptions
+}) {
+  const primary = values[0]!
+  const rest = values.length - 1
+
+  let display = primary
+  if (fieldType === FieldType.PHONE_INTL) {
+    display =
+      (formatToDisplayValue({ type: 'text', value: primary }, 'PHONE_INTL', options ?? undefined) as
+        | string
+        | null) || primary
+  } else if (fieldType === FieldType.URL) {
+    const normalized = normalizeUrl(primary)
+    display = normalized ? formatUrlForDisplay(normalized) : primary
+  }
+
+  return (
+    <span className='flex min-w-0 items-center gap-1.5' data-slot='header-multi-value'>
+      <span className='truncate min-w-0'>{display}</span>
+      {rest > 0 && (
+        <Badge variant='pill' className='shrink-0'>
+          +{rest}
+        </Badge>
+      )}
+    </span>
+  )
+}
+
+/**
  * Value slot inside the provider: resolves the render states (row fallback,
  * skeleton, empty, value) and mounts the editor the field type calls for.
  */
@@ -332,6 +378,14 @@ function HeaderValueInner({
     return <div className={cn(STATIC_VALUE_BOX, className)}>{emptyFallback}</div>
   }
 
+  // Multi-value fields (options.multi) compress to primary + `+N` in the
+  // heading — the full list lives in the panel, and editing routes to the
+  // popover picker (getEditModeForFieldType answers 'popover' for multi).
+  const multiValues =
+    field.options?.multi && Array.isArray(value)
+      ? value.filter((v): v is string => typeof v === 'string' && v !== '')
+      : null
+
   const content = isEmpty ? (
     <div
       className={cn(
@@ -342,6 +396,8 @@ function HeaderValueInner({
       )}>
       {placeholder}
     </div>
+  ) : multiValues && multiValues.length > 0 ? (
+    <HeaderMultiValue values={multiValues} fieldType={field.fieldType} options={field.options} />
   ) : (
     <DisplayField />
   )
@@ -350,7 +406,7 @@ function HeaderValueInner({
     return <div className={cn(STATIC_VALUE_BOX, className)}>{content}</div>
   }
 
-  const editMode = getEditModeForFieldType(field.fieldType)
+  const editMode = getEditModeForFieldType(field.fieldType, field.options)
 
   return (
     // `group/property-row` is what `DisplayWrapper` keys its hover background and

@@ -27,6 +27,7 @@ import type {
   RemoveRelationValuesBulkInput,
   RemoveRelationValuesInput,
   SetBulkValuesInput,
+  SetPrimaryValueInput,
   SetValueInput,
   SetValueResult,
   SetValuesForEntityInput,
@@ -212,6 +213,15 @@ export class FieldValueService {
     skipPublishEvents?: boolean
   }): Promise<void> {
     return mutations.removeValues(this.ctx, params)
+  }
+
+  /**
+   * Promote one value of a multi-value field to primary (position 0) via a
+   * single-row sortKey move. Recomputes display columns and publishes the
+   * full array. Throws `NotFoundError` if the value row does not exist.
+   */
+  setPrimaryValue(params: SetPrimaryValueInput): Promise<TypedFieldValue[]> {
+    return mutations.setPrimaryValue(this.ctx, params)
   }
 
   /**

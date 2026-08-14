@@ -144,6 +144,8 @@ export const tableCellSchema = z
     href: z.string().optional(),
     type: z.string().optional(),
     actorId: z.string().optional(),
+    /** Per-value list for multi-value email/phone cells — one link per value. */
+    values: z.array(z.string()).optional(),
     tags: z
       .array(
         z.object({
