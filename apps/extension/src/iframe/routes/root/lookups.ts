@@ -20,6 +20,15 @@ import type { EntityType, ExistingMatch, GenericPage } from './types'
  */
 const LOOKUP_LIMIT = 5
 
+/**
+ * Multi-value display fields surface the subtitle as an array (first value
+ * is the primary). Normalize to the primary so `ExistingMatch` and the
+ * views stay scalar.
+ */
+function primarySubtitle(value: string | string[] | null): string | null {
+  return Array.isArray(value) ? (value[0] ?? null) : value
+}
+
 async function findExistingByPerson(person: ParsedPerson): Promise<ExistingMatch[]> {
   const candidates: LookupByFieldCandidate[] = [
     { systemAttribute: 'external_id', value: person.externalId },
@@ -37,7 +46,7 @@ async function findExistingByPerson(person: ParsedPerson): Promise<ExistingMatch
       recordId: item.recordId,
       entityType: 'contact',
       displayName: item.displayName,
-      secondaryDisplayValue: item.secondaryDisplayValue,
+      secondaryDisplayValue: primarySubtitle(item.secondaryDisplayValue),
       avatarUrl: item.avatarUrl,
     }))
   } catch {
@@ -62,7 +71,7 @@ async function findExistingByCompany(company: ParsedCompany): Promise<ExistingMa
       recordId: item.recordId,
       entityType: 'company',
       displayName: item.displayName,
-      secondaryDisplayValue: item.secondaryDisplayValue,
+      secondaryDisplayValue: primarySubtitle(item.secondaryDisplayValue),
       avatarUrl: item.avatarUrl,
     }))
   } catch {
