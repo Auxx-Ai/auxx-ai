@@ -7,6 +7,12 @@
 // array-shaped match candidate FAILS the record instead of creating a silent
 // duplicate, and in-slice two-source dedupe (first wins field writes, the
 // second still binds).
+//
+// The trailing PHONE block covers the E.164 interaction (the Shopify `phone`
+// binding rides this path): a differently-FORMATTED source number must compare
+// equal to the stored E.164 row rather than appending a duplicate every sync,
+// and a number the write path refuses must cost the value, never the record —
+// on the scalar path as well as the multi one.
 
 import { toResourceFieldId } from '@auxx/types/field'
 import { stableHash } from '@auxx/utils/hash'
@@ -476,5 +482,154 @@ describe('entitySink row-level multi-field writes (B1)', () => {
     })
     expect(ctx.counters.skipped).toBe(1)
     expect(ctx.counters.failed).toBe(0)
+  })
+})
+
+// ── PHONE / E.164 ────────────────────────────────────────────────────────────
+// The Shopify customer stream binds `phone` with no `mergeStrategy`, so it
+// defaults to `overwrite` and rides exactly the path above once contact `phone`
+// flips to `options.multi`. What differs from EMAIL is normalization: the write
+// path rewrites the value (E.164) instead of just lowercasing it, and it
+// REJECTS what it cannot parse.
+
+const PHONE_KEY = 'phone'
+const PHONE_UUID = 'field-phone-uuid'
+const PHONE_REF = toResourceFieldId(DEF_ID, PHONE_KEY)
+
+function phoneField(over: Record<string, unknown> = {}) {
+  return {
+    id: PHONE_UUID,
+    type: 'PHONE_INTL',
+    modelType: 'contact',
+    systemAttribute: PHONE_KEY,
+    options: { multi: true },
+    isUnique: false,
+    ...over,
+  }
+}
+
+function phoneMapping(): DecodedMapping {
+  return mapping({
+    fieldMappings: [
+      {
+        id: 'fm-phone',
+        targetFieldRef: PHONE_REF,
+        expression: '{phone}',
+        sourceFields: { phone: 'phone' },
+      },
+    ],
+  } as never)
+}
+
+function phoneRecord(phone: unknown): ProjectedRecord {
+  return {
+    externalId: 'shopify-cust-1',
+    displayName: 'Jane',
+    fields: { [PHONE_REF]: phone },
+    identityCandidates: [],
+    pendingRelations: [],
+  } as unknown as ProjectedRecord
+}
+
+/** Point the field lookups at the phone field; `multi: false` exercises the scalar path. */
+function usePhoneField(multi: boolean) {
+  resolveConnectorFieldRef.mockImplementation(async (ref: string) =>
+    ref === PHONE_REF ? PHONE_REF : null
+  )
+  buildWriteKeyToFieldId.mockResolvedValue(
+    new Map([
+      [PHONE_KEY, PHONE_UUID],
+      [PHONE_UUID, PHONE_UUID],
+    ])
+  )
+  getCachedFieldMap.mockResolvedValue(
+    new Map([[PHONE_UUID, phoneField({ options: multi ? { multi: true } : {} })]])
+  )
+}
+
+describe('entitySink — PHONE_INTL values (E.164)', () => {
+  beforeEach(async () => {
+    // The shared stub lowercases; PHONE_INTL is normalized (and validated) by
+    // `formatPhoneNumber`, which is what `validateSingleValue` calls for this
+    // type. Model that faithfully, throwing like the real validator does.
+    const { formatPhoneNumber } = await import('@auxx/utils')
+    const helpers = await import('../../field-values/field-value-helpers')
+    vi.mocked(helpers.validateAndConvertValue).mockImplementation(
+      async (_ctx: unknown, value: unknown) => {
+        const normalized = formatPhoneNumber(String(value).trim())
+        if (!normalized) throw new Error('Invalid phone number')
+        return { type: 'text', value: normalized } as never
+      }
+    )
+  })
+
+  it('a differently-formatted source number matches the stored E.164 row — no duplicate append', async () => {
+    // The every-sync-duplicates regression: Shopify sends `(415) 555-1234`,
+    // storage holds `+14155551234`. Comparing raw source against stored would
+    // see a diff forever and append an alias on every run.
+    usePhoneField(true)
+    findItem.mockResolvedValue(boundItem())
+    const { db, updateCalls } = makeDb([row('r1', 'a0', '+14155551234', null)])
+    const ctx = makeCtx({ db: db as never })
+
+    await entitySink.upsertRecord(ctx, phoneMapping(), phoneRecord('(415) 555-1234'))
+
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(update.mock.calls[0]?.[1]).toEqual({}) // no whole-field set
+    expect(updateCalls).toHaveLength(0) // no row update, no append, no re-stamp
+    expect(ctx.counters.failed).toBe(0)
+  })
+
+  it('normalizes a changed source number into the connector row (E.164, not the raw string)', async () => {
+    usePhoneField(true)
+    findItem.mockResolvedValue(boundItem())
+    const { db, updateCalls } = makeDb([row('r1', 'a0', '+14155551234', 'dc1')])
+    const ctx = makeCtx({ db: db as never })
+
+    await entitySink.upsertRecord(ctx, phoneMapping(), phoneRecord('212-555-0100'))
+
+    expect(updateCalls).toHaveLength(1)
+    expect(updateCalls[0]).toMatchObject({ valueText: '+12125550100' })
+  })
+
+  it('an unparseable number on a MULTI field drops the value, never the record', async () => {
+    usePhoneField(true)
+    findItem.mockResolvedValue(boundItem())
+    const { db, updateCalls } = makeDb([row('r1', 'a0', '+14155551234', 'dc1')])
+    const ctx = makeCtx({ db: db as never })
+
+    await entitySink.upsertRecord(ctx, phoneMapping(), phoneRecord('not a phone'))
+
+    expect(updateCalls).toHaveLength(0)
+    expect(ctx.counters.failed).toBe(0)
+    expect(upsertItem).toHaveBeenCalledTimes(1) // the record still syncs + binds
+  })
+
+  it('an unparseable number on a SCALAR field drops the value, never the record', async () => {
+    // Without the write-set pre-flight this throws inside `handler.update`,
+    // where the catch only special-cases UniqueValueConflictError — the whole
+    // customer would fail to sync over one bad phone number.
+    usePhoneField(false)
+    findItem.mockResolvedValue(boundItem())
+    const { db } = makeDb([])
+    const ctx = makeCtx({ db: db as never })
+
+    await entitySink.upsertRecord(ctx, phoneMapping(), phoneRecord('not a phone'))
+
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(update.mock.calls[0]?.[1]).toEqual({}) // phone dropped from the write set
+    expect(ctx.counters.failed).toBe(0)
+    expect(ctx.counters.errorSample).toHaveLength(0)
+  })
+
+  it('a valid number still reaches the write set on a SCALAR field', async () => {
+    usePhoneField(false)
+    findItem.mockResolvedValue(boundItem())
+    const { db } = makeDb([])
+    const ctx = makeCtx({ db: db as never })
+
+    await entitySink.upsertRecord(ctx, phoneMapping(), phoneRecord('+14155551234'))
+
+    expect(update.mock.calls[0]?.[1]).toEqual({ [PHONE_KEY]: '+14155551234' })
   })
 })
