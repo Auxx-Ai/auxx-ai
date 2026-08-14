@@ -83,6 +83,9 @@ export function NavUser({ user }: Prop) {
   const kopilotEnabled = hasAccess('kopilot')
   const toggleKopilot = useKopilotStore((s) => s.togglePanel)
   const hasUnreadNotification = useKopilotStore((s) => s.hasUnreadNotification)
+  // The dock hides itself while a page hosts its own Kopilot chat (the workflow
+  // builder's panel frame), so this trigger would be a dead click.
+  const dockAvailable = useKopilotStore((s) => s.embeddedSurfaces === 0)
 
   // const session = await auth();
   const {
@@ -348,7 +351,7 @@ export function NavUser({ user }: Prop) {
           </DropdownMenuContent>
         </DropdownMenu>
         <div className='flex shrink-0 items-center gap-1'>
-          {kopilotEnabled && (
+          {kopilotEnabled && dockAvailable && (
             <Tooltip content='Kopilot' shortcut={['⌘', '⇧', 'K']}>
               <button
                 type='button'

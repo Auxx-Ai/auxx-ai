@@ -213,6 +213,19 @@ interface KopilotState {
   setPanelWidth: (width: number) => void
 
   /**
+   * How many *embedded* Kopilot chat surfaces are mounted (the workflow
+   * builder's panel frame today). The global dock hides while any is up.
+   *
+   * This store is a singleton — one `activeSessionId`, one message list, one
+   * SSE runner — so two live chat surfaces render the same conversation and
+   * fight over which session it is. A counter rather than a boolean because
+   * mount/unmount of two surfaces can interleave during a transition.
+   */
+  embeddedSurfaces: number
+  registerEmbeddedSurface: () => void
+  unregisterEmbeddedSurface: () => void
+
+  /**
    * Page context — distributed mount-time registration. Each `<KopilotContext>`
    * component writes one slice keyed by its `useId()`. Consumers read the
    * merged view via `selectMergedContext` / `useKopilotSurfaceRefs`.
@@ -386,6 +399,11 @@ export const useKopilotStore = create<KopilotState>()(
       panelOpen: false,
       setPanelOpen: (panelOpen) => set({ panelOpen }),
       togglePanel: () => set((s) => ({ panelOpen: !s.panelOpen })),
+
+      embeddedSurfaces: 0,
+      registerEmbeddedSurface: () => set((s) => ({ embeddedSurfaces: s.embeddedSurfaces + 1 })),
+      unregisterEmbeddedSurface: () =>
+        set((s) => ({ embeddedSurfaces: Math.max(0, s.embeddedSurfaces - 1) })),
       panelWidth: 420,
       setPanelWidth: (panelWidth) => set({ panelWidth }),
 

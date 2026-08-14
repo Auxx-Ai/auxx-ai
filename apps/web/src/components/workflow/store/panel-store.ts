@@ -21,9 +21,10 @@ export type PanelFrame =
   | { kind: 'empty' }
   | { kind: 'run' }
   | { kind: 'settings' }
+  | { kind: 'kopilot' }
 
 /** Frames pushed *over* the base by a toolbar action. */
-export type OverlayKind = 'run' | 'settings'
+export type OverlayKind = 'run' | 'settings' | 'kopilot'
 
 /** Stable NavStack key for a frame. Base and overlay kinds draw from disjoint
  *  keyspaces, so a key can never appear twice in one stack. */
@@ -74,6 +75,27 @@ interface PanelStore {
   // Run panel tab
   runPanelTab: 'input' | 'result' | 'detail' | 'tracing'
   setRunPanelTab: (tab: 'input' | 'result' | 'detail' | 'tracing') => void
+
+  /**
+   * Which Kopilot thread the builder frame targets, keyed by workflow.
+   *
+   * It lives here rather than in the frame because the frame is an OVERLAY:
+   * selecting a node pops it and `NavStackPanels` unmounts it, which happens
+   * constantly while building. Component state would lose a just-created
+   * thread — the frame would remount with `initialSessionId={null}` (the
+   * `limit: 1` lookup still inside its staleTime), and `KopilotChat`'s mount
+   * effect would call `startNewSession()` on top of the live conversation.
+   *
+   * `sessionId: null` means "deliberately fresh". `null` overall means
+   * unresolved — the frame falls back to the newest thread for the workflow.
+   * The `workflowAppId` is part of the value because this store is a module
+   * singleton: navigating workflow A → B must not inherit A's thread.
+   */
+  kopilotSession: { workflowAppId: string; sessionId: string | null } | null
+  setKopilotSession: (value: { workflowAppId: string; sessionId: string | null }) => void
+  /** Keys the KopilotChat instance so "Start new chat" forces a remount. */
+  kopilotChatEpoch: number
+  startNewKopilotChat: (workflowAppId: string) => void
 
   // History popover
   historyPopoverOpen: boolean
@@ -137,6 +159,9 @@ export const usePanelStore = create<PanelStore>()(
     modalData: null,
 
     runPanelTab: 'input',
+
+    kopilotSession: null,
+    kopilotChatEpoch: 0,
 
     historyPopoverOpen: false,
 
@@ -232,6 +257,17 @@ export const usePanelStore = create<PanelStore>()(
 
     setRunPanelTab: (tab) => {
       set({ runPanelTab: tab })
+    },
+
+    setKopilotSession: (value) => {
+      set({ kopilotSession: value })
+    },
+
+    startNewKopilotChat: (workflowAppId) => {
+      set((state) => ({
+        kopilotSession: { workflowAppId, sessionId: null },
+        kopilotChatEpoch: state.kopilotChatEpoch + 1,
+      }))
     },
 
     setHistoryPopoverOpen: (open) => {

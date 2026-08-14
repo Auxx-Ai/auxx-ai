@@ -27,6 +27,14 @@ export const kopilotRouter = createTRPCRouter({
       z.object({
         type: z.enum(['kopilot', 'builder']).default('kopilot'),
         agentId: z.string().optional(),
+        /**
+         * Three-state: omitted = no filter, `null` = only sessions with no
+         * workflow (the global picker), an id = that workflow's builder
+         * threads. No extra authz — the query is already scoped to
+         * `(organizationId, userId)`, so a guessed id returns the caller's own
+         * (empty) list.
+         */
+        workflowAppId: z.string().nullish(),
         limit: z.number().int().min(1).max(100).default(50),
         cursor: z.string().optional(),
       })
@@ -39,6 +47,7 @@ export const kopilotRouter = createTRPCRouter({
         userId: ctx.session.userId,
         type: input.type,
         agentId: input.agentId,
+        workflowAppId: input.workflowAppId,
         limit: input.limit,
         cursor: input.cursor,
       })

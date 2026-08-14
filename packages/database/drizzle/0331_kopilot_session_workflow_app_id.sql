@@ -1,0 +1,3 @@
+ALTER TABLE "AiAgentSession" ADD COLUMN "workflowAppId" text;--> statement-breakpoint
+ALTER TABLE "AiAgentSession" ADD CONSTRAINT "AiAgentSession_workflowAppId_WorkflowApp_id_fk" FOREIGN KEY ("workflowAppId") REFERENCES "public"."WorkflowApp"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+CREATE INDEX "AiAgentSession_workflowAppId_updatedAt_idx" ON "AiAgentSession" USING btree ("workflowAppId","updatedAt" DESC NULLS LAST);

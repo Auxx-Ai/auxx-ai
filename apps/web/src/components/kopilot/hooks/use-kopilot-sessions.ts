@@ -12,8 +12,11 @@ import { useKopilotStore } from '../stores/kopilot-store'
  * Shared input for the listSessions query — used by the hook AND any code
  * that patches the cache directly (e.g. the SSE handler). Keep these in lockstep
  * or cache patches will silently miss.
+ *
+ * `workflowAppId: null` excludes workflow-builder threads: those belong to the
+ * builder panel that created them, not to the global session list.
  */
-export const KOPILOT_SESSIONS_QUERY_INPUT = { limit: 50 } as const
+export const KOPILOT_SESSIONS_QUERY_INPUT = { limit: 50, workflowAppId: null } as const
 
 export function useKopilotSessions() {
   const { hasAccess } = useFeatureFlags()

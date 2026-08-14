@@ -25,6 +25,10 @@ export function KopilotDock() {
   const pathname = usePathname()
   const isOnKopilotPage = pathname.startsWith('/app/kopilot')
 
+  // A page hosting its own Kopilot chat (the workflow builder's panel frame)
+  // owns the store's single session — see `useEmbeddedKopilotSurface`.
+  const embeddedSurfaces = useKopilotStore((s) => s.embeddedSurfaces)
+
   const panelOpen = useKopilotStore((s) => s.panelOpen)
   const togglePanel = useKopilotStore((s) => s.togglePanel)
   const panelWidth = useKopilotStore((s) => s.panelWidth)
@@ -34,13 +38,17 @@ export function KopilotDock() {
   const [isResizing, setIsResizing] = useState(false)
   const isMobile = useIsMobile()
 
-  // Global keyboard shortcut — registered once here
+  // Global keyboard shortcut — registered once here. The `embeddedSurfaces`
+  // guard is load-bearing, not belt-and-braces: hooks run before the early
+  // return below, so without it the shortcut would keep flipping `panelOpen`
+  // invisibly and the dock would spring open the moment the embedded surface
+  // unmounts.
   useHotkey('Mod+Shift+K', () => togglePanel(), {
-    enabled: kopilotEnabled,
+    enabled: kopilotEnabled && embeddedSurfaces === 0,
     conflictBehavior: 'allow',
   })
 
-  if (!kopilotEnabled || isOnKopilotPage) return null
+  if (!kopilotEnabled || isOnKopilotPage || embeddedSurfaces > 0) return null
 
   if (isMobile) {
     return (

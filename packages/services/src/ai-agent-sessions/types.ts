@@ -27,6 +27,11 @@ export interface CreateSessionInput extends SessionContext {
    */
   agentTriggerId?: string | null
   /**
+   * Workflow the session belongs to. Set only by the workflow builder's
+   * Kopilot panel; null/omitted everywhere else.
+   */
+  workflowAppId?: string | null
+  /**
    * Kind-specific context captured at fire time. Shape per kind documented
    * on the `AiAgentSession.triggerContext` column.
    */
@@ -58,6 +63,13 @@ export interface ListSessionsInput extends SessionContext {
   type: string
   /** Optional agent filter — when set, only sessions bound to this agent are returned. */
   agentId?: string
+  /**
+   * Three-state workflow filter:
+   *   `undefined` — no filter (every caller that predates workflow scoping),
+   *   `null`      — only sessions NOT bound to a workflow (the global picker),
+   *   `<id>`      — only that workflow's builder threads.
+   */
+  workflowAppId?: string | null
   limit?: number
   cursor?: string
 }

@@ -20,7 +20,7 @@ import {
   subscribeToAgentEvents,
   withAgentRunLog,
 } from '@auxx/lib/ai/agent-framework'
-import type { TriggerContext } from '@auxx/lib/ai/kopilot'
+import type { SessionContext, TriggerContext } from '@auxx/lib/ai/kopilot'
 import {
   createActorCapabilities,
   createAgentsBuilderCapabilities,
@@ -37,6 +37,7 @@ import {
   createSuggestRepliesGlobalCapability,
   createTaskCapabilities,
   createWorkflowBuilderCapabilities,
+  findRef,
   generateSessionTitle,
   LAST_CONTEXT_KEY,
   LAST_PAGE_KEY,
@@ -435,6 +436,18 @@ export async function POST(request: NextRequest) {
             }
           }
 
+          // Workflow-builder threads are scoped to the workflow they were
+          // started from, so the builder panel resolves its own thread instead
+          // of whatever the global Kopilot was last on. The id comes from the
+          // pinned session ref rather than a body field: every graph tool
+          // already refuses without it (`NO_WORKFLOW_REF_ERROR`), so that ref
+          // is the one source of truth. Tagged at create only — like `agentId`,
+          // an existing global thread is never retroactively adopted.
+          const createWorkflowAppId =
+            resolvedPage === WORKFLOW_BUILDER_PAGE
+              ? (findRef((resolvedContext ?? {}) as SessionContext, 'workflow')?.id ?? null)
+              : null
+
           const createResult = await createSession({
             organizationId,
             userId,
@@ -442,6 +455,7 @@ export async function POST(request: NextRequest) {
             title: placeholderTitle,
             agentId: sessionAgentId,
             agentTriggerId: createAgentTriggerId,
+            workflowAppId: createWorkflowAppId,
             triggerContext: createTriggerContext,
           })
           if (createResult.isErr()) {

@@ -17,6 +17,7 @@ import {
 } from '~/components/workflow/store/panel-store'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
+import { WorkflowKopilotPanel } from './kopilot/workflow-kopilot-panel'
 import { PanelFrameChromeProvider } from './panel-frame-chrome'
 import { NodePanelBody } from './property-panel'
 import { WorkflowRunPanel } from './run/workflow-run-panel'
@@ -34,6 +35,8 @@ function frameTitle(frame: PanelFrame | undefined): string {
       return 'Test Workflow'
     case 'settings':
       return 'Settings'
+    case 'kopilot':
+      return 'Kopilot'
     case 'node':
       return 'Node Properties'
     default:
@@ -163,6 +166,9 @@ export const WorkflowPanelDrawer = memo(function WorkflowPanelDrawer({
                   )}
                   {frame.kind === 'settings' && (
                     <WorkflowSettingsPanel workflowId={workflowId} workflowAppId={workflowAppId} />
+                  )}
+                  {frame.kind === 'kopilot' && (
+                    <WorkflowKopilotPanel workflowAppId={workflowAppId} />
                   )}
                 </PanelFrameChromeProvider>
               </NavStackPanel>

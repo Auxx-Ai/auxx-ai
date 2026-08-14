@@ -35,6 +35,23 @@ const KIND_ICONS: Record<SessionRefKind, typeof Mail> = {
   workflow: Workflow,
 }
 
+/**
+ * Shown when a ref carries no `label`. A raw id is never a useful chip — it is
+ * what the TOOLS resolve against, not something a reader can act on — and
+ * surfaces routinely register the id before the query supplying the name has
+ * resolved (the workflow builder registers its ref from the route param).
+ */
+const KIND_FALLBACK_LABELS: Record<SessionRefKind, string> = {
+  thread: 'Thread',
+  record: 'Record',
+  resource: 'Table',
+  kb: 'Knowledge base',
+  article: 'Article',
+  actor: 'User',
+  agent: 'Agent',
+  workflow: 'Workflow',
+}
+
 const SPRING = { type: 'spring', stiffness: 220, damping: 26 } as const
 const REDUCED = { duration: 0.12 } as const
 
@@ -114,6 +131,7 @@ export function KopilotContextChipStrip() {
               {visible.map((ref, i) => {
                 const Icon = pickIcon(ref)
                 const key = refKey(ref)
+                const display = refLabel(ref)
                 const isPinned = !!ref.pinned
                 const selected = !isPinned && selectedKey === key
                 const chipTransition = prefersReducedMotion
@@ -121,13 +139,13 @@ export function KopilotContextChipStrip() {
                   : { ...SPRING, delay: i * 0.04 }
                 const interactionProps = isPinned
                   ? {
-                      'aria-label': ref.label ?? ref.id,
+                      'aria-label': display,
                     }
                   : {
                       role: 'button' as const,
                       tabIndex: 0,
                       'aria-pressed': selected,
-                      'aria-label': `${ref.label ?? ref.id} — press Delete to remove`,
+                      'aria-label': `${display} — press Delete to remove`,
                       onClick: () => setSelectedKey(key),
                       onKeyDown: (e: KeyboardEvent) => {
                         if (e.key === 'Enter' || e.key === ' ') {
@@ -164,7 +182,7 @@ export function KopilotContextChipStrip() {
                     )}>
                     <Icon className='size-3 shrink-0' />
                     <span data-slot='record-display' className='max-w-[160px] truncate'>
-                      {ref.label ?? ref.id}
+                      {display}
                     </span>
                     {!isPinned && (
                       <button
@@ -192,6 +210,11 @@ export function KopilotContextChipStrip() {
 
 function refKey(r: SessionRef): string {
   return `${r.kind}:${r.id}`
+}
+
+/** Chip text — the ref's own label, else its kind. Never the raw id. */
+function refLabel(r: SessionRef): string {
+  return r.label ?? KIND_FALLBACK_LABELS[r.kind] ?? 'Reference'
 }
 
 /**

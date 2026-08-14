@@ -28,6 +28,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useActiveSuite } from '~/components/evals/hooks/use-active-suite'
 import { SimulationsTab } from '~/components/evals/ui/simulations-tab'
 import { KopilotContext } from '~/components/kopilot/context'
+import { useFreshSessionEstablished } from '~/components/kopilot/hooks/use-fresh-session-established'
 import { KopilotChatProvider } from '~/components/kopilot/options'
 import { useKopilotStore } from '~/components/kopilot/stores/kopilot-store'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions/kopilot-suggestion'
@@ -306,22 +307,14 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
 // ── Fresh-session tracking ─────────────────────────────────────────────────
 
 /**
- * While a "start new chat" is pending, watches the kopilot store for the
- * server-created session id (set by the `session-created` SSE event) and, once
- * it appears, invalidates the panel's `limit: 1` session lookup — the SSE
- * cache patch only covers the master list, so without this the scoped query
- * stays stale for its 30s staleTime — then reports back so the parent clears
- * the pending flag (keeping it set would wipe the new thread on the next
- * remount).
- *
- * The store is read imperatively inside the effect rather than from the
- * subscribed value: at the commit where `fresh` flips on, the subscription
- * still holds whatever session another surface left behind, but KopilotChat's
- * mount effect (a child, so it runs first) has already wiped it by the time
- * this effect executes. Only a genuinely new id — non-null and different from
- * the latest persisted thread — counts as established.
+ * Agent-scoped wrapper over the shared `useFreshSessionEstablished` watcher:
+ * once the server-created session id appears, invalidate this panel's
+ * `limit: 1` lookup — the SSE cache patch only covers the master list, so
+ * without this the scoped query stays stale for its 30s staleTime — then
+ * report back so the parent clears the pending flag (keeping it set would wipe
+ * the new thread on the next remount).
  */
-function useFreshSessionEstablished({
+function useAgentFreshSession({
   fresh,
   latestSessionId,
   sessionType,
@@ -336,18 +329,12 @@ function useFreshSessionEstablished({
 }) {
   const utils = api.useUtils()
 
-  useEffect(() => {
-    if (!fresh) return
-    let done = false
-    const check = (current: string | null) => {
-      if (done || !current || current === latestSessionId) return
-      done = true
-      void utils.kopilot.listSessions.invalidate({ type: sessionType, agentId, limit: 1 })
-      onEstablished()
-    }
-    check(useKopilotStore.getState().activeSessionId)
-    return useKopilotStore.subscribe((state) => check(state.activeSessionId))
-  }, [fresh, latestSessionId, sessionType, agentId, utils, onEstablished])
+  const handleEstablished = useCallback(() => {
+    void utils.kopilot.listSessions.invalidate({ type: sessionType, agentId, limit: 1 })
+    onEstablished()
+  }, [utils, sessionType, agentId, onEstablished])
+
+  useFreshSessionEstablished({ fresh, latestSessionId, onEstablished: handleEstablished })
 }
 
 // ── Build tab ──────────────────────────────────────────────────────────────
@@ -392,7 +379,7 @@ function BuildPanel({
 
   const latestSessionId = data?.items[0]?.id ?? null
 
-  useFreshSessionEstablished({
+  useAgentFreshSession({
     fresh,
     latestSessionId,
     sessionType: 'builder',
@@ -487,7 +474,7 @@ function ChatPanel({
 
   const latestSessionId = sessionsQuery.data?.items[0]?.id ?? null
 
-  useFreshSessionEstablished({
+  useAgentFreshSession({
     fresh,
     latestSessionId,
     sessionType: 'kopilot',
