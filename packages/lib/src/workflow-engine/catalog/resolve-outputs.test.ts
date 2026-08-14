@@ -13,6 +13,24 @@ vi.mock('../../cache', async (importOriginal) => ({
   getCachedResources: (...args: unknown[]) => getCachedResources(...args),
 }))
 
+// Partial mock: a synthetic `__throwing__` type whose resolver always crashes,
+// for the crash-isolation test; every real type passes through untouched.
+vi.mock('./registry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./registry')>()
+  return {
+    ...actual,
+    getManifest: (type: string) =>
+      type === '__throwing__'
+        ? {
+            ...actual.getManifest('wait'),
+            resolveOutputs: () => {
+              throw new Error('boom')
+            },
+          }
+        : actual.getManifest(type),
+  }
+})
+
 const { resolveGraphOutputs, resolveNodeOutputs } = await import('./resolve-outputs')
 
 const noResources = () => {
@@ -209,5 +227,60 @@ describe('resolveNodeOutputs', () => {
 
     await resolveNodeOutputs('org-1', { graph, nodeId: 'n2' })
     expect(getCachedResources).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('resolver crash isolation', () => {
+  it('resolves a scheduled trigger with missing config (legacy rows) without crashing', async () => {
+    noResources()
+    const graph = {
+      nodes: [
+        { id: 's1', type: 'scheduled', data: { id: 's1', type: 'scheduled', title: 'Schedule' } },
+      ],
+      edges: [],
+    }
+
+    const result = await resolveGraphOutputs('org-1', { graph })
+
+    expect(result.isOk()).toBe(true)
+    const ids = (result._unsafeUnwrap().get('s1') ?? []).map((v) => v.id)
+    // No config falls into the interval branch, matching defaultData()'s shape.
+    expect(ids).toEqual([
+      's1.triggered_at',
+      's1.schedule_type',
+      's1.is_test_run',
+      's1.interval_config',
+    ])
+  })
+
+  it('degrades a crashing resolver to empty outputs instead of failing the graph', async () => {
+    noResources()
+    const graph = {
+      nodes: [
+        {
+          id: 'bad',
+          type: '__throwing__',
+          data: { id: 'bad', type: '__throwing__', title: 'Bad' },
+        },
+        varAssignArrayNode('ok', 'items'),
+      ],
+      edges: [],
+    }
+
+    const result = await resolveGraphOutputs('org-1', { graph })
+
+    expect(result.isOk()).toBe(true)
+    const outputs = result._unsafeUnwrap()
+    expect(outputs.get('bad')).toEqual([])
+    expect((outputs.get('ok') ?? []).length).toBeGreaterThan(0)
+  })
+})
+
+describe('scheduled manifest config-less guards', () => {
+  it('extractScheduledTriggerVariables returns [] when config is absent', async () => {
+    const { extractScheduledTriggerVariables } = await import('./nodes/scheduled')
+    expect(
+      extractScheduledTriggerVariables({ id: 's1', type: 'scheduled', title: 'Schedule' } as never)
+    ).toEqual([])
   })
 })

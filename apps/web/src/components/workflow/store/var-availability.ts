@@ -35,7 +35,14 @@ export function computeNodeOutputs(
     resolveVariable,
   }
 
-  return nodeDef.outputVariables(data, nodeId, context)
+  // A resolver crash (e.g. a legacy node whose persisted data is missing the
+  // shape the resolver expects) degrades to "no outputs for this node" — one
+  // bad node must not take down the variable picker for the whole graph.
+  try {
+    return nodeDef.outputVariables(data, nodeId, context)
+  } catch {
+    return []
+  }
 }
 
 /**
