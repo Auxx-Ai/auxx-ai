@@ -3,6 +3,12 @@
 // apps/web/src/components/contacts/drawer/contact-drawer.tsx
 
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Expand, Mail, MessagesSquare, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -12,19 +18,16 @@ import { useCommentAccess } from '~/components/global/comments/use-comment-acces
 import { Tooltip } from '~/components/global/tooltip'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
+import { toEmailAddressList } from '~/components/mail/email-address-list'
 import type { EditorPresetValues } from '~/components/mail/email-editor/types'
 import { RecordIdentityHeader } from '~/components/records/ui/record-identity-header'
 import { useRecordDrawerReadOnly } from '~/components/records/use-record-drawer-read-only'
 import { type RecordMeta, toRecordId, useRecord } from '~/components/resources'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { useCompose } from '~/hooks/use-compose'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
-
-/** The contact columns this drawer reads off the record store's untyped `[key: string]` bag. */
-interface ContactRecord extends RecordMeta {
-  email?: string | null
-}
 
 interface ContactDrawerProps {
   /** Whether the drawer is open (for controlled usage) */
@@ -68,30 +71,40 @@ export function ContactDrawer({
   const readOnly = useRecordDrawerReadOnly('contact', contactId ?? undefined)
 
   // Get record data for contact-specific UI
-  const { record: contact } = useRecord<ContactRecord>({
+  const { record: contact } = useRecord<RecordMeta>({
     recordId,
     enabled: !!open && !!contactId,
   })
 
-  // Memoize preset values for email compose
-  const presetValues = React.useMemo<EditorPresetValues | undefined>(() => {
-    if (!contact) return undefined
+  // The contact's email addresses off its system field (the record store's
+  // meta bag never carried `email` — the old prefill was dead). Ordered by
+  // sortKey; index 0 is the primary.
+  const { values: contactValues } = useSystemValues(recordId, ['primary_email'], {
+    autoFetch: true,
+    enabled: !!open && !!contactId,
+  })
+  const emails = React.useMemo(
+    () => toEmailAddressList(contactValues.primary_email),
+    [contactValues]
+  )
 
-    // Get the primary email from contact
-    const primaryEmail = contact.email
-    if (!primaryEmail) return undefined
-
-    return {
-      to: [
-        {
-          id: contact.id,
-          identifier: primaryEmail,
-          identifierType: 'EMAIL',
-          name: contact.displayName || undefined,
-        },
-      ],
-    }
-  }, [contact])
+  const composeTo = React.useCallback(
+    (email: string) => {
+      if (!contactId) return
+      const presetValues: EditorPresetValues = {
+        to: [
+          {
+            id: contactId,
+            identifier: email,
+            identifierType: 'EMAIL',
+            name: contact?.displayName || undefined,
+          },
+        ],
+      }
+      openCompose({ presetValues })
+    },
+    [contactId, contact?.displayName, openCompose]
+  )
 
   /** Handle close button click */
   const handleClose = React.useCallback(() => {
@@ -137,14 +150,33 @@ export function ContactDrawer({
         headerTitle='Contact'
         headerActions={
           <>
-            <Button
-              variant='ghost'
-              size='xs'
-              disabled={!presetValues}
-              onClick={() => presetValues && openCompose({ presetValues })}>
-              <Mail />
-              Compose
-            </Button>
+            {emails.length > 1 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant='ghost' size='xs'>
+                    <Mail />
+                    Compose
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end'>
+                  {emails.map((email) => (
+                    <DropdownMenuItem key={email} onSelect={() => composeTo(email)}>
+                      <Mail />
+                      {email}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                variant='ghost'
+                size='xs'
+                disabled={emails.length === 0}
+                onClick={() => emails[0] && composeTo(emails[0])}>
+                <Mail />
+                Compose
+              </Button>
+            )}
             {canCompose && (
               <Tooltip content='Create note'>
                 <Button variant='ghost' size='icon-xs' onClick={handleCreateNoteClick}>

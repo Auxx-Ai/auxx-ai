@@ -1,7 +1,7 @@
 // apps/web/src/components/drawers/tabs/contact-conversations-tab.tsx
 'use client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { parseRecordId } from '@auxx/types/resource'
+import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
@@ -9,10 +9,12 @@ import { Loader2, Mail, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useInView } from 'react-intersection-observer'
 import { EmptyState } from '~/components/global/empty-state'
+import { toEmailAddressList } from '~/components/mail/email-address-list'
 import type { EditorPresetValues } from '~/components/mail/email-editor/types'
 import { MailFilterProvider } from '~/components/mail/mail-filter-context'
 import { MailThreadItem } from '~/components/mail/mail-thread-item'
 import { ThreadDetailsDialog } from '~/components/mail/thread-details-dialog'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useThreadList } from '~/components/threads/hooks/use-thread-list'
 import { useCompose } from '~/hooks/use-compose'
 import type { DrawerTabProps } from '../drawer-tab-registry'
@@ -21,43 +23,57 @@ import type { DrawerTabProps } from '../drawer-tab-registry'
  * Conversations tab for contact drawer - displays email threads
  */
 export function ContactConversationsTab({ entityInstanceId, record }: DrawerTabProps) {
-  const contactEmail = record?.secondaryInfo as string | undefined
-  const contactName = (record?.primaryInfo as string | undefined) ?? contactEmail
+  // ALL of the contact's addresses off its system field (LOCKED: the thread
+  // filter must cover aliases, not just the primary that `secondaryInfo`
+  // carries). Ordered by sortKey; index 0 is the primary.
+  const contactRecordId = useMemo(() => toRecordId('contact', entityInstanceId), [entityInstanceId])
+  const { values: contactValues, isLoading: isLoadingEmails } = useSystemValues(
+    contactRecordId,
+    ['primary_email'],
+    { autoFetch: true }
+  )
+  const contactEmails = useMemo(
+    () => toEmailAddressList(contactValues.primary_email),
+    [contactValues]
+  )
+  const primaryEmail = contactEmails[0]
+  const contactName = (record?.primaryInfo as string | undefined) ?? primaryEmail
   const { openCompose } = useCompose()
   const [openThreadId, setOpenThreadId] = useState<string | null>(null)
 
+  // Compose defaults to the primary address.
   const handleCreateMessage = useCallback(() => {
-    if (!contactEmail) return
+    if (!primaryEmail) return
     const presetValues: EditorPresetValues = {
       to: [
         {
           id: entityInstanceId,
-          identifier: contactEmail,
+          identifier: primaryEmail,
           identifierType: 'EMAIL',
           name: contactName,
         },
       ],
     }
     openCompose({ presetValues })
-  }, [contactEmail, contactName, entityInstanceId, openCompose])
+  }, [primaryEmail, contactName, entityInstanceId, openCompose])
 
+  // Threads from ANY of the contact's addresses (OR across one `is` condition
+  // per address).
   const filter: ConditionGroup[] = useMemo(() => {
-    if (!contactEmail) return []
+    if (contactEmails.length === 0) return []
     return [
       {
         id: 'contact-email-filter',
-        logicalOperator: 'AND' as const,
-        conditions: [
-          {
-            id: 'from-match',
-            fieldId: 'from',
-            operator: 'is',
-            value: contactEmail,
-          },
-        ],
+        logicalOperator: 'OR' as const,
+        conditions: contactEmails.map((email, index) => ({
+          id: `from-match-${index}`,
+          fieldId: 'from',
+          operator: 'is',
+          value: email,
+        })),
       },
     ]
-  }, [contactEmail])
+  }, [contactEmails])
 
   const {
     recordIds,
@@ -68,7 +84,7 @@ export function ContactConversationsTab({ entityInstanceId, record }: DrawerTabP
   } = useThreadList({
     filter,
     sort: { field: 'lastMessageAt', direction: 'desc' },
-    enabled: !!contactEmail,
+    enabled: contactEmails.length > 0,
   })
 
   // Drafts could appear in recordIds in the future; this tab only renders threads.
@@ -86,7 +102,7 @@ export function ContactConversationsTab({ entityInstanceId, record }: DrawerTabP
     }
   }, [inView, fetchNextPage, hasNextPage, isFetchingNextPage])
 
-  const isLoading = !contactEmail || isLoadingIds
+  const isLoading = isLoadingEmails || (contactEmails.length > 0 && isLoadingIds)
 
   if (isLoading) {
     return (
