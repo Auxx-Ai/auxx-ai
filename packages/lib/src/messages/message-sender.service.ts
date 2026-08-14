@@ -8,7 +8,7 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import {
   touchActivityForThreadLinks,
-  touchInteractionForThreadLinks,
+  touchInteractionForMessage,
 } from '../entity-instances/activity'
 import { ForbiddenError, UsageLimitError } from '../errors'
 import { FileService } from '../files/core/file-service'
@@ -403,12 +403,12 @@ export class MessageSenderService {
       // Interaction stamp for Auxx-sent mail: this path never reaches ingest's
       // fresh-insert touch (the sync echo early-returns in storeMessage), so
       // without this the stamps only move when the customer writes. Successful
-      // sends only — a FAILED row is not correspondence (§2.4).
+      // sends only — a FAILED row is not correspondence (§2.4). Targets resolve
+      // from the message's own participants (the composer wrote the links).
       if (sendResult.success) {
-        await touchInteractionForThreadLinks(
-          threadContext.id,
-          this.organizationId,
+        await touchInteractionForMessage(
           composed.id,
+          this.organizationId,
           sendResult.timestamp ?? new Date()
         )
       }
@@ -1557,10 +1557,9 @@ export class MessageSenderService {
     // Interaction stamp — same rationale as the first-send path: Auxx-sent mail
     // never reaches ingest's touch, and only a landed retry is correspondence.
     if (result.success) {
-      await touchInteractionForThreadLinks(
-        threadId,
-        this.organizationId,
+      await touchInteractionForMessage(
         messageId,
+        this.organizationId,
         result.timestamp ?? new Date()
       )
     }

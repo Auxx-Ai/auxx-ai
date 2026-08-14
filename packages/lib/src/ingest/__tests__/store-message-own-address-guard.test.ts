@@ -41,7 +41,7 @@ vi.mock('../../entity-instances/activity', () => ({
   touchActivityForThreadLinks: vi.fn(),
   resolveThreadLinkedEntityIds: vi.fn(async () => []),
   touchEntityActivity: vi.fn(),
-  touchInteractionForThreadLinks: vi.fn(),
+  touchInteractionForMessage: vi.fn(),
 }))
 vi.mock('../../events/publisher', () => ({
   publisher: {

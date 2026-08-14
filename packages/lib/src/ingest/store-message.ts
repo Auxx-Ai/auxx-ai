@@ -14,7 +14,7 @@ import { buildOrgOwnEmailAddressSet } from '../channels/own-addresses'
 import {
   resolveThreadLinkedEntityIds,
   touchEntityActivity,
-  touchInteractionForThreadLinks,
+  touchInteractionForMessage,
 } from '../entity-instances/activity'
 import { publisher } from '../events/publisher'
 import type { MessageReceivedEvent } from '../events/types'
@@ -764,20 +764,27 @@ export async function storeMessage(
     // Advance lastActivityAt for any entity linked to this thread (primary +
     // active secondaries), and stamp first/last interaction for qualifying
     // messages (real correspondence both directions; hard-tier machine mail
-    // never counts — mirrors the contact-graph rule above). The link set is
-    // resolved once and shared. Best-effort; helpers log and swallow.
+    // never counts — mirrors the contact-graph rule above). Interaction targets
+    // are the message's own correspondents — the non-internal participants'
+    // linked contacts, already in hand from processing above — NOT the thread
+    // links (those are tickets/quotes and manual links, which get activity but
+    // never interaction). Best-effort; helpers log and swallow.
     const linkedEntityIds = await resolveThreadLinkedEntityIds(
       thread.id,
       messageData.organizationId
     )
     await touchEntityActivity(linkedEntityIds, messageData.organizationId, messageData.sentAt)
     if (machineMailResult?.tier !== 'hard') {
-      await touchInteractionForThreadLinks(
-        thread.id,
-        messageData.organizationId,
+      const contactIds = Array.from(participantCache.values())
+        .filter((p) => p?.entityInstanceId && !p.isInternal)
+        .map((p) => p.entityInstanceId as string)
+      await touchInteractionForMessage(
         messageRecord.id,
+        messageData.organizationId,
         messageData.sentAt,
-        { entityInstanceIds: linkedEntityIds }
+        {
+          contactIds: Array.from(new Set(contactIds)),
+        }
       )
     }
 

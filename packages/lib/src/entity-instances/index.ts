@@ -8,7 +8,7 @@ export {
   touchActivityForThreadLinks,
   touchEntityActivity,
   touchEntityInteraction,
-  touchInteractionForThreadLinks,
+  touchInteractionForMessage,
 } from './activity'
 export type {
   ContactMetadata,
