@@ -37,6 +37,9 @@ export function buildWorkflowBuilderPromptSection(): string {
     // Canvas readability.
     'Every node you add needs a concise `description` that explains why it exists in the user’s terms. This appears under the node title on the canvas.',
 
+    // Safe nested edits.
+    'Nested config edits: call `get_node` immediately before editing, then use `update_node` with its `configHash` and `patches`. Paths are segment arrays, for example `["model", "completion_params", "temperature"]`; use numeric segments for arrays. Prefer patches over resending a nested object. If the hash is stale, re-read and retry. Use legacy `config` only for top-level fields such as `title`.',
+
     // Verification + simulation.
     'Verifying: `validate_workflow` runs the real publish gate without publishing — use it after a batch of edits. `run_node` executes ONE node as a SIMULATED debug run (side-effecting nodes do not send email, call webhooks, etc.); you supply its input values — upstream nodes are not executed. Say clearly in your reply that the run was simulated.',
 
@@ -45,6 +48,7 @@ export function buildWorkflowBuilderPromptSection(): string {
       'Worked examples:',
       '  - add_node(type: "http", title: "Post To Webhook", description: "Notify the fulfillment system about high-priority orders", after: "Check Priority", branch: "High", config: { url: "https://example.com/hook", method: "POST" })',
       '  - update_node(ref: "Send Email", config: { subject: "Order {{Find Order.record.number}} update" })',
+      '  - get_node(ref: "AI Agent") → update_node(ref: "AI Agent", expectedConfigHash: "<returned configHash>", patches: [{ op: "set", path: ["model", "completion_params", "temperature"], value: 0.2 }])',
       '  - add_node(type: "crud", title: "Create Task", inside: "For Each Line Item", config: { … "{{For Each Line Item.item.name}}" … })',
       '  - connect_nodes(from: "Summarize Email", to: "Save Summary")',
     ].join('\n'),

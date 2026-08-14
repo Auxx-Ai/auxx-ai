@@ -31,6 +31,7 @@ const APPLIED: GraphMutationResult = {
     id: 'wait-1',
     type: 'wait',
     title: 'Wait A Bit',
+    configHash: 'config-hash-1',
     position: { x: 10, y: 20 },
     config: { waitFor: '10m' },
   },

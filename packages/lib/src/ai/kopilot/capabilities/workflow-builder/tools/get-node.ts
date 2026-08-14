@@ -17,7 +17,7 @@ export function createGetNodeTool(getDeps: GetToolDeps): AgentToolDefinition {
     surfaces: ['builder'],
     idempotent: true,
     description:
-      'Read one node of the open workflow in full: complete config, resolved outputs (wire references from these), and its current issues. Address it by title or ref from get_workflow.',
+      'Read one node of the open workflow in full: complete config, configHash for guarded patches, resolved outputs (wire references from these), and its current issues. Address it by title or ref from get_workflow.',
     parameters: {
       type: 'object',
       properties: {

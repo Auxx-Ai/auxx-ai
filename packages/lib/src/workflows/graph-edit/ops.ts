@@ -34,6 +34,7 @@ import { normalizeFriendlyRefs, type ResourceAliasIndex } from './normalize/frie
 import { normalizeAiPromptConfig } from './normalize/prompt'
 import { checkVariableRefsAgainstOutputs } from './normalize/ref-check'
 import { buildResourceAliasIndex, normalizeResourceConfig } from './normalize/resource-refs'
+import { applyConfigPatches, type ConfigPatch } from './patch-config'
 import { persistDraft, publishDraftUpdatedSignal } from './persist'
 import {
   DEFAULT_NODE_SIZE,
@@ -47,6 +48,7 @@ import {
   buildNodeSummary,
   type DraftContext,
   type GraphEditScope,
+  hashNodeConfig,
   loadDraftContext,
   renderFriendlyOutputs,
 } from './read'
@@ -476,17 +478,32 @@ export async function addNode(
   })
 }
 
-/** Input for {@link updateNode}. */
-export interface UpdateNodeInput extends GraphMutationScope {
+interface UpdateNodeBaseInput extends GraphMutationScope {
   /** Node title or id. */
   ref: string
-  /** Friendly config, shallow-merged over the node's current data. */
-  config: Record<string, unknown>
 }
 
+/** Input for {@link updateNode}: a legacy shallow merge or guarded deep patches. */
+export type UpdateNodeInput = UpdateNodeBaseInput &
+  (
+    | {
+        /** Friendly config, shallow-merged over the node's current data. */
+        config: Record<string, unknown>
+        patches?: never
+        expectedConfigHash?: never
+      }
+    | {
+        /** Atomic edits against the complete friendly config returned by `get_node`. */
+        patches: ConfigPatch[]
+        /** `configHash` from the same `get_node` result used to choose the patch paths. */
+        expectedConfigHash: string
+        config?: never
+      }
+  )
+
 /**
- * Shallow-merge a friendly config into one node's data. `id` and `type` are
- * identity and cannot be changed here (use `setTrigger`/delete + add).
+ * Update one node using either the legacy top-level merge or atomic, stale-safe
+ * deep patches. `id`, `type`, and derived keys cannot be patched.
  */
 export async function updateNode(
   db: Database,
@@ -500,18 +517,50 @@ export async function updateNode(
     const manifestResult = requireAuthorableManifest(type)
     if (manifestResult.isErr()) return err(manifestResult.error)
 
-    const normalized = await normalizeConfig(
-      ctx.organizationId,
-      ctx.graph.nodes,
-      aliases,
-      type,
-      params.config
-    )
-    const { id: _id, type: _type, ...mergeable } = normalized.config
+    let nextData: Record<string, unknown>
+    let normalized: Awaited<ReturnType<typeof normalizeConfig>>
 
-    const nextNodes = ctx.graph.nodes.map((n) =>
-      n.id === node.id ? { ...n, data: { ...n.data, ...mergeable } } : n
-    )
+    if ('patches' in params) {
+      const actualConfigHash = hashNodeConfig((node.data ?? {}) as Record<string, unknown>)
+      if (params.expectedConfigHash !== actualConfigHash) {
+        return err(
+          new ConflictError(
+            'This node changed after get_node returned it. Re-read the node and retry the ' +
+              'patches with its new configHash. Nothing was overwritten.'
+          )
+        )
+      }
+
+      const currentFriendly = buildNodeSummary(ctx.graph, node, aliases).config
+      const patched = applyConfigPatches(currentFriendly, params.patches)
+      if (patched.isErr()) return err(patched.error)
+      normalized = await normalizeConfig(
+        ctx.organizationId,
+        ctx.graph.nodes,
+        aliases,
+        type,
+        patched.value
+      )
+      const { id: _id, type: _type, ...replacement } = normalized.config
+
+      // Remove every previous agent-visible top-level key first. This makes an
+      // `unset` durable while retaining identity, title, canvas, and derived data.
+      nextData = { ...(node.data as Record<string, unknown>) }
+      for (const key of Object.keys(currentFriendly)) delete nextData[key]
+      nextData = { ...nextData, ...replacement }
+    } else {
+      normalized = await normalizeConfig(
+        ctx.organizationId,
+        ctx.graph.nodes,
+        aliases,
+        type,
+        params.config
+      )
+      const { id: _id, type: _type, ...mergeable } = normalized.config
+      nextData = { ...(node.data as Record<string, unknown>), ...mergeable }
+    }
+
+    const nextNodes = ctx.graph.nodes.map((n) => (n.id === node.id ? { ...n, data: nextData } : n))
     return ok({
       graph: { ...ctx.graph, nodes: nextNodes },
       touchedNodeId: node.id,
