@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { UnifiedVariable } from '~/components/workflow/types/variable-types'
+import { builderDeclaredKeys } from './builder-declared-keys'
 import { BUILDER_RENDERED_HANDLES } from './builder-rendered-handles'
 import {
   EXTRACTION_BLIND_SPOTS,
@@ -13,12 +14,11 @@ import {
 } from './contract-drift-allowlist'
 import {
   advertisedPath,
-  builderDeclaredKeys,
   isPathWritten,
   isWriteAdvertised,
   readEngineContracts,
   readEngineRoutedHandleLiterals,
-} from './engine-contract'
+} from './engine-write-scrape'
 import { BUILDER_NODE_DEFINITIONS, CONFIG_VARIANTS } from './node-definitions'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -56,10 +56,12 @@ import { BUILDER_NODE_DEFINITIONS, CONFIG_VARIANTS } from './node-definitions'
 //      until a lib-side handle manifest exists).
 //
 // This half lives in `apps/web` and not beside the engine because the
-// declarations it reads are here: `nodes/core/*/schema.ts`. `packages/lib` is
-// dependency tier 3 and must never import from tier 5. The engine's side is
-// therefore read STATICALLY — see `engine-contract.ts` for exactly what that
-// extraction can and cannot see.
+// declarations it reads are here: `nodes/core/*/schema.ts` (and, for the 22
+// wave-1 migrated types, `packages/lib/src/workflow-engine/catalog/nodes/`).
+// `packages/lib` is dependency tier 3 and must never import from tier 5. The
+// engine's side is therefore read STATICALLY — see `engine-write-scrape.ts`
+// for exactly what that extraction can and cannot see, and why manifests
+// (builder-declared contract) don't make it go away.
 //
 // The OPERATOR third of the suite lives in `packages/lib`, where both sides
 // already are: `src/workflow-engine/nodes/condition-nodes/operator-parity.test.ts`.
@@ -188,8 +190,8 @@ function assertAgainstAllowlist(
 // ═══════════════════════════════════════════════════════════════════════════
 // 0. THE READER ITSELF
 //
-// The parity assertions are only as good as what `engine-contract.ts` can see,
-// and a blind spot there does not fail — it MIS-CLASSIFIES, which is worse. The
+// The parity assertions are only as good as what `engine-write-scrape.ts` can
+// see, and a blind spot there does not fail — it MIS-CLASSIFIES, which is worse. The
 // reader shipped blind to `setNodeVariables` (the bulk writer, execution-context
 // .ts:282) and so reported four nodes as "advertises but never writes" when they
 // publish everything correctly. That reads as a burn-down item and sends someone
