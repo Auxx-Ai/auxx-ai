@@ -5,6 +5,27 @@ import type { GetToolDeps } from '../../types'
 import { workflowToolPermission } from './graph-tool-helpers'
 import { resolveWorkflowAuthoring } from './workflow-authoring-guard'
 
+function countFindings(output: unknown, severity: 'error' | 'warning'): number {
+  const report = (output ?? {}) as {
+    publishErrors?: unknown[]
+    publishWarnings?: unknown[]
+    issues?: Array<{ severity?: unknown; message?: unknown }>
+  }
+  const messages = new Set<string>()
+  const publish = severity === 'error' ? report.publishErrors : report.publishWarnings
+  if (Array.isArray(publish)) {
+    for (const message of publish) messages.add(String(message))
+  }
+  if (Array.isArray(report.issues)) {
+    for (const issue of report.issues) {
+      if (issue.severity === severity && typeof issue.message === 'string') {
+        messages.add(issue.message)
+      }
+    }
+  }
+  return messages.size
+}
+
 /**
  * The publish gate without publishing: the three validation tiers plus the
  * REAL `validateDraftWorkflowForPublish` verdict. Publishing itself stays the
@@ -20,6 +41,11 @@ export function createValidateWorkflowTool(getDeps: GetToolDeps): AgentToolDefin
     description:
       'Check whether the open workflow draft would pass the publish gate — without publishing (publishing stays the user’s action). Returns publishability, publish errors/warnings, and the structural/config/reference issues.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
+    buildDigest: (output) => ({
+      label: 'Workflow validated',
+      errorCount: countFindings(output, 'error'),
+      warningCount: countFindings(output, 'warning'),
+    }),
     execute: async (_args, agentDeps) => {
       const auth = await resolveWorkflowAuthoring(getDeps, agentDeps, 'view')
       if (!auth.ok) return { success: false, output: null, error: auth.error }

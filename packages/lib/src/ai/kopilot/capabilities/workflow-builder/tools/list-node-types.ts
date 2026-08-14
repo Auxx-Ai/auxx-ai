@@ -21,7 +21,7 @@ export function createListNodeTypesTool(getDeps: GetToolDeps): AgentToolDefiniti
     surfaces: ['builder'],
     idempotent: true,
     description:
-      'List the workflow node types: id, display name, one-line description, category, whether it is a trigger, and whether you may author it. Call describe_node_type before configuring one.',
+      'List or search workflow node types: id, display name, one-line description, category, whether it is a trigger, and whether you may author it. Call describe_node_type before configuring one.',
     parameters: {
       type: 'object',
       properties: {
@@ -30,13 +30,34 @@ export function createListNodeTypesTool(getDeps: GetToolDeps): AgentToolDefiniti
           description:
             "Optional category filter (e.g. 'trigger', 'action', 'condition', 'flow_control', 'ai').",
         },
+        query: {
+          type: 'string',
+          description:
+            'Optional free-text search over type id, display name, description, and category.',
+        },
       },
       additionalProperties: false,
     },
+    buildDigest: (output) => {
+      const out = (output ?? {}) as { types?: unknown[] }
+      return {
+        label: 'Node types listed',
+        resultCount: Array.isArray(out.types) ? out.types.length : 0,
+      }
+    },
     execute: async (args) => {
       const category = typeof args.category === 'string' ? args.category : undefined
+      const query = typeof args.query === 'string' ? args.query.trim() : ''
+      const normalizedQuery = query.toLowerCase()
       const types = listManifests()
         .filter((m) => !category || m.category === category)
+        .filter(
+          (m) =>
+            !normalizedQuery ||
+            [m.id, m.displayName, m.description, m.category].some((value) =>
+              value.toLowerCase().includes(normalizedQuery)
+            )
+        )
         .map((m) => ({
           type: m.id,
           displayName: m.displayName,
@@ -47,10 +68,14 @@ export function createListNodeTypesTool(getDeps: GetToolDeps): AgentToolDefiniti
         }))
         .sort((a, b) => a.type.localeCompare(b.type))
       if (types.length === 0) {
+        const filter = [
+          ...(query ? [`query "${query}"`] : []),
+          ...(category ? [`category "${category}"`] : []),
+        ].join(' and ')
         return {
           success: false,
           output: null,
-          error: `No node types in category "${category}". Call list_node_types without a filter to see all categories.`,
+          error: `No node types match ${filter || 'the supplied filters'}. Call list_node_types without filters to see the full catalog.`,
         }
       }
       return { success: true, output: { types } }
