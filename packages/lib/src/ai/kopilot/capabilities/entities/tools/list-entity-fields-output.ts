@@ -1,5 +1,6 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/list-entity-fields-output.ts
 
+import { isMultiValueFieldType } from '../../../../../field-values/formatter'
 import type { ResourceField } from '../../../../../resources/registry/field-types'
 
 const SELECT_TYPES = new Set(['SINGLE_SELECT', 'MULTI_SELECT', 'STATUS'])
@@ -46,6 +47,11 @@ export interface FieldOutput {
   required?: true
   /** Only present when true — absence means "no uniqueness constraint". */
   unique?: true
+  /**
+   * Only present when true — the field stores a LIST of values. Writing it
+   * replaces the whole list; the update tools accept mode `'add'` to append.
+   */
+  multi?: true
   /** Only present when creatable && updatable are both false. */
   readOnly?: true
   /** Only present when creatable && !updatable (e.g. ticket_type). */
@@ -93,6 +99,7 @@ export function formatFieldOutput(field: ResourceField): FieldOutput | null {
 
   if (caps?.required) entry.required = true
   if (caps?.unique) entry.unique = true
+  if (field.fieldType && isMultiValueFieldType(field.fieldType, field.options)) entry.multi = true
 
   const creatable = caps?.creatable ?? true
   const updatable = caps?.updatable ?? true

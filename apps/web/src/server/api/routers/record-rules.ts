@@ -68,7 +68,14 @@ const actionDocSchema = z.object({
 })
 
 const actionSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('set-field'), fieldRef: z.string().min(1), value: z.unknown() }),
+  z.object({
+    type: z.literal('set-field'),
+    fieldRef: z.string().min(1),
+    value: z.unknown(),
+    // Multi-value fields only: 'add' appends instead of replacing the stored
+    // list. No builder UI exposes this yet — default is replace ('set').
+    mode: z.enum(['set', 'add']).optional(),
+  }),
   z.object({ type: z.literal('enqueue-workflow'), workflowAppId: z.string().min(1) }),
   z.object({
     type: z.literal('notify'),

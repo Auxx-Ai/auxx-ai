@@ -100,7 +100,9 @@ describe('findOrCreateContactFromJwt — chat (app-less) visitor', () => {
     })
 
     expect(create).toHaveBeenCalledWith('contact', {
-      primary_email: 'jane@example.com',
+      // Array-wrapped for multi-value shape consistency; the write path
+      // auto-unwraps length-1 arrays on single-value fields.
+      primary_email: ['jane@example.com'],
       contact_status: 'ACTIVE',
     })
     // No external_id array in the create payload.
@@ -131,7 +133,7 @@ describe('findOrCreateContactFromJwt — chat (app-less) visitor', () => {
     expect(create).toHaveBeenCalledWith('contact', {
       contact_status: 'ACTIVE',
       first_name: 'Jane',
-      primary_email: 'jane@example.com',
+      primary_email: ['jane@example.com'],
     })
     expect(result.resolution).toBe('created')
   })

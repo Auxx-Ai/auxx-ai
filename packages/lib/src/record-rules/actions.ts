@@ -107,11 +107,36 @@ export async function executeRuleAction(
       ])
       const systemUserId = await SystemUserService.getSystemUserForActions(ctx.organizationId)
       const handler = new UnifiedCrudHandler(ctx.organizationId, systemUserId)
-      await handler.update(toRecordId(ctx.entityDefinitionId, ctx.entityInstanceId), {
-        // fieldRef may be a field row id OR a systemAttribute — the mutation-side
-        // field resolution accepts both.
-        [action.fieldRef]: value,
-      })
+      // Multi-value awareness: `mode: 'add'` appends instead of replacing the
+      // field's stored list, but ONLY when the target field really is multi —
+      // the append primitive throws on single-value fields. Default (`'set'`,
+      // and any 'add' on a single-value field) stays a whole-value replace.
+      let modes: Record<string, 'set' | 'add' | 'remove'> | undefined
+      if (action.mode === 'add') {
+        const { getCachedCustomFields } = await import('../cache')
+        const { isMultiValueFieldType } = await import('../field-values/formatter')
+        const { toFieldType } = await import('../field-values/stored-field-type')
+        const fields = await getCachedCustomFields(ctx.organizationId, ctx.entityDefinitionId)
+        const field = fields.find(
+          (f) => f.id === action.fieldRef || f.systemAttribute === action.fieldRef
+        )
+        if (
+          field &&
+          isMultiValueFieldType(
+            toFieldType(field.type),
+            (field.options ?? undefined) as { multi?: boolean } | undefined
+          )
+        ) {
+          modes = { [action.fieldRef]: 'add' }
+        }
+      }
+      const targetRecordId = toRecordId(ctx.entityDefinitionId, ctx.entityInstanceId)
+      // fieldRef may be a field row id OR a systemAttribute — the mutation-side
+      // field resolution accepts both.
+      const writeValues = { [action.fieldRef]: value }
+      await (modes
+        ? handler.update(targetRecordId, writeValues, modes)
+        : handler.update(targetRecordId, writeValues))
       return 'ok'
     }
 

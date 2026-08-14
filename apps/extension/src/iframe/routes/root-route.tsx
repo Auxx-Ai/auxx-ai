@@ -39,7 +39,7 @@ type Props = {
 }
 
 export function RootRoute({ session }: Props) {
-  const { top: routeTop, push: routePush, replace: routeReplace } = useRouteStack()
+  const { top: routeTop, push: routePush, pop: routePop, replace: routeReplace } = useRouteStack()
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
   // Bumped whenever we want to force a re-parse (session change, or the
   // `panelOpened` broadcast from the SW after the user clicks the toolbar
@@ -315,10 +315,33 @@ export function RootRoute({ session }: Props) {
         })
         navigateToDetail('company', created.recordId)
       } catch (err) {
+        // Per-value uniqueness conflict (e.g. the captured email already
+        // belongs to another contact): route into the "N similar found" list
+        // instead of a raw CONFLICT error — the existing record IS the answer.
+        if (isConflictError(err)) {
+          const matches = await lookupMatchesAfterConflict(ready)
+          if (matches.length > 0) {
+            // If the user came via "Add anyway?" (capture sub-view), pop back
+            // so the matches list is what renders.
+            if (routeTop.kind === 'root' && routeTop.view === 'capture') routePop()
+            setPhase({
+              ...ready,
+              savingAs: null,
+              existingMatches: matches,
+              matchesStatus: 'loaded',
+            })
+            return
+          }
+          setPhase({
+            kind: 'error',
+            message: 'A record with these details already exists in Auxx.',
+          })
+          return
+        }
         setPhase({ kind: 'error', message: saveErrorMessage(err) })
       }
     },
-    [phase, navigateToDetail]
+    [phase, navigateToDetail, routeTop, routePop]
   )
 
   return (
@@ -336,4 +359,34 @@ function saveErrorMessage(err: unknown): string {
   }
   if (err instanceof Error) return err.message
   return 'Save failed.'
+}
+
+/** Per-value uniqueness rejection from the server (409 / tRPC CONFLICT). */
+function isConflictError(err: unknown): boolean {
+  return err instanceof TrpcCallError && (err.code === 'CONFLICT' || err.httpStatus === 409)
+}
+
+/**
+ * Re-run the dual-entity dedup lookup after a save conflict. The conflicting
+ * record was not necessarily in the pre-save matches (the save may have raced
+ * a capture on another tab, or the email may belong to a record the
+ * externalId lookup missed) — the email/domain candidates find it row-level.
+ */
+async function lookupMatchesAfterConflict(
+  ready: Extract<Phase, { kind: 'ready' }>
+): Promise<ExistingMatch[]> {
+  const primary = ready.target.entityType
+  const other: EntityType = primary === 'contact' ? 'company' : 'contact'
+  const [primaryHits, otherHits] = await Promise.all([
+    findExistingInEntity(primary, ready.person, ready.company),
+    findExistingInEntity(other, ready.person, ready.company),
+  ])
+  const merged: ExistingMatch[] = []
+  const seen = new Set<string>()
+  for (const m of [...primaryHits, ...otherHits]) {
+    if (seen.has(m.recordId)) continue
+    seen.add(m.recordId)
+    merged.push(m)
+  }
+  return merged
 }

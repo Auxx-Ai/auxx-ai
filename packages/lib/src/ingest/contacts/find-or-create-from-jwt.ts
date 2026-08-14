@@ -132,11 +132,13 @@ export async function findOrCreateContactFromJwt(
 
   // Tier 3 — create on first sight. Server-derived identity fields are spread
   // AFTER the caller attribute bag so no attribute can override the signed
-  // JWT email.
+  // JWT email. The email is array-wrapped for shape consistency with
+  // multi-value fields (the write path auto-unwraps length-1 arrays on
+  // single-value fields).
   const { instance } = await handler.create('contact', {
     contact_status: 'ACTIVE',
     ...attributes,
-    ...(email ? { primary_email: email } : {}),
+    ...(email ? { primary_email: [email] } : {}),
   })
   if (!shopify && contactDefId) {
     await mirrorChatLink({ organizationId, contactDefId, contactId: instance.id, userId })

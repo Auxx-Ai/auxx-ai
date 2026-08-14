@@ -43,9 +43,14 @@ const h = vi.hoisted(() => {
       async () => 'user_system_1'
     ),
     sendNotification: vi.fn<(input: any) => Promise<void>>(async () => undefined),
-    crudUpdate: vi.fn<(recordId: string, data: Record<string, unknown>) => Promise<void>>(
-      async () => undefined
-    ),
+    crudUpdate: vi.fn<
+      (
+        recordId: string,
+        data: Record<string, unknown>,
+        modes?: Record<string, 'set' | 'add' | 'remove'>
+      ) => Promise<void>
+    >(async () => undefined),
+    getCachedCustomFields: vi.fn<(orgId: string, defId: string) => Promise<any[]>>(async () => []),
     resolveFieldTokens: vi.fn<(tokens: any[], ctx: any) => Promise<Map<string, any>>>(
       async () => new Map()
     ),
@@ -73,6 +78,7 @@ vi.mock('../users/system-user-service', () => ({
 vi.mock('../cache', () => ({
   getOrgCache: () => ({ get: vi.fn(async () => ({})) }),
   getUserCache: () => ({ get: vi.fn(async () => null) }),
+  getCachedCustomFields: (...args: [string, string]) => h.getCachedCustomFields(...args),
 }))
 vi.mock('../placeholders/resolver', () => ({
   resolveFieldTokens: h.resolveFieldTokens,
@@ -464,5 +470,64 @@ describe("executeRuleAction — 'set-field'", () => {
     )
     expect(result).toBe('skipped')
     expect(h.crudUpdate).not.toHaveBeenCalled()
+  })
+
+  // Multi-value awareness (multi-email plan B5): a scalar-multi field
+  // (options.multi) must never lose its stored list to an unintended append
+  // routing, and `mode: 'add'` must go through the append primitives.
+  it("routes mode 'add' to an append write when the target field is multi-value", async () => {
+    h.select.mockReset()
+    h.getCachedCustomFields.mockResolvedValueOnce([
+      {
+        id: 'fld_email',
+        systemAttribute: 'primary_email',
+        type: 'EMAIL',
+        options: { multi: true },
+      },
+    ])
+    const result = await executeRuleAction(
+      { type: 'set-field', fieldRef: 'primary_email', value: 'a@x.com', mode: 'add' },
+      rule(),
+      baseCtx,
+      null
+    )
+    expect(result).toBe('ok')
+    expect(h.crudUpdate).toHaveBeenCalledWith(
+      'def_contact:contact_1',
+      { primary_email: 'a@x.com' },
+      { primary_email: 'add' }
+    )
+  })
+
+  it("treats mode 'add' on a single-value field as a plain replace (never throws)", async () => {
+    h.select.mockReset()
+    h.getCachedCustomFields.mockResolvedValueOnce([
+      { id: 'fld_email', systemAttribute: 'primary_email', type: 'EMAIL', options: {} },
+    ])
+    const result = await executeRuleAction(
+      { type: 'set-field', fieldRef: 'primary_email', value: 'a@x.com', mode: 'add' },
+      rule(),
+      baseCtx,
+      null
+    )
+    expect(result).toBe('ok')
+    expect(h.crudUpdate).toHaveBeenCalledWith('def_contact:contact_1', {
+      primary_email: 'a@x.com',
+    })
+  })
+
+  it('defaults to replace without a field lookup when no mode is set', async () => {
+    h.select.mockReset()
+    const result = await executeRuleAction(
+      { type: 'set-field', fieldRef: 'primary_email', value: 'a@x.com' },
+      rule(),
+      baseCtx,
+      null
+    )
+    expect(result).toBe('ok')
+    expect(h.getCachedCustomFields).not.toHaveBeenCalled()
+    expect(h.crudUpdate).toHaveBeenCalledWith('def_contact:contact_1', {
+      primary_email: 'a@x.com',
+    })
   })
 })

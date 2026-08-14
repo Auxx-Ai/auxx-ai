@@ -12,6 +12,14 @@
  * App fields are `updatable: false` to block *user* edits (a frontend
  * affordance) — there is no server-side updatable guard on `FieldValueService`,
  * so the owning app writes them directly here, authorized purely by ownership.
+ *
+ * Multi-value note: writes are replace-only (`applyBulk` mode defaults to
+ * `'set'` — a multi-value field's whole stored list is replaced). This is safe
+ * here because only app-OWNED fields are reachable: the seeded multi-capable
+ * fields (contact `primary_email`/`phone`, company `website`) are org-owned
+ * and can never resolve through `resolveOwnedField`. If an app ever needs
+ * append semantics on its own multi field, thread an optional per-key `mode`
+ * through to `applyBulk`'s `BulkValueItem.mode`.
  */
 
 import { getOrgCache } from '@auxx/lib/cache'
