@@ -715,7 +715,14 @@ export const ORG_CACHE_KEY_CONFIG: Record<
 
   // Business data (24h TTL, all invalidated via cache events)
   features: { prefix: 'org:features', ttlSeconds: THIRTY_DAYS },
-  subscription: { prefix: 'org:subscription', ttlSeconds: ONE_DAY },
+  // v2: + `capabilities.customPricingPlans`, which `PlanComparison` reads to hide the
+  // Enterprise ("Contact Sales") card on Shopify-billed orgs — App Store rules 1.2.1 /
+  // 1.2.3. `capabilities` is baked into the blob at compute time
+  // (`subscription-provider.ts`), so a v1 blob has no such key and the read would
+  // resolve `undefined` → the Stripe default → **the card stays visible for up to the
+  // ONE_DAY TTL**, i.e. straight through the review window. Moving the keyspace makes
+  // that impossible. See plans/billing/v3/04-hide-custom-pricing-plans-on-shopify.md.
+  subscription: { prefix: 'org:subscription:v2', ttlSeconds: ONE_DAY },
   // v2: + disabledAt/disabledReason, which `protectedProcedure` now reads to lock
   // members out of an admin-suspended org. The shape is still parseable by both
   // sides, which is exactly why the bump is load-bearing: a v1 blob has no

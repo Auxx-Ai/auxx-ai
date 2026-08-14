@@ -13,6 +13,13 @@ export interface BillingCapabilities {
   arbitraryBillingCycles: boolean
   /** Whether annual billing is offered. Shopify is monthly-only (usage charges can't ride an annual cycle). */
   annualBillingCycle: boolean
+  /**
+   * Whether custom-priced ("Contact Sales") plans may be advertised to the merchant.
+   * Shopify App Store rules 1.2.1 / 1.2.3 forbid offering a plan that can't be billed
+   * through Shopify or that requires contacting support. See
+   * plans/billing/v3/04-hide-custom-pricing-plans-on-shopify.md.
+   */
+  customPricingPlans: boolean
   trialWithoutPaymentMethod: boolean
   immediateCancellation: boolean
   scheduledDowngrade: boolean

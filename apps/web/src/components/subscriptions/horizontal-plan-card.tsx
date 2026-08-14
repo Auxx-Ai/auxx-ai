@@ -196,11 +196,9 @@ export function HorizontalPlanCard({
       {/* Right Section: CTA */}
       <div className='flex items-center md:w-1/6 justify-end'>
         {cta.action === 'contact' ? (
-          <Button
-            className='w-full md:w-auto'
-            variant={btnVariant}
-            onClick={() => router.push('/contact-sales')}>
-            Contact Sales
+          // See plan-card.tsx — /contact-sales is not a route; it bounced to /app.
+          <Button className='w-full md:w-auto' variant={btnVariant} asChild>
+            <a href='mailto:sales@auxx.ai'>Contact Sales</a>
           </Button>
         ) : cta.action === 'current' ? (
           <Button className='w-full md:w-auto' disabled>

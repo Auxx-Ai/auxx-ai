@@ -232,11 +232,11 @@ export function PlanCard({
 
         <CardFooter className='flex flex-col gap-2 p-3 pt-0'>
           {cta.action === 'contact' ? (
-            <Button
-              variant={btnVariant}
-              className='w-full'
-              onClick={() => router.push('/contact-sales')}>
-              Contact Sales
+            // There is no /contact-sales route, and `contact-sales` isn't in the proxy's
+            // KNOWN_ROUTE_PREFIXES — pushing it bounced the merchant to /app. Mail sales
+            // instead, matching subscription-ended.tsx and the homepage.
+            <Button variant={btnVariant} className='w-full' asChild>
+              <a href='mailto:sales@auxx.ai'>Contact Sales</a>
             </Button>
           ) : cta.action === 'current' ? (
             <Button className='w-full' disabled>
