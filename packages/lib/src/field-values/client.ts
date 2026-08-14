@@ -34,6 +34,7 @@ export {
   type DateFieldOptions,
   extractValues,
   type FieldOptions,
+  type FieldTypeOptions,
   formatToDisplayValue,
   formatToRawValue,
   formatToTypedInput,

@@ -1,7 +1,7 @@
 // apps/web/src/components/merge/use-merge-preview.ts
 'use client'
 
-import { formatToRawValue } from '@auxx/lib/field-values/client'
+import { type FieldTypeOptions, formatToRawValue } from '@auxx/lib/field-values/client'
 import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
 import { mergeFieldValue } from '@auxx/lib/resources/merge/client'
 import { useMemo } from 'react'
@@ -46,12 +46,18 @@ export function useMergePreview({
       const fieldType = field.fieldType
       if (!fieldType) continue
 
+      // Field options drive the array-return shape: without them a single
+      // stored value on an `options.multi` field unwraps to a scalar here while
+      // the server's batchGetValues hands mergeFieldValue an array — the preview
+      // must merge the same shapes the server writes.
+      const fieldOptions = field.options as FieldTypeOptions | undefined
+
       // Get target value from store (TypedFieldValue format)
       const targetStoreKey = buildFieldValueKey(targetRecordId, field.id)
       const targetStoreValue = storeValues[targetStoreKey]
 
       // EXPLICIT CONVERSION: TypedFieldValue → raw value
-      const targetValue = formatToRawValue(targetStoreValue, fieldType)
+      const targetValue = formatToRawValue(targetStoreValue, fieldType, fieldOptions)
 
       // Get source values from store (TypedFieldValue format)
       const sourceValues = sourceRecordIds.map((recordId) => {
@@ -59,7 +65,7 @@ export function useMergePreview({
         const sourceStoreValue = storeValues[sourceStoreKey]
 
         // EXPLICIT CONVERSION: TypedFieldValue → raw value
-        return formatToRawValue(sourceStoreValue, fieldType)
+        return formatToRawValue(sourceStoreValue, fieldType, fieldOptions)
       })
 
       // Skip fields that have no data in target or any sources
