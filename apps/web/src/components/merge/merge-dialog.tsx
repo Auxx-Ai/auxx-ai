@@ -16,6 +16,7 @@ import { Kbd } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRecords, useResource } from '~/components/resources'
+import { useNormalizedDefinitionId } from '~/components/resources/utils/normalize-record-id'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { MergePreviewPanel } from './merge-preview-panel'
@@ -57,12 +58,6 @@ export function MergeDialog({
   // Get resource definition for label and fields
   const { resource } = useResource(entityDefinitionId ?? '')
 
-  // Per-def write gate (Layer 2 × Layer 3) — merge is a record write (`edit`
-  // floor). Central guard covering every merge trigger (records view, ticket
-  // row actions, detail view). The server enforces regardless.
-  const { canEditEntity } = useAccess()
-  const canEdit = entityDefinitionId ? canEditEntity(entityDefinitionId) : false
-
   // State: target and sources (sources = everything except target)
   // Undefined only when opened with an empty `baseRecordIds` — the dialog
   // renders nothing in that case (guard below).
@@ -78,6 +73,18 @@ export function MergeDialog({
     [targetRecordId, sourceRecordIds]
   )
   const { records, isLoading: recordsLoading } = useRecords({ recordIds: allRecordIds })
+
+  // Per-row DELETE gate — merge permanently removes the source records, so the
+  // server asserts the delete verb PER ROW for the target and every source
+  // (`assertCanDeleteRows` in record.merge). Mirror that here from each row's
+  // server-resolved `_access` stamp, with the member's def rung as the
+  // unstamped fallback — the same resolution as `useRecordAccessAt`.
+  const { canDeleteRecordAt, recordDefRung } = useAccess()
+  const normalizedDefId = useNormalizedDefinitionId(entityDefinitionId ?? '')
+  const canDeleteAll = useMemo(() => {
+    const defRung = (normalizedDefId ? recordDefRung(normalizedDefId) : undefined) ?? 'none'
+    return records.every((record) => canDeleteRecordAt(record?._access ?? defRung))
+  }, [records, normalizedDefId, recordDefRung, canDeleteRecordAt])
 
   // Reset state when dialog closes
   useEffect(() => {
@@ -140,7 +147,7 @@ export function MergeDialog({
 
   /** Execute merge */
   const handleMerge = () => {
-    if (sourceRecordIds.length === 0 || !targetRecordId || !canEdit) return
+    if (sourceRecordIds.length === 0 || !targetRecordId || !canDeleteAll) return
 
     mergeMutation.mutate({
       targetRecordId,
@@ -149,7 +156,7 @@ export function MergeDialog({
   }
 
   const resourceLabel = resource?.label ?? 'Record'
-  const canMerge = sourceRecordIds.length > 0 && canEdit
+  const canMerge = sourceRecordIds.length > 0 && canDeleteAll
 
   // Nothing to merge into — every caller mounts this dialog with a selection.
   if (!targetRecordId) return null
