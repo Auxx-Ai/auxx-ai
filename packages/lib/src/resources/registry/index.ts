@@ -170,7 +170,6 @@ export type {
   ResourceTableDefinition,
 } from './field-types'
 export { getFieldOutputKey } from './field-types'
-
 // Re-export option helpers
 export {
   type FieldOptionItem,
@@ -180,6 +179,8 @@ export {
   isValidOptionValue,
   labelToValue,
 } from './option-helpers'
+// Re-export the tier-A output-shape helper (§10b step 4)
+export { toOutputShape } from './output-shape'
 
 // export * from './enum-values'
 
