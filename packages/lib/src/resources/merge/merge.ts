@@ -2,6 +2,7 @@
 
 import type { FieldType } from '@auxx/database/types'
 import { type FieldTypeOptions, isMultiValueFieldType } from '../../field-values/formatter'
+import { MAX_MULTI_VALUES } from '../../field-values/primary-value'
 import type { MergeFieldInput, MergeFieldResult } from './types'
 
 /**
@@ -94,10 +95,15 @@ function mergeMultiValue(
     }
   }
 
-  const targetArray = Array.isArray(targetValue) ? targetValue : []
-  const wasModified = uniqueValues.length !== targetArray.length
+  // Clamp to the write-path cap AFTER dedupe. Target values were pushed first,
+  // so the clamp drops source overflow preferentially and the target's primary
+  // stays at index 0.
+  const cappedValues = uniqueValues.slice(0, MAX_MULTI_VALUES)
 
-  return { value: uniqueValues, wasModified }
+  const targetArray = Array.isArray(targetValue) ? targetValue : []
+  const wasModified = cappedValues.length !== targetArray.length
+
+  return { value: cappedValues, wasModified }
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -216,6 +222,12 @@ function hasValue(value: unknown): boolean {
 
 /** Get deduplication key for a value (safer than JSON.stringify) */
 function getDedupeKey(value: unknown, fieldType: FieldType): string {
+  // EMAIL dedupes case-insensitively: the write path lowercases on store, so
+  // `A@x.com` and `a@x.com` are the same address and must collapse to one.
+  if (fieldType === 'EMAIL' && typeof value === 'string') {
+    return `${fieldType}:${value.toLowerCase()}`
+  }
+
   // For primitive values
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return `${fieldType}:${value}`

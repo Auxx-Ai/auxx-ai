@@ -1,7 +1,9 @@
 // apps/web/src/components/merge/merge-dialog.tsx
 'use client'
 
-import { getDefinitionId, type RecordId } from '@auxx/lib/resources/client'
+import { getDefinitionId, getInstanceId, type RecordId } from '@auxx/lib/resources/client'
+import { toRecordId } from '@auxx/types/resource'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -14,11 +16,13 @@ import {
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Kbd } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
+import { Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRecords, useResource } from '~/components/resources'
 import { useNormalizedDefinitionId } from '~/components/resources/utils/normalize-record-id'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
+import { countGrantedActors } from './grant-count'
 import { MergePreviewPanel } from './merge-preview-panel'
 import { MergeSourcePanel } from './merge-source-panel'
 import { MergeTargetPanel } from './merge-target-panel'
@@ -85,6 +89,23 @@ export function MergeDialog({
     const defRung = (normalizedDefId ? recordDefRung(normalizedDefId) : undefined) ?? 'none'
     return records.every((record) => canDeleteRecordAt(record?._access ?? defRung))
   }, [records, normalizedDefId, recordDefRung, canDeleteRecordAt])
+
+  // Grant warning (contacts only): record-level grants on the TARGET widen with
+  // the merge — the grantee's contact lens fans out over the merged threads.
+  // ResourceAccess keys contact grants by the fixed 'contact' slug (the mail
+  // keyspace), and `forInstance` is the same read the share surfaces use — the
+  // server gates it on "may the caller SEE the target", which merging requires
+  // anyway. Source-contact grants stay on the archived sources (nothing
+  // transfers them), so only the target's grants matter here.
+  const isContactMerge = resource?.entityType === 'contact'
+  const { data: targetAccessRows } = api.resourceAccess.forInstance.useQuery(
+    { recordId: targetRecordId ? toRecordId('contact', getInstanceId(targetRecordId)) : '' },
+    { enabled: open && isContactMerge && !!targetRecordId }
+  )
+  const targetGrantCount = useMemo(
+    () => (isContactMerge ? countGrantedActors(targetAccessRows ?? []) : 0),
+    [isContactMerge, targetAccessRows]
+  )
 
   // Reset state when dialog closes
   useEffect(() => {
@@ -168,7 +189,7 @@ export function MergeDialog({
           <DialogTitle>Merge {resourceLabel}s</DialogTitle>
           <DialogDescription>
             Select items to merge into the target {resourceLabel.toLowerCase()}. All data will be
-            combined into the target.
+            combined into the target, and the source records will be permanently archived.
           </DialogDescription>
         </DialogHeader>
 
@@ -218,6 +239,21 @@ export function MergeDialog({
             isLoading={recordsLoading}
           />
         </div>
+
+        {/* Non-blocking notice: merging widens existing record-level grants on
+            the target to cover the merged conversation history. */}
+        {targetGrantCount > 0 && (
+          <Alert variant='warning'>
+            <Users />
+            <AlertDescription>
+              {targetGrantCount === 1
+                ? '1 person has access'
+                : `${targetGrantCount} people have access`}{' '}
+              to this contact&apos;s conversations — merging extends their access to the merged
+              contact&apos;s threads. Sharing on the source contacts is not carried over.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <DialogFooter>
           <Button
