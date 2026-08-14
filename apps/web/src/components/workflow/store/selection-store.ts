@@ -43,6 +43,27 @@ interface SelectionStore extends SelectionState {
   toggleEdgeSelection: (edgeId: string) => void
 
   // Selection queries
+  //
+  // ⚠️ These read THIS store, which is NOT the canvas's selection truth. The
+  // only writer left is `use-node-interactions`'s add-node-from-connection path
+  // calling `selectNode` (whose real job is the `selection:changed` emit that
+  // opens the new node's panel). Canvas clicks, box-select and deselect set
+  // React Flow's `node.selected` and emit on the bus WITHOUT touching this
+  // store — see `use-selection-interactions.ts`. So these queries answer with
+  // whatever node was last added via a connection, indefinitely.
+  //
+  // For real selection, in order of preference:
+  //  1. `selectBaseFrame` on the panel store — if what you actually want is
+  //     "the node the drawer is showing". No React Flow involvement at all.
+  //  2. The `selection:changed` bus event — edge-triggered, already the
+  //     established pattern here (`panel-store.ts`), and costs no re-renders.
+  //  3. `useStoreApi().getState().nodes` inside a handler or effect —
+  //     imperative, non-subscribing.
+  //
+  // Do NOT reach for `useNodes()`: it subscribes to the whole node array and
+  // re-renders the caller on every position tick of a drag. If a component
+  // genuinely must re-render on selection, use React Flow's `useStore` with a
+  // narrow selector and an explicit equality fn — never the bare array.
   isNodeSelected: (nodeId: string) => boolean
   isEdgeSelected: (edgeId: string) => boolean
   getSelectedNodes: () => string[]

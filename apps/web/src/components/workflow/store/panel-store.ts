@@ -5,7 +5,6 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { safeLocalStorage } from '~/lib/safe-localstorage'
 import { useDockStore } from '~/stores/dock-store'
 import { storeEventBus } from './event-bus'
-import { useSelectionStore } from './selection-store'
 import { useWorkflowStore } from './workflow-store'
 
 /**
@@ -217,9 +216,15 @@ export const usePanelStore = create<PanelStore>()(
       const newWidth = Math.max(200, Math.min(600, width))
       set({ panelWidth: newWidth })
 
-      // Re-center the selected node with the new panel width
-      const selectedNodes = useSelectionStore.getState().getSelectedNodes()
-      if (selectedNodes.length === 1) {
+      // Re-center the node the drawer is showing, sourced from the BASE FRAME —
+      // not `selection-store`. That store is written by exactly one path
+      // (`use-node-interactions`'s add-node-from-connection) and never by a
+      // canvas click, box-select or deselect, so its answer here was whatever
+      // node was last added that way, or nothing at all. The base frame is the
+      // panel's subject by definition, which is precisely what "re-center the
+      // panel's node" means.
+      const baseFrame = selectBaseFrame(get())
+      if (baseFrame?.kind === 'node') {
         // Check if docked - when docked, canvas is already shrunk so no offset needed
         const isDocked = useDockStore.getState().isDocked
         const isDesktop = window.matchMedia('(min-width: 1024px)').matches
@@ -229,7 +234,7 @@ export const usePanelStore = create<PanelStore>()(
           window.dispatchEvent(
             new CustomEvent('workflow:centerOnNode', {
               detail: {
-                nodeId: selectedNodes[0],
+                nodeId: baseFrame.nodeId,
                 offset: effectivelyDocked ? { x: 0, y: 0 } : { x: -newWidth / 2, y: 0 },
                 animation: { duration: 200 },
               },
