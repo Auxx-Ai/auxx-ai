@@ -173,18 +173,18 @@ exports[`variable-generators golden snapshots (FROZEN — pre-refactor baseline)
   {
     "category": "node",
     "description": "Array of ticket records",
-    "id": "node-2.tickets",
+    "id": "node-2.ticket",
     "items": {
       "category": "node",
       "description": "Ticket record",
-      "id": "node-2.tickets[*]",
+      "id": "node-2.ticket[*]",
       "label": "Ticket",
       "properties": {
         "assignee": {
           "category": "node",
           "description": "Assignee of the resource",
           "fieldReference": "ticket:assignee",
-          "id": "node-2.tickets[*].assignee",
+          "id": "node-2.ticket[*].assignee",
           "label": "Assignee",
           "options": {
             "actor": {
@@ -197,7 +197,7 @@ exports[`variable-generators golden snapshots (FROZEN — pre-refactor baseline)
         "ticket_status": {
           "category": "node",
           "description": "Status of the resource",
-          "id": "node-2.tickets[*].ticket_status",
+          "id": "node-2.ticket[*].ticket_status",
           "label": "Status",
           "options": {
             "options": [
@@ -216,27 +216,27 @@ exports[`variable-generators golden snapshots (FROZEN — pre-refactor baseline)
         "title": {
           "category": "node",
           "description": "Title of the resource",
-          "id": "node-2.tickets[*].title",
+          "id": "node-2.ticket[*].title",
           "label": "Title",
           "type": "string",
         },
         "vendor": {
           "category": "node",
           "fieldReference": "ticket:vendor",
-          "id": "node-2.tickets[*].vendor",
+          "id": "node-2.ticket[*].vendor",
           "label": "Vendor",
           "properties": {
             "name": {
               "category": "node",
               "description": "Name of the resource",
-              "id": "node-2.tickets[*].vendor.name",
+              "id": "node-2.ticket[*].vendor.name",
               "label": "Name",
               "type": "string",
             },
             "referenceId": {
               "category": "node",
               "description": "ID of the related Vendor",
-              "id": "node-2.tickets[*].vendor.referenceId",
+              "id": "node-2.ticket[*].vendor.referenceId",
               "label": "Reference ID",
               "type": "string",
             },

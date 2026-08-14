@@ -684,10 +684,12 @@ export class FindProcessor extends BaseNodeProcessor {
 
       // The trace output carries the result under the SAME key the variable does
       // (see the keying note below), so a run trace and a `{{…}}` path never name
-      // the same value differently.
+      // the same value differently. Both find modes now key on the canonical
+      // `resource.id` — see the output-keying comment below for the findMany
+      // dual-write that keeps legacy plural-keyed refs alive alongside it.
       const pluralName = resource.plural.toLowerCase()
       const outputData = {
-        [findMode === 'findOne' ? resourceType : pluralName]: result,
+        [resourceType]: result,
         count: resultCount,
         query_info: {
           resource_type: resourceType,
@@ -702,16 +704,25 @@ export class FindProcessor extends BaseNodeProcessor {
 
       // Output keying — the contract the builder's variable picker advertises:
       //
-      // - `findOne`  → `<node>.<resource.id>`     (`generateFindNodeVariablesFromFields`
-      //                                            uses `resourceMeta.id` as the base path)
-      // - `findMany` → `<node>.<resource.plural>` (same generator, `plural.toLowerCase()`)
+      // - `findOne`  → `<node>.<resource.id>` (`generateFindNodeVariablesFromFields`
+      //                                        uses `resourceMeta.id` as the base path)
+      // - `findMany` → `<node>.<resource.id>` too, as of the plural-rename fix
+      //                (plans/kopilot/workflow/10-variable-resolution-deep-dive.md
+      //                §10 option A+C, §10b step 5). The array is ALSO written
+      //                under the legacy `<node>.<resource.plural.toLowerCase()>`
+      //                key (same array reference) — a back-compat alias for
+      //                `{{…}}` refs stored before the DataMigration rewrites
+      //                stored graphs onto the canonical key. Retire the legacy
+      //                write once that migration has run everywhere.
       //
-      // `findOne` deliberately does NOT key by `resource.label`. A label is
-      // user-editable, so renaming an entity would silently break every workflow
-      // reading its result, and the nine multi-word labels ('Knowledge Base',
-      // 'Work Order', 'Product / Service', …) lowercase into keys no `{{…}}` path
-      // can even address. `resource.id` is stable, addressable, and is already the
-      // key `setResourceVariables`/`setEntityVariables` use for triggers and CRUD.
+      // Neither mode keys by `resource.label`. A label is user-editable, so
+      // renaming an entity would silently break every workflow reading its
+      // result, and the nine multi-word labels ('Knowledge Base', 'Work Order',
+      // 'Product / Service', …) lowercase into keys no `{{…}}` path can even
+      // address (the plural has the same defect — see §10b for why the legacy
+      // key is an alias, not a design). `resource.id` is stable, addressable,
+      // and is already the key `setResourceVariables`/`setEntityVariables` use
+      // for triggers and CRUD.
       //
       // A template addresses a custom entity's result as `{{<node>.@entity:<slug>}}`;
       // `@entity:` refs are rewritten to the installing org's EntityDefinition cuid.
@@ -735,7 +746,14 @@ export class FindProcessor extends BaseNodeProcessor {
         }
       } else {
         if (isCustomResourceId(resourceType) && Array.isArray(result)) {
-          // Store ResourceReferences for each item + cache base entity data
+          // Store ResourceReferences for each item + cache base entity data.
+          // No per-item `setEntityVariables` call here (deliberate removal —
+          // see §3.5/§10c of the deep-dive doc): it used to write
+          // `<node>.<cuid>` + five subkeys per row, last-row-wins, undeclared
+          // and never advertised by the picker. Now that the array itself
+          // lives at `<node>.<resource.id>`, that stray write would clobber
+          // it. Items still resolve lazily through the ref lane —
+          // `cacheRecordBase` below seeds the base record the walker reads.
           const { createResourceReference } = await import('../../types/resource-reference')
           const refs = []
           for (const item of result) {
@@ -746,7 +764,6 @@ export class FindProcessor extends BaseNodeProcessor {
                 createdAt: item.createdAt,
                 updatedAt: item.updatedAt,
               }
-              setEntityVariables(resourceType, entityData, contextManager, node.nodeId)
 
               // Cache base data for recordFieldCache (field values load lazily)
               const recordId = toRecordId(resourceType, item.id)
@@ -754,10 +771,14 @@ export class FindProcessor extends BaseNodeProcessor {
               refs.push(createResourceReference(resourceType as any, item.id, organizationId))
             }
           }
-          // Store ResourceReference array under plural name for downstream consumption
+          // Dual-write: canonical `resource.id` key (the picker's advertised
+          // path going forward) plus the legacy plural-keyed alias, same
+          // array reference — see the output-keying comment above.
+          contextManager.setNodeVariable(node.nodeId, resourceType, refs)
           contextManager.setNodeVariable(node.nodeId, pluralName, refs)
         } else {
-          // System resources
+          // System resources — canonical id key + legacy plural alias.
+          contextManager.setNodeVariable(node.nodeId, resourceType, result)
           contextManager.setNodeVariable(node.nodeId, pluralName, result)
         }
       }

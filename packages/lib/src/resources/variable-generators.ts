@@ -585,12 +585,19 @@ export function generateFindNodeVariablesFromFields(
       })
     )
   } else {
-    // For findMany, create array variable with items
-    const pluralPath = resourceMeta.plural.toLowerCase()
+    // For findMany, create array variable with items. Keyed on the canonical
+    // `resource.id` (was `resourceMeta.plural.toLowerCase()` — see
+    // plans/kopilot/workflow/10-variable-resolution-deep-dive.md §10/§10b
+    // step 5: the plural is user-editable, so keying on it silently broke
+    // every `{{node.<plural>…}}` reference on rename). The engine dual-writes
+    // the array under this id AND the legacy plural key for back-compat; the
+    // picker only ever advertises this id-keyed path going forward. `label`
+    // stays `resourceMeta.plural` on purpose — display names are contract,
+    // the picker must keep showing "Vendors", never a raw CUID.
     const itemVar = createNestedVariable({
       deriveLabel: false,
       nodeId,
-      basePath: `${pluralPath}[*]`,
+      basePath: `${resourceMeta.id}[*]`,
       type: BaseType.OBJECT,
       label: resourceMeta.label,
       description: `${resourceMeta.label} record`,
@@ -599,7 +606,7 @@ export function generateFindNodeVariablesFromFields(
     })
 
     variables.push({
-      id: `${nodeId}.${pluralPath}`,
+      id: `${nodeId}.${resourceMeta.id}`,
       label: resourceMeta.plural,
       type: BaseType.ARRAY,
       category: 'node',

@@ -32,6 +32,7 @@ export {
 } from './templates'
 // Export all types
 export * from './types'
+export { firstPathSegment, rewriteVariableRefs } from './variable-ref-rewriter'
 export {
   assertWorkflowAppNotSystemOwned,
   assertWorkflowRunNotSystemOwned,

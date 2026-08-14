@@ -47,6 +47,7 @@ import { migration079EnrichmentFieldsBackendOwned } from './migrations/079-enric
 import { migration080OutlookWebhookCutover } from './migrations/080-outlook-webhook-cutover'
 import { migration081BackfillInteractionFields } from './migrations/081-backfill-interaction-fields'
 import { migration082InteractionFieldsParticipantResolution } from './migrations/082-interaction-fields-participant-resolution'
+import { migration083FindManyPluralToIdRefs } from './migrations/083-find-many-plural-to-id-refs'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -120,6 +121,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration080OutlookWebhookCutover,
     migration081BackfillInteractionFields,
     migration082InteractionFieldsParticipantResolution,
+    migration083FindManyPluralToIdRefs,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

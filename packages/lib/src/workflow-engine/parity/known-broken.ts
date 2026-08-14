@@ -101,7 +101,12 @@ const THREAD_STILL_BROKEN_OUTPUT_KEYS = new Set(
     .map((field) => getFieldOutputKey(field))
 )
 
-const TIER_A_FIELD_PATH_RE = /^[^.]+\.(thread|threads\[\*\])\.(.+)$/
+// findOne's root is `<n>.thread`, findMany's is `<n>.thread[*]` — both key on
+// the canonical `resource.id` ('thread') as of §10/§10b step 5; there is no
+// more `threads[*]` shape in the DECLARED tree (the legacy plural write is
+// still resolvable at runtime, it's just not declared — see
+// `FIND_MANY_LEGACY_PLURAL_ALIAS_REASON` below).
+const TIER_A_FIELD_PATH_RE = /^[^.]+\.thread(\[\*\])?\.(.+)$/
 
 function tierAFieldPathPin(id: string): string | undefined {
   const match = id.match(TIER_A_FIELD_PATH_RE)
@@ -183,36 +188,33 @@ export function matchDeclaredUnresolvablePin(id: string): string | undefined {
 // Invariant 2 — written ⊆ declared
 // =============================================================================
 
+// A former `FIND_MANY_STRAY_SINGULAR_KEY` entry lived here (findMany's
+// custom-entity loop called `setEntityVariables()` per item, which
+// unconditionally wrote the singular `<node>.<entityDefId>` key + five
+// subkeys as a side effect of building each `ResourceReference` —
+// last-item-wins, zero picker coverage). RETIRED by the findMany id-keying
+// change (§10/§10b step 5, `10-variable-resolution-deep-dive.md`): the array
+// itself now lives at `<node>.<entityDefId>`, so that stray per-item write
+// would have clobbered it — the fix removes the `setEntityVariables` call
+// from the loop entirely (see `find.ts`'s findMany/custom-entity branch),
+// not just the pin.
+
 /**
- * NEW BUG (undocumented before this suite): findMany on a custom entity
- * writes the SINGULAR resource-type key too, not just the plural array.
- *
- * `find.ts`'s findMany/custom-entity branch calls `setEntityVariables(resourceType,
- * entityData, contextManager, node.nodeId)` inside the per-item loop that
- * builds `ResourceReference`s for the plural array — but `setEntityVariables`
- * unconditionally writes `${nodeId}.${resourceType}` (the SAME key findOne
- * uses as its root) as a side effect of building each item's reference. Every
- * iteration overwrites it, so the final value is whichever item ran last.
- * `generateFindNodeVariablesFromFields`'s findMany branch never declares this
- * key — only findOne does — so it's a real, always-present write with zero
- * picker coverage on every custom-entity findMany.
- *
- * Fix (not made here): findMany's loop should call whatever piece of
- * `setEntityVariables` builds the `ResourceReference` and caches base data,
- * without the side-effecting `${nodeId}.${resourceType}` write meant for the
- * findOne singular case.
- *
- * Scoped to this suite's own node ids (`find_vendor_many`) rather than a bare
- * entity-def-id pattern, because the SAME key IS correctly declared and
- * covered for the findOne scenario — the id string alone can't tell the two
- * apart, only which scenario produced it can.
+ * DELIBERATE, not a bug: findMany dual-writes its result array under BOTH the
+ * canonical `<node>.<resource.id>` key (declared, covered) and the legacy
+ * `<node>.<resource.plural.toLowerCase()>` key — same array reference — so
+ * `{{node.<plural>…}}` refs stored before the plural-rename fix
+ * (§10/§10b step 5) keep resolving until the DataMigration rewrites stored
+ * graphs onto the canonical key. `generateFindNodeVariablesFromFields` only
+ * ever declares the id-keyed path, so the plural key is written-but-
+ * undeclared by design. Retire this pin together with the legacy write in
+ * `find.ts` once the migration has run everywhere.
  */
-const FIND_MANY_STRAY_SINGULAR_KEY_REASON =
-  "NEW BUG: find.ts's findMany/custom-entity branch calls setEntityVariables() per item, which " +
-  'unconditionally writes the singular `<node>.<entityDefId>` key (and its `.record_id`/`.created_at`/' +
-  '`.updated_at`/`.entityDefinitionId`/`.id` children) as a side effect of building each ' +
-  "ResourceReference — but generateFindNodeVariablesFromFields's findMany branch never declares " +
-  'that key, only findOne does. Last-item-wins, always present, zero picker coverage.'
+const FIND_MANY_LEGACY_PLURAL_ALIAS_REASON =
+  'DELIBERATE back-compat alias (§10/§10b step 5): find.ts dual-writes the findMany array under ' +
+  'both the canonical `<node>.<resource.id>` key (declared) and this legacy ' +
+  '`<node>.<resource.plural.toLowerCase()>` key so pre-migration `{{…}}` refs keep resolving. ' +
+  'Retire together with the dual-write once the plural→id DataMigration has run everywhere.'
 
 /**
  * Correct by design, not a bug — same class as `contract-drift-allowlist.ts`'s
@@ -233,10 +235,12 @@ const CRUD_DEFAULT_VALUE_DYNAMIC_KEY_REASON =
 
 const WRITTEN_UNDECLARED_PINS: Pin[] = [
   {
-    test: (key) =>
-      key.startsWith('find_vendor_many.vendorentitydefcuid00001') ||
-      key.startsWith('find_vendor_many.regionentitydefcuid00001'),
-    reason: FIND_MANY_STRAY_SINGULAR_KEY_REASON,
+    test: (key) => key === 'find_vendor_many.vendors',
+    reason: FIND_MANY_LEGACY_PLURAL_ALIAS_REASON,
+  },
+  {
+    test: (key) => key === 'find_thread_many.threads',
+    reason: FIND_MANY_LEGACY_PLURAL_ALIAS_REASON,
   },
   {
     test: (key) => key === 'crud_vendor_update_default.fallbackNote',

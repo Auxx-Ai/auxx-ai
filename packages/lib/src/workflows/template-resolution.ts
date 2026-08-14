@@ -7,6 +7,7 @@ import { getAppCache, getOrgCache } from '../cache/singletons'
 import type { InstallTemplatesResult } from '../entity-templates/template-installer'
 import { getTemplateById as getEntityTemplateById } from '../entity-templates/template-registry'
 import type { WorkflowGraph } from './template-graph-transformer'
+import { firstPathSegment, rewriteVariableRefs } from './variable-ref-rewriter'
 
 export interface ResolvedApp {
   appId: string
@@ -246,9 +247,6 @@ export function resolveFieldsFromInstallerResult(
  */
 const PLACEHOLDER_TOKEN = /@(entity|field):([A-Za-z0-9_-]+)/g
 
-/** A `{{ … }}` variable span. Mirrors the engine's own pattern (`execution-context.ts`). */
-const VARIABLE_SPAN = /\{\{([^}]+)\}\}/g
-
 /** Everything the path rewriter needs to turn a placeholder into a concrete id. */
 interface PlaceholderContext {
   /** `@entity:<slug>` → entityTemplateId */
@@ -285,11 +283,6 @@ function resolveEntityPlaceholder(
   }
 }
 
-/** The first path segment of a variable reference (`find-1.orders[0].x` → `find-1`). */
-function firstPathSegment(path: string): string {
-  return path.trim().split(/[.[]/)[0] ?? ''
-}
-
 /**
  * Rewrite the placeholders inside one variable path (the text between `{{` and `}}`,
  * or a bare variable reference such as a Tiptap `variable-node` `variableId`).
@@ -323,68 +316,6 @@ function rewriteVariablePath(path: string, nodeId: string, ctx: PlaceholderConte
     }
     return fieldId
   })
-}
-
-/**
- * Apply `visit` to every variable path inside a single string, and only there —
- * the text between `{{` and `}}`, or the whole string when it is a bare variable
- * reference starting with a node id in this graph (the same shape
- * `TemplateGraphTransformer.cloneGraph` remaps node ids in, e.g. a Tiptap
- * `variable-node` `attrs.variableId`). Ordinary prose is returned untouched, so an
- * `@` that isn't a placeholder inside a variable reference can never be corrupted.
- */
-function mapStringVariablePaths(
-  value: string,
-  nodeIds: Set<string>,
-  visit: (path: string) => string
-): string {
-  if (!value.includes('@entity:') && !value.includes('@field:')) return value
-
-  if (value.includes('{{')) {
-    return value.replace(VARIABLE_SPAN, (_full, inner: string) => `{{${visit(inner)}}}`)
-  }
-
-  if (nodeIds.has(firstPathSegment(value))) {
-    return visit(value)
-  }
-
-  return value
-}
-
-/**
- * Walk every value under a node's `data` and run `visit` over the variable paths
- * found in each string, substituting whatever it returns.
- *
- * Object *keys* are deliberately left alone — `data` / `fieldModes` /
- * `fieldUpdateModes*` keys are rewritten by the config pass, and `$comment` is
- * template-authoring prose that must never be touched.
- */
-function mapVariablePaths(
-  value: unknown,
-  nodeIds: Set<string>,
-  visit: (path: string) => string
-): unknown {
-  if (typeof value === 'string') {
-    return mapStringVariablePaths(value, nodeIds, visit)
-  }
-
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      value[i] = mapVariablePaths(value[i], nodeIds, visit)
-    }
-    return value
-  }
-
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>
-    for (const key of Object.keys(record)) {
-      if (key === '$comment') continue
-      record[key] = mapVariablePaths(record[key], nodeIds, visit)
-    }
-    return record
-  }
-
-  return value
 }
 
 /**
@@ -559,7 +490,7 @@ export function resolveEntityRefsInGraph(
 
   for (const node of graph.nodes) {
     if (!node.data || typeof node.data !== 'object') continue
-    mapVariablePaths(node.data, nodeIds, (path) =>
+    rewriteVariableRefs(node.data, nodeIds, (path) =>
       rewriteVariablePath(path, node.id, placeholderCtx)
     )
   }
@@ -614,7 +545,7 @@ export function extractRequiredEntities(graph: WorkflowGraph): Partial<RequiredE
 
   for (const node of graph.nodes) {
     if (!node.data || typeof node.data !== 'object') continue
-    mapVariablePaths(node.data, nodeIds, (path) => {
+    rewriteVariableRefs(node.data, nodeIds, (path) => {
       let currentSlug = nodeSlugs.get(firstPathSegment(path))
       for (const match of path.matchAll(PLACEHOLDER_TOKEN)) {
         const [, kind, ref] = match as unknown as [string, string, string]
