@@ -77,9 +77,14 @@ export * from './utils/terminal-nodes'
 // NOTE: `catalog/build-output-context` and `catalog/resolve-outputs` are
 // SERVER-ONLY (they import the org cache, which pulls in bullmq) and must
 // never be exported here — import them via their own subpaths instead.
+// NOTE: `catalog/derive-trigger-server` (the composition resolving
+// `triggerInstallationId`) is SERVER-ONLY for the same reason — import it
+// via a relative path (lib) or its own subpath, never from here.
 export {
   type DerivedTriggerColumns,
+  type DerivedTriggerLinks,
   deriveTriggerColumns,
+  deriveTriggerLinks,
   type TriggerDerivationNode,
 } from './catalog/derive-trigger'
 export {
