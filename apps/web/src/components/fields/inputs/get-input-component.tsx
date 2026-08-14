@@ -14,6 +14,7 @@ import { DateInputField } from './date-input-field'
 import { EmailInputField } from './email-input-field'
 import { FileInputField } from './file-input-field'
 import { JsonInputField } from './json-input-field'
+import { MultiValueInputField } from './multi-value-input-field'
 import { NameInputField } from './name-input-field'
 import { NumberInputField } from './number-input-field'
 import { PhoneInputField } from './phone-input-field'
@@ -38,6 +39,16 @@ function AddressStructOrSingleInput() {
 }
 
 /**
+ * EMAIL/URL/PHONE branch on `options.multi`: multi-value fields edit through
+ * the value-list picker (whole-array saves, set-as-primary, remove); scalar
+ * fields keep their single-line inputs.
+ */
+function ScalarOrMultiValueInput({ scalar }: { scalar: ReactNode }) {
+  const { field } = usePropertyContext()
+  return field.options?.multi ? <MultiValueInputField /> : <>{scalar}</>
+}
+
+/**
  * Returns the appropriate input component for a field type.
  * Used by both FieldInput (drawer) and CellFieldEditor (table).
  */
@@ -54,9 +65,9 @@ export function getInputComponentForFieldType(fieldType: FieldType): ReactNode {
     case FieldTypeEnum.TIME:
       return <DateInputField />
     case FieldTypeEnum.EMAIL:
-      return <EmailInputField />
+      return <ScalarOrMultiValueInput scalar={<EmailInputField />} />
     case FieldTypeEnum.URL:
-      return <UrlInputField />
+      return <ScalarOrMultiValueInput scalar={<UrlInputField />} />
     case FieldTypeEnum.CHECKBOX:
       return <CheckboxInputField />
     case FieldTypeEnum.SINGLE_SELECT:
@@ -64,7 +75,7 @@ export function getInputComponentForFieldType(fieldType: FieldType): ReactNode {
     case FieldTypeEnum.TAGS:
       return <SelectInputField />
     case FieldTypeEnum.PHONE_INTL:
-      return <PhoneInputField />
+      return <ScalarOrMultiValueInput scalar={<PhoneInputField />} />
     case FieldTypeEnum.RICH_TEXT:
       return <RichTextInputField />
     case FieldTypeEnum.FILE:

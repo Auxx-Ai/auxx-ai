@@ -1,7 +1,11 @@
 // apps/web/src/components/resources/hooks/use-save-field-value.ts
 
 import type { FieldType } from '@auxx/database/types'
-import { formatToTypedInput, isArrayReturnFieldType } from '@auxx/lib/field-values/client'
+import {
+  type FieldOptions,
+  formatToTypedInput,
+  isArrayReturnFieldType,
+} from '@auxx/lib/field-values/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import {
   getInverseFieldId,
@@ -34,6 +38,14 @@ interface SaveOptions {
    *  BullMQ autofill job; the client keeps an optimistic 'generating' marker
    *  until the realtime socket delivers the final value. */
   ai?: boolean
+  /**
+   * Field options (`options.multi`, `actor.multiple`, …). Without them the
+   * optimistic write and the post-save store shaping treat a multi-value
+   * scalar field (EMAIL/URL/PHONE with `options.multi`) as scalar — the
+   * optimistic store joins the array into one string, and clearing the field
+   * leaves the store scalar-shaped instead of `[]`.
+   */
+  fieldOptions?: FieldOptions
 }
 
 /**
@@ -85,7 +97,8 @@ function prepareOptimisticUpdate(
   value: unknown,
   fieldType: FieldType,
   getFieldMetadata?: (fieldId: FieldId) => FieldMetadata | undefined,
-  ai?: boolean
+  ai?: boolean,
+  fieldOptions?: FieldOptions
 ): OptimisticUpdatePrep {
   const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId, recordId))
   const store = useFieldValueStore.getState()
@@ -114,8 +127,10 @@ function prepareOptimisticUpdate(
     }
   }
 
-  // Optimistic update to store (convert to TypedFieldValue format)
-  const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
+  // Optimistic update to store (convert to TypedFieldValue format).
+  // `fieldOptions` matters for options.multi scalar fields: without it an
+  // array value would be coerced through the scalar branch (joined string).
+  const typedValue = fieldType ? formatToTypedInput(value, fieldType, { fieldOptions }) : value
 
   store.setValueOptimistic(key, typedValue)
 
@@ -168,7 +183,8 @@ function handleMutationSuccess(
   key: FieldValueKey,
   mutationVersion: number,
   result: { state?: string; values?: Array<{ id?: string }>; jobId?: string } | undefined,
-  fieldType: FieldType
+  fieldType: FieldType,
+  fieldOptions?: FieldOptions
 ): boolean {
   const store = useFieldValueStore.getState()
   const currentVersion = store.getMutationVersion(key)
@@ -187,14 +203,19 @@ function handleMutationSuccess(
   }
 
   if (result?.values && result.values.length > 0) {
-    // Static multi-value types (MULTI_SELECT, TAGS, etc.) always return arrays
-    // For ACTOR fields: if server returned multiple values, it's a multi-select actor field
-    const returnsArray = isArrayReturnFieldType(fieldType) || result.values.length > 1
+    // Static multi-value types (MULTI_SELECT, TAGS, etc.) always return arrays.
+    // `fieldOptions` covers the conditional cases: options.multi scalars and
+    // multi ACTOR fields — without it a one-value multi field would be stored
+    // scalar-shaped. (`length > 1` stays as a fallback for callers that don't
+    // thread options.)
+    const returnsArray = isArrayReturnFieldType(fieldType, fieldOptions) || result.values.length > 1
     const valueToStore = returnsArray ? result.values : result.values[0]
 
     store.setValue(key, valueToStore)
     store.confirmOptimistic(key)
-  } else if (fieldType && isArrayReturnFieldType(fieldType)) {
+  } else if (fieldType && isArrayReturnFieldType(fieldType, fieldOptions)) {
+    // Clearing an array-return field must leave `[]` in the store, not a
+    // stale scalar shape — options.multi fields depend on `fieldOptions` here.
     store.setValue(key, [])
     store.confirmOptimistic(key)
   } else {
@@ -304,7 +325,8 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         value,
         fieldType,
         getFieldMetadata,
-        ai
+        ai,
+        saveOpts?.fieldOptions
       )
 
       // Sync relationship cache (never for AI requests — stage-1 doesn't
@@ -323,7 +345,15 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         { recordId: normalizedRecordId, fieldId, value, ...(ai ? { ai: true } : {}) },
         {
           onSuccess: (result) => {
-            if (handleMutationSuccess(prep.key, prep.mutationVersion, result, fieldType)) {
+            if (
+              handleMutationSuccess(
+                prep.key,
+                prep.mutationVersion,
+                result,
+                fieldType,
+                saveOpts?.fieldOptions
+              )
+            ) {
               onSuccess?.()
             }
           },
@@ -368,7 +398,8 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         value,
         fieldType,
         getFieldMetadata,
-        ai
+        ai,
+        saveOpts?.fieldOptions
       )
 
       // Sync relationship cache
@@ -397,7 +428,13 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
 
       // Apply server result
       const firstValueId = result?.values?.[0]?.id
-      handleMutationSuccess(prep.key, prep.mutationVersion, result, fieldType)
+      handleMutationSuccess(
+        prep.key,
+        prep.mutationVersion,
+        result,
+        fieldType,
+        saveOpts?.fieldOptions
+      )
       onSuccess?.()
       return { success: true, id: firstValueId }
       // } catch (error: unknown) {

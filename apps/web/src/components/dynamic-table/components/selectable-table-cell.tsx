@@ -65,7 +65,7 @@ function SelectableTableCellInner<TData>({
   const isSystemColumn = columnId === '_checkbox'
 
   const field = cellSelectionConfig?.getFieldDefinition?.(columnId)
-  const editMode = getEditModeForFieldType(field?.fieldType)
+  const editMode = getEditModeForFieldType(field?.fieldType, field?.options)
   const isInlineEditing = isEditing && editMode === 'inline'
   const isPopoverEditing = isEditing && editMode === 'popover'
 

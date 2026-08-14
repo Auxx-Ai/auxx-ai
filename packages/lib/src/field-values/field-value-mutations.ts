@@ -36,7 +36,7 @@ import {
   isBuiltInField,
 } from '../custom-fields/built-in-fields'
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
-import { BadRequestError } from '../errors'
+import { BadRequestError, NotFoundError } from '../errors'
 import {
   collectTriggeredFields,
   deduplicateBySystemAttribute,
@@ -103,6 +103,7 @@ import type {
   RemoveRelationValuesBulkInput,
   RemoveRelationValuesInput,
   SetBulkValuesInput,
+  SetPrimaryValueInput,
   SetValueInput,
   SetValueResult,
   SetValuesForEntityInput,
@@ -667,6 +668,98 @@ export async function removeValue(ctx: FieldValueContext, valueId: string): Prom
     const remaining = await getValue(ctx, { recordId, fieldId: row.fieldId })
     await maybeUpdateDisplayValue(ctx, recordId, field, remaining ?? null)
   }
+}
+
+/**
+ * Promote one value of a multi-value field to primary (position 0).
+ *
+ * Move-to-front is a single-row sortKey UPDATE — no delete/insert, so the
+ * row keeps its id, provenance markers and timestamps. The new key is
+ * `generateKeyBetween(null, firstKey)` (strictly before every existing key
+ * under C collation, so the `(entityId, fieldId, sortKey)` unique index
+ * cannot collide); a corrupt legacy first key degrades to `nextKeyAfter(null)`
+ * — the same fallback `addValue`'s 'start' position uses.
+ *
+ * A sortKey-only move never writes a value, so the display-column recompute
+ * (`maybeUpdateDisplayValue` — subtitle follows the new primary) and the
+ * realtime publish of the full array are triggered explicitly here.
+ *
+ * @returns The field's full value array in the new order (primary first).
+ */
+export async function setPrimaryValue(
+  ctx: FieldValueContext,
+  params: SetPrimaryValueInput
+): Promise<TypedFieldValue[]> {
+  const { recordId, fieldId, valueId } = params
+  const { entityInstanceId } = parseRecordId(recordId)
+
+  const field = await getField(ctx, fieldId)
+
+  const existing = await ctx.db
+    .select({ id: schema.FieldValue.id, sortKey: schema.FieldValue.sortKey })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.entityId, entityInstanceId),
+        eq(schema.FieldValue.fieldId, fieldId),
+        eq(schema.FieldValue.organizationId, ctx.organizationId)
+      )
+    )
+    .orderBy(asc(schema.FieldValue.sortKey))
+
+  const targetIndex = existing.findIndex((row) => row.id === valueId)
+  if (targetIndex === -1) {
+    throw new NotFoundError(`Field value ${valueId} not found on field ${fieldId}`)
+  }
+
+  const readValues = async (): Promise<TypedFieldValue[]> => {
+    const full = await getValue(ctx, { recordId, fieldId }, field)
+    return full == null ? [] : Array.isArray(full) ? full : [full]
+  }
+
+  // Already primary — nothing to move, nothing to recompute or publish.
+  if (targetIndex === 0) {
+    return readValues()
+  }
+
+  const firstKey = existing[0]!.sortKey
+  const sortKey = isValidOrderKey(firstKey)
+    ? generateKeyBetween(null, firstKey)
+    : nextKeyAfter(null)
+
+  await ctx.db
+    .update(schema.FieldValue)
+    .set({ sortKey, updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.FieldValue.id, valueId),
+        eq(schema.FieldValue.organizationId, ctx.organizationId)
+      )
+    )
+
+  const values = await readValues()
+
+  // Recompute display columns — the subtitle must follow the new primary even
+  // though no value changed hands (recompute otherwise keys off value writes).
+  await maybeUpdateDisplayValue(ctx, recordId, field, values)
+
+  // Publish the full array. Entries without a `value` are silently dropped by
+  // the realtime layer, so the re-read array always rides along. Publish under
+  // the field's real EntityDefinition id (alias guard — see setValueWithBuiltIn).
+  const publishRecordId = field.entityDefinitionId
+    ? toRecordId(field.entityDefinitionId, entityInstanceId)
+    : recordId
+  const entry = buildPublishEntry({
+    publishRecordId,
+    fieldId: fieldId as FieldId,
+    field,
+    values,
+  })
+  publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, [entry], {
+    excludeSocketId: ctx.socketId,
+  }).catch(() => {})
+
+  return values
 }
 
 /**
@@ -1420,9 +1513,12 @@ export async function addValues(
     const allTyped = allRows.map((r) => rowToTypedValue(r, fieldType))
 
     // Update display value (safe no-op when the field isn't a display source).
-    // Pass txCtx so the inner update + searchText + cascade writes go through
-    // the active tx, not the pool.
-    await maybeUpdateDisplayValue(txCtx, recordId, field, survivors)
+    // Pass the FULL post-state, not just the appended survivors — an append
+    // lands at the END of the list, and a survivors-only recompute would
+    // overwrite the subtitle with the new alias instead of keeping the
+    // primary (position 0). Pass txCtx so the inner update + searchText +
+    // cascade writes go through the active tx, not the pool.
+    await maybeUpdateDisplayValue(txCtx, recordId, field, allTyped)
 
     // Publish the full post-state. Array-return fields publish arrays;
     // scalar-multi (TEXT/etc. with options.multi) are array-return too.

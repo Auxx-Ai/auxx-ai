@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/participant-display.tsx
 'use client'
 
+import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -172,20 +173,12 @@ export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
 }
 
 /**
- * Format phone number for display.
+ * Format phone number for display via the shared PHONE_INTL converter —
+ * one formatter for every surface instead of a local re-implementation.
  */
 function formatPhoneNumber(phone: string): string {
-  if (phone?.startsWith('+')) {
-    const digits = phone.substring(1)
-    if (digits.length >= 10) {
-      const countryCode = digits.slice(0, digits.length - 10)
-      const areaCode = digits.slice(digits.length - 10, digits.length - 7)
-      const firstPart = digits.slice(digits.length - 7, digits.length - 4)
-      const lastPart = digits.slice(digits.length - 4)
-      return `+${countryCode} (${areaCode}) ${firstPart}-${lastPart}`
-    }
-  }
-  return phone
+  if (!phone) return phone
+  return (formatToDisplayValue({ type: 'text', value: phone }, 'PHONE_INTL') as string) || phone
 }
 
 /**

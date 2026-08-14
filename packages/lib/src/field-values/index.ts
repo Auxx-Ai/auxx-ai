@@ -83,6 +83,7 @@ export {
   removeRelationValuesBulk,
   removeValue,
   setBulkValues,
+  setPrimaryValue,
   setValue,
   setValuesForEntity,
   setValueWithBuiltIn,
@@ -223,6 +224,7 @@ export type {
   RemoveRelationValuesBulkInput,
   RemoveRelationValuesInput,
   SetBulkValuesInput,
+  SetPrimaryValueInput,
   // Existing input types
   SetValueInput,
   // Result types
