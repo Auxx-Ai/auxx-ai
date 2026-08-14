@@ -55,7 +55,8 @@ machinery rather than a bespoke ACL.
   Gmail (Pub/Sub push) → /api/google/webhook   ┐
   Outlook (Graph sub)  → /api/outlook/webhook  │
   Gmail/Outlook/IMAP   → polling scanner       ┼─▶ provider.importMessages
-   (poll fallback)        → list-fetch → import│      → MessageData[]
+   (fallback + initial    → list-fetch → import│      → MessageData[]
+    backfill)                                  │
   forward@mail.auxx.ai → SES → SQS → worker    │            │
   FB / IG / OpenPhone  → /api/<provider>/…     ┘            ▼
                                                  batchStoreMessages → storeMessage
@@ -216,7 +217,13 @@ then runs a **post-connect hook**:
 
 `channels/provisioning-hook.ts` (Gmail/Outlook) — resolve a fresh access token, fetch the account
 email, discover Outlook aliases, create-or-relink the `Integration`, link it to an inbox, seed sync
-state, and arm the Gmail watch / kick polling.
+state, and arm the push door: Gmail watch, or the Outlook Graph subscription via
+`armOutlookSubscription` (which first seeds `metadata.graphDeltaLink` with a `since = now` delta
+walk so push only ever sees future mail, then arms; on failure the row is stamped
+`syncMode: 'polling'` — **not** `'auto'`, which would resolve straight back to webhook and the
+polling scanner would skip it). A new channel then still kicks the polling pipeline once for its
+initial history backfill (§8). Reconnects re-arm without re-backfilling; the *silent* token-refresh
+reconnect path never reaches this hook, so `recoverChannel` re-arms too.
 `channels/social-provisioning-hook.ts` (Facebook/Instagram) and
 `channels/openphone-provisioning-hook.ts` do the equivalent for their platforms;
 `channels/register-hooks.ts` wires them up.
@@ -273,25 +280,57 @@ don't "consistency-fix" one against the other.
 | Provider | Endpoint | Verification |
 | --- | --- | --- |
 | Gmail | `apps/web/src/app/api/google/webhook/route.ts` | Pub/Sub push JWT — JWKS from `googleapis.com/oauth2/v3/certs`, RS256, audience = `WEBAPP_URL` \| the Pub/Sub subscriber audience \| the configured service-account email |
-| Outlook | `apps/web/src/app/api/outlook/webhook/route.ts` | Graph `?validationToken=` handshake (answered **before** anything else, on both GET and POST) + `clientState` check against the stored webhook secret |
+| Outlook | `apps/web/src/app/api/outlook/webhook/route.ts` + `…/webhook/lifecycle/route.ts` | Graph `?validationToken=` handshake (answered **before** anything else, on both GET and POST, on both routes) + `clientState` timing-safe check against the per-integration secret in `metadata.outlookSubscription`; unverifiable notifications are **dropped, never thrown** (a 500 makes Graph retry a notification we will never accept) |
 | Facebook / Instagram | `api/{facebook,instagram}/webhook/route.ts` | `hub.challenge` subscribe handshake + `X-Hub-Signature-256` |
 | OpenPhone | `api/openphone/webhook/route.ts` | `x-openphone-signature` verified against the integration's credential secret (`@auxx/lib/webhooks`) |
 
 Gmail push carries a `historyId`, not the mail — the handler resolves the channel and runs an
-incremental history sync from `Integration.lastHistoryId`. Webhook lifetime is managed by
-`providers/webhook-manager-service.ts` (Gmail watches expire and must be re-armed).
+incremental history sync from `Integration.lastHistoryId`.
+
+**Outlook push is the live inbound door** (plans/outlook/webhook-push-migration.md, shipped
+2026-08-13 as #1585/#1586/#1587) and is shaped by Graph's **3-second ack rule**: a slow endpoint
+gets marked slow/drop and mail is silently lost. So the route only validates → resolves the
+channel by the **indexed `Integration.webhookRouteKey` column** (the Graph subscription id;
+never the old jsonb scan) → enqueues `outlookPushSyncJob` → `202`. The job debounces bursts into
+one delta walk per 15s window (jobId coalescing) and takes a **per-integration Redis lock** — the
+only thing serializing `metadata.graphDeltaLink`, whose hold-on-retriable-failure safety two
+concurrent walks would silently defeat. The lifecycle route handles `reauthorizationRequired`
+(PATCH renews *and* reauthorizes — never pair with `/reauthorize`), `subscriptionRemoved`
+(clear state → re-arm → catch-up sync) and `missed` (delta resync).
+
+**Webhook lifetime.** Gmail watches and Outlook subscriptions (max just under 7 days; armed for
+6d20h) are renewed by `webhookRenewalScannerJob` (15 min, 24h buffer, reads
+`metadata.outlookSubscription.expiresAt`). The hourly `outlookSubscriptionHealthJob` is the
+backstop that replaces running polling in parallel: it re-arms dead/expired subscriptions, and
+for a stored-but-silent one (stale `lastSyncedAt`) it first `GET`s the subscription — a quiet
+mailbox is not a dead one, never re-arm on staleness alone. Repeated arm failures flip
+`syncStatus` to `FAILED`; the first successful arm is the only thing that un-fails it.
+
+**Dev:** Graph rejects `http://` notification URLs, so callbacks are built via
+`providers/webhook-callback-base.ts` (`NGROK_URL || WEBAPP_URL` — the same convention as the
+OAuth redirect bases). Arming in dev requires the tunnel.
 
 ---
 
 ## 8. Inbound Door 2 — Two-Phase Polling
 
-The polling pipeline is the fallback for Gmail (missing Pub/Sub env), the default for IMAP, and
-the recovery path for everything. All jobs run on the `polling-sync` queue
-(`apps/worker/.../polling-sync-worker.ts`, concurrency 10, 5 min lock).
+The polling pipeline is the fallback for Gmail (missing Pub/Sub env) and for Outlook when
+subscription arming fails (the provisioning hook stamps `syncMode: 'polling'`), the default for
+IMAP, and the **one-shot initial backfill** for every new channel — a webhook-mode Outlook
+channel runs this pipeline exactly once at connect to import its history, then never again
+(push is the ongoing door; the health job is the recovery path). All jobs run on the
+`polling-sync` queue (`apps/worker/.../polling-sync-worker.ts`, concurrency 10, 5 min lock).
+
+**The pipeline is scanner-driven, and the scanner has two selection arms** (#1587): any row with
+an in-flight pipeline (`MESSAGE_LIST_FETCH_PENDING` / `MESSAGES_IMPORT_PENDING`) is driven to
+completion **regardless of sync mode** — only the scanner advances those stages, so excluding
+webhook rows stranded their initial backfill forever — while *new* cycles (from `IDLE`) start
+only for effective polling mode.
 
 ```
-  pollingSyncScannerJob        every ~5 min — find polling-mode channels needing work
-        │                       (enabled, not requiresReauth, past pollingIntervalMs,
+  pollingSyncScannerJob        every ~5 min — drive in-flight pipelines (any mode) +
+        │                       start IDLE cycles (polling mode only; enabled, not
+        │                       requiresReauth, past pollingIntervalMs,
         │                        30s CLAIM_COOLDOWN_MS against double-enqueue)
         ├─▶ messageListFetchJob      PHASE 1 — discover ids
         │     provider.fetchMessageIds() → ids into the Redis import cache
@@ -303,10 +342,26 @@ the recovery path for everything. All jobs run on the `polling-sync` queue
               stage: MESSAGES_IMPORT → …
 ```
 
+**The backfill trigger cutoff.** Historical mail must not fire `message:received` subscribers
+(workflows, billed classification, bounce ingest, timeline), and "which code path ingested it"
+was never a safe gate — the polling backfill routes through `importMessages`, which is also the
+live import path. So suppression is **received-time based**: the provisioning hook stamps
+`metadata.backfillCutoffAt` at connect (the *same* epoch the Outlook delta cursor is seeded
+from), the provider sets it on the ingest ctx, and `storeMessage` suppresses the publish for
+inbound mail received before it — regardless of walker — until `messagesImportJob`'s first
+drain-to-IDLE stamps `metadata.initialBackfillCompletedAt`. Overlap mail (received ≥ cutoff)
+fires exactly once via the fresh-insert-only gate, whichever walker wins. Built as a shared
+ingest mechanism (`ctx.backfillCutoffAt`); only Outlook wires it so far — Gmail's polling path
+still has the walker-based hole (separate ticket).
+
 **Self-healing.** `pollingStaleCheckJob` (~15 min) resets channels stuck in an active stage past
 15 min — preserving the Redis import cache so recovery resumes importing rather than re-listing
-against an already-advanced cursor. `pollingRelaunchFailedJob` (~30 min) resets `FAILED` polling
-channels, skipping `requiresReauth` and rows still inside `throttleRetryAfter`.
+against an already-advanced cursor; it has no sync-mode filter, so it covers a webhook channel's
+backfill too. `pollingRelaunchFailedJob` (~30 min) resets `FAILED` channels, skipping
+`requiresReauth` and rows still inside `throttleRetryAfter`; it relaunches effective-polling rows
+plus webhook-mode rows **only while their initial backfill is incomplete** (`backfillCutoffAt`
+stamped, `initialBackfillCompletedAt` not) — an arm-failure `FAILED` from the health job is
+deliberately not "fixed" by re-running list-fetch.
 
 **IMAP is special**: full sync uses windowed UID scanning with durable per-folder checkpoints
 (`Label.syncCheckpoint`) and enqueues *self-contained* `imapImportBatchJob`s instead of using the
@@ -619,6 +674,20 @@ components in `~/components/mail` (thread list/display/composer, chat panel, sea
 23. **Bulk/system writes bypass the per-write fan-out.** If an automation needs to react to synced
     mail-adjacent records, that's the sync-change manifest — see
     `entity-events-architecture-guide.md` §8.
+24. **The Outlook delta cursor is serialized only by `outlookPushSyncJob`'s Redis lock.** The 15s
+    jobId debounce is not a concurrency guard; a second walk from the same `graphDeltaLink`
+    silently defeats the hold-cursor-on-retriable-failure safety. Never call
+    `syncMessages('outlook', …)` from a new concurrent path without going through the job.
+25. **Never gate historical-mail suppression on the ingest walker.** Use the received-time cutoff
+    (`metadata.backfillCutoffAt` / `initialBackfillCompletedAt`, `ctx.backfillCutoffAt`) — the
+    `isInitialSync` flag is a property of which code path ran, and the polling backfill shares its
+    import path with live sync.
+26. **`Integration.webhookRouteKey` is the inbound routing key** (unique per provider among live
+    rows). It is a column, so `metadata: null` does NOT clear it — every teardown path
+    (`removeWebhook`, `revokeAccess`, lifecycle `subscriptionRemoved`) must null it explicitly.
+27. **Outlook webhook callbacks must be HTTPS.** Build them via
+    `providers/webhook-callback-base.ts` (`NGROK_URL || WEBAPP_URL`), never from `WEBAPP_URL`
+    directly — Graph rejects `http://` and dev arming silently falls back to polling.
 
 ---
 
@@ -631,17 +700,21 @@ components in `~/components/mail` (thread list/display/composer, chat panel, sea
 
 **Providers** — `packages/lib/src/providers/`: `channel-provider.interface.ts`,
 `provider-registry-service.ts`, `provider-capabilities.ts`, `sync-mode-resolver.ts`,
-`auth-error-handler.ts`, `webhook-manager-service.ts`, and the per-provider dirs
-(`google/`, `outlook/`, `imap/`, `email/`, `mailgun/`, `facebook/`, `instagram/`, `openphone/`,
-`chat/`).
+`auth-error-handler.ts`, `webhook-manager-service.ts`, `webhook-callback-base.ts`, and the
+per-provider dirs (`google/`, `outlook/` (incl. `outlook-subscription.ts` — arm/seed), `imap/`,
+`email/`, `mailgun/`, `facebook/`, `instagram/`, `openphone/`, `chat/`).
 
 **Inbound** — `packages/lib/src/ingest/` (`batch-store-messages.ts`, `store-message.ts`,
 `context.ts`, `threads/resolve-thread.ts`, `filtering/`, `reconciliation/`, `contacts/`,
 `companies/`), `packages/lib/src/email/inbound/`, `apps/worker/src/inbound-email/`,
-`apps/web/src/app/api/{google,outlook,facebook,instagram,openphone}/webhook/route.ts`.
+`apps/web/src/app/api/{google,outlook,facebook,instagram,openphone}/webhook/route.ts` (+
+`outlook/webhook/lifecycle/route.ts`, `outlook/webhook/shared.ts`).
 
-**Sync jobs** — `packages/lib/src/jobs/polling/`, `packages/lib/src/jobs/messages/`,
-`packages/lib/src/sync-core/`, `apps/worker/src/workers/worker-definitions/{polling-sync,
+**Sync jobs** — `packages/lib/src/jobs/polling/`, `packages/lib/src/jobs/messages/`
+(incl. `outlook-push-sync-job.ts`), `packages/lib/src/jobs/maintenance/`
+(`webhook-renewal-scanner-job.ts`, `webhook-renewal-job.ts`,
+`outlook-subscription-health-job.ts`), `packages/lib/src/sync-core/`,
+`apps/worker/src/workers/worker-definitions/{polling-sync,
 message-sync,message-processing,email}-worker.ts`.
 
 **Outbound** — `packages/lib/src/messages/` (`message-composer.service.ts`,
