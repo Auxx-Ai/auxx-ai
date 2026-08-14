@@ -195,6 +195,37 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
           }
           resolvedData[key] = { values, updateMode, fieldType: 'MULTI_SELECT' }
         }
+        // Handle multi-value SCALAR fields (`options.multi` on EMAIL/URL/PHONE/…) with
+        // update modes — the same per-field system multi-relation and MULTI_SELECT use.
+        // A scalar write on a multi field must never be a bare whole-value set: replace
+        // (the locked default) stays a whole-field set of the parsed values, add/remove
+        // become row-level value ops in executeEntityOperation. An empty/null resolved
+        // value stays on the plain lane below, where the existing empty-string cleanup
+        // makes it a no-write instead of a list wipe.
+        else if (
+          field?.options?.multi &&
+          config.mode === 'update' &&
+          resolvedValue != null &&
+          resolvedValue !== ''
+        ) {
+          const updateMode = resolvedFieldUpdateModes[key] ?? RelationUpdateMode.REPLACE
+          let values: unknown[]
+          if (Array.isArray(resolvedValue)) {
+            values = resolvedValue
+          } else if (typeof resolvedValue === 'string') {
+            // A variable may hand back a JSON-stringified array (frontend idiom shared
+            // with MULTI_SELECT); a plain scalar (an email is never valid JSON) wraps.
+            try {
+              const parsed = JSON.parse(resolvedValue)
+              values = Array.isArray(parsed) ? parsed : [parsed]
+            } catch {
+              values = [resolvedValue]
+            }
+          } else {
+            values = [resolvedValue]
+          }
+          resolvedData[key] = { values, updateMode, fieldType: field.fieldType }
+        }
         // Transform RELATION fields: extract ID and wrap with update mode
         else if (field?.type === BaseType.RELATION) {
           const isMulti = isMultiRelationship(field.relationship?.relationshipType)
@@ -788,7 +819,8 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
           throw new Error('Resource ID required for update operation')
         }
 
-        // Separate mode-aware fields (relations + multi-select) from regular fields
+        // Separate mode-aware fields (relations, multi-select, multi-value scalars)
+        // from regular fields
         const regularData: Record<string, any> = {}
         const modeAwareRelations: Array<{
           fieldId: string
@@ -823,9 +855,12 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
               updateMode: RelationUpdateModeType
               fieldType?: string
             }
+            const modeField = resource.fields.find((f) => f.id === fieldId || f.key === fieldId)
 
-            if (fieldType === 'MULTI_SELECT') {
-              // MULTI_SELECT field with update mode
+            if (fieldType === 'MULTI_SELECT' || modeField?.options?.multi) {
+              // MULTI_SELECT or multi-value scalar (`options.multi`) with update mode:
+              // add/remove route through the row-level addValues/removeValues primitives
+              // (they support both kinds), replace stays a whole-field set.
               if (
                 updateMode === RelationUpdateMode.ADD ||
                 updateMode === RelationUpdateMode.REMOVE

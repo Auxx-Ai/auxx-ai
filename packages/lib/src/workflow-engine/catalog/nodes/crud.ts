@@ -53,7 +53,9 @@ export interface CrudNodeData extends BaseNodeData {
   resourceId?: string // For update/delete operations (VarEditor input)
   data: Record<string, any> // Field values
   fieldModes?: Record<string, boolean> // Track constant/variable mode per field
-  fieldUpdateModes?: Record<string, RelationUpdateMode> // Relation update mode per multi-relation field
+  // Update mode per multi-value field — multi-relation, MULTI_SELECT, and
+  // multi-value scalars (`options.multi` on EMAIL/URL/PHONE/…). Default: replace.
+  fieldUpdateModes?: Record<string, RelationUpdateMode>
   fieldUpdateModeVars?: Record<string, string> // Dynamic mode variable per field
 
   // Error handling configuration
@@ -208,7 +210,7 @@ export const validateCrudNodeConfig = (data: CrudNodeData): NodeValidationResult
     })
   }
 
-  // Validate relation update modes
+  // Validate per-field update modes (multi-relation, MULTI_SELECT, multi-value scalar)
   if (data.fieldUpdateModes) {
     for (const [fieldKey, mode] of Object.entries(data.fieldUpdateModes)) {
       // Dynamic mode requires a mode variable

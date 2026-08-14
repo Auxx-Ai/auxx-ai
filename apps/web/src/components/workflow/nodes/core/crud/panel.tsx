@@ -252,7 +252,11 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         field.type === BaseType.RELATION &&
         field.relationship &&
         isMultiRelationship(field.relationship.relationshipType)
-      const showUpdateMode = nodeData.mode === 'update' && (isMultiRelation || isMultiSelect)
+      // Multi-value scalar fields (`options.multi` on EMAIL/URL/PHONE/…) get the
+      // same update-mode badge as multi relations / multi-selects.
+      const isMultiScalar = field.options?.multi === true
+      const showUpdateMode =
+        nodeData.mode === 'update' && (isMultiRelation || isMultiSelect || isMultiScalar)
       const currentUpdateMode = nodeData.fieldUpdateModes?.[field.key] ?? RelationUpdateMode.REPLACE
 
       // Determine allowed types for type filtering
