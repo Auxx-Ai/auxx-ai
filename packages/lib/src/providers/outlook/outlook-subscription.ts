@@ -1,9 +1,9 @@
 // packages/lib/src/providers/outlook/outlook-subscription.ts
 
-import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { ProviderRegistryService } from '../provider-registry-service'
+import { providerWebhookCallbackUrl } from '../webhook-callback-base'
 
 /**
  * Arm (or re-arm) an Outlook channel's Graph change-notification subscription — the single
@@ -77,7 +77,7 @@ export async function armOutlookSubscription(args: {
     await provider.syncMessages(seedSince ?? new Date())
   }
 
-  await provider.setupWebhook(`${WEBAPP_URL}/api/outlook/webhook`)
+  await provider.setupWebhook(providerWebhookCallbackUrl('outlook'))
 
   // First successful arm clears a latched Sync Error card — nothing else does.
   await db

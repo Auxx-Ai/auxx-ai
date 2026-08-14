@@ -61,7 +61,9 @@ if (!integ) {
   process.exit(1)
 }
 
-const notificationUrl = urlArg ?? `${WEBAPP_URL}/api/outlook/webhook`
+// Same NGROK_URL-first convention as the runtime arming path (webhook-callback-base.ts) —
+// Graph rejects http:// notification URLs, so localhost can never pass validation.
+const notificationUrl = urlArg ?? `${process.env.NGROK_URL || WEBAPP_URL}/api/outlook/webhook`
 
 console.log('\n=== Phase 0 — Outlook subscription scope probe ===')
 console.log('integration :', integ.id, `(${integ.email ?? 'no email on row'})`)

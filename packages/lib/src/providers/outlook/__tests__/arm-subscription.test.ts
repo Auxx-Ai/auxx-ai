@@ -128,7 +128,9 @@ describe('armOutlookSubscription', () => {
     await armOutlookSubscription({ integrationId: 'int-1', organizationId: 'org-1', seedSince })
 
     expect(syncMessages).toHaveBeenCalledWith(seedSince)
-    expect(setupWebhook).toHaveBeenCalledWith('http://localhost:3000/api/outlook/webhook')
+    // Base varies by env (NGROK_URL in dev shells falls through webhook-callback-base) —
+    // the contract under test is the route path, not the origin.
+    expect(setupWebhook).toHaveBeenCalledWith(expect.stringMatching(/\/api\/outlook\/webhook$/))
 
     const [seedCallOrder] = syncMessages.mock.invocationCallOrder
     const [armCallOrder] = setupWebhook.mock.invocationCallOrder

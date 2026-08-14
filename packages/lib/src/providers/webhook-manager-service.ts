@@ -1,11 +1,11 @@
 // packages/lib/src/providers/webhook-manager-service.ts
-import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import type { ProviderRegistryService } from './provider-registry-service'
 import { resolveEffectiveSyncMode } from './sync-mode-resolver'
 import type { ChannelProviderType } from './types'
+import { providerWebhookCallbackUrl } from './webhook-callback-base'
 
 const logger = createScopedLogger('webhook-manager-service')
 
@@ -36,9 +36,8 @@ export class WebhookManagerService {
    */
   async setupWebhooks(integrationType: ChannelProviderType, integrationId?: string): Promise<void> {
     try {
-      // Build callback URL based on environment and provider type
-      const baseUrl = WEBAPP_URL
-      const callbackUrl = `${baseUrl}/api/${integrationType}/webhook`
+      // Build callback URL based on environment and provider type (NGROK_URL-aware in dev)
+      const callbackUrl = providerWebhookCallbackUrl(integrationType)
 
       if (integrationId) {
         logger.info(`Registering webhook for specific integration`, {
@@ -268,8 +267,7 @@ export class WebhookManagerService {
    * Build callback URL for a specific provider type
    */
   private buildCallbackUrl(providerType: ChannelProviderType): string {
-    const baseUrl = WEBAPP_URL
-    return `${baseUrl}/api/${providerType}/webhook`
+    return providerWebhookCallbackUrl(providerType)
   }
 
   /**
