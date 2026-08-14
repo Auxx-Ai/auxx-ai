@@ -19,10 +19,12 @@ import { use, useState } from 'react'
 import { DockedPanelTarget, DockPortalProvider } from '~/components/global/dock-portal-provider'
 import { DockedPanelsContainer } from '~/components/global/docked-panels-container'
 import { Tooltip } from '~/components/global/tooltip'
+import { KopilotContext } from '~/components/kopilot/context/kopilot-context'
 import { WorkflowEditor } from '~/components/workflow'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { useWorkflowAccess } from '~/components/workflow/hooks/use-workflow-access'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
+import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import { WorkflowBreadcrumbSwitcher } from '~/components/workflow/ui/workflow-breadcrumb-switcher'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useMedia } from '~/hooks/use-media'
@@ -37,6 +39,17 @@ interface EditWorkflowPageProps {
 
 /** Tabs backed by the `?t=` query param. */
 const MODES = ['editor', 'analytics', 'executions'] as const
+
+/**
+ * Slot order for side-by-side docked panels: the first open panel in this order
+ * takes `primary`, the second takes `secondary`.
+ *
+ * This MUST stay in sync with the `useSecondarySlot` derivation each panel does
+ * for itself (`workflow-run-panel.tsx`, `workflow-settings-panel.tsx`) — a panel
+ * that portals into a slot this page didn't emit renders into a detached node
+ * and silently disappears.
+ */
+const DOCK_PANEL_PRIORITY = ['property', 'run', 'settings'] as const
 
 export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
   const { workflowId } = use(params)
@@ -69,12 +82,15 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
   // description form) is the `admin` rung of per-workflow access (plan 30 §4).
   const { canAdmin } = useWorkflowAccess(workflowId)
 
+  // Live canvas dirty flag for the Kopilot workflow chip (advisory — the
+  // graph-edit tools refuse mutations while the canvas has unsaved changes).
+  const isCanvasDirty = useWorkflowStore((state) => state.isDirty)
+
   // Show docked panel in editor mode, or executions mode when docked
   const showDockedPanel = isDocked && (mode === 'editor' || mode === 'executions')
 
-  // Check panel presence
-  const hasPropertyPanel = panelStack.includes('property')
-  const hasRunPanel = panelStack.includes('run')
+  // Open panels in slot order — the first takes `primary`, the second `secondary`.
+  const orderedPanels = DOCK_PANEL_PRIORITY.filter((panel) => panelStack.includes(panel))
   const panelCount = panelStack.length
 
   // Determine effective layout mode
@@ -113,30 +129,28 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
       ]
     }
 
-    // Editor mode - Side-by-side: return array of separate panel configs
+    // Editor mode - Side-by-side: one target per open panel, in slot order.
+    //
+    // Emitting by POSITION rather than by hardcoded panel type is what keeps
+    // `settings` working: the previous version handled `property` and `run`
+    // only, so opening Test then Settings emitted a single `run`/secondary
+    // target — leaving Settings filtered out of it and the Run panel portalling
+    // into a now-detached `primary`, i.e. both panels vanished.
+    //
+    // Only two pairs are reachable ({property, run} and {run, settings}) because
+    // `openPanel('properties')` and `openSettingsPanel` close each other, so the
+    // first two entries of `orderedPanels` are always the open pair.
     if (effectiveLayout === 'side-by-side' && panelCount > 1) {
-      const panels: DockedPanelConfig[] = []
-      if (hasPropertyPanel) {
-        panels.push({
-          key: 'property',
-          content: <DockedPanelTarget slot='primary' panelFilter='property' />,
-          width: dockedWidth,
-          onWidthChange: setDockedWidth,
-          minWidth,
-          maxWidth,
-        })
-      }
-      if (hasRunPanel) {
-        panels.push({
-          key: 'run',
-          content: <DockedPanelTarget slot='secondary' panelFilter='run' />,
-          width: secondaryWidth,
-          onWidthChange: setSecondaryWidth,
-          minWidth,
-          maxWidth,
-        })
-      }
-      return panels
+      return orderedPanels.slice(0, 2).map((panel, index) => ({
+        key: panel,
+        content: (
+          <DockedPanelTarget slot={index === 0 ? 'primary' : 'secondary'} panelFilter={panel} />
+        ),
+        width: index === 0 ? dockedWidth : secondaryWidth,
+        onWidthChange: index === 0 ? setDockedWidth : setSecondaryWidth,
+        minWidth,
+        maxWidth,
+      }))
     }
 
     // Editor mode - Single or tabbed: single panel with DockedPanelsContainer
@@ -154,6 +168,16 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
 
   return (
     <DockPortalProvider>
+      {/* Kopilot page + workflow chip. The page key is `WORKFLOW_BUILDER_PAGE`
+          from `@auxx/lib/ai/kopilot` — hardcoded like every other builder page
+          (KB's 'kb', the agent builder's 'agents.builder'); the stream route
+          gates the graph tools on it. */}
+      <KopilotContext
+        page='workflow.builder'
+        activeWorkflowId={workflowId}
+        activeWorkflowLabel={workflow?.name ?? undefined}
+        activeWorkflowIsDirty={isCanvasDirty}
+      />
       <MainPage>
         <MainPageHeader
           className='justify-start'

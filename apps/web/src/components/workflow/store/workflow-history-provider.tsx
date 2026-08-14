@@ -4,6 +4,7 @@ import { useStoreApi } from '@xyflow/react'
 import type React from 'react'
 import { useEffect } from 'react'
 import { useWorkflowHistory } from '../hooks/use-save-to-history'
+import { useWorkflowStore } from './workflow-store'
 import { useHistoryManager } from './workflow-store-provider'
 
 interface WorkflowHistoryProviderProps {
@@ -23,15 +24,24 @@ export const WorkflowHistoryProvider: React.FC<WorkflowHistoryProviderProps> = (
   useEffect(() => {
     if (!reactFlowStore) return
 
-    // Create a simple store wrapper for history manager
+    // Create a simple store wrapper for history manager. These setters are
+    // ONLY reached by history restores (undo/redo/jumpToState) — they bypass
+    // the canvas interaction paths that normally mark the workflow dirty, so
+    // each restore marks dirty itself. Load-bearing for Kopilot edits: the
+    // realtime rehydrate records the edit as a history entry on a CLEAN
+    // canvas, and undoing it must leave a saveable (dirty) canvas rather than
+    // one the autosave/beacon paths silently skip.
+    const markRestoreDirty = () => useWorkflowStore.getState().markDirty()
     const workflowStore = {
       setNodes: (nodes: any[]) => {
         const { setNodes } = reactFlowStore.getState()
         setNodes(nodes)
+        markRestoreDirty()
       },
       setEdges: (edges: any[]) => {
         const { setEdges } = reactFlowStore.getState()
         setEdges(edges)
+        markRestoreDirty()
       },
       getState: () => reactFlowStore.getState(),
     }

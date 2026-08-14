@@ -4,13 +4,15 @@
  * Per-turn pre-edit snapshot of the draft graph — SERVER-ONLY (Redis + the
  * persist seam). Mirrors `kb/kopilot-snapshot.ts` (`03-graph-edit-service.md`
  * §7): the FIRST mutation of a turn stores the pre-edit graph under
- * `(workflowAppId, turnId)` with a 24h TTL. On turn FAILURE the lifecycle
- * reverts (restores the exact prior graph through `persistDraft`). On turn
- * SUCCESS the snapshot is deliberately KEPT — it backs the per-turn Undo card
- * (KB parity: `finalizeKopilotKbTurn` keeps its snapshot too, so
- * `revertWorkflowTurn` stays reachable after a completed turn). Cleanup is the
- * next turn's capture overwriting the slot, the TTL, or a manual draft save
- * clearing it via {@link clearWorkflowTurnSnapshot}.
+ * `(workflowAppId, turnId)` with a 24h TTL. The snapshot exists ONLY for
+ * failed-turn atomicity: on turn FAILURE the lifecycle reverts (restores the
+ * exact prior graph through `persistDraft`); on turn SUCCESS it is discarded
+ * via {@link finalizeWorkflowTurn}. Undo of a completed turn is client-side —
+ * the builder's `workflow:draft-updated` subscriber records each Kopilot edit
+ * as a normal canvas history entry, so there is no per-turn Undo card and no
+ * server-side undo. Residual cleanup is the next turn's capture overwriting
+ * the slot, the TTL, or a manual draft save clearing it via
+ * {@link clearWorkflowTurnSnapshot}.
  *
  * One slot per workflow app — each new turn overwrites the prior turn's
  * snapshot, and the slot naturally expires via Redis TTL. `readWorkflowTurnSnapshot`
@@ -40,7 +42,7 @@ const TTL_SECONDS = 24 * 60 * 60
 
 /**
  * Pre-turn snapshot captured before a turn's first draft write. Backs the
- * revert-on-failure path and a per-turn Undo affordance.
+ * revert-on-failure path (failed-turn atomicity) — nothing else.
  */
 export interface WorkflowPreTurnSnapshot {
   turnId: string
@@ -100,15 +102,13 @@ export async function readWorkflowTurnSnapshot(
 }
 
 /**
- * Discard the turn's snapshot, turn-checked. NOT called on turn success — a
- * completed turn keeps its snapshot so the per-turn Undo card can still call
- * {@link revertWorkflowTurn} (KB parity; see the module docblock). Callers:
- * the revert path (after a successful restore there is nothing left to undo)
- * and any future cleanup that must not clobber a fresher turn's slot.
- * Deletes only when the slot still belongs to `turnId`: a stale call from
- * a prior turn must never clear a fresher turn's snapshot. Best-effort — a
- * leftover snapshot expires via TTL, and the turn-id check in the revert path
- * refuses it anyway.
+ * Discard the turn's snapshot, turn-checked. Callers: the capability's
+ * `onTurnEnd` on turn SUCCESS (the turn committed — nothing left to revert)
+ * and the revert path (after a successful restore there is nothing left to
+ * undo). Deletes only when the slot still belongs to `turnId`: a stale call
+ * from a prior turn must never clear a fresher turn's snapshot. Best-effort —
+ * a leftover snapshot expires via TTL, and the turn-id check in the revert
+ * path refuses it anyway.
  */
 export async function finalizeWorkflowTurn(workflowAppId: string, turnId: string): Promise<void> {
   try {
@@ -129,8 +129,8 @@ export async function finalizeWorkflowTurn(workflowAppId: string, turnId: string
 /**
  * Delete the snapshot unconditionally (no turn check). The workflow twin of
  * KB's `clearKopilotSnapshot`: called from non-Kopilot write paths — a manual
- * canvas save through `WorkflowService.update` — so a stale Undo can never
- * roll the draft back over edits the user made by hand after the turn.
+ * canvas save through `WorkflowService.update` — so a late failed-turn revert
+ * can never roll the draft back over edits the user made by hand mid-turn.
  * Best-effort: a clear that fails only leaves a snapshot the TTL expires.
  */
 export async function clearWorkflowTurnSnapshot(workflowAppId: string): Promise<void> {
@@ -145,9 +145,9 @@ export async function clearWorkflowTurnSnapshot(workflowAppId: string): Promise<
 }
 
 /**
- * Restore the exact pre-turn graph — the FAILURE half of the turn lifecycle,
- * and the Undo card's server piece after a COMPLETED turn (the snapshot
- * survives success precisely so this stays callable).
+ * Restore the exact pre-turn graph — the FAILURE half of the turn lifecycle
+ * (a completed turn's snapshot is discarded, so this is unreachable after
+ * success by design).
  * The stored snapshot must belong to `turnId`: a snapshot from a prior turn
  * is REJECTED, never restored (restoring it would roll back edits this turn
  * never made), and no snapshot means the turn never wrote — also nothing to

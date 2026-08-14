@@ -31,6 +31,15 @@ interface KopilotContextProps {
 
   activeAgentId?: string
   activeAgentLabel?: string
+
+  /** WorkflowApp id open in the workflow builder. */
+  activeWorkflowId?: string
+  activeWorkflowLabel?: string
+  /**
+   * Advisory: the open canvas has unsaved changes (`workflow-store.isDirty`).
+   * Rides the `workflow` ref so graph mutations refuse against a stale draft.
+   */
+  activeWorkflowIsDirty?: boolean
 }
 
 /**
@@ -67,6 +76,9 @@ export function KopilotContext(props: KopilotContextProps): null {
     activeArticleLabel,
     activeAgentId,
     activeAgentLabel,
+    activeWorkflowId,
+    activeWorkflowLabel,
+    activeWorkflowIsDirty,
   } = props
 
   useEffect(() => {
@@ -84,6 +96,13 @@ export function KopilotContext(props: KopilotContextProps): null {
     // admin dismiss it leaves the LLM context ambiguous about which
     // agent is being acted on.
     pushSurfaceRef(references, 'agent', activeAgentId, activeAgentLabel, { pinned: true })
+    // Workflow chips are pinned for the same reason agent chips are: the
+    // workflow IS the subject of every builder tool, and dismissing it would
+    // leave the graph tools with no target (`NO_WORKFLOW_REF_ERROR`).
+    pushSurfaceRef(references, 'workflow', activeWorkflowId, activeWorkflowLabel, {
+      pinned: true,
+      isDirty: activeWorkflowIsDirty,
+    })
 
     const slice: ContextSlice = { references, ...(page !== undefined ? { page } : {}) }
     setSlice(id, slice)
@@ -105,6 +124,9 @@ export function KopilotContext(props: KopilotContextProps): null {
     activeArticleLabel,
     activeAgentId,
     activeAgentLabel,
+    activeWorkflowId,
+    activeWorkflowLabel,
+    activeWorkflowIsDirty,
     setSlice,
     clearSlice,
   ])
@@ -117,7 +139,7 @@ function pushSurfaceRef(
   kind: SessionRefKind,
   id: string | undefined,
   label: string | undefined,
-  opts: { pinned?: boolean } = {}
+  opts: { pinned?: boolean; isDirty?: boolean } = {}
 ): void {
   if (id === undefined || id === '') return
   refs.push({
@@ -125,6 +147,7 @@ function pushSurfaceRef(
     id,
     ...(label ? { label } : {}),
     origin: 'surface',
+    ...(opts.isDirty !== undefined ? { isDirty: opts.isDirty } : {}),
     ...(opts.pinned ? { pinned: true } : {}),
   })
 }

@@ -5,7 +5,15 @@
  * `@auxx/lib/ai/kopilot`. Inlined because that subpath isn't exported as a
  * client-safe path. Keep in sync with the lib type.
  */
-export type SessionRefKind = 'thread' | 'record' | 'resource' | 'kb' | 'article' | 'actor' | 'agent'
+export type SessionRefKind =
+  | 'thread'
+  | 'record'
+  | 'resource'
+  | 'kb'
+  | 'article'
+  | 'actor'
+  | 'agent'
+  | 'workflow'
 
 /** Mirror of `SessionRef` from `@auxx/lib/ai/kopilot/types`. */
 export interface SessionRef {
@@ -13,6 +21,13 @@ export interface SessionRef {
   id: string
   label?: string
   origin: 'surface' | 'mention'
+  /**
+   * ADVISORY dirty flag contributed by the `workflow` builder chip: the open
+   * canvas has unsaved changes, so the DB draft the graph-edit tools would
+   * mutate is stale relative to what the user sees. Serialized to the server
+   * (the lib `SessionRef` declares it) — workflow mutations refuse while true.
+   */
+  isDirty?: boolean
   /**
    * UI-only: when true the chip in `KopilotContextChipStrip` renders
    * without the dismiss affordance and is not selectable for keyboard

@@ -1,10 +1,11 @@
 // packages/lib/src/ai/kopilot/capabilities/workflow-builder/tools/__tests__/lifecycle.test.ts
 //
-// Turn-end lifecycle (04 §4, reconciled against KB's actual Undo semantics):
-// a COMPLETED turn KEEPS its snapshot — that is what makes the per-turn Undo
-// card (`revertWorkflowTurn`) work after success — while a failed turn reverts,
-// guarded by `expectedTurnId` so a later failed turn can never roll back a
-// workflow it didn't touch.
+// Turn-end lifecycle (04 §4, revised 2026-08-14): undo of a successful turn is
+// CLIENT-SIDE (the builder's realtime subscriber records a canvas history
+// entry), so a COMPLETED turn DISCARDS its snapshot via `finalizeWorkflowTurn`
+// — the snapshot survives only as failed-turn atomicity. A failed turn
+// reverts, guarded by `expectedTurnId` so a later failed turn can never roll
+// back a workflow it didn't touch.
 
 import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -55,10 +56,17 @@ beforeEach(() => {
 })
 
 describe('workflow.builder onTurnEnd', () => {
-  it('completed ⇒ the snapshot is KEPT for Undo — neither reverted nor finalized (discarded)', async () => {
+  it('completed ⇒ the snapshot is DISCARDED (finalize), never reverted', async () => {
     await lifecycle()('completed', { turnId: TURN })
     expect(readWorkflowTurnSnapshot).toHaveBeenCalledWith(WF, TURN)
+    expect(finalizeWorkflowTurn).toHaveBeenCalledTimes(1)
+    expect(finalizeWorkflowTurn).toHaveBeenCalledWith(WF, TURN)
     expect(revertWorkflowTurn).not.toHaveBeenCalled()
+  })
+
+  it('completed on a turn that never wrote ⇒ nothing to finalize', async () => {
+    readWorkflowTurnSnapshot.mockResolvedValue(null)
+    await lifecycle()('completed', { turnId: TURN })
     expect(finalizeWorkflowTurn).not.toHaveBeenCalled()
   })
 
