@@ -1,9 +1,16 @@
 // apps/web/src/app/api/google/webhook/route.ts
+//
+// Google Pub/Sub push endpoint for Gmail watch notifications. Shape: validate → resolve →
+// enqueue → ack, all inside Pub/Sub's ack-deadline window — the same validate/enqueue/ack
+// pattern as the Outlook Graph webhook route (webhook-push-migration plan §6/Ticket 2).
+// Pub/Sub redelivers on a slow or failed ack, and nothing serializes `Integration.lastHistoryId`
+// against a concurrent redelivery, so the actual history sync runs out-of-band in
+// `googlePushSyncJob` on the message-sync queue; this route never syncs inline.
 
 import { WEBAPP_URL } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
-import { type ChannelProviderType, MessageService } from '@auxx/lib/email'
+import { enqueueGooglePushSync } from '@auxx/lib/jobs'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import jwt from 'jsonwebtoken'
@@ -153,56 +160,42 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     logger.info(
-      `Found integration ${integration.id} for email ${data.emailAddress}. Triggering sync.`
+      `Found integration ${integration.id} for email ${data.emailAddress}. Enqueuing push sync.`
     )
 
-    // 4. Update history ID and trigger sync
+    // 4. Enqueue the sync — never run it inline (plan §2.3/§6). `data.historyId` is advisory
+    // only: `googlePushSyncJob` re-derives everything from the integration's own
+    // `lastHistoryId` at sync time (mirrors how the Outlook push job treats the notification
+    // payload as a trigger, not a cursor). The comparison below is purely a cheap filter to
+    // skip enqueuing on an already-stale/redelivered notification — it does not gate
+    // correctness, since the job's own sync call is the source of truth for the cursor.
     const currentHistoryId = BigInt(data.historyId)
     const lastKnownHistoryId = integration.lastHistoryId
       ? BigInt(integration.lastHistoryId)
       : BigInt(0)
 
-    // Only proceed if the incoming history ID is newer
     if (currentHistoryId > lastKnownHistoryId) {
-      // DON'T update history ID before sync - let syncMessages handle it
-      // Store the target history ID for potential rollback scenarios
-      const targetHistoryId = data.historyId.toString()
-
       logger.debug(
-        `Starting sync for integration ${integration.id} from ${lastKnownHistoryId} to ${targetHistoryId}`
+        `Enqueuing push sync for integration ${integration.id} (notification historyId ${data.historyId}, last known ${lastKnownHistoryId})`
       )
-
-      // Initialize message service for the integration's organization
-      const messageService = new MessageService(integration.organizationId) // Use renamed service
-
-      // Trigger sync for this specific integration.
-      // The provider's syncMessages method will use the current lastHistoryId as startHistoryId
-      // and update it to the latest after successful processing
-      try {
-        await messageService.syncMessages('google' as ChannelProviderType, integration.id)
-        logger.info('Sync initiated successfully via webhook.', { integrationId: integration.id })
-      } catch (syncError) {
-        logger.error('Error during sync initiated by webhook:', {
-          error: syncError,
-          integrationId: integration.id,
-        })
-        // Even if sync fails, acknowledge the Pub/Sub message to prevent retries.
-        // The error is logged, and subsequent syncs (manual or scheduled) can catch up.
-      }
+      await enqueueGooglePushSync({
+        integrationId: integration.id,
+        organizationId: integration.organizationId,
+      })
     } else {
       logger.warn(
-        `Received stale historyId ${data.historyId} (<= ${lastKnownHistoryId}). Skipping sync.`,
+        `Received stale historyId ${data.historyId} (<= ${lastKnownHistoryId}). Skipping enqueue.`,
         { integrationId: integration.id }
       )
     }
 
-    // 5. Acknowledge the Pub/Sub message
-    return NextResponse.json({ success: true, message: 'Webhook processed' }) // Return 200 OK
+    // 5. Acknowledge the Pub/Sub message. Enqueuing durably queues the work, so this is a
+    // real ack, not a "trust me it'll work out" — the actual sync happens out-of-band.
+    return NextResponse.json({ success: true, message: 'Webhook enqueued' }, { status: 202 })
   } catch (error: any) {
+    // An enqueue failing (or any other error above) means the notification was NOT durably
+    // queued — 5xx so Pub/Sub retries, rather than acknowledging work we never acted on.
     logger.error('Error processing Google webhook:', { error: error.message, stack: error.stack })
-    // Return 500 for internal errors, Pub/Sub might retry.
-    // However, if parsing failed, retrying won't help, so maybe return 400 or 200?
-    // Let's return 500 for now to indicate server-side issue.
     return NextResponse.json({ error: 'Internal server error processing webhook' }, { status: 500 })
   }
 }

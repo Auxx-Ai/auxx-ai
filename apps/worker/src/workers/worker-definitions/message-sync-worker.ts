@@ -1,4 +1,5 @@
 import {
+  googlePushSyncJob,
   monitorMessageSyncJob,
   outlookPushSyncJob,
   startMessageSyncJob,
@@ -17,6 +18,7 @@ const messageSyncJobMappings = {
   monitorMessageSyncJob,
   threadProviderStatusSyncJob,
   outlookPushSyncJob,
+  googlePushSyncJob,
 }
 
 /**

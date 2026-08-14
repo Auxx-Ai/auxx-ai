@@ -173,6 +173,13 @@ export class GoogleProvider
     // Surface the canonical "us" address set to the ingest pipeline so
     // self-addressed mail never produces a contact for the integration owner.
     this.storageService.setOwnEmails(this.userEmails)
+    // Received-time trigger cutoff (webhook-push-migration plan Phase 2.5): while the
+    // initial backfill is incomplete, ingest suppresses message:received for mail
+    // received before the connect epoch — regardless of which walker ingested it.
+    const metadata = (integration.metadata as any) ?? {}
+    const cutoffRaw = metadata.backfillCutoffAt
+    const backfillDone = metadata.initialBackfillCompletedAt
+    this.storageService.setBackfillCutoff(cutoffRaw && !backfillDone ? new Date(cutoffRaw) : null)
     logger.info(`GoogleProvider initialized successfully for integration: ${integrationId}`, {
       userEmailsCount: this.userEmails.length,
     })
@@ -1029,8 +1036,11 @@ export class GoogleProvider
   async importMessages(externalIds: string[]): Promise<{ imported: number; failed: number }> {
     await this.ensureInitialized()
 
-    // On-demand import (not a backfill) — the `message:received` workflow
-    // trigger should fire for these. Explicit reset in case a prior
+    // The two-phase polling backfill routes through this exact method (written
+    // unaware of that — hence this comment's old "not a backfill" framing).
+    // Historical-mail trigger suppression is handled by the received-time cutoff
+    // set in initialize() (webhook-push-migration plan Phase 2.5), not by this
+    // flag, so it always stays false here. Explicit reset in case a prior
     // `syncGmailMessages` call on this provider instance left the shared
     // `storageService`'s flag set (its own `finally` already resets it, but
     // this stays correct even if that invariant changes later).

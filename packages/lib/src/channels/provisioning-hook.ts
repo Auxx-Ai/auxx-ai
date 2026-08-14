@@ -350,6 +350,25 @@ async function seedSync(args: {
   // Reconnect on a polling channel needs no backfill re-kick — the existing sync state stands.
   if (!isNew) return
 
+  if (provider === 'google') {
+    // Received-time trigger cutoff (webhook-push-migration plan Phase 2.5): the polling
+    // backfill routes through importMessages, which fires message:received per message —
+    // without this stamp a first connect on the polling path (custom OAuth client, missing
+    // Pub/Sub env, watch-arm failure) mass-fires workflows/classification for every
+    // historical email. Outlook stamps earlier (its epoch must match the delta-cursor
+    // seed); Gmail has no cursor-epoch constraint, so stamping here — only when the
+    // polling pipeline will actually run — keeps webhook-mode connects (whose
+    // sync-messages backfill never drains the import cache, so the completion stamp
+    // would never land) free of a permanently-open suppression window.
+    await db
+      .update(schema.Integration)
+      .set({
+        metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb) || jsonb_build_object('backfillCutoffAt', ${new Date().toISOString()}::text)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.Integration.id, integrationId))
+  }
+
   // Initial polling pipeline — imports history for a new channel regardless of sync mode:
   // Outlook is armed for push above but still backfills; Google with a custom client or on
   // polling mode has no other way to get its history.
