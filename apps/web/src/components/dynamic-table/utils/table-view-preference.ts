@@ -18,6 +18,25 @@ export function toTableViewPreferenceConfig(
   }
 }
 
+/**
+ * Convert a persisted preference row back into a personal overlay.
+ * `toTableViewPreferenceConfig` coerces untouched keys to empty containers to
+ * satisfy the schema; hydrating those back verbatim would shadow the shared
+ * view's saved config (e.g. an empty `columnOrder` masking the view's real
+ * order), so empty `[]`/`{}` values are dropped.
+ */
+export function toPersonalOverlayConfig(config: TableViewPreferenceConfig): Partial<TableUIConfig> {
+  const overlay: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(config)) {
+    if (value == null) continue
+    if (Array.isArray(value) && value.length === 0) continue
+    if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0)
+      continue
+    overlay[key] = value
+  }
+  return overlay as Partial<TableUIConfig>
+}
+
 /** Whether an extracted config contains presentation state worth persisting. */
 export function hasPresentationPreference(config: TableViewPreferenceConfig): boolean {
   return (

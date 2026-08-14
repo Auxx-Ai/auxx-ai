@@ -2,6 +2,7 @@
 
 import type { CalendarViewConfig, KanbanViewConfig } from '../types'
 import { tableViewPreferenceKey } from '../utils/constants'
+import { toPersonalOverlayConfig } from '../utils/table-view-preference'
 import type { SliceCreator, UISlice } from './store-types'
 import { DEFAULT_UI_CONFIG } from './store-types'
 
@@ -34,7 +35,7 @@ export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
         state.viewPreferences[tableViewPreferenceKey(preference.tableId, preference.tableViewId)] =
           preference
         if (preference.tableViewId) {
-          state.personalConfigs[preference.tableViewId] = { ...preference.config }
+          state.personalConfigs[preference.tableViewId] = toPersonalOverlayConfig(preference.config)
         }
       }
     })
