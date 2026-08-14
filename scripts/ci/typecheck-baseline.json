@@ -9,8 +9,6 @@
       "scripts/verify-learned-kb.ts::TS2339": 3,
       "vitest.integration.config.ts::TS2769": 1
     },
-    "web": {
-      "src/app/api/kopilot/stream/route.ts::TS2322": 1
-    }
+    "web": {}
   }
 }
