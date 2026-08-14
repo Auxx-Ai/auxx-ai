@@ -8,6 +8,7 @@ import {
   resolveAgentKnowledgeScope,
 } from '@auxx/lib/agents'
 import {
+  type AgentDomainConfig,
   AgentEngine,
   type AgentEngineConfig,
   type AgentEvent,
@@ -936,7 +937,18 @@ async function runInProcessPath(params: {
     userId,
     sessionId,
     db,
-    domainConfig,
+    // The engine treats domain state as opaque `Record<string, unknown>`, but
+    // `AgentDomainConfig` is contravariant in its state generic (`buildMessages`
+    // and friends take `AgentState<T>` as a parameter) — so the concrete
+    // `AgentDomainConfig<KopilotDomainState>` is not assignable to the default.
+    // Widen at this single boundary, the same conversion `buildChatEngineConfig`
+    // and `buildEffectiveAgentRuntime` already perform — this call site was
+    // simply the one that never got it.
+    //
+    // Kept local rather than relaxing `AgentEngineConfig.domainConfig` itself to
+    // `AgentDomainConfig<any>`: that would push an `any` into a widely-exported
+    // interface to spare three call sites a cast.
+    domainConfig: domainConfig as unknown as AgentDomainConfig,
     callModel,
     signal: request.signal,
     maxTotalIterations: 100,

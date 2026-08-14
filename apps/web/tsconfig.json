@@ -2,6 +2,24 @@
   "extends": "@auxx/typescript-config/nextjs.json",
   "compilerOptions": {
     "incremental": true,
+    // Turn OFF the declaration emit inherited from `base.json`. That base is
+    // shared with the packages, which are consumed through `dist/` and genuinely
+    // need it; `apps/web` is a leaf Next.js app that already sets `noEmit: true`
+    // and has zero inbound project references, so it never emits a `.d.ts` at all.
+    //
+    // Leaving it on is not free: tsc still computes declaration-emit diagnostics
+    // for output it never writes, and `apps/web` carries ~220 of them (TS2883 /
+    // TS4023 / TS4058 — "inferred type cannot be named without a reference to
+    // …", mostly tRPC inference in `src/trpc/*` and the API routers).
+    //
+    // Those were invisible until 2026-08 because declaration diagnostics are only
+    // computed when tsc actually emits, and tsc skips emit when the program has a
+    // semantic error — so the single baselined TS2322 in
+    // `api/kopilot/stream/route.ts` was suppressing all of them. Fixing that one
+    // error surfaced the lot. See `scripts/ci/typecheck-baseline.json`.
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
     "moduleResolution": "Bundler",
     "paths": {
       "~/*": ["./src/*"]
