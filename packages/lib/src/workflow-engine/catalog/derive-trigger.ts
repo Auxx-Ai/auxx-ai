@@ -20,6 +20,86 @@ export interface TriggerDerivationNode {
   } | null
 }
 
+/** The two dynamic app trigger types whose link columns come off the app trigger node. */
+const APP_TRIGGER_TYPES: readonly string[] = [
+  WorkflowTriggerType.APP_TRIGGER,
+  WorkflowTriggerType.APP_POLLING_TRIGGER,
+]
+
+/**
+ * What `deriveTriggerLinks` found in the graph for the app/webhook trigger
+ * columns (`Workflow.triggerAppId` / `triggerTriggerId` / `triggerConnectionId`
+ * / `triggerInstallationId` / `triggerWebhookEndpointId` / `triggerTopic`):
+ *
+ * - `none` — nothing to write; the caller leaves the columns untouched. This
+ *   covers "no trigger type", "app trigger but no graph posted", and "app
+ *   trigger whose node is missing" — all preserved verbatim from the
+ *   `workflow-service.update` branches this replaced.
+ * - `app-trigger` — the app trigger node's fields; `triggerInstallationId` is
+ *   NOT part of this result because it is resolved server-side at save time
+ *   (`resolveActiveInstallationId`), with `storedInstallationId` as the legacy
+ *   fallback.
+ * - `webhook-endpoint` — `(webhookEndpointId, topic)` off the trigger node
+ *   (explicit `null`s when the node is missing); the app columns clear.
+ * - `clear` — the trigger switched to a non-app, non-webhook type: all six
+ *   columns clear.
+ */
+export type DerivedTriggerLinks =
+  | { kind: 'none' }
+  | { kind: 'clear' }
+  | {
+      kind: 'app-trigger'
+      appId: string
+      triggerId: string
+      connectionId: string | null
+      /** The node's stored `installationId` — fallback when resolution fails. */
+      storedInstallationId: string | null
+    }
+  | { kind: 'webhook-endpoint'; webhookEndpointId: string | null; topic: string | null }
+
+/**
+ * Pure graph-side half of the app/webhook trigger-column derivation — the
+ * server-side branches `workflow-service.update` used to inline (HANDOFF item
+ * 5). Unlike {@link deriveTriggerColumns}, `triggerType` is an INPUT here, not
+ * derived: the save path trusts the caller-posted type, and the catalog cannot
+ * yet resolve webhook / webhook-endpoint / app trigger types itself (they are
+ * `NOT_YET_MIGRATED`).
+ *
+ * The server-side composition that resolves the installation id lives in
+ * `derive-trigger-server.ts` (server-only leaf module — do not fold it in
+ * here, this file is exported through `client.ts` and runs in the browser).
+ */
+export function deriveTriggerLinks(
+  triggerType: string | null | undefined,
+  nodes: readonly TriggerDerivationNode[] | null | undefined
+): DerivedTriggerLinks {
+  if (!triggerType) return { kind: 'none' }
+
+  if (APP_TRIGGER_TYPES.includes(triggerType)) {
+    if (!nodes) return { kind: 'none' }
+    const triggerNode = nodes.find((n) => n.data?.triggerId && n.data?.appId)
+    if (!triggerNode?.data) return { kind: 'none' }
+    return {
+      kind: 'app-trigger',
+      appId: triggerNode.data.appId,
+      triggerId: triggerNode.data.triggerId,
+      connectionId: triggerNode.data.connectionId || null,
+      storedInstallationId: triggerNode.data.installationId || null,
+    }
+  }
+
+  if (triggerType === WorkflowTriggerType.WEBHOOK_ENDPOINT && nodes) {
+    const triggerNode = nodes.find((n) => n.data?.webhookEndpointId)
+    return {
+      kind: 'webhook-endpoint',
+      webhookEndpointId: triggerNode?.data?.webhookEndpointId || null,
+      topic: triggerNode?.data?.topic || null,
+    }
+  }
+
+  return { kind: 'clear' }
+}
+
 export interface DerivedTriggerColumns {
   /** Undefined ⇒ no trigger node found — the caller keeps its previous value. */
   triggerType?: WorkflowTriggerType

@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { WorkflowTriggerType } from '../core/types'
-import { deriveTriggerColumns } from './derive-trigger'
+import { deriveTriggerColumns, deriveTriggerLinks } from './derive-trigger'
 
 /**
  * The trigger-columns derivation moved from `use-workflow-save.ts` (browser)
@@ -69,5 +69,98 @@ describe('deriveTriggerColumns', () => {
         nodeType === 'someapp:new-row' ? WorkflowTriggerType.APP_TRIGGER : undefined,
     })
     expect(result.triggerType).toBe(WorkflowTriggerType.APP_TRIGGER)
+  })
+})
+
+/**
+ * The app/webhook trigger-column branches moved out of
+ * `workflow-service.update` — these pin the branch behavior it inlined,
+ * including the "no updates at all" (`none`) arms a naive rewrite would
+ * collapse into clears.
+ */
+describe('deriveTriggerLinks', () => {
+  const appNode = {
+    data: {
+      type: 'someapp:new-row',
+      appId: 'app_1',
+      triggerId: 'order-created',
+      connectionId: 'conn_1',
+      installationId: 'inst_stored',
+    },
+  }
+
+  it('returns none without a trigger type — the caller leaves the columns alone', () => {
+    expect(deriveTriggerLinks(undefined, [appNode])).toEqual({ kind: 'none' })
+    expect(deriveTriggerLinks(null, [appNode])).toEqual({ kind: 'none' })
+  })
+
+  it('extracts the app trigger fields from the node carrying appId + triggerId', () => {
+    expect(
+      deriveTriggerLinks(WorkflowTriggerType.APP_TRIGGER, [{ data: { type: 'note' } }, appNode])
+    ).toEqual({
+      kind: 'app-trigger',
+      appId: 'app_1',
+      triggerId: 'order-created',
+      connectionId: 'conn_1',
+      storedInstallationId: 'inst_stored',
+    })
+    expect(deriveTriggerLinks(WorkflowTriggerType.APP_POLLING_TRIGGER, [appNode]).kind).toBe(
+      'app-trigger'
+    )
+  })
+
+  it('nulls missing connection/installation on an app trigger node', () => {
+    const result = deriveTriggerLinks(WorkflowTriggerType.APP_TRIGGER, [
+      { data: { appId: 'app_1', triggerId: 'order-created' } },
+    ])
+    expect(result).toEqual({
+      kind: 'app-trigger',
+      appId: 'app_1',
+      triggerId: 'order-created',
+      connectionId: null,
+      storedInstallationId: null,
+    })
+  })
+
+  it('returns none for an app trigger whose node is missing — never a clear', () => {
+    // A node needs BOTH appId and triggerId to count.
+    expect(
+      deriveTriggerLinks(WorkflowTriggerType.APP_TRIGGER, [{ data: { appId: 'app_1' } }])
+    ).toEqual({ kind: 'none' })
+    expect(deriveTriggerLinks(WorkflowTriggerType.APP_TRIGGER, [])).toEqual({ kind: 'none' })
+    // No graph posted at all.
+    expect(deriveTriggerLinks(WorkflowTriggerType.APP_TRIGGER, undefined)).toEqual({ kind: 'none' })
+  })
+
+  it('extracts (webhookEndpointId, topic) for a webhook-endpoint trigger', () => {
+    const result = deriveTriggerLinks(WorkflowTriggerType.WEBHOOK_ENDPOINT, [
+      { data: { type: 'webhook-trigger', webhookEndpointId: 'whep_1', topic: 'orders/create' } },
+    ])
+    expect(result).toEqual({
+      kind: 'webhook-endpoint',
+      webhookEndpointId: 'whep_1',
+      topic: 'orders/create',
+    })
+  })
+
+  it('writes explicit nulls when the webhook-endpoint node is missing from the graph', () => {
+    expect(
+      deriveTriggerLinks(WorkflowTriggerType.WEBHOOK_ENDPOINT, [{ data: { type: 'note' } }])
+    ).toEqual({ kind: 'webhook-endpoint', webhookEndpointId: null, topic: null })
+  })
+
+  it('falls back to clear for a webhook-endpoint trigger without a posted graph', () => {
+    // Preserved quirk: without `graph.nodes` the original branch chain fell
+    // through to the clear arm, nulling the webhook columns too.
+    expect(deriveTriggerLinks(WorkflowTriggerType.WEBHOOK_ENDPOINT, undefined)).toEqual({
+      kind: 'clear',
+    })
+  })
+
+  it('clears the link columns when switching to any other trigger type', () => {
+    expect(deriveTriggerLinks(WorkflowTriggerType.SCHEDULED, [appNode])).toEqual({ kind: 'clear' })
+    expect(deriveTriggerLinks(WorkflowTriggerType.MESSAGE_RECEIVED, undefined)).toEqual({
+      kind: 'clear',
+    })
   })
 })

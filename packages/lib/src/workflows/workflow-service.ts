@@ -9,6 +9,8 @@ import { canonicalizeEntityDefinitionId, getCachedResources } from '../cache/org
 import { getCachedWorkflowAppsList } from '../cache/workflow-app-queries'
 import { ConflictError, NotFoundError } from '../errors'
 import { getQueue, Queues } from '../jobs/queues'
+import type { TriggerDerivationNode } from '../workflow-engine/catalog/derive-trigger'
+import { deriveTriggerLinkColumns } from '../workflow-engine/catalog/derive-trigger-server'
 import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
 import { hashWorkflowGraph } from './graph-hash'
 import { assertMailTriggerNotPersonal } from './mail-trigger-guard'
@@ -509,63 +511,19 @@ export class WorkflowService {
           if (basicUpdateData.entityDefinitionId !== undefined)
             workflowUpdates.entityDefinitionId = basicUpdateData.entityDefinitionId
 
-          // Extract app trigger fields from graph's trigger node for both app trigger types
-          const isAppTrigger =
-            basicUpdateData.triggerType === 'app-trigger' ||
-            basicUpdateData.triggerType === 'app-polling-trigger'
-          if (isAppTrigger && graph?.nodes) {
-            const triggerNode = (graph.nodes as any[]).find(
-              (n: any) => n.data?.triggerId && n.data?.appId
+          // App/webhook trigger-link columns (app trigger fields incl. the
+          // save-time installation resolution, webhook-endpoint columns,
+          // explicit clear on trigger switch) are derived by the catalog's
+          // server-side composition — one implementation shared with future
+          // server-side graph mutations. `{}` means leave the columns alone.
+          Object.assign(
+            workflowUpdates,
+            await deriveTriggerLinkColumns(
+              organizationId,
+              basicUpdateData.triggerType,
+              graph?.nodes as TriggerDerivationNode[] | undefined
             )
-            if (triggerNode?.data) {
-              workflowUpdates.triggerAppId = triggerNode.data.appId || null
-              workflowUpdates.triggerTriggerId = triggerNode.data.triggerId || null
-              workflowUpdates.triggerConnectionId = triggerNode.data.connectionId || null
-
-              // Resolve triggerInstallationId at save time — fail hard if app not installed
-              // (writing null would silently disable dispatch since the filter matches on exact equality)
-              if (triggerNode.data.appId) {
-                const { resolveActiveInstallationId } = await import(
-                  '../apps/installations/resolve-active-installation'
-                )
-                const instResult = await resolveActiveInstallationId(
-                  triggerNode.data.appId,
-                  organizationId
-                )
-                if (instResult.isOk()) {
-                  workflowUpdates.triggerInstallationId = instResult.value
-                } else {
-                  // Fallback to stored value for legacy nodes that still have installationId
-                  workflowUpdates.triggerInstallationId = triggerNode.data.installationId || null
-                  logger.warn('Could not resolve triggerInstallationId, using stored value', {
-                    appId: triggerNode.data.appId,
-                    organizationId,
-                    storedInstallationId: triggerNode.data.installationId,
-                  })
-                }
-              } else {
-                workflowUpdates.triggerInstallationId = triggerNode.data.installationId || null
-              }
-            }
-          } else if (basicUpdateData.triggerType === 'webhook-endpoint' && graph?.nodes) {
-            // Webhook-endpoint trigger: persist (webhookEndpointId, topic) from the trigger
-            // node into the dedicated column; no installation/connection to resolve.
-            const triggerNode = (graph.nodes as any[]).find((n: any) => n.data?.webhookEndpointId)
-            workflowUpdates.triggerAppId = null
-            workflowUpdates.triggerTriggerId = null
-            workflowUpdates.triggerInstallationId = null
-            workflowUpdates.triggerConnectionId = null
-            workflowUpdates.triggerWebhookEndpointId = triggerNode?.data?.webhookEndpointId || null
-            workflowUpdates.triggerTopic = triggerNode?.data?.topic || null
-          } else if (basicUpdateData.triggerType && !isAppTrigger) {
-            // Clear app + webhook trigger fields when switching to another trigger
-            workflowUpdates.triggerAppId = null
-            workflowUpdates.triggerTriggerId = null
-            workflowUpdates.triggerInstallationId = null
-            workflowUpdates.triggerConnectionId = null
-            workflowUpdates.triggerWebhookEndpointId = null
-            workflowUpdates.triggerTopic = null
-          }
+          )
 
           if (graph) workflowUpdates.graph = graph as any
           if (envVars) workflowUpdates.envVars = envVars as any
