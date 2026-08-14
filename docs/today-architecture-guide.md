@@ -1,15 +1,20 @@
 # Today Architecture Guide
 
-Today is a daily-triage home tab: a headless AI agent watches CRM entities
-(deals/leads/tickets) that have gone quiet, proposes a bundle of next actions
-per entity, and the account owner triages each bundle with a single Yes/No.
-Covers the scanner, the headless agent run, the bundle data model, apply-time
-execution, and the frontend. Verified against the implementation on
-**2026-07-09**. Feature-flagged (`FeatureKey.todayInbox`, default **off**) —
-nothing here runs for an org unless the flag is enabled.
+"Today" is the AI-suggestion triage lane: headless AI runs propose bundles of
+next actions, and the owner triages each bundle with a single Yes/No in the
+**Approvals tab of the notification side panel** (there is no Today page —
+see §7). Two producers mint bundles: the stale-entity scanner (deals/leads/
+tickets gone quiet) and the learned-KB extraction job (resolved threads —
+see §4b). Covers the scanner, both headless runs, the bundle data model,
+apply-time execution, and the frontend. Verified against the implementation on
+**2026-08-13**. The suggestion lane is feature-flagged (`FeatureKey.todayInbox`,
+default **off**); learned extraction has its own flag (`FeatureKey.learnedMemory`).
+The Approvals tab itself and its workflow-confirmation / access-request /
+mail-suggestion sections are **not** gated on either.
 
-Ground-truth plan (matches shipped code closely):
-`plans/follow-up/phases/phase-3e-today-ui.md`, with sibling phases
+Ground-truth plans:
+`plans/today/README.md` (the fold-into-approvals-tab move, shipped 2026-07-28)
+on top of `plans/follow-up/phases/phase-3e-today-ui.md`, with sibling phases
 `phase-3a-capture-mode.md` (engine capture mode), `phase-3b-headless-runner.md`,
 `phase-3c-suggestion-table.md` (`AiSuggestion` design), `phase-3d-event-triggers.md`
 (**not yet built** — see §6), `phase-4-override.md`, `phase-5-spawn.md`,
@@ -41,7 +46,7 @@ in-row countdown with an `Undo`.
 
 | Table | File | Role |
 | --- | --- | --- |
-| `AiSuggestion` | `ai-suggestion.ts` | One bundle of `ProposedAction[]` per entity per triage cycle. `entityInstanceId`/`entityDefinitionId` (denormalized), `threadId?` (context only), `ownerUserId` (snapshotted at creation — reassignment doesn't re-route), `bundle` (jsonb: `{ actions, summary, modelId, headlessTraceId, computedForLatestMessageId? }`), `actionCount` (denormalized), `computedForActivityAt` (drives FRESH→STALE), `triggerSource` (`'event'\|'stale_scan'\|'manual'\|'override'`), `status` (`FRESH → APPROVED\|PARTIALLY_APPROVED\|REJECTED\|STALE`), `outcomes` (jsonb `ActionOutcome[]`, populated on approve), `decidedById`/`decidedAt`. Partial unique index `(organizationId, entityInstanceId) WHERE status='FRESH'` — enforces **one active bundle per entity**; the scanner relies on the resulting unique-violation as a no-op signal. |
+| `AiSuggestion` | `ai-suggestion.ts` | One bundle of `ProposedAction[]` per entity per triage cycle. `entityInstanceId`/`entityDefinitionId` (denormalized), `threadId?` (context only), `ownerUserId` (snapshotted at creation — reassignment doesn't re-route), `bundle` (jsonb: `{ actions, summary, modelId, headlessTraceId, computedForLatestMessageId? }`), `actionCount` (denormalized), `computedForActivityAt` (drives FRESH→STALE), `triggerSource` (`'event'\|'stale_scan'\|'manual'\|'override'\|'learned-extraction'`), `status` (`FRESH → APPROVED\|PARTIALLY_APPROVED\|REJECTED\|STALE`), `outcomes` (jsonb `ActionOutcome[]`, populated on approve), `decidedById`/`decidedAt`. **Two** partial unique indexes: `AiSuggestion_org_entity_active_key` on `(organizationId, entityInstanceId) WHERE status='FRESH' AND "triggerSource" <> 'learned-extraction'` — one active bundle per entity for scanner-produced bundles (the scanner relies on the unique-violation as a no-op signal) — and `AiSuggestion_org_thread_learned_active_key` on `(organizationId, threadId) WHERE status='FRESH' AND "triggerSource" = 'learned-extraction'` — learned bundles dedupe **per thread** instead. |
 | `SuggestionDismissal` | `suggestion-dismissal.ts` | Per-user, per-entity skip record from Reject/Snooze. `dismissedAtActivity` (entity's `lastActivityAt` at dismissal time) + optional `snoozeUntil`. The scanner's candidate query excludes an entity while `dismissedAtActivity >= entity.lastActivityAt` — so the dismissal naturally expires once new activity lands, independent of `snoozeUntil`. Unique per `(organizationId, userId, entityInstanceId)` — upserted on repeat dismissal. Dismissal is **per-user**, not org-wide. |
 | `ScheduledMessage` (extended) | `scheduled-message.ts` | Reused, not a new table. Today-specific columns: `source` (`USER_SCHEDULED\|AI_SUGGESTED\|AUTO_REPLY`), `approvedById` (who clicked Yes), `cancelledAt`/`cancelledById`, `aiSuggestionId` (FK back to the originating bundle). Indexed `(organizationId, source, approvedById, status)` for the pending-sends pill. |
 | — | — | No new tables for entity data itself — Today reads `EntityInstance` (+ two new columns, below), `Draft`, and the existing field-value system. |
@@ -126,6 +131,43 @@ separate `kind` discriminator, callers branch on which field is set.
 
 ---
 
+## 4b. The second producer — learned-KB extraction (`packages/lib/src/approvals/learned-extraction-runner.ts`)
+
+`runLearnedExtraction` mints bundles too — same capture machinery
+(`resolveCaptureRunPrincipal`, `mergeActions`/`parseFinalText`), different
+trigger, scope, and flag. When a thread resolves (archive path in
+`threads/thread-mutation.service.ts`) or a member explicitly asks ("remember
+this thread", `thread` router → `force: true` + `requestedByUserId`),
+`enqueueLearnedExtraction` queues a run on its **own** queue
+(`Queues.learnedExtractionQueue`, own worker definition) with a stable
+per-thread jobId that collapses archive→reopen→archive bursts; forced runs get
+a unique jobId and no delay.
+
+The job (`jobs/approvals/learned-extraction-job.ts`) gates on
+`FeatureKey.learnedMemory`, then on row-local noise gates
+(`learned-extraction-gates.ts`: thread `ARCHIVED`, not merged, ≥2 messages,
+`learnedExtractedAt < lastMessageAt` so a reopen with no new conversation is a
+no-op), a **human-authored-outbound** check (`hasHumanOutbound` over a 20-send
+sample — agents must not learn from their own replies; provider-synced sends
+count as human), and a fixed-window daily cap
+(`LEARNED_EXTRACTION_DAILY_LIMIT = 100`/org — forced runs count toward the
+window but are never blocked by it). The runner feeds the KB catalog plus a
+capped transcript (30 messages, 2k chars each) to the engine, which proposes
+`upsert_learned_article` writes in capture mode ("one living article per
+topic; when in doubt, save nothing"). A non-noop result lands via
+`createBundleFromHeadlessRun` with `triggerSource: 'learned-extraction'`,
+deduped per-thread by the second partial unique index (§2), and
+`Thread.learnedExtractedAt` is stamped.
+
+Display note: learned bundles are ordinary `AiSuggestion` rows, so they render
+in the same **Suggestions** section — which the client gates on
+`FeatureKey.todayInbox`. A learned bundle is therefore only *visible* when
+`todayInbox` is also on, even though its producer is gated on `learnedMemory`.
+`SuggestionRow` branches on `toolName === 'upsert_learned_article'` to render
+`LearnedArticlePreview` for these actions.
+
+---
+
 ## 5. Apply-time — approving a bundle (`packages/lib/src/approvals/actions-service.ts`)
 
 `approveBundle` is the all-or-nothing execution path, invoked from
@@ -185,28 +227,33 @@ avoid name collisions as the two evolve independently.
 | Procedure | Purpose |
 | --- | --- |
 | `list` | Paginated bundles (`ownerScope`: `mine`\|`mine_and_unassigned`\|`all`; default status filter `['FRESH']`; cursor = base64 `createdAt\|id`). |
+| `count` | Open-bundle count for the bell/tab badge (`countBundles`) — so the badge never pages the list. |
 | `get` | Single bundle by id. |
-| `approve` | Runs `approveBundle`; maps `ConflictError` → tRPC `CONFLICT`. |
+| `approve` | Runs `approveBundle`; maps `ConflictError` → tRPC `CONFLICT` and `ForbiddenError` → `FORBIDDEN` (a permission-blocked action leaves the bundle `FRESH`). |
 | `reject` | Runs `rejectBundle`. |
 | `snooze` | Runs `snoozeBundle`. |
 | `cancelPendingSend` | Runs `cancelPendingSend`. |
-| `listPending` | `ScheduledMessage` rows where `source='AI_SUGGESTED', status='PENDING'`, optionally scoped to the caller (`mineOnly`, default true). |
+| `listPending` | `ScheduledMessage` rows where `source='AI_SUGGESTED', status='PENDING'` (`mineOnly`, default true). **Effectively dead** — its consumer was the deleted `/app/today/pending` page; the countdown now reads `findScheduledSend` in-row. No web caller remains. |
 
 ### Known gaps vs. the plan epic
-- **`phase-3d-event-triggers.md` (reactive triggers) was never built.** The
-  scanner (`triggerSource: 'stale_scan'`) is the only thing that calls
-  `runHeadlessSuggestion` today — `'event'` and `'manual'` are valid
-  `triggerSource` values in the type system but nothing produces them yet.
-  Bundles are compute-on-a-5-minute-poll only, not reactive to inbound
-  messages.
+- **`phase-3d-event-triggers.md` (generic reactive triggers) was never built.**
+  The scanner (`triggerSource: 'stale_scan'`) is still the only caller of
+  `runHeadlessSuggestion`; `'event'` and `'manual'` remain valid
+  `triggerSource` values nothing produces. Entity bundles are
+  compute-on-a-5-minute-poll only, not reactive to inbound messages. (The
+  learned-extraction lane, §4b, IS event-driven — thread archive — but it is
+  its own runner and `triggerSource`, not the 3d design.)
 - **`phase-6-polish.md`'s ranking model was never built** — `listBundles`
-  is recency-sorted, not the planned SLA/value/confidence score.
-- **Snooze has no frontend affordance** — the mutation and schema support
-  exist, but `BundleCard` (§7) only renders Yes/No; there's no snooze UI
-  wired up yet.
+  is recency-sorted (`createdAt desc, id desc`), not the planned
+  SLA/value/confidence score.
 - **Reject doesn't clean up soft-tool side effects** — a Draft created
   during headless capture survives a Reject and sits in the org's normal
   Drafts tab (explicitly deferred, not a bug).
+- **`plans/today/06-router-merge.md` (fold `approval` + `approvals` into one
+  router) is planned, not built** — both stay registered separately in
+  `root.ts`.
+- Closed gaps: snooze now **has** a frontend affordance (the `SuggestionRow`
+  overflow menu, §7); the badge no longer pages the list (`approvals.count`).
 
 ---
 
@@ -302,9 +349,30 @@ node, message, timestamps, and the decision comment `Textarea`. Approve has
 no confirm; **Deny does** — it stops a live run with no undo. A past-expiry
 request disables both actions.
 
+### Badge & realtime
+`useApprovalsCount` (`hooks/use-approvals-count.ts`) is the **single** badge
+source: `approval.getPendingCount` + `approvals.count` (gated on `todayInbox`)
++ `useMailSuggestionsCount()` (deliberately ungated). Errors are surfaced
+separately so a failed load renders `!` rather than a silent `0`. Both
+consumers — the sidebar bell (`notification-trigger.tsx`, total = unread +
+approvals) and the tab badge (`notification-panel.tsx`) — read this one hook
+and must not drift (the hook's own comment says so).
+
+Freshness is split by lane. Confirmations/access requests are push-fresh:
+`'approval'` and `'approval:resolved'` publish on the **assignee's user room**
+(`realtime/events.ts`, `publish-helpers.ts`), and
+`hooks/use-notification-subscription.ts` invalidates all four queries
+(`approval.getPendingCount`, `approval.list`, `approvals.count`,
+`approvals.list`); `'approval'` also pulses the bell (+ optional sound).
+Suggestion bundles and mail suggestions publish **nothing** — those lanes are
+refetch-driven (window-focus refetch on the counts, mutation invalidation, and
+a fresh fetch when the panel opens).
+
 Panel state (`open`, `mode`, `highlightApprovalId`) lives in
 `notification-panel-store.ts`; `openApprovals(id?)` is how the kbar action
-and `APPROVAL` notification rows jump to the tab. Only `width` is persisted.
+(`nav.approvals`, `components/kbar/actions/navigation.ts`) and `APPROVAL`
+notification rows jump to the tab — there is no URL for it. Only `width` is
+persisted.
 
 ---
 
@@ -319,17 +387,30 @@ email (soft call, real `Draft` created) + a follow-up task (captured,
 `createBundleFromHeadlessRun` inserts a `FRESH` `AiSuggestion` →
 `EntityInstance.lastSuggestionScanAt` bumped either way.
 
-**Owner approves from Today**
-`TodayPage` renders the card → click **Yes** → `approvalsRouter.approve` →
-staleness re-check passes → topo-sort → soft action promotes the Draft to a
-`ScheduledMessage` (send in 5 min, cancellable) → captured action's
-`create_task` tool runs for real, referencing the promoted message's id if
-chained → bundle marked `APPROVED` with per-action outcomes.
+**Owner approves from the Approvals tab**
+The panel's Suggestions section renders the bundle as a `SuggestionRow` →
+click **Approve** → `approvalsRouter.approve` → staleness re-check passes →
+topo-sort → soft action promotes the Draft to a `ScheduledMessage` (send in
+5 min, cancellable) → captured action's `create_task` tool runs for real,
+referencing the promoted message's id if chained → bundle marked `APPROVED`
+with per-action outcomes.
 
 **Owner cancels an AI-drafted send**
-`/app/today/pending` shows the countdown row → **Cancel** before the 5-minute
-buffer elapses → `ScheduledMessage` flips to `CANCELLED`, BullMQ job removed
-(best-effort) → row disappears from the pending list.
+The approved row flips in place to a `Sending in Nm Ns` countdown → **Undo**
+before the 5-minute buffer elapses → `approvals.cancelPendingSend` flips the
+`ScheduledMessage` to `CANCELLED`, BullMQ job removed (best-effort; the send
+job re-checks status at fire time) → the countdown clears. If the send already
+flipped to `PROCESSING`, a `send_in_flight` conflict surfaces as "Send in
+flight, can't cancel."
+
+**A thread resolves and teaches the AI Memory (§4b)**
+Thread archived → `enqueueLearnedExtraction` (stable per-thread jobId) →
+job passes the `learnedMemory` flag, noise gates, human-outbound check, and
+daily cap → `runLearnedExtraction` proposes `upsert_learned_article` writes in
+capture mode → `[summary]` result lands as a `FRESH` bundle with
+`triggerSource: 'learned-extraction'` (per-thread dedupe) →
+`Thread.learnedExtractedAt` stamped → the bundle renders in the Suggestions
+section with `LearnedArticlePreview`; Approve executes the article upserts.
 
 **Owner rejects instead**
 Click **No** → bundle flips to `REJECTED`, nothing executes; if the reject
@@ -343,16 +424,19 @@ point.
 
 | Concern | Path |
 | --- | --- |
-| Schema | `packages/database/src/db/schema/{ai-suggestion,suggestion-dismissal,scheduled-message}.ts`, `EntityInstance.lastSuggestionScanAt` |
+| Schema | `packages/database/src/db/schema/{ai-suggestion,suggestion-dismissal,scheduled-message}.ts`, `EntityInstance.lastSuggestionScanAt`, `Thread.learnedExtractedAt` |
 | Scanner job | `packages/lib/src/jobs/approvals/next-action-stale-scanner-job.ts` |
 | Staleness config | `packages/lib/src/work-items/stale-defaults.ts` |
 | Headless agent | `packages/lib/src/approvals/headless-runner.ts` |
-| Bundle CRUD | `packages/lib/src/approvals/bundle-service.ts` |
+| Learned extraction | `packages/lib/src/approvals/learned-extraction-runner.ts`, `packages/lib/src/jobs/approvals/{learned-extraction-job,learned-extraction-gates}.ts`, `apps/worker/src/workers/worker-definitions/learned-extraction-worker.ts` |
+| Bundle CRUD | `packages/lib/src/approvals/bundle-service.ts` (`createBundleFromHeadlessRun`, `listBundles`, `countBundles`, `markStaleBundles`) |
 | Apply / reject / snooze / cancel | `packages/lib/src/approvals/actions-service.ts` |
 | Types | `packages/lib/src/approvals/types.ts` (`ProposedAction`, `ActionOutcome`, `StoredBundle`) |
 | Capture-mode engine | `packages/lib/src/ai/agent-framework/capture-mode.ts`, `types.ts` (`approvalMode`, `captureMint`, `capturedActions`) |
-| tRPC | `apps/web/src/server/api/routers/approvals.ts` |
-| Frontend | `apps/web/src/components/today/` (`today-page.tsx`, `pending-page.tsx`, `bundle-card.tsx`) |
-| Routes | `apps/web/src/app/(protected)/app/today/{page.tsx,pending/page.tsx}` |
-| Feature flag | `packages/lib/src/permissions/types.ts` (`FeatureKey.todayInbox`) |
-| Plans (ground truth) | `plans/follow-up/phases/phase-3{a,b,c,d,e}-*.md`, `phase-4-override.md`, `phase-5-spawn.md`, `phase-6-polish.md` |
+| tRPC | `apps/web/src/server/api/routers/approvals.ts` (bundles), `approval.ts` (confirmations + access requests), `mail-suggestions.ts` (mail lane) |
+| Frontend | `apps/web/src/components/global/notifications/` — `ui/approvals-tab.tsx`, `ui/items/{suggestion,confirmation,access-request,mail-suggestion,decided}-row.tsx`, `hooks/use-approvals-count.ts`, `notification-panel.tsx`, `notification-panel-store.ts` |
+| Entry points | notification bell (`notification-trigger.tsx`) + kbar `nav.approvals` (`apps/web/src/components/kbar/actions/navigation.ts`) — no URL/route |
+| Realtime | `packages/lib/src/realtime/events.ts` (`approval`, `approval:resolved`), `publish-helpers.ts`, `apps/web/src/components/global/notifications/hooks/use-notification-subscription.ts` |
+| Feature flags | `packages/lib/src/permissions/types.ts` (`FeatureKey.todayInbox`, `FeatureKey.learnedMemory`) |
+| Mail-suggestions lane | `docs/mail-suggestions-architecture-guide.md` |
+| Plans (ground truth) | `plans/today/README.md` (+ `plans/today/06-router-merge.md`, planned), `plans/follow-up/phases/phase-3{a,b,c,d,e}-*.md`, `phase-4-override.md`, `phase-5-spawn.md`, `phase-6-polish.md` |
