@@ -106,7 +106,14 @@ function resolveInTopoOrder(
     }
 
     const context = buildOutputContextFromResources(allResources, node.data?.resourceType)
-    memo.set(nodeId, manifest.resolveOutputs(node.data, nodeId, { ...context, resolveVariable }))
+    // A resolver crash (e.g. a legacy node whose persisted data is missing the
+    // shape the resolver expects) degrades to "no outputs for this node" — one
+    // bad node must not poison resolution for the whole graph.
+    try {
+      memo.set(nodeId, manifest.resolveOutputs(node.data, nodeId, { ...context, resolveVariable }))
+    } catch {
+      memo.set(nodeId, [])
+    }
   }
 
   return memo

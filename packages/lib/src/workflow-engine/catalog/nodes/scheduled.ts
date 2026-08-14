@@ -158,6 +158,8 @@ export function validateScheduledTriggerData(data: ScheduledTriggerNodeData): No
 export function extractScheduledTriggerVariables(data: ScheduledTriggerNodeData): string[] {
   const variables: string[] = []
   const { config } = data
+  // Legacy/imported rows can lack `config` entirely; nothing to extract.
+  if (!config) return variables
 
   // Extract variables from interval values
   if (config.triggerInterval !== 'custom') {
@@ -215,8 +217,9 @@ function getScheduledTriggerOutputVariables(
     })
   )
 
-  // Schedule configuration
-  if (data.config.triggerInterval === 'custom') {
+  // Schedule configuration. `config` can be absent on legacy/imported rows —
+  // fall through to the interval branch, matching `defaultData()`'s shape.
+  if (data.config?.triggerInterval === 'custom') {
     variables.push(
       createUnifiedOutputVariable({
         nodeId,
