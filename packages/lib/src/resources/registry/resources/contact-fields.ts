@@ -141,7 +141,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     isIdentifier: true,
     // Multi-value: a contact can hold up to MAX_MULTI_VALUES addresses; the
     // first (by sortKey) is the primary. Existing orgs are caught up by data
-    // migration 085. Phone stays single until the E.164 plan lands.
+    // migration 085.
     options: { multi: true },
     capabilities: {
       filterable: true,
@@ -172,6 +172,12 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'a3',
     dbColumn: 'phone',
     nullable: true,
+    // Multi-value: a contact can hold up to MAX_MULTI_VALUES numbers; the first
+    // (by sortKey) is the primary and is what outbound SMS/voice dials. Existing
+    // orgs are caught up by data migration 086. Unlike `primaryEmail` this field
+    // is deliberately NOT unique — households and companies legitimately share a
+    // line, and arming the uniqueness gate here would 409 ordinary ingest writes.
+    options: { multi: true },
     capabilities: {
       filterable: true,
       sortable: false,
