@@ -113,6 +113,10 @@ export async function persistDraft(
       graph: graph as WorkflowUpdateInput['graph'],
       triggerType: triggerType as WorkflowTriggerType | undefined,
       entityDefinitionId,
+      // The agent's own writes must not wipe the pre-turn Undo snapshot the
+      // mutation pipeline captured just before this persist. Manual canvas
+      // saves (which don't go through this seam) DO clear it.
+      preserveTurnSnapshot: true,
       ...(input.expectedGraphHash !== undefined
         ? { expectedGraphHash: input.expectedGraphHash }
         : {}),

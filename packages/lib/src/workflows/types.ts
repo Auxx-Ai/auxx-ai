@@ -77,6 +77,15 @@ export interface WorkflowUpdateInput {
    * When absent, the write is unconditional (template install / system paths).
    */
   expectedGraphHash?: string
+  /**
+   * Keep the Kopilot per-turn Undo snapshot (`graph-edit/turn-snapshot.ts`)
+   * across this write. Set ONLY by the graph-edit persist seam — the agent's
+   * own writes must not wipe the snapshot they just captured. Every other
+   * graph write (a manual canvas save) clears it, so a stale Undo can never
+   * roll the draft back over the user's own edits (KB
+   * `bypassSnapshotClear` parity).
+   */
+  preserveTurnSnapshot?: boolean
 
   // Access settings
   webEnabled?: boolean

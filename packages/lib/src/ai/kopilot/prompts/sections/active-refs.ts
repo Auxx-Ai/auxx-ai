@@ -13,6 +13,7 @@ const REF_KIND_LABEL: Record<SessionRefKind, string> = {
   article: 'article',
   actor: 'actor',
   agent: 'agent',
+  workflow: 'workflow',
 }
 
 export const activeRefs: PromptSection = {

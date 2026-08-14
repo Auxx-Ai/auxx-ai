@@ -26,3 +26,8 @@ export {
   WORKFLOW_AI_NODE_PAGE,
   WORKFLOW_NATIVE_TOOLSET_SLUG,
 } from './workflow'
+export {
+  createWorkflowBuilderCapabilities,
+  WORKFLOW_BUILDER_PAGE,
+  WORKFLOW_BUILDER_TOOLSET_SLUG,
+} from './workflow-builder'

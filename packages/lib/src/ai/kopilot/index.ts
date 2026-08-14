@@ -19,9 +19,12 @@ export {
   createSuggestRepliesGlobalCapability,
   createTaskCapabilities,
   createToolDepsFactory,
+  createWorkflowBuilderCapabilities,
   KB_PAGE,
   RECORDS_PAGE,
   WORKFLOW_AI_NODE_PAGE,
+  WORKFLOW_BUILDER_PAGE,
+  WORKFLOW_BUILDER_TOOLSET_SLUG,
   WORKFLOW_NATIVE_TOOLSET_SLUG,
 } from './capabilities'
 export { applyContextDefaults, findAllRefs, findRef } from './context-refs'
