@@ -4,9 +4,10 @@
  * Lambda SDK callback for `ctx.entities.findContactByEmail`.
  *
  * Authorized via the `entities` callback token scope minted by
- * `prepareLambdaContext` for AI tool invocations. Looks up a contact-kind
- * EntityInstance whose primary EMAIL FieldValue matches (case-insensitive)
- * and returns the auxx recordId (`<defId>:<instId>`) plus display name.
+ * `prepareLambdaContext` for AI tool invocations. Looks up a non-archived
+ * contact-kind EntityInstance with any EMAIL FieldValue matching
+ * (case-insensitive) and returns the auxx recordId (`<defId>:<instId>`)
+ * plus display name. Ties resolve to the first row by ascending sortKey.
  *
  * Used by integrations that don't have a contact-import source path —
  * Slack first, Gmail next. See plans/kopilot/apps/slack-overhaul.md §6.
@@ -14,7 +15,7 @@
 
 import { database, schema } from '@auxx/database'
 import { getCachedCustomFields, getCachedEntityDefId } from '@auxx/lib/cache'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { verifyCallbackAuth } from '../../lib/callback-auth'
@@ -61,7 +62,13 @@ findContactByEmail.post('/find-contact-by-email', async (c) => {
       displayName: schema.EntityInstance.displayName,
     })
     .from(schema.FieldValue)
-    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
+    .innerJoin(
+      schema.EntityInstance,
+      and(
+        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
     .where(
       and(
         eq(schema.FieldValue.organizationId, auth.organizationId),
@@ -70,6 +77,7 @@ findContactByEmail.post('/find-contact-by-email', async (c) => {
         sql`lower(${schema.FieldValue.valueText}) = ${email}`
       )
     )
+    .orderBy(asc(schema.FieldValue.sortKey), asc(schema.EntityInstance.id))
     .limit(1)
 
   const hit = row[0]

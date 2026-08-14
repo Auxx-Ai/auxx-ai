@@ -1,7 +1,7 @@
 // packages/services/src/field-values/get-existing-value.ts
 
 import { database, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { GetExistingValueInput } from './types'
@@ -40,6 +40,7 @@ export async function getExistingFieldValue(input: GetExistingValueInput) {
           eq(schema.FieldValue.organizationId, organizationId)
         )
       )
+      .orderBy(asc(schema.FieldValue.sortKey))
       .limit(1),
     'get-existing-field-value'
   )

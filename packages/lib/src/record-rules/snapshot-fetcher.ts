@@ -33,7 +33,9 @@ export async function fetchResourceSnapshots(
     const rows = await db.query.EntityInstance.findMany({
       where: (t, { and, eq, inArray }) =>
         and(eq(t.organizationId, organizationId), inArray(t.id, chunk)),
-      with: { values: { with: { field: true } } },
+      with: {
+        values: { orderBy: (t, { asc }) => [asc(t.sortKey)], with: { field: true } },
+      },
     })
 
     for (const inst of rows as Array<Record<string, any>>) {
@@ -42,6 +44,8 @@ export async function fetchResourceSnapshots(
         const field = value.field
         if (!field) continue
         const key = field.systemAttribute ?? field.id
+        // First row by ascending sortKey wins — that row is the primary value.
+        if (key in fieldValues) continue
         fieldValues[key] = extractFieldValueScalar(value)
       }
       out.set(toRecordId(inst.entityDefinitionId, inst.id), {
