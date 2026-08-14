@@ -365,6 +365,48 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Enter notes',
   },
 
+  firstInteractionAt: {
+    id: toFieldId('firstInteractionAt'),
+    key: 'firstInteractionAt',
+    label: 'First interaction',
+    type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemAttribute: 'first_interaction_at',
+    systemSortOrder: 'a7a',
+    dbColumn: 'firstInteractionAt',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'Oldest real correspondence with this contact (message time, ingest-derived)',
+  },
+
+  lastInteractionAt: {
+    id: toFieldId('lastInteractionAt'),
+    key: 'lastInteractionAt',
+    label: 'Last interaction',
+    type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemAttribute: 'last_interaction_at',
+    systemSortOrder: 'a7b',
+    dbColumn: 'lastInteractionAt',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'Newest real correspondence with this contact (message time, ingest-derived)',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

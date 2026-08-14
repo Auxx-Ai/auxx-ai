@@ -318,7 +318,13 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
  * Fields that are EntityInstance columns, not CustomFields
  * These should NOT be seeded as CustomFields
  */
-export const ENTITY_INSTANCE_COLUMNS = ['id', 'created_at', 'updated_at'] as const
+export const ENTITY_INSTANCE_COLUMNS = [
+  'id',
+  'created_at',
+  'updated_at',
+  'first_interaction_at',
+  'last_interaction_at',
+] as const
 
 /**
  * Special entity types that don't have EntityDefinitions

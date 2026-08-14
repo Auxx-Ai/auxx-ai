@@ -45,6 +45,7 @@ import { migration077BackfillUnsentThreadDates } from './migrations/077-backfill
 import { migration078TicketTypeUpdatable } from './migrations/078-ticket-type-updatable'
 import { migration079EnrichmentFieldsBackendOwned } from './migrations/079-enrichment-fields-backend-owned'
 import { migration080OutlookWebhookCutover } from './migrations/080-outlook-webhook-cutover'
+import { migration081BackfillInteractionFields } from './migrations/081-backfill-interaction-fields'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -116,6 +117,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration078TicketTypeUpdatable,
     migration079EnrichmentFieldsBackendOwned,
     migration080OutlookWebhookCutover,
+    migration081BackfillInteractionFields,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

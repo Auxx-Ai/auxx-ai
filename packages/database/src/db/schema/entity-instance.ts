@@ -96,6 +96,30 @@ export const EntityInstance = pgTable(
      * activity"). Replaces v2's NOOP-row mechanism.
      */
     lastSuggestionScanAt: timestamp({ precision: 3 }),
+
+    /**
+     * Oldest real correspondence with this entity (message `sentAt`, not
+     * processing time). Written first-wins by `touchEntityInteraction()` —
+     * ingest-derived, so backfilled mailboxes converge to historical values.
+     * Narrower than `lastActivityAt`: comments and field edits don't count.
+     */
+    firstInteractionAt: timestamp({ precision: 3 }),
+
+    /**
+     * Message that produced `firstInteractionAt`. Deliberately no FK — messages
+     * hard-delete on channel disconnect and a dangling ref degrades to
+     * "unknown who" at read time; the timestamp stands.
+     */
+    firstInteractionMessageId: text(),
+
+    /**
+     * Newest real correspondence with this entity (message `sentAt`). Written
+     * last-wins by `touchEntityInteraction()`. See `firstInteractionAt`.
+     */
+    lastInteractionAt: timestamp({ precision: 3 }),
+
+    /** Message that produced `lastInteractionAt`. No FK — see `firstInteractionMessageId`. */
+    lastInteractionMessageId: text(),
   },
   (table) => [
     // Index for entity definition lookups
@@ -124,6 +148,13 @@ export const EntityInstance = pgTable(
       table.organizationId.asc().nullsLast(),
       table.entityDefinitionId.asc().nullsLast(),
       table.lastActivityAt.asc().nullsLast()
+    ),
+    // Interaction recency sorting/filtering, mirroring the activity index.
+    index('EntityInstance_organizationId_entityDefinitionId_lastInteractionAt_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.entityDefinitionId.asc().nullsLast(),
+      table.lastInteractionAt.asc().nullsLast()
     ),
     // AI suggestion scanner candidate query (Phase 3c): non-archived rows
     // ordered by activity & last-scan, scoped per (org, entity definition).

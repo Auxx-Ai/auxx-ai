@@ -6,7 +6,10 @@ import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
-import { touchActivityForThreadLinks } from '../entity-instances/activity'
+import {
+  touchActivityForThreadLinks,
+  touchInteractionForThreadLinks,
+} from '../entity-instances/activity'
 import { ForbiddenError, UsageLimitError } from '../errors'
 import { FileService } from '../files/core/file-service'
 import { MediaAssetService } from '../files/core/media-asset-service'
@@ -397,6 +400,18 @@ export class MessageSenderService {
       await this.threadManager.updateThreadParticipants(threadContext.id)
       // Outbound send is real activity on any linked entity (deal/ticket/lead).
       await touchActivityForThreadLinks(threadContext.id, this.organizationId)
+      // Interaction stamp for Auxx-sent mail: this path never reaches ingest's
+      // fresh-insert touch (the sync echo early-returns in storeMessage), so
+      // without this the stamps only move when the customer writes. Successful
+      // sends only — a FAILED row is not correspondence (§2.4).
+      if (sendResult.success) {
+        await touchInteractionForThreadLinks(
+          threadContext.id,
+          this.organizationId,
+          composed.id,
+          sendResult.timestamp ?? new Date()
+        )
+      }
       // Step 9: Trigger post-send sync (skip for providers without external
       // state to reconcile, e.g. chat).
       if (capabilities.triggersPostSendSync) {
@@ -1539,6 +1554,16 @@ export class MessageSenderService {
     await this.threadManager.updateThreadMetadata(threadId)
     await this.threadManager.updateThreadParticipants(threadId)
     await touchActivityForThreadLinks(threadId, this.organizationId)
+    // Interaction stamp — same rationale as the first-send path: Auxx-sent mail
+    // never reaches ingest's touch, and only a landed retry is correspondence.
+    if (result.success) {
+      await touchInteractionForThreadLinks(
+        threadId,
+        this.organizationId,
+        messageId,
+        result.timestamp ?? new Date()
+      )
+    }
 
     const message = await this.getUpdatedMessage(messageId)
 

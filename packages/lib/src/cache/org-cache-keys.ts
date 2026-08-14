@@ -725,7 +725,12 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // impossible. (`org.updated` invalidation only covers orgs suspended *after*
   // the new code is live.)
   orgProfile: { prefix: 'org:profile:v2', ttlSeconds: ONE_DAY },
-  resources: { prefix: 'org:resources', ttlSeconds: ONE_DAY },
+  // v2: + firstInteractionAt/lastInteractionAt column-backed system fields on the
+  // contact and company registries. The blob is the computed merged registry
+  // (statics + CustomField rows), so a pre-deploy blob simply lacks the new
+  // static fields for up to the ONE_DAY TTL — the bump moves the keyspace so
+  // every org recomputes on first read after deploy.
+  resources: { prefix: 'org:resources:v2', ttlSeconds: ONE_DAY },
   customFields: { prefix: 'org:custom-fields', ttlSeconds: ONE_DAY },
   groups: { prefix: 'org:groups', ttlSeconds: ONE_DAY },
   groupMembers: { prefix: 'org:group-members', ttlSeconds: ONE_DAY },

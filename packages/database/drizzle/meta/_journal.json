@@ -2311,6 +2311,13 @@
       "when": 1786667003481,
       "tag": "0329_integration_webhook_route_key",
       "breakpoints": true
+    },
+    {
+      "idx": 330,
+      "version": "7",
+      "when": 1786672124416,
+      "tag": "0330_entity_interaction_fields",
+      "breakpoints": true
     }
   ]
 }

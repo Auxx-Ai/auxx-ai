@@ -34,7 +34,12 @@ vi.mock('../../realtime', () => ({
 }))
 
 vi.mock('../../threads/mail-counts', () => ({ applyMailCountDeltas: vi.fn() }))
-vi.mock('../../entity-instances/activity', () => ({ touchActivityForThreadLinks: vi.fn() }))
+vi.mock('../../entity-instances/activity', () => ({
+  touchActivityForThreadLinks: vi.fn(),
+  resolveThreadLinkedEntityIds: vi.fn(async () => []),
+  touchEntityActivity: vi.fn(),
+  touchInteractionForThreadLinks: vi.fn(),
+}))
 vi.mock('../../events/publisher', () => ({
   publisher: {
     publishLater: vi.fn(async (evt: { type: string; data: Record<string, unknown> }) => {
