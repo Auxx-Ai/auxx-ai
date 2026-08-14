@@ -3,7 +3,7 @@
 import { type Database, database, schema } from '@auxx/database'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import type { SQL } from 'drizzle-orm'
-import { findCachedResource, getCachedResource, getCachedResourceFields } from '../../../cache'
+import { getCachedResource, getCachedResourceFields } from '../../../cache'
 import type { Condition, ConditionGroup as MailConditionGroup } from '../../../conditions/types'
 import { buildConditionGroupsQueryWithDiagnostics } from '../../../mail-query/condition-query-builder'
 import { getAutomationVisibility } from '../../../permissions/visibility/automation-visibility'
@@ -32,6 +32,7 @@ import type { TableId } from '../../../resources/registry/field-registry'
 import { getFieldOutputKey, type ResourceField } from '../../../resources/registry/field-types'
 import { executeResourceQuery } from '../../../resources/resource-fetcher'
 import { toRecordId } from '../../../resources/resource-id'
+import type { FindNodeData as CatalogFindNodeData } from '../../catalog/nodes/find'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -41,23 +42,30 @@ import type {
 } from '../../core/types'
 import { BaseType, NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
+import { resolveCanonicalResource } from '../utils/canonical-resource'
 import { extractVariableRefs } from '../utils/variable-refs'
 
 /** Rows returned when the configured limit is missing, unresolvable or non-positive. */
 const DEFAULT_FIND_LIMIT = 10
 
-interface FindNodeData {
-  resourceType: string // Supports both system resources and custom entities (UUID/CUID format)
-  findMode: 'findOne' | 'findMany'
-  conditions: GenericCondition[] // For backward compatibility
-  conditionGroups: ConditionGroup[] // Primary grouping system
-  orderBy?: {
-    field: string
-    direction: 'asc' | 'desc'
-  }
-  limit?: number | string // Can be number (constant) or string (variable reference)
-  fieldModes?: Record<string, boolean> // Field modes for VarEditor (true = constant mode)
-}
+/**
+ * Engine-side view of the find node's persisted config — a `Pick` off the
+ * catalog's `FindNodeData` (imported directly, not via `client.ts`: engine
+ * code never goes through the client barrel). `conditions`/`conditionGroups`
+ * type identically to this file's own `GenericCondition[]`/`ConditionGroup[]`
+ * (both ultimately `Condition`/`ConditionGroup` from `../../../conditions`),
+ * so this is a pure de-duplication, not a behavior change.
+ */
+type FindNodeData = Pick<
+  CatalogFindNodeData,
+  | 'resourceType' // Supports both system resources and custom entities (UUID/CUID format)
+  | 'findMode'
+  | 'conditions' // For backward compatibility
+  | 'conditionGroups' // Primary grouping system
+  | 'orderBy'
+  | 'limit' // Can be number (constant) or string (variable reference)
+  | 'fieldModes' // Field modes for VarEditor (true = constant mode)
+>
 
 /**
  * Drizzle query shape produced by the builder
@@ -539,23 +547,11 @@ export class FindProcessor extends BaseNodeProcessor {
       const organizationId = context.organizationId
       const db = database
 
-      // Resolve resource from org cache (system or custom)
-      // Use findCachedResource to match by id, entityType, or apiSlug
-      const resource = await findCachedResource(organizationId, resourceType)
-      if (!resource) {
-        throw new Error(`Unknown resource type: ${resourceType}`)
-      }
-
-      // From here on there is exactly ONE identity for this resource: the cached
-      // resource's own id. The configured `resourceType` is only a lookup key —
-      // `findCachedResource` accepts an id, an `entityType` slug or an `apiSlug` —
-      // and every lane below (query building, output keying) has to agree on the
-      // resolved value or they disagree by construction.
-      //
-      // For an entity-definition-backed type (contact, ticket, part, order, …)
-      // that id IS the `EntityDefinition` cuid, which is what routes it down the
-      // custom-entity lane; for a static system table it is the `TableId`
-      // ('thread', 'message', 'kb').
+      // Resolve resource from org cache (system or custom) and canonicalize
+      // `resourceType` to the cached resource's own id — see
+      // `resolveCanonicalResource`'s docblock for why every lane below has to
+      // agree on this one identity.
+      const resource = await resolveCanonicalResource(organizationId, resourceType)
       resourceType = resource.id
 
       // Fold the legacy flat array into a group, then rewrite every field

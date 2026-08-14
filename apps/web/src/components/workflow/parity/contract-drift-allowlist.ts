@@ -142,19 +142,27 @@ export const KNOWN_BROKEN_UNADVERTISED_WRITES: Record<string, string> = {
   'written:text-classifier.tool_results':
     'INHERITED from base-ai-node.ts — written for every AI subclass; only ai (with toolsEnabled) advertises it. Same base-class fix as `output`.',
 
-  // ── crud: the create/update outputs the picker never offers ───────────────
+  // ── crud: the create/update record ref the picker never offers ────────────
+  // `thread`/`operation`/`resourceType`/`error`/`errorDetails` were fixed by
+  // declaring them in thread mode's advertisement (`generateThreadActionVariables`,
+  // catalog/nodes/crud.ts) — the ONLY crud fixture this suite can reach
+  // (`CONFIG_VARIANTS[NodeType.CRUD]`, node-definitions.ts, is thread-mode only;
+  // `OutputContext.resource` is hardcoded `undefined` for every node type,
+  // builder-engine-parity.test.ts). `record` cannot follow the same path: it is
+  // written only in the entity/custom-resource branch (crud.ts, `else if
+  // (isCustomResourceId(...) || isEntityDefinitionType(...))`), which this
+  // harness structurally cannot reach — there is no way to hand
+  // `getCrudNodeOutputVariables` a populated `context.resource` for a
+  // non-thread config here, so `record` stays filed despite now being
+  // declared for real (catalog/nodes/crud.ts `getCrudNodeOutputVariables`,
+  // non-thread `mode !== 'delete'` branch) — same "needs a live Resource"
+  // reach limit as the `resource-trigger.trigger.*` entries in
+  // EXTRACTION_BLIND_SPOTS below, just not yet filed there because this is
+  // still real, unverified-by-suite drift rather than a correct pairing.
   'written:crud.record':
-    "crud.ts:613 writes the created/updated record ref on every resource-mode success — the reverse assertion's founding example. The picker never offers `record` under any config.",
-  'written:crud.thread':
-    'crud.ts:590 writes the thread ref on every thread-mode success; the thread-mode advertisement (schema.ts) never includes it.',
-  'written:crud.error':
-    "crud.ts:575 writes null on success and crud.ts:1255 the failure message on the fail path; `success` is advertised, `error` — the thing you'd branch on — is not.",
-  'written:crud.errorDetails':
-    'crud.ts:1256 writes the structured failure (db error code, constraint) on the fail path; never advertised.',
-  'written:crud.operation':
-    'crud.ts:572/:1257 writes the mode on every run, success and failure; never advertised.',
-  'written:crud.resourceType':
-    'crud.ts:573/:1258 writes the resource type on every run; never advertised.',
+    "crud.ts writes the created/updated record ref on every entity-mode success — the reverse assertion's founding example. Declared in getCrudNodeOutputVariables, but unreachable by this suite (no non-thread crud fixture with a resource).",
+  'written:crud.deleted':
+    "crud.ts writes `deleted: true` in the delete-mode branch of executeNode (fixing the bug where delete never wrote its declared variables). Already declared for delete mode in generateCrudNodeVariablesFromFields (resources/variable-generators.ts), reached the same way `record` is — via getCrudNodeOutputVariables's non-thread, resource-populated branch — which this suite cannot construct. Same reach limit as `record`, not new drift.",
 
   // ── Whole-result summaries nothing advertises ─────────────────────────────
   'written:code.result':

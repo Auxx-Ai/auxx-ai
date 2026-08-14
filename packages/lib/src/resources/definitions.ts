@@ -56,20 +56,15 @@ export const RESOURCE_OPERATIONS: Record<string, ResourceOperation> = {
  * Uses registry metadata for consistency
  * Note: Only resources with custom variable generators are included here.
  * Other resources use the generic createResourceVariables function.
+ *
+ * `contact`/`ticket` entries used to live here (commented out) pointing at
+ * `createContactVariables`/`createTicketVariables` — those two functions had
+ * no live caller (their only reference was this dead code) and were deleted
+ * from `variable-generators.ts` in the variable-generators hygiene pass.
+ * Reintroducing contact/ticket-specific generation here would mean writing
+ * new functions, not restoring the deleted ones.
  */
 export const RESOURCE_CONFIGS: Partial<Record<TableId, ResourceConfig>> = {
-  // contact: {
-  //   type: 'contact',
-  //   label: RESOURCE_TABLE_MAP.contact.label,
-  //   icon: RESOURCE_TABLE_MAP.contact.icon,
-  //   variableGenerator: createContactVariables,
-  // },
-  // ticket: {
-  //   type: 'ticket',
-  //   label: RESOURCE_TABLE_MAP.ticket.label,
-  //   icon: RESOURCE_TABLE_MAP.ticket.icon,
-  //   variableGenerator: createTicketVariables,
-  // },
   thread: {
     type: 'thread',
     label: RESOURCE_TABLE_MAP.thread.label,

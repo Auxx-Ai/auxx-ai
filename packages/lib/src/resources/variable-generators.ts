@@ -1,4 +1,4 @@
-// packages/lib/src/workflow-engine/resources/variable-generators.ts
+// packages/lib/src/resources/variable-generators.ts
 
 /**
  * Variable generator functions for resource triggers and nodes
@@ -6,7 +6,12 @@
  */
 
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
-import { type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
+import { toResourceFieldId } from '@auxx/types/field'
+import {
+  createNestedVariable,
+  type NestedVariableConfig,
+} from '../workflow-engine/catalog/variable-conversion'
+import type { UnifiedVariable } from '../workflow-engine/types/unified-variable'
 import {
   RESOURCE_FIELD_REGISTRY,
   RESOURCE_TABLE_MAP,
@@ -15,9 +20,6 @@ import {
 import { getFieldOutputKey, type ResourceField } from './registry/field-types'
 import { createRelationshipCollection } from './registry/relationship-utils'
 import { BaseType } from './types'
-
-// Import types - these will resolve at runtime in the frontend
-type UnifiedVariable = any
 
 /**
  * Resource metadata needed for variable generation (works for system + custom)
@@ -108,97 +110,6 @@ function getResourceMeta(
 }
 
 /**
- * Create a nested variable structure (backend version)
- * Automatically generates all intermediate variables with correct full paths
- */
-function createNestedVariable(config: {
-  nodeId: string
-  basePath: string
-  type: BaseType
-  label?: string
-  description?: string
-  /**
-   * Typed field reference.
-   * Format: `${entityDefinitionId}:${fieldId}`
-   */
-  fieldReference?: ResourceFieldId
-  /**
-   * Direct resource ID.
-   * For when the variable IS a resource, not a field ON a resource.
-   */
-  resourceId?: string
-  /**
-   * Select options carried down from the parent config — the recursive call
-   * below spreads a whole property/item config back in, so this level accepts
-   * the same shape its children declare.
-   */
-  options?: { options: Array<{ label: string; value: string }> }
-  properties?: Record<
-    string,
-    {
-      type: BaseType
-      description?: string
-      label?: string
-      properties?: any
-      items?: any
-      fieldReference?: ResourceFieldId
-      resourceId?: string
-      options?: { options: Array<{ label: string; value: string }> }
-    }
-  >
-  items?: {
-    type: BaseType
-    description?: string
-    label?: string
-    properties?: any
-    fieldReference?: ResourceFieldId
-    resourceId?: string
-    options?: { options: Array<{ label: string; value: string }> }
-  }
-}): UnifiedVariable {
-  const fullPath = `${config.nodeId}.${config.basePath}`
-  const label = config.label
-
-  // Only include specific props from config if they exist
-  const variable: UnifiedVariable = {
-    id: fullPath,
-    type: config.type,
-    label: label,
-    category: 'node',
-    ...(config.description && { description: config.description }),
-    // Typed field references
-    ...(config.fieldReference && { fieldReference: config.fieldReference }),
-    ...(config.resourceId && { resourceId: config.resourceId }),
-    ...(config.options && { options: config.options }),
-  }
-
-  // Recursively create property variables with full paths
-  if (config.properties) {
-    variable.properties = {}
-    Object.entries(config.properties).forEach(([key, propConfig]) => {
-      const propPath = `${config.basePath}.${key}`
-      variable.properties![key] = createNestedVariable({
-        nodeId: config.nodeId,
-        basePath: propPath,
-        ...propConfig,
-      })
-    })
-  }
-
-  // Create array item variable
-  if (config.items) {
-    const itemPath = `${config.basePath}[*]`
-    variable.items = createNestedVariable({
-      nodeId: config.nodeId,
-      basePath: itemPath,
-      ...config.items,
-    })
-  }
-
-  return variable
-}
-
-/**
  * Generic function to create resource variables from registry
  * This is the single source of truth for resource variable generation
  */
@@ -210,7 +121,7 @@ export function createResourceVariables(resourceType: TableId, nodeId: string): 
     throw new Error(`Unknown resource type: ${resourceType}`)
   }
 
-  const properties: Record<string, any> = {}
+  const properties: Record<string, NestedVariableConfig> = {}
 
   // Dynamically build properties from registry
   Object.entries(fields).forEach(([key, field]) => {
@@ -218,6 +129,7 @@ export function createResourceVariables(resourceType: TableId, nodeId: string): 
   })
 
   return createNestedVariable({
+    deriveLabel: false,
     nodeId,
     basePath: resourceType,
     type: BaseType.OBJECT,
@@ -226,22 +138,6 @@ export function createResourceVariables(resourceType: TableId, nodeId: string): 
     properties,
     resourceId: resourceType,
   })
-}
-
-/**
- * Create contact variables for contact-based triggers
- * Uses registry-based generation for consistency
- */
-export function createContactVariables(nodeId: string): UnifiedVariable {
-  return createResourceVariables('contact', nodeId)
-}
-
-/**
- * Create ticket variables for ticket-based triggers
- * Uses registry-based generation for consistency
- */
-export function createTicketVariables(nodeId: string): UnifiedVariable {
-  return createResourceVariables('ticket', nodeId)
 }
 
 /**
@@ -272,7 +168,7 @@ export function createDatasetVariables(nodeId: string): UnifiedVariable {
  * Create trigger metadata variables with operation-specific properties
  */
 export function createTriggerMetadata(nodeId: string, operation: string): UnifiedVariable {
-  const baseProperties: Record<string, any> = {
+  const baseProperties: Record<string, NestedVariableConfig> = {
     timestamp: {
       type: BaseType.DATETIME,
       description: `When the resource was ${operation}`,
@@ -344,6 +240,7 @@ export function createTriggerMetadata(nodeId: string, operation: string): Unifie
   }
 
   return createNestedVariable({
+    deriveLabel: false,
     nodeId,
     basePath: 'trigger',
     type: BaseType.OBJECT,
@@ -369,7 +266,7 @@ function convertFieldToVariableProperty(
   visitedTables: Set<string> = new Set(),
   currentDepth: number = 0,
   options?: VariableGeneratorOptions
-): any {
+): NestedVariableConfig {
   const maxDepth = options?.maxDepth ?? 2
 
   // Handle RELATION type
@@ -382,7 +279,7 @@ function convertFieldToVariableProperty(
     // Check for circular references
     if (relatedEntityDefinitionId && visitedTables.has(relatedEntityDefinitionId)) {
       return {
-        type: 'string',
+        type: BaseType.STRING,
         label: field.label,
         description: `${field.description || field.label} (circular reference - not expanded)`,
       }
@@ -391,7 +288,7 @@ function convertFieldToVariableProperty(
     // Check depth limit
     if (currentDepth >= maxDepth) {
       return {
-        type: 'string',
+        type: BaseType.STRING,
         label: field.label,
         description: `${field.description || field.label} (depth limit reached)`,
       }
@@ -407,11 +304,11 @@ function convertFieldToVariableProperty(
 
     // For belongs_to or has_one: Generate object with .referenceId
     if (relationshipType === 'belongs_to' || relationshipType === 'has_one') {
-      const properties: Record<string, any> = {}
+      const properties: Record<string, NestedVariableConfig> = {}
 
       // Add .referenceId property
       properties.referenceId = {
-        type: 'string',
+        type: BaseType.STRING,
         label: 'Reference ID',
         description: `ID of the related ${targetMeta?.label || relatedEntityDefinitionId || 'entity'}`,
       }
@@ -446,7 +343,7 @@ function convertFieldToVariableProperty(
       }
 
       return {
-        type: 'object',
+        type: BaseType.OBJECT,
         label: field.label,
         description: field.description,
         properties,
@@ -457,7 +354,7 @@ function convertFieldToVariableProperty(
 
     // For has_many: Generate collection structure with drilling support
     if (relationshipType === 'has_many') {
-      const itemProperties: Record<string, any> = {}
+      const itemProperties: Record<string, NestedVariableConfig> = {}
 
       if (targetFields && relatedEntityDefinitionId) {
         const newVisited = new Set(visitedTables)
@@ -515,7 +412,7 @@ function convertFieldToVariableProperty(
       }
 
       return {
-        type: 'object',
+        type: BaseType.OBJECT,
         label: field.label,
         description: field.description,
         properties: collectionProperties,
@@ -525,7 +422,7 @@ function convertFieldToVariableProperty(
 
     // For many_to_many: Limited support (no nested drilling)
     if (relationshipType === 'many_to_many') {
-      const itemProperties: Record<string, any> = {}
+      const itemProperties: Record<string, NestedVariableConfig> = {}
 
       if (targetFields && relatedEntityDefinitionId) {
         const newVisited = new Set(visitedTables)
@@ -558,7 +455,7 @@ function convertFieldToVariableProperty(
       }
 
       return {
-        type: 'object',
+        type: BaseType.OBJECT,
         label: field.label,
         description: field.description,
         properties: collectionProperties,
@@ -589,179 +486,11 @@ function convertFieldToVariableProperty(
 }
 
 /**
- * Generate output variables for a resource
- * Works for Find, CRUD, and Trigger nodes
- * Supports both system resources and custom entities
- *
- * @param resourceType - Resource type (e.g., 'ticket', 'contact', 'entity_products')
- * @param nodeId - Node ID for variable scoping
- * @param mode - Output mode: 'single', 'array', 'crud-create', 'crud-update', 'crud-delete'
- * @param options - Additional options for variable generation (includes resourcesMap for custom entities)
- */
-export function generateResourceOutputVariables(
-  resourceType: string,
-  nodeId: string,
-  mode: 'single' | 'array' | 'crud-create' | 'crud-update' | 'crud-delete',
-  options?: VariableGeneratorOptions & {
-    basePath?: string // Custom base path (default: resourceType)
-    includeMetadata?: boolean // Include operation metadata
-    additionalFields?: string[] // Additional fields to include
-  }
-): UnifiedVariable | null {
-  // Use helper that supports both system resources and custom entities
-  const fieldsArray = getFieldsForResource(resourceType, options)
-
-  if (!fieldsArray) {
-    console.warn(`No field registry found for resource: ${resourceType}`)
-    return null
-  }
-
-  // Convert array to object format for existing code
-  const fields: Record<string, ResourceField> = {}
-  for (const field of fieldsArray) {
-    fields[getFieldOutputKey(field)] = field
-  }
-
-  const basePath = options?.basePath || resourceType
-
-  // Build properties from registry (includes relationships)
-  const properties: Record<string, any> = {}
-
-  Object.entries(fields).forEach(([key, field]) => {
-    // Include all fields (basic + relationships)
-    properties[key] = convertFieldToVariableProperty(field, resourceType)
-  })
-
-  // Handle different modes
-  switch (mode) {
-    case 'single':
-      // Single resource object (Find.findOne, CRUD create/update)
-      return createNestedVariable({
-        nodeId,
-        basePath,
-        type: BaseType.OBJECT,
-        label: resourceType.charAt(0).toUpperCase() + resourceType.slice(1),
-        description: `${resourceType} record from the database`,
-        properties,
-        resourceId: resourceType,
-      })
-
-    case 'array':
-      // Array of resources (Find.findMany) - returns the item structure
-      return createNestedVariable({
-        nodeId,
-        basePath: `${basePath}[*]`,
-        type: BaseType.OBJECT,
-        label: resourceType.charAt(0).toUpperCase() + resourceType.slice(1),
-        description: `${resourceType} record`,
-        properties,
-        resourceId: resourceType,
-      })
-
-    case 'crud-create':
-    case 'crud-update':
-      // CRUD operations return the resource + metadata
-      return createNestedVariable({
-        nodeId,
-        basePath,
-        type: BaseType.OBJECT,
-        label: resourceType.charAt(0).toUpperCase() + resourceType.slice(1),
-        description: `The ${mode === 'crud-create' ? 'created' : 'updated'} ${resourceType}`,
-        properties,
-        resourceId: resourceType,
-      })
-
-    case 'crud-delete':
-      // Delete only returns ID and success flag (handled separately)
-      return null
-
-    default:
-      return null
-  }
-}
-
-/**
- * Generate variables for Find node
- * Supports both system resources and custom entities
- */
-export function generateFindNodeVariables(
-  resourceType: string,
-  nodeId: string,
-  findMode: 'findOne' | 'findMany',
-  options?: VariableGeneratorOptions
-): UnifiedVariable[] {
-  const variables: UnifiedVariable[] = []
-
-  // Main resource variable(s)
-  if (findMode === 'findOne') {
-    const resourceVar = generateResourceOutputVariables(resourceType, nodeId, 'single', options)
-    if (resourceVar) {
-      resourceVar.description = `Found ${resourceType} (null if not found)`
-      variables.push(resourceVar)
-    }
-  } else {
-    // For findMany, create array variable with items
-    // Use plural path for consistency: contacts[*] instead of contact[*]
-    const pluralPath = `${resourceType}s`
-    const itemVar = generateResourceOutputVariables(resourceType, nodeId, 'array', {
-      ...options,
-      basePath: pluralPath, // ✅ Pass plural base so items use "contacts[*]" not "contact[*]"
-    })
-    if (itemVar) {
-      const arrayVar: UnifiedVariable = {
-        id: `${nodeId}.${pluralPath}`,
-        label: `${resourceType.charAt(0).toUpperCase() + resourceType.slice(1)}s`,
-        type: BaseType.ARRAY,
-        // reference: resourceType,
-        category: 'node',
-        description: `Array of ${resourceType} records`,
-        items: itemVar,
-      }
-      variables.push(arrayVar)
-    }
-  }
-
-  // Query info variable
-  variables.push(
-    createNestedVariable({
-      nodeId,
-      basePath: 'query_info',
-      type: BaseType.OBJECT,
-      label: 'Query Info',
-      description: 'Information about the executed query',
-      properties: {
-        resource_type: {
-          type: BaseType.STRING,
-          label: 'Resource Type',
-          description: 'The type of resource that was searched',
-        },
-        find_mode: {
-          type: BaseType.STRING,
-          label: 'Find Mode',
-          description: 'Whether findOne or findMany was used',
-        },
-        order_by: {
-          type: BaseType.STRING,
-          label: 'Order By',
-          description: 'Field used for sorting (if any)',
-        },
-        limit_applied: {
-          type: BaseType.NUMBER,
-          label: 'Limit Applied',
-          description: 'Maximum number of results returned',
-        },
-      },
-    })
-  )
-
-  return variables
-}
-
-/**
  * Helper to create query_info variable
  */
 function createQueryInfoVariable(nodeId: string): UnifiedVariable {
   return createNestedVariable({
+    deriveLabel: false,
     nodeId,
     basePath: 'query_info',
     type: BaseType.OBJECT,
@@ -815,13 +544,23 @@ export function generateFindNodeVariablesFromFields(
   const variables: UnifiedVariable[] = []
 
   if (fields.length === 0) {
-    // Return just query_info if no fields
+    // No visible fields to shape a record with, but `count` is still written
+    // unconditionally by the engine (`contextManager.setNodeVariable(nodeId,
+    // 'count', resultCount)`, find.ts) regardless of field count — declare it
+    // here too, matching the non-empty path below.
+    variables.push({
+      id: `${nodeId}.count`,
+      label: 'Count',
+      type: BaseType.NUMBER,
+      category: 'node',
+      description: `Number of ${resourceMeta.label.toLowerCase()} records found`,
+    })
     variables.push(createQueryInfoVariable(nodeId))
     return variables
   }
 
   // Build properties from fields - use key for consistent variable paths
-  const properties: Record<string, any> = {}
+  const properties: Record<string, NestedVariableConfig> = {}
   fields.forEach((field) => {
     properties[getFieldOutputKey(field)] = convertFieldToVariableProperty(
       field,
@@ -835,6 +574,7 @@ export function generateFindNodeVariablesFromFields(
   if (findMode === 'findOne') {
     variables.push(
       createNestedVariable({
+        deriveLabel: false,
         nodeId,
         basePath: resourceMeta.id,
         type: BaseType.OBJECT,
@@ -848,6 +588,7 @@ export function generateFindNodeVariablesFromFields(
     // For findMany, create array variable with items
     const pluralPath = resourceMeta.plural.toLowerCase()
     const itemVar = createNestedVariable({
+      deriveLabel: false,
       nodeId,
       basePath: `${pluralPath}[*]`,
       type: BaseType.OBJECT,
@@ -883,105 +624,6 @@ export function generateFindNodeVariablesFromFields(
 }
 
 /**
- * Generate variables for CRUD node
- * Supports both system resources and custom entities
- */
-export function generateCrudNodeVariables(
-  resourceType: string,
-  nodeId: string,
-  crudMode: 'create' | 'update' | 'delete',
-  options?: VariableGeneratorOptions
-): UnifiedVariable[] {
-  const variables: UnifiedVariable[] = []
-
-  // Main resource variable (for create/update)
-  if (crudMode !== 'delete') {
-    const mode = crudMode === 'create' ? 'crud-create' : 'crud-update'
-    const resourceVar = generateResourceOutputVariables(resourceType, nodeId, mode, options)
-    if (resourceVar) {
-      variables.push(resourceVar)
-    }
-  }
-
-  // Delete-specific variables
-  if (crudMode === 'delete') {
-    variables.push(
-      createNestedVariable({
-        nodeId,
-        basePath: 'deleted',
-        type: BaseType.BOOLEAN,
-        label: 'Deleted',
-        description: 'Whether the resource was successfully deleted',
-      })
-    )
-
-    variables.push(
-      createNestedVariable({
-        nodeId,
-        basePath: 'id',
-        type: BaseType.STRING,
-        label: 'Deleted Resource ID',
-        description: 'ID of the deleted resource',
-      })
-    )
-  }
-
-  // Common operation variables (all modes)
-  variables.push(
-    createNestedVariable({
-      nodeId,
-      basePath: 'success',
-      type: BaseType.BOOLEAN,
-      label: 'Success',
-      description: 'Whether the CRUD operation completed successfully',
-    })
-  )
-
-  variables.push(
-    createNestedVariable({
-      nodeId,
-      basePath: 'operation',
-      type: BaseType.STRING,
-      label: 'Operation',
-      description: 'The CRUD operation that was performed (create/update/delete)',
-    })
-  )
-
-  variables.push(
-    createNestedVariable({
-      nodeId,
-      basePath: 'resourceType',
-      type: BaseType.STRING,
-      label: 'Resource Type',
-      description: 'The type of resource that was operated on',
-    })
-  )
-
-  // Error variables
-  variables.push(
-    createNestedVariable({
-      nodeId,
-      basePath: 'error',
-      type: BaseType.STRING,
-      label: 'Error Message',
-      description: 'Error message if the operation failed (null if successful)',
-    })
-  )
-
-  variables.push(
-    createNestedVariable({
-      nodeId,
-      basePath: 'errorDetails',
-      type: BaseType.OBJECT,
-      label: 'Error Details',
-      description: 'Detailed error information for debugging (null if successful)',
-    })
-  )
-
-  return variables
-}
-
-/**
  * Generate CRUD node variables from fields
  * Unified function for both system resources and custom entities
  *
@@ -1003,14 +645,13 @@ export function generateCrudNodeVariablesFromFields(
 
   const variables: UnifiedVariable[] = []
 
-  // Main resource variable (for create/update)
-  if (crudMode !== 'delete') {
-    if (fields.length === 0) {
-      return variables
-    }
-
+  // Main resource variable (for create/update). Skipped when there are no
+  // visible fields to shape it from — but that must only skip THIS variable,
+  // not the status block below (success/operation/resourceType/error/…),
+  // which the engine writes unconditionally regardless of field count.
+  if (crudMode !== 'delete' && fields.length > 0) {
     // Build properties from fields
-    const properties: Record<string, any> = {}
+    const properties: Record<string, NestedVariableConfig> = {}
     fields.forEach((field) => {
       properties[getFieldOutputKey(field)] = convertFieldToVariableProperty(
         field,
@@ -1024,6 +665,7 @@ export function generateCrudNodeVariablesFromFields(
     const modeLabel = crudMode === 'create' ? 'created' : 'updated'
     variables.push(
       createNestedVariable({
+        deriveLabel: false,
         nodeId,
         basePath: resourceMeta.id,
         type: BaseType.OBJECT,
@@ -1039,6 +681,7 @@ export function generateCrudNodeVariablesFromFields(
   if (crudMode === 'delete') {
     variables.push(
       createNestedVariable({
+        deriveLabel: false,
         nodeId,
         basePath: 'deleted',
         type: BaseType.BOOLEAN,
@@ -1049,6 +692,7 @@ export function generateCrudNodeVariablesFromFields(
 
     variables.push(
       createNestedVariable({
+        deriveLabel: false,
         nodeId,
         basePath: 'id',
         type: BaseType.STRING,
@@ -1061,6 +705,7 @@ export function generateCrudNodeVariablesFromFields(
   // Common operation variables
   variables.push(
     createNestedVariable({
+      deriveLabel: false,
       nodeId,
       basePath: 'success',
       type: BaseType.BOOLEAN,
@@ -1071,6 +716,7 @@ export function generateCrudNodeVariablesFromFields(
 
   variables.push(
     createNestedVariable({
+      deriveLabel: false,
       nodeId,
       basePath: 'operation',
       type: BaseType.STRING,
@@ -1081,6 +727,7 @@ export function generateCrudNodeVariablesFromFields(
 
   variables.push(
     createNestedVariable({
+      deriveLabel: false,
       nodeId,
       basePath: 'resourceType',
       type: BaseType.STRING,
@@ -1092,6 +739,7 @@ export function generateCrudNodeVariablesFromFields(
   // Error variables
   variables.push(
     createNestedVariable({
+      deriveLabel: false,
       nodeId,
       basePath: 'error',
       type: BaseType.STRING,
@@ -1102,6 +750,7 @@ export function generateCrudNodeVariablesFromFields(
 
   variables.push(
     createNestedVariable({
+      deriveLabel: false,
       nodeId,
       basePath: 'errorDetails',
       type: BaseType.OBJECT,
@@ -1109,44 +758,6 @@ export function generateCrudNodeVariablesFromFields(
       description: 'Detailed error information for debugging (null if successful)',
     })
   )
-
-  return variables
-}
-
-/**
- * Generate variables for Resource Trigger nodes
- * Uses existing registry-based variable creators for consistency with CRUD/Find nodes
- * Supports both system resources and custom entities
- *
- * @param resourceType - Resource type (e.g., 'ticket', 'contact', 'entity_products')
- * @param nodeId - Node ID for variable scoping
- * @param operation - Trigger operation ('created', 'updated', 'deleted', 'manual')
- * @param options - Options for custom entity lookup (resourcesMap)
- */
-export function generateResourceTriggerVariables(
-  resourceType: string,
-  nodeId: string,
-  operation: 'created' | 'updated' | 'deleted' | 'manual',
-  options?: VariableGeneratorOptions
-): UnifiedVariable[] {
-  const variables: UnifiedVariable[] = []
-
-  // 1. Main resource variable (use existing registry-based function)
-  if (resourceType === 'ticket') {
-    variables.push(createTicketVariables(nodeId))
-  } else if (resourceType === 'contact') {
-    variables.push(createContactVariables(nodeId))
-  } else {
-    // Fallback to generic generation for other resource types (including custom entities)
-    const resourceVar = generateResourceOutputVariables(resourceType, nodeId, 'single', options)
-    if (resourceVar) {
-      resourceVar.description = `The ${resourceType} that was ${operation}`
-      variables.push(resourceVar)
-    }
-  }
-
-  // 2. Trigger metadata (using existing function)
-  variables.push(createTriggerMetadata(nodeId, operation))
 
   return variables
 }
@@ -1180,7 +791,7 @@ export function generateResourceTriggerVariablesFromFields(
   }
 
   // Build properties from fields - use key for consistent variable paths
-  const properties: Record<string, any> = {}
+  const properties: Record<string, NestedVariableConfig> = {}
   fields.forEach((field) => {
     properties[getFieldOutputKey(field)] = convertFieldToVariableProperty(
       field,
@@ -1194,6 +805,7 @@ export function generateResourceTriggerVariablesFromFields(
   // Main resource variable
   variables.push(
     createNestedVariable({
+      deriveLabel: false,
       nodeId,
       basePath: resourceMeta.id,
       type: BaseType.OBJECT,

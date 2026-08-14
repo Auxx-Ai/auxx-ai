@@ -107,6 +107,6 @@ describe('defineFromManifest', () => {
 
   it('resolves migrated types and stays undefined-safe for unmigrated ones', () => {
     expect(getManifest('wait')?.displayName).toBe('Wait')
-    expect(getManifest('crud')).toBeUndefined()
+    expect(getManifest('webhook')).toBeUndefined()
   })
 })

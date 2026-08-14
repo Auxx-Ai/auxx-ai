@@ -1,5 +1,7 @@
 // packages/lib/src/workflow-engine/catalog/variable-conversion.ts
 
+import type { ResourceFieldId } from '@auxx/types/field'
+import type { FieldOptions } from '../../custom-fields/field-options'
 import type { BaseType } from '../core/types'
 import type { UnifiedVariable } from '../types/unified-variable'
 import { buildVariableId, getLabelFromVariableId } from './variable-inference'
@@ -78,6 +80,59 @@ export function createUnifiedOutputVariable(config: {
 }
 
 /**
+ * Recursive shape accepted by `createNestedVariable`'s `properties` values and
+ * `items` config — one level of a nested variable declaration, minus the
+ * path-building fields (`nodeId`/`basePath`) the recursion derives.
+ *
+ * Union of what the two former implementations each supported: `enum` (this
+ * file's original contribution) plus `fieldReference`/`resourceId`/`options`
+ * (originally only in `packages/lib/src/resources/variable-generators.ts`'s
+ * now-deleted private copy, needed there for ACTOR field references, select
+ * options, and relation-expansion resource ids at every nesting level).
+ */
+export interface NestedVariableConfig {
+  type: BaseType
+  label?: string
+  description?: string
+  enum?: (string | number)[]
+  /**
+   * Typed field reference. Format: `${entityDefinitionId}:${fieldId}`.
+   */
+  fieldReference?: ResourceFieldId
+  /**
+   * Direct resource ID — for when the variable IS a resource, not a field ON
+   * one. Accepts `null` in addition to `undefined` because the resources
+   * module derives it via `getRelatedEntityDefinitionId`, which returns
+   * `string | null`; either falsy value is dropped by the `&&` guard below,
+   * so this is a type-only widening, not a behavior difference.
+   */
+  resourceId?: string | null
+  /**
+   * Field options — the select `{ options: [...] }` shape, the ACTOR
+   * `{ actor: ... }` shape, or any other `FieldOptions` payload. Matches
+   * `UnifiedVariable.options`'s declared type.
+   */
+  options?: FieldOptions
+  properties?: Record<string, NestedVariableConfig>
+  items?: NestedVariableConfig
+}
+
+/**
+ * Intermediate builder shape used while constructing the `UnifiedVariable`
+ * below. `UnifiedVariable.label` is declared as always-present (`string`),
+ * but a caller with `deriveLabel: false` and no explicit `label` legitimately
+ * produces `undefined` (e.g. resources' `createTriggerMetadata`'s `timestamp`
+ * property) — existing, frozen behavior, not something to paper over by
+ * inventing a value. This widens locally rather than loosening the shared
+ * `UnifiedVariable` type for every consumer.
+ */
+type DraftVariable = Omit<UnifiedVariable, 'label' | 'properties' | 'items'> & {
+  label?: string
+  properties?: Record<string, DraftVariable>
+  items?: DraftVariable
+}
+
+/**
  * Create a nested variable structure from a configuration
  * Automatically generates all intermediate variables
  *
@@ -103,49 +158,51 @@ export function createUnifiedOutputVariable(config: {
  *     webhook-123.body.contact.email (STRING)
  *     webhook-123.body.contact.name (STRING)
  */
-export function createNestedVariable(config: {
-  nodeId: string
-  basePath: string
-  type: BaseType
-  label?: string
-  description?: string
-  properties?: Record<
-    string,
-    {
-      type: BaseType
-      description?: string
-      label?: string
-      properties?: any
-      items?: any
-      enum?: (string | number)[]
-    }
-  >
-  items?: {
-    type: BaseType
-    description?: string
-    label?: string
-    properties?: any
-    enum?: (string | number)[]
+export function createNestedVariable(
+  config: NestedVariableConfig & {
+    nodeId: string
+    basePath: string
+    /**
+     * Whether an absent `label` should be derived from the variable id via
+     * `getLabelFromVariableId` — the historical behavior of this function,
+     * relied on by catalog node callers (e.g. `message-received.ts`) that
+     * omit `label` on nested properties and expect the picker to show a
+     * derived one. `packages/lib/src/resources`'s generators pass `false`:
+     * their fields already carry a `label` from the field registry, and the
+     * few paths that omit one intentionally leave it `undefined` rather than
+     * inventing one. Defaults to `true` (the original, unchanged behavior).
+     */
+    deriveLabel?: boolean
   }
-  enum?: (string | number)[]
-}): UnifiedVariable {
-  const variable = createUnifiedOutputVariable({
-    nodeId: config.nodeId,
-    path: config.basePath,
+): UnifiedVariable {
+  const { nodeId, basePath, deriveLabel = true } = config
+  const id = buildVariableId(nodeId, basePath)
+  const label = config.label ?? (deriveLabel ? getLabelFromVariableId(id) : undefined)
+
+  // Only include optional props when present — mirrors the resources
+  // module's original construction so its golden-snapshot payloads (which
+  // never carried explicitly-undefined keys) stay byte-identical.
+  const variable: DraftVariable = {
+    id,
     type: config.type,
-    label: config.label,
-    description: config.description,
-    enum: config.enum,
-  })
+    label,
+    category: 'node',
+    ...(config.description && { description: config.description }),
+    ...(config.enum && { enum: config.enum }),
+    ...(config.fieldReference && { fieldReference: config.fieldReference }),
+    ...(config.resourceId && { resourceId: config.resourceId }),
+    ...(config.options && { options: config.options }),
+  }
 
   // Recursively create property variables
   if (config.properties) {
     variable.properties = {}
     Object.entries(config.properties).forEach(([key, propConfig]) => {
-      const propPath = `${config.basePath}.${key}`
+      const propPath = `${basePath}.${key}`
       variable.properties![key] = createNestedVariable({
-        nodeId: config.nodeId,
+        nodeId,
         basePath: propPath,
+        deriveLabel,
         ...propConfig,
       })
     })
@@ -153,15 +210,16 @@ export function createNestedVariable(config: {
 
   // Create array item variable
   if (config.items) {
-    const itemPath = `${config.basePath}[*]`
+    const itemPath = `${basePath}[*]`
     variable.items = createNestedVariable({
-      nodeId: config.nodeId,
+      nodeId,
       basePath: itemPath,
+      deriveLabel,
       ...config.items,
     })
   }
 
-  return variable
+  return variable as UnifiedVariable
 }
 
 /**

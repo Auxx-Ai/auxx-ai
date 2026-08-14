@@ -7,12 +7,12 @@ import {
   isKnownOperator,
   operatorRequiresValue,
 } from '../../../conditions/client'
-import type { ResourceField } from '../../../resources/client'
 import { generateResourceTriggerVariablesFromFields } from '../../../resources/variable-generators'
 import { WorkflowTriggerType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
 import type { BaseNodeData } from '../node-base'
 import type { OutputContext } from '../output-context'
+import { resolveResourceGeneratorInputs } from '../resource-meta'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
 
 /**
@@ -214,15 +214,6 @@ function isBlank(value: unknown): boolean {
   return Array.isArray(value) && value.length === 0
 }
 
-/** Resource shape for variable generation (matches Find node) */
-type ResourceWithFields = {
-  id: string
-  label: string
-  plural: string
-  fields: ResourceField[]
-  entityDefinitionId?: string
-}
-
 /**
  * Get output variables for a resource trigger node
  * Unified function for both system resources and custom entities
@@ -238,26 +229,18 @@ export function getResourceTriggerOutputVariables(
   nodeId: string,
   context: OutputContext
 ): UnifiedVariable[] {
-  const resource = context.resource as ResourceWithFields | undefined
-  const allResources = context.allResources as ResourceWithFields[]
+  const inputs = resolveResourceGeneratorInputs(context)
   // No resource selected yet - return empty (same as Find node)
-  if (!resource) {
+  if (!inputs) {
     return []
   }
 
-  // Build resources map for relationship lookup
-  const resourcesMap = new Map(allResources?.map((r) => [r.id, r]) ?? [])
-
   return generateResourceTriggerVariablesFromFields(
-    resource.fields,
-    {
-      id: resource.entityDefinitionId ?? resource.id,
-      label: resource.label,
-      plural: resource.plural,
-    },
+    inputs.resource.fields,
+    inputs.resourceMeta,
     nodeId,
     data.operation,
-    { resourcesMap, maxDepth: 2 }
+    { resourcesMap: inputs.resourcesMap, maxDepth: 2 }
   )
 }
 
