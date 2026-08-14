@@ -45,7 +45,7 @@ export type WorkflowAuthoringResolution =
  * purpose — a shared gate with a hardcoded tier is how a Kopilot tool ends up
  * cheaper than the router it mirrors.
  */
-export type WorkflowAuthoringTier = 'view' | 'edit'
+export type WorkflowAuthoringTier = 'view' | 'edit' | 'admin'
 
 /**
  * **The** authorization gate for every graph tool in the `workflow.builder`
@@ -68,7 +68,7 @@ export type WorkflowAuthoringTier = 'view' | 'edit'
  * 3. **Org scope** — the workflow id arrives in client-supplied session refs;
  *    a foreign id must read as "not in this workspace", never leak existence.
  * 4. **Per-workflow instance rung** — `canViewInstance` (silent) for reads,
- *    `assertEditInstance` (throws `ForbiddenError`) for writes; plan 30's
+ *    `assertEditInstance` / `assertAdminInstance` (throws `ForbiddenError`) for writes; plan 30's
  *    per-workflow `ResourceAccess` rows.
  * 5. **`assertWorkflowAppNotSystemOwned`** — every workflow router procedure
  *    applies it (sequences compile to hidden system-owned apps), so the
@@ -133,8 +133,10 @@ export async function resolveWorkflowAuthoring(
     if (!capabilities.canViewInstance('workflow', workflowAppId)) {
       return { ok: false, error: WORKFLOW_NOT_FOUND_ERROR }
     }
-  } else {
+  } else if (tier === 'edit') {
     capabilities.assertEditInstance('workflow', workflowAppId)
+  } else {
+    capabilities.assertAdminInstance('workflow', workflowAppId)
   }
 
   // (5) System-owned lockdown — reads stay blind, writes get the guard's own

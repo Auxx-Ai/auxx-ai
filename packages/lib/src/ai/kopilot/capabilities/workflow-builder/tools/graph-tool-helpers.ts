@@ -17,7 +17,7 @@ import type { AgentToolResult } from '../../../../agent-framework/types'
  * else. `level` narrows per tool (view for reads, edit for mutations +
  * `run_node`, matching the tRPC ladder).
  */
-export function workflowToolPermission(level: 'view' | 'edit'): AgentToolPermission {
+export function workflowToolPermission(level: 'view' | 'edit' | 'admin'): AgentToolPermission {
   return {
     target: 'instance',
     keys: ['workflow'],
@@ -26,7 +26,13 @@ export function workflowToolPermission(level: 'view' | 'edit'): AgentToolPermiss
     note:
       'resolveWorkflowAuthoring — fail-closed on absent capabilities, PermissionKey.workflowsView ' +
       'area rung, org-scope check on the session workflow ref, ' +
-      `${level === 'view' ? 'canViewInstance (silent read filter)' : 'assertEditInstance'} ` +
+      `${
+        level === 'view'
+          ? 'canViewInstance (silent read filter)'
+          : level === 'edit'
+            ? 'assertEditInstance'
+            : 'assertAdminInstance'
+      } ` +
       'per workflow, and assertWorkflowAppNotSystemOwned. Proven behaviourally by ' +
       'workflow-builder/tools/__tests__/workflow-authoring-guard.test.ts.',
   }

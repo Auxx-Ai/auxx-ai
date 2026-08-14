@@ -29,6 +29,11 @@ export function createAddNodeTool(getDeps: GetToolDeps): AgentToolDefinition {
       properties: {
         type: { type: 'string', description: "Authorable node type (e.g. 'http', 'find')." },
         title: { type: 'string', description: 'Node title — unique, human-readable.' },
+        description: {
+          type: 'string',
+          description:
+            'One line explaining why this node exists, in the user’s terms. Shown under the node title on the canvas.',
+        },
         config: {
           type: 'object',
           description:
@@ -49,6 +54,8 @@ export function createAddNodeTool(getDeps: GetToolDeps): AgentToolDefinition {
       if (!write.ok) return { success: false, output: null, error: write.error }
       const type = typeof args.type === 'string' ? args.type : ''
       if (!type) return { success: false, output: null, error: 'type is required.' }
+      const config = optionalRecord(args.config)
+      const description = optionalString(args.description)
 
       const { db } = getDeps()
       // Lazy import — see get-workflow.ts.
@@ -57,7 +64,9 @@ export function createAddNodeTool(getDeps: GetToolDeps): AgentToolDefinition {
         ...write.scope,
         type,
         ...(optionalString(args.title) ? { title: optionalString(args.title) } : {}),
-        ...(optionalRecord(args.config) ? { config: optionalRecord(args.config) } : {}),
+        ...(config || description
+          ? { config: { ...config, ...(description ? { desc: description } : {}) } }
+          : {}),
         ...(optionalString(args.after) ? { after: optionalString(args.after) } : {}),
         ...(optionalString(args.branch) ? { branch: optionalString(args.branch) } : {}),
         ...(optionalString(args.inside) ? { inside: optionalString(args.inside) } : {}),

@@ -14,7 +14,7 @@
 export function buildWorkflowBuilderPromptSection(): string {
   return [
     // What the surface is + where edits go.
-    "You can read and edit the workflow open in this builder. All edits go to the DRAFT — publishing is the user's action, in the editor. After editing, say what you changed and that they can review and publish; never imply the workflow is live. This page is scoped to exactly ONE workflow (the one in the active references). If asked to build or edit a different workflow — or several — say honestly that you can only work on the open one and the user should open the other workflow's builder.",
+    "You can read and edit the workflow open in this builder. All edits go to the DRAFT — publishing is the user's action, in the editor. Use set_workflow_details to give a workflow you build a concise, user-facing name and description when you have Full access. After editing, say what you changed and that they can review and publish; never imply the workflow is live. This page is scoped to exactly ONE workflow (the one in the active references). If asked to build or edit a different workflow — or several — say honestly that you can only work on the open one and the user should open the other workflow's builder.",
 
     // Reference grammar.
     "Reference grammar: values flow between nodes as `{{Node Title.output}}` — e.g. `{{Find Contact.record.email}}`. Every mutation and `get_workflow`/`get_node` returns each node's resolved outputs; wire references ONLY from those. Never invent an output name, never guess a path, and never write a raw node id inside `{{…}}` — always the node's title exactly as the tools return it.",
@@ -34,13 +34,16 @@ export function buildWorkflowBuilderPromptSection(): string {
     // Positions.
     'Positions: do not send coordinates — layout is automatic and existing nodes never move. Only pass `position` if the user explicitly asks for a specific placement.',
 
+    // Canvas readability.
+    'Every node you add needs a concise `description` that explains why it exists in the user’s terms. This appears under the node title on the canvas.',
+
     // Verification + simulation.
     'Verifying: `validate_workflow` runs the real publish gate without publishing — use it after a batch of edits. `run_node` executes ONE node as a SIMULATED debug run (side-effecting nodes do not send email, call webhooks, etc.); you supply its input values — upstream nodes are not executed. Say clearly in your reply that the run was simulated.',
 
     // Worked examples.
     [
       'Worked examples:',
-      '  - add_node(type: "http", title: "Post To Webhook", after: "Check Priority", branch: "High", config: { url: "https://example.com/hook", method: "POST" })',
+      '  - add_node(type: "http", title: "Post To Webhook", description: "Notify the fulfillment system about high-priority orders", after: "Check Priority", branch: "High", config: { url: "https://example.com/hook", method: "POST" })',
       '  - update_node(ref: "Send Email", config: { subject: "Order {{Find Order.record.number}} update" })',
       '  - add_node(type: "crud", title: "Create Task", inside: "For Each Line Item", config: { … "{{For Each Line Item.item.name}}" … })',
       '  - connect_nodes(from: "Summarize Email", to: "Save Summary")',

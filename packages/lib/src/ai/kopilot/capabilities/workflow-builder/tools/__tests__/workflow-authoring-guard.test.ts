@@ -76,9 +76,45 @@ vi.mock('../../../../../../workflows/graph-edit/run-node', () => ({
   runNode: (...a: unknown[]) => runNodeMock(...a),
 }))
 
+const captureWorkflowTurnSnapshot = vi.fn(async () => true)
 vi.mock('../../../../../../workflows/graph-edit/turn-snapshot', () => ({
+  captureWorkflowTurnSnapshot,
   readWorkflowTurnSnapshot: vi.fn(async () => null),
   revertWorkflowTurn: vi.fn(async () => ok({ graphHash: 'h' })),
+}))
+
+const loadDraftContext = vi.fn(async () =>
+  ok({
+    workflowAppId: 'wfapp-1',
+    organizationId: 'org-1',
+    appName: 'My Flow',
+    appDescription: 'Original description',
+    draftRow: null,
+    graph: { nodes: [], edges: [] },
+    triggerType: 'manual',
+  })
+)
+vi.mock('../../../../../../workflows/graph-edit/read', () => ({
+  loadDraftContext,
+}))
+
+const updateWorkflowDetails = vi.fn(
+  async (_organizationId: string, _input: Record<string, unknown>) => ({
+    name: 'Renamed workflow',
+    description: 'New description',
+  })
+)
+vi.mock('../../../../../../workflows/workflow-service', () => ({
+  WorkflowService: class {
+    update(organizationId: string, input: Record<string, unknown>) {
+      return updateWorkflowDetails(organizationId, input)
+    }
+  },
+}))
+
+const publishDraftUpdatedSignal = vi.fn(async () => {})
+vi.mock('../../../../../../workflows/graph-edit/persist', () => ({
+  publishDraftUpdatedSignal,
 }))
 
 vi.mock('../../../../../../demo', () => ({
@@ -101,6 +137,7 @@ type CapsStub = {
   can: ReturnType<typeof vi.fn>
   canViewInstance: ReturnType<typeof vi.fn>
   assertEditInstance: ReturnType<typeof vi.fn>
+  assertAdminInstance: ReturnType<typeof vi.fn>
 }
 
 function makeCaps(): CapsStub {
@@ -108,6 +145,7 @@ function makeCaps(): CapsStub {
     can: vi.fn(() => true),
     canViewInstance: vi.fn(() => true),
     assertEditInstance: vi.fn(() => {}),
+    assertAdminInstance: vi.fn(() => {}),
   }
 }
 
@@ -162,6 +200,7 @@ const VALID_ARGS: Record<string, Record<string, unknown>> = {
   set_trigger: { triggerType: 'manual' },
   replace_graph: { nodes: [{ type: 'wait' }], edges: [] },
   apply_template: { templateId: 'file:x' },
+  set_workflow_details: { name: 'Renamed workflow' },
   run_node: { ref: 'Wait A Bit' },
 }
 
@@ -178,6 +217,7 @@ const MUTATION_TOOLS = [
   'set_trigger',
   'replace_graph',
   'apply_template',
+  'set_workflow_details',
 ] as const
 const VIEW_TOOLS = ['get_workflow', 'get_node', 'validate_workflow'] as const
 const GUARDED = [...VIEW_TOOLS, ...MUTATION_TOOLS, 'run_node'] as const
@@ -191,6 +231,10 @@ beforeEach(() => {
   opMock.mockClear()
   readDraftMock.mockClear()
   runNodeMock.mockClear()
+  captureWorkflowTurnSnapshot.mockClear()
+  loadDraftContext.mockClear()
+  updateWorkflowDetails.mockClear()
+  publishDraftUpdatedSignal.mockClear()
 })
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -280,6 +324,45 @@ describe('workflow.builder authorization enumeration', () => {
     })
     await expect(run(tool('add_node'), VALID_ARGS.add_node)).rejects.toThrow(ForbiddenError)
     expect(caps!.assertEditInstance).toHaveBeenCalledWith('workflow', WF)
+  })
+
+  it('workflow details require the admin instance rung', async () => {
+    caps!.assertAdminInstance.mockImplementation(() => {
+      throw new ForbiddenError('admin required')
+    })
+    await expect(
+      run(tool('set_workflow_details'), VALID_ARGS.set_workflow_details)
+    ).rejects.toThrow(ForbiddenError)
+    expect(caps!.assertAdminInstance).toHaveBeenCalledWith('workflow', WF)
+  })
+
+  it('updates workflow details with a turn snapshot and a draft refresh', async () => {
+    const result = await run(tool('set_workflow_details'), {
+      name: 'Renamed workflow',
+      description: 'New description',
+    })
+
+    expect(result).toMatchObject({
+      success: true,
+      output: { name: 'Renamed workflow', description: 'New description' },
+    })
+    expect(caps!.assertAdminInstance).toHaveBeenCalledWith('workflow', WF)
+    expect(captureWorkflowTurnSnapshot).toHaveBeenCalledWith(WF, 'turn-1', {
+      graph: { nodes: [], edges: [] },
+      triggerType: 'manual',
+      name: 'My Flow',
+      description: 'Original description',
+    })
+    expect(updateWorkflowDetails).toHaveBeenCalledWith(ORG, {
+      id: WF,
+      name: 'Renamed workflow',
+      description: 'New description',
+      preserveTurnSnapshot: true,
+    })
+    expect(publishDraftUpdatedSignal).toHaveBeenCalledWith(ORG, {
+      workflowAppId: WF,
+      reason: 'kopilot',
+    })
   })
 
   it('system-owned workflows stay blind on reads and forbidden on writes', async () => {

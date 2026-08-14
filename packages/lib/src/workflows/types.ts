@@ -62,7 +62,7 @@ export interface WorkflowCreateInput {
 export interface WorkflowUpdateInput {
   id: string
   name?: string
-  description?: string
+  description?: string | null
   enabled?: boolean
   triggerType?: WorkflowTriggerType | null
   entityDefinitionId?: string | null // NEW: replaces triggerConfig

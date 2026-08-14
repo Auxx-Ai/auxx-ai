@@ -60,6 +60,9 @@ export function cleanGraphForSave(graph: DraftGraph): DraftGraph {
 /** What a mutation hands the persist seam. */
 export interface PersistDraftInput {
   graph: DraftGraph
+  /** Optional WorkflowApp metadata to atomically restore with a failed AI turn. */
+  name?: string
+  description?: string | null
   /** CAS token from `loadDraftContext` — a concurrent save between load and write 409s. */
   expectedGraphHash?: string
   /**
@@ -117,6 +120,8 @@ export async function persistDraft(
       // mutation pipeline captured just before this persist. Manual canvas
       // saves (which don't go through this seam) DO clear it.
       preserveTurnSnapshot: true,
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.expectedGraphHash !== undefined
         ? { expectedGraphHash: input.expectedGraphHash }
         : {}),

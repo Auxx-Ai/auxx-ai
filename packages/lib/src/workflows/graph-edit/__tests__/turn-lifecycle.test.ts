@@ -110,6 +110,7 @@ function makeDb(graph: DraftGraph, triggerType: string | null = 'scheduled') {
   const app = {
     id: APP,
     name: 'My Flow',
+    description: 'Original description',
     organizationId: ORG,
     draftWorkflow: {
       id: 'wf_draft',
@@ -158,6 +159,8 @@ describe('turn snapshot capture', () => {
     const snapshot = await readWorkflowTurnSnapshot(APP, TURN_A)
     expect(snapshot).not.toBeNull()
     expect(snapshot?.turnId).toBe(TURN_A)
+    expect(snapshot?.name).toBe('My Flow')
+    expect(snapshot?.description).toBe('Original description')
     expect(snapshot?.triggerType).toBe('scheduled')
     // The snapshot is the graph BEFORE the mutation — one node, no wait.
     expect(snapshot?.graph.nodes.map((n) => n.id)).toEqual([TRIGGER_ID])
@@ -223,6 +226,8 @@ describe('revert / finalize lifecycle', () => {
     const written = input.graph as DraftGraph
     expect(written.nodes.map((n) => n.id)).toEqual([TRIGGER_ID])
     expect(written.edges).toEqual([])
+    expect(input.name).toBe('My Flow')
+    expect(input.description).toBe('Original description')
     // CAS token from the CURRENT draft — a write racing the revert 409s.
     expect(input.expectedGraphHash).toBe(hashWorkflowGraph(mutated))
 
