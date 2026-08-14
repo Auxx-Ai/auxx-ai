@@ -1,7 +1,6 @@
 // src/lib/providers/outlook/outlook-provider.ts // Adjusted path
 
 import { randomBytes } from 'node:crypto'
-import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { IntegrationProviderType } from '@auxx/database/enums'
 import type { EmailLabel as EmailLabelType, IntegrationEntity } from '@auxx/database/types'
@@ -13,7 +12,7 @@ import {
   PageIterator,
   type PageIteratorCallback,
 } from '@microsoft/microsoft-graph-client'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import {
   EmailLabel, // Still needed for MessageData structure
   type MessageData, // Use this structure for storing
@@ -80,6 +79,9 @@ function pickEchoedMessageId(
 const GRAPH_BATCH_LIMIT = 20
 const OUTLOOK_MAX_PAGE_SIZE = 999
 const IMMUTABLE_ID_PREFER = `odata.maxpagesize=${OUTLOOK_MAX_PAGE_SIZE}, IdType="ImmutableId"`
+/** Graph message subscriptions max out at 10,080 min (§2.1 of the plan); 6d20h keeps a 4h margin. */
+const OUTLOOK_SUBSCRIPTION_TTL_MS = (6 * 24 + 20) * 60 * 60 * 1000
+const OUTLOOK_SUBSCRIPTION_RESOURCE = "/me/mailFolders('inbox')/messages"
 // Interface for Graph API email address structure
 interface GraphEmailAddress {
   name?: string
@@ -227,6 +229,12 @@ export class OutlookProvider
       if (typeof alias === 'string') ownEmails.push(alias)
     }
     this.storageService.setOwnEmails(ownEmails)
+    // Received-time trigger cutoff (webhook-push-migration plan Phase 2.5): while the
+    // initial backfill is incomplete, ingest suppresses message:received for mail
+    // received before the connect epoch — regardless of which walker ingested it.
+    const cutoffRaw = (metadata as any)?.backfillCutoffAt
+    const backfillDone = (metadata as any)?.initialBackfillCompletedAt
+    this.storageService.setBackfillCutoff(cutoffRaw && !backfillDone ? new Date(cutoffRaw) : null)
     logger.info(`OutlookProvider initialized successfully for integration: ${integrationId}`)
   }
   /** Resets internal state */
@@ -524,132 +532,272 @@ export class OutlookProvider
       throw new Error(`Failed to send Outlook message: ${error.message}`)
     }
   }
-  /** Sets up webhooks (subscriptions) for Microsoft Graph notifications. */
+  /**
+   * Arms (creates or renews) the Microsoft Graph change-notification subscription that
+   * drives push delivery for this integration. Self-healing: a missing/expired stored
+   * subscription falls through to a fresh `POST`, a resource change forces a
+   * delete-then-recreate, and a `409` from an untracked-but-live subscription is
+   * resolved by adopting it (webhook-push-migration plan Phase 1).
+   */
   async setupWebhook(callbackUrl: string): Promise<void> {
     await this.ensureInitialized()
-    const webhookSecret =
-      (this.integration?.metadata as any)?.webhookSecret ||
-      configService.get<string>('OUTLOOK_WEBHOOK_SECRET') ||
-      randomBytes(20).toString('hex') // Use stored or fallback/generate secret
-    const subscriptionPayload = {
-      changeType: 'created,updated', // Notify on new and potentially updated messages
+    const metadata = (this.integration?.metadata as any) ?? {}
+    const outlookSubscription = metadata.outlookSubscription as
+      | { clientState?: string; resource?: string; expiresAt?: string }
+      | undefined
+    // Reuse the stored per-integration secret across renews; only mint a new one the
+    // first time this integration is ever armed. Never fall back to a shared/env secret.
+    const clientState =
+      outlookSubscription?.clientState ?? metadata.webhookSecret ?? randomBytes(20).toString('hex')
+    // `lifecycleNotificationUrl` cannot be added to an existing subscription by PATCH
+    // (§2.2 of the plan) — it must ride along on the initial POST.
+    const lifecycleNotificationUrl = `${callbackUrl}/lifecycle`
+    const targetExpiration = new Date(Date.now() + OUTLOOK_SUBSCRIPTION_TTL_MS).toISOString()
+    const createPayload = {
+      changeType: 'created,updated',
       notificationUrl: callbackUrl,
-      resource: "/me/mailFolders('inbox')/messages", // Watch inbox messages (adjust resource as needed)
-      expirationDateTime: new Date(
-        Date.now() + 3 * 24 * 60 * 60 * 1000 - 15 * 60 * 1000
-      ).toISOString(), // ~3 days minus buffer
-      clientState: webhookSecret, // Use a secret to verify callbacks
+      lifecycleNotificationUrl,
+      resource: OUTLOOK_SUBSCRIPTION_RESOURCE,
+      expirationDateTime: targetExpiration,
+      clientState,
     }
+
+    let storedId: string | undefined =
+      this.integration?.webhookRouteKey ?? metadata.graphSubscriptionId ?? undefined
+
     try {
-      logger.info('Attempting to create/update Microsoft Graph subscription...', {
-        integrationId: this.integrationId,
-        resource: subscriptionPayload.resource,
-      })
-      // Try to find existing subscription to update, otherwise create
-      const currentSubscriptionId = (this.integration?.metadata as any)?.graphSubscriptionId
       let response: any
-      if (currentSubscriptionId) {
-        logger.debug(`Attempting to update existing subscription ${currentSubscriptionId}`)
-        // Update requires only expirationDateTime usually
-        response = await this.client!.api(`/subscriptions/${currentSubscriptionId}`).patch({
-          expirationDateTime: subscriptionPayload.expirationDateTime,
-        })
-        logger.info(`Microsoft Graph subscription updated successfully.`, {
-          subscriptionId: response.id,
-        })
-      } else {
-        logger.debug(`Creating new subscription.`)
-        response = await this.client!.api('/subscriptions').post(subscriptionPayload)
-        logger.info('Microsoft Graph subscription created successfully.', {
-          subscriptionId: response.id,
-        })
-      }
-      // Store/update subscription ID and potentially the secret used in metadata
-      const storedMetadata = this.integration?.metadata as
-        | Record<string, unknown>
-        | null
-        | undefined
-      if (
-        this.integrationId &&
-        (storedMetadata?.graphSubscriptionId !== response.id ||
-          storedMetadata?.webhookSecret !== webhookSecret)
-      ) {
-        const updatedMetadata = {
-          ...(this.integration?.metadata || {}),
-          graphSubscriptionId: response.id,
-          webhookSecret: webhookSecret, // Store the secret used
+
+      if (storedId) {
+        const storedResource = outlookSubscription?.resource
+        const resourceMatches = !storedResource || storedResource === OUTLOOK_SUBSCRIPTION_RESOURCE
+        if (resourceMatches) {
+          try {
+            logger.debug('Renewing existing Microsoft Graph subscription', {
+              subscriptionId: storedId,
+              integrationId: this.integrationId,
+            })
+            response = await this.client!.api(`/subscriptions/${storedId}`).patch({
+              expirationDateTime: targetExpiration,
+            })
+          } catch (error: any) {
+            const status = error.statusCode || error.status
+            if (status === 404 || status === 410) {
+              logger.warn('Stored Microsoft Graph subscription is gone, recreating', {
+                subscriptionId: storedId,
+                status,
+                integrationId: this.integrationId,
+              })
+              storedId = undefined
+            } else {
+              throw error
+            }
+          }
+        } else {
+          // Watched resource changed since this subscription was armed — Graph has no
+          // PATCH for `resource`, so the old subscription must be deleted first.
+          logger.info('Watched resource changed, recreating Microsoft Graph subscription', {
+            subscriptionId: storedId,
+            previousResource: storedResource,
+            nextResource: OUTLOOK_SUBSCRIPTION_RESOURCE,
+            integrationId: this.integrationId,
+          })
+          await this.client!.api(`/subscriptions/${storedId}`)
+            .delete()
+            .catch((error: any) => {
+              const status = error.statusCode || error.status
+              if (status !== 404) throw error
+            })
+          storedId = undefined
         }
+      }
+
+      if (!response) {
+        try {
+          logger.debug('Creating Microsoft Graph subscription', {
+            integrationId: this.integrationId,
+          })
+          response = await this.client!.api('/subscriptions').post(createPayload)
+        } catch (error: any) {
+          const status = error.statusCode || error.status
+          if (status !== 409) throw error
+          // Our stored id was lost but a live subscription for this resource still
+          // exists Graph-side (§2.5) — find and adopt it instead of failing forever.
+          logger.warn('Microsoft Graph subscription already exists, attempting to adopt it', {
+            integrationId: this.integrationId,
+          })
+          const list = await this.client!.api('/subscriptions').get()
+          const existing = (list?.value ?? []).find(
+            (sub: any) =>
+              sub.resource === OUTLOOK_SUBSCRIPTION_RESOURCE && sub.notificationUrl === callbackUrl
+          )
+          if (existing?.clientState) {
+            const patched = await this.client!.api(`/subscriptions/${existing.id}`).patch({
+              expirationDateTime: targetExpiration,
+            })
+            response = { ...patched, id: existing.id, clientState: existing.clientState }
+          } else if (existing) {
+            // Graph sometimes omits `clientState` on the list response — without it we
+            // cannot verify future notifications, so recreate rather than adopt blind.
+            await this.client!.api(`/subscriptions/${existing.id}`)
+              .delete()
+              .catch((delError: any) => {
+                const delStatus = delError.statusCode || delError.status
+                if (delStatus !== 404) throw delError
+              })
+            response = await this.client!.api('/subscriptions').post(createPayload)
+          } else {
+            throw error
+          }
+        }
+      }
+
+      const resolvedClientState = response.clientState ?? clientState
+      const expiresAt = response.expirationDateTime ?? targetExpiration
+      const armedAt = new Date().toISOString()
+      const nextOutlookSubscription = {
+        expiresAt,
+        clientState: resolvedClientState,
+        resource: OUTLOOK_SUBSCRIPTION_RESOURCE,
+        armedAt,
+      }
+
+      if (this.integrationId) {
         await db
           .update(schema.Integration)
-          .set({ metadata: updatedMetadata as any })
+          .set({
+            webhookRouteKey: response.id,
+            // jsonb merge, not a whole-object replace — a push job holding stale
+            // in-memory metadata must not resurrect a cleared subscription or wipe a
+            // concurrent renewal's write (webhook-push-migration plan Phase 1.8).
+            metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb) || jsonb_build_object(
+              'outlookSubscription', jsonb_build_object(
+                'expiresAt', ${expiresAt}::text,
+                'clientState', ${resolvedClientState}::text,
+                'resource', ${OUTLOOK_SUBSCRIPTION_RESOURCE}::text,
+                'armedAt', ${armedAt}::text
+              ),
+              'graphSubscriptionId', ${response.id}::text,
+              'webhookSecret', ${resolvedClientState}::text,
+              'subscriptionExpiration', ${expiresAt}::text
+            )`,
+          })
           .where(eq(schema.Integration.id, this.integrationId))
-        // Update local cache
-        if (this.integration) this.integration.metadata = updatedMetadata as any
-        logger.debug('Updated subscription ID and secret in integration metadata.')
+
+        if (this.integration) {
+          this.integration.webhookRouteKey = response.id
+          this.integration.metadata = {
+            ...(this.integration.metadata as any),
+            outlookSubscription: nextOutlookSubscription,
+            graphSubscriptionId: response.id,
+            webhookSecret: resolvedClientState,
+            subscriptionExpiration: expiresAt,
+          } as any
+        }
       }
+
+      logger.info('Microsoft Graph subscription armed', {
+        subscriptionId: response.id,
+        expiresAt,
+        integrationId: this.integrationId,
+      })
     } catch (error: any) {
-      logger.error('Error creating/updating Microsoft Graph subscription:', {
+      logger.error('Failed to arm Microsoft Graph subscription', {
         error: error.message,
         statusCode: error.statusCode,
         body: error.body,
         integrationId: this.integrationId,
       })
+      if (this.integrationId) {
+        await db
+          .update(schema.Integration)
+          .set({
+            metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb) || jsonb_build_object(
+              'outlookSubscription',
+              COALESCE(${schema.Integration.metadata}->'outlookSubscription', '{}'::jsonb) || jsonb_build_object(
+                'lastError', ${error.message ?? String(error)}::text
+              )
+            )`,
+          })
+          .where(eq(schema.Integration.id, this.integrationId))
+          .catch((dbErr) => logger.error('Failed to stamp subscription lastError', { dbErr }))
+      }
       throw new Error(`Failed to set up Outlook webhook: ${error.message}`)
     }
   }
-  /** Removes Microsoft Graph webhooks (subscriptions). */
+  /** Removes the Microsoft Graph subscription (404-tolerant) and clears stored state. */
   async removeWebhook(): Promise<void> {
     await this.ensureInitialized()
-    const subscriptionId = (this.integration?.metadata as any)?.graphSubscriptionId
-    if (!subscriptionId) {
-      logger.warn('No stored Microsoft Graph subscription ID found to remove.', {
-        integrationId: this.integrationId,
-      })
-      return
-    }
-    try {
-      logger.info(`Attempting to delete Microsoft Graph subscription: ${subscriptionId}`, {
-        integrationId: this.integrationId,
-      })
-      await this.client!.api(`/subscriptions/${subscriptionId}`).delete()
-      logger.info('Microsoft Graph subscription deleted successfully.', { subscriptionId })
-      // Clear stored subscription ID from metadata
-      if (this.integrationId) {
-        const updatedMetadata = { ...(this.integration?.metadata || {}) }
-        delete (updatedMetadata as any).graphSubscriptionId // Remove the key
-        await db
-          .update(schema.Integration)
-          .set({ metadata: updatedMetadata as any })
-          .where(eq(schema.Integration.id, this.integrationId))
-        if (this.integration) this.integration.metadata = updatedMetadata as any // Update local cache
-        logger.debug('Cleared subscription ID from integration metadata.')
-      }
-    } catch (error: any) {
-      if (error.statusCode === 404) {
-        logger.warn('MS Graph subscription not found during deletion (already deleted/expired?).', {
-          subscriptionId,
+    const subscriptionId =
+      this.integration?.webhookRouteKey ?? (this.integration?.metadata as any)?.graphSubscriptionId
+
+    let deleteFailed = false
+    if (subscriptionId) {
+      try {
+        logger.info(`Deleting Microsoft Graph subscription: ${subscriptionId}`, {
+          integrationId: this.integrationId,
         })
-        // Clear stored ID anyway
-        if (this.integrationId) {
-          const updatedMetadata = { ...(this.integration?.metadata || {}) }
-          delete (updatedMetadata as any).graphSubscriptionId
-          await db
-            .update(schema.Integration)
-            .set({ metadata: updatedMetadata as any })
-            .where(eq(schema.Integration.id, this.integrationId))
-            .catch((dbErr) => logger.error('Failed to clear subscriptionId after 404', { dbErr }))
-          if (this.integration) this.integration.metadata = updatedMetadata as any
+        await this.client!.api(`/subscriptions/${subscriptionId}`).delete()
+        logger.info('Microsoft Graph subscription deleted successfully.', { subscriptionId })
+      } catch (error: any) {
+        const status = error.statusCode || error.status
+        if (status === 404) {
+          logger.warn('Microsoft Graph subscription already gone during deletion.', {
+            subscriptionId,
+          })
+        } else {
+          // Don't throw during cleanup — but leave the stored state intact, since the
+          // subscription may still be live and clearing it here would orphan it.
+          logger.error('Error deleting Microsoft Graph subscription', {
+            error: error.message,
+            statusCode: status,
+            body: error.body,
+            subscriptionId,
+          })
+          deleteFailed = true
         }
-      } else {
-        logger.error('Error deleting Microsoft Graph subscription:', {
-          error: error.message,
-          statusCode: error.statusCode,
-          body: error.body,
-          subscriptionId,
-        })
-        // Don't throw during cleanup? Optional.
-        // throw new Error(`Failed to remove Outlook webhook: ${error.message}`);
       }
+    } else {
+      logger.warn('No stored Microsoft Graph subscription found to remove.', {
+        integrationId: this.integrationId,
+      })
+    }
+
+    if (deleteFailed || !this.integrationId) return
+
+    await db
+      .update(schema.Integration)
+      .set({
+        webhookRouteKey: null,
+        metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb)
+          - 'outlookSubscription' - 'graphSubscriptionId' - 'webhookSecret' - 'subscriptionExpiration'`,
+      })
+      .where(eq(schema.Integration.id, this.integrationId))
+      .catch((dbErr) => logger.error('Failed to clear subscription state', { dbErr }))
+
+    if (this.integration) {
+      this.integration.webhookRouteKey = null
+      const clearedMetadata = { ...(this.integration.metadata as any) }
+      delete clearedMetadata.outlookSubscription
+      delete clearedMetadata.graphSubscriptionId
+      delete clearedMetadata.webhookSecret
+      delete clearedMetadata.subscriptionExpiration
+      this.integration.metadata = clearedMetadata as any
+    }
+  }
+  /** Checks the stored Graph subscription server-side. 'none' = nothing stored. */
+  async checkSubscription(): Promise<'active' | 'missing' | 'none'> {
+    await this.ensureInitialized()
+    const subscriptionId =
+      this.integration?.webhookRouteKey ?? (this.integration?.metadata as any)?.graphSubscriptionId
+    if (!subscriptionId) return 'none'
+    try {
+      await this.client!.api(`/subscriptions/${subscriptionId}`).get()
+      return 'active'
+    } catch (error: any) {
+      const status = error.statusCode || error.status
+      if (status === 404) return 'missing'
+      throw error
     }
   }
   /**
@@ -698,14 +846,32 @@ export class OutlookProvider
       } catch (error) {
         const parsed = parseGraphApiError(error)
         if (parsed.code === 'SYNC_CURSOR_ERROR') {
-          logger.warn('Delta link expired for syncMessages, resetting cursor', {
-            integrationId: this.integrationId,
-          })
-          const dateFilter = since ? `&$filter=receivedDateTime ge ${since.toISOString()}` : ''
-          url = `/me/mailFolders/inbox/messages/delta?$select=${selectFields}${dateFilter}`
-          // A resumed-sync cursor expiring degrades this attempt into a full
-          // re-fetch — now backfill-shaped regardless of the original branch.
-          this.storageService.setInitialSyncMode(true)
+          const wasResuming = Boolean(storedDeltaLink) && !since
+          if (wasResuming) {
+            // Resuming cursor expired server-side (webhook-push-migration plan
+            // Phase 1.7). A full unfiltered walk here would be both unbounded and —
+            // because it flips initial-sync mode — a silent `message:received`
+            // blackout for genuinely new mail arriving during recovery. Reset to a
+            // bounded 1h-back window instead and keep triggers live; ingest dedupe
+            // already prevents re-triggering mail we've already stored.
+            logger.warn('Delta link expired while resuming, resetting to a bounded window', {
+              integrationId: this.integrationId,
+            })
+            const resetSince = new Date(
+              (this.integration?.lastSyncedAt?.getTime() ?? Date.now()) - 60 * 60 * 1000
+            )
+            url = `/me/mailFolders/inbox/messages/delta?$select=${selectFields}&$filter=receivedDateTime ge ${resetSince.toISOString()}`
+            this.storageService.setInitialSyncMode(false)
+          } else {
+            logger.warn('Delta link expired for syncMessages, resetting cursor', {
+              integrationId: this.integrationId,
+            })
+            const dateFilter = since ? `&$filter=receivedDateTime ge ${since.toISOString()}` : ''
+            url = `/me/mailFolders/inbox/messages/delta?$select=${selectFields}${dateFilter}`
+            // A resumed-sync cursor expiring degrades this attempt into a full
+            // re-fetch — now backfill-shaped regardless of the original branch.
+            this.storageService.setInitialSyncMode(true)
+          }
           response = await this.client!.api(url)
             .version('beta')
             .headers({ Prefer: IMMUTABLE_ID_PREFER })
@@ -760,16 +926,20 @@ export class OutlookProvider
       const effectiveDeltaLink = hasRetriableFailures ? storedDeltaLink : newDeltaLink
 
       if (effectiveDeltaLink && this.integrationId) {
-        const updatedMetadata = {
-          ...(this.integration?.metadata || {}),
-          graphDeltaLink: effectiveDeltaLink,
-        }
         await db
           .update(schema.Integration)
-          .set({ metadata: updatedMetadata as any, lastSyncedAt: new Date() })
+          .set({
+            metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb) || jsonb_build_object(
+              'graphDeltaLink', ${effectiveDeltaLink}::text
+            )`,
+            lastSyncedAt: new Date(),
+          })
           .where(eq(schema.Integration.id, this.integrationId))
         if (this.integration) {
-          this.integration.metadata = updatedMetadata as any
+          this.integration.metadata = {
+            ...(this.integration.metadata as any),
+            graphDeltaLink: effectiveDeltaLink,
+          } as any
           this.integration.lastSyncedAt = new Date()
         }
       } else if (this.integrationId) {
@@ -1595,8 +1765,11 @@ export class OutlookProvider
   async importMessages(externalIds: string[]): Promise<{ imported: number; failed: number }> {
     await this.ensureInitialized()
 
-    // On-demand import (not a backfill) — the `message:received` workflow
-    // trigger should fire for these. Explicit reset in case a prior
+    // The two-phase polling backfill routes through this exact method (written
+    // unaware of that — hence this comment's old "not a backfill" framing).
+    // Historical-mail trigger suppression is handled by the received-time cutoff
+    // set in initialize() (webhook-push-migration plan Phase 2.5), not by this
+    // flag, so it always stays false here. Explicit reset in case a prior
     // `syncMessages` call on this provider instance left the shared
     // `storageService`'s flag set (its own `finally` already resets it, but
     // this stays correct even if that invariant changes later).

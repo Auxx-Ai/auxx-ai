@@ -37,6 +37,15 @@ export interface IngestContext {
   integrationSettings?: IntegrationSettings
   isInitialSync: boolean
   /**
+   * Received-time trigger cutoff for a first-connect backfill (webhook-push-migration
+   * plan Phase 2.5). When set, `message:received` publishing is suppressed for
+   * messages with `receivedAt` before this instant — regardless of which sync walker
+   * ingested them. Providers set it (via MessageStorageService.setBackfillCutoff)
+   * only while `metadata.backfillCutoffAt` is stamped and
+   * `metadata.initialBackfillCompletedAt` is not. Null = no suppression.
+   */
+  backfillCutoffAt: Date | null
+  /**
    * Normalized email addresses that count as "us" for the active integration —
    * the union of `Integration.email` and `Integration.metadata.userEmails`.
    * Providers populate this on their `MessageStorageService` before dispatching
@@ -77,6 +86,7 @@ export interface CreateIngestContextOptions {
   ownEmails?: Iterable<string>
   selectiveCache?: SelectiveModeCache
   socketId?: string
+  backfillCutoffAt?: Date | null
 }
 
 /**
@@ -102,6 +112,7 @@ export async function createIngestContext(
     selectiveCache: opts.selectiveCache ?? new SelectiveModeCache(),
     integrationSettings: opts.integrationSettings,
     isInitialSync: opts.isInitialSync ?? false,
+    backfillCutoffAt: opts.backfillCutoffAt ?? null,
     ownEmails: normalizeOwnEmails(opts.ownEmails),
     socketId: opts.socketId,
     inSyncBatch: false,

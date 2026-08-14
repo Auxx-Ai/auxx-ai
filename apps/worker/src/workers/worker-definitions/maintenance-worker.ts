@@ -29,6 +29,7 @@ import {
   type OrgSeedJobData,
   oauth2TokenRefreshScannerJob,
   orphanedAppBundleCleanupJob,
+  outlookSubscriptionHealthJob,
   quotaResetJob,
   reconcileRecordIdentitiesJob,
   recordUsageEventJob,
@@ -163,6 +164,10 @@ export const jobMappings = {
   // these channels now rides the unified oauth2TokenRefreshScannerJob integration pass.
   webhookRenewalScannerJob,
   webhookRenewalJob,
+
+  // Outlook Graph subscription health sweep (hourly): re-arms dead/expired subscriptions
+  // and delta-resyncs after a silently-missed notification gap.
+  outlookSubscriptionHealthJob,
 
   // App bundle cleanup
   orphanedAppBundleCleanupJob,

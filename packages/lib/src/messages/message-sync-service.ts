@@ -53,11 +53,17 @@ export class MessageSyncService {
 
       // Stamp lastSyncedAt + clear the failure counter in metadata. The classified reauth
       // signal lives on the linked credential now (Phase 6), cleared right after.
+      //
+      // Also stamp lastSuccessfulSync: the channels UI prefers it over lastSyncedAt, and
+      // historically only the polling importer wrote it. Under push, this write is now the
+      // only thing keeping "Last synced" from freezing at the last poll on a channel that has
+      // moved to webhook mode (outlook webhook-push-migration plan, Phase 3.8).
       const now = new Date()
       await db
         .update(schema.Integration)
         .set({
           lastSyncedAt: now,
+          lastSuccessfulSync: now,
           metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb) || jsonb_build_object(
             'auth',
             COALESCE(${schema.Integration.metadata}->'auth', '{}'::jsonb) || jsonb_build_object(

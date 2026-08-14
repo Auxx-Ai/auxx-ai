@@ -68,6 +68,7 @@ export class MessageStorageService {
   private readonly ctxByOrg = new Map<string, Promise<IngestContext>>()
   private integrationSettings?: IntegrationSettings
   private isInitialSync = false
+  private backfillCutoffAt: Date | null = null
   private ownEmails: Set<string> = new Set()
   private readonly defaultOrganizationId?: string
 
@@ -89,6 +90,24 @@ export class MessageStorageService {
     for (const ctxPromise of this.ctxByOrg.values()) {
       ctxPromise.then((ctx) => {
         ctx.isInitialSync = enabled
+      })
+    }
+  }
+
+  /**
+   * Set (or clear) the received-time backfill cutoff (webhook-push-migration plan
+   * Phase 2.5). Providers call this after `initialize()`, once per resolved
+   * `Integration.metadata`: pass the stamped `backfillCutoffAt` while
+   * `initialBackfillCompletedAt` is still unset, or `null` once the backfill has
+   * completed (or no cutoff was ever stamped). While set, `message:received`
+   * publishing is suppressed for messages received before the cutoff regardless
+   * of which sync walker ingested them.
+   */
+  setBackfillCutoff(cutoff: Date | null): void {
+    this.backfillCutoffAt = cutoff
+    for (const ctxPromise of this.ctxByOrg.values()) {
+      ctxPromise.then((ctx) => {
+        ctx.backfillCutoffAt = cutoff
       })
     }
   }
@@ -260,6 +279,7 @@ export class MessageStorageService {
     const promise = createIngestContext(orgId, {
       integrationSettings: this.integrationSettings,
       isInitialSync: this.isInitialSync,
+      backfillCutoffAt: this.backfillCutoffAt,
       ownEmails: this.ownEmails,
     })
     this.ctxByOrg.set(orgId, promise)

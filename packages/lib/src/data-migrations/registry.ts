@@ -44,6 +44,7 @@ import { migration076MailCategoryRework } from './migrations/076-mail-category-r
 import { migration077BackfillUnsentThreadDates } from './migrations/077-backfill-unsent-thread-dates'
 import { migration078TicketTypeUpdatable } from './migrations/078-ticket-type-updatable'
 import { migration079EnrichmentFieldsBackendOwned } from './migrations/079-enrichment-fields-backend-owned'
+import { migration080OutlookWebhookCutover } from './migrations/080-outlook-webhook-cutover'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -114,6 +115,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration077BackfillUnsentThreadDates,
     migration078TicketTypeUpdatable,
     migration079EnrichmentFieldsBackendOwned,
+    migration080OutlookWebhookCutover,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

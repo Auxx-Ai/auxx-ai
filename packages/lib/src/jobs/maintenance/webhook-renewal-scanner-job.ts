@@ -26,14 +26,17 @@ interface ScannerStats {
 /** Integration metadata structure for type safety */
 interface ChannelMetadata {
   watchExpiration?: number | string
+  /** Legacy flat key — read as a fallback for one release (webhook-push-migration Phase 1.2). */
   subscriptionExpiration?: number | string
+  outlookSubscription?: { expiresAt?: string }
   [key: string]: unknown
 }
 
 // Renew Gmail watch 1 day before expiration (watch lasts 7 days)
 const GMAIL_WATCH_RENEWAL_BUFFER_MS = 24 * 60 * 60 * 1000
 
-// Renew Outlook subscription 1 day before expiration (subscription lasts ~3 days)
+// Renew Outlook subscription 1 day before expiration. Outlook message subscriptions
+// last just under 7 days (10,080 min); we arm for 6d20h (§2.1 of the plan).
 const OUTLOOK_SUBSCRIPTION_RENEWAL_BUFFER_MS = 24 * 60 * 60 * 1000
 
 // Supported OAuth providers
@@ -208,7 +211,9 @@ function checkWebhookRenewalNeeded(
   }
 
   if (provider === 'outlook') {
-    const subscriptionExpiration = metadata.subscriptionExpiration
+    // New shape first, legacy flat key as a fallback for one release.
+    const subscriptionExpiration =
+      metadata.outlookSubscription?.expiresAt ?? metadata.subscriptionExpiration
     if (!subscriptionExpiration) return true // No subscription = needs setup
 
     const expirationTime = new Date(

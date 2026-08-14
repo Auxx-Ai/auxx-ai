@@ -2,7 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import {
   acknowledgeImportBatch,
   claimImportBatch,
@@ -25,6 +25,34 @@ const logger = createScopedLogger('job:messages-import')
 const MAX_THROTTLE_BACKOFF_MS = 3_600_000
 /** Base backoff for sync throttle: 30 seconds */
 const BASE_THROTTLE_BACKOFF_MS = 30_000
+
+/**
+ * Stamp `metadata.initialBackfillCompletedAt` the first time the import cache
+ * drains to IDLE after connect (webhook-push-migration plan Phase 2.5). This
+ * closes the backfill-cutoff suppression window opened by
+ * `metadata.backfillCutoffAt` at connect time — once stamped, historical mail
+ * no longer suppresses `message:received` (see `store-message.ts`).
+ *
+ * Guarded to a no-op unless the row has a cutoff stamp and no completion stamp
+ * yet, so ordinary polling cycles (every later IDLE transition) never rewrite
+ * it. Provider-agnostic on purpose — only rows a provider has actually stamped
+ * `backfillCutoffAt` on (currently just Outlook) ever match.
+ */
+async function stampInitialBackfillCompleted(integrationId: string, now: Date): Promise<void> {
+  await db
+    .update(schema.Integration)
+    .set({
+      metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb) || jsonb_build_object('initialBackfillCompletedAt', ${now.toISOString()}::text)`,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(schema.Integration.id, integrationId),
+        sql`jsonb_exists(COALESCE(${schema.Integration.metadata}, '{}'::jsonb), 'backfillCutoffAt')`,
+        sql`NOT jsonb_exists(COALESCE(${schema.Integration.metadata}, '{}'::jsonb), 'initialBackfillCompletedAt')`
+      )
+    )
+}
 
 export interface MessagesImportJobData {
   integrationId: string
@@ -79,6 +107,7 @@ export const messagesImportJob = async (ctx: JobContext<MessagesImportJobData>) 
           updatedAt: now,
         })
         .where(eq(schema.Integration.id, integrationId))
+      await stampInitialBackfillCompleted(integrationId, now)
 
       logger.info('No IDs remaining in import cache, transitioning to IDLE', { integrationId })
       return
@@ -138,6 +167,7 @@ export const messagesImportJob = async (ctx: JobContext<MessagesImportJobData>) 
           updatedAt: now,
         })
         .where(eq(schema.Integration.id, integrationId))
+      await stampInitialBackfillCompleted(integrationId, now)
 
       logger.info('All IDs imported, transitioning to IDLE', { integrationId })
     }

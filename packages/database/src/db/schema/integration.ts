@@ -50,6 +50,13 @@ export const Integration = pgTable(
     throttleFailureCount: integer().default(0).notNull(),
     throttleRetryAfter: timestamp({ precision: 3 }),
     syncMode: text().default('auto').notNull(), // 'webhook' | 'polling' | 'auto'
+    /**
+     * Provider-owned inbound webhook routing key — the value the provider's inbound
+     * door uses to resolve a notification to its channel (Outlook: Graph subscription
+     * id; written on arm/renew/adopt, cleared by removeWebhook/revoke). Unique per
+     * provider among live rows so two channels can never silently claim the same key.
+     */
+    webhookRouteKey: text(),
     pollingIntervalMs: integer().default(300000), // 5 min default, per-integration configurable
     isExample: boolean('is_example').notNull().default(false),
     metadata: jsonb(),
@@ -74,6 +81,9 @@ export const Integration = pgTable(
     ),
     index('Integration_credentialId_idx').using('btree', table.credentialId.asc().nullsLast()),
     index('Integration_syncStatus_idx').using('btree', table.syncStatus.asc().nullsLast()),
+    uniqueIndex('Integration_provider_webhookRouteKey_key')
+      .using('btree', table.provider.asc().nullsLast(), table.webhookRouteKey.asc().nullsLast())
+      .where(sql`${table.webhookRouteKey} IS NOT NULL AND ${table.deletedAt} IS NULL`),
   ]
 )
 

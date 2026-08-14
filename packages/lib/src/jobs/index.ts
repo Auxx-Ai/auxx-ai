@@ -192,6 +192,11 @@ export {
   type OrgSeedScenario,
   orgSeedJob,
 } from './maintenance/org-seed-job'
+// Outlook Graph subscription health sweep (webhook-push-migration plan §3.2/Phase 4.3-4.4)
+export {
+  type OutlookSubscriptionHealthJobData,
+  outlookSubscriptionHealthJob,
+} from './maintenance/outlook-subscription-health-job'
 export { type QuotaResetStats, quotaResetJob } from './maintenance/quota-reset-job'
 export {
   type ReconcileRecordIdentitiesStats,
@@ -234,6 +239,12 @@ export {
   type MonitorMessageSyncJobData,
   monitorMessageSyncJob,
 } from './messages/monitor-message-sync-job'
+export {
+  enqueueOutlookPushSync,
+  OUTLOOK_PUSH_DEBOUNCE_WINDOW_MS,
+  type OutlookPushSyncJobData,
+  outlookPushSyncJob,
+} from './messages/outlook-push-sync-job'
 export {
   MONITOR_INITIAL_DELAY_MS,
   type StartMessageSyncJobData,

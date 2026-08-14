@@ -42,12 +42,49 @@ export interface OutlookClientContext {
 }
 
 export class OutlookOAuthService {
-  /** Revokes access (clears encrypted tokens and disables). */
+  /**
+   * Revokes access: removes the Graph subscription first, then clears encrypted tokens and
+   * disables the integration.
+   *
+   * Order matters (mirrors `GoogleOAuthService.revokeAccess`'s
+   * `disablePushNotifications`-first shape): once tokens are gone and `webhookRouteKey` /
+   * `metadata` are wiped, removing the subscription is no longer possible — the provider can't
+   * authenticate to Graph and there is no id left to delete. Left un-removed, it silently
+   * orphans and only self-heals when it expires (≤7 days). Removal is best-effort — a Graph
+   * outage or an already-gone subscription must never block a disconnect.
+   */
   public static async revokeAccess(integrationId: string): Promise<boolean> {
     try {
       logger.warn('Attempting to revoke Outlook access (clearing tokens & disabling)', {
         integrationId,
       })
+
+      const [row] = await db
+        .select({
+          id: schema.Integration.id,
+          organizationId: schema.Integration.organizationId,
+          enabled: schema.Integration.enabled,
+        })
+        .from(schema.Integration)
+        .where(eq(schema.Integration.id, integrationId))
+        .limit(1)
+
+      if (row) {
+        try {
+          // Dynamic: a static import would cycle (ProviderRegistryService imports
+          // OutlookProvider, which imports this file).
+          const { ProviderRegistryService } = await import('../provider-registry-service')
+          const provider = await new ProviderRegistryService(row.organizationId).getProvider(
+            integrationId
+          )
+          await provider.removeWebhook() // 404-tolerant internally
+        } catch (error) {
+          logger.warn(
+            'Could not remove Graph subscription during revoke — it will expire on its own (≤7 days)',
+            { integrationId, error: error instanceof Error ? error.message : String(error) }
+          )
+        }
+      }
 
       await deleteChannelTokens(integrationId)
 
@@ -56,6 +93,9 @@ export class OutlookOAuthService {
         .set({
           enabled: false,
           metadata: null,
+          // `metadata: null` no longer implicitly clears the subscription id now that it
+          // lives in this column (§3.4) — null it explicitly.
+          webhookRouteKey: null,
           updatedAt: new Date(),
         })
         .where(eq(schema.Integration.id, integrationId))

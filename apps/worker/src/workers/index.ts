@@ -904,6 +904,24 @@ export async function setupSchedules() {
     }
   )
 
+  // Outlook subscription health sweep — the backstop that replaces running polling in
+  // parallel with push (plan §3.2/Phase 4.3): re-arms dead/expired Graph subscriptions and
+  // delta-resyncs channels a stale-but-live check finds silently missing.
+  await maintenanceQueue.upsertJobScheduler(
+    'outlookSubscriptionHealthJob',
+    { pattern: '0 * * * *' }, // Hourly
+    {
+      data: { dryRun: false },
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 8,
+        removeOnComplete: { count: 24 },
+        removeOnFail: { count: 50 },
+      },
+    }
+  )
+
   // AI Provider quota reset job
 
   // Every day at 1 AM UTC - Reset expired quota periods

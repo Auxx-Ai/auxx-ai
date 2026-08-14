@@ -1,5 +1,6 @@
 import {
   monitorMessageSyncJob,
+  outlookPushSyncJob,
   startMessageSyncJob,
   syncSingleChannelMessagesJob,
   threadProviderStatusSyncJob,
@@ -15,6 +16,7 @@ const messageSyncJobMappings = {
   syncSingleIntegrationMessagesJob: syncSingleChannelMessagesJob,
   monitorMessageSyncJob,
   threadProviderStatusSyncJob,
+  outlookPushSyncJob,
 }
 
 /**
