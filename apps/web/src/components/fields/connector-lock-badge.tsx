@@ -16,6 +16,12 @@ interface ConnectorLockBadgeProps {
    * overwritten on the next sync.
    */
   mode: 'owned' | 'contributing'
+  /**
+   * The field is multi-value (`options.multi`): the connector owns only its own
+   * row, so the contributing copy softens to "Some values synced by <connector>"
+   * (the badge stays cell-grained in v1 — no per-chip badges).
+   */
+  multi?: boolean
   className?: string
 }
 
@@ -30,7 +36,12 @@ interface ConnectorLockBadgeProps {
  * The connector name resolves from the org-scoped connector list (deduped).
  * Renders a generic label until the name loads / if it can't be resolved.
  */
-export function ConnectorLockBadge({ connectorId, mode, className }: ConnectorLockBadgeProps) {
+export function ConnectorLockBadge({
+  connectorId,
+  mode,
+  multi,
+  className,
+}: ConnectorLockBadgeProps) {
   const name = useConnectorName(connectorId)
   const who = name ?? 'a data connector'
 
@@ -38,7 +49,9 @@ export function ConnectorLockBadge({ connectorId, mode, className }: ConnectorLo
   const content =
     mode === 'owned'
       ? `Managed by ${who}`
-      : `Synced by ${who} — may be overwritten on the next sync`
+      : multi
+        ? `Some values synced by ${who} — other values are kept`
+        : `Synced by ${who} — may be overwritten on the next sync`
 
   return (
     <Tooltip content={content} side='top'>

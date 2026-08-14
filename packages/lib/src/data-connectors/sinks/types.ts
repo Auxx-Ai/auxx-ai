@@ -80,6 +80,16 @@ export interface SyncCtx {
    * Promise so concurrent records share it), never per record.
    */
   driftByMapping?: Map<string, Promise<Set<string>>>
+  /**
+   * In-slice two-source dedupe (B1, locked): `mappingId::instanceId` → the
+   * externalId of the FIRST source record that bound the instance this slice.
+   * `managedByConnectorId` alone cannot tell two bindings of the same connector
+   * apart, so two upstream records matching two aliases of one contact would
+   * flip-flop the connector-owned row every run. Later source records resolving
+   * to an already-claimed instance still upsert their `DataConnectorItem`
+   * binding, but log + skip their field writes.
+   */
+  sliceWriteWinners?: Map<string, string>
 }
 
 /** The entity sink contract (04 §1b). */

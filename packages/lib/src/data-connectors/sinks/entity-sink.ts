@@ -16,6 +16,7 @@ import { stableHash } from '@auxx/utils/hash'
 import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../../agents/bindings/resolve'
 import { getCachedFieldMap } from '../../cache'
+import { UniqueValueConflictError } from '../../errors'
 import { upsertRecordIdentity } from '../../identity'
 import type { ManifestFieldChange } from '../../record-rules/sync-manifest-types'
 import { toRecordId } from '../../resources/resource-id'
@@ -32,6 +33,12 @@ import {
   upsertItem,
 } from '../service'
 import type { FieldMergeStrategy } from '../types'
+import {
+  executeRowLevelWrites,
+  planRowLevelWrites,
+  type RowLevelField,
+  type RowLevelWrite,
+} from './row-level-writes'
 import type { EntitySink, ProjectedRecord, SyncCtx } from './types'
 
 const logger = createScopedLogger('data-connector-entity-sink')
@@ -59,6 +66,40 @@ function rawOf(v: TypedFieldValue | TypedFieldValue[] | undefined): unknown {
 
 function isBlank(value: unknown): boolean {
   return value === undefined || value === null || value === ''
+}
+
+/**
+ * Remove the write-set entry carrying a unique-value conflict (B1 per-value
+ * tolerance). Prefers the error's `fieldId` when it names a write-set key, else
+ * scans values (case-insensitively — the hook lowercases before checking). For
+ * an array value only the offending element is removed. Returns the touched key,
+ * or null when nothing matched (the caller then fails the record as before).
+ */
+function dropConflictingKey(
+  writeSet: Record<string, unknown>,
+  error: UniqueValueConflictError
+): string | null {
+  const conflict = String(error.conflictingValue).trim().toLowerCase()
+  const matchesConflict = (v: unknown) => String(v).trim().toLowerCase() === conflict
+
+  if (error.fieldId && error.fieldId in writeSet) {
+    delete writeSet[error.fieldId]
+    return error.fieldId
+  }
+  for (const [key, value] of Object.entries(writeSet)) {
+    if (Array.isArray(value)) {
+      const remaining = value.filter((v) => !matchesConflict(v))
+      if (remaining.length === value.length) continue
+      if (remaining.length === 0) delete writeSet[key]
+      else writeSet[key] = remaining
+      return key
+    }
+    if (matchesConflict(value)) {
+      delete writeSet[key]
+      return key
+    }
+  }
+  return null
 }
 
 /**
@@ -139,15 +180,37 @@ async function resolveFieldRefs(
  * bindings → identityCandidates); each candidate's `targetFieldRef` is resolved
  * to a concrete field id via `refToConcrete`, then keyed by `fieldId` so
  * `lookupByField` matches connector-provisioned fields (systemAttribute null).
+ *
+ * Array-shaped candidate values are DROPPED with a warning (never stringified —
+ * `'a@x,b@x'` can only miss and mint a duplicate). If every configured candidate
+ * was dropped that way, `failed: true` tells the caller to FAIL the record
+ * instead of falling through to create: a visible failure beats a silent
+ * duplicate. `matched` echoes `lookupByField`'s `matchedBy` — which candidate
+ * (field + normalized value) hit — so the write path knows the matched row IS
+ * the incoming value (the match-by-alias natural no-op, B1).
  */
 async function resolveIdentity(
   ctx: SyncCtx,
   mapping: DecodedMapping,
   record: ProjectedRecord,
   refToConcrete: Map<string, ResourceFieldId>
-): Promise<{ instanceId: string | null }> {
+): Promise<{
+  instanceId: string | null
+  matched?: { fieldId?: FieldId; value: unknown }
+  failed?: boolean
+}> {
+  let droppedArrayCandidate = false
   const candidates = record.identityCandidates
     .map((c) => {
+      if (Array.isArray(c.value)) {
+        droppedArrayCandidate = true
+        logger.warn('array-shaped identity match candidate — dropped, never stringified', {
+          mappingId: mapping.row.id,
+          externalId: record.externalId,
+          targetFieldRef: c.targetFieldRef,
+        })
+        return null
+      }
       if (isBlank(c.value)) return null
       const concrete = refToConcrete.get(c.targetFieldRef)
       if (!concrete) return null
@@ -155,7 +218,13 @@ async function resolveIdentity(
     })
     .filter((c): c is { fieldId: FieldId; value: string } => c !== null)
 
-  if (candidates.length === 0) return { instanceId: null } // external-id only → create
+  if (candidates.length === 0) {
+    // All configured match keys degraded to unusable array values → FAIL the
+    // record rather than create a duplicate. External-id-only records (no match
+    // keys at all) keep falling through to create.
+    if (droppedArrayCandidate) return { instanceId: null, failed: true }
+    return { instanceId: null } // external-id only → create
+  }
 
   const { items } = await ctx.crud.lookupByField({
     entityDefinitionId: mapping.entityDefinitionId,
@@ -171,24 +240,32 @@ async function resolveIdentity(
     })
   }
   // recordId is `entityDefId:instanceId`.
-  const recordId = items[0]!.recordId
-  const instanceId = recordId.split(':').slice(1).join(':')
-  return { instanceId }
+  const match = items[0]!
+  const instanceId = match.recordId.split(':').slice(1).join(':')
+  return { instanceId, matched: { fieldId: match.matchedBy.fieldId, value: match.matchedBy.value } }
 }
 
 /**
  * Build the write set from a projected record, applying each field's merge
  * strategy against the current target value. Contributing mode narrows to the
  * mapping's managed (mapped) fields; owned mode writes everything mapped.
+ *
+ * Multi-value (`options.multi`) target fields on an EXISTING instance are
+ * diverted out of the whole-field write set into `rowWrites` — the row-level
+ * own-row-upsert path (B1; see `row-level-writes.ts`). A whole-field `set`
+ * would wipe every row's connector marker and regenerate all sortKeys. On a
+ * CREATE they stay in the write set (a fresh instance has no rows to protect).
  */
 async function buildWriteSet(
   ctx: SyncCtx,
   mapping: DecodedMapping,
   record: ProjectedRecord,
   existingInstanceId: string | null,
-  refToConcrete: Map<string, ResourceFieldId>
+  refToConcrete: Map<string, ResourceFieldId>,
+  matched?: { fieldId?: FieldId; value: unknown }
 ): Promise<{
   writeSet: Record<string, unknown>
+  rowWrites: RowLevelWrite[]
   managedFields: string[]
   identityFieldKeys: string[]
 }> {
@@ -221,6 +298,23 @@ async function buildWriteSet(
   const strategyFor = (key: string): FieldMergeStrategy =>
     identityRefs.has(key) ? 'fill_blank' : (mergeByKey.get(key) ?? 'overwrite')
 
+  // Multi-value fields diverted to the row-level path (existing instances only).
+  const rowWrites: RowLevelWrite[] = []
+
+  // Field metadata: multi-detection + the fill_blank key-space fix. Write-set
+  // keys may be systemAttributes while `getFieldValues` / `FieldValue.fieldId`
+  // key by the CustomField uuid — resolve through the shared write-key map, or a
+  // missed lookup silently turns `fill_blank` into `overwrite`.
+  let keyToId: Map<string, string> | null = null
+  let fieldMap: Map<string, RowLevelField> | null = null
+  if (managedFields.length > 0) {
+    keyToId = await buildWriteKeyToFieldId(ctx.orgId, mapping.entityDefinitionId)
+    fieldMap = (await getCachedFieldMap(ctx.orgId, mapping.entityDefinitionId)) as unknown as Map<
+      string,
+      RowLevelField
+    >
+  }
+
   // Read current values once (only needed for fill_blank / connector_owned_only).
   const needsCurrent = managedFields.some((k) => {
     const strat = strategyFor(k)
@@ -241,6 +335,47 @@ async function buildWriteSet(
     const fieldId = getFieldId(concrete)
     if (identityRefs.has(rawRef)) identityFieldKeys.push(fieldId)
 
+    const fieldUuid = keyToId?.get(fieldId)
+    const fieldRow = fieldUuid ? fieldMap?.get(fieldUuid) : undefined
+    const isMulti =
+      !identityRefs.has(rawRef) &&
+      (fieldRow?.options as { multi?: boolean } | null | undefined)?.multi === true
+
+    if (isMulti && strategy !== 'manual_review') {
+      // Never write null/empty over a multi field: a source key present-but-null
+      // must not clear the row list (B1). Arrays can't be sourced — belt-and-braces
+      // for the map-record guard.
+      if (isBlank(value)) continue
+      if (Array.isArray(value)) {
+        logger.warn('array-shaped value reached a multi field — skipped', {
+          mappingId: mapping.row.id,
+          externalId: record.externalId,
+          field: rawRef,
+        })
+        continue
+      }
+      if (!existingInstanceId) {
+        // Fresh instance: no rows to protect — plain write (becomes the one row).
+        writeSet[fieldId] = value
+        continue
+      }
+      // Row-level own-row upsert for overwrite / connector_owned_only / fill_blank.
+      // Row-marker ownership subsumes the per-field managedFields check.
+      const candidate = record.identityCandidates.find((c) => c.targetFieldRef === rawRef)
+      const knownPresent =
+        matched?.fieldId === fieldId &&
+        normalizeMatch(value, candidate?.normalize) === String(matched.value)
+      rowWrites.push({
+        writeKey: fieldId,
+        fieldUuid: fieldUuid!,
+        field: fieldRow as RowLevelField,
+        value,
+        strategy,
+        knownPresent,
+      })
+      continue
+    }
+
     if (strategy === 'overwrite') {
       writeSet[fieldId] = value
       continue
@@ -253,7 +388,7 @@ async function buildWriteSet(
       continue
     }
     if (strategy === 'fill_blank') {
-      const cur = current ? rawOf(current.get(fieldId)) : undefined
+      const cur = current ? rawOf(current.get(fieldUuid ?? fieldId)) : undefined
       if (isBlank(cur)) writeSet[fieldId] = value
       continue
     }
@@ -267,7 +402,7 @@ async function buildWriteSet(
     }
   }
 
-  return { writeSet, managedFields, identityFieldKeys }
+  return { writeSet, rowWrites, managedFields, identityFieldKeys }
 }
 
 /**
@@ -281,6 +416,12 @@ async function buildWriteSet(
  * systemAttribute). `FieldValue.fieldId` is always the CustomField uuid, so we
  * resolve systemAttribute keys back to their uuid via the cached field map before
  * the batched UPDATE. One UPDATE per upserted contributing record (cold path).
+ *
+ * ROW-ACCURACY: the UPDATE is keyed on `(org, entity, fieldId)` — every row of
+ * the field. That is exact for scalar fields (one row) and for multi fields on a
+ * CREATE (every row on a fresh instance is the connector's). Multi fields on an
+ * UPDATE never reach here: they divert to the row-level path, which stamps only
+ * the specific row it wrote (`row-level-writes.ts`).
  */
 async function stampContributingProvenance(
   ctx: SyncCtx,
@@ -411,12 +552,23 @@ async function computeDriftedInstances(
   // (refs may be the late-bound `@app:` form; system fields key by systemAttribute).
   const connectionId = ctx.connector.credentialId ?? undefined
   const keyToId = await buildWriteKeyToFieldId(ctx.orgId, mapping.entityDefinitionId)
+  const fieldMap = await getCachedFieldMap(ctx.orgId, mapping.entityDefinitionId)
   const fieldIds = new Set<string>()
   for (const ref of overwriteRefs) {
     const concrete = await resolveConnectorFieldRef(ref, ctx.orgId, connectionId)
     if (!concrete) continue
     const uuid = keyToId.get(getFieldId(concrete))
-    if (uuid) fieldIds.add(uuid)
+    if (!uuid) continue
+    // Multi-value (`options.multi`) fields are ROW-SCOPED out of drift detection:
+    // under row-level semantics, unmarked/foreign rows are legitimate (user
+    // aliases, other connectors' rows), so a null-or-foreign marker no longer
+    // signals a hand-edit. Without this, a single user alias makes every bound
+    // record permanently "drifted" and the content-hash skip never fires again.
+    // A user edit of the connector's own row is respected (never re-asserted)
+    // until the SOURCE value changes — consistent with never-touch-other-rows.
+    const field = fieldMap.get(uuid)
+    if ((field?.options as { multi?: boolean } | null | undefined)?.multi === true) continue
+    fieldIds.add(uuid)
   }
   if (fieldIds.size === 0) return new Set()
 
@@ -580,9 +732,38 @@ export const entitySink: EntitySink = {
       )
       instanceId = shared?.entityInstanceId ?? null
     }
+    let matched: { fieldId?: FieldId; value: unknown } | undefined
     if (!instanceId) {
       const resolved = await resolveIdentity(ctx, mapping, record, refToConcrete)
+      if (resolved.failed) {
+        // Every configured match candidate was array-shaped — fail the record
+        // VISIBLY instead of falling through to create a silent duplicate.
+        ctx.counters.failed += 1
+        if (ctx.counters.errorSample.length < 50) {
+          ctx.counters.errorSample.push({
+            externalId: record.externalId,
+            error: 'identity match candidates were array-shaped — record failed, not created',
+            tier: 'invalid',
+          })
+        }
+        return
+      }
       instanceId = resolved.instanceId
+      matched = resolved.matched
+    }
+
+    // 1c. In-slice two-source dedupe (B1, locked): the FIRST source record that
+    //     binds an instance this slice wins its field writes; a later one still
+    //     upserts its DataConnectorItem binding but logs + skips the field writes
+    //     (`managedByConnectorId` cannot tell two bindings of one connector apart,
+    //     so both writing would flip-flop the connector-owned row every run).
+    let lostSliceDedupe = false
+    if (instanceId) {
+      const winners = (ctx.sliceWriteWinners ??= new Map())
+      const winnerKey = `${mapping.row.id}::${instanceId}`
+      const winner = winners.get(winnerKey)
+      if (winner === undefined) winners.set(winnerKey, record.externalId)
+      else if (winner !== record.externalId) lostSliceDedupe = true
     }
 
     // 2. Content hash — skip unchanged + already bound, UNLESS an overwrite cell
@@ -622,14 +803,58 @@ export const entitySink: EntitySink = {
       }
     }
 
-    // 3. Build the write set with per-field merge strategy.
-    const { writeSet, managedFields, identityFieldKeys } = await buildWriteSet(
+    // 2b. Slice-dedupe loser: keep the binding current, skip all field writes.
+    if (lostSliceDedupe && instanceId) {
+      logger.warn(
+        'two source records resolved to one instance in this slice — field writes skipped (first wins)',
+        {
+          mappingId: mapping.row.id,
+          externalId: record.externalId,
+          instanceId,
+          winnerExternalId: ctx.sliceWriteWinners?.get(`${mapping.row.id}::${instanceId}`),
+        }
+      )
+      ctx.counters.skipped += 1
+      await upsertItem(ctx.db, {
+        dataConnectorId: ctx.connector.id,
+        organizationId: ctx.orgId,
+        mappingId: mapping.row.id,
+        externalId: record.externalId,
+        entityDefinitionId: mapping.entityDefinitionId,
+        entityInstanceId: instanceId,
+        contentHash,
+        managedFields: bound?.managedFields ?? [],
+        pendingRelations: mergePending(
+          bound?.pendingRelations ?? [],
+          record.pendingRelations,
+          new Set(bound?.linkedRelations ?? [])
+        ),
+        upstreamUpdatedAt: record.upstreamUpdatedAt ?? null,
+        lastSeenRunId: ctx.runId,
+        mintedInstance: false,
+      })
+      return
+    }
+
+    // 3. Build the write set with per-field merge strategy. Multi fields on an
+    //    existing instance divert to `rowWrites` (row-level own-row upserts).
+    const { writeSet, rowWrites, managedFields, identityFieldKeys } = await buildWriteSet(
       ctx,
       mapping,
       record,
       instanceId,
-      refToConcrete
+      refToConcrete,
+      matched
     )
+
+    // 3b. Plan the row-level writes BEFORE capture/write: the plan's projected
+    //     arrays feed the manifest capture (record rules must see the resulting
+    //     LIST as `n`, not the scalar source value), and its reads must be
+    //     pre-write anyway.
+    const rowPlan =
+      instanceId && rowWrites.length > 0
+        ? await planRowLevelWrites(ctx, mapping.entityDefinitionId, instanceId, rowWrites)
+        : { actions: [], captureSet: {} }
 
     // 4. Write — owned uses the bypass handler; contributing uses the standard
     //    handler and leaves the row pair alone. `justCreated` marks a minted
@@ -639,81 +864,129 @@ export const entitySink: EntitySink = {
     //    (replaces the retired `EntityInstance.integrationSource` stamp).
     const handler = mapping.targetMode === 'owned' ? ctx.ownedCrud : ctx.crud
     let justCreated = false
-    try {
-      if (instanceId) {
-        const recordId = toRecordId(mapping.entityDefinitionId, instanceId)
-        // B2: read pre-write old values for subscribed fields BEFORE the write.
-        //
-        // KNOWN NON-ATOMICITY (F10): capture-read → write → recordChange are three
-        // unlocked steps. A concurrent interactive edit (or sibling stream slice) on
-        // the same subscribed field in that window can yield a manifest transition
-        // that never happened as written. Tolerated: it needs same-field overlap
-        // during an in-flight sync AND an old-value-conditioned rule; fixing it means
-        // pushing capture inside the write's transaction (or RETURNING the prior
-        // value from the write itself).
-        //
-        // KNOWN N+1 (F9): one pre-read per updated record that writes a subscribed
-        // field. Records stream one at a time and the instanceId only exists after
-        // per-record identity resolution, so there is no slice-level id list to batch
-        // against — and the content-hash skip above means only genuinely changed
-        // records pay it.
-        const captured = ctx.manifest?.enabled
-          ? await captureSubscribedChanges(ctx, mapping.entityDefinitionId, instanceId, writeSet)
-          : null
-        await handler.update(recordId, writeSet, undefined, {
-          skipEvents: true,
-        })
-        ctx.counters.updated += 1
-        if (captured) ctx.manifest.recordChange(recordId, captured)
-      } else {
-        const created = await handler.create(mapping.entityDefinitionId, writeSet, {
-          skipEvents: true,
-        })
-        instanceId = created.instance.id
-        justCreated = true
-        ctx.counters.created += 1
-        // B2: lifecycle-created + `set`-transition capture for synced creates.
-        if (ctx.manifest?.enabled) {
+    // Per-value uniqueness tolerance (B1): a `UniqueValueConflictError` thrown from
+    // inside the write (A1's pre-hooks / unique-field validation) fails ONE value,
+    // not the record — drop the conflicting key from the write set and retry, so
+    // the sync stays green instead of the whole record retrying forever.
+    const maxConflictDrops = Object.keys(writeSet).length
+    for (let conflictDrops = 0; ; ) {
+      try {
+        if (instanceId) {
           const recordId = toRecordId(mapping.entityDefinitionId, instanceId)
-          const subs = ctx.manifest.subscriptionsFor(mapping.entityDefinitionId)
-          if (subs) {
-            if (subs.lifecycle.created) {
-              // Thread the raw created values so native entity-trigger lifecycle handlers
-              // (e.g. enrichCompanyOnCreate) can read them on the sync door without a DB
-              // refetch (Phase 9 / Option A). No DB read — writeSet is already in hand.
-              const createdValues = await buildCreatedValues(
+          // B2: read pre-write old values for subscribed fields BEFORE the write.
+          // Row-level fields contribute their PROJECTED resulting array (not the
+          // scalar source value) so `{o, n}` describes the post-write list.
+          //
+          // KNOWN NON-ATOMICITY (F10): capture-read → write → recordChange are three
+          // unlocked steps. A concurrent interactive edit (or sibling stream slice) on
+          // the same subscribed field in that window can yield a manifest transition
+          // that never happened as written. Tolerated: it needs same-field overlap
+          // during an in-flight sync AND an old-value-conditioned rule; fixing it means
+          // pushing capture inside the write's transaction (or RETURNING the prior
+          // value from the write itself).
+          //
+          // KNOWN N+1 (F9): one pre-read per updated record that writes a subscribed
+          // field. Records stream one at a time and the instanceId only exists after
+          // per-record identity resolution, so there is no slice-level id list to batch
+          // against — and the content-hash skip above means only genuinely changed
+          // records pay it.
+          const captured = ctx.manifest?.enabled
+            ? await captureSubscribedChanges(ctx, mapping.entityDefinitionId, instanceId, {
+                ...writeSet,
+                ...rowPlan.captureSet,
+              })
+            : null
+          // Shallow copy per attempt: a conflict retry mutates `writeSet`.
+          await handler.update(recordId, { ...writeSet }, undefined, {
+            skipEvents: true,
+          })
+          ctx.counters.updated += 1
+          if (captured) ctx.manifest.recordChange(recordId, captured)
+        } else {
+          const created = await handler.create(
+            mapping.entityDefinitionId,
+            { ...writeSet },
+            { skipEvents: true }
+          )
+          instanceId = created.instance.id
+          justCreated = true
+          ctx.counters.created += 1
+          // Claim the fresh instance for this slice's two-source dedupe so a later
+          // source record matching it (e.g. by alias) defers its field writes.
+          ;(ctx.sliceWriteWinners ??= new Map()).set(
+            `${mapping.row.id}::${instanceId}`,
+            record.externalId
+          )
+          // B2: lifecycle-created + `set`-transition capture for synced creates.
+          if (ctx.manifest?.enabled) {
+            const recordId = toRecordId(mapping.entityDefinitionId, instanceId)
+            const subs = ctx.manifest.subscriptionsFor(mapping.entityDefinitionId)
+            if (subs) {
+              if (subs.lifecycle.created) {
+                // Thread the raw created values so native entity-trigger lifecycle handlers
+                // (e.g. enrichCompanyOnCreate) can read them on the sync door without a DB
+                // refetch (Phase 9 / Option A). No DB read — writeSet is already in hand.
+                const createdValues = await buildCreatedValues(
+                  ctx,
+                  mapping.entityDefinitionId,
+                  writeSet
+                )
+                ctx.manifest.recordCreated(recordId, createdValues ?? undefined)
+              }
+              const entries = await buildCreateChangeEntries(
                 ctx,
                 mapping.entityDefinitionId,
-                writeSet
+                writeSet,
+                subs.fieldIds
               )
-              ctx.manifest.recordCreated(recordId, createdValues ?? undefined)
+              if (entries) ctx.manifest.recordChange(recordId, entries)
             }
-            const entries = await buildCreateChangeEntries(
-              ctx,
-              mapping.entityDefinitionId,
-              writeSet,
-              subs.fieldIds
-            )
-            if (entries) ctx.manifest.recordChange(recordId, entries)
           }
         }
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      ctx.counters.failed += 1
-      if (ctx.counters.errorSample.length < 50) {
-        ctx.counters.errorSample.push({
+        break
+      } catch (error) {
+        if (error instanceof UniqueValueConflictError && conflictDrops < maxConflictDrops) {
+          const droppedKey = dropConflictingKey(writeSet, error)
+          if (droppedKey) {
+            conflictDrops += 1
+            logger.warn('unique-value conflict — value dropped, record still syncs', {
+              mappingId: mapping.row.id,
+              externalId: record.externalId,
+              field: droppedKey,
+              conflictingValue: error.conflictingValue,
+            })
+            continue
+          }
+        }
+        const message = error instanceof Error ? error.message : String(error)
+        ctx.counters.failed += 1
+        if (ctx.counters.errorSample.length < 50) {
+          ctx.counters.errorSample.push({
+            externalId: record.externalId,
+            error: message,
+            tier: 'rejected', // the entity write itself failed
+          })
+        }
+        logger.warn('upsertRecord failed', {
+          mappingId: mapping.row.id,
           externalId: record.externalId,
           error: message,
-          tier: 'rejected', // the entity write itself failed
         })
+        return
       }
-      logger.warn('upsertRecord failed', {
-        mappingId: mapping.row.id,
-        externalId: record.externalId,
-        error: message,
-      })
-      return
+    }
+
+    // 4a. Execute the planned row-level writes (multi fields): in-place own-row
+    //     updates + end-appends, each stamping only its own row. Per-value
+    //     failures are logged inside — they never fail the record.
+    if (instanceId && rowPlan.actions.length > 0) {
+      await executeRowLevelWrites(
+        ctx,
+        mapping.entityDefinitionId,
+        handler,
+        instanceId,
+        rowPlan.actions
+      )
     }
 
     // 4b. Contributing mode — stamp per-cell provenance on the written values so

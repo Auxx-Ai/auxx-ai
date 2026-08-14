@@ -7,12 +7,18 @@
 // linkMode (upsert writes / reference registers a pending relation on the parent)
 // and wires embedded relationships as pending relations on the parent's item.
 
+import { createScopedLogger } from '@auxx/logger'
 import { evaluateCalcExpression } from '@auxx/utils/calc-expression'
 import type { ConnectorRecord } from './connectors/types'
 import type { DecodedMapping } from './service'
 import type { ProjectedRecord } from './sinks/types'
 import type { FieldMapping } from './types'
 import { parseUpstreamUpdatedAt } from './watermark'
+
+const logger = createScopedLogger('data-connector-map-record')
+
+/** `mappingId:targetFieldRef` pairs already warned about an array-shaped source. */
+const warnedArraySources = new Set<string>()
 
 /** One mapping's projection result for a single source record. */
 export interface MappedWrite {
@@ -109,17 +115,62 @@ function evaluateFieldValue(fm: FieldMapping, subtree: unknown): unknown {
 }
 
 /**
+ * Whether any of a binding's resolved SOURCE values is array-shaped (a provider
+ * `emails[]` field mapped onto a scalar binding). Connectors cannot source arrays
+ * (B1): `extractValue` inside the CALC evaluator flattens them to `null`, which the
+ * write path would treat as "clear the field" — so an array-shaped source must
+ * become a NO-WRITE, never a destructive null. Mirrors `evaluateFieldValue`'s own
+ * placeholder resolution, including the degenerate whole-subtree `{source}` case.
+ */
+function hasArrayShapedSource(fm: FieldMapping, subtree: unknown): boolean {
+  const subtreeObj =
+    subtree && typeof subtree === 'object' ? (subtree as Record<string, unknown>) : null
+  const sourceFields = Object.entries(fm.sourceFields ?? {})
+  for (const [, sourcePath] of sourceFields) {
+    const v =
+      subtreeObj && !sourcePath.includes('.') && !sourcePath.includes('[')
+        ? subtreeObj[sourcePath]
+        : getByPath(subtree, sourcePath)
+    if (Array.isArray(v)) return true
+  }
+  return sourceFields.length === 0 && fm.expression.trim() === '{source}' && Array.isArray(subtree)
+}
+
+/**
  * Evaluate one mapping's CALC field expressions against a subtree, keyed by each
- * binding's `targetFieldRef`. Unassigned drafts (no target) are skipped.
+ * binding's `targetFieldRef`. Unassigned drafts (no target) are skipped. An
+ * array-shaped source value (or an array-shaped evaluation result) drops the key
+ * entirely — no write — with one warning per (mapping, field): multi-value
+ * SOURCING is out of scope, and the alternative is `null` clearing the target.
  */
 function evaluateFields(mapping: DecodedMapping, subtree: unknown): Record<string, unknown> {
+  const warnArraySkip = (targetFieldRef: string) => {
+    const warnKey = `${mapping.row.id}:${targetFieldRef}`
+    if (warnedArraySources.has(warnKey)) return
+    warnedArraySources.add(warnKey)
+    logger.warn('array-shaped source value on a scalar mapping — field skipped, not written', {
+      mappingId: mapping.row.id,
+      targetFieldRef,
+    })
+  }
+
   const out: Record<string, unknown> = {}
   for (const fm of mapping.fieldMappings) {
     if (fm.targetFieldRef == null) continue // unassigned draft — projected nowhere
     // connectionMetaKey bindings read connection metadata, not the source subtree —
     // the sink injects their value before the write set is built (entity-sink.ts).
     if (fm.connectionMetaKey != null) continue
-    out[fm.targetFieldRef] = evaluateFieldValue(fm, subtree)
+    if (hasArrayShapedSource(fm, subtree)) {
+      warnArraySkip(fm.targetFieldRef)
+      continue
+    }
+    const value = evaluateFieldValue(fm, subtree)
+    if (Array.isArray(value)) {
+      // Belt-and-braces: a CALC result that still comes back array-shaped.
+      warnArraySkip(fm.targetFieldRef)
+      continue
+    }
+    out[fm.targetFieldRef] = value
   }
   return out
 }

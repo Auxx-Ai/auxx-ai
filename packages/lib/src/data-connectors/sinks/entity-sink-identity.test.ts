@@ -215,18 +215,19 @@ describe('entitySink identity write-ownership rule', () => {
   it('does not stamp contributing provenance on the identity field', async () => {
     // A mapping whose only written field is identity-flagged means
     // stampContributingProvenance's stampable-key list is empty — it returns
-    // before ever calling buildWriteKeyToFieldId (no false "synced by
-    // connector" badge over a value that may be chat-verified).
+    // before ever touching the DB (no false "synced by connector" badge over a
+    // value that may be chat-verified). The stamp is the only `db.update` in
+    // this flow, so a spied db proves it never fires.
     findItem.mockResolvedValue(null)
     create.mockResolvedValue({ instance: { id: 'inst1' } })
     const ctx = makeCtx()
+    const dbUpdate = vi.fn()
+    ctx.db = { update: dbUpdate } as never
 
     await entitySink.upsertRecord(ctx, mapping(), record())
 
-    // buildWriteKeyToFieldId is called once by mirrorIdentityWrites's sibling
-    // resolution path is getCachedFieldMap, not this — so any call here would
-    // only come from stampContributingProvenance, which must not fire.
-    expect(buildWriteKeyToFieldId).not.toHaveBeenCalled()
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(dbUpdate).not.toHaveBeenCalled()
   })
 
   it('excludes the identity ref from drift detection (drift-exempt)', async () => {
