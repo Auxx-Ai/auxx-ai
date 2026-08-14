@@ -3,6 +3,7 @@
 
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { cn } from '@auxx/ui/lib/utils'
 import { useEffect, useState } from 'react'
 import { useUser } from '~/hooks/use-user'
 import { useRequireCapability } from '~/providers/capabilities-provider'
@@ -57,9 +58,21 @@ export function PlanComparison({
 
   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY')
 
+  const dehydratedSubscription = useDehydratedSubscription()
+
   // Shopify is monthly-only (per-seat is billed as usage, which can't ride an annual cycle).
   // Default a missing capability to `true` (Stripe/unknown → annual offered). See plan 15.
-  const annualBillingCycle = useDehydratedSubscription()?.capabilities.annualBillingCycle ?? true
+  const annualBillingCycle = dehydratedSubscription?.capabilities.annualBillingCycle ?? true
+
+  // Shopify App Store rules 1.2.1 / 1.2.3 forbid advertising a plan that can't be billed
+  // through Shopify or that tells the merchant to contact support, so the Enterprise
+  // ("Custom" / "Contact Sales") card must not render on a Shopify-billed org. Fall back to
+  // the *provider* rather than to `true` — a cache blob written before `customPricingPlans`
+  // existed would otherwise fail open and keep showing the card. No subscription row at all
+  // → `undefined !== 'shopify'` → true → Stripe default. See plan v3/04.
+  const customPricingPlans =
+    dehydratedSubscription?.capabilities.customPricingPlans ??
+    dehydratedSubscription?.billingProvider !== 'shopify'
 
   const [initialCycleSet, setInitialCycleSet] = useState(false) // Flag to set default only once
 
@@ -96,18 +109,28 @@ export function PlanComparison({
     }
   }, [subscription, subscriptionLoading, initialCycleSet, annualBillingCycle]) // Dependencies
 
-  // Filter out internal plans (e.g. Demo), then separate free and paid.
+  // Filter out internal plans (e.g. Demo) and — on providers that can't bill them —
+  // custom-priced plans, then separate free and paid. A custom-priced plan is still shown
+  // when it IS the current plan, so an org parked on Enterprise by an admin billing
+  // override doesn't lose its own card.
   // `Plan.features` is a jsonb column, so it arrives as `unknown` — narrow it
   // here rather than trusting the shape all the way down into the cards.
   const availablePlans: Plan[] =
     plans
       ?.filter((plan) => plan.hierarchyLevel >= 0)
+      .filter(
+        (plan) => customPricingPlans || !plan.isCustomPricing || plan.id === subscription?.planId
+      )
       .map((plan) => ({
         ...plan,
         features: Array.isArray(plan.features) ? (plan.features as string[]) : [],
       })) ?? []
   const paidPlans = availablePlans.filter((plan) => !plan.isFree)
   const freePlan = availablePlans.find((plan) => plan.isFree)
+
+  // Track the rendered card count — with Enterprise filtered out, two cards in a
+  // three-column track sit left-stranded. Static class strings so Tailwind can see them.
+  const paidGridCols = paidPlans.length >= 3 ? 'md:grid-cols-2 lg:grid-cols-3' : 'md:grid-cols-2'
 
   return (
     <div className={inDialog ? '' : 'p-6'}>
@@ -140,7 +163,7 @@ export function PlanComparison({
       ) : (
         <>
           {/* Paid Plans Grid */}
-          <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 pt-6'>
+          <div className={cn('grid grid-cols-1 gap-4 pt-6', paidGridCols)}>
             {paidPlans.map((plan) => (
               <PlanCard
                 key={plan.id}

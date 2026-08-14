@@ -40,6 +40,7 @@ export class ShopifyBillingProvider implements BillingProvider {
     prorationPreview: false, // Shopify prorates but does not preview
     arbitraryBillingCycles: false, // Monthly only — per-seat is billed as usage, which can't ride an annual cycle (plan 14 §6 Q3)
     annualBillingCycle: false, // Usage charges must be tied to a monthly cycle; annual is Stripe-only
+    customPricingPlans: false, // App Store 1.2.1/1.2.3 — no off-platform or "Contact Sales" plans (plan v3/04)
     trialWithoutPaymentMethod: true, // Per-plan trial in Partner Dashboard
     immediateCancellation: false, // Cancellations land at end of cycle
     scheduledDowngrade: true, // Downgrade-to-free is a scheduled cancel

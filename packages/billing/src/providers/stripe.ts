@@ -29,6 +29,7 @@ export class StripeBillingProvider implements BillingProvider {
     prorationPreview: true,
     arbitraryBillingCycles: true,
     annualBillingCycle: true,
+    customPricingPlans: true,
     trialWithoutPaymentMethod: true,
     immediateCancellation: true,
     scheduledDowngrade: true,
