@@ -32,12 +32,25 @@ export function workflowToolPermission(level: 'view' | 'edit'): AgentToolPermiss
   }
 }
 
-// NOTE: every tool in this capability writes `toolsetSlug: 'workflow.builder'`
-// and `surfaces: ['builder']` as LITERALS (not a shared spread) on purpose —
-// the `tool-slug-coverage` anti-drift test is a static text scan over each
-// factory's `return {` window and cannot see through a spread. Builder-only:
-// graph editing has no meaning on chat/email, and a runtime AI node must never
-// inherit these tools.
+// NOTE: no tool in this capability carries a `toolsetSlug`, and that is
+// deliberate — they are mounted by PAGE CONTEXT (`page: 'workflow.builder'`),
+// exactly like the agents-builder and records-view tools, and are listed in
+// `tool-slug-coverage`'s `ALWAYS_ON_TOOLS` allowlist.
+//
+// They DID carry `toolsetSlug: 'workflow.builder'` until it was found to
+// disable the whole capability: master Kopilot's toolsets come from the
+// `kopilot.toolsets` org setting, whose default is the glob `auxx:*` — which
+// cannot match a slug outside the `auxx:` namespace — and orgs that have
+// customised the list hold explicit slugs that predate the toolset entirely.
+// `filterToolsByToolsets` drops any tool whose toolset isn't enabled, so all 15
+// were stripped after registration: the builder prompt section rendered, and
+// not one tool existed. An org-toolset grant was meaningless here anyway —
+// these tools only exist on a page no user-authored agent can ever run on.
+//
+// `surfaces: ['builder']` stays a LITERAL in each factory (not a shared
+// spread): the anti-drift scan reads each factory's `return {` window as text
+// and cannot see through a spread. Builder-only because graph editing has no
+// meaning on chat/email, and a runtime AI node must never inherit these tools.
 
 /** A node summary for the model: everything but canvas coordinates. */
 export type ProjectedNode = Omit<NodeSummary, 'position'>

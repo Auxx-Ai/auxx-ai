@@ -1,7 +1,7 @@
 // packages/services/src/ai-agent-sessions/session-queries.ts
 
 import { database, schema } from '@auxx/database'
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type {
@@ -26,6 +26,7 @@ export async function createSession(input: CreateSessionInput) {
     domainState,
     agentId,
     agentTriggerId,
+    workflowAppId,
     triggerContext,
   } = input
 
@@ -40,6 +41,7 @@ export async function createSession(input: CreateSessionInput) {
         modelId: modelId ?? null,
         agentId: agentId ?? null,
         agentTriggerId: agentTriggerId ?? null,
+        workflowAppId: workflowAppId ?? null,
         triggerContext: triggerContext ?? null,
         messages: messages ?? [],
         domainState: domainState ?? {},
@@ -93,7 +95,7 @@ export async function getSessionById(params: { sessionId: string; organizationId
  * Find sessions by type for a user (most recent first)
  */
 export async function findSessionsByType(input: ListSessionsInput) {
-  const { organizationId, userId, type, agentId, limit = 50, cursor } = input
+  const { organizationId, userId, type, agentId, workflowAppId, limit = 50, cursor } = input
   const take = limit + 1
 
   const conditions = [
@@ -104,6 +106,15 @@ export async function findSessionsByType(input: ListSessionsInput) {
 
   if (agentId) {
     conditions.push(eq(schema.AiAgentSession.agentId, agentId))
+  }
+
+  // Three-state on purpose — an explicit `null` is how the global session
+  // picker excludes workflow-builder threads, and `undefined` must stay a
+  // no-op so every pre-existing caller keeps its behavior.
+  if (workflowAppId === null) {
+    conditions.push(isNull(schema.AiAgentSession.workflowAppId))
+  } else if (workflowAppId) {
+    conditions.push(eq(schema.AiAgentSession.workflowAppId, workflowAppId))
   }
 
   if (cursor) {

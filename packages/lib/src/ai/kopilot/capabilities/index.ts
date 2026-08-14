@@ -29,5 +29,4 @@ export {
 export {
   createWorkflowBuilderCapabilities,
   WORKFLOW_BUILDER_PAGE,
-  WORKFLOW_BUILDER_TOOLSET_SLUG,
 } from './workflow-builder'

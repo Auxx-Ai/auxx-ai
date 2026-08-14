@@ -70,6 +70,7 @@ export function useWorkflowShortcuts() {
   const popOverlay = usePanelStore((state) => state.popOverlay)
   const setRunPanelTab = usePanelStore((state) => state.setRunPanelTab)
   const settingsPanelOpen = usePanelStore(selectIsOverlayOpen('settings'))
+  const kopilotPanelOpen = usePanelStore(selectIsOverlayOpen('kopilot'))
   const toggleHistoryPopover = usePanelStore((state) => state.toggleHistoryPopover)
   const toggleVariableEditor = usePanelStore((state) => state.toggleVariableEditor)
   const toggleHelpOverlay = usePanelStore((state) => state.toggleHelpOverlay)
@@ -251,6 +252,16 @@ export function useWorkflowShortcuts() {
   useHotkey('T', () => {
     openOverlay('run')
     setRunPanelTab('input')
+  })
+
+  // Build with Kopilot: B — bare `K` is taken by the breadcrumb's workflow
+  // switcher (`EntityNavButtons` binds K/J to prev/next with
+  // `conflictBehavior: 'allow'`, so a second K binding would fire both).
+  // No plan gate here: this hook stays free of provider dependencies, and the
+  // frame itself refuses to mount a chat without `FeatureKey.kopilot`.
+  useHotkey('B', () => {
+    if (kopilotPanelOpen) popOverlay()
+    else openOverlay('kopilot')
   })
 
   // Run History: H

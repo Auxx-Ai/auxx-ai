@@ -166,6 +166,12 @@ vi.mock('@auxx/lib/ai/kopilot', () => ({
   createRecordViewCapabilities: vi.fn(),
   createSuggestRepliesGlobalCapability: vi.fn(),
   createTaskCapabilities: vi.fn(),
+  createWorkflowBuilderCapabilities: vi.fn(),
+  // Session creation asks these two whether the turn came from the workflow
+  // builder (and therefore which workflow to tag the row with). None of these
+  // tests do, so the page never matches and no ref is found.
+  WORKFLOW_BUILDER_PAGE: 'workflow.builder',
+  findRef: vi.fn(() => undefined),
   generateSessionTitle: vi.fn(async () => null),
   LAST_CONTEXT_KEY: '_lastContext',
   LAST_PAGE_KEY: '_lastPage',

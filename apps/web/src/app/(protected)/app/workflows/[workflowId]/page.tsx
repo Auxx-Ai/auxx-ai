@@ -17,12 +17,11 @@ import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { use, useState } from 'react'
 import { DockedPanelTarget, DockPortalProvider } from '~/components/global/dock-portal-provider'
 import { Tooltip } from '~/components/global/tooltip'
-import { KopilotContext } from '~/components/kopilot/context/kopilot-context'
+import { useEmbeddedKopilotSurface } from '~/components/kopilot/hooks/use-embedded-kopilot-surface'
 import { WorkflowEditor } from '~/components/workflow'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { useWorkflowAccess } from '~/components/workflow/hooks/use-workflow-access'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
-import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import { WorkflowBreadcrumbSwitcher } from '~/components/workflow/ui/workflow-breadcrumb-switcher'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { api } from '~/trpc/react'
@@ -43,6 +42,13 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
 
   const [editDialogOpen, setEditDialogOpen] = useState(false)
 
+  // The workflow builder owns its Kopilot: the toolbar's button opens a panel
+  // frame scoped to this workflow, with its own thread. Registering the page as
+  // an embedded surface hides the global dock (and its sidebar trigger and
+  // ⌘⇧K) for the whole page, so there is exactly one Kopilot here — the one
+  // that can actually edit the graph.
+  useEmbeddedKopilotSurface()
+
   const { data: workflow, isLoading } = api.workflow.getById.useQuery(
     { id: workflowId },
     { enabled: !!workflowId }
@@ -51,10 +57,6 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
   // Renaming the workflow (the header's Settings button opens the name/
   // description form) is the `admin` rung of per-workflow access (plan 30 §4).
   const { canAdmin } = useWorkflowAccess(workflowId)
-
-  // Live canvas dirty flag for the Kopilot workflow chip (advisory — the
-  // graph-edit tools refuse mutations while the canvas has unsaved changes).
-  const isCanvasDirty = useWorkflowStore((state) => state.isDirty)
 
   // Anything the editor or the executions list wants to dock goes through ONE
   // target. The editor's panels (node properties, Test, Settings) are frames of
@@ -69,16 +71,11 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
 
   return (
     <DockPortalProvider>
-      {/* Kopilot page + workflow chip. The page key is `WORKFLOW_BUILDER_PAGE`
-          from `@auxx/lib/ai/kopilot` — hardcoded like every other builder page
-          (KB's 'kb', the agent builder's 'agents.builder'); the stream route
-          gates the graph tools on it. */}
-      <KopilotContext
-        page='workflow.builder'
-        activeWorkflowId={workflowId}
-        activeWorkflowLabel={workflow?.name ?? undefined}
-        activeWorkflowIsDirty={isCanvasDirty}
-      />
+      {/* No `<KopilotContext>` here on purpose: the builder's Kopilot lives in
+          its own panel frame (`panels/kopilot/workflow-kopilot-panel.tsx`),
+          which registers `page='workflow.builder'` and the workflow chip while
+          it is open. Registering from the page would hand the graph tools to
+          the global dock, whose session belongs to no workflow. */}
       <MainPage>
         <MainPageHeader
           className='justify-start'

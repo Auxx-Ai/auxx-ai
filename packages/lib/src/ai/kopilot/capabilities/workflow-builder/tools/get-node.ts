@@ -14,7 +14,6 @@ export function createGetNodeTool(getDeps: GetToolDeps): AgentToolDefinition {
     name: 'get_node',
     permission: workflowToolPermission('view'),
     displayName: 'Get node',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     idempotent: true,
     description:

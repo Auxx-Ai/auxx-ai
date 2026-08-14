@@ -21,7 +21,7 @@ import { createSetTriggerTool } from './tools/set-trigger'
 import { createUpdateNodeTool } from './tools/update-node'
 import { createValidateWorkflowTool } from './tools/validate-workflow'
 
-export { WORKFLOW_BUILDER_PAGE, WORKFLOW_BUILDER_TOOLSET_SLUG } from './client'
+export { WORKFLOW_BUILDER_PAGE } from './client'
 export {
   DIRTY_CANVAS_ERROR,
   NO_WORKFLOW_REF_ERROR,

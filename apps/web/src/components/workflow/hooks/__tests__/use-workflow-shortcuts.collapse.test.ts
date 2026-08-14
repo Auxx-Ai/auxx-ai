@@ -31,7 +31,14 @@ vi.mock('@xyflow/react', () => ({
 
 vi.mock('../../store/canvas-store', () => ({ useCanvasStore: h.selectorStore }))
 vi.mock('../../store/interaction-store', () => ({ useInteractionStore: h.selectorStore }))
-vi.mock('../../store/panel-store', () => ({ usePanelStore: h.selectorStore }))
+vi.mock('../../store/panel-store', () => ({
+  usePanelStore: Object.assign(h.selectorStore, {
+    getState: () => new Proxy({}, { get: () => vi.fn() }),
+  }),
+  // The hook reads overlay state through this selector factory; the mocked
+  // store hands every selector a no-op proxy, so it only has to exist.
+  selectIsOverlayOpen: () => () => false,
+}))
 vi.mock('../../store/workflow-store-provider', () => ({ useHistoryManager: () => ({}) }))
 vi.mock('../use-read-only', () => ({ useNodesReadOnly: () => ({ getNodesReadOnly: () => false }) }))
 vi.mock('../use-workflow-save', () => ({ useWorkflowSave: () => ({ save: vi.fn() }) }))

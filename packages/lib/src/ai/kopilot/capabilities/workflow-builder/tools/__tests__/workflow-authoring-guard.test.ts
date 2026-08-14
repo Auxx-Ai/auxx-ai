@@ -209,10 +209,16 @@ describe('workflow.builder tool registry', () => {
     }
   })
 
-  it('every tool is builder-surface only and carries the toolset slug', () => {
+  // The `toolsetSlug` assertion here used to require `'workflow.builder'`, and
+  // it pinned the bug rather than catching it: master Kopilot's toolsets come
+  // from the `kopilot.toolsets` setting (default glob `auxx:*`, which cannot
+  // match a slug outside that namespace), so `filterToolsByToolsets` stripped
+  // every one of these tools after registration. They mount by PAGE context,
+  // like the agents-builder tools, and must stay slug-free.
+  it('every tool is builder-surface only and mounts by page, not by toolset', () => {
     for (const t of tools()) {
       expect(t.surfaces, t.name).toEqual(['builder'])
-      expect(t.toolsetSlug, t.name).toBe('workflow.builder')
+      expect(t.toolsetSlug, t.name).toBeUndefined()
       expect(t.permission, t.name).toBeDefined()
     }
   })

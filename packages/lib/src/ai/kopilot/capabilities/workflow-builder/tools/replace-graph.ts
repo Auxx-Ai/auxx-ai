@@ -24,7 +24,6 @@ export function createReplaceGraphTool(getDeps: GetToolDeps): AgentToolDefinitio
     name: 'replace_graph',
     permission: workflowToolPermission('edit'),
     displayName: 'Build workflow graph',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     description:
       'Author a whole workflow graph in one call — ONLY on an empty draft (it refuses when nodes exist; edit incrementally instead). Nodes are referenced by title in edges and configs; positions are laid out automatically.',

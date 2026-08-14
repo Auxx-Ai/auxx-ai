@@ -25,7 +25,6 @@ export function createRunNodeTool(getDeps: GetToolDeps): AgentToolDefinition {
     name: 'run_node',
     permission: workflowToolPermission('edit'),
     displayName: 'Run workflow node',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     requiresApproval: true,
     description:

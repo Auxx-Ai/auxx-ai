@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/canvas/workflow-toolbar.tsx
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Separator } from '@auxx/ui/components/separator'
@@ -19,6 +20,7 @@ import {
 import { useCallback } from 'react'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
+import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
 import { VariableEditorDialog } from '~/components/workflow/dialogs/variable-editor-dialog'
 import {
   useNonTriggerDefinitions,
@@ -34,6 +36,7 @@ import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
 import { WorkflowChecklist } from '~/components/workflow/ui/workflow-checklist'
 import WorkflowVersionsPopover from '~/components/workflow/ui/workflow-versions-popover'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useWorkflowSave } from '../hooks'
 
@@ -87,8 +90,18 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
   // Which panel frame is on top — drives the toolbar button's active state.
   const runPanelOpen = usePanelStore(selectIsOverlayOpen('run'))
   const settingsPanelOpen = usePanelStore(selectIsOverlayOpen('settings'))
+  const kopilotPanelOpen = usePanelStore(selectIsOverlayOpen('kopilot'))
   const openOverlay = usePanelStore((state) => state.openOverlay)
   const popOverlay = usePanelStore((state) => state.popOverlay)
+
+  // Every `kopilot.*` procedure runs `requireKopilotAccess` and the composer
+  // posts to `/api/kopilot/stream`, so without the feature the panel is a
+  // guaranteed 403 — hide the entry point rather than disabling it. NOT gated
+  // on `canEdit`: the capability degrades itself to read-only tools when the
+  // authoring guard finds no `edit` rung, and "what does this workflow do?" is
+  // a fair question at `view`.
+  const { hasAccess } = useFeatureFlags()
+  const kopilotEnabled = hasAccess(FeatureKey.kopilot)
 
   // Publish mutation
   const publishMutation = api.workflow.publish.useMutation({
@@ -293,6 +306,17 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
             </PopoverTrigger>
             <RunHistory onRunSelect={handleRunSelect} />
           </Popover>
+          {kopilotEnabled && (
+            <Tooltip content='Build with Kopilot' shortcut='B'>
+              <Button
+                size='sm'
+                variant={kopilotPanelOpen ? 'secondary' : 'ghost'}
+                onClick={() => (kopilotPanelOpen ? popOverlay() : openOverlay('kopilot'))}>
+                <SparkleIcon className='shrink-0' />
+                <span className='hidden sm:inline'>Kopilot</span>
+              </Button>
+            </Tooltip>
+          )}
           <Tooltip content='Workflow settings' shortcut={[mod, 'P']}>
             <Button
               size='sm'

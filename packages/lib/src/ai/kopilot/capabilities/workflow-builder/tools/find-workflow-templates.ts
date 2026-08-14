@@ -21,7 +21,6 @@ export function createFindWorkflowTemplatesTool(getDeps: GetToolDeps): AgentTool
       note: 'Public workflow-template gallery (bundled file templates + admin-curated public rows) — the same protectedProcedure-only list every member sees; no org data.',
     },
     displayName: 'Find workflow templates',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     idempotent: true,
     description:

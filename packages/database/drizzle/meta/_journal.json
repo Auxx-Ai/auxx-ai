@@ -2318,6 +2318,13 @@
       "when": 1786672124416,
       "tag": "0330_entity_interaction_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 331,
+      "version": "7",
+      "when": 1786727673221,
+      "tag": "0331_kopilot_session_workflow_app_id",
+      "breakpoints": true
     }
   ]
 }

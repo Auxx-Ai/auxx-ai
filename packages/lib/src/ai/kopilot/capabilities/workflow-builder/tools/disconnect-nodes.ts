@@ -16,7 +16,6 @@ export function createDisconnectNodesTool(getDeps: GetToolDeps): AgentToolDefini
     name: 'disconnect_nodes',
     permission: workflowToolPermission('edit'),
     displayName: 'Disconnect workflow nodes',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     description:
       'Remove every connection from one node to another in the open workflow draft (all branches).',

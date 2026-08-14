@@ -6,6 +6,7 @@ import { Agent } from './agent'
 import { AgentTrigger } from './agent-trigger'
 import { Organization } from './organization'
 import { User } from './user'
+import { WorkflowApp } from './workflow-app'
 
 export const AiAgentSession = pgTable(
   'AiAgentSession',
@@ -44,6 +45,21 @@ export const AiAgentSession = pgTable(
       onDelete: 'set null',
     }),
     /**
+     * Optional workflow ref. Set on sessions created from the workflow
+     * builder's Kopilot panel; null on every other session. Scopes that
+     * panel's thread lookup and keeps builder threads out of the global
+     * session picker (which filters on `IS NULL`).
+     *
+     * Cascades on delete rather than nulling like `agentId`: `WorkflowApp` has
+     * no soft delete, and a builder thread about a workflow that no longer
+     * exists has no reader — nulling would also resurrect it into the global
+     * picker.
+     */
+    workflowAppId: text().references((): AnyPgColumn => WorkflowApp.id, {
+      onUpdate: 'cascade',
+      onDelete: 'cascade',
+    }),
+    /**
      * Set when the session was kicked off by an autonomous trigger. Drives
      * the "Recent runs for this trigger" view in the agent detail UI.
      */
@@ -75,6 +91,11 @@ export const AiAgentSession = pgTable(
     index('AiAgentSession_agentId_updatedAt_idx').using(
       'btree',
       table.agentId.asc().nullsLast(),
+      table.updatedAt.desc().nullsLast()
+    ),
+    index('AiAgentSession_workflowAppId_updatedAt_idx').using(
+      'btree',
+      table.workflowAppId.asc().nullsLast(),
       table.updatedAt.desc().nullsLast()
     ),
     index('AiAgentSession_agentTriggerId_updatedAt_idx').using(

@@ -21,7 +21,6 @@ export function createAddNodeTool(getDeps: GetToolDeps): AgentToolDefinition {
     name: 'add_node',
     permission: workflowToolPermission('edit'),
     displayName: 'Add workflow node',
-    toolsetSlug: 'workflow.builder',
     surfaces: ['builder'],
     description:
       'Add one node to the open workflow draft. Connect it with `after` (predecessor title) and optionally `branch` (branch NAME of the predecessor); place it inside a loop with `inside` (loop title). Do not send coordinates — layout is automatic. The result returns the node, its resolved outputs (wire `{{Title.path}}` refs from these), and any issues.',

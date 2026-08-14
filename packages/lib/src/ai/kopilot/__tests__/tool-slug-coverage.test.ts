@@ -30,7 +30,6 @@ const KNOWN_SLUGS = new Set<string>([
   'auxx:docs',
   'auxx:actors',
   'workflow.variable',
-  'workflow.builder',
 ])
 
 const ALWAYS_ON_TOOLS = new Set<string>([
@@ -50,6 +49,26 @@ const ALWAYS_ON_TOOLS = new Set<string>([
   'preview_table_view',
   'set_default_table_view',
   'update_table_view',
+  // Workflow-builder graph tools — mounted by page context
+  // (`page: 'workflow.builder'`), never by an org toolset. A toolset grant
+  // would be meaningless: no user-authored agent can run on the builder page,
+  // and gating them on one silently stripped every tool (see the NOTE in
+  // `workflow-builder/tools/graph-tool-helpers.ts`).
+  'list_node_types',
+  'describe_node_type',
+  'find_workflow_templates',
+  'get_workflow',
+  'get_node',
+  'add_node',
+  'update_node',
+  'delete_nodes',
+  'connect_nodes',
+  'disconnect_nodes',
+  'set_trigger',
+  'replace_graph',
+  'apply_template',
+  'validate_workflow',
+  'run_node',
 ])
 
 const CAPABILITIES_DIR = join(__dirname, '..', 'capabilities')
