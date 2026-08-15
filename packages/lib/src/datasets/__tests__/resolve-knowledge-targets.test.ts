@@ -36,6 +36,8 @@ interface FakeRows {
   kbDatasetIds?: string[]
   /** `selectDistinct({ sourceId }).from(ArticlePlacement)`. */
   placementSourceIds?: string[]
+  /** `selectDistinct({ homeKnowledgeBaseId }).from(ArticlePlacement).innerJoin(Article)`. */
+  placementHomeKbIds?: string[]
   /** `select({ ownedKnowledgeBaseId }).from(KnowledgeSource)`. */
   ownedKbIds?: string[]
   /** `select({ id, datasetId }).from(KnowledgeBase)` — the access-filter map. */
@@ -55,8 +57,17 @@ function makeDb(rows: FakeRows, log: string[] = []) {
       let result: unknown[]
 
       if (table === schema.ArticlePlacement) {
-        tag = 'placements'
-        result = (rows.placementSourceIds ?? []).map((sourceId) => ({ sourceId }))
+        // Two distinct reads hit this table — the home-KB join (arm 1) and the
+        // source-link scan (arm 2) — told apart by the selected column.
+        if (has('homeKnowledgeBaseId')) {
+          tag = 'placement-home-kbs'
+          result = (rows.placementHomeKbIds ?? []).map((homeKnowledgeBaseId) => ({
+            homeKnowledgeBaseId,
+          }))
+        } else {
+          tag = 'placements'
+          result = (rows.placementSourceIds ?? []).map((sourceId) => ({ sourceId }))
+        }
       } else if (table === schema.KnowledgeSource) {
         tag = 'sources'
         result = (rows.ownedKbIds ?? []).map((ownedKnowledgeBaseId) => ({ ownedKnowledgeBaseId }))
@@ -79,7 +90,13 @@ function makeDb(rows: FakeRows, log: string[] = []) {
         p.limit = () => Promise.resolve(result.slice(0, 1))
         return p
       }
-      return { where }
+      // `innerJoin` returns the same builder — the fake's rows already stand in
+      // for the joined shape.
+      const node: { where: typeof where; innerJoin: () => typeof node } = {
+        where,
+        innerJoin: () => node,
+      }
+      return node
     },
   })
 
@@ -155,6 +172,49 @@ describe('resolveKnowledgeDatasetIds — target routing', () => {
     expect(log).toContain('placements:distinct')
     expect(log).toContain('sources')
     expect(ids).toEqual([KB_DATASET, OWNED_KB_DATASET])
+  })
+
+  it('federates to the HOME KB of a hand-authored article linked in (§5c gap)', async () => {
+    // KB-B is the target. An article authored in KB-A is *placed* into KB-B
+    // with linkedFromSourceId = null, so arm 2 sees nothing — but its
+    // embeddings live in KB-A's dataset, which arm 1 must pull in.
+    const { ids, log } = await resolve(
+      {
+        kbDatasetIds: [KB_DATASET, 'ds_kb_a'],
+        placementHomeKbIds: ['kb_a'],
+        placementSourceIds: [],
+      },
+      {
+        organizationId: ORG,
+        targets: [{ kind: 'kb', knowledgeBaseId: KB_ID }],
+        capabilities: 'unrestricted',
+        knowledgeScope: null,
+      }
+    )
+    expect(log).toContain('placement-home-kbs:distinct')
+    expect(log).not.toContain('sources') // no source chain involved at all
+    expect(ids).toEqual([KB_DATASET, 'ds_kb_a'])
+  })
+
+  it('does not re-query the target KB when every article is natively authored', async () => {
+    // Arm 1 returns the target KB's own id; its dataset is already collected,
+    // so there must be no second KnowledgeBase lookup for it.
+    const { ids, log } = await resolve(
+      {
+        kbDatasetIds: [KB_DATASET],
+        placementHomeKbIds: [KB_ID],
+        placementSourceIds: [],
+      },
+      {
+        organizationId: ORG,
+        targets: [{ kind: 'kb', knowledgeBaseId: KB_ID }],
+        capabilities: 'unrestricted',
+        knowledgeScope: null,
+      }
+    )
+    expect(ids).toEqual([KB_DATASET])
+    // exactly one kb-datasets read: the target KB's own row
+    expect(log.filter((q) => q === 'kb-datasets')).toHaveLength(1)
   })
 
   it('skips the federation queries entirely when a KB has no linked sources', async () => {

@@ -4,8 +4,12 @@
 // instance access — KB-backed datasets by `canViewInstance('kb', kbId)`,
 // standalone RAG datasets by `canViewInstance('dataset', id)`. Silent filter:
 // an empty set is a normal empty result, never a 403. Absent capabilities ⇒
-// unrestricted AND zero extra queries (the un-threaded workflow AI node must
-// issue exactly the same SQL it does today).
+// unrestricted AND zero extra queries — for the headless construction sites
+// that legitimately pass `undefined` (master-Kopilot job runs, pre-setup
+// drafts). The tool spells this as `'unrestricted'` when calling the shared
+// resolver, whose `capabilities` parameter is required. NOTE: the workflow AI
+// node is NOT one of those callers any more — `ai-v2.ts` threads a real
+// CapabilityView.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

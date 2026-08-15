@@ -272,9 +272,23 @@ async function filterAccessibleDatasetIds(
 /**
  * Datasets backing knowledge bases.
  *
- * With a `knowledgeBaseId`, federates: a source linked into this KB embeds its
- * content once in its own hidden KB's dataset, so those datasets are included
- * here. Search stays embed-once.
+ * With a `knowledgeBaseId`, **federates two ways**, because a `Document` lives
+ * in its article's *home* KB's dataset — not in the dataset of every KB the
+ * article is placed into:
+ *
+ *  1. **Home-KB federation** — every article placed in this KB contributes its
+ *     home KB's dataset. This is what makes a KB-scoped search find a
+ *     hand-authored article linked in from another KB (KB guide §2's documented
+ *     "search federation gap": such a placement has `linkedFromSourceId = null`,
+ *     so arm 2 never saw it).
+ *  2. **Source federation** — a source linked into this KB embeds its content
+ *     once in its own hidden KB's dataset.
+ *
+ * Arm 1 very likely *subsumes* arm 2 (a source's articles should have the
+ * source-owned KB as their home), but that is unverified against real
+ * source-linked data, so both run and their results union. If subsumption is
+ * ever confirmed, arm 2 is the one to delete. Search stays embed-once either
+ * way — the union is over datasets, and duplicates collapse.
  */
 async function collectManagedDatasetIds(
   db: Database,
@@ -298,16 +312,37 @@ async function collectManagedDatasetIds(
     if (!kb) return []
     const datasetIds = kb.datasetId ? [kb.datasetId] : []
 
-    const linkRows = await db
-      .selectDistinct({ sourceId: schema.ArticlePlacement.linkedFromSourceId })
-      .from(schema.ArticlePlacement)
-      .where(
-        and(
-          eq(schema.ArticlePlacement.knowledgeBaseId, knowledgeBaseId),
-          eq(schema.ArticlePlacement.organizationId, organizationId),
-          isNotNull(schema.ArticlePlacement.linkedFromSourceId)
-        )
-      )
+    const [homeRows, linkRows] = await Promise.all([
+      // Arm 1 — home KBs of every article placed here. `homeKnowledgeBaseId` is
+      // notNull, so there is no null arm. This KB's own id comes back for
+      // natively-authored articles; harmless, its dataset is already in the set.
+      db
+        .selectDistinct({ homeKnowledgeBaseId: schema.Article.homeKnowledgeBaseId })
+        .from(schema.ArticlePlacement)
+        .innerJoin(schema.Article, eq(schema.Article.id, schema.ArticlePlacement.articleId))
+        .where(
+          and(
+            eq(schema.ArticlePlacement.knowledgeBaseId, knowledgeBaseId),
+            eq(schema.ArticlePlacement.organizationId, organizationId)
+          )
+        ),
+      // Arm 2 — sources linked into this KB.
+      db
+        .selectDistinct({ sourceId: schema.ArticlePlacement.linkedFromSourceId })
+        .from(schema.ArticlePlacement)
+        .where(
+          and(
+            eq(schema.ArticlePlacement.knowledgeBaseId, knowledgeBaseId),
+            eq(schema.ArticlePlacement.organizationId, organizationId),
+            isNotNull(schema.ArticlePlacement.linkedFromSourceId)
+          )
+        ),
+    ])
+
+    const federatedKbIds = new Set(
+      homeRows.map((r) => r.homeKnowledgeBaseId).filter((id): id is string => Boolean(id))
+    )
+
     const sourceIds = linkRows.map((r) => r.sourceId).filter((id): id is string => Boolean(id))
     if (sourceIds.length > 0) {
       const sources = await db
@@ -319,16 +354,22 @@ async function collectManagedDatasetIds(
             eq(schema.KnowledgeSource.organizationId, organizationId)
           )
         )
-      const ownedKbIds = sources.map((s) => s.ownedKnowledgeBaseId)
-      if (ownedKbIds.length > 0) {
-        const ownedKbs = await db
-          .select({ datasetId: schema.KnowledgeBase.datasetId })
-          .from(schema.KnowledgeBase)
-          .where(inArray(schema.KnowledgeBase.id, ownedKbIds))
-        datasetIds.push(
-          ...ownedKbs.map((k) => k.datasetId).filter((id): id is string => Boolean(id))
-        )
+      for (const s of sources) {
+        if (s.ownedKnowledgeBaseId) federatedKbIds.add(s.ownedKnowledgeBaseId)
       }
+    }
+
+    // The target KB's own dataset is already collected above.
+    federatedKbIds.delete(knowledgeBaseId)
+
+    if (federatedKbIds.size > 0) {
+      const federatedKbs = await db
+        .select({ datasetId: schema.KnowledgeBase.datasetId })
+        .from(schema.KnowledgeBase)
+        .where(inArray(schema.KnowledgeBase.id, [...federatedKbIds]))
+      datasetIds.push(
+        ...federatedKbs.map((k) => k.datasetId).filter((id): id is string => Boolean(id))
+      )
     }
     return [...new Set(datasetIds)]
   }

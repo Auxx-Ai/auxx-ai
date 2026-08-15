@@ -76,6 +76,42 @@ export function getKnowledgeRetrievalOutputVariables(
             label: 'Search Type',
             description: 'Type of search that found this result',
           },
+          source: {
+            type: BaseType.STRING,
+            label: 'Source',
+            description: "'kb' for a knowledge-base article, 'rag' for an uploaded document",
+          },
+          articleId: {
+            type: BaseType.STRING,
+            label: 'Article ID',
+            description: 'ID of the KB article (KB results only)',
+          },
+          articleSlug: {
+            type: BaseType.STRING,
+            label: 'Article Slug',
+            description: 'Slug of the KB article (KB results only)',
+          },
+          articleSlugPath: {
+            type: BaseType.STRING,
+            label: 'Article Slug Path',
+            description: 'Full slug path of the KB article within its KB (KB results only)',
+          },
+          kbId: {
+            type: BaseType.STRING,
+            label: 'Knowledge Base ID',
+            description: 'ID of the knowledge base (KB results only)',
+          },
+          kbSlug: {
+            type: BaseType.STRING,
+            label: 'Knowledge Base Slug',
+            description: 'Slug of the knowledge base (KB results only)',
+          },
+          docSlug: {
+            type: BaseType.STRING,
+            label: 'Doc Slug',
+            description:
+              'kbSlug/articleSlugPath — cite as [Title](auxx://doc/<docSlug>) (KB results only)',
+          },
         },
       },
     }),

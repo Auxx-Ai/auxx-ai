@@ -17,8 +17,8 @@ import type { KnowledgeRetrievalNodeData } from './types'
 export const KnowledgeRetrievalNode = memo<NodeProps<KnowledgeRetrievalNodeData>>(
   ({ id, data, selected }) => {
     const hasQuery = !!data.query
-    const datasetCount = data.datasets?.length ?? 0
-    const hasDatasets = datasetCount > 0
+    const sourceCount = data.sources?.length ?? 0
+    const hasSources = sourceCount > 0
 
     // Check if query is in variable mode
     const isQueryVariable =
@@ -39,7 +39,7 @@ export const KnowledgeRetrievalNode = memo<NodeProps<KnowledgeRetrievalNodeData>
         <NodeTargetHandle id={id} data={{ ...data, selected }} handleId='target' />
         <div className='space-y-1 pb-2'>
           <div className='relative px-2'>
-            {hasQuery || hasDatasets ? (
+            {hasQuery || hasSources ? (
               <div className='space-y-1 mt-1'>
                 {/* Query */}
                 {hasQuery && (
@@ -55,12 +55,12 @@ export const KnowledgeRetrievalNode = memo<NodeProps<KnowledgeRetrievalNodeData>
                   </div>
                 )}
 
-                {/* Datasets */}
-                {hasDatasets && (
+                {/* Knowledge sources */}
+                {hasSources && (
                   <div className='flex items-center gap-1 text-xs text-muted-foreground'>
-                    <span>Datasets:</span>
+                    <span>Knowledge:</span>
                     <span className='font-mono text-primary-600'>
-                      {datasetCount} {datasetCount === 1 ? 'dataset' : 'datasets'}
+                      {sourceCount} {sourceCount === 1 ? 'source' : 'sources'}
                     </span>
                   </div>
                 )}

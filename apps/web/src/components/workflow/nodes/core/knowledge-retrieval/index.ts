@@ -10,8 +10,9 @@ export {
   knowledgeRetrievalNodeDataSchema,
 } from './schema'
 export type {
-  DatasetEntry,
   KnowledgeRetrievalNode as KnowledgeRetrievalNodeType,
   KnowledgeRetrievalNodeData,
+  KnowledgeSourceRow,
   SearchType,
 } from './types'
+export { sourceFieldKey, sourceRawId } from './types'
