@@ -19,6 +19,9 @@
  *   below the lowest sibling, so branch targets stack downward.
  * - `inside`: grid position within the container bounds (parent-relative
  *   coordinates), with a container-resize suggestion when the child overflows.
+ * - `inputFor`: its own column to the LEFT of the node it feeds, existing
+ *   inputs stacked downward (the input wiring runs backwards, so an input node
+ *   is the one thing that never lands right of its anchor).
  * - no anchor: to the right of the whole graph.
  */
 
@@ -142,6 +145,40 @@ export function placeAfter(
     y: lowestBottom + NODE_ADDITION_CONFIG.VERTICAL_SPACING,
   }
   return findNearestEmptySpace(preferred, size, nodes, 'vertical')
+}
+
+/**
+ * Geometry of the input column, read off the shipped `manual-ticket-triage`
+ * template: the manual trigger sits at `(100, 300)` and its two form-inputs at
+ * `(-200, 225)` and `(-200, 325)` — one column 300px left, fields 100px apart.
+ */
+const INPUT_COLUMN = { OFFSET_X: 300, STACK_SPACING: 100 }
+
+/**
+ * Position for an input node attaching to `target` (`form-input → manual`):
+ * its own column `INPUT_COLUMN.OFFSET_X` to the LEFT of the target, the first
+ * field vertically centered on it and every later field stacked
+ * `INPUT_COLUMN.STACK_SPACING` below the lowest existing one.
+ *
+ * `existingInputs` are the nodes ALREADY wired into `target` on the input
+ * handle. They never move (the §4 placement invariant), so the stack grows
+ * downward from wherever it currently ends rather than re-centering — which is
+ * also why this deliberately skips `findNearestEmptySpace`: the 100px step is
+ * the rule, and the collision search (padding 20 against a 100px default
+ * footprint) would push every second field out of the column it belongs to.
+ */
+export function placeAsInput(
+  target: GraphNode,
+  existingInputs: GraphNode[],
+  size: Size = DEFAULT_NODE_SIZE
+): Point {
+  const x = target.position.x - INPUT_COLUMN.OFFSET_X
+  if (existingInputs.length === 0) {
+    const targetHeight = target.height || LAYOUT_SPACING.DEFAULT_NODE_HEIGHT
+    return { x, y: target.position.y + (targetHeight - size.height) / 2 }
+  }
+  const lowest = Math.max(...existingInputs.map((n) => n.position.y))
+  return { x, y: lowest + INPUT_COLUMN.STACK_SPACING }
 }
 
 /** What `placeInside` decides: a parent-relative position plus a resize ask. */

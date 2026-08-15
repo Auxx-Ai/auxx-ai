@@ -31,11 +31,12 @@
 
 import type { Database } from '@auxx/database'
 import { err, ok, type Result } from 'neverthrow'
-import { AuxxError, NotFoundError, UnprocessableEntityError } from '../../errors'
+import { AuxxError, BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
+import { getManifest } from '../../workflow-engine/catalog/registry'
 import { type GraphEditScope, loadDraftContext } from './read'
-import { resolveNodeRef } from './refs'
+import { describeNode, resolveNodeRef } from './refs'
 import type { GraphNode, Issue } from './types'
-import { validateNodeConfigs } from './validate'
+import { nodeType, validateNodeConfigs } from './validate'
 
 /** Input for {@link runNode}. */
 export interface RunNodeInput extends GraphEditScope {
@@ -85,6 +86,20 @@ export async function runNode(
   const resolved = resolveNodeRef(ctx.graph.nodes, params.nodeId)
   if (resolved.isErr()) return err(resolved.error)
   const node = resolved.value.node as GraphNode
+
+  // Nodes the manifest declares un-runnable in isolation (triggers, and
+  // `form-input`, which never executes at all — `NON_EXECUTABLE_NODE_TYPES`)
+  // are refused HERE. Sent on, they reach the engine, get skipped, and come
+  // back as a meaningless "succeeded" with no outputs.
+  const manifest = getManifest(nodeType(node))
+  if (manifest?.connection.canRunSingle === false) {
+    return err(
+      new BadRequestError(
+        `Node ${describeNode(node)} is a "${nodeType(node)}" node, which cannot be run on its own — ` +
+          'it has no standalone execution. Run a node downstream of it instead.'
+      )
+    )
+  }
 
   // Tier-2 config validation, scoped to this node — a run needs a valid
   // config even though a draft legitimately persists without one.
