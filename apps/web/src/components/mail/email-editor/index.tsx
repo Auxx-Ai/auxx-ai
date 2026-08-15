@@ -133,7 +133,10 @@ function ReplyComposeEditorComponent({
   const { data: integrations } = api.channel.list.useQuery(undefined, {
     enabled: mode === 'new',
   })
-  const defaultIntegrationId = useDefaultChannelId()
+  // 'addressable' — the composer can address email OR phone, so a starred SMS
+  // channel has to be honoured as the default. Falls back to email when the
+  // user has never picked one (see the hook).
+  const defaultIntegrationId = useDefaultChannelId('addressable')
   // Initialize state with pure function + lazy evaluation
   const [state, setState] = useState<InitState>(() => {
     const derived = deriveInitialState({
@@ -1083,6 +1086,7 @@ function ReplyComposeEditorComponent({
                     value={state.integrationId}
                     onChange={handleIntegrationChange}
                     disabled={isSending}
+                    scope='addressable'
                     className={popoverZIndex}
                   />
                 </div>
