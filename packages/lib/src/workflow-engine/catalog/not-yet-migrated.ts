@@ -45,9 +45,9 @@ export const NOT_YET_MIGRATED: readonly string[] = [
   // 'find' — migrated (catalog/nodes/find.ts)
   // 'http' — migrated (catalog/nodes/http.ts)
   // 'crud' — migrated (catalog/nodes/crud.ts)
-  'document-extractor',
-  'chunker',
-  'dataset',
+  // 'document-extractor' — migrated (catalog/nodes/document-extractor.ts)
+  // 'chunker' — migrated (catalog/nodes/chunker.ts)
+  // 'dataset' — migrated (catalog/nodes/dataset.ts)
   // 'knowledge-retrieval' — migrated (catalog/nodes/knowledge-retrieval.ts)
   // Transform nodes
   // 'code' — migrated (catalog/nodes/code.ts)

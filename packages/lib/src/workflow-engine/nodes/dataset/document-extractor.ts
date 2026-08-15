@@ -4,6 +4,10 @@ import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
 import { ExtractorFactory } from '../../../datasets/extractors/extractor-factory'
 import { createFileService } from '../../../files/core/file-service'
+import {
+  type DocumentExtractorNodeData as CatalogDocumentExtractorNodeData,
+  DocumentSourceType,
+} from '../../catalog/nodes/document-extractor'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -20,34 +24,19 @@ import { resolveBooleanConfig, variableBound } from './config-value'
 const logger = createScopedLogger('document-extractor-processor')
 
 /**
- * Source type for document extraction
+ * Document Extractor node configuration — the config subset of the catalog's
+ * `DocumentExtractorNodeData` (node-catalog migration; this file previously
+ * shadowed it, `DocumentSourceType` enum and all).
  */
-enum DocumentSourceType {
-  FILE = 'file',
-  URL = 'url',
-}
-
-/**
- * Document Extractor node configuration
- */
-interface DocumentExtractorConfig {
-  title?: string
-  desc?: string
-
-  // Source configuration
-  sourceType: DocumentSourceType
-  fileId?: string // Variable reference or constant - MediaAsset ID
-  url?: string // Variable reference or constant - URL to fetch
-
-  // Extraction options
-  // Both toggles carry a variable reference string when bound to a variable
-  preserveFormatting?: boolean | string
-  extractImages?: boolean | string
-  language?: string // Language hint for OCR
-
-  // Field modes tracking (constant vs variable)
-  fieldModes?: Record<string, boolean>
-}
+type DocumentExtractorConfig = Partial<
+  Pick<
+    CatalogDocumentExtractorNodeData,
+    'title' | 'desc' | 'fileId' | 'url' | 'preserveFormatting' | 'extractImages' | 'language'
+  >
+> &
+  Pick<CatalogDocumentExtractorNodeData, 'sourceType'> & {
+    fieldModes?: Record<string, boolean>
+  }
 
 /**
  * Extraction result structure
@@ -72,7 +61,7 @@ interface ExtractionOutput {
 const documentExtractorConfigSchema = z.object({
   title: z.string().optional().default('Document Extractor'),
   desc: z.string().optional(),
-  sourceType: z.nativeEnum(DocumentSourceType).default(DocumentSourceType.FILE),
+  sourceType: z.enum(DocumentSourceType).default(DocumentSourceType.FILE),
   fileId: z.string().optional(),
   url: z.string().optional(),
   preserveFormatting: variableBound(z.boolean()).optional(),

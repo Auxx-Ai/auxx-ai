@@ -1,43 +1,22 @@
 // apps/web/src/components/workflow/nodes/core/document-extractor/types.ts
 
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
+import type { CatalogDocumentExtractorNodeData } from '@auxx/lib/workflow-engine/client'
+import type { SpecificNode } from '~/components/workflow/types/node-base'
+import type { NodeType } from '~/components/workflow/types/node-types'
+
+// The data half (zod schema, defaults, validator, output resolver) lives in the
+// node catalog (`@auxx/lib/workflow-engine/catalog/nodes/document-extractor`).
+
+// Back-compat re-export so no panel or consumer import churns. The enum used to
+// be declared twice — here and in the engine processor — and now has one home.
+export { DocumentSourceType } from '@auxx/lib/workflow-engine/client'
 
 /**
- * Source type for document extraction
+ * Document Extractor node data — the catalog shape with `type` narrowed to the
+ * builder's `NodeType` enum.
  */
-export enum DocumentSourceType {
-  FILE = 'file',
-  URL = 'url',
-}
-
-/**
- * Document Extractor node data interface
- */
-export interface DocumentExtractorNodeData extends BaseNodeData {
-  /** Node title */
-  title: string
-  /** Short description */
-  desc?: string
-  /** Full description */
-  description?: string
-
-  /** Source type - file or url */
-  sourceType: DocumentSourceType
-  /** MediaAsset ID when sourceType is 'file' (VarEditor value) */
-  fileId?: string
-  /** URL when sourceType is 'url' (VarEditor value) */
-  url?: string
-
-  /** Extraction options */
-  /** Preserve document formatting in extracted text. A string when bound to a variable. */
-  preserveFormatting?: boolean | string
-  /** Extract image descriptions using OCR/AI. A string when bound to a variable. */
-  extractImages?: boolean | string
-  /** Language hint for OCR (e.g., 'en', 'es') */
-  language?: string
-
-  /** Track constant/variable mode per field */
-  fieldModes?: Record<string, boolean>
+export interface DocumentExtractorNodeData extends CatalogDocumentExtractorNodeData {
+  type: NodeType
 }
 
 /**

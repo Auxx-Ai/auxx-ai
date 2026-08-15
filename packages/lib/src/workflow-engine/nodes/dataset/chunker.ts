@@ -6,6 +6,12 @@ import { z } from 'zod'
 import { TextChunker } from '../../../datasets/processors/text-chunker'
 import type { DocumentChunk } from '../../../datasets/types'
 import { DocumentProcessor } from '../../../datasets/workers/document-processor'
+import {
+  type ChunkerNodeData as CatalogChunkerNodeData,
+  CHUNKER_DEFAULT_CHUNK_OVERLAP,
+  CHUNKER_DEFAULT_CHUNK_SIZE,
+  CHUNKER_DEFAULT_DELIMITER,
+} from '../../catalog/nodes/chunker'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -21,26 +27,25 @@ import { resolveBooleanConfig, resolveNumberConfig, variableBound } from './conf
 const logger = createScopedLogger('chunker-processor')
 
 /**
- * Chunker node configuration
+ * Chunker node configuration — the config subset of the catalog's
+ * `ChunkerNodeData` (node-catalog migration; this file previously shadowed it).
+ * The numeric/boolean fields carry a variable reference string when bound,
+ * which the catalog type already expresses.
  */
-interface ChunkerConfig {
-  title?: string
-  desc?: string
-
-  // Input content
-  content?: string
-
-  // Chunking configuration
-  // Numeric/boolean fields carry a variable reference string when bound
-  chunkSize?: number | string
-  chunkOverlap?: number | string
-  delimiter?: string
-  normalizeWhitespace?: boolean | string
-  removeUrlsAndEmails?: boolean | string
-
-  // Field modes tracking (constant vs variable)
-  fieldModes?: Record<string, boolean>
-}
+type ChunkerConfig = Partial<
+  Pick<
+    CatalogChunkerNodeData,
+    | 'title'
+    | 'desc'
+    | 'content'
+    | 'chunkSize'
+    | 'chunkOverlap'
+    | 'delimiter'
+    | 'normalizeWhitespace'
+    | 'removeUrlsAndEmails'
+    | 'fieldModes'
+  >
+>
 
 /**
  * Chunker output structure
@@ -68,11 +73,6 @@ interface ChunkerOutput {
   error?: string
 }
 
-/** Default chunk size in characters when the field is unset */
-const DEFAULT_CHUNK_SIZE = 1000
-/** Default overlap between adjacent chunks in characters when the field is unset */
-const DEFAULT_CHUNK_OVERLAP = 50
-
 /**
  * Validation schema for Chunker configuration
  *
@@ -88,7 +88,7 @@ const chunkerConfigSchema = z.object({
   content: z.string().optional(),
   chunkSize: variableBound(z.number().positive()).optional(),
   chunkOverlap: variableBound(z.number().nonnegative()).optional(),
-  delimiter: z.string().optional().default('\\n\\n'),
+  delimiter: z.string().optional().default(CHUNKER_DEFAULT_DELIMITER),
   normalizeWhitespace: variableBound(z.boolean()).optional(),
   removeUrlsAndEmails: variableBound(z.boolean()).optional(),
   fieldModes: z.record(z.string(), z.boolean()).optional(),
@@ -166,7 +166,9 @@ export class ChunkerProcessor extends BaseNodeProcessor {
     // reference string when bound through the picker
     const resolveValue = (raw: string) => this.resolveVariableValue(raw, contextManager)
 
-    let resolvedChunkSize = DEFAULT_CHUNK_SIZE
+    // The unset fallbacks are the manifest's seeded defaults, so a node built
+    // from defaults and one with the fields stripped chunk identically.
+    let resolvedChunkSize: number = CHUNKER_DEFAULT_CHUNK_SIZE
     if (config.chunkSize !== undefined) {
       const resolved = await resolveNumberConfig(config.chunkSize, resolveValue)
       if (resolved === undefined || resolved <= 0) {
@@ -179,7 +181,7 @@ export class ChunkerProcessor extends BaseNodeProcessor {
       extractVariableRefs(config.chunkSize).forEach((v) => usedVariables.add(v))
     }
 
-    let resolvedChunkOverlap = DEFAULT_CHUNK_OVERLAP
+    let resolvedChunkOverlap: number = CHUNKER_DEFAULT_CHUNK_OVERLAP
     if (config.chunkOverlap !== undefined) {
       const resolved = await resolveNumberConfig(config.chunkOverlap, resolveValue)
       if (resolved === undefined || resolved < 0) {

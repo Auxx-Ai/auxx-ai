@@ -1,57 +1,18 @@
 // apps/web/src/components/workflow/nodes/core/dataset/types.ts
 
-import type { DocumentTypeValues } from '@auxx/database/enums'
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
+import type { CatalogDatasetNodeData } from '@auxx/lib/workflow-engine/client'
+import type { SpecificNode } from '~/components/workflow/types/node-base'
+import type { NodeType } from '~/components/workflow/types/node-types'
+
+// The data half (zod schema, defaults, validator, output resolver) lives in the
+// node catalog (`@auxx/lib/workflow-engine/catalog/nodes/dataset`).
 
 /**
- * Dataset node data interface
+ * Dataset node data — the catalog shape with `type` narrowed to the builder's
+ * `NodeType` enum.
  */
-export interface DatasetNodeData extends BaseNodeData {
-  /** Node title */
-  title: string
-  /** Short description */
-  desc?: string
-  /** Full description */
-  description?: string
-
-  // === Dataset Selection ===
-  /** Target dataset ID (from picker or variable) */
-  datasetId?: string
-
-  // === Chunks Input ===
-  /** Chunked content from Chunker node (DocumentChunk[]) */
-  chunks?: string
-
-  // === Document Settings ===
-  /** Document title for identification */
-  documentTitle?: string
-  /** Content mime type (default: 'text/plain') */
-  mimeType?: string
-  /** Document type (PDF, DOCX, TXT, etc.) */
-  documentType?: (typeof DocumentTypeValues)[number]
-  /** Source URL for the content */
-  sourceUrl?: string
-  /** Reference to source MediaAsset ID */
-  fileId?: string
-
-  // === Processing Options ===
-  /** Skip embedding generation (default: false). A string when bound to a variable. */
-  skipEmbedding?: boolean | string
-  /**
-   * Pause the workflow until the embeddings for this document exist
-   * (default: true). A string when bound to a variable.
-   */
-  waitForEmbeddings?: boolean | string
-  /**
-   * How long that wait may last before the workflow continues anyway
-   * (default: 15). A string when bound to a variable.
-   */
-  embeddingTimeoutMinutes?: number | string
-  /** Additional metadata to store with the document */
-  metadata?: Record<string, unknown>
-
-  /** Track constant/variable mode per field */
-  fieldModes?: Record<string, boolean>
+export interface DatasetNodeData extends CatalogDatasetNodeData {
+  type: NodeType
 }
 
 /**
