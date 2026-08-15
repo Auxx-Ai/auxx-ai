@@ -282,6 +282,32 @@ gated on inbox write alone (not `automationRules.manage`), treats
 `senderAuthenticated IS NULL` as *not* authenticated, and must never be recorded
 as `contact:unsubscribed`; dismissal is a status write, never a delete.
 
+## Duplicate Detection
+
+**Before touching the dedup engine, the duplicate scan job, `DuplicateSuggestion`
+rows, or the duplicate review surfaces, read
+`docs/duplicate-detection-architecture-guide.md`.** It documents the **genesis
+map** (which write-time check produces which shape of duplicate, and why the
+exact arm is largely a backfill/enforcement-leak detector while the name arm
+catches what happens next), why **trigram cannot rank names** — `john smith`/`jane
+smith` measures 0.47, above `william klooth`/`bill klooth` at 0.42, and
+`bob`/`robert` share zero trigrams — the three-condition **name-alone rule** and
+why surname rarity exists, the one-job/three-scopes/two-arms scan, and the pair
+lifecycle.
+
+Short version: pairs are stored in canonical `(low, high)` order; **deletion is
+how an `open` pair goes away** while `dismissed`/`merged` are the only persisted
+terminal states; the watermark stamp MUST be raw SQL touching one column, because
+`EntityInstance.updatedAt` carries `$onUpdate` and a Drizzle update re-dirties the
+row into an infinite scan loop; the `sync:records:changed` consumer must never
+claim the manifest (that latch belongs to record rules); blocking is one lookup
+core call **per value**, because the core dedupes hits across candidates by
+recordId; both scan arms must merge onto the canonical key before scoring or
+`upsertPairs`' last-writer-wins silently rewrites a `high` pair as `medium`;
+trigram similarity is a blocker only and must never reach `score` or a `Signal`;
+and every read path filters `archivedAt IS NULL` on **both** sides and applies
+record scope per join alias (`dupLow`/`dupHigh`).
+
 ## Workflows
 
 **Before touching node schemas, output variables, the engine's
