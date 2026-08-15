@@ -67,6 +67,7 @@ import { InformationExtractorTraceRenderer } from './information-extractor/trace
 import {
   KnowledgeRetrievalNode,
   KnowledgeRetrievalPanel,
+  KnowledgeRetrievalTraceRenderer,
   knowledgeRetrievalDefinition,
 } from './knowledge-retrieval'
 import { listNodeDefinition } from './list'
@@ -209,6 +210,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     ...knowledgeRetrievalDefinition,
     component: KnowledgeRetrievalNode,
     panel: KnowledgeRetrievalPanel,
+    traceRenderer: KnowledgeRetrievalTraceRenderer,
   },
   // AppPlaceholder removed - using StandardNode fallback for unregistered app nodes instead
   ...INPUT_NODE_DEFINITIONS,

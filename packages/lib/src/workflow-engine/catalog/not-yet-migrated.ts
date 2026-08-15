@@ -48,7 +48,7 @@ export const NOT_YET_MIGRATED: readonly string[] = [
   'document-extractor',
   'chunker',
   'dataset',
-  'knowledge-retrieval',
+  // 'knowledge-retrieval' — migrated (catalog/nodes/knowledge-retrieval.ts)
   // Transform nodes
   // 'code' — migrated (catalog/nodes/code.ts)
   // 'text-classifier' — migrated (catalog/nodes/text-classifier.ts)
