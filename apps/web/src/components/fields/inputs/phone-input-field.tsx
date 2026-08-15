@@ -2,6 +2,7 @@
 import PhoneInputWithFlag from '@auxx/ui/components/phone-input'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePropertyContext } from '../property-provider'
+import { useOrgBusinessCountry } from './use-org-business-country'
 
 /**
  * PhoneInputField
@@ -13,6 +14,7 @@ import { usePropertyContext } from '../property-provider'
  */
 export function PhoneInputField() {
   const { value, commitValue, onBeforeClose, close, isSaving } = usePropertyContext()
+  const defaultCountry = useOrgBusinessCountry()
   const [phoneValue, setPhoneValue] = useState(value || '')
 
   // Keep ref in sync for save-on-close
@@ -62,6 +64,7 @@ export function PhoneInputField() {
       value={phoneValue}
       onChange={handleChange}
       onKeyDown={handleKeyDown}
+      defaultCountry={defaultCountry}
       autoFocus
       className={`h-7 border-none outline-none focus:ring-0 [&>input]:h-7 [&>input]:w-40 [&>input]:outline-none [&>input]:focus:ring-0 ${isSaving ? 'opacity-70' : ''}`}
       disabled={isSaving}
