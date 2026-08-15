@@ -69,8 +69,8 @@ export async function validateWorkflow(
   }
 
   // Find truly orphaned nodes (no incoming connections and not an entry point)
-  // Exclude non-executable nodes (form-input, file-upload, number-input, note)
-  // since they're source/annotation nodes that don't require incoming connections
+  // Exclude non-executable nodes (form-input, note) since they're
+  // source/annotation nodes that don't require incoming connections
   const orphanedNodes = workflow.nodes.filter(
     (node) =>
       node !== entryNode && !referencedNodes.has(node.nodeId) && !isNonExecutableNodeType(node.type)
