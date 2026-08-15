@@ -157,6 +157,12 @@ const BOOLEAN_GATES = {
     callRecordings: false,
     todayInbox: false,
     learnedMemory: false,
+    // Duplicate suggestions. `false` on every tier while the engine rolls out —
+    // flipped per-org through the admin feature override. A missing key reads as
+    // no-access on both the server (`FeaturePermissionService.hasAccess`) and the
+    // client (`useFeatureFlags().hasAccess`), so orgs whose cached feature blob
+    // predates this seed behave identically to a seeded `false`.
+    duplicateDetection: false,
     agents: true,
     agentProcedures: false,
     mcp: false,
@@ -191,6 +197,7 @@ const BOOLEAN_GATES = {
     callRecordings: false,
     todayInbox: false,
     learnedMemory: false,
+    duplicateDetection: false,
     agents: true,
     agentProcedures: false,
     mcp: false,
@@ -216,6 +223,7 @@ const BOOLEAN_GATES = {
     callRecordings: false,
     todayInbox: false,
     learnedMemory: false,
+    duplicateDetection: false,
     agents: true,
     agentProcedures: false,
     mcp: false,
@@ -242,6 +250,7 @@ const BOOLEAN_GATES = {
     callRecordings: false,
     todayInbox: false,
     learnedMemory: false,
+    duplicateDetection: false,
     agents: true,
     agentProcedures: false,
     mcp: false,
@@ -267,6 +276,7 @@ const BOOLEAN_GATES = {
     callRecordings: false,
     todayInbox: false,
     learnedMemory: false,
+    duplicateDetection: false,
     agents: true,
     agentProcedures: false,
     mcp: false,

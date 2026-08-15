@@ -41,6 +41,7 @@ export enum FeatureKey {
   callRecordings = 'callRecordings',
   todayInbox = 'todayInbox',
   learnedMemory = 'learnedMemory',
+  duplicateDetection = 'duplicateDetection',
   agents = 'agents',
   agentProcedures = 'agentProcedures',
   mcp = 'mcp',
@@ -160,6 +161,14 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     label: 'AI Memory',
     description:
       'Learn from resolved threads: extraction proposals into the learned knowledge base.',
+    group: 'AI',
+  },
+  {
+    key: FeatureKey.duplicateDetection,
+    type: 'boolean',
+    label: 'Duplicate Detection',
+    description:
+      'Scan records for likely duplicates and surface merge suggestions in the Approvals tab.',
     group: 'AI',
   },
   {
