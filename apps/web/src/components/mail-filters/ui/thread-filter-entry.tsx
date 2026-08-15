@@ -9,7 +9,7 @@ import { useMemo } from 'react'
 import { useThreadCounterparty } from '~/components/mail/hooks/use-thread-counterparty'
 import { useThread } from '~/components/threads/hooks'
 import { useAuthorableInboxes } from '../hooks/use-authorable-inboxes'
-import { buildThreadPrefillConditions, toConditionGroups } from '../utils/prefill-conditions'
+import { buildThreadPrefill, toConditionGroups } from '../utils/prefill-conditions'
 import { MailFilterPrefillDialog } from './mail-filter-prefill-dialog'
 
 /**
@@ -81,21 +81,31 @@ export function ThreadFilterPrefillDialog({ threadId, onClose }: ThreadFilterPre
   const { thread } = useThread({ threadId })
   const inboxInstanceId = useThreadInboxInstanceId(threadId)
   const counterparty = useThreadCounterparty(threadId)
+  const { inboxName } = useAuthorableInboxes()
 
-  const senderEmail = useMemo(() => {
-    const participant = counterparty.primary ?? counterparty.fallback
-    // Only an email identifier makes sense on `from`, which compiles to an
-    // `ilike` over `Participant.identifier`. A chat/social handle would build a
-    // condition that can never match an email thread.
-    const identifier = participant?.identifier
-    return identifier?.includes('@') ? identifier : null
-  }, [counterparty.primary, counterparty.fallback])
-
-  const groups = useMemo(
+  const prefill = useMemo(
     () =>
-      toConditionGroups(buildThreadPrefillConditions({ senderEmail, subject: thread?.subject })),
-    [senderEmail, thread?.subject]
+      buildThreadPrefill({
+        participant: counterparty.primary ?? counterparty.fallback,
+        subject: thread?.subject,
+        // Declared `ChannelProvider` ('GMAIL' | …) but carries the raw
+        // `IntegrationProviderType` value ('google', 'openphone') at runtime —
+        // `thread-query.service.ts` casts rather than maps. Every other reader
+        // of this field does the same widening.
+        integrationProvider: thread?.integrationProvider as string | null | undefined,
+        inboxName: inboxName(inboxInstanceId),
+      }),
+    [
+      counterparty.primary,
+      counterparty.fallback,
+      thread?.subject,
+      thread?.integrationProvider,
+      inboxName,
+      inboxInstanceId,
+    ]
   )
+
+  const groups = useMemo(() => toConditionGroups(prefill.conditions), [prefill.conditions])
 
   // The prefill is frozen when the dialog mounts, so wait for the participants
   // to resolve first — mounting early would permanently freeze a filter with no
@@ -105,8 +115,9 @@ export function ThreadFilterPrefillDialog({ threadId, onClose }: ThreadFilterPre
   return (
     <MailFilterPrefillDialog
       onClose={onClose}
-      name={senderEmail ? `Mail from ${senderEmail}` : undefined}
+      name={prefill.name}
       conditions={groups}
+      notes={prefill.notes}
       inboxId={inboxInstanceId ?? undefined}
     />
   )

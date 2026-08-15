@@ -143,6 +143,22 @@ time either side gains a third prefix — and **the failure is silent**. A key t
 counts no mail, and "no mail since" is exactly what the product reports as *"the sender honored your
 unsubscribe."* Add a prefix in `mail-suggestions/client.ts`, never in the unsubscribe copy.
 
+### Email-only, by decision — there is no phone or chat analogue
+
+Both keyspace halves are derived from EMAIL headers, and both source columns are NULL on every SMS,
+chat and social message, so the miner simply never mines non-email traffic. **That is the intended
+behaviour, not an oversight to fix when phone volume grows:** `List-Id` has no SMS analogue, a
+sender domain has no meaning for an E.164 number, and the SMS equivalent of unsubscribe is STOP —
+carrier-handled inside the provider, never modelled here (§9).
+
+Stated because it currently reads as an emergent property of NULL columns rather than a choice: if
+a future channel does gain a stable bulk-sender identity, it needs its own prefix in
+`mail-suggestions/client.ts` and its own evidence shape — not a reinterpretation of `domain:`.
+
+Channel-awareness elsewhere in mail filters (polymorphic `from`/`to`/`sender`, the `channelType`
+condition, inbox-scoped catalogs) is documented in `channels-mail-architecture-guide.md` §14 and
+does **not** reach this miner.
+
 ### Why two columns, not one fused key
 
 `listId` and `senderDomain` stay two `Message` columns (S7 / invariant 8) because **the unsubscribe

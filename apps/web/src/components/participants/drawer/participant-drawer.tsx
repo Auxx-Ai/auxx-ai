@@ -15,6 +15,7 @@ import { ThreadVisitCard } from '~/components/drawers/cards/thread-visit-card'
 import { useDrawerContext } from '~/components/drawers/drawer-context'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useParticipant } from '~/components/threads/hooks'
+import type { ParticipantIdentifierType } from '~/components/threads/store'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
@@ -152,12 +153,18 @@ function ParticipantCard({
 }: {
   displayName: string | null
   identifier: string | null
-  identifierType: 'EMAIL' | 'PHONE' | 'CHAT_VISITOR' | null
+  identifierType: ParticipantIdentifierType | null
   initials: string | null
   isLoading: boolean
 }) {
+  // Social handles share the chat icon: like a chat visitor, the identifier is
+  // an opaque platform id rather than an address a person would recognise.
   const IdentifierIcon =
-    identifierType === 'PHONE' ? Phone : identifierType === 'CHAT_VISITOR' ? MessageSquare : Mail
+    identifierType === 'PHONE'
+      ? Phone
+      : identifierType && identifierType !== 'EMAIL'
+        ? MessageSquare
+        : Mail
 
   return (
     <div className='flex gap-3 py-3 px-3 flex-row items-center justify-start border-b'>

@@ -19,6 +19,8 @@ export interface AuthorableInboxes {
   canAuthorAny: boolean
   /** True when this exact inbox (an EntityInstance id) is authorable. */
   canAuthor: (inboxId: string | null | undefined) => boolean
+  /** Display name of an authorable inbox, or undefined when it is not one. */
+  inboxName: (inboxId: string | null | undefined) => string | undefined
 }
 
 /**
@@ -38,11 +40,12 @@ export function useAuthorableInboxes(): AuthorableInboxes {
 
   return useMemo(() => {
     const inboxes = data ?? []
-    const ids = new Set(inboxes.map((inbox) => inbox.id))
+    const byId = new Map(inboxes.map((inbox) => [inbox.id, inbox]))
     return {
       inboxes,
       canAuthorAny: inboxes.length > 0,
-      canAuthor: (inboxId) => !!inboxId && ids.has(inboxId),
+      canAuthor: (inboxId) => !!inboxId && byId.has(inboxId),
+      inboxName: (inboxId) => (inboxId ? byId.get(inboxId)?.name : undefined),
     }
   }, [data])
 }

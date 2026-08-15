@@ -22,6 +22,7 @@ import {
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { RuleActionsSummaryRow } from '~/components/rules/ui/rule-actions-summary-row'
+import { useInboxIdentifierTypes } from '../hooks/use-inbox-identifier-types'
 
 /** The provider drives groups here; the flat condition list stays empty. */
 const EMPTY_CONDITIONS: Condition[] = []
@@ -107,7 +108,30 @@ export function MailFilterConfigurePage({
   onCancel,
   statusBar,
 }: MailFilterConfigurePageProps) {
-  const fieldDefinitions = useMemo(() => getMailFilterFields(), [])
+  /**
+   * The catalog, scoped to what the SELECTED inbox's channels can produce
+   * (plan 09 §6). Recomputed on every inbox change — the combobox stays live
+   * after a prefill — and never persisted.
+   *
+   * Fails OPEN by construction: `useInboxIdentifierTypes` returns an empty set
+   * while `channel.list` is loading, when the caller may not read it, and when
+   * the inbox has no channels, and an empty set means "hide nothing". A hidden
+   * field is a convenience; a wrongly hidden one costs the author a condition
+   * they cannot re-add.
+   *
+   * Fields the CURRENT filter already has a condition on are kept regardless,
+   * or editing a filter written before a channel moved would silently drop
+   * conditions out of the editor.
+   */
+  const identifierTypes = useInboxIdentifierTypes(inboxId)
+  const usedFieldIds = useMemo(
+    () => groups.flatMap((group) => group.conditions.map((c) => String(c.fieldId))),
+    [groups]
+  )
+  const fieldDefinitions = useMemo(
+    () => getMailFilterFields(identifierTypes, usedFieldIds),
+    [identifierTypes, usedFieldIds]
+  )
 
   const conditionConfig: ConditionSystemConfig = useMemo(
     () => ({

@@ -59,16 +59,66 @@ export const MAIL_FILTER_EXCLUDED_FIELD_IDS: readonly string[] = [
 ]
 
 /**
- * The condition-editor field catalog for a mail filter.
+ * Fields that only an EMAIL channel can ever populate.
+ *
+ * `Message.listId` and `Message.senderDomain` are derived at ingest from
+ * headers no other channel has, and Quo declares `attachments: false`, so on a
+ * phone-only inbox all three are dead rows in the editor rather than filters.
+ *
+ * `subject` is deliberately NOT here: it is empty on SMS, not meaningless, and
+ * `subject is empty` is a legitimate predicate.
+ */
+const EMAIL_ONLY_FIELD_IDS: readonly string[] = ['list', 'senderDomain', 'hasAttachments']
+
+/**
+ * The condition-editor field catalog for a mail filter, optionally scoped to
+ * what the target inbox's channels can actually produce.
  *
  * DERIVED from {@link MAIL_VIEW_FIELD_DEFINITIONS} rather than duplicated: the
  * searchbar, mail views and filters must share one condition language, because
  * they share one evaluator (`mail-query/condition-query-builder.ts`, invariant
  * 5). Adding a field there — `category` in the AI phase, say — makes it
  * filterable here for free; re-declaring the catalog would fork it.
+ *
+ * ## Scoping is SOFT, and recomputed — never persisted (plan 09 D4)
+ *
+ * An inbox is a union of channel types, not one type, and a channel can be
+ * attached to it AFTER a filter is written. So this is a hint derived from the
+ * currently selected inbox at render time; it never reaches the saved
+ * `MailFilter` row, and callers must keep showing a field that an existing
+ * filter already has a condition on (`keepFieldIds`) or editing that filter
+ * would silently drop conditions out of the editor.
+ *
+ * @param identifierTypes Identifier types present on the inbox's channels.
+ *   Omit (or pass an empty list) for the unscoped catalog — the correct
+ *   fallback whenever the channel list has not loaded or the caller may not
+ *   read it, because hiding nothing is the failure mode that loses no work.
+ * @param keepFieldIds Field ids to show regardless of scoping.
  */
-export function getMailFilterFields(): MailViewFieldDefinition[] {
-  return MAIL_VIEW_FIELD_DEFINITIONS.filter((f) => !MAIL_FILTER_EXCLUDED_FIELD_IDS.includes(f.id))
+export function getMailFilterFields(
+  identifierTypes?: readonly string[],
+  keepFieldIds: readonly string[] = []
+): MailViewFieldDefinition[] {
+  const fields = MAIL_VIEW_FIELD_DEFINITIONS.filter(
+    (f) => !MAIL_FILTER_EXCLUDED_FIELD_IDS.includes(f.id)
+  )
+  if (!identifierTypes || identifierTypes.length === 0) return fields
+
+  const hasEmail = identifierTypes.includes('EMAIL')
+  const kept = new Set(keepFieldIds)
+  return fields
+    .filter((f) => hasEmail || kept.has(f.id) || !EMAIL_ONLY_FIELD_IDS.includes(f.id))
+    .map((f) =>
+      f.options?.email
+        ? {
+            ...f,
+            options: {
+              ...f.options,
+              email: { ...f.options.email, identifierTypes: [...identifierTypes] },
+            },
+          }
+        : f
+    )
 }
 
 /** Look up one filterable field by id; undefined when it is excluded or unknown. */

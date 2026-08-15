@@ -347,8 +347,22 @@ const hoisted = vi.hoisted(() => {
     }
   })
 
+  /**
+   * Authoring-time phone normalisation (plan 09 §7).
+   *
+   * A pass-through that STAMPS its output, so these tests can prove the router
+   * hands the NORMALISED conditions to the compile gate, the write and the
+   * preview — never the raw input. The rewriting itself is
+   * `@auxx/lib`'s `normalize-conditions.test.ts`.
+   */
+  const normalizePhoneConditionValues = vi.fn((groups: unknown) => {
+    calls.push('normalizePhoneConditionValues')
+    return Array.isArray(groups) ? groups.map((g) => ({ ...g, normalized: true })) : groups
+  })
+
   const mailFilters = {
     ACTION_REQUIRING_AUTOMATION_KEY: ['run-agent', 'run-workflow'],
+    normalizePhoneConditionValues,
     MAX_PERSONAL_MAIL_FILTERS: 50,
     applyRetroactively,
     countBillableMailFilters,
@@ -1096,7 +1110,9 @@ describe('mailFilters router — conditions that do not compile', () => {
     ).rejects.toMatchObject(BAD_REQUEST)
 
     expect(lib.createMailFilter).not.toHaveBeenCalled()
-    expect(calls).toEqual(['assertFilterConditionsCompile'])
+    // Normalisation runs FIRST, so the gate judges the values that would be
+    // written rather than the ones that were typed.
+    expect(calls).toEqual(['normalizePhoneConditionValues', 'assertFilterConditionsCompile'])
   })
 
   it('names the offending field and operator, so the author can fix it', async () => {
@@ -1116,6 +1132,53 @@ describe('mailFilters router — conditions that do not compile', () => {
     ).rejects.toMatchObject(BAD_REQUEST)
 
     expect(lib.updateMailFilter).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Plan 09 §7. A phone number typed `(510) 205-5536` compiles, saves, previews
+   * "0 matches" and then never fires — never-matching is not dropping, so
+   * neither the compile gate nor the fail-closed `AND false` sees it. The fix
+   * is to rewrite the value at authoring, which only works if every path that
+   * touches conditions uses the REWRITTEN set.
+   */
+  describe('authoring-time value normalisation', () => {
+    const writtenConditions = (mock: { mock: { calls: any[][] } }, argIndex: number) =>
+      mock.mock.calls[0]?.[argIndex]
+
+    it('writes the normalised conditions on create, not the raw input', async () => {
+      await caller().create({
+        inboxId: OWN_PERSONAL,
+        name: 'Texts from Ada',
+        conditions: COMPILABLE_CONDITIONS,
+        actions: ARCHIVE,
+      })
+
+      expect(hoisted.mailFilters.normalizePhoneConditionValues).toHaveBeenCalledWith(
+        COMPILABLE_CONDITIONS
+      )
+      expect(writtenConditions(lib.createMailFilter as any, 2).conditions).toEqual(
+        COMPILABLE_CONDITIONS.map((g) => ({ ...g, normalized: true }))
+      )
+    })
+
+    it('writes them on update too — an edit must not undo the rewrite', async () => {
+      await caller().update({ filterId: OWN_FILTER, conditions: COMPILABLE_CONDITIONS })
+
+      expect(writtenConditions(lib.updateMailFilter as any, 3).conditions).toEqual(
+        COMPILABLE_CONDITIONS.map((g) => ({ ...g, normalized: true }))
+      )
+    })
+
+    it('previews them, so the count matches what saving would produce', async () => {
+      await caller().previewMatchCount({
+        inboxId: OWN_PERSONAL,
+        conditions: COMPILABLE_CONDITIONS,
+      })
+
+      expect(writtenConditions(lib.previewMatchCount as any, 3)).toEqual(
+        COMPILABLE_CONDITIONS.map((g) => ({ ...g, normalized: true }))
+      )
+    })
   })
 
   it('accepts conditions that compile, on both write paths', async () => {

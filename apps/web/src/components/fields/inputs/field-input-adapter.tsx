@@ -17,6 +17,7 @@ import { ActorPicker } from '~/components/pickers/actor-picker/actor-picker'
 import { ParticipantPicker } from '~/components/pickers/participant-picker'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
+import type { ParticipantIdentifierType } from '~/components/threads/store'
 import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import {
   AddressInput,
@@ -433,6 +434,7 @@ export function FieldInputAdapter({
             value={identifiers as string[]}
             onChange={onChange as (identifiers: string[]) => void}
             type={emailOpts.participantType}
+            identifierTypes={emailOpts.identifierTypes as ParticipantIdentifierType[] | undefined}
             multi={multi}
             placeholder={placeholder}
             disabled={disabled}
