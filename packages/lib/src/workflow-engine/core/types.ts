@@ -242,15 +242,11 @@ export function isActionNodeType(type: WorkflowNodeType): type is WorkflowAction
 /**
  * Node types that are UI-only and should not be validated/executed by the workflow engine.
  * These nodes are configuration or annotation nodes that don't have processors.
- * - Input nodes (form-input, file-upload, number-input) configure manual trigger inputs
+ * - `form-input` configures manual trigger inputs (file inputs are this node
+ *   with `inputType: 'file'` — there is no separate upload node type)
  * - Note nodes are visual annotations
  */
-export const NON_EXECUTABLE_NODE_TYPES = [
-  'form-input',
-  'file-upload',
-  'number-input',
-  'note',
-] as const
+export const NON_EXECUTABLE_NODE_TYPES = ['form-input', 'note'] as const
 
 export type NonExecutableNodeType = (typeof NON_EXECUTABLE_NODE_TYPES)[number]
 

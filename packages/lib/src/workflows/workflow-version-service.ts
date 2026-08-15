@@ -17,16 +17,6 @@ import { WorkflowTriggerType, type WorkflowVersion } from './types'
 
 const logger = createScopedLogger('workflow-version-service')
 
-/** Legacy resource trigger node types that map to the unified resource-trigger. */
-const LEGACY_RESOURCE_TRIGGER_TYPES = new Set([
-  'contact-created-trigger',
-  'contact-updated-trigger',
-  'contact-deleted-trigger',
-  'ticket-created-trigger',
-  'ticket-updated-trigger',
-  'ticket-deleted-trigger',
-])
-
 /**
  * Convert a stored workflow (DB row) into the workflow-engine format used for
  * publish-time validation.
@@ -46,11 +36,6 @@ function toEngineFormat(dbWorkflow: any): EngineWorkflow {
       engineType = node.data?.config?.polling
         ? WorkflowNodeType.APP_POLLING_TRIGGER
         : WorkflowNodeType.APP_TRIGGER
-    }
-
-    // Normalize legacy resource trigger types to the unified resource-trigger.
-    if (typeof engineType === 'string' && LEGACY_RESOURCE_TRIGGER_TYPES.has(engineType)) {
-      engineType = WorkflowNodeType.RESOURCE_TRIGGER
     }
 
     return {

@@ -17,9 +17,11 @@ interface ResourceTriggerNodeProps extends NodeProps {
 /**
  * Resource Trigger Node Component
  *
- * This is a shared component used by all resource trigger nodes
- * (contact-created-trigger, ticket-updated-trigger, etc.)
- * The specific resource type and operation are determined by the node type
+ * The single node type behind every resource trigger — the resource and the
+ * operation come from its config, not from the node type. (The six legacy
+ * per-resource types it used to also serve, `contact-created-trigger` …
+ * `ticket-deleted-trigger`, were retired: never implemented, no persisted
+ * graphs.)
  */
 const ResourceTriggerNodeComponent: FC<ResourceTriggerNodeProps> = ({ id, data, selected }) => {
   // console.log('Rendering ResourceTriggerNode:', id, data, selected)

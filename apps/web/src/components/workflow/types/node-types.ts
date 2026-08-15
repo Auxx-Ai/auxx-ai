@@ -13,18 +13,8 @@ export enum NodeType {
   MANUAL = 'manual',
   RESOURCE_TRIGGER = 'resource-trigger', // Unified resource trigger
 
-  // Resource trigger nodes (legacy - kept for backwards compatibility)
-  CONTACT_CREATED_TRIGGER = 'contact-created-trigger',
-  CONTACT_UPDATED_TRIGGER = 'contact-updated-trigger',
-  CONTACT_DELETED_TRIGGER = 'contact-deleted-trigger',
-  TICKET_CREATED_TRIGGER = 'ticket-created-trigger',
-  TICKET_UPDATED_TRIGGER = 'ticket-updated-trigger',
-  TICKET_DELETED_TRIGGER = 'ticket-deleted-trigger',
-
   // Input nodes
   FORM_INPUT = 'form-input',
-  NUMBER_INPUT = 'number-input',
-  FILE_UPLOAD = 'file-upload',
 
   // Condition nodes
   IF_ELSE = 'if-else',
@@ -78,15 +68,7 @@ export function getNodeTypeDisplayName(type: NodeType): string {
     [NodeType.SCHEDULED]: 'Scheduled Trigger',
     [NodeType.MANUAL]: 'Manual Trigger',
     [NodeType.RESOURCE_TRIGGER]: 'Resource',
-    [NodeType.CONTACT_CREATED_TRIGGER]: 'Contact Created',
-    [NodeType.CONTACT_UPDATED_TRIGGER]: 'Contact Updated',
-    [NodeType.CONTACT_DELETED_TRIGGER]: 'Contact Deleted',
-    [NodeType.TICKET_CREATED_TRIGGER]: 'Ticket Created',
-    [NodeType.TICKET_UPDATED_TRIGGER]: 'Ticket Updated',
-    [NodeType.TICKET_DELETED_TRIGGER]: 'Ticket Deleted',
     [NodeType.FORM_INPUT]: 'Form Input',
-    [NodeType.NUMBER_INPUT]: 'Number Input',
-    [NodeType.FILE_UPLOAD]: 'File Upload',
     [NodeType.IF_ELSE]: 'IF/ELSE',
     [NodeType.ANSWER]: 'Answer',
     [NodeType.AI]: 'AI',
