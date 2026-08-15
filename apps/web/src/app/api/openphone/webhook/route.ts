@@ -12,13 +12,14 @@
 // directly, exactly like the Recall/Svix call site. `openphonePreset` documents the scheme as data.
 
 import { database as db, schema } from '@auxx/database'
-import type { MessageData } from '@auxx/lib/email'
 import { MessageStorageService } from '@auxx/lib/email'
+import { parseConversationIdFromDeepLink } from '@auxx/lib/providers/openphone/deep-link'
 import type {
   OpenPhoneIntegrationMetadata,
   QuoWebhookEvent,
   QuoWebhookMessage,
 } from '@auxx/lib/providers/openphone/types'
+import { convertQuoWebhookEventToMessageData } from '@auxx/lib/providers/openphone/webhook-message'
 import { resolveWebhookSecret, verifyHmacSignature } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
@@ -177,11 +178,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           integrationId: integration.id,
         })
 
+        // The conversation key is not a field on the payload — recover it before mapping.
+        // Without it every message opens its own thread (see `resolveQuoConversationId`).
+        const conversationId = resolveQuoConversationId(event, { integrationId: integration.id })
+
         const messageData = convertQuoWebhookEventToMessageData(
           event,
           integration.id,
           integration.organizationId,
-          metadata
+          metadata,
+          conversationId
         )
         if (!messageData) {
           logger.warn('Failed to convert Quo message event data', { eventId: payload.id })
@@ -238,6 +244,48 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 }
 
 /**
+ * Recovers the Quo conversation id (`CN…`) for a message webhook event.
+ *
+ * **Why this exists.** The v4 message webhook payload carries no `conversationId` — verified
+ * against a live event. Without one, `MessageData.externalThreadId` is undefined, ingest's alias
+ * rung (`resolveThreadId`) has nothing to look up, `Thread.externalId` stays NULL, and every
+ * inbound message opens a brand-new thread. SMS has no `In-Reply-To`/`References` either, so the
+ * conversation key is the ONLY threading signal this channel has.
+ *
+ * The source is `data.deepLink`, whose `/c/<CN…>` segment carries the id. It is free,
+ * synchronous, and arrives **inside the HMAC-signed body**, so it is authenticated by the same
+ * signature that admitted the request.
+ *
+ * An earlier draft called `GET /v1/messages/{id}` first — `conversationId` is a documented field
+ * there — and treated the link as a fallback. That was the wrong trade twice over: it spent an
+ * API round-trip on **every inbound message** to re-fetch a fact the webhook had already
+ * delivered, inside a handler Quo retries on non-2xx, and the value it fetched was no better
+ * authenticated than the one already in hand. The webhook is the delivery mechanism for this
+ * event; asking the API to repeat itself is not more correct, only slower.
+ *
+ * Never throws, and a miss returns `null` — which is exactly the pre-fix behaviour: the message
+ * still stores, it just opens its own thread. Ingest must not be breakable by a lookup that is
+ * an improvement over nothing.
+ */
+function resolveQuoConversationId(
+  event: QuoWebhookEvent<QuoWebhookMessage>,
+  ctx: { integrationId: string }
+): string | null {
+  const conversationId = parseConversationIdFromDeepLink(event.data?.deepLink)
+  if (conversationId) return conversationId
+
+  // Loud: a channel that silently forks every reply into its own thread is the failure this
+  // whole function exists to stop, and it looks perfectly healthy in the logs otherwise.
+  logger.error('Could not resolve a Quo conversation id — this message will open a new thread', {
+    messageId: event.data?.object?.id,
+    eventId: event.id,
+    integrationId: ctx.integrationId,
+    hasDeepLink: !!event.data?.deepLink,
+  })
+  return null
+}
+
+/**
  * Parses `hmac;1;<timestamp>;<base64 signature>`. Returns null for a missing, malformed, or
  * unknown-scheme header so the caller rejects before any crypto runs.
  */
@@ -273,88 +321,4 @@ function isWithinTolerance(timestamp: string): boolean {
   if (!Number.isFinite(ms)) return true
 
   return Math.abs(Date.now() - ms) <= TIMESTAMP_TOLERANCE_SEC * 1000
-}
-
-/**
- * Converts a Quo message webhook event into `MessageData`.
- *
- * Reads the **webhook** message shape (`body`, `to` as a plain string, `direction: 'incoming'`) —
- * REST returns `text` and `to[]` instead, which is why the two are separate types with separate
- * mappers. Identifiers are passed through as raw E.164; the ingest path maps `openphone` to
- * `IdentifierType.PHONE` and normalizes from there.
- */
-function convertQuoWebhookEventToMessageData(
-  event: QuoWebhookEvent<QuoWebhookMessage>,
-  integrationId: string,
-  organizationId: string,
-  metadata: OpenPhoneIntegrationMetadata | null
-): MessageData | null {
-  const message = event.data?.object
-  if (!message?.id) {
-    logger.error('Cannot convert Quo webhook event: no message object on the payload.', {
-      eventId: event.id,
-    })
-    return null
-  }
-
-  try {
-    const isInbound = message.direction === 'incoming'
-    // Quo puts both sides on the payload. `metadata.phoneNumber` is only a fallback for our own
-    // side of the exchange.
-    const ourNumber = metadata?.phoneNumber
-    const fromNumber = message.from || (isInbound ? undefined : ourNumber)
-    const toNumber = message.to || (isInbound ? ourNumber : undefined)
-
-    if (!fromNumber || !toNumber) {
-      logger.warn('Missing sender or recipient number on Quo message webhook', {
-        messageId: message.id,
-        eventType: event.type,
-      })
-      return null
-    }
-
-    const createdTime = new Date(message.createdAt)
-    if (Number.isNaN(createdTime.getTime())) {
-      logger.warn('Unparseable createdAt on Quo message webhook', {
-        messageId: message.id,
-        createdAt: message.createdAt,
-      })
-      return null
-    }
-
-    return {
-      externalId: message.id,
-      externalThreadId: message.conversationId,
-      integrationId,
-      organizationId,
-      createdTime,
-      sentAt: createdTime,
-      receivedAt: createdTime,
-      subject: undefined, // SMS has no subject.
-      from: { identifier: fromNumber },
-      to: [{ identifier: toNumber }],
-      cc: [],
-      bcc: [],
-      replyTo: [],
-      // Quo has no inbound attachment ingestor, so no MessageAttachment rows are ever created
-      // and `providerAttachments` is never populated. `hasAttachments` is a workflow trigger
-      // filter (see workflow-engine/nodes/trigger-nodes/message-received.ts), so claiming true
-      // here fires attachment rules for bytes that were never fetched. The raw payload —
-      // including each entry's `media[].url` — is retained in `metadata.quo_webhook_event` for a
-      // future backfill. Real MMS ingest is a follow-up.
-      hasAttachments: false,
-      textPlain: message.body,
-      snippet: message.body?.substring(0, 100),
-      isInbound,
-      metadata: { quo_webhook_event: event },
-      keywords: [],
-      labelIds: [],
-    } satisfies MessageData
-  } catch (error) {
-    logger.error('Failed to convert Quo webhook event data', {
-      error: error instanceof Error ? error.message : String(error),
-      eventId: event.id,
-    })
-    return null
-  }
 }

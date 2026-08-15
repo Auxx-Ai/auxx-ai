@@ -13,6 +13,7 @@ import {
 import { ForbiddenError, UsageLimitError } from '../errors'
 import { FileService } from '../files/core/file-service'
 import { MediaAssetService } from '../files/core/media-asset-service'
+import { ensureContactForParticipant } from '../participants/participant-queries'
 import { ParticipantService } from '../participants/participant-service'
 import type { MailViewer } from '../permissions/visibility/context'
 import { isSystemViewer } from '../permissions/visibility/context'
@@ -23,7 +24,12 @@ import { getThreadLens } from '../permissions/visibility/thread-lens'
 import type { NormalizedEmailError as NormalizedEmailErrorInstance } from '../providers/error-normalization'
 import type { AttachmentFile } from '../providers/message-provider-interface'
 import type { ProviderRegistryService } from '../providers/provider-registry-service'
-import { getRealtimeService, publishMessageCreated, publishMessageUpdated } from '../realtime'
+import {
+  getRealtimeService,
+  publishMessageCreated,
+  publishMessageUpdated,
+  publishThreadCreated,
+} from '../realtime'
 import { Result } from '../result'
 import { isSuppressed } from '../sequences/suppression'
 import { getOrganizationSetting } from '../settings/settings-service'
@@ -208,6 +214,9 @@ export class MessageSenderService {
         subject: input.subject,
         integrationId: input.integrationId,
         organizationId: input.organizationId,
+        // Lets the manager reuse the open conversation on channels where a "new" message to
+        // someone you are already talking to is the SAME conversation (SMS). Ignored on email.
+        recipientIdentifiers: input.to.map((p) => p.identifier).filter(Boolean),
       })
       logger.info('Thread context prepared', {
         threadId: threadContext.id,
@@ -275,6 +284,13 @@ export class MessageSenderService {
           )
         }
       }
+      // Step 2.7: Link recipients to contacts BEFORE composing, because composing is what
+      // writes the `ThreadParticipant` rollup and that rollup copies `entityInstanceId` at
+      // write time. Deliberately placed after the suppression and rate-limit gates above:
+      // both branch on whether a recipient has a linked contact, and linking earlier would
+      // silently widen what they apply to.
+      await this.linkRecipientContacts(participants, input.integrationId)
+
       // Step 3: Compose message
       composed = await this.composer.composeMessage({
         threadId: threadContext.id,
@@ -368,29 +384,65 @@ export class MessageSenderService {
         await this.persistProviderErrorRaw(composed.id, sendResult.metadata?.providerErrorRaw)
       }
 
-      // Realtime: publish `message:created` for the freshly sent message so
-      // open tabs see the outbound row land without waiting for the post-send
-      // sync re-import. The post-send sync emits `message:updated` later for
-      // provider-authoritative columns — accepted duplicate.
+      // Realtime: publish `thread:created` (when this send opened the thread) and then
+      // `message:created`, so open tabs see the row land without waiting for the post-send sync
+      // re-import. The post-send sync emits `message:updated` later for provider-authoritative
+      // columns — accepted duplicate.
+      //
+      // Both events are keyed off the message's ACTUAL thread, re-read here rather than off
+      // `threadContext.id`. Reconciliation can move it: when the provider hands back a
+      // conversation key we already have a thread for, `reconcileThread` merges the pending
+      // thread into the existing one and DELETES the pending row. Publishing the stale id would
+      // address a thread that no longer exists.
       try {
+        const [messageRow] = await (this.db ?? db)
+          .select({ threadId: schema.Message.threadId })
+          .from(schema.Message)
+          .where(eq(schema.Message.id, composed.id))
+          .limit(1)
+        const effectiveThreadId = messageRow?.threadId ?? threadContext.id
+
         const [threadRow] = await (this.db ?? db)
           .select({ inboxId: schema.Thread.inboxId, assigneeId: schema.Thread.assigneeId })
           .from(schema.Thread)
-          .where(eq(schema.Thread.id, threadContext.id))
+          .where(eq(schema.Thread.id, effectiveThreadId))
           .limit(1)
+
+        // A thread nobody has yet cannot arrive through `message:created`: the client's handler
+        // patches an existing cached thread and never invalidates the thread LIST, so an
+        // outbound-first conversation stayed invisible in every open tab until a manual refresh.
+        // `thread:created` is the only mail event that refreshes the list, and it must go first
+        // so the row exists by the time the message event lands.
+        //
+        // Suppressed when reconciliation merged us into a thread the recipients already have —
+        // that one is not new, and announcing it as such would make every client re-fetch a list
+        // it already holds.
+        if (threadContext.isPending && effectiveThreadId === threadContext.id) {
+          await publishThreadCreated(
+            getRealtimeService(),
+            this.organizationId,
+            {
+              threadId: effectiveThreadId,
+              inboxId: threadRow?.inboxId ?? null,
+              assigneeId: threadRow?.assigneeId ?? null,
+            },
+            { excludeSocketId: this.socketId }
+          )
+        }
+
         await publishMessageCreated(
           getRealtimeService(),
           this.organizationId,
           {
             messageId: composed.id,
-            threadId: threadContext.id,
+            threadId: effectiveThreadId,
             inboxId: threadRow?.inboxId ?? null,
             assigneeId: threadRow?.assigneeId ?? null,
           },
           { excludeSocketId: this.socketId }
         )
       } catch (err) {
-        logger.debug('Failed to publish message:created for outbound send (non-critical)', {
+        logger.debug('Failed to publish realtime events for outbound send (non-critical)', {
           err: err instanceof Error ? err.message : err,
         })
       }
@@ -597,6 +649,79 @@ export class MessageSenderService {
       all: allParticipants,
     }
   }
+  /**
+   * Resolves a contact for each outbound recipient and patches the link onto the in-memory
+   * participants, so the `ThreadParticipant` rollup written during compose carries it.
+   *
+   * **Why this is not cosmetic.** Contact-derived mail sharing joins on
+   * `ThreadParticipant.entityInstanceId` (`mail-query/visibility-scope.ts`). Without this, a
+   * thread you sent to a contact and that was never answered is invisible to everyone whose
+   * access comes from a grant on that contact — the rollup rows exist but carry NULL, and the
+   * rollup's `COALESCE(excluded, existing)` upsert can decline to *clear* a link but can never
+   * *acquire* one, so no later outbound write fixes it either. Ingest linked the `Participant`
+   * row on the first reply and nothing ever revisited the rollup.
+   *
+   * Contact creation used to happen only on the ingest path; the outbound path minted the
+   * participant and stopped (`ParticipantService.findOrCreateParticipant` logs exactly that).
+   *
+   * Three things this must not do, all handled by `ensureContactForParticipant`:
+   * - create a contact for the org's own channel identity (it refuses own-channel identities
+   *   outright — "a contact for our own support line" is never what anyone meant)
+   * - create one for a flagged spammer
+   * - write anything when the participant is already linked
+   *
+   * `recordCreation.mode: 'none'` is honoured here rather than delegated, because the ensure
+   * helper force-creates by design (it is also the manual "make a contact from this person"
+   * button). `selective` deliberately DOES create: an outbound recipient is the one case
+   * selective mode has always created for, so this matches ingest rather than widening it.
+   *
+   * Never throws. A CRM bookkeeping failure must not fail a customer-visible send.
+   */
+  private async linkRecipientContacts(
+    participants: ProcessedParticipants,
+    integrationId: string
+  ): Promise<void> {
+    const recipients = [...participants.to, ...(participants.cc ?? [])].filter(
+      (p) => p && !p.entityInstanceId
+    )
+    if (recipients.length === 0) return
+
+    try {
+      // Org cache, not a fresh query: `CachedChannel` already carries `settings` typed as
+      // `ChannelSettings`, this send path reads the same key a few methods down, and the cache
+      // is hydrated per-org and invalidated on channel writes — re-querying would defeat that
+      // invalidation and cost a roundtrip on every send.
+      const channels = await getOrgCache().get(this.organizationId, 'channels')
+      const mode = channels.find((c) => c.id === integrationId)?.settings?.recordCreation?.mode
+      if (mode === 'none') return
+
+      for (const recipient of recipients) {
+        try {
+          const result = await ensureContactForParticipant(
+            this.organizationId,
+            recipient.id,
+            this.db ?? db
+          )
+          // Patch in place: `upsertOutboundThreadParticipants` reads these objects directly.
+          recipient.entityInstanceId = result.entityInstanceId
+        } catch (err) {
+          // Expected and fine for a spammer or our own channel identity — both are refusals,
+          // not faults. Debug rather than warn so a normal SMS (where the FROM is our own
+          // number) doesn't log noise on every send.
+          logger.debug('Skipped contact link for outbound recipient', {
+            participantId: recipient.id,
+            err: err instanceof Error ? err.message : err,
+          })
+        }
+      }
+    } catch (err) {
+      logger.warn('Could not link outbound recipients to contacts (non-critical)', {
+        integrationId,
+        err: err instanceof Error ? err.message : err,
+      })
+    }
+  }
+
   /**
    * Resolves the primary recipient's raw email address for the §6 fix #4 rate limiter.
    * Returns `null` for non-email providers (chat/SMS/social DMs) or when the primary `to`

@@ -97,8 +97,18 @@ export interface QuoMedia {
 }
 
 /**
- * A message as it arrives on a **webhook** (`data.object`). Note `body` (not `text`) and
- * `to` as a plain string (not an array).
+ * A message as it arrives on a **webhook** (`data.object`).
+ *
+ * Verified against a live `apiVersion: "v4"` payload on 2026-08-15 — read off a stored
+ * `Message.metadata.quo_webhook_event`, not from the docs. Two corrections to what this file
+ * previously declared, both of which failed silently as `undefined` reads:
+ *
+ * - the body text is **`text`**, not `body` (the docs' `body` does not appear on the wire)
+ * - there is **no `conversationId`** on the message object at all. The only carrier of the
+ *   conversation key is `data.deepLink` on the envelope — see {@link QuoWebhookEventData}.
+ *
+ * `to` is still a plain string here (REST returns an array), which is why the webhook and REST
+ * shapes stay separate types with separate mappers.
  */
 export interface QuoWebhookMessage {
   id: string // AC…
@@ -106,14 +116,15 @@ export interface QuoWebhookMessage {
   from: string
   to: string
   direction: 'incoming' | 'outgoing'
-  body: string
+  /** Body text. NOT `body` — see the note above. */
+  text: string
   media?: QuoMedia[]
   status: string
   createdAt: string
   updatedAt?: string
   userId?: string
+  contactIds?: string[]
   phoneNumberId: string
-  conversationId: string // CN…
 }
 
 /**
@@ -152,7 +163,9 @@ export interface QuoWebhookCall {
   createdAt: string
   userId?: string
   phoneNumberId: string
-  conversationId: string
+  // No `conversationId` — same envelope as QuoWebhookMessage, same omission. Unverified for
+  // calls specifically (we subscribe to none), but assume the message shape until proven otherwise
+  // rather than re-declaring a field the docs promise and the wire has never delivered.
 }
 
 /**
@@ -206,7 +219,20 @@ export interface QuoWebhookEvent<T = unknown> {
   apiVersion: string
   createdAt: string
   type: string
-  data: { object: T }
+  data: QuoWebhookEventData<T>
+}
+
+/**
+ * The envelope's `data` bag.
+ *
+ * `deepLink` is the **only** place a message webhook names its conversation — the message object
+ * carries no `conversationId` (verified live, v4). Shaped
+ * `https://my.quo.com/inbox/<PN…>/c/<CN…>?at=<AC…>`, which
+ * {@link parseConversationIdFromDeepLink} extracts the `CN…` from.
+ */
+export interface QuoWebhookEventData<T = unknown> {
+  object: T
+  deepLink?: string
 }
 
 /** Convenience alias for the two message events we subscribe to. */

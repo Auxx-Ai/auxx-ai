@@ -22,9 +22,9 @@ import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
 import {
   useMessage,
-  useMessageParticipants,
   useThread,
   useThreadReadStatus,
+  useThreadRowSender,
   useThreadTitle,
 } from '~/components/threads/hooks'
 import { useThreadActions } from '~/components/threads/providers'
@@ -73,7 +73,9 @@ export const CompactThreadItem = memo(function CompactThreadItem({
   })
   // Below `full`, latestMessageId is redacted to null — fall back to the
   // thread-level envelope participants (metadata tier, present at every lens).
-  const { from: senderParticipant } = useMessageParticipants(
+  // The counterparty, not whoever sent last — on an outbound-last thread the raw FROM is our own
+  // channel identity (the support line's number on SMS). Shared with `MailThreadItem`.
+  const senderParticipant = useThreadRowSender(
     latestMessage?.participants ?? thread?.participants ?? []
   )
   const { isUnread: readStatusUnread, markAsRead } = useThreadReadStatus(threadId)

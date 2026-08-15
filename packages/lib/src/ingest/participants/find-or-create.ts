@@ -10,7 +10,7 @@ import type {
   ParticipantEntity as Participant,
   ParticipantRole,
 } from '@auxx/database/types'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { buildOrgOwnIdentitySets, isOwnChannelIdentity } from '../../channels/own-identities'
 import { classifyIsInternal } from '../../participants/classify-internal'
 import { getRealtimeService, publishParticipantUpdated } from '../../realtime'
@@ -303,6 +303,18 @@ export async function findOrCreateParticipantRecord(
           .set({ entityInstanceId, updatedAt: new Date() })
           .where(eq(schema.Participant.id, participant.id))
           .returning()
+
+        // Heal any `ThreadParticipant` rollup rows written for this identifier BEFORE the
+        // contact existed. The outbound send path writes the rollup at compose time, when a
+        // brand-new recipient has no contact yet, and that rollup's upsert uses
+        // `COALESCE(excluded, existing)` — which can keep a link but never acquire one, so
+        // without this the NULL is permanent. It matters because contact-derived mail sharing
+        // joins on this column (`mail-query/visibility-scope.ts`): a thread left with NULL is
+        // invisible to everyone whose access comes from a grant on that contact.
+        //
+        // Scoped to rows that are still NULL, so an existing link is never rewritten.
+        await backfillThreadParticipantContact(ctx, normalizedIdentifier, entityInstanceId)
+
         const updated = updatedParticipants[0]
         if (updated) return updated
         // Zero rows back means the row we just upserted disappeared between the
@@ -324,5 +336,50 @@ export async function findOrCreateParticipantRecord(
       type: identifierType,
     })
     throw error
+  }
+}
+
+/**
+ * Backfills `ThreadParticipant.entityInstanceId` for rollup rows written before this
+ * participant had a contact.
+ *
+ * Only touches rows that are still NULL, and only within this organization — `ThreadParticipant`
+ * carries no `organizationId` of its own, so the scope comes from its `Thread`.
+ *
+ * The rollup is keyed on the routing identifier (the column is named `email` but holds an E.164
+ * number on a phone channel), which is exactly what the outbound writer used, so this matches
+ * without needing the participant id.
+ *
+ * Never throws: this is bookkeeping that improves sharing reach, and it runs on the hottest write
+ * path in the system. A failure here must not cost us the message.
+ */
+async function backfillThreadParticipantContact(
+  ctx: IngestContext,
+  identifier: string,
+  entityInstanceId: string
+): Promise<void> {
+  try {
+    await ctx.db
+      .update(schema.ThreadParticipant)
+      .set({ entityInstanceId })
+      .where(
+        and(
+          eq(schema.ThreadParticipant.email, identifier),
+          isNull(schema.ThreadParticipant.entityInstanceId),
+          inArray(
+            schema.ThreadParticipant.threadId,
+            ctx.db
+              .select({ id: schema.Thread.id })
+              .from(schema.Thread)
+              .where(eq(schema.Thread.organizationId, ctx.organizationId))
+          )
+        )
+      )
+  } catch (error) {
+    ctx.logger.warn('Could not backfill thread participant contact links', {
+      identifier,
+      entityInstanceId,
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
 }

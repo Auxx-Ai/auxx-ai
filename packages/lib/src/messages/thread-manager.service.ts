@@ -1,10 +1,12 @@
 // packages/lib/src/messages/thread-manager.service.ts
 
 import { type Database, database, schema } from '@auxx/database'
-import { ThreadStatus } from '@auxx/database/enums'
+import { IdentifierType, ThreadStatus } from '@auxx/database/enums'
 import type { ThreadEntity as Thread } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { getOrgCache } from '../cache'
+import { identifierTypeForProvider } from '../channels/capabilities'
 import { threadSearchTextAssignmentSql } from '../mail-query/thread-search-text'
 import { type ThreadContext, ThreadState } from './types/message-sending.types'
 
@@ -42,6 +44,11 @@ export class ThreadManagerService {
     subject?: string | null
     integrationId: string
     organizationId: string
+    /**
+     * The intended recipients' routing identifiers. Used only on conversation-keyed channels
+     * (see {@link findReusableConversationThread}); harmlessly ignored on email.
+     */
+    recipientIdentifiers?: string[]
   }): Promise<ThreadContext> {
     // If threadId provided, retrieve existing thread
     const { threadId, organizationId } = input
@@ -72,6 +79,20 @@ export class ThreadManagerService {
       }
     }
 
+    // On a conversation-keyed channel, "compose to this number" means the conversation we are
+    // already in — not a new one. Checked before minting a pending thread.
+    const reusable = await this.findReusableConversationThread(input)
+    if (reusable) {
+      return {
+        id: reusable.id,
+        organizationId: reusable.organizationId,
+        integrationId: reusable.integrationId,
+        externalId: this.sanitizeExternalId(reusable.externalId),
+        isPending: false,
+        metadata: (reusable.metadata ?? {}) as Record<string, any>,
+      }
+    }
+
     // Create a new pending thread
     const pendingThread = await this.createPendingThread({
       subject: input.subject,
@@ -89,6 +110,73 @@ export class ThreadManagerService {
         state: ThreadState.PENDING_SEND,
       },
     }
+  }
+
+  /**
+   * Finds the open thread a compose should join, on channels where "a new message to X" is not a
+   * new conversation.
+   *
+   * **Email vs SMS.** On email a fresh subject genuinely starts a new thread, and two threads
+   * with the same recipient are two conversations. On SMS there is exactly one conversation per
+   * (our number, their number) and the provider enforces it — Quo keys everything on a single
+   * `CN…` per pair. Minting a pending thread there produces a duplicate that survives only until
+   * reconciliation merges it away, which means a flash of a phantom row in every open list and a
+   * merge on every second compose.
+   *
+   * Gated on `identifierTypeForProvider(provider) === PHONE` — the one canonical provider→type
+   * map (#1655). Not on a hand-rolled provider list: that is the drift that made SMS unselectable
+   * in the From picker for months.
+   *
+   * Deliberately narrow:
+   * - **single recipient only.** Group SMS is unverified (no group conversations exist on the
+   *   test workspace), and guessing that a 3-way text is "the same conversation" as a 1:1 with
+   *   one of its members would merge two real conversations. Multi-recipient forks, as today.
+   * - **open threads only.** A closed conversation that someone deliberately resolved should
+   *   start fresh rather than silently reopen.
+   * - **never a merged-away thread.** Landing on one files the message somewhere invisible.
+   *
+   * Matches on the `ThreadParticipant` rollup, which is keyed by routing identifier (the column
+   * is named `email` but holds an E.164 number on a phone channel) — the same key both the
+   * ingest and outbound writers use.
+   */
+  private async findReusableConversationThread(input: {
+    integrationId: string
+    organizationId: string
+    recipientIdentifiers?: string[]
+  }): Promise<Thread | undefined> {
+    const recipients = (input.recipientIdentifiers ?? []).filter(Boolean)
+    if (recipients.length !== 1) return undefined
+    const recipient = recipients[0]!
+
+    // Provider comes from the org cache — `CachedChannel.provider` is exactly this value, and
+    // the cache is already warm on any path that got far enough to be sending a message.
+    const channels = await getOrgCache().get(input.organizationId, 'channels')
+    const provider = channels.find((c) => c.id === input.integrationId)?.provider
+    if (identifierTypeForProvider(provider) !== IdentifierType.PHONE) return undefined
+
+    const [existing] = await this.db
+      .select()
+      .from(schema.Thread)
+      .innerJoin(schema.ThreadParticipant, eq(schema.ThreadParticipant.threadId, schema.Thread.id))
+      .where(
+        and(
+          eq(schema.Thread.organizationId, input.organizationId),
+          eq(schema.Thread.integrationId, input.integrationId),
+          eq(schema.Thread.status, ThreadStatus.OPEN),
+          isNull(schema.Thread.mergedIntoThreadId),
+          eq(schema.ThreadParticipant.email, recipient)
+        )
+      )
+      .orderBy(desc(schema.Thread.lastMessageAt))
+      .limit(1)
+
+    if (!existing) return undefined
+
+    logger.info('Reusing the open conversation for this recipient instead of a new thread', {
+      threadId: existing.Thread.id,
+      integrationId: input.integrationId,
+    })
+    return existing.Thread as Thread
   }
 
   /**
