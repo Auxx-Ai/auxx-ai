@@ -1,8 +1,10 @@
 // packages/lib/src/ingest/context.ts
 
 import { type Database, database as defaultDb } from '@auxx/database'
+import type { IdentifierType as IdentifierTypeValue } from '@auxx/database/types'
 import { createScopedLogger, type Logger } from '@auxx/logger'
 import { SelectiveModeCache } from '../cache/selective-mode-cache'
+import { normalizeOwnIdentifier, type OwnIdentitySets } from '../channels/own-identities'
 import { MessageReconcilerService } from '../messages/message-reconciler.service'
 import { ThreadManagerService } from '../messages/thread-manager.service'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
@@ -46,13 +48,17 @@ export interface IngestContext {
    */
   backfillCutoffAt: Date | null
   /**
-   * Normalized email addresses that count as "us" for the active integration —
-   * the union of `Integration.email` and `Integration.metadata.userEmails`.
-   * Providers populate this on their `MessageStorageService` before dispatching
-   * ingest so participants matching any entry are treated as internal even when
-   * `Organization.domains` is unset.
+   * Identifiers that count as "us" for the ACTIVE integration, bucketed by
+   * identifier type — `EMAIL` for a mailbox and its send-as aliases, `PHONE`
+   * for a channel's own number. Providers populate this on their
+   * `MessageStorageService` before dispatching ingest.
+   *
+   * Overlaps the org-cache-derived sets `classifyIsInternal` falls back to, and
+   * is kept because it is FRESHER: a provider fills it straight from the
+   * integration it just initialized, so the first sync after a connect doesn't
+   * depend on a cache refresh having landed.
    */
-  ownEmails: Set<string>
+  ownIdentities: OwnIdentitySets
 
   /**
    * Originating socket id for self-echo suppression on realtime publishes.
@@ -76,6 +82,13 @@ export interface IngestContext {
 
   readonly companyIdByDomain: Map<string, string | null>
   readonly ownDomainsByOrg: Map<string, Set<string>>
+  /**
+   * Per-batch memo of the org-cache-derived own-identity sets, so a batch of N
+   * participants resolves them once rather than N times. Distinct from
+   * `ownIdentities` above, which is the ACTIVE integration's own identifiers
+   * pushed in by the provider.
+   */
+  readonly ownIdentitiesByOrg: Map<string, OwnIdentitySets>
   readonly providerByIntegrationId: Map<string, string>
 }
 
@@ -83,7 +96,7 @@ export interface CreateIngestContextOptions {
   db?: Database
   isInitialSync?: boolean
   integrationSettings?: IntegrationSettings
-  ownEmails?: Iterable<string>
+  ownIdentities?: OwnIdentitySets
   selectiveCache?: SelectiveModeCache
   socketId?: string
   backfillCutoffAt?: Date | null
@@ -113,12 +126,13 @@ export async function createIngestContext(
     integrationSettings: opts.integrationSettings,
     isInitialSync: opts.isInitialSync ?? false,
     backfillCutoffAt: opts.backfillCutoffAt ?? null,
-    ownEmails: normalizeOwnEmails(opts.ownEmails),
+    ownIdentities: opts.ownIdentities ?? {},
     socketId: opts.socketId,
     inSyncBatch: false,
     touchedInboxIds: new Set(),
     companyIdByDomain: new Map(),
     ownDomainsByOrg: new Map(),
+    ownIdentitiesByOrg: new Map(),
     providerByIntegrationId: new Map(),
   }
 }
@@ -127,20 +141,34 @@ export async function createIngestContext(
 export function resetBatchCaches(ctx: IngestContext): void {
   ctx.companyIdByDomain.clear()
   ctx.ownDomainsByOrg.clear()
+  ctx.ownIdentitiesByOrg.clear()
   ctx.providerByIntegrationId.clear()
 }
 
 /**
- * Normalize a collection of "own" email addresses into a deduped, lowercased
- * set safe for O(1) membership checks. Empty / non-string entries are dropped.
+ * Fold raw provider-supplied identifiers into {@link OwnIdentitySets}.
+ *
+ * Every entry goes through `normalizeOwnIdentifier` for its type, so the
+ * membership test doesn't depend on which normalizer happened to write the
+ * stored `Participant.identifier`. Empty / non-string / unparseable entries are
+ * dropped, and a bucket that ends up empty is omitted entirely.
  */
-export function normalizeOwnEmails(emails: Iterable<string> | undefined): Set<string> {
-  const out = new Set<string>()
-  if (!emails) return out
-  for (const raw of emails) {
-    if (typeof raw !== 'string') continue
-    const trimmed = raw.trim().toLowerCase()
-    if (trimmed) out.add(trimmed)
+export function buildOwnIdentitySets(
+  input: Partial<Record<IdentifierTypeValue, Iterable<string> | undefined>> | undefined
+): OwnIdentitySets {
+  if (!input) return {}
+  const out: Partial<Record<IdentifierTypeValue, ReadonlySet<string>>> = {}
+  for (const [type, values] of Object.entries(input) as Array<
+    [IdentifierTypeValue, Iterable<string> | undefined]
+  >) {
+    if (!values) continue
+    const bucket = new Set<string>()
+    for (const raw of values) {
+      if (typeof raw !== 'string') continue
+      const normalized = normalizeOwnIdentifier(raw, type)
+      if (normalized) bucket.add(normalized)
+    }
+    if (bucket.size > 0) out[type] = bucket
   }
   return out
 }

@@ -1,7 +1,10 @@
 // packages/lib/src/channels/capabilities.ts
 
-import { IntegrationProviderType } from '@auxx/database/enums'
-import type { IntegrationProviderType as IntegrationProviderTypeValue } from '@auxx/database/types'
+import { IdentifierType, IntegrationProviderType } from '@auxx/database/enums'
+import type {
+  IdentifierType as IdentifierTypeValue,
+  IntegrationProviderType as IntegrationProviderTypeValue,
+} from '@auxx/database/types'
 
 /**
  * Coarse, kopilot-facing capability map for an integration platform. This is
@@ -45,6 +48,19 @@ export interface PlatformCapabilities {
    * inbound message first to open the customer-service window).
    */
   recipientModel: 'email' | 'phone' | 'platform_user' | 'thread_only'
+  /**
+   * The `IdentifierType` this platform's `Participant` rows are keyed by.
+   *
+   * NOT derivable from `recipientModel`: facebook and instagram are both
+   * `thread_only` yet key on different id spaces (`FACEBOOK_PSID` /
+   * `INSTAGRAM_IGSID`), and `platform_user` says nothing about `CHAT_VISITOR`.
+   * So it is its own per-provider value — declared here, in the ONE map, rather
+   * than in a switch beside every consumer.
+   *
+   * `undefined` for non-messaging integrations (`shopify`), which never produce
+   * participants at all. Callers must handle that rather than defaulting.
+   */
+  identifierType?: IdentifierTypeValue
   /** Free-form note surfaced to the LLM in the catalog stanza. */
   notes?: string
 }
@@ -98,6 +114,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     richText: true,
     signature: true,
     recipientModel: 'email',
+    identifierType: IdentifierType.EMAIL,
   },
   [IntegrationProviderType.outlook]: {
     channel: 'email',
@@ -110,6 +127,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     richText: true,
     signature: true,
     recipientModel: 'email',
+    identifierType: IdentifierType.EMAIL,
   },
   [IntegrationProviderType.email]: {
     channel: 'email',
@@ -122,6 +140,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     richText: true,
     signature: true,
     recipientModel: 'email',
+    identifierType: IdentifierType.EMAIL,
   },
   [IntegrationProviderType.imap]: {
     channel: 'email',
@@ -134,6 +153,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     richText: true,
     signature: true,
     recipientModel: 'email',
+    identifierType: IdentifierType.EMAIL,
   },
   [IntegrationProviderType.mailgun]: {
     channel: 'email',
@@ -146,6 +166,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     richText: true,
     signature: true,
     recipientModel: 'email',
+    identifierType: IdentifierType.EMAIL,
   },
   [IntegrationProviderType.facebook]: {
     channel: 'messaging',
@@ -158,6 +179,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     richText: false,
     signature: false,
     recipientModel: 'thread_only',
+    identifierType: IdentifierType.FACEBOOK_PSID,
     notes: '24h customer-service window for freeform replies',
   },
   [IntegrationProviderType.instagram]: {
@@ -171,6 +193,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     richText: false,
     signature: false,
     recipientModel: 'thread_only',
+    identifierType: IdentifierType.INSTAGRAM_IGSID,
   },
   [IntegrationProviderType.sms]: {
     channel: 'messaging',
@@ -186,6 +209,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     // provider, so there is no verified API cap to enforce. `openphone` below
     // is the real one.
     recipientModel: 'phone',
+    identifierType: IdentifierType.PHONE,
   },
   [IntegrationProviderType.openphone]: {
     channel: 'messaging',
@@ -210,6 +234,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     // segment count separately because segments are the billing unit.
     maxMessageLength: 1600,
     recipientModel: 'phone',
+    identifierType: IdentifierType.PHONE,
   },
   [IntegrationProviderType.whatsapp]: {
     channel: 'messaging',
@@ -222,6 +247,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     richText: false,
     signature: false,
     recipientModel: 'phone',
+    identifierType: IdentifierType.PHONE,
     notes: 'cold sends require approved template',
   },
   [IntegrationProviderType.chat]: {
@@ -235,6 +261,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     richText: false,
     signature: false,
     recipientModel: 'platform_user',
+    identifierType: IdentifierType.CHAT_VISITOR,
   },
   [IntegrationProviderType.shopify]: {
     // Data-only integration — not a messaging channel. Excluded from the
@@ -256,6 +283,26 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
 /** Plucks the composer-facing subset for one provider. `undefined` for an unknown provider. */
 export function getComposerCapabilities(provider: string): ComposerCapabilities | undefined {
   return PLATFORM_CAPABILITIES[provider as IntegrationProviderTypeValue]
+}
+
+/**
+ * The `IdentifierType` a channel of this provider keys its participants by.
+ *
+ * THE single provider→identifier-type mapping. Before this existed,
+ * `ingest/participants/normalize.ts` carried its own switch — a third
+ * hand-maintained per-provider list beside the two capability maps, and the
+ * same drift that left `openphone` out of the composer's From picker for
+ * months. Anything needing this answer reads it here.
+ *
+ * `undefined` for an unknown provider and for `shopify` (a data-only
+ * integration with no participants). Callers decide what to do with that —
+ * ingest falls back to a shape guess, the send path refuses.
+ */
+export function identifierTypeForProvider(
+  provider: string | null | undefined
+): IdentifierTypeValue | undefined {
+  if (!provider) return undefined
+  return PLATFORM_CAPABILITIES[provider as IntegrationProviderTypeValue]?.identifierType
 }
 
 /**

@@ -32,7 +32,7 @@ import { GoogleOAuthService } from './google-oauth'
 
 type GaxiosError = Common.GaxiosError
 
-import { IntegrationProviderType } from '@auxx/database/enums'
+import { IdentifierType as IdentifierTypeEnum, IntegrationProviderType } from '@auxx/database/enums'
 import { getGmailQuotaCost } from '../../utils/rate-limiter'
 import { createGmailDraft, sendGmailDraft, updateGmailDraft } from './drafts'
 import { addLabel, createLabel, deleteLabel, getLabels, removeLabel, updateLabel } from './labels'
@@ -172,7 +172,7 @@ export class GoogleProvider
     this.userEmails = mergeOwnEmails(integration.email, await this.fetchAllUserEmails())
     // Surface the canonical "us" address set to the ingest pipeline so
     // self-addressed mail never produces a contact for the integration owner.
-    this.storageService.setOwnEmails(this.userEmails)
+    this.storageService.setOwnIdentities({ [IdentifierTypeEnum.EMAIL]: this.userEmails })
     // Received-time trigger cutoff (webhook-push-migration plan Phase 2.5): while the
     // initial backfill is incomplete, ingest suppresses message:received for mail
     // received before the connect epoch — regardless of which walker ingested it.

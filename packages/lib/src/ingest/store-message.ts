@@ -10,7 +10,7 @@ import type {
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
-import { buildOrgOwnEmailAddressSet } from '../channels/own-addresses'
+import { buildOrgOwnEmailAddressSet } from '../channels/own-identities'
 import {
   resolveThreadLinkedEntityIds,
   touchEntityActivity,

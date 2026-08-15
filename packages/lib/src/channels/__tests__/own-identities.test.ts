@@ -1,8 +1,13 @@
-// packages/lib/src/channels/__tests__/own-addresses.test.ts
+// packages/lib/src/channels/__tests__/own-identities.test.ts
 
+import { IdentifierType } from '@auxx/database/enums'
 import { describe, expect, it } from 'vitest'
 import type { CachedChannel } from '../../cache/providers/channels-provider'
-import { buildOrgOwnEmailAddressSet } from '../own-addresses'
+import {
+  buildOrgOwnEmailAddressSet,
+  buildOrgOwnIdentitySets,
+  isOwnChannelIdentity,
+} from '../own-identities'
 
 function channel(overrides: Partial<CachedChannel> = {}): CachedChannel {
   return {
@@ -136,5 +141,71 @@ describe('buildOrgOwnEmailAddressSet', () => {
       )
       expect(set).toEqual(new Set(['orphan@company.com']))
     })
+  })
+})
+
+describe('buildOrgOwnIdentitySets — the phone arm', () => {
+  const quo = (phoneNumber: unknown, overrides: Partial<CachedChannel> = {}) =>
+    channel({
+      provider: 'openphone' as CachedChannel['provider'],
+      email: null,
+      metadata: { phoneNumberId: 'PN1', phoneNumber },
+      ...overrides,
+    })
+
+  it('picks a phone channel up off metadata.phoneNumber', () => {
+    const sets = buildOrgOwnIdentitySets([quo('+18889155797')])
+    expect(sets[IdentifierType.PHONE]).toEqual(new Set(['+18889155797']))
+  })
+
+  it('normalizes to E.164 so the stored digit-strip form still matches', () => {
+    // `normalizeIdentifier(x, PHONE)` in ingest strips non-digits without
+    // adding a country code, so the set must hold the folded form and
+    // `isOwnChannelIdentity` must fold the probe too.
+    const sets = buildOrgOwnIdentitySets([quo('(888) 915-5797')])
+    expect(sets[IdentifierType.PHONE]).toEqual(new Set(['+18889155797']))
+    expect(isOwnChannelIdentity(sets, '18889155797', IdentifierType.PHONE)).toBe(true)
+    expect(isOwnChannelIdentity(sets, '+1 888 915 5797', IdentifierType.PHONE)).toBe(true)
+  })
+
+  it('omits the bucket entirely when no phone channel is connected', () => {
+    const sets = buildOrgOwnIdentitySets([channel({ email: 'support@company.com' })])
+    expect(sets[IdentifierType.PHONE]).toBeUndefined()
+    expect(isOwnChannelIdentity(sets, '+18889155797', IdentifierType.PHONE)).toBe(false)
+  })
+
+  it('drops an unparseable number rather than storing a junk key', () => {
+    expect(buildOrgOwnIdentitySets([quo('not-a-number')])[IdentifierType.PHONE]).toBeUndefined()
+    expect(buildOrgOwnIdentitySets([quo(null)])[IdentifierType.PHONE]).toBeUndefined()
+    expect(buildOrgOwnIdentitySets([quo(undefined)])[IdentifierType.PHONE]).toBeUndefined()
+  })
+
+  it('never mixes id spaces — an email is not a phone identity and vice versa', () => {
+    const sets = buildOrgOwnIdentitySets([
+      quo('+18889155797'),
+      channel({ id: 'mail', email: 'support@company.com' }),
+    ])
+    expect(isOwnChannelIdentity(sets, 'support@company.com', IdentifierType.PHONE)).toBe(false)
+    expect(isOwnChannelIdentity(sets, '+18889155797', IdentifierType.EMAIL)).toBe(false)
+    expect(isOwnChannelIdentity(sets, 'support@company.com', IdentifierType.EMAIL)).toBe(true)
+    expect(isOwnChannelIdentity(sets, '+18889155797', IdentifierType.PHONE)).toBe(true)
+  })
+
+  it('honours excludeInboxIds on phone channels too', () => {
+    const sets = buildOrgOwnIdentitySets([quo('+18889155797', { inboxId: 'ibx_personal' })], {
+      excludeInboxIds: new Set(['ibx_personal']),
+    })
+    expect(sets[IdentifierType.PHONE]).toBeUndefined()
+  })
+
+  it('contributes nothing for chat and social channels', () => {
+    // Their org side is an EMAIL participant minted from the agent's user row;
+    // a CHAT_VISITOR / PSID / IGSID always names the customer.
+    const sets = buildOrgOwnIdentitySets([
+      channel({ provider: 'chat' as CachedChannel['provider'], email: null, name: 'Widget' }),
+      channel({ provider: 'facebook' as CachedChannel['provider'], email: null, name: 'Page' }),
+    ])
+    expect(sets[IdentifierType.CHAT_VISITOR]).toBeUndefined()
+    expect(sets[IdentifierType.FACEBOOK_PSID]).toBeUndefined()
   })
 })

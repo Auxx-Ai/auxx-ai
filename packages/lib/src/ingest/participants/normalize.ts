@@ -5,6 +5,7 @@ import { IdentifierType as IdentifierTypeEnum } from '@auxx/database/enums'
 import type { IdentifierType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull } from 'drizzle-orm'
+import { identifierTypeForProvider } from '../../channels/capabilities'
 import type { IngestContext } from '../context'
 
 const logger = createScopedLogger('ingest:participants:normalize')
@@ -36,27 +37,21 @@ export async function determineIdentifierType(
   integrationId: string
 ): Promise<IdentifierType> {
   const provider = await resolveProvider(ctx, integrationId, ctx.db)
-  switch (provider) {
-    case 'google':
-    case 'outlook':
-    case 'mailgun':
-    case 'email':
-      return IdentifierTypeEnum.EMAIL
-    case 'openphone':
-    case 'sms':
-      return IdentifierTypeEnum.PHONE
-    case 'facebook':
-      return IdentifierTypeEnum.FACEBOOK_PSID
-    case 'instagram':
-      return IdentifierTypeEnum.INSTAGRAM_IGSID
-    default:
-      if (identifier.includes('@')) return IdentifierTypeEnum.EMAIL
-      if (identifier.match(/^\+?\d{7,}$/)) return IdentifierTypeEnum.PHONE
-      logger.warn(
-        `Could not reliably determine identifier type for provider ${provider}, identifier: ${identifier}. Defaulting to EMAIL.`
-      )
-      return IdentifierTypeEnum.EMAIL
-  }
+
+  // Read from `PLATFORM_CAPABILITIES`, never a switch here. This function used
+  // to carry its own provider list — a third hand-maintained one beside the two
+  // capability maps, and exactly the drift that kept `openphone` out of the
+  // composer's From picker for months. Note the old list was already missing
+  // `imap`, `whatsapp` and `chat`, all of which fell through to the shape guess.
+  const declared = identifierTypeForProvider(provider)
+  if (declared) return declared
+
+  if (identifier.includes('@')) return IdentifierTypeEnum.EMAIL
+  if (identifier.match(/^\+?\d{7,}$/)) return IdentifierTypeEnum.PHONE
+  logger.warn(
+    `Could not reliably determine identifier type for provider ${provider}, identifier: ${identifier}. Defaulting to EMAIL.`
+  )
+  return IdentifierTypeEnum.EMAIL
 }
 
 async function resolveProvider(

@@ -2,7 +2,7 @@
 
 import { revealSecrets } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
-import { IntegrationProviderType } from '@auxx/database/enums'
+import { IdentifierType as IdentifierTypeEnum, IntegrationProviderType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { MessageStorageService } from '../../email/email-storage'
@@ -130,7 +130,7 @@ export class ImapProvider extends BaseMessageProvider implements ChannelProvider
     // Surface the canonical "us" address set to the ingest pipeline so
     // self-addressed mail never produces a contact for the integration owner.
     if (integration.email) {
-      this.storageService.setOwnEmails([integration.email])
+      this.storageService.setOwnIdentities({ [IdentifierTypeEnum.EMAIL]: [integration.email] })
     }
 
     logger.info(`ImapProvider initialized for ${integration.email}`)
