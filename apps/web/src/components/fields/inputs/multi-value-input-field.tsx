@@ -5,14 +5,15 @@ import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { MultiValuePicker } from '~/components/pickers/multi-value-picker'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { formatValueForDisplay, MultiValuePicker } from '~/components/pickers/multi-value-picker'
 import { ItemsListView } from '~/components/ui/items-list-view'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { useFieldNavigationOptional } from '../field-navigation-context'
 import { usePropertyContext } from '../property-provider'
+import { useOrgBusinessCountry } from './use-org-business-country'
 
-/** Placeholder per field type for the picker's combined filter/entry input. */
+/** Placeholder per field type for the picker's entry input. */
 function placeholderFor(fieldType: string): string {
   switch (fieldType) {
     case 'EMAIL':
@@ -20,7 +21,8 @@ function placeholderFor(fieldType: string): string {
     case 'URL':
       return 'Search or add website...'
     case 'PHONE_INTL':
-      return 'Search or add phone...'
+      // The phone arm is a real phone input, not a search box.
+      return 'Enter phone number'
     default:
       return 'Search or add...'
   }
@@ -45,6 +47,7 @@ function toValueList(value: unknown): string[] {
 export function MultiValueInputField() {
   const { value, field, commitValue, onBeforeClose } = usePropertyContext()
   const nav = useFieldNavigationOptional()
+  const defaultCountry = useOrgBusinessCountry()
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const fieldType: string = field?.fieldType || field?.type
@@ -57,6 +60,21 @@ export function MultiValueInputField() {
     localValuesRef.current = localValues
   }, [localValues])
 
+  // Adopt the server's shape of the list. The provider re-derives `value` from
+  // the store on every confirmed write (`property-provider.tsx` syncs on
+  // `storeValue`), so this is what brings the WRITE-NORMALIZED form back into an
+  // open popover — E.164 for phone, lowercased for email — and what visibly
+  // drops a value the server rejected and rolled back.
+  //
+  // Keyed on the CONTENT, not on `value`'s identity: the provider derives it
+  // through `formatToRawValue`, which mints a fresh array, and an identity dep
+  // would eat in-flight edits the day that moves into render.
+  const serverKey = JSON.stringify(toValueList(value))
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on serverKey by design — see above
+  useEffect(() => {
+    setLocalValues(toValueList(value))
+  }, [serverKey])
+
   /** Debounced whole-array save — waits for the user to stop editing. */
   const debouncedSave = useCallback(
     (newValues: string[]) => {
@@ -64,6 +82,10 @@ export function MultiValueInputField() {
         clearTimeout(saveTimeoutRef.current)
       }
       saveTimeoutRef.current = setTimeout(() => {
+        // Null the ref as the timer fires. Without this it holds a DEAD id
+        // forever, which makes `onBeforeClose` issue a redundant second commit
+        // and would silently disable any future "is a save pending?" guard.
+        saveTimeoutRef.current = null
         commitValue(newValues)
       }, 300)
     },
@@ -116,6 +138,7 @@ export function MultiValueInputField() {
       fieldOptions={field?.options as FieldOptions | undefined}
       placeholder={placeholderFor(fieldType)}
       onCaptureChange={handleCaptureChange}
+      defaultCountry={defaultCountry}
     />
   )
 }
@@ -173,6 +196,19 @@ export function MultiValueFieldInput({
   shouldPreventDismiss,
 }: MultiValueFieldInputProps) {
   const values = toValueList(value)
+  const defaultCountry = useOrgBusinessCountry()
+
+  // Chips render display-formatted, matching `DisplayPhone` and the table cell.
+  // Raw text here meant a stored `+15102055536` ignored the field's own
+  // `phoneFormat` and read as an unformatted E.164 blob.
+  const chips = useMemo(
+    () =>
+      values.map((v, index) => ({
+        id: `${index}:${v}`,
+        value: formatValueForDisplay(fieldType, v, fieldOptions),
+      })),
+    [values, fieldType, fieldOptions]
+  )
 
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
@@ -207,7 +243,7 @@ export function MultiValueFieldInput({
           asCombobox
           className={cn(className, triggerProps?.className)}>
           <ItemsListView
-            items={values.map((v, index) => ({ id: `${index}:${v}`, value: v }))}
+            items={chips}
             renderItem={(item) => (
               <Badge variant='pill' className='shrink-0'>
                 {typeof item === 'object' ? (item.value as string) : String(item)}
@@ -234,6 +270,7 @@ export function MultiValueFieldInput({
           fieldOptions={fieldOptions}
           placeholder={placeholder ?? placeholderFor(fieldType)}
           disabled={disabled}
+          defaultCountry={defaultCountry}
         />
       </PopoverContent>
     </Popover>

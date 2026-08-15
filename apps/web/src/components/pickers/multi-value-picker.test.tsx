@@ -90,6 +90,123 @@ describe('MultiValuePicker — Create row gating', () => {
   })
 })
 
+// ── PHONE_INTL entry: a real phone input, not a search box ──────────────────
+//
+// The picker's phone arm must normalize through `formatPhoneNumber` (the same
+// libphonenumber call the write path runs), so the Add row can never offer a
+// value the server would 400 on, and a national number typed without a `+`
+// depends on `defaultCountry`.
+
+describe('MultiValuePicker — PHONE_INTL entry', () => {
+  it('normalizes a US national number to E.164 on add', async () => {
+    const onChange = vi.fn()
+    render(<MultiValuePicker fieldType='PHONE_INTL' values={[]} onChange={onChange} />)
+
+    await typeInto(screen.getByPlaceholderText('Enter phone number'), '5102055536')
+    await userEvent.click(screen.getByText(/^Add "/))
+
+    expect(onChange).toHaveBeenCalledWith(['+15102055536'])
+  })
+
+  it('parses a national number against defaultCountry, not always US', async () => {
+    const onChange = vi.fn()
+    // Berlin landline in national form — valid as DE, not as US.
+    render(
+      <MultiValuePicker
+        fieldType='PHONE_INTL'
+        values={[]}
+        onChange={onChange}
+        defaultCountry='DE'
+      />
+    )
+
+    await typeInto(screen.getByPlaceholderText('Enter phone number'), '030901820')
+    await userEvent.click(screen.getByText(/^Add "/))
+
+    expect(onChange).toHaveBeenCalledWith(['+4930901820'])
+  })
+
+  it('rejects the same national number when the country is US', async () => {
+    render(
+      <MultiValuePicker fieldType='PHONE_INTL' values={[]} onChange={vi.fn()} defaultCountry='US' />
+    )
+
+    await typeInto(screen.getByPlaceholderText('Enter phone number'), '030901820')
+    expect(screen.queryByText(/^Add "/)).not.toBeInTheDocument()
+  })
+
+  it('keeps an impossible number out of the list (isValid, not a length check)', async () => {
+    render(<MultiValuePicker fieldType='PHONE_INTL' values={[]} onChange={vi.fn()} />)
+
+    // 555-555-5555 is length-valid but not a real US number.
+    await typeInto(screen.getByPlaceholderText('Enter phone number'), '5555555555')
+    expect(screen.queryByText(/^Add "/)).not.toBeInTheDocument()
+  })
+
+  it('treats a differently-formatted duplicate as a duplicate', async () => {
+    render(<MultiValuePicker fieldType='PHONE_INTL' values={['+15102055536']} onChange={vi.fn()} />)
+
+    await typeInto(screen.getByPlaceholderText('Enter phone number'), '(510) 205-5536')
+    expect(screen.queryByText(/^Add "/)).not.toBeInTheDocument()
+  })
+
+  it(`hides the Add row at the ${MAX_MULTI_VALUES}-value cap`, async () => {
+    // Distinct, individually valid US numbers.
+    const values = Array.from({ length: MAX_MULTI_VALUES }, (_, i) => `+1510205553${i}`)
+    render(<MultiValuePicker fieldType='PHONE_INTL' values={values} onChange={vi.fn()} />)
+
+    await typeInto(screen.getByPlaceholderText('Enter phone number'), '2136210001')
+    expect(screen.queryByText(/^Add "/)).not.toBeInTheDocument()
+  })
+
+  it('keeps existing rows visible while a new number is typed', async () => {
+    render(<MultiValuePicker fieldType='PHONE_INTL' values={['+15102055536']} onChange={vi.fn()} />)
+
+    await typeInto(screen.getByPlaceholderText('Enter phone number'), '2136210001')
+    // `searchValue` is ENTRY text on the phone arm — it must not filter the list.
+    // No `phoneFormat` option here, so the converter's default (national) applies.
+    expect(screen.getByText('(510) 205-5536')).toBeInTheDocument()
+  })
+})
+
+describe('MultiValuePicker — entry control by type (scope boundary)', () => {
+  it('EMAIL and URL keep the searchable CommandInput', () => {
+    const { unmount } = render(
+      <MultiValuePicker fieldType='EMAIL' values={[]} onChange={vi.fn()} />
+    )
+    expect(screen.getByPlaceholderText('Search or add...')).toHaveAttribute('cmdk-input', '')
+    unmount()
+
+    render(<MultiValuePicker fieldType='URL' values={[]} onChange={vi.fn()} />)
+    expect(screen.getByPlaceholderText('Search or add...')).toHaveAttribute('cmdk-input', '')
+  })
+
+  // The country-select button precedes the number field in the DOM, so a popover
+  // focus scope grabs IT on open. Focusing the button here stands in for that —
+  // `autoFocus` alone has already fired by this point, so this fails without the
+  // picker's own reclaim-on-next-frame effect.
+  it('claims the caret back from the country button', async () => {
+    render(<MultiValuePicker fieldType='PHONE_INTL' values={[]} onChange={vi.fn()} />)
+
+    const input = screen.getByPlaceholderText('Enter phone number')
+    const countryButton = screen.getByLabelText('Select country')
+
+    countryButton.focus()
+    expect(document.activeElement).toBe(countryButton)
+
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(input)
+    })
+  })
+
+  it('PHONE_INTL renders the flag input instead, with a country selector', () => {
+    render(<MultiValuePicker fieldType='PHONE_INTL' values={[]} onChange={vi.fn()} />)
+
+    expect(screen.getByPlaceholderText('Enter phone number')).not.toHaveAttribute('cmdk-input')
+    expect(screen.getByLabelText('Select country')).toBeInTheDocument()
+  })
+})
+
 describe('MultiValuePicker — rows', () => {
   it('marks index 0 with the Primary badge', () => {
     render(
