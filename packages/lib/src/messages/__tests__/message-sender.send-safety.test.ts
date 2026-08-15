@@ -109,7 +109,7 @@ vi.mock('../thread-manager.service', () => ({
   ThreadManagerService: class {
     getOrCreateThreadForSending = mocks.getOrCreateThreadForSending
     updateThreadMetadata = vi.fn(async () => undefined)
-    updateThreadParticipants = vi.fn(async () => undefined)
+    updateThreadParticipantCount = vi.fn(async () => undefined)
     deletePendingThread = vi.fn(async () => undefined)
   },
 }))

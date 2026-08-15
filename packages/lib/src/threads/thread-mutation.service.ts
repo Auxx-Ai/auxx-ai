@@ -1414,9 +1414,13 @@ export class ThreadMutationService {
   }
 
   /**
-   * Updates thread participants after message operations
+   * Recount `Thread.participantCount` from the thread's message participants.
+   *
+   * Counts only — it does NOT write the `ThreadParticipant` rollup. Currently has
+   * no callers; `ThreadManagerService#updateThreadParticipantCount` is the one the
+   * send path uses and this duplicates it.
    */
-  async updateThreadParticipants(threadId: string): Promise<void> {
+  async updateThreadParticipantCount(threadId: string): Promise<void> {
     // Get messages and their participants for this thread
     // All messages are now "real" messages - drafts are in separate Draft table
     const messages = await this.db.query.Message.findMany({
@@ -1440,7 +1444,7 @@ export class ThreadMutationService {
     ]
 
     // `Thread.participantIds` was dropped in migration 0028 — only the count is
-    // a column. Matches `ThreadManagerService#updateThreadParticipants`.
+    // a column. Matches `ThreadManagerService#updateThreadParticipantCount`.
     await this.db
       .update(schema.Thread)
       .set({ participantCount: participantIds.length })

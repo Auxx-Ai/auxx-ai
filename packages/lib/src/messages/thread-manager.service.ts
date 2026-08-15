@@ -376,9 +376,17 @@ export class ThreadManagerService {
   }
 
   /**
-   * Updates thread participants
+   * Recount `Thread.participantCount` from the thread's `MessageParticipant` links.
+   *
+   * Counts only — it does NOT write the `ThreadParticipant` rollup, despite what
+   * its old name (`updateThreadParticipants`) implied. That name is why an
+   * outbound-first thread silently had no rollup rows for so long: the send path
+   * called this, it looked like the rollup was handled, and it never was. The
+   * rollup is written by `ingest/store-message.ts` inbound, `chat/session.ts` for
+   * visitors, thread merges, and `upsertOutboundThreadParticipants` on the
+   * outbound path.
    */
-  async updateThreadParticipants(threadId: string): Promise<void> {
+  async updateThreadParticipantCount(threadId: string): Promise<void> {
     const participants = await this.db
       .selectDistinct({ participantId: schema.MessageParticipant.participantId })
       .from(schema.MessageParticipant)

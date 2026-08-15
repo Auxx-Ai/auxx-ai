@@ -4,7 +4,7 @@ import { getAppHostname } from '@auxx/config/server'
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { ParticipantRole, SendStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { convert as htmlToText } from 'html-to-text'
 import { type FileAttachment, MessageAttachmentService } from './message-attachment.service'
 import type { ComposedMessage, ProcessedParticipants } from './types/message-sending.types'
@@ -25,6 +25,68 @@ function outboundHtmlToText(html: string): string {
     preserveNewlines: true,
     selectors: [{ selector: 'img', format: 'skip' }],
   })
+}
+
+/**
+ * Upsert the thread-grained participant rollup for an outbound message, mirroring
+ * `ingest/store-message.ts`.
+ *
+ * Without this an outbound-first thread has NO `ThreadParticipant` rows until
+ * somebody replies. That matters because contact-derived mail sharing joins on
+ * `ThreadParticipant.entityInstanceId` (`mail-query/visibility-scope.ts`), so a
+ * thread you sent to a contact but that was never answered is invisible to
+ * everyone whose access comes from a grant on that contact — it would appear only
+ * once the customer replied and ingest wrote the rows.
+ *
+ * `ThreadManagerService.updateThreadParticipantCount` does not cover this: despite
+ * its former name (`updateThreadParticipants`) it only ever wrote
+ * `Thread.participantCount` and never touched this table. The name is why the gap
+ * went unnoticed.
+ *
+ * **BCC is deliberately excluded.** A rollup row is an access-granting fact — it is
+ * what lets a contact grant reach this thread — so including a blind-copied
+ * recipient would hand that recipient's grantees the entire conversation, which
+ * inverts what BCC means. Ingest never has to make this call: inbound mail carries
+ * no BCC.
+ */
+export async function upsertOutboundThreadParticipants(
+  tx: Transaction,
+  threadId: string,
+  participants: ProcessedParticipants,
+  at: Date
+): Promise<void> {
+  const rows = [participants.from, ...participants.to, ...(participants.cc ?? [])]
+    .filter((p) => !!p?.identifier)
+    .map((p) => ({
+      threadId,
+      // Column is named `email` but holds the routing identifier — an E.164 number
+      // on a phone channel. Same key ingest writes, so the unique index matches.
+      email: p.identifier,
+      name: p.name ?? null,
+      entityInstanceId: p.entityInstanceId ?? null,
+      isInternal: p.isInternal ?? false,
+      messageCount: 1,
+      // Outbound rows are written before the send lands, so `Message.sentAt` is
+      // still null here; `at` is this message's own timestamp.
+      firstMessageAt: at,
+      lastMessageAt: at,
+    }))
+  if (rows.length === 0) return
+
+  await tx
+    .insert(schema.ThreadParticipant)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [schema.ThreadParticipant.threadId, schema.ThreadParticipant.email],
+      set: {
+        messageCount: sql`${schema.ThreadParticipant.messageCount} + 1`,
+        firstMessageAt: sql`LEAST(${schema.ThreadParticipant.firstMessageAt}, excluded."firstMessageAt")`,
+        lastMessageAt: sql`GREATEST(${schema.ThreadParticipant.lastMessageAt}, excluded."lastMessageAt")`,
+        // Prefer a freshly resolved contact link / name; keep the old one otherwise.
+        entityInstanceId: sql`COALESCE(excluded."entityInstanceId", ${schema.ThreadParticipant.entityInstanceId})`,
+        name: sql`COALESCE(excluded."name", ${schema.ThreadParticipant.name})`,
+      },
+    })
 }
 
 /**
@@ -205,6 +267,8 @@ export class MessageComposerService {
       ]
 
       await tx.insert(schema.MessageParticipant).values(participantLinks).onConflictDoNothing()
+
+      await upsertOutboundThreadParticipants(tx, input.threadId, input.participants, now)
 
       // Update thread latestMessageId
       // All messages are now "real" messages - drafts are in separate Draft table
@@ -402,6 +466,8 @@ export class MessageComposerService {
 
       await tx.insert(schema.MessageParticipant).values(participantLinks).onConflictDoNothing()
 
+      await upsertOutboundThreadParticipants(tx, input.threadId, input.participants, now)
+
       return message
     })
 
@@ -549,6 +615,8 @@ export class MessageComposerService {
       ]
 
       await tx.insert(schema.MessageParticipant).values(participantLinks).onConflictDoNothing()
+
+      await upsertOutboundThreadParticipants(tx, input.threadId, input.participants, now)
 
       // Update thread latestMessageId
       // All messages are now "real" messages - drafts are in separate Draft table
