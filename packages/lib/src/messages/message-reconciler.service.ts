@@ -227,38 +227,58 @@ export class MessageReconcilerService {
     // `internetMessageId` nor a usable `externalId` (Outlook: Graph mints its own
     // Message-ID and returns nothing from `/me/sendMail`). It is a heuristic, so it
     // is deliberately narrow:
+    //   - OUTBOUND only — see the direction guard below
     //   - same integration — never reconcile an echo onto another channel's message
     //   - `sendToken IS NOT NULL` — only a message WE sent can have a Sent-folder
     //     echo, so this is both a correctness guard and the main selectivity win
     //   - newest candidate first, so two same-subject sends in the window resolve to
     //     the one nearest in time rather than an arbitrary row
-    const recentlySent = await this.db.query.Message.findFirst({
-      where: (messages, { eq, and, inArray, gte, isNotNull }) =>
-        and(
-          eq(messages.organizationId, messageData.organizationId),
-          eq(messages.integrationId, messageData.integrationId),
-          eq(messages.subject, messageData.subject || ''),
-          inArray(messages.sendStatus, [SendStatus.PENDING, SendStatus.SENT]),
-          isNotNull(messages.sendToken),
-          // 30 minutes, measured from INGEST time. This only bounds the scan — it is
-          // NOT the precision control. Precision comes from the `< 60000` relative-skew
-          // check against `recentlySent.createdAt` below, plus the integration /
-          // `sendToken` / subject predicates and `orderBy desc(createdAt)`.
-          // The previous 5 minutes was too short: Outlook polls every ~5-7 minutes, and
-          // a measured live case had our row created at 06:28:02.744 and the echo
-          // ingested at 06:34:50 — a 6m47s gap, so the candidate was never even
-          // SELECTED and the skew check never got to run.
-          gte(messages.createdAt, new Date(Date.now() - 30 * 60 * 1000))
-        ),
-      orderBy: (messages, { desc }) => [desc(messages.createdAt)],
-      columns: {
-        id: true,
-        sendToken: true,
-        internetMessageId: true,
-        threadId: true,
-        createdAt: true,
-      },
-    })
+    //
+    // ⚠️ The direction guard is what makes this strategy safe on subject-less
+    // channels. Unlike Strategy 1 and the echoed-id strategy above, this one has NO
+    // identity key — it matches purely on (integration, subject, 60s skew). On email
+    // the subject carries the selectivity. **SMS has no subject**, so
+    // `eq(subject, messageData.subject || '')` degenerates to `'' = ''` and matches
+    // every SMS on the channel, leaving a 60-second window as the only discriminator.
+    //
+    // Measured live on Quo (2026-08-14): an outbound SMS at 20:49:47 and the
+    // customer's reply 49s later collapsed into ONE row — the inbound message
+    // overwrote the outbound row's `externalId` and timestamps while keeping the
+    // outbound body and `isInbound: false`. The reply survived only inside
+    // `metadata`. On a support line "customer replies within a minute" is the normal
+    // case, not an edge case.
+    //
+    // A Sent-folder echo is by definition a copy of a message WE sent, so it is
+    // always outbound. An inbound message can never be one, on any provider.
+    const recentlySent = messageData.isInbound
+      ? null
+      : await this.db.query.Message.findFirst({
+          where: (messages, { eq, and, inArray, gte, isNotNull }) =>
+            and(
+              eq(messages.organizationId, messageData.organizationId),
+              eq(messages.integrationId, messageData.integrationId),
+              eq(messages.subject, messageData.subject || ''),
+              inArray(messages.sendStatus, [SendStatus.PENDING, SendStatus.SENT]),
+              isNotNull(messages.sendToken),
+              // 30 minutes, measured from INGEST time. This only bounds the scan — it is
+              // NOT the precision control. Precision comes from the `< 60000` relative-skew
+              // check against `recentlySent.createdAt` below, plus the integration /
+              // `sendToken` / subject predicates and `orderBy desc(createdAt)`.
+              // The previous 5 minutes was too short: Outlook polls every ~5-7 minutes, and
+              // a measured live case had our row created at 06:28:02.744 and the echo
+              // ingested at 06:34:50 — a 6m47s gap, so the candidate was never even
+              // SELECTED and the skew check never got to run.
+              gte(messages.createdAt, new Date(Date.now() - 30 * 60 * 1000))
+            ),
+          orderBy: (messages, { desc }) => [desc(messages.createdAt)],
+          columns: {
+            id: true,
+            sendToken: true,
+            internetMessageId: true,
+            threadId: true,
+            createdAt: true,
+          },
+        })
 
     if (recentlySent) {
       // Verify it's likely the same message. Compare the echo's `sentAt` against the
@@ -273,9 +293,13 @@ export class MessageReconcilerService {
 
       if (timeDiff < 60000) {
         // Within 1 minute of the candidate's creation
-        logger.info('Found likely matching message by subject/sender, reconciling', {
+        // Named for what it actually compares. It used to say "by subject/sender",
+        // which sent every reader looking for a sender check that has never existed
+        // — and made the SMS collapse above much harder to spot in the logs.
+        logger.info('Found likely matching sent message by subject + time window', {
           messageId: recentlySent.id,
           subject: messageData.subject,
+          timeDiffMs: timeDiff,
         })
 
         await this.mergeIncomingProviderData(recentlySent.id, messageData)
