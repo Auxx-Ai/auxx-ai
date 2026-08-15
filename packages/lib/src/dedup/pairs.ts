@@ -243,6 +243,66 @@ export async function deleteOpenPairsForRecord(
   return ok(rows.length)
 }
 
+/** Parameters for {@link dismissPair}. */
+export interface DismissPairParams {
+  organizationId: string
+  /** `DuplicateSuggestion.id`. The caller must already have proven it is visible. */
+  pairId: string
+  /** Who acted — stamped so the queue can say who buried a pair. */
+  userId: string
+  /**
+   * Present ⇒ SNOOZE instead of dismiss. Snoozed is `open` plus a future
+   * `snoozeUntil`, so the pair returns to the queue on its own with no sweep.
+   */
+  snoozeUntil?: Date
+}
+
+/**
+ * Dismiss or snooze one pair — the only user-facing write on the queue.
+ *
+ * **`dismissedBand` is stamped from the row's OWN stored band**, read inside the
+ * same statement rather than passed in by the caller. That column is what makes
+ * reopen-on-upgrade safe (`upsertPairs`), and a caller-supplied band would let a
+ * stale client snapshot decide whether a future `high` re-match is allowed to
+ * nag — the one field where trusting the client silently breaks the state
+ * machine.
+ *
+ * Snoozing deliberately does NOT stamp `dismissedBand`: a snooze is "not now",
+ * not a decision about the evidence, and stamping it would make the next
+ * band upgrade un-noticeable for that pair.
+ *
+ * `merged` rows are never touched — merge is terminal.
+ *
+ * @returns `true` when a row was written; `false` when the id matched nothing
+ *          eligible (already merged, or not in this org).
+ */
+export async function dismissPair(
+  db: Database,
+  params: DismissPairParams
+): Promise<Result<boolean, Error>> {
+  const { organizationId, pairId, userId, snoozeUntil } = params
+
+  const set = snoozeUntil
+    ? { snoozeUntil, updatedAt: new Date() }
+    : {
+        status: 'dismissed',
+        dismissedByUserId: userId,
+        dismissedAt: new Date(),
+        // `T.band` — the row's stored band, not the caller's idea of it.
+        dismissedBand: sql`${T.band}`,
+        snoozeUntil: null,
+        updatedAt: new Date(),
+      }
+
+  const rows = await db
+    .update(T)
+    .set(set)
+    .where(and(eq(T.organizationId, organizationId), eq(T.id, pairId), ne(T.status, 'merged')))
+    .returning({ id: T.id })
+
+  return ok(rows.length > 0)
+}
+
 /** Outcome of {@link resolveSuggestionsForMerge}. */
 export interface MergeResolution {
   /** Pairs entirely inside the merge set, stamped `merged`. */

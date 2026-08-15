@@ -358,6 +358,12 @@
       "import": "./dist/datasets/types/index.mjs",
       "default": "./src/datasets/types/index.ts"
     },
+    "./dedup": {
+      "types": "./src/dedup/index.ts",
+      "source": "./src/dedup/index.ts",
+      "import": "./dist/dedup/index.mjs",
+      "default": "./src/dedup/index.ts"
+    },
     "./dehydration": {
       "types": "./src/dehydration/index.ts",
       "source": "./src/dehydration/index.ts",

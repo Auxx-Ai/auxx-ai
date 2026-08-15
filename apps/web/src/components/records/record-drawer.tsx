@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { getHeaderActions } from '~/components/drawers/drawer-action-registry'
+import { DuplicateIndicatorButton } from '~/components/duplicates/ui/duplicate-indicator-button'
 import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
 import { ConnectorSourceBadge } from '~/components/fields/connector-source-badge'
 import { Tooltip } from '~/components/global/tooltip'
@@ -274,6 +275,19 @@ export const RecordDrawer = React.memo(function RecordDrawer({
                 />
               </GranularPermissionsGate>
             )}
+
+            {/* Renders nothing unless this record has open duplicate pairs —
+                the common case is absence, so there is no header cost for the
+                overwhelming majority of records. `enabled={!!open}` keeps a
+                mounted-but-closed drawer from querying at all. */}
+            {recordId ? (
+              <DuplicateIndicatorButton
+                recordId={recordId}
+                enabled={!!open}
+                size='icon-xs'
+                className='rounded-full'
+              />
+            ) : null}
 
             <FavoriteStarButton
               targetType='ENTITY_INSTANCE'

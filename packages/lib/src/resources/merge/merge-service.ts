@@ -4,6 +4,7 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { getFieldId, isFieldPath, isResourceFieldId, toResourceFieldIds } from '@auxx/types/field'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { resolveSuggestionsForMerge } from '../../dedup/pairs'
 import { touchEntityActivity } from '../../entity-instances/activity'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors'
 import { formatToRawValue } from '../../field-values/client'
@@ -105,6 +106,24 @@ export class EntityMergeService {
 
       // 7. Archive sources
       await this.archiveSourceInstances(tx, sourceIds)
+
+      // 7b. Resolve the duplicate suggestions this merge answers — INSIDE the
+      // transaction, so a rolled-back merge cannot leave the queue reporting a
+      // merge that did not happen. Archive (step 7) is a soft delete, so the
+      // `DuplicateSuggestion` FK cascade never fires and the pairs survive
+      // unless this runs. The pair whose both sides are in the merge set is
+      // stamped `merged` (terminal, and the record that this suggestion led
+      // somewhere); every other open pair touching an archived source is
+      // deleted — its surviving side may still duplicate the TARGET, but that is
+      // a fact for the target's next scan to establish, not one to migrate
+      // blindly.
+      const resolved = await resolveSuggestionsForMerge(
+        tx,
+        this.organizationId,
+        targetId,
+        sourceIds
+      )
+      if (resolved.isErr()) throw resolved.error
 
       // Merge is meaningful activity on the target — surface it for staleness scanners.
       await touchEntityActivity([targetId], this.organizationId, new Date(), tx)

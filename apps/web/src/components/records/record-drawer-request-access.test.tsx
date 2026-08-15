@@ -90,6 +90,12 @@ vi.mock('~/components/detail-view/components/app-record-actions', () => ({
 vi.mock('~/components/favorites/ui/favorite-star-button', () => ({
   FavoriteStarButton: () => null,
 }))
+// Runs its own `duplicates.forRecord` query and renders nothing unless the
+// record has open duplicate pairs — orthogonal to the preflight budget this
+// file measures, and it would otherwise count as a query on mount.
+vi.mock('~/components/duplicates/ui/duplicate-indicator-button', () => ({
+  DuplicateIndicatorButton: () => null,
+}))
 vi.mock('~/hooks/use-entity-instance-operations', () => ({
   useEntityInstanceOperations: () => ({
     canEdit: false,
