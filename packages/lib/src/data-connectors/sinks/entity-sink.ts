@@ -264,23 +264,75 @@ async function resolveIdentity(
     return { instanceId: null } // external-id only → create
   }
 
+  // `limit: 6` rather than 2: one slot decides the match, the rest are the
+  // duplicate SET this lookup just discovered. Capping at 2 made the ambiguity
+  // detectable but unrecordable — we could say "more than one" and nothing else.
   const { items } = await ctx.crud.lookupByField({
     entityDefinitionId: mapping.entityDefinitionId,
     candidates,
-    limit: 2,
+    limit: 6,
   })
   if (items.length === 0) return { instanceId: null }
   if (items.length > 1) {
+    const instanceIds = items.map((i) => i.recordId.split(':').slice(1).join(':'))
     logger.warn('ambiguous identity match — using first', {
       mappingId: mapping.row.id,
       externalId: record.externalId,
       matches: items.length,
+      // The ids, not just the count: the loser of this resolution is a silent
+      // duplicate, and "3 matched" is not something anyone can act on.
+      instanceIds,
     })
+    void captureAmbiguousMatch(ctx, mapping, record, instanceIds)
   }
   // recordId is `entityDefId:instanceId`.
   const match = items[0]!
   const instanceId = match.recordId.split(':').slice(1).join(':')
   return { instanceId, matched: { fieldId: match.matchedBy.fieldId, value: match.matchedBy.value } }
+}
+
+/**
+ * Record the duplicate an ambiguous identity resolution just walked past.
+ *
+ * `resolveIdentity` takes the first match and proceeds — it has to, or a sync
+ * would fail on data the user can only fix by merging. But no scan is guaranteed
+ * to rediscover the loser: neither record need ever go dirty again. This is the
+ * cheapest true positive in the whole dedup feature, because the connector's own
+ * match keys already asserted these records are the same customer.
+ *
+ * Fire-and-forget and non-throwing: a sync must never fail because a suggestion
+ * could not be written. Gated on the plan feature so a connector run for an org
+ * without duplicate detection writes nothing.
+ */
+async function captureAmbiguousMatch(
+  ctx: SyncCtx,
+  mapping: DecodedMapping,
+  record: ProjectedRecord,
+  instanceIds: string[]
+): Promise<void> {
+  try {
+    const { FeaturePermissionService } = await import(
+      '../../permissions/feature-permission-service'
+    )
+    const { FeatureKey } = await import('../../permissions/types')
+    const features = new FeaturePermissionService()
+    if (!(await features.hasAccess(ctx.orgId, FeatureKey.duplicateDetection))) return
+
+    const { emitPairsFromIdentityMatch } = await import('../../dedup/emit-identity-pairs')
+    await emitPairsFromIdentityMatch(ctx.db, {
+      organizationId: ctx.orgId,
+      entityDefinitionId: mapping.entityDefinitionId,
+      instanceIds,
+      source: ctx.connector.type,
+      externalId: record.externalId,
+    })
+  } catch (error) {
+    logger.debug('ambiguous-match duplicate capture failed', {
+      connectorId: ctx.connector.id,
+      externalId: record.externalId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 /**

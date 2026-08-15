@@ -13,6 +13,8 @@ import {
 import type { Result } from 'neverthrow'
 import { findCachedResource } from '../../cache'
 import { CommentService } from '../../comments'
+import { enqueueDuplicateScan } from '../../dedup/enqueue-scan'
+import { deleteOpenPairsForRecord } from '../../dedup/pairs'
 import { UnprocessableEntityError } from '../../errors'
 import { publisher } from '../../events/publisher'
 import type { Events } from '../../events/types'
@@ -439,6 +441,13 @@ export async function createEntity(
         { excludeSocketId: ctx.socketId }
       )
       .catch(() => {})
+
+    // Duplicate scan, coalesced per (org, definition). Fire-and-forget: a scan
+    // must never be able to fail a write. NO recordId is passed — the handler is
+    // watermark-driven, so a burst of creates (a first-connect mailbox sync going
+    // through `findOrCreate` fires this seam live, hundreds of times) collapses
+    // onto ONE delayed job under the shared jobId.
+    enqueueDuplicateScan(ctx.organizationId, entityDef.id).catch(() => {})
   }
 
   // Return the fresh instance so callers (e.g. the create_entity tool) have a
@@ -545,6 +554,9 @@ export async function updateEntity(
         { excludeSocketId: ctx.socketId }
       )
       .catch(() => {})
+
+    // Coalesced duplicate scan — see the note on the create path.
+    enqueueDuplicateScan(ctx.organizationId, entityDef.id).catch(() => {})
   }
 
   // Return the fresh instance so callers see the post-update denormalized columns.
@@ -605,6 +617,20 @@ export async function archiveEntity(
         { excludeSocketId: ctx.socketId }
       )
       .catch(() => {})
+  }
+
+  // Duplicate-suggestion cleanup — deliberately OUTSIDE the `skipEvents` guard.
+  // Pair cleanup is data hygiene, not an event: a `skipEvents` bulk archive must
+  // still clean up after itself. Only `open` rows go; `dismissed` carries the
+  // band that governs reopen and `merged` is the audit trail.
+  // (`bulkArchiveEntities` delegates here per record, so it is covered too.)
+  try {
+    await deleteOpenPairsForRecord(ctx.db, ctx.organizationId, entityInstanceId)
+  } catch (error) {
+    logger.warn('Duplicate-pair cleanup failed on archive', {
+      recordId,
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
 
   // Return the instance we already fetched (archivedAt is the only change)
@@ -863,6 +889,9 @@ export async function bulkArchiveEntities(
   let count = 0
   for (const recordId of recordIds) {
     try {
+      // Delegates per record, so `archiveEntity`'s duplicate-pair cleanup covers
+      // the bulk path too — including under `skipEvents`, where it sits outside
+      // the event guard precisely so this loop still cleans up.
       await archiveEntity(ctx, recordId, {
         skipEvents: options.skipEvents,
       })

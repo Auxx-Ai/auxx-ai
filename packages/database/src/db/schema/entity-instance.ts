@@ -98,6 +98,17 @@ export const EntityInstance = pgTable(
     lastSuggestionScanAt: timestamp({ precision: 3 }),
 
     /**
+     * Set by the duplicate scanner every time it blocks + scores this record.
+     * The dirty predicate is deliberately NOT `lastActivityAt` (which the
+     * suggestion scanner uses): `skipEvents` / userId-less writes — connector
+     * syncs, CSV imports — leave BOTH `updatedAt` and `lastActivityAt`
+     * untouched, so the scan compares this against
+     * `GREATEST(ei."updatedAt", max(fv."updatedAt"))`. `FieldValue.updatedAt` is
+     * the only timestamp that always moves.
+     */
+    lastDuplicateScanAt: timestamp({ precision: 3 }),
+
+    /**
      * Oldest real correspondence with this entity (message `sentAt`, not
      * processing time). Written first-wins by `touchEntityInteraction()` —
      * ingest-derived, so backfilled mailboxes converge to historical values.
@@ -164,6 +175,21 @@ export const EntityInstance = pgTable(
         table.entityDefinitionId,
         table.lastActivityAt,
         table.lastSuggestionScanAt
+      )
+      .where(sql`"archivedAt" IS NULL`),
+    // Duplicate scanner candidate query: the same shape as the AI-suggestion
+    // index above, but keyed on `updatedAt` rather than `lastActivityAt` —
+    // `skipEvents` writers never touch `lastActivityAt`, so the dirty predicate
+    // for dedup is `GREATEST(ei."updatedAt", max(fv."updatedAt")) >
+    // "lastDuplicateScanAt"`. EVERY scan door runs this query (the mutation
+    // seam, the sync-manifest consumer, and the 6h sweep all share one
+    // watermark-driven handler), not just the sweep.
+    index('EntityInstance_org_def_dup_scan_idx')
+      .on(
+        table.organizationId,
+        table.entityDefinitionId,
+        table.updatedAt,
+        table.lastDuplicateScanAt
       )
       .where(sql`"archivedAt" IS NULL`),
     // Free-text search, third arm: `secondaryDisplayValue ILIKE '%q%'`.

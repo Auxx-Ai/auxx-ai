@@ -254,6 +254,32 @@ export async function setupSchedules() {
     }
   )
 
+  // Duplicate-suggestion sweep — every 6 hours. NOT a second job: this invokes
+  // the SAME `duplicateScanJob` the mutation seam and the sync-manifest consumer
+  // enqueue, with no scope, which makes it walk feature-enabled orgs ×
+  // allowlisted definitions by watermark and additionally run the org-level
+  // `blockOrgKey` / `blockIdentity` passes (the only pass that finds a pair where
+  // NEITHER side is dirty).
+  //
+  // Backfill and safety only — the two event doors carry live traffic. What lands
+  // here: newly-enabled orgs (full backfill via NULL watermarks), records dirtied
+  // while a coalesced job was already running (BullMQ only coalesces the DELAYED
+  // state), and any future writer that slips past both doors.
+  await maintenanceQueue.upsertJobScheduler(
+    'duplicateScanJob',
+    { pattern: '0 */6 * * *' },
+    {
+      data: { dryRun: false },
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 8,
+        removeOnComplete: { count: 60 },
+        removeOnFail: { count: 100 },
+      },
+    }
+  )
+
   // Stale PENDING message sweeper — every 5 minutes. The synchronous send path
   // creates a PENDING row then sends/reconciles in-request; a process death
   // between the two strands the row in PENDING forever (retry rejects it, UI
