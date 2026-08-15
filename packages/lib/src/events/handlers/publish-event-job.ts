@@ -19,6 +19,7 @@ import { createTimelineEvent } from './create-timeline-event'
 import { deriveMessageReplySignal, deriveThreadResolvedSignal } from './derive-message-signals'
 import { handleRecordRules } from './handle-record-rules'
 import { handleSignalRecordRules } from './handle-signal-record-rules'
+import { handleSyncDuplicateScan } from './handle-sync-duplicate-scan'
 import { handleSyncRecordRules } from './handle-sync-record-rules'
 import { ingestBounceMessage } from './ingest-bounce-message'
 import { projectSignalToTimeline } from './project-signal-to-timeline'
@@ -187,8 +188,11 @@ export const EventHandlers: IEventsHandlers = {
   // Field trigger events → FIELD TRIGGER HANDLERS
   'field:trigger': [handleFieldTriggerJob],
 
-  // B2 — bulk-writer sync-change manifest → record rules with `source: 'sync'`.
-  'sync:records:changed': [handleSyncRecordRules],
+  // B2 — bulk-writer sync-change manifest → record rules with `source: 'sync'`,
+  // and the duplicate scan for the same run's records. The dedup consumer must
+  // NEVER claim the manifest: the claim is the rules consumer's once-only latch,
+  // and a second claimant would starve it.
+  'sync:records:changed': [handleSyncRecordRules, handleSyncDuplicateScan],
 
   // Integration events → AUDIT LOG (+ analytics)
   'integration:connected': [createAuditLog],
