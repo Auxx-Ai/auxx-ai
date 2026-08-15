@@ -48,6 +48,7 @@ import { useHtmlBody } from './hooks/use-html-body'
 import { useRetrySend } from './hooks/use-retry-send'
 import { ParticipantList, type ParticipantListEntry } from './participant-display'
 import { SendStatusIndicator } from './send-status-indicator'
+import { supportsRichText } from './utils/channel-rich-text'
 import { initialsFor } from './utils/participant-initials'
 import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
 import { SandboxedEmailHtml } from './utils/sandboxed-email-html'
@@ -196,8 +197,20 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
     [message?.attachments]
   )
 
+  // Plain-text channels (SMS/Quo, WhatsApp, DMs, chat) have no sender HTML to
+  // sandbox: no HTML view, no toggle, text only.
+  //
+  // `integrationProvider` is declared `ChannelProvider` ('GMAIL' | 'OUTLOOK' | …)
+  // but carries the raw lowercase `Integration.provider` column; the cast
+  // matches the runtime value and the sibling checks in `use-reply-box.tsx`.
+  const isRichTextChannel = supportsRichText(
+    thread?.integrationProvider as string | null | undefined
+  )
+
   // Whether the toggle should be shown
-  const showModeToggle = hasObjectBackedHtml || (hasInlineHtml && !!message?.textPlain)
+  const showModeToggle =
+    isRichTextChannel && (hasObjectBackedHtml || (hasInlineHtml && !!message?.textPlain))
+  const showHtml = isRichTextChannel && contentMode === 'html'
 
   // Loading state
   if (isLoading) {
@@ -346,13 +359,13 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
                   </Button>
                 </div>
               )}
-              {contentMode === 'html' && isHtmlLoading ? (
+              {showHtml && isHtmlLoading ? (
                 <div className='p-4'>
                   <Skeleton className='h-24 w-full' />
                 </div>
-              ) : contentMode === 'html' && htmlError ? (
+              ) : showHtml && htmlError ? (
                 <div className='p-4 text-sm text-destructive'>{htmlError}</div>
-              ) : contentMode === 'html' && resolvedHtml ? (
+              ) : showHtml && resolvedHtml ? (
                 <div className='p-4'>
                   <SandboxedEmailHtml html={resolvedHtml} />
                 </div>

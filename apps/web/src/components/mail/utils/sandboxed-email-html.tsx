@@ -14,6 +14,13 @@ interface SandboxedEmailHtmlProps {
  * - `sandbox="allow-same-origin"`: no scripts, forms, popups, or navigation
  * - CSP meta tag blocks scripts, frames, and restricts image sources
  * - Auto-resizes iframe to match content height
+ * - Forces a light colour scheme on the inner document so neither the OS nor
+ *   the app theme can leave a sender's uncoloured body unreadable (see
+ *   `BASE_STYLES`)
+ *
+ * Only for channels that actually carry sender HTML — a plain-text channel
+ * (SMS/Quo and friends) must render `textPlain` directly. See
+ * `supportsRichText` in `./channel-rich-text`.
  */
 export function SandboxedEmailHtml({ html, className }: SandboxedEmailHtmlProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -65,14 +72,39 @@ export function SandboxedEmailHtml({ html, className }: SandboxedEmailHtmlProps)
 const CSP_TAG =
   "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src 'self' https: data: blob:; style-src 'unsafe-inline'; frame-src 'none'; script-src 'none'; form-action 'none';\">"
 
-const BASE_STYLES =
-  "<style>body, p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, figure, figcaption, dl, dd { margin: 0; padding: 0; } body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.5; color: inherit; word-wrap: break-word; overflow-wrap: break-word; overflow: hidden; } img { max-width: 100%; height: auto; }</style>"
+/**
+ * Baseline styles injected into every sandboxed email document.
+ *
+ * Three rules carry the readability contract, all deliberate:
+ *
+ * 1. `color-scheme: light` is forced on `:root`. An iframe document that
+ *    declares no scheme falls back to the **OS** `prefers-color-scheme`, never
+ *    the app theme — so the app in light mode on a dark-mode OS rendered white
+ *    text on a white bubble. `!important` because this is the one property we
+ *    must own: a sender declaring `color-scheme: light dark` would otherwise
+ *    hand the frame straight back to the OS.
+ * 2. An opaque white canvas on `html`. Email HTML is authored against a white
+ *    page — senders set a text colour and no background constantly. Painting
+ *    the canvas with the app's dark background would turn every one of those
+ *    into dark-on-dark. Put on `html` rather than `body` so a sender's own
+ *    `body { background }` or `<body bgcolor>` still paints over it.
+ * 3. `color` is an explicit value, never `inherit`. `inherit` on `body` inside
+ *    an iframe resolves against that document's own `html`, not the host page,
+ *    so it silently meant "UA default" — the OS-dependent value again.
+ *
+ * Everything is plain element-selector specificity with no `!important` (bar
+ * the scheme), and this block is injected at the TOP of `<head>`, so a sender's
+ * own `<style>` block or `style=` attribute always wins.
+ */
+const BASE_STYLES = `<style>:root { color-scheme: light !important; } html { background-color: #ffffff; } body, p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, figure, figcaption, dl, dd { margin: 0; padding: 0; } body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.5; color: #1f2937; word-wrap: break-word; overflow-wrap: break-word; overflow: hidden; } img { max-width: 100%; height: auto; }</style>`
 
 /**
  * Wraps HTML in a full document with a restrictive CSP meta tag.
  * If the HTML is already a full document, injects CSP and base styles into the existing <head>.
+ *
+ * Exported for tests — the srcdoc string is the whole contract of this component.
  */
-function buildSrcdoc(html: string): string {
+export function buildSrcdoc(html: string): string {
   const isFullDocument = /<html[\s>]/i.test(html)
 
   if (isFullDocument) {

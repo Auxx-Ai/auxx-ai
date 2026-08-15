@@ -29,7 +29,12 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Letter } from 'react-letter'
-import { useMessage, useMessageParticipants, useThreadReadStatus } from '~/components/threads/hooks'
+import {
+  useMessage,
+  useMessageParticipants,
+  useThread,
+  useThreadReadStatus,
+} from '~/components/threads/hooks'
 import type { MessageMeta } from '~/components/threads/store'
 import { api } from '~/trpc/react'
 import { ContactHoverCard } from '../contacts/contact-hover-card'
@@ -38,6 +43,7 @@ import type { EmailActions } from './email-actions'
 import { useHtmlBody } from './hooks/use-html-body'
 import { useRetrySend } from './hooks/use-retry-send'
 import { SendStatusIndicator } from './send-status-indicator'
+import { supportsRichText } from './utils/channel-rich-text'
 import { initialsFor } from './utils/participant-initials'
 import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
 import { SandboxedEmailHtml } from './utils/sandboxed-email-html'
@@ -62,6 +68,20 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
   // Fetch message from store
   const { message, isLoading } = useMessage({ messageId })
 
+  // Resolve the thread only for its channel provider — a plain-text channel
+  // must never be routed through the HTML sandbox.
+  //
+  // `integrationProvider` is declared `ChannelProvider` ('GMAIL' | 'OUTLOOK' | …)
+  // but carries the raw lowercase `Integration.provider` column; the cast
+  // matches the runtime value and the sibling checks in `use-reply-box.tsx`.
+  const { thread } = useThread({
+    threadId: message?.threadId ?? null,
+    enabled: !!message?.threadId,
+  })
+  const isRichTextChannel = supportsRichText(
+    thread?.integrationProvider as string | null | undefined
+  )
+
   // Get read status mutation for this thread
   const { markAsUnread } = useThreadReadStatus(message?.threadId ?? null)
 
@@ -81,32 +101,37 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
     return resolveInlineEmailHtml(rawHtml, message?.attachments ?? [])
   }, [hasInlineHtml, message?.textHtml, fetchedHtml, message?.attachments])
 
-  // Auto-fetch HTML for messages that have object-backed HTML (chat bubbles always show content)
+  // Auto-fetch HTML for messages that have object-backed HTML (chat bubbles always show content).
+  // Skipped on plain-text channels — there is no HTML body to go and get.
   useEffect(() => {
-    if (hasObjectBackedHtml && !fetchedHtml && !isHtmlLoading) {
+    if (isRichTextChannel && hasObjectBackedHtml && !fetchedHtml && !isHtmlLoading) {
       fetchHtml()
     }
-  }, [hasObjectBackedHtml, fetchedHtml, isHtmlLoading, fetchHtml])
+  }, [isRichTextChannel, hasObjectBackedHtml, fetchedHtml, isHtmlLoading, fetchHtml])
 
   // Get message content based on available fields
   const getContent = useCallback(() => {
     if (!message) return ''
+
+    // Plain-text channel (SMS/Quo, WhatsApp, DMs, chat): the body IS text.
+    // Render it as text with the app's own foreground colour — no sandbox, no
+    // CSP iframe, no colour scheme to get wrong.
+    const plainText = message.textPlain || message.snippet
+    if (!isRichTextChannel && plainText) {
+      return <span className='whitespace-pre-wrap break-words'>{plainText}</span>
+    }
+
     if (isHtmlLoading) {
       return <Skeleton className='h-12 w-full' />
     }
     if (resolvedHtml) {
-      return (
-        <SandboxedEmailHtml html={resolvedHtml} className='bg-background p-4 text-foreground' />
-      )
+      return <SandboxedEmailHtml html={resolvedHtml} className='bg-white p-4' />
     }
-    if (message.textPlain) {
-      return message.textPlain
-    }
-    if (message.snippet) {
-      return message.snippet
+    if (plainText) {
+      return <span className='whitespace-pre-wrap break-words'>{plainText}</span>
     }
     return <Letter className='' html={'<i>No content</i>'} />
-  }, [message, resolvedHtml, isHtmlLoading])
+  }, [message, resolvedHtml, isHtmlLoading, isRichTextChannel])
 
   // Loading state
   if (isLoading) {
@@ -178,7 +203,7 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
             <div className='px-4 pb-3'>
               <div className='flex-1 overflow-auto'>
                 <div className='cursor-text select-text text-sm leading-6 text-gray-700'>
-                  <div className='break-words font-sans text-black'>{getContent()}</div>
+                  <div className='break-words font-sans text-foreground'>{getContent()}</div>
                 </div>
               </div>
             </div>

@@ -12,11 +12,21 @@ import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { stableStringify } from '@auxx/utils/json'
 import type { JSONContent } from '@tiptap/core'
-import { ArrowDownLeft, ArrowUpRight, Loader2, Mail, Minus, Plus, Trash2, X } from 'lucide-react'
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Loader2,
+  Mail,
+  MessageSquare,
+  Minus,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { useChannel } from '~/components/channels/hooks/use-channels'
+import { useChannel, useChannels } from '~/components/channels/hooks/use-channels'
 import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
 import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context'
@@ -55,10 +65,13 @@ import {
   useEditorActiveStateContext,
 } from './editor-active-state-context'
 import { useDraftMutations } from './hooks'
+import { getIdentifierModel, regionFromIdentifier } from './identifier-model'
 import type { MailReferenceConfig } from './mail-slash-content'
+import { smsLength } from './message-length'
 import PrevMessage from './prev-message'
 import { AddActionButton, QuickActionPanel } from './quick-action-panel'
 import { type RecipientField, RecipientInput, type RecipientInputHandle } from './recipient-input'
+import { formatDroppedList, reconcileDraftForChannel } from './reconcile-channel-switch'
 import type {
   ParticipantInputData,
   RecipientState,
@@ -195,6 +208,36 @@ function ReplyComposeEditorComponent({
       platformCaps.recipientModel !== 'platform_user'
     : true
   const showQuotedReply = isEmailChannel
+  // Region for parsing typed phone numbers, taken from the number we are sending
+  // FROM. More correct than an org-level setting: an org holding a German and a
+  // US number should read `030 901820` differently depending on which one is
+  // selected. Falls back to US when the channel has no parseable E.164 number
+  // (every email channel, which never reaches the phone spec anyway).
+  const phoneRegion = useMemo(
+    () => regionFromIdentifier(selectedChannel?.identifier ?? selectedChannelFromList?.identifier),
+    [selectedChannel, selectedChannelFromList]
+  )
+  // Every flag below defaults TRUE with no resolved channel — the composer is
+  // an email composer until a capability map says otherwise.
+  const supportsRichText = platformCaps ? platformCaps.richText : true
+  const supportsSignature = platformCaps ? platformCaps.signature : true
+  const supportsAttachments = platformCaps ? platformCaps.attachments : true
+  const maxMessageLength = platformCaps?.maxMessageLength
+
+  // Every channel this org can send from, so a From switch can resolve the
+  // INCOMING channel's capabilities (the memo above only covers the current
+  // one). `integrations` is the new-compose fallback before the store hydrates.
+  const allChannels = useChannels()
+  const capabilitiesForIntegration = useCallback(
+    (integrationId: string): PlatformCapabilities | undefined => {
+      const provider = (allChannels.find((c) => c.id === integrationId)?.provider ??
+        integrations?.channels?.find((c) => c.id === integrationId)?.provider) as
+        | keyof typeof PLATFORM_CAPABILITIES
+        | undefined
+      return provider ? PLATFORM_CAPABILITIES[provider] : undefined
+    },
+    [allChannels, integrations]
+  )
 
   // Other UI state — canonical content model is Tiptap JSON (HTML at send time).
   const [content, setContent] = useState<JSONContent>(state.contentJson)
@@ -361,7 +404,9 @@ function ReplyComposeEditorComponent({
           id: sentMessage.id,
           threadId: sentMessage.threadId,
           subject: sentMessage.subject ?? null,
-          snippet: htmlToSnippet(variables.textHtml ?? ''),
+          // Plain channels send no html — fall back to the text body so the
+          // optimistic row isn't blank until the server echo lands.
+          snippet: htmlToSnippet(variables.textHtml || variables.textPlain || ''),
           textHtml: variables.textHtml ?? null,
           textPlain: variables.textPlain ?? null,
           isInbound: false,
@@ -576,10 +621,66 @@ function ReplyComposeEditorComponent({
     }),
     [state.signatureId, state.threadId, handleSignatureChange, quickActions, thread?.id]
   )
-  const handleIntegrationChange = useCallback((integrationId: string) => {
-    setState((prev) => ({ ...prev, integrationId }))
-    setIsDraftSaved(false)
-  }, [])
+  /**
+   * Switching From can invalidate the draft. Fields the target channel cannot
+   * carry are CLEARED from state — hiding them is not enough, because the send
+   * handlers read `state`, not what is rendered, so a hidden subject/cc still
+   * ships. Recipients are re-validated against the incoming identifier model and
+   * whatever fails to normalize is dropped, with one toast naming the loss.
+   *
+   * Reply mode never reaches the interesting branch: From is pinned to the
+   * thread's channel, so the recipient model cannot change mid-draft.
+   */
+  const handleIntegrationChange = useCallback(
+    (integrationId: string) => {
+      setIsDraftSaved(false)
+      const incoming = capabilitiesForIntegration(integrationId)
+      // Same identifier shape (or an unresolvable channel) — nothing to reconcile.
+      if (!incoming || !platformCaps || incoming.recipientModel === platformCaps.recipientModel) {
+        setState((prev) => ({ ...prev, integrationId }))
+        return
+      }
+      const outcome = reconcileDraftForChannel({
+        draft: {
+          recipients,
+          subject: state.subject,
+          signatureId: state.signatureId,
+          attachmentCount: allAttachments.length,
+        },
+        incoming,
+        spec: getIdentifierModel(incoming.recipientModel),
+      })
+      setRecipients(outcome.recipients)
+      setState((prev) => ({
+        ...prev,
+        integrationId,
+        subject: outcome.subject,
+        signatureId: outcome.signatureId,
+      }))
+      if (outcome.clearAttachments) {
+        setAttachments([])
+        fileSelect.clearItems()
+      }
+      if (outcome.recipients.CC.length === 0) setShowCc(false)
+      if (outcome.recipients.BCC.length === 0) setShowBcc(false)
+      if (outcome.dropped.length > 0) {
+        toastError({
+          title: 'Draft updated for this channel',
+          description: `Dropped ${formatDroppedList(outcome.dropped)}.`,
+        })
+      }
+    },
+    [
+      capabilitiesForIntegration,
+      platformCaps,
+      recipients,
+      state.subject,
+      state.signatureId,
+      allAttachments.length,
+      setAttachments,
+      fileSelect,
+    ]
+  )
   const handleContactSelect = useCallback(
     (
       role: 'TO' | 'CC' | 'BCC',
@@ -626,6 +727,22 @@ function ReplyComposeEditorComponent({
     if (!editor) return false
     return !isContentEmpty(editor)
   }, [editor, content])
+  // Character/segment counter for capped channels. Segments are the billing
+  // unit and one emoji drops them from 160 to 70 characters, so both numbers
+  // are worth showing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: content triggers recalculation when editor content changes
+  const lengthInfo = useMemo(() => {
+    if (!maxMessageLength) return null
+    const body = editor?.getText()?.trim() ?? ''
+    const { characters, segments, unicode } = smsLength(body)
+    return {
+      characters,
+      segments,
+      unicode,
+      remaining: maxMessageLength - characters,
+      over: characters > maxMessageLength,
+    }
+  }, [editor, content, maxMessageLength])
   // Check if thread has previous messages
   const hasPreviousMessages = useMemo(() => {
     if (!thread) return false
@@ -722,6 +839,14 @@ function ReplyComposeEditorComponent({
         setIsSending(false)
         return
       }
+      if (maxMessageLength && plainContent.length > maxMessageLength) {
+        toastError({
+          title: 'Message too long',
+          description: `This channel accepts ${maxMessageLength} characters; yours is ${plainContent.length}.`,
+        })
+        setIsSending(false)
+        return
+      }
       // 5. Execute quick actions before sending (blocking)
       if (quickActions.length > 0) {
         const confirmed = await confirm({
@@ -767,13 +892,22 @@ function ReplyComposeEditorComponent({
         threadId: thread?.id,
         integrationId: state.integrationId,
         draftMessageId: state.draftId, // Will be null if no draft was created
-        subject: state.subject,
-        textHtml: editor?.getHTML() ?? '',
-        signatureId: state.signatureId,
+        // Belt and braces alongside the From-switch reconcile: a draft restored
+        // onto a channel that cannot carry these still holds them in `state`,
+        // and `handleIntegrationChange` never ran for that path.
+        subject: showSubjectField ? state.subject : '',
+        // A plain channel sends NO html: it is meaningless on the wire (Quo
+        // posts `content` as text) and storing it would make the thread view
+        // render marks that were never sent. `message-display` falls through to
+        // `textPlain`, which is therefore mandatory here — `MessageSenderService`
+        // rejects a send with neither body.
+        textHtml: supportsRichText ? (editor?.getHTML() ?? '') : null,
+        textPlain: supportsRichText ? undefined : plainContent,
+        signatureId: supportsSignature ? state.signatureId : null,
         to: toPayload(recipients.TO),
         cc: toPayload(recipients.CC),
         bcc: toPayload(recipients.BCC),
-        attachments: draftPayload.attachments, // Use combined attachments from payload
+        attachments: supportsAttachments ? draftPayload.attachments : [],
         includePreviousMessage: state.includePrev,
         linkTicketId: presetValues?.linkTicketId,
       })
@@ -794,6 +928,11 @@ function ReplyComposeEditorComponent({
     isUpserting,
     quickActions,
     confirm,
+    supportsRichText,
+    supportsSignature,
+    supportsAttachments,
+    showSubjectField,
+    maxMessageLength,
   ])
   const handleScheduleClick = useCallback(
     async (scheduledAt: Date) => {
@@ -847,17 +986,27 @@ function ReplyComposeEditorComponent({
           setIsSending(false)
           return
         }
+        if (maxMessageLength && plainContent.length > maxMessageLength) {
+          toastError({
+            title: 'Message too long',
+            description: `This channel accepts ${maxMessageLength} characters; yours is ${plainContent.length}.`,
+          })
+          setIsSending(false)
+          return
+        }
+        // See `handleSendClick` — plain channels send textPlain and no html.
         scheduleMessageMutation.mutate({
           threadId: thread?.id,
           integrationId: state.integrationId,
           draftMessageId: state.draftId,
-          subject: state.subject,
-          textHtml: editor?.getHTML() ?? '',
-          signatureId: state.signatureId,
+          subject: showSubjectField ? state.subject : '',
+          textHtml: supportsRichText ? (editor?.getHTML() ?? '') : null,
+          textPlain: supportsRichText ? undefined : plainContent,
+          signatureId: supportsSignature ? state.signatureId : null,
           to: toPayload(recipients.TO),
           cc: toPayload(recipients.CC),
           bcc: toPayload(recipients.BCC),
-          attachments: draftPayload.attachments,
+          attachments: supportsAttachments ? draftPayload.attachments : [],
           includePreviousMessage: state.includePrev,
           linkTicketId: presetValues?.linkTicketId,
           scheduledAt,
@@ -878,6 +1027,11 @@ function ReplyComposeEditorComponent({
       draftAutosave,
       upsert,
       isUpserting,
+      supportsRichText,
+      supportsSignature,
+      supportsAttachments,
+      showSubjectField,
+      maxMessageLength,
     ]
   )
   const handleDiscardClick = useCallback(async () => {
@@ -985,8 +1139,12 @@ function ReplyComposeEditorComponent({
               dragHandleProps && 'cursor-grab active:cursor-grabbing',
               dragHandleProps?.className
             )}>
-            <Mail size='16' className='my-1.5 text-foreground' />
-            <span className='text-sm'>Compose Email</span>
+            {isEmailChannel ? (
+              <Mail size='16' className='my-1.5 text-foreground' />
+            ) : (
+              <MessageSquare size='16' className='my-1.5 text-foreground' />
+            )}
+            <span className='text-sm'>{isEmailChannel ? 'Compose Email' : 'Compose Message'}</span>
             {isUpserting && (
               <Loader2 className='ml-auto size-4 animate-spin text-muted-foreground' />
             )}
@@ -1066,13 +1224,24 @@ function ReplyComposeEditorComponent({
         <ComposerBody
           content={content}
           onContentChange={handleContentChange}
-          placeholder='Type / for commands or @ for signatures & actions'
+          placeholder={
+            supportsSignature
+              ? 'Type / for commands or @ for signatures & actions'
+              : 'Type / for commands'
+          }
           editable={!aiToolsState.isProcessing}
           popoverClassName={popoverZIndex}
           aiSlash={{ onRunAI: handleAIOperation }}
           onAttachFile={(file) => fileSelect.addExistingFiles([file])}
           onUploadFiles={(files) => fileSelect.addFiles(files)}
-          references={references}
+          // Hiding the signature button while leaving `@` live is a half-fix —
+          // dropping `references` reverts `@` to a literal character, which is
+          // what the chat composer already does.
+          references={supportsSignature ? references : undefined}
+          // `plain` strips block nodes (headings, lists, quotes, code) from the
+          // schema. Inline marks survive by design; with the toolbar hidden and
+          // `textHtml` null on send, nothing formatted reaches storage.
+          variant={supportsRichText ? 'rich' : 'plain'}
           onWrapperClick={handleWrapperClick}
           onKeyDown={handleKeyDown}
           dropzone={dropzone}
@@ -1100,6 +1269,7 @@ function ReplyComposeEditorComponent({
                   <RecipientInput
                     ref={toInputRef}
                     recipientModel={platformCaps?.recipientModel}
+                    defaultRegion={phoneRegion}
                     field='TO'
                     recipients={recipients.TO}
                     onAdd={(r) => upsertRecipient('TO', r)}
@@ -1154,6 +1324,7 @@ function ReplyComposeEditorComponent({
                     <RecipientInput
                       ref={ccInputRef}
                       recipientModel={platformCaps?.recipientModel}
+                      defaultRegion={phoneRegion}
                       field='CC'
                       recipients={recipients.CC}
                       onAdd={(r) => upsertRecipient('CC', r)}
@@ -1188,6 +1359,7 @@ function ReplyComposeEditorComponent({
                     <RecipientInput
                       ref={bccInputRef}
                       recipientModel={platformCaps?.recipientModel}
+                      defaultRegion={phoneRegion}
                       field='BCC'
                       recipients={recipients.BCC}
                       onAdd={(r) => upsertRecipient('BCC', r)}
@@ -1243,13 +1415,15 @@ function ReplyComposeEditorComponent({
           belowEditor={
             <>
               {/* Panels render above the action row. Signature is always first. */}
-              <SignaturePanel
-                integrationId={state.integrationId}
-                selectedSignatureId={state.signatureId}
-                onSignatureChange={handleSignatureChange}
-                disabled={isSending}
-                className={popoverZIndex}
-              />
+              {supportsSignature && (
+                <SignaturePanel
+                  integrationId={state.integrationId}
+                  selectedSignatureId={state.signatureId}
+                  onSignatureChange={handleSignatureChange}
+                  disabled={isSending}
+                  className={popoverZIndex}
+                />
+              )}
 
               <QuickActionPanel
                 actions={quickActions}
@@ -1300,18 +1474,36 @@ function ReplyComposeEditorComponent({
                         : activeState.trackPopoverClose('add-action')
                     }
                   />
-                  <AddAttachmentButton
-                    fileSelect={fileSelect}
-                    disabled={isSending}
-                    popoverClassName={popoverZIndex}
-                  />
-                  <SignatureAddButton
-                    integrationId={state.integrationId}
-                    selectedSignatureId={state.signatureId}
-                    onSignatureChange={handleSignatureChange}
-                    disabled={isSending}
-                    className={popoverZIndex}
-                  />
+                  {/* Quo's send schema has no media field — an attachment here
+                      would be silently dropped at send, so this is correctness,
+                      not polish. */}
+                  {supportsAttachments && (
+                    <AddAttachmentButton
+                      fileSelect={fileSelect}
+                      disabled={isSending}
+                      popoverClassName={popoverZIndex}
+                    />
+                  )}
+                  {supportsSignature && (
+                    <SignatureAddButton
+                      integrationId={state.integrationId}
+                      selectedSignatureId={state.signatureId}
+                      onSignatureChange={handleSignatureChange}
+                      disabled={isSending}
+                      className={popoverZIndex}
+                    />
+                  )}
+                  {lengthInfo && (
+                    <span
+                      className={cn(
+                        'ml-auto shrink-0 text-xs tabular-nums',
+                        lengthInfo.over ? 'text-destructive' : 'text-muted-foreground'
+                      )}
+                      title={`${lengthInfo.characters} of ${maxMessageLength} characters · ${lengthInfo.unicode ? '70' : '160'}-character segments`}>
+                      {lengthInfo.remaining} left ·{' '}
+                      {lengthInfo.segments === 1 ? '1 segment' : `${lengthInfo.segments} segments`}
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -1357,8 +1549,13 @@ function ReplyComposeEditorComponent({
                 <EditorToolbar
                   editor={editor}
                   onSend={handleSendClick}
+                  // Deliberately ungated: scheduling never touches the provider.
+                  // `thread.sendMessage` writes a `ScheduledMessage` row and
+                  // enqueues a delayed BullMQ job that later calls the ordinary
+                  // send path, so it works on every channel that can send.
                   onSchedule={handleScheduleClick}
                   isSending={isSending}
+                  showFormatting={supportsRichText}
                   disabled={isSending || !editor?.isEditable || aiToolsState.isProcessing}
                   popoverClassName={popoverZIndex}
                   aiToolsProps={{

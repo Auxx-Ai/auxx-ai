@@ -25,6 +25,21 @@ export interface PlatformCapabilities {
   /** Whether file attachments are supported. */
   attachments: boolean
   /**
+   * Whether a formatted body is meaningful. `false` puts the composer's editor
+   * in its `plain` variant and sends `textHtml: null` — the thread view then
+   * renders `textPlain`. Mirrors `supportsRichText` in
+   * `providers/provider-capabilities.ts`; THIS field is the UI authority.
+   */
+  richText: boolean
+  /** Whether an email signature can be appended (and the `@` menu offered). */
+  signature: boolean
+  /**
+   * Hard character cap the platform enforces on one outbound body. Undefined
+   * means no cap worth surfacing. The composer shows a counter and blocks send
+   * past it.
+   */
+  maxMessageLength?: number
+  /**
    * Shape of identifier the platform sends to. `thread_only` means a brand-new
    * outbound is not possible (replies only — Facebook/Instagram DMs require an
    * inbound message first to open the customer-service window).
@@ -45,7 +60,16 @@ export interface PlatformCapabilities {
  */
 export type ComposerCapabilities = Pick<
   PlatformCapabilities,
-  'channel' | 'newOutbound' | 'threadReply' | 'subject' | 'ccBcc' | 'attachments' | 'recipientModel'
+  | 'channel'
+  | 'newOutbound'
+  | 'threadReply'
+  | 'subject'
+  | 'ccBcc'
+  | 'attachments'
+  | 'recipientModel'
+  | 'richText'
+  | 'signature'
+  | 'maxMessageLength'
 >
 
 /**
@@ -71,6 +95,8 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     ccBcc: true,
     drafts: true,
     attachments: true,
+    richText: true,
+    signature: true,
     recipientModel: 'email',
   },
   [IntegrationProviderType.outlook]: {
@@ -81,6 +107,8 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     ccBcc: true,
     drafts: true,
     attachments: true,
+    richText: true,
+    signature: true,
     recipientModel: 'email',
   },
   [IntegrationProviderType.email]: {
@@ -91,6 +119,8 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     ccBcc: true,
     drafts: true,
     attachments: true,
+    richText: true,
+    signature: true,
     recipientModel: 'email',
   },
   [IntegrationProviderType.imap]: {
@@ -101,6 +131,8 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     ccBcc: true,
     drafts: true,
     attachments: true,
+    richText: true,
+    signature: true,
     recipientModel: 'email',
   },
   [IntegrationProviderType.mailgun]: {
@@ -111,6 +143,8 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     ccBcc: true,
     drafts: true,
     attachments: true,
+    richText: true,
+    signature: true,
     recipientModel: 'email',
   },
   [IntegrationProviderType.facebook]: {
@@ -121,6 +155,8 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     ccBcc: false,
     drafts: true,
     attachments: true,
+    richText: false,
+    signature: false,
     recipientModel: 'thread_only',
     notes: '24h customer-service window for freeform replies',
   },
@@ -132,6 +168,8 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     ccBcc: false,
     drafts: true,
     attachments: true,
+    richText: false,
+    signature: false,
     recipientModel: 'thread_only',
   },
   [IntegrationProviderType.sms]: {
@@ -142,6 +180,11 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     ccBcc: false,
     drafts: true,
     attachments: false,
+    richText: false,
+    signature: false,
+    // No `maxMessageLength`: this is the generic SMS placeholder, not a wired
+    // provider, so there is no verified API cap to enforce. `openphone` below
+    // is the real one.
     recipientModel: 'phone',
   },
   [IntegrationProviderType.openphone]: {
@@ -160,6 +203,12 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     // deprecated `phoneNumberId`, `setInboxStatus`) — no media field at all.
     // Outbound MMS is a platform limitation, not a gap on our side.
     attachments: false,
+    richText: false,
+    signature: false,
+    // Quo's `POST /v1/messages` rejects `content` over 1600 characters. This is
+    // the API cap, NOT the 160-character GSM segment size — the composer shows
+    // segment count separately because segments are the billing unit.
+    maxMessageLength: 1600,
     recipientModel: 'phone',
   },
   [IntegrationProviderType.whatsapp]: {
@@ -170,6 +219,8 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     ccBcc: false,
     drafts: true,
     attachments: true,
+    richText: false,
+    signature: false,
     recipientModel: 'phone',
     notes: 'cold sends require approved template',
   },
@@ -181,6 +232,8 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     ccBcc: false,
     drafts: true,
     attachments: true,
+    richText: false,
+    signature: false,
     recipientModel: 'platform_user',
   },
   [IntegrationProviderType.shopify]: {
@@ -193,6 +246,8 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     ccBcc: false,
     drafts: false,
     attachments: false,
+    richText: false,
+    signature: false,
     recipientModel: 'thread_only',
     notes: 'data-only integration, not a messaging channel',
   },

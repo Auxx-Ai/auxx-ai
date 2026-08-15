@@ -8,6 +8,7 @@ import type { VariantProps } from 'class-variance-authority'
 import { Mail } from 'lucide-react'
 import { recordBadgeVariants } from '~/components/resources/ui/record-badge'
 import { useThread } from '../hooks/use-thread'
+import { useThreadTitle } from '../hooks/use-thread-title'
 
 interface ThreadBadgeProps extends VariantProps<typeof recordBadgeVariants> {
   /** Thread ID — optional, shows loading when undefined */
@@ -32,7 +33,9 @@ export function ThreadBadge({
 }: ThreadBadgeProps) {
   const { thread, isLoading, isNotFound } = useThread({ threadId, enabled: !!threadId })
 
-  const displayName = isNotFound ? 'Unknown thread' : thread?.subject?.trim() || '(no subject)'
+  const threadTitle = useThreadTitle(threadId)
+
+  const displayName = isNotFound ? 'Unknown thread' : (threadTitle ?? '(no subject)')
   const showLoading = !threadId || (isLoading && !thread)
 
   return (
