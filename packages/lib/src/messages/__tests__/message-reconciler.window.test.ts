@@ -377,3 +377,100 @@ describe('reconcileIncomingSync — Strategy 1 still wins', () => {
     expect(result).toEqual({ isReconciled: true, existingMessageId: 'msg-by-message-id' })
   })
 })
+
+/**
+ * Strategy 2 has no identity key — it matches on (integration, subject, 60s skew)
+ * alone. On email the subject carries the selectivity. **SMS has no subject**, so
+ * `eq(subject, messageData.subject || '')` degenerates to `'' = ''` and matches every
+ * SMS on the channel, leaving the 60-second window as the only discriminator.
+ *
+ * Measured live on Quo (2026-08-14): an outbound SMS at 20:49:47 and the customer's
+ * reply 49s later collapsed into ONE row. The inbound message overwrote the outbound
+ * row's `externalId` and timestamps while keeping the outbound body and
+ * `isInbound: false`; the reply text survived only inside `metadata`. "Customer
+ * replies within a minute" is the normal case on a support line, not an edge case.
+ *
+ * The guard is direction: a Sent-folder echo is by definition a copy of a message WE
+ * sent, so it is always outbound. These tests pin that, and pin that it did not
+ * over-fire and break the subject-less OUTBOUND echo.
+ */
+describe('reconcileIncomingSync — Strategy 2 never claims an inbound message', () => {
+  /** Our outbound SMS: no subject, sent, carries a sendToken. */
+  function sentSmsRow(overrides: Row = {}): Row {
+    return localSentRow({
+      id: 'msg-sms-out',
+      subject: '',
+      sendStatus: 'SENT',
+      internetMessageId: null,
+      textPlain: 'Test message.',
+      ...overrides,
+    })
+  }
+
+  /** The customer's reply arriving over the Quo webhook. */
+  function inboundSms(overrides: Partial<MessageData> = {}): MessageData {
+    return sentItemsEcho({
+      // Shape-accurate but synthetic. A real Quo message id is `AC` + 32 hex, which
+      // is byte-for-byte Twilio's Account SID format (Quo runs on Twilio), so a real
+      // one in a fixture trips GitHub push protection as a leaked credential.
+      externalId: 'AC_quo_inbound_reply',
+      externalThreadId: 'CN_quo_conversation',
+      isInbound: true,
+      subject: undefined, // `route.ts` — SMS has no subject.
+      internetMessageId: undefined,
+      textPlain: 'Ok',
+      from: { identifier: '+15102055536' } as any,
+      ...overrides,
+    })
+  }
+
+  it('does not swallow a reply that arrives 49s after our send (the measured Quo case)', async () => {
+    const db = createDb([sentSmsRow()], [{ id: 'thread-1', externalId: 'ext-real' }])
+    ingestAt(49)
+
+    const result = await createService(db).reconcileIncomingSync(
+      inboundSms({ sentAt: new Date(SENT_AT.getTime() + 49_000) })
+    )
+
+    expect(result).toEqual({ isReconciled: false })
+  })
+
+  it('does not swallow a reply whose text is identical to ours', async () => {
+    // The nastiest shape: with no subject AND no sender check, identical text is
+    // indistinguishable to every predicate Strategy 2 has. Only direction separates them.
+    const db = createDb([sentSmsRow({ textPlain: 'Ok' })], [{ id: 'thread-1', externalId: 'e' }])
+    ingestAt(10)
+
+    const result = await createService(db).reconcileIncomingSync(
+      inboundSms({ sentAt: new Date(SENT_AT.getTime() + 10_000) })
+    )
+
+    expect(result).toEqual({ isReconciled: false })
+  })
+
+  it('skips the Strategy 2 query entirely for an inbound message', async () => {
+    // Not just a filtered-out result — inbound ingest is the hot path, so the guard
+    // is placed before the query rather than inside its predicate.
+    const db = createDb([sentSmsRow()], [{ id: 'thread-1', externalId: 'ext-real' }])
+    ingestAt(49)
+
+    await createService(db).reconcileIncomingSync(
+      inboundSms({ sentAt: new Date(SENT_AT.getTime() + 49_000) })
+    )
+
+    // Strategy 0 is skipped (no echoedMessageId) and Strategy 1 is skipped (no
+    // internetMessageId), so a running Strategy 2 would be the FIRST Message query.
+    expect(db.query.Message.findFirst).not.toHaveBeenCalled()
+  })
+
+  it('still reconciles a subject-less OUTBOUND echo — the guard must not over-fire', async () => {
+    const db = createDb([sentSmsRow()], [{ id: 'thread-1', externalId: 'ext-real' }])
+    ingestAt(30)
+
+    const result = await createService(db).reconcileIncomingSync(
+      sentItemsEcho({ subject: undefined, internetMessageId: undefined, isInbound: false })
+    )
+
+    expect(result).toEqual({ isReconciled: true, existingMessageId: 'msg-sms-out' })
+  })
+})
