@@ -34,7 +34,11 @@ export function builderDeclaredKeys(builderDir: string): Set<string> {
   // the lib catalog; the web types.ts shrinks to a `type: NodeType` narrowing
   // wrapper over it. Read the catalog file first when it exists — it IS the
   // builder declaration for those types.
-  const catalogPath = join(ENGINE_ROOT, 'catalog/nodes', `${builderDir.replace(/^core\//, '')}.ts`)
+  // Builder dirs are grouped (`core/wait`, `inputs/form-input`); the catalog is
+  // flat, one file per node type. Strip the group, whatever it is — an
+  // `inputs/`-only strip of `core/` left `form-input` reading a shrunken web
+  // `types.ts` and silently lost every nested option key it declares.
+  const catalogPath = join(ENGINE_ROOT, 'catalog/nodes', `${builderDir.replace(/^[^/]+\//, '')}.ts`)
   const paths = [catalogPath, join(BUILDER_ROOT, builderDir, 'types.ts')]
   for (const path of paths) {
     if (!existsSync(path)) continue

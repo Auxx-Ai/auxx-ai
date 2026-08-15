@@ -19,16 +19,65 @@
  * warning, not an error — blocking it would make it impossible to build a
  * workflow incrementally (the first `addNode` on an empty draft has no
  * trigger yet). More than one trigger, or an edge INTO a trigger, is a hard
- * structural error.
+ * structural error — with ONE exception: an input node attaching to a trigger
+ * that declares `acceptsInputNodes` (see `isInputNodePair`).
  */
 
 import { getAuthorableManifests, getManifest } from '../../workflow-engine/catalog/registry'
+import { NodeCategory } from '../../workflow-engine/catalog/types'
 import { formatNodeRef } from './refs'
 import type { DraftGraph, GraphEdge, GraphNode, Issue } from './types'
 
 /** The persisted node type (`data.type`; `node.type` is the renderer type). */
 export function nodeType(node: GraphNode): string {
   return (node.data?.type as string | undefined) ?? node.type
+}
+
+/**
+ * The non-standard handle pair an input node uses to attach to the node it
+ * feeds (`form-input --input-output--> manual --input`). Not a chain link:
+ * the edge runs BACKWARDS into a trigger, which is why the three rules below
+ * need an exception and why edge writers must ask for these handles by name.
+ */
+export const INPUT_WIRING_HANDLES = { sourceHandle: 'input-output', targetHandle: 'input' } as const
+
+/**
+ * Whether this node pair is an input-provider → input-accepting wiring: the
+ * canvas's own rule (`use-node-validation.ts` — source category `INPUT`,
+ * target `acceptsInputNodes`), read off the same manifests. Used BOTH to judge
+ * existing graphs here and to mint edges in `ops.ts`, so a writer can never
+ * produce an edge this file rejects.
+ *
+ * **Strict on both sides, deliberately.** An uncatalogued node type is
+ * read-only/informational everywhere else in `validateGraphStructure`, so
+ * tolerating a missing SOURCE manifest here was tempting — and while
+ * `form-input` was the one input node without a manifest, it was the only way
+ * the exception could fire at all. It has one now, and "no manifest" is a
+ * PERMANENT condition for app-block node types (contributed by installed apps,
+ * they never get a catalog manifest) and open-ended for `webhook` /
+ * `webhook-endpoint`. A tolerant predicate would therefore let an app-block
+ * hang off a trigger's `input` handle forever, and let `connect_nodes` mint
+ * exactly that.
+ *
+ * Verified before tightening (dev, 2026-08-14): every `input`-handle edge in
+ * `Workflow` and `WorkflowTemplate` is `form-input --input-output--> manual`,
+ * 8 edges, no exceptions — so strictness rejects nothing that exists. The
+ * canvas cannot author a counterexample either; its own rule is this rule.
+ */
+export function isInputNodePair(source: GraphNode, target: GraphNode): boolean {
+  return (
+    getManifest(nodeType(target))?.connection.acceptsInputNodes === true &&
+    getManifest(nodeType(source))?.category === NodeCategory.INPUT
+  )
+}
+
+/** An input-provider → input-accepting wiring on the handles it must use. */
+function isInputWiring(source: GraphNode, target: GraphNode, edge: GraphEdge): boolean {
+  return (
+    isInputNodePair(source, target) &&
+    (edge.sourceHandle ?? 'source') === INPUT_WIRING_HANDLES.sourceHandle &&
+    (edge.targetHandle ?? 'target') === INPUT_WIRING_HANDLES.targetHandle
+  )
 }
 
 /** Whether a node is an in-graph trigger per its catalog manifest. */
@@ -171,7 +220,7 @@ export function validateGraphStructure(
       const branches = sourceManifest.connection.branches?.(source.data) ?? []
       const handle = edge.sourceHandle ?? 'source'
       const allowed = branches.length > 0 ? branches.map((b) => b.id) : ['source']
-      if (!allowed.includes(handle)) {
+      if (!allowed.includes(handle) && !isInputWiring(source, target, edge)) {
         issues.push({
           severity: 'error',
           nodeRef: ref(source.id),
@@ -191,7 +240,7 @@ export function validateGraphStructure(
           message: `Edge "${edge.id}" targets handle "loop-back" on ${ref(target.id)}, which is not a loop.`,
         })
       }
-    } else if (targetHandle !== 'target') {
+    } else if (targetHandle !== 'target' && !isInputWiring(source, target, edge)) {
       issues.push({
         severity: 'error',
         nodeRef: ref(target.id),
@@ -248,7 +297,15 @@ export function validateGraphStructure(
     })
   }
   for (const trigger of triggers) {
-    if (graph.edges.some((e) => e.target === trigger.id)) {
+    // Input wiring is the one legal edge INTO a trigger — a form-input node
+    // attaches its field definition to the manual trigger on `input`.
+    const incoming = graph.edges.filter((e) => e.target === trigger.id)
+    if (
+      incoming.some((e) => {
+        const source = nodeById.get(e.source)
+        return !source || !isInputWiring(source, trigger, e)
+      })
+    ) {
       issues.push({
         severity: 'error',
         nodeRef: ref(trigger.id),

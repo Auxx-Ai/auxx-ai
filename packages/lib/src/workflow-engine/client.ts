@@ -215,6 +215,21 @@ export {
   validateFindNodeConfig,
 } from './catalog/nodes/find'
 export {
+  type AddressTypeOptions,
+  type BooleanTypeOptions,
+  type CurrencyTypeOptions,
+  createFormInputDefaultData,
+  type EnumOption,
+  type FileTypeOptions,
+  type FormInputNodeData as CatalogFormInputNodeData,
+  formInputManifest,
+  formInputNodeDataSchema,
+  getFormInputOutputVariables,
+  type StringTypeOptions,
+  type TypeOptions,
+  validateFormInputData,
+} from './catalog/nodes/form-input'
+export {
   computeFormatOutputVariables,
   extractFormatVariables,
   type FormatNodeData as CatalogFormatNodeData,
@@ -403,6 +418,7 @@ export {
   schemaTypeToBaseType,
   validateAgainstSchema,
 } from './catalog/schema-to-variable'
+export { VAR_TYPE_ICON_MAP } from './catalog/type-icons'
 export {
   type NodeAgentDocs,
   type NodeBranch,

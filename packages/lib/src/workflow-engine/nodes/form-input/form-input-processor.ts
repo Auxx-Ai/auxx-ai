@@ -1,6 +1,10 @@
 // packages/lib/src/workflow-engine/nodes/form-input/form-input-processor.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import type {
+  FormInputNodeData as CatalogFormInputNodeData,
+  TypeOptions,
+} from '../../catalog/nodes/form-input'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -14,65 +18,28 @@ import { BaseType, NodeRunningStatus } from '../../core/types'
 const logger = createScopedLogger('form-input-processor')
 
 /**
- * Select option for ENUM type
+ * The option shapes are the catalog's — re-exported here (rather than
+ * re-declared, as they were until the migration) because
+ * `nodes/trigger-nodes/manual.ts` imports `TypeOptions` from this module.
  */
-export interface EnumOption {
-  label: string
-  value: string
-}
+export type {
+  AddressTypeOptions,
+  CurrencyTypeOptions,
+  EnumOption,
+  FileTypeOptions,
+  TypeOptions,
+} from '../../catalog/nodes/form-input'
 
 /**
- * File options for FILE type
+ * The slice of the persisted form-input config this processor reads.
+ * `inputType` is optional here — the processor defaults it — while the catalog
+ * data interface always carries one.
  */
-export interface FileTypeOptions {
-  allowMultiple: boolean
-  maxFiles?: number
-  maxFileSize?: number
-  /** @deprecated Use allowedFileTypes and allowedFileExtensions instead */
-  allowedTypes?: string[]
-  /** Allowed file type categories: image, document, video, audio, custom */
-  allowedFileTypes?: Array<'image' | 'document' | 'video' | 'audio' | 'custom'>
-  /** Custom file extensions when allowedFileTypes includes 'custom' */
-  allowedFileExtensions?: string[]
-}
-
-/**
- * Currency options for CURRENCY type (flat — matches CurrencyFieldOptions)
- */
-export interface CurrencyTypeOptions {
-  currencyCode: string
-  decimals?: number
-  useGrouping?: boolean
-  currencyDisplay?: 'symbol' | 'code' | 'name' | 'compact'
-}
-
-/**
- * Address options for ADDRESS type
- */
-export interface AddressTypeOptions {
-  components: string[]
-}
-
-/**
- * Type-specific options union
- */
-export interface TypeOptions {
-  enum?: EnumOption[]
-  file?: FileTypeOptions
-  currency?: CurrencyTypeOptions
-  address?: AddressTypeOptions
-}
-
-/**
- * Form input node configuration
- * Matches frontend FormInputNodeData from form-input/types.ts
- */
-interface FormInputNodeConfig {
-  label: string
+type FormInputNodeConfig = Pick<
+  CatalogFormInputNodeData,
+  'label' | 'required' | 'defaultValue' | 'typeOptions'
+> & {
   inputType?: BaseType
-  required?: boolean
-  defaultValue?: string | number | boolean | null
-  typeOptions?: TypeOptions
 }
 
 /**

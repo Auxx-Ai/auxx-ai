@@ -10,6 +10,7 @@ import { dateTimeManifest } from './nodes/date-time'
 import { documentExtractorManifest } from './nodes/document-extractor'
 import { endManifest } from './nodes/end'
 import { findManifest } from './nodes/find'
+import { formInputManifest } from './nodes/form-input'
 import { formatManifest } from './nodes/format'
 import { httpManifest } from './nodes/http'
 import { humanConfirmationManifest } from './nodes/human'
@@ -50,6 +51,7 @@ const ALL_MANIFESTS: NodeManifest<any>[] = [
   documentExtractorManifest,
   endManifest,
   findManifest,
+  formInputManifest,
   formatManifest,
   httpManifest,
   humanConfirmationManifest,

@@ -393,7 +393,7 @@ export const EXTRACTION_BLIND_SPOTS: Record<string, string> = {
   // selective, so form-input also inherits writes that are genuinely manual's
   // own (keyed by the MANUAL node's id, manual.ts:54) …
   'written:form-input.inputs':
-    "manual.ts's own write (manual.ts:54, keyed by the manual node, which advertises it under the connected-inputs variant) — folded into form-input's contract by EXTRA_ENGINE_SOURCES; the documented over-attribution cost.",
+    "manual.ts's own write (manual.ts:54, keyed by the manual node, which advertises it unconditionally) — folded into form-input's contract by EXTRA_ENGINE_SOURCES; the documented over-attribution cost.",
   'written:form-input.timestamp':
     "manual.ts's own write (manual.ts:54) — same fold-in, same over-attribution.",
   'written:form-input.userId':
