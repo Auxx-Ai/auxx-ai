@@ -35,6 +35,10 @@ describe('maintenance worker registrations', () => {
     ['mail reclassify apply', 'mailReclassifyApplyJob'],
     ['retroactive mail-filter apply', 'mailFilterRetroactiveApplyJob'],
     ['data migrations', 'dataMigrationsJob'],
+    // Four doors enqueue this one name — the mutation seam, the sync-manifest
+    // consumer, and the 6h scheduler — so a missing registration would silently
+    // disable duplicate detection everywhere at once.
+    ['duplicate scan', 'duplicateScanJob'],
   ])('has a handler for the %s job', (_label, name) => {
     expect(Object.keys(jobMappings)).toContain(name)
   })

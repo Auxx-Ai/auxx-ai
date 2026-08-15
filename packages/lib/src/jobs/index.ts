@@ -109,6 +109,12 @@ export {
   cleanupOrphanedDataJob,
   reindexDatasetJob,
 } from './datasets/maintenance-jobs'
+// Duplicate detection — ONE job, three scopes (mutation seam, sync manifest, 6h sweep)
+export {
+  type DuplicateScanJobData,
+  type DuplicateScanJobStats,
+  duplicateScanJob,
+} from './dedup/duplicate-scan-job'
 // Documents (money MQ2 PDF render pipeline)
 export {
   type RenderDocumentPdfJobData,
