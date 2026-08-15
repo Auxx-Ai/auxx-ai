@@ -38,11 +38,13 @@ import { AiTraceRenderer } from './ai/trace-renderer'
 import { answerDefinition } from './answer'
 import { AnswerTraceRenderer } from './answer/trace-renderer'
 import { ChunkerNode, ChunkerPanel, chunkerDefinition } from './chunker'
+import { ChunkerTraceRenderer } from './chunker/trace-renderer'
 import { codeDefinition } from './code'
 import { CodeTraceRenderer } from './code/trace-renderer'
 import { CrudNode, CrudPanel, crudDefinition } from './crud'
 import { CrudTraceRenderer } from './crud/trace-renderer'
 import { DatasetNode, DatasetPanel, datasetDefinition } from './dataset'
+import { DatasetTraceRenderer } from './dataset/trace-renderer'
 import { dateTimeNodeDefinition } from './date-time'
 import { DateTimeTraceRenderer } from './date-time/trace-renderer'
 import {
@@ -50,6 +52,7 @@ import {
   DocumentExtractorPanel,
   documentExtractorDefinition,
 } from './document-extractor'
+import { DocumentExtractorTraceRenderer } from './document-extractor/trace-renderer'
 import { endDefinition } from './end'
 import { EndTraceRenderer } from './end/trace-renderer'
 import { FindNode, FindPanel, findDefinition } from './find'
@@ -203,9 +206,20 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     ...documentExtractorDefinition,
     component: DocumentExtractorNode,
     panel: DocumentExtractorPanel,
+    traceRenderer: DocumentExtractorTraceRenderer,
   },
-  { ...chunkerDefinition, component: ChunkerNode, panel: ChunkerPanel },
-  { ...datasetDefinition, component: DatasetNode, panel: DatasetPanel },
+  {
+    ...chunkerDefinition,
+    component: ChunkerNode,
+    panel: ChunkerPanel,
+    traceRenderer: ChunkerTraceRenderer,
+  },
+  {
+    ...datasetDefinition,
+    component: DatasetNode,
+    panel: DatasetPanel,
+    traceRenderer: DatasetTraceRenderer,
+  },
   {
     ...knowledgeRetrievalDefinition,
     component: KnowledgeRetrievalNode,

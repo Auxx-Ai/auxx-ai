@@ -1,140 +1,36 @@
 // apps/web/src/components/workflow/nodes/core/dataset/schema.ts
 
-import { DATASET_NODE_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
-import { z } from 'zod'
-import { NodeCategory, type NodeDefinition } from '~/components/workflow/types'
-import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
-import { NodeType } from '~/components/workflow/types/node-types'
-import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
-import { isNodeVariable, isVariableMode } from '~/components/workflow/utils/variable-utils'
-import { getDatasetOutputVariables } from './output-variables'
+import { datasetManifest, type NodeManifest } from '@auxx/lib/workflow-engine/client'
+import type { NodeDefinition } from '~/components/workflow/types'
+import { defineFromManifest } from '../../define-from-manifest'
 import type { DatasetNodeData } from './types'
 
+// The data half (zod schema, defaults, validator, variable extraction, output
+// resolver) lives in the node catalog
+// (`@auxx/lib/workflow-engine/catalog/nodes/dataset`). This file is the merge
+// site: manifest + the React parts.
+
 /**
- * Zod schema for Dataset node data validation
- * Extends baseNodeDataSchema with dataset-specific fields
+ * Dataset node definition.
+ *
+ * The cast bridges lib's `type: string` to the web `NodeType` narrowing —
+ * safe because the manifest's defaults never set `type` (the node factory
+ * assigns identity). `component` / `panel` / `traceRenderer` are attached in
+ * `nodes/core/index.ts`, as for every other migrated node.
  */
-export const datasetNodeDataSchema = baseNodeDataSchema.extend({
-  title: z.string().min(1),
-  desc: z.string().optional(),
-  description: z.string().optional(),
+export const datasetDefinition: NodeDefinition<DatasetNodeData> = defineFromManifest(
+  datasetManifest as unknown as NodeManifest<DatasetNodeData>,
+  {}
+)
 
-  // Dataset selection
-  datasetId: z.string().optional(),
-
-  // Chunks input
-  chunks: z.string().optional(),
-
-  // Document settings
-  documentTitle: z.string().optional(),
-  mimeType: z.string().optional().default('text/plain'),
-  documentType: z.string().optional(),
-  sourceUrl: z.string().optional(),
-  fileId: z.string().optional(),
-
-  // Processing options — a variable reference string when bound to a variable
-  skipEmbedding: z.union([z.boolean(), z.string()]).optional(),
-  waitForEmbeddings: z.union([z.boolean(), z.string()]).optional(),
-  embeddingTimeoutMinutes: z.union([z.number(), z.string()]).optional(),
-  metadata: z.record(z.string(), z.any()).optional(),
-
-  // Field modes
-  fieldModes: z.record(z.string(), z.boolean()).optional(),
-})
+// Back-compat re-exports so no panel or consumer import churns:
+export {
+  datasetNodeDataSchema,
+  extractDatasetVariables,
+  validateDatasetConfig,
+} from '@auxx/lib/workflow-engine/client'
 
 /**
  * Default configuration for new Dataset nodes
  */
-export const datasetDefaultData: Partial<DatasetNodeData> = {
-  title: 'Dataset',
-  desc: 'Add chunks to a dataset',
-  skipEmbedding: false,
-  // Waiting is the default: without it the node reports success while the
-  // dataset still holds no vectors, so anything reading the dataset later in
-  // the same run silently sees fewer results. Bounded by the timeout below.
-  waitForEmbeddings: DATASET_NODE_CONSTANTS.EMBEDDING_WAIT.DEFAULT_WAIT_FOR_EMBEDDINGS,
-  embeddingTimeoutMinutes: DATASET_NODE_CONSTANTS.EMBEDDING_WAIT.DEFAULT_TIMEOUT_MINUTES,
-  mimeType: 'text/plain',
-  fieldModes: {
-    datasetId: true, // Default to constant mode for dataset picker
-    chunks: false, // Default to variable mode for chunks
-    documentTitle: true,
-    skipEmbedding: true,
-    waitForEmbeddings: true,
-    embeddingTimeoutMinutes: true,
-  },
-}
-
-/**
- * Extract variables from Dataset configuration
- * Only extracts from fields that are in variable mode
- */
-export function extractDatasetVariables(data: Partial<DatasetNodeData>): string[] {
-  const variableIds = new Set<string>()
-  const fieldModes = data.fieldModes
-
-  // Extract from datasetId (if in variable mode)
-  if (data.datasetId && isVariableMode(fieldModes, 'datasetId')) {
-    if (isNodeVariable(data.datasetId)) {
-      variableIds.add(data.datasetId)
-    } else {
-      extractVarIdsFromString(data.datasetId).forEach((id) => variableIds.add(id))
-    }
-  }
-
-  // Extract from chunks (typically a variable reference like "chunker.chunks")
-  if (data.chunks) {
-    if (isNodeVariable(data.chunks)) {
-      variableIds.add(data.chunks)
-    } else {
-      extractVarIdsFromString(data.chunks).forEach((id) => variableIds.add(id))
-    }
-  }
-
-  // Extract from documentTitle (if in variable mode)
-  if (data.documentTitle && isVariableMode(fieldModes, 'documentTitle')) {
-    extractVarIdsFromString(data.documentTitle).forEach((id) => variableIds.add(id))
-  }
-
-  // Extract from sourceUrl (if in variable mode)
-  if (data.sourceUrl && isVariableMode(fieldModes, 'sourceUrl')) {
-    extractVarIdsFromString(data.sourceUrl).forEach((id) => variableIds.add(id))
-  }
-
-  // Extract from fileId (if in variable mode)
-  if (data.fileId && isVariableMode(fieldModes, 'fileId')) {
-    if (isNodeVariable(data.fileId)) {
-      variableIds.add(data.fileId)
-    }
-  }
-
-  // Extract from the processing options bound to a variable — the two boolean
-  // toggles and the numeric timeout all store a reference string in variable
-  // mode
-  for (const field of ['skipEmbedding', 'waitForEmbeddings', 'embeddingTimeoutMinutes'] as const) {
-    const value = data[field]
-    if (typeof value === 'string' && isVariableMode(fieldModes, field) && isNodeVariable(value)) {
-      variableIds.add(value)
-    }
-  }
-
-  return Array.from(variableIds)
-}
-
-/**
- * Dataset node definition for the workflow system
- */
-export const datasetDefinition: NodeDefinition<DatasetNodeData> = {
-  id: NodeType.DATASET,
-  category: NodeCategory.DATASET,
-  displayName: 'Dataset',
-  description: 'Add chunks to a dataset with embedding generation',
-  icon: 'database',
-  color: '#06b6d4',
-  canRunSingle: true,
-  defaultData: datasetDefaultData,
-  schema: datasetNodeDataSchema,
-  extractVariables: extractDatasetVariables,
-  outputVariables: (data: DatasetNodeData, nodeId: string) =>
-    getDatasetOutputVariables(data, nodeId),
-}
+export const datasetDefaultData = datasetManifest.defaultData() as Partial<DatasetNodeData>

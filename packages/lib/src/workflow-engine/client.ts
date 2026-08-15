@@ -133,6 +133,18 @@ export {
   validateAnswerConfig,
 } from './catalog/nodes/answer'
 export {
+  CHUNKER_DEFAULT_CHUNK_OVERLAP,
+  CHUNKER_DEFAULT_CHUNK_SIZE,
+  CHUNKER_DEFAULT_DELIMITER,
+  type ChunkerNodeData as CatalogChunkerNodeData,
+  chunkerDefaultData,
+  chunkerManifest,
+  chunkerNodeDataSchema,
+  extractChunkerVariables,
+  getChunkerOutputVariables,
+  validateChunkerConfig,
+} from './catalog/nodes/chunker'
+export {
   type CodeNodeData as CatalogCodeNodeData,
   type CodeNodeInput,
   type CodeNodeOutput,
@@ -156,6 +168,15 @@ export {
   validateCrudNodeConfig,
 } from './catalog/nodes/crud'
 export {
+  type DatasetNodeData as CatalogDatasetNodeData,
+  datasetDefaultData,
+  datasetManifest,
+  datasetNodeDataSchema,
+  extractDatasetVariables,
+  getDatasetOutputVariables,
+  validateDatasetConfig,
+} from './catalog/nodes/dataset'
+export {
   DateFormatType,
   type DateTimeNodeData as CatalogDateTimeNodeData,
   DateTimeOperation,
@@ -166,6 +187,17 @@ export {
   TimeUnit,
   validateDateTimeNodeData,
 } from './catalog/nodes/date-time'
+export {
+  DOCUMENT_EXTRACTOR_NAMES,
+  type DocumentExtractorNodeData as CatalogDocumentExtractorNodeData,
+  DocumentSourceType,
+  documentExtractorDefaultData,
+  documentExtractorManifest,
+  documentExtractorNodeDataSchema,
+  extractDocumentExtractorVariables,
+  getDocumentExtractorOutputVariables,
+  validateDocumentExtractorConfig,
+} from './catalog/nodes/document-extractor'
 export {
   type EndNodeData as CatalogEndNodeData,
   endManifest,

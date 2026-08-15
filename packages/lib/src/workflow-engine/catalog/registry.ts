@@ -2,9 +2,12 @@
 
 import { aiManifest } from './nodes/ai'
 import { answerManifest } from './nodes/answer'
+import { chunkerManifest } from './nodes/chunker'
 import { codeManifest } from './nodes/code'
 import { crudManifest } from './nodes/crud'
+import { datasetManifest } from './nodes/dataset'
 import { dateTimeManifest } from './nodes/date-time'
+import { documentExtractorManifest } from './nodes/document-extractor'
 import { endManifest } from './nodes/end'
 import { findManifest } from './nodes/find'
 import { formatManifest } from './nodes/format'
@@ -39,9 +42,12 @@ import type { NodeManifest } from './types'
 const ALL_MANIFESTS: NodeManifest<any>[] = [
   aiManifest,
   answerManifest,
+  chunkerManifest,
   codeManifest,
   crudManifest,
+  datasetManifest,
   dateTimeManifest,
+  documentExtractorManifest,
   endManifest,
   findManifest,
   formatManifest,

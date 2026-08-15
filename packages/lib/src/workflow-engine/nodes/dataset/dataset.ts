@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { DocumentChunk } from '../../../datasets/types'
 import { createDocumentProcessingFlow } from '../../../jobs/flows/document-processing-flow'
+import type { DatasetNodeData as CatalogDatasetNodeData } from '../../catalog/nodes/dataset'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -27,35 +28,31 @@ import {
 const logger = createScopedLogger('dataset-processor')
 
 /**
- * Dataset node configuration
+ * Dataset node configuration — the config subset of the catalog's
+ * `DatasetNodeData` (node-catalog migration; this file previously shadowed it).
+ *
+ * `documentType` is widened back to `string`: the catalog types it as a
+ * `DocumentType` for the panel's picker, but the field is variable-bindable, so
+ * at run time it may still hold an unresolved reference string.
  */
-interface DatasetConfig {
-  title?: string
-  desc?: string
-
-  // Target dataset
-  datasetId?: string
-
-  // Chunks input (from Chunker node)
-  chunks?: string // Variable reference to DocumentChunk[]
-
-  // Document settings
-  documentTitle?: string
-  mimeType?: string
-  documentType?: string
-  sourceUrl?: string
-  fileId?: string
-
-  // Processing options
-  // All three carry a variable reference string when bound to a variable
-  skipEmbedding?: boolean | string
-  waitForEmbeddings?: boolean | string
-  embeddingTimeoutMinutes?: number | string
-  metadata?: Record<string, any>
-
-  // Field modes tracking (constant vs variable)
-  fieldModes?: Record<string, boolean>
-}
+type DatasetConfig = Partial<
+  Pick<
+    CatalogDatasetNodeData,
+    | 'title'
+    | 'desc'
+    | 'datasetId'
+    | 'chunks'
+    | 'documentTitle'
+    | 'mimeType'
+    | 'sourceUrl'
+    | 'fileId'
+    | 'skipEmbedding'
+    | 'waitForEmbeddings'
+    | 'embeddingTimeoutMinutes'
+    | 'metadata'
+    | 'fieldModes'
+  >
+> & { documentType?: string }
 
 /**
  * Dataset output structure

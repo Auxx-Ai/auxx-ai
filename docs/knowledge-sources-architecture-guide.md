@@ -340,9 +340,22 @@ Sources don't expose themselves directly to AI — they flow through knowledge b
   (and other resources). When a KB is in scope, the agent retrieves across all its articles — native *and*
   source-linked. Source articles are just articles in a KB the agent can see.
 - **Workflows** — the Knowledge Retrieval node
-  (`apps/web/src/components/workflow/nodes/core/knowledge-retrieval/panel.tsx`) takes datasets + a query and
-  runs hybrid/vector/text search across them. Source content is reachable because the source's articles are
-  embedded into a dataset.
+  (`apps/web/src/components/workflow/nodes/core/knowledge-retrieval/`, catalog manifest in
+  `packages/lib/src/workflow-engine/catalog/nodes/knowledge-retrieval.ts`) takes a query plus a
+  `sources[]` list and runs hybrid/vector/text search across them. Each row is either
+  `{ kind: 'kb', knowledgeBaseId }` or `{ kind: 'dataset', datasetId }`, and either can be bound to a
+  variable. There is no implicit "all knowledge bases" — selection is always explicit.
+  Source content is reachable the documented way: link the source's articles into a standard KB and
+  pick that KB, at which point federation pulls in the source's hidden dataset. The picker cannot
+  offer `kind: 'source'` KBs directly (`RecordPickerService`'s `neverPickable`), which is why that
+  indirection is the only route.
+
+  The node resolves on the **workflow author's** authority (`sys.userId`, the workflow's
+  `createdById`) through the shared `resolveKnowledgeDatasetIds`, and fails closed: no user in
+  context refuses to run rather than resolving unrestricted, an unresolvable row contributes nothing
+  while its siblings still search, and an empty resolved set errors instead of falling through to an
+  unscoped search. *Before 2026-08-14 (#1642) the node took `datasets[]` only — it could not reach a
+  knowledge base at all, because managed KB datasets are hidden from every dataset picker.*
 
 ---
 
