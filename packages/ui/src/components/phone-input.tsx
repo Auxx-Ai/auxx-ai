@@ -35,6 +35,20 @@ export interface PhoneInputWithFlagProps {
   countryClassName?: string
   onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>
   autoFocus?: boolean
+  /**
+   * Country assumed for a number typed without a `+` prefix, and the flag the
+   * picker starts on. Accepts a loose `string` so callers can pass an org
+   * setting straight through — anything `react-phone-number-input` doesn't
+   * recognise falls back to `US` rather than throwing.
+   */
+  defaultCountry?: string
+}
+
+/** Narrow a loose country string to an RPN `Country`, falling back to `US`. */
+function toCountry(country: string | undefined): RPNInput.Country {
+  if (!country) return 'US'
+  const code = country.trim().toUpperCase()
+  return RPNInput.isSupportedCountry(code) ? (code as RPNInput.Country) : 'US'
 }
 
 function PhoneInputWithFlag({
@@ -49,10 +63,12 @@ function PhoneInputWithFlag({
   countryClassName,
   onKeyDown,
   autoFocus,
+  defaultCountry,
   ...props
 }: PhoneInputWithFlagProps) {
   const id = useId()
   const containerRef = useRef<HTMLDivElement>(null)
+  const country = toCountry(defaultCountry)
 
   /** Support both setValue (original) and onChange (react-hook-form style) */
   const handleChange = (newValue: string | undefined) => {
@@ -67,11 +83,12 @@ function PhoneInputWithFlag({
           className={cn('flex rounded-xl shadow-2xs', className)}
           international
           flagComponent={FlagComponent}
-          defaultCountry='US'
+          defaultCountry={country}
           countrySelectComponent={CountrySelect}
           countrySelectProps={{
             className: countryClassName || '',
             containerRef,
+            favoriteCountry: country,
           }}
           inputComponent={PhoneInput}
           numberInputProps={{ autoFocus }}
@@ -133,6 +150,12 @@ type CountrySelectProps = {
   trigger?: (props: { value: RPNInput.Country; label: string | undefined }) => React.ReactNode
   /** Whether to show calling codes in the dropdown list */
   showCallingCodes?: boolean
+  /**
+   * Country pinned above the full list under "Favorites". Defaults to `US`;
+   * `PhoneInputWithFlag` passes the org's own country so a non-US org gets its
+   * own dial code one click away instead of the US one.
+   */
+  favoriteCountry?: RPNInput.Country
 }
 
 /** Searchable country select using a combobox */
@@ -145,6 +168,7 @@ const CountrySelect = ({
   containerRef,
   trigger,
   showCallingCodes = true,
+  favoriteCountry = 'US',
 }: CountrySelectProps) => {
   const [open, setOpen] = useState(false)
   const [popoverWidth, setPopoverWidth] = useState<number | undefined>(undefined)
@@ -232,12 +256,12 @@ const CountrySelect = ({
                 <CommandSeparator />
               </>
             )}
-            {/* Favorites - show US if not selected */}
-            {value !== 'US' && (
+            {/* Favorites - show the org's country if it isn't already selected */}
+            {value !== favoriteCountry && (
               <>
                 <CommandGroup heading='Favorites'>
                   {countryOptions
-                    .filter((option) => option.value === 'US')
+                    .filter((option) => option.value === favoriteCountry)
                     .map((option) => (
                       <CommandItem
                         key={option.value}
@@ -259,7 +283,7 @@ const CountrySelect = ({
             {/* All other countries */}
             <CommandGroup heading='Countries'>
               {countryOptions
-                .filter((option) => option.value !== value && option.value !== 'US')
+                .filter((option) => option.value !== value && option.value !== favoriteCountry)
                 .map((option) => (
                   <CommandItem
                     key={option.value}

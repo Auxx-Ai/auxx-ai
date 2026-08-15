@@ -3,6 +3,7 @@
 import PhoneInputWithFlag from '@auxx/ui/components/phone-input'
 import type React from 'react'
 import { useCallback, useEffect, useState } from 'react'
+import { useOrgBusinessCountry } from '~/components/fields/inputs/use-org-business-country'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 /**
@@ -21,6 +22,8 @@ interface PhoneInputProps extends NodeInputProps {
  */
 export const PhoneInput = createNodeInput<PhoneInputProps>(
   ({ inputs, onChange, onError, isLoading, name, placeholder = 'Enter phone number' }) => {
+    const defaultCountry = useOrgBusinessCountry()
+
     // Local state for immediate UI updates
     const [localValue, setLocalValue] = useState(inputs[name] ?? '')
 
@@ -57,6 +60,7 @@ export const PhoneInput = createNodeInput<PhoneInputProps>(
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
+        defaultCountry={defaultCountry}
         disabled={isLoading}
         className='h-7 shadow-none! border-none ring-0! outline-none focus:ring-0 [&>input]:h-7 [&>input]:outline-none [&>input]:focus:ring-0 [&_[data-slot=country-select]]:bg-transparent [&_[data-slot=phone-input]]:w-full [&_[data-slot=phone-input]]:flex-1'
       />
