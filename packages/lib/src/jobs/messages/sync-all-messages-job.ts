@@ -91,6 +91,10 @@ export const startMessageSyncJob = async (ctx: JobContext<StartMessageSyncJobDat
         and(
           eq(schema.Integration.organizationId, organizationId),
           eq(schema.Integration.enabled, true),
+          // `openphone` (Quo) stays registered: its `syncMessages` now drives the capped
+          // conversation backfill (enumerate a bounded window → sort by lastActivityAt DESC →
+          // cap at N → one `/v1/messages` call per conversation). The first run performs the
+          // resumable initial backfill; later runs are incremental off `since`.
           inArray(schema.Integration.provider, [
             'google',
             'outlook',

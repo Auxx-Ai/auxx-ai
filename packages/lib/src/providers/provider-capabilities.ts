@@ -157,7 +157,9 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
     canReact: false,
     canShare: false,
     metadata: {
-      maxMessageLength: 160,
+      // Quo accepts up to 1600 characters on `POST /v1/messages` and segments longer SMS
+      // itself; 160 is the per-segment GSM limit, not the API's.
+      maxMessageLength: 1600,
       supportsUnicode: true,
     },
     requiresSubject: false,

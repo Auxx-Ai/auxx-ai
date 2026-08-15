@@ -95,9 +95,17 @@ export const connectionsRouter = createTRPCRouter({
       // Channels bind a connection credential — flag those rows so the UI can disable delete.
       // Sourced from the `channels` org cache (no extra query); keyed by the credential FK.
       const channels = await getOrgCache().get(organizationId, 'channels')
-      const channelByCred = new Map(
-        channels.flatMap((c) => (c.credentialId ? [[c.credentialId, c] as const] : []))
-      )
+      // One credential can back MANY channels — a Quo (OpenPhone) API key is workspace-scoped
+      // and every phone number on it becomes its own channel. A plain `new Map(...)` keyed by
+      // credentialId silently collapses those to whichever came last, so group instead and
+      // report the count alongside a representative row.
+      const channelsByCred = new Map<string, typeof channels>()
+      for (const c of channels) {
+        if (!c.credentialId) continue
+        const bucket = channelsByCred.get(c.credentialId)
+        if (bucket) bucket.push(c)
+        else channelsByCred.set(c.credentialId, [c])
+      }
 
       // MCP rows are owned by `mcpServerId` (no provider `type`/`providerKey`), so their brand
       // mark lives on the `McpServer` row, not the platform catalog. Source it from the
@@ -107,7 +115,8 @@ export const connectionsRouter = createTRPCRouter({
 
       const now = new Date()
       return result.value.map((record) => {
-        const channel = channelByCred.get(record.id)
+        const boundChannels = channelsByCred.get(record.id)
+        const channel = boundChannels?.[0]
         const mcpServer = record.mcpServerId ? mcpByServer.get(record.mcpServerId) : undefined
         const expired =
           record.consecutiveRefreshFailures >= CONNECTION_CIRCUIT_OPEN_THRESHOLD ||
@@ -144,6 +153,10 @@ export const connectionsRouter = createTRPCRouter({
           // Set when a channel binds this credential — the UI disables delete and shows an "In use"
           // badge. Deleting would orphan the channel (FK is set-null), so block it here too.
           usedByChannel: channel ? { provider: channel.provider, email: channel.email } : null,
+          // How many channels bind this credential. `usedByChannel` names only the first —
+          // a workspace-scoped key (Quo) legitimately backs one channel per phone number, and
+          // the delete guard's message counts all of them.
+          channelCount: boundChannels?.length ?? 0,
         }
       })
     }),
@@ -448,14 +461,24 @@ export const connectionsRouter = createTRPCRouter({
         })
       }
 
-      // A channel binding this credential would be orphaned by the delete (FK is set-null), losing
-      // its only token source. Block it — disconnect the channel first. Sourced from the cache.
+      // Channels binding this credential would be orphaned by the delete (`Integration.credentialId`
+      // is `onDelete: 'set null'`), losing their only token source. Block it — disconnect the
+      // channels first. Sourced from the `channels` org cache, which already excludes soft-deleted
+      // rows, so the count is exactly the live dependents.
+      //
+      // The count is named on purpose: one credential can now back MANY channels (a Quo workspace
+      // key covers every phone number on it, one Integration per number), so "it is in use by a
+      // channel" would understate what the delete is about to break. Generic over providers — the
+      // 1:N case is just where it stops being self-evident.
       const channels = await getOrgCache().get(organizationId, 'channels')
-      if (channels.some((c) => c.credentialId === input.id)) {
+      const dependents = channels.filter((c) => c.credentialId === input.id)
+      if (dependents.length > 0) {
         throw new TRPCError({
           code: 'CONFLICT',
           message:
-            'Cannot delete connection: it is in use by a channel. Disconnect the channel first.',
+            dependents.length === 1
+              ? 'Cannot delete connection: 1 channel depends on it. Disconnect that channel first.'
+              : `Cannot delete connection: ${dependents.length} channels depend on it. Disconnect them first.`,
         })
       }
 

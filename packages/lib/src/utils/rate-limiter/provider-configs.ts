@@ -177,23 +177,34 @@ export const ENHANCED_PROVIDER_LIMITS: Partial<
   },
 
   [IntegrationProviderTypeEnum.openphone]: {
-    // OpenPhone API limits
-    requestsPerMinute: 100,
-    requestsPerHour: 1000,
-    concurrentRequests: 5,
+    // Quo (formerly OpenPhone). Documented ceiling: 10 requests/second PER API KEY (429 on
+    // exceed) = 600/min = 36,000/hour. The previous 100/min + 1000/hr numbers were invented and
+    // throttled us 6× / 36× below the real allowance.
+    //
+    // `requestsPerSecond` is the load-bearing knob — `config-manager.ts` derives
+    // `minInterval = 1000 / requestsPerSecond` from it.
+    requestsPerSecond: 10,
+    requestsPerMinute: 600,
+    requestsPerHour: 36000,
+    // Measured latency is ~195ms/request, so a serial caller only reaches ~5 rps; 2 in flight
+    // lands at ~10 rps. The old `5` would overshoot the ceiling and collect 429s.
+    concurrentRequests: 2,
     batchSize: 10,
 
+    // NOTE: the rate limit is per API KEY, not per number — three channels backfilling
+    // concurrently share one budget. The Quo client (`providers/openphone/api.ts`) paces on the
+    // key itself for exactly this reason.
     contexts: {
       messages: {
-        maxRequests: 100,
+        maxRequests: 600,
         perInterval: 60000,
       },
       send: {
-        maxRequests: 30,
+        maxRequests: 600,
         perInterval: 60000,
       },
       calls: {
-        maxRequests: 50,
+        maxRequests: 600,
         perInterval: 60000,
       },
     },

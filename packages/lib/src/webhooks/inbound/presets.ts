@@ -27,12 +27,21 @@ export const metaPreset: WebhookVerifyPreset = {
   prefix: 'sha256=',
 }
 
-/** OpenPhone webhooks: HMAC-SHA256 hex over the raw body, in `x-openphone-signature`. */
+/**
+ * Quo (formerly OpenPhone) webhooks: HMAC-SHA256 base64 over `${timestamp}.${rawBody}`, with a
+ * base64-decoded signing key, in `openphone-signature` shaped `hmac;1;<timestamp>;<signature>`.
+ * The timestamp comes from the header, which `WebhookVerifyPreset.signedPayload` (raw-body only)
+ * cannot express — so the call site parses the header, builds the signed payload, enforces the
+ * timestamp tolerance, and calls `verifyHmacSignature` directly (`secretEncoding: 'base64'`)
+ * rather than going through `verifyWebhook`. This preset records the scheme as data.
+ *
+ * The provider key stays `openphone` everywhere it is persisted; the rename to Quo is labels-only.
+ */
 export const openphonePreset: WebhookVerifyPreset = {
   scheme: 'hmac',
-  header: 'x-openphone-signature',
+  header: 'openphone-signature',
   algo: 'sha256',
-  encoding: 'hex',
+  encoding: 'base64',
 }
 
 /**

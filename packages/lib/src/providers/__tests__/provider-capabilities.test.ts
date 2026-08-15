@@ -251,7 +251,7 @@ describe('Provider Capabilities', () => {
     })
 
     it('OpenPhone should have extended capabilities', () => {
-      expect(openPhoneCapabilities.metadata?.maxMessageLength).toBe(160)
+      expect(openPhoneCapabilities.metadata?.maxMessageLength).toBe(1600) // Quo accepts 1600 chars; 160 is the GSM segment size
       expect(openPhoneCapabilities.metadata?.supportsUnicode).toBe(true)
     })
   })

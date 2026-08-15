@@ -1095,6 +1095,7 @@ function ReplyComposeEditorComponent({
                   <span className='w-10 shrink-0 text-sm text-muted-foreground'>To:</span>
                   <RecipientInput
                     ref={toInputRef}
+                    recipientModel={platformCaps?.recipientModel}
                     field='TO'
                     recipients={recipients.TO}
                     onAdd={(r) => upsertRecipient('TO', r)}
@@ -1148,6 +1149,7 @@ function ReplyComposeEditorComponent({
                     <span className='w-10 shrink-0 text-sm text-muted-foreground'>Cc:</span>
                     <RecipientInput
                       ref={ccInputRef}
+                      recipientModel={platformCaps?.recipientModel}
                       field='CC'
                       recipients={recipients.CC}
                       onAdd={(r) => upsertRecipient('CC', r)}
@@ -1181,6 +1183,7 @@ function ReplyComposeEditorComponent({
                     <span className='w-10 shrink-0 text-sm text-muted-foreground'>Bcc:</span>
                     <RecipientInput
                       ref={bccInputRef}
+                      recipientModel={platformCaps?.recipientModel}
                       field='BCC'
                       recipients={recipients.BCC}
                       onAdd={(r) => upsertRecipient('BCC', r)}

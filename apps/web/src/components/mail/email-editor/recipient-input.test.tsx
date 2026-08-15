@@ -21,6 +21,7 @@ interface PickerItemStub {
 
 const h = vi.hoisted(() => ({
   batchGet: vi.fn(),
+  toastError: vi.fn(),
   pickerItems: [] as unknown[],
 }))
 
@@ -84,6 +85,8 @@ vi.mock('~/components/resources/utils/resolve-system-attribute', () => ({
   resolveSystemAttributeRef: () => 'contact:field-email',
 }))
 
+vi.mock('@auxx/ui/components/toast', () => ({ toastError: h.toastError }))
+
 vi.mock('~/components/global/tooltip', () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
@@ -137,6 +140,23 @@ function renderInput(
   return { ...utils, onContactSelect }
 }
 
+/** Same render, on a `recipientModel: 'phone'` channel (Quo/SMS). */
+function renderPhoneInput(onAdd = vi.fn(), onContactSelect = vi.fn()) {
+  const utils = render(
+    <RecipientInput
+      recipients={[]}
+      field='TO'
+      onAdd={onAdd}
+      onRemove={vi.fn()}
+      onMoveTo={vi.fn()}
+      onContactSelect={onContactSelect}
+      placeholder='To'
+      recipientModel='phone'
+    />
+  )
+  return { ...utils, onAdd, onContactSelect }
+}
+
 async function openPickerAndPick(name: string) {
   await userEvent.type(screen.getByLabelText('Add recipient'), 'ada')
   await userEvent.click(await screen.findByRole('button', { name }))
@@ -144,6 +164,7 @@ async function openPickerAndPick(name: string) {
 
 beforeEach(() => {
   h.batchGet.mockReset()
+  h.toastError.mockReset()
   h.pickerItems = [ADA]
   Element.prototype.scrollIntoView = vi.fn()
 })
@@ -247,5 +268,77 @@ describe('RecipientInput — contact expansion into N addresses', () => {
         expect.objectContaining({ identifier: 'a@x.com' })
       )
     )
+  })
+})
+
+// Quo (formerly OpenPhone) is the first channel whose recipient is a phone
+// number, not an address. The same input has to accept E.164, reject anything
+// libphonenumber can't parse, commit `PHONE`, and read the contact's
+// multi-value `phone` field instead of `primary_email`.
+describe('RecipientInput — phone recipientModel', () => {
+  /** batchGet payload for a contact whose phone field holds the given numbers. */
+  function phoneValues(numbers: string[]) {
+    return {
+      values: [
+        {
+          recordId: 'contact:c1',
+          fieldRef: 'contact:field-email',
+          fieldType: 'PHONE_INTL',
+          value: numbers.map((value) => ({ type: 'text', value })),
+        },
+      ],
+    }
+  }
+
+  it('commits a typed number as E.164 with identifierType PHONE', async () => {
+    const { onAdd } = renderPhoneInput()
+
+    await userEvent.type(screen.getByLabelText('Add recipient'), '(415) 555-1234{Enter}')
+
+    expect(onAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ identifier: '+14155551234', identifierType: 'PHONE' })
+    )
+    expect(h.toastError).not.toHaveBeenCalled()
+  })
+
+  it('rejects an email address with the phone-specific toast', async () => {
+    const { onAdd } = renderPhoneInput()
+
+    await userEvent.type(screen.getByLabelText('Add recipient'), 'a@x.com{Enter}')
+
+    expect(onAdd).not.toHaveBeenCalled()
+    expect(h.toastError).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Invalid Phone Number' })
+    )
+  })
+
+  it('expands a picked contact into its phone numbers, not its addresses', async () => {
+    h.pickerItems = [{ ...ADA, data: { phone: '+14155551234' } }]
+    h.batchGet.mockResolvedValue(phoneValues(['+14155551234', '+442071838750']))
+    const { onContactSelect } = renderPhoneInput()
+
+    await openPickerAndPick('Ada Lovelace')
+
+    const rowUs = await screen.findByRole('option', { name: /\+14155551234/ })
+    expect(rowUs).toBeVisible()
+    await userEvent.click(screen.getByRole('option', { name: /\+442071838750/ }))
+
+    expect(onContactSelect).toHaveBeenCalledWith({
+      id: 'c1',
+      identifier: '+442071838750',
+      identifierType: 'PHONE',
+      name: 'Ada Lovelace',
+    })
+  })
+
+  it('never falls back to the row secondaryInfo (an email) when the field read fails', async () => {
+    h.pickerItems = [{ ...ADA, data: {} }]
+    h.batchGet.mockRejectedValue(new Error('offline'))
+    const { onContactSelect } = renderPhoneInput()
+
+    await openPickerAndPick('Ada Lovelace')
+
+    await waitFor(() => expect(screen.getByTestId('record-picker')).toBeInTheDocument())
+    expect(onContactSelect).not.toHaveBeenCalled()
   })
 })

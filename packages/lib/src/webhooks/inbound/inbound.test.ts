@@ -3,10 +3,14 @@
 // the same way its provider does, then verified; tampered bodies, wrong secrets, and
 // length mismatches must return false (never throw); the Stripe tolerance window must
 // reject a stale timestamp.
+//
+// Quo (formerly OpenPhone) is NOT dispatched through `verifyWebhook` — its timestamp comes from
+// the header, which `WebhookVerifyPreset.signedPayload` cannot express. Its vectors live in
+// `quo-signature.test.ts`.
 
 import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { fixturePreset, metaPreset, openphonePreset, shopifyPreset, stripePreset } from './presets'
+import { fixturePreset, metaPreset, shopifyPreset, stripePreset } from './presets'
 import {
   timingSafeStringEqual,
   verifyHmacSignature,
@@ -166,17 +170,13 @@ describe('verifyWebhook dispatcher', () => {
     expect(verifyWebhook(metaPreset, { rawBody: 'tampered', headers, secret })).toBe(false)
   })
 
-  it('openphone preset (hmac hex) — length mismatch returns false, not a throw', () => {
-    const secret = 'opsecret'
+  it('length mismatch returns false, not a throw (the old OpenPhone timingSafeEqual bug)', () => {
+    const secret = 'shpss'
     const rawBody = '{"type":"message.received"}'
-    const headers = {
-      'x-openphone-signature': createHmac('sha256', secret).update(rawBody).digest('hex'),
-    }
-    expect(verifyWebhook(openphonePreset, { rawBody, headers, secret })).toBe(true)
     expect(
-      verifyWebhook(openphonePreset, {
+      verifyWebhook(shopifyPreset, {
         rawBody,
-        headers: { 'x-openphone-signature': 'short' },
+        headers: { 'x-shopify-hmac-sha256': 'short' },
         secret,
       })
     ).toBe(false)

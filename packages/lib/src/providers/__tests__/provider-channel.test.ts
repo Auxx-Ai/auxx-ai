@@ -175,7 +175,7 @@ describe('Provider Integration Tests', () => {
       expect(openphoneCapabilities.canDraft).toBe(false) // SMS is immediate
       expect(openphoneCapabilities.canApplyLabel).toBe(false) // No labels in SMS
       expect(openphoneCapabilities.canScheduleSend).toBe(true) // Business SMS
-      expect(openphoneCapabilities.metadata?.maxMessageLength).toBe(160)
+      expect(openphoneCapabilities.metadata?.maxMessageLength).toBe(1600) // Quo accepts 1600 chars; 160 is the GSM segment size
       expect(openphoneCapabilities.metadata?.supportsUnicode).toBe(true)
     })
 
@@ -407,7 +407,7 @@ describe('Provider Integration Tests', () => {
       expect(openphoneCaps.canApplyLabel).toBe(false)
       expect(openphoneCaps.canAttachFiles).toBe(false) // SMS limitation
       expect(openphoneCaps.canScheduleSend).toBe(true)
-      expect(openphoneCaps.metadata?.maxMessageLength).toBe(160)
+      expect(openphoneCaps.metadata?.maxMessageLength).toBe(1600) // Quo accepts 1600 chars; 160 is the GSM segment size
       expect(openphoneCaps.metadata?.supportsUnicode).toBe(true)
     })
   })

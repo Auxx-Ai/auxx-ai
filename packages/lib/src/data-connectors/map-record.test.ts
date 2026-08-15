@@ -430,6 +430,142 @@ describe('mapRecord', () => {
     expect(writes[0]?.projected?.fields).not.toHaveProperty('def1:email')
   })
 
+  // ── Indexed source paths (`emails[0].value`) ─────────────────────────────────
+
+  it('resolves an INDEXED source path into a labelled array (Quo `emails[0].value`)', () => {
+    // Quo exposes no scalar email/phone — both are arrays of labelled entries, so a
+    // scalar binding has to address one element explicitly. NOTE: this lands the
+    // FIRST entry only. Contact phone is multi-value E.164 since #1629, but the
+    // connector write path is scalar, so a contact with three numbers lands one.
+    const m = mapping({
+      rootPath: 'data[]',
+      targetMode: 'contributing',
+      fieldMappings: [
+        {
+          id: 'e1',
+          targetFieldRef: toResourceFieldId('def1', 'primary_email'),
+          expression: '{defaultFields.emails[0].value}',
+          sourceFields: { 'defaultFields.emails[0].value': 'defaultFields.emails[0].value' },
+        },
+        {
+          id: 'e2',
+          targetFieldRef: toResourceFieldId('def1', 'phone'),
+          expression: '{defaultFields.phoneNumbers[0].value}',
+          sourceFields: {
+            'defaultFields.phoneNumbers[0].value': 'defaultFields.phoneNumbers[0].value',
+          },
+          identityRole: { kind: 'match', normalize: 'phone' },
+        },
+      ],
+    })
+
+    const writes = mapRecord(
+      [m],
+      rawPayload({
+        data: [
+          {
+            id: '69dd3ed96520933f4d16e5f2',
+            defaultFields: {
+              firstName: 'Jane',
+              lastName: 'Doe',
+              emails: [
+                { id: 'e_1', name: 'Work', value: 'jane@acme.com' },
+                { id: 'e_2', name: 'Home', value: 'jane@home.com' },
+              ],
+              phoneNumbers: [{ id: 'p_1', name: 'Mobile', value: '+15551234567' }],
+            },
+          },
+        ],
+      })
+    )
+
+    expect(writes).toHaveLength(1)
+    expect(writes[0]?.projected?.fields).toEqual({
+      'def1:primary_email': 'jane@acme.com',
+      'def1:phone': '+15551234567',
+    })
+    // The indexed path is equally the identity-match value.
+    expect(writes[0]?.projected?.identityCandidates).toEqual([
+      { targetFieldRef: 'def1:phone', value: '+15551234567', normalize: 'phone' },
+    ])
+  })
+
+  it('resolves an indexed path to undefined (no write) when the array is empty or short', () => {
+    const m = mapping({
+      fieldMappings: [
+        {
+          id: 'e1',
+          targetFieldRef: toResourceFieldId('def1', 'email'),
+          expression: '{emails[0].value}',
+          sourceFields: { 'emails[0].value': 'emails[0].value' },
+        },
+        {
+          id: 'e2',
+          targetFieldRef: toResourceFieldId('def1', 'second_phone'),
+          expression: '{phoneNumbers[1].value}',
+          sourceFields: { 'phoneNumbers[1].value': 'phoneNumbers[1].value' },
+        },
+        {
+          id: 'e3',
+          // Not an array at all → undefined, never a partial object.
+          targetFieldRef: toResourceFieldId('def1', 'bogus'),
+          expression: '{company[0].value}',
+          sourceFields: { 'company[0].value': 'company[0].value' },
+        },
+      ],
+    })
+
+    // Quo really does return `emails: []` on most contacts (verified live).
+    const writes = mapRecord(
+      [m],
+      source({ emails: [], phoneNumbers: [{ value: '+15551234567' }], company: 'Acme' })
+    )
+
+    // Blank, not array-shaped — the values evaluate to undefined and the multi-field
+    // write path skips blanks rather than clearing (`entity-sink.ts`).
+    expect(writes[0]?.projected?.fields).toEqual({
+      'def1:email': undefined,
+      'def1:second_phone': undefined,
+      'def1:bogus': undefined,
+    })
+  })
+
+  it('still no-writes a BARE array path — indexing did not weaken the array guard', () => {
+    // The guard that must survive: `emails` (no index) is array-shaped, so the
+    // binding is dropped entirely. Sourcing it would flatten to null and CLEAR the
+    // target. Only the explicitly indexed sibling resolves.
+    const m = mapping({
+      rootPath: 'defaultFields',
+      fieldMappings: [
+        {
+          id: 'bare',
+          targetFieldRef: toResourceFieldId('def1', 'primary_email'),
+          expression: '{emails}',
+          sourceFields: { emails: 'emails' },
+        },
+        {
+          id: 'indexed',
+          targetFieldRef: toResourceFieldId('def1', 'phone'),
+          expression: '{phoneNumbers[0].value}',
+          sourceFields: { 'phoneNumbers[0].value': 'phoneNumbers[0].value' },
+        },
+      ],
+    })
+
+    const writes = mapRecord(
+      [m],
+      source({
+        defaultFields: {
+          emails: [{ value: 'jane@acme.com' }],
+          phoneNumbers: [{ value: '+15551234567' }],
+        },
+      })
+    )
+
+    expect(writes[0]?.projected?.fields).toEqual({ 'def1:phone': '+15551234567' })
+    expect(writes[0]?.projected?.fields).not.toHaveProperty('def1:primary_email')
+  })
+
   it('drops the degenerate whole-subtree `{source}` binding when the subtree is an array', () => {
     const m = mapping({
       id: 'tags',

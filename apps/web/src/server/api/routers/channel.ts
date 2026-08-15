@@ -15,6 +15,9 @@ import {
   getProviderType,
   linkChannelToInbox,
   list as listChannels,
+  listQuoPhoneNumbers,
+  provisionQuoChannel,
+  readCachedQuoNumbers,
   recoverChannel,
   requireChannelManageAccess,
   resolveChannelDefinitionId,
@@ -950,6 +953,93 @@ export const channelRouter = createTRPCRouter({
       })
 
       return result.value
+    }),
+
+  /**
+   * Validate a pasted Quo API key and list the phone numbers on its workspace — BEFORE any
+   * Credential exists, so the connect dialog can show the number picker in the same step.
+   *
+   * A mutation, not a query, deliberately: the API key must never land in a URL or a react-query
+   * key. `usRestricted` surfaces `restrictions.messaging.US === 'restricted'` — such a number
+   * cannot send US SMS and would fail at send time with no other signal in the UI.
+   */
+  quoPhoneNumbers: protectedProcedure
+    .input(z.object({ apiKey: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { userId } = ctx.session
+      const organizationId = getUserOrganizationId(ctx.session)
+      await requirePermission(userId, organizationId, PermissionKey.channelsManage)
+
+      const numbers = await listQuoPhoneNumbers(input.apiKey)
+      return {
+        numbers: numbers.map((n) => ({
+          id: n.id,
+          number: n.number,
+          name: n.name,
+          usRestricted: n.restrictions?.messaging?.US === 'restricted',
+        })),
+      }
+    }),
+
+  /**
+   * List the numbers cached on an EXISTING Quo connection (`Credential.metadata.quo`).
+   *
+   * A query, not a mutation: no secret rides the input, so the credential id is safe in a
+   * react-query key. This is what lets a user add a second number without re-pasting the API
+   * key — re-pasting would mint a second Credential for the same workspace, which is exactly
+   * what the workspace-scoped model exists to prevent.
+   *
+   * A credential with no `quo` bag (saved before the cache landed) returns an EMPTY list, not an
+   * error — the caller falls back to the API-key path. `readCachedQuoNumbers` is org-scoped, so
+   * a foreign credential id reads as empty too.
+   */
+  quoCachedNumbers: protectedProcedure
+    .input(z.object({ credentialId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { userId } = ctx.session
+      const organizationId = getUserOrganizationId(ctx.session)
+      await requirePermission(userId, organizationId, PermissionKey.channelsManage)
+
+      const cached = await readCachedQuoNumbers(input.credentialId, organizationId)
+      return {
+        numbers: cached.phoneNumbers.map((n) => ({
+          id: n.id,
+          number: n.number,
+          name: n.name,
+          usRestricted: n.restrictions?.messaging?.US === 'restricted',
+        })),
+        fetchedAt: cached.fetchedAt,
+      }
+    }),
+
+  /**
+   * Add a second/third phone number as a new channel against an EXISTING Quo connection.
+   *
+   * One connection = one Quo workspace, so the credential is reused rather than re-pasted; the
+   * number is validated against a live `GET /v1/phone-numbers` (never the cached list) and gets
+   * its own Integration + inbox link.
+   */
+  addQuoNumber: protectedProcedure
+    .use(notDemo('add Quo phone numbers'))
+    .input(
+      z.object({
+        credentialId: z.string().min(1),
+        phoneNumberId: z.string().min(1),
+        inboxId: z.string().min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { userId } = ctx.session
+      const organizationId = getUserOrganizationId(ctx.session)
+      await requirePermission(userId, organizationId, PermissionKey.channelsManage)
+
+      return provisionQuoChannel({
+        credentialId: input.credentialId,
+        organizationId,
+        userId,
+        phoneNumberId: input.phoneNumberId,
+        inboxId: input.inboxId,
+      })
     }),
 
   /**

@@ -30,6 +30,12 @@ export {
   provisionPersonalInbox,
   supportsPersonalChannelConnection,
 } from './personal-connection'
+export {
+  listQuoPhoneNumbers,
+  type ProvisionQuoChannelInput,
+  provisionQuoChannel,
+  readCachedQuoNumbers,
+} from './quo-channel'
 export { type RecoverChannelResult, recoverChannel } from './recover'
 export { registerChannelHooks } from './register-hooks'
 export {

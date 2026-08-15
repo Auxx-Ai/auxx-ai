@@ -1,6 +1,5 @@
 // apps/web/src/components/mail/email-editor/recipient-input.tsx
 'use client'
-import { IdentifierType } from '@auxx/database/enums'
 import type { FieldType, IdentifierType as IdentifierTypeType } from '@auxx/database/types'
 import { extractValues } from '@auxx/lib/field-values/client'
 import { getDefinitionId, type RecordPickerItem } from '@auxx/lib/resources/client'
@@ -16,7 +15,7 @@ import {
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { Copy, Mail, X } from 'lucide-react'
+import { Copy, Mail, Phone, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
@@ -27,6 +26,12 @@ import { resolveSystemAttributeRef } from '~/components/resources/utils/resolve-
 import { api } from '~/trpc/react'
 import { toEmailAddressList } from '../email-address-list'
 import { useEditorActiveStateContext } from './editor-active-state-context'
+import {
+  getIdentifierModel,
+  type IdentifierModelSpec,
+  identifierKey,
+  type RecipientModel,
+} from './identifier-model'
 
 export type RecipientField = 'TO' | 'CC' | 'BCC'
 
@@ -39,7 +44,7 @@ interface RecipientState {
 
 /** Imperative handle exposed via ref for parent components */
 export interface RecipientInputHandle {
-  /** Commits any valid email currently typed in the input. Returns true if committed. */
+  /** Commits any valid identifier currently typed in the input. Returns true if committed. */
   commitPendingInput: () => boolean
 }
 
@@ -60,15 +65,28 @@ interface RecipientInputProps {
   disabled?: boolean
   /** className forwarded to popover/dropdown content (e.g. for z-index override) */
   popoverClassName?: string
+  /**
+   * Shape of identifier the selected channel addresses
+   * (`PlatformCapabilities.recipientModel`). Drives validation, the committed
+   * `IdentifierType`, which contact field the picker reads, and the copy.
+   * Absent → email, which is every caller without resolved capabilities.
+   */
+  recipientModel?: RecipientModel
 }
 
 const FIELD_LABELS: Record<RecipientField, string> = { TO: 'To', CC: 'Cc', BCC: 'Bcc' }
 const ALL_FIELDS: RecipientField[] = ['TO', 'CC', 'BCC']
 
-/** The picker row's own single known address (the primary) — the fallback
- *  when the field read fails or returns nothing. */
-function itemFallbackAddresses(item: RecordPickerItem): string[] {
-  const single = toEmailAddressList(item.data?.email)[0] ?? (item.secondaryInfo || undefined)
+/** The picker row's own single known identifier (the primary) — the fallback
+ *  when the field read fails or returns nothing. `toEmailAddressList` is a
+ *  generic system-value normalizer (scalar or sortKey-ordered array); phone is
+ *  multi-value too since #1629. */
+function itemFallbackAddresses(item: RecordPickerItem, spec: IdentifierModelSpec): string[] {
+  const fromRow = toEmailAddressList(item.data?.[spec.rowDataKey])[0]
+  // `secondaryInfo` is the contact's secondary DISPLAY field — an email. It is
+  // only a usable fallback when this channel addresses emails.
+  const single =
+    fromRow ?? (spec.secondaryInfoIsIdentifier ? item.secondaryInfo || undefined : undefined)
   return single ? [single] : []
 }
 
@@ -190,7 +208,10 @@ export function RecipientInput({
   placeholder,
   disabled,
   popoverClassName,
+  recipientModel,
 }: RecipientInputProps) {
+  const spec = useMemo(() => getIdentifierModel(recipientModel), [recipientModel])
+  const IdentifierIcon = recipientModel === 'phone' ? Phone : Mail
   const [inputValue, setInputValue] = useState('')
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null)
   const [showPicker, setShowPicker] = useState(false)
@@ -209,17 +230,15 @@ export function RecipientInput({
   const inputRef = useRef<AutosizeInputRef>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
 
-  const isValidEmail = (email: string) => /\S+@\S+\.\S+/.test(email.trim())
-
-  /** Silently commits valid email input. No toast on invalid. Returns true if committed. */
+  /** Silently commits a valid identifier. No toast on invalid. Returns true if committed. */
   const tryCommitInput = (): boolean => {
-    const emailCandidate = inputValue.trim()
-    if (!emailCandidate || !isValidEmail(emailCandidate)) return false
-    const dummyId = `temp_${Date.now()}_${emailCandidate}`
+    const normalized = spec.normalize(inputValue)
+    if (!normalized) return false
+    const dummyId = `temp_${Date.now()}_${normalized}`
     onAdd({
       id: dummyId,
-      identifier: emailCandidate.toLowerCase(),
-      identifierType: IdentifierType.EMAIL,
+      identifier: normalized,
+      identifierType: spec.identifierType,
       name: null,
     })
     setInputValue('')
@@ -227,11 +246,10 @@ export function RecipientInput({
     return true
   }
 
-  /** Commits input with toast error for invalid emails (explicit user action: Enter, comma). */
+  /** Commits input with a toast on invalid input (explicit user action: Enter, comma). */
   const addRecipientFromInput = () => {
-    const emailCandidate = inputValue.trim()
-    if (!isValidEmail(emailCandidate)) {
-      toastError({ title: 'Invalid Email', description: 'Please enter a valid email address.' })
+    if (!spec.normalize(inputValue)) {
+      toastError({ title: spec.invalidTitle, description: spec.invalidDescription })
       return
     }
     tryCommitInput()
@@ -248,30 +266,31 @@ export function RecipientInput({
   const requestedAddressIdsRef = useRef<Set<string>>(new Set())
 
   /**
-   * Fetch the FULL email list for each contact (multi-value `primary_email`
-   * reads back as one row per address, primary first) in one batch read.
-   * Falls back per item to its own row data when the field ref can't resolve
-   * or the read fails.
+   * Fetch the FULL identifier list for each contact (both `primary_email` and
+   * `phone` are multi-value — they read back as one row per value, primary
+   * first) in one batch read. Falls back per item to its own row data when the
+   * field ref can't resolve or the read fails.
    */
   const fetchContactAddresses = useCallback(
     async (items: RecordPickerItem[]): Promise<Map<string, string[]>> => {
       const result = new Map<string, string[]>()
       const fallbackAll = () => {
-        for (const item of items) result.set(item.id, itemFallbackAddresses(item))
+        for (const item of items) result.set(item.id, itemFallbackAddresses(item, spec))
         return result
       }
       try {
         const normalizedToItem = new Map(
           items.map((item) => [getNormalizedRecordId(item.recordId), item] as const)
         )
-        const { systemAttributeMap, systemAttributeByDef, ambiguousSystemAttributes } =
-          useResourceStore.getState()
+        const maps = useResourceStore.getState()
         const [firstRecordId] = normalizedToItem.keys()
+        // First systemAttribute candidate that resolves on this definition wins
+        // (mirrors `systemAttributeForChannel` in the kopilot recipient resolver).
         const ref = firstRecordId
-          ? resolveSystemAttributeRef(
-              { systemAttributeMap, systemAttributeByDef, ambiguousSystemAttributes },
-              'primary_email',
-              getDefinitionId(firstRecordId)
+          ? spec.systemAttributes.reduce<ReturnType<typeof resolveSystemAttributeRef>>(
+              (found, attr) =>
+                found ?? resolveSystemAttributeRef(maps, attr, getDefinitionId(firstRecordId)),
+              undefined
             )
           : undefined
         if (!ref) return fallbackAll()
@@ -286,17 +305,17 @@ export function RecipientInput({
             row.value as TypedFieldValue | TypedFieldValue[] | null,
             row.fieldType as FieldType
           ).filter((v): v is string => typeof v === 'string' && v.length > 0)
-          result.set(item.id, addresses.length > 0 ? addresses : itemFallbackAddresses(item))
+          result.set(item.id, addresses.length > 0 ? addresses : itemFallbackAddresses(item, spec))
         }
         for (const item of items) {
-          if (!result.has(item.id)) result.set(item.id, itemFallbackAddresses(item))
+          if (!result.has(item.id)) result.set(item.id, itemFallbackAddresses(item, spec))
         }
         return result
       } catch {
         return fallbackAll()
       }
     },
-    [batchGetAsync]
+    [batchGetAsync, spec]
   )
 
   /**
@@ -320,20 +339,21 @@ export function RecipientInput({
     [fetchContactAddresses]
   )
 
-  // Lowercased emails of recipients already in this field — used to hide their
-  // matching contacts from the picker. Covers picker/draft/reply/free-typed alike.
-  const excludeEmails = useMemo(
-    () => new Set(recipients.map((r) => r.identifier.toLowerCase())),
-    [recipients]
+  // Normalized identifiers of recipients already in this field — used to hide
+  // their matching contacts from the picker. Covers picker/draft/reply/
+  // free-typed alike.
+  const excludeIdentifiers = useMemo(
+    () => new Set(recipients.map((r) => identifierKey(spec, r.identifier))),
+    [recipients, spec]
   )
 
-  /** Commit one address as a recipient and reset the picker state. */
+  /** Commit one identifier as a recipient and reset the picker state. */
   const commitContactAddress = useCallback(
-    (contactId: string, email: string, name: string | null) => {
+    (contactId: string, address: string, name: string | null) => {
       onContactSelect({
         id: contactId,
-        identifier: email,
-        identifierType: IdentifierType.EMAIL,
+        identifier: spec.normalize(address) ?? address,
+        identifierType: spec.identifierType,
         name,
       })
       setInputValue('')
@@ -341,13 +361,13 @@ export function RecipientInput({
       setPendingContact(null)
       inputRef.current?.focus()
     },
-    [onContactSelect]
+    [onContactSelect, spec]
   )
 
   /**
    * Handle contact selection from RecordPickerContent. A picked contact is
-   * expanded into its N addresses: exactly one address not yet a recipient
-   * commits directly; several swap the popover to a per-address row list.
+   * expanded into its N identifiers: exactly one not yet a recipient commits
+   * directly; several swap the popover to a per-value row list.
    */
   const handleContactPick = useCallback(
     async (item: RecordPickerItem) => {
@@ -361,7 +381,7 @@ export function RecipientInput({
         const known = addresses
         setContactAddresses((prev) => new Map(prev).set(item.id, known))
       }
-      const candidates = addresses.filter((a) => !excludeEmails.has(a.toLowerCase()))
+      const candidates = addresses.filter((a) => !excludeIdentifiers.has(identifierKey(spec, a)))
       if (candidates.length === 0) return
       if (candidates.length === 1) {
         commitContactAddress(item.id, candidates[0]!, name)
@@ -369,22 +389,22 @@ export function RecipientInput({
       }
       setPendingContact({ id: item.id, name, addresses: candidates })
     },
-    [contactAddresses, fetchContactAddresses, excludeEmails, commitContactAddress]
+    [contactAddresses, fetchContactAddresses, excludeIdentifiers, commitContactAddress, spec]
   )
 
   const excludeFilter = useCallback(
     (item: RecordPickerItem) => {
-      // Per-address exclude: once the contact's full list is known (results
-      // prefetch), the contact hides only when EVERY address is a recipient.
+      // Per-value exclude: once the contact's full list is known (results
+      // prefetch), the contact hides only when EVERY identifier is a recipient.
       const known = contactAddresses.get(item.id)
       if (known && known.length > 0) {
-        return known.every((a) => excludeEmails.has(a.toLowerCase()))
+        return known.every((a) => excludeIdentifiers.has(identifierKey(spec, a)))
       }
-      // Unfetched: the only known address is the primary (`secondaryInfo`).
-      const email = item.secondaryInfo?.toLowerCase()
-      return !!email && excludeEmails.has(email)
+      // Unfetched: the only known value is the row's own primary.
+      const [primary] = itemFallbackAddresses(item, spec)
+      return !!primary && excludeIdentifiers.has(identifierKey(spec, primary))
     },
-    [contactAddresses, excludeEmails]
+    [contactAddresses, excludeIdentifiers, spec]
   )
 
   /** Forward a keyboard event to the cmdk Command inside the picker popover */
@@ -412,7 +432,7 @@ export function RecipientInput({
           forwardToPicker(e)
           break
         }
-        // Otherwise commit free-text email
+        // Otherwise commit the free-typed identifier
         if (inputValue.trim()) {
           e.preventDefault()
           addRecipientFromInput()
@@ -534,7 +554,7 @@ export function RecipientInput({
                 if (inputValue.trim().length > 0) setShowPicker(true)
               }}
               onBlur={() => {
-                // Silently commit valid email on blur (no toast for invalid)
+                // Silently commit a valid identifier on blur (no toast for invalid)
                 tryCommitInput()
                 // Delay closing to allow clicking picker items
                 setTimeout(() => setShowPicker(false), 200)
@@ -563,11 +583,11 @@ export function RecipientInput({
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}>
           {pendingContact ? (
-            <div className='py-1' role='listbox' aria-label='Choose an email address'>
+            <div className='py-1' role='listbox' aria-label={`Choose a ${spec.noun}`}>
               <div className='px-3 py-1.5 text-xs text-muted-foreground'>
                 {pendingContact.name
-                  ? `${pendingContact.name} has ${pendingContact.addresses.length} addresses`
-                  : 'Choose an address'}
+                  ? `${pendingContact.name} has ${pendingContact.addresses.length} ${spec.nounPlural}`
+                  : `Choose a ${spec.noun}`}
               </div>
               {pendingContact.addresses.map((address) => (
                 <button
@@ -579,7 +599,7 @@ export function RecipientInput({
                   onClick={() =>
                     commitContactAddress(pendingContact.id, address, pendingContact.name)
                   }>
-                  <Mail className='size-3.5 text-muted-foreground' />
+                  <IdentifierIcon className='size-3.5 text-muted-foreground' />
                   <span className='truncate'>{address}</span>
                 </button>
               ))}

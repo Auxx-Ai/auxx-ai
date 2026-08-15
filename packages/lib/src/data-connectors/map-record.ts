@@ -48,13 +48,43 @@ export interface MappedWrite {
   } | null
 }
 
-/** Walk a dotted path into a value. '' / undefined → the whole record. */
+/** A path segment carrying an explicit array index — `emails[0]`, or a bare `[0]`. */
+const INDEXED_SEGMENT = /^(.*?)\[(\d+)\]$/
+
+/**
+ * Walk a dotted path into a value. '' / undefined → the whole record.
+ *
+ * A segment may carry an explicit array INDEX (`emails[0]`, or a bare `[0]` to index
+ * the current value): providers that expose a labelled list where the target field is
+ * a scalar — Quo's `defaultFields.emails[0].value` / `phoneNumbers[0].value` — are
+ * addressed this way. Both call sites already route `[`-carrying paths here
+ * ({@link evaluateFieldValue}, {@link hasArrayShapedSource}); this is the parser they
+ * were written against.
+ *
+ * Indexing is deliberately narrow: it resolves ONE element. A non-array at an indexed
+ * segment, or a missing element, resolves `undefined` — never a partial object. And a
+ * BARE array path (`emails`, no index) still resolves the array itself, so
+ * {@link hasArrayShapedSource}'s no-write guard keeps firing on it: sourcing a whole
+ * array into a scalar binding stays out of scope (B1), because the CALC evaluator
+ * flattens it to `null` and a `null` write CLEARS the target.
+ *
+ * `foo[]` (the fan-out selector consumed by {@link extractSubtrees}) has no digits and
+ * so never matches here.
+ */
 function getByPath(obj: unknown, path: string): unknown {
   if (!path) return obj
   let cur: unknown = obj
-  for (const key of path.split('.')) {
-    if (cur === null || cur === undefined || typeof cur !== 'object') return undefined
-    cur = (cur as Record<string, unknown>)[key]
+  for (const segment of path.split('.')) {
+    const indexed = INDEXED_SEGMENT.exec(segment)
+    const key = indexed ? (indexed[1] ?? '') : segment
+    if (key !== '') {
+      if (cur === null || cur === undefined || typeof cur !== 'object') return undefined
+      cur = (cur as Record<string, unknown>)[key]
+    }
+    if (indexed) {
+      if (!Array.isArray(cur)) return undefined
+      cur = cur[Number(indexed[2] ?? '0')]
+    }
   }
   return cur
 }

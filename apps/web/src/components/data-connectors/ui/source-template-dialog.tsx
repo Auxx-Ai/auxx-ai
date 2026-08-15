@@ -6,7 +6,7 @@ import { Input } from '@auxx/ui/components/input'
 import { KbdSubmit } from '@auxx/ui/components/kbd'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { toastError } from '@auxx/ui/components/toast'
-import { Boxes, CreditCard, Database, Github, Globe, Plug } from 'lucide-react'
+import { Boxes, CreditCard, Database, Github, Globe, MessageSquare, Plug } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { type ComponentType, useMemo, useState } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
@@ -38,6 +38,7 @@ const ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'credit-card': CreditCard,
   github: Github,
   database: Database,
+  'message-square': MessageSquare,
 }
 function iconFor(key: string | null | undefined): ComponentType<{ className?: string }> {
   return (key && ICONS[key]) || Boxes

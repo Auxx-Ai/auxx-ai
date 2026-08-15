@@ -17,7 +17,6 @@ import {
   type ConnectFlowDefinition,
   useConnectFlow,
 } from '~/components/apps/hooks/use-connect-flow'
-import { platformScope, platformTarget } from '~/components/connections/ui/connection-targets'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { TemplateGalleryDialog } from '~/components/templates/ui'
@@ -28,6 +27,7 @@ import { CHANNEL_CATALOG, CHANNEL_CATEGORIES, type ChannelCatalogItem } from '..
 import { getIntegrationProviderIcon } from './channel-icon'
 import ImapConnectForm from './imap-connect-form'
 import { InboxDestinationField, useInboxDestination } from './inbox-destination-field'
+import QuoConnectForm from './quo-connect-form'
 
 const DEFAULT_RETURN_TO = '/app/settings/channels'
 const RESIZE_ID = 'channel-connect'
@@ -104,7 +104,7 @@ export function ChannelGalleryDialog({
     { enabled: open && isOAuth && !!selected?.provider, retry: false }
   )
 
-  // Quo (secret connection) rides the shared connect flow, carrying `{ inboxId }` as post-connect.
+  // Platform provider catalog — Quo's row (`openphone`) feeds its dedicated connect form.
   const { data: providers = [] } = api.connections.listProviders.useQuery(undefined, {
     enabled: open && !personalOnly,
   })
@@ -204,24 +204,6 @@ export function ChannelGalleryDialog({
     } catch (error) {
       toastError({
         title: 'Failed to create chat widget',
-        description: error instanceof Error ? error.message : 'Unknown error',
-      })
-    }
-  }
-
-  async function connectPhone(item: ChannelCatalogItem) {
-    const provider = providers.find((p) => p.providerKey === item.providerKey)
-    if (!provider) return
-    try {
-      const inboxId = await inbox.resolve()
-      flow.start({
-        target: platformTarget(provider),
-        scope: platformScope(provider),
-        postConnect: { inboxId },
-      })
-    } catch (error) {
-      toastError({
-        title: 'Could not start connect',
         description: error instanceof Error ? error.message : 'Unknown error',
       })
     }
@@ -373,15 +355,32 @@ export function ChannelGalleryDialog({
     )
   }
 
-  function renderPhoneDetail() {
+  /**
+   * Quo: an API key covers a whole workspace, so the number is a picker rather than a typed
+   * field — which the generic connect form (static `ConnectionVariable.options`) can't express.
+   * The dedicated form owns its own Connect button, like IMAP.
+   */
+  function renderPhoneDetail(item: ChannelCatalogItem, helpers: { close: () => void }) {
+    const provider = providers.find((p) => p.providerKey === item.providerKey)
     return (
-      <div className='flex flex-col gap-3 p-3'>
+      <div className='flex flex-col gap-4 p-3'>
         <FieldPanel orientation='responsive' resizeId={RESIZE_ID} className='p-0'>
           <InboxDestinationField controller={inbox} />
         </FieldPanel>
-        <p className='text-xs text-muted-foreground'>
-          You'll enter your Quo API key and phone number in the next step.
-        </p>
+        {provider ? (
+          <QuoConnectForm
+            provider={provider}
+            inbox={inbox}
+            onSuccess={() => {
+              void utils.channel.list.invalidate()
+              void utils.inbox.settingsList.invalidate()
+              void utils.record.listAll.invalidate()
+              helpers.close()
+            }}
+          />
+        ) : (
+          <p className='text-sm text-muted-foreground'>Loading…</p>
+        )}
       </div>
     )
   }
@@ -412,8 +411,8 @@ export function ChannelGalleryDialog({
       case 'social':
         return !inbox.isValid || !ownClientReady || !prep.data
       case 'chat':
-      case 'phone':
         return !inbox.isValid
+      // 'phone' owns its own Connect button (QuoConnectForm) — no shell footer.
       default:
         return true
     }
@@ -427,9 +426,6 @@ export function ChannelGalleryDialog({
         break
       case 'chat':
         void connectChat()
-        break
-      case 'phone':
-        void connectPhone(item)
         break
     }
   }
@@ -483,7 +479,7 @@ export function ChannelGalleryDialog({
             case 'chat':
               return renderChatDetail()
             case 'phone':
-              return renderPhoneDetail()
+              return renderPhoneDetail(item, helpers)
             case 'imap':
               return renderImapDetail(helpers)
             default:
@@ -491,8 +487,9 @@ export function ChannelGalleryDialog({
           }
         }}
         renderDetailFooter={(item) => {
-          // IMAP owns its own Connect button (inside the embedded form).
-          if (item.kind === 'imap' || item.kind === 'coming-soon') return null
+          // IMAP and Quo own their Connect button (inside their embedded form).
+          if (item.kind === 'imap' || item.kind === 'phone' || item.kind === 'coming-soon')
+            return null
           return (
             <Button
               size='sm'
