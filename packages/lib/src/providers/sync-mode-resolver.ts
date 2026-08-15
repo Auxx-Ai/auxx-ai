@@ -51,6 +51,13 @@ export function resolveEffectiveSyncMode(integration: {
     return 'webhook'
   }
 
+  if (integration.provider === 'openphone') {
+    // Quo (OpenPhone) webhooks need no extra env vars — we create them over the API and Quo
+    // mints the signing key on create. Without this branch the default below returns 'polling'
+    // and `WebhookManagerService.setupWebhook` early-returns, silently no-opping auto-arming.
+    return 'webhook'
+  }
+
   // Default for future providers (IMAP, etc.)
   return 'polling'
 }

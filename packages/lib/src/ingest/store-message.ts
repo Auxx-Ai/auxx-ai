@@ -580,6 +580,14 @@ export async function storeMessage(
       const messageRecords = await tx
         .insert(schema.Message)
         .values({
+          // The idempotency key. Without it every row lands with `externalId = NULL`,
+          // Postgres treats those as distinct in the unique index below, and the
+          // `onConflictDoUpdate` target can never match — so the upsert silently
+          // degrades into an insert. Email masks this because the internetMessageId
+          // reconcile above catches the redelivery first; SMS carries no
+          // Message-ID, so for Quo this is the ONLY dedupe and every webhook retry
+          // or backfill re-run would duplicate the message.
+          externalId: messageData.externalId,
           externalThreadId: messageData.externalThreadId,
           threadId: thread.id,
           organizationId: messageData.organizationId,

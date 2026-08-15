@@ -1,8 +1,125 @@
 ---
-title: OpenPhone
-description: Connect OpenPhone to Auxx.ai to manage phone and SMS conversations from a unified inbox.
+title: Quo (OpenPhone)
+description: Connect a Quo phone number to Auxx.ai so SMS conversations land in your inbox and you can reply from the platform.
 ---
 
-<Callout type="warn" title="Coming soon">
-  This channel is not yet available. Check back for updates.
+Quo — formerly OpenPhone — is a business phone service. Connect a Quo number to Auxx.ai and text messages sent to it arrive in the inbox you choose, alongside your email channels, so the same team answers them the same way.
+
+<Callout type="info">
+  OpenPhone rebranded to **Quo**, and `openphone.com` now redirects to `quo.com`. You'll still see "OpenPhone" in a few places around the web — it's the same product and the same account.
 </Callout>
+
+## Prerequisites
+
+- A Quo workspace with at least one phone number.
+- Owner or admin access to that workspace — only owners and admins can create an API key.
+- An inbox in Auxx.ai for the conversations to land in.
+
+## 1. Create a Quo API key
+
+1. Sign in to the [Quo dashboard](https://quo.com/).
+2. Go to **Workspace Settings → API**.
+3. Create a new key and give it a name you'll recognize later, e.g. "Auxx.ai".
+4. Copy the key. Quo shows it once — if you lose it, create another.
+
+<Callout type="warn">
+  The key is workspace-wide. Anyone holding it can read and send messages on every number in the workspace, so treat it like a password and revoke it in Quo if it's ever exposed.
+</Callout>
+
+## 2. Connect Quo in Auxx.ai
+
+1. Go to **Settings → Channels**.
+2. Click **New Channel** and select **Quo**.
+3. Paste your API key.
+4. Pick the phone number this channel should answer, from the list of numbers on your workspace.
+5. Choose the inbox its conversations route into.
+
+That's the whole setup. You don't need to configure anything back in the Quo dashboard:
+
+| Step | Who does it |
+|---|---|
+| Reading the numbers on your workspace | Auxx.ai, using your API key |
+| Creating the channel and linking the inbox | Auxx.ai |
+| Registering the webhook that delivers incoming texts | Auxx.ai, automatically |
+| Generating the signing secret that proves messages are genuine | Quo, handed straight to Auxx.ai |
+
+There is no webhook URL to paste and no signing secret to copy across.
+
+## One connection, one channel per number
+
+Your API key represents the **workspace**, not a single number. So you paste it once:
+
+- **The connection** is your Quo workspace. Connect it a single time.
+- **A channel** is one phone number from that workspace, routed into one inbox.
+
+To answer a second number, add another channel against the connection you already have — go to **Settings → Channels → New Channel → Quo** and pick the next number. You don't need a second API key, and each number can route into a different inbox if you want sales and support kept apart.
+
+<Callout type="warn">
+  Because every Quo channel shares one connection, deleting that connection disconnects **all** of them. Remove an individual channel instead if you only want to stop answering one number.
+</Callout>
+
+## Check that your number is allowed to send
+
+Quo restricts messaging per number and per region, and a restricted number will fail at send time — the message simply won't go out. This catches people off guard, because the number receives texts perfectly well.
+
+On one real workspace we tested, of three numbers only the toll-free line was cleared to send SMS to US recipients; the other two were restricted.
+
+Before you rely on a number for replies, open it in the Quo dashboard and confirm messaging is unrestricted for the regions you text. If it isn't, Quo's own registration process is what lifts it — it isn't something Auxx.ai can change.
+
+## What history you get
+
+Connecting a channel brings across recent conversations for that number, most recently active first, so a thread someone replied to yesterday is there even if it started a year ago. It is a bounded catch-up, not a complete archive — very old, long-dormant conversations may not be included.
+
+Two things never come across, because Quo's API doesn't return them for past messages:
+
+- **Attachments on picture messages (MMS).** A message that was nothing but an image backfills with a placeholder and no file.
+- **Voicemail and call recordings.**
+
+This isn't a limit we can work around — Quo only ever hands out media at the moment a message arrives, never afterwards. Anything from before you connected stays viewable in the Quo dashboard.
+
+## How SMS differs from email
+
+Texting isn't email, and the composer changes to match. On a Quo channel you won't see:
+
+| Missing | Why |
+|---|---|
+| Subject line | SMS has no subject. Threads are identified by the person you're texting. |
+| Cc and Bcc | There's no equivalent in SMS. |
+| Drafts | Quo has no drafts — there's nowhere to save one. |
+| Attaching a file to a reply | Quo's send API accepts text only, so outbound picture messages aren't possible. |
+
+Incoming picture messages arrive as messages with any text they carried, but the image itself isn't stored in Auxx.ai yet — open the conversation in Quo to see it.
+
+## Troubleshooting
+
+<Accordions type="single">
+  <Accordion title="No phone numbers appear after I paste the key">
+    The key is probably from a different workspace, or it was revoked. Create a fresh key in **Workspace Settings → API** and try again. If the key is valid but new numbers you've since bought are missing, refresh the number list on the connection.
+  </Accordion>
+  <Accordion title="Incoming texts aren't showing up">
+    Confirm the channel is connected and linked to an inbox in **Settings → Channels**. Then send a test text to the number from a phone that isn't in your workspace — messages you send between your own Quo numbers can behave differently. If it appears in the Quo dashboard but not in Auxx.ai, reconnect the channel so the webhook is registered again.
+  </Accordion>
+  <Accordion title="Replies fail to send">
+    The most common cause is a messaging restriction on the number — see [Check that your number is allowed to send](#check-that-your-number-is-allowed-to-send). Also check the recipient's number is a real mobile line; landlines and short codes can't receive SMS.
+  </Accordion>
+  <Accordion title="A message is empty or shows a placeholder">
+    That's a picture message. Quo doesn't return the image for past messages, so only the placeholder can be shown. The original is still viewable in the Quo dashboard.
+  </Accordion>
+  <Accordion title="I rotated the API key in Quo">
+    Rotating the key breaks every channel on that connection at once. Open the connection in Auxx.ai, paste the new key, and the existing channels and inbox links carry over.
+  </Accordion>
+</Accordions>
+
+## Next steps
+
+<Cards>
+  <Card title="Chat widget" href="/help/channels/chat-widget">
+    Route live website conversations into the same inbox.
+  </Card>
+  <Card title="Connect your first inbox" href="/help/getting-started/connect-inbox">
+    Link a channel to a shared inbox and set who can see it.
+  </Card>
+  <Card title="Gmail channel" href="/help/channels/gmail">
+    Connect an email inbox alongside your phone number.
+  </Card>
+</Cards>

@@ -1,59 +1,77 @@
 // apps/web/src/app/api/openphone/webhook/route.ts
+// Inbound webhook endpoint for Quo (formerly OpenPhone).
+//
+// The provider key stays `openphone` everywhere it is persisted — Integration.provider,
+// Credential.type, and this route path (which `providerWebhookCallbackUrl('openphone')` derives,
+// so renaming it would invalidate every already-registered webhook). The rename is labels-only.
+//
+// Verification: Quo signs as `openphone-signature: hmac;1;<timestamp>;<base64 signature>` —
+// HMAC-SHA256, base64 digest, over `${timestamp}.${rawBody}`, with the signing key base64-DECODED
+// first. The timestamp comes from the header, which `WebhookVerifyPreset.signedPayload` (raw-body
+// only) cannot express, so this call site parses the header and calls `verifyHmacSignature`
+// directly, exactly like the Recall/Svix call site. `openphonePreset` documents the scheme as data.
 
 import { database as db, schema } from '@auxx/database'
 import type { MessageData } from '@auxx/lib/email'
 import { MessageStorageService } from '@auxx/lib/email'
 import type {
   OpenPhoneIntegrationMetadata,
-  OpenPhoneMessageReceivedData,
-  OpenPhoneWebhookEvent,
-} from '@auxx/lib/providers/openphone/types' // Adjust path
-import { openphonePreset, resolveWebhookSecret, verifyWebhook } from '@auxx/lib/webhooks'
+  QuoWebhookEvent,
+  QuoWebhookMessage,
+} from '@auxx/lib/providers/openphone/types'
+import { resolveWebhookSecret, verifyHmacSignature } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('openphone-webhook')
 
+/** Quo's signature header. Note: no `x-` prefix — that was the shape we wrongly shipped before. */
+const SIGNATURE_HEADER = 'openphone-signature'
+
+/** Replay window, in seconds. Matches the Recall/Svix call site's tolerance. */
+const TIMESTAMP_TOLERANCE_SEC = 300
+
+/** The events that carry a `phoneNumberId` and therefore resolve to one of our Integrations. */
+type QuoPhoneScopedPayload = { phoneNumberId?: string }
+
 /**
- * Handles incoming OpenPhone webhook events (POST request).
+ * Handles an incoming Quo webhook event (POST).
+ *
+ * Always answers 200 for anything we deliberately do not process — Quo retries on non-2xx, and a
+ * retry loop on an event we will never handle is worse than a dropped one.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  logger.info('Received OpenPhone webhook event')
   let bodyText: string
-  let payload: OpenPhoneWebhookEvent
+  let payload: QuoWebhookEvent<QuoPhoneScopedPayload>
 
   try {
-    // 1. Read body first for signature verification
+    // 1. Raw body first — the HMAC is computed over these exact bytes, never over re-serialized
+    //    JSON.
     bodyText = await req.text()
     if (!bodyText) {
-      logger.warn('Received empty request body for OpenPhone webhook.')
+      logger.warn('Received empty request body for Quo webhook.')
       return NextResponse.json({ error: 'Bad Request: Empty body' }, { status: 400 })
     }
 
-    // 2. Parse the body (do this *after* reading text for signature)
     payload = JSON.parse(bodyText)
-    logger.debug('Parsed OpenPhone webhook payload', { type: payload?.type, eventId: payload?.id })
+    logger.debug('Parsed Quo webhook payload', { type: payload?.type, eventId: payload?.id })
 
-    // 3. Find the relevant Integration based on webhook data
-    // We need a piece of data that uniquely identifies the integration.
-    // The webhook payload itself doesn't directly contain our integration ID.
-    // It usually contains the phone number ID (`data.phone_number_id` for messages)
-    // that received the event. We use this to look up the integration.
-
-    let phoneNumberId: string | undefined
-    if (payload.type?.startsWith('message.') && payload.data?.phone_number_id) {
-      phoneNumberId = payload.data.phone_number_id
-    } else if (payload.type?.startsWith('call.') && payload.data?.phone_number?.id) {
-      phoneNumberId = payload.data.phone_number.id
-    }
-    // Add other event type checks if needed
+    // 2. Resolve the Integration. Every phone-scoped event — `message.received`,
+    //    `message.delivered`, `call.ringing`, `call.completed`, `call.recording.completed` —
+    //    carries `phoneNumberId` at the same place, so one code path covers all five.
+    const phoneNumberId = payload.data?.object?.phoneNumberId
 
     if (!phoneNumberId) {
-      logger.warn('Could not determine phone_number_id from webhook payload to find integration.', {
+      // `call.summary.completed`, `call.transcript.completed`, `contact.updated` and
+      // `contact.deleted` carry NO `phoneNumberId`, so `metadata->>'phoneNumberId' = …` can never
+      // match them. Do NOT subscribe to those events without first building the lookup they need:
+      // summaries/transcripts require a `callId` → prior-call resolution, and contact events
+      // require a credential-scoped (org-level) resolution rather than a channel-level one.
+      logger.warn('Quo webhook payload carries no phoneNumberId; cannot resolve an integration.', {
         payloadType: payload.type,
+        eventId: payload.id,
       })
-      // Respond OK even if we can't process, to prevent OpenPhone retries for irrelevant events.
       return NextResponse.json({ status: 'success - cannot identify integration' }, { status: 200 })
     }
 
@@ -75,21 +93,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .limit(1)
 
     if (!integration || !integration.metadata) {
-      logger.warn(
-        `No active OpenPhone integration found for phoneNumberId ${phoneNumberId}. Ignoring webhook event.`,
-        { eventType: payload.type }
-      )
-      // Respond OK to acknowledge receipt
+      logger.warn('No active Quo integration found for phoneNumberId. Ignoring webhook event.', {
+        phoneNumberId,
+        eventType: payload.type,
+      })
       return NextResponse.json({ status: 'success - no integration found' }, { status: 200 })
     }
     const metadata = integration.metadata as unknown as OpenPhoneIntegrationMetadata
 
-    // The signing secret lives encrypted on the linked Credential (not in metadata). Reveal it via
-    // the Integration's credentialId — the route is unauthenticated but has the org id in scope.
+    // 3. The signing secret lives encrypted on the linked Credential (Quo mints it and returns it
+    //    from `POST /v1/webhooks/messages` → `data.key`; the provisioning hook writes it there).
     if (!integration.credentialId) {
-      logger.error(
-        `OpenPhone integration ${integration.id} has no linked credential; cannot verify webhook.`
-      )
+      logger.error('Quo integration has no linked credential; cannot verify webhook.', {
+        integrationId: integration.id,
+      })
       return NextResponse.json(
         { error: 'Configuration Error: Missing credential' },
         { status: 500 }
@@ -101,181 +118,242 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       organizationId: integration.organizationId,
       field: 'webhookSigningSecret',
     })
-
-    // 4. Verify Request Signature
-    const signature = req.headers.get('x-openphone-signature')
-    if (!signature) {
-      logger.error('Missing X-Openphone-Signature header. Rejecting request.')
-      return NextResponse.json({ error: 'Forbidden: Missing signature' }, { status: 403 })
-    }
     if (!signingSecret) {
-      logger.error(
-        `Missing webhook signing secret for integration ${integration.id}. Cannot verify signature.`
-      )
+      logger.error('Missing Quo webhook signing secret. Cannot verify signature.', {
+        integrationId: integration.id,
+      })
       return NextResponse.json(
         { error: 'Configuration Error: Missing signing secret' },
         { status: 500 }
       )
     }
 
-    const verified = verifyWebhook(openphonePreset, {
-      rawBody: bodyText, // the raw body text read earlier
-      headers: { 'x-openphone-signature': signature },
+    // 4. Verify the signature.
+    const parsedSignature = parseQuoSignatureHeader(req.headers.get(SIGNATURE_HEADER))
+    if (!parsedSignature) {
+      logger.error('Missing or malformed openphone-signature header. Rejecting request.', {
+        integrationId: integration.id,
+      })
+      return NextResponse.json({ error: 'Forbidden: Missing signature' }, { status: 403 })
+    }
+
+    const { timestamp, signature } = parsedSignature
+    if (!isWithinTolerance(timestamp)) {
+      logger.error('Quo webhook timestamp outside the tolerance window. Rejecting as a replay.', {
+        integrationId: integration.id,
+        timestamp,
+      })
+      return NextResponse.json({ error: 'Forbidden: Stale signature' }, { status: 403 })
+    }
+
+    const verified = verifyHmacSignature({
+      rawBody: bodyText,
+      signature,
       secret: signingSecret,
+      encoding: 'base64',
+      secretEncoding: 'base64',
+      signedPayload: () => `${timestamp}.${bodyText}`,
     })
     if (!verified) {
-      logger.error('Invalid X-Openphone-Signature. Request rejected.', {
+      logger.error('Invalid openphone-signature. Request rejected.', {
         integrationId: integration.id,
       })
       return NextResponse.json({ error: 'Forbidden: Invalid signature' }, { status: 403 })
     }
-    logger.debug('OpenPhone webhook signature verified successfully.')
 
-    // 5. Process Supported Events
-    const storageService = new MessageStorageService()
-
+    // 5. Process the events we subscribe to.
     switch (payload.type) {
-      case 'message.received': {
-        logger.info(`Processing message.received event`, {
+      // `message.received` is inbound; `message.delivered` is the confirmation of an OUTBOUND
+      // message (`direction: 'outgoing'`). Both go through the same store path: `storeMessage`
+      // reconciles an outbound echo against the row our send pipeline already wrote (by
+      // externalId, then by the reconciler's heuristics) and flips `sendStatus` to SENT, so this
+      // both confirms our own sends AND captures messages an agent sent from the Quo app.
+      case 'message.received':
+      case 'message.delivered': {
+        const event = payload as QuoWebhookEvent<QuoWebhookMessage>
+        logger.info('Processing Quo message event', {
+          type: payload.type,
           eventId: payload.id,
           integrationId: integration.id,
         })
-        const messageData = convertOpenPhoneWebhookEventToMessageData(
-          payload.data as OpenPhoneMessageReceivedData,
+
+        const messageData = convertQuoWebhookEventToMessageData(
+          event,
           integration.id,
           integration.organizationId,
-          metadata // Pass metadata for context (e.g., our phone number)
+          metadata
         )
-        if (messageData) {
-          try {
-            await storageService.storeMessage(messageData)
-            logger.info(`Successfully stored OpenPhone message`, {
-              mid: messageData.externalId,
-              integrationId: integration.id,
-            })
-          } catch (storeError: any) {
-            logger.error(`Failed to store OpenPhone message`, {
-              mid: messageData.externalId,
-              integrationId: integration.id,
-              error: storeError.message,
-            })
-            // Decide if we should return 500 to trigger retry
-            // If it's a unique constraint (P2002), message likely processed, return 200.
-            if (
-              storeError &&
-              typeof storeError === 'object' &&
-              (storeError as any).code === 'P2002'
-            ) {
-              logger.warn('Message likely already processed (unique constraint violation).', {
-                mid: messageData.externalId,
-              })
-              // Fall through to return 200 OK
-            } else {
-              // For other errors, maybe return 500?
-              return NextResponse.json({ error: 'Failed to store message' }, { status: 500 })
-            }
-          }
-        } else {
-          logger.warn('Failed to convert message.received event data', { eventId: payload.id })
+        if (!messageData) {
+          logger.warn('Failed to convert Quo message event data', { eventId: payload.id })
+          break
+        }
+
+        const storageService = new MessageStorageService(integration.organizationId)
+        try {
+          await storageService.storeMessage(messageData)
+          logger.info('Stored Quo message', {
+            mid: messageData.externalId,
+            isInbound: messageData.isInbound,
+            integrationId: integration.id,
+          })
+        } catch (storeError) {
+          const message = storeError instanceof Error ? storeError.message : String(storeError)
+          logger.error('Failed to store Quo message', {
+            mid: messageData.externalId,
+            integrationId: integration.id,
+            error: message,
+          })
+          // `storeMessage` is idempotent on `(integrationId, externalId)` and swallows the
+          // duplicate-key case itself, so anything reaching here is a real failure worth a retry.
+          return NextResponse.json({ error: 'Failed to store message' }, { status: 500 })
         }
         break
       }
 
+      // Call events are logged no-ops today. The names below are the real ones — there is no
+      // `call.finished`. Turning any of these into a Message row needs a call-shaped payload
+      // mapper (voicemail/recording `media[]`), which is out of scope here.
       case 'call.ringing':
-        // TODO: Handle incoming call event (e.g., create notification, log event)
-        logger.info(`Received call.ringing event`, { eventId: payload.id, data: payload.data })
+      case 'call.completed':
+      case 'call.recording.completed':
+        logger.info('Received Quo call event (no-op)', {
+          type: payload.type,
+          eventId: payload.id,
+          integrationId: integration.id,
+        })
         break
-
-      case 'call.finished':
-        // TODO: Handle finished call event (e.g., store call log as a Message)
-        logger.info(`Received call.finished event`, { eventId: payload.id, data: payload.data })
-        // Potentially convert payload.data (call object) into a MessageData with MessageType.CALL
-        break
-
-      // Add cases for other events you subscribe to
 
       default:
-        logger.debug(`Ignoring unhandled OpenPhone event type: ${payload.type}`)
+        logger.debug('Ignoring unhandled Quo event type', { type: payload.type })
     }
 
-    // 6. Respond OK
     return NextResponse.json({ status: 'success' }, { status: 200 })
-  } catch (error: any) {
-    logger.error('Error processing OpenPhone webhook:', {
-      error: error.message,
-      stack: error.stack,
+  } catch (error) {
+    logger.error('Error processing Quo webhook:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
     })
-    // Return 500 for unexpected internal errors
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
 /**
- * Helper function to convert an OpenPhone webhook message event into MessageData.
+ * Parses `hmac;1;<timestamp>;<base64 signature>`. Returns null for a missing, malformed, or
+ * unknown-scheme header so the caller rejects before any crypto runs.
  */
-function convertOpenPhoneWebhookEventToMessageData(
-  messagePayload: OpenPhoneMessageReceivedData,
+function parseQuoSignatureHeader(
+  headerValue: string | null
+): { timestamp: string; signature: string } | null {
+  if (!headerValue) return null
+  const [scheme, version, timestamp, signature] = headerValue.split(';')
+  if (scheme !== 'hmac' || !version || !timestamp || !signature) return null
+  return { timestamp, signature }
+}
+
+/**
+ * Replay guard over the header timestamp.
+ *
+ * Quo's timestamp is an ISO-8601 string on the current apiVersion and epoch milliseconds on
+ * older ones, so both are parsed. If neither parses we SKIP the guard rather than reject: the
+ * timestamp is inside the signed payload, so an unparseable value still cannot be forged — only
+ * un-aged — and rejecting would take the channel down over a format change.
+ */
+function isWithinTolerance(timestamp: string): boolean {
+  const trimmed = timestamp.trim()
+  if (!trimmed) return true
+
+  const numeric = Number(trimmed)
+  let ms: number
+  if (Number.isFinite(numeric)) {
+    // A millisecond timestamp any time after 2001 is >= 1e12; anything smaller is seconds.
+    ms = numeric < 1e12 ? numeric * 1000 : numeric
+  } else {
+    ms = Date.parse(trimmed)
+  }
+  if (!Number.isFinite(ms)) return true
+
+  return Math.abs(Date.now() - ms) <= TIMESTAMP_TOLERANCE_SEC * 1000
+}
+
+/**
+ * Converts a Quo message webhook event into `MessageData`.
+ *
+ * Reads the **webhook** message shape (`body`, `to` as a plain string, `direction: 'incoming'`) —
+ * REST returns `text` and `to[]` instead, which is why the two are separate types with separate
+ * mappers. Identifiers are passed through as raw E.164; the ingest path maps `openphone` to
+ * `IdentifierType.PHONE` and normalizes from there.
+ */
+function convertQuoWebhookEventToMessageData(
+  event: QuoWebhookEvent<QuoWebhookMessage>,
   integrationId: string,
   organizationId: string,
   metadata: OpenPhoneIntegrationMetadata | null
 ): MessageData | null {
-  if (!metadata?.phoneNumber) {
-    logger.error('Cannot convert webhook event, missing integration metadata (phoneNumber).')
+  const message = event.data?.object
+  if (!message?.id) {
+    logger.error('Cannot convert Quo webhook event: no message object on the payload.', {
+      eventId: event.id,
+    })
     return null
   }
+
   try {
-    const externalId = messagePayload.id
-    const externalThreadId = messagePayload.conversation_id
-    const createdTime = new Date(messagePayload.date_created)
+    const isInbound = message.direction === 'incoming'
+    // Quo puts both sides on the payload. `metadata.phoneNumber` is only a fallback for our own
+    // side of the exchange.
+    const ourNumber = metadata?.phoneNumber
+    const fromNumber = message.from || (isInbound ? undefined : ourNumber)
+    const toNumber = message.to || (isInbound ? ourNumber : undefined)
 
-    // Webhook 'message.received' is always inbound
-    const isInbound = true
-    const fromNumber = messagePayload.sender_phone_number
-    const toNumber = metadata.phoneNumber // Our number
-
-    if (!fromNumber) {
-      logger.warn('Missing sender number in message.received webhook', { messageId: externalId })
-      return null // Cannot process without sender
+    if (!fromNumber || !toNumber) {
+      logger.warn('Missing sender or recipient number on Quo message webhook', {
+        messageId: message.id,
+        eventType: event.type,
+      })
+      return null
     }
 
-    const fromParticipant = { identifier: fromNumber }
-    const toParticipant = { identifier: toNumber }
+    const createdTime = new Date(message.createdAt)
+    if (Number.isNaN(createdTime.getTime())) {
+      logger.warn('Unparseable createdAt on Quo message webhook', {
+        messageId: message.id,
+        createdAt: message.createdAt,
+      })
+      return null
+    }
 
-    const messageData: MessageData = {
-      externalId: externalId,
-      externalThreadId: externalThreadId,
-      integrationId: integrationId,
-      // Note: integrationType and messageType removed - derived from Integration.provider
-      organizationId: organizationId,
-      createdTime: createdTime,
-      sentAt: createdTime, // For inbound, sentAt=receivedAt=createdTime
+    return {
+      externalId: message.id,
+      externalThreadId: message.conversationId,
+      integrationId,
+      organizationId,
+      createdTime,
+      sentAt: createdTime,
       receivedAt: createdTime,
-      subject: undefined,
-      from: fromParticipant,
-      to: [toParticipant],
+      subject: undefined, // SMS has no subject.
+      from: { identifier: fromNumber },
+      to: [{ identifier: toNumber }],
       cc: [],
       bcc: [],
       replyTo: [],
-      // OpenPhone has no inbound attachment ingestor, so no MessageAttachment rows
-      // are ever created and `providerAttachments` is never populated. Mirrors
-      // OpenPhoneProvider.convertToMessageData — `hasAttachments` is a workflow
-      // trigger filter, so claiming true fires attachment rules for bytes that were
-      // never fetched. The raw payload (including each attachment's `url`) is
-      // retained in `metadata.openphone_webhook_event_data` for a future backfill.
+      // Quo has no inbound attachment ingestor, so no MessageAttachment rows are ever created
+      // and `providerAttachments` is never populated. `hasAttachments` is a workflow trigger
+      // filter (see workflow-engine/nodes/trigger-nodes/message-received.ts), so claiming true
+      // here fires attachment rules for bytes that were never fetched. The raw payload —
+      // including each entry's `media[].url` — is retained in `metadata.quo_webhook_event` for a
+      // future backfill. Real MMS ingest is a follow-up.
       hasAttachments: false,
-      textPlain: messagePayload.body,
-      snippet: messagePayload.body?.substring(0, 100),
-      isInbound: isInbound,
-      metadata: { openphone_webhook_event_data: messagePayload },
+      textPlain: message.body,
+      snippet: message.body?.substring(0, 100),
+      isInbound,
+      metadata: { quo_webhook_event: event },
       keywords: [],
       labelIds: [],
-    }
-
-    return messageData
-  } catch (error: any) {
-    logger.error('Failed to convert OpenPhone webhook event data', {
-      error: error.message,
-      payload: messagePayload,
+    } satisfies MessageData
+  } catch (error) {
+    logger.error('Failed to convert Quo webhook event data', {
+      error: error instanceof Error ? error.message : String(error),
+      eventId: event.id,
     })
     return null
   }

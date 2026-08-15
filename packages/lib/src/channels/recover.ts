@@ -107,6 +107,15 @@ export async function recoverChannel(
     }
   }
 
+  // Same two-path reasoning as Outlook above. Quo webhooks never expire, so this only matters
+  // when the callback URL moved — which is exactly the dev-tunnel case (`NGROK_URL` feeds
+  // `providerWebhookCallbackUrl`), and also covers a webhook deleted on Quo's side. Arming is
+  // delete-then-recreate, so re-running it can never leave two live webhooks for one number.
+  if (channel.provider === 'openphone') {
+    const { armQuoWebhook } = await import('./quo-channel')
+    await armQuoWebhook(channelId, ctx.organizationId)
+  }
+
   // After the metadata write, not before: `toggle`'s own invalidation fires
   // while the stale `auth` block is still on the row, and the cached channel
   // list carries both `metadata` and `enabled`.

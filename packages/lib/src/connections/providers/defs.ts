@@ -811,12 +811,28 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
 
   // ────────────────────────────────────────────────────────────────────────
   // Channel API-key providers (secret). The SMS/phone channel (Quo, formerly
-  // OpenPhone) as a per-org connection. All four connect fields are connection
-  // variables: apiKey + webhookSigningSecret are secret (encrypted on the
-  // Credential); phoneNumberId + phoneNumber are non-secret routing identity the
-  // openphone provisioning hook copies onto Integration.metadata. providerKey
-  // stays `openphone` (labels-only rename). (Mailgun is intentionally absent — its
-  // key is a platform env, not a per-org connection.)
+  // OpenPhone) as a per-org connection.
+  //
+  // ONE CONNECTION = ONE QUO WORKSPACE, not one phone number. Quo scopes the API
+  // key and its webhooks at the workspace; only the number itself is a resource
+  // within it. So the form collects the API KEY AND NOTHING ELSE — the connect
+  // flow fetches `GET /v1/phone-numbers` with it, caches the trimmed list on
+  // `Credential.metadata.quo`, and the number is a post-connect selection carried
+  // through `postConnect` → `ctx.extra.phoneNumberId`. N Integrations then hang
+  // off the one Credential, one per number turned into a channel.
+  //
+  // The other three fields this form used to collect are gone:
+  //  - `phoneNumberId` validated `^pnv_.+`, but real Quo ids are `PN…` — the form
+  //    literally could not be submitted, which is why this channel had never been
+  //    connected. It is now picked from the live list after connect.
+  //  - `phoneNumber` is derived from that same list.
+  //  - `webhookSigningSecret` is minted by Quo and returned on webhook creation
+  //    (`POST /v1/webhooks/messages` → `data.key`), which `setupWebhook` persists.
+  //
+  // providerKey stays `openphone` everywhere it is persisted (labels-only rename).
+  // `authApply: BEARER` is verified working — Quo tolerates the `Bearer ` prefix,
+  // and the Quo contacts data-connector binds to this same definition. (Mailgun is
+  // intentionally absent — its key is a platform env, not a per-org connection.)
   // ────────────────────────────────────────────────────────────────────────
   {
     providerKey: 'openphone',
@@ -831,36 +847,9 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         secret: true,
         required: true,
         placeholder: 'Your Quo API key',
-        description: 'Quo (OpenPhone) API key — Settings → Developer in the Quo dashboard.',
+        description:
+          'Quo API key — Workspace Settings → API in the Quo dashboard (owner/admin only). One key covers every phone number on the workspace.',
         validation: { minLength: 10, message: 'API key must be at least 10 characters.' },
-      },
-      {
-        key: 'phoneNumberId',
-        label: 'Phone Number ID',
-        required: true,
-        placeholder: 'pnv_…',
-        description: 'The phone number ID (starts with pnv_).',
-        validation: { pattern: '^pnv_.+', message: 'Phone number ID must start with pnv_.' },
-      },
-      {
-        key: 'phoneNumber',
-        label: 'Phone Number',
-        required: true,
-        placeholder: '+1234567890',
-        description: 'Your phone number in E.164 format.',
-        validation: {
-          pattern: '^\\+[1-9]\\d{6,14}$',
-          message: 'Use E.164 format, e.g. +1234567890.',
-        },
-      },
-      {
-        key: 'webhookSigningSecret',
-        label: 'Webhook Signing Secret',
-        secret: true,
-        required: true,
-        placeholder: 'Webhook signing secret',
-        description: 'Used to verify webhook requests from Quo.',
-        validation: { minLength: 16, message: 'Signing secret must be at least 16 characters.' },
       },
     ],
     uiMetadata: { icon: 'brand:openphone', category: 'other', brandColor: '#6366f1' },

@@ -126,7 +126,15 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     threadReply: true,
     subject: false,
     ccBcc: false,
-    drafts: true,
+    // Quo has no drafts API — the surface is List messages / Send a text /
+    // Get a message by ID, nothing else. Matches `provider-capabilities.ts`
+    // (`canDraft: false`, `createDraft()` returning `{ success: false }`).
+    // LOCAL drafts (our own DB row) are a different mechanism and do NOT read
+    // this flag; this one only advertises server-side draft persistence.
+    drafts: false,
+    // Quo's send schema is `content`/`from`/`to` (+ optional `userId`,
+    // deprecated `phoneNumberId`, `setInboxStatus`) — no media field at all.
+    // Outbound MMS is a platform limitation, not a gap on our side.
     attachments: false,
     recipientModel: 'phone',
   },

@@ -1,0 +1,131 @@
+{
+  "id": "quo",
+  "name": "Quo Contacts",
+  "description": "Sync your Quo (formerly OpenPhone) address book into contacts. Bind the same Quo API key the SMS channel uses — connect once, both share the credential.",
+  "categories": ["communication", "crm"],
+  "iconKey": "message-square",
+  "requiresConnection": true,
+  "connection": {
+    "providerKey": "openphone",
+    "authScheme": "bearer",
+    "docsUrl": "https://quo.com/docs"
+  },
+  "config": {
+    "endpoint": {
+      "baseUrl": "https://api.quo.com/v1",
+      "auth": "credential"
+    }
+  },
+  "streams": [
+    {
+      "streamKey": "contacts",
+      "syncMode": "snapshot",
+      "requestConfig": {
+        "path": "/contacts",
+        "method": "GET",
+        "pagination": {
+          "kind": "cursor",
+          "cursorFrom": "response",
+          "cursorPath": "nextPageToken",
+          "cursorParam": "pageToken",
+          "recordsPath": "data",
+          "limitParam": "maxResults",
+          "pageSize": 50
+        }
+      },
+      "mappings": [
+        {
+          "rootPath": "data[]",
+          "linkMode": "upsert",
+          "target": { "mode": "contributing", "entityRef": "@system:contact" },
+          "fields": [
+            { "key": "first_name", "source": "defaultFields.firstName" },
+            { "key": "last_name", "source": "defaultFields.lastName" },
+            { "key": "primary_email", "source": "defaultFields.emails[0].value" },
+            {
+              "key": "phone",
+              "source": "defaultFields.phoneNumbers[0].value",
+              "match": { "normalize": "phone" }
+            },
+            {
+              "key": "Quo Company",
+              "source": "defaultFields.company",
+              "provision": { "type": "TEXT" }
+            },
+            {
+              "key": "Quo Contact ID",
+              "source": "id",
+              "provision": { "type": "TEXT", "isHidden": true }
+            }
+          ]
+        }
+      ],
+      "sourceSchema": {
+        "type": "object",
+        "properties": {
+          "totalItems": { "type": "number" },
+          "nextPageToken": { "type": "string" },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "externalId": { "type": "string" },
+                "source": { "type": "string" },
+                "sourceUrl": { "type": "string" },
+                "createdAt": { "type": "string" },
+                "updatedAt": { "type": "string" },
+                "createdByUserId": { "type": "string" },
+                "defaultFields": {
+                  "type": "object",
+                  "properties": {
+                    "firstName": { "type": "string" },
+                    "lastName": { "type": "string" },
+                    "company": { "type": "string" },
+                    "role": { "type": "string" },
+                    "emails": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string" },
+                          "name": { "type": "string" },
+                          "value": { "type": "string" }
+                        }
+                      }
+                    },
+                    "phoneNumbers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string" },
+                          "name": { "type": "string" },
+                          "value": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                },
+                "customFields": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "name": { "type": "string" },
+                      "key": { "type": "string" },
+                      "type": { "type": "string" },
+                      "value": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

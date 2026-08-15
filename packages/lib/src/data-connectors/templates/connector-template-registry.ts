@@ -3,12 +3,75 @@
 // indexes them by id, and validates at import time — mirroring
 // `entity-templates/template-registry.ts`. Templates are open presets: each
 // seeds a normal, fully-editable `generic-rest` connector.
+//
+// ── `defs/quo.json` design notes ─────────────────────────────────────────────
+// Quo (formerly OpenPhone) contacts. JSON carries no comments, so the decisions
+// behind that template live here:
+//
+// • CREDENTIAL SHARING — `connection.providerKey: 'openphone'` binds to the SAME
+//   seeded ConnectionDefinition the SMS channel uses (the key stays `openphone`;
+//   the rename to Quo is labels-only). Connecting Quo once serves both consumers.
+//   `authScheme: 'bearer'` works as-is — verified live that Quo accepts
+//   `Authorization: Bearer <key>`, so this depends on no channel-side change.
+//
+// • TWO WRITERS INTO `@system:contact` — the channel's own ingest also creates
+//   contacts from inbound SMS, so identity matching carries all the weight here.
+//   `match: {normalize:'phone'}` on the phone binding must agree with the ingest
+//   side's `Participant.identifier` E.164 form, or the same person lands twice.
+//   The in-flight `dedup/` + duplicate-suggestion work is exactly this problem —
+//   the two writers should be tested TOGETHER, not in isolation.
+//
+// • FIRST VALUE ONLY — Quo exposes no scalar email/phone; both are arrays of
+//   labelled entries, addressed with `defaultFields.emails[0].value` (the indexed
+//   `getByPath` syntax in `map-record.ts`). Contact phone went multi-value E.164
+//   in #1629 but the connector write path is scalar, so a Quo contact with three
+//   numbers lands ONE. Accepted for v1; the rest are not silently dropped so much
+//   as not yet reachable — landing them needs a multi-value source path.
+//
+// • NO INCREMENTAL / NO BACKFILL WINDOW — verified live that `/v1/contacts`
+//   silently IGNORES `updatedAfter` / `createdAfter` / `since` (unknown params are
+//   ignored, not rejected). There is no delta filter to declare, so every run is a
+//   full snapshot crawl. Do not invent a `sinceParam`: it would be a lie in config
+//   that changes nothing on the wire.
+//
+// • PAGING TERMINATES ON `nextPageToken` ALONE — deliberately no `hasMorePath`.
+//   `totalItems` is PER-PAGE, not a grand total (`?maxResults=2` returns
+//   `totalItems: 2` *with* a next token). `maxResults` hard-caps at 50 (400 above
+//   it), so this is ~2x the requests of a Stripe-sized address book.
+//
+// • NULL SOURCES OVERWRITE — a template binding has no `mergeStrategy` knob, so
+//   contributing writes land on the sink's `overwrite` default. Multi-value fields
+//   (`primary_email`, `phone`) are protected — the sink never writes blank over a
+//   multi field — but a SCALAR target is cleared when Quo's value is null. That is
+//   why `defaultFields.role` → `job_title` is NOT mapped: 24 of 25 live contacts
+//   have `role: null`, so mapping it would blank a human-entered job title on every
+//   run. `Quo Company` is safe by contrast: it is the connector's OWN provisioned
+//   field, so mirroring null is correct rather than destructive. The same hazard
+//   applies on a smaller surface to the name bindings — a Quo contact with neither
+//   name blanks both — which is the price of mapping them at all; revisit if
+//   templates ever gain `mergeStrategy: 'fill_blank'`.
+//
+// • NAMES BIND TO `first_name` / `last_name`, NOT `full_name`. Both are creatable/
+//   updatable system attributes on contact (`resources/registry/resources/
+//   contact-fields.ts`), hidden from the panel in favour of the computed name
+//   field, which they drive. Quo hands us the two halves already split, so binding
+//   them directly is lossless — composing `full_name` and letting the sink split it
+//   back on whitespace would turn "Mary Jo Van Dyke" into first "Mary" /
+//   last "Jo Van Dyke".
+//
+// • `customFields[]` is deliberately unmapped — a typed union needing its own pass.
+// ─────────────────────────────────────────────────────────────────────────────
 
 import githubTemplate from './defs/github.json'
+import quoTemplate from './defs/quo.json'
 import stripeTemplate from './defs/stripe.json'
 import type { ConnectorTemplate, ConnectorTemplateSummary } from './types'
 
-const allTemplates: ConnectorTemplate[] = [stripeTemplate, githubTemplate] as ConnectorTemplate[]
+const allTemplates: ConnectorTemplate[] = [
+  stripeTemplate,
+  githubTemplate,
+  quoTemplate,
+] as ConnectorTemplate[]
 
 /** All templates indexed by id. */
 const templateMap = new Map<string, ConnectorTemplate>()
