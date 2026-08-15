@@ -397,7 +397,7 @@ export class MessageSenderService {
 
       // Step 8: Update thread metadata
       await this.threadManager.updateThreadMetadata(threadContext.id)
-      await this.threadManager.updateThreadParticipants(threadContext.id)
+      await this.threadManager.updateThreadParticipantCount(threadContext.id)
       // Outbound send is real activity on any linked entity (deal/ticket/lead).
       await touchActivityForThreadLinks(threadContext.id, this.organizationId)
       // Interaction stamp for Auxx-sent mail: this path never reaches ingest's
@@ -1552,7 +1552,7 @@ export class MessageSenderService {
     // retry that finally lands has to recompute them — otherwise the thread
     // keeps `lastMessageAt = NULL` and renders as "0 seconds" forever.
     await this.threadManager.updateThreadMetadata(threadId)
-    await this.threadManager.updateThreadParticipants(threadId)
+    await this.threadManager.updateThreadParticipantCount(threadId)
     await touchActivityForThreadLinks(threadId, this.organizationId)
     // Interaction stamp — same rationale as the first-send path: Auxx-sent mail
     // never reaches ingest's touch, and only a landed retry is correspondence.

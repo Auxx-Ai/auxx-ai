@@ -106,6 +106,11 @@ export interface ProcessedParticipant {
    * suppression checks + the List-Unsubscribe token (MessageSenderService) don't need a
    * second lookup. */
   entityInstanceId?: string | null
+  /** Whether this identifier is one of the org's own (channel identity, org domain).
+   * Carried through from the raw `Participant` row for the same reason as
+   * `entityInstanceId` — the outbound `ThreadParticipant` rollup needs it and must not
+   * re-query. Recomputed on every participant upsert since #1655, so it is current. */
+  isInternal?: boolean
 }
 /**
  * Provider send response
