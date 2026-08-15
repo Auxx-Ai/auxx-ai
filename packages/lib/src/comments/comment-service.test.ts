@@ -85,6 +85,8 @@ function structuralCapabilities(overrides: Partial<CapabilityView> = {}): Capabi
     canAdministerDef: () => false,
     assertAdministerDef: () => undefined,
     canViewInstance: () => false,
+    // Twin of the gate above: a stub that can view no instance can list none.
+    instanceListScope: () => ({ kind: 'none' }),
     canEditInstance: () => false,
     canAdminInstance: () => false,
     assertViewInstance: () => undefined,

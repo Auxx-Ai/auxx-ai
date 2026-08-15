@@ -675,19 +675,44 @@ describe('record router — the HYDRATION arm filters instead of refusing', () =
     expect(handler.getByIds).toHaveBeenCalledWith([`kb:${KB_ID}`, `dataset:${DATASET_ID}`])
   })
 
-  it('…and are still refused everywhere else, where nothing gates them', async () => {
-    // The carve-out is one procedure wide. `getById` and the list/search paths
-    // route through `getResources` / `querySystemResourceIdsPaged`, which have
-    // no instance-access filter — admitting `kb` there would hand every member
-    // the org's whole KB list.
+  it('search ALSO admits them — its path narrows per row before it paginates', async () => {
+    // This used to assert the opposite, and the refusal was correct at the time:
+    // `getResources` had no instance-access filter, so admitting `kb` would have
+    // handed every member the org's whole KB list. It now resolves
+    // `instanceTableVisibilityScope` into a predicate applied before `LIMIT`
+    // (with the matching viewer dimension in the picker's cache key), which is
+    // what makes this safe — and what makes every kb/dataset picker in the app
+    // work, since they all ride this procedure.
+    await expect(caller().search({ entityDefinitionId: 'kb', query: 'a' })).resolves.toBeDefined()
+    await expect(
+      caller().search({ entityDefinitionId: 'dataset', query: 'a' })
+    ).resolves.toBeDefined()
+  })
+
+  it('…and are still refused on the paths that do NOT gate them', async () => {
+    // The carve-out is per PROCEDURE, not per arm, and stays that way: an
+    // exemption is only as defensible as the gate behind that specific path.
+    // `getById` reads the `EntityInstance` lane, where a KB has no row at all;
+    // `listAll` / `listFiltered` are not this pair's door. All three keep
+    // pointing the caller at `kb.ts` / `dataset.ts`.
     await expect(caller().getById({ recordId: `kb:${KB_ID}` })).rejects.toMatchObject(FORBIDDEN)
     await expect(caller().listAll({ entityDefinitionId: 'kb' })).rejects.toMatchObject(FORBIDDEN)
     await expect(caller().listFiltered({ entityDefinitionId: 'kb' })).rejects.toMatchObject(
       FORBIDDEN
     )
-    await expect(caller().search({ entityDefinitionId: 'kb', query: 'a' })).rejects.toMatchObject(
-      FORBIDDEN
-    )
+  })
+
+  it('search still refuses the keys that have no gated path at all', async () => {
+    // The widening is exactly two keys wide. `dashboard`, `workflow`, `agent`,
+    // `signature` and `snippet` are not statically pickable, so there is no
+    // system-table scope for them to be narrowed by.
+    // `signature` stands for the group: they all reach the identical
+    // `isInstanceAccessKey` branch, keyed only on set membership. (The others
+    // cannot be asserted here — this suite's mocked resource registry is two
+    // entries wide, so their ids fail the input schema before the guard runs.)
+    await expect(
+      caller().search({ entityDefinitionId: 'signature', query: 'a' })
+    ).rejects.toMatchObject(FORBIDDEN)
   })
 })
 

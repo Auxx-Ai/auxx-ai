@@ -65,6 +65,14 @@ function view(rungs: Record<string, 'read' | 'edit' | 'admin'> | '*'): Capabilit
     canViewInstance: (_key: string, id: string) => at(id) !== undefined,
     canEditInstance: (_key: string, id: string) => at(id) === 'edit' || at(id) === 'admin',
     canAdminInstance: (_key: string, id: string) => at(id) === 'admin',
+    // `'*'` means "holds everything", which as a filter is a deny-list of
+    // nothing; a named map is an allow-list of exactly those ids.
+    instanceListScope: () =>
+      rungs === '*'
+        ? { kind: 'exclude', excludeIds: [] }
+        : Object.keys(rungs).length > 0
+          ? { kind: 'include', includeIds: Object.keys(rungs) }
+          : { kind: 'none' },
   } as unknown as CapabilityView
 }
 
@@ -110,14 +118,41 @@ describe('viewableKnowledgeBaseIds — the allow-list and the `kind` policy', ()
 })
 
 describe('systemTableVisibilityScope — the arm decision', () => {
-  it("answers arm 'all' for every system table that is not `article`", async () => {
-    for (const tableId of ['user', 'kb', 'dataset', 'participant', 'visit'] as const) {
+  it("answers arm 'all' for system tables with no per-row policy at all", async () => {
+    // `kb` and `dataset` are deliberately NOT in this list: they ARE
+    // instance-access grant targets, so they delegate to
+    // `instanceTableVisibilityScope` instead — see the two cases below.
+    for (const tableId of ['user', 'participant', 'visit'] as const) {
       const scope = await systemTableVisibilityScope({
         organizationId: ORG,
         tableId,
         capabilities: view({}),
       })
       expect(scope.arm).toBe('all')
+    }
+  })
+
+  it('delegates `kb` / `dataset` to their instance-access scope', async () => {
+    // A member who can view nothing must not query at all, on either table.
+    for (const tableId of ['kb', 'dataset'] as const) {
+      const scope = await systemTableVisibilityScope({
+        organizationId: ORG,
+        tableId,
+        capabilities: view({}),
+      })
+      expect(scope.arm).toBe('none')
+    }
+  })
+
+  it('leaves `kb` / `dataset` unscoped for an unrestricted member, so nothing pays for the arm', async () => {
+    for (const tableId of ['kb', 'dataset'] as const) {
+      const scope = await systemTableVisibilityScope({
+        organizationId: ORG,
+        tableId,
+        capabilities: view('*'),
+      })
+      expect(scope.arm).toBe('all')
+      expect(scope.where).toBeUndefined()
     }
   })
 

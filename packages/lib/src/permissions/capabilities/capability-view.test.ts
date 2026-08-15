@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { ForbiddenError } from '../../errors'
 import type { CapabilityView } from './capability-view'
 import { intersectCapabilities, MinCapabilitySet } from './capability-view'
+import type { InstanceListScope, OrgSharedInstanceAccessKey } from './entity-access'
 import type { InstanceAccessKey } from './instance-access'
 import { type Area, Level, PermissionKey } from './registry'
 import { foldRecordAccess, satisfiesRung } from './rung'
@@ -24,6 +25,11 @@ type Stub = {
   admin?: string[]
   access?: Record<string, ResourcePermission>
   instances?: string[]
+  /**
+   * Overrides the list scope derived from {@link Stub.instances}, so a case can
+   * exercise the `exclude` arm — which an allow-list of ids cannot express.
+   */
+  listScope?: InstanceListScope
   areaLevels?: Partial<Record<Area, Level>>
   /** Defs the principal holds per-record grants on (the P5 front door). */
   granted?: string[]
@@ -77,6 +83,14 @@ function stub(opts: Stub): CapabilityView {
     canViewInstance: (_key, id) => has(opts.instances, id),
     canEditInstance: (_key, id) => has(opts.instances, id),
     canAdminInstance: (_key, id) => has(opts.instances, id),
+    // `instances` is an allow-list, so the list-side twin enumerates the SAME
+    // list. `listScope` lets a case declare a deny-list instead, which is the
+    // other arm `MinCapabilitySet.instanceListScope` has to intersect.
+    instanceListScope: () =>
+      opts.listScope ??
+      ((opts.instances ?? []).length > 0
+        ? { kind: 'include', includeIds: [...opts.instances!] }
+        : { kind: 'none' }),
     assertViewInstance: (key, id) => {
       if (!self.canViewInstance(key, id)) deny()
     },
@@ -139,6 +153,67 @@ describe('MinCapabilitySet — boolean gates are AND', () => {
     expect(min.canViewInstance(DATASET, 'ds_2')).toBe(true)
     expect(min.canEditInstance(DATASET, 'ds_1')).toBe(false)
     expect(min.canAdminInstance(DATASET, 'ds_1')).toBe(false)
+  })
+
+  describe('instanceListScope intersects as set algebra', () => {
+    const DS = DATASET as unknown as OrgSharedInstanceAccessKey
+    const scopeOf = (a: CapabilityView, b: CapabilityView) =>
+      new MinCapabilitySet(a, b).instanceListScope(DS)
+
+    it('include ∩ include keeps only ids both sides name', () => {
+      expect(scopeOf(stub({ instances: ['ds_1', 'ds_2'] }), stub({ instances: ['ds_2'] }))).toEqual(
+        {
+          kind: 'include',
+          includeIds: ['ds_2'],
+        }
+      )
+    })
+
+    it('include ∩ exclude subtracts the deny-list from the allow-list', () => {
+      const allow = stub({ instances: ['ds_1', 'ds_2'] })
+      const deny = stub({ listScope: { kind: 'exclude', excludeIds: ['ds_1'] } })
+      expect(scopeOf(allow, deny)).toEqual({ kind: 'include', includeIds: ['ds_2'] })
+      // Order must not matter — the intersection is symmetric.
+      expect(scopeOf(deny, allow)).toEqual({ kind: 'include', includeIds: ['ds_2'] })
+    })
+
+    it('exclude ∩ exclude unions the deny-lists', () => {
+      const a = stub({ listScope: { kind: 'exclude', excludeIds: ['ds_1'] } })
+      const b = stub({ listScope: { kind: 'exclude', excludeIds: ['ds_2', 'ds_1'] } })
+      const scope = scopeOf(a, b)
+      expect(scope.kind).toBe('exclude')
+      expect([...(scope.excludeIds ?? [])].sort()).toEqual(['ds_1', 'ds_2'])
+    })
+
+    it('none on either side wins', () => {
+      const wide = stub({ listScope: { kind: 'exclude', excludeIds: [] } })
+      expect(scopeOf(wide, stub({ instances: [] }))).toEqual({ kind: 'none' })
+      expect(scopeOf(stub({ instances: [] }), wide)).toEqual({ kind: 'none' })
+    })
+
+    it('an allow-list emptied by the other side collapses to none, not an empty include', () => {
+      const allow = stub({ instances: ['ds_1'] })
+      const deny = stub({ listScope: { kind: 'exclude', excludeIds: ['ds_1'] } })
+      expect(scopeOf(allow, deny)).toEqual({ kind: 'none' })
+    })
+
+    it('agrees with canViewInstance for every id — the invariant that matters', () => {
+      // If the filter and the gate ever disagree, a principal sees an empty page
+      // for an instance they can demonstrably open (or worse, the reverse).
+      const a = stub({ instances: ['ds_1', 'ds_2', 'ds_3'] })
+      const b = stub({ instances: ['ds_2', 'ds_3'] })
+      const min = new MinCapabilitySet(a, b)
+      const scope: InstanceListScope = min.instanceListScope(DS)
+      const admits = (id: string) =>
+        scope.kind === 'none'
+          ? false
+          : scope.kind === 'include'
+            ? scope.includeIds.includes(id)
+            : !scope.excludeIds.includes(id)
+      for (const id of ['ds_1', 'ds_2', 'ds_3', 'ds_unknown']) {
+        expect(admits(id)).toBe(min.canViewInstance(DATASET, id))
+      }
+    })
   })
 
   it('canWriteEntity / canAdministerDef AND across both sides', () => {

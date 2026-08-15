@@ -67,6 +67,8 @@ function makeCapabilities(overrides: Partial<CapabilityView> = {}): CapabilityVi
     canAdministerDef: yes,
     assertAdministerDef: noop,
     canViewInstance: yes,
+    // The list-side twin of `canViewInstance` above: sees everything, denies nothing.
+    instanceListScope: () => ({ kind: 'exclude', excludeIds: [] }),
     canEditInstance: yes,
     canAdminInstance: yes,
     assertViewInstance: noop,

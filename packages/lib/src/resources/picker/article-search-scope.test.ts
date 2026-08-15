@@ -63,6 +63,12 @@ function view(rungs: Record<string, 'read' | 'edit' | 'admin'> | '*'): Capabilit
     canViewInstance: (_key: string, id: string) => at(id) !== undefined,
     canEditInstance: (_key: string, id: string) => at(id) === 'edit' || at(id) === 'admin',
     canAdminInstance: (_key: string, id: string) => at(id) === 'admin',
+    instanceListScope: () =>
+      rungs === '*'
+        ? { kind: 'exclude', excludeIds: [] }
+        : Object.keys(rungs).length > 0
+          ? { kind: 'include', includeIds: Object.keys(rungs) }
+          : { kind: 'none' },
   } as unknown as CapabilityView
 }
 
@@ -135,17 +141,47 @@ describe('R4 — the scoped article search is narrowed at the choke point', () =
     expect(direct).not.toHaveBeenCalled()
   })
 
-  it('leaves other system tables completely unscoped', async () => {
-    // `kb` deliberately: it IS instance-access, so it proves the SQL arm is
-    // article-only — a KB's own policy stays post-fetch in `admitSystemRows`.
-    // (`user` would be the more obvious choice but resolves its Drizzle table by
-    // name through the join strategy, which this package's Vitest schema proxy
-    // cannot satisfy.)
+  it('leaves system tables with no per-row policy completely unscoped', async () => {
+    // `participant` has no instance-access key and no one-hop owner, so the
+    // article predicate must not leak onto it. (`user` would be the more obvious
+    // choice but resolves its Drizzle table by name through the join strategy,
+    // which this package's Vitest schema proxy cannot satisfy.)
     const { svc, direct } = service(view({}))
+
+    await svc.getResources({ entityDefinitionId: 'participant', limit: 25 })
+
+    expect(direct).toHaveBeenCalledTimes(1)
+    expect(visibilityArg(direct)).toBeUndefined()
+  })
+
+  it('narrows `kb` in SQL rather than after the fetch', async () => {
+    // This case used to assert the OPPOSITE — that `kb` reached the fetchers
+    // unscoped, on the reasoning that a KB's own policy "stays post-fetch in
+    // `admitSystemRows`". That was true only of the by-ids path. On a PAGINATED
+    // path a post-fetch filter shorts the page and desyncs the cursor, which is
+    // why `record.search` had to refuse `kb` outright instead. It no longer does.
+    const { svc, direct } = service(view({ [STANDARD_KB]: 'edit' }))
 
     await svc.getResources({ entityDefinitionId: 'kb', limit: 25 })
 
     expect(direct).toHaveBeenCalledTimes(1)
+    expect(visibilityArg(direct)).toBeDefined()
+  })
+
+  it('returns an empty page for a member with no viewable KB, WITHOUT querying', async () => {
+    const { svc, direct } = service(view({}))
+
+    const result = await svc.getResources({ entityDefinitionId: 'kb', limit: 25 })
+
+    expect(direct).not.toHaveBeenCalled()
+    expect(result.items).toEqual([])
+  })
+
+  it('leaves `kb` unscoped for an unrestricted member, so the common path pays nothing', async () => {
+    const { svc, direct } = service(view('*'))
+
+    await svc.getResources({ entityDefinitionId: 'kb', limit: 25 })
+
     expect(visibilityArg(direct)).toBeUndefined()
   })
 
@@ -193,6 +229,29 @@ describe('§5.5 — the picker cache key learns the viewer', () => {
     // Their keys must stay byte-identical to the ones they had before §5.5, or
     // this change silently cold-starts every other picker cache.
     const { svc, cacheReads } = service(view({ [STANDARD_KB]: 'edit' }))
+
+    await svc.getResources({ entityDefinitionId: 'participant', limit: 25 })
+
+    expect(cacheReads.mock.calls[0]?.[2]?.scope).toBeUndefined()
+  })
+
+  it('carries the dimension for `kb`, whose page IS viewer-dependent', async () => {
+    // Without this the org-keyed cache would hand a restricted member's page to
+    // an unrestricted one and vice versa — the same failure §5.5 closed for
+    // `article`, and the reason `kb` could not simply be unblocked at the router.
+    const narrow = service(view({ [STANDARD_KB]: 'edit' }))
+    await narrow.svc.getResources({ entityDefinitionId: 'kb', limit: 25 })
+    const narrowScope = narrow.cacheReads.mock.calls[0]?.[2]?.scope
+
+    const other = service(view({ [LEARNED_KB]: 'edit' }))
+    await other.svc.getResources({ entityDefinitionId: 'kb', limit: 25 })
+
+    expect(narrowScope).toBeDefined()
+    expect(other.cacheReads.mock.calls[0]?.[2]?.scope).not.toBe(narrowScope)
+  })
+
+  it('omits the `kb` dimension for an unrestricted member, keeping their key stable', async () => {
+    const { svc, cacheReads } = service(view('*'))
 
     await svc.getResources({ entityDefinitionId: 'kb', limit: 25 })
 
