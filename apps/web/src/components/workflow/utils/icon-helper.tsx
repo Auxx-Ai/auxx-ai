@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/utils/icon-helper.tsx
 
+import { VAR_TYPE_ICON_MAP } from '@auxx/lib/workflow-engine/client'
 import { getIcon as getIconData } from '@auxx/ui/components/icons'
 import { cn } from '@auxx/ui/lib/utils'
 import { Circle } from 'lucide-react'
@@ -63,33 +64,14 @@ export const getIcon = (
 }
 
 /**
- * Variable type icon mapping to new icon system
+ * Variable type icon mapping to new icon system.
+ *
+ * Moved to the node catalog (`@auxx/lib/workflow-engine/catalog/type-icons`) so
+ * `form-input`'s manifest `getIcon` — which resolves an icon NAME from the
+ * node's `inputType` — reads the same map the builder does. Re-exported here so
+ * no consumer import churns.
  */
-export const VAR_TYPE_ICON_MAP: Record<BaseType, string> = {
-  [BaseType.STRING]: 'type',
-  [BaseType.NUMBER]: 'hash',
-  [BaseType.BOOLEAN]: 'toggle-left',
-  [BaseType.OBJECT]: 'braces',
-  [BaseType.ARRAY]: 'list',
-  [BaseType.DATE]: 'calendar',
-  [BaseType.DATETIME]: 'clock',
-  [BaseType.TIME]: 'clock',
-  [BaseType.FILE]: 'file',
-  [BaseType.REFERENCE]: 'link',
-  [BaseType.RELATION]: 'link',
-  [BaseType.ACTOR]: 'user',
-  [BaseType.EMAIL]: 'mail',
-  [BaseType.URL]: 'link',
-  [BaseType.PHONE]: 'phone',
-  [BaseType.ENUM]: 'list-filter',
-  [BaseType.JSON]: 'file-text',
-  [BaseType.SECRET]: 'lock',
-  [BaseType.ANY]: 'box',
-  [BaseType.NULL]: 'minus',
-  [BaseType.CURRENCY]: 'dollar-sign',
-  [BaseType.ADDRESS]: 'map-pin',
-  [BaseType.TAGS]: 'tags',
-}
+export { VAR_TYPE_ICON_MAP }
 
 /**
  * Variable type icon component

@@ -33,7 +33,7 @@ export const NOT_YET_MIGRATED: readonly string[] = [
   // schema, definition or processor, only enum members and a publish-time
   // normalization shim for old graphs that do not exist.
   // Input nodes
-  'form-input',
+  // 'form-input' — migrated (catalog/nodes/form-input.ts)
   // 'number-input' / 'file-upload' — RETIRED alongside the legacy triggers.
   // Neither was ever implemented; file-upload behaviour is 'form-input' with
   // `inputType: 'file'`.

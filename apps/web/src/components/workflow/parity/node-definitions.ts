@@ -246,12 +246,6 @@ export const CONFIG_VARIANTS: Record<
   // the false arm advertises `result` instead (`loop/schema.ts:153`).
   [NodeType.LOOP]: [{ label: 'without accumulation', data: { accumulateResults: false } }],
 
-  // `inputs` is advertised only when a form-input node is wired into the trigger
-  // (`manual/schema.ts`, `if (data.inputNodes?.length)`), and `defaultData` seeds
-  // `inputNodes: []`. The id is never dereferenced by `outputVariables`, so any
-  // non-empty array reaches the branch.
-  [NodeType.MANUAL]: [{ label: 'with connected inputs', data: { inputNodes: ['form-input-1'] } }],
-
   // `cron_expression` replaces `interval_config` on the custom-cron arm
   // (`scheduled/schema.ts:222`); the default interval is `hours`.
   [NodeType.SCHEDULED]: [

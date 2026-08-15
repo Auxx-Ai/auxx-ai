@@ -1,29 +1,17 @@
 // packages/lib/src/workflow-engine/validation/form-input-validator.ts
 
-import { type FileTypeCategory, getExtensionsForCategories } from '../../files/file-type-constants'
+import { getExtensionsForCategories } from '../../files/file-type-constants'
+import type { FormInputNodeData } from '../catalog/nodes/form-input'
 import { BaseType } from '../core/types'
 
 /**
- * Select option for ENUM type
- */
-interface EnumOption {
-  label: string
-  value: string
-}
-
-/**
- * File options for FILE type
- */
-interface FileTypeOptions {
-  allowMultiple?: boolean
-  maxFiles?: number
-  maxFileSize?: number
-  allowedFileTypes?: FileTypeCategory[]
-  allowedFileExtensions?: string[]
-}
-
-/**
- * Form input configuration for validation
+ * Form input configuration for validation.
+ *
+ * NOT the node's data shape: this is a flattened extract of a persisted graph,
+ * keyed by `nodeId` and carrying only what submission validation reads (see
+ * {@link extractFormInputConfigs}). The nested option shapes ARE the catalog's,
+ * picked rather than re-declared — `allowMultiple` is optional here because the
+ * extract copies whatever the stored node carries.
  */
 export interface FormInputConfig {
   nodeId: string
@@ -32,8 +20,8 @@ export interface FormInputConfig {
   required?: boolean
   hint?: string // Helper text shown to end users when filling the input field
   typeOptions?: {
-    enum?: EnumOption[]
-    file?: FileTypeOptions
+    enum?: NonNullable<FormInputNodeData['typeOptions']>['enum']
+    file?: Partial<NonNullable<NonNullable<FormInputNodeData['typeOptions']>['file']>>
   }
 }
 

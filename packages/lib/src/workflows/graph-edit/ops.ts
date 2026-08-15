@@ -55,7 +55,14 @@ import {
 import { describeNode, formatNodeRef, resolveNodeRef } from './refs'
 import { captureWorkflowTurnSnapshot } from './turn-snapshot'
 import type { DraftGraph, GraphEdge, GraphMutationResult, GraphNode, Issue, Point } from './types'
-import { isTriggerNode, nodeType, validateGraphStructure, validateNodeConfigs } from './validate'
+import {
+  INPUT_WIRING_HANDLES,
+  isInputNodePair,
+  isTriggerNode,
+  nodeType,
+  validateGraphStructure,
+  validateNodeConfigs,
+} from './validate'
 
 /**
  * Scope every MUTATION takes — `GraphEditScope` plus the optional turn id.
@@ -277,6 +284,50 @@ function makeEdge(
     targetHandle,
     ...(data ? { data } : {}),
   }
+}
+
+/**
+ * Handles for a new edge. An input node attaching to a node that accepts
+ * inputs uses the input-wiring pair (`input-output` → `input`); everything
+ * else keeps today's behaviour — the resolved source/branch handle into
+ * `target`. Loop-back edges never come through here (their handle IS the
+ * thing that makes them loop-backs).
+ *
+ * Gated on the SAME `isInputNodePair` the validator judges existing graphs
+ * with, so this can never mint an edge `validateGraphStructure` would reject.
+ * Its strictness is what stops an app-block (permanently uncatalogued) being
+ * wired onto a trigger's `input` handle — see its docblock.
+ */
+function resolveEdgeHandles(
+  source: GraphNode | undefined,
+  target: GraphNode,
+  sourceHandle: string
+): { sourceHandle: string; targetHandle: string } {
+  if (source && isInputNodePair(source, target)) return { ...INPUT_WIRING_HANDLES }
+  return { sourceHandle, targetHandle: 'target' }
+}
+
+/**
+ * Canvas parity for `ManualNodeData.inputNodes` — the connected-input id list
+ * the canvas maintains (`use-node-interactions.ts`) on any node whose
+ * manifest sets `acceptsInputNodes`. Pure metadata: no output variable is
+ * gated on it, so a drifted list is cosmetic, not a contract break.
+ */
+function updateInputNodes(
+  nodes: GraphNode[],
+  update: (current: string[]) => string[],
+  opts: { onlyNodeId?: string } = {}
+): GraphNode[] {
+  return nodes.map((node) => {
+    if (opts.onlyNodeId !== undefined && node.id !== opts.onlyNodeId) return node
+    if (getManifest(nodeType(node))?.connection.acceptsInputNodes !== true) return node
+    const current = Array.isArray(node.data?.inputNodes)
+      ? (node.data.inputNodes as unknown[]).filter((id): id is string => typeof id === 'string')
+      : []
+    const next = update(current)
+    if (next.length === current.length && next.every((id, i) => id === current[i])) return node
+    return { ...node, data: { ...node.data, inputNodes: next } }
+  })
 }
 
 /** Fresh node data — NodeFactory parity (defaults under config, identity on top). */
@@ -652,7 +703,10 @@ export async function deleteNodes(
 
     return ok({
       graph: {
-        nodes: nodes.filter((n) => !toDelete.has(n.id)),
+        nodes: updateInputNodes(
+          nodes.filter((n) => !toDelete.has(n.id)) as GraphNode[],
+          (current) => current.filter((id) => !toDelete.has(id))
+        ),
         edges: [
           ...edges.filter((e) => !toDelete.has(e.source) && !toDelete.has(e.target)),
           ...bridged,
@@ -696,11 +750,12 @@ export async function connectNodes(
       nodeType(targetNode) === 'loop' &&
       (source?.parentId === targetNode.id || source?.data?.loopId === targetNode.id)
 
+    const handles = resolveEdgeHandles(source, targetNode, spec.value.sourceHandle)
     const edge = isLoopBack
       ? makeEdge(spec.value.sourceNodeId, spec.value.sourceHandle, targetNode.id, 'loop-back', {
           isLoopBackEdge: true,
         })
-      : makeEdge(spec.value.sourceNodeId, spec.value.sourceHandle, targetNode.id, 'target')
+      : makeEdge(spec.value.sourceNodeId, handles.sourceHandle, targetNode.id, handles.targetHandle)
 
     if (edges.some((e) => e.id === edge.id)) {
       return err(
@@ -710,8 +765,18 @@ export async function connectNodes(
       )
     }
 
+    // Canvas parity: wiring an input node appends it to the target's list.
+    const nextNodes =
+      !isLoopBack && handles.targetHandle === INPUT_WIRING_HANDLES.targetHandle
+        ? updateInputNodes(
+            nodes as GraphNode[],
+            (current) => (current.includes(edge.source) ? current : [...current, edge.source]),
+            { onlyNodeId: targetNode.id }
+          )
+        : nodes
+
     return ok({
-      graph: { ...ctx.graph, edges: [...edges, edge] },
+      graph: { ...ctx.graph, nodes: nextNodes, edges: [...edges, edge] },
       touchedNodeId: targetNode.id,
       normalizeIssues: [],
     })
@@ -736,9 +801,9 @@ export async function disconnectNodes(
     const to = resolveNodeRef(nodes, params.to)
     if (to.isErr()) return err(to.error)
 
-    const remaining = edges.filter(
-      (e) => !(e.source === from.value.node.id && e.target === to.value.node.id)
-    )
+    const sourceId = from.value.node.id
+    const targetId = to.value.node.id
+    const remaining = edges.filter((e) => !(e.source === sourceId && e.target === targetId))
     if (remaining.length === edges.length) {
       return err(
         new NotFoundError(
@@ -747,8 +812,25 @@ export async function disconnectNodes(
       )
     }
 
+    // Canvas parity: an input wiring that goes also leaves the target's list.
+    const droppedInputWiring = edges.some(
+      (e) =>
+        e.source === sourceId &&
+        e.target === targetId &&
+        (e.targetHandle ?? 'target') === INPUT_WIRING_HANDLES.targetHandle
+    )
+    const nextNodes = droppedInputWiring
+      ? updateInputNodes(
+          nodes as GraphNode[],
+          (current) => current.filter((id) => id !== sourceId),
+          {
+            onlyNodeId: targetId,
+          }
+        )
+      : nodes
+
     return ok({
-      graph: { ...ctx.graph, edges: remaining },
+      graph: { ...ctx.graph, nodes: nextNodes, edges: remaining },
       normalizeIssues: [],
     })
   })
@@ -983,12 +1065,27 @@ export async function replaceGraph(
       const source = built.find((n) => n.id === from.value.sourceNodeId)
       const targetNode = to.value.node as GraphNode
       const isLoopBack = nodeType(targetNode) === 'loop' && source?.parentId === targetNode.id
+      const handles = resolveEdgeHandles(source, targetNode, from.value.sourceHandle)
       const edge = isLoopBack
         ? makeEdge(from.value.sourceNodeId, from.value.sourceHandle, targetNode.id, 'loop-back', {
             isLoopBackEdge: true,
           })
-        : makeEdge(from.value.sourceNodeId, from.value.sourceHandle, targetNode.id, 'target')
+        : makeEdge(
+            from.value.sourceNodeId,
+            handles.sourceHandle,
+            targetNode.id,
+            handles.targetHandle
+          )
       if (!edges.some((e) => e.id === edge.id)) edges.push(edge)
+      // Canvas parity: an input wiring is also listed on the target node.
+      // `built` is mutated in place through the layout passes, so this writes
+      // straight onto the node object rather than rebuilding the array.
+      if (!isLoopBack && handles.targetHandle === INPUT_WIRING_HANDLES.targetHandle) {
+        const [updated] = updateInputNodes([targetNode], (current) =>
+          current.includes(edge.source) ? current : [...current, edge.source]
+        )
+        if (updated) targetNode.data = updated.data
+      }
     }
 
     // Pass 4 — auto-layout: dagre for the top level (positions from centers,

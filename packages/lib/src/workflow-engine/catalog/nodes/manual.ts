@@ -65,17 +65,20 @@ function getManualOutputVariables(data: ManualNodeData, nodeId: string): Unified
     })
   )
 
-  // Add input data if there are connected input nodes
-  if (data.inputNodes && data.inputNodes.length > 0) {
-    variables.push(
-      createUnifiedOutputVariable({
-        nodeId,
-        path: 'inputs',
-        type: BaseType.OBJECT,
-        description: 'Data collected from connected input nodes',
-      })
-    )
-  }
+  // Data from connected input nodes — advertised ALWAYS, because the engine
+  // writes `inputs` unconditionally (`nodes/trigger-nodes/manual.ts`). Gating
+  // it on `data.inputNodes` made the declaration disagree with the write in
+  // both directions: `inputNodes` is append-only canvas metadata, so a stale
+  // id kept the variable advertised forever and an emptied list hid a
+  // variable that is always populated (an empty object when nothing is wired).
+  variables.push(
+    createUnifiedOutputVariable({
+      nodeId,
+      path: 'inputs',
+      type: BaseType.OBJECT,
+      description: 'Data collected from connected input nodes',
+    })
+  )
 
   return variables
 }

@@ -1,136 +1,36 @@
 // apps/web/src/components/workflow/nodes/inputs/form-input/schema.ts
 
-import { z } from 'zod'
-import {
-  NodeCategory,
-  type NodeDefinition,
-  type ValidationResult,
-} from '~/components/workflow/types'
-import { baseNodeDataSchema } from '~/components/workflow/types/node-base'
-import { NodeType } from '~/components/workflow/types/node-types'
-import { BaseType } from '~/components/workflow/types/unified-types'
-import { VAR_TYPE_ICON_MAP } from '~/components/workflow/utils/icon-helper'
-import { getFormInputOutputVariables } from './output-variables'
+import { formInputManifest, type NodeManifest } from '@auxx/lib/workflow-engine/client'
+import type { NodeDefinition } from '~/components/workflow/types'
+import { defineFromManifest } from '../../define-from-manifest'
 import { FormInputPanel } from './panel'
 import type { FormInputNodeData } from './types'
 
-/**
- * Zod schema for enum option
- */
-const enumOptionSchema = z.object({
-  label: z.string(),
-  value: z.string(),
-})
+// The data half (zod schema, defaults, validator, dynamic icon, output
+// resolver) lives in the node catalog
+// (`@auxx/lib/workflow-engine/catalog/nodes/form-input`). This file is the merge
+// site: manifest + the React parts.
 
 /**
- * Zod schema for type options
+ * Form Input node definition.
+ *
+ * The cast bridges lib's `type: string` to the web `NodeType` narrowing —
+ * safe because the manifest's defaults never set `type` (the node factory
+ * assigns identity). `component` is attached in `nodes/inputs/index.ts`.
  */
-const typeOptionsSchema = z
-  .object({
-    enum: z.array(enumOptionSchema).optional(),
-    file: z
-      .object({
-        allowMultiple: z.boolean(),
-        maxFiles: z.number().optional(),
-        maxFileSize: z.number().optional(),
-        allowedTypes: z.array(z.string()).optional(),
-      })
-      .optional(),
-    currency: z
-      .object({
-        currencyCode: z.string(),
-        decimals: z.number().int().min(0).max(10),
-        currencyDisplay: z.enum(['symbol', 'code', 'name', 'compact']),
-        useGrouping: z.boolean(),
-      })
-      .optional(),
-    address: z
-      .object({
-        components: z.array(z.string()),
-      })
-      .optional(),
-    boolean: z
-      .object({
-        variant: z.enum(['switch', 'button-group']).optional(),
-      })
-      .optional(),
-  })
-  .optional()
+export const formInputDefinition: NodeDefinition<FormInputNodeData> = defineFromManifest(
+  formInputManifest as unknown as NodeManifest<FormInputNodeData>,
+  { panel: FormInputPanel }
+)
+
+// Back-compat re-exports so no panel or consumer import churns:
+export {
+  createFormInputDefaultData,
+  formInputNodeDataSchema,
+  validateFormInputData,
+} from '@auxx/lib/workflow-engine/client'
 
 /**
- * Zod schema for form-input node data
+ * Default configuration for new Form Input nodes
  */
-export const formInputNodeDataSchema = baseNodeDataSchema.extend({
-  label: z.string().min(1, 'Label is required'),
-  inputType: z.nativeEnum(BaseType).default(BaseType.STRING),
-  placeholder: z.string().optional(),
-  required: z.boolean().default(false),
-  defaultValue: z.any().optional(),
-  hint: z.string().max(500, 'Hint must be 500 characters or less').optional(),
-  typeOptions: typeOptionsSchema,
-})
-
-/**
- * Create default data for form-input node
- */
-export const createFormInputDefaultData = (): Partial<FormInputNodeData> => ({
-  title: 'Form Input',
-  desc: 'Collect input from user',
-  label: '',
-  inputType: BaseType.STRING,
-  placeholder: '',
-  required: false,
-})
-
-export const formInputDefaultData = createFormInputDefaultData()
-
-/**
- * Validate form-input node data
- */
-export function validateFormInputData(data: FormInputNodeData): ValidationResult {
-  const errors: Array<{ field: string; message: string; type?: 'warning' | 'error' }> = []
-
-  if (!data.label?.trim()) {
-    errors.push({ field: 'label', message: 'Label is required', type: 'error' })
-  }
-
-  // Type-specific validation
-  const inputType = data.inputType || BaseType.STRING
-
-  if (inputType === BaseType.ENUM) {
-    if (!data.typeOptions?.enum?.length) {
-      errors.push({
-        field: 'typeOptions.enum',
-        message: 'At least one option is required',
-        type: 'warning',
-      })
-    }
-  }
-
-  return {
-    isValid: errors.filter((e) => e.type === 'error').length === 0,
-    errors,
-  }
-}
-
-/**
- * Form Input node definition
- */
-export const formInputDefinition: NodeDefinition<FormInputNodeData> = {
-  id: NodeType.FORM_INPUT,
-  category: NodeCategory.INPUT,
-  displayName: 'Form Input',
-  description: 'Collect input from user (text, number, date, file, etc.)',
-  icon: 'text-cursor-input',
-  getIcon: (data: FormInputNodeData) => {
-    const inputType = data.inputType || BaseType.STRING
-    return VAR_TYPE_ICON_MAP[inputType] || 'text-cursor-input'
-  },
-  color: '#22C55E',
-  schema: formInputNodeDataSchema,
-  defaultData: formInputDefaultData,
-  canRunSingle: false,
-  panel: FormInputPanel,
-  validator: validateFormInputData,
-  outputVariables: getFormInputOutputVariables as any,
-}
+export const formInputDefaultData = formInputManifest.defaultData() as Partial<FormInputNodeData>
