@@ -3,7 +3,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, ilike } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import type { PgTableWithColumns } from 'drizzle-orm/pg-core'
 import type { Resource, ResourceField } from '../../resources'
 import { lookupEntitiesByFieldValue } from '../../resources/lookup'
@@ -120,9 +120,36 @@ async function findInSystemTable(
   const column = table[columnName]
   if (!column) return null
 
-  // Use ilike only for email fields (case-insensitive), eq for everything else (including id)
+  // Email compares case-insensitively; everything else (including id) is exact.
+  //
+  // `lower(col) = lower(value)`, NOT `ilike(col, value)`. ILIKE treats its right
+  // operand as a PATTERN, and the raw CSV cell is not one: `_` matches any single
+  // character and `%` any sequence. Underscores are ordinary in email local parts,
+  // so `john_smith@acme.com` used to match a stored `johnXsmith@acme.com` — and
+  // because this function decides create-vs-update, a false match makes the import
+  // UPDATE a different person's record instead of creating a new one. `.limit(1)`
+  // has no ORDER BY, so which row got clobbered was arbitrary. A wrong write, not
+  // a missed one.
+  //
+  // Custom entities never had this bug — they route through the shared lookup core
+  // (`findInCustomEntity`), which does typed column equality.
+  //
+  // ⚠️ NOTE (2026-08-16): no registry-shipped system resource currently REACHES this
+  // branch, so the fix above is defence-in-depth rather than a live repair. Both
+  // EMAIL-typed system identifier fields are blocked upstream by separate pre-existing
+  // bugs:
+  //   • `user`        — `schema.User` has NO `organizationId` column (users belong to
+  //                     an org through OrganizationMember), so the `eq(table.organizationId, …)`
+  //                     below renders EMPTY and Postgres rejects the statement outright
+  //                     (`where ( = $1 …)`, syntax error). User imports throw.
+  //   • `participant` — the registry maps its email field to `dbColumn: 'email'`, but
+  //                     `Participant` stores the address in `identifier`. `column` is
+  //                     therefore undefined and the function returns null before it
+  //                     ever compares — a silent, permanent no-match.
+  // Fixing either means a decision (join OrganizationMember for user scoping; correct
+  // or alias the participant column mapping), so both are left as-is and tracked.
   const isEmail = identifierField.type === BaseType.EMAIL
-  const compareOp = isEmail ? ilike(column, value) : eq(column, value)
+  const compareOp = isEmail ? eq(sql`lower(${column})`, value.toLowerCase()) : eq(column, value)
 
   const result = await db
     .select({ id: table.id })
