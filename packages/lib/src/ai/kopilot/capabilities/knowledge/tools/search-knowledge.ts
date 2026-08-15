@@ -1,11 +1,13 @@
 // packages/lib/src/ai/kopilot/capabilities/knowledge/tools/search-knowledge.ts
 
-import { schema } from '@auxx/database'
-import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { z } from 'zod'
 import type { ResolvedKnowledgeScope } from '../../../../../agents/resolve-knowledge-scope'
+import {
+  type KnowledgeSource,
+  knowledgeTargetsForSource,
+  resolveKnowledgeDatasetIds,
+} from '../../../../../datasets/resolve-knowledge-targets'
 import { SearchService } from '../../../../../datasets/services/search.service'
-import type { CapabilityView } from '../../../../../permissions/capabilities/capability-view'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { takeSample } from '../../../digests'
@@ -54,7 +56,8 @@ const MAX_RESULTS = 10
 const DEFAULT_RESULTS = 5
 const MAX_CONTENT_LENGTH = 1500
 
-type Source = 'kb' | 'rag' | 'both'
+/** Alias, not a copy — the two cannot drift. */
+type Source = KnowledgeSource
 
 /**
  * Unified hybrid search across KB-managed datasets (article embeddings) and
@@ -68,8 +71,9 @@ type Source = 'kb' | 'rag' | 'both'
  *  2. Agent retrieval scope (`knowledgeScope`, permissions v2 §1.2/1.3) —
  *     **relevance-by-design**, not a security boundary of its own: it's the
  *     agent author's choice of which of the org's *otherwise-accessible*
- *     knowledge this agent should draw from. Narrows `resolveDatasetIds`'
- *     dataset set (1a) and, for KB segments, narrows further at the article
+ *     knowledge this agent should draw from. Narrows
+ *     `resolveKnowledgeDatasetIds`' dataset set (1a) and, for KB segments,
+ *     narrows further at the article
  *     level via {@link isSegmentInKnowledgeScope} (1b) — a dataset in scope
  *     can still hold articles the scope excludes.
  *  3. Capability instance-access (`capabilities`, doc-14) — **security**.
@@ -86,7 +90,7 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
       keys: ['kb', 'dataset'],
       level: 'view',
       enforcement: 'enforced',
-      note: 'filterAccessibleDatasetIds → canViewInstance per kb/dataset, intersected with the agent’s knowledgeScope and clamped to PUBLIC articles on a visitor turn.',
+      note: 'resolveKnowledgeDatasetIds → canViewInstance per kb/dataset, intersected with the agent’s knowledgeScope and clamped to PUBLIC articles on a visitor turn.',
     },
     displayName: 'Search knowledge',
     toolsetSlug: 'auxx:knowledge',
@@ -208,16 +212,22 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
       const source: Source = isChat ? 'kb' : requestedSource
 
       try {
-        const datasetIds = await resolveDatasetIds({
-          db,
+        const resolved = await resolveKnowledgeDatasetIds(db, {
           organizationId: agentDeps.organizationId,
-          source,
-          knowledgeBaseId,
-          requestedDatasetIds,
+          targets: knowledgeTargetsForSource(source, knowledgeBaseId, requestedDatasetIds),
           publicOnly: isChat,
-          capabilities,
-          knowledgeScope,
+          // `capabilities: undefined` ⇒ unrestricted is the load-bearing
+          // convention for the headless construction sites that legitimately
+          // pass it (master-Kopilot job runs, pre-setup drafts — see
+          // `ToolDeps.capabilities`). Spelling it as `'unrestricted'` here
+          // preserves that exactly while removing the *implicit* fail-open arm
+          // from the resolver, so a new caller can no longer get an unfiltered
+          // retrieval set by forgetting the field.
+          capabilities: capabilities ?? 'unrestricted',
+          knowledgeScope: knowledgeScope ?? null,
         })
+        if (resolved.isErr()) throw resolved.error
+        const datasetIds = resolved.value
 
         if (datasetIds.length === 0) {
           return {
@@ -386,219 +396,4 @@ export function isSegmentInKnowledgeScope(
   if (meta.kbId !== undefined && scope.fullKbIds.has(meta.kbId)) return true
   if (meta.articleId !== undefined && scope.articleIds.has(meta.articleId)) return true
   return false
-}
-
-async function resolveDatasetIds(args: {
-  db: import('@auxx/database').Database
-  organizationId: string
-  source: Source
-  knowledgeBaseId?: string
-  requestedDatasetIds?: string[]
-  /** Chat clamp — restrict managed datasets to PUBLIC knowledge bases. */
-  publicOnly?: boolean
-  /** Resolved instance-access gate for the turn; absent ⇒ unrestricted. */
-  capabilities?: CapabilityView
-  /**
-   * Agent retrieval scope (permissions v2 §1.2/1.3). Intersected with the
-   * collected dataset ids below — narrows, never adds — before the
-   * capability instance-access filter runs. `null`/`undefined` ⇒ unrestricted
-   * and zero added I/O (a plain array filter, no extra query either way).
-   */
-  knowledgeScope?: ResolvedKnowledgeScope | null
-}): Promise<string[]> {
-  const {
-    db,
-    organizationId,
-    source,
-    knowledgeBaseId,
-    requestedDatasetIds,
-    publicOnly,
-    capabilities,
-    knowledgeScope,
-  } = args
-
-  const ids = await collectDatasetIds({
-    db,
-    organizationId,
-    source,
-    knowledgeBaseId,
-    requestedDatasetIds,
-    publicOnly,
-  })
-  // Cheap in-memory intersection, no I/O — runs before the capability filter's
-  // extra KB query so a scope that already narrows to nothing skips it
-  // entirely. Absent scope is a no-op pass-through.
-  const scoped = knowledgeScope ? ids.filter((id) => knowledgeScope.datasetIds.has(id)) : ids
-  return filterAccessibleDatasetIds(db, organizationId, scoped, capabilities)
-}
-
-async function collectDatasetIds(args: {
-  db: import('@auxx/database').Database
-  organizationId: string
-  source: Source
-  knowledgeBaseId?: string
-  requestedDatasetIds?: string[]
-  publicOnly?: boolean
-}): Promise<string[]> {
-  const { db, organizationId, source, knowledgeBaseId, requestedDatasetIds, publicOnly } = args
-
-  if (source === 'kb') {
-    return collectManagedDatasetIds(db, organizationId, knowledgeBaseId, publicOnly)
-  }
-  if (source === 'rag') {
-    const rows = await db
-      .select({ id: schema.Dataset.id })
-      .from(schema.Dataset)
-      .where(
-        and(
-          eq(schema.Dataset.organizationId, organizationId),
-          eq(schema.Dataset.isManaged, false),
-          requestedDatasetIds && requestedDatasetIds.length > 0
-            ? inArray(schema.Dataset.id, requestedDatasetIds)
-            : undefined
-        )
-      )
-    return rows.map((r) => r.id)
-  }
-  // both
-  const [kb, rag] = await Promise.all([
-    collectManagedDatasetIds(db, organizationId, knowledgeBaseId),
-    db
-      .select({ id: schema.Dataset.id })
-      .from(schema.Dataset)
-      .where(
-        and(
-          eq(schema.Dataset.organizationId, organizationId),
-          eq(schema.Dataset.isManaged, false),
-          requestedDatasetIds && requestedDatasetIds.length > 0
-            ? inArray(schema.Dataset.id, requestedDatasetIds)
-            : undefined
-        )
-      )
-      .then((rows) => rows.map((r) => r.id)),
-  ])
-  return [...new Set([...kb, ...rag])]
-}
-
-/**
- * Instance-access read gate for the searchable set (permissions v2 §3.3, doc-11
- * "Read = use in search/agents"). Every branch above funnels through here, so a
- * dataset the principal can't view — or a managed dataset whose backing KB the
- * principal can't view — never reaches `SearchService`.
- *
- * A KB-backed dataset is governed by its **KB** instance grant (that's the
- * container an admin actually shares); only standalone RAG datasets fall back
- * to the `dataset` key. Silent filter: an empty result is a normal empty search,
- * never a 403.
- *
- * Zero extra I/O when `capabilities` is absent — the whole function
- * short-circuits, so the un-threaded workflow AI node issues exactly the same
- * queries it does today.
- */
-async function filterAccessibleDatasetIds(
-  db: import('@auxx/database').Database,
-  organizationId: string,
-  datasetIds: string[],
-  capabilities?: CapabilityView
-): Promise<string[]> {
-  if (!capabilities || datasetIds.length === 0) return datasetIds
-
-  const kbRows = await db
-    .select({ id: schema.KnowledgeBase.id, datasetId: schema.KnowledgeBase.datasetId })
-    .from(schema.KnowledgeBase)
-    .where(eq(schema.KnowledgeBase.organizationId, organizationId))
-
-  const kbIdByDatasetId = new Map<string, string>()
-  for (const row of kbRows) {
-    if (row.datasetId) kbIdByDatasetId.set(row.datasetId, row.id)
-  }
-
-  return datasetIds.filter((datasetId) => {
-    const kbId = kbIdByDatasetId.get(datasetId)
-    return kbId
-      ? capabilities.canViewInstance('kb', kbId)
-      : capabilities.canViewInstance('dataset', datasetId)
-  })
-}
-
-async function collectManagedDatasetIds(
-  db: import('@auxx/database').Database,
-  organizationId: string,
-  knowledgeBaseId?: string,
-  publicOnly?: boolean
-): Promise<string[]> {
-  if (knowledgeBaseId) {
-    const [kb] = await db
-      .select({ datasetId: schema.KnowledgeBase.datasetId })
-      .from(schema.KnowledgeBase)
-      .where(
-        and(
-          eq(schema.KnowledgeBase.id, knowledgeBaseId),
-          eq(schema.KnowledgeBase.organizationId, organizationId),
-          // Chat clamp — an INTERNAL KB id resolves to no datasets.
-          publicOnly ? eq(schema.KnowledgeBase.visibility, 'PUBLIC') : undefined
-        )
-      )
-      .limit(1)
-    if (!kb) return []
-    const datasetIds = kb.datasetId ? [kb.datasetId] : []
-
-    // Federate: a source linked into this KB embeds its content once in its own hidden
-    // KB's dataset, so include those datasets here. Search stays embed-once.
-    const linkRows = await db
-      .selectDistinct({ sourceId: schema.ArticlePlacement.linkedFromSourceId })
-      .from(schema.ArticlePlacement)
-      .where(
-        and(
-          eq(schema.ArticlePlacement.knowledgeBaseId, knowledgeBaseId),
-          eq(schema.ArticlePlacement.organizationId, organizationId),
-          isNotNull(schema.ArticlePlacement.linkedFromSourceId)
-        )
-      )
-    const sourceIds = linkRows.map((r) => r.sourceId).filter((id): id is string => Boolean(id))
-    if (sourceIds.length > 0) {
-      const sources = await db
-        .select({ ownedKnowledgeBaseId: schema.KnowledgeSource.ownedKnowledgeBaseId })
-        .from(schema.KnowledgeSource)
-        .where(
-          and(
-            inArray(schema.KnowledgeSource.id, sourceIds),
-            eq(schema.KnowledgeSource.organizationId, organizationId)
-          )
-        )
-      const ownedKbIds = sources.map((s) => s.ownedKnowledgeBaseId)
-      if (ownedKbIds.length > 0) {
-        const ownedKbs = await db
-          .select({ datasetId: schema.KnowledgeBase.datasetId })
-          .from(schema.KnowledgeBase)
-          .where(inArray(schema.KnowledgeBase.id, ownedKbIds))
-        datasetIds.push(
-          ...ownedKbs.map((k) => k.datasetId).filter((id): id is string => Boolean(id))
-        )
-      }
-    }
-    return [...new Set(datasetIds)]
-  }
-  // Chat clamp — restrict to datasets backing PUBLIC knowledge bases (RAG
-  // datasets are excluded entirely by forcing source='kb' upstream). Internal
-  // callers get every managed dataset.
-  if (publicOnly) {
-    const rows = await db
-      .select({ datasetId: schema.KnowledgeBase.datasetId })
-      .from(schema.KnowledgeBase)
-      .where(
-        and(
-          eq(schema.KnowledgeBase.organizationId, organizationId),
-          eq(schema.KnowledgeBase.visibility, 'PUBLIC')
-        )
-      )
-    return rows.map((r) => r.datasetId).filter((id): id is string => Boolean(id))
-  }
-  const rows = await db
-    .select({ id: schema.Dataset.id })
-    .from(schema.Dataset)
-    .where(
-      and(eq(schema.Dataset.organizationId, organizationId), eq(schema.Dataset.isManaged, true))
-    )
-  return rows.map((r) => r.id)
 }

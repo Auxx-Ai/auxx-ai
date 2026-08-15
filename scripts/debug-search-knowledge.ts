@@ -1,10 +1,12 @@
 // scripts/debug-search-knowledge.ts
 //
-// Debug harness for the kopilot `search_knowledge` tool. Replicates the tool's
-// dataset-resolution logic from
-// packages/lib/src/ai/kopilot/capabilities/knowledge/tools/search-knowledge.ts
-// and calls SearchService directly so we can tweak knobs the tool hardcodes
+// Debug harness for the kopilot `search_knowledge` tool. Shares the tool's
+// dataset resolution (`resolveKnowledgeDatasetIds` in @auxx/lib/datasets) and
+// calls SearchService directly so we can tweak knobs the tool hardcodes
 // (similarity threshold, hybrid weights, search type, includeInactive).
+//
+// Runs unrestricted — no capability view, no knowledge scope — so it shows the
+// full candidate set, not what a given principal would see.
 //
 // Run with:
 //   pnpm dotenv -- npx tsx scripts/debug-search-knowledge.ts <flags>
@@ -30,10 +32,15 @@
 //   --raw-limit N        bypass the 10 cap (sets SearchService limit directly)
 
 import { closePools, database as db, schema } from '@auxx/database'
-import { SearchService } from '@auxx/lib/datasets'
-import { and, eq, inArray } from 'drizzle-orm'
+import {
+  type KnowledgeSource,
+  knowledgeTargetsForSource,
+  resolveKnowledgeDatasetIds,
+  SearchService,
+} from '@auxx/lib/datasets'
+import { eq } from 'drizzle-orm'
 
-type Source = 'kb' | 'rag' | 'both'
+type Source = KnowledgeSource
 
 interface Args {
   org?: string
@@ -203,70 +210,21 @@ async function listDatasets(organizationId: string) {
   }
 }
 
-/** Mirrors resolveDatasetIds() in search-knowledge.ts. */
-async function resolveDatasetIds(args: {
-  organizationId: string
-  source: Source
-  knowledgeBaseId?: string
-  requestedDatasetIds?: string[]
-}): Promise<string[]> {
-  const { organizationId, source, knowledgeBaseId, requestedDatasetIds } = args
-
-  const collectManaged = async () => {
-    if (knowledgeBaseId) {
-      const [kb] = await db
-        .select({ datasetId: schema.KnowledgeBase.datasetId })
-        .from(schema.KnowledgeBase)
-        .where(
-          and(
-            eq(schema.KnowledgeBase.id, knowledgeBaseId),
-            eq(schema.KnowledgeBase.organizationId, organizationId)
-          )
-        )
-        .limit(1)
-      return kb?.datasetId ? [kb.datasetId] : []
-    }
-    const rows = await db
-      .select({ id: schema.Dataset.id })
-      .from(schema.Dataset)
-      .where(
-        and(eq(schema.Dataset.organizationId, organizationId), eq(schema.Dataset.isManaged, true))
-      )
-    return rows.map((r) => r.id)
-  }
-
-  const collectRag = async () => {
-    const rows = await db
-      .select({ id: schema.Dataset.id })
-      .from(schema.Dataset)
-      .where(
-        and(
-          eq(schema.Dataset.organizationId, organizationId),
-          eq(schema.Dataset.isManaged, false),
-          requestedDatasetIds && requestedDatasetIds.length > 0
-            ? inArray(schema.Dataset.id, requestedDatasetIds)
-            : undefined
-        )
-      )
-    return rows.map((r) => r.id)
-  }
-
-  if (source === 'kb') return collectManaged()
-  if (source === 'rag') return collectRag()
-  const [kb, rag] = await Promise.all([collectManaged(), collectRag()])
-  return [...new Set([...kb, ...rag])]
-}
-
 async function runSearch(args: Args) {
   if (!args.org) throw new Error('--org is required for search')
   if (!args.query) throw new Error('--query is required for search')
 
-  const datasetIds = await resolveDatasetIds({
+  // The real resolver the tool uses — this script used to re-implement it and
+  // had already drifted (it never federated source-owned KB datasets).
+  // `'unrestricted'` is the deliberate debug-harness choice: no viewer.
+  const resolved = await resolveKnowledgeDatasetIds(db, {
     organizationId: args.org,
-    source: args.source,
-    knowledgeBaseId: args.kb,
-    requestedDatasetIds: args.datasets,
+    targets: knowledgeTargetsForSource(args.source, args.kb, args.datasets),
+    capabilities: 'unrestricted',
+    knowledgeScope: null,
   })
+  if (resolved.isErr()) throw resolved.error
+  const datasetIds = resolved.value
 
   console.log('---')
   console.log(`org:            ${args.org}`)
