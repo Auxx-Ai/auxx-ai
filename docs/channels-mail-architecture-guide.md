@@ -189,10 +189,20 @@ and maps the `provider` string onto the concrete class.
 | Map | File | Who reads it |
 | --- | --- | --- |
 | `PROVIDER_CAPABILITIES` | `providers/provider-capabilities.ts` | **the runtime matrix** — `canSend`, `canDraft`, `canApplyLabel`, `labelScope`, `maxAttachmentSize`, rate limits, `supportsPersonalConnection`, `supportsBidirectionalStatusSync`, `requiresSendReconciliation`, `triggersPostSendSync`, `countsAgainstOutboundEmailsQuota` |
-| `PLATFORM_CAPABILITIES` | `channels/capabilities.ts` | **the coarse LLM-facing map** — `channel: email\|messaging`, `newOutbound`, `threadReply`, `subject`, `ccBcc`, `recipientModel` |
+| `PLATFORM_CAPABILITIES` | `channels/capabilities.ts` | **the coarse LLM-facing map** — `channel: email\|messaging`, `channelGroup`, `newOutbound`, `threadReply`, `subject`, `ccBcc`, `recipientModel`, `identifierType` |
 
 The second exists so the agent tool catalog can describe a channel in one stanza; it is
 deliberately *not* the gate for runtime behavior. Gate on `PROVIDER_CAPABILITIES`.
+
+Two per-provider values on it are **declared, not derived**, and both exist because a derivation
+was tried and lost information:
+
+- **`identifierType`** — the `IdentifierType` a channel's `Participant` rows are keyed by.
+  `facebook` and `instagram` are both `thread_only` yet key on different id spaces.
+- **`channelGroup`** — the coarse channel a person names in a rule (`email` / `sms` / `whatsapp` /
+  `facebook` / `instagram` / `chat`). It is what the `channelType` condition compiles through
+  (§14). `undefined` means "not a conversation channel" and keeps `shopify` out of every channel
+  option list.
 
 ### Sync mode resolution
 `providers/sync-mode-resolver.ts`. `polling`/`webhook` pass through; `auto` resolves per provider:
@@ -598,6 +608,28 @@ without that, a member could list a row whose every field then redacts.
   regconfig or a dropped `COALESCE` silently drops to a sequential scan.
 - **Mail views** (`mail-views/`) are saved `ConditionGroup[]` filters over threads, compiled by the
   same builder and evaluated against the viewer.
+- **The field catalog is channel-aware, and it is ONE catalog.** `MAIL_VIEW_FIELD_DEFINITIONS`
+  serves the searchbar, mail views *and* mail filters, because all three compile through the one
+  builder. Three rules follow:
+  - `from` / `to` / `sender` are **address** fields, not email fields. They compile to
+    `ilike(Participant.identifier, …)` with **no `identifierType` predicate**, so
+    `from is +15102055536` is as valid as `from is ada@acme.com`. Never split them per channel and
+    never re-introduce an `@`-shaped test — the participant row already answers the question.
+  - `channelType` is how a rule says "SMS" on a **mixed** inbox (an inbox is a union of channel
+    types, not one type). It compiles to `Thread.integrationId IN (SELECT id FROM Integration
+    WHERE provider IN …)` over a `channelGroup`'s providers, and **deliberately does not filter
+    `Integration.deletedAt`** — disconnect is a soft delete, and the threads that channel
+    delivered are still in the inbox. It is the one channel query in the codebase that must not
+    carry `isNull(Integration.deletedAt)`.
+  - Scoping the catalog to an inbox's channels (`getMailFilterFields(identifierTypes, keep)`) is a
+    **soft, recomputed hide** — never persisted on the row, never applied to a field an existing
+    filter already uses, and it fails open when the channel list is unavailable.
+- **Filter values are normalised at authoring, not at compile** (`mail-filters/normalize-conditions.ts`).
+  A phone number typed `(510) 205-5536` compiles, saves and previews cleanly and then never fires:
+  never-matching is not dropping, so neither `assertFilterConditionsCompile` nor the fail-closed
+  `AND false` sees it. Exact operators on address fields go through the shared `formatPhoneNumber`
+  (the same E.164 normaliser as `fieldValueSchemas.phone`); `contains` / `starts with` /
+  `ends with` are left verbatim, because `starts with +1510` is an area-code rule.
 - **Counts** (`threads/mail-counts.ts`) are delta-maintained, not queried: one Redis hash per
   `(org, user)` with fields `inbox` / `drafts` / `si:{inboxId}` / `view:{viewId}`; mutations apply
   atomic `HINCRBY` deltas; a lazily-enqueued reconcile recounts from Postgres every ~5 min and
