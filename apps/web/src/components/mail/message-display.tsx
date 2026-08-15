@@ -40,6 +40,7 @@ import { api } from '~/trpc/react'
 import { ContactHoverCard } from '../contacts/contact-hover-card'
 import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
+import type { MessageType } from './email-editor/types'
 import { useHtmlBody } from './hooks/use-html-body'
 import { useRetrySend } from './hooks/use-retry-send'
 import { SendStatusIndicator } from './send-status-indicator'
@@ -47,6 +48,7 @@ import { supportsRichText } from './utils/channel-rich-text'
 import { initialsFor } from './utils/participant-initials'
 import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
 import { SandboxedEmailHtml } from './utils/sandboxed-email-html'
+import { toEditorMessage } from './utils/to-editor-message'
 
 interface MessageDisplayProps {
   /** Message ID to display */
@@ -86,7 +88,19 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
   const { markAsUnread } = useThreadReadStatus(message?.threadId ?? null)
 
   // Fetch sender participant using the new hook
-  const { from: sender } = useMessageParticipants(message?.participants ?? [])
+  const { from: sender, to, cc } = useMessageParticipants(message?.participants ?? [])
+
+  // The editor-shaped view of this message, for the reply/forward actions.
+  //
+  // `EmailDisplay` has always built this; the chat-bubble renderer passed the
+  // raw `MessageMeta` straight through instead, and `deriveInitialState` reads
+  // `sourceMessage.from` — a field `MessageMeta` does not have. So replying to
+  // any non-email message produced a composer with no recipient, no subject and
+  // no quoted body. Same shape, same helper, one source of truth.
+  const editorMessage: MessageType | null = useMemo(
+    () => (message ? toEditorMessage(message, { from: sender, to, cc }) : null),
+    [message, sender, to, cc]
+  )
 
   const { retry, isRetrying } = useRetrySend(message?.id)
 
@@ -192,9 +206,20 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
                   <div className='flex items-center'>
                     <MessageDropdownMenu
                       message={message}
+                      editorMessage={editorMessage}
                       emailActions={messageActions}
                       onMarkUnread={markAsUnread}
                     />
+                    <Button
+                      variant='ghost'
+                      size='icon'
+                      aria-label='Reply'
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (editorMessage) messageActions.onReply(editorMessage)
+                      }}>
+                      <Reply />
+                    </Button>
                   </div>
                 </div>
               )}
@@ -259,15 +284,23 @@ function MessageSkeleton() {
  */
 function MessageDropdownMenu({
   message,
+  editorMessage,
   emailActions,
   onMarkUnread,
 }: {
   message: MessageMeta
+  editorMessage: MessageType | null
   emailActions: EmailActions
   onMarkUnread: () => void
 }) {
   const handleSelect = (action: (msg: any) => void) => (event?: Event) => {
     action(message)
+  }
+
+  // Reply/forward need the editor shape; everything else (delete, print, copy
+  // id) acts on the raw message.
+  const handleEditorAction = (action: (msg: any) => void) => (event?: Event) => {
+    if (editorMessage) action(editorMessage)
   }
 
   return (
@@ -279,15 +312,15 @@ function MessageDropdownMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align='end' className='w-56'>
         <DropdownMenuGroup>
-          <DropdownMenuItem onSelect={handleSelect(emailActions.onReply)}>
+          <DropdownMenuItem onSelect={handleEditorAction(emailActions.onReply)}>
             <Reply className='opacity-60' />
             Reply
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleSelect(emailActions.onReplyAll)}>
+          <DropdownMenuItem onSelect={handleEditorAction(emailActions.onReplyAll)}>
             <ReplyAll className='opacity-60' />
             Reply all
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleSelect(emailActions.onForward)}>
+          <DropdownMenuItem onSelect={handleEditorAction(emailActions.onForward)}>
             <Forward className='opacity-60' />
             Forward
           </DropdownMenuItem>

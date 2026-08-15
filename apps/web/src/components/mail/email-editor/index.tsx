@@ -40,6 +40,7 @@ import {
   appendOptimisticMessage,
   toAttachmentMeta,
 } from '~/components/threads/hooks/append-optimistic-message'
+import { useThreadEnvelopeCounterparty } from '~/components/threads/hooks/use-thread-envelope-counterparty'
 import type { MessageMeta } from '~/components/threads/store/message-store'
 import { useParticipantStore } from '~/components/threads/store/participant-store'
 import { getThreadStoreState } from '~/components/threads/store/thread-store'
@@ -224,6 +225,32 @@ function ReplyComposeEditorComponent({
   const supportsAttachments = platformCaps ? platformCaps.attachments : true
   const maxMessageLength = platformCaps?.maxMessageLength
 
+  // Whether the From channel can be changed at all.
+  //
+  // A thread is a conversation on ONE channel. Its participants are identifiers
+  // in that channel's address space, so switching an SMS thread to an email
+  // channel does not produce an email to the same person — it produces a send
+  // with no valid recipient. The reply is pinned to the channel the thread
+  // arrived on.
+  //
+  // Email is the exception, and only within email: a mail thread can legitimately
+  // be answered from a different mailbox or alias (reply from support@ rather
+  // than the alias it landed on), so email threads keep a picker scoped to
+  // `'email'` — a different mailbox, never a different channel class.
+  //
+  // New compose is the only place a channel class is genuinely open, and it is
+  // the only caller that reaches `reconcileDraftForChannel`. An earlier draft of
+  // this design assumed reply mode was already pinned; it was not — the picker
+  // was live in every mode with `disabled={isSending}` as its only gate.
+  const isNewCompose = mode === 'new'
+  const canSwitchChannel = isNewCompose || isEmailChannel
+  const pinnedChannelLabel =
+    selectedChannel?.identifier ??
+    selectedChannelFromList?.identifier ??
+    selectedChannel?.email ??
+    selectedChannel?.name ??
+    'Unknown channel'
+
   // Every channel this org can send from, so a From switch can resolve the
   // INCOMING channel's capabilities (the memo above only covers the current
   // one). `integrations` is the new-compose fallback before the store hydrates.
@@ -297,6 +324,61 @@ function ReplyComposeEditorComponent({
       setIsDraftSaved(true) // Draft was loaded from server
     }
   }, [initialDraft, mode, thread, sourceMessage, integrations, presetValues])
+
+  // Seed the recipient on an always-on composer.
+  //
+  // A composer opened by clicking Reply on a message derives its recipient from
+  // that message. A conversational channel has no such click — the composer is
+  // simply there — so `reply` mode with no `sourceMessage` would otherwise render
+  // an empty To field on every SMS thread. Chat gets away with it only because
+  // `recipientModel: 'thread_only'` hides the field entirely and the server
+  // resolves the recipient from the thread; phone shows the field, so it has to
+  // be filled here.
+  //
+  // Deliberately NOT `sourceMessage.from`: on a thread whose last message is
+  // outbound that is US, which would address the reply to our own channel.
+  // `useThreadEnvelopeCounterparty` is the same selection the thread title uses, so the
+  // thread is addressed to exactly the person it is named after.
+  //
+  // Fires at most once per composer instance — clearing the chip is a deliberate
+  // act and must not be undone by a re-render.
+  // Only ever seed an identifier this channel can actually address. A thread's
+  // participant set is not guaranteed to be single-model: an outbound SMS records
+  // its FROM participant as the operator's login email today
+  // (`participant-service.findOrCreateParticipantForIntegration` reads only
+  // `Integration.email`, which is NULL on a phone channel), so counterparty
+  // selection can hand back an EMAIL participant on a phone thread. Seeding that
+  // would put an unsendable recipient in the To field and blame the user for it.
+  // Guarding on the channel's own model means the seed degrades to empty rather
+  // than to wrong.
+  const threadCounterparty = useThreadEnvelopeCounterparty(thread?.id)
+  const seededRecipientRef = useRef(false)
+  useEffect(() => {
+    if (seededRecipientRef.current || initialDraft || mode !== 'reply' || sourceMessage) return
+    if (!threadCounterparty) return
+    if (
+      threadCounterparty.identifierType !==
+      getIdentifierModel(platformCaps?.recipientModel).identifierType
+    ) {
+      return
+    }
+    seededRecipientRef.current = true
+    setRecipients((prev) =>
+      prev.TO.length > 0
+        ? prev
+        : {
+            ...prev,
+            TO: [
+              {
+                id: threadCounterparty.id,
+                identifier: threadCounterparty.identifier,
+                identifierType: threadCounterparty.identifierType,
+                name: threadCounterparty.name,
+              },
+            ],
+          }
+    )
+  }, [threadCounterparty, initialDraft, mode, sourceMessage, platformCaps?.recipientModel])
 
   // Defensive sync: if quickActions is empty but initialDraft has actions, restore them.
   // Covers the case where the draft prop arrives with richer data after initial mount.
@@ -1251,13 +1333,17 @@ function ReplyComposeEditorComponent({
               <div className='flex items-center gap-2 px-4 py-2'>
                 <span className='w-10 shrink-0 text-sm text-muted-foreground'>From:</span>
                 <div className='flex-1'>
-                  <ChannelPicker
-                    value={state.integrationId}
-                    onChange={handleIntegrationChange}
-                    disabled={isSending}
-                    scope='addressable'
-                    className={popoverZIndex}
-                  />
+                  {canSwitchChannel ? (
+                    <ChannelPicker
+                      value={state.integrationId}
+                      onChange={handleIntegrationChange}
+                      disabled={isSending}
+                      scope={isNewCompose ? 'addressable' : 'email'}
+                      className={popoverZIndex}
+                    />
+                  ) : (
+                    <Badge variant='user'>{pinnedChannelLabel}</Badge>
+                  )}
                 </div>
               </div>
               <Separator className='mx-4 w-auto' />
