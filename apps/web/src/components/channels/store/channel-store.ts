@@ -1,5 +1,6 @@
 // apps/web/src/components/channels/store/channel-store.ts
 
+import { type ChannelSelectionScope, canStartOutbound } from '@auxx/lib/channels/client'
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import { getIntegrationStatus } from '~/components/global/integration-status-utils'
@@ -9,9 +10,24 @@ export type Channel = RouterOutputs['channel']['list']['channels'][number]
 
 const EMPTY_CHANNELS: Channel[] = []
 
-// Provider groupings — mirror packages/lib/src/providers/query-helpers.ts `getEmailProviders()`
-// (omits IMAP, matching today's getEmailClients() behavior).
-const EMAIL_PROVIDERS = new Set(['google', 'outlook', 'mailgun', 'email'])
+/**
+ * Providers held back from every send surface regardless of what the capability
+ * map says.
+ *
+ * `imap` declares `newOutbound: true` (channels/capabilities.ts) and
+ * `canSend: true` (provider-capabilities.ts), but has been excluded from the
+ * send lists since `getEmailClients()` — IMAP is a receive protocol and sending
+ * needs SMTP. Neither capability flag has been verified against a live IMAP
+ * channel, so this stays a carve-out rather than a flip of the maps. One named
+ * constant instead of a hand-kept allowlist: when someone confirms IMAP send
+ * works, this is the single line to delete.
+ */
+const LEGACY_SEND_EXCLUDED = new Set(['imap'])
+
+function isSendable(provider: string, scope: ChannelSelectionScope): boolean {
+  return !LEGACY_SEND_EXCLUDED.has(provider) && canStartOutbound(provider, scope)
+}
+
 const MESSAGING_PROVIDERS = new Set([
   'facebook',
   'instagram',
@@ -70,9 +86,20 @@ export function getChannelStoreState() {
   return useChannelStore.getState()
 }
 
-/** Channels whose provider can send email (excludes IMAP). */
+/** Channels whose provider can send email (excludes IMAP — see `LEGACY_SEND_EXCLUDED`). */
 export const useEmailChannels = () =>
-  useChannelStore(useShallow((s) => s.channels.filter((c) => EMAIL_PROVIDERS.has(c.provider))))
+  useChannelStore(useShallow((s) => s.channels.filter((c) => isSendable(c.provider, 'email'))))
+
+/**
+ * Channels a human can start a NEW conversation on — email **and** phone.
+ *
+ * This is what the composer's From picker reads. Capability-derived rather
+ * than a hand-kept list: the old hardcoded `EMAIL_PROVIDERS` set is why a
+ * connected Quo/SMS channel could never be selected, which in turn made every
+ * `recipientModel === 'phone'` branch in the composer unreachable.
+ */
+export const useSendableChannels = (scope: ChannelSelectionScope = 'addressable') =>
+  useChannelStore(useShallow((s) => s.channels.filter((c) => isSendable(c.provider, scope))))
 
 /** Channels whose provider is messaging (chat, social DMs, SMS). */
 export const useMessagingChannels = () =>

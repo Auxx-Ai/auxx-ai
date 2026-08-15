@@ -1,6 +1,7 @@
 // apps/web/src/components/pickers/channel-picker.tsx
 'use client'
 
+import type { ChannelSelectionScope } from '@auxx/lib/channels/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
@@ -9,7 +10,7 @@ import { Star } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
-import { useEmailChannels } from '~/components/channels/store/channel-store'
+import { useSendableChannels } from '~/components/channels/store/channel-store'
 import { Tooltip } from '~/components/global/tooltip'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { useSettings } from '~/hooks/use-settings'
@@ -19,28 +20,49 @@ interface ChannelPickerProps {
   value: string
   onChange: (value: string) => void
   disabled?: boolean
+  /**
+   * Which channels to offer. Defaults to `'email'` so every existing caller
+   * (sequences, quotes/invoices, dispatch notifications) keeps its behaviour —
+   * those surfaces build a subject + HTML body and cannot degrade to SMS.
+   * The mail composer passes `'addressable'` to include phone channels.
+   */
+  scope?: ChannelSelectionScope
   /** Styling for the shared picker trigger. */
   triggerProps?: PickerTriggerOptions
   /** className forwarded to PopoverContent (e.g. for z-index override) */
   className?: string
 }
 
+/**
+ * What the user sees in the From row: the address the message will come FROM.
+ *
+ * `identifier` is the server-resolved sending identity (`channels/internal/
+ * identifier.ts`) — email for mail channels, `metadata.phoneNumber` for
+ * Quo/SMS, widget name for chat. Reading `email` first, as this did, renders an
+ * empty badge for a phone channel: an SMS `Integration` carries no `email`, and
+ * `name` is null on a channel the user never renamed.
+ */
+function channelLabel(channel: { identifier?: string; email?: string; name: string | null }) {
+  return channel.identifier || channel.email || channel.name || 'Unnamed channel'
+}
+
 export function ChannelPicker({
   value,
   onChange,
   disabled,
+  scope = 'email',
   triggerProps,
   className,
 }: ChannelPickerProps) {
   const router = useRouter()
-  const allChannels = useEmailChannels()
+  const allChannels = useSendableChannels(scope)
   // Example integrations are seeded placeholders — they can't actually send.
   // See plans/seeding/example-data-for-new-accounts.md §7a.
   const channels = useMemo(() => allChannels.filter((c) => !c.isExample), [allChannels])
 
   const { getSetting, updateUserSetting } = useSettings({})
   const defaultChannelId = getSetting('compose.defaultIntegrationId') as string | null
-  const resolvedDefault = useDefaultChannelId()
+  const resolvedDefault = useDefaultChannelId(scope)
 
   const [open, setOpen] = useState(false)
 
@@ -61,7 +83,7 @@ export function ChannelPicker({
     () =>
       channels.map((c) => ({
         value: c.id,
-        label: c.email || c.name,
+        label: channelLabel(c),
       })),
     [channels]
   )
@@ -71,7 +93,7 @@ export function ChannelPicker({
   }
 
   const selected = channels.find((c) => c.id === value)
-  const displayName = selected ? selected.email || selected.name : 'Select channel'
+  const displayName = selected ? channelLabel(selected) : 'Select channel'
 
   return (
     <Popover

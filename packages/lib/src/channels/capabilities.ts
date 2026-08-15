@@ -35,6 +35,30 @@ export interface PlatformCapabilities {
 }
 
 /**
+ * The subset of `PlatformCapabilities` the composer UI reads.
+ *
+ * Deliberately a `Pick`, never a second literal: a new channel type is
+ * described in exactly ONE place (`PLATFORM_CAPABILITIES` below), and the
+ * front end plucks what it needs. Widening this type is how a new UI
+ * affordance gets wired — adding a per-provider value anywhere else is how
+ * the two maps in `provider-capabilities.ts` and here drifted apart.
+ */
+export type ComposerCapabilities = Pick<
+  PlatformCapabilities,
+  'channel' | 'newOutbound' | 'threadReply' | 'subject' | 'ccBcc' | 'attachments' | 'recipientModel'
+>
+
+/**
+ * Which channels a From picker should offer.
+ *
+ * - `email` — email-shaped surfaces (sequences, quotes/invoices, dispatch
+ *   notifications). These build a subject + HTML body and cannot degrade.
+ * - `addressable` — anything a human can start a new conversation on by
+ *   typing an identifier. Email **and** phone.
+ */
+export type ChannelSelectionScope = 'email' | 'addressable'
+
+/**
  * Static capability map keyed by `IntegrationProviderType` enum values
  * (mirrors `packages/database/src/db/schema/_shared.ts`).
  */
@@ -172,4 +196,28 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     recipientModel: 'thread_only',
     notes: 'data-only integration, not a messaging channel',
   },
+}
+
+/** Plucks the composer-facing subset for one provider. `undefined` for an unknown provider. */
+export function getComposerCapabilities(provider: string): ComposerCapabilities | undefined {
+  return PLATFORM_CAPABILITIES[provider as IntegrationProviderTypeValue]
+}
+
+/**
+ * Can a channel of this provider be the From of a **new** outbound message?
+ *
+ * `newOutbound` alone is not enough: `chat` declares it but addresses a
+ * `platform_user`, which the composer has no input for — picking it would
+ * render a composer with no recipient field and no way to send. So the
+ * recipient model must also be one the composer can actually collect.
+ *
+ * Excluded by this rule today: `facebook`/`instagram` (`thread_only` — reply
+ * only, inside the 24h customer-service window), `chat` (`platform_user`),
+ * `shopify` (not a messaging channel at all).
+ */
+export function canStartOutbound(provider: string, scope: ChannelSelectionScope): boolean {
+  const caps = getComposerCapabilities(provider)
+  if (!caps?.newOutbound) return false
+  if (scope === 'email') return caps.recipientModel === 'email'
+  return caps.recipientModel === 'email' || caps.recipientModel === 'phone'
 }
