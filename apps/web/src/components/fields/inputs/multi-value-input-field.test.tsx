@@ -39,6 +39,11 @@ vi.mock('../property-provider', () => ({
 vi.mock('../field-navigation-context', () => ({
   useFieldNavigationOptional: () => null,
 }))
+// Reads the org settings blob off the dehydrated-state provider, which THROWS
+// outside its context — the wrappers call it for the phone arm's country.
+vi.mock('./use-org-business-country', () => ({
+  useOrgBusinessCountry: () => 'US',
+}))
 
 // Heavy siblings of the adapter's multi branch — not under test here.
 vi.mock('~/components/records/record-editor-dialog', () => ({
@@ -120,6 +125,44 @@ describe('MultiValueInputField (panel popover)', () => {
     })
     expect(h.ctx.commitValue).toHaveBeenCalledWith(['b@x.com', 'a@x.com'])
   })
+
+  // The server rewrites what it stores (E.164, lowercased email) and the
+  // provider re-derives `value` from the store. Without this sync the popover
+  // keeps showing what was TYPED until it is closed and reopened.
+  it('adopts the server-normalized list into an open popover', async () => {
+    h.ctx = makePropertyContext(['5102055536'])
+    const { rerender } = render(<MultiValueInputField />)
+    expect(screen.getByText('5102055536')).toBeInTheDocument()
+
+    // Same field, server echo with the normalized value.
+    h.ctx = { ...h.ctx, value: ['+15102055536'] }
+    rerender(<MultiValueInputField />)
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('+15102055536')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('5102055536')).not.toBeInTheDocument()
+  })
+
+  it('a debounce that already fired does not block a later sync', async () => {
+    h.ctx = makePropertyContext(['a@x.com'])
+    const { rerender } = render(<MultiValueInputField />)
+
+    await userEvent.type(screen.getByPlaceholderText('Search or add email...'), 'b@x.com')
+    await userEvent.click(screen.getByText(/^Add "/))
+    // Let the 300ms debounce fire on its own — this is what used to leave a
+    // dead timer id in the ref forever.
+    await vi.waitFor(() => {
+      expect(h.ctx.commitValue).toHaveBeenCalledWith(['a@x.com', 'b@x.com'])
+    })
+
+    h.ctx = { ...h.ctx, value: ['a@x.com', 'b@x.com', 'c@x.com'] }
+    rerender(<MultiValueInputField />)
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('c@x.com')).toBeInTheDocument()
+    })
+  })
 })
 
 describe('FieldInputAdapter — multi EMAIL branch (create dialog path)', () => {
@@ -148,5 +191,22 @@ describe('FieldInputAdapter — multi EMAIL branch (create dialog path)', () => 
     render(<FieldInputAdapter fieldType='EMAIL' value='a@x.com' onChange={vi.fn()} />)
     // The scalar branch renders a text input, not the picker trigger.
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  // The trigger chips used to render the raw stored string, so a correctly
+  // stored E.164 number ignored the field's own `phoneFormat` and read as
+  // `+15102055536` — inconsistent with DisplayPhone and the table cell.
+  it('display-formats multi PHONE chips per the field phoneFormat', () => {
+    render(
+      <FieldInputAdapter
+        fieldType='PHONE_INTL'
+        fieldOptions={{ multi: true, phoneFormat: 'international' }}
+        value={['+15102055536']}
+        onChange={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText('+1 510 205 5536')).toBeInTheDocument()
+    expect(screen.queryByText('+15102055536')).not.toBeInTheDocument()
   })
 })
