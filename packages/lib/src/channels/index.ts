@@ -10,6 +10,7 @@ export {
   type ComposerCapabilities,
   canStartOutbound,
   getComposerCapabilities,
+  identifierTypeForProvider,
   PLATFORM_CAPABILITIES,
   type PlatformCapabilities,
 } from './capabilities'
@@ -28,7 +29,13 @@ export {
   listManageableChannelIds,
   requireChannelManageAccess,
 } from './manage-access'
-export { buildOrgOwnEmailAddressSet } from './own-addresses'
+export {
+  buildOrgOwnEmailAddressSet,
+  buildOrgOwnIdentitySets,
+  isOwnChannelIdentity,
+  normalizeOwnIdentifier,
+  type OwnIdentitySets,
+} from './own-identities'
 export {
   claimPersonalInbox,
   deleteOwnPersonalInbox,

@@ -2,7 +2,7 @@
 
 import { randomBytes } from 'node:crypto'
 import { database as db, schema } from '@auxx/database'
-import { IntegrationProviderType } from '@auxx/database/enums'
+import { IdentifierType as IdentifierTypeEnum, IntegrationProviderType } from '@auxx/database/enums'
 import type { EmailLabel as EmailLabelType, IntegrationEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getAttachmentByteSize, sanitizeFilename, toGraphRecipients } from '@auxx/utils'
@@ -228,7 +228,7 @@ export class OutlookProvider
     for (const alias of (metadata as any)?.emailAliases ?? []) {
       if (typeof alias === 'string') ownEmails.push(alias)
     }
-    this.storageService.setOwnEmails(ownEmails)
+    this.storageService.setOwnIdentities({ [IdentifierTypeEnum.EMAIL]: ownEmails })
     // Received-time trigger cutoff (webhook-push-migration plan Phase 2.5): while the
     // initial backfill is incomplete, ingest suppresses message:received for mail
     // received before the connect epoch — regardless of which walker ingested it.

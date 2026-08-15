@@ -11,11 +11,13 @@ import type {
   ParticipantRole,
 } from '@auxx/database/types'
 import { and, eq, sql } from 'drizzle-orm'
+import { buildOrgOwnIdentitySets, isOwnChannelIdentity } from '../../channels/own-identities'
+import { classifyIsInternal } from '../../participants/classify-internal'
 import { getRealtimeService, publishParticipantUpdated } from '../../realtime'
 import type { ParticipantMeta } from '../../realtime/events'
 import { findOrCreateContactForParticipant } from '../contacts/find-or-create'
 import type { IngestContext } from '../context'
-import { extractRegistrableDomain, getOwnDomains, normalizeDomain } from '../domain/classifier'
+import { getOwnDomains } from '../domain/classifier'
 import { getInboxMeta } from '../inbox-meta'
 import type { ParticipantInputData } from '../types'
 import { calculateDisplayName, calculateInitials } from './display'
@@ -29,31 +31,42 @@ const OUTBOUND_RECIPIENT_ROLES: readonly ParticipantRole[] = [
 ]
 
 /**
- * Compute whether an email identifier belongs to the org. Returns true when
- * the address matches one of the active integration's own addresses
- * (`ctx.ownEmails`) OR sits on one of the organization's configured domains.
- * Returns false for non-email identifiers.
+ * Ingest's binding of the shared {@link classifyIsInternal} — supplies the
+ * per-batch caches so a batch of N participants doesn't re-read the org cache N
+ * times.
  *
- * `ctx.ownEmails` is checked first so single-mailbox orgs without
- * `Organization.domains` configured still recognize their own mailbox as
- * internal. The domain check is the broader, policy-level fallback and reuses
- * the per-batch `ownDomainsByOrg` cache to avoid repeated Redis reads.
+ * The classifier itself is shared with `participant-service.ts` on purpose:
+ * these two used to be separate implementations that disagreed (this one
+ * checked the integration's own addresses, that one only checked org domains),
+ * so the same address landed on different verdicts depending on whether it
+ * arrived through ingest or through the composer.
  */
-async function classifyIsInternal(
+async function classifyParticipantIsInternal(
   ctx: IngestContext,
   identifier: string,
   identifierType: IdentifierType
 ): Promise<boolean> {
-  if (identifierType !== IdentifierTypeEnum.EMAIL) return false
-  if (ctx.ownEmails.has(identifier.toLowerCase())) return true
-  const domain = extractRegistrableDomain(identifier)
-  if (!domain) return false
+  let ownIdentities = ctx.ownIdentitiesByOrg.get(ctx.organizationId)
+  if (!ownIdentities) {
+    // Lazy import, like `getCachedMembers` below: a static `../../cache` here
+    // widens the module graph enough to break collection in the ingest tests.
+    const { getOrgCache } = await import('../../cache')
+    ownIdentities = buildOrgOwnIdentitySets(await getOrgCache().get(ctx.organizationId, 'channels'))
+    ctx.ownIdentitiesByOrg.set(ctx.organizationId, ownIdentities)
+  }
   let ownDomains = ctx.ownDomainsByOrg.get(ctx.organizationId)
   if (!ownDomains) {
     ownDomains = await getOwnDomains(ctx.organizationId)
     ctx.ownDomainsByOrg.set(ctx.organizationId, ownDomains)
   }
-  return ownDomains.has(normalizeDomain(domain))
+  return classifyIsInternal({
+    organizationId: ctx.organizationId,
+    identifier,
+    identifierType,
+    contextIdentities: ctx.ownIdentities,
+    ownIdentities,
+    ownDomains,
+  })
 }
 
 /**
@@ -61,15 +74,23 @@ async function classifyIsInternal(
  * names for "us" are pinned to the member's profile rather than flip-flopping
  * with whatever name a given message header carried. Two-tier match:
  *   1. identifier == a member's login email → that member's `user.name`;
- *   2. else identifier ∈ `ctx.ownEmails` (an alias) and the triggering inbox is
- *      personal → resolve the inbox owner → that member's `user.name`.
+ *   2. else identifier is one of the active integration's own email identities
+ *      (an alias) and the triggering inbox is personal → resolve the inbox
+ *      owner → that member's `user.name`.
  * Returns null when no member name resolves (falls back to header-name policy).
  */
 async function resolveInternalMemberName(
   ctx: IngestContext,
   identifier: string,
+  identifierType: IdentifierType,
   inboxId?: string | null
 ): Promise<string | null> {
+  // EMAIL-only, and not an oversight: both tiers below map an ADDRESS onto a
+  // member profile. A phone channel identity has no member behind it — the
+  // number belongs to the org, not to a person — so there is nothing to pin and
+  // the provider-supplied name (or the formatted number) is the better label.
+  if (identifierType !== IdentifierTypeEnum.EMAIL) return null
+
   const lower = identifier.toLowerCase()
   const { getCachedMembers } = await import('../../cache')
   const members = await getCachedMembers(ctx.organizationId)
@@ -77,7 +98,7 @@ async function resolveInternalMemberName(
   const direct = members.find((m) => m.user?.email?.toLowerCase() === lower)
   if (direct?.user?.name) return direct.user.name
 
-  if (inboxId && ctx.ownEmails.has(lower)) {
+  if (inboxId && isOwnChannelIdentity(ctx.ownIdentities, lower, IdentifierTypeEnum.EMAIL)) {
     const meta = await getInboxMeta(ctx, inboxId)
     if (meta?.isPersonal && meta.ownerUserId) {
       const owner = members.find((m) => m.userId === meta.ownerUserId)
@@ -122,13 +143,17 @@ export async function findOrCreateParticipantRecord(
       !messageContext.isInbound &&
       OUTBOUND_RECIPIENT_ROLES.includes(messageContext.role)
 
-    const isInternal = await classifyIsInternal(ctx, normalizedIdentifier, identifierType)
+    const isInternal = await classifyParticipantIsInternal(
+      ctx,
+      normalizedIdentifier,
+      identifierType
+    )
 
     // Name policy (Gmail-parity plan Phase 4): pin internal participants to
     // their org-member profile name; otherwise use the header name. Falls back
     // to the header name when no member name resolves.
     const pinnedName = isInternal
-      ? await resolveInternalMemberName(ctx, normalizedIdentifier, inboxId)
+      ? await resolveInternalMemberName(ctx, normalizedIdentifier, identifierType, inboxId)
       : null
     const effectiveName = pinnedName ?? name
 
@@ -191,6 +216,15 @@ export async function findOrCreateParticipantRecord(
           // internal) message updates all three together — which also fixes
           // the stale-`initials` asymmetry the old per-field guards caused.
           ...(effectiveName !== null && { name: effectiveName, displayName, initials }),
+          // Unconditional last-writer-wins, unlike `name` above. `isInternal` is
+          // derived purely from org configuration (connected channels, org
+          // domains) and never from message content, so every recomputation is
+          // at least as good as the last. Omitting it here — which is what this
+          // upsert did until now — froze the column at its first write: adding
+          // an org domain or connecting a second channel silently never took
+          // effect on rows that already existed, and the `participant:updated`
+          // isInternal patch below could never fire.
+          isInternal,
           updatedAt: new Date(),
           // First-wins on the message timestamp: backfill batches arrive in
           // arbitrary order, so an older message must be able to claim "first"

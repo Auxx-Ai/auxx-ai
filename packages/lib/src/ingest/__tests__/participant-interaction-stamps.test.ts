@@ -28,6 +28,13 @@ vi.mock('../domain/classifier', () => ({
   normalizeDomain: (d: string) => d,
 }))
 vi.mock('../inbox-meta', () => ({ getInboxMeta: async () => null }))
+// `classifyIsInternal` resolves the org's own-channel identities from the
+// `channels` cache. No channels = nothing is ours, which is what these stamp
+// assertions want.
+vi.mock('../../cache', () => ({
+  getOrgCache: () => ({ get: async () => [] }),
+  getCachedMembers: async () => [],
+}))
 
 vi.mock('drizzle-orm', () => {
   const passthrough = (...a: unknown[]) => a
@@ -90,7 +97,8 @@ function makeCtx() {
   return {
     db,
     organizationId: 'org_1',
-    ownEmails: new Set<string>(),
+    ownIdentities: {},
+    ownIdentitiesByOrg: new Map(),
     ownDomainsByOrg: new Map<string, Set<string>>(),
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     socketId: undefined,

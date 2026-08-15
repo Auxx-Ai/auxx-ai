@@ -14,10 +14,15 @@ import {
   ParticipantRole as ParticipantRoleEnum,
   ThreadStatus,
 } from '@auxx/database/enums'
-import type { ThreadEntity as Thread } from '@auxx/database/types'
+import type {
+  IdentifierType as IdentifierTypeValue,
+  ThreadEntity as Thread,
+} from '@auxx/database/types'
+import type { OwnIdentitySets } from '../channels/own-identities'
 import {
   archiveThreadsByMessageExternalIds,
   batchStoreMessages,
+  buildOwnIdentitySets,
   createContactAfterOutboundMessage,
   createIngestContext,
   deleteMessagesByExternalIds,
@@ -26,7 +31,6 @@ import {
   type IngestContext,
   type IntegrationSettings,
   markThreadsSpamByMessageExternalIds,
-  normalizeOwnEmails,
   reopenThreadsByMessageExternalIds,
   setThreadReadStateByMessageExternalIds,
   storeMessage,
@@ -69,7 +73,7 @@ export class MessageStorageService {
   private integrationSettings?: IntegrationSettings
   private isInitialSync = false
   private backfillCutoffAt: Date | null = null
-  private ownEmails: Set<string> = new Set()
+  private ownIdentities: OwnIdentitySets = {}
   private readonly defaultOrganizationId?: string
 
   constructor(organizationId?: string) {
@@ -113,17 +117,24 @@ export class MessageStorageService {
   }
 
   /**
-   * Replace the set of "own" email addresses (`Integration.email` plus any
-   * verified send-as / alias addresses) used to classify message participants
-   * as internal. Providers should call this after `initialize()` so that
-   * self-addressed mail never produces a contact for the integration owner.
+   * Replace the identifiers that count as "us" for the active integration,
+   * bucketed by identifier type. Providers call this after `initialize()` so a
+   * message addressed to the channel's own identity never produces a Contact
+   * for the org itself.
+   *
+   * Email providers pass `{ EMAIL: [Integration.email, ...aliases] }`; the Quo
+   * provider passes `{ PHONE: [metadata.phoneNumber] }`. A provider that passes
+   * nothing leaves the classifier on its org-cache fallback, which is correct
+   * but one cache-refresh staler.
    */
-  setOwnEmails(emails: Iterable<string> | undefined): void {
-    const normalized = normalizeOwnEmails(emails)
-    this.ownEmails = normalized
+  setOwnIdentities(
+    identities: Partial<Record<IdentifierTypeValue, Iterable<string> | undefined>> | undefined
+  ): void {
+    const normalized = buildOwnIdentitySets(identities)
+    this.ownIdentities = normalized
     for (const ctxPromise of this.ctxByOrg.values()) {
       ctxPromise.then((ctx) => {
-        ctx.ownEmails = new Set(normalized)
+        ctx.ownIdentities = normalized
       })
     }
   }
@@ -280,7 +291,7 @@ export class MessageStorageService {
       integrationSettings: this.integrationSettings,
       isInitialSync: this.isInitialSync,
       backfillCutoffAt: this.backfillCutoffAt,
-      ownEmails: this.ownEmails,
+      ownIdentities: this.ownIdentities,
     })
     this.ctxByOrg.set(orgId, promise)
     return promise

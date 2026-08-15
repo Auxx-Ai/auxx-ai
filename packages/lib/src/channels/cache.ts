@@ -3,7 +3,7 @@
 import type { Database } from '@auxx/database'
 import { getOrgCache, onCacheEvent } from '../cache'
 import type { ChannelProviderType } from '../providers/types'
-import { buildOrgOwnEmailAddressSet } from './own-addresses'
+import { buildOrgOwnEmailAddressSet } from './own-identities'
 
 /**
  * Get cached provider map for an organization.

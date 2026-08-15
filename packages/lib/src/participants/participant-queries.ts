@@ -4,7 +4,8 @@ import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
-import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
+import { getCachedCustomFields, getCachedEntityDefId, getOrgCache } from '../cache'
+import { buildOrgOwnIdentitySets, isOwnChannelIdentity } from '../channels/own-identities'
 import { resolveChatAttributes } from '../chat/attribute-resolution'
 import { getChatThreadMetadata } from '../chat/metadata'
 import { BadRequestError, NotFoundError, UniqueValueConflictError } from '../errors'
@@ -74,6 +75,24 @@ export async function ensureContactForParticipant(
     throw new BadRequestError('Cannot create contact from spammer participant')
   }
 
+  // Live classification rather than the stored `Participant.isInternal`, so a
+  // row written before an org domain was added (or before a channel was
+  // connected) still can't be promoted into a contact for ourselves.
+  //
+  // `allowOwnDomain` is the caller's escape hatch for the org-domain rung
+  // specifically — a real person at your own company. It deliberately does NOT
+  // extend to a CHANNEL IDENTITY: "create a contact for our own support line"
+  // is never what anyone meant, on any channel.
+  const isOwnChannel = isOwnChannelIdentity(
+    buildOrgOwnIdentitySets(await getOrgCache().get(organizationId, 'channels')),
+    participant.identifier,
+    participant.identifierType
+  )
+  if (isOwnChannel) {
+    throw new BadRequestError(
+      "Cannot create contact for one of the organization's own channel identities"
+    )
+  }
   if (!options.allowOwnDomain && participant.identifierType === 'EMAIL') {
     const domain = extractRegistrableDomain(participant.identifier)
     if (domain) {

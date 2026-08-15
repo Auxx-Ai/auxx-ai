@@ -26,7 +26,7 @@ export { findOrCreateContactFromJwt } from './contacts/find-or-create-from-jwt'
 export { hasOrganizationSentToParticipant } from './contacts/has-sent-to'
 // Context
 export type { CreateIngestContextOptions, IngestContext } from './context'
-export { createIngestContext, normalizeOwnEmails, resetBatchCaches } from './context'
+export { buildOwnIdentitySets, createIngestContext, resetBatchCaches } from './context'
 export { deleteMessagesByExternalIds } from './delete-messages'
 export {
   classifyForCompany,

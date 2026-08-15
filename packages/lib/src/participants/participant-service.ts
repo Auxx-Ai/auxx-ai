@@ -4,12 +4,10 @@ import { type Database, database, schema } from '@auxx/database'
 import type { IdentifierType, ParticipantEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
+import { identifierTypeForProvider } from '../channels/capabilities'
+import { getIdentifier } from '../channels/internal/identifier'
 import { generateVisitorName } from '../chat/visitor-naming'
-import {
-  extractRegistrableDomain,
-  getOwnDomains,
-  normalizeDomain,
-} from '../ingest/domain/classifier'
+import { classifyIsInternal } from './classify-internal'
 import type { ParticipantIdentifierType, ParticipantMeta } from './client'
 
 const logger = createScopedLogger('participant-service')
@@ -44,18 +42,23 @@ export class ParticipantService {
   }
 
   /**
-   * Classify whether an email identifier belongs to the org's own domains.
-   * Returns false for non-email identifiers or when the domain can't be parsed.
+   * Classify whether an identifier is on the org's side of the conversation.
+   *
+   * Delegates to the shared {@link classifyIsInternal}. This used to be a
+   * private EMAIL-only implementation that checked org domains and nothing
+   * else, while ingest carried a second one that also checked the active
+   * integration's own addresses — so the same address could be classified
+   * differently depending on which path created the row.
    */
   private async _classifyIsInternal(
     identifier: string,
     identifierType: IdentifierType
   ): Promise<boolean> {
-    if (identifierType !== 'EMAIL') return false
-    const domain = extractRegistrableDomain(identifier)
-    if (!domain) return false
-    const ownDomains = await getOwnDomains(this.organizationId)
-    return ownDomains.has(normalizeDomain(domain))
+    return classifyIsInternal({
+      organizationId: this.organizationId,
+      identifier,
+      identifierType,
+    })
   }
 
   /**
@@ -135,6 +138,10 @@ export class ParticipantService {
         ...(name !== undefined && { name: name }),
         ...(displayName !== undefined && { displayName: displayName }),
         ...(initials !== undefined && { initials: initials }),
+        // Recomputed on every upsert — see the matching note in
+        // `ingest/participants/find-or-create.ts`. Derived from org config, not
+        // from message content, so last-writer-wins is always an improvement.
+        isInternal,
         updatedAt: new Date(),
       }
       const [participant] = await this.db
@@ -244,24 +251,41 @@ export class ParticipantService {
   }
 
   /**
-   * Finds or creates the Participant that represents an Integration's sending
-   * mailbox (e.g. `markus@auxx.ai`). This is the correct FROM identity for an
-   * outbound message — not the operator's login email, which may differ from
-   * the mailbox and would otherwise collapse onto a recipient participant.
+   * Finds or creates the Participant that represents a channel's own sending
+   * identity — the mailbox on an email channel (`markus@auxx.ai`), the phone
+   * number on an SMS one (`+18889155797`). This is the correct FROM identity
+   * for an outbound message: not the operator's login email, which may differ
+   * from the mailbox and would otherwise collapse onto a recipient participant.
    *
-   * Returns `null` for integrations without a mailbox address (e.g. `chat`),
-   * letting the caller fall back to the user-based participant.
+   * **This used to read `Integration.email` and hardcode `EMAIL`.** A Quo
+   * channel stores its identity in `metadata.phoneNumber` and leaves `email`
+   * NULL, so it returned null, `message-sender.service.ts` fell through its
+   * `??` to `findOrCreateParticipantForUser`, and every Auxx-composed SMS
+   * recorded the operator's *email address* as its sender — on a phone thread,
+   * in the phone thread's participant rollup, and permanently: the reconciler
+   * never rewrites participants, so the Quo echo doesn't correct it. The wire
+   * was always fine; only the DB row disagreed.
+   *
+   * Both halves come from the shared helpers so no per-provider knowledge lives
+   * here: `getIdentifier` picks the identity off the row, and
+   * `identifierTypeForProvider` says which id space it lives in.
+   *
+   * Returns `null` when the channel has no addressable identity of its own
+   * (`chat`, whose org side is the agent's user participant), letting the
+   * caller fall back to the user-based participant.
    *
    * @param integrationId - The integration the message is being sent from.
-   * @returns The mailbox Participant, or null if the integration has no email.
+   * @returns The channel-identity Participant, or null to fall back.
    */
   async findOrCreateParticipantForIntegration(
     integrationId: string
   ): Promise<ParticipantEntity | null> {
     const [integration] = await this.db
       .select({
+        provider: schema.Integration.provider,
         email: schema.Integration.email,
         name: schema.Integration.name,
+        metadata: schema.Integration.metadata,
         organizationId: schema.Integration.organizationId,
       })
       .from(schema.Integration)
@@ -280,12 +304,24 @@ export class ParticipantService {
       })
       return null
     }
-    // Providers without a mailbox address (e.g. chat) — caller falls back.
-    if (!integration.email) return null
+
+    const identifierType = identifierTypeForProvider(integration.provider)
+    // `chat` resolves to CHAT_VISITOR — an id space that only ever names the
+    // customer, never us — so there is no channel identity to mint. Same for a
+    // provider with no declared type at all (`shopify`, or an unknown one).
+    if (!identifierType || identifierType === 'CHAT_VISITOR') return null
+
+    const identifier = getIdentifier({
+      provider: integration.provider,
+      email: integration.email,
+      name: null, // never fall back to the channel's display name as an identifier
+      metadata: integration.metadata,
+    })
+    if (!identifier) return null
 
     return this.findOrCreateParticipant({
-      identifier: integration.email,
-      identifierType: 'EMAIL' as IdentifierType,
+      identifier,
+      identifierType: identifierType as IdentifierType,
       name: integration.name,
     })
   }

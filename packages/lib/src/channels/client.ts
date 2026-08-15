@@ -9,6 +9,7 @@ export {
   type ComposerCapabilities,
   canStartOutbound,
   getComposerCapabilities,
+  identifierTypeForProvider,
   PLATFORM_CAPABILITIES,
   type PlatformCapabilities,
 } from './capabilities'

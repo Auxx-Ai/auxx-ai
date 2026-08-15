@@ -36,6 +36,9 @@ const getCachedCustomFields = vi.fn()
 vi.mock('../../cache', () => ({
   getCachedEntityDefId: (...args: unknown[]) => getCachedEntityDefId(...args),
   getCachedCustomFields: (...args: unknown[]) => getCachedCustomFields(...args),
+  // The own-channel-identity guard reads the `channels` cache. No channels =
+  // no own identities, so every fixture participant stays promotable.
+  getOrgCache: () => ({ get: async () => [] }),
 }))
 
 import { ensureContactForParticipant } from '../participant-queries'

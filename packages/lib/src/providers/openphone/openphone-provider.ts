@@ -10,7 +10,7 @@
 
 import { mergeSecretFields, revealSecrets } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
-import { IntegrationProviderType } from '@auxx/database/enums'
+import { IdentifierType as IdentifierTypeEnum, IntegrationProviderType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import {
@@ -189,6 +189,13 @@ export class OpenPhoneProvider
     if (metadata.settings) {
       this.storageService.setIntegrationSettings(metadata.settings)
     }
+
+    // The "us" identity for a phone channel is its own number — the analogue of
+    // `Integration.email` on a mailbox. Without this the classifier stores our
+    // own number as an external participant, and since Quo channels provision
+    // with `recordCreation.mode: 'all'`, ingest would mint a Contact record for
+    // the org's own support line off the first message either direction.
+    this.storageService.setOwnIdentities({ [IdentifierTypeEnum.PHONE]: [this.phoneNumber] })
 
     // Received-time trigger cutoff: while the initial backfill is incomplete, ingest suppresses
     // `message:received` for messages received before the connect epoch. The stamp itself is
