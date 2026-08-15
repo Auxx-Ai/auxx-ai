@@ -186,7 +186,11 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
     requiresRecipients: true,
     countsAgainstOutboundEmailsQuota: false,
     triggersPostSendSync: false,
-    requiresSendReconciliation: false,
+    // TRUE and load-bearing — do not "simplify" this back to false. `POST /v1/messages` returns
+    // `conversationId`, and the thread-level reconciliation this flag gates is what stamps it onto
+    // `Thread.externalId` + `ThreadExternalKey`. SMS carries no subject and no Message-ID, so that
+    // key is the ONLY thing threading an inbound reply onto the conversation we started.
+    requiresSendReconciliation: true,
     supportsRichText: false,
   },
   [IntegrationProviderType.mailgun]: {

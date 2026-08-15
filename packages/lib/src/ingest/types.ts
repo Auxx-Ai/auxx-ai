@@ -29,7 +29,20 @@ export interface MessageAttachmentMeta {
 /** Structure for message data coming from provider conversion methods. */
 export interface MessageData {
   externalId: string
-  externalThreadId: string
+  /**
+   * The provider's conversation key, when it has one.
+   *
+   * **Optional on purpose.** Every write path already guards on it
+   * (`recordThreadExternalKey`, `resolveByAlias`, `reconcileIncomingSync`) because a provider can
+   * genuinely fail to supply one — Quo's message webhook carries no conversation id at all. The
+   * type used to claim `string` while the Quo mapper handed it `undefined`, which is how an
+   * un-threadable channel type-checked cleanly all the way to production.
+   *
+   * Absent means "cannot thread by conversation key": the Thread upsert inserts a NULL
+   * `externalId`, and since Postgres treats NULLs as distinct in the
+   * `(integrationId, externalId)` unique index, each such message opens its own thread.
+   */
+  externalThreadId?: string
   inboxId?: string
   integrationId: string
   organizationId: string

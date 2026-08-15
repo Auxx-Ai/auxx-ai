@@ -6,6 +6,7 @@ import { sql } from 'drizzle-orm'
 import type { IngestContext } from '../context'
 import { findOrCreateParticipantRecord } from '../participants/find-or-create'
 import { determineIdentifierType } from '../participants/normalize'
+import { defaultThreadSubject } from '../threads/default-subject'
 import type { MessageData } from '../types'
 
 /**
@@ -29,7 +30,10 @@ export async function storeIgnoredMessage(
       externalId: messageData.externalThreadId,
       integrationId: messageData.integrationId,
       organizationId: messageData.organizationId,
-      subject: messageData.subject ?? 'No Subject',
+      subject: defaultThreadSubject(
+        messageData.subject,
+        ctx.providerByIntegrationId.get(messageData.integrationId)
+      ),
       status: ThreadStatus.IGNORED,
       firstMessageAt: messageData.sentAt,
       lastMessageAt: messageData.sentAt,

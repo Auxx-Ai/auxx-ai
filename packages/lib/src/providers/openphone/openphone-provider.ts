@@ -248,8 +248,17 @@ export class OpenPhoneProvider
    * The wire shape is `{ content, from, to: string[] }` — `from` takes the E.164 number (or the
    * `PN…` id; `phoneNumberId` is deprecated) and `to` is an ARRAY of 1–10 recipients. Group SMS
    * therefore works: recipients are passed through rather than truncated to the first one.
+   *
+   * **Returns `threadId` = the response's `conversationId`, and that is load-bearing.** It is
+   * what `MessageReconcilerService` stamps onto `Thread.externalId` + `ThreadExternalKey`, which
+   * is in turn the only thing that lets the customer's reply land on this thread instead of
+   * opening a new one. Dropping it used to leave the outbound thread keyless until the
+   * `message.delivered` echo arrived — a race the customer wins whenever they reply inside a few
+   * seconds, which on a support line is the normal case.
    */
-  async sendMessage(options: SendMessageOptions): Promise<{ id?: string; success: boolean }> {
+  async sendMessage(
+    options: SendMessageOptions
+  ): Promise<{ id?: string; success: boolean; threadId?: string }> {
     await this.ensureInitialized()
 
     const requested = (Array.isArray(options.to) ? options.to : [options.to])
@@ -282,10 +291,11 @@ export class OpenPhoneProvider
       })
       logger.info('Quo SMS sent successfully', {
         messageId: sent.id,
+        conversationId: sent.conversationId,
         recipients: recipients.length,
         integrationId: this.integrationId,
       })
-      return { id: sent.id, success: true }
+      return { id: sent.id, success: true, threadId: sent.conversationId }
     } catch (error: any) {
       logger.error('Error sending Quo SMS', {
         error: error?.message,

@@ -36,6 +36,7 @@ import { findOrCreateParticipantRecord } from './participants/find-or-create'
 import { determineIdentifierType, normalizeIdentifier } from './participants/normalize'
 import { extractInternetMessageId } from './reconciliation/extract-internet-message-id'
 import { reconcileMessage } from './reconciliation/reconcile-message'
+import { defaultThreadSubject } from './threads/default-subject'
 import { resolveThreadId } from './threads/resolve-thread'
 import { updateThreadMetadataEfficient } from './threads/update-metadata'
 import type { IntegrationSettings, MessageData, ParticipantInputData } from './types'
@@ -502,7 +503,10 @@ export async function storeMessage(
             integrationId: messageData.integrationId,
             organizationId: messageData.organizationId,
             inboxId: resolvedInboxId,
-            subject: messageData.subject ?? 'No Subject',
+            subject: defaultThreadSubject(
+              messageData.subject,
+              ctx.providerByIntegrationId.get(messageData.integrationId)
+            ),
             status: newThreadStatus,
             firstMessageAt: messageData.sentAt,
             lastMessageAt: messageData.sentAt,

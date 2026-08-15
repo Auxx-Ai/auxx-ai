@@ -516,6 +516,15 @@ function ReplyComposeEditorComponent({
           messageType: 'EMAIL',
         }
         appendOptimisticMessage(utils, sentMessage.threadId, optimistic)
+
+        // A compose that opened a NEW thread has to refresh the thread list here, in the
+        // originating tab. The server's `thread:created` cannot do it: that publish carries
+        // `excludeSocketId` for this socket (self-echo suppression), so the one tab guaranteed to
+        // care is the one guaranteed not to be told. Cheap and idempotent on a reply, where the
+        // thread is already in the list.
+        if (!getThreadStoreState().getThread(sentMessage.threadId)) {
+          utils.thread.listIds.invalidate()
+        }
       }
 
       onSendSuccess()

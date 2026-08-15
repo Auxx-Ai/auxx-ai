@@ -994,11 +994,23 @@
       "import": "./dist/providers/index.mjs",
       "default": "./src/providers/index.ts"
     },
+    "./providers/openphone/deep-link": {
+      "types": "./src/providers/openphone/deep-link.ts",
+      "source": "./src/providers/openphone/deep-link.ts",
+      "import": "./dist/providers/openphone/deep-link.mjs",
+      "default": "./src/providers/openphone/deep-link.ts"
+    },
     "./providers/openphone/types": {
       "types": "./src/providers/openphone/types.ts",
       "source": "./src/providers/openphone/types.ts",
       "import": "./dist/providers/openphone/types.mjs",
       "default": "./src/providers/openphone/types.ts"
+    },
+    "./providers/openphone/webhook-message": {
+      "types": "./src/providers/openphone/webhook-message.ts",
+      "source": "./src/providers/openphone/webhook-message.ts",
+      "import": "./dist/providers/openphone/webhook-message.mjs",
+      "default": "./src/providers/openphone/webhook-message.ts"
     },
     "./quick-actions": {
       "types": "./src/quick-actions/index.ts",

@@ -48,6 +48,7 @@ import {
   useMessageParticipants,
   useThread,
   useThreadReadStatus,
+  useThreadRowSender,
   useThreadTitle,
 } from '~/components/threads/hooks'
 import { useThreadActions } from '~/components/threads/providers'
@@ -225,11 +226,13 @@ export const MailThreadItem = memo(function MailThreadItem({
   })
   // Below `full`, latestMessageId is redacted to null — fall back to the
   // thread-level envelope participants (metadata tier, present at every lens).
-  const {
-    from: senderParticipant,
-    to: toParticipants,
-    cc: ccParticipants,
-  } = useMessageParticipants(latestMessage?.participants ?? thread?.participants ?? [])
+  const rowParticipantIds = useMemo(
+    () => latestMessage?.participants ?? thread?.participants ?? [],
+    [latestMessage?.participants, thread?.participants]
+  )
+  // The literal FROM, kept for the spam/processing menu — that one acts on whoever actually sent
+  // the message, which is a different question from who the row is named after.
+  const { from: senderParticipant } = useMessageParticipants(rowParticipantIds)
   const { isUnread: readStatusUnread, markAsRead } = useThreadReadStatus(threadId)
 
   // Redacted rendering (mail-permissions): below `full` the row never looks
@@ -366,17 +369,9 @@ export const MailThreadItem = memo(function MailThreadItem({
       : ''
   }, [thread?.lastMessageAt])
 
-  // Show the counterparty, not the owner: when the latest message's FROM is
-  // internal (owner-sent thread), display the first external recipient instead.
-  // Only the latest message is loaded here — no per-row messages fetch — so we
-  // scan its FROM/TO/CC and keep FROM when the thread is internal-only.
-  const displaySender = useMemo(() => {
-    if (senderParticipant && !senderParticipant.isInternal) return senderParticipant
-    const external = [senderParticipant, ...toParticipants, ...ccParticipants].find(
-      (p) => p && !p.isInternal
-    )
-    return external ?? senderParticipant ?? null
-  }, [senderParticipant, toParticipants, ccParticipants])
+  // Show the counterparty, not the owner. Shared with `CompactThreadItem` — see
+  // `useThreadRowSender` for why this is a hook and not a block of code in here.
+  const displaySender = useThreadRowSender(rowParticipantIds)
   const senderName = displaySender?.displayName ?? 'Unknown'
 
   // On subject-less channels (SMS/WhatsApp/DMs) the title slot falls back to
