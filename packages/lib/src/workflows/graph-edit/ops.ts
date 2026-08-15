@@ -17,14 +17,14 @@
  */
 
 import type { Database } from '@auxx/database'
-import { incrementTitle } from '@auxx/utils'
+import { incrementTitle, nextKeyAfter } from '@auxx/utils'
 import { generateId } from '@auxx/utils/generateId'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError, ConflictError, NotFoundError } from '../../errors'
 import { LOOP_HANDLES } from '../../workflow-engine/catalog/nodes/loop'
 import { getAuthorableManifests, getManifest } from '../../workflow-engine/catalog/registry'
 import { resolveGraphOutputs } from '../../workflow-engine/catalog/resolve-outputs'
-import type { NodeManifest } from '../../workflow-engine/catalog/types'
+import { NodeCategory, type NodeManifest } from '../../workflow-engine/catalog/types'
 import type { UnifiedVariable } from '../../workflow-engine/types/unified-variable'
 import { assertMailTriggerNotPersonal } from '../mail-trigger-guard'
 import { calculateContainerSize, getLayoutByDagre, getLayoutForChildNodes } from './layout'
@@ -40,6 +40,7 @@ import {
   DEFAULT_NODE_SIZE,
   findNearestEmptySpace,
   placeAfter,
+  placeAsInput,
   placeInside,
   placeStandalone,
 } from './place-node'
@@ -330,6 +331,53 @@ function updateInputNodes(
   })
 }
 
+/**
+ * The nodes already wired into `targetId` on the input handle, in graph order.
+ * Read off the EDGES rather than `data.inputNodes` — the edge is the contract
+ * the validator and the engine both judge, the list is cosmetic parity.
+ */
+function wiredInputNodes(nodes: GraphNode[], edges: GraphEdge[], targetId: string): GraphNode[] {
+  const sources = new Set(
+    edges
+      .filter(
+        (e) =>
+          e.target === targetId &&
+          (e.targetHandle ?? 'target') === INPUT_WIRING_HANDLES.targetHandle
+      )
+      .map((e) => e.source)
+  )
+  return nodes.filter((n) => sources.has(n.id))
+}
+
+/**
+ * The next run-form `position` for a field joining `existingInputs` — the
+ * fractional index (`generateKeyBetween`) that orders fields on the manual
+ * trigger's form, NOT a canvas coordinate. Without it every agent-created field
+ * lands `position: undefined` and the connected-inputs editor sorts them
+ * unstably (its comparator returns 0 for two undefineds).
+ *
+ * `nextKeyAfter` rather than the strict `generateKeyBetween`: a legacy or
+ * hand-edited node can carry a corrupt key, and the strict call throws on one,
+ * which would poison every later insert into the same form.
+ */
+function nextInputPosition(existingInputs: GraphNode[]): string {
+  const positions = existingInputs
+    .map((n) => n.data?.position)
+    .filter((p): p is string => typeof p === 'string' && p !== '')
+    .sort((a, b) => a.localeCompare(b))
+  return nextKeyAfter(positions.at(-1) ?? null)
+}
+
+/**
+ * Whether a node type's config schema declares the run-form `position` key, so
+ * only types that order themselves on a form get one assigned. Read off the
+ * manifest's own schema — never a node-type string match.
+ */
+function declaresRunFormPosition(manifest: NodeManifest<any>): boolean {
+  const shape = (manifest.configSchema as unknown as { shape?: Record<string, unknown> }).shape
+  return typeof shape === 'object' && shape !== null && 'position' in shape
+}
+
 /** Fresh node data — NodeFactory parity (defaults under config, identity on top). */
 function buildNodeData(
   manifest: NodeManifest<any>,
@@ -386,6 +434,14 @@ export interface AddNodeInput extends GraphMutationScope {
   branch?: string
   /** Loop container to place the node inside (title or id). */
   inside?: string
+  /**
+   * Node whose run form this node adds a field to (title or id) — the BACKWARDS
+   * input wiring (`form-input --input-output--> manual --input`). Mutually
+   * exclusive with `after`/`inside`: `after` connects FROM the anchor TO the new
+   * node, which is the wrong direction for an input, and an input node is never
+   * a loop child.
+   */
+  inputFor?: string
   /** Explicit canvas position — omitted, the §4 placement rules decide. */
   position?: Point
 }
@@ -396,7 +452,10 @@ export interface AddNodeInput extends GraphMutationScope {
  * written on the branch handle resolved through
  * `manifest.connection.branches`. With `inside`, the node is contained in the
  * loop (top-level `parentId`, parent-relative position, loop-start edge for
- * the first child, container resized to fit). Existing nodes never move.
+ * the first child, container resized to fit). With `inputFor`, an INPUT-category
+ * node attaches to a node that declares `acceptsInputNodes` — the edge runs
+ * backwards on the input handles, the node lands in the target's input column
+ * and gets the next run-form `position`. Existing nodes never move.
  */
 export async function addNode(
   db: Database,
@@ -408,6 +467,51 @@ export async function addNode(
     const manifest = manifestResult.value
 
     const { nodes, edges } = ctx.graph
+
+    // Input wiring is its own attachment mode — the edge runs backwards, so
+    // combining it with a forward `after` (or with loop containment) describes
+    // no graph the canvas can draw.
+    if (params.inputFor !== undefined && params.after !== undefined) {
+      return err(
+        new BadRequestError(
+          '`inputFor` and `after` cannot be combined — `after` connects FROM a predecessor TO the ' +
+            'new node, while `inputFor` attaches the new node BACKWARDS onto the run form of the ' +
+            'node it names. Pick one.'
+        )
+      )
+    }
+    if (params.inputFor !== undefined && params.inside !== undefined) {
+      return err(
+        new BadRequestError(
+          '`inputFor` and `inside` cannot be combined — an input node declares a field on a ' +
+            "trigger's run form and is never a loop body node."
+        )
+      )
+    }
+
+    // Resolve the input-wiring target: it must DECLARE that it accepts inputs.
+    // (The other half of the rule — that the node being added is an INPUT-
+    // category type — is checked below, once the node exists, through the same
+    // `isInputNodePair` the validator judges the persisted graph with.)
+    let inputTarget: GraphNode | undefined
+    if (params.inputFor !== undefined) {
+      const resolved = resolveNodeRef(nodes, params.inputFor)
+      if (resolved.isErr()) return err(resolved.error)
+      inputTarget = resolved.value.node as GraphNode
+      if (getManifest(nodeType(inputTarget))?.connection.acceptsInputNodes !== true) {
+        const accepting = getAuthorableManifests()
+          .filter((m) => m.connection.acceptsInputNodes === true)
+          .map((m) => m.id)
+          .sort()
+          .join(', ')
+        return err(
+          new BadRequestError(
+            `Node ${describeNode(inputTarget)} does not take input nodes — only a node with a run ` +
+              `form does. Node types that accept inputs: ${accepting || 'none'}.`
+          )
+        )
+      }
+    }
 
     // Resolve containment and/or the predecessor connection.
     let parentId: string | undefined
@@ -458,12 +562,20 @@ export async function addNode(
         : manifest.displayName)
     const title = uniqueTitle(baseTitle, nodes)
 
+    // The fields already on the target's run form — both the placement stack
+    // and the fractional `position` order are derived from them.
+    const existingInputs = inputTarget
+      ? wiredInputNodes(nodes as GraphNode[], edges, inputTarget.id)
+      : []
+
     // §4 placement — existing nodes never move; only the new node is placed.
     const parent = parentId ? nodes.find((n) => n.id === parentId) : undefined
     let position = params.position
     let resizedParent: GraphNode | undefined
     if (!position) {
-      if (parent) {
+      if (inputTarget) {
+        position = placeAsInput(inputTarget, existingInputs)
+      } else if (parent) {
         const children = nodes.filter((n) => n.parentId === parent.id)
         const anchor = connection ? nodes.find((n) => n.id === connection.sourceNodeId) : undefined
         if (anchor && anchor.id !== parent.id) {
@@ -491,6 +603,13 @@ export async function addNode(
       }
     }
 
+    // Run-form order: the field joins the end of the target's form unless the
+    // caller pinned a `position` itself.
+    const runFormPosition =
+      inputTarget && normalized.config.position === undefined && declaresRunFormPosition(manifest)
+        ? { position: nextInputPosition(existingInputs) }
+        : {}
+
     const newNode: GraphNode = {
       id: nodeId,
       type: params.type === 'note' ? 'note' : 'standard',
@@ -499,23 +618,57 @@ export async function addNode(
       width: DEFAULT_NODE_SIZE.width,
       height: DEFAULT_NODE_SIZE.height,
       selected: false,
-      data: buildNodeData(manifest, nodeId, normalized.config, {
-        title,
-        ...(parentId ? { loopId: parentId } : {}),
-      }),
+      data: buildNodeData(
+        manifest,
+        nodeId,
+        { ...normalized.config, ...runFormPosition },
+        {
+          title,
+          ...(parentId ? { loopId: parentId } : {}),
+        }
+      ),
+    }
+
+    // The other half of the input-wiring rule, asked of the real node through
+    // the one predicate `validateGraphStructure` uses — so this can never mint
+    // an edge the validator would then reject.
+    if (inputTarget && !isInputNodePair(newNode, inputTarget)) {
+      const inputTypes = getAuthorableManifests()
+        .filter((m) => m.category === NodeCategory.INPUT)
+        .map((m) => m.id)
+        .sort()
+        .join(', ')
+      return err(
+        new BadRequestError(
+          `Node type "${params.type}" is not an input node, so it cannot be attached to the run ` +
+            `form of ${describeNode(inputTarget)}. Use \`inputFor\` only for input node types: ` +
+            `${inputTypes || 'none'}. To connect "${params.type}" downstream of a node, use \`after\`.`
+        )
+      )
     }
 
     const newEdges: GraphEdge[] = []
-    if (connection) {
+    if (inputTarget) {
+      const handles = resolveEdgeHandles(newNode, inputTarget, 'source')
+      newEdges.push(makeEdge(nodeId, handles.sourceHandle, inputTarget.id, handles.targetHandle))
+    } else if (connection) {
       newEdges.push(makeEdge(connection.sourceNodeId, connection.sourceHandle, nodeId, 'target'))
     } else if (parent && nodes.every((n) => n.parentId !== parent.id)) {
       // First child of a loop: the canvas wires loop-start → first body node.
       newEdges.push(makeEdge(parent.id, LOOP_HANDLES.LOOP_START, nodeId, 'target'))
     }
 
-    const nextNodes = nodes.map((n) =>
+    let nextNodes = nodes.map((n) =>
       resizedParent && n.id === resizedParent.id ? resizedParent : n
     )
+    if (inputTarget) {
+      // Canvas parity: the target lists the input nodes wired into it.
+      nextNodes = updateInputNodes(
+        nextNodes as GraphNode[],
+        (current) => (current.includes(nodeId) ? current : [...current, nodeId]),
+        { onlyNodeId: inputTarget.id }
+      )
+    }
     return ok({
       graph: {
         nodes: [...nextNodes, newNode],

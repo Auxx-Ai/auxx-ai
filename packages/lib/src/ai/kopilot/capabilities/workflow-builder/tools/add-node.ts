@@ -12,9 +12,9 @@ import { optionalRecord, optionalString, resolveWorkflowWrite } from './write-to
 
 /**
  * Add one node to the open workflow's draft. Thin wrapper over graph-edit
- * `addNode` — placement, branch resolution, containment, normalization and
- * validation all live there. Non-authorable types are refused by graph-edit
- * with an honest error naming the type and the authorable set.
+ * `addNode` — placement, branch resolution, containment, input wiring,
+ * normalization and validation all live there. Non-authorable types are refused
+ * by graph-edit with an honest error naming the type and the authorable set.
  */
 export function createAddNodeTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -23,7 +23,7 @@ export function createAddNodeTool(getDeps: GetToolDeps): AgentToolDefinition {
     displayName: 'Add workflow node',
     surfaces: ['builder'],
     description:
-      'Add one node to the open workflow draft. Connect it with `after` (predecessor title) and optionally `branch` (branch NAME of the predecessor); place it inside a loop with `inside` (loop title). Do not send coordinates — layout is automatic. The result returns the node, its resolved outputs (wire `{{Title.path}}` refs from these), and any issues.',
+      'Add one node to the open workflow draft. Connect it with `after` (predecessor title) and optionally `branch` (branch NAME of the predecessor); place it inside a loop with `inside` (loop title); attach an input node (form-input) to a trigger’s run form with `inputFor` (trigger title). Do not send coordinates — layout is automatic. The result returns the node, its resolved outputs (wire `{{Title.path}}` refs from these), and any issues.',
     parameters: {
       type: 'object',
       properties: {
@@ -42,6 +42,11 @@ export function createAddNodeTool(getDeps: GetToolDeps): AgentToolDefinition {
         after: { type: 'string', description: 'Predecessor node (title) to connect from.' },
         branch: { type: 'string', description: 'Branch NAME of `after` to leave on.' },
         inside: { type: 'string', description: 'Loop node (title) to place this node inside.' },
+        inputFor: {
+          type: 'string',
+          description:
+            'Trigger node (title) whose RUN FORM this node adds a field to — for input node types (form-input) only. The edge runs backwards into the trigger, so this replaces the old two-step of add_node followed by connect_nodes FROM the field TO the trigger. Cannot be combined with `after` or `inside`.',
+        },
       },
       required: ['type'],
       additionalProperties: false,
@@ -70,6 +75,7 @@ export function createAddNodeTool(getDeps: GetToolDeps): AgentToolDefinition {
         ...(optionalString(args.after) ? { after: optionalString(args.after) } : {}),
         ...(optionalString(args.branch) ? { branch: optionalString(args.branch) } : {}),
         ...(optionalString(args.inside) ? { inside: optionalString(args.inside) } : {}),
+        ...(optionalString(args.inputFor) ? { inputFor: optionalString(args.inputFor) } : {}),
       })
       return mutationToToolResult(result, (value) =>
         value.applied ? `Added ${value.node?.title ?? type}` : `Add ${type} blocked`

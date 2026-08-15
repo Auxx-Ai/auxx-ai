@@ -465,9 +465,12 @@ export const formInputManifest: NodeManifest<FormInputNodeData> = {
     authorable: true,
     usage:
       'Declares ONE field on a manual trigger’s run form. This node never runs on its own — ' +
-      'it only has an effect once it is connected to a `manual` trigger, so always follow it ' +
-      'with connect_nodes FROM the form-input node TO the trigger (the edge runs backwards, ' +
-      'into the trigger). A form-input node that is not connected to a trigger does nothing. ' +
+      'it only has an effect once it is attached to a `manual` trigger, so add it with ' +
+      'add_node({ type: "form-input", inputFor: "<trigger title>" }), which creates the field ' +
+      'and wires it onto that trigger’s run form in ONE call (the edge runs backwards, into ' +
+      'the trigger). Use connect_nodes FROM the form-input node TO the trigger only to attach a ' +
+      'form-input that already exists and is not wired up. A form-input node that is not ' +
+      'attached to a trigger does nothing. ' +
       '`label` is what the person filling the form sees and is required. `inputType` is one of ' +
       'string, number, boolean, email, url, phone, date, datetime, time, enum, file, currency, ' +
       'address, tags, array — it decides both the form control and the variables the node ' +
@@ -479,7 +482,7 @@ export const formInputManifest: NodeManifest<FormInputNodeData> = {
       '`multiline` / `minLength` / `maxLength`.',
     examples: [
       {
-        description: 'A required single-line text field (connect it to the manual trigger next)',
+        description: 'A required single-line text field (add it with inputFor: the trigger title)',
         config: {
           title: 'Ticket Subject',
           label: 'Subject',

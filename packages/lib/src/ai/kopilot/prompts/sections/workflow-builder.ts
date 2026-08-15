@@ -53,6 +53,7 @@ export function buildWorkflowBuilderPromptSection(): string {
       '  - update_node(ref: "Send Email", config: { subject: "Order {{Find Order.record.number}} update" })',
       '  - get_node(ref: "AI Agent") → update_node(ref: "AI Agent", expectedConfigHash: "<returned configHash>", patches: [{ op: "set", path: ["model", "completion_params", "temperature"], value: 0.2 }])',
       '  - add_node(type: "crud", title: "Create Task", inside: "For Each Line Item", config: { … "{{For Each Line Item.item.name}}" … })',
+      '  - add_node(type: "form-input", title: "Ticket Subject", description: "The subject the agent types when starting the workflow", inputFor: "Manual Trigger", config: { label: "Subject", inputType: "string", required: true })',
       '  - connect_nodes(from: "Summarize Email", to: "Save Summary")',
     ].join('\n'),
 

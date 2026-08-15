@@ -1,14 +1,17 @@
 // packages/lib/src/workflows/graph-edit/__tests__/input-wiring.test.ts
 
 /**
- * Input wiring (`plans/kopilot/workflow/15-form-input-migration.md` §2/§4a/§5):
+ * Input wiring (`plans/kopilot/workflow/15-form-input-migration.md` §2/§4/§5):
  * a `form-input` node attaches to a `manual` trigger with a BACKWARDS edge on
  * two non-standard handles (`input-output` → `input`). Three structural rules
  * used to reject that shape outright, which made every workflow containing a
  * form-input node — and `apply_template('manual-ticket-triage')` — un-editable.
  *
  * These tests pin BOTH directions: the wiring validates and round-trips, and
- * the rules it excepts still fire for everything else.
+ * the rules it excepts still fire for everything else. §4b adds the one-call
+ * authoring path — `addNode({ inputFor })` — where the writer must produce
+ * exactly the graph shape the first block accepts, place the field in the
+ * trigger's input column, and give it a run-form `position`.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -38,8 +41,12 @@ vi.mock('../../mail-trigger-guard', () => ({
   assertMailTriggerNotPersonal: (...args: unknown[]) => mailGuard(...args),
 }))
 
-const { applyTemplate, connectNodes, deleteNodes, disconnectNodes } = await import('../ops')
+const { addNode, applyTemplate, connectNodes, deleteNodes, disconnectNodes } = await import(
+  '../ops'
+)
+const { runNode } = await import('../run-node')
 
+import { BadRequestError } from '../../../errors'
 import { manualManifest } from '../../../workflow-engine/catalog/nodes/manual'
 import { staticOutputContext } from '../../../workflow-engine/catalog/output-context'
 // The SHIPPED template, loaded rather than re-typed, so this test cannot drift
@@ -363,6 +370,167 @@ describe('edge handle resolution (§4a)', () => {
     const typeOf = (id: string) => persisted.nodes.find((n) => n.id === id)?.data?.type
     expect(inputEdges.map((e) => typeOf(e.source))).toEqual(['form-input', 'form-input'])
     expect(inputEdges.map((e) => typeOf(e.target))).toEqual(['manual', 'manual'])
+  })
+})
+
+describe('addNode({ inputFor }) (§4b)', () => {
+  const scope = { workflowAppId: APP, organizationId: ORG }
+
+  /** A graph with just the trigger and one downstream node. */
+  function triggerGraph(): DraftGraph {
+    return {
+      nodes: [manualNode(), waitNode()],
+      edges: [edge(MANUAL_ID, 'source', WAIT_ID)],
+    }
+  }
+
+  /** The node the last persist added (the one not present in `before`). */
+  function addedNode(before: DraftGraph): GraphNode {
+    const known = new Set(before.nodes.map((n) => n.id))
+    const node = persistedGraph().nodes.find((n) => !known.has(n.id))
+    expect(node).toBeDefined()
+    return node as GraphNode
+  }
+
+  it('creates the field, wires it on the input handles and validates clean', async () => {
+    const graph = triggerGraph()
+    const result = await addNode(makeDb(graph), {
+      ...scope,
+      type: 'form-input',
+      title: 'Ticket Subject',
+      inputFor: 'Manual Trigger',
+      config: { label: 'Subject', inputType: 'string', required: true },
+    })
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().applied).toBe(true)
+
+    const persisted = persistedGraph()
+    const created = addedNode(graph)
+    expect(created.data?.type).toBe('form-input')
+    expect(created.data?.label).toBe('Subject')
+
+    const wired = persisted.edges.find((e) => e.source === created.id)
+    expect(wired?.target).toBe(MANUAL_ID)
+    expect(wired?.sourceHandle).toBe('input-output')
+    expect(wired?.targetHandle).toBe('input')
+
+    // Canvas parity, and the graph the writer produced is one the validator accepts.
+    expect(persisted.nodes.find((n) => n.id === MANUAL_ID)?.data?.inputNodes).toEqual([created.id])
+    expect(errors(validateGraphStructure(persisted))).toEqual([])
+  })
+
+  it('stacks a second field left of the trigger with an ordered run-form position', async () => {
+    const first = triggerGraph()
+    const firstResult = await addNode(makeDb(first), {
+      ...scope,
+      type: 'form-input',
+      title: 'Ticket Subject',
+      inputFor: 'Manual Trigger',
+      config: { label: 'Subject' },
+    })
+    expect(firstResult._unsafeUnwrap().applied).toBe(true)
+    const afterFirst = persistedGraph()
+    const subject = addedNode(first)
+
+    const secondResult = await addNode(makeDb(afterFirst), {
+      ...scope,
+      type: 'form-input',
+      title: 'Ticket Body',
+      inputFor: 'Manual Trigger',
+      config: { label: 'Body' },
+    })
+    expect(secondResult._unsafeUnwrap().applied).toBe(true)
+    const afterSecond = persistedGraph()
+    const body = addedNode(afterFirst)
+
+    // Own column, 300px left of the trigger; stacked 100px apart.
+    expect(subject.position).toEqual({ x: 100 - 300, y: 300 })
+    expect(body.position).toEqual({ x: 100 - 300, y: 400 })
+
+    // Fractional run-form order — distinct, and sorting them reproduces the
+    // order they were added in (the connected-inputs editor sorts on this).
+    const subjectPosition = subject.data?.position as string
+    const bodyPosition = body.data?.position as string
+    expect(typeof subjectPosition).toBe('string')
+    expect(typeof bodyPosition).toBe('string')
+    expect(subjectPosition).not.toEqual(bodyPosition)
+    expect(subjectPosition.localeCompare(bodyPosition)).toBeLessThan(0)
+
+    expect(afterSecond.nodes.find((n) => n.id === MANUAL_ID)?.data?.inputNodes).toEqual([
+      subject.id,
+      body.id,
+    ])
+    expect(errors(validateGraphStructure(afterSecond))).toEqual([])
+  })
+
+  it('keeps a `position` the caller set explicitly', async () => {
+    const graph = triggerGraph()
+    const result = await addNode(makeDb(graph), {
+      ...scope,
+      type: 'form-input',
+      title: 'Ticket Subject',
+      inputFor: 'Manual Trigger',
+      config: { label: 'Subject', position: 'a5' },
+    })
+    expect(result._unsafeUnwrap().applied).toBe(true)
+    expect(addedNode(graph).data?.position).toBe('a5')
+  })
+
+  it('refuses a target that does not accept input nodes', async () => {
+    const result = await addNode(makeDb(triggerGraph()), {
+      ...scope,
+      type: 'form-input',
+      inputFor: 'Cool Down',
+      config: { label: 'Subject' },
+    })
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+    expect(result._unsafeUnwrapErr().message).toMatch(/does not take input nodes/)
+    expect(serviceUpdate).not.toHaveBeenCalled()
+  })
+
+  it('refuses a node type that is not an input node', async () => {
+    const result = await addNode(makeDb(triggerGraph()), {
+      ...scope,
+      type: 'wait',
+      inputFor: 'Manual Trigger',
+    })
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+    expect(result._unsafeUnwrapErr().message).toMatch(/is not an input node/)
+    expect(serviceUpdate).not.toHaveBeenCalled()
+  })
+
+  it('refuses `inputFor` combined with `after`', async () => {
+    const result = await addNode(makeDb(triggerGraph()), {
+      ...scope,
+      type: 'form-input',
+      inputFor: 'Manual Trigger',
+      after: 'Manual Trigger',
+      config: { label: 'Subject' },
+    })
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+    expect(result._unsafeUnwrapErr().message).toMatch(/cannot be combined/)
+    expect(serviceUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('runNode refusal for canRunSingle: false (§4)', () => {
+  it('refuses to run a form-input node instead of handing it to the engine', async () => {
+    const graph: DraftGraph = {
+      nodes: [formInputNode(), manualNode([FORM_ID]), waitNode()],
+      edges: [inputEdge(FORM_ID, MANUAL_ID), edge(MANUAL_ID, 'source', WAIT_ID)],
+    }
+    const result = await runNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      nodeId: 'Ticket Subject',
+      userId: 'user_1',
+    })
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+    expect(result._unsafeUnwrapErr().message).toMatch(/cannot be run on its own/)
   })
 })
 
