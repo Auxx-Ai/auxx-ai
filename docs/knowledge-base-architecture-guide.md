@@ -85,16 +85,29 @@ article is also placed into.
 | `Document` | `document.ts` | One row **per article**, in the article's **home KB's** Dataset. `metadata.kb = { articleId, contentHash }` tracks sync state; `enabled` flips false when an article is unpublished or `aiEnabled=false`. |
 | `DocumentSegment` | `document-segment.ts` | Chunk of a Document. Multi-dim vector columns (`embedding_512…3072`) each with its own HNSW cosine index (partial: `enabled AND indexStatus='INDEXED'`), plus a generated `searchVector` tsvector for BM25. |
 
-**Search federation gap:** the schema comment on `homeKnowledgeBaseId`
-promises that "search of any KB the article is placed into federates to [the
-home] dataset." In practice `collectManagedDatasetIds`
-(`search-knowledge.ts`) only implements this for **source-linked**
-placements — it unions the KB's own dataset with datasets of any
-`KnowledgeSource` reachable via `ArticlePlacement.linkedFromSourceId` in that
-KB. Linking a **hand-authored** (non-source) article from KB-A into KB-B
-leaves the new placement's `linkedFromSourceId` null, so `search_knowledge`
-scoped to KB-B will not surface it — a real gap between the schema's stated
-generality and the current retrieval code.
+**Search federation (two arms).** A `Document` lives in its article's **home**
+KB's Dataset, not in the dataset of every KB the article is placed into — so a
+KB-scoped search has to federate outward to find linked-in content. Dataset
+resolution lives in **`packages/lib/src/datasets/resolve-knowledge-targets.ts`**
+(`resolveKnowledgeDatasetIds`), shared by `search_knowledge`, the workflow
+Knowledge Retrieval node, and `scripts/debug-search-knowledge.ts`. Scoping to a
+KB unions its own dataset with:
+
+1. **Home-KB federation** — the home KB's dataset for every article *placed* in
+   this KB. This is what makes a hand-authored article linked KB-A → KB-B
+   findable from KB-B.
+2. **Source federation** — the dataset of any `KnowledgeSource` reachable via
+   `ArticlePlacement.linkedFromSourceId` in this KB.
+
+Arm 1 very likely subsumes arm 2 (a source's articles should have the
+source-owned KB as their home), but that is **unverified against real
+source-linked data**, so both run and their results union. Confirm subsumption
+before deleting arm 2.
+
+*History: arm 1 did not exist until 2026-08-14 (#1642). Before it, only
+source-linked placements federated — a hand-authored article linked KB-A → KB-B
+has `linkedFromSourceId = null`, so a KB-B-scoped search silently missed it.
+This guide documented that as an open gap; it is fixed.*
 
 ---
 
@@ -293,11 +306,22 @@ Every agent gets the `auxx:knowledge` toolset by default
 **`search_knowledge`** (`ai/kopilot/capabilities/knowledge/tools/search-knowledge.ts`).
 It hybrid-searches (vector + BM25, coordinated by `SearchService` →
 `VectorSearchService`/`FullTextSearchService`/`HybridSearchService`) across KB articles
-(via each KB's managed Dataset, plus any source-linked datasets — see the
-federation gap in §2) and RAG datasets. Args: `query`, `source` (kb|rag|both),
-`knowledgeBaseId?`, `datasetIds?`, `recordIds?`, `limit`. KB hits carry a `docSlug` so the
-agent can cite `[Title](auxx://doc/<docSlug>)`; RAG hits are prose-only. This is the path
+(via each KB's managed Dataset, plus federated datasets — see §2) and RAG datasets.
+Args: `query`, `source` (kb|rag|both), `knowledgeBaseId?`, `datasetIds?`, `recordIds?`,
+`limit`. KB hits carry a `docSlug` so the agent can cite
+`[Title](auxx://doc/<docSlug>)`; RAG hits are prose-only. This is the path
 by which an answering agent grounds a reply in KB content.
+
+**🔴 `SearchService.search` has no ACL of its own.** `getAccessibleDatasets`
+filters on `organizationId` and `status = 'ACTIVE'` only — it takes a `userId`
+and never uses it — and an empty `datasetIds` makes it search *every* active
+dataset in the org, managed KB datasets included. Access enforcement lives
+entirely in `resolveKnowledgeDatasetIds` (§2), whose `capabilities` parameter is
+**required** (`CapabilityView | 'unrestricted'` — no optional-undefined arm to
+forget) and which keys a KB-backed dataset on its **`kb`** instance grant and a
+standalone dataset on `dataset`. Anything calling `SearchService` directly gets
+no visibility clamp at all; an empty resolved set must be treated as "search
+nothing", never "search everything".
 
 ### Editing articles from the editor (markdown-first block-CRUD)
 `createKbCapabilities` (`ai/kopilot/capabilities/kb/index.ts`, `page='kb'`) exposes

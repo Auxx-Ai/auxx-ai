@@ -1,7 +1,34 @@
 # Workflow App System - Complete Architecture Guide
 
-**Last Updated**: 2025-10-28
-**Status**: Implementation ~85% Complete (Phase 6/7 Done)
+**Last Updated**: 2026-08-14 (status refreshed; body below is largely as written 2025-10-28)
+**Status**: SHIPPED and in production use
+
+> **Scope.** This guide covers workflow blocks contributed by **installed apps** —
+> the SDK schema API, the Tag-based reconciler, iframe sandboxing, bundle build
+> and loading. For Auxx's **own** workflow system — the node catalog, execution
+> engine, draft-mutation service and the Kopilot builder capability — read
+> **`docs/core-workflow-architecture-guide.md`**. The two meet only where an app
+> block renders on the canvas beside core nodes
+> (`workflow-engine/nodes/app-workflow-block-processor.ts`).
+>
+> **Read the §"Implementation Status" build log as HISTORY, not as current
+> state.** It is a phase-by-phase record from the original build, and some of its
+> file paths have since moved. Corrections known as of 2026-08-14:
+>
+> - **The app-workflow runtime cluster moved.** Phase 4 lists
+>   `apps/web/src/lib/workflow/*` — that directory **no longer exists**. The
+>   runtime now lives in `apps/web/src/components/workflow/apps/`
+>   (`workflow-block-loader.ts`, `workflow-block-registry.tsx`,
+>   `app-workflow-node.tsx`, `app-workflow-panel.tsx`, `resolve-app-outputs.ts`,
+>   `primitives/`, `trigger/`), with the app-side data layer under
+>   `packages/lib/src/apps/`. That cluster is **dynamically imported on purpose**
+>   — a static import breaks vitest.
+> - **"Phase 7 pending / not production-ready" is stale.** The system is shipped
+>   and carries real third-party apps; the QuickBooks app runs on it today. Apps
+>   live in a **separate repo** (`~/Sites/auxxai-apps`), which is why no app
+>   source appears in this one.
+> - Bundle-load failures from `:3007` in local dev are almost always an expired
+>   AWS SSO session (`pnpm sso`), not an app-runtime bug.
 
 ---
 
@@ -34,14 +61,19 @@ The workflow app integration system allows third-party developers to create cust
 
 ### Current State
 
-**Implementation**: ~85% complete (6 of 7 phases done)
+**Shipped and in production use.** All seven build phases are behind us; the
+system carries real third-party apps (the QuickBooks app runs on it), authored
+from a separate repo.
+
 - ✅ Schema definition & type inference
 - ✅ Build system integration
-- ✅ SDK workflow components (restructured)
-- ✅ Frontend integration
+- ✅ SDK workflow components (Tag pattern, 17 components)
+- ✅ Frontend integration — now at `components/workflow/apps/`, not `lib/workflow/`
 - ✅ Backend execution
-- ✅ Component restructure (17 components)
-- ⏳ Cleanup & documentation
+- ✅ Component restructure
+- ✅ Cleanup & documentation (the residual TODOs listed under Phase 7 below are
+  historical; treat that list as a record of what the build tracked, not as open
+  work)
 
 ---
 
@@ -2307,9 +2339,11 @@ const resolved = resolveTemplate(input.subject, context.variables)
 - ✅ Full serialization/deserialization
 - ✅ Architectural consistency with platform
 
-### Phase 7: Cleanup & Documentation ⏳
+### Phase 7: Cleanup & Documentation ✅
 
-**Status**: PENDING
+**Status**: CLOSED (2026-08-14). The checklist below is the original build's
+tracking list, kept as a record. The system shipped and carries production apps;
+do not treat these boxes as open work.
 
 **Remaining Tasks**:
 - [ ] Create barrel exports for reconstructor components
@@ -2427,15 +2461,13 @@ The workflow app integration system has evolved from a direct React component ap
 5. **Flexibility**: Support for complex components and event handling
 6. **Developer Experience**: Simple, declarative API for creating workflow blocks
 
-**Current Status**: ~85% complete (6/7 phases done)
+**Current Status** (2026-08-14): shipped, in production use, carrying real
+third-party apps authored from a separate repo (`~/Sites/auxxai-apps`).
 
-**Remaining Work**:
-- Phase 7: Cleanup & Documentation
-- Redis caching implementation (currently placeholder)
-- Full integration testing
-- Developer documentation and examples
-
-The architecture is production-ready and supports the full lifecycle from development to execution, with robust error handling, logging, and caching capabilities.
+The architecture supports the full lifecycle from development to execution, with
+error handling, logging and caching. For Auxx's own node system — catalog,
+engine, graph-edit, Kopilot builder — see
+**`docs/core-workflow-architecture-guide.md`**.
 
 ---
 

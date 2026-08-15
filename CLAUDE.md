@@ -282,6 +282,30 @@ gated on inbox write alone (not `automationRules.manage`), treats
 `senderAuthenticated IS NULL` as *not* authenticated, and must never be recorded
 as `contact:unsubscribed`; dismissal is a status write, never a delete.
 
+## Workflows
+
+**Before touching node schemas, output variables, the engine's
+preprocess/execute contract, draft mutations, or anything Kopilot does to a
+workflow graph, read `docs/core-workflow-architecture-guide.md`.** It documents
+the four layers (catalog / engine / `graph-edit` / Kopilot builder capability),
+the `NodeManifest` contract and the per-node migration pattern, output
+resolution's one-contract-two-orchestrations design, the eight draft mutations
+behind `runGraphMutation`, and the parity harness that keeps builder and engine
+honest.
+
+Short version: a node's **data** contract lives in `catalog/nodes/<type>.ts` and
+its **React** stays in web (zero-diff panels is enforced by review);
+`defaultData` must parse its own `configSchema`; `NOT_YET_MIGRATED` and the
+`NodeType` enum are coupled by an exact-set-equality test, so migrating or
+retiring a type is always one atomic change; catalog modules that touch the org
+cache get a **leaf subpath** export and must never go through `client.ts` or the
+`workflow-engine` index barrel; `persistDraft` is the single write seam and
+every write carries `expectedGraphHash` for CAS; and output handles are what
+`node.tsx` renders, never what a manifest declares.
+
+*(`docs/workflow-architecture-guide.md` is a different subsystem — third-party
+workflow blocks contributed by installed apps.)*
+
 ## Database Models — LEGACY
 
 Existing models extend `BaseModel`. Do NOT add new model classes; put query code
