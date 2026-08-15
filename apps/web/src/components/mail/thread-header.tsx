@@ -45,7 +45,7 @@ import { RecordPicker } from '~/components/pickers/record-picker'
 import { useActor, useResource } from '~/components/resources/hooks'
 import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
 import { RecordTagChip } from '~/components/tags/ui/record-tag-chip'
-import { useInbox, useThread, useThreadMutation } from '~/components/threads/hooks'
+import { useInbox, useThread, useThreadMutation, useThreadTitle } from '~/components/threads/hooks'
 import {
   useHasMultipleSelected,
   useThreadSelectionStore,
@@ -111,6 +111,13 @@ export function ThreadHeader() {
     : undefined
   const isEmailChannel = platformCaps ? platformCaps.channel === 'email' : true
   const isChatChannel = channel?.provider === 'chat'
+
+  // Subject-less channels (SMS/WhatsApp/DMs) have nothing to put in the title
+  // slot, so the thread is titled by its participant instead. `null` here means
+  // "this channel has subjects, it just doesn't have one yet" — the editable
+  // field keeps its click-to-edit placeholder in that case.
+  const derivedTitle = useThreadTitle(threadId)
+  const participantTitle = thread?.subject?.trim() ? null : derivedTitle
 
   // Local state for tag popover
   const [open, setOpen] = useState(false)
@@ -543,6 +550,8 @@ export function ThreadHeader() {
             <EditableText
               key={`editable-${thread.id}`}
               initialText={thread.subject}
+              placeholder={participantTitle ?? undefined}
+              placeholderColor={participantTitle ? 'text-foreground' : undefined}
               onSave={handleSubjectChange}
             />
           </div>

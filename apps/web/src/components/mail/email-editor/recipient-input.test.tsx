@@ -10,6 +10,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { PhoneRegion } from './identifier-model'
 
 interface PickerItemStub {
   id: string
@@ -124,27 +125,38 @@ function emailValues(addresses: string[], recordId = 'contact:c1') {
 
 function renderInput(
   recipients: Array<{ id: string; identifier: string; identifierType: 'EMAIL' }>,
-  onContactSelect = vi.fn()
+  onContactSelect = vi.fn(),
+  onAdd = vi.fn()
 ) {
   const utils = render(
     <RecipientInput
       recipients={recipients as never}
       field='TO'
-      onAdd={vi.fn()}
+      onAdd={onAdd}
       onRemove={vi.fn()}
       onMoveTo={vi.fn()}
       onContactSelect={onContactSelect}
       placeholder='To'
     />
   )
-  return { ...utils, onContactSelect }
+  return { ...utils, onContactSelect, onAdd }
+}
+
+interface PhoneRecipientStub {
+  id: string
+  identifier: string
+  identifierType: 'PHONE'
 }
 
 /** Same render, on a `recipientModel: 'phone'` channel (Quo/SMS). */
-function renderPhoneInput(onAdd = vi.fn(), onContactSelect = vi.fn()) {
+function renderPhoneInput(
+  onAdd = vi.fn(),
+  onContactSelect = vi.fn(),
+  extra: { defaultRegion?: PhoneRegion; recipients?: PhoneRecipientStub[] } = {}
+) {
   const utils = render(
     <RecipientInput
-      recipients={[]}
+      recipients={(extra.recipients ?? []) as never}
       field='TO'
       onAdd={onAdd}
       onRemove={vi.fn()}
@@ -152,9 +164,21 @@ function renderPhoneInput(onAdd = vi.fn(), onContactSelect = vi.fn()) {
       onContactSelect={onContactSelect}
       placeholder='To'
       recipientModel='phone'
+      defaultRegion={extra.defaultRegion}
     />
   )
   return { ...utils, onAdd, onContactSelect }
+}
+
+/** Focus the input and fire a real paste event carrying `text`. */
+async function pasteInto(text: string) {
+  await userEvent.click(screen.getByLabelText('Add recipient'))
+  await userEvent.paste(text)
+}
+
+/** Identifiers passed to `onAdd`, in commit order. */
+function committedIdentifiers(onAdd: ReturnType<typeof vi.fn>): string[] {
+  return onAdd.mock.calls.map((call) => (call[0] as { identifier: string }).identifier)
 }
 
 async function openPickerAndPick(name: string) {
@@ -301,15 +325,26 @@ describe('RecipientInput — phone recipientModel', () => {
     expect(h.toastError).not.toHaveBeenCalled()
   })
 
-  it('rejects an email address with the phone-specific toast', async () => {
+  it('rejects an email address with an inline phone-specific hint, not a toast', async () => {
     const { onAdd } = renderPhoneInput()
 
     await userEvent.type(screen.getByLabelText('Add recipient'), 'a@x.com{Enter}')
 
     expect(onAdd).not.toHaveBeenCalled()
-    expect(h.toastError).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Invalid Phone Number' })
-    )
+    expect(screen.getByRole('alert')).toHaveTextContent('Invalid Phone Number')
+    // The red toast fired on every Enter with a half-typed number; the hint
+    // lives on the field instead.
+    expect(h.toastError).not.toHaveBeenCalled()
+  })
+
+  it('clears the inline hint as soon as typing resumes', async () => {
+    renderPhoneInput()
+
+    await userEvent.type(screen.getByLabelText('Add recipient'), '83128{Enter}')
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('Add recipient'), '2')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('expands a picked contact into its phone numbers, not its addresses', async () => {
@@ -340,5 +375,166 @@ describe('RecipientInput — phone recipientModel', () => {
 
     await waitFor(() => expect(screen.getByTestId('record-picker')).toBeInTheDocument())
     expect(onContactSelect).not.toHaveBeenCalled()
+  })
+})
+
+// Phase 2 of the composer-capabilities plan: phone entry is loosened by passing
+// a BETTER default region, never by relaxing `isValid()`. `formatPhoneNumber`
+// stays the only normalizer, so these are the regression guard on the region
+// argument reaching it.
+describe('RecipientInput — free-form phone entry', () => {
+  it.each([
+    '8312825590',
+    '831 282 5590',
+    '(831) 282-5590',
+    '831.282.5590',
+    '1 831 282 5590',
+    '+1-831-282-5590 ext 5',
+    'tel:+18312825590',
+  ])('accepts %j and commits +18312825590', async (typed) => {
+    const { onAdd } = renderPhoneInput()
+
+    await userEvent.type(screen.getByLabelText('Add recipient'), `${typed}{Enter}`)
+
+    expect(onAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ identifier: '+18312825590', identifierType: 'PHONE' })
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('still rejects a 9-digit number — isValid() is the numbering-plan check', async () => {
+    const { onAdd } = renderPhoneInput()
+
+    await userEvent.type(screen.getByLabelText('Add recipient'), '831282559{Enter}')
+
+    expect(onAdd).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Invalid Phone Number')
+  })
+
+  it.each([
+    { region: 'DE' as const, typed: '030 901820', e164: '+4930901820' },
+    { region: 'GB' as const, typed: '020 7183 8750', e164: '+442071838750' },
+  ])('parses a national $region number against defaultRegion=$region', async ({
+    region,
+    typed,
+    e164,
+  }) => {
+    const { onAdd } = renderPhoneInput(vi.fn(), vi.fn(), { defaultRegion: region })
+
+    await userEvent.type(screen.getByLabelText('Add recipient'), `${typed}{Enter}`)
+
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ identifier: e164 }))
+  })
+
+  it.each([
+    '030 901820',
+    '020 7183 8750',
+  ])('rejects the same national number %j on the default US region', async (typed) => {
+    const { onAdd } = renderPhoneInput()
+
+    await userEvent.type(screen.getByLabelText('Add recipient'), `${typed}{Enter}`)
+
+    expect(onAdd).not.toHaveBeenCalled()
+  })
+})
+
+// Display is formatted; the committed `identifier` is a routing key
+// (`Participant.identifier`) and must stay E.164.
+describe('RecipientInput — badge formatting vs stored identifier', () => {
+  it('commits E.164 while the badge renders the national form', async () => {
+    const { onAdd, rerender } = renderPhoneInput()
+
+    await userEvent.type(screen.getByLabelText('Add recipient'), '8312825590{Enter}')
+
+    const committed = onAdd.mock.calls[0]?.[0] as { identifier: string }
+    expect(committed.identifier).toBe('+18312825590')
+
+    rerender(
+      <RecipientInput
+        recipients={[{ ...committed, id: 'r1' }] as never}
+        field='TO'
+        onAdd={onAdd}
+        onRemove={vi.fn()}
+        onMoveTo={vi.fn()}
+        onContactSelect={vi.fn()}
+        placeholder='To'
+        recipientModel='phone'
+      />
+    )
+
+    expect(screen.getByText('(831) 282-5590')).toBeInTheDocument()
+    expect(screen.queryByText('+18312825590')).not.toBeInTheDocument()
+  })
+
+  it('renders an out-of-region number in international form', () => {
+    renderPhoneInput(vi.fn(), vi.fn(), {
+      recipients: [{ id: 'r1', identifier: '+442071838750', identifierType: 'PHONE' }],
+    })
+
+    expect(screen.getByText('+44 20 7183 8750')).toBeInTheDocument()
+  })
+
+  it('leaves an email identifier untouched on the badge', () => {
+    renderInput([{ id: 'r1', identifier: 'a@x.com', identifierType: 'EMAIL' }])
+
+    expect(screen.getByText('a@x.com')).toBeInTheDocument()
+  })
+})
+
+// A pasted list used to land as ONE string: Enter then normalized the whole
+// blob, got null, and rejected it. The `','` keydown never fires for a paste,
+// so email was affected too.
+describe('RecipientInput — pasting a delimited list', () => {
+  it.each([',', ';', '\n', '\t'])('splits a pasted email list on %j', async (separator) => {
+    const { onAdd } = renderInput([])
+
+    await pasteInto(`a@x.com${separator}b@x.com`)
+
+    expect(committedIdentifiers(onAdd)).toEqual(['a@x.com', 'b@x.com'])
+    expect(screen.getByLabelText('Add recipient')).toHaveValue('')
+  })
+
+  it.each([',', ';', '\n', '\t'])('splits a pasted phone list on %j', async (separator) => {
+    const { onAdd } = renderPhoneInput()
+
+    await pasteInto(`831-282-5590${separator}805-222-7374`)
+
+    expect(committedIdentifiers(onAdd)).toEqual(['+18312825590', '+18052227374'])
+    expect(screen.getByLabelText('Add recipient')).toHaveValue('')
+  })
+
+  it('commits the valid parts and leaves the rest in the input', async () => {
+    const { onAdd } = renderPhoneInput()
+
+    await pasteInto('831-282-5590, not-a-number, 805-222-7374')
+
+    expect(committedIdentifiers(onAdd)).toEqual(['+18312825590', '+18052227374'])
+    expect(screen.getByLabelText('Add recipient')).toHaveValue('not-a-number')
+  })
+
+  it('drops duplicates within the paste and against existing recipients', async () => {
+    const { onAdd } = renderInput([{ id: 'r1', identifier: 'a@x.com', identifierType: 'EMAIL' }])
+
+    await pasteInto('A@x.com, b@x.com, b@x.com')
+
+    expect(committedIdentifiers(onAdd)).toEqual(['b@x.com'])
+  })
+
+  it('pastes a single value normally — no commit, text lands in the input', async () => {
+    const { onAdd } = renderInput([])
+
+    await pasteInto('a@x.com')
+
+    expect(onAdd).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Add recipient')).toHaveValue('a@x.com')
+  })
+
+  it('merges a paste with text already typed in the input', async () => {
+    const { onAdd } = renderPhoneInput()
+
+    await userEvent.type(screen.getByLabelText('Add recipient'), '831')
+    await userEvent.paste('-282-5590, 805-222-7374')
+
+    expect(committedIdentifiers(onAdd)).toEqual(['+18312825590', '+18052227374'])
   })
 })

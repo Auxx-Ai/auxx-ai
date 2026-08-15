@@ -5,7 +5,7 @@ import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { ReadOnlyThreadProvider } from '~/components/mail/read-only-thread-provider'
 import { ThreadMessages } from '~/components/mail/thread-messages'
-import { useThread } from '~/components/threads/hooks'
+import { useThread, useThreadTitle } from '~/components/threads/hooks'
 import type { ThreadStatus } from '~/components/threads/store'
 
 /** Badge variant per thread status — muted greys for terminal states. */
@@ -33,6 +33,8 @@ const STATUS_LABEL: Record<ThreadStatus, string> = {
  */
 export function ThreadPreview({ threadId }: { threadId: string | null }) {
   const { thread } = useThread({ threadId, enabled: !!threadId })
+  // Subject-less channels (SMS/WhatsApp/DMs) are titled by their participant.
+  const threadTitle = useThreadTitle(threadId)
 
   if (!threadId) {
     return (
@@ -50,7 +52,7 @@ export function ThreadPreview({ threadId }: { threadId: string | null }) {
         {/* Sticky header — subject + status badge */}
         <div className='sticky top-0 z-10 flex items-start gap-2.5 bg-background/90 px-4 pt-4 pb-3 backdrop-blur-lg'>
           <div className='min-w-0 flex-1 truncate font-medium text-sm'>
-            {thread?.subject || '(no subject)'}
+            {threadTitle ?? '(no subject)'}
           </div>
           {status && (
             <Badge

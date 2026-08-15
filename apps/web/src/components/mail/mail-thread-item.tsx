@@ -48,6 +48,7 @@ import {
   useMessageParticipants,
   useThread,
   useThreadReadStatus,
+  useThreadTitle,
 } from '~/components/threads/hooks'
 import { useThreadActions } from '~/components/threads/providers'
 import {
@@ -378,6 +379,10 @@ export const MailThreadItem = memo(function MailThreadItem({
   }, [senderParticipant, toParticipants, ccParticipants])
   const senderName = displaySender?.displayName ?? 'Unknown'
 
+  // On subject-less channels (SMS/WhatsApp/DMs) the title slot falls back to
+  // the thread's participant; `null` means "render the usual placeholder".
+  const threadTitle = useThreadTitle(threadId)
+
   const snippet = useMemo(() => {
     if (typeof window !== 'undefined' && latestMessage?.snippet) {
       return DOMPurify.sanitize(latestMessage.snippet, { USE_PROFILES: { html: true } })
@@ -541,9 +546,7 @@ export const MailThreadItem = memo(function MailThreadItem({
                     isLiveChat && 'font-semibold',
                     myLens === 'metadata' && 'font-normal text-muted-foreground italic'
                   )}>
-                  {myLens === 'metadata'
-                    ? 'No access to subject'
-                    : thread.subject || '(no subject)'}
+                  {myLens === 'metadata' ? 'No access to subject' : (threadTitle ?? '(no subject)')}
                 </div>
                 {thread.assigneeId && <AssigneeChip assigneeId={thread.assigneeId as ActorId} />}
                 {thread.hasShares && (

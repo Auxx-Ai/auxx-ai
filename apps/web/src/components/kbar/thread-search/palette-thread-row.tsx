@@ -6,7 +6,7 @@ import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
 import { memo, useMemo } from 'react'
 import { getIntegrationIcon } from '~/components/mail/mail-status-config'
-import { useMessage, useMessageParticipants } from '~/components/threads/hooks'
+import { useMessage, useMessageParticipants, useThreadTitle } from '~/components/threads/hooks'
 import type { ThreadMeta } from '~/components/threads/store'
 
 interface PaletteThreadRowProps {
@@ -35,6 +35,9 @@ export const PaletteThreadRow = memo(function PaletteThreadRow({
   const { from: sender } = useMessageParticipants(latestMessage?.participants ?? [])
 
   const senderName = sender?.displayName ?? 'Unknown'
+
+  // Subject-less channels (SMS/WhatsApp/DMs) are titled by their participant.
+  const threadTitle = useThreadTitle(thread.id)
 
   const formattedDate = useMemo(
     () =>
@@ -89,7 +92,7 @@ export const PaletteThreadRow = memo(function PaletteThreadRow({
         </span>
       </div>
       <div className='w-full truncate text-xs font-medium group-aria-selected:text-background/80'>
-        {thread.subject || '(no subject)'}
+        {threadTitle ?? '(no subject)'}
       </div>
       {snippet && (
         <div

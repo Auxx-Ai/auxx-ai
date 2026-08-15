@@ -8,7 +8,22 @@ import type { ChannelProviderType, ProviderCapabilities } from './types'
 
 export type { ProviderCapabilities } from './types'
 /**
- * Provider capability presets
+ * Provider capability presets — the **runtime** matrix the ChannelProvider
+ * implementations and the send path read. Server-only.
+ *
+ * Two fields here have a counterpart in `channels/capabilities.ts`
+ * (`PlatformCapabilities`), which is the client-safe map the composer UI and
+ * the kopilot catalog read:
+ *
+ * - `supportsRichText` ↔ `richText`
+ * - `canAttachFiles`   ↔ `attachments`
+ *
+ * **`channels/capabilities.ts` is the authority for anything the UI decides**
+ * (which affordances to render, what body shape to submit). These two stay
+ * because the send path is server-side and must not import the UI map's
+ * concerns; keep them in sync by hand — the maps are deliberately NOT merged
+ * (merging drags `rateLimits`, `maxAttachmentSize` and ~30 other runtime
+ * fields into the browser bundle).
  */
 export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabilities> = {
   [IntegrationProviderType.google]: {
@@ -151,6 +166,11 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
     canAssignThreads: true,
     canBulkOperations: false,
     canAttachFiles: false, // SMS doesn't support attachments
+    // VERIFIED CORRECT — do not "fix" this back to false. Quo has no
+    // scheduled-send API, but scheduling never touches Quo: `thread.sendMessage`
+    // writes a `ScheduledMessage` row and enqueues a delayed BullMQ job that
+    // later calls the ordinary send path. Provider-agnostic by construction, so
+    // it holds for every provider that can send at all.
     canScheduleSend: true,
     canTrackOpens: false,
     canUseTemplates: true,

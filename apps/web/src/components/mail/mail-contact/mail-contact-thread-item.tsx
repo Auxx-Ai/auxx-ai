@@ -8,6 +8,7 @@ import type React from 'react'
 import { useCallback, useMemo } from 'react'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
 import { useThread } from '~/components/threads/hooks/use-thread'
+import { useThreadTitle } from '~/components/threads/hooks/use-thread-title'
 import type { ThreadMeta } from '~/components/threads/store'
 import { getIntegrationIcon } from '../mail-status-config'
 
@@ -39,6 +40,9 @@ function MailContactThreadItemContent({
     },
     [item.id, onOpen]
   )
+
+  // Subject-less channels (SMS/WhatsApp/DMs) are titled by their participant.
+  const threadTitle = useThreadTitle(item.id)
 
   const formattedDate = useMemo(() => {
     return item.lastMessageAt
@@ -87,7 +91,7 @@ function MailContactThreadItemContent({
         </div>
         {/* Subject */}
         <div className='grid-auto-cols-[minmax(auto,max-content)] grid flex-1 grid-flow-col grid-cols-[auto] items-center gap-1'>
-          <div className={cn('truncate text-xs font-medium')}>{item.subject || '(no subject)'}</div>
+          <div className={cn('truncate text-xs font-medium')}>{threadTitle ?? '(no subject)'}</div>
           <div>
             <div className='flex items-center justify-end gap-1 overflow-hidden'>
               {item.tagIds?.map((tagId) => (

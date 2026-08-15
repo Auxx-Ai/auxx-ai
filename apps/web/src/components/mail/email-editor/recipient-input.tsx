@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
-import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { Copy, Mail, Phone, X } from 'lucide-react'
 import type React from 'react'
@@ -27,13 +26,23 @@ import { api } from '~/trpc/react'
 import { toEmailAddressList } from '../email-address-list'
 import { useEditorActiveStateContext } from './editor-active-state-context'
 import {
+  DEFAULT_PHONE_REGION,
   getIdentifierModel,
   type IdentifierModelSpec,
   identifierKey,
+  type PhoneRegion,
   type RecipientModel,
 } from './identifier-model'
 
 export type RecipientField = 'TO' | 'CC' | 'BCC'
+
+/**
+ * Separators a pasted identifier list is split on. Safe for BOTH models — no
+ * valid email address and no E.164 number contains any of them — so one rule
+ * covers a spreadsheet column of phone numbers and a comma-joined address list
+ * alike.
+ */
+const PASTE_SEPARATORS = /[,;\n\t]+/
 
 interface RecipientState {
   id: string
@@ -72,6 +81,14 @@ interface RecipientInputProps {
    * Absent → email, which is every caller without resolved capabilities.
    */
   recipientModel?: RecipientModel
+  /**
+   * Region national (no `+`) phone numbers are parsed and displayed against.
+   * Derive it from the sending channel's own E.164 number with
+   * `regionFromIdentifier` — an org with a German and a US number should parse
+   * national input differently depending on which one it is sending from.
+   * Ignored by the email model.
+   */
+  defaultRegion?: PhoneRegion
 }
 
 const FIELD_LABELS: Record<RecipientField, string> = { TO: 'To', CC: 'Cc', BCC: 'Bcc' }
@@ -92,6 +109,7 @@ function itemFallbackAddresses(item: RecordPickerItem, spec: IdentifierModelSpec
 
 function RecipientBadge({
   person,
+  displayIdentifier,
   index,
   highlightedIndex,
   disabled,
@@ -105,6 +123,8 @@ function RecipientBadge({
   popoverClassName,
 }: {
   person: RecipientState
+  /** `spec.formatDisplay(person.identifier)` — display only; never committed. */
+  displayIdentifier: string
   index: number
   highlightedIndex: number | null
   disabled?: boolean
@@ -120,7 +140,7 @@ function RecipientBadge({
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const activeState = useEditorActiveStateContext()
   const dropdownId = `recipient-badge-${person.id}`
-  const displayName = person.name ?? person.identifier
+  const displayName = person.name ?? displayIdentifier
   const isHighlighted = highlightedIndex === index
 
   return (
@@ -209,10 +229,17 @@ export function RecipientInput({
   disabled,
   popoverClassName,
   recipientModel,
+  defaultRegion = DEFAULT_PHONE_REGION,
 }: RecipientInputProps) {
-  const spec = useMemo(() => getIdentifierModel(recipientModel), [recipientModel])
+  const spec = useMemo(
+    () => getIdentifierModel(recipientModel, defaultRegion),
+    [recipientModel, defaultRegion]
+  )
   const IdentifierIcon = recipientModel === 'phone' ? Phone : Mail
   const [inputValue, setInputValue] = useState('')
+  // Inline validity hint. Replaces the red toast that used to fire on every
+  // Enter with a half-typed number — this is a field people type slowly.
+  const [invalidHint, setInvalidHint] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null)
   const [showPicker, setShowPicker] = useState(false)
   // A picked contact with more than one not-yet-added address: the popover
@@ -230,7 +257,7 @@ export function RecipientInput({
   const inputRef = useRef<AutosizeInputRef>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
 
-  /** Silently commits a valid identifier. No toast on invalid. Returns true if committed. */
+  /** Silently commits a valid identifier. No hint on invalid. Returns true if committed. */
   const tryCommitInput = (): boolean => {
     const normalized = spec.normalize(inputValue)
     if (!normalized) return false
@@ -242,14 +269,15 @@ export function RecipientInput({
       name: null,
     })
     setInputValue('')
+    setInvalidHint(false)
     setHighlightedIndex(null)
     return true
   }
 
-  /** Commits input with a toast on invalid input (explicit user action: Enter, comma). */
+  /** Commits input, flagging it inline when invalid (explicit user action: Enter, comma). */
   const addRecipientFromInput = () => {
     if (!spec.normalize(inputValue)) {
-      toastError({ title: spec.invalidTitle, description: spec.invalidDescription })
+      setInvalidHint(true)
       return
     }
     tryCommitInput()
@@ -467,14 +495,68 @@ export function RecipientInput({
         setHighlightedIndex(null)
         setShowPicker(false)
         setPendingContact(null)
+        setInvalidHint(false)
         break
       default:
         break
     }
   }
+  /**
+   * Paste of a separator-delimited list — the shape phone numbers and address
+   * lists arrive in from a spreadsheet. Without this the whole blob lands as
+   * one string and the next Enter fails it as a single identifier; the `','`
+   * keydown never fires for a paste, so this is the only place email gets the
+   * split too.
+   *
+   * Valid parts commit; whatever didn't parse is joined back into the input so
+   * nothing is silently swallowed.
+   */
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData('text/plain')
+    // A single value pastes normally — only a delimited list is intercepted.
+    if (!pasted || !PASTE_SEPARATORS.test(pasted)) return
+    e.preventDefault()
+
+    const el = e.currentTarget
+    const start = el.selectionStart ?? inputValue.length
+    const end = el.selectionEnd ?? start
+    const merged = inputValue.slice(0, start) + pasted + inputValue.slice(end)
+
+    // Seeded from the current recipients so a paste can't duplicate one, and
+    // grown as we go since `recipients` doesn't update mid-loop.
+    const seen = new Set(excludeIdentifiers)
+    const leftover: string[] = []
+    const now = Date.now()
+    for (const part of merged.split(PASTE_SEPARATORS)) {
+      const trimmed = part.trim()
+      if (!trimmed) continue
+      const normalized = spec.normalize(trimmed)
+      if (!normalized) {
+        leftover.push(trimmed)
+        continue
+      }
+      const key = identifierKey(spec, normalized)
+      if (seen.has(key)) continue
+      seen.add(key)
+      onAdd({
+        id: `temp_${now}_${normalized}`,
+        identifier: normalized,
+        identifierType: spec.identifierType,
+        name: null,
+      })
+    }
+
+    setInputValue(leftover.join(', '))
+    setInvalidHint(false)
+    setHighlightedIndex(null)
+    setPendingContact(null)
+    setShowPicker(false)
+  }
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
     setInputValue(val)
+    setInvalidHint(false)
     setHighlightedIndex(null)
     // Typing resumes the contact search — drop any pending address choice
     setPendingContact(null)
@@ -519,6 +601,7 @@ export function RecipientInput({
         <RecipientBadge
           key={person.id}
           person={person}
+          displayIdentifier={spec.formatDisplay(person.identifier)}
           index={index}
           highlightedIndex={highlightedIndex}
           disabled={disabled}
@@ -550,6 +633,7 @@ export function RecipientInput({
               value={inputValue}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               onFocus={() => {
                 if (inputValue.trim().length > 0) setShowPicker(true)
               }}
@@ -561,9 +645,13 @@ export function RecipientInput({
               }}
               placeholder={recipients.length === 0 ? placeholder : ''}
               minWidth={30}
-              inputClassName='bg-transparent p-1 text-sm outline-hidden placeholder:text-muted-foreground/60'
+              inputClassName={cn(
+                'bg-transparent p-1 text-sm outline-hidden placeholder:text-muted-foreground/60',
+                invalidHint && 'text-destructive'
+              )}
               disabled={disabled}
               aria-label='Add recipient'
+              aria-invalid={invalidHint || undefined}
               autoComplete='off'
               autoCorrect='off'
               autoCapitalize='off'
@@ -619,6 +707,12 @@ export function RecipientInput({
           )}
         </PopoverContent>
       </Popover>
+
+      {invalidHint && (
+        <span role='alert' title={spec.invalidDescription} className='text-destructive text-xs'>
+          {spec.invalidTitle}
+        </span>
+      )}
     </div>
   )
 }
