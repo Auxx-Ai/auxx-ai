@@ -500,6 +500,38 @@ export function createUpstashClient(): RedisClient {
     // Pipeline support (Upstash supports pipelines via REST)
     pipeline: () => upstashClient.pipeline() as any,
 
+    // Lua scripting. Upstash takes (script, keys[], args[]) rather than the wire
+    // layout (script, numKeys, ...keys, ...argv), so split on `numKeys` here.
+    eval: async (script: string, numKeys: number, ...args: any[]) => {
+      try {
+        return await upstashClient.eval(
+          script,
+          args.slice(0, numKeys).map(String),
+          args.slice(numKeys)
+        )
+      } catch (error) {
+        logger.error('Error running EVAL in Upstash', { error: (error as Error).message })
+        throw error
+      }
+    },
+
+    evalsha: async (sha1: string, numKeys: number, ...args: any[]) => {
+      try {
+        return await upstashClient.evalsha(
+          sha1,
+          args.slice(0, numKeys).map(String),
+          args.slice(numKeys)
+        )
+      } catch (error) {
+        // NOSCRIPT is expected on a cold cache — the caller re-sends via EVAL, so
+        // don't log it as an error.
+        if (!(error as Error).message?.includes('NOSCRIPT')) {
+          logger.error('Error running EVALSHA in Upstash', { error: (error as Error).message })
+        }
+        throw error
+      }
+    },
+
     // Pub/Sub operations (not supported by Upstash, will throw errors)
     subscribe: async () => {
       throw new Error(

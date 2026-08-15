@@ -242,6 +242,13 @@ export function createIORedisClient(provider: 'aws' | 'hosted', onDead?: () => v
 
     // Pipeline support
     pipeline: () => client.pipeline() as any,
+
+    // Lua scripting — a straight passthrough to ioredis. Covers `hosted` (Railway
+    // prod) and `aws` (ElastiCache); both are stock upstream Redis on this path.
+    eval: async (script: string, numKeys: number, ...args: any[]) =>
+      await client.eval(script, numKeys, ...args),
+    evalsha: async (sha1: string, numKeys: number, ...args: any[]) =>
+      await client.evalsha(sha1, numKeys, ...args),
   }
 
   logger.info(`Enhanced ${provider} Redis client created successfully`)

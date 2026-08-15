@@ -70,7 +70,6 @@ export const ENHANCED_PROVIDER_LIMITS: Partial<
     // Gmail specific limits (extending existing capabilities)
     requestsPerSecond: 250, // 250 quota units/sec
     requestsPerMinute: 15000, // 15k quota units/min per user
-    burstLimit: 100, // Max burst requests
     concurrentRequests: 50, // Max concurrent API calls
     batchSize: 100, // Max items per batch request
 
@@ -120,8 +119,6 @@ export const ENHANCED_PROVIDER_LIMITS: Partial<
   [IntegrationProviderTypeEnum.outlook]: {
     // Outlook/Microsoft Graph API limits
     requestsPerMinute: 1000, // Conservative estimate
-    requestsPerHour: 10000, // 10k requests per 10 minutes
-    burstLimit: 20,
     concurrentRequests: 10,
     batchSize: 20, // Microsoft Graph batch limit
 
@@ -152,7 +149,6 @@ export const ENHANCED_PROVIDER_LIMITS: Partial<
   [IntegrationProviderTypeEnum.facebook]: {
     // Facebook Graph API limits
     requestsPerMinute: 200,
-    requestsPerHour: 1000,
     concurrentRequests: 5,
     batchSize: 50,
 
@@ -178,43 +174,36 @@ export const ENHANCED_PROVIDER_LIMITS: Partial<
 
   [IntegrationProviderTypeEnum.openphone]: {
     // Quo (formerly OpenPhone). Documented ceiling: 10 requests/second PER API KEY (429 on
-    // exceed) = 600/min = 36,000/hour. The previous 100/min + 1000/hr numbers were invented and
-    // throttled us 6× / 36× below the real allowance.
+    // exceed). The previous 100/min + 1000/hr numbers were invented and throttled us 6× / 36×
+    // below the real allowance.
     //
-    // `requestsPerSecond` is the load-bearing knob — `config-manager.ts` derives
-    // `minInterval = 1000 / requestsPerSecond` from it.
-    requestsPerSecond: 10,
-    requestsPerMinute: 600,
-    requestsPerHour: 36000,
+    // `requestsPerSecond` is the SINGLE SOURCE for the Quo client's pacing — `api.ts` reads it
+    // through `resolveQuota` and carries no rate constant of its own. It is deliberately 8, not
+    // the documented 10: two below the ceiling is the headroom that absorbs clock skew between
+    // workers and a burst that lands on an interval boundary. Measured latency is ~195ms/request,
+    // so a serial caller never reaches this anyway — the pacer matters when a backfill runs a
+    // small amount of concurrency.
+    requestsPerSecond: 8,
+    requestsPerMinute: 480,
     // Measured latency is ~195ms/request, so a serial caller only reaches ~5 rps; 2 in flight
     // lands at ~10 rps. The old `5` would overshoot the ceiling and collect 429s.
     concurrentRequests: 2,
     batchSize: 10,
 
     // NOTE: the rate limit is per API KEY, not per number — three channels backfilling
-    // concurrently share one budget. The Quo client (`providers/openphone/api.ts`) paces on the
-    // key itself for exactly this reason.
-    contexts: {
-      messages: {
-        maxRequests: 600,
-        perInterval: 60000,
-      },
-      send: {
-        maxRequests: 600,
-        perInterval: 60000,
-      },
-      calls: {
-        maxRequests: 600,
-        perInterval: 60000,
-      },
-    },
+    // concurrently share one budget. The Quo client (`providers/openphone/api.ts`) paces on a
+    // hash of the key itself for exactly this reason.
+    //
+    // No `contexts` block: Quo meters one flat per-key rate, and the per-context entries that
+    // used to sit here (600/min for messages/send/calls) were both unread — nothing builds a
+    // `UniversalThrottler` for this provider — and in direct contradiction with the 480/min
+    // that `requestsPerSecond` above now enforces.
   },
 
   [IntegrationProviderTypeEnum.shopify]: {
     // Shopify API limits (REST)
     requestsPerSecond: 2, // 2 requests per second
     requestsPerMinute: 40, // Leaky bucket: 40 requests per minute
-    burstLimit: 40,
     concurrentRequests: 5,
 
     contexts: {
@@ -258,25 +247,6 @@ export function getMergedProviderLimits(providerType: IntegrationProviderType): 
 }
 
 /**
- * Get rate limit configuration for a specific context
- */
-export function getContextLimits(
-  providerType: IntegrationProviderType,
-  context: string
-): {
-  maxRequests: number
-  perInterval: number
-  maxConcurrent?: number
-} | null {
-  const providerLimits = ENHANCED_PROVIDER_LIMITS[providerType]
-  if (!providerLimits?.contexts) {
-    return null
-  }
-
-  return providerLimits.contexts[context] || null
-}
-
-/**
  * Get Gmail quota cost for an operation
  */
 export function getGmailQuotaCost(operation: string): number {
@@ -296,9 +266,7 @@ export function supportsRateLimiting(providerType: IntegrationProviderType): boo
 export function getDefaultRateLimits(): EnhancedRateLimits {
   return {
     requestsPerMinute: 100,
-    requestsPerHour: 1000,
     concurrentRequests: 10,
-    burstLimit: 20,
     batchSize: 10,
   }
 }

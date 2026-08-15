@@ -100,6 +100,8 @@ export function getProviderCapabilities(provider: RedisProvider): RedisProviderC
           'zscore',
           'ttl',
           'pttl',
+          'eval',
+          'evalsha',
         ],
       }
 
@@ -141,6 +143,8 @@ export function getProviderCapabilities(provider: RedisProvider): RedisProviderC
           'zscore',
           'ttl',
           'pttl',
+          'eval',
+          'evalsha',
         ],
       }
 
@@ -182,6 +186,8 @@ export function getProviderCapabilities(provider: RedisProvider): RedisProviderC
           'zscore',
           'ttl',
           'pttl',
+          'eval',
+          'evalsha',
         ],
       }
 

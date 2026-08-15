@@ -1,9 +1,10 @@
 // packages/lib/src/providers/openphone/__tests__/openphone-provider.test.ts
 //
 // Covers the three things the Quo rewrite can get silently wrong:
-//   1. `setupWebhook` must persist BOTH the webhook id (Integration.metadata) and the signing
-//      key Quo mints (Credential secret field `webhookSigningSecret`) — merged, never clobbering
-//      the stored `apiKey` — and only flip the webhook to `enabled` once both are stored.
+//   1. `setupWebhook` must create the webhook ENABLED (Quo webhooks are immutable — there is no
+//      update call to flip one on later) and persist BOTH the webhook id (Integration.metadata)
+//      and the signing key Quo mints (Credential secret field `webhookSigningSecret`) — merged,
+//      never clobbering the stored `apiKey`.
 //   2. The capped backfill must sort by `lastActivityAt` DESC. The server orders by `createdAt`
 //      DESC, so an old-but-active conversation is exactly what a naive implementation drops.
 //   3. The REST mapper must read `text` / `to[]` (the webhook says `body` / `to: string`) and
@@ -22,7 +23,6 @@ const mocks = vi.hoisted(() => {
     updateWhere,
     mergeSecretFields: vi.fn(),
     createMessageWebhook: vi.fn(),
-    updateWebhookStatus: vi.fn(),
     deleteWebhook: vi.fn(),
     sendMessage: vi.fn(),
     listConversations: vi.fn(),
@@ -73,7 +73,6 @@ vi.mock('@auxx/credentials/store', () => ({
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api')>()),
   createMessageWebhook: mocks.createMessageWebhook,
-  updateWebhookStatus: mocks.updateWebhookStatus,
   deleteWebhook: mocks.deleteWebhook,
   sendMessage: mocks.sendMessage,
   listConversations: mocks.listConversations,
@@ -138,12 +137,12 @@ beforeEach(() => {
 })
 
 describe('OpenPhoneProvider.setupWebhook', () => {
-  it('creates a disabled webhook, persists id + key, then enables it', async () => {
+  it('creates an enabled webhook and persists id + key', async () => {
     const provider = makeProvider()
     mocks.createMessageWebhook.mockResolvedValue({
       id: 'WH_new',
       key: 'c2lnbmluZy1rZXk=',
-      status: 'disabled',
+      status: 'enabled',
     })
 
     await provider.setupWebhook(CALLBACK_URL)
@@ -153,8 +152,10 @@ describe('OpenPhoneProvider.setupWebhook', () => {
     expect(body.events).toEqual(['message.received', 'message.delivered'])
     // Per-number, not `["*"]` — one channel owns one webhook.
     expect(body.resourceIds).toEqual([PHONE_NUMBER_ID])
-    // Created disabled so a half-provisioned channel never receives unverifiable traffic.
-    expect(body.status).toBe('disabled')
+    // Created ENABLED, because Quo webhooks are immutable — `/v1/webhooks/{id}` routes only GET
+    // and DELETE, so there is no later call that could flip a `disabled` webhook on. Creating
+    // disabled would arm nothing at all.
+    expect(body.status).toBe('enabled')
 
     // The signing key is merged onto the Credential's secret bag, keyed exactly as the webhook
     // route's `resolveWebhookSecret({ kind: 'credentialField', field: 'webhookSigningSecret' })`.
@@ -172,17 +173,17 @@ describe('OpenPhoneProvider.setupWebhook', () => {
     expect(sqlContains(setArg.metadata, 'WH_new')).toBe(true)
     expect(sqlContains(setArg.metadata, 'webhookId')).toBe(true)
 
-    // Enabled last, after both id and key are stored.
-    expect(mocks.updateWebhookStatus).toHaveBeenCalledWith('quo_key', 'WH_new', 'enabled')
-    const enableOrder = mocks.updateWebhookStatus.mock.invocationCallOrder[0]!
-    expect(mocks.mergeSecretFields.mock.invocationCallOrder[0]!).toBeLessThan(enableOrder)
-    expect(mocks.update.mock.invocationCallOrder[0]!).toBeLessThan(enableOrder)
+    // The key is stored before the id, so the window in which a delivered event cannot be
+    // verified is as short as the API allows.
+    expect(mocks.mergeSecretFields.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.update.mock.invocationCallOrder[0]!
+    )
   })
 
   it('deletes the stored webhook before re-arming so only one stays live', async () => {
     const provider = makeProvider({ webhookId: 'WH_old' })
     mocks.deleteWebhook.mockResolvedValue(undefined)
-    mocks.createMessageWebhook.mockResolvedValue({ id: 'WH_new', key: 'a2V5', status: 'disabled' })
+    mocks.createMessageWebhook.mockResolvedValue({ id: 'WH_new', key: 'a2V5', status: 'enabled' })
 
     await provider.setupWebhook(CALLBACK_URL)
 
@@ -202,9 +203,8 @@ describe('OpenPhoneProvider.setupWebhook', () => {
 
     await expect(provider.setupWebhook(CALLBACK_URL)).rejects.toThrow(/credential gone/)
 
-    // Never enabled, and torn back down — an orphan live webhook we cannot verify is worse
-    // than no webhook at all.
-    expect(mocks.updateWebhookStatus).not.toHaveBeenCalled()
+    // Torn back down — a live webhook whose signature we can never verify is worse than no
+    // webhook at all, and Quo offers no way to disable one in place.
     expect(mocks.deleteWebhook).toHaveBeenCalledWith('quo_key', 'WH_orphan')
   })
 })

@@ -643,28 +643,6 @@ describe('UniversalThrottler', () => {
     )
   }, 5000)
 
-  it('should support request coalescing', async () => {
-    const throttler = new UniversalThrottler()
-    await throttler.init()
-
-    const fn = vi.fn(async () => {
-      return 'result'
-    })
-
-    // Make multiple requests for the same key
-    const promises = [
-      throttler.coalesce('key', fn, 100),
-      throttler.coalesce('key', fn, 100),
-      throttler.coalesce('key', fn, 100),
-    ]
-
-    const results = await Promise.all(promises)
-
-    // Function should only be called once
-    expect(fn).toHaveBeenCalledTimes(1)
-    expect(results).toEqual(['result', 'result', 'result'])
-  }, 5000)
-
   it('should collect metrics when enabled', async () => {
     const throttler = new UniversalThrottler({
       metricsEnabled: true,

@@ -5,6 +5,7 @@
 // auth + the wire call. Only the HTTP transport is implemented today; the rest are
 // scaffolded so future consumers can be written against a stable signature.
 
+import type { Quota } from '../../utils/rate-limiter/quota'
 import type { RuntimeConnectionData } from '../resolve-connection-for-runtime'
 
 /** The transport a connection speaks. Mirrors the connection's transport class. */
@@ -33,17 +34,27 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD'
  *  - `backoff-jitter`— `429` with **no** `Retry-After`; exponential backoff with
  *                      jitter (Stripe's explicit recommendation).
  *
- * Scope: this handles a throttle the SERVER signals on a given request (retry THIS
- * request after N). Speculative pacing off a usage gauge (e.g. Shopify's
- * shop-global `X-Shopify-Shop-Api-Call-Limit`) is cross-request coordination that
- * needs shared per-connection state, so it lives in the throttle layer
- * (`UniversalThrottler` keyed by connection), not in this stateless transport.
+ * Proactive pacing is the other half, and it is no longer "elsewhere": set `rps`
+ * (or `minDelayMs`) on a request that carries a connection and the transport reserves
+ * a slot on that connection's SHARED cursor before every attempt, and folds any
+ * observed `Retry-After` back onto the same cursor. See `utils/rate-limiter/pacer`.
  */
 export interface RateLimitPolicy {
   strategy?: 'retry-after' | 'graphql-cost' | 'backoff-jitter'
   /** Max retry attempts on a throttle signal. Default 5. */
   maxRetries?: number
-  /** Floor delay applied AFTER each request (inter-page pacing, token-bucket-lite). */
+  /**
+   * Sustained requests/second for this connection's shared budget. Enables proactive
+   * pacing across every process using the connection. Takes precedence over
+   * `minDelayMs`.
+   */
+  rps?: number
+  /**
+   * Floor delay between requests. With a connection in scope this is read as a rate
+   * (`1000 / minDelayMs`) and enforced as a shared pre-request slot reservation;
+   * without one there is nothing to share a budget on, so it degrades to a
+   * process-local sleep AFTER each request.
+   */
   minDelayMs?: number
 }
 
@@ -63,6 +74,10 @@ export interface HttpRequest {
   timeoutMs?: number
   /** Rate-limit handling. Absent ⇒ the default `429`+`Retry-After` behavior. */
   rateLimit?: RateLimitPolicy
+  /** Explicit shared budget to pace against. Overrides the connection-derived one —
+   *  use it when the upstream meters something other than the connection (a shop
+   *  domain, an API key shared by several connections). */
+  quota?: Quota
   /** Cancels in-flight waits (Retry-After/backoff sleeps) and the fetch. */
   signal?: AbortSignal
 }

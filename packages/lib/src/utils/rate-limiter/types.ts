@@ -10,8 +10,6 @@ export interface RateLimiterConfig {
   perInterval: number
   /** Maximum concurrent requests (optional) */
   maxConcurrent?: number
-  /** Minimum time between requests in milliseconds (optional) */
-  minInterval?: number
   /** Retry configuration (optional) */
   retryConfig?: RetryConfig
   /** Name for logging/metrics (optional) */
@@ -47,14 +45,10 @@ export interface EnhancedRateLimits {
   /** Messages per day (from existing capabilities) */
   messagesPerDay?: number
 
-  /** API calls per second */
+  /** API calls per second. The rate the shared pacer enforces (see `quota.ts`). */
   requestsPerSecond?: number
   /** API calls per minute */
   requestsPerMinute?: number
-  /** API calls per hour */
-  requestsPerHour?: number
-  /** Maximum burst requests */
-  burstLimit?: number
   /** Maximum concurrent API calls */
   concurrentRequests?: number
   /** Maximum items per batch */

@@ -33,7 +33,6 @@ import {
   listMessages,
   QuoApiError,
   sendMessage as sendQuoMessage,
-  updateWebhookStatus,
 } from './api'
 import type { OpenPhoneIntegrationMetadata, QuoConversation, QuoRestMessage } from './types'
 
@@ -299,9 +298,8 @@ export class OpenPhoneProvider
    *
    * ```
    * POST /v1/webhooks/messages
-   * { url, events, resourceIds: [PN…], label, status: 'disabled' }
+   * { url, events, resourceIds: [PN…], label, status: 'enabled' }
    *   → { data: { id: 'WH…', key: '<base64 32 bytes>' } }
-   * PATCH /v1/webhooks/{id} { status: 'enabled' }   ← only after id + key are persisted
    * ```
    *
    * Two properties of the create call, both verified live, shape this:
@@ -313,8 +311,18 @@ export class OpenPhoneProvider
    * - **The URL is not reachability-checked**, so there is no ordering dependency on our
    *   endpoint being live — this works in dev without a tunnel already running.
    *
-   * Creating `disabled` and enabling last means a half-provisioned channel (webhook created but
-   * the key not yet stored) never receives traffic it could not verify.
+   * **Webhooks are immutable — create and delete only.** `/v1/webhooks/{id}` routes `GET` and
+   * `DELETE`; `PATCH`, `PUT` and `POST` all 404 with Express's `Cannot PATCH /v1/webhooks/…`, and
+   * there is no `/enable` sub-route either (probed against the live API). So the
+   * create-`disabled`-then-enable sequence this originally shipped with could never work: the
+   * create succeeded, the enable 404'd, and the rollback tore the webhook straight back down —
+   * a channel that reported connected and received nothing.
+   *
+   * The consequence is an unavoidable window: the webhook is live from the moment it is created,
+   * but its signing key only exists in the create *response*, so it cannot be stored beforehand.
+   * A message landing in the ~200ms before `mergeSecretFields` commits fails verification and is
+   * dropped. There is no API shape that closes this — a dropped inbound SMS during provisioning
+   * is the cheapest of the available failure modes.
    *
    * **Idempotency: delete-then-recreate.** Re-arming with a stored `webhookId` deletes the old
    * webhook first, because (a) the callback URL changes between dev tunnels and Quo documents no
@@ -341,7 +349,7 @@ export class OpenPhoneProvider
       // the code assumes and makes teardown on disconnect unambiguous.
       resourceIds: [this.phoneNumberId!],
       label: `Auxx.ai — ${this.phoneNumber}`,
-      status: 'disabled',
+      status: 'enabled',
     })
 
     try {
@@ -365,17 +373,15 @@ export class OpenPhoneProvider
         .where(eq(schema.Integration.id, this.integrationId!))
       if (this.metadata) this.metadata.webhookId = created.id
 
-      // Only now is the channel able to verify what Quo sends.
-      await updateWebhookStatus(this.apiKey!, created.id, 'enabled')
-
       logger.info('Quo webhook armed', {
         webhookId: created.id,
         phoneNumberId: this.phoneNumberId,
         integrationId: this.integrationId,
       })
     } catch (error: any) {
-      // The webhook exists Quo-side but we could not persist (or enable) it. Leaving it would
-      // orphan a webhook nobody owns, so tear it back down before surfacing the failure.
+      // The webhook is live Quo-side but we could not persist what verifies it. Leaving it would
+      // orphan a webhook nobody owns, delivering traffic we can only reject, so tear it back down
+      // before surfacing the failure.
       logger.error('Failed to finish arming the Quo webhook — rolling back', {
         error: error?.message,
         webhookId: created.id,

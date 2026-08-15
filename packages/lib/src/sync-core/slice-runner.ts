@@ -42,7 +42,7 @@ export interface RunSliceArgs {
   source: SyncSource
   stateStore: SyncStateStore
   ledger: RunLedger
-  /** Built by the worker via `createThrottleHandle(throttler, source.throttleKey)`. */
+  /** Built by the worker via `createThrottleHandle(quota)`. */
   throttle: ThrottleHandle
   budget: SliceBudget
   signal: AbortSignal

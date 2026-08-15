@@ -17,8 +17,9 @@ import type { ResourceFieldId } from '@auxx/types/field'
 import { and, eq, inArray, lt } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../agents/bindings/resolve'
 import { reconcileInstallationAppFields } from '../apps/installations/app-field-provisioning'
-import type { ThrottleHandle } from '../sync-core/contracts'
 import { runSyncSlice } from '../sync-core/slice-runner'
+import { createThrottleHandle } from '../sync-core/throttle'
+import { connectionQuota } from '../utils/rate-limiter/quota'
 import { prepareConnectorFetch } from './connector-runtime'
 import { createConnectorStreamSyncSource, type SyncSourceStream } from './connector-sync-source'
 import {
@@ -76,9 +77,18 @@ export const MAX_BACKFILL_RECORDS = 9_000
  */
 export const STALE_RUN_MS = 5 * 60 * 1_000
 
-/** A no-op throttle handle. The DC source does per-request 429 handling in the
- *  transport; the cross-request `connection:operation` throttle threads in later. */
-const NO_THROTTLE: ThrottleHandle = { run: (fn) => fn() }
+/**
+ * The shared budget a connector's slices pace against. Keyed on the bound CREDENTIAL
+ * (falling back to the connector id) so two connectors on one upstream account share
+ * one budget — the same partition `ConnectorStreamSyncSource.throttleKey` declares.
+ *
+ * Per-REQUEST pacing happens in the HTTP transport against this same quota; the
+ * slice-level handle is the coarse outer bound, so a stampede of concurrent slices on
+ * one account can't all start on the same millisecond.
+ */
+function connectorQuota(connector: { id: string; credentialId?: string | null }) {
+  return connectionQuota(connector.credentialId ?? connector.id)
+}
 
 // ── The pinned chain snapshot stored on the run (B2) ────────────────────────────
 
@@ -513,13 +523,14 @@ export async function runBackfillSlice(
       ? { ...SLICE_BUDGET, maxRecords: Math.min(SLICE_BUDGET.maxRecords, run.sampleLimit) }
       : SLICE_BUDGET
 
+  const sliceSignal = signal ?? new AbortController().signal
   const outcome = await runSyncSlice({
     source,
     stateStore: createStreamSyncStateStore(db, streamId),
     ledger: createConnectorRunLedger(db, { id: runId, startedAt: run.startedAt }, streamId),
-    throttle: NO_THROTTLE,
+    throttle: createThrottleHandle(connectorQuota(connector), { signal: sliceSignal }),
     budget,
-    signal: signal ?? new AbortController().signal,
+    signal: sliceSignal,
   })
 
   if (outcome.action === 'reenqueue') {

@@ -9,7 +9,7 @@ import {
   getDefaultRateLimits,
   getMergedProviderLimits,
 } from './provider-configs'
-import type { EnhancedRateLimits, RateLimiterConfig, ThrottlerConfig } from './types'
+import type { EnhancedRateLimits, ThrottlerConfig } from './types'
 
 /**
  * Configuration manager for rate limiting
@@ -56,9 +56,6 @@ export class RateLimiterConfigManager {
 
     // Outlook overrides
     this.loadOutlookOverrides()
-
-    // Facebook overrides
-    this.loadFacebookOverrides()
 
     // Shopify overrides
     this.loadShopifyOverrides()
@@ -117,14 +114,6 @@ export class RateLimiterConfigManager {
       })
     }
 
-    const outlookRatePerHour = configService.get<string>('OUTLOOK_RATE_LIMIT_PER_HOUR')
-    if (outlookRatePerHour) {
-      outlookConfig.requestsPerHour = parseInt(outlookRatePerHour, 10)
-      this.logger.info('Outlook rate limit per hour overridden', {
-        value: outlookConfig.requestsPerHour,
-      })
-    }
-
     const outlookBatchSize = configService.get<string>('OUTLOOK_BATCH_SIZE')
     if (outlookBatchSize) {
       outlookConfig.batchSize = parseInt(outlookBatchSize, 10)
@@ -132,23 +121,6 @@ export class RateLimiterConfigManager {
     }
 
     this.config.set(IntegrationProviderTypeEnum.outlook, outlookConfig)
-  }
-
-  /**
-   * Load Facebook-specific environment overrides
-   */
-  private loadFacebookOverrides(): void {
-    const facebookConfig = this.config.get(IntegrationProviderTypeEnum.facebook) || {}
-
-    const fbRatePerHour = configService.get<string>('FACEBOOK_RATE_LIMIT_PER_HOUR')
-    if (fbRatePerHour) {
-      facebookConfig.requestsPerHour = parseInt(fbRatePerHour, 10)
-      this.logger.info('Facebook rate limit per hour overridden', {
-        value: facebookConfig.requestsPerHour,
-      })
-    }
-
-    this.config.set(IntegrationProviderTypeEnum.facebook, facebookConfig)
   }
 
   /**
@@ -166,50 +138,6 @@ export class RateLimiterConfigManager {
     }
 
     this.config.set(IntegrationProviderTypeEnum.shopify, shopifyConfig)
-  }
-
-  /**
-   * Get configuration for a specific provider and context
-   * @param providerType - Provider type
-   * @param context - Optional context (e.g., 'sync', 'send', 'batch')
-   * @returns Rate limiter configuration
-   */
-  getConfig(providerType: IntegrationProviderType, context?: string): RateLimiterConfig {
-    // Check if rate limiting is disabled
-    if (!this.isRateLimitingEnabled()) {
-      // Return very high limits when disabled
-      return {
-        maxRequests: 999999,
-        perInterval: 1000,
-        maxConcurrent: 999999,
-        retryConfig: DEFAULT_RETRY_CONFIG,
-        name: `${providerType}${context ? `:${context}` : ''}`,
-      }
-    }
-
-    const providerConfig = this.config.get(providerType)
-
-    // Check for context-specific limits
-    if (context && providerConfig?.contexts?.[context]) {
-      return {
-        ...providerConfig.contexts[context],
-        retryConfig: this.getRetryConfig(providerType),
-        name: `${providerType}:${context}`,
-      }
-    }
-
-    // Return provider defaults
-    const defaultLimits = providerConfig || getDefaultRateLimits()
-    return {
-      maxRequests: defaultLimits.requestsPerMinute || 100,
-      perInterval: 60000,
-      maxConcurrent: defaultLimits.concurrentRequests || 10,
-      minInterval: defaultLimits.requestsPerSecond
-        ? 1000 / defaultLimits.requestsPerSecond
-        : undefined,
-      retryConfig: this.getRetryConfig(providerType),
-      name: providerType,
-    }
   }
 
   /**
