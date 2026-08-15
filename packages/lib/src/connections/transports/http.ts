@@ -5,9 +5,11 @@
 // consumers previously hand-rolled. Consumers: generic-rest data connectors today;
 // the workflow HTTP node and connection-backed agent tools next.
 
+import { acquireSlot, reportRetryAfter } from '../../utils/rate-limiter/pacer'
+import { connectionQuota, type Quota } from '../../utils/rate-limiter/quota'
 import { applyAuth, type RequestParts } from '../auth-apply'
 import type { RuntimeConnectionData } from '../resolve-connection-for-runtime'
-import type { HttpResponse, HttpTransport, RateLimitPolicy } from './types'
+import type { HttpRequest, HttpResponse, HttpTransport, RateLimitPolicy } from './types'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const DEFAULT_MAX_RETRIES = 5
@@ -181,6 +183,34 @@ function detectThrottle(
   return { throttled: false }
 }
 
+/**
+ * The shared budget this request paces against, or `undefined` when there is nothing
+ * to share one on.
+ *
+ * An explicit `req.quota` wins. Otherwise a quota is derived from the CONNECTION —
+ * the natural per-account partition for a connector — but only when the policy
+ * actually declares a rate. Without a declared rate, pacing would be a behaviour
+ * change imposed on every consumer of this transport (workflow HTTP nodes, agent
+ * tools), so proactive pacing stays opt-in.
+ */
+function resolveRequestQuota(
+  conn: RuntimeConnectionData | null,
+  req: HttpRequest
+): Quota | undefined {
+  if (req.quota) return req.quota
+  if (!conn?.id) return undefined
+
+  const policy = req.rateLimit
+  const rps =
+    policy?.rps ??
+    (policy?.minDelayMs && policy.minDelayMs > 0 ? 1_000 / policy.minDelayMs : undefined)
+  if (!rps || !Number.isFinite(rps)) return undefined
+
+  // Cap the look-ahead at the transport's own single-wait ceiling: a backlog longer
+  // than that surfaces as a RateLimitError rather than parking a worker indefinitely.
+  return connectionQuota(conn.id, { rps, burstMs: MAX_WAIT_MS })
+}
+
 export const httpTransport: HttpTransport = {
   kind: 'http',
 
@@ -194,9 +224,17 @@ export const httpTransport: HttpTransport = {
 
     const policy = req.rateLimit
     const maxRetries = policy?.maxRetries ?? DEFAULT_MAX_RETRIES
+    const quota = resolveRequestQuota(conn, req)
     let rateLimitWaitMs = 0
 
     for (let attempt = 0; ; attempt++) {
+      // Proactive half: reserve a slot on the connection's SHARED cursor. This is the
+      // cross-request coordination the comment below used to defer to "Steps 3/4" —
+      // it lives in the pacer, which the stateless transport merely calls.
+      if (quota) {
+        rateLimitWaitMs += await acquireSlot(quota, { signal: req.signal })
+      }
+
       // Combine the caller's cancellation with the per-attempt timeout.
       const timeout = AbortSignal.timeout(req.timeoutMs ?? DEFAULT_TIMEOUT_MS)
       const signal = req.signal ? AbortSignal.any([req.signal, timeout]) : timeout
@@ -214,19 +252,25 @@ export const httpTransport: HttpTransport = {
       const throttle = detectThrottle(res.status, respHeaders, text, policy)
       if (throttle.throttled && attempt < maxRetries) {
         const waitMs = Math.min(MAX_WAIT_MS, throttle.waitMs ?? backoffMs(attempt))
+        if (quota) {
+          // Reactive half, shared: push the wait onto the same cursor so EVERY
+          // process on this connection backs off, then loop — the `acquireSlot` at
+          // the top of the next iteration absorbs the wait. Sleeping here as well
+          // would double-count it.
+          await reportRetryAfter(quota, waitMs)
+          continue
+        }
         rateLimitWaitMs += waitMs
         await sleep(waitMs, req.signal)
         continue
       }
 
-      // Inter-page pacing: a configured floor between pages (token-bucket-lite),
-      // applied after the response so a pagination loop paces before the next page.
-      // NOTE: speculative pre-throttling off a usage gauge (e.g. Shopify's
-      // shop-global `X-Shopify-Shop-Api-Call-Limit`) is cross-request coordination
-      // and deliberately does NOT live in this stateless per-request transport — it
-      // belongs in the per-connection throttle layer (sync-core `ThrottleHandle`
-      // over `UniversalThrottler`, keyed by connection), wired in Steps 3/4.
-      const paceMs = policy?.minDelayMs ?? 0
+      // Inter-page pacing with no connection to share a budget on: fall back to a
+      // process-local floor between pages, applied after the response so a
+      // pagination loop paces before the next page. When a quota IS in play the
+      // pre-request reservation above already enforces this rate — across processes,
+      // not just this one — so the local sleep would be a double wait.
+      const paceMs = quota ? 0 : (policy?.minDelayMs ?? 0)
       if (paceMs > 0) {
         rateLimitWaitMs += paceMs
         await sleep(paceMs, req.signal)

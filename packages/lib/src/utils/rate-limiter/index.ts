@@ -29,17 +29,35 @@ export {
 } from './config-manager'
 export { checkFixedWindowLimit, type FixedWindowResult } from './fixed-window'
 export { MetricsCollector } from './metrics-collector'
+export {
+  type PacedFetchOptions,
+  type PacedFetchResult,
+  pacedFetch,
+  parseRetryAfterMs,
+} from './paced-fetch'
+// Shared pacer (the cross-process slot cursor)
+export { acquireSlot, reportRetryAfter, resetPacerState } from './pacer'
 export { PriorityQueue } from './priority-queue'
 export {
   DEFAULT_RETRY_CONFIG,
   ENHANCED_PROVIDER_LIMITS,
   GMAIL_QUOTA_COSTS,
-  getContextLimits,
   getDefaultRateLimits,
   getGmailQuotaCost,
   getMergedProviderLimits,
   supportsRateLimiting,
 } from './provider-configs'
+export {
+  connectionQuota,
+  DEFAULT_BURST_MS,
+  DEFAULT_CONNECTION_RPS,
+  DEFAULT_RPS,
+  hashScopeId,
+  type Quota,
+  type QuotaScope,
+  quotaCursorKey,
+  resolveQuota,
+} from './quota'
 export { RedisRateLimiter } from './redis-rate-limiter'
 // Core components
 export { TokenBucket } from './token-bucket'

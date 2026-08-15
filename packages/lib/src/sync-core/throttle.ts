@@ -1,24 +1,40 @@
 // packages/lib/src/sync-core/throttle.ts
-// Adapter from the shared `UniversalThrottler` to the core's `ThrottleHandle` seam.
-// The core hands a handle to each `fetchSlice`; the source runs every upstream call
-// through it. Keying is `connection:operation` (shared-sync-core-plan §3.3) so two
-// sources on the same upstream account share one rate budget, while distinct API
-// method quotas (e.g. gmail sync vs batch) stay separated.
+// Adapter from the shared pacer to the core's `ThrottleHandle` seam. The core hands a
+// handle to each `fetchSlice`; a source runs upstream work through it.
+//
+// What this delivers, precisely: ONE cost-weighted slot reservation on the quota's
+// shared Redis cursor per `run()` call, slept until due, cross-process. Any 429 that
+// another caller published via `reportRetryAfter` is already folded into that cursor,
+// so the reservation lands past it.
+//
+// What it does NOT deliver, and never did despite the previous doc comment claiming
+// otherwise: a token bucket, a circuit breaker, or a queue. Per-REQUEST pacing for the
+// data-connector path lives in the HTTP transport (`connections/transports/http.ts`),
+// which reserves on the same connection quota — a handle wrapping a whole slice is a
+// far coarser unit than a page fetch.
 
-import type { UniversalThrottler } from '../utils/rate-limiter'
+import { acquireSlot } from '../utils/rate-limiter/pacer'
+import type { Quota } from '../utils/rate-limiter/quota'
 import type { ThrottleHandle } from './contracts'
 
 /**
- * Wrap a `UniversalThrottler` as a `ThrottleHandle` bound to one throttle key.
- * `throttleKey` is the source's `${connectionId}:${operation}` bucket. The handle
- * is per-slice but the underlying throttler (and its Redis-backed token bucket +
- * circuit breaker + cross-run `Retry-After` backoff) is shared process-wide.
+ * Wrap a shared {@link Quota} as a `ThrottleHandle`.
+ *
+ * @param quota - The metered budget this slice's work draws from. Two sources on one
+ *   upstream account must resolve the same quota to share a budget.
+ * @param opts.cost - Quota units one `run()` consumes. Default 1.
+ * @param opts.signal - Cancels the pacing sleep, so an aborted slice never parks.
+ * @throws {import('../errors').RateLimitError} From `run()` when the backlog exceeds
+ *   the quota's burst ceiling — the caller should yield the slice, not spin.
  */
 export function createThrottleHandle(
-  throttler: UniversalThrottler,
-  throttleKey: string
+  quota: Quota,
+  opts: { cost?: number; signal?: AbortSignal } = {}
 ): ThrottleHandle {
   return {
-    run: (fn) => throttler.execute(throttleKey, fn),
+    run: async (fn) => {
+      await acquireSlot(quota, opts)
+      return fn()
+    },
   }
 }

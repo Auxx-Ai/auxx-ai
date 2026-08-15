@@ -30,7 +30,6 @@ export class UniversalThrottler {
   private concurrencySemaphore: ConcurrencySemaphore
   private metrics: MetricsCollector
   private processingQueues: Set<string> = new Set()
-  private coalescedRequests: Map<string, Promise<any>> = new Map()
   private initialized = false
   private logger = createScopedLogger('UniversalThrottler')
 
@@ -264,10 +263,6 @@ export class UniversalThrottler {
             }
           }
 
-          // Record available tokens
-          const availableTokens = await limiter.getAvailableTokens(key)
-          this.metrics.recordAvailableTokens(context, availableTokens)
-
           // Execute the function with default timeout if none specified
           const timeout = options?.timeout ?? DEFAULT_OPERATION_TIMEOUT_MS
 
@@ -432,80 +427,6 @@ export class UniversalThrottler {
   }
 
   /**
-   * Coalesce similar requests within a time window
-   * @param key - Coalescing key
-   * @param fn - Function to execute
-   * @param windowMs - Time window in milliseconds
-   * @returns Result of the function
-   */
-  async coalesce<T>(key: string, fn: () => Promise<T>, windowMs: number = 100): Promise<T> {
-    // Check if we already have a pending request for this key
-    if (this.coalescedRequests.has(key)) {
-      return this.coalescedRequests.get(key) as Promise<T>
-    }
-
-    // Create a new promise that will be shared by all requests in the window
-    const promise = (async () => {
-      try {
-        return await fn()
-      } finally {
-        // Clean up after the window expires
-        setTimeout(() => {
-          this.coalescedRequests.delete(key)
-        }, windowMs)
-      }
-    })()
-
-    this.coalescedRequests.set(key, promise)
-    return promise
-  }
-
-  /**
-   * Adapt rate limits based on response headers
-   * @param context - Context identifier
-   * @param headers - Response headers
-   */
-  async adaptLimits(context: string, headers: Headers | Record<string, string>): Promise<void> {
-    const getHeader = (name: string): string | null => {
-      if (headers instanceof Headers) {
-        return headers.get(name)
-      }
-      return headers[name] || null
-    }
-
-    const remaining = getHeader('x-ratelimit-remaining')
-    const limit = getHeader('x-ratelimit-limit')
-    const reset = getHeader('x-ratelimit-reset')
-
-    if (remaining !== null && limit !== null) {
-      const remainingNum = parseInt(remaining, 10)
-      const limitNum = parseInt(limit, 10)
-
-      // Log when we're approaching limits
-      if (remainingNum < limitNum * 0.2) {
-        this.logger.warn('Approaching rate limit', {
-          context,
-          remaining: remainingNum,
-          limit: limitNum,
-          reset,
-        })
-      }
-    }
-
-    // Check for Retry-After header
-    const retryAfter = getHeader('retry-after')
-    if (retryAfter) {
-      const retryAfterMs = this.parseRetryAfter(retryAfter)
-      if (retryAfterMs > 0) {
-        this.logger.info('Received Retry-After header', {
-          context,
-          retryAfterMs,
-        })
-      }
-    }
-  }
-
-  /**
    * Build a rate limit key from context and options
    * @param context - Context identifier
    * @param options - Execution options
@@ -550,27 +471,6 @@ export class UniversalThrottler {
     const config = this.getConfigForContext(context)
     // Simple calculation - could be more sophisticated
     return config.perInterval / config.maxRequests
-  }
-
-  /**
-   * Parse Retry-After header value
-   * @param retryAfter - Retry-After header value
-   * @returns Retry time in milliseconds
-   */
-  private parseRetryAfter(retryAfter: string): number {
-    // Check if it's a number (seconds)
-    const seconds = parseInt(retryAfter, 10)
-    if (!Number.isNaN(seconds)) {
-      return seconds * 1000
-    }
-
-    // Check if it's a date
-    const date = new Date(retryAfter)
-    if (!Number.isNaN(date.getTime())) {
-      return Math.max(0, date.getTime() - Date.now())
-    }
-
-    return 0
   }
 
   /**
@@ -637,7 +537,6 @@ export class UniversalThrottler {
       queues: this.queues.size,
       circuitBreakers: this.circuitBreakers.size,
       processingQueues: this.processingQueues.size,
-      coalescedRequests: this.coalescedRequests.size,
       queueStats: {},
       circuitBreakerStats: {},
       concurrencyStats: this.concurrencySemaphore.getStats(),
@@ -685,7 +584,6 @@ export class UniversalThrottler {
     this.queues.clear()
     this.circuitBreakers.clear()
     this.processingQueues.clear()
-    this.coalescedRequests.clear()
 
     this.initialized = false
   }

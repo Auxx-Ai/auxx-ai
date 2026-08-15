@@ -116,8 +116,14 @@ export interface RedisClient {
   // Pipeline support (batch operations)
   pipeline(): RedisPipeline
 
-  // Lua script support (IORedis/AWS)
-  eval?(script: string, numKeys: number, ...args: any[]): Promise<any>
+  // Lua script support. REQUIRED: a provider that cannot script must say so with a
+  // throw, never by leaving the member undefined — callers (the shared pacer in
+  // `@auxx/lib/utils/rate-limiter`) would otherwise degrade invisibly.
+  // `args` is `[...keys, ...argv]`, matching the wire protocol.
+  eval(script: string, numKeys: number, ...args: any[]): Promise<any>
+  /** EVALSHA with the same arg layout as {@link eval}. Rejects with `NOSCRIPT` when
+   *  the script isn't cached, which the caller answers by re-sending via `eval`. */
+  evalsha(sha1: string, numKeys: number, ...args: any[]): Promise<any>
 }
 
 /**

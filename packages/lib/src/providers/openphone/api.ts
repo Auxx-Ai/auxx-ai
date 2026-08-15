@@ -9,7 +9,14 @@
 // Verified live that a `Bearer ` prefix is also accepted, so either form works; we send the
 // documented one.
 
+import { IntegrationProviderType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
+import { RateLimitError } from '../../errors'
+// Leaf imports, not the `rate-limiter` barrel — the barrel drags in the whole
+// `UniversalThrottler` cluster (queues, circuit breakers, the config manager) that this
+// path has no use for.
+import { pacedFetch } from '../../utils/rate-limiter/paced-fetch'
+import { hashScopeId, type Quota, resolveQuota } from '../../utils/rate-limiter/quota'
 import type {
   QuoConversation,
   QuoCreateMessageWebhookInput,
@@ -23,13 +30,6 @@ const logger = createScopedLogger('quo-api')
 
 export const QUO_API_BASE = 'https://api.quo.com/v1'
 
-/**
- * Quo's documented ceiling is 10 requests/second per API key. We pace at 8 to leave headroom;
- * measured latency is ~195ms/request, so a serial caller never reaches this anyway — the pacer
- * matters when a backfill runs a small amount of concurrency.
- */
-const MAX_REQUESTS_PER_SECOND = 8
-const MIN_INTERVAL_MS = Math.ceil(1000 / MAX_REQUESTS_PER_SECOND)
 const MAX_RETRIES_ON_429 = 3
 
 /** An error carrying the HTTP status plus whatever message Quo returned. */
@@ -45,23 +45,18 @@ export class QuoApiError extends Error {
 }
 
 /**
- * Per-API-key pacing. The rate limit is per key, not per number, so three channels backfilling
- * concurrently share one budget — keying the pacer on the key is what keeps them from 429ing
- * each other.
+ * The quota every call in this file draws from. Quo meters per API KEY, not per number, so
+ * three channels backfilling concurrently share one budget — and so do three *workers*, which
+ * is why this goes through the shared Redis-backed pacer rather than a process-local map.
+ *
+ * The key is hashed, never stored raw: `saveConnection` still has no `providerKey` dedupe, so
+ * two `Credential` rows can hold the same API key. Keying on the key's hash hands that one
+ * workspace one budget; keying on `credentialId` would hand it two and 429 itself.
+ *
+ * The rate comes from `provider-configs.ts` — this file carries no rate constant of its own.
  */
-const nextSlotByKey = new Map<string, number>()
-
-async function acquireSlot(apiKey: string): Promise<void> {
-  const now = Date.now()
-  const earliest = nextSlotByKey.get(apiKey) ?? 0
-  const slot = Math.max(now, earliest)
-  nextSlotByKey.set(apiKey, slot + MIN_INTERVAL_MS)
-  const wait = slot - now
-  if (wait > 0) await sleep(wait)
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function quotaFor(apiKey: string): Quota {
+  return resolveQuota(IntegrationProviderType.openphone, 'apiKey', hashScopeId(apiKey))
 }
 
 function buildQuery(query?: QueryValue): string {
@@ -86,18 +81,22 @@ type QueryValue = Record<string, string | number | boolean | string[] | undefine
 /** Issue one paced, retry-on-429 request against the Quo API. */
 async function quoFetch<T>(
   apiKey: string,
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  method: 'GET' | 'POST' | 'DELETE',
   path: string,
   opts: { query?: QueryValue; body?: unknown } = {}
 ): Promise<T> {
   const url = `${QUO_API_BASE}${path}${buildQuery(opts.query)}`
 
-  for (let attempt = 0; ; attempt++) {
-    await acquireSlot(apiKey)
-
-    let response: Response
-    try {
-      response = await fetch(url, {
+  // `pacedFetch` reserves a slot on the shared cursor before every attempt and, on a 429,
+  // publishes the `Retry-After` back onto that same cursor — so the backoff is observed by
+  // every other worker on this API key, not just this process. It does not sleep the
+  // `Retry-After` itself: the next reservation already lands past it.
+  let response: Response
+  try {
+    ;({ response } = await pacedFetch(
+      quotaFor(apiKey),
+      url,
+      {
         method,
         headers: {
           Authorization: apiKey,
@@ -105,44 +104,45 @@ async function quoFetch<T>(
           Accept: 'application/json',
         },
         body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-      })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      logger.error('Quo API network error', { method, path, error: message })
-      throw new QuoApiError(`Failed to reach the Quo API: ${message}`, 0)
-    }
-
-    if (response.status === 429 && attempt < MAX_RETRIES_ON_429) {
-      const retryAfter = Number(response.headers.get('retry-after'))
-      const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000
-      logger.warn('Quo API rate limited; backing off', { method, path, waitMs, attempt })
-      await sleep(waitMs)
-      continue
-    }
-
-    // 204 (webhook delete) has no body.
-    if (response.status === 204) return undefined as T
-
-    const raw = await response.text()
-    let parsed: unknown
-    try {
-      parsed = raw ? JSON.parse(raw) : undefined
-    } catch {
-      parsed = raw
-    }
-
-    if (!response.ok) {
-      const message = extractErrorMessage(parsed) ?? `HTTP error ${response.status}`
-      logger.error('Quo API error', { method, path, status: response.status, message })
-      throw new QuoApiError(
-        `Quo API error (${response.status}): ${message}`,
-        response.status,
-        parsed
-      )
-    }
-
-    return parsed as T
+      },
+      {
+        maxRetries: MAX_RETRIES_ON_429,
+        onThrottle: ({ attempt, retryAfterMs }) =>
+          logger.warn('Quo API rate limited; shared cursor pushed forward', {
+            method,
+            path,
+            retryAfterMs,
+            attempt,
+          }),
+      }
+    ))
+  } catch (error) {
+    // A `RateLimitError` means the shared budget is backed up past the burst ceiling — that
+    // is a real rate-limit answer, not a network failure, so it must not be flattened.
+    if (error instanceof QuoApiError || error instanceof RateLimitError) throw error
+    const message = error instanceof Error ? error.message : String(error)
+    logger.error('Quo API network error', { method, path, error: message })
+    throw new QuoApiError(`Failed to reach the Quo API: ${message}`, 0)
   }
+
+  // 204 (webhook delete) has no body.
+  if (response.status === 204) return undefined as T
+
+  const raw = await response.text()
+  let parsed: unknown
+  try {
+    parsed = raw ? JSON.parse(raw) : undefined
+  } catch {
+    parsed = raw
+  }
+
+  if (!response.ok) {
+    const message = extractErrorMessage(parsed) ?? `HTTP error ${response.status}`
+    logger.error('Quo API error', { method, path, status: response.status, message })
+    throw new QuoApiError(`Quo API error (${response.status}): ${message}`, response.status, parsed)
+  }
+
+  return parsed as T
 }
 
 function extractErrorMessage(body: unknown): string | undefined {
@@ -198,22 +198,15 @@ export async function createMessageWebhook(
   return result.data
 }
 
-/** `PATCH /v1/webhooks/{id}` — used to flip a freshly created webhook from disabled to enabled. */
-export async function updateWebhookStatus(
-  apiKey: string,
-  webhookId: string,
-  status: 'enabled' | 'disabled'
-): Promise<QuoWebhook> {
-  const result = await quoFetch<{ data: QuoWebhook }>(
-    apiKey,
-    'PATCH',
-    `/webhooks/${encodeURIComponent(webhookId)}`,
-    { body: { status } }
-  )
-  return result.data
-}
-
-/** `DELETE /v1/webhooks/{id}` → 204. */
+/**
+ * `DELETE /v1/webhooks/{id}` → 204.
+ *
+ * Note there is deliberately no update call here: `/v1/webhooks/{id}` routes only `GET` and
+ * `DELETE`. `PATCH`, `PUT` and `POST` all 404 (`Cannot PATCH /v1/webhooks/…`), and no
+ * `/enable`, `/disable` or `/status` sub-route exists either — probed against the live API.
+ * Quo webhooks are immutable: to change `url`, `events`, `resourceIds` or `status`, delete and
+ * recreate. `setupWebhook` is built around that.
+ */
 export async function deleteWebhook(apiKey: string, webhookId: string): Promise<void> {
   await quoFetch<void>(apiKey, 'DELETE', `/webhooks/${encodeURIComponent(webhookId)}`)
 }
