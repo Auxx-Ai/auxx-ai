@@ -284,8 +284,10 @@ export class UnifiedCrudHandler {
    * The visibility scope for the SYSTEM-TABLE query lane (plan v3/06 W1).
    *
    * Arm `all` for every table but `article`, which inherits its KB's instance
-   * grants. Memoized per handler under the table id — the underlying read is
-   * org-cache-only, but a list that also counts asks twice.
+   * grants, and `kb` / `dataset`, which ARE instance-access grant targets and
+   * resolve to a direct id filter off the composed blob. Memoized per handler
+   * under the table id — the underlying read is org-cache-only (and zero-I/O for
+   * the two grant targets), but a list that also counts asks twice.
    *
    * ⚠ Kept textually parallel with `RecordPickerService.systemTableScope`: the
    * picker is a second entry point into the SAME lane, not a second policy. Both

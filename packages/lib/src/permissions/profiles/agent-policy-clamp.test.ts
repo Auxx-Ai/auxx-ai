@@ -71,6 +71,11 @@ function publisher(spec: PublisherSpec): CapabilityView {
     canAdministerDef: (id) => defRung(id) === 'admin',
     assertAdministerDef: notNeeded,
     canViewInstance: (_k: InstanceAccessKey, id: string) => RANK[instRung(id)] >= RANK.view,
+    // This stub grades ids by a rung function rather than holding a list, so
+    // there is nothing to enumerate. The clamp reads instance GATES, never a
+    // list scope; `none` keeps the stub honest — it claims to list nothing
+    // rather than claiming to list everything.
+    instanceListScope: () => ({ kind: 'none' as const }),
     canEditInstance: (_k, id) => RANK[instRung(id)] >= RANK.edit,
     canAdminInstance: (_k, id) => instRung(id) === 'admin',
     assertViewInstance: notNeeded,

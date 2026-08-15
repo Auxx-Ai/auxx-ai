@@ -268,6 +268,8 @@ describe('run-as is delegation, never replacement (§0.15/§2.3)', () => {
     canAdministerDef: () => true,
     assertAdministerDef: () => {},
     canViewInstance: () => true,
+    // Twin of the all-true gate above: denies nothing.
+    instanceListScope: () => ({ kind: 'exclude' as const, excludeIds: [] }),
     canEditInstance: () => true,
     canAdminInstance: () => true,
     assertViewInstance: () => {},
@@ -370,6 +372,8 @@ function ownerRunAsFixture(): CapabilityView {
     canAdministerDef: () => true,
     assertAdministerDef: () => {},
     canViewInstance: (_k: InstanceAccessKey, _id: string) => true,
+    // Twin of the all-true gate above: denies nothing.
+    instanceListScope: () => ({ kind: 'exclude' as const, excludeIds: [] }),
     canEditInstance: () => true,
     canAdminInstance: () => true,
     assertViewInstance: () => {},

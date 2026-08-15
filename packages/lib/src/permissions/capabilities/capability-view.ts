@@ -2,6 +2,7 @@
 
 import type { ResourcePermission, Rung } from '@auxx/database/enums'
 import { PERMISSION_RANK } from './compose-user-capabilities'
+import type { InstanceListScope, OrgSharedInstanceAccessKey } from './entity-access'
 import type { InstanceAccessKey } from './instance-access'
 import type { Area, Level, PermissionKey } from './registry'
 import { RUNG_ORDER } from './rung'
@@ -148,6 +149,30 @@ export interface CapabilityView {
   assertEditInstance(key: InstanceAccessKey, instanceId: string): void
   /** Throwing form of {@link CapabilityView.canAdminInstance} (403). */
   assertAdminInstance(key: InstanceAccessKey, instanceId: string): void
+
+  /**
+   * The id filter a paginated LIST query needs so `limit` / `cursor` / `total`
+   * run over the rows this principal may actually see — the list-side twin of
+   * {@link CapabilityView.canViewInstance}, computed up front instead of
+   * filtering a page after the fact.
+   *
+   * On the interface rather than on `CapabilitySet` alone because the system-
+   * table read lane needs it from a plain {@link CapabilityView}: `kb` and
+   * `dataset` rows carry no `ResourceAccess` grant rows to correlate against in
+   * SQL, so their list predicate can only come from the composed blob. Leaving
+   * it off the interface is what forced that lane to choose between refusing
+   * these keys outright and reading org-wide.
+   *
+   * 🔴 **If this and `canViewInstance` ever disagree, a member sees an empty
+   * page for an instance they can demonstrably open.** Every implementation must
+   * therefore derive both from one rule — see
+   * {@link import('./entity-access').instanceListScope} for the enumeration
+   * proof, and {@link MinCapabilitySet.instanceListScope} for why the
+   * intersection is set algebra rather than a second resolution.
+   *
+   * Zero I/O, like every other member.
+   */
+  instanceListScope(key: OrgSharedInstanceAccessKey): InstanceListScope
 }
 
 /**
@@ -324,6 +349,55 @@ export class MinCapabilitySet implements CapabilityView {
     this.a.assertAdminInstance(key, instanceId)
     this.b.assertAdminInstance(key, instanceId)
   }
+
+  /**
+   * Set algebra over the two sides' scopes — the list-side expression of the
+   * `a && b` every gate above performs pointwise.
+   *
+   * Each arm is `canViewInstance` restated as a filter, so intersecting the
+   * filters and intersecting the gates must agree for every id. They do, arm by
+   * arm, because `include` means "exactly these" and `exclude` means "everything
+   * but these":
+   *
+   * | a | b | a ∩ b | why |
+   * |---|---|---|---|
+   * | `none` | anything | `none` | one side sees nothing, so neither does the pair |
+   * | `include(A)` | `include(B)` | `include(A ∩ B)` | both must name the id |
+   * | `include(A)` | `exclude(B)` | `include(A \ B)` | `a` bounds the universe; `b` only removes |
+   * | `exclude(A)` | `exclude(B)` | `exclude(A ∪ B)` | either side's denial is enough |
+   *
+   * An `include` arm that empties out collapses to `none` rather than to an
+   * `include` of nothing, matching what `instanceListScope` itself returns for
+   * that case so callers only ever branch on one spelling of "sees nothing".
+   *
+   * 🔴 **Never resolve the intersection by re-running the enumeration against a
+   * merged blob.** Each side's arms depend on its OWN area levels, seat ceiling
+   * and governing set (see `instanceListScope`'s six outcomes), and a merged blob
+   * loses exactly the context that decides which arm each side is in — the same
+   * reason this class intersects resolved gates rather than merging blobs.
+   */
+  instanceListScope(key: OrgSharedInstanceAccessKey): InstanceListScope {
+    const a = this.a.instanceListScope(key)
+    const b = this.b.instanceListScope(key)
+    if (a.kind === 'none' || b.kind === 'none') return { kind: 'none' }
+
+    if (a.kind === 'include' && b.kind === 'include') {
+      const other = new Set(b.includeIds)
+      return narrowInclude(a.includeIds.filter((id) => other.has(id)))
+    }
+    if (a.kind === 'include' || b.kind === 'include') {
+      const [included, excluded] =
+        a.kind === 'include' ? [a.includeIds, b.excludeIds!] : [b.includeIds!, a.excludeIds!]
+      const denied = new Set(excluded)
+      return narrowInclude(included.filter((id) => !denied.has(id)))
+    }
+    return { kind: 'exclude', excludeIds: [...new Set([...a.excludeIds!, ...b.excludeIds!])] }
+  }
+}
+
+/** An allow-list that emptied out sees nothing — one spelling, not two. */
+function narrowInclude(includeIds: string[]): InstanceListScope {
+  return includeIds.length > 0 ? { kind: 'include', includeIds } : { kind: 'none' }
 }
 
 /**

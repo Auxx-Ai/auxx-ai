@@ -4,9 +4,14 @@ import type { Rung } from '@auxx/database/enums'
 import { type SQL, sql } from 'drizzle-orm'
 import { getCachedKnowledgeBases } from '../../cache'
 import type { CapabilityView } from './capability-view'
+import {
+  instanceTableVisibilityScope,
+  isInstanceBackedTable,
+} from './instance-table-visibility-scope'
 import type { RecordVisibilityScope } from './record-visibility-scope'
 import { RECORD_READ_FLOOR } from './record-visibility-scope'
 import { RUNG_ORDER } from './rung'
+import { fnv1a32 } from './scope-fingerprint'
 
 /**
  * **The ONE authoring point for "which articles may this member read"**
@@ -265,7 +270,9 @@ export function articleWriteRung(
 
 /**
  * The record-lane visibility scope for a **system table** — arm `all` for every
- * table except `article`, which inherits its KB's grants.
+ * table except `article`, which inherits its KB's grants, and `kb` / `dataset`,
+ * which ARE grant targets and delegate to
+ * {@link import('./instance-table-visibility-scope').instanceTableVisibilityScope}.
  *
  * This exists so `UnifiedCrudHandler` and `RecordPickerService` — the two entry
  * points into one lane — share a single one-line call rather than two hand-rolled
@@ -304,6 +311,13 @@ export async function systemTableVisibilityScope(input: {
    */
   viewableKbIds?: string[] | 'all'
 }): Promise<RecordVisibilityScope> {
+  // `kb` and `dataset` are grant targets in their own right, so their predicate
+  // is a direct id filter off the composed blob rather than a one-hop
+  // correlation — and it needs no I/O at all, which is why it is answered before
+  // the `article` branch reaches for the KB cache.
+  if (isInstanceBackedTable(input.tableId)) {
+    return instanceTableVisibilityScope(input.tableId, input.capabilities)
+  }
   if (input.tableId !== 'article') return { arm: 'all' }
   const viewableKbIds =
     input.viewableKbIds ??
@@ -358,13 +372,7 @@ export async function systemTableVisibilityScope(input: {
 export function knowledgeBaseScopeFingerprint(viewableKbIds: string[] | 'all'): string {
   if (viewableKbIds === 'all') return 'kb:all'
   if (viewableKbIds.length === 0) return 'kb:none'
-  const joined = [...viewableKbIds].sort().join(',')
-  let hash = 0x811c9dc5
-  for (let i = 0; i < joined.length; i += 1) {
-    hash ^= joined.charCodeAt(i)
-    hash = Math.imul(hash, 0x01000193) >>> 0
-  }
-  return `kb:${hash.toString(36)}`
+  return `kb:${fnv1a32([...viewableKbIds].sort().join(','))}`
 }
 
 /**

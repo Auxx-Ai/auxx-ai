@@ -98,6 +98,9 @@ function rethrowIfInvoicePaymentFkViolation(error: unknown): void {
  *    accept `personal_inbox`, because personal inboxes are created ONLY through
  *    provisioning.
  *  - {@link assertNotInstanceAccessDefForRead} — every QUERY. The mail keys pass.
+ *  - {@link assertNotInstanceAccessDefForSearch} — {@link search} only, which
+ *    additionally admits `kb` and `dataset` now that its path narrows per row.
+ *    See {@link SEARCH_EXEMPT_KEYS} for why that is one procedure wide.
  *
  * **Why the read exemption is safe, and why it is not the leak it looks like:**
  * the records capability layer was never the access authority for an inbox.
@@ -165,6 +168,49 @@ const MAIL_READ_EXEMPT_KEYS: ReadonlySet<InstanceAccessKey> = new Set<InstanceAc
   'personal_inbox',
 ])
 
+/**
+ * The keys {@link search} admits — the mail carve-out plus `kb` and `dataset`.
+ *
+ * **A carve-out on ONE procedure, not on the read arm**, for the same reason
+ * {@link HYDRATION_EXEMPT_KEYS} is one procedure wide: an exemption is only as
+ * defensible as the gate standing behind that specific path, and the paths
+ * differ. `search` is scoped; `getById`, `listAll` and `listFiltered` are not
+ * this pair's doors and stay refused.
+ *
+ * **Why `kb` and `dataset` may pass here now.** The original refusal was never
+ * "these resources are off-limits" — it was that `getResources` had no
+ * instance-access predicate, so admitting them would have handed any member the
+ * org's whole KB list. `HYDRATION_EXEMPT_KEYS` already made exactly that
+ * argument and unblocked `getByIds` alone, on the strength of the picker's
+ * post-fetch `admitSystemRows`.
+ *
+ * That asymmetry was itself a bug, and a widely-felt one: a member could see the
+ * KBs already attached to an agent (hydration) but could not add another
+ * (search). Every kb/dataset picker in the app rides this procedure — the agent
+ * Knowledge tab, the chat-widget AI settings, the dataset node, the
+ * knowledge-retrieval node — and all of them returned nothing.
+ *
+ * A post-fetch filter could not fix it: on a paginated path it shorts the page
+ * and desyncs the cursor. What closes it is `instanceTableVisibilityScope`,
+ * which renders the same composed blob as an id predicate applied BEFORE
+ * `LIMIT`, reached through `systemTableVisibilityScope` — plus the matching
+ * viewer dimension in the picker's result cache key, without which an org-keyed
+ * cache would hand one member's page to another.
+ *
+ * 🔴 **The WRITE arm is unchanged and must stay that way.** `kb.ts` and
+ * `dataset.ts` are the only doors for mutation; a second one into
+ * `EntityInstance` updates would route around their asserts.
+ *
+ * Everything else — `dashboard`, `workflow`, `agent`, `signature`, `snippet` —
+ * stays refused everywhere. They are not statically pickable, so there is no
+ * system-table path for a scope to gate in the first place.
+ */
+const SEARCH_EXEMPT_KEYS: ReadonlySet<InstanceAccessKey> = new Set<InstanceAccessKey>([
+  ...MAIL_READ_EXEMPT_KEYS,
+  'kb',
+  'dataset',
+])
+
 const NO_EXEMPT_KEYS: ReadonlySet<InstanceAccessKey> = new Set<InstanceAccessKey>()
 
 /** Refuse EVERY instance-access def — the mutation arm. */
@@ -183,6 +229,14 @@ function assertNotInstanceAccessDefForRead(
   return assertNotInstanceAccessDef(organizationId, identifiers, MAIL_READ_EXEMPT_KEYS)
 }
 
+/** {@link assertNotInstanceAccessDefForRead}, widened for {@link search} alone. */
+function assertNotInstanceAccessDefForSearch(
+  organizationId: string,
+  identifiers: Array<string | null | undefined>
+): Promise<void> {
+  return assertNotInstanceAccessDef(organizationId, identifiers, SEARCH_EXEMPT_KEYS)
+}
+
 function instanceAccessDefError(key: string): ForbiddenError {
   return new ForbiddenError(
     `"${key}" is not reachable through the generic record path — use its own router.`
@@ -190,27 +244,20 @@ function instanceAccessDefError(key: string): ForbiddenError {
 }
 
 /**
- * The keys {@link getByIds} admits — the HYDRATION carve-out, and deliberately
- * wider than {@link MAIL_READ_EXEMPT_KEYS}.
+ * The keys {@link getByIds} admits — the HYDRATION carve-out.
  *
- * `kb` and `dataset` are instance-access resources that live in their own
- * tables, and `RecordPickerService` both resolves them from those tables and
- * gates them per row through `canViewInstance` (`admitSystemRows`) — the same
- * authority `kb.list` filters on. So for a hydration read they have exactly one
- * access authority, which is what the blanket refusal was protecting.
+ * Now the same SET as {@link SEARCH_EXEMPT_KEYS}, and ALIASED to it rather than
+ * spelled twice: `kb` and `dataset` are admitted on both for the same underlying
+ * reason (each path applies the instance-access policy — this one in memory
+ * through `admitSystemRows`, that one as a predicate), and two literals that
+ * must agree is a drift bug waiting to happen in the permissive direction.
  *
- * They are NOT added to the general read arm: the paginated list/search paths
- * run through `getResources` / `querySystemResourceIdsPaged`, which have no
- * instance-access filter. Admitting them there would leak the org's whole KB
- * list. `signature`, `snippet`, `dashboard`, `workflow` and `agent` stay refused
- * everywhere — they are not statically pickable, so there is no system-table
- * path to gate in the first place.
+ * What still differs is the GUARD, not the key set: this one FILTERS an
+ * unroutable id out of the batch where the others throw — see
+ * {@link filterHydratableRecordIds}. The alias would have to be broken the day a
+ * key is safe to hydrate but not to search, or the reverse.
  */
-const HYDRATION_EXEMPT_KEYS: ReadonlySet<InstanceAccessKey> = new Set<InstanceAccessKey>([
-  ...MAIL_READ_EXEMPT_KEYS,
-  'kb',
-  'dataset',
-])
+const HYDRATION_EXEMPT_KEYS: ReadonlySet<InstanceAccessKey> = SEARCH_EXEMPT_KEYS
 
 /**
  * {@link assertNotInstanceAccessDefForRead} as a FILTER rather than an assert —
@@ -623,7 +670,7 @@ export const recordRouter = createTRPCRouter({
   search: capabilityProcedure.input(globalSearchInputSchema).query(async ({ ctx, input }) => {
     const { organizationId, user } = ctx.session
     const { apiSlug, entityDefinitionId, query, limit, cursor, entityDefinitionIds } = input
-    await assertNotInstanceAccessDefForRead(organizationId, [
+    await assertNotInstanceAccessDefForSearch(organizationId, [
       apiSlug,
       entityDefinitionId,
       ...(entityDefinitionIds ?? []),

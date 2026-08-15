@@ -68,6 +68,11 @@ function fakeCaps(viewable: string[]): CapabilityView {
     viewAccessFor: () => undefined,
     canAdministerDef: () => false,
     canViewInstance: (_k, id) => set.has(id),
+    // `canViewInstance` above is an allow-list, so its list-side twin is the
+    // same set — enumerated, not inverted, or the two would disagree for every
+    // id the stub was not told about.
+    instanceListScope: () =>
+      set.size > 0 ? { kind: 'include', includeIds: [...set] } : { kind: 'none' },
     canEditInstance: (_k, id) => set.has(id),
     canAdminInstance: () => false,
     assertAdministerDef: () => {},

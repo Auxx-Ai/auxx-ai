@@ -62,6 +62,13 @@ function view(rungs: Record<string, 'read' | 'edit' | 'admin'>) {
     canAdminInstance: (_key: string, id: string) => at(id) === 'admin',
     canViewEntity: () => true,
     hasRecordGrantsOn: () => false,
+    // The list-side twin, enumerated from the SAME map so the SQL predicate and
+    // the in-memory stamp cannot disagree about a row. `recordScope` reads it
+    // even on this by-ids path — that is what narrows the fetch before it runs.
+    instanceListScope: () =>
+      Object.keys(rungs).length > 0
+        ? { kind: 'include', includeIds: Object.keys(rungs) }
+        : { kind: 'none' },
   } as never
 }
 

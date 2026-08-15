@@ -84,6 +84,12 @@ function makeCapabilities(overrides: Partial<CapabilityView> = {}): CapabilityVi
     canAdministerDef: yes,
     assertAdministerDef: noop,
     canViewInstance: yes,
+    // The list-side twin of `canViewInstance`, all-permissive like the rest of
+    // this stub. The narrowing cases below override `canViewInstance` alone
+    // because that is the gate `resolveKnowledgeDatasetIds` asks — it filters a
+    // known id set per id, never a list. A case that ever exercises a LIST path
+    // must override both, or the two answers disagree.
+    instanceListScope: () => ({ kind: 'exclude', excludeIds: [] }),
     canEditInstance: yes,
     canAdminInstance: yes,
     assertViewInstance: noop,

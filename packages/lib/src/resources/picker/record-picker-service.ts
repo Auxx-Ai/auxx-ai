@@ -39,6 +39,11 @@ import {
   isInstanceAccessKey,
 } from '../../permissions/capabilities/instance-access'
 import {
+  instanceTableScopeFingerprint,
+  instanceTableVisibilityScope,
+  isInstanceBackedTable,
+} from '../../permissions/capabilities/instance-table-visibility-scope'
+import {
   type RecordVisibilityScope,
   recordAccessRankSql,
   recordScopeArmFor,
@@ -289,7 +294,12 @@ export class RecordPickerService {
    * table carries no viewer-dependent scope (every table but `article` today).
    */
   private async systemTableScopeFingerprint(tableId: TableId): Promise<string | undefined> {
-    if (tableId !== 'article' || !this.capabilities) return undefined
+    if (!this.capabilities) return undefined
+    // Zero I/O and no `article` KB-blob fetch — see `instanceTableScopeFingerprint`.
+    if (isInstanceBackedTable(tableId)) {
+      return instanceTableScopeFingerprint(tableId, this.capabilities)
+    }
+    if (tableId !== 'article') return undefined
     return knowledgeBaseScopeFingerprint(await this.viewableKbIds())
   }
 
@@ -1246,14 +1256,16 @@ export class RecordPickerService {
     if (isMailLensTableId(entityDefinitionId)) return { arm: 'none' }
     // ⚠ `{ arm: 'all' }` for a system table is NOT "everyone sees everything" for
     // the instance-access ones (`kb`, `dataset`). Their policy is real, it just
-    // is not SQL: it lives in the composed capability blob, so
-    // `getResourcesByIds` filters those rows through {@link instanceRung} AFTER
-    // the fetch.
+    // is not correlated in SQL: it lives in the composed capability blob.
     //
-    // That filter is on the by-ids (hydration) path only. `getResources` — the
-    // paginated list path — is still unfiltered for these keys, which is safe
-    // solely because `record.ts` refuses them there. Widen that guard and this
-    // has to grow a list arm first.
+    // 🔴 It IS now a predicate. `getResourcesByIds` still filters these rows
+    // through {@link instanceRung} after the fetch — that is what produces the
+    // `_access` stamp — but the paginated list path no longer depends on that,
+    // because {@link instanceTableVisibilityScope} renders the same blob as an
+    // id filter applied BEFORE `LIMIT`. A post-fetch filter could never serve
+    // this path: it shorts pages, makes `nextCursor` describe rows the caller
+    // never saw, and leaves `total` counting invisible ones. That predicate is
+    // what let `record.ts` stop refusing these keys on the read arm.
     //
     // 🔴 `article` is the one system table whose per-row policy IS expressible
     // as SQL (plan v3/06 W2) — it inherits its KB's instance grants. This
@@ -1273,6 +1285,12 @@ export class RecordPickerService {
       // never use — caught by `system-table-instance-access.test.ts`, which is
       // exactly the kind of quiet extra I/O a test that mocks only what it needs
       // is good at noticing.
+      //
+      // `kb` / `dataset` are answered first and stay outside that concern: their
+      // scope is a pure blob read with no I/O to hoist.
+      if (isInstanceBackedTable(entityDefinitionId)) {
+        return instanceTableVisibilityScope(entityDefinitionId, this.capabilities)
+      }
       if (entityDefinitionId !== 'article') return { arm: 'all' }
       const memoKey = `system:${entityDefinitionId}`
       const memoized = this.scopeCache.get(memoKey)

@@ -80,8 +80,15 @@ export interface ResourceDisplayConfig {
    * `listKnowledgeBases`, whose comment names pickers as a place they must never
    * reach. Encoding it only in that one query left the picker free to surface
    * them the moment a second read path opened.
+   *
+   * ⚠ **Only sound on a `NOT NULL` column.** The predicate is
+   * `NOT (col IN (…))`, which is NULL — and therefore false — for a NULL cell, so
+   * a nullable column would drop the very rows it is meant to keep. Both current
+   * entries qualify (`KnowledgeBase.kind`, `Dataset.isManaged`); check the schema
+   * before adding a third, and use a scope predicate rather than this if the
+   * column can be NULL.
    */
-  neverPickable?: Record<string, readonly string[]>
+  neverPickable?: Record<string, readonly (string | boolean)[]>
 }
 
 /**
@@ -239,6 +246,14 @@ export const RESOURCE_DISPLAY_CONFIG: Partial<Record<TableId, ResourceDisplayCon
     defaultSortField: 'updatedAt',
     defaultSortDirection: 'desc',
     orgScopingStrategy: 'direct',
+    // Every knowledge base owns a MANAGED dataset (`__kb:<id>`) holding its
+    // articles' embeddings, and those are deliberately hidden from every dataset
+    // surface: `dataset-service.ts` defaults `hideManaged`, and `dataset.list` /
+    // `dataset.stats` filter `isManaged = false`. The picker had no equivalent —
+    // harmless only while `record.search` refused the whole `dataset` key, and a
+    // leak of internal plumbing into every dataset picker the moment it didn't.
+    // The `kb` twin of this rule is `neverPickable: { kind: ['source'] }` below.
+    neverPickable: { isManaged: [true] },
   },
 
   part: {
