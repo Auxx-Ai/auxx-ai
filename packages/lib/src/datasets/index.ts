@@ -23,6 +23,14 @@ export { PdfExtractor } from './extractors/pdf-extractor'
 export { TextExtractor } from './extractors/text-extractor'
 // Export processors
 export { TextChunker } from './processors/text-chunker'
+// Knowledge target resolution — the access boundary in front of SearchService
+export {
+  type KnowledgeSource,
+  type KnowledgeTarget,
+  knowledgeTargetsForSource,
+  type ResolveKnowledgeTargetsArgs,
+  resolveKnowledgeDatasetIds,
+} from './resolve-knowledge-targets'
 export { FullTextSearchService } from './search/full-text-search'
 export { HybridSearchService } from './search/hybrid-search'
 // Export search services
