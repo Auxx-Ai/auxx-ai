@@ -618,6 +618,10 @@ describe('exact engine — the pair lifecycle', () => {
     expect(rows[0]?.band).toBe('high')
     // The snooze does not survive an upgrade either.
     expect(rows[0]?.snoozeUntil).toBeNull()
+    // Nor does the dismissal snapshot: an `open` row carrying a `dismissedBand`
+    // is a dismissal that no longer exists — harmless to every reader, and a lie
+    // in the audit trail.
+    expect(rows[0]?.dismissedBand).toBeNull()
   })
 
   it('leaves a dismissed pair dismissed when the rescan produces the SAME band', async () => {

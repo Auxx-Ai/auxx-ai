@@ -15,7 +15,9 @@ export {
 } from './blocking'
 export {
   type BlockFuzzyParams,
+  type BlockSurnameParams,
   blockFuzzyRecord,
+  blockSurnameRecord,
   type FuzzyBlockAnchors,
   type FuzzyCandidate,
 } from './blocking-fuzzy'
@@ -33,6 +35,7 @@ export {
   ROLE_EMAIL_LOCALS,
   SIGNAL_WEIGHTS,
   STRONG_KEY_SYSTEM_ATTRIBUTES,
+  SURNAME_ANCHOR_LIMIT,
   SURNAME_RARE_MAX_SHARE,
   SURNAME_RARE_MIN_COUNT,
   SURNAME_TRIGRAM_THRESHOLD,
@@ -51,10 +54,12 @@ export {
   emitPairsFromIdentityMatch,
 } from './emit-identity-pairs'
 export {
+  DUPLICATE_SCAN_CONTINUATION_DELAY_MS,
   DUPLICATE_SCAN_DELAY_MS,
   DUPLICATE_SCAN_JOB_NAME,
   type EnqueueScanForRecordsParams,
   enqueueDuplicateScan,
+  enqueueDuplicateScanContinuation,
   enqueueDuplicateScanForRecords,
 } from './enqueue-scan'
 export { deriveMatchKeys, type MatchKey, type MatchKeyColumn } from './match-keys'
@@ -122,6 +127,7 @@ export {
 } from './scoring'
 export {
   type NameFieldIds,
+  NORMALIZED_SURNAME_SQL,
   readStructuredNames,
   resolveNameFieldIds,
   type SurnameRarity,

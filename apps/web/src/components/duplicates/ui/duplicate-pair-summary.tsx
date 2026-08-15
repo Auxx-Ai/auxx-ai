@@ -43,7 +43,10 @@ export interface DuplicateSignalSummary {
   type: string
   value: string
   otherValue?: string
+  /** `CustomField.key` of the field that matched, when one field is responsible. */
   fieldKey?: string
+  /** `CustomField.systemAttribute` of that field, when it has one. */
+  systemAttribute?: string
 }
 
 /** Human labels for `SignalType`. Unknown types fall back to the raw string. */
@@ -56,6 +59,55 @@ const SIGNAL_LABELS: Record<string, string> = {
   address: 'Address',
   identity: 'External ID',
   ingest: 'Same import',
+}
+
+/**
+ * Labels for the fields that reach the chip as `type: 'unique'`.
+ *
+ * 🔴 **`company_domain` is the reason this map exists.** It is a plain TEXT
+ * field promoted to a strong key by `STRONG_KEY_SYSTEM_ATTRIBUTES`, so it emits
+ * `type: 'unique'` and a type-only label called the highest-yield company signal
+ * in the whole engine "Unique field". The signal already carries its provenance;
+ * labelling from `type` alone was simply throwing it away.
+ */
+const SYSTEM_ATTRIBUTE_LABELS: Record<string, string> = {
+  company_domain: 'Domain',
+  website: 'Website',
+  primary_email: 'Email',
+  phone: 'Phone',
+  company_name: 'Company name',
+  first_name: 'First name',
+  last_name: 'Last name',
+}
+
+/** `company_domain` → `Company domain`, `taxId` → `Tax id`. */
+function humanizeFieldKey(key: string): string {
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .toLowerCase()
+  if (!words) return key
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/**
+ * What a chip calls one signal.
+ *
+ * Provenance first, type second: a generic type label is only right when the
+ * signal came from something other than a field (`identity`, `ingest`) or when
+ * the type IS the field's meaning (`email`, `phone`).
+ */
+function signalLabel(signal: DuplicateSignalSummary): string {
+  if (signal.systemAttribute) {
+    const known = SYSTEM_ATTRIBUTE_LABELS[signal.systemAttribute]
+    if (known) return known
+  }
+  if (signal.type === 'unique') {
+    const source = signal.systemAttribute ?? signal.fieldKey
+    if (source) return humanizeFieldKey(source)
+  }
+  return SIGNAL_LABELS[signal.type] ?? signal.type
 }
 
 function initials(name: string | null): string {
@@ -130,9 +182,7 @@ export function DuplicateSignalChips({
         <span
           key={`${signal.type}:${signal.value}:${signal.otherValue ?? ''}`}
           className='inline-flex max-w-full items-center gap-1 truncate rounded-[5px] bg-muted px-1.5 py-0.5 text-[11px] text-foreground/80 ring-1 ring-border'>
-          <span className='shrink-0 text-muted-foreground'>
-            {SIGNAL_LABELS[signal.type] ?? signal.type}
-          </span>
+          <span className='shrink-0 text-muted-foreground'>{signalLabel(signal)}</span>
           <span className='truncate'>
             {signal.otherValue ? `${signal.value} ↔ ${signal.otherValue}` : signal.value}
           </span>

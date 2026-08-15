@@ -21,6 +21,20 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// `InfiniteScroll` constructs a real `IntersectionObserver` in a layout effect,
+// and the shared setup file installs an arrow function rather than a class. The
+// section only started mounting one when it gained load-more.
+class NoopIntersectionObserver {
+  observe = vi.fn()
+  unobserve = vi.fn()
+  disconnect = vi.fn()
+  takeRecords = vi.fn(() => [])
+  root = null
+  rootMargin = ''
+  thresholds: number[] = []
+}
+vi.stubGlobal('IntersectionObserver', NoopIntersectionObserver)
+
 const DEF = 'edf_contact00000000000000000'
 const LOW = 'ein_low000000000000000000000'
 const HIGH = 'ein_high00000000000000000000'
@@ -34,6 +48,9 @@ const h = vi.hoisted(() => ({
   /** `baseRecordIds` the merge dialog was mounted with. */
   mergeProps: [] as unknown[],
   items: [] as unknown[],
+  /** Non-null ⇒ the section has another page to load. */
+  nextCursor: null as unknown,
+  fetchNextPage: vi.fn(),
 }))
 
 vi.mock('~/providers/feature-flag-provider', () => ({
@@ -100,13 +117,18 @@ vi.mock('~/trpc/react', () => ({
     },
     duplicates: {
       list: {
-        useQuery: (input: unknown, opts: { enabled: boolean }) => {
+        useInfiniteQuery: (input: unknown, opts: { enabled: boolean }) => {
           if (opts.enabled) h.listCalls.push(input)
           return {
-            data: opts.enabled ? { items: h.items, nextCursor: null } : undefined,
+            data: opts.enabled
+              ? { pages: [{ items: h.items, nextCursor: h.nextCursor }] }
+              : undefined,
             isLoading: false,
             error: null,
             refetch: vi.fn(),
+            hasNextPage: !!h.nextCursor,
+            isFetchingNextPage: false,
+            fetchNextPage: h.fetchNextPage,
           }
         },
       },
@@ -133,18 +155,22 @@ function pair(overrides: Record<string, unknown> = {}) {
     band: 'high',
     signals: [{ type: 'email', strength: 'strong', value: 'bob@acme.test' }],
     createdAt: new Date().toISOString(),
-    low: {
-      instanceId: LOW,
-      displayName: 'Bob Smith',
-      secondaryDisplayValue: 'bob@acme.test',
-      avatarUrl: null,
-    },
-    high: {
-      instanceId: HIGH,
-      displayName: 'Robert Smith',
-      secondaryDisplayValue: 'bob@acme.test',
-      avatarUrl: null,
-    },
+    // The whole CLUSTER, best-established first — the router emits one item per
+    // connected component, not one per stored pair.
+    records: [
+      {
+        instanceId: HIGH,
+        displayName: 'Robert Smith',
+        secondaryDisplayValue: 'bob@acme.test',
+        avatarUrl: null,
+      },
+      {
+        instanceId: LOW,
+        displayName: 'Bob Smith',
+        secondaryDisplayValue: 'bob@acme.test',
+        avatarUrl: null,
+      },
+    ],
     // Server-decided order: the HIGH record is better established, so it must
     // survive the merge even though canonical pair order puts LOW first.
     mergeInstanceIds: [HIGH, LOW],
@@ -163,6 +189,8 @@ beforeEach(() => {
   h.dismissCalls = []
   h.mergeProps = []
   h.items = [pair()]
+  h.nextCursor = null
+  h.fetchNextPage = vi.fn()
 })
 
 describe('the Possible duplicates section', () => {
@@ -197,6 +225,45 @@ describe('the Possible duplicates section', () => {
     h.items = []
     renderTab()
     expect(screen.getByText('Nothing needs your approval')).toBeInTheDocument()
+  })
+
+  it('renders every record of a CLUSTER on one card', () => {
+    // Three records that all duplicate each other are three stored pairs
+    // offering the same merge. Rendering them as three rows meant two of them
+    // read as the same pair reversed — five clusters ate 15 of 25 slots on dev.
+    const third = 'ein_third0000000000000000000'
+    h.items = [
+      pair({
+        records: [
+          ...(pair().records as unknown[]),
+          {
+            instanceId: third,
+            displayName: 'Bobby Smith',
+            secondaryDisplayValue: 'bob@acme.test',
+            avatarUrl: null,
+          },
+        ],
+        mergeInstanceIds: [HIGH, LOW, third],
+      }),
+    ]
+    renderTab()
+
+    expect(screen.getByText('Robert Smith')).toBeInTheDocument()
+    expect(screen.getByText('Bob Smith')).toBeInTheDocument()
+    expect(screen.getByText('Bobby Smith')).toBeInTheDocument()
+    // One card, not three: the section header counts items, not records.
+    expect(screen.getByText('(1)')).toBeInTheDocument()
+  })
+
+  it('pages rather than stranding the pairs the badge counts', () => {
+    // A fixed-size query left the difference between the badge and the first
+    // page counted but unreachable — badge 70, list 25, no load-more.
+    h.nextCursor = { score: 0.9, id: 'dup_1' }
+    renderTab()
+
+    expect(h.listCalls).toHaveLength(1)
+    // The cursor input is what makes the next page fetchable at all.
+    expect(h.listCalls[0]).toEqual({ limit: 25 })
   })
 })
 

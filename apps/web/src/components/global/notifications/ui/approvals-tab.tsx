@@ -39,6 +39,15 @@ const SUGGESTION_FILTERS = {
   limit: 25,
 } as const
 
+/**
+ * Cursor-paged like the suggestions section above it, and for a sharper reason:
+ * the badge counts EVERY open pair while a fixed-size query renders only the
+ * first page, so a plain `useQuery` left the difference counted but unreachable
+ * (measured during Phase 5 verification: badge 70, list 25, no way to see the
+ * rest).
+ */
+const DUPLICATE_FILTERS = { limit: 25 } as const
+
 /** How long the flashed ring stays on a highlighted confirmation. */
 const HIGHLIGHT_MS = 2000
 
@@ -104,10 +113,11 @@ function PendingApprovals({ viewportRef }: ApprovalsTabProps) {
    * suggestions section above, and the reason the router may refuse outright
    * rather than answering with an empty list.
    */
-  const duplicates = api.duplicates.list.useQuery(
-    { limit: 25 },
-    { enabled: duplicatesEnabled, refetchOnWindowFocus: false }
-  )
+  const duplicates = api.duplicates.list.useInfiniteQuery(DUPLICATE_FILTERS, {
+    enabled: duplicatesEnabled,
+    getNextPageParam: (lastPage) => lastPage?.nextCursor ?? undefined,
+    refetchOnWindowFocus: false,
+  })
 
   // Deadline order — soonest expiry first, undated last. Correct only because the
   // pending view is fetched as one page (the router asks for 100), so this sorts
@@ -130,7 +140,10 @@ function PendingApprovals({ viewportRef }: ApprovalsTabProps) {
   )
 
   const mailSuggestionItems = mailSuggestions.data ?? []
-  const duplicateItems = duplicates.data?.items ?? []
+  const duplicateItems = useMemo(
+    () => duplicates.data?.pages.flatMap((page) => page?.items ?? []) ?? [],
+    [duplicates.data]
+  )
 
   /**
    * The acting client refetches both lists and both badge counts itself rather
@@ -348,6 +361,15 @@ function PendingApprovals({ viewportRef }: ApprovalsTabProps) {
           {duplicateItems.map((pair) => (
             <DuplicateRow key={pair.id} pair={pair} onResolved={onDuplicateResolved} />
           ))}
+          <InfiniteScroll
+            isLoading={duplicates.isFetchingNextPage}
+            hasMore={!!duplicates.hasNextPage}
+            next={() => duplicates.fetchNextPage()}
+            root={viewportRef.current}
+            rootMargin='200px'>
+            <div className='h-px' />
+          </InfiniteScroll>
+          {duplicates.isFetchingNextPage ? <NotificationRowSkeleton /> : null}
         </section>
       ) : null}
     </>

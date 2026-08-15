@@ -90,6 +90,41 @@ export async function enqueueDuplicateScan(
   )
 }
 
+/**
+ * How long a continuation waits — short, because there is a known backlog to
+ * drain rather than a burst to absorb.
+ */
+export const DUPLICATE_SCAN_CONTINUATION_DELAY_MS = 5_000
+
+/**
+ * Continue a scan that hit its per-definition record cap.
+ *
+ * The watermark query is oldest-dirty-first and bounded, so in a definition with
+ * more than `RECORDS_PER_DEFINITION` dirty records a freshly created record
+ * sorts LAST and would wait for the next write or the 6h sweep. The handler
+ * therefore requeues itself, and the backlog drains in bounded chunks.
+ *
+ * 🔴 **A different jobId from {@link enqueueDuplicateScan}, and the cursor is
+ * part of it.** The org+def jobId is held by the job that is currently RUNNING —
+ * BullMQ drops a same-jobId `add` in that state, so reusing it would make this
+ * call a silent no-op, which is exactly the bug being fixed. Keying on the
+ * watermark the tick stopped at makes each continuation distinct while still
+ * collapsing a redundant re-add at the same position.
+ */
+export async function enqueueDuplicateScanContinuation(
+  organizationId: string,
+  entityDefinitionId: string,
+  cursor: string
+): Promise<string | undefined> {
+  return addScanJob(
+    { organizationId, entityDefinitionId },
+    {
+      jobId: `dup-scan:cont:${organizationId}:${entityDefinitionId}:${cursor}`,
+      delay: DUPLICATE_SCAN_CONTINUATION_DELAY_MS,
+    }
+  )
+}
+
 /** Parameters for {@link enqueueDuplicateScanForRecords}. */
 export interface EnqueueScanForRecordsParams {
   organizationId: string

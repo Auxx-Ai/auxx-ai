@@ -68,6 +68,13 @@ export function useApprovalsCount(): ApprovalsCount {
    * as the list — a pair the list refuses to render must not be counted, which
    * is why the archived filter lives on all three read paths rather than on
    * `list` alone.
+   *
+   * ⚠️ It counts PAIRS while the section renders one row per CLUSTER, so an org
+   * with multi-record clusters sees a badge above its visible row count. That is
+   * deliberate: the badge answers "how much duplicate evidence is outstanding",
+   * and counting components instead would need a union-find over every open pair
+   * in the org on a query that runs whenever the bell is mounted. The section
+   * itself pages, so everything counted is reachable.
    */
   const duplicates = api.duplicates.count.useQuery(undefined, {
     enabled: duplicatesEnabled,

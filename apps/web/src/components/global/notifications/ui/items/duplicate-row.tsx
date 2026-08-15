@@ -72,7 +72,13 @@ export function DuplicateRow({
     toRecordId(pair.entityDefinitionId, id)
   )
 
-  const records = [pair.low, pair.high].map((side) => ({
+  /**
+   * The whole CLUSTER, not two sides. The router emits one item per connected
+   * component, so a three-record cluster is one card listing three records —
+   * previously it was three cards offering the same merge, two of which read as
+   * the same pair reversed.
+   */
+  const records = pair.records.map((side) => ({
     recordId: toRecordId(pair.entityDefinitionId, side.instanceId),
     displayName: side.displayName,
     secondaryDisplayValue: side.secondaryDisplayValue,

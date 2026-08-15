@@ -12,12 +12,32 @@ import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { getCachedResourceFields } from '../../cache'
 import { blockIdentity, blockOrgKey, blockRecord } from '../../dedup/blocking'
+import { blockFuzzyRecord, blockSurnameRecord } from '../../dedup/blocking-fuzzy'
 import { DEDUP_V1_ALLOWLIST, getDedupConfig } from '../../dedup/config'
+import {
+  type CorroborationFields,
+  deriveCorroborationFields,
+  evaluateFuzzyPair,
+} from '../../dedup/corroborate'
+import { enqueueDuplicateScanContinuation } from '../../dedup/enqueue-scan'
 import { deriveMatchKeys, type MatchKey } from '../../dedup/match-keys'
+import { normalizeSurname } from '../../dedup/name-match'
 import { rescoreOpenPairsForRecord, upsertPairs } from '../../dedup/pairs'
 import type { ScoredPair } from '../../dedup/scoring'
-import { scoreBlockGroup, scoreIdentityGroup, scoreRecordMatches } from '../../dedup/scoring'
-import type { DedupConfig } from '../../dedup/types'
+import {
+  scoreBlockGroup,
+  scoreIdentityGroup,
+  scorePair,
+  toCandidatePair,
+} from '../../dedup/scoring'
+import {
+  type NameFieldIds,
+  readStructuredNames,
+  resolveNameFieldIds,
+  type SurnameRarity,
+  surnameIdf,
+} from '../../dedup/surname-rarity'
+import type { CandidatePair, DedupConfig, Signal } from '../../dedup/types'
 import { FeaturePermissionService } from '../../permissions/feature-permission-service'
 import { FeatureKey } from '../../permissions/types'
 import type { JobContext } from '../types'
@@ -78,10 +98,13 @@ interface ScanTarget {
  * Duplicate scan — block, score and store `DuplicateSuggestion` pairs for every
  * dirty record in scope.
  *
- * Per record: `deriveMatchKeys` → `blockRecord` → `scoreRecordMatches` →
- * `upsertPairs` → `rescoreOpenPairsForRecord` → stamp `lastDuplicateScanAt`.
- * The rescore step is not optional: without it the store is upsert-only and a
- * corrected email leaves its duplicate suggestion standing forever.
+ * Per record, BOTH arms (see `scanRecord`): the exact arm `deriveMatchKeys` →
+ * `blockRecord`, and the Phase-2 arm `blockFuzzyRecord` + `blockSurnameRecord` →
+ * `readStructuredNames` → `evaluateFuzzyPair`. Their pairs are merged onto the
+ * canonical key, then `scorePair` → `upsertPairs` → `rescoreOpenPairsForRecord`
+ * → stamp `lastDuplicateScanAt`. The rescore step is not optional: without it
+ * the store is upsert-only and a corrected email leaves its duplicate suggestion
+ * standing forever.
  *
  * Never throws — a scan failure must not fail whatever enqueued it. Per-record
  * failures are logged and skipped so one garbage row cannot take down the tick.
@@ -262,6 +285,14 @@ interface DirtyRecord {
    * dirty and the next tick picks it up.
    */
   dirtyAt: string
+  /**
+   * The record's own trigram anchors, projected here rather than re-read per
+   * record inside `blockFuzzyRecord`: the fuzzy arm needs them for EVERY dirty
+   * record, and they cost nothing extra on a query that is already reading the
+   * row.
+   */
+  displayName: string | null
+  secondaryDisplayValue: string | null
 }
 
 async function scanDefinition(args: {
@@ -293,13 +324,27 @@ async function scanDefinition(args: {
     ? await selectLiveRecords(organizationId, entityDefinitionId, instanceIds)
     : await selectDirtyRecords(organizationId, entityDefinitionId, RECORDS_PER_DEFINITION)
 
+  // Resolved ONCE per definition, not per record: the name field ids and the
+  // corroboration field split are stable for the whole scan, and surname rarity
+  // is an aggregate over the definition that a per-pair call would repeat for
+  // every neighbour of every record.
+  const fuzzy = await buildFuzzyContext(target, config, fields)
+
   const counts: ScanCounts = { definitions: 1, scanned: 0, upserted: 0, closed: 0 }
 
   for (const record of dirty) {
     try {
       accumulate(
         counts,
-        await scanRecord({ organizationId, entityDefinitionId, config, keys, record, dryRun })
+        await scanRecord({
+          organizationId,
+          entityDefinitionId,
+          config,
+          keys,
+          fuzzy,
+          record,
+          dryRun,
+        })
       )
     } catch (error) {
       logger.error('Record scan threw', {
@@ -319,18 +364,113 @@ async function scanDefinition(args: {
     accumulate(counts, await runOrgPasses({ organizationId, entityDefinitionId, config, keys }))
   }
 
+  // The watermark query is oldest-dirty-first and capped, so in a definition
+  // with more than RECORDS_PER_DEFINITION dirty records a freshly created record
+  // sorts LAST and would wait for the next trigger or the 6h sweep. Requeue
+  // ourselves instead: the next tick starts from the new watermark, so the
+  // backlog drains in bounded chunks rather than stalling.
+  if (!dryRun && !instanceIds && dirty.length >= RECORDS_PER_DEFINITION) {
+    const cursor = dirty.at(-1)?.dirtyAt ?? ''
+    await enqueueDuplicateScanContinuation(organizationId, entityDefinitionId, cursor).catch(
+      (error: unknown) => {
+        logger.warn('Failed to requeue a capped scan', {
+          organizationId,
+          entityDefinitionId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    )
+  }
+
   return counts
 }
 
+/**
+ * The per-definition state the Phase-2 (fuzzy / name) arm needs, or `null` when
+ * this definition has no person-name shape.
+ *
+ * Companies resolve to `null` — `DedupConfig` carries no
+ * `surnameSystemAttribute` for them — so they keep exactly the exact-key
+ * behaviour they had. The structured comparator is about people; there is no
+ * `firstName`/`lastName` on a company to compare.
+ */
+interface FuzzyContext {
+  corroboration: CorroborationFields
+  nameFields: NameFieldIds & { surnameFieldId: FieldIdString }
+  /**
+   * normalized surname → rarity, memoized for the whole definition scan.
+   *
+   * `surnameIdf` is an aggregate over the definition's surname values, and a
+   * scan commonly walks several records sharing one surname. Resolving it per
+   * pair would repeat that aggregate for every neighbour of every record.
+   */
+  rarityBySurname: Map<string, SurnameRarity>
+}
+
+/** `CustomField.id` as `surname-rarity` brands it. */
+type FieldIdString = NonNullable<NameFieldIds['surnameFieldId']>
+
+async function buildFuzzyContext(
+  target: ScanTarget,
+  config: DedupConfig,
+  fields: Awaited<ReturnType<typeof getCachedResourceFields>>
+): Promise<FuzzyContext | null> {
+  if (!config.surnameSystemAttribute) return null
+
+  const resolved = await resolveNameFieldIds(
+    database,
+    target.organizationId,
+    target.entityDefinitionId,
+    { givenName: config.givenNameSystemAttribute, surname: config.surnameSystemAttribute }
+  )
+  if (resolved.isErr()) {
+    logger.warn('Could not resolve name fields — fuzzy arm disabled for this definition', {
+      organizationId: target.organizationId,
+      entityDefinitionId: target.entityDefinitionId,
+      error: resolved.error.message,
+    })
+    return null
+  }
+
+  const surnameFieldId = resolved.value.surnameFieldId
+  // No surname field ⇒ condition (a) of the name rule can never hold, so the
+  // whole arm is dead weight for this definition.
+  if (!surnameFieldId) return null
+
+  return {
+    corroboration: deriveCorroborationFields(fields),
+    nameFields: { ...resolved.value, surnameFieldId },
+    rarityBySurname: new Map(),
+  }
+}
+
+/**
+ * Block, score and store one record's pairs — **both arms**.
+ *
+ * ```text
+ * exact:  deriveMatchKeys → blockRecord            → toCandidatePair ┐
+ * fuzzy:  blockFuzzyRecord + blockSurnameRecord                     ├→ merge
+ *         → readStructuredNames → evaluateFuzzyPair                 ┘
+ *                    → scorePair → upsertPairs → rescoreOpenPairsForRecord
+ * ```
+ *
+ * 🔴 **The two arms MERGE before scoring, and that is not cosmetic.**
+ * `upsertPairs` dedupes by the conflict key and keeps the last writer, so a pair
+ * found by both arms would be stored with whichever arm happened to be scored
+ * last — a `high` exact pair silently rewritten as `medium`. Merging the signal
+ * sets first also produces the richer "matched on:" chips a reviewer actually
+ * wants: an email match AND a name match on one card, not one of the two.
+ */
 async function scanRecord(args: {
   organizationId: string
   entityDefinitionId: string
   config: DedupConfig
   keys: MatchKey[]
+  fuzzy: FuzzyContext | null
   record: DirtyRecord
   dryRun: boolean
 }): Promise<ScanCounts> {
-  const { organizationId, entityDefinitionId, config, keys, record, dryRun } = args
+  const { organizationId, entityDefinitionId, config, keys, fuzzy, record, dryRun } = args
   const db = database
 
   const matches = await blockRecord(db, {
@@ -350,11 +490,23 @@ async function scanRecord(args: {
     return NO_WORK
   }
 
-  const scored = scoreRecordMatches({
-    organizationId,
-    entityDefinitionId,
-    instanceId: record.id,
-    matches: matches.value,
+  const exact = matches.value.flatMap((match) => {
+    const pair = toCandidatePair({
+      organizationId,
+      entityDefinitionId,
+      instanceId: record.id,
+      match,
+    })
+    return pair ? [pair] : []
+  })
+
+  const fuzzyPairs = fuzzy
+    ? await fuzzyPairsForRecord({ organizationId, entityDefinitionId, fuzzy, record })
+    : []
+
+  const scored = mergeCandidatePairs([...exact, ...fuzzyPairs]).flatMap((pair) => {
+    const result = scorePair(pair)
+    return result ? [result] : []
   })
 
   if (dryRun) {
@@ -392,6 +544,199 @@ async function scanRecord(args: {
     upserted: upserted.isOk() ? upserted.value : 0,
     closed: closed.isOk() ? closed.value : 0,
   }
+}
+
+/** Stable identity for a signal, so the same evidence is never carried twice. */
+const signalKey = (s: Signal) =>
+  `${s.type}|${s.strength}|${s.fieldKey ?? ''}|${s.value}|${s.otherValue ?? ''}`
+
+/**
+ * Fold every candidate pair for one record onto its canonical key, unioning the
+ * signal sets.
+ *
+ * Two arms can produce the same pair — two contacts who share a phone number
+ * usually share a name too — and storage holds ONE row per canonical pair. See
+ * the `scanRecord` docstring for why keeping the last writer instead would
+ * silently downgrade a `high` pair.
+ */
+function mergeCandidatePairs(pairs: CandidatePair[]): CandidatePair[] {
+  const byKey = new Map<string, CandidatePair>()
+  for (const pair of pairs) {
+    const key = `${pair.instanceIdLow}|${pair.instanceIdHigh}`
+    const existing = byKey.get(key)
+    if (!existing) {
+      byKey.set(key, { ...pair, signals: [...pair.signals] })
+      continue
+    }
+    const seen = new Set(existing.signals.map(signalKey))
+    for (const signal of pair.signals) {
+      if (seen.has(signalKey(signal))) continue
+      seen.add(signalKey(signal))
+      existing.signals.push(signal)
+    }
+  }
+  return [...byKey.values()]
+}
+
+/**
+ * The Phase-2 arm for one record: name neighbours → structured comparison →
+ * corroboration → the name-alone rule.
+ *
+ * 🔴 **This is the seam Phase 5 verification found missing.** The modules below
+ * were merged, unit-tested and correct, and had ZERO production callers — so
+ * every stored row was `band: 'high'` and the work-address / name-variant
+ * duplicates the feature exists to catch were invisible. Nothing here
+ * re-implements them; it calls them in the documented order.
+ *
+ * Two candidate sources, not one:
+ *  - `blockFuzzyRecord` — trigram neighbours off the displayName index, which is
+ *    what catches a MISSPELLED surname;
+ *  - `blockSurnameRecord` — an exact match on the surname field, which is what
+ *    catches a nickname behind a COMMON surname. The trigram pass truncates
+ *    against 19 Smiths, so `Bob Smith` / `Robert Smith` is unreachable without
+ *    it (measured), and corroboration cannot rescue a pair that was never
+ *    generated.
+ *
+ * A record with no surname returns nothing: condition (a) of the name rule
+ * cannot hold, and neither can the reversed-order fallback, since that compares
+ * this record's `lastName` against the other's `firstName`.
+ *
+ * ⚠️ **One accepted asymmetry.** `rescoreOpenPairsForRecord` treats a record's
+ * fresh set as a complete statement about every pair it belongs to, which is
+ * exactly true for exact blocking (scanning A finds B iff scanning B finds A).
+ * The name arm is symmetric on an exact surname match, but on a TYPO'd one the
+ * two sides resolve rarity for different normalized surnames — `smiht` can be
+ * rare where `smith` is common — so scanning one side may create a pair the
+ * other side's scan then closes. It settles after both have been scanned (each
+ * runs only while dirty, so there is no loop), and it fails toward dropping a
+ * borderline pair rather than keeping one. Not worth a second rarity lookup per
+ * pair to close.
+ */
+async function fuzzyPairsForRecord(args: {
+  organizationId: string
+  entityDefinitionId: string
+  fuzzy: FuzzyContext
+  record: DirtyRecord
+}): Promise<CandidatePair[]> {
+  const { organizationId, entityDefinitionId, fuzzy, record } = args
+  const db = database
+
+  const ownNames = await readStructuredNames(db, organizationId, [record.id], fuzzy.nameFields)
+  if (ownNames.isErr()) return []
+  const own = ownNames.value.get(record.id)
+  if (!own?.lastName) return []
+
+  const [neighbours, sameSurname] = await Promise.all([
+    blockFuzzyRecord(db, {
+      organizationId,
+      entityDefinitionId,
+      instanceId: record.id,
+      anchors: {
+        displayName: record.displayName,
+        secondaryDisplayValue: record.secondaryDisplayValue,
+        surname: own.lastName,
+      },
+    }),
+    blockSurnameRecord(db, {
+      organizationId,
+      entityDefinitionId,
+      instanceId: record.id,
+      surnameFieldId: fuzzy.nameFields.surnameFieldId,
+      surname: own.lastName,
+    }),
+  ])
+
+  const candidateIds = [
+    ...new Set([
+      ...(neighbours.isOk() ? neighbours.value : []).map((c) => c.instanceId),
+      ...(sameSurname.isOk() ? sameSurname.value : []).map((c) => c.instanceId),
+    ]),
+  ].filter((id) => id !== record.id)
+  if (candidateIds.length === 0) return []
+
+  // One query for the whole candidate set, not one per candidate.
+  const names = await readStructuredNames(db, organizationId, candidateIds, fuzzy.nameFields)
+  if (names.isErr()) return []
+
+  const rarity = await resolveSurnameRarity(fuzzy, organizationId, entityDefinitionId, own.lastName)
+
+  const pairs: CandidatePair[] = []
+  for (const otherId of candidateIds) {
+    const other = names.value.get(otherId)
+    if (!other) continue
+
+    // Canonical order is a STORAGE invariant, so the pair is oriented here and
+    // `evaluateFuzzyPair` is handed the two names already on that axis — the
+    // signals it returns need no re-orientation downstream.
+    const swap = record.id > otherId
+    const instanceIdLow = swap ? otherId : record.id
+    const instanceIdHigh = swap ? record.id : otherId
+
+    const signals = await evaluateFuzzyPair(db, {
+      organizationId,
+      entityDefinitionId,
+      instanceIdLow,
+      instanceIdHigh,
+      fields: fuzzy.corroboration,
+      nameLow: swap ? other : own,
+      nameHigh: swap ? own : other,
+      surnameFieldId: fuzzy.nameFields.surnameFieldId,
+      surnameRarity: rarity,
+    })
+    if (signals.isErr()) {
+      logger.warn('Fuzzy pair evaluation failed', {
+        organizationId,
+        entityDefinitionId,
+        instanceIdLow,
+        instanceIdHigh,
+        error: signals.error.message,
+      })
+      continue
+    }
+    if (signals.value.length === 0) continue
+
+    pairs.push({
+      organizationId,
+      entityDefinitionId,
+      instanceIdLow,
+      instanceIdHigh,
+      signals: signals.value,
+    })
+  }
+
+  return pairs
+}
+
+/**
+ * Surname rarity for the SCANNED record, memoized per definition scan.
+ *
+ * Keyed on the scanned record's surname rather than the pair's because
+ * condition (a) already requires the two surnames to be equal or within a typo
+ * of each other — and because a scan walks many records that share one surname,
+ * which is exactly the case a per-pair aggregate would pay for repeatedly.
+ */
+async function resolveSurnameRarity(
+  fuzzy: FuzzyContext,
+  organizationId: string,
+  entityDefinitionId: string,
+  surname: string
+): Promise<SurnameRarity | undefined> {
+  const key = normalizeSurname(surname)
+  if (!key) return undefined
+
+  const cached = fuzzy.rarityBySurname.get(key)
+  if (cached) return cached
+
+  const computed = await surnameIdf(database, organizationId, entityDefinitionId, surname, {
+    surnameFieldId: fuzzy.nameFields.surnameFieldId,
+  })
+  // Undefined, not a fabricated `rare: false`: `evaluateFuzzyPair` resolves its
+  // own rarity when none is supplied, so a transient failure here degrades to an
+  // extra query rather than to a silently suppressed suggestion.
+  if (computed.isErr()) return undefined
+
+  fuzzy.rarityBySurname.set(key, computed.value)
+  return computed.value
 }
 
 async function runOrgPasses(args: {
@@ -478,7 +823,9 @@ async function selectDirtyRecords(
   limit: number
 ): Promise<DirtyRecord[]> {
   const result = await database.execute(sql`
-    SELECT ei."id" AS "id", ${DIRTY_AT}::text AS "dirtyAt"
+    SELECT ei."id" AS "id", ${DIRTY_AT}::text AS "dirtyAt",
+           ei."displayName" AS "displayName",
+           ei."secondaryDisplayValue" AS "secondaryDisplayValue"
     FROM "EntityInstance" ei
     ${FIELD_VALUE_LATERAL}
     WHERE ei."organizationId" = ${organizationId}
@@ -513,7 +860,9 @@ async function selectLiveRecords(
   )
 
   const result = await database.execute(sql`
-    SELECT ei."id" AS "id", ${DIRTY_AT}::text AS "dirtyAt"
+    SELECT ei."id" AS "id", ${DIRTY_AT}::text AS "dirtyAt",
+           ei."displayName" AS "displayName",
+           ei."secondaryDisplayValue" AS "secondaryDisplayValue"
     FROM "EntityInstance" ei
     ${FIELD_VALUE_LATERAL}
     WHERE ei."organizationId" = ${organizationId}
@@ -528,7 +877,13 @@ function toDirtyRecords(result: unknown): DirtyRecord[] {
   const rows = ((result as { rows?: unknown[] })?.rows ?? []) as Array<Record<string, unknown>>
   return rows
     .filter((row) => row.id != null && row.dirtyAt != null)
-    .map((row) => ({ id: String(row.id), dirtyAt: String(row.dirtyAt) }))
+    .map((row) => ({
+      id: String(row.id),
+      dirtyAt: String(row.dirtyAt),
+      displayName: row.displayName == null ? null : String(row.displayName),
+      secondaryDisplayValue:
+        row.secondaryDisplayValue == null ? null : String(row.secondaryDisplayValue),
+    }))
 }
 
 /**
