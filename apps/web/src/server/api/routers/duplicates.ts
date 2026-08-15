@@ -196,25 +196,16 @@ export const duplicatesRouter = createTRPCRouter({
       })
       if (page.isErr()) throw page.error
 
-      // Every cluster member is a side of some pair in this page (the clusters
-      // are page-local by construction), so one map covers the whole ordering.
-      const sideById = new Map<string, DuplicateSide>()
-      for (const pair of page.value.items) {
-        sideById.set(pair.low.instanceId, pair.low)
-        sideById.set(pair.high.instanceId, pair.high)
-      }
-
-      const establishment = await readMergeEstablishment(ctx.db, ctx.session.organizationId, [
-        ...sideById.keys(),
-      ])
+      const establishment = await readMergeEstablishment(
+        ctx.db,
+        ctx.session.organizationId,
+        page.value.items.flatMap((pair) => pair.clusterInstanceIds)
+      )
       if (establishment.isErr()) throw establishment.error
 
       const items = page.value.items.map((pair) => {
-        const clusterSides = pair.clusterInstanceIds.flatMap((id) => {
-          const side = sideById.get(id)
-          return side ? [side] : []
-        })
-        const ordered = orderByEstablishment(clusterSides, establishment.value)
+        const ordered = orderByEstablishment(pair.clusterSides, establishment.value)
+        const byId = new Map(pair.clusterSides.map((side) => [side.instanceId, side]))
         return {
           id: pair.id,
           entityDefinitionId: pair.entityDefinitionId,
@@ -222,10 +213,17 @@ export const duplicatesRouter = createTRPCRouter({
           band: pair.band,
           signals: pair.signals,
           createdAt: pair.createdAt,
-          low: toSideDto(pair.low),
-          high: toSideDto(pair.high),
           /**
-           * The cluster, best-established first — what the client turns into
+           * Every record in the cluster, best-established first — one row per
+           * component, so a three-record cluster is one card listing three
+           * records rather than three cards offering the same merge.
+           */
+          records: ordered.flatMap((id) => {
+            const side = byId.get(id)
+            return side ? [toSideDto(side)] : []
+          }),
+          /**
+           * The same ids, same order — what the client turns into
            * `MergeDialog.baseRecordIds`. The FIRST id becomes the merge target.
            */
           mergeInstanceIds: ordered,

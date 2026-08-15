@@ -63,6 +63,8 @@ export interface DuplicateSide {
   avatarUrl: string | null
   firstInteractionAt: Date | null
   lastInteractionAt: Date | null
+  /** `EntityInstance.createdAt` — the final merge-target tiebreak. */
+  createdAt: Date | null
 }
 
 /** One open pair, both sides hydrated. */
@@ -77,18 +79,37 @@ export interface DuplicatePair {
   high: DuplicateSide
 }
 
-/** A listed pair plus the connected component it belongs to within the page. */
+/**
+ * One CLUSTER, represented by its best-scoring pair.
+ *
+ * 🔴 **One item per connected component, not one per pair.** The store's unit is
+ * the pair, but the reviewer's unit is the cluster: three records that all
+ * duplicate each other are three stored pairs offering the SAME merge, and
+ * rendering them as three rows meant two of them read as the same pair reversed.
+ * Measured during Phase 5 verification: five clusters ate 15 of 25 visible slots.
+ * The union-find below now decides which rows exist, not just what they are
+ * annotated with.
+ *
+ * `score`, `band` and `signals` are the representative pair's — the highest
+ * scoring one in the component, since the page arrives score-desc and the first
+ * pair seen for a component wins.
+ */
 export interface DuplicatePairListItem extends DuplicatePair {
   /**
-   * Every instance id reachable from this pair through other open pairs **in the
-   * same page** (union-find at read).
+   * Every instance id in this component, reachable through other open pairs **in
+   * the same page** (union-find at read).
    *
-   * Page-local by construction, and deliberately so: the store's unit is the
-   * pair, and completing a cluster across the whole queue would need a second,
-   * unbounded query per page. A cluster split across a page boundary shows up as
-   * two rows rather than one — noisier, never wrong.
+   * Page-local by construction, and deliberately so: completing a cluster across
+   * the whole queue would need a second, unbounded query per page. A component
+   * split across a page boundary — and ONLY that case — still shows up as two
+   * rows: noisier, never wrong.
    */
   clusterInstanceIds: string[]
+  /**
+   * The same component's records, hydrated. Every member is a side of some pair
+   * in the page (that is what page-local means), so this costs no extra query.
+   */
+  clusterSides: DuplicateSide[]
 }
 
 /** Keyset position — score first, id as the tiebreak, both descending. */
@@ -173,12 +194,14 @@ const PAIR_COLUMNS = {
   lowAvatarUrl: LOW.avatarUrl,
   lowFirstInteractionAt: LOW.firstInteractionAt,
   lowLastInteractionAt: LOW.lastInteractionAt,
+  lowCreatedAt: LOW.createdAt,
   highId: T.instanceIdHigh,
   highDisplayName: HIGH.displayName,
   highSecondary: HIGH.secondaryDisplayValue,
   highAvatarUrl: HIGH.avatarUrl,
   highFirstInteractionAt: HIGH.firstInteractionAt,
   highLastInteractionAt: HIGH.lastInteractionAt,
+  highCreatedAt: HIGH.createdAt,
 } as const
 
 type PairRow = {
@@ -200,6 +223,7 @@ function toPair(row: PairRow): DuplicatePair {
       avatarUrl: (row.lowAvatarUrl ?? null) as string | null,
       firstInteractionAt: (row.lowFirstInteractionAt ?? null) as Date | null,
       lastInteractionAt: (row.lowLastInteractionAt ?? null) as Date | null,
+      createdAt: (row.lowCreatedAt ?? null) as Date | null,
     },
     high: {
       instanceId: row.highId as string,
@@ -208,6 +232,7 @@ function toPair(row: PairRow): DuplicatePair {
       avatarUrl: (row.highAvatarUrl ?? null) as string | null,
       firstInteractionAt: (row.highFirstInteractionAt ?? null) as Date | null,
       lastInteractionAt: (row.highLastInteractionAt ?? null) as Date | null,
+      createdAt: (row.highCreatedAt ?? null) as Date | null,
     },
   }
 }
@@ -271,15 +296,39 @@ export async function listDuplicatePairs(
   const page = (hasMore ? rows.slice(0, limit) : rows).map(toPair)
   const clusters = clusterInstanceIds(page)
 
+  // Every side in the page, so a component can be hydrated without a second query.
+  const sideById = new Map<string, DuplicateSide>()
+  for (const pair of page) {
+    sideById.set(pair.low.instanceId, pair.low)
+    sideById.set(pair.high.instanceId, pair.high)
+  }
+
+  // ONE item per component. The page is score-desc, so the first pair seen for a
+  // component is its best-scoring one and becomes the representative.
+  const emitted = new Set<string>()
+  const items: DuplicatePairListItem[] = []
+  for (const pair of page) {
+    const members = clusters.get(pair.low.instanceId) ?? [pair.low.instanceId, pair.high.instanceId]
+    const componentKey = [...members].sort().join('|')
+    if (emitted.has(componentKey)) continue
+    emitted.add(componentKey)
+
+    items.push({
+      ...pair,
+      clusterInstanceIds: members,
+      clusterSides: members.flatMap((id) => {
+        const side = sideById.get(id)
+        return side ? [side] : []
+      }),
+    })
+  }
+
+  // The cursor tracks the last ROW read, not the last item emitted — collapsing
+  // happens after paging, so a page that yields three items still has to resume
+  // from the pair it stopped at or the next page would repeat rows.
   const last = page.at(-1)
   return ok({
-    items: page.map((pair) => ({
-      ...pair,
-      clusterInstanceIds: clusters.get(pair.low.instanceId) ?? [
-        pair.low.instanceId,
-        pair.high.instanceId,
-      ],
-    })),
+    items,
     nextCursor: hasMore && last ? { score: last.score, id: last.id } : null,
   })
 }
@@ -291,6 +340,9 @@ export async function listDuplicatePairs(
  * unit is the pair, so one side can be dismissed or merged without invalidating
  * its neighbours. The cost is that a cluster is only ever as complete as the set
  * of pairs in hand.
+ *
+ * Its output decides which ROWS the queue has, not merely how they are
+ * annotated — see {@link DuplicatePairListItem}.
  */
 function clusterInstanceIds(pairs: DuplicatePair[]): Map<string, string[]> {
   const parent = new Map<string, string>()
@@ -379,10 +431,17 @@ export interface CountDuplicatePairsParams {
 /**
  * How many pairs the review queue would render — the notification badge's term.
  *
- * Carries the SAME archived and scope filters as {@link listDuplicatePairs} and
- * not one filter fewer. A badge that counts a different set than the tab shows
- * is the drift failure the shared count hook exists to prevent, arriving through
- * the back door.
+ * Carries the SAME archived, snooze and scope filters as
+ * {@link listDuplicatePairs} and not one filter fewer. A badge that counts a
+ * different set than the tab shows is the drift failure the shared count hook
+ * exists to prevent, arriving through the back door.
+ *
+ * ⚠️ It counts **pairs**, while the list renders one row per CLUSTER, so an org
+ * with multi-record clusters sees a badge above its rendered row count. That is
+ * deliberate and is not the drift this warns about: the badge answers "how much
+ * duplicate evidence is outstanding", and counting components instead would need
+ * the union-find over every open pair in the org — unbounded, on a query that
+ * runs every time the bell opens.
  */
 export async function countOpenDuplicatePairs(
   db: Database,
@@ -520,7 +579,16 @@ export async function readMergeEstablishment(
  * user selection rather than an artefact of canonical pair order.
  *
  * Ladder: outbound history → has any interaction history → oldest
- * `firstInteractionAt` → id (so the order is total and stable).
+ * `firstInteractionAt` → **oldest `createdAt`** → id (so the order is total and
+ * stable).
+ *
+ * 🔴 **The `createdAt` rung is load-bearing, not a formality.** Two records with
+ * no participant rows and no interaction history — which is every pair the name
+ * rule surfaces, and the whole reason this ordering exists — tie on the first
+ * three terms, and the id fallback is a cuid2, i.e. arbitrary. This function
+ * exists to stop merges defaulting INTO the empty stub, so where nothing else
+ * distinguishes the two, the record that has existed longer is the one whose id
+ * other things are most likely to point at.
  */
 export function orderByEstablishment(
   sides: readonly DuplicateSide[],
@@ -530,7 +598,12 @@ export function orderByEstablishment(
   const rank = (side: DuplicateSide) => ({
     outbound: outbound.get(side.instanceId) ? 1 : 0,
     interacted: side.firstInteractionAt ? 1 : 0,
+    // `Infinity - Infinity` is NaN, which a comparator reads as "equal" and
+    // falls through — the intended behaviour when neither side has interacted,
+    // but only because the next rung exists to answer it.
     since: side.firstInteractionAt?.getTime() ?? Number.POSITIVE_INFINITY,
+    // Unknown `createdAt` sorts last: it cannot claim to be the older record.
+    created: side.createdAt?.getTime() ?? Number.POSITIVE_INFINITY,
   })
 
   return [...sides]
@@ -541,6 +614,7 @@ export function orderByEstablishment(
         right.outbound - left.outbound ||
         right.interacted - left.interacted ||
         left.since - right.since ||
+        left.created - right.created ||
         a.instanceId.localeCompare(b.instanceId)
       )
     })

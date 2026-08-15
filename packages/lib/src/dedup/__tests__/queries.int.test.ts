@@ -25,9 +25,11 @@ import {
   DUPLICATE_HIGH_INSTANCE_ID_SQL,
   DUPLICATE_LOW_INSTANCE_ID_SQL,
   type DuplicateDefScope,
+  type DuplicateSide,
   getVisibleDuplicatePair,
   listDuplicatePairs,
   listDuplicatePairsForRecord,
+  orderByEstablishment,
 } from '../queries'
 
 const db = () => getTestDb() as never as import('@auxx/database').Database
@@ -42,6 +44,9 @@ interface Fixture {
   b: string
   c: string
   d: string
+  /** Two more, so the paging test can build three DISJOINT pairs (one row each). */
+  e: string
+  g: string
   scopes: DuplicateDefScope[]
 }
 
@@ -78,6 +83,8 @@ async function seed(): Promise<Fixture> {
     await instance('Bravo'),
     await instance('Charlie'),
     await instance('Delta'),
+    await instance('Echo'),
+    await instance('Golf'),
   ].sort()
 
   return {
@@ -88,6 +95,8 @@ async function seed(): Promise<Fixture> {
     b: ids[1] as string,
     c: ids[2] as string,
     d: ids[3] as string,
+    e: ids[4] as string,
+    g: ids[5] as string,
     scopes: [{ entityDefinitionId: def?.id as string }],
   }
 }
@@ -296,7 +305,10 @@ describe('snooze window — snoozed is `open` plus a future snoozeUntil', () => 
 })
 
 describe('clustering + paging', () => {
-  it('unions A–B and B–C into one component', async () => {
+  it('collapses A–B and B–C into ONE row for the component', async () => {
+    // Three stored pairs offering the same merge used to render as three rows,
+    // two of which read as the same pair reversed — five clusters ate 15 of 25
+    // visible slots on dev. The union-find decides which rows exist now.
     const f = await seed()
     await pair(f, f.a, f.b)
     await pair(f, f.b, f.c)
@@ -304,13 +316,14 @@ describe('clustering + paging', () => {
     const result = await listDuplicatePairs(db(), { organizationId: f.orgId, scopes: f.scopes })
     const items = result._unsafeUnwrap().items
 
-    expect(items).toHaveLength(2)
-    for (const item of items) {
-      expect([...item.clusterInstanceIds].sort()).toEqual([f.a, f.b, f.c])
-    }
+    expect(items).toHaveLength(1)
+    expect([...(items[0]?.clusterInstanceIds ?? [])].sort()).toEqual([f.a, f.b, f.c])
+    // The whole component is hydrated, so the card can name all three records.
+    expect(items[0]?.clusterSides.map((side) => side.instanceId).sort()).toEqual([f.a, f.b, f.c])
+    expect(items[0]?.clusterSides.every((side) => side.displayName)).toBe(true)
   })
 
-  it('keeps disjoint pairs in separate clusters', async () => {
+  it('keeps disjoint pairs as separate rows', async () => {
     const f = await seed()
     await pair(f, f.a, f.b)
     await pair(f, f.c, f.d)
@@ -319,6 +332,7 @@ describe('clustering + paging', () => {
       await listDuplicatePairs(db(), { organizationId: f.orgId, scopes: f.scopes })
     )._unsafeUnwrap().items
 
+    expect(items).toHaveLength(2)
     for (const item of items) {
       expect(item.clusterInstanceIds).toHaveLength(2)
     }
@@ -326,11 +340,12 @@ describe('clustering + paging', () => {
 
   it('pages on (score desc, id desc) without repeating or skipping a row', async () => {
     const f = await seed()
-    // Identical scores on purpose: `score` is a double that ties constantly, so
-    // the id tiebreak is what makes the keyset total.
+    // Disjoint on purpose, so one raw row is one item and paging is what is
+    // under test rather than clustering. Identical scores: `score` is a double
+    // that ties constantly, so the id tiebreak is what makes the keyset total.
     await pair(f, f.a, f.b, { score: 0.9 })
     await pair(f, f.c, f.d, { score: 0.9 })
-    await pair(f, f.a, f.c, { score: 0.9 })
+    await pair(f, f.e, f.g, { score: 0.9 })
 
     const first = (
       await listDuplicatePairs(db(), { organizationId: f.orgId, scopes: f.scopes, limit: 2 })
@@ -350,6 +365,32 @@ describe('clustering + paging', () => {
     const ids = [...first.items, ...second.items].map((item) => item.id)
     expect(new Set(ids).size).toBe(3)
     expect(second.nextCursor).toBeNull()
+  })
+
+  it('resumes from the last ROW read, not the last item emitted', async () => {
+    // A page that collapses three rows into one item must still continue the
+    // keyset from the third row, or the next page repeats what it just hid.
+    const f = await seed()
+    await pair(f, f.a, f.b, { score: 0.9 })
+    await pair(f, f.b, f.c, { score: 0.8 })
+    await pair(f, f.d, f.e, { score: 0.7 })
+
+    const first = (
+      await listDuplicatePairs(db(), { organizationId: f.orgId, scopes: f.scopes, limit: 2 })
+    )._unsafeUnwrap()
+    expect(first.items).toHaveLength(1)
+
+    const second = (
+      await listDuplicatePairs(db(), {
+        organizationId: f.orgId,
+        scopes: f.scopes,
+        limit: 2,
+        cursor: first.nextCursor ?? undefined,
+      })
+    )._unsafeUnwrap()
+
+    expect(second.items).toHaveLength(1)
+    expect([...(second.items[0]?.clusterInstanceIds ?? [])].sort()).toEqual([f.d, f.e])
   })
 
   it('joins both sides’ display columns', async () => {
@@ -478,5 +519,47 @@ describe('getVisibleDuplicatePair — the resolve-then-authorize read', () => {
       scopes: f.scopes,
     })
     expect(result._unsafeUnwrap()).toBeNull()
+  })
+})
+
+describe('orderByEstablishment — which record a merge defaults INTO', () => {
+  const side = (instanceId: string, over: Partial<DuplicateSide> = {}): DuplicateSide => ({
+    instanceId,
+    displayName: instanceId,
+    secondaryDisplayValue: null,
+    avatarUrl: null,
+    firstInteractionAt: null,
+    lastInteractionAt: null,
+    createdAt: null,
+    ...over,
+  })
+
+  it('prefers outbound history above everything else', () => {
+    const ordered = orderByEstablishment(
+      [side('zzz'), side('aaa', { createdAt: new Date('2020-01-01') })],
+      [{ instanceId: 'zzz', hasOutboundHistory: true }]
+    )
+    expect(ordered[0]).toBe('zzz')
+  })
+
+  it('falls back to the OLDEST record when no establishment signal exists', () => {
+    // The case this rung exists for, and the one the queue is full of: two
+    // records the name rule paired, neither with any interaction history. The id
+    // fallback is a cuid2, i.e. arbitrary — so without `createdAt` the merge
+    // target was a coin flip, and half the time it was the emptier stub.
+    const older = side('zzz', { createdAt: new Date('2020-01-01') })
+    const newer = side('aaa', { createdAt: new Date('2026-01-01') })
+
+    expect(orderByEstablishment([newer, older], [])[0]).toBe('zzz')
+    expect(orderByEstablishment([older, newer], [])[0]).toBe('zzz')
+  })
+
+  it('ranks an interacted record above an older one with no interaction', () => {
+    const stub = side('aaa', { createdAt: new Date('2019-01-01') })
+    const real = side('zzz', {
+      createdAt: new Date('2026-01-01'),
+      firstInteractionAt: new Date('2026-02-01'),
+    })
+    expect(orderByEstablishment([stub, real], [])[0]).toBe('zzz')
   })
 })

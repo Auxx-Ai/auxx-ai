@@ -22,7 +22,7 @@ import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import type { FieldId } from '@auxx/types/field'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
-import { blockFuzzyRecord } from '../blocking-fuzzy'
+import { blockFuzzyRecord, blockSurnameRecord } from '../blocking-fuzzy'
 import { corroboratePair, deriveCorroborationFields, evaluateFuzzyPair } from '../corroborate'
 import { upsertPairs } from '../pairs'
 import { scorePair } from '../scoring'
@@ -403,6 +403,68 @@ describe('fuzzy blocking — candidate generation only', () => {
       })
     )._unsafeUnwrap()
     expect(withAnchor.map((c) => c.instanceId)).toEqual([margaret])
+  })
+
+  it('returns EVERY same-surname record through the exact anchor pass', async () => {
+    // The recall arm the trigram pass cannot provide. Ordering by similarity to
+    // the whole anchor string means the true same-surname candidates compete
+    // with lookalikes and lose once the surname is common — measured on dev,
+    // `Robert Smith` was not among `Bob Smith`'s top neighbours across 19
+    // Smiths. Corroboration cannot rescue a pair that was never generated.
+    const f = await seedOrg()
+    const bob = await seedContact(f, { firstName: 'Bob', lastName: 'Smith' })
+    const robert = await seedContact(f, { firstName: 'Robert', lastName: 'Smith' })
+    for (const first of ['Ann', 'Amy', 'Ben', 'Dan', 'Eve', 'Gus', 'Ida', 'Joe']) {
+      await seedContact(f, { firstName: first, lastName: 'Smith' })
+    }
+    await seedContact(f, { firstName: 'Bob', lastName: 'Smythe' })
+
+    const candidates = (
+      await blockSurnameRecord(db(), {
+        organizationId: f.orgId,
+        entityDefinitionId: f.defId,
+        instanceId: bob,
+        surnameFieldId: f.lastNameFieldId as FieldId,
+        surname: 'Smith',
+      })
+    )._unsafeUnwrap()
+
+    const ids = candidates.map((c) => c.instanceId)
+    expect(ids).toContain(robert)
+    // Nine other Smiths, itself excluded, and `Smythe` is a different surname —
+    // near-exactness is the COMPARATOR's job, not the blocker's.
+    expect(ids).toHaveLength(9)
+    expect(ids).not.toContain(bob)
+  })
+
+  it('honours its own cap and skips a blank surname', async () => {
+    const f = await seedOrg()
+    const bob = await seedContact(f, { firstName: 'Bob', lastName: 'Smith' })
+    await seedContact(f, { firstName: 'Robert', lastName: 'Smith' })
+    await seedContact(f, { firstName: 'Ann', lastName: 'Smith' })
+
+    const capped = (
+      await blockSurnameRecord(db(), {
+        organizationId: f.orgId,
+        entityDefinitionId: f.defId,
+        instanceId: bob,
+        surnameFieldId: f.lastNameFieldId as FieldId,
+        surname: 'Smith',
+        limit: 1,
+      })
+    )._unsafeUnwrap()
+    expect(capped).toHaveLength(1)
+
+    const blank = (
+      await blockSurnameRecord(db(), {
+        organizationId: f.orgId,
+        entityDefinitionId: f.defId,
+        instanceId: bob,
+        surnameFieldId: f.lastNameFieldId as FieldId,
+        surname: '   ',
+      })
+    )._unsafeUnwrap()
+    expect(blank).toEqual([])
   })
 })
 

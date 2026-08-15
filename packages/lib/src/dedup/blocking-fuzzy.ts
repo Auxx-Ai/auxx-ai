@@ -22,14 +22,27 @@
 // scores 0.2105263 and is not, because a short surname cannot carry a nickname
 // pair over the threshold on its own. That is why {@link FuzzyBlockAnchors}
 // accepts a `surname` anchor: querying the surname alone puts the whole burden
-// on the part that actually matches. The `LIMIT` truncating a common surname's
-// neighbours is harmless — a common surname fails the rarity condition anyway.
+// on the part that actually matches.
+//
+// ⚠️ **Second recall limit, found by Phase 5 verification and now fixed.** The
+// original header claimed the `LIMIT` truncating a common surname's neighbours
+// was harmless "because a common surname fails the rarity condition anyway".
+// That is wrong: a common surname reaches `medium` through CORROBORATION
+// (`Bob Smith` / `Robert Smith` — a case the plan requires), and corroboration
+// cannot rescue a pair the blocker never generated. Two changes followed —
+// {@link FUZZY_BLOCK_LIMIT} went from 5 to 20, and {@link blockSurnameRecord}
+// added an exact-surname anchor pass that does not compete for those slots at
+// all. Neither touches the name RULE: precision on `John Smith` / `Jane Smith`
+// is unchanged.
 
 import { type Database, schema } from '@auxx/database'
-import { and, desc, eq, isNull, ne } from 'drizzle-orm'
+import type { FieldId } from '@auxx/types/field'
+import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm'
 import { ok, type Result } from 'neverthrow'
 import { recordSearchNameScore, recordSearchPredicate } from '../resources/search/record-search-sql'
-import { FUZZY_BLOCK_LIMIT } from './config'
+import { FUZZY_BLOCK_LIMIT, SURNAME_ANCHOR_LIMIT } from './config'
+import { normalizeSurname } from './name-match'
+import { NORMALIZED_SURNAME_SQL } from './surname-rarity'
 
 /**
  * One fuzzy neighbour.
@@ -169,4 +182,81 @@ export async function blockFuzzyRecord(
   }
 
   return ok([...byId.values()])
+}
+
+/** Parameters for {@link blockSurnameRecord}. */
+export interface BlockSurnameParams {
+  organizationId: string
+  entityDefinitionId: string
+  /** `EntityInstance.id` of the record being scanned — never returned to itself. */
+  instanceId: string
+  /** `CustomField.id` of the surname field, from `resolveNameFieldIds`. */
+  surnameFieldId: FieldId
+  /** The scanned record's raw surname cell; normalized here. */
+  surname: string
+  /** Defaults to {@link SURNAME_ANCHOR_LIMIT}. */
+  limit?: number
+}
+
+/**
+ * Every live record in the definition holding the SAME normalized surname.
+ *
+ * 🔴 **The recall arm the trigram blocker cannot provide.** `blockFuzzyRecord`
+ * orders by similarity to the whole anchor string and truncates at
+ * {@link FUZZY_BLOCK_LIMIT}, so on a common surname the genuine same-surname
+ * candidates compete with trigram neighbours that merely look alike — measured
+ * on dev, `Bob Smith` did not have `Robert Smith` among its top neighbours
+ * across 19 Smiths. Corroboration cannot rescue a pair the blocker never
+ * generated, so `Bob Smith` / `Robert Smith` — a case the plan explicitly
+ * requires — was unreachable.
+ *
+ * This asks the surname FIELD instead of the display name, which removes the
+ * competition entirely: every candidate it returns already satisfies condition
+ * (a) of the name rule exactly, and the only thing left to decide is the given
+ * name. Fixing recall here rather than by loosening the name rule is deliberate
+ * — precision on `John Smith` / `Jane Smith` must not move.
+ *
+ * Normalization is {@link NORMALIZED_SURNAME_SQL}, the same expression
+ * `surnameIdf` counts with, so "the same surname" means one thing across the
+ * blocker, the comparator and the rarity test.
+ *
+ * @returns up to `limit` candidates. Ordered by id purely for determinism —
+ *   there is no meaningful ranking among exact surname matches.
+ */
+export async function blockSurnameRecord(
+  db: Database,
+  params: BlockSurnameParams
+): Promise<Result<FuzzyCandidate[], Error>> {
+  const { organizationId, entityDefinitionId, instanceId, surnameFieldId } = params
+  const normalized = normalizeSurname(params.surname)
+  if (!normalized) return ok([])
+
+  const rows = await db
+    .selectDistinct({
+      instanceId: schema.EntityInstance.id,
+      displayName: schema.EntityInstance.displayName,
+      secondaryDisplayValue: schema.EntityInstance.secondaryDisplayValue,
+    })
+    .from(schema.FieldValue)
+    .innerJoin(
+      schema.EntityInstance,
+      and(
+        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, surnameFieldId as string),
+        ne(schema.FieldValue.entityId, instanceId),
+        sql`${NORMALIZED_SURNAME_SQL} = ${normalized}`
+      )
+    )
+    .orderBy(schema.EntityInstance.id)
+    .limit(params.limit ?? SURNAME_ANCHOR_LIMIT)
+
+  return ok(rows)
 }

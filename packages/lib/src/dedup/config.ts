@@ -219,12 +219,35 @@ export const SURNAME_RARE_MAX_SHARE = 0.002
 /**
  * How many fuzzy neighbours the trigram blocker returns per anchor.
  *
- * Small on purpose. The blocker's job is recall-oriented candidate GENERATION;
- * precision comes from the structured comparator downstream, and a wide net here
- * only buys per-pair work. A record with more than five plausible name
- * neighbours is a common name, which the surname-rarity condition rejects anyway.
+ * 🔴 **Raised from 5 after Phase 5 verification.** The original value came with
+ * the reasoning "a record with more than five plausible name neighbours is a
+ * common name, which the surname-rarity condition rejects anyway" — which is
+ * false for exactly the case the plan requires: `Bob Smith` / `Robert Smith`
+ * reaches `medium` through CORROBORATION, not rarity, and corroboration cannot
+ * rescue a pair the blocker never generated. Measured on dev: 19 Smiths truncate
+ * at 5, and Robert was not among them.
+ *
+ * Widening is close to free because `evaluateFuzzyPair` compares the structured
+ * names in JS first and bails before its corroboration queries: a candidate that
+ * is not a name match costs one map lookup. Precision still comes from the
+ * comparator and the rarity condition, never from starving the blocker.
  */
-export const FUZZY_BLOCK_LIMIT = 5
+export const FUZZY_BLOCK_LIMIT = 20
+
+/**
+ * Cap on the EXACT-surname anchor pass (`blockSurnameRecord`).
+ *
+ * The trigram blocker orders by similarity to the whole query string, so on a
+ * common surname the true same-surname candidates compete with — and lose to —
+ * trigram neighbours that merely look alike. The exact-surname pass removes that
+ * competition entirely by asking the surname field directly, and it needs a
+ * bound of its own because "every record called Smith" is unbounded.
+ *
+ * Higher than {@link FUZZY_BLOCK_LIMIT} on purpose: these candidates already
+ * satisfy condition (a) of the name rule, so the only thing left to decide is
+ * the given name — the cheapest possible filter.
+ */
+export const SURNAME_ANCHOR_LIMIT = 50
 
 /**
  * Per-entity-type dedup tuning, mirroring the `HOOKS_BY_ENTITY_TYPE` registry

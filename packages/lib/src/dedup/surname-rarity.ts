@@ -150,7 +150,7 @@ export interface SurnameRarity {
  * which makes each look marginally RARER. Bounded and rare enough to accept over
  * adding an extension; revisit if it ever shows up in dismissal data.
  */
-const normalizedSurnameSql = sql`btrim(lower(regexp_replace(${schema.FieldValue.valueText}, '[^a-zA-Z0-9]+', ' ', 'g')))`
+export const NORMALIZED_SURNAME_SQL = sql`btrim(lower(regexp_replace(${schema.FieldValue.valueText}, '[^a-zA-Z0-9]+', ' ', 'g')))`
 
 /**
  * How rare is this surname in this org and definition?
@@ -206,7 +206,7 @@ export async function surnameIdf(
 
   const [row] = await db
     .select({
-      matched: sql<number>`count(DISTINCT ${schema.FieldValue.entityId}) FILTER (WHERE ${normalizedSurnameSql} = ${normalized})`,
+      matched: sql<number>`count(DISTINCT ${schema.FieldValue.entityId}) FILTER (WHERE ${NORMALIZED_SURNAME_SQL} = ${normalized})`,
       total: sql<number>`count(DISTINCT ${schema.FieldValue.entityId})`,
     })
     .from(schema.FieldValue)
@@ -222,7 +222,7 @@ export async function surnameIdf(
         eq(schema.FieldValue.organizationId, organizationId),
         eq(schema.FieldValue.entityDefinitionId, entityDefinitionId),
         eq(schema.FieldValue.fieldId, surnameFieldId as string),
-        sql`${normalizedSurnameSql} <> ''`
+        sql`${NORMALIZED_SURNAME_SQL} <> ''`
       )
     )
 

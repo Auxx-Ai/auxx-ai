@@ -35,9 +35,11 @@ vi.mock('../../jobs/queues', () => ({
 vi.mock('../../jobs/queues/types', () => ({ Queues: { maintenanceQueue: 'maintenance' } }))
 
 import {
+  DUPLICATE_SCAN_CONTINUATION_DELAY_MS,
   DUPLICATE_SCAN_DELAY_MS,
   DUPLICATE_SCAN_JOB_NAME,
   enqueueDuplicateScan,
+  enqueueDuplicateScanContinuation,
   enqueueDuplicateScanForRecords,
 } from '../enqueue-scan'
 
@@ -131,5 +133,37 @@ describe('enqueueDuplicateScanForRecords — one job per RUN', () => {
     })
     expect(id).toBeUndefined()
     expect(h.calls).toHaveLength(0)
+  })
+})
+
+describe('enqueueDuplicateScanContinuation — draining a capped backlog', () => {
+  it('does NOT reuse the org+def jobId, which the running job still holds', async () => {
+    // The bug this exists to avoid: the handler requeueing itself under
+    // `dup-scan:{org}:{def}` while it is the ACTIVE job under that very id, so
+    // BullMQ drops the add and the backlog silently stalls.
+    await enqueueDuplicateScan('org_1', 'def_contact')
+    await enqueueDuplicateScanContinuation('org_1', 'def_contact', '2026-08-15 10:00:00')
+
+    expect(h.delayed.size).toBe(2)
+    expect(h.calls[1]?.opts.jobId).toBe('dup-scan:cont:org_1:def_contact:2026-08-15 10:00:00')
+  })
+
+  it('collapses a repeat at the same cursor and advances with a new one', async () => {
+    await enqueueDuplicateScanContinuation('org_1', 'def_contact', 'cursor_a')
+    await enqueueDuplicateScanContinuation('org_1', 'def_contact', 'cursor_a')
+    await enqueueDuplicateScanContinuation('org_1', 'def_contact', 'cursor_b')
+
+    expect(h.calls).toHaveLength(3)
+    expect(h.delayed.size).toBe(2)
+  })
+
+  it('carries the org+def scope and a short delay', async () => {
+    await enqueueDuplicateScanContinuation('org_1', 'def_contact', 'cursor_a')
+    expect(h.calls[0]?.data).toEqual({
+      organizationId: 'org_1',
+      entityDefinitionId: 'def_contact',
+    })
+    expect(h.calls[0]?.opts.delay).toBe(DUPLICATE_SCAN_CONTINUATION_DELAY_MS)
+    expect(DUPLICATE_SCAN_CONTINUATION_DELAY_MS).toBeLessThan(DUPLICATE_SCAN_DELAY_MS)
   })
 })

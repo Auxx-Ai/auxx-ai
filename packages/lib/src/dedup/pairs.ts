@@ -78,6 +78,12 @@ export async function upsertPairs(
         ? {
             status: sql`CASE WHEN ${T.status} = 'dismissed' AND ${T.dismissedBand} = 'medium' THEN 'open' ELSE ${T.status} END`,
             snoozeUntil: sql`CASE WHEN ${T.band} = 'medium' THEN NULL ELSE ${T.snoozeUntil} END`,
+            // Cleared in the same statement that reopens the row. A reopened
+            // pair is `open`, and an `open` row carrying a `dismissedBand` is a
+            // dismissal that no longer exists — harmless to every reader, but a
+            // lie in the audit trail and a trap for the next person who reads
+            // the column as "this was dismissed at…".
+            dismissedBand: sql`CASE WHEN ${T.status} = 'dismissed' AND ${T.dismissedBand} = 'medium' THEN NULL ELSE ${T.dismissedBand} END`,
           }
         : {}
 
