@@ -5,11 +5,16 @@
 // in client components that only need static capability metadata.
 
 export {
+  CHANNEL_GROUP_LABELS,
+  CHANNEL_GROUP_OPTIONS,
+  type ChannelGroup,
   type ChannelSelectionScope,
   type ComposerCapabilities,
   canStartOutbound,
+  channelGroupForProvider,
   getComposerCapabilities,
   identifierTypeForProvider,
   PLATFORM_CAPABILITIES,
   type PlatformCapabilities,
+  providersForChannelGroup,
 } from './capabilities'

@@ -6,18 +6,29 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { cn } from '@auxx/ui/lib/utils'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import type { ParticipantIdentifierType } from '~/components/threads/store'
 import { ItemsListView } from '~/components/ui/items-list-view'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { useDebouncedValue } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
 
 export interface ParticipantPickerProps {
-  /** Currently selected email identifiers */
+  /** Currently selected identifiers — email, E.164 phone, or platform handle */
   value: string[]
   /** Callback when selection changes */
   onChange: (identifiers: string[]) => void
-  /** Filter participants by type */
+  /** Filter participants by role */
   type?: 'from' | 'to' | 'cc' | 'any'
+  /**
+   * Narrow the suggestions to these identifier types — the ones the surface's
+   * channels can actually produce, so a phone-only inbox does not suggest email
+   * addresses.
+   *
+   * A SOFT hint, never a gate: typed-in values still pass through `canAdd`,
+   * because an inbox's channel set is a union that changes after a filter is
+   * written (plan 09 D4). Omit for "every type".
+   */
+  identifierTypes?: ParticipantIdentifierType[]
   /** Allow multiple selections (default: true) */
   multi?: boolean
   /** Whether the input is disabled */
@@ -40,6 +51,7 @@ export function ParticipantPicker({
   value = [],
   onChange,
   type = 'any',
+  identifierTypes,
   multi = true,
   disabled = false,
   placeholder = 'Select participant...',
@@ -80,7 +92,10 @@ export function ParticipantPicker({
     data: participants = [],
     isLoading,
     isFetched,
-  } = api.search.participants.useQuery({ query: debouncedSearch, type }, { enabled: shouldFetch })
+  } = api.search.participants.useQuery(
+    { query: debouncedSearch, type, identifierTypes },
+    { enabled: shouldFetch }
+  )
 
   // Track queries that return 0 results to avoid redundant fetches
   useEffect(() => {
@@ -171,7 +186,7 @@ export function ParticipantPicker({
           canAdd={true}
           useValueAsLabel
           multi={multi}
-          placeholder='Search by name or email...'
+          placeholder='Search by name, email or number...'
           onSelectSingle={handleSelectSingle}
           disabled={disabled}
         />

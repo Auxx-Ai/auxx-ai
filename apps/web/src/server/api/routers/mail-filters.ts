@@ -19,6 +19,7 @@ import {
   loadBackfillableFilter,
   MAX_PERSONAL_MAIL_FILTERS,
   type MailFilterAction,
+  normalizePhoneConditionValues,
   previewMatchCount,
   reorderMailFilters,
   setMailFilterEnabled,
@@ -338,7 +339,14 @@ export const mailFiltersRouter = createTRPCRouter({
       const inbox = assertCanAuthorMailFilters(authority, input.inboxId)
       assertActionsAllowed(authority, input.actions)
       assertActionDestinationsAllowed(authority, input.actions as MailFilterAction[])
-      assertFilterConditionsCompile(input.conditions as ConditionGroup[], organizationId)
+      /**
+       * Normalise BEFORE the compile check and before the write, so the saved
+       * filter reads back exactly what it will match (plan 09 §7). A phone
+       * number typed `(510) 205-5536` compiles and saves fine and then never
+       * fires — never-matching is not dropping, so no guard here would catch it.
+       */
+      const conditions = normalizePhoneConditionValues(input.conditions as ConditionGroup[])
+      assertFilterConditionsCompile(conditions, organizationId)
 
       /**
        * Two ceilings, chosen by the target inbox's DEFINITION (§5.2).
@@ -371,7 +379,7 @@ export const mailFiltersRouter = createTRPCRouter({
         {
           inboxId: input.inboxId,
           name: input.name,
-          conditions: input.conditions as ConditionGroup[],
+          conditions,
           actions: input.actions as MailFilterAction[],
           stopProcessing: input.stopProcessing,
           enabled: input.enabled,
@@ -395,19 +403,25 @@ export const mailFiltersRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.organizationId
       const authority = await loadMailFilterAuthority(ctx)
-      const { filterId, actions, conditions, ...rest } = input
+      const { filterId, actions, conditions: rawConditions, ...rest } = input
       await loadFilterForWrite(ctx.db, authority, organizationId, filterId)
       if (actions) {
         assertActionsAllowed(authority, actions)
         assertActionDestinationsAllowed(authority, actions as MailFilterAction[])
       }
+      // Same normalisation as `create` — an edit that re-saved the raw value
+      // would silently undo it (plan 09 §7).
+      const conditions =
+        rawConditions === undefined
+          ? undefined
+          : normalizePhoneConditionValues(rawConditions as ConditionGroup[])
       if (conditions !== undefined) {
-        assertFilterConditionsCompile(conditions as ConditionGroup[], organizationId)
+        assertFilterConditionsCompile(conditions, organizationId)
       }
 
       const result = await updateMailFilter(ctx.db, organizationId, filterId, {
         ...rest,
-        ...(conditions !== undefined && { conditions: conditions as ConditionGroup[] }),
+        ...(conditions !== undefined && { conditions }),
         ...(actions !== undefined && { actions: actions as MailFilterAction[] }),
       })
       if (result.isErr()) throw result.error
@@ -500,11 +514,14 @@ export const mailFiltersRouter = createTRPCRouter({
       assertCanAuthorMailFilters(authority, input.inboxId)
 
       const viewer = await getCachedUserInstanceGrants(ctx.session.userId, organizationId)
+      // Preview the conditions AS THEY WILL BE SAVED — `create`/`update`
+      // normalise phone values, so previewing the raw ones would show "0
+      // matches" for a filter that is about to match plenty (plan 09 §7).
       return previewMatchCount(
         ctx.db,
         organizationId,
         input.inboxId,
-        input.conditions as ConditionGroup[],
+        normalizePhoneConditionValues(input.conditions as ConditionGroup[]),
         viewer
       )
     }),

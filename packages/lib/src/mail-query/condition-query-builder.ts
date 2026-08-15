@@ -24,6 +24,7 @@ import {
   sql,
 } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
+import { providersForChannelGroup } from '../channels/capabilities'
 import type { Operator } from '../conditions/operator-definitions'
 import type { Condition, ConditionGroup } from '../conditions/types'
 import {
@@ -311,6 +312,8 @@ function dispatchConditionQuery(
       return buildFromQuery(op, value)
     case 'to':
       return buildToQuery(op, value)
+    case 'channelType':
+      return buildChannelTypeQuery(op, value)
     case 'subject':
       return withScope(buildSubjectQuery(op, value), scopes.subject)
     case 'body':
@@ -624,109 +627,200 @@ function getDateColumn(field: string) {
 }
 
 /**
+ * `exists (select 1 from "Message" join "MessageParticipant" [join "Participant"]
+ * where "Message"."threadId" = "Thread"."id" and <role> [and <identifier>])` —
+ * the correlated shape every participant-backed condition uses.
+ *
+ * `Participant` is joined ONLY when an identifier match needs it, so the
+ * `empty` / `not empty` arms stay a two-table probe.
+ *
+ * ⚠️ Same invariant-6 rule as {@link messageExists}: the predicates live in the
+ * WHERE position and the projection is a literal `1`, or the correlation
+ * degrades into a self-join.
+ */
+function participantExists(roleMatch: SQL<unknown>, identifierMatch?: SQL<unknown>): SQL<unknown> {
+  const { Message, MessageParticipant, Participant } = schema
+  const joined = db
+    .select({ id: sql`1` })
+    .from(Message)
+    .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
+  const query = identifierMatch
+    ? joined.innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
+    : joined
+  return exists(query.where(and(eq(Message.threadId, Thread.id), roleMatch, identifierMatch)))
+}
+
+/** OR-fold one identifier pattern per needle. */
+function anyIdentifier(needles: string[], pattern: (needle: string) => string): SQL<unknown> {
+  const { Participant } = schema
+  const clauses = needles.map((needle) => ilike(Participant.identifier, pattern(needle)))
+  return clauses.length === 1 ? clauses[0]! : or(...clauses)!
+}
+
+/**
+ * Build a condition over `Participant.identifier` for the messages in a thread
+ * that carry one of `roleMatch`'s roles.
+ *
+ * **Channel-agnostic by construction.** The column is polymorphic — an email
+ * address, an E.164 phone number, a Facebook PSID or a chat-visitor id,
+ * disambiguated by `Participant.identifierType` — and this builder never tests
+ * the type. `from is +15102055536` and `from is ada@acme.com` compile to the
+ * same shape, which is what lets ONE `from` field serve every channel
+ * (plans/mail-filter/09-channel-aware-filters-plan.md D1).
+ *
+ * **Handles the COMPLETE `FieldType.EMAIL` operator set** — `is`, `is not`,
+ * `contains`, `not contains`, `starts with`, `ends with`, `in`, `not in`,
+ * `empty`, `not empty` — because that is what `getOperatorsForFieldType`
+ * offers for the `sender` / `from` / `to` field definitions. The four set and
+ * prefix operators were previously undispatched, which made
+ * `from starts with +1510` (an area-code filter, the archetypal phone rule)
+ * un-saveable: `assertFilterConditionsCompile` rejects ANY dropped condition,
+ * and a row that predates the gate fails closed on `AND false`
+ * (mail-filters invariant 19). The parity suite pins this set against
+ * `getOperatorsForFieldType` — extend both together or not at all.
+ *
+ * Equality uses `ILIKE` without wildcards rather than `=`: identifiers are
+ * normalized at ingest but case only for email, and an address typed
+ * `Ada@Acme.com` must still match the stored `ada@acme.com`.
+ */
+function buildParticipantIdentifierQuery(
+  operator: Operator,
+  value: unknown,
+  roleMatch: SQL<unknown>
+): SQL<unknown> | null {
+  switch (operator) {
+    case 'is':
+    case 'in': {
+      const needles = textList(value)
+      if (needles.length === 0) return null
+      return participantExists(
+        roleMatch,
+        anyIdentifier(needles, (n) => n)
+      )
+    }
+    case 'is not':
+    case 'not in': {
+      const needles = textList(value)
+      if (needles.length === 0) return null
+      return not(
+        participantExists(
+          roleMatch,
+          anyIdentifier(needles, (n) => n)
+        )
+      )
+    }
+    case 'contains': {
+      const needle = firstText(value)
+      return needle
+        ? participantExists(
+            roleMatch,
+            anyIdentifier([needle], (n) => `%${n}%`)
+          )
+        : null
+    }
+    case 'not contains': {
+      const needle = firstText(value)
+      return needle
+        ? not(
+            participantExists(
+              roleMatch,
+              anyIdentifier([needle], (n) => `%${n}%`)
+            )
+          )
+        : null
+    }
+    case 'starts with': {
+      const needle = firstText(value)
+      return needle
+        ? participantExists(
+            roleMatch,
+            anyIdentifier([needle], (n) => `${n}%`)
+          )
+        : null
+    }
+    case 'ends with': {
+      const needle = firstText(value)
+      return needle
+        ? participantExists(
+            roleMatch,
+            anyIdentifier([needle], (n) => `%${n}`)
+          )
+        : null
+    }
+    case 'empty':
+      return not(participantExists(roleMatch))
+    case 'not empty':
+      return participantExists(roleMatch)
+    default:
+      return null
+  }
+}
+
+/**
  * Build sender condition query.
- * Filters through Message and MessageParticipant joins.
+ * Filters through Message and MessageParticipant joins with role='FROM'.
  */
 function buildSenderQuery(operator: Operator, value: any): SQL<unknown> | null {
-  const { Message, MessageParticipant, Participant } = schema
+  const { MessageParticipant } = schema
+  return buildParticipantIdentifierQuery(operator, value, eq(MessageParticipant.role, 'FROM'))
+}
+
+/**
+ * Build the `channelType` condition — the coarse channel a thread arrived on.
+ *
+ * `Thread.integrationId` → `Integration.provider` → `channelGroup`, compiled as
+ * a subquery over the provider values in the requested groups. Groups, not
+ * providers: reconnecting a channel mints a NEW `Integration` row, so an id
+ * predicate would quietly stop matching, and `google`/`outlook`/`imap` are one
+ * channel to the author (plan 09 D3).
+ *
+ * ⚠️ **Deliberately does NOT filter `Integration.deletedAt IS NULL`**, which is
+ * the opposite of every other channel query in the codebase (disconnect is a
+ * soft delete, so channel LISTS must exclude them). The threads a disconnected
+ * channel delivered still exist, are still in the inbox, and a saved view or
+ * filter that silently stopped matching them the moment someone disconnected a
+ * channel would be a data-loss-shaped bug. `Integration.id` is a primary key,
+ * so the join is unambiguous with or without the flag.
+ *
+ * `empty` / `not empty` are constant: `Thread.integrationId` is `NOT NULL`
+ * (verified against the live schema). They are still dispatched rather than
+ * left to fall through, because `SINGLE_SELECT` OFFERS them and an
+ * undispatched operator is a DROP — which fails the whole filter closed
+ * (mail-filters invariant 19).
+ */
+function buildChannelTypeQuery(operator: Operator, value: unknown): SQL<unknown> | null {
+  const { Integration } = schema
+
+  const threadsOnGroups = (groups: string[]): SQL<unknown> => {
+    const providers = [...new Set(groups.flatMap((group) => providersForChannelGroup(group)))]
+    // An unknown group name matches no provider. Fail closed rather than
+    // emitting `IN ()`, which is a syntax error, or dropping the condition,
+    // which would widen the filter to the whole mailbox.
+    if (providers.length === 0) return sql`false`
+    return inArray(
+      Thread.integrationId,
+      db
+        .select({ id: Integration.id })
+        .from(Integration)
+        .where(inArray(Integration.provider, providers as any))
+    )
+  }
 
   switch (operator) {
+    case 'is':
+    case 'in': {
+      const groups = textList(value)
+      return groups.length > 0 ? threadsOnGroups(groups) : null
+    }
+    case 'is not':
+    case 'not in': {
+      const groups = textList(value)
+      return groups.length > 0 ? not(threadsOnGroups(groups)) : null
+    }
     case 'empty':
-      return not(
-        exists(
-          db
-            .select({ id: sql`1` })
-            .from(Message)
-            .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-            .where(and(eq(Message.threadId, Thread.id), eq(MessageParticipant.role, 'FROM')))
-        )
-      )
+      return sql`false`
     case 'not empty':
-      return exists(
-        db
-          .select({ id: sql`1` })
-          .from(Message)
-          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-          .where(and(eq(Message.threadId, Thread.id), eq(MessageParticipant.role, 'FROM')))
-      )
-    case 'is': {
-      const emails = Array.isArray(value) ? value : [value]
-      if (emails.length === 0) return null
-      const identifierMatch =
-        emails.length === 1
-          ? ilike(Participant.identifier, emails[0])
-          : or(...emails.map((e: string) => ilike(Participant.identifier, e)))!
-      return exists(
-        db
-          .select({ id: sql`1` })
-          .from(Message)
-          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-          .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-          .where(
-            and(
-              eq(Message.threadId, Thread.id),
-              eq(MessageParticipant.role, 'FROM'),
-              identifierMatch
-            )
-          )
-      )
-    }
-    case 'is not': {
-      const excludeEmails = Array.isArray(value) ? value : [value]
-      if (excludeEmails.length === 0) return null
-      const excludeMatch =
-        excludeEmails.length === 1
-          ? ilike(Participant.identifier, excludeEmails[0])
-          : or(...excludeEmails.map((e: string) => ilike(Participant.identifier, e)))!
-      return not(
-        exists(
-          db
-            .select({ id: sql`1` })
-            .from(Message)
-            .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-            .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-            .where(
-              and(
-                eq(Message.threadId, Thread.id),
-                eq(MessageParticipant.role, 'FROM'),
-                excludeMatch
-              )
-            )
-        )
-      )
-    }
-    case 'contains':
-      return exists(
-        db
-          .select({ id: sql`1` })
-          .from(Message)
-          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-          .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-          .where(
-            and(
-              eq(Message.threadId, Thread.id),
-              eq(MessageParticipant.role, 'FROM'),
-              ilike(Participant.identifier, `%${value}%`)
-            )
-          )
-      )
-    case 'not contains':
-      return not(
-        exists(
-          db
-            .select({ id: sql`1` })
-            .from(Message)
-            .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-            .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-            .where(
-              and(
-                eq(Message.threadId, Thread.id),
-                eq(MessageParticipant.role, 'FROM'),
-                ilike(Participant.identifier, `%${value}%`)
-              )
-            )
-        )
-      )
+      return sql`true`
     default:
       return null
   }
@@ -768,118 +862,12 @@ function buildFromQuery(operator: Operator, value: any): SQL<unknown> | null {
  * Filters through Message and MessageParticipant joins with role='TO', 'CC', or 'BCC'.
  */
 function buildToQuery(operator: Operator, value: any): SQL<unknown> | null {
-  const { Message, MessageParticipant, Participant } = schema
-
-  switch (operator) {
-    case 'empty':
-      return not(
-        exists(
-          db
-            .select({ id: sql`1` })
-            .from(Message)
-            .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-            .where(
-              and(
-                eq(Message.threadId, Thread.id),
-                inArray(MessageParticipant.role, ['TO', 'CC', 'BCC'])
-              )
-            )
-        )
-      )
-    case 'not empty':
-      return exists(
-        db
-          .select({ id: sql`1` })
-          .from(Message)
-          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-          .where(
-            and(
-              eq(Message.threadId, Thread.id),
-              inArray(MessageParticipant.role, ['TO', 'CC', 'BCC'])
-            )
-          )
-      )
-    case 'is': {
-      const emails = Array.isArray(value) ? value : [value]
-      if (emails.length === 0) return null
-      const identifierMatch =
-        emails.length === 1
-          ? ilike(Participant.identifier, emails[0])
-          : or(...emails.map((e: string) => ilike(Participant.identifier, e)))!
-      return exists(
-        db
-          .select({ id: sql`1` })
-          .from(Message)
-          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-          .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-          .where(
-            and(
-              eq(Message.threadId, Thread.id),
-              inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
-              identifierMatch
-            )
-          )
-      )
-    }
-    case 'is not': {
-      const excludeEmails = Array.isArray(value) ? value : [value]
-      if (excludeEmails.length === 0) return null
-      const excludeMatch =
-        excludeEmails.length === 1
-          ? ilike(Participant.identifier, excludeEmails[0])
-          : or(...excludeEmails.map((e: string) => ilike(Participant.identifier, e)))!
-      return not(
-        exists(
-          db
-            .select({ id: sql`1` })
-            .from(Message)
-            .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-            .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-            .where(
-              and(
-                eq(Message.threadId, Thread.id),
-                inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
-                excludeMatch
-              )
-            )
-        )
-      )
-    }
-    case 'contains':
-      return exists(
-        db
-          .select({ id: sql`1` })
-          .from(Message)
-          .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-          .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-          .where(
-            and(
-              eq(Message.threadId, Thread.id),
-              inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
-              ilike(Participant.identifier, `%${value}%`)
-            )
-          )
-      )
-    case 'not contains':
-      return not(
-        exists(
-          db
-            .select({ id: sql`1` })
-            .from(Message)
-            .innerJoin(MessageParticipant, eq(MessageParticipant.messageId, Message.id))
-            .innerJoin(Participant, eq(Participant.id, MessageParticipant.participantId))
-            .where(
-              and(
-                eq(Message.threadId, Thread.id),
-                inArray(MessageParticipant.role, ['TO', 'CC', 'BCC']),
-                ilike(Participant.identifier, `%${value}%`)
-              )
-            )
-        )
-      )
-    default:
-      return null
-  }
+  const { MessageParticipant } = schema
+  return buildParticipantIdentifierQuery(
+    operator,
+    value,
+    inArray(MessageParticipant.role, ['TO', 'CC', 'BCC'])
+  )
 }
 
 /**

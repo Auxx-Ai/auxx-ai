@@ -613,3 +613,181 @@ describe('list / senderDomain — operator semantics', () => {
     expect(byDomain.sqlText).not.toBe(baseScopeSql())
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔴 The SAME parity rule, on the address fields. These are the ones the mail
+// searchbar, mail views and mail filters all put in front of a user first, and
+// they were the ones missing four of the ten operators `FieldType.EMAIL`
+// offers: `starts with`, `ends with`, `in` and `not in` had no case, so
+// `from starts with +1510` — an area-code rule, the archetypal phone filter —
+// was rejected outright at save (`assertFilterConditionsCompile` throws on ANY
+// dropped condition) and fails closed on rows that predate the gate.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const ADDRESS_FIELDS = ['sender', 'from', 'to'] as const
+
+/** A value shaped the way the editor would submit it for an address field. */
+function sampleAddress(operator: OperatorDefinition): unknown {
+  if (operator.valueType === 'none') return undefined
+  if (operator.valueType === 'multiple') return ['ada@acme.com', '+15102055536']
+  return 'ada@acme.com'
+}
+
+describe('sender / from / to — the offered operator set is exactly the handled one', () => {
+  it('offers the full FieldType.EMAIL string set on all three fields', () => {
+    const expected = [
+      'is',
+      'is not',
+      'contains',
+      'not contains',
+      'starts with',
+      'ends with',
+      'in',
+      'not in',
+      'empty',
+      'not empty',
+    ]
+
+    for (const fieldId of ADDRESS_FIELDS) {
+      expect(offeredOperators(fieldId).map((op) => op.key)).toEqual(expected)
+    }
+  })
+
+  for (const fieldId of ADDRESS_FIELDS) {
+    it(`compiles every operator \`${fieldId}\` offers — nothing dropped`, () => {
+      const operators = offeredOperators(fieldId)
+      expect(operators.length).toBeGreaterThan(0)
+
+      for (const operator of operators) {
+        const result = buildOne(fieldId, operator.key, sampleAddress(operator))
+
+        expect({ operator: operator.key, dropped: result.droppedConditions }).toEqual({
+          operator: operator.key,
+          dropped: [],
+        })
+        expect(result.allConditionsDropped).toBe(false)
+        expect(toSql(result.sql)).not.toBe(baseScopeSql())
+      }
+    })
+  }
+
+  it('anchors `starts with` / `ends with` on the right side', () => {
+    expect(toParams(buildWithSubquery('from', 'starts with', '+1510').where)).toContain('+1510%')
+    expect(toParams(buildWithSubquery('from', 'ends with', '@acme.com').where)).toContain(
+      '%@acme.com'
+    )
+  })
+
+  it('treats `in` as the set form of `is`, and `not in` as its negation', () => {
+    const isMany = buildWithSubquery('from', 'is', ['ada@acme.com', '+15102055536'])
+    const inMany = buildWithSubquery('from', 'in', ['ada@acme.com', '+15102055536'])
+    const notIn = buildWithSubquery('from', 'not in', ['ada@acme.com', '+15102055536'])
+
+    expect(toSql(inMany.where)).toBe(toSql(isMany.where))
+    expect(toSql(notIn.where)).toBe(toSql(isMany.where))
+    expect(notIn.sqlText).toMatch(/\bnot exists \$\d+/)
+  })
+})
+
+describe('sender / from / to — channel-agnostic by construction', () => {
+  // The load-bearing claim of the channel-aware plan: `Participant.identifier`
+  // is polymorphic and the builder never tests `identifierType`, so ONE `from`
+  // field serves email, SMS, chat and social alike.
+  it('compiles a phone number exactly like an email address', () => {
+    const byPhone = buildWithSubquery('from', 'is', '+15102055536')
+    const byEmail = buildWithSubquery('from', 'is', 'ada@acme.com')
+
+    expect(byPhone.result.droppedConditions).toEqual([])
+    expect(toSql(byPhone.where)).toBe(toSql(byEmail.where))
+    expect(toParams(byPhone.where)).toContain('+15102055536')
+  })
+
+  it('never constrains `Participant.identifierType`', () => {
+    // Asserted on the bound PARAMETERS, not the rendered column names: under
+    // Vitest the schema columns render empty (`src/test/setup.ts` mocks the
+    // query builder), so a regex over the SQL text would pass vacuously.
+    const IDENTIFIER_TYPES = ['EMAIL', 'PHONE', 'FACEBOOK_PSID', 'INSTAGRAM_IGSID', 'CHAT_VISITOR']
+
+    for (const fieldId of ADDRESS_FIELDS) {
+      const params = toParams(buildWithSubquery(fieldId, 'is', '+15102055536').where)
+      expect(params).toContain('+15102055536')
+      expect(params.filter((p) => IDENTIFIER_TYPES.includes(p as string))).toEqual([])
+    }
+  })
+
+  it('reads the FROM role for `sender`/`from` and the recipient roles for `to`', () => {
+    expect(toParams(buildWithSubquery('from', 'is', 'ada@acme.com').where)).toContain('FROM')
+    expect(toParams(buildWithSubquery('sender', 'is', 'ada@acme.com').where)).toContain('FROM')
+
+    const toParamsList = toParams(buildWithSubquery('to', 'is', 'ada@acme.com').where)
+    expect(toParamsList).toEqual(expect.arrayContaining(['TO', 'CC', 'BCC']))
+    expect(toParamsList).not.toContain('FROM')
+  })
+
+  it('skips the Participant join entirely for `empty` / `not empty`', () => {
+    // Nothing to match an identifier against — the probe is "does a FROM
+    // participant row exist at all", which is two tables, not three.
+    const built = buildWithSubquery('from', 'not empty', undefined)
+    expect(built.chain.innerJoin).toHaveBeenCalledTimes(1)
+    expect(toSql(built.where)).not.toMatch(/identifier/i)
+  })
+})
+
+describe('channelType', () => {
+  it('offers only operators the builder dispatches', () => {
+    const operators = offeredOperators('channelType')
+    expect(operators.length).toBeGreaterThan(0)
+
+    for (const operator of operators) {
+      const value = operator.valueType === 'none' ? undefined : ['sms']
+      const result = buildOne('channelType', operator.key, value)
+
+      expect({ operator: operator.key, dropped: result.droppedConditions }).toEqual({
+        operator: operator.key,
+        dropped: [],
+      })
+      expect(result.allConditionsDropped).toBe(false)
+    }
+  })
+
+  it('compiles a group to every provider in it, through Thread.integrationId', () => {
+    const built = buildWithSubquery('channelType', 'is', 'sms')
+
+    expect(built.table).toBe(schema.Integration)
+    // `Thread.integrationId IN (<subquery>)`. The subquery collapses to one
+    // bound parameter under Vitest, so the shape is asserted on the mock.
+    expect(built.sqlText).toMatch(/\bin \$\d+/)
+    expect(built.projection).toHaveProperty('id')
+    // Both SMS providers, not just the wired one — a filter must survive a
+    // second provider being added to the group.
+    expect(toParams(built.where)).toEqual(expect.arrayContaining(['sms', 'openphone']))
+  })
+
+  it('matches threads on a DISCONNECTED channel — deletedAt is deliberately not filtered', () => {
+    // Disconnect is a soft delete. The conversations that channel delivered are
+    // still in the inbox, so a saved view or filter must keep matching them.
+    // Every other channel query in the codebase does the opposite; this one is
+    // the documented exception.
+    const built = buildWithSubquery('channelType', 'is', 'email')
+    // ONE predicate — the provider set. A `deletedAt IS NULL` arm would add an
+    // `and` and a second clause. (Column names render empty under Vitest, so
+    // the assertion is on the clause SHAPE, not on the word "deletedAt".)
+    expect(toSql(built.where)).not.toMatch(/\band\b/i)
+    expect(toSql(built.where)).not.toMatch(/is null/i)
+  })
+
+  it('fails closed on an unknown group instead of matching the whole mailbox', () => {
+    const result = buildOne('channelType', 'is', 'carrier-pigeon')
+
+    expect(result.droppedConditions).toEqual([])
+    expect(toSql(result.sql)).toMatch(/false/)
+    expect(toSql(result.sql)).not.toBe(baseScopeSql())
+  })
+
+  it('answers `empty` as constant false — Thread.integrationId is NOT NULL', () => {
+    // Dispatched rather than left to fall through: an undispatched operator is
+    // a DROP, and a filter whose conditions all drop fails the whole rule shut.
+    expect(toSql(buildOne('channelType', 'empty', undefined).sql)).toMatch(/false/)
+    expect(toSql(buildOne('channelType', 'not empty', undefined).sql)).toMatch(/true/)
+  })
+})

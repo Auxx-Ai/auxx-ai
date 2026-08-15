@@ -171,6 +171,14 @@ export interface FieldOptions {
 export interface EmailFieldOptions {
   /** Filter participants by type (from/to/cc/any) */
   participantType?: 'from' | 'to' | 'cc' | 'any'
+  /**
+   * Narrow the participant typeahead to these `IdentifierType` values.
+   *
+   * A SOFT hint the surface recomputes (a phone-only inbox should not suggest
+   * email addresses); typed-in values are still accepted, because an inbox's
+   * channel set is a union that can grow after the filter is written.
+   */
+  identifierTypes?: string[]
 }
 
 /**

@@ -6,6 +6,14 @@ import { MAIL_FILTER_EXCLUDED_FIELD_IDS } from '@auxx/lib/mail-filters/client'
 import { getInstanceId, isRecordId, type RecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
 import type { SearchCondition } from '~/components/searchbar/types'
+// The client-side mirror of `@auxx/lib/participants/client`'s union — there is
+// no client subpath for that module, and the lib barrel is server-only.
+import type { ParticipantIdentifierType } from '~/components/threads/store'
+import {
+  channelCarriesSubject,
+  formatParticipantIdentifier,
+  type ThreadTitleParticipant,
+} from '~/components/threads/utils/thread-title'
 
 /**
  * Building the `ConditionGroup[]` the mail-filter dialog opens with, from the
@@ -51,25 +59,90 @@ export function toConditionGroups(conditions: PrefillCondition[]): ConditionGrou
   ]
 }
 
+/** What the thread entry point prefilled, and anything it deliberately did not. */
+export interface ThreadPrefill {
+  conditions: PrefillCondition[]
+  /** Suggested filter name, or undefined to leave the field empty. */
+  name?: string
+  /** Same banner contract as {@link SearchConversion.notes}. */
+  notes: string[]
+}
+
 /**
- * Gmail's "Filter messages like this": sender exact, subject fuzzy.
+ * The counterparty slice the prefill reads.
  *
- * `from is <email>` and `subject contains <subject>` — both editable in the
+ * Structurally the same slice `formatParticipantIdentifier` takes, so a
+ * `ParticipantMeta` from the thread store passes straight through and the
+ * PHONE arm can reuse the shared display formatter.
+ */
+export type ThreadPrefillParticipant = ThreadTitleParticipant & {
+  identifierType: ParticipantIdentifierType
+}
+
+/**
+ * Gmail's "Filter messages like this": sender exact, subject fuzzy — on
+ * whichever channel the conversation actually arrived on.
+ *
+ * `from is <identifier>` and `subject contains <subject>`, both editable in the
  * dialog, which is the point of prefilling rather than creating. `contains` on
  * the subject is deliberate: an exact subject match would only ever fire on a
  * literal resend, while reply prefixes and ticket suffixes drift constantly.
+ *
+ * ## The sender arm is chosen by `identifierType`, never by shape
+ *
+ * This used to be `identifier.includes('@') ? identifier : null`, which silently
+ * dropped the sender condition — the half the user came for — on every
+ * non-email channel. `from` compiles to `ilike(Participant.identifier, …)` with
+ * no type predicate, so `from is +15102055536` is a perfectly good filter; the
+ * `@` test was a guess at a question the participant row answers exactly.
+ *
+ * `FACEBOOK_PSID` / `INSTAGRAM_IGSID` / `CHAT_VISITOR` are the exception, and
+ * they are REPORTED rather than silently dropped: a PSID is opaque and scoped to
+ * one app, and a chat-visitor id is per-session, so a filter on one is
+ * technically valid and practically matches exactly one conversation forever.
+ * The note says so, in the same banner `convertSearchConditions` uses.
+ *
+ * ## The subject arm is gated on the channel's capability
+ *
+ * SMS threads store `subject = ''`, so today the arm skips itself by accident.
+ * `channelCarriesSubject` makes it a decision — and keeps it correct for a
+ * channel that has a non-empty subject we still would not want to prefill on.
  */
-export function buildThreadPrefillConditions(input: {
-  senderEmail?: string | null
+export function buildThreadPrefill(input: {
+  participant?: ThreadPrefillParticipant | null
   subject?: string | null
-}): PrefillCondition[] {
+  /** `Thread.integrationProvider` — an `IntegrationProviderType` value. */
+  integrationProvider?: string | null
+  /** Inbox name, used to name a filter that has no sender condition. */
+  inboxName?: string | null
+}): ThreadPrefill {
   const conditions: PrefillCondition[] = []
-  const sender = input.senderEmail?.trim()
-  if (sender) conditions.push({ fieldId: 'from', operator: 'is' as Operator, value: sender })
+  const notes: string[] = []
+  let name: string | undefined
+
+  const identifier = input.participant?.identifier?.trim()
+  const identifierType = input.participant?.identifierType
+
+  if (identifier && identifierType === 'EMAIL') {
+    conditions.push({ fieldId: 'from', operator: 'is' as Operator, value: identifier })
+    name = `Mail from ${identifier}`
+  } else if (identifier && identifierType === 'PHONE') {
+    conditions.push({ fieldId: 'from', operator: 'is' as Operator, value: identifier })
+    name = `Texts from ${formatParticipantIdentifier(input.participant) ?? identifier}`
+  } else if (identifier) {
+    // FACEBOOK_PSID / INSTAGRAM_IGSID / CHAT_VISITOR — see the doc comment.
+    notes.push(
+      'No sender condition was added. This conversation’s sender is identified by an internal handle that is specific to one app — for live chat, to one visit — so a filter on it would match this conversation and nothing else. Add a condition below to describe the mail you want to catch.'
+    )
+    if (input.inboxName) name = `Conversations in ${input.inboxName}`
+  }
+
   const subject = input.subject?.trim()
-  if (subject)
+  if (subject && channelCarriesSubject(input.integrationProvider)) {
     conditions.push({ fieldId: 'subject', operator: 'contains' as Operator, value: subject })
-  return conditions
+  }
+
+  return { conditions, name, notes }
 }
 
 /** What a searchbar → filter conversion produced, and what it had to change. */

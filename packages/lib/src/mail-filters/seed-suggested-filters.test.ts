@@ -89,8 +89,10 @@ function caseLabelsOf(fnName: string): Set<string> {
 
 /** `fieldId` → the field builder `dispatchConditionQuery` routes it to. */
 const FIELD_BUILDERS: Record<string, string> = {
-  // `buildFromQuery` is a one-line delegation to `buildSenderQuery`, which owns the cases.
-  from: 'buildSenderQuery',
+  // `buildFromQuery` delegates to `buildSenderQuery`, which delegates in turn to the
+  // shared `buildParticipantIdentifierQuery` (it serves `to` as well, with a different
+  // role predicate) — that is where the operator cases live.
+  from: 'buildParticipantIdentifierQuery',
   subject: 'buildSubjectQuery',
   // `buildListQuery` is likewise a one-line delegation — the operator cases live in the
   // shared `buildMessageTextColumnQuery` it hands `Message.listId` to.

@@ -50,6 +50,8 @@ export {
   type UpdateMailFilterInput,
   updateMailFilter,
 } from './mutations'
+// Authoring-time value normalisation (plan 09 §7)
+export { normalizePhoneConditionValues } from './normalize-conditions'
 // Reads
 export {
   getMailFilterById,

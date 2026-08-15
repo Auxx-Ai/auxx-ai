@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { toResourceFieldId } from '@auxx/types/field'
+import { CHANNEL_GROUP_OPTIONS } from '../channels/capabilities'
 import { getOperatorsForFieldType, type Operator } from '../conditions/operator-definitions'
 import type { FieldOptions } from '../custom-fields/field-options'
 // NOTE: This file is used on both client and server.
@@ -122,31 +123,49 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
   // ═══════════════════════════════════════════════════════════════════════════
   // TEXT FIELDS
   // ═══════════════════════════════════════════════════════════════════════════
+  // `sender` / `from` / `to` are ADDRESS fields, not email fields. All three
+  // compile to `ilike(Participant.identifier, …)`, and that column is
+  // polymorphic — an email address, an E.164 phone number, a Facebook PSID or a
+  // chat-visitor id — so `from is +15102055536` is as valid as
+  // `from is ada@acme.com`. One field per concept, never one per channel
+  // (plans/mail-filter/09-channel-aware-filters-plan.md D1): the searchbar,
+  // mail views and filters share this catalog because they share one evaluator,
+  // and splitting `from` into three would fork that language where the SQL has
+  // one column.
+  //
+  // `type` is STRING rather than EMAIL for exactly that reason. `fieldType`
+  // STAYS `FieldType.EMAIL`: it is what routes the value input to
+  // `ParticipantPicker` (which searches identifiers of every type) instead of an
+  // `<input type="email">` that rejects a phone number, and its operator set is
+  // fully dispatched by `buildParticipantIdentifierQuery`.
   {
     id: 'sender',
     label: 'Sender',
-    type: BaseType.EMAIL,
+    type: BaseType.STRING,
     fieldType: FieldType.EMAIL,
-    placeholder: 'Email address...',
-    description: 'Filter by sender email address',
+    // Same `participantType` as `from` — the two ids compile to the identical
+    // `role = 'FROM'` predicate, so they must offer the identical input.
+    options: { email: { participantType: 'from' } },
+    placeholder: 'Email, phone number or handle...',
+    description: 'Filter by the sender’s address on any channel',
   },
   {
     id: 'from',
     label: 'From',
-    type: BaseType.EMAIL,
+    type: BaseType.STRING,
     fieldType: FieldType.EMAIL,
     options: { email: { participantType: 'from' } },
-    placeholder: 'Sender email...',
-    description: 'Filter by sender email address',
+    placeholder: 'Email, phone number or handle...',
+    description: 'Filter by the sender’s address on any channel',
   },
   {
     id: 'to',
     label: 'To',
-    type: BaseType.EMAIL,
+    type: BaseType.STRING,
     fieldType: FieldType.EMAIL,
     options: { email: { participantType: 'to' } },
-    placeholder: 'Recipient email...',
-    description: 'Filter by recipient email address',
+    placeholder: 'Email, phone number or handle...',
+    description: 'Filter by a recipient’s address on any channel',
   },
   {
     id: 'subject',
@@ -208,6 +227,28 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
       ],
     },
     description: 'Filter by thread status',
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHANNEL FIELD
+  // ═══════════════════════════════════════════════════════════════════════════
+  // The only way to say "when a new SMS arrives in this inbox" on a MIXED
+  // inbox. An inbox is a union of channel types, not one type — "Shared Inbox"
+  // carries a `google` and an `email` channel, "Chat Support" a `chat` and a
+  // `google` one — and a channel can be attached AFTER a filter is written. So
+  // channel-awareness is expressed as a CONDITION the author writes, never as a
+  // catalog partition frozen at authoring time (plan 09 D2).
+  //
+  // Options are the coarse groups declared on `PLATFORM_CAPABILITIES`, not raw
+  // providers (plan 09 D3 + Q1): `Integration` rows are re-minted on reconnect
+  // and `google`/`outlook`/`imap`/`mailgun` are all just "Email" to the author.
+  {
+    id: 'channelType',
+    label: 'Channel',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    options: { options: CHANNEL_GROUP_OPTIONS.map((o) => ({ value: o.value, label: o.label })) },
+    description: 'Filter by the channel a conversation arrived on',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

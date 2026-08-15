@@ -7,6 +7,28 @@ import type {
 } from '@auxx/database/types'
 
 /**
+ * The coarse channel a person would name in a rule — "when a new **SMS**
+ * arrives", "when a **Facebook** message arrives".
+ *
+ * Deliberately NOT the provider (`openphone`, `google`) and NOT derived from
+ * `channel` + `recipientModel`:
+ *
+ * - Providers are an implementation detail a filter should survive. `google`,
+ *   `outlook`, `imap` and `mailgun` are all just "Email" to the author, and a
+ *   second SMS provider beside `openphone` must not silently stop matching an
+ *   existing `channelType is sms` rule.
+ * - The derivation does not work: `facebook` and `instagram` are both
+ *   `messaging` + `thread_only`, so the pair is indistinguishable, and
+ *   `shopify` — a data-only integration that is not a channel at all — lands in
+ *   the same bucket.
+ *
+ * So it is declared per provider, here, in the ONE map (the same reasoning as
+ * `identifierType` below). `undefined` means "not a conversation channel" and
+ * keeps the provider out of every channel-type option list.
+ */
+export type ChannelGroup = 'email' | 'sms' | 'whatsapp' | 'facebook' | 'instagram' | 'chat'
+
+/**
  * Coarse, kopilot-facing capability map for an integration platform. This is
  * deliberately separate from `provider-capabilities.ts` (which is the detailed
  * runtime capability matrix) — the LLM only needs to know which channel each
@@ -15,6 +37,8 @@ import type {
  */
 export interface PlatformCapabilities {
   channel: 'email' | 'messaging'
+  /** Coarse, author-facing channel bucket. See {@link ChannelGroup}. */
+  channelGroup?: ChannelGroup
   /** Can a brand-new outbound conversation be started (no existing thread). */
   newOutbound: boolean
   /** Can the platform reply on an existing thread. */
@@ -105,6 +129,7 @@ export type ChannelSelectionScope = 'email' | 'addressable'
 export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, PlatformCapabilities> = {
   [IntegrationProviderType.google]: {
     channel: 'email',
+    channelGroup: 'email',
     newOutbound: true,
     threadReply: true,
     subject: true,
@@ -118,6 +143,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   },
   [IntegrationProviderType.outlook]: {
     channel: 'email',
+    channelGroup: 'email',
     newOutbound: true,
     threadReply: true,
     subject: true,
@@ -131,6 +157,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   },
   [IntegrationProviderType.email]: {
     channel: 'email',
+    channelGroup: 'email',
     newOutbound: true,
     threadReply: true,
     subject: true,
@@ -144,6 +171,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   },
   [IntegrationProviderType.imap]: {
     channel: 'email',
+    channelGroup: 'email',
     newOutbound: true,
     threadReply: true,
     subject: true,
@@ -157,6 +185,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   },
   [IntegrationProviderType.mailgun]: {
     channel: 'email',
+    channelGroup: 'email',
     newOutbound: true,
     threadReply: true,
     subject: true,
@@ -170,6 +199,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   },
   [IntegrationProviderType.facebook]: {
     channel: 'messaging',
+    channelGroup: 'facebook',
     newOutbound: false,
     threadReply: true,
     subject: false,
@@ -184,6 +214,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   },
   [IntegrationProviderType.instagram]: {
     channel: 'messaging',
+    channelGroup: 'instagram',
     newOutbound: false,
     threadReply: true,
     subject: false,
@@ -197,6 +228,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   },
   [IntegrationProviderType.sms]: {
     channel: 'messaging',
+    channelGroup: 'sms',
     newOutbound: true,
     threadReply: true,
     subject: false,
@@ -213,6 +245,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   },
   [IntegrationProviderType.openphone]: {
     channel: 'messaging',
+    channelGroup: 'sms',
     newOutbound: true,
     threadReply: true,
     subject: false,
@@ -238,6 +271,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   },
   [IntegrationProviderType.whatsapp]: {
     channel: 'messaging',
+    channelGroup: 'whatsapp',
     newOutbound: true,
     threadReply: true,
     subject: false,
@@ -252,6 +286,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   },
   [IntegrationProviderType.chat]: {
     channel: 'messaging',
+    channelGroup: 'chat',
     newOutbound: true,
     threadReply: true,
     subject: false,
@@ -278,6 +313,56 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     recipientModel: 'thread_only',
     notes: 'data-only integration, not a messaging channel',
   },
+}
+
+/** Author-facing label for each {@link ChannelGroup}. */
+export const CHANNEL_GROUP_LABELS: Record<ChannelGroup, string> = {
+  email: 'Email',
+  sms: 'SMS',
+  whatsapp: 'WhatsApp',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  chat: 'Live chat',
+}
+
+/**
+ * Every channel group, in catalog order, with its label — the option list for
+ * the `channelType` filter/view/search field.
+ *
+ * DERIVED from `PLATFORM_CAPABILITIES` rather than hand-written, so a new
+ * provider becomes filterable by declaring `channelGroup` and nothing else.
+ * Providers with no `channelGroup` (`shopify` — a data-only integration) never
+ * appear.
+ */
+export const CHANNEL_GROUP_OPTIONS: ReadonlyArray<{ value: ChannelGroup; label: string }> =
+  Object.keys(CHANNEL_GROUP_LABELS)
+    .filter((group) =>
+      Object.values(PLATFORM_CAPABILITIES).some((caps) => caps.channelGroup === group)
+    )
+    .map((group) => ({
+      value: group as ChannelGroup,
+      label: CHANNEL_GROUP_LABELS[group as ChannelGroup],
+    }))
+
+/**
+ * Every provider belonging to a channel group — the `Integration.provider`
+ * values a `channelType` condition compiles to.
+ *
+ * Unknown group names return an empty list, which callers must treat as
+ * "matches nothing" rather than "matches everything".
+ */
+export function providersForChannelGroup(group: string): IntegrationProviderTypeValue[] {
+  return (Object.keys(PLATFORM_CAPABILITIES) as IntegrationProviderTypeValue[]).filter(
+    (provider) => PLATFORM_CAPABILITIES[provider].channelGroup === group
+  )
+}
+
+/** The coarse channel group a provider belongs to; `undefined` when it is not a channel. */
+export function channelGroupForProvider(
+  provider: string | null | undefined
+): ChannelGroup | undefined {
+  if (!provider) return undefined
+  return PLATFORM_CAPABILITIES[provider as IntegrationProviderTypeValue]?.channelGroup
 }
 
 /** Plucks the composer-facing subset for one provider. `undefined` for an unknown provider. */

@@ -9,8 +9,19 @@ import { immer } from 'zustand/middleware/immer'
 const BATCH_DELAY = 50
 const MAX_BATCH_SIZE = 50
 
-/** Identifier type for participants */
-export type ParticipantIdentifierType = 'EMAIL' | 'PHONE' | 'CHAT_VISITOR'
+/**
+ * Identifier type for participants.
+ *
+ * Mirrors `@auxx/lib/participants/client`'s union, which mirrors the
+ * `IdentifierType` pg enum — all five members. See the note there: a short
+ * union here makes any exhaustive `switch` unsound on live rows.
+ */
+export type ParticipantIdentifierType =
+  | 'EMAIL'
+  | 'PHONE'
+  | 'FACEBOOK_PSID'
+  | 'INSTAGRAM_IGSID'
+  | 'CHAT_VISITOR'
 
 /**
  * ParticipantMeta - email/phone participant for display.

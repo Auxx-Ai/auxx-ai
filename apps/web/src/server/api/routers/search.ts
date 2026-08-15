@@ -1,5 +1,4 @@
 import { schema } from '@auxx/database'
-import { ParticipantRole } from '@auxx/database/enums'
 import { InboxService } from '@auxx/lib/inboxes'
 import { IsOperatorValue, SearchOperator } from '@auxx/lib/mail-query'
 import { listMembersWithUser } from '@auxx/lib/members'
@@ -380,29 +379,36 @@ export const searchRouter = createTRPCRouter({
     .input(
       z.object({
         query: z.string(),
+        /**
+         * Accepted and IGNORED. A `Participant` row has no role — role lives on
+         * `MessageParticipant`, per message — so "addresses that have ever been
+         * a FROM" would be a different query over a different table. This used
+         * to build a `roleFilter` object that was never referenced in the
+         * `where`; the parameter stays only because every caller passes it.
+         */
         type: z.enum(['from', 'to', 'cc', 'any']).optional(),
+        /**
+         * Narrow to these identifier types — how a phone-only surface stops
+         * suggesting email addresses. Omitted means every type.
+         */
+        identifierTypes: z
+          .array(z.enum(['EMAIL', 'PHONE', 'FACEBOOK_PSID', 'INSTAGRAM_IGSID', 'CHAT_VISITOR']))
+          .optional(),
       })
     )
     .query(async ({ input, ctx }) => {
       ctx.capabilities.assert(PermissionKey.inboxesView)
-      const { query, type } = input
+      const { query, identifierTypes } = input
       const organizationId = ctx.session.organizationId
-      // Build role filter based on type
-      let roleFilter = {}
-      if (type && type !== 'any') {
-        const roleMap = {
-          from: ParticipantRole.FROM,
-          to: ParticipantRole.TO,
-          cc: ParticipantRole.CC,
-        }
-        roleFilter = { role: roleMap[type] }
-      }
       const participants = await ctx.db
         .select()
         .from(schema.Participant)
         .where(
           and(
             eq(schema.Participant.organizationId, organizationId),
+            identifierTypes && identifierTypes.length > 0
+              ? inArray(schema.Participant.identifierType, identifierTypes)
+              : undefined,
             query
               ? or(
                   ilike(schema.Participant.identifier, `%${query}%`),
