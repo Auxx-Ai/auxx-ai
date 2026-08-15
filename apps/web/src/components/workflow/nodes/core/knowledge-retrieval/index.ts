@@ -8,7 +8,9 @@ export {
   knowledgeRetrievalDefaultData,
   knowledgeRetrievalDefinition,
   knowledgeRetrievalNodeDataSchema,
+  validateKnowledgeRetrievalConfig,
 } from './schema'
+export { KnowledgeRetrievalTraceRenderer } from './trace-renderer'
 export type {
   KnowledgeRetrievalNode as KnowledgeRetrievalNodeType,
   KnowledgeRetrievalNodeData,

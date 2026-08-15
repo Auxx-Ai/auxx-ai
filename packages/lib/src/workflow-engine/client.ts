@@ -241,6 +241,21 @@ export {
   validateInformationExtractor,
 } from './catalog/nodes/information-extractor'
 export {
+  extractKnowledgeRetrievalVariables,
+  getKnowledgeRetrievalOutputVariables,
+  KNOWLEDGE_RETRIEVAL_MAX_LIMIT,
+  KNOWLEDGE_SEARCH_TYPES,
+  type KnowledgeRetrievalNodeData as CatalogKnowledgeRetrievalNodeData,
+  type KnowledgeSearchType,
+  type KnowledgeSourceRow,
+  knowledgeRetrievalDefaultData,
+  knowledgeRetrievalManifest,
+  knowledgeRetrievalNodeDataSchema,
+  sourceFieldKey,
+  sourceRawId,
+  validateKnowledgeRetrievalConfig,
+} from './catalog/nodes/knowledge-retrieval'
+export {
   CONFIG_KEY_BY_OPERATION,
   computeListOutputVariables,
   extractListVariables,

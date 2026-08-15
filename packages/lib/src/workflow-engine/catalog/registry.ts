@@ -12,6 +12,7 @@ import { httpManifest } from './nodes/http'
 import { humanConfirmationManifest } from './nodes/human'
 import { ifElseManifest } from './nodes/if-else'
 import { informationExtractorManifest } from './nodes/information-extractor'
+import { knowledgeRetrievalManifest } from './nodes/knowledge-retrieval'
 import { listManifest } from './nodes/list'
 import { loopManifest } from './nodes/loop'
 import { manualManifest } from './nodes/manual'
@@ -48,6 +49,7 @@ const ALL_MANIFESTS: NodeManifest<any>[] = [
   humanConfirmationManifest,
   ifElseManifest,
   informationExtractorManifest,
+  knowledgeRetrievalManifest,
   listManifest,
   loopManifest,
   manualManifest,
