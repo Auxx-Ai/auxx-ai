@@ -80,13 +80,36 @@ export {
   normalizeGivenName,
 } from './nicknames'
 export {
+  type DismissPairParams,
   deleteOpenPairsForRecord,
+  dismissPair,
   type MergeResolution,
   type RescorePairsParams,
   rescoreOpenPairsForRecord,
   resolveSuggestionsForMerge,
   upsertPairs,
 } from './pairs'
+export {
+  type CountDuplicatePairsParams,
+  countOpenDuplicatePairs,
+  DUPLICATE_HIGH_INSTANCE_ID_SQL,
+  DUPLICATE_LOW_INSTANCE_ID_SQL,
+  type DuplicateCursor,
+  type DuplicateDefScope,
+  type DuplicatePair,
+  type DuplicatePairListItem,
+  type DuplicatePairPage,
+  type DuplicateSide,
+  type GetDuplicatePairParams,
+  getVisibleDuplicatePair,
+  type ListDuplicatePairsParams,
+  type ListPairsForRecordParams,
+  listDuplicatePairs,
+  listDuplicatePairsForRecord,
+  type MergeEstablishment,
+  orderByEstablishment,
+  readMergeEstablishment,
+} from './queries'
 export {
   bandForScore,
   type ScoredPair,

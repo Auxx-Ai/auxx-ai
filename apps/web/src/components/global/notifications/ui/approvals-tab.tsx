@@ -21,6 +21,7 @@ import { useNotificationPanelStore } from '../notification-panel-store'
 import { AccessRequestRow } from './items/access-request-row'
 import { ConfirmationRow } from './items/confirmation-row'
 import { DecidedRow } from './items/decided-row'
+import { DuplicateRow } from './items/duplicate-row'
 import { MailSuggestionRow } from './items/mail-suggestion-row'
 import { SuggestionRow } from './items/suggestion-row'
 import { NotificationRowSkeleton } from './notification-row'
@@ -71,6 +72,7 @@ export function ApprovalsTab({ viewportRef }: ApprovalsTabProps) {
 function PendingApprovals({ viewportRef }: ApprovalsTabProps) {
   const { hasAccess } = useFeatureFlags()
   const suggestionsEnabled = hasAccess(FeatureKey.todayInbox)
+  const duplicatesEnabled = hasAccess(FeatureKey.duplicateDetection)
   const utils = api.useUtils()
   const highlightApprovalId = useNotificationPanelStore((state) => state.highlightApprovalId)
   const clearHighlight = useNotificationPanelStore((state) => state.clearHighlight)
@@ -96,6 +98,16 @@ function PendingApprovals({ viewportRef }: ApprovalsTabProps) {
    * job, so it needs no pagination of its own.
    */
   const mailSuggestions = useMailSuggestions()
+  /**
+   * The fifth source (plan §3.2). Gated on `FeatureKey.duplicateDetection` and
+   * skipped entirely when the org does not have it — the same shape as the
+   * suggestions section above, and the reason the router may refuse outright
+   * rather than answering with an empty list.
+   */
+  const duplicates = api.duplicates.list.useQuery(
+    { limit: 25 },
+    { enabled: duplicatesEnabled, refetchOnWindowFocus: false }
+  )
 
   // Deadline order — soonest expiry first, undated last. Correct only because the
   // pending view is fetched as one page (the router asks for 100), so this sorts
@@ -118,6 +130,7 @@ function PendingApprovals({ viewportRef }: ApprovalsTabProps) {
   )
 
   const mailSuggestionItems = mailSuggestions.data ?? []
+  const duplicateItems = duplicates.data?.items ?? []
 
   /**
    * The acting client refetches both lists and both badge counts itself rather
@@ -142,10 +155,23 @@ function PendingApprovals({ viewportRef }: ApprovalsTabProps) {
     void utils.mailSuggestions.count.invalidate()
   }
 
+  /**
+   * Dismiss, snooze and merge all change what the queue contains, so both the
+   * list and the badge term are refetched by the acting client rather than
+   * waiting for a frame that this feature deliberately does not publish
+   * (realtime is out of v1 — the tab is refetch-driven).
+   */
+  const onDuplicateResolved = () => {
+    void utils.duplicates.list.invalidate()
+    void utils.duplicates.count.invalidate()
+    void utils.duplicates.forRecord.invalidate()
+  }
+
   const isLoading =
     confirmations.isLoading ||
     (suggestionsEnabled && suggestions.isLoading) ||
-    mailSuggestions.isLoading
+    mailSuggestions.isLoading ||
+    (duplicatesEnabled && duplicates.isLoading)
   const highlightIsListed = confirmationItems.some((item) => item.id === highlightApprovalId)
 
   /**
@@ -186,12 +212,16 @@ function PendingApprovals({ viewportRef }: ApprovalsTabProps) {
   // nothing looks identical to both sources erroring, and an approval inbox that
   // quietly claims to be empty is worse than one that admits it is broken.
   const loadError =
-    confirmations.error ?? (suggestionsEnabled ? suggestions.error : null) ?? mailSuggestions.error
+    confirmations.error ??
+    (suggestionsEnabled ? suggestions.error : null) ??
+    mailSuggestions.error ??
+    (duplicatesEnabled ? duplicates.error : null)
   if (
     loadError &&
     !confirmationItems.length &&
     !suggestionItems.length &&
-    !mailSuggestionItems.length
+    !mailSuggestionItems.length &&
+    !duplicateItems.length
   ) {
     return (
       <div className='flex flex-1 items-center justify-center'>
@@ -209,6 +239,7 @@ function PendingApprovals({ viewportRef }: ApprovalsTabProps) {
                 void confirmations.refetch()
                 if (suggestionsEnabled) void suggestions.refetch()
                 void mailSuggestions.refetch()
+                if (duplicatesEnabled) void duplicates.refetch()
               }}>
               Try again
             </Button>
@@ -218,7 +249,12 @@ function PendingApprovals({ viewportRef }: ApprovalsTabProps) {
     )
   }
 
-  if (!confirmationItems.length && !suggestionItems.length && !mailSuggestionItems.length) {
+  if (
+    !confirmationItems.length &&
+    !suggestionItems.length &&
+    !mailSuggestionItems.length &&
+    !duplicateItems.length
+  ) {
     return (
       // flex-1 against the ScrollArea content wrapper's `min-h-full flex
       // flex-col`, so the empty state centres in the whole panel.
@@ -298,6 +334,19 @@ function PendingApprovals({ viewportRef }: ApprovalsTabProps) {
               suggestion={suggestion}
               onResolved={onMailResolved}
             />
+          ))}
+        </section>
+      ) : null}
+
+      {/* Last of all, and the order is deliberate (§3.2): the tab is a fixed
+          urgency ladder, and data hygiene is the least urgent lane in it. A
+          workflow confirmation blocks a live run and expires; a duplicate pair
+          will still be a duplicate tomorrow. */}
+      {duplicateItems.length ? (
+        <section>
+          <SectionHeader label='Possible duplicates' count={duplicateItems.length} />
+          {duplicateItems.map((pair) => (
+            <DuplicateRow key={pair.id} pair={pair} onResolved={onDuplicateResolved} />
           ))}
         </section>
       ) : null}

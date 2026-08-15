@@ -36,6 +36,7 @@ import { datasetRouter } from './routers/dataset'
 import { dispatchRouter } from './routers/dispatch'
 import { documentRouter } from './routers/document'
 import { draftRouter } from './routers/draft'
+import { duplicatesRouter } from './routers/duplicates'
 import { emailTemplateRouter } from './routers/emailTemplate'
 import { entityDefinitionRouter } from './routers/entityDefinition'
 import { entityGroupRouter } from './routers/entityGroup'
@@ -133,6 +134,7 @@ export const appRouter = createTRPCRouter({
   dataset: datasetRouter,
   document: documentRouter,
   draft: draftRouter,
+  duplicates: duplicatesRouter,
   segment: segmentRouter,
   fieldValue: fieldValueRouter,
   file: fileRouter,

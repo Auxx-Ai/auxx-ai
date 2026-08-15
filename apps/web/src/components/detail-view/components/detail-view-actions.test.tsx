@@ -137,6 +137,12 @@ vi.mock('~/components/permissions/ui/instance-share-dialog', () => ({
 vi.mock('~/components/permissions/ui/instance-share-avatars', () => ({
   InstanceShareAvatars: () => null,
 }))
+// Same reason: it runs its own `duplicates.forRecord` query and renders nothing
+// unless the record has open duplicate pairs. Ungated like the star beside it,
+// so it can only add noise to a test about the write gate.
+vi.mock('~/components/duplicates/ui/duplicate-indicator-button', () => ({
+  DuplicateIndicatorButton: () => null,
+}))
 vi.mock('~/components/sequences/ui/add-to-sequence-dialog', () => ({
   AddToSequenceDialog: () => null,
 }))

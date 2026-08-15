@@ -6,6 +6,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Kbd } from '@auxx/ui/components/kbd'
 import { Share2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { DuplicateIndicatorButton } from '~/components/duplicates/ui/duplicate-indicator-button'
 import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
 import { GranularPermissionsGate } from '~/components/mail-permissions/ui/granular-permissions-gate'
 import { InstanceShareAvatars } from '~/components/permissions/ui/instance-share-avatars'
@@ -117,6 +118,15 @@ export function DetailViewActions({
           />
         </GranularPermissionsGate>
       )}
+
+      {/* Renders nothing unless this record has open duplicate pairs. Same
+          component the drawer header mounts — one affordance, two surfaces,
+          exactly like the star beside it. */}
+      <DuplicateIndicatorButton
+        recordId={recordId}
+        size='icon-xs'
+        className={RECORD_HEADER_GHOST}
+      />
 
       <FavoriteStarButton
         targetType='ENTITY_INSTANCE'
