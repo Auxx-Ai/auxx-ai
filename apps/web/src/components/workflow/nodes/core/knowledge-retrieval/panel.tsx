@@ -3,9 +3,16 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { InputGroup, InputGroupAddon } from '@auxx/ui/components/input-group'
+import { Switch } from '@auxx/ui/components/switch'
 import { produce } from 'immer'
-import { Plus, Trash2 } from 'lucide-react'
+import { BookOpen, Database, Plus, Trash2 } from 'lucide-react'
 import type React from 'react'
 import { memo, useCallback } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
@@ -21,7 +28,12 @@ import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variable
 import Section from '~/components/workflow/ui/section'
 import { BasePanel } from '../../shared/base/base-panel'
 import { getKnowledgeRetrievalOutputVariables } from './output-variables'
-import type { KnowledgeRetrievalNodeData } from './types'
+import {
+  type KnowledgeRetrievalNodeData,
+  type KnowledgeSourceRow,
+  sourceFieldKey,
+  sourceRawId,
+} from './types'
 
 interface KnowledgeRetrievalPanelProps {
   nodeId: string
@@ -46,7 +58,7 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
   const { inputs: nodeData, setInputs } = useNodeCrud<KnowledgeRetrievalNodeData>(nodeId, data)
   const { isReadOnly } = useReadOnly()
 
-  const datasets = nodeData.datasets || []
+  const sources = nodeData.sources || []
 
   /**
    * Generic handler for string field changes
@@ -92,33 +104,18 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
   )
 
   /**
-   * Add a new dataset entry
+   * Add a source row. Kind is chosen up front and stored — see
+   * {@link KnowledgeSourceRow}.
    */
-  const handleAddDataset = useCallback(() => {
-    if (isReadOnly) return
-
-    const newData = produce(nodeData, (draft) => {
-      if (!draft.datasets) draft.datasets = []
-      draft.datasets.push({ datasetId: '' })
-    })
-    setInputs(newData)
-  }, [nodeData, setInputs, isReadOnly])
-
-  /**
-   * Remove a dataset entry
-   */
-  const handleRemoveDataset = useCallback(
-    (index: number) => {
+  const handleAddSource = useCallback(
+    (kind: KnowledgeSourceRow['kind']) => {
       if (isReadOnly) return
 
       const newData = produce(nodeData, (draft) => {
-        if (draft.datasets) {
-          draft.datasets.splice(index, 1)
-        }
-        // Clean up field modes for removed index
-        if (draft.fieldModes) {
-          delete draft.fieldModes[`datasets.${index}.datasetId`]
-        }
+        if (!draft.sources) draft.sources = []
+        draft.sources.push(
+          kind === 'kb' ? { kind: 'kb', knowledgeBaseId: '' } : { kind: 'dataset', datasetId: '' }
+        )
       })
       setInputs(newData)
     },
@@ -126,17 +123,76 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
   )
 
   /**
-   * Update a dataset entry
+   * Remove a source row.
+   *
+   * The `fieldModes` keys are positional (`sources.<i>.…`), so removing a row
+   * shifts every later row's key. Deleting only the removed index — which is
+   * what this used to do — left rows after it reading the wrong mode: remove
+   * row 0 of three and rows 1–2 silently inherit each other's constant/variable
+   * setting. Rebuild the whole `sources.*` block instead.
    */
-  const handleDatasetChange = useCallback(
-    (index: number, datasetId: VarEditorValue, isConstantMode: boolean) => {
+  const handleRemoveSource = useCallback(
+    (index: number) => {
+      if (isReadOnly) return
+
       const newData = produce(nodeData, (draft) => {
-        if (!draft.datasets) draft.datasets = []
-        const entry = draft.datasets[index] ?? { datasetId: '' }
-        entry.datasetId = varEditorText(datasetId)
-        draft.datasets[index] = entry
+        if (!draft.sources) return
+        // Capture each row's mode by its CURRENT index before the splice.
+        const modes = draft.sources.map((row, i) => draft.fieldModes?.[sourceFieldKey(row, i)])
+
+        draft.sources.splice(index, 1)
+        modes.splice(index, 1)
+
+        if (draft.fieldModes) {
+          for (const key of Object.keys(draft.fieldModes)) {
+            if (key.startsWith('sources.')) delete draft.fieldModes[key]
+          }
+        } else {
+          draft.fieldModes = {}
+        }
+        draft.sources.forEach((row, i) => {
+          const mode = modes[i]
+          if (mode !== undefined) draft.fieldModes![sourceFieldKey(row, i)] = mode
+        })
+      })
+      setInputs(newData)
+    },
+    [nodeData, setInputs, isReadOnly]
+  )
+
+  /**
+   * Update a source row's id, keeping its stored kind.
+   */
+  const handleSourceChange = useCallback(
+    (index: number, value: VarEditorValue, isConstantMode: boolean) => {
+      const newData = produce(nodeData, (draft) => {
+        if (!draft.sources) return
+        const row = draft.sources[index]
+        if (!row) return
+
+        const id = varEditorText(value)
+        if (row.kind === 'kb') {
+          row.knowledgeBaseId = id
+        } else {
+          row.datasetId = id
+        }
         if (!draft.fieldModes) draft.fieldModes = {}
-        draft.fieldModes[`datasets.${index}.datasetId`] = isConstantMode
+        draft.fieldModes[sourceFieldKey(row, index)] = isConstantMode
+      })
+      setInputs(newData)
+    },
+    [nodeData, setInputs]
+  )
+
+  /**
+   * Toggle a plain boolean setting (no variable binding).
+   */
+  const handleToggleChange = useCallback(
+    (field: 'dedupePerDocument', checked: boolean) => {
+      const newData = produce(nodeData, (draft) => {
+        draft[field] = checked
+        if (!draft.fieldModes) draft.fieldModes = {}
+        draft.fieldModes[field] = true
       })
       setInputs(newData)
     },
@@ -167,38 +223,50 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
         </VarEditorField>
       </Section>
 
-      {/* Datasets Section */}
+      {/* Knowledge Section */}
       <Section
-        title='Datasets'
-        description='Select one or more datasets to search across'
+        title='Knowledge'
+        description='Select the knowledge bases and datasets to search across'
         isRequired
         initialOpen
         actions={
           !isReadOnly && (
-            <Button variant='ghost' size='xs' onClick={handleAddDataset}>
-              <Plus /> Add
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant='ghost' size='xs'>
+                  <Plus /> Add
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end'>
+                <DropdownMenuItem onClick={() => handleAddSource('kb')}>
+                  <BookOpen /> Knowledge base
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleAddSource('dataset')}>
+                  <Database /> Dataset
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )
         }>
         <div className='space-y-4'>
-          {datasets.length > 0 && (
+          {sources.length > 0 && (
             <div className='space-y-2'>
-              {datasets.map((entry, index) => {
-                const fieldKey = `datasets.${index}.datasetId`
-                const isConstantMode = nodeData.fieldModes?.[fieldKey] ?? true
+              {sources.map((row, index) => {
+                const isKb = row.kind === 'kb'
+                const isConstantMode = nodeData.fieldModes?.[sourceFieldKey(row, index)] ?? true
 
                 return (
                   <InputGroup key={index} className='flex items-center gap-2 ps-1 rounded-2xl'>
                     <VarEditor
                       nodeId={nodeId}
-                      value={entry.datasetId}
-                      onChange={(v, m) => handleDatasetChange(index, v, m)}
+                      value={sourceRawId(row)}
+                      onChange={(v, m) => handleSourceChange(index, v, m)}
                       varType={BaseType.RELATION}
-                      fieldOptions={{ fieldReference: 'dataset' }}
-                      allowedTypes={['dataset' as BaseType, BaseType.STRING]}
+                      fieldOptions={{ fieldReference: isKb ? 'kb' : 'dataset' }}
+                      allowedTypes={[(isKb ? 'kb' : 'dataset') as BaseType, BaseType.STRING]}
                       mode={VAR_MODE.PICKER}
-                      placeholder='Select dataset'
-                      placeholderConstant='Select dataset'
+                      placeholder={isKb ? 'Select knowledge base' : 'Select dataset'}
+                      placeholderConstant={isKb ? 'Select knowledge base' : 'Select dataset'}
                       allowConstant
                       hideClearButton
                       isConstantMode={isConstantMode}
@@ -209,7 +277,7 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
                         <Button
                           size='icon-xs'
                           variant='destructive-hover'
-                          onClick={() => handleRemoveDataset(index)}>
+                          onClick={() => handleRemoveSource(index)}>
                           <Trash2 />
                         </Button>
                       </InputGroupAddon>
@@ -220,9 +288,9 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
             </div>
           )}
 
-          {datasets.length === 0 && (
+          {sources.length === 0 && (
             <div className='text-sm text-muted-foreground text-center py-4'>
-              No datasets selected. Click the + button to add datasets to search.
+              No knowledge selected. Use Add to search a knowledge base or a dataset.
             </div>
           )}
         </div>
@@ -259,7 +327,7 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
 
           <VarEditorFieldRow
             title='Limit'
-            description='Maximum number of results to return (1-100)'
+            description='Maximum number of results to return (1-25). Knowledge passages are prose — a large limit makes a large prompt if these results feed an AI or Answer node.'
             type={BaseType.NUMBER}
             onClear={
               nodeData.limit != null && nodeData.limit !== ''
@@ -283,7 +351,7 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
 
           <VarEditorFieldRow
             title='Similarity Threshold'
-            description='Minimum similarity score for vector search (0.0-1.0)'
+            description='Minimum similarity score for vector search (0.0-1.0). Leave empty to use the search default.'
             type={BaseType.NUMBER}
             onClear={
               nodeData.similarityThreshold != null && nodeData.similarityThreshold !== ''
@@ -302,11 +370,22 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
               varType={BaseType.NUMBER}
               allowedTypes={[BaseType.NUMBER]}
               mode={VAR_MODE.PICKER}
-              placeholder='0.7'
-              placeholderConstant='0.7'
+              placeholder='0.4'
+              placeholderConstant='0.4'
               allowConstant
               isConstantMode={nodeData.fieldModes?.['similarityThreshold'] ?? true}
               hideClearButton
+            />
+          </VarEditorFieldRow>
+
+          <VarEditorFieldRow
+            title='One result per document'
+            description='Return the single best passage from each article or document instead of every matching segment.'
+            type={BaseType.BOOLEAN}>
+            <Switch
+              checked={nodeData.dedupePerDocument === true}
+              onCheckedChange={(checked) => handleToggleChange('dedupePerDocument', checked)}
+              disabled={isReadOnly}
             />
           </VarEditorFieldRow>
         </VarEditorField>

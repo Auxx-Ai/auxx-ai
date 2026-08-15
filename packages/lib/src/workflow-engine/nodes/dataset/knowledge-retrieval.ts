@@ -1,7 +1,10 @@
 // packages/lib/src/workflow-engine/nodes/dataset/knowledge-retrieval.ts
 
+import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
+import type { KnowledgeTarget } from '../../../datasets/resolve-knowledge-targets'
+import { resolveKnowledgeDatasetIds } from '../../../datasets/resolve-knowledge-targets'
 import { SearchService } from '../../../datasets/services/search.service'
 import type { SearchQuery, SearchResult, SearchType } from '../../../datasets/types/search.types'
 import type { ExecutionContextManager } from '../../core/execution-context'
@@ -19,10 +22,22 @@ import { resolveEnumConfig, resolveNumberConfig, variableBound } from './config-
 const logger = createScopedLogger('knowledge-retrieval-processor')
 
 /**
- * Dataset entry configuration
+ * One selected knowledge source. The row's `kind` is stored, never inferred, so
+ * a row whose id is variable-bound still knows which picker and which resolver
+ * arm it belongs to.
  */
-interface DatasetEntry {
-  datasetId: string
+export type KnowledgeSourceRow =
+  | { kind: 'dataset'; datasetId: string }
+  | { kind: 'kb'; knowledgeBaseId: string }
+
+/** The `fieldModes` key for a row's id field — kind-dependent. */
+function sourceFieldKey(row: KnowledgeSourceRow, index: number): string {
+  return row.kind === 'kb' ? `sources.${index}.knowledgeBaseId` : `sources.${index}.datasetId`
+}
+
+/** The raw (possibly variable-reference) id a row carries. */
+function sourceRawId(row: KnowledgeSourceRow): string {
+  return row.kind === 'kb' ? row.knowledgeBaseId : row.datasetId
 }
 
 /**
@@ -35,14 +50,18 @@ interface KnowledgeRetrievalConfig {
   // Query input
   query?: string
 
-  // Dataset selection
-  datasets?: DatasetEntry[]
+  // Knowledge selection — knowledge bases and/or RAG datasets
+  sources?: KnowledgeSourceRow[]
 
   // Search configuration
   // Each carries a variable reference string when bound to a variable
   searchType?: SearchType | string
   limit?: number | string
   similarityThreshold?: number | string
+  /** One best passage per article/document (K8). Schema default false. */
+  dedupePerDocument?: boolean | string
+  /** Keep only segments whose `metadata.links[]` include one of these records. */
+  recordIds?: string[] | string
 
   // Field modes tracking (constant vs variable)
   fieldModes?: Record<string, boolean>
@@ -63,6 +82,50 @@ interface KnowledgeRetrievalResultItem {
   datasetName: string
   position: number
   searchType: string
+
+  // === KB provenance (additive; absent on RAG segments) ===
+  /** `'kb'` for a knowledge-base article, `'rag'` for an uploaded document. */
+  source: 'kb' | 'rag'
+  articleId?: string
+  articleSlug?: string
+  articleSlugPath?: string
+  kbId?: string
+  kbSlug?: string
+  /** `<kbSlug>/<articleSlugPath>` — cite as `[Title](auxx://doc/<docSlug>)`. */
+  docSlug?: string
+}
+
+/** Segment metadata written by `KBSyncService` for KB-sourced segments. */
+interface SegmentMeta {
+  source?: string
+  articleId?: string
+  articleSlug?: string
+  articleSlugPath?: string
+  kbId?: string
+  kbSlug?: string
+  links?: Array<{ recordId?: string }>
+}
+
+/**
+ * Read a segment's metadata.
+ *
+ * ⚠ The two search lanes populate this from DIFFERENT columns — the vector lane
+ * from `DocumentSegment.searchMetadata`, the full-text lane from
+ * `DocumentSegment.metadata` — and hybrid mixes both, so the same article can
+ * come back with metadata sourced from either.
+ *
+ * They agree structurally, not by coincidence: `metadata` is written at chunk
+ * time from `KBSyncService`'s `baseMetadata`, and `searchMetadata` is derived
+ * from it at embed time (`embedding-processor.ts` spreads `segment.metadata`
+ * LAST over its own derived keys, so KB fields cannot be clobbered, and
+ * `postgresql.ts` writes that object to `searchMetadata`). A segment that was
+ * chunked but never embedded has a null `searchMetadata`, but it also has
+ * `indexStatus != 'INDEXED'` and the vector SQL requires INDEXED — so it can
+ * only ever come back through the full-text lane, which reads the populated
+ * column. There is no shape where a KB hit arrives unlabelled.
+ */
+function readSegmentMeta(result: SearchResult): SegmentMeta {
+  return ((result.segment.metadata as SegmentMeta | null) ?? {}) as SegmentMeta
 }
 
 /**
@@ -82,9 +145,10 @@ interface KnowledgeRetrievalOutput {
 /**
  * Validation schema for Knowledge Retrieval configuration
  */
-const datasetEntrySchema = z.object({
-  datasetId: z.string(),
-})
+const sourceRowSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('dataset'), datasetId: z.string() }),
+  z.object({ kind: z.literal('kb'), knowledgeBaseId: z.string() }),
+])
 
 /** Search types the retrieval node knows how to dispatch */
 const SEARCH_TYPES = ['vector', 'text', 'hybrid'] as const
@@ -92,7 +156,36 @@ const SEARCH_TYPES = ['vector', 'text', 'hybrid'] as const
 /** Defaults applied when a search-configuration field is unset or unresolvable */
 const DEFAULT_SEARCH_TYPE: SearchType = 'hybrid'
 const DEFAULT_LIMIT = 20
-const DEFAULT_SIMILARITY_THRESHOLD = 0.7
+
+/**
+ * Upper bound on `limit` (K9).
+ *
+ * Was 100. Chunks default to 1000 chars and this node deliberately does NOT
+ * truncate `results[].content` (a downstream `ai`/`answer` node consumes it),
+ * so a 100-result run put ~25k tokens into the next prompt. 25 sits just above
+ * the node's default of 20, bounding the worst case to the same order as the
+ * default rather than 5x it. With `dedupePerDocument` on, 100 would mean 100
+ * distinct articles — that is re-ranking territory, and re-ranking is out of
+ * scope (it is accepted by `VectorSearchOptions` and silently ignored).
+ */
+const MAX_LIMIT = 25
+
+/**
+ * Over-fetch multiplier when results are post-filtered, mirroring
+ * `search_knowledge`: dedupe and `recordIds` both cut the raw segment list, so
+ * it must be several times the requested page to survive the cuts.
+ */
+const OVERFETCH_MIN = 15
+const OVERFETCH_MAX = 50
+
+// NOTE — `similarityThreshold` deliberately has NO node-level default (K7).
+// It used to default to 0.7 while the vector lane's own floor is 0.4 (chosen
+// deliberately — see the comment in `search/vector-search.ts`), so pointing the
+// node at a knowledge base gave materially worse recall than the
+// `search_knowledge` path over identical content, which passes nothing. Leaving
+// it unset lets the lane default apply and makes the two agree. This is an
+// observable change for existing nodes: they return more results, at lower
+// scores.
 
 /**
  * Validation schema for Knowledge Retrieval configuration
@@ -107,10 +200,12 @@ const knowledgeRetrievalConfigSchema = z.object({
   title: z.string().optional().default('Knowledge Retrieval'),
   desc: z.string().optional(),
   query: z.string().optional(),
-  datasets: z.array(datasetEntrySchema).optional(),
+  sources: z.array(sourceRowSchema).optional(),
   searchType: variableBound(z.enum(SEARCH_TYPES)).optional(),
-  limit: variableBound(z.number().min(1).max(100)).optional(),
+  limit: variableBound(z.number().min(1).max(MAX_LIMIT)).optional(),
   similarityThreshold: variableBound(z.number().min(0).max(1)).optional(),
+  dedupePerDocument: z.union([z.boolean(), z.string()]).optional(),
+  recordIds: z.union([z.array(z.string()), z.string()]).optional(),
   fieldModes: z.record(z.string(), z.boolean()).optional(),
 })
 
@@ -178,41 +273,62 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
       })
     }
 
-    // === Resolve datasets ===
-    if (!config.datasets || config.datasets.length === 0) {
-      throw this.createProcessingError('At least one dataset must be selected', node, { config })
+    // === Resolve knowledge sources ===
+    if (!config.sources || config.sources.length === 0) {
+      throw this.createProcessingError('At least one knowledge source must be selected', node, {
+        config,
+      })
     }
 
-    const resolvedDatasetIds: string[] = []
+    // Each row resolves independently and FAILS CLOSED (K3): a variable-bound id
+    // that resolves to nothing contributes nothing while its siblings still
+    // search. Only an empty set after resolution is an error.
+    const targets: KnowledgeTarget[] = []
 
-    for (let i = 0; i < config.datasets.length; i++) {
-      const entry = config.datasets[i]
-      if (!entry?.datasetId) continue
+    for (let i = 0; i < config.sources.length; i++) {
+      const row = config.sources[i]
+      const rawId = row ? sourceRawId(row) : ''
+      if (!row || !rawId) continue
 
-      const fieldKey = `datasets.${i}.datasetId`
+      const fieldKey = sourceFieldKey(row, i)
       const isConstantMode = config.fieldModes?.[fieldKey] !== false // Default to constant mode
 
-      let resolvedDatasetId: string | undefined
+      let resolvedId: string | undefined
 
       if (isConstantMode) {
-        resolvedDatasetId = entry.datasetId
+        resolvedId = rawId
       } else {
-        // Variable mode - use extractIdFromValue which handles ResourceReference objects
-        resolvedDatasetId = await this.extractIdFromValue(entry.datasetId, contextManager)
-        this.extractVariableIds(entry.datasetId).forEach((v) => usedVariables.add(v))
-        if (entry.datasetId.includes('.')) {
-          usedVariables.add(entry.datasetId)
+        // Variable mode — extractIdFromValue unwraps ResourceReference objects,
+        // so `{{find_1.record}}` pointing at a KB works with no extra handling.
+        resolvedId = await this.extractIdFromValue(rawId, contextManager)
+        this.extractVariableIds(rawId).forEach((v) => usedVariables.add(v))
+        if (rawId.includes('.')) {
+          usedVariables.add(rawId)
+        }
+        // `resolveVariableValue` echoes the reference back when the variable is
+        // missing, so an unresolved binding arrives here as its own path string.
+        // Drop it rather than sending a variable path to the resolver as an id:
+        // it would cost a roundtrip, resolve to nothing anyway, and make the
+        // node's `targets` telemetry lie about what it searched.
+        if (resolvedId === rawId) {
+          contextManager.log('WARN', node.name, 'Knowledge source variable did not resolve', {
+            reference: rawId,
+          })
+          resolvedId = undefined
         }
       }
 
-      if (resolvedDatasetId) {
-        resolvedDatasetIds.push(resolvedDatasetId)
-      }
+      if (!resolvedId) continue
+      targets.push(
+        row.kind === 'kb'
+          ? { kind: 'kb', knowledgeBaseId: resolvedId }
+          : { kind: 'dataset', datasetId: resolvedId }
+      )
     }
 
-    if (resolvedDatasetIds.length === 0) {
-      throw this.createProcessingError('No valid dataset IDs after resolution', node, {
-        originalDatasets: config.datasets,
+    if (targets.length === 0) {
+      throw this.createProcessingError('No valid knowledge sources after resolution', node, {
+        originalSources: config.sources,
       })
     }
 
@@ -230,17 +346,27 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
 
     let resolvedLimit = DEFAULT_LIMIT
     const limitValue = await resolveNumberConfig(config.limit, resolveValue)
-    if (limitValue !== undefined && limitValue >= 1 && limitValue <= 100) {
+    if (limitValue !== undefined && limitValue >= 1 && limitValue <= MAX_LIMIT) {
       resolvedLimit = Math.floor(limitValue)
     }
     extractVariableRefs(config.limit).forEach((v) => usedVariables.add(v))
 
-    let resolvedSimilarityThreshold = DEFAULT_SIMILARITY_THRESHOLD
+    // K7 — no node default. `undefined` lets the vector lane's own 0.4 apply.
+    let resolvedSimilarityThreshold: number | undefined
     const thresholdValue = await resolveNumberConfig(config.similarityThreshold, resolveValue)
     if (thresholdValue !== undefined && thresholdValue >= 0 && thresholdValue <= 1) {
       resolvedSimilarityThreshold = thresholdValue
     }
     extractVariableRefs(config.similarityThreshold).forEach((v) => usedVariables.add(v))
+
+    const dedupePerDocument = await this.resolveBooleanConfig(
+      config.dedupePerDocument,
+      resolveValue
+    )
+    extractVariableRefs(config.dedupePerDocument).forEach((v) => usedVariables.add(v))
+
+    const recordIds = await this.resolveRecordIds(config.recordIds, resolveValue)
+    extractVariableRefs(config.recordIds).forEach((v) => usedVariables.add(v))
 
     // Get organization and user IDs from context
     const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
@@ -250,6 +376,72 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
       throw this.createProcessingError('Organization ID not available in execution context', node)
     }
 
+    // === K5 — resolve on the workflow author's authority ===
+    //
+    // `SearchService.search` has NO ACL of its own: `getAccessibleDatasets`
+    // filters on organizationId + status only, takes a `userId` and never uses
+    // it. Everything below this line is what stands between a workflow and
+    // every dataset in the org, so it must never be skipped.
+    //
+    // `sys.userId` is the workflow's `createdById` on every production trigger.
+    // A non-member composes to an EMPTY capability set and reads deny rather
+    // than running unrestricted — the correct outcome, so the only addition is
+    // a loud diagnostic. Workflows are not permission principals yet; when they
+    // become one, this is the single site to change.
+    if (!userId) {
+      throw this.createProcessingError(
+        'No user in execution context — knowledge retrieval cannot resolve access and will not run unrestricted',
+        node
+      )
+    }
+
+    // Lazy imports — keeps module load light and avoids dragging the org cache
+    // into modules that never take this path (mirrors `ai-v2.ts`).
+    const [{ getCapabilities }, { getCachedMembers }] = await Promise.all([
+      import('../../../permissions/capabilities/get-capabilities'),
+      import('../../../cache/org-cache-helpers'),
+    ])
+
+    const capabilities = await getCapabilities(userId, organizationId)
+    const principalMember = (await getCachedMembers(organizationId)).find(
+      (m) => m.userId === userId
+    )
+    if (!principalMember || principalMember.status !== 'ACTIVE') {
+      contextManager.log(
+        'WARN',
+        node.name,
+        'Knowledge retrieval principal is not an active member — every source will deny',
+        { userId }
+      )
+    }
+
+    const resolved = await resolveKnowledgeDatasetIds(db, {
+      organizationId,
+      targets,
+      capabilities,
+      // K6 — there is no agent here, so no `Agent.knowledge` scope to resolve.
+      // Explicit `null` (the unrestricted arm) so this reads as a decision.
+      knowledgeScope: null,
+    })
+    if (resolved.isErr()) {
+      throw this.createProcessingError(
+        `Failed to resolve knowledge sources: ${resolved.error.message}`,
+        node
+      )
+    }
+    const resolvedDatasetIds = resolved.value
+
+    // Fails closed: inaccessible or unresolvable sources contribute nothing,
+    // and an empty set errors exactly as an empty selection does — it must
+    // never fall through to an unscoped search.
+    if (resolvedDatasetIds.length === 0) {
+      throw this.createProcessingError(
+        'No accessible knowledge sources — check the selected knowledge bases/datasets and the workflow author’s access',
+        node,
+        { targetCount: targets.length }
+      )
+    }
+
     return {
       inputs: {
         query: resolvedQuery,
@@ -257,20 +449,51 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
         searchType: resolvedSearchType,
         limit: resolvedLimit,
         similarityThreshold: resolvedSimilarityThreshold,
+        dedupePerDocument,
+        recordIds,
         organizationId,
         userId,
         variablesUsed: Array.from(usedVariables),
       },
       metadata: {
         nodeType: 'knowledge-retrieval',
+        sourceCount: targets.length,
         datasetCount: resolvedDatasetIds.length,
         searchType: resolvedSearchType,
         limit: resolvedLimit,
         similarityThreshold: resolvedSimilarityThreshold,
+        dedupePerDocument,
         variableCount: usedVariables.size,
         preprocessingComplete: true,
       },
     }
+  }
+
+  /** Resolve a bindable boolean — literal, or a variable reference to resolve. */
+  private async resolveBooleanConfig(
+    raw: boolean | string | undefined,
+    resolveValue: (raw: string) => Promise<unknown>
+  ): Promise<boolean> {
+    if (typeof raw === 'boolean') return raw
+    if (typeof raw !== 'string' || raw.length === 0) return false
+    const value = await resolveValue(raw)
+    if (typeof value === 'boolean') return value
+    if (typeof value === 'string') return value === 'true'
+    return false
+  }
+
+  /** Resolve a bindable record-id list — a literal array, or a bound value. */
+  private async resolveRecordIds(
+    raw: string[] | string | undefined,
+    resolveValue: (raw: string) => Promise<unknown>
+  ): Promise<string[]> {
+    if (Array.isArray(raw)) return raw.filter((id) => typeof id === 'string' && id.length > 0)
+    if (typeof raw !== 'string' || raw.length === 0) return []
+    const value = await resolveValue(raw)
+    if (Array.isArray(value)) {
+      return value.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    }
+    return typeof value === 'string' && value.length > 0 ? [value] : []
   }
 
   /**
@@ -305,13 +528,28 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
         throw this.createExecutionError('Preprocessed data is required', node)
       }
 
-      // Build search query
+      const recordIds: string[] = inputs.recordIds ?? []
+      const dedupePerDocument: boolean = inputs.dedupePerDocument === true
+      const needsPostFilter = dedupePerDocument || recordIds.length > 0
+
+      // Over-fetch only when something downstream will cut the list, so an
+      // unfiltered run issues exactly the query it always did.
+      const fetchLimit = needsPostFilter
+        ? Math.min(Math.max(inputs.limit * 3, OVERFETCH_MIN), OVERFETCH_MAX)
+        : inputs.limit
+
+      // Build search query. `similarityThreshold` is omitted when unset (K7) so
+      // the vector lane's own default applies.
       const searchQuery: SearchQuery = {
         query: inputs.query,
         datasetIds: inputs.datasetIds,
         searchType: inputs.searchType,
-        limit: inputs.limit,
-        similarityThreshold: inputs.similarityThreshold,
+        limit: fetchLimit,
+        // Required for KB provenance — the vector lane gates metadata on it.
+        includeMetadata: true,
+        ...(inputs.similarityThreshold !== undefined
+          ? { similarityThreshold: inputs.similarityThreshold }
+          : {}),
       }
 
       // Execute search
@@ -321,20 +559,62 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
         inputs.userId
       )
 
-      // Transform results to flattened format for easier downstream access
-      const transformedResults: KnowledgeRetrievalResultItem[] = searchResponse.results.map(
-        (result: SearchResult) => ({
-          content: result.segment.content,
-          score: result.score,
-          rank: result.rank,
-          segmentId: result.segment.id,
-          documentId: result.segment.document.id,
-          documentTitle: result.segment.document.title || result.segment.document.filename,
-          datasetId: result.segment.document.dataset.id,
-          datasetName: result.segment.document.dataset.name,
-          position: result.segment.position,
-          searchType: result.searchType,
+      let results = searchResponse.results
+
+      if (recordIds.length > 0) {
+        results = results.filter((result: SearchResult) => {
+          const links = readSegmentMeta(result).links
+          if (!links || links.length === 0) return false
+          return links.some((l) => l.recordId && recordIds.includes(l.recordId))
         })
+      }
+
+      if (dedupePerDocument) {
+        // Results arrive score-sorted, so the first segment seen for a source
+        // is its best passage. Without this one long article can occupy every
+        // slot and crowd out other relevant sources.
+        const seen = new Set<string>()
+        results = results.filter((result: SearchResult) => {
+          const key =
+            readSegmentMeta(result).articleId ?? result.segment.document.id ?? result.segment.id
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+      }
+
+      if (needsPostFilter) results = results.slice(0, inputs.limit)
+
+      // Transform results to flattened format for easier downstream access
+      const transformedResults: KnowledgeRetrievalResultItem[] = results.map(
+        (result: SearchResult) => {
+          const meta = readSegmentMeta(result)
+          const isKb = meta.source === 'kb'
+          const docSlug =
+            isKb && meta.kbSlug && meta.articleSlugPath
+              ? `${meta.kbSlug}/${meta.articleSlugPath}`
+              : undefined
+
+          return {
+            content: result.segment.content,
+            score: result.score,
+            rank: result.rank,
+            segmentId: result.segment.id,
+            documentId: result.segment.document.id,
+            documentTitle: result.segment.document.title || result.segment.document.filename,
+            datasetId: result.segment.document.dataset.id,
+            datasetName: result.segment.document.dataset.name,
+            position: result.segment.position,
+            searchType: result.searchType,
+            source: isKb ? ('kb' as const) : ('rag' as const),
+            ...(meta.articleId ? { articleId: meta.articleId } : {}),
+            ...(meta.articleSlug ? { articleSlug: meta.articleSlug } : {}),
+            ...(meta.articleSlugPath ? { articleSlugPath: meta.articleSlugPath } : {}),
+            ...(meta.kbId ? { kbId: meta.kbId } : {}),
+            ...(meta.kbSlug ? { kbSlug: meta.kbSlug } : {}),
+            ...(docSlug ? { docSlug } : {}),
+          }
+        }
       )
 
       // Build output
@@ -429,14 +709,15 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
       }
     }
 
-    // Extract from datasets (each entry can be a variable)
-    if (config.datasets && Array.isArray(config.datasets)) {
-      config.datasets.forEach((entry, index) => {
-        const fieldKey = `datasets.${index}.datasetId`
-        if (entry.datasetId && config.fieldModes?.[fieldKey] === false) {
-          this.extractVariableIds(entry.datasetId).forEach((v) => variables.add(v))
-          if (entry.datasetId.includes('.')) {
-            variables.add(entry.datasetId)
+    // Extract from sources (each row's id can be a variable)
+    if (config.sources && Array.isArray(config.sources)) {
+      config.sources.forEach((row, index) => {
+        const rawId = sourceRawId(row)
+        const fieldKey = sourceFieldKey(row, index)
+        if (rawId && config.fieldModes?.[fieldKey] === false) {
+          this.extractVariableIds(rawId).forEach((v) => variables.add(v))
+          if (rawId.includes('.')) {
+            variables.add(rawId)
           }
         }
       })
@@ -447,6 +728,8 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
     extractVariableRefs(config.searchType).forEach((v) => variables.add(v))
     extractVariableRefs(config.limit).forEach((v) => variables.add(v))
     extractVariableRefs(config.similarityThreshold).forEach((v) => variables.add(v))
+    extractVariableRefs(config.dedupePerDocument).forEach((v) => variables.add(v))
+    extractVariableRefs(config.recordIds).forEach((v) => variables.add(v))
 
     return Array.from(variables)
   }
@@ -473,14 +756,25 @@ export class KnowledgeRetrievalProcessor extends BaseNodeProcessor {
       errors.push('Query is required')
     }
 
-    if (!config.datasets || config.datasets.length === 0) {
-      errors.push('At least one dataset must be selected')
+    if (!config.sources || config.sources.length === 0) {
+      errors.push('At least one knowledge source must be selected')
     }
+
+    // K3 — a variable-bound source id cannot be checked at author time. Warn;
+    // the runtime resolution fails closed. Do NOT add a "helpful" author-time
+    // lookup here: a bound id would fail it anyway.
+    config.sources?.forEach((row, index) => {
+      if (config.fieldModes?.[sourceFieldKey(row, index)] === false) {
+        warnings.push(
+          `Source ${index + 1} is bound to a variable — it cannot be verified until the workflow runs`
+        )
+      }
+    })
 
     // Validate literal ranges only — a bound field holds a variable reference
     // whose value is not known until the run, and is range-checked there
-    if (typeof config.limit === 'number' && (config.limit < 1 || config.limit > 100)) {
-      errors.push('Limit must be between 1 and 100')
+    if (typeof config.limit === 'number' && (config.limit < 1 || config.limit > MAX_LIMIT)) {
+      errors.push(`Limit must be between 1 and ${MAX_LIMIT}`)
     }
 
     if (

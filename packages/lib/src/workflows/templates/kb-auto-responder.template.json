@@ -71,15 +71,17 @@
           "title": "Search Knowledge Base",
           "desc": "Search KB for articles relevant to the customer's question",
           "query": "{{trigger_1.message.subject}} {{trigger_1.message.body}}",
-          "datasets": [],
+          "sources": [{ "kind": "kb", "knowledgeBaseId": "" }],
           "searchType": "hybrid",
           "limit": 5,
-          "similarityThreshold": 0.7,
+          "dedupePerDocument": true,
           "fieldModes": {
             "query": false,
             "searchType": true,
             "limit": true,
-            "similarityThreshold": true
+            "similarityThreshold": true,
+            "dedupePerDocument": true,
+            "sources.0.knowledgeBaseId": true
           }
         },
         "width": 244,

@@ -7,14 +7,16 @@ import { NodeType } from '~/components/workflow/types/node-types'
 import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/tiptap-converters'
 import { isNodeVariable, isVariableMode } from '~/components/workflow/utils/variable-utils'
 import { getKnowledgeRetrievalOutputVariables } from './output-variables'
-import type { KnowledgeRetrievalNodeData } from './types'
+import { type KnowledgeRetrievalNodeData, sourceFieldKey, sourceRawId } from './types'
 
 /**
- * Dataset entry schema
+ * Knowledge source row schema — a discriminated union so a row's kind survives
+ * a variable-bound id (the engine schema is widened identically).
  */
-const datasetEntrySchema = z.object({
-  datasetId: z.string(),
-})
+const sourceRowSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('dataset'), datasetId: z.string() }),
+  z.object({ kind: z.literal('kb'), knowledgeBaseId: z.string() }),
+])
 
 /**
  * Zod schema for Knowledge Retrieval node data validation
@@ -32,13 +34,15 @@ export const knowledgeRetrievalNodeDataSchema = baseNodeDataSchema.extend({
   // Query input
   query: z.string().optional(),
 
-  // Dataset selection
-  datasets: z.array(datasetEntrySchema).optional(),
+  // Knowledge selection — knowledge bases and/or RAG datasets
+  sources: z.array(sourceRowSchema).optional(),
 
   // Search configuration
   searchType: z.union([z.enum(['vector', 'text', 'hybrid']), z.string()]).optional(),
-  limit: z.union([z.number().min(1).max(100), z.string()]).optional(),
+  limit: z.union([z.number().min(1).max(25), z.string()]).optional(),
   similarityThreshold: z.union([z.number().min(0).max(1), z.string()]).optional(),
+  dedupePerDocument: z.union([z.boolean(), z.string()]).optional(),
+  recordIds: z.union([z.array(z.string()), z.string()]).optional(),
 
   // Field modes
   fieldModes: z.record(z.string(), z.boolean()).optional(),
@@ -49,16 +53,21 @@ export const knowledgeRetrievalNodeDataSchema = baseNodeDataSchema.extend({
  */
 export const knowledgeRetrievalDefaultData: Partial<KnowledgeRetrievalNodeData> = {
   title: 'Knowledge Retrieval',
-  desc: 'Search datasets for relevant content',
+  desc: 'Search knowledge bases and datasets for relevant content',
   searchType: 'hybrid',
   limit: 20,
-  similarityThreshold: 0.7,
-  datasets: [],
+  // similarityThreshold deliberately unset (K7) — the vector lane's own 0.4
+  // floor is a better default than the 0.7 this used to ship.
+  // New nodes get one-passage-per-article; existing nodes keep raw segments
+  // because the schema default is false.
+  dedupePerDocument: true,
+  sources: [],
   fieldModes: {
     query: false, // Default to variable mode for query
     searchType: true, // Default to constant mode
     limit: true,
     similarityThreshold: true,
+    dedupePerDocument: true,
   },
 }
 
@@ -80,15 +89,15 @@ export function extractKnowledgeRetrievalVariables(
     }
   }
 
-  // Extract from datasets (each entry can be a variable)
-  if (data.datasets && Array.isArray(data.datasets)) {
-    data.datasets.forEach((entry, index) => {
-      const fieldKey = `datasets.${index}.datasetId`
-      if (entry.datasetId && isVariableMode(fieldModes, fieldKey)) {
-        if (isNodeVariable(entry.datasetId)) {
-          variableIds.add(entry.datasetId)
+  // Extract from sources (each row's id can be a variable)
+  if (data.sources && Array.isArray(data.sources)) {
+    data.sources.forEach((row, index) => {
+      const rawId = sourceRawId(row)
+      if (rawId && isVariableMode(fieldModes, sourceFieldKey(row, index))) {
+        if (isNodeVariable(rawId)) {
+          variableIds.add(rawId)
         } else {
-          extractVarIdsFromString(entry.datasetId).forEach((id) => variableIds.add(id))
+          extractVarIdsFromString(rawId).forEach((id) => variableIds.add(id))
         }
       }
     })

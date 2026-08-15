@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/nodes/dataset/dataset-node-config.test.ts
 
+import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ExecutionContextManager } from '../../core/execution-context'
 import type { PauseReason, WorkflowNode } from '../../core/types'
@@ -20,6 +21,26 @@ const queueAdd = vi.fn()
 vi.mock('../../../jobs/queues', () => ({
   getQueue: () => ({ add: (...args: unknown[]) => queueAdd(...args) }),
   Queues: { workflowDelayQueue: 'workflow-delay' },
+}))
+
+/**
+ * Knowledge-retrieval now resolves its sources through the shared resolver on
+ * the workflow author's authority (K5). These stand in for the access layer so
+ * the tests stay about config binding and source routing; the resolver's own
+ * behaviour is covered in `datasets/__tests__/resolve-knowledge-targets.test.ts`.
+ */
+const resolveKnowledgeDatasetIds = vi.fn()
+vi.mock('../../../datasets/resolve-knowledge-targets', () => ({
+  resolveKnowledgeDatasetIds: (...args: unknown[]) => resolveKnowledgeDatasetIds(...args),
+}))
+vi.mock('../../../permissions/capabilities/get-capabilities', () => ({
+  getCapabilities: async () => ({ canViewInstance: () => true }),
+}))
+// Partial-mock: a wholesale replacement of the org-cache barrel dies at
+// COLLECTION as the import graph grows.
+vi.mock('../../../cache/org-cache-helpers', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getCachedMembers: async () => [{ userId: 'test-user', status: 'ACTIVE' }],
 }))
 
 /**
@@ -151,20 +172,25 @@ describe('ChunkerProcessor config binding', () => {
 describe('KnowledgeRetrievalProcessor config binding', () => {
   let processor: KnowledgeRetrievalProcessor
 
+  /** The targets the processor handed the resolver on the last call. */
+  const lastTargets = () => resolveKnowledgeDatasetIds.mock.calls.at(-1)?.[1].targets
+
   beforeEach(() => {
     processor = new KnowledgeRetrievalProcessor()
+    resolveKnowledgeDatasetIds.mockReset()
+    resolveKnowledgeDatasetIds.mockResolvedValue(ok(['ds_resolved']))
   })
 
   it('accepts variable-bound search settings and resolves them', async () => {
     const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
       query: 'trigger_1.question',
-      datasets: [{ datasetId: 'ds_123' }],
+      sources: [{ kind: 'dataset', datasetId: 'ds_123' }],
       searchType: 'settings_1.mode',
       limit: 'settings_1.limit',
       similarityThreshold: 'settings_1.threshold',
       fieldModes: {
         query: false,
-        'datasets.0.datasetId': true,
+        'sources.0.datasetId': true,
         searchType: false,
         limit: false,
         similarityThreshold: false,
@@ -189,10 +215,10 @@ describe('KnowledgeRetrievalProcessor config binding', () => {
   it('resolves search settings delivered as interpolated strings', async () => {
     const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
       query: 'a question',
-      datasets: [{ datasetId: 'ds_123' }],
+      sources: [{ kind: 'dataset', datasetId: 'ds_123' }],
       searchType: '{{settings_1.mode}}',
       limit: '{{settings_1.limit}}',
-      fieldModes: { query: true, 'datasets.0.datasetId': true, searchType: false, limit: false },
+      fieldModes: { query: true, 'sources.0.datasetId': true, searchType: false, limit: false },
     })
 
     const preprocessed = await processor.preprocessNode(
@@ -207,9 +233,9 @@ describe('KnowledgeRetrievalProcessor config binding', () => {
   it('falls back to defaults when a bound setting resolves out of range', async () => {
     const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
       query: 'a question',
-      datasets: [{ datasetId: 'ds_123' }],
+      sources: [{ kind: 'dataset', datasetId: 'ds_123' }],
       limit: 'settings_1.limit',
-      fieldModes: { query: true, 'datasets.0.datasetId': true, limit: false },
+      fieldModes: { query: true, 'sources.0.datasetId': true, limit: false },
     })
 
     const preprocessed = await processor.preprocessNode(
@@ -220,12 +246,25 @@ describe('KnowledgeRetrievalProcessor config binding', () => {
     expect(preprocessed.inputs.limit).toBe(20)
   })
 
+  it('rejects a literal limit above the ceiling (K9 — was 100, now 25)', async () => {
+    const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
+      query: 'a question',
+      sources: [{ kind: 'dataset', datasetId: 'ds_123' }],
+      limit: 100,
+      fieldModes: { query: true, 'sources.0.datasetId': true, limit: true },
+    })
+
+    await expect(processor.preprocessNode(node, createContext())).rejects.toThrow(
+      /Invalid Knowledge Retrieval configuration/
+    )
+  })
+
   it('declares bound search settings as required variables', () => {
     const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
       query: 'trigger_1.question',
-      datasets: [{ datasetId: 'ds_123' }],
+      sources: [{ kind: 'dataset', datasetId: 'ds_123' }],
       limit: 'settings_1.limit',
-      fieldModes: { query: false, 'datasets.0.datasetId': true, limit: false },
+      fieldModes: { query: false, 'sources.0.datasetId': true, limit: false },
     })
 
     // @ts-expect-error - exercising the protected contract directly
@@ -237,13 +276,13 @@ describe('KnowledgeRetrievalProcessor config binding', () => {
   it('still accepts literal constants', async () => {
     const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
       query: 'a question',
-      datasets: [{ datasetId: 'ds_123' }],
+      sources: [{ kind: 'dataset', datasetId: 'ds_123' }],
       searchType: 'hybrid',
       limit: 20,
       similarityThreshold: 0.7,
       fieldModes: {
         query: true,
-        'datasets.0.datasetId': true,
+        'sources.0.datasetId': true,
         searchType: true,
         limit: true,
         similarityThreshold: true,
@@ -255,6 +294,168 @@ describe('KnowledgeRetrievalProcessor config binding', () => {
     expect(preprocessed.inputs.searchType).toBe('hybrid')
     expect(preprocessed.inputs.limit).toBe(20)
     expect(preprocessed.inputs.similarityThreshold).toBe(0.7)
+  })
+
+  it('leaves similarityThreshold undefined when unset (K7 — no node default)', async () => {
+    const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
+      query: 'a question',
+      sources: [{ kind: 'dataset', datasetId: 'ds_123' }],
+      fieldModes: { query: true, 'sources.0.datasetId': true },
+    })
+
+    const preprocessed = await processor.preprocessNode(node, createContext())
+
+    // Not 0.7 — omitted, so the vector lane's own 0.4 floor applies.
+    expect(preprocessed.inputs.similarityThreshold).toBeUndefined()
+  })
+})
+
+describe('KnowledgeRetrievalProcessor source routing', () => {
+  let processor: KnowledgeRetrievalProcessor
+
+  const lastTargets = () => resolveKnowledgeDatasetIds.mock.calls.at(-1)?.[1].targets
+
+  beforeEach(() => {
+    processor = new KnowledgeRetrievalProcessor()
+    resolveKnowledgeDatasetIds.mockReset()
+    resolveKnowledgeDatasetIds.mockResolvedValue(ok(['ds_resolved']))
+  })
+
+  it('routes a kb row to a kb target', async () => {
+    const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
+      query: 'a question',
+      sources: [{ kind: 'kb', knowledgeBaseId: 'kb_1' }],
+      fieldModes: { query: true, 'sources.0.knowledgeBaseId': true },
+    })
+
+    await processor.preprocessNode(node, createContext())
+
+    expect(lastTargets()).toEqual([{ kind: 'kb', knowledgeBaseId: 'kb_1' }])
+  })
+
+  it('routes a mixed kb + dataset config, preserving order and kind', async () => {
+    const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
+      query: 'a question',
+      sources: [
+        { kind: 'kb', knowledgeBaseId: 'kb_1' },
+        { kind: 'dataset', datasetId: 'ds_1' },
+      ],
+      fieldModes: {
+        query: true,
+        'sources.0.knowledgeBaseId': true,
+        'sources.1.datasetId': true,
+      },
+    })
+
+    await processor.preprocessNode(node, createContext())
+
+    expect(lastTargets()).toEqual([
+      { kind: 'kb', knowledgeBaseId: 'kb_1' },
+      { kind: 'dataset', datasetId: 'ds_1' },
+    ])
+  })
+
+  it('resolves a variable-bound KB id', async () => {
+    const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
+      query: 'a question',
+      sources: [{ kind: 'kb', knowledgeBaseId: 'find_1.record' }],
+      fieldModes: { query: true, 'sources.0.knowledgeBaseId': false },
+    })
+
+    await processor.preprocessNode(node, createContext({ 'find_1.record': 'kb_from_var' }))
+
+    expect(lastTargets()).toEqual([{ kind: 'kb', knowledgeBaseId: 'kb_from_var' }])
+  })
+
+  it('a bound id resolving to nothing contributes nothing — siblings still search', async () => {
+    const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
+      query: 'a question',
+      sources: [
+        { kind: 'kb', knowledgeBaseId: 'find_1.missing' },
+        { kind: 'dataset', datasetId: 'ds_1' },
+      ],
+      fieldModes: {
+        query: true,
+        'sources.0.knowledgeBaseId': false,
+        'sources.1.datasetId': true,
+      },
+    })
+
+    await processor.preprocessNode(node, createContext())
+
+    expect(lastTargets()).toEqual([{ kind: 'dataset', datasetId: 'ds_1' }])
+  })
+
+  it('errors when EVERY row resolves to nothing, never falling through to an unscoped search', async () => {
+    const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
+      query: 'a question',
+      sources: [{ kind: 'kb', knowledgeBaseId: 'find_1.missing' }],
+      fieldModes: { query: true, 'sources.0.knowledgeBaseId': false },
+    })
+
+    await expect(processor.preprocessNode(node, createContext())).rejects.toThrow(
+      /No valid knowledge sources/
+    )
+    expect(resolveKnowledgeDatasetIds).not.toHaveBeenCalled()
+  })
+
+  it('errors when the resolver returns an empty set — access denied is not "search everything"', async () => {
+    resolveKnowledgeDatasetIds.mockResolvedValue(ok([]))
+
+    const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
+      query: 'a question',
+      sources: [{ kind: 'kb', knowledgeBaseId: 'kb_1' }],
+      fieldModes: { query: true, 'sources.0.knowledgeBaseId': true },
+    })
+
+    await expect(processor.preprocessNode(node, createContext())).rejects.toThrow(
+      /No accessible knowledge sources/
+    )
+  })
+
+  it('passes an explicit null knowledgeScope (K6) — there is no agent here', async () => {
+    const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
+      query: 'a question',
+      sources: [{ kind: 'kb', knowledgeBaseId: 'kb_1' }],
+      fieldModes: { query: true, 'sources.0.knowledgeBaseId': true },
+    })
+
+    await processor.preprocessNode(node, createContext())
+
+    const args = resolveKnowledgeDatasetIds.mock.calls.at(-1)?.[1]
+    expect(args.knowledgeScope).toBeNull()
+    expect(args.capabilities).toBeDefined()
+    expect(args.capabilities).not.toBe('unrestricted')
+  })
+
+  it('refuses to run without a user rather than resolving unrestricted (K5)', async () => {
+    const context = new ExecutionContextManager('test-workflow', 'test-run', 'test-org')
+    context.setVariable('sys.organizationId', 'test-org')
+    // sys.userId deliberately absent
+
+    const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
+      query: 'a question',
+      sources: [{ kind: 'kb', knowledgeBaseId: 'kb_1' }],
+      fieldModes: { query: true, 'sources.0.knowledgeBaseId': true },
+    })
+
+    await expect(processor.preprocessNode(node, context)).rejects.toThrow(
+      /will not run unrestricted/
+    )
+    expect(resolveKnowledgeDatasetIds).not.toHaveBeenCalled()
+  })
+
+  it('declares a bound source id as a required variable', () => {
+    const node = createNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL, {
+      query: 'a question',
+      sources: [{ kind: 'kb', knowledgeBaseId: 'find_1.record' }],
+      fieldModes: { query: true, 'sources.0.knowledgeBaseId': false },
+    })
+
+    // @ts-expect-error - exercising the protected contract directly
+    const required = processor.extractRequiredVariables(node) as string[]
+
+    expect(required).toContain('find_1.record')
   })
 })
 
