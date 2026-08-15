@@ -18,6 +18,10 @@ export { useParticipant } from './use-participant'
 export { useParticipants, useParticipantsArray } from './use-participants'
 export { useSelectionReset } from './use-selection-reset'
 export { useIsThreadLoading, useIsThreadNotFound, useThread } from './use-thread'
+export {
+  channelSelfIdentifier,
+  useThreadEnvelopeCounterparty,
+} from './use-thread-envelope-counterparty'
 export { useThreadKeyboardNav } from './use-thread-keyboard-nav'
 export { useThreadList } from './use-thread-list'
 export { type ThreadUpdates, useThreadMutation } from './use-thread-mutation'

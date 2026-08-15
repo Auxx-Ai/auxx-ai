@@ -21,9 +21,10 @@ const h = vi.hoisted(() => ({
   showFormatting: undefined as boolean | undefined,
   referencesPassed: undefined as unknown,
   variantPassed: undefined as string | undefined,
+  pickerScope: undefined as string | undefined,
   channels: [
-    { id: 'ch_email', provider: 'google' },
-    { id: 'ch_sms', provider: 'openphone' },
+    { id: 'ch_email', provider: 'google', identifier: 'support@auxx.ai' },
+    { id: 'ch_sms', provider: 'openphone', identifier: '+18889155797' },
   ],
   editor: {
     isEditable: true,
@@ -133,15 +134,18 @@ vi.mock('../composer-shared', async () => {
 })
 
 vi.mock('~/components/pickers/channel-picker', () => ({
-  ChannelPicker: ({ onChange }: { onChange: (id: string) => void }) => (
-    <>
-      {h.channels.map((c) => (
-        <button key={c.id} type='button' onClick={() => onChange(c.id)}>
-          {`pick-${c.id}`}
-        </button>
-      ))}
-    </>
-  ),
+  ChannelPicker: ({ onChange, scope }: { onChange: (id: string) => void; scope?: string }) => {
+    h.pickerScope = scope
+    return (
+      <>
+        {h.channels.map((c) => (
+          <button key={c.id} type='button' onClick={() => onChange(c.id)}>
+            {`pick-${c.id}`}
+          </button>
+        ))}
+      </>
+    )
+  },
 }))
 
 vi.mock('~/components/channels/hooks/use-channels', () => ({
@@ -223,6 +227,12 @@ vi.mock('~/components/threads/store/thread-store', () => ({
     updateDraft: () => {},
     markDraftNotFound: () => {},
   }),
+}))
+// The composer seeds its recipient from the thread counterparty on an always-on
+// composer. Stubbed to "not resolved" so these cases exercise only the channel
+// switch — the seeding path has its own coverage in always-on-composer.test.tsx.
+vi.mock('~/components/threads/hooks/use-thread-envelope-counterparty', () => ({
+  useThreadEnvelopeCounterparty: () => undefined,
 }))
 vi.mock('~/hooks/use-analytics', () => ({ useAnalytics: () => ({ capture: () => {} }) }))
 vi.mock('~/hooks/use-confirm', () => ({
@@ -363,5 +373,57 @@ describe('capability-gated affordances', () => {
     expect(h.referencesPassed).toBeUndefined()
     // Send AND schedule stay available on every channel.
     expect(screen.getByText('send')).toBeTruthy()
+  })
+})
+
+/**
+ * A thread is a conversation on ONE channel. Its participants are identifiers in
+ * that channel's address space, so switching an SMS thread to an email channel
+ * does not produce an email to the same person — it produces a send with no
+ * valid recipient.
+ *
+ * The composer plan asserted "reply mode is unaffected — From is pinned by the
+ * thread's channel". It was not pinned: `ChannelPicker` rendered in every mode
+ * with `disabled={isSending}` as its only gate. These cases pin the claim down.
+ */
+describe('From is pinned to the thread channel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    h.pickerScope = undefined
+  })
+
+  const renderReply = (integrationId: string) =>
+    render(
+      <ReplyComposeEditor
+        mode='reply'
+        thread={{ id: 'th_1', integrationId }}
+        onClose={() => {}}
+        onSendSuccess={() => {}}
+      />
+    )
+
+  it('offers no channel picker when replying on a messaging thread', () => {
+    renderReply('ch_sms')
+
+    expect(screen.queryByText('pick-ch_email')).toBeNull()
+    expect(screen.queryByText('pick-ch_sms')).toBeNull()
+    // The sending identity is still shown — pinned, not hidden.
+    expect(screen.getByText('+18889155797')).toBeTruthy()
+  })
+
+  it('keeps a picker on an email thread, scoped to email only', () => {
+    renderReply('ch_email')
+
+    // Email is the exception: a mail thread can be answered from another mailbox
+    // or alias. It must NOT be able to degrade to a phone channel, so the scope
+    // is 'email' rather than the 'addressable' scope new-compose uses.
+    expect(screen.getByText('pick-ch_email')).toBeTruthy()
+    expect(h.pickerScope).toBe('email')
+  })
+
+  it('offers the full addressable scope only in new compose', () => {
+    renderComposer()
+
+    expect(h.pickerScope).toBe('addressable')
   })
 })

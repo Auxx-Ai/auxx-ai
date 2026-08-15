@@ -7,6 +7,7 @@ import type {
   MessageType as EditorMessageType,
   EditorMode,
 } from '~/components/mail/email-editor/types'
+import { channelUsesAlwaysOnComposer } from '~/components/mail/utils/channel-composer-mode'
 import { useMessage, useParticipant } from '~/components/threads/hooks'
 import type { ThreadMeta } from '~/components/threads/store'
 import { useThreadStore } from '~/components/threads/store/thread-store'
@@ -109,22 +110,27 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
     }
   }, [effectiveDraft])
 
-  // Chat threads use an always-on composer (no "click Reply to reveal" flow).
-  // Auto-open the reply box for chat and keep it open across thread switches —
-  // the existing thread-id reset effect below would otherwise close it.
+  // Conversational channels (chat, SMS/WhatsApp, DMs) use an always-on composer
+  // — no "click Reply to reveal" flow. Auto-open the reply box and keep it open
+  // across thread switches; the thread-id reset effect below would otherwise
+  // close it.
   //
-  // `integrationProvider` is declared `ChannelProvider` ('GMAIL' | 'OUTLOOK' | …)
-  // but carries the raw `Integration.provider` column, whose enum is lowercase
-  // ('google' | 'outlook' | … | 'chat'). The declared type is the stale side;
-  // the cast matches the runtime value and the sibling checks in
-  // components/mail/{mail,compact}-thread-item.tsx.
-  const isChat = (thread?.integrationProvider as string | null | undefined) === 'chat'
+  // Derived from `PlatformCapabilities.channel` rather than a provider list:
+  // hardcoding `=== 'chat'` here is what kept SMS on the email flow, and a
+  // per-provider set maintained beside the capability map is exactly the drift
+  // that made phone channels unselectable in the From picker for months. An
+  // unknown/absent provider reads as email, so anything not yet in the map keeps
+  // today's click-to-reveal behaviour.
+  const alwaysOnComposer = useMemo(
+    () => channelUsesAlwaysOnComposer(thread?.integrationProvider),
+    [thread?.integrationProvider]
+  )
   useEffect(() => {
-    if (isChat && !isShowReplyBox) {
+    if (alwaysOnComposer && !isShowReplyBox) {
       setIsShowReplyBox(true)
       setEditorMode('reply')
     }
-  }, [isChat, isShowReplyBox])
+  }, [alwaysOnComposer, isShowReplyBox])
 
   // Reset internal state ONLY when the thread ID actually changes
   const previousThreadId = useRef<string | null | undefined>(null)
@@ -133,7 +139,7 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
     const hasDraft = !!effectiveDraft
 
     if (currentThreadId !== previousThreadId.current) {
-      if (!hasDraft && !isChat) {
+      if (!hasDraft && !alwaysOnComposer) {
         setIsShowReplyBox(false)
         setSourceMessage(null)
         setEditorMode('reply')
@@ -151,7 +157,7 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
         // Don't override sourceMessage - let it be populated from sourceMessageFromDraft
       }
     }
-  }, [thread?.id, effectiveDraft, isShowReplyBox])
+  }, [thread?.id, effectiveDraft, isShowReplyBox, alwaysOnComposer])
 
   /** Scrolls the reply box into view */
   const scrollIntoView = useCallback(() => {

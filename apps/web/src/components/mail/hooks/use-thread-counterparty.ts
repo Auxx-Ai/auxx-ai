@@ -24,6 +24,12 @@ export interface ThreadCounterparty {
  * external as `primary` with the rest as `others`. Internal-only threads fall
  * back to the first message's FROM (today's behavior). No extra network call —
  * reads the messages already loaded for the open thread.
+ *
+ * Sibling: `~/components/threads/hooks/use-thread-envelope-counterparty` answers
+ * "who is the one counterparty" from `ThreadMeta.participants` alone, so it works
+ * in list rows where no messages are loaded. This hook needs the whole thread and
+ * returns the full external set, so the two do not merge. Prefer the envelope one
+ * for titling/addressing; prefer this one when you need `others`.
  */
 export function useThreadCounterparty(threadId: string): ThreadCounterparty {
   const { messages, isLoading } = useMessages({ threadId })
