@@ -772,6 +772,12 @@
       "import": "./dist/mail-query/client.mjs",
       "default": "./src/mail-query/client.ts"
     },
+    "./mail-query/visibility-scope": {
+      "types": "./src/mail-query/visibility-scope.ts",
+      "source": "./src/mail-query/visibility-scope.ts",
+      "import": "./dist/mail-query/visibility-scope.mjs",
+      "default": "./src/mail-query/visibility-scope.ts"
+    },
     "./mail-schedule": {
       "types": "./src/mail-schedule/index.ts",
       "source": "./src/mail-schedule/index.ts",
@@ -873,6 +879,12 @@
       "source": "./src/participants/channel-identifier-fields.ts",
       "import": "./dist/participants/channel-identifier-fields.mjs",
       "default": "./src/participants/channel-identifier-fields.ts"
+    },
+    "./participants/search": {
+      "types": "./src/participants/search/index.ts",
+      "source": "./src/participants/search/index.ts",
+      "import": "./dist/participants/search/index.mjs",
+      "default": "./src/participants/search/index.ts"
     },
     "./permissions": {
       "types": "./src/permissions/index.ts",

@@ -1,11 +1,12 @@
 // packages/lib/src/participants/search/index.ts
 //
-// Ranked recipient search. Explicit named exports per `docs/lib-module-guide.md`.
+// Ranked recipient search: participants ∪ contacts. Explicit named exports per
+// `docs/lib-module-guide.md`.
 //
-// The SQL builders ship ahead of the read function that assembles them
-// (`search-recipients.ts`, the participants ∪ contacts union) so the two halves
-// can be reviewed apart: these are pure, testable-by-rendered-SQL fragments with
-// no IO, and index-servability is a property of the text they emit.
+// `searchRecipients` is the entry point; the SQL builders are exported too
+// because they are the reviewable unit — index-servability is a property of the
+// text they emit, and they are pinned by rendered-SQL tests that the read
+// function's own integration path cannot express.
 
 export {
   type ParticipantSearchBinding,
@@ -15,3 +16,9 @@ export {
   participantSearchRank,
 } from './participant-search-sql'
 export { phoneSearchPatterns } from './phone-query'
+export {
+  type RecipientCandidate,
+  type RecipientSearchResult,
+  type SearchRecipientsParams,
+  searchRecipients,
+} from './search-recipients'
