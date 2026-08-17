@@ -1,9 +1,6 @@
 // apps/web/src/components/mail/email-editor/recipient-input.tsx
 'use client'
-import type { FieldType, IdentifierType as IdentifierTypeType } from '@auxx/database/types'
-import { extractValues } from '@auxx/lib/field-values/client'
-import { getDefinitionId, type RecordPickerItem } from '@auxx/lib/resources/client'
-import type { TypedFieldValue } from '@auxx/types/field-value'
+import type { IdentifierType as IdentifierTypeType } from '@auxx/database/types'
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Badge } from '@auxx/ui/components/badge'
 import {
@@ -15,25 +12,21 @@ import {
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils'
-import { Copy, Mail, Phone, X } from 'lucide-react'
+import { Copy, Mail, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
-import { RecordPickerContent } from '~/components/pickers/record-picker/record-picker-content'
-import { useResourceStore } from '~/components/resources/store/resource-store'
-import { getNormalizedRecordId } from '~/components/resources/utils/normalize-record-id'
-import { resolveSystemAttributeRef } from '~/components/resources/utils/resolve-system-attribute'
+import { useDebounce } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
-import { toEmailAddressList } from '../email-address-list'
 import { useEditorActiveStateContext } from './editor-active-state-context'
 import {
   DEFAULT_PHONE_REGION,
   getIdentifierModel,
-  type IdentifierModelSpec,
   identifierKey,
   type PhoneRegion,
   type RecipientModel,
 } from './identifier-model'
+import { type RecipientCandidate, RecipientSuggestions } from './recipient-suggestions'
 import type { RecipientState } from './types'
 
 export type RecipientField = 'TO' | 'CC' | 'BCC'
@@ -64,13 +57,16 @@ interface RecipientInputProps {
   onRemove: (id: string) => void
   onMoveTo: (id: string, target: RecipientField) => void
   /**
-   * A picked contact's identifier, committed. Carries `recordId` — the contact's
-   * `EntityInstance.id` — and **not** a chip id: the parent mints that. Passing
-   * the record id as the chip id is the collision documented on
+   * A picked suggestion's identifier, committed. Carries `recordId` — the
+   * contact's `EntityInstance.id` — and **not** a chip id: the parent mints
+   * that. Passing the record id as the chip id is the collision documented on
    * {@link RecipientState.id}.
+   *
+   * `recordId` is `null` for a `Participant` never linked to a contact — a real
+   * answer, not a gap, and the reason the field is nullable here.
    */
   onContactSelect: (contact: {
-    recordId: string
+    recordId: string | null
     identifier: string
     identifierType: IdentifierTypeType
     name?: string | null
@@ -82,15 +78,18 @@ interface RecipientInputProps {
   /**
    * Shape of identifier the selected channel addresses
    * (`PlatformCapabilities.recipientModel`). Drives validation, the committed
-   * `IdentifierType`, which contact field the picker reads, and the copy.
+   * `IdentifierType`, the copy, and — passed straight through to
+   * `search.recipients` — which identifiers the suggestions are drawn from.
    * Absent → email, which is every caller without resolved capabilities.
    */
   recipientModel?: RecipientModel
   /**
-   * Region national (no `+`) phone numbers are parsed and displayed against.
+   * Region national (no `+`) phone numbers are parsed and displayed against,
+   * and that `search.recipients` normalizes a typed number search against.
    * Derive it from the sending channel's own E.164 number with
    * `regionFromIdentifier` — an org with a German and a US number should parse
-   * national input differently depending on which one it is sending from.
+   * national input differently depending on which one it is sending from
+   * (`030 901820` is a substring of no E.164 number until it is trunk-stripped).
    * Ignored by the email model.
    */
   defaultRegion?: PhoneRegion
@@ -99,18 +98,8 @@ interface RecipientInputProps {
 const FIELD_LABELS: Record<RecipientField, string> = { TO: 'To', CC: 'Cc', BCC: 'Bcc' }
 const ALL_FIELDS: RecipientField[] = ['TO', 'CC', 'BCC']
 
-/** The picker row's own single known identifier (the primary) — the fallback
- *  when the field read fails or returns nothing. `toEmailAddressList` is a
- *  generic system-value normalizer (scalar or sortKey-ordered array); phone is
- *  multi-value too since #1629. */
-function itemFallbackAddresses(item: RecordPickerItem, spec: IdentifierModelSpec): string[] {
-  const fromRow = toEmailAddressList(item.data?.[spec.rowDataKey])[0]
-  // `secondaryInfo` is the contact's secondary DISPLAY field — an email. It is
-  // only a usable fallback when this channel addresses emails.
-  const single =
-    fromRow ?? (spec.secondaryInfoIsIdentifier ? item.secondaryInfo || undefined : undefined)
-  return single ? [single] : []
-}
+/** Keystroke settle before the search fires. */
+const SEARCH_DEBOUNCE_MS = 200
 
 function RecipientBadge({
   person,
@@ -240,27 +229,16 @@ export function RecipientInput({
     () => getIdentifierModel(recipientModel, defaultRegion),
     [recipientModel, defaultRegion]
   )
-  const IdentifierIcon = recipientModel === 'phone' ? Phone : Mail
   const [inputValue, setInputValue] = useState('')
   // Inline validity hint. Replaces the red toast that used to fire on every
   // Enter with a half-typed number — this is a field people type slowly.
   const [invalidHint, setInvalidHint] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null)
   const [showPicker, setShowPicker] = useState(false)
-  // A picked contact with more than one not-yet-added address: the popover
-  // swaps to one row per address so the user picks WHICH one to add.
-  const [pendingContact, setPendingContact] = useState<{
-    id: string
-    name: string | null
-    addresses: string[]
-  } | null>(null)
-  // Full address lists prefetched for visible search results (and fetched on
-  // pick as a fallback), keyed by contact instance id. Feeds the per-address
-  // exclude: a contact stays pickable until ALL its known addresses are
-  // recipients.
-  const [contactAddresses, setContactAddresses] = useState<Map<string, string[]>>(new Map())
+  // Highlighted suggestion. `null` = nothing highlighted, so Enter commits what
+  // was typed rather than a fuzzy match nobody asked for.
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const inputRef = useRef<AutosizeInputRef>(null)
-  const pickerRef = useRef<HTMLDivElement>(null)
 
   /** Silently commits a valid identifier. No hint on invalid. Returns true if committed. */
   const tryCommitInput = (): boolean => {
@@ -292,179 +270,90 @@ export function RecipientInput({
     commitPendingInput: () => tryCommitInput(),
   }))
 
-  const batchGetAsync = api.fieldValue.batchGet.useMutation().mutateAsync
-  // Instance ids a fetch was already issued for — dedupes the prefetch across
-  // result batches (state alone lags in-flight requests).
-  const requestedAddressIdsRef = useRef<Set<string>>(new Set())
-
-  /**
-   * Fetch the FULL identifier list for each contact (both `primary_email` and
-   * `phone` are multi-value — they read back as one row per value, primary
-   * first) in one batch read. Falls back per item to its own row data when the
-   * field ref can't resolve or the read fails.
-   */
-  const fetchContactAddresses = useCallback(
-    async (items: RecordPickerItem[]): Promise<Map<string, string[]>> => {
-      const result = new Map<string, string[]>()
-      const fallbackAll = () => {
-        for (const item of items) result.set(item.id, itemFallbackAddresses(item, spec))
-        return result
-      }
-      try {
-        const normalizedToItem = new Map(
-          items.map((item) => [getNormalizedRecordId(item.recordId), item] as const)
-        )
-        const maps = useResourceStore.getState()
-        const [firstRecordId] = normalizedToItem.keys()
-        // First systemAttribute candidate that resolves on this definition wins
-        // (mirrors `systemAttributeForChannel` in the kopilot recipient resolver).
-        const ref = firstRecordId
-          ? spec.systemAttributes.reduce<ReturnType<typeof resolveSystemAttributeRef>>(
-              (found, attr) =>
-                found ?? resolveSystemAttributeRef(maps, attr, getDefinitionId(firstRecordId)),
-              undefined
-            )
-          : undefined
-        if (!ref) return fallbackAll()
-        const batch = await batchGetAsync({
-          recordIds: [...normalizedToItem.keys()],
-          fieldReferences: [ref],
-        })
-        for (const row of batch.values) {
-          const item = normalizedToItem.get(row.recordId)
-          if (!item) continue
-          const addresses = extractValues(
-            row.value as TypedFieldValue | TypedFieldValue[] | null,
-            row.fieldType as FieldType
-          ).filter((v): v is string => typeof v === 'string' && v.length > 0)
-          result.set(item.id, addresses.length > 0 ? addresses : itemFallbackAddresses(item, spec))
-        }
-        for (const item of items) {
-          if (!result.has(item.id)) result.set(item.id, itemFallbackAddresses(item, spec))
-        }
-        return result
-      } catch {
-        return fallbackAll()
-      }
-    },
-    [batchGetAsync, spec]
-  )
-
-  /**
-   * Prefetch address lists for the visible search results so the exclude
-   * filter can key on ADDRESSES (a contact hides only when every address is a
-   * recipient) and a pick can expand without waiting.
-   */
-  const handlePickerResults = useCallback(
-    (items: RecordPickerItem[]) => {
-      const missing = items.filter((item) => !requestedAddressIdsRef.current.has(item.id))
-      if (missing.length === 0) return
-      for (const item of missing) requestedAddressIdsRef.current.add(item.id)
-      void fetchContactAddresses(missing).then((fetched) => {
-        setContactAddresses((prev) => {
-          const next = new Map(prev)
-          for (const [id, addresses] of fetched) next.set(id, addresses)
-          return next
-        })
-      })
-    },
-    [fetchContactAddresses]
-  )
-
-  // Normalized identifiers of recipients already in this field — used to hide
-  // their matching contacts from the picker. Covers picker/draft/reply/
-  // free-typed alike.
+  // Normalized identifiers already in this field. `Participant` is unique on
+  // `(organizationId, identifier, identifierType)` — one row IS one identifier —
+  // so excluding a suggestion is set membership on a string, not a per-record
+  // "hide only when EVERY address is a recipient" walk. Covers picker/draft/
+  // reply/free-typed alike.
   const excludeIdentifiers = useMemo(
     () => new Set(recipients.map((r) => identifierKey(spec, r.identifier))),
     [recipients, spec]
   )
 
-  /** Commit one identifier as a recipient and reset the picker state. */
-  const commitContactAddress = useCallback(
-    (contactId: string, address: string, name: string | null) => {
+  const query = inputValue.trim()
+  const debouncedQuery = useDebounce(query, SEARCH_DEBOUNCE_MS)
+  // One ranked read: participants ∪ contacts, already filtered to what this
+  // channel can address and already carrying the exact string to commit. An
+  // empty query is meaningful — it lists most-recently-mailed, the right answer
+  // for a focused-but-empty field.
+  const { data, isFetching } = api.search.recipients.useQuery(
+    { query: debouncedQuery, model: recipientModel ?? 'email', region: defaultRegion },
+    {
+      enabled: showPicker,
+      // Keep the previous page rendered while the next one loads so the list
+      // does not blink empty between keystrokes.
+      placeholderData: (previous) => previous,
+      staleTime: 30_000,
+    }
+  )
+
+  const candidates = useMemo(
+    () =>
+      (data?.candidates ?? []).filter(
+        (candidate) => !excludeIdentifiers.has(identifierKey(spec, candidate.identifier))
+      ),
+    [data, excludeIdentifiers, spec]
+  )
+  const activeCandidate = activeIndex === null ? undefined : candidates[activeIndex]
+
+  /** Commit one suggestion as a recipient and close the picker. */
+  const commitCandidate = useCallback(
+    (candidate: RecipientCandidate) => {
       onContactSelect({
-        recordId: contactId,
-        identifier: spec.normalize(address) ?? address,
-        identifierType: spec.identifierType,
-        name,
+        recordId: candidate.contactId,
+        identifier: candidate.identifier,
+        identifierType: candidate.identifierType,
+        // `displayName` falls back to the identifier when no name is known;
+        // storing that as the chip's `name` would defeat the badge's own
+        // formatting (`+14155551234` instead of `(415) 555-1234`).
+        name: candidate.displayName === candidate.identifier ? null : candidate.displayName,
       })
       setInputValue('')
       setShowPicker(false)
-      setPendingContact(null)
+      setActiveIndex(null)
+      setInvalidHint(false)
       inputRef.current?.focus()
     },
-    [onContactSelect, spec]
+    [onContactSelect]
   )
 
-  /**
-   * Handle contact selection from RecordPickerContent. A picked contact is
-   * expanded into its N identifiers: exactly one not yet a recipient commits
-   * directly; several swap the popover to a per-value row list.
-   */
-  const handleContactPick = useCallback(
-    async (item: RecordPickerItem) => {
-      const name = item.displayName || null
-      let addresses = contactAddresses.get(item.id)
-      if (!addresses) {
-        // Prefetch hasn't landed for this row yet — fetch it alone.
-        requestedAddressIdsRef.current.add(item.id)
-        const fetched = await fetchContactAddresses([item])
-        addresses = fetched.get(item.id) ?? []
-        const known = addresses
-        setContactAddresses((prev) => new Map(prev).set(item.id, known))
-      }
-      const candidates = addresses.filter((a) => !excludeIdentifiers.has(identifierKey(spec, a)))
-      if (candidates.length === 0) return
-      if (candidates.length === 1) {
-        commitContactAddress(item.id, candidates[0]!, name)
-        return
-      }
-      setPendingContact({ id: item.id, name, addresses: candidates })
-    },
-    [contactAddresses, fetchContactAddresses, excludeIdentifiers, commitContactAddress, spec]
-  )
-
-  const excludeFilter = useCallback(
-    (item: RecordPickerItem) => {
-      // Per-value exclude: once the contact's full list is known (results
-      // prefetch), the contact hides only when EVERY identifier is a recipient.
-      const known = contactAddresses.get(item.id)
-      if (known && known.length > 0) {
-        return known.every((a) => excludeIdentifiers.has(identifierKey(spec, a)))
-      }
-      // Unfetched: the only known value is the row's own primary.
-      const [primary] = itemFallbackAddresses(item, spec)
-      return !!primary && excludeIdentifiers.has(identifierKey(spec, primary))
-    },
-    [contactAddresses, excludeIdentifiers, spec]
-  )
-
-  /** Forward a keyboard event to the cmdk Command inside the picker popover */
-  const forwardToPicker = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    const cmdkRoot = pickerRef.current?.querySelector('[cmdk-root]')
-    if (!cmdkRoot) return false
-    // Dispatch a synthetic keyboard event on the cmdk root
-    cmdkRoot.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, bubbles: true }))
-    e.preventDefault()
-    return true
+  /** Move the highlight, wrapping. `null` enters the list at either end. */
+  const moveActive = (delta: 1 | -1) => {
+    if (candidates.length === 0) return
+    setActiveIndex((current) => {
+      if (current === null) return delta === 1 ? 0 : candidates.length - 1
+      return (current + delta + candidates.length) % candidates.length
+    })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     switch (e.key) {
       case 'ArrowDown':
       case 'ArrowUp':
-        // Forward arrow keys to the picker when open
+        // The list is ours, so the highlight moves directly — no synthetic
+        // `KeyboardEvent` dispatched at a cmdk root that owns its own state.
         if (showPicker) {
-          forwardToPicker(e)
+          e.preventDefault()
+          moveActive(e.key === 'ArrowDown' ? 1 : -1)
         }
         break
       case 'Enter':
-        // When picker is open, forward Enter to select the highlighted item
-        if (showPicker && pickerRef.current?.querySelector('[cmdk-item][data-selected="true"]')) {
-          forwardToPicker(e)
+        // A highlighted suggestion wins; otherwise commit what was typed.
+        if (showPicker && activeCandidate) {
+          e.preventDefault()
+          commitCandidate(activeCandidate)
           break
         }
-        // Otherwise commit the free-typed identifier
         if (inputValue.trim()) {
           e.preventDefault()
           addRecipientFromInput()
@@ -498,7 +387,7 @@ export function RecipientInput({
       case 'Escape':
         setHighlightedIndex(null)
         setShowPicker(false)
-        setPendingContact(null)
+        setActiveIndex(null)
         setInvalidHint(false)
         break
       default:
@@ -552,7 +441,7 @@ export function RecipientInput({
     setInputValue(leftover.join(', '))
     setInvalidHint(false)
     setHighlightedIndex(null)
-    setPendingContact(null)
+    setActiveIndex(null)
     setShowPicker(false)
   }
 
@@ -561,10 +450,10 @@ export function RecipientInput({
     setInputValue(val)
     setInvalidHint(false)
     setHighlightedIndex(null)
-    // Typing resumes the contact search — drop any pending address choice
-    setPendingContact(null)
-    // Show picker when there's text to search
-    setShowPicker(val.trim().length > 0)
+    // A new query is a new result set — nothing is highlighted until the user
+    // arrows into it, so Enter keeps committing what they typed.
+    setActiveIndex(null)
+    setShowPicker(true)
   }
   // Handle keyboard events on badges for deletion
   const handleBadgeKeyDown = (
@@ -623,10 +512,12 @@ export function RecipientInput({
       ))}
 
       <Popover
-        open={showPicker || pendingContact !== null}
+        // Nothing to show and nothing typed = no empty box on focus. Typing
+        // always opens it, so "no matches" is still an answer the user sees.
+        open={showPicker && (candidates.length > 0 || query.length > 0)}
         onOpenChange={(open) => {
           setShowPicker(open)
-          if (!open) setPendingContact(null)
+          if (!open) setActiveIndex(null)
         }}>
         <PopoverAnchor asChild>
           <div className='relative grow cursor-text' onMouseDown={routeFocusToInput}>
@@ -637,9 +528,9 @@ export function RecipientInput({
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              onFocus={() => {
-                if (inputValue.trim().length > 0) setShowPicker(true)
-              }}
+              // An empty focused field is a real query: it lists the people you
+              // most recently mailed.
+              onFocus={() => setShowPicker(true)}
               onBlur={() => {
                 // Silently commit a valid identifier on blur (no toast for invalid)
                 tryCommitInput()
@@ -666,48 +557,21 @@ export function RecipientInput({
           </div>
         </PopoverAnchor>
         <PopoverContent
-          ref={pickerRef}
-          className={cn('w-72 p-0', popoverClassName)}
+          className={cn('w-80 p-0', popoverClassName)}
           align='start'
           side='bottom'
           sideOffset={5}
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}>
-          {pendingContact ? (
-            <div className='py-1' role='listbox' aria-label={`Choose a ${spec.noun}`}>
-              <div className='px-3 py-1.5 text-xs text-muted-foreground'>
-                {pendingContact.name
-                  ? `${pendingContact.name} has ${pendingContact.addresses.length} ${spec.nounPlural}`
-                  : `Choose a ${spec.noun}`}
-              </div>
-              {pendingContact.addresses.map((address) => (
-                <button
-                  key={address}
-                  type='button'
-                  role='option'
-                  aria-selected={false}
-                  className='flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-hidden'
-                  onClick={() =>
-                    commitContactAddress(pendingContact.id, address, pendingContact.name)
-                  }>
-                  <IdentifierIcon className='size-3.5 text-muted-foreground' />
-                  <span className='truncate'>{address}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <RecordPickerContent
-              value={[]}
-              onChange={() => {}}
-              entityDefinitionId='contact'
-              multi={false}
-              onSelectItem={handleContactPick}
-              onResultsChange={handlePickerResults}
-              externalSearch={inputValue}
-              excludeFilter={excludeFilter}
-              placeholder='Search contacts...'
-            />
-          )}
+          <RecipientSuggestions
+            candidates={candidates}
+            spec={spec}
+            activeIndex={activeIndex}
+            truncated={data?.truncated ?? false}
+            isLoading={isFetching}
+            onSelect={commitCandidate}
+            onHover={setActiveIndex}
+          />
         </PopoverContent>
       </Popover>
 
