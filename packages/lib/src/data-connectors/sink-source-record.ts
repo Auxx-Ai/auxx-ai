@@ -21,10 +21,16 @@ import {
 } from '@auxx/types/field'
 import { getCachedResourceFields } from '../cache'
 import { type ResourceField, resolveFieldRef } from '../resources'
-import type { ConnectorRecord } from './connectors/types'
+import { ConnectorRateLimitError, type ConnectorRecord } from './connectors/types'
 import type { MappedWrite } from './map-record'
 import { mapRecord } from './map-record'
 import { archiveExternalId } from './reconciliation'
+import {
+  SystemicSyncFailureError,
+  systemicFailureReason,
+  tallyFailure,
+  tallySuccess,
+} from './record-failure-tally'
 import type { DecodedMapping, PendingRelation } from './service'
 import { entitySink } from './sinks/entity-sink'
 import type { ProjectedRecord, SyncCtx } from './sinks/types'
@@ -138,6 +144,52 @@ async function resolveEdge(
  * out-of-order write guard compares (sync-bridge §9 Q7).
  */
 export async function sinkSourceRecord(
+  ctx: SyncCtx,
+  mappings: DecodedMapping[],
+  source: ConnectorRecord,
+  updatedAtPath?: string
+): Promise<void> {
+  try {
+    await sinkOneSourceRecord(ctx, mappings, source, updatedAtPath)
+    tallySuccess(ctx.failureTally)
+  } catch (error) {
+    // The abort signal and a throttle are the SLICE's business, not this record's —
+    // swallowing either would turn a graceful yield into silent data loss.
+    if (error instanceof ConnectorRateLimitError || ctx.signal?.aborted) throw error
+    // A systemic trip from a nested call must not be re-counted as one bad record.
+    if (error instanceof SystemicSyncFailureError) throw error
+
+    const message = error instanceof Error ? error.message : String(error)
+    ctx.counters.failed += 1
+    tallyFailure(ctx.failureTally, message)
+    if (ctx.counters.errorSample.length < 50) {
+      ctx.counters.errorSample.push({
+        externalId: source.externalId ?? '',
+        error: message,
+        tier: 'rejected',
+      })
+    }
+    logger.warn('record failed — counted and skipped, sync continues', {
+      connectorId: ctx.connector.id,
+      externalId: source.externalId,
+      error: message,
+    })
+
+    const systemic = systemicFailureReason(ctx.failureTally)
+    if (systemic) throw new SystemicSyncFailureError(systemic)
+  }
+}
+
+/**
+ * The real work for one source record. Everything in here is per-record and may throw;
+ * `sinkSourceRecord` owns the fault boundary. Before that boundary existed, ~11
+ * unprotected DB calls per record (`resolveFieldRefs`, `resolveIdentity`, `findItem`,
+ * `buildWriteSet`, …) sat outside the sink's one narrow try/catch, so ANY of them
+ * escalated one bad row into a failed RUN — the slice loop rethrows whatever it does
+ * not recognise. One malformed phone number in a 4222-contact Quo address book ended
+ * the whole import that way.
+ */
+async function sinkOneSourceRecord(
   ctx: SyncCtx,
   mappings: DecodedMapping[],
   source: ConnectorRecord,

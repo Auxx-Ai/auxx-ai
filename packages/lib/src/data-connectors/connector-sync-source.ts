@@ -28,6 +28,7 @@ import { runAsyncExportSlice } from './async-export'
 import { flattenConnectionMeta } from './connection-meta'
 import { runConnectorSlice } from './connector-slice-loop'
 import { reconcileManagedMarkers, reconcileOrphans } from './reconciliation'
+import { newRecordFailureTally } from './record-failure-tally'
 import { resolveRelationships } from './relationship-pass'
 import {
   clearResyncPending,
@@ -162,7 +163,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
 
   async fetchSlice(ctx: SyncSliceCtx): Promise<SliceResult> {
     const counters = newRunCounters()
-    const syncCtx = await this.buildCtx(counters, this.deps.stream.mappings)
+    const syncCtx = await this.buildCtx(counters, this.deps.stream.mappings, ctx.signal)
     // A stream needs no user-facing name to sync — fall back to the stable streamId
     // as the functional fetch/record key when it's unnamed.
     const streamKey = this.deps.stream.streamKey || this.deps.stream.streamId
@@ -407,7 +408,11 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
   }
 
   /** Build a sink context with the given counters; reuses cache-warmed crud handlers. */
-  private async buildCtx(counters: RunCounters, mappings: DecodedMapping[]): Promise<SyncCtx> {
+  private async buildCtx(
+    counters: RunCounters,
+    mappings: DecodedMapping[],
+    signal?: AbortSignal
+  ): Promise<SyncCtx> {
     const userId = this.deps.connector.createdById ?? 'system'
     if (!this.crud)
       this.crud = new UnifiedCrudHandler(this.deps.organizationId, userId, this.deps.db)
@@ -443,6 +448,8 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       crud: this.crud,
       ownedCrud: this.ownedCrud,
       counters,
+      failureTally: newRecordFailureTally(),
+      signal,
       manifest,
       touchedDefs: new Set<string>(),
       sweep: this.deps.sweep ?? false,

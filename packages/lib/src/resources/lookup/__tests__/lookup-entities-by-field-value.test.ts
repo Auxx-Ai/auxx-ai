@@ -1,7 +1,6 @@
 // packages/lib/src/resources/lookup/__tests__/lookup-entities-by-field-value.test.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { BadRequestError } from '../../../errors'
 
 // Mock the cache barrel WHOLESALE (partial-mocking it via importOriginal walks
 // its real import graph before the mock exists and modules capture the real
@@ -109,15 +108,51 @@ describe('lookupEntitiesByFieldValue', () => {
     expect(state.distinctCalls).toBe(1)
   })
 
-  it('skips an uncoercible candidate without querying, errs when ALL are invalid', async () => {
+  // An unparseable VALUE is data, not a malformed call — nothing in the table can
+  // equal it, so the answer is "no matches". This used to return a BadRequestError,
+  // which `crud.lookupByField` rethrows; a single Quo contact whose only `match` key
+  // was an unparseable phone then killed the entire connector RUN (the slice loop
+  // rethrows anything that is not a rate limit or an abort).
+  it('returns an EMPTY result when the sole candidate is uncoercible — never errs', async () => {
     const { db, state } = buildFakeDb([])
     const result = await lookupEntitiesByFieldValue(db, {
       ...baseParams,
       candidates: [{ systemAttribute: 'primary_email', value: 'not-an-email' }],
     })
-    expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap()).toEqual({ items: [], hasMore: false })
+    // Still short-circuits: an uncoercible candidate never reaches the DB.
     expect(state.distinctCalls).toBe(0)
+  })
+
+  it('returns an empty result when ALL of several candidates are uncoercible', async () => {
+    const { db, state } = buildFakeDb([])
+    const result = await lookupEntitiesByFieldValue(db, {
+      ...baseParams,
+      candidates: [
+        { systemAttribute: 'primary_email', value: 'garbage' },
+        { systemAttribute: 'primary_email', value: 'also-garbage' },
+      ],
+    })
+    expect(result._unsafeUnwrap().items).toEqual([])
+    expect(state.distinctCalls).toBe(0)
+  })
+
+  // The whole point of the change: the same garbage input must not be fatal or
+  // harmless depending only on how many OTHER candidates the caller passed.
+  it('treats a lone uncoercible candidate the same as one beside a valid one', async () => {
+    const lone = await lookupEntitiesByFieldValue(buildFakeDb([]).db, {
+      ...baseParams,
+      candidates: [{ systemAttribute: 'primary_email', value: 'garbage' }],
+    })
+    const beside = await lookupEntitiesByFieldValue(buildFakeDb([]).db, {
+      ...baseParams,
+      candidates: [
+        { systemAttribute: 'primary_email', value: 'garbage' },
+        { systemAttribute: 'primary_email', value: 'ok@x.com' },
+      ],
+    })
+    expect(lone.isOk()).toBe(beside.isOk())
   })
 
   it('skips invalid candidates but still runs valid ones (best-effort chain)', async () => {

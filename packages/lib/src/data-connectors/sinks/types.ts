@@ -5,6 +5,7 @@ import type { Database } from '@auxx/database'
 import type { ResourceFieldId } from '@auxx/types/field'
 import type { ManifestCollector } from '../../record-rules/sync-manifest-collector'
 import type { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
+import type { RecordFailureTally } from '../record-failure-tally'
 import type { DataConnectorRow, DecodedMapping, PendingRelation, RunCounters } from '../service'
 
 /** A single projected write produced by the mapping layer (04 §1a). */
@@ -48,6 +49,19 @@ export interface SyncCtx {
   ownedCrud: UnifiedCrudHandler
   /** Mutable run counters. */
   counters: RunCounters
+  /**
+   * Per-record outcome tally backing the fault-isolation circuit breaker
+   * (`record-failure-tally`). `sinkSourceRecord` counts a failing record here and
+   * continues; when the failure RATE says the problem is the configuration rather
+   * than the data, it trips and fails the run with the dominant cause named.
+   */
+  failureTally: RecordFailureTally
+  /**
+   * The slice's cancellation signal, so the per-record fault boundary can tell a
+   * graceful abort (rethrow — the chain resumes later) from a record that genuinely
+   * failed (count and move on).
+   */
+  signal?: AbortSignal
   /**
    * Sync-change manifest collector (B2). Accumulates subscribed field writes +
    * lifecycle ids as the sink writes (which suppress per-write events via
