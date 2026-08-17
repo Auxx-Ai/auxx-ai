@@ -1,11 +1,14 @@
 import { schema } from '@auxx/database'
+import { getCachedEntityDefId, getCachedUserInstanceGrants } from '@auxx/lib/cache'
 import { InboxService } from '@auxx/lib/inboxes'
 import { IsOperatorValue, SearchOperator } from '@auxx/lib/mail-query'
+import { buildMailVisibilityPredicate } from '@auxx/lib/mail-query/visibility-scope'
 import { listMembersWithUser } from '@auxx/lib/members'
-import { PermissionKey } from '@auxx/lib/permissions'
+import { searchRecipients } from '@auxx/lib/participants/search'
+import { PermissionKey, resolveRecordVisibilityScope } from '@auxx/lib/permissions'
 import { listAll } from '@auxx/lib/resources'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, count as drizzleCount, eq, ilike, inArray, or } from 'drizzle-orm'
+import { and, asc, count as drizzleCount, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -427,6 +430,82 @@ export const searchRouter = createTRPCRouter({
         contactId: p.entityInstanceId,
         contact: p.contact || null,
       }))
+    }),
+  /**
+   * Ranked recipient search for the composer — participants ∪ contacts.
+   *
+   * Replaces the composer's contact-record picker, which searched records and then
+   * reconstructed identifiers on the client. One `Participant` row IS one
+   * identifier, so searching that collapses the per-record fan-out; the contact arm
+   * covers the people never corresponded with, whom `Participant` has no row for.
+   *
+   * 🔴 **Two arms, two gates, deliberately not flattened.** The participant arm is
+   * mail data and narrows with the mail lens; the contact arm is CRM data and
+   * narrows with record scope. A viewer can legitimately see one and not the other,
+   * and the endpoint answers with whichever arm admits rows — the lib function is
+   * built so a fully-excluding lens still returns contacts, and a `none` record
+   * scope still returns participants. Merging the two authorization models is how a
+   * permissions bug gets written (`text-search-sql.ts:14-19`).
+   */
+  recipients: capabilityProcedure
+    .input(
+      z.object({
+        /** Empty switches to most-recently-mailed, the composer's focus state. */
+        query: z.string(),
+        /** `PlatformCapabilities.recipientModel` of the SENDING channel. */
+        model: z.enum(['email', 'phone', 'thread_only', 'platform_user']),
+        /**
+         * ISO-3166 region for national (no `+`) phone input. The composer derives
+         * it from the sending channel's own number (`regionFromIdentifier`) — the
+         * same digits mean different numbers in different regions, and the org
+         * profile cannot express a per-send answer.
+         */
+        region: z.string().length(2).optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      // Same coarse mail door as `participants` above — this is the same
+      // `Participant` corpus reached through a better query.
+      ctx.capabilities.assert(PermissionKey.inboxesView)
+      const organizationId = ctx.session.organizationId
+      const userId = ctx.session.user.id
+
+      // Participant arm: the mail lens. `undefined` (SYSTEM) means unscoped and
+      // emits no EXISTS at all; a user viewer is always scoped, admins included.
+      const grants = await getCachedUserInstanceGrants(userId, organizationId)
+      const threadVisibility = buildMailVisibilityPredicate(grants)
+
+      // Contact arm: record scope, built against the `ei` alias the lib query uses.
+      // A `PgColumn` would render `"EntityInstance"."id"`, which Postgres rejects
+      // once the table is aliased.
+      const contactDefId = await getCachedEntityDefId(organizationId, 'contact')
+      const scope = contactDefId
+        ? await resolveRecordVisibilityScope({
+            organizationId,
+            userId,
+            entityDefinitionId: contactDefId,
+            capabilities: ctx.capabilities,
+            instanceIdColumn: sql.raw('ei."id"'),
+          })
+        : undefined
+      // `null` is "no rows for this viewer" and skips the arm entirely; `undefined`
+      // is "no narrowing needed". They are different answers and the lib function
+      // treats them differently, so do not collapse them into one falsy check.
+      const contactVisibility =
+        scope === undefined ? undefined : scope.arm === 'none' ? null : scope.where
+
+      const result = await searchRecipients(ctx.db, {
+        organizationId,
+        query: input.query,
+        model: input.model,
+        region: input.region as Parameters<typeof searchRecipients>[1]['region'],
+        limit: input.limit,
+        threadVisibility,
+        contactVisibility,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
     }),
   // Save search query (called when user executes a search) - DEPRECATED
   saveQuery: protectedProcedure
