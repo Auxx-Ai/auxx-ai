@@ -1,11 +1,18 @@
 // apps/web/src/server/api/routers/participant.ts
 
+import { schema } from '@auxx/database'
+import { getCachedEntityDefId } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
 import { BadRequestError, NotFoundError } from '@auxx/lib/errors'
-import { ensureContactForParticipant, ParticipantService } from '@auxx/lib/participants'
-import { PermissionKey } from '@auxx/lib/permissions'
+import {
+  ensureContactForParticipant,
+  listContactIdentifiers,
+  ParticipantService,
+} from '@auxx/lib/participants'
+import { PermissionKey, resolveRecordVisibilityScope } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
+import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, isAuxxError, permissionProcedure } from '~/server/api/trpc'
 
@@ -91,6 +98,89 @@ export const participantRouter = createTRPCRouter({
           message: 'Failed to fetch participants.',
         })
       }
+    }),
+
+  /**
+   * Every address one contact is reachable at on one channel — the composer's
+   * recipient-chip "switch to another address" menu
+   * (`plans/email-editor/recipient-address-switch.md`).
+   *
+   * **Why this router.** It is not a search and must not live beside
+   * `search.recipients`: that endpoint ranks an org-wide corpus, this one probes
+   * two btrees for one id, and filing them together is the invitation to
+   * "just add a recordId filter to `searchRecipients`". It belongs here because
+   * both of its arms are this router's own subject matter — `Participant` rows
+   * plus the contact those rows are linked to — and because {@link mailProcedure}
+   * is already the exact authority it needs: the coarse mail door,
+   * `PermissionKey.inboxesView`, the SAME answer `search.recipients` asserts.
+   * `recipient-address-switch.md` §4 requires that gate not be decided twice,
+   * and reusing the procedure is how it stays undecided-twice.
+   *
+   * 🔴 **Record read is asserted per call, on this one id.** The search returned
+   * ONE primary identifier under `resolveRecordVisibilityScope`; this returns
+   * EVERY identifier on the record, `recordId` is caller-supplied, and the chip
+   * may have arrived from a draft, a reply or a share rather than from a search
+   * this caller ran. So the same instance-level predicate the record picker
+   * applies (`record-picker-service.ts:1406-1414`) is applied here, narrowed to
+   * one id.
+   *
+   * An unreadable record answers with an **empty array, not a 403**. The chip is
+   * legitimately in the draft either way, and this fires from opening a menu — a
+   * thrown error would toast at someone who did nothing wrong. Mail reach itself
+   * still 403s, because a member with no mail reach is not composing.
+   */
+  listContactIdentifiers: mailProcedure
+    .input(
+      z.object({
+        /** `EntityInstance.id` from `RecipientState.recordId`. */
+        recordId: z.string(),
+        /**
+         * `PlatformCapabilities.recipientModel` of the SENDING channel. Part of
+         * the query key on the client too: a list fetched under the email model
+         * must never be read under the phone model.
+         */
+        model: z.enum(['email', 'phone', 'thread_only', 'platform_user']),
+        limit: z.number().int().min(1).max(50).optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const organizationId = ctx.session.organizationId
+      const contactDefId = await getCachedEntityDefId(organizationId, 'contact')
+      if (!contactDefId) return []
+
+      const scope = await resolveRecordVisibilityScope({
+        organizationId,
+        userId: ctx.session.userId,
+        entityDefinitionId: contactDefId,
+        capabilities: ctx.capabilities,
+      })
+      // Arm 4 — this member reaches no contact at all, so there is nothing to
+      // probe. `scope.where` is `undefined` on arm 'all' and `and()` drops it.
+      if (scope.arm === 'none') return []
+
+      const [readable] = await ctx.db
+        .select({ id: schema.EntityInstance.id })
+        .from(schema.EntityInstance)
+        .where(
+          and(
+            eq(schema.EntityInstance.id, input.recordId),
+            eq(schema.EntityInstance.organizationId, organizationId),
+            eq(schema.EntityInstance.entityDefinitionId, contactDefId),
+            isNull(schema.EntityInstance.archivedAt),
+            scope.where
+          )
+        )
+        .limit(1)
+      if (!readable) return []
+
+      const result = await listContactIdentifiers(ctx.db, {
+        organizationId,
+        recordId: input.recordId,
+        model: input.model,
+        limit: input.limit,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
     }),
 
   /**

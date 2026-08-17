@@ -74,6 +74,7 @@ import PrevMessage from './prev-message'
 import { AddActionButton, QuickActionPanel } from './quick-action-panel'
 import { type RecipientField, RecipientInput, type RecipientInputHandle } from './recipient-input'
 import { formatDroppedList, reconcileDraftForChannel } from './reconcile-channel-switch'
+import { switchRecipientIdentifier } from './switch-recipient-identifier'
 import type {
   ParticipantInputData,
   RecipientState,
@@ -838,6 +839,23 @@ function ReplyComposeEditorComponent({
     },
     []
   )
+  /**
+   * Switch ONE chip to another of the same contact's addresses, in place — the
+   * chip keeps its `id`, its field and its position. The rule itself lives in
+   * {@link switchRecipientIdentifier}, which returns the same object on a no-op
+   * so a refused switch re-renders nothing.
+   */
+  const handleSwitchIdentifier = useCallback(
+    (
+      role: keyof Recipients,
+      id: string,
+      next: { identifier: string; identifierType: IdentifierType }
+    ) => {
+      setRecipients((prev) => switchRecipientIdentifier(prev, role, id, next))
+      setIsDraftSaved(false)
+    },
+    []
+  )
   // Calculate if editor has content
   // biome-ignore lint/correctness/useExhaustiveDependencies: content triggers recalculation when editor content changes
   const hasContent = useMemo(() => {
@@ -1406,6 +1424,7 @@ function ReplyComposeEditorComponent({
                     onAdd={(r) => upsertRecipient('TO', r)}
                     onRemove={(id) => removeRecipient('TO', id)}
                     onMoveTo={(id, target) => handleMoveTo('TO', id, target)}
+                    onSwitchIdentifier={(id, next) => handleSwitchIdentifier('TO', id, next)}
                     onContactSelect={(c) => handleContactSelect('TO', c)}
                     placeholder='Add recipients...'
                     disabled={isSending}
@@ -1462,6 +1481,7 @@ function ReplyComposeEditorComponent({
                       onAdd={(r) => upsertRecipient('CC', r)}
                       onRemove={(id) => removeRecipient('CC', id)}
                       onMoveTo={(id, target) => handleMoveTo('CC', id, target)}
+                      onSwitchIdentifier={(id, next) => handleSwitchIdentifier('CC', id, next)}
                       onContactSelect={(c) => handleContactSelect('CC', c)}
                       placeholder='Add Cc recipients...'
                       disabled={isSending}
@@ -1498,6 +1518,7 @@ function ReplyComposeEditorComponent({
                       onAdd={(r) => upsertRecipient('BCC', r)}
                       onRemove={(id) => removeRecipient('BCC', id)}
                       onMoveTo={(id, target) => handleMoveTo('BCC', id, target)}
+                      onSwitchIdentifier={(id, next) => handleSwitchIdentifier('BCC', id, next)}
                       onContactSelect={(c) => handleContactSelect('BCC', c)}
                       placeholder='Add Bcc recipients...'
                       disabled={isSending}

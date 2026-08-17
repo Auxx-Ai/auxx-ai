@@ -7,12 +7,19 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils'
-import { Copy, Mail, X } from 'lucide-react'
+import { ArrowUpRight, Copy, Mail, UserPlus, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
@@ -22,6 +29,7 @@ import { useEditorActiveStateContext } from './editor-active-state-context'
 import {
   DEFAULT_PHONE_REGION,
   getIdentifierModel,
+  type IdentifierModelSpec,
   identifierKey,
   type PhoneRegion,
   type RecipientModel,
@@ -56,6 +64,19 @@ interface RecipientInputProps {
   onAdd: (recipient: RecipientState) => void
   onRemove: (id: string) => void
   onMoveTo: (id: string, target: RecipientField) => void
+  /**
+   * Replace ONE chip's identifier in place, keeping its `id`, its field and its
+   * position in the list.
+   *
+   * 🔴 **Not remove-then-add.** That would move the chip to the end of the
+   * field, drop focus, and — because `upsertRecipient` dedupes on `identifier` —
+   * silently no-op whenever the target address was already committed elsewhere
+   * in the same field, leaving the user with one fewer recipient than they had.
+   */
+  onSwitchIdentifier: (
+    id: string,
+    next: { identifier: string; identifierType: IdentifierTypeType }
+  ) => void
   /**
    * A picked suggestion's identifier, committed. Carries `recordId` — the
    * contact's `EntityInstance.id` — and **not** a chip id: the parent mints
@@ -101,15 +122,54 @@ const ALL_FIELDS: RecipientField[] = ['TO', 'CC', 'BCC']
 /** Keystroke settle before the search fires. */
 const SEARCH_DEBOUNCE_MS = 200
 
+/**
+ * The `↗` mark on an address that exists only as a `Participant` row.
+ *
+ * ⚠️ These rows are the capability this menu recovers — an address someone
+ * mailed you from that was never saved to their record — and also the ones that
+ * can surprise: `Participant.entityInstanceId` is set by ingest matching and is
+ * `ON DELETE set null`, so it can point at a contact the user does not think of
+ * as "them". Marked rather than presented as the contact's own data, and picking
+ * one writes nothing back to the record.
+ */
+function NotOnRecordMark() {
+  return (
+    <span
+      className='shrink-0 text-muted-foreground'
+      title='Not saved on this contact’s record — you have corresponded with this address'>
+      <ArrowUpRight className='size-3' />
+    </span>
+  )
+}
+
+/** One row of the chip menu's "Other addresses" section. */
+interface AddressOption {
+  /** Normalized comparison key, and the radio group's value. */
+  key: string
+  /** The exact string to commit. */
+  identifier: string
+  identifierType: IdentifierTypeType
+  onRecord: boolean
+  display: string
+  /** This is the address the chip already carries. */
+  isCommitted: boolean
+  /** Committed anywhere in this field, this chip included. */
+  inField: boolean
+}
+
 function RecipientBadge({
   person,
-  displayIdentifier,
+  spec,
+  recipientModel,
+  committedInField,
   index,
   highlightedIndex,
   disabled,
   field,
   onRemove,
   onMoveTo,
+  onSwitchIdentifier,
+  onAdd,
   onFocus,
   onBlur,
   onKeyDown,
@@ -117,14 +177,25 @@ function RecipientBadge({
   popoverClassName,
 }: {
   person: RecipientState
-  /** `spec.formatDisplay(person.identifier)` — display only; never committed. */
-  displayIdentifier: string
+  spec: IdentifierModelSpec
+  /** Query key half — a list fetched under email must not be read under phone. */
+  recipientModel?: RecipientModel
+  /**
+   * Normalized identifiers already committed in THIS field, this chip's own
+   * included. Drives the disabled state of the switch rows.
+   */
+  committedInField: Set<string>
   index: number
   highlightedIndex: number | null
   disabled?: boolean
   field: RecipientField
   onRemove: (id: string) => void
   onMoveTo: (id: string, target: RecipientField) => void
+  onSwitchIdentifier: (
+    id: string,
+    next: { identifier: string; identifierType: IdentifierTypeType }
+  ) => void
+  onAdd: (recipient: RecipientState) => void
   onFocus: () => void
   onBlur: () => void
   onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void
@@ -134,8 +205,62 @@ function RecipientBadge({
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const activeState = useEditorActiveStateContext()
   const dropdownId = `recipient-badge-${person.id}`
+  const displayIdentifier = spec.formatDisplay(person.identifier)
   const displayName = person.name ?? displayIdentifier
   const isHighlighted = highlightedIndex === index
+
+  /**
+   * The contact's other addresses, fetched ON OPEN.
+   *
+   * `useQuery`, never a mutation: the deleted `fieldValue.batchGet` was a
+   * mutation and therefore uncacheable, which is the only reason the composer
+   * ever hand-rolled a request cache. Reopening the same chip, and switching
+   * back and forth, must be free.
+   *
+   * `enabled` is the whole performance argument: rendering N chips issues ZERO
+   * requests, one open costs two index probes, and most chips are never opened.
+   * A chip with no `recordId` — free-typed, pasted, reply-derived, or restored
+   * from a draft (`toPayload` carries no record id) — never fetches and gets no
+   * section.
+   */
+  const { data: contactIdentifiers } = api.participant.listContactIdentifiers.useQuery(
+    // `?? ''` only satisfies the input type on the disabled path; `enabled`
+    // guarantees no request is made without a real record id.
+    { recordId: person.recordId ?? '', model: recipientModel ?? 'email' },
+    { enabled: dropdownOpen && !!person.recordId, staleTime: 5 * 60_000 }
+  )
+
+  const committedKey = identifierKey(spec, person.identifier)
+  const addressOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const options: AddressOption[] = []
+    for (const row of contactIdentifiers ?? []) {
+      // `identifierKey` normalizes, so `+1 415 555 1234` and `+14155551234` are
+      // ONE address — the same comparison `excludeIdentifiers` uses for the
+      // suggestion list. The server deduped on a case fold only (it has no
+      // region to parse a number against), so a legacy un-normalized record
+      // value and its E.164 twin both arrive and collapse HERE — without this
+      // they would render as two rows sharing one React key.
+      const key = identifierKey(spec, row.identifier)
+      if (seen.has(key)) continue
+      seen.add(key)
+      options.push({
+        key,
+        identifier: row.identifier,
+        identifierType: row.identifierType,
+        onRecord: row.onRecord,
+        display: spec.formatDisplay(row.identifier),
+        isCommitted: key === committedKey,
+        /** Already a recipient of this field — disabled, not hidden. */
+        inField: committedInField.has(key),
+      })
+    }
+    return options
+  }, [contactIdentifiers, spec, committedKey, committedInField])
+  // No section at all when the record has nothing but the address already on
+  // this chip. An empty "Other addresses" heading would be noise on every
+  // single-address recipient, which is most of them.
+  const hasOtherAddresses = addressOptions.some((option) => !option.isCommitted)
 
   return (
     <DropdownMenu
@@ -200,6 +325,70 @@ function RecipientBadge({
             Copy '{person.name}'
           </DropdownMenuItem>
         )}
+        {hasOtherAddresses && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Other addresses</DropdownMenuLabel>
+            {/* The committed address is the checked one, so the group's value is
+                this chip's own key — switching is a radio choice, not a list of
+                commands. */}
+            <DropdownMenuRadioGroup value={committedKey}>
+              {addressOptions.map((option) => (
+                <DropdownMenuRadioItem
+                  key={option.key}
+                  value={option.key}
+                  // Hiding an address that is already a recipient makes the list
+                  // change shape between opens for no visible reason; disabling
+                  // it explains itself. This chip's own address is disabled by
+                  // the same rule — it IS committed in this field. `disabled` is
+                  // the send lock, the same one that freezes the chip's `×`.
+                  disabled={option.inField || disabled}
+                  onSelect={() =>
+                    onSwitchIdentifier(person.id, {
+                      identifier: option.identifier,
+                      identifierType: option.identifierType,
+                    })
+                  }>
+                  <span className='inline-flex min-w-0 items-center gap-1'>
+                    <span className='truncate'>{option.display}</span>
+                    {!option.onRecord && <NotOnRecordMark />}
+                  </span>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <UserPlus />
+                Add as separate recipient
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className={popoverClassName}>
+                {addressOptions.map((option) => (
+                  <DropdownMenuItem
+                    key={option.key}
+                    disabled={option.inField || disabled}
+                    onSelect={() =>
+                      // A fresh chip id and the SAME `recordId`: two chips for
+                      // one contact is the motion the `id`/`recordId` split
+                      // (#1664) exists for.
+                      onAdd({
+                        id: generateId(),
+                        identifier: option.identifier,
+                        identifierType: option.identifierType,
+                        name: person.name,
+                        recordId: person.recordId,
+                      })
+                    }>
+                    <span className='inline-flex min-w-0 items-center gap-1'>
+                      <span className='truncate'>{option.display}</span>
+                      {!option.onRecord && <NotOnRecordMark />}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSeparator />
+          </>
+        )}
         {ALL_FIELDS.filter((f) => f !== field).map((target) => (
           <DropdownMenuItem key={target} onSelect={() => onMoveTo(person.id, target)}>
             <Mail />
@@ -218,6 +407,7 @@ export function RecipientInput({
   onAdd,
   onRemove,
   onMoveTo,
+  onSwitchIdentifier,
   onContactSelect,
   placeholder,
   disabled,
@@ -493,7 +683,9 @@ export function RecipientInput({
         <RecipientBadge
           key={person.id}
           person={person}
-          displayIdentifier={spec.formatDisplay(person.identifier)}
+          spec={spec}
+          recipientModel={recipientModel}
+          committedInField={excludeIdentifiers}
           index={index}
           highlightedIndex={highlightedIndex}
           disabled={disabled}
@@ -503,6 +695,8 @@ export function RecipientInput({
             setHighlightedIndex(null)
           }}
           onMoveTo={onMoveTo}
+          onSwitchIdentifier={onSwitchIdentifier}
+          onAdd={onAdd}
           onFocus={() => setHighlightedIndex(index)}
           onBlur={() => setHighlightedIndex(null)}
           onKeyDown={(e) => handleBadgeKeyDown(e, index, person.id)}

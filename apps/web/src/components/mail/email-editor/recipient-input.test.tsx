@@ -24,11 +24,22 @@ interface CandidateStub {
   score: number
 }
 
+interface IdentifierStub {
+  identifier: string
+  identifierType: 'EMAIL' | 'PHONE'
+  onRecord: boolean
+  rank: number | null
+}
+
 const h = vi.hoisted(() => ({
   toastError: vi.fn(),
   candidates: [] as unknown[],
   /** Every `{ query, model, region }` the component asked the endpoint for. */
   queryInputs: [] as unknown[],
+  /** `participant.listContactIdentifiers` rows the chip menu will see. */
+  contactIdentifiers: [] as unknown[],
+  /** Every `{ recordId, model }` a chip menu asked for — empty means no request. */
+  identifierQueryInputs: [] as unknown[],
 }))
 
 vi.mock('~/trpc/react', () => ({
@@ -41,6 +52,18 @@ vi.mock('~/trpc/react', () => ({
             data: { candidates: h.candidates, truncated: false },
             isFetching: false,
           }
+        },
+      },
+    },
+    participant: {
+      listContactIdentifiers: {
+        // `data: undefined` while disabled, exactly like React Query — a chip
+        // that never opens (or has no recordId) must render no section at all,
+        // and a stub that always returned rows would hide that.
+        useQuery: (input: unknown, options?: { enabled?: boolean }) => {
+          if (options?.enabled === false) return { data: undefined }
+          h.identifierQueryInputs.push(input)
+          return { data: h.contactIdentifiers }
         },
       },
     },
@@ -80,11 +103,13 @@ function renderInput(
     id: string
     identifier: string
     identifierType: 'EMAIL'
+    name?: string | null
     recordId?: string
   }>,
   onContactSelect = vi.fn(),
   onAdd = vi.fn(),
-  onRemove = vi.fn()
+  onRemove = vi.fn(),
+  onSwitchIdentifier = vi.fn()
 ) {
   const utils = render(
     <RecipientInput
@@ -93,25 +118,32 @@ function renderInput(
       onAdd={onAdd}
       onRemove={onRemove}
       onMoveTo={vi.fn()}
+      onSwitchIdentifier={onSwitchIdentifier}
       onContactSelect={onContactSelect}
       placeholder='To'
     />
   )
-  return { ...utils, onContactSelect, onAdd, onRemove }
+  return { ...utils, onContactSelect, onAdd, onRemove, onSwitchIdentifier }
 }
 
 interface PhoneRecipientStub {
   id: string
   identifier: string
   identifierType: 'PHONE'
+  recordId?: string
 }
 
 /** Same render, on a `recipientModel: 'phone'` channel (Quo/SMS). */
 function renderPhoneInput(
   onAdd = vi.fn(),
   onContactSelect = vi.fn(),
-  extra: { defaultRegion?: PhoneRegion; recipients?: PhoneRecipientStub[] } = {}
+  extra: {
+    defaultRegion?: PhoneRegion
+    recipients?: PhoneRecipientStub[]
+    onSwitchIdentifier?: ReturnType<typeof vi.fn>
+  } = {}
 ) {
+  const onSwitchIdentifier = extra.onSwitchIdentifier ?? vi.fn()
   const utils = render(
     <RecipientInput
       recipients={(extra.recipients ?? []) as never}
@@ -119,13 +151,14 @@ function renderPhoneInput(
       onAdd={onAdd}
       onRemove={vi.fn()}
       onMoveTo={vi.fn()}
+      onSwitchIdentifier={onSwitchIdentifier}
       onContactSelect={onContactSelect}
       placeholder='To'
       recipientModel='phone'
       defaultRegion={extra.defaultRegion}
     />
   )
-  return { ...utils, onAdd, onContactSelect }
+  return { ...utils, onAdd, onContactSelect, onSwitchIdentifier }
 }
 
 /** Focus the input and fire a real paste event carrying `text`. */
@@ -157,6 +190,8 @@ beforeEach(() => {
   h.toastError.mockReset()
   h.candidates = []
   h.queryInputs = []
+  h.contactIdentifiers = []
+  h.identifierQueryInputs = []
   Element.prototype.scrollIntoView = vi.fn()
 })
 
@@ -351,6 +386,219 @@ describe('two chips sourced from the same contact', () => {
   // the type is the stronger guarantee, so it is deliberately not restated here.
 })
 
+// The chip menu's "Other addresses" section — the capability
+// `search.recipients` gives up by returning one row per person
+// (`recipient-search.md` §4.2). Fetched on OPEN, never on render.
+describe('RecipientBadge — other addresses', () => {
+  const janeChip = {
+    id: 'chip-1',
+    identifier: 'jane@corp.com',
+    identifierType: 'EMAIL' as const,
+    name: 'Jane Smith',
+    recordId: 'c1',
+  }
+
+  const onRecord = (identifier: string, rank: number): IdentifierStub => ({
+    identifier,
+    identifierType: 'EMAIL',
+    onRecord: true,
+    rank,
+  })
+  const correspondedWith = (identifier: string): IdentifierStub => ({
+    identifier,
+    identifierType: 'EMAIL',
+    onRecord: false,
+    rank: null,
+  })
+
+  /** Click the chip, which is the dropdown trigger, and wait for the menu. */
+  async function openChipMenu(label: string) {
+    await userEvent.click(screen.getByRole('option', { name: `Recipient: ${label}` }))
+    return screen.findByRole('menu')
+  }
+
+  function switchRows() {
+    return screen.getAllByRole('menuitemradio')
+  }
+
+  it('issues NO request while the chips are merely rendered', () => {
+    h.contactIdentifiers = [onRecord('jane@corp.com', 0), onRecord('j.smith@corp.com', 1)]
+    renderInput([janeChip, { ...janeChip, id: 'chip-2', identifier: 'b@x.com' }])
+
+    // Two chips, zero fetches. This is the entire argument for fetch-on-open
+    // over an identifierCount on the search.
+    expect(h.identifierQueryInputs).toEqual([])
+  })
+
+  it('fetches on open, keyed on the record AND the model', async () => {
+    h.contactIdentifiers = [onRecord('jane@corp.com', 0), onRecord('j.smith@corp.com', 1)]
+    renderInput([janeChip])
+
+    await openChipMenu('Jane Smith')
+
+    // The model is half the key: a list fetched under email must never be read
+    // under phone (`key={recipientModel}`, #1654).
+    expect(h.identifierQueryInputs).toContainEqual({ recordId: 'c1', model: 'email' })
+  })
+
+  it('passes the phone model through', async () => {
+    h.contactIdentifiers = []
+    renderPhoneInput(vi.fn(), vi.fn(), {
+      recipients: [
+        { id: 'chip-1', identifier: '+14155551234', identifierType: 'PHONE', recordId: 'c1' },
+      ],
+    })
+
+    await openChipMenu('(415) 555-1234')
+
+    expect(h.identifierQueryInputs).toContainEqual({ recordId: 'c1', model: 'phone' })
+  })
+
+  it('lists the addresses with the committed one checked and disabled', async () => {
+    h.contactIdentifiers = [onRecord('jane@corp.com', 0), onRecord('j.smith@corp.com', 1)]
+    renderInput([janeChip])
+
+    await openChipMenu('Jane Smith')
+
+    expect(screen.getByText('Other addresses')).toBeInTheDocument()
+    const rows = switchRows()
+    expect(rows.map((row) => row.textContent)).toEqual(['jane@corp.com', 'j.smith@corp.com'])
+    expect(rows[0]).toHaveAttribute('aria-checked', 'true')
+    // The committed address IS committed in this field, so the same
+    // already-a-recipient rule disables it.
+    expect(rows[0]).toHaveAttribute('aria-disabled', 'true')
+    expect(rows[1]).toHaveAttribute('aria-checked', 'false')
+    expect(rows[1]).not.toHaveAttribute('aria-disabled')
+  })
+
+  it('switches THIS chip in place — onSwitchIdentifier gets the chip id', async () => {
+    h.contactIdentifiers = [onRecord('jane@corp.com', 0), onRecord('j.smith@corp.com', 1)]
+    const { onSwitchIdentifier, onRemove, onAdd } = renderInput([janeChip])
+
+    await openChipMenu('Jane Smith')
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'j.smith@corp.com' }))
+
+    expect(onSwitchIdentifier).toHaveBeenCalledWith('chip-1', {
+      identifier: 'j.smith@corp.com',
+      identifierType: 'EMAIL',
+    })
+    // 🔴 Not remove-then-add: that moves the chip to the end of the field and
+    // loses focus, and the add no-ops when the target is already present.
+    expect(onRemove).not.toHaveBeenCalled()
+    expect(onAdd).not.toHaveBeenCalled()
+  })
+
+  it('disables an address already committed in this field, comparing NORMALIZED', async () => {
+    // The record holds a legacy, un-normalized copy of a number that is already
+    // a chip in E.164. `identifierKey` is what makes them one address.
+    h.contactIdentifiers = [
+      { identifier: '+1 415 555 1234', identifierType: 'PHONE', onRecord: true, rank: 0 },
+      { identifier: '+18052227374', identifierType: 'PHONE', onRecord: true, rank: 1 },
+    ]
+    const onSwitchIdentifier = vi.fn()
+    renderPhoneInput(vi.fn(), vi.fn(), {
+      onSwitchIdentifier,
+      recipients: [
+        { id: 'chip-1', identifier: '+18052227374', identifierType: 'PHONE', recordId: 'c1' },
+        { id: 'chip-2', identifier: '+14155551234', identifierType: 'PHONE', recordId: 'c1' },
+      ],
+    })
+
+    await openChipMenu('(805) 222-7374')
+
+    const rows = switchRows()
+    // Disabled, not hidden: hiding it changes the list's shape between opens for
+    // no visible reason.
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveAttribute('aria-disabled', 'true')
+
+    await userEvent.click(rows[0] as HTMLElement)
+    expect(onSwitchIdentifier).not.toHaveBeenCalled()
+  })
+
+  it('collapses a record value and its differently-formatted Participant twin', async () => {
+    // The server dedupes on a case fold only — it has no region to parse a
+    // number against — so both of these arrive. Two rows here would also mean
+    // two React children under one key.
+    h.contactIdentifiers = [
+      { identifier: '+1 415 555 1234', identifierType: 'PHONE', onRecord: true, rank: 0 },
+      { identifier: '+14155551234', identifierType: 'PHONE', onRecord: false, rank: null },
+    ]
+    renderPhoneInput(vi.fn(), vi.fn(), {
+      recipients: [
+        { id: 'chip-1', identifier: '+18052227374', identifierType: 'PHONE', recordId: 'c1' },
+      ],
+    })
+
+    await openChipMenu('(805) 222-7374')
+
+    const rows = switchRows()
+    expect(rows).toHaveLength(1)
+    // First wins, so the record row survives and keeps its un-marked shape.
+    expect(screen.queryByTitle(/Not saved on this contact’s record/)).not.toBeInTheDocument()
+  })
+
+  it('marks a corresponded-with-only address as not on the record', async () => {
+    h.contactIdentifiers = [onRecord('jane@corp.com', 0), correspondedWith('jane@personal.com')]
+    renderInput([janeChip])
+
+    await openChipMenu('Jane Smith')
+
+    expect(screen.getAllByTitle(/Not saved on this contact’s record/)[0]).toBeInTheDocument()
+  })
+
+  it('appends a separate chip with a fresh id and the same recordId', async () => {
+    h.contactIdentifiers = [onRecord('jane@corp.com', 0), onRecord('j.smith@corp.com', 1)]
+    const { onAdd, onSwitchIdentifier } = renderInput([janeChip])
+
+    await openChipMenu('Jane Smith')
+    await userEvent.click(screen.getByRole('menuitem', { name: /Add as separate recipient/ }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'j.smith@corp.com' }))
+
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    const added = onAdd.mock.calls[0]?.[0] as { id: string; identifier: string; recordId?: string }
+    expect(added.identifier).toBe('j.smith@corp.com')
+    expect(added.recordId).toBe('c1')
+    // A fresh chip id, never the record id — that collision is what #1664 split.
+    expect(added.id).not.toBe('c1')
+    expect(added.id).not.toBe('chip-1')
+    expect(onSwitchIdentifier).not.toHaveBeenCalled()
+  })
+
+  it('renders no section when the record has only the committed address', async () => {
+    h.contactIdentifiers = [onRecord('jane@corp.com', 0)]
+    renderInput([janeChip])
+
+    await openChipMenu('Jane Smith')
+
+    expect(screen.queryByText('Other addresses')).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('menuitemradio')).toEqual([])
+  })
+
+  it('renders no section when the fetch comes back empty', async () => {
+    h.contactIdentifiers = []
+    renderInput([janeChip])
+
+    await openChipMenu('Jane Smith')
+
+    // Not "No other addresses" — that is noise on every single-address
+    // recipient, which is most of them.
+    expect(screen.queryByText('Other addresses')).not.toBeInTheDocument()
+  })
+
+  it('never fetches, and shows no section, for a chip with no recordId', async () => {
+    h.contactIdentifiers = [onRecord('jane@corp.com', 0), onRecord('j.smith@corp.com', 1)]
+    renderInput([{ id: 'chip-1', identifier: 'typed@x.com', identifierType: 'EMAIL' }])
+
+    await openChipMenu('typed@x.com')
+
+    expect(h.identifierQueryInputs).toEqual([])
+    expect(screen.queryByText('Other addresses')).not.toBeInTheDocument()
+    // The rest of the menu is untouched.
+    expect(screen.getByRole('menuitem', { name: /Copy 'typed@x\.com'/ })).toBeInTheDocument()
+  })
+})
+
 // Quo (formerly OpenPhone) is the first channel whose recipient is a phone
 // number, not an address. The same input has to accept E.164, reject anything
 // libphonenumber can't parse, and commit `PHONE`.
@@ -483,6 +731,7 @@ describe('RecipientInput — badge formatting vs stored identifier', () => {
         onAdd={onAdd}
         onRemove={vi.fn()}
         onMoveTo={vi.fn()}
+        onSwitchIdentifier={vi.fn()}
         onContactSelect={vi.fn()}
         placeholder='To'
         recipientModel='phone'
