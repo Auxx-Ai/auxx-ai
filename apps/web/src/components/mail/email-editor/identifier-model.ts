@@ -28,43 +28,25 @@ export { DEFAULT_PHONE_REGION, type PhoneRegion, regionFromIdentifier }
 /**
  * Everything the recipient input needs to know about ONE identifier shape:
  * how to validate/normalize a typed value, which `IdentifierType` to commit,
- * which contact field holds the candidate values, and what to call the thing
- * in copy.
+ * and what to call the thing in copy.
  *
- * Keyed by `recipientModel` so the composer stays capability-driven. The
- * model→field half now comes from `@auxx/lib/participants/channel-identifier-fields`,
- * which the agent send path (`recipient-resolver.ts`) binds too — so there is one
- * answer to "which contact field does this channel address", not two that agree
- * by inspection. What stays local is genuinely UI: validation, display
- * formatting, and copy.
+ * Keyed by `recipientModel` so the composer stays capability-driven. This is
+ * genuinely UI — validation, display formatting, copy. **Which contact field a
+ * channel addresses is deliberately NOT here**: `search.recipients` resolves the
+ * identifier server-side from
+ * `@auxx/lib/participants/channel-identifier-fields`, so the client never names
+ * the addressable field and cannot disagree with the server about it.
  */
 export interface IdentifierModelSpec {
-  /** `IdentifierType` committed on every recipient of this model. */
-  identifierType: IdentifierTypeType
-
   /**
-   * `systemAttribute` candidates on the contact definition, in preference
-   * order. The first one that resolves to a field wins.
+   * `IdentifierType` committed on every recipient of this model.
    *
-   * Comes from `@auxx/lib/participants/channel-identifier-fields` — the SAME
-   * switch the agent send path binds. It used to be restated here, which is how
-   * a composer reading `primary_email` on a phone channel becomes possible.
+   * Read off `@auxx/lib/participants/channel-identifier-fields` — the SAME
+   * switch the agent send path and the recipient search bind — rather than
+   * restated, which is how a composer committing `EMAIL` on a phone channel
+   * becomes possible.
    */
-  systemAttributes: readonly string[]
-
-  /**
-   * Key on the picker row's raw `data` holding the record's primary value —
-   * the fallback when the field read fails or returns nothing.
-   */
-  rowDataKey: string
-
-  /**
-   * Whether the picker row's `secondaryInfo` (the secondary display field) is
-   * a value of THIS model. True for email — contacts render their address as
-   * the subtitle — and false for everything else, where the subtitle is still
-   * an email and would poison a phone recipient list.
-   */
-  secondaryInfoIsIdentifier: boolean
+  identifierType: IdentifierTypeType
 
   /**
    * Canonical form of a raw typed/stored value, or `null` when it is not a
@@ -84,8 +66,7 @@ export interface IdentifierModelSpec {
   invalidTitle: string
   invalidDescription: string
 
-  /** Singular/plural noun used in the "which one?" popover. */
-  noun: string
+  /** Plural noun for the suggestion list's empty state. */
   nounPlural: string
 }
 
@@ -93,9 +74,6 @@ const EMAIL_RE = /\S+@\S+\.\S+/
 
 const EMAIL_SPEC: IdentifierModelSpec = {
   identifierType: EMAIL_IDENTIFIER_FIELDS.identifierType,
-  systemAttributes: EMAIL_IDENTIFIER_FIELDS.systemAttributes,
-  rowDataKey: 'email',
-  secondaryInfoIsIdentifier: true,
   normalize: (raw) => {
     const trimmed = raw.trim()
     return trimmed && EMAIL_RE.test(trimmed) ? trimmed.toLowerCase() : null
@@ -103,7 +81,6 @@ const EMAIL_SPEC: IdentifierModelSpec = {
   formatDisplay: (value) => value,
   invalidTitle: 'Invalid Email',
   invalidDescription: 'Please enter a valid email address.',
-  noun: 'email address',
   nounPlural: 'email addresses',
 }
 
@@ -116,9 +93,6 @@ const EMAIL_SPEC: IdentifierModelSpec = {
 function createPhoneSpec(region: PhoneRegion): IdentifierModelSpec {
   return {
     identifierType: PHONE_IDENTIFIER_FIELDS.identifierType,
-    systemAttributes: PHONE_IDENTIFIER_FIELDS.systemAttributes,
-    rowDataKey: 'phone',
-    secondaryInfoIsIdentifier: false,
     // `formatPhoneNumber` is THE phone normalizer (libphonenumber-backed, E.164
     // out, `null` for anything unparseable or impossible). Never hand-roll a
     // second one here — write-path and lookup normalization must not drift.
@@ -133,7 +107,6 @@ function createPhoneSpec(region: PhoneRegion): IdentifierModelSpec {
     },
     invalidTitle: 'Invalid Phone Number',
     invalidDescription: 'Please enter a valid phone number, e.g. +14155551234.',
-    noun: 'phone number',
     nounPlural: 'phone numbers',
   }
 }

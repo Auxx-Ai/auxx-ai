@@ -797,7 +797,8 @@ function ReplyComposeEditorComponent({
     (
       role: 'TO' | 'CC' | 'BCC',
       contactData: {
-        recordId: string
+        /** `null` for a participant never linked to a contact record. */
+        recordId: string | null
         identifier: string
         identifierType: IdentifierType
         name?: string | null
@@ -811,7 +812,7 @@ function ReplyComposeEditorComponent({
         identifier: contactData.identifier,
         identifierType: contactData.identifierType,
         name: contactData.name,
-        recordId: contactData.recordId,
+        recordId: contactData.recordId ?? undefined,
       })
     },
     [upsertRecipient]

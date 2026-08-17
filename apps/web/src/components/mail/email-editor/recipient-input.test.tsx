@@ -1,89 +1,50 @@
 // apps/web/src/components/mail/email-editor/recipient-input.test.tsx
 //
-// C6 (multi-email plan): the compose recipient picker under the multi-value
-// email flip. A picked contact is expanded into its N addresses — the user
-// picks WHICH address the mail goes to (a contact with 2 emails yields 2
-// address rows) — and the exclude filter keys on ADDRESSES: a contact whose
-// primary is already a recipient stays pickable for its other addresses and
-// hides only once every known address is a recipient.
+// The compose recipient picker on `api.search.recipients` — participants ∪
+// contacts, one ranked read. Each suggestion IS one identifier (`Participant` is
+// unique on `(organizationId, identifier, identifierType)`), so there is no
+// record-to-addresses fan-out left to test: a contact with two addresses arrives
+// as two rows, and excluding one is set membership on a string.
+//
+// The user-visible behaviours the old record-picker tests pinned still hold and
+// are still covered here, one layer down: a contact with two addresses is
+// reachable at both, and an address already in the field is not offered again.
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PhoneRegion } from './identifier-model'
 
-interface PickerItemStub {
-  id: string
-  recordId: string
+interface CandidateStub {
+  identifier: string
+  identifierType: 'EMAIL' | 'PHONE'
   displayName: string
-  secondaryInfo?: string
-  data: Record<string, unknown>
+  contactId: string | null
+  source: 'participant' | 'contact'
+  score: number
 }
 
 const h = vi.hoisted(() => ({
-  batchGet: vi.fn(),
   toastError: vi.fn(),
-  pickerItems: [] as unknown[],
+  candidates: [] as unknown[],
+  /** Every `{ query, model, region }` the component asked the endpoint for. */
+  queryInputs: [] as unknown[],
 }))
 
 vi.mock('~/trpc/react', () => ({
   api: {
-    fieldValue: {
-      batchGet: { useMutation: () => ({ mutateAsync: h.batchGet }) },
+    search: {
+      recipients: {
+        useQuery: (input: unknown, options?: { enabled?: boolean }) => {
+          if (options?.enabled !== false) h.queryInputs.push(input)
+          return {
+            data: { candidates: h.candidates, truncated: false },
+            isFetching: false,
+          }
+        },
+      },
     },
   },
-}))
-
-// The record picker's own behavior (search, hydration) is exercised elsewhere;
-// this stub renders the item list with the SAME excludeFilter/onSelectItem/
-// onResultsChange contract so the expansion + per-address exclude logic is
-// what's under test.
-vi.mock('~/components/pickers/record-picker/record-picker-content', async () => {
-  const { useEffect } = await import('react')
-  return {
-    RecordPickerContent: ({
-      onSelectItem,
-      onResultsChange,
-      excludeFilter,
-    }: {
-      onSelectItem: (item: unknown) => void
-      onResultsChange?: (items: unknown[]) => void
-      excludeFilter?: (item: unknown) => boolean
-    }) => {
-      useEffect(() => {
-        onResultsChange?.(h.pickerItems)
-      }, [onResultsChange])
-      return (
-        <div data-testid='record-picker'>
-          {(h.pickerItems as Array<{ id: string; displayName: string }>)
-            .filter((item) => !excludeFilter?.(item))
-            .map((item) => (
-              <button key={item.id} type='button' onClick={() => onSelectItem(item)}>
-                {item.displayName}
-              </button>
-            ))}
-        </div>
-      )
-    },
-  }
-})
-
-vi.mock('~/components/resources/store/resource-store', () => ({
-  useResourceStore: {
-    getState: () => ({
-      systemAttributeMap: {},
-      systemAttributeByDef: {},
-      ambiguousSystemAttributes: new Set(),
-    }),
-  },
-}))
-
-vi.mock('~/components/resources/utils/normalize-record-id', () => ({
-  getNormalizedRecordId: (id: string) => id,
-}))
-
-vi.mock('~/components/resources/utils/resolve-system-attribute', () => ({
-  resolveSystemAttributeRef: () => 'contact:field-email',
 }))
 
 vi.mock('@auxx/ui/components/toast', () => ({ toastError: h.toastError }))
@@ -101,25 +62,16 @@ vi.mock('./editor-active-state-context', () => ({
 
 const { RecipientInput } = await import('./recipient-input')
 
-const ADA: PickerItemStub = {
-  id: 'c1',
-  recordId: 'contact:c1',
-  displayName: 'Ada Lovelace',
-  secondaryInfo: 'a@x.com',
-  data: {},
-}
-
-/** batchGet payload for a contact whose primary_email holds the given addresses. */
-function emailValues(addresses: string[], recordId = 'contact:c1') {
+/** One participant row for Ada, addressable at `identifier`. */
+function participant(identifier: string, overrides: Partial<CandidateStub> = {}): CandidateStub {
   return {
-    values: [
-      {
-        recordId,
-        fieldRef: 'contact:field-email',
-        fieldType: 'EMAIL',
-        value: addresses.map((value) => ({ type: 'text', value })),
-      },
-    ],
+    identifier,
+    identifierType: 'EMAIL',
+    displayName: 'Ada Lovelace',
+    contactId: 'c1',
+    source: 'participant',
+    score: 1,
+    ...overrides,
   }
 }
 
@@ -187,127 +139,186 @@ function committedIdentifiers(onAdd: ReturnType<typeof vi.fn>): string[] {
   return onAdd.mock.calls.map((call) => (call[0] as { identifier: string }).identifier)
 }
 
-async function openPickerAndPick(name: string) {
-  await userEvent.type(screen.getByLabelText('Add recipient'), 'ada')
-  await userEvent.click(await screen.findByRole('button', { name }))
+/** Type into the field, which is what opens the suggestion popover. */
+async function search(text = 'ada') {
+  await userEvent.type(screen.getByLabelText('Add recipient'), text)
+}
+
+/**
+ * Suggestion rows only. Committed chips are `role='option'` too, so a bare
+ * `getAllByRole('option')` counts the badges already in the field.
+ */
+async function suggestionRows() {
+  const list = await screen.findByRole('listbox', { name: /^Recipient / })
+  return within(list).getAllByRole('option')
 }
 
 beforeEach(() => {
-  h.batchGet.mockReset()
   h.toastError.mockReset()
-  h.pickerItems = [ADA]
+  h.candidates = []
+  h.queryInputs = []
   Element.prototype.scrollIntoView = vi.fn()
 })
 
-describe('RecipientInput — contact expansion into N addresses', () => {
-  it('a contact with 2 emails yields 2 address rows; picking one commits that address', async () => {
-    h.batchGet.mockResolvedValue(emailValues(['a@x.com', 'b@x.com']))
+describe('RecipientInput — suggestions from search.recipients', () => {
+  it('commits the picked row identifier and its contactId as recordId', async () => {
+    h.candidates = [participant('a@x.com')]
     const { onContactSelect } = renderInput([])
 
-    await openPickerAndPick('Ada Lovelace')
+    await search()
+    await userEvent.click(await screen.findByRole('option', { name: /Ada Lovelace/ }))
 
-    // One row per address — the pick must not silently choose one.
-    const rowA = await screen.findByRole('option', { name: /a@x\.com/ })
-    const rowB = screen.getByRole('option', { name: /b@x\.com/ })
-    expect(rowA).toBeVisible()
-    expect(rowB).toBeVisible()
-    expect(onContactSelect).not.toHaveBeenCalled()
-
-    await userEvent.click(rowB)
     expect(onContactSelect).toHaveBeenCalledWith({
       // The contact's `EntityInstance.id`, under `recordId` — the chip id is
       // minted by the parent, never the record id (see `RecipientState.id`).
       recordId: 'c1',
-      identifier: 'b@x.com',
+      identifier: 'a@x.com',
       identifierType: 'EMAIL',
       name: 'Ada Lovelace',
     })
   })
 
-  it('a single-address contact commits directly without an address list', async () => {
-    h.batchGet.mockResolvedValue(emailValues(['a@x.com']))
+  // The behaviour the old "Jane has 2 addresses" popover existed to provide,
+  // now free: one Participant row per identifier, so both are just rows.
+  it('a contact with two addresses is reachable at both', async () => {
+    h.candidates = [participant('a@x.com'), participant('b@x.com')]
     const { onContactSelect } = renderInput([])
 
-    await openPickerAndPick('Ada Lovelace')
+    await search()
+    expect(await suggestionRows()).toHaveLength(2)
 
-    await waitFor(() =>
-      expect(onContactSelect).toHaveBeenCalledWith({
-        recordId: 'c1',
-        identifier: 'a@x.com',
-        identifierType: 'EMAIL',
-        name: 'Ada Lovelace',
-      })
-    )
-    expect(screen.queryByRole('option', { name: /a@x\.com/ })).not.toBeInTheDocument()
-  })
-
-  it('excludes per ADDRESS: with the primary already a recipient, picking offers only the rest', async () => {
-    h.batchGet.mockResolvedValue(emailValues(['a@x.com', 'b@x.com']))
-    const { onContactSelect } = renderInput([
-      { id: 'r1', identifier: 'a@x.com', identifierType: 'EMAIL' },
-    ])
-
-    await openPickerAndPick('Ada Lovelace')
-
-    // Only the not-yet-added address remains — exactly one candidate, so it
-    // commits directly.
-    await waitFor(() =>
-      expect(onContactSelect).toHaveBeenCalledWith(
-        expect.objectContaining({ identifier: 'b@x.com' })
-      )
+    await userEvent.click(screen.getByRole('option', { name: /b@x\.com/ }))
+    expect(onContactSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ identifier: 'b@x.com', recordId: 'c1' })
     )
   })
 
-  it('hides the contact from the list once ALL its known addresses are recipients', async () => {
-    h.batchGet.mockResolvedValue(emailValues(['a@x.com', 'b@x.com']))
-    const { rerender, onContactSelect } = renderInput([
-      { id: 'r1', identifier: 'a@x.com', identifierType: 'EMAIL' },
-    ])
+  it('excludes an identifier already in the field, keeping the contact’s others', async () => {
+    h.candidates = [participant('a@x.com'), participant('b@x.com')]
+    renderInput([{ id: 'r1', identifier: 'a@x.com', identifierType: 'EMAIL' }])
 
-    // First pick fetches + caches the full address list and commits b@x.com.
-    await openPickerAndPick('Ada Lovelace')
-    await waitFor(() => expect(onContactSelect).toHaveBeenCalled())
+    await search()
 
-    // With both addresses now recipients, the contact row is excluded.
-    rerender(
-      <RecipientInput
-        recipients={
-          [
-            { id: 'r1', identifier: 'a@x.com', identifierType: 'EMAIL' },
-            { id: 'r2', identifier: 'b@x.com', identifierType: 'EMAIL' },
-          ] as never
-        }
-        field='TO'
-        onAdd={vi.fn()}
-        onRemove={vi.fn()}
-        onMoveTo={vi.fn()}
-        onContactSelect={onContactSelect}
-        placeholder='To'
-      />
-    )
-    await userEvent.type(screen.getByLabelText('Add recipient'), 'ada')
-    expect(screen.queryByRole('button', { name: 'Ada Lovelace' })).not.toBeInTheDocument()
+    const rows = await suggestionRows()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toHaveTextContent('b@x.com')
   })
 
-  it('falls back to the picker row primary when the field read fails', async () => {
-    h.batchGet.mockRejectedValue(new Error('offline'))
+  it('shows an empty state rather than a dead row when nothing matches', async () => {
+    h.candidates = []
     const { onContactSelect } = renderInput([])
 
-    await openPickerAndPick('Ada Lovelace')
+    await search('zzz')
 
-    await waitFor(() =>
-      expect(onContactSelect).toHaveBeenCalledWith(
-        expect.objectContaining({ identifier: 'a@x.com' })
-      )
+    expect(await screen.findByText('No matching email addresses')).toBeInTheDocument()
+    expect(onContactSelect).not.toHaveBeenCalled()
+  })
+
+  it('carries a null contactId through as recordId: null', async () => {
+    h.candidates = [participant('nobody@x.com', { contactId: null, displayName: 'nobody@x.com' })]
+    const { onContactSelect } = renderInput([])
+
+    await search()
+    await userEvent.click(await screen.findByRole('option', { name: /nobody@x\.com/ }))
+
+    expect(onContactSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ recordId: null, name: null })
     )
+  })
+
+  it('passes the channel model and region to the endpoint', async () => {
+    renderPhoneInput(vi.fn(), vi.fn(), { defaultRegion: 'DE' })
+
+    await search('030')
+
+    expect(h.queryInputs).toContainEqual(expect.objectContaining({ model: 'phone', region: 'DE' }))
+  })
+
+  it('arrow keys move the highlight and Enter commits it', async () => {
+    h.candidates = [participant('a@x.com'), participant('b@x.com')]
+    const { onContactSelect, onAdd } = renderInput([])
+
+    await search()
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}')
+
+    expect(onContactSelect).toHaveBeenCalledWith(expect.objectContaining({ identifier: 'b@x.com' }))
+    // The typed text is not ALSO committed as a free-typed recipient.
+    expect(onAdd).not.toHaveBeenCalled()
+  })
+
+  it('Enter with nothing highlighted still commits the typed identifier', async () => {
+    h.candidates = [participant('a@x.com')]
+    const { onAdd, onContactSelect } = renderInput([])
+
+    await userEvent.type(screen.getByLabelText('Add recipient'), 'brand-new@x.com{Enter}')
+
+    expect(committedIdentifiers(onAdd)).toEqual(['brand-new@x.com'])
+    expect(onContactSelect).not.toHaveBeenCalled()
   })
 })
 
-// Two addresses of ONE contact is a supported motion — the exclude filter keeps
-// a contact pickable until every address of theirs is a recipient. It used to
-// produce two chips carrying the SAME id, because `handleContactSelect` wrote
-// the contact's `EntityInstance.id` into `RecipientState.id`: duplicate React
-// keys, and `onRemove(id)` matching both chips in the parent's filter.
+// §5: the subtitle is what clicking commits, and it is formatted. The record
+// picker showed `secondaryDisplayValue` — an email — on every channel, and
+// promoted it to the TITLE when the display name was missing.
+describe('RecipientInput — suggestion row shape', () => {
+  it('renders the name over the formatted identifier', async () => {
+    h.candidates = [
+      participant('+14155551234', {
+        identifierType: 'PHONE',
+        displayName: 'Ada Lovelace',
+      }),
+    ]
+    renderPhoneInput()
+
+    await search('ada')
+
+    expect(await screen.findByText('Ada Lovelace')).toBeInTheDocument()
+    expect(screen.getByText('(415) 555-1234')).toBeInTheDocument()
+    expect(screen.queryByText('+14155551234')).not.toBeInTheDocument()
+  })
+
+  it('renders ONE line when displayName equals the identifier', async () => {
+    h.candidates = [
+      participant('+14155551234', {
+        identifierType: 'PHONE',
+        // `calculateDisplayName` falls back to the identifier — ~31% of live rows.
+        displayName: '+14155551234',
+      }),
+    ]
+    renderPhoneInput()
+
+    await search('415')
+
+    const [row] = await suggestionRows()
+    // The formatted form, exactly once — not the raw string twice.
+    expect(row?.textContent).toBe('(415) 555-1234')
+  })
+
+  it('marks a contact-arm row as never messaged', async () => {
+    h.candidates = [participant('a@x.com', { source: 'contact' })]
+    renderInput([])
+
+    await search()
+
+    expect(await screen.findByTitle('You have not messaged this contact before')).toBeVisible()
+  })
+
+  it('leaves a participant-arm row unmarked', async () => {
+    h.candidates = [participant('a@x.com')]
+    renderInput([])
+
+    await search()
+
+    await suggestionRows()
+    expect(screen.queryByTitle('You have not messaged this contact before')).not.toBeInTheDocument()
+  })
+})
+
+// Two addresses of ONE contact is a supported motion — the picker lists one row
+// per identifier. It used to produce two chips carrying the SAME id, because
+// `handleContactSelect` wrote the contact's `EntityInstance.id` into
+// `RecipientState.id`: duplicate React keys, and `onRemove(id)` matching both
+// chips in the parent's filter.
 describe('two chips sourced from the same contact', () => {
   const bothOfAdas = [
     { id: 'chip-1', identifier: 'a@x.com', identifierType: 'EMAIL' as const, recordId: 'c1' },
@@ -342,23 +353,8 @@ describe('two chips sourced from the same contact', () => {
 
 // Quo (formerly OpenPhone) is the first channel whose recipient is a phone
 // number, not an address. The same input has to accept E.164, reject anything
-// libphonenumber can't parse, commit `PHONE`, and read the contact's
-// multi-value `phone` field instead of `primary_email`.
+// libphonenumber can't parse, and commit `PHONE`.
 describe('RecipientInput — phone recipientModel', () => {
-  /** batchGet payload for a contact whose phone field holds the given numbers. */
-  function phoneValues(numbers: string[]) {
-    return {
-      values: [
-        {
-          recordId: 'contact:c1',
-          fieldRef: 'contact:field-email',
-          fieldType: 'PHONE_INTL',
-          value: numbers.map((value) => ({ type: 'text', value })),
-        },
-      ],
-    }
-  }
-
   it('commits a typed number as E.164 with identifierType PHONE', async () => {
     const { onAdd } = renderPhoneInput()
 
@@ -392,33 +388,19 @@ describe('RecipientInput — phone recipientModel', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('expands a picked contact into its phone numbers, not its addresses', async () => {
-    h.pickerItems = [{ ...ADA, data: { phone: '+14155551234' } }]
-    h.batchGet.mockResolvedValue(phoneValues(['+14155551234', '+442071838750']))
+  // The dead-row bug this endpoint deletes: a phone-less contact used to render
+  // as a clickable row that silently did nothing, with its EMAIL as the
+  // subtitle. It cannot reach the list now — the query that would list it is the
+  // same query that failed to find a number for it — so there is nothing to
+  // filter on the client, and nothing that can show an address on an SMS picker.
+  it('never offers an email row on a phone channel', async () => {
+    h.candidates = []
     const { onContactSelect } = renderPhoneInput()
 
-    await openPickerAndPick('Ada Lovelace')
+    await search('ada')
 
-    const rowUs = await screen.findByRole('option', { name: /\+14155551234/ })
-    expect(rowUs).toBeVisible()
-    await userEvent.click(screen.getByRole('option', { name: /\+442071838750/ }))
-
-    expect(onContactSelect).toHaveBeenCalledWith({
-      recordId: 'c1',
-      identifier: '+442071838750',
-      identifierType: 'PHONE',
-      name: 'Ada Lovelace',
-    })
-  })
-
-  it('never falls back to the row secondaryInfo (an email) when the field read fails', async () => {
-    h.pickerItems = [{ ...ADA, data: {} }]
-    h.batchGet.mockRejectedValue(new Error('offline'))
-    const { onContactSelect } = renderPhoneInput()
-
-    await openPickerAndPick('Ada Lovelace')
-
-    await waitFor(() => expect(screen.getByTestId('record-picker')).toBeInTheDocument())
+    expect(await screen.findByText('No matching phone numbers')).toBeInTheDocument()
+    expect(screen.queryByText(/@/)).not.toBeInTheDocument()
     expect(onContactSelect).not.toHaveBeenCalled()
   })
 })
