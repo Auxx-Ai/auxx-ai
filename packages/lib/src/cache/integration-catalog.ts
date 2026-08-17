@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { PLATFORM_CAPABILITIES, type PlatformCapabilities } from '../channels/capabilities'
+import { getIdentifier } from '../channels/internal/identifier'
 import type { CachedChannel } from './providers/channels-provider'
 import { getOrgCache } from './singletons'
 
@@ -23,6 +24,16 @@ export interface IntegrationCatalogEntry {
   drafts: boolean
   attachments: boolean
   recipientModel: PlatformCapabilities['recipientModel']
+  /**
+   * The channel's OWN identifier — the address or number it sends *as*
+   * (`getIdentifier`: `Integration.email`, else `metadata.email` /
+   * `metadata.phoneNumber`, else the display name).
+   *
+   * Carried here because a phone channel's E.164 number is the only correct
+   * source for the region a national (no `+`) recipient number must be parsed
+   * against — see `regionFromIdentifier`. `null` when the channel exposes none.
+   */
+  identifier: string | null
   notes?: string
 }
 
@@ -72,6 +83,7 @@ export async function getCachedIntegrationCatalog(
       drafts: caps.drafts,
       attachments: caps.attachments,
       recipientModel: caps.recipientModel,
+      identifier: getIdentifier(c) ?? null,
       notes: caps.notes,
     })
   }
