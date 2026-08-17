@@ -172,32 +172,34 @@ vi.mock('@auxx/lib/cache', () => ({
  * places these routers touch Drizzle directly. `database` backs the former;
  * `ctx.db` (see {@link fakeDb}) backs the latter.
  */
-vi.mock('@auxx/database', () => ({
-  database: {
-    select: () => ({
-      from: () => ({
-        where: () => ({ orderBy: () => ({ limit: async () => [] }) }),
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: {
+      select: () => ({
+        from: () => ({
+          where: () => ({ orderBy: () => ({ limit: async () => [] }) }),
+        }),
       }),
-    }),
-  },
-  schema: {
-    AiAgentSession: {
-      id: 'AiAgentSession.id',
-      title: 'AiAgentSession.title',
-      type: 'AiAgentSession.type',
-      createdAt: 'AiAgentSession.createdAt',
-      updatedAt: 'AiAgentSession.updatedAt',
-      triggerContext: 'AiAgentSession.triggerContext',
-      organizationId: 'AiAgentSession.organizationId',
-      agentTriggerId: 'AiAgentSession.agentTriggerId',
     },
-    AgentProcedure: {
-      id: 'AgentProcedure.id',
-      agentId: 'AgentProcedure.agentId',
-      organizationId: 'AgentProcedure.organizationId',
+    schema: {
+      AiAgentSession: {
+        id: 'AiAgentSession.id',
+        title: 'AiAgentSession.title',
+        type: 'AiAgentSession.type',
+        createdAt: 'AiAgentSession.createdAt',
+        updatedAt: 'AiAgentSession.updatedAt',
+        triggerContext: 'AiAgentSession.triggerContext',
+        organizationId: 'AiAgentSession.organizationId',
+        agentTriggerId: 'AiAgentSession.agentTriggerId',
+      },
+      AgentProcedure: {
+        id: 'AgentProcedure.id',
+        agentId: 'AgentProcedure.agentId',
+        organizationId: 'AgentProcedure.organizationId',
+      },
     },
-  },
-}))
+  })
+)
 
 vi.mock('drizzle-orm', () => ({
   and: (...parts: unknown[]) => ({ op: 'and', parts }),
@@ -206,9 +208,7 @@ vi.mock('drizzle-orm', () => ({
   lt: (a: unknown, b: unknown) => ({ op: 'lt', a, b }),
 }))
 
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 // The `@auxx/lib/permissions` barrel reaches redis/db at import time and hangs
 // under vitest — hand back the real registry plus a stub feature service (the

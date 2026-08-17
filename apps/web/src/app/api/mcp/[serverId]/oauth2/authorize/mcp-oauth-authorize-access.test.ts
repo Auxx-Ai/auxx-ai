@@ -38,14 +38,16 @@ const { getCapabilities, getSession, redis, db, interpolate, resolveMcpConnectio
 
 vi.mock('@auxx/config/urls', () => ({ WEBAPP_URL: 'http://localhost:3000' }))
 
-vi.mock('@auxx/database', () => ({
-  database: {
-    query: {
-      McpServer: { findFirst: db.mcpServer },
-      ConnectionDefinition: { findFirst: db.connectionDefinition },
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: {
+      query: {
+        McpServer: { findFirst: db.mcpServer },
+        ConnectionDefinition: { findFirst: db.connectionDefinition },
+      },
     },
-  },
-}))
+  })
+)
 
 vi.mock('@auxx/lib/ai/mcp', () => ({ resolveMcpConnectionForRuntime: resolveMcpConnection }))
 
@@ -71,9 +73,7 @@ vi.mock('@auxx/redis', () => ({ getRedisClient: async () => redis }))
 
 vi.mock('@auxx/services/app-connections', () => ({ interpolateConnectionFields: interpolate }))
 
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 vi.mock('~/auth/server', () => ({ auth: { api: { getSession } } }))

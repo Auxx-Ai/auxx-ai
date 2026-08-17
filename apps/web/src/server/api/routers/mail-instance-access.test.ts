@@ -259,9 +259,7 @@ vi.mock('@auxx/lib/placeholders', () => ({
   resolvePlaceholdersInHtml: vi.fn(async (h: string) => h),
 }))
 vi.mock('@auxx/lib/providers', () => ({ ProviderRegistryService: class {} }))
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 /**
  * The `@auxx/lib/permissions` barrel reaches redis/db at import time and hangs

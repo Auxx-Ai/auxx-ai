@@ -1288,6 +1288,12 @@
       "import": "./dist/tasks/client.mjs",
       "default": "./src/tasks/client.ts"
     },
+    "./test/database-mock": {
+      "types": "./src/test/database-mock.ts",
+      "source": "./src/test/database-mock.ts",
+      "import": "./dist/test/database-mock.mjs",
+      "default": "./src/test/database-mock.ts"
+    },
     "./threads": {
       "types": "./src/threads/index.ts",
       "source": "./src/threads/index.ts",

@@ -107,23 +107,25 @@ function MAIL_VIEW_ROW() {
 }
 
 /** Minimal drizzle table stand-ins — only identity matters to the stub db. */
-vi.mock('@auxx/database', () => ({
-  schema: {
-    MailView: { organizationId: 'MailView.organizationId', isShared: 'MailView.isShared' },
-    FieldValue: {
-      id: 'FieldValue.id',
-      organizationId: 'FieldValue.organizationId',
-      entityDefinitionId: 'FieldValue.entityDefinitionId',
-      entityId: 'FieldValue.entityId',
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    schema: {
+      MailView: { organizationId: 'MailView.organizationId', isShared: 'MailView.isShared' },
+      FieldValue: {
+        id: 'FieldValue.id',
+        organizationId: 'FieldValue.organizationId',
+        entityDefinitionId: 'FieldValue.entityDefinitionId',
+        entityId: 'FieldValue.entityId',
+      },
+      Attachment: {
+        id: 'Attachment.id',
+        organizationId: 'Attachment.organizationId',
+        entityType: 'Attachment.entityType',
+        entityId: 'Attachment.entityId',
+      },
     },
-    Attachment: {
-      id: 'Attachment.id',
-      organizationId: 'Attachment.organizationId',
-      entityType: 'Attachment.entityType',
-      entityId: 'Attachment.entityId',
-    },
-  },
-}))
+  })
+)
 vi.mock('drizzle-orm', () => ({
   and: (...parts: unknown[]) => parts,
   eq: (a: unknown, b: unknown) => [a, b],
@@ -175,9 +177,7 @@ vi.mock('@auxx/lib/conditions/client', async () => {
   const { z } = await import('zod')
   return { conditionGroupsSchema: z.any() }
 })
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 /**
  * The REAL registry + REAL `INSTANCE_ACCESS_RESOURCES` + the REAL
@@ -789,7 +789,11 @@ describe('structural invariants — the builder itself', () => {
       ],
     ],
     ['message.ts', ['getByIds', 'listByThread']],
-    ['participant.ts', ['ensureContact', 'getByIds']],
+    // `listContactIdentifiers` arrived with the recipient chip's "other
+    // addresses" menu (#1673) and is gated on `mailProcedure` like its
+    // siblings. The tripwire fired exactly as designed — this list is the
+    // thing that has to be updated when a procedure is added.
+    ['participant.ts', ['ensureContact', 'getByIds', 'listContactIdentifiers']],
   ]
 
   it.each(GATED)('%s declares the front door exactly once', (name) => {

@@ -105,6 +105,14 @@ vi.mock('~/components/dynamic-table/components/inline-cell-editor', () => ({
   useIsInlineEditor: () => false,
 }))
 
+// `MultiValueInputField` reads the org's default phone country (#1656), which
+// goes `useSettings` -> `api.useUtils()` and needs a tRPC provider this
+// component test does not mount. The domestic default is not what any assertion
+// here is about, so stub the hook at its own leaf rather than mounting tRPC.
+vi.mock('~/components/fields/inputs/use-org-business-country', () => ({
+  useOrgBusinessCountry: () => 'US',
+}))
+
 const { RecordIdentityHeader } = await import('./record-identity-header')
 const { toPanelField } = await import('~/components/fields/rows/to-panel-field')
 const { getEditModeForFieldType } = await import('~/components/fields/utils/edit-mode')

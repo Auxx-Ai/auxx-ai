@@ -47,14 +47,7 @@ vi.mock('@auxx/lib/permissions', async () => {
 })
 
 vi.mock('@auxx/lib/tiptap', () => ({ isNonEmptyDoc: () => true }))
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({
-    debug: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-  }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 vi.mock('~/server/api/trpc', async () => {
   const { initTRPC } = await import('@trpc/server')

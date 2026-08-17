@@ -1,5 +1,8 @@
 // packages/lib/src/users/system-user-service.ts
-import { database as db, schema } from '@auxx/database'
+
+// Namespace import, deliberately — see `prepared` below.
+import * as auxxDatabase from '@auxx/database'
+import { schema } from '@auxx/database'
 import type { UserEntity, UserType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient, type RedisClient } from '@auxx/redis'
@@ -7,24 +10,55 @@ import { eq } from 'drizzle-orm'
 
 const logger = createScopedLogger('system-user-service')
 
-/** Prepared statement to get user by ID */
-const getUserByIdStmt = db
-  .select()
-  .from(schema.User)
-  .where(eq(schema.User.id, '$1'))
-  .limit(1)
-  .prepare('getUserByIdStmt')
+/**
+ * The two prepared statements, built on FIRST USE and memoized thereafter.
+ *
+ * These used to be module-level `const`s, which meant `db.select().from(…)
+ * .prepare(…)` ran at module EVALUATION. Two things then went wrong under any
+ * test that declares its own `vi.mock('@auxx/database', …)`: a factory without a
+ * `database` key fails the named-binding link check, and one whose `schema.User`
+ * is undefined dies inside Drizzle. Either kills every test in the importing
+ * file at collection — and this module sits under `sequences/runtime.ts`, which
+ * sits under the `@auxx/lib/cache` barrel, so "the importing file" is most
+ * router tests.
+ *
+ * Preparation is still once per process; only the timing moved.
+ * See `plans/testing/database-mock-collection-hazard.md`.
+ */
+const prepared: {
+  byId?: ReturnType<typeof buildByIdStmt>
+  type?: ReturnType<typeof buildTypeStmt>
+} = {}
 
-// Note: Removed prepared statement to prevent stale cache issues after schema changes
-// This query is not a hot path and doesn't benefit significantly from preparation
+function buildByIdStmt() {
+  return auxxDatabase.database
+    .select()
+    .from(schema.User)
+    .where(eq(schema.User.id, '$1'))
+    .limit(1)
+    .prepare('getUserByIdStmt')
+}
 
-/** Prepared statement to get user type by ID */
-const getUserTypeStmt = db
-  .select({ userType: schema.User.userType })
-  .from(schema.User)
-  .where(eq(schema.User.id, '$1'))
-  .limit(1)
-  .prepare('getUserTypeStmt')
+function buildTypeStmt() {
+  return auxxDatabase.database
+    .select({ userType: schema.User.userType })
+    .from(schema.User)
+    .where(eq(schema.User.id, '$1'))
+    .limit(1)
+    .prepare('getUserTypeStmt')
+}
+
+/** Prepared statement to get user by ID. */
+function getUserByIdStmt() {
+  prepared.byId ??= buildByIdStmt()
+  return prepared.byId
+}
+
+/** Prepared statement to get user type by ID. */
+function getUserTypeStmt() {
+  prepared.type ??= buildTypeStmt()
+  return prepared.type
+}
 /**
  * Static service for managing system users - AI/automated users that perform actions
  * on behalf of the system rather than real users
@@ -56,7 +90,7 @@ export class SystemUserService {
           cachedUserId,
         })
         if (cachedUserId) {
-          const [systemUser] = await getUserByIdStmt.execute({ $1: cachedUserId })
+          const [systemUser] = await getUserByIdStmt().execute({ $1: cachedUserId })
           if (systemUser) {
             return systemUser
           }
@@ -70,7 +104,7 @@ export class SystemUserService {
       }
       // Fallback to database (using regular query to avoid prepared statement cache issues)
       logger.debug('getOrganizationSystemUser: querying DB', { organizationId })
-      const orgWithUser = await db
+      const orgWithUser = await auxxDatabase.database
         .select({
           organization: schema.Organization,
           systemUser: schema.User,
@@ -121,7 +155,7 @@ export class SystemUserService {
       logger.info('createSystemUser: cache invalidated, starting transaction', { organizationId })
 
       // Use transaction to ensure atomicity
-      const systemUser = await db.transaction(async (tx) => {
+      const systemUser = await auxxDatabase.database.transaction(async (tx) => {
         // Create the system user
         logger.info('createSystemUser: inserting system user', { organizationId })
         const [newUser] = await tx
@@ -186,7 +220,7 @@ export class SystemUserService {
         }
       }
       // Fallback to database
-      const [user] = await getUserTypeStmt.execute({ $1: userId })
+      const [user] = await getUserTypeStmt().execute({ $1: userId })
       const isSystem = user?.userType === 'SYSTEM'
       // Cache the result
       if (redisClient && user) {

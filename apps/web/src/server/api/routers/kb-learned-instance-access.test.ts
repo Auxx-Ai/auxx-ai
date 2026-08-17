@@ -49,17 +49,19 @@ const {
   and: vi.fn((...parts: unknown[]) => ({ op: 'and', parts })),
 }))
 
-vi.mock('@auxx/database', () => ({
-  schema: {
-    Article: {
-      id: 'Article.id',
-      organizationId: 'Article.organizationId',
-      homeKnowledgeBaseId: 'Article.homeKnowledgeBaseId',
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    schema: {
+      Article: {
+        id: 'Article.id',
+        organizationId: 'Article.organizationId',
+        homeKnowledgeBaseId: 'Article.homeKnowledgeBaseId',
+      },
+      ArticleRevision: { id: 'ArticleRevision.id', articleId: 'ArticleRevision.articleId' },
+      KnowledgeBase: { id: 'KnowledgeBase.id', organizationId: 'KnowledgeBase.organizationId' },
     },
-    ArticleRevision: { id: 'ArticleRevision.id', articleId: 'ArticleRevision.articleId' },
-    KnowledgeBase: { id: 'KnowledgeBase.id', organizationId: 'KnowledgeBase.organizationId' },
-  },
-}))
+  })
+)
 
 vi.mock('drizzle-orm', () => ({ and, eq, count: vi.fn(() => 'count') }))
 
