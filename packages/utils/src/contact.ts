@@ -1,6 +1,6 @@
 // packages/utils/src/contact.ts
 
-import { type CountryCode, parsePhoneNumberFromString } from 'libphonenumber-js'
+import { type CountryCode, type PhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js'
 
 export type ContactName = {
   id?: string
@@ -68,6 +68,44 @@ export const getInitialsFromName = (name: string | null, empty: string = 'U'): s
 }
 
 /**
+ * Parse a phone number and return it only if it is genuinely valid.
+ *
+ * This is THE parse-and-validate gate. Everything that needs to know "is this a
+ * real number" funnels through it — {@link formatPhoneNumber} for the E.164
+ * string, `phoneSearchPatterns` for digit patterns, `lookupPhoneGeo` for the
+ * numbering-plan prefixes — so the notion of "valid" can never drift between
+ * the write path, search and enrichment.
+ *
+ * 🔴 **`isValid()`, not merely "parsed".** `parsePhoneNumberFromString` happily
+ * returns a `PhoneNumber` for a fragment: `('415', 'US')` yields `+1415`.
+ * `isValid()` is the per-country numbering-plan check, so impossible numbers are
+ * rejected rather than blessed with a `+1`.
+ *
+ * Returns the parsed object rather than a string because callers need different
+ * parts of it — `.number`, `.nationalNumber`, `.countryCallingCode`, `.country`.
+ * Reach for {@link formatPhoneNumber} when all you want is the E.164 string.
+ *
+ * ⚠️ Deliberately NOT used by the two display formatters
+ * (`field-values/converters/phone.ts`, the composer's `identifier-model.ts`):
+ * those format whatever parses and fall back to the raw string, so gating them
+ * on validity would stop them rendering already-stored legacy values.
+ *
+ * @param phone Raw user/CSV/provider input, any formatting.
+ * @param defaultCountry Region a national (no `+`) number is parsed against.
+ * @returns The parsed number, or `null` when unparseable or invalid.
+ */
+export const parseValidPhone = (
+  phone: string | null | undefined,
+  defaultCountry: CountryCode = 'US'
+): PhoneNumber | null => {
+  if (!phone) return null
+
+  const parsed = parsePhoneNumberFromString(phone.trim(), defaultCountry)
+
+  return parsed?.isValid() ? parsed : null
+}
+
+/**
  * Normalize a phone number to E.164 (`+4930901820`).
  *
  * This is THE phone normalizer — the write-path validator
@@ -76,9 +114,8 @@ export const getInitialsFromName = (name: string | null, empty: string = 'U'): s
  * drift apart.
  *
  * National numbers with no country code are parsed as `defaultCountry`
- * (US in v1; org-profile-based inference is the v2 lever). Validation uses
- * `isValid()` — the per-country numbering-plan check, not just a length check —
- * so impossible numbers are rejected rather than blessed with a `+1`.
+ * (US in v1; org-profile-based inference is the v2 lever). Validity is
+ * {@link parseValidPhone}'s `isValid()` gate.
  *
  * @param phone Raw user/CSV/provider input, any formatting.
  * @param defaultCountry Country assumed for numbers written without a `+` prefix.
@@ -87,13 +124,7 @@ export const getInitialsFromName = (name: string | null, empty: string = 'U'): s
 export const formatPhoneNumber = (
   phone: string | null,
   defaultCountry: CountryCode = 'US'
-): string | null => {
-  if (!phone) return null
-
-  const parsed = parsePhoneNumberFromString(phone.trim(), defaultCountry)
-
-  return parsed?.isValid() ? parsed.number : null
-}
+): string | null => parseValidPhone(phone, defaultCountry)?.number ?? null
 
 /** ISO-3166 region a national (no `+`) phone number is parsed against. */
 export type PhoneRegion = CountryCode
