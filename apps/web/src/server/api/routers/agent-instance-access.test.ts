@@ -111,14 +111,7 @@ vi.mock('@auxx/lib/realtime', () => ({
   getRealtimeService: () => ({}),
 }))
 
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 // See the note in `workflow-instance-access.test.ts` — the `@auxx/lib/permissions`
 // barrel reaches redis/db at import time and hangs under vitest. Hand back the

@@ -62,10 +62,12 @@ const { redis, getRedisClient, findFirst, executeWorkflow, initializeWithDefault
 )
 
 vi.mock('@auxx/redis', () => ({ getRedisClient }))
-vi.mock('@auxx/database', () => ({ database: { query: { WorkflowApp: { findFirst } } } }))
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: { query: { WorkflowApp: { findFirst } } },
+  })
+)
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 vi.mock('@auxx/lib/workflow-engine', () => ({
   WorkflowEngine: class {
     getNodeRegistry() {

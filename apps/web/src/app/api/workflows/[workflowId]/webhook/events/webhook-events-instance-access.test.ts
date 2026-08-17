@@ -34,10 +34,12 @@ const { getCapabilities, getSession, findFirst, getRedisClient, lrange, eq, and 
   })
 )
 
-vi.mock('@auxx/database', () => ({
-  database: { query: { WorkflowApp: { findFirst } } },
-  WorkflowApp: { id: 'WorkflowApp.id', organizationId: 'WorkflowApp.organizationId' },
-}))
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: { query: { WorkflowApp: { findFirst } } },
+    WorkflowApp: { id: 'WorkflowApp.id', organizationId: 'WorkflowApp.organizationId' },
+  })
+)
 
 vi.mock('drizzle-orm', () => ({ and, eq }))
 

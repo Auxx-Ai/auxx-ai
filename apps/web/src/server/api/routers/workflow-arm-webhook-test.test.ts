@@ -48,11 +48,13 @@ vi.mock('@auxx/redis', () => ({ getRedisClient }))
 // Real drizzle columns come back undefined under vitest, and `eq()` on them is
 // not worth the setup — the router's org predicate is exercised through the
 // rows the fake query builder returns, not through generated SQL.
-vi.mock('@auxx/database', () => ({
-  schema: {
-    WorkflowApp: { id: 'WorkflowApp.id', organizationId: 'WorkflowApp.organizationId' },
-  },
-}))
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    schema: {
+      WorkflowApp: { id: 'WorkflowApp.id', organizationId: 'WorkflowApp.organizationId' },
+    },
+  })
+)
 
 vi.mock('@auxx/lib/workflows', () => ({
   WorkflowService: class {

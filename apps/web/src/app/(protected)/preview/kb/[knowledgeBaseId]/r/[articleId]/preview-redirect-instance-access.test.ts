@@ -34,17 +34,19 @@ const { getCapabilities, getSession, select, where, eq, and } = vi.hoisted(() =>
   and: vi.fn((...parts: unknown[]) => ({ op: 'and', parts })),
 }))
 
-vi.mock('@auxx/database', () => ({
-  database: { select },
-  ArticlePlacement: {
-    id: 'ArticlePlacement.id',
-    slug: 'ArticlePlacement.slug',
-    parentId: 'ArticlePlacement.parentId',
-    articleId: 'ArticlePlacement.articleId',
-    knowledgeBaseId: 'ArticlePlacement.knowledgeBaseId',
-    organizationId: 'ArticlePlacement.organizationId',
-  },
-}))
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: { select },
+    ArticlePlacement: {
+      id: 'ArticlePlacement.id',
+      slug: 'ArticlePlacement.slug',
+      parentId: 'ArticlePlacement.parentId',
+      articleId: 'ArticlePlacement.articleId',
+      knowledgeBaseId: 'ArticlePlacement.knowledgeBaseId',
+      organizationId: 'ArticlePlacement.organizationId',
+    },
+  })
+)
 
 vi.mock('drizzle-orm', () => ({ and, eq }))
 

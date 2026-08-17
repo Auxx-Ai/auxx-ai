@@ -1,6 +1,6 @@
 // packages/lib/src/files/core/media-asset-service.ts
 
-import { database as db, schema } from '@auxx/database'
+import { schema } from '@auxx/database'
 import type {
   MediaAssetEntity as MediaAsset,
   MediaAssetVersionEntity as MediaAssetVersion,
@@ -25,7 +25,7 @@ import {
 } from 'drizzle-orm'
 import type { PgColumn } from 'drizzle-orm/pg-core'
 import type { DownloadRef } from '../adapters/base-adapter'
-import { BaseService, type DatabaseClient } from './base-service'
+import { BaseService, type DatabaseClient, defaultDatabase } from './base-service'
 import type { ContentAccessible } from './mixins/content-accessible'
 import type { Versioned } from './mixins/versioned'
 import type {
@@ -55,10 +55,33 @@ export class MediaAssetService
 {
   private _storageManager?: any
 
-  /** Column lookup used by the dynamic filter/sort paths. */
-  private static readonly columns: Record<string, PgColumn> = getTableColumns(schema.MediaAsset)
+  private static _columns?: Record<string, PgColumn>
 
-  constructor(organizationId?: string, userId?: string, dbInstance: DatabaseClient = db) {
+  /**
+   * Column lookup used by the dynamic filter/sort paths.
+   *
+   * Memoized behind a getter rather than a static initializer, for the same
+   * reason `resources/search/record-search-sql.ts` uses a function instead of a
+   * module-level const: a static property initializer runs when the CLASS is
+   * DEFINED, i.e. at module evaluation. Under a test whose `@auxx/database`
+   * mock leaves `schema.MediaAsset` undefined, `getTableColumns` then throws
+   * `Cannot read properties of undefined (reading 'Symbol(drizzle:Columns)')`
+   * during collection — killing every test in the file before one runs, from an
+   * import-graph edge that has nothing to do with what the file is testing.
+   *
+   * The memoization is the point (one `getTableColumns` for the process, not
+   * one per query) — only the timing moved. Do not inline this back.
+   */
+  private static get columns(): Record<string, PgColumn> {
+    MediaAssetService._columns ??= getTableColumns(schema.MediaAsset)
+    return MediaAssetService._columns
+  }
+
+  constructor(
+    organizationId?: string,
+    userId?: string,
+    dbInstance: DatabaseClient = defaultDatabase()
+  ) {
     super(organizationId, userId, dbInstance)
   }
 

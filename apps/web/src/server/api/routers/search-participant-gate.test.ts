@@ -60,11 +60,11 @@ const db = {
   }),
 }
 
-// `apps/web` has no shared `drizzle-orm` / `@auxx/database` / `@auxx/logger`
-// mock in `src/test/setup.ts` (it mocks only `next/*`), so these are this file's
-// own doubles rather than a replacement of a shared one. The predicate helpers
-// are inert on purpose — the stub `db` above never compiles SQL, and asserting
-// on built predicates is meaningless when columns are placeholder objects.
+// `drizzle-orm` has no shared helper (`@auxx/database` and `@auxx/logger` now do
+// — see `~/test/database-mock` and `~/test/logger-mock`), so this one is this
+// file's own double rather than a replacement of a shared one. The predicate
+// helpers are inert on purpose — the stub `db` above never compiles SQL, and
+// asserting on built predicates is meaningless when columns are placeholders.
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
   or: (...args: unknown[]) => ({ or: args }),
@@ -75,7 +75,12 @@ vi.mock('drizzle-orm', () => ({
   count: () => ({ count: true }),
 }))
 
-vi.mock('@auxx/database', () => ({
+// Spread form rather than a `schema:` override, because this file needs COLUMN-
+// level auto-vivification (`schema.X.y` must be a stable object, not undefined)
+// and the shared helper only vivifies tables. The spread is what supplies
+// `database` — which is the export whose absence took this file to 0 tests.
+vi.mock('@auxx/database', async () => ({
+  ...(await (await import('~/test/database-mock')).mockAuxxDatabase()),
   schema: new Proxy({} as Record<string, Record<string, object>>, {
     get: (target, table: string) => {
       if (!(table in target)) {
@@ -103,14 +108,7 @@ vi.mock('@auxx/database/enums', async (importOriginal) => ({
   ParticipantRole: { FROM: 'FROM', TO: 'TO', CC: 'CC' },
 }))
 
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 // The REAL operator vocabulary, reached at its deep path so the barrel (which
 // hangs under vitest) is never loaded. Hard-coding `'from'` here would let the

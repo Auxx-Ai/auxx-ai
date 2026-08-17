@@ -186,9 +186,7 @@ vi.mock('@auxx/lib/permissions', async () => {
   }
 })
 
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 vi.mock('~/server/api/trpc', async () => {
   const { initTRPC } = await import('@trpc/server')

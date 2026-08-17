@@ -54,52 +54,54 @@ const {
   isNull: vi.fn((value: unknown) => ({ op: 'isNull', value })),
 }))
 
-vi.mock('@auxx/database', () => ({
-  database: { select },
-  schema: {
-    Attachment: {
-      id: 'Attachment.id',
-      entityType: 'Attachment.entityType',
-      entityId: 'Attachment.entityId',
-      createdById: 'Attachment.createdById',
-      organizationId: 'Attachment.organizationId',
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: { select },
+    schema: {
+      Attachment: {
+        id: 'Attachment.id',
+        entityType: 'Attachment.entityType',
+        entityId: 'Attachment.entityId',
+        createdById: 'Attachment.createdById',
+        organizationId: 'Attachment.organizationId',
+      },
+      Message: {
+        id: 'Message.id',
+        threadId: 'Message.threadId',
+        organizationId: 'Message.organizationId',
+      },
+      Comment: {
+        id: 'Comment.id',
+        entityDefinitionId: 'Comment.entityDefinitionId',
+        entityId: 'Comment.entityId',
+        organizationId: 'Comment.organizationId',
+        deletedAt: 'Comment.deletedAt',
+      },
+      FieldValue: {
+        id: 'FieldValue.id',
+        entityDefinitionId: 'FieldValue.entityDefinitionId',
+        organizationId: 'FieldValue.organizationId',
+      },
+      EntityInstance: {
+        id: 'EntityInstance.id',
+        entityDefinitionId: 'EntityInstance.entityDefinitionId',
+        organizationId: 'EntityInstance.organizationId',
+      },
+      Article: {
+        id: 'Article.id',
+        homeKnowledgeBaseId: 'Article.homeKnowledgeBaseId',
+        organizationId: 'Article.organizationId',
+      },
+      KnowledgeBase: { id: 'KnowledgeBase.id', organizationId: 'KnowledgeBase.organizationId' },
+      ChatWidget: { id: 'ChatWidget.id', organizationId: 'ChatWidget.organizationId' },
+      VisitQcItem: {
+        id: 'VisitQcItem.id',
+        visitId: 'VisitQcItem.visitId',
+        organizationId: 'VisitQcItem.organizationId',
+      },
     },
-    Message: {
-      id: 'Message.id',
-      threadId: 'Message.threadId',
-      organizationId: 'Message.organizationId',
-    },
-    Comment: {
-      id: 'Comment.id',
-      entityDefinitionId: 'Comment.entityDefinitionId',
-      entityId: 'Comment.entityId',
-      organizationId: 'Comment.organizationId',
-      deletedAt: 'Comment.deletedAt',
-    },
-    FieldValue: {
-      id: 'FieldValue.id',
-      entityDefinitionId: 'FieldValue.entityDefinitionId',
-      organizationId: 'FieldValue.organizationId',
-    },
-    EntityInstance: {
-      id: 'EntityInstance.id',
-      entityDefinitionId: 'EntityInstance.entityDefinitionId',
-      organizationId: 'EntityInstance.organizationId',
-    },
-    Article: {
-      id: 'Article.id',
-      homeKnowledgeBaseId: 'Article.homeKnowledgeBaseId',
-      organizationId: 'Article.organizationId',
-    },
-    KnowledgeBase: { id: 'KnowledgeBase.id', organizationId: 'KnowledgeBase.organizationId' },
-    ChatWidget: { id: 'ChatWidget.id', organizationId: 'ChatWidget.organizationId' },
-    VisitQcItem: {
-      id: 'VisitQcItem.id',
-      visitId: 'VisitQcItem.visitId',
-      organizationId: 'VisitQcItem.organizationId',
-    },
-  },
-}))
+  })
+)
 
 vi.mock('drizzle-orm', () => ({ and, eq, isNull }))
 

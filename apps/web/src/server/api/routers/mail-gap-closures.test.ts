@@ -138,9 +138,7 @@ vi.mock('~/server/api/audit-context', () => ({ recordAuditFromCtx }))
 vi.mock('~/server/lib/signature-instance-access', () => ({
   assertSignatureUsable: vi.fn(async () => undefined),
 }))
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 /**
  * The REAL registry + REAL `INSTANCE_ACCESS_RESOURCES` (they are what makes

@@ -1,6 +1,8 @@
 // packages/lib/src/files/core/base-service.ts
 
-import { type Database, database as db, schema, type Transaction } from '@auxx/database'
+// Namespace import, deliberately — see `defaultDatabase` below.
+import * as auxxDatabase from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, isNull, type SQL } from 'drizzle-orm'
 import type {
   BulkOperationOptions,
@@ -19,6 +21,29 @@ export type Constructor<T = {}> = new (...args: any[]) => T
  * Using any for now to avoid complex type gymnastics with Drizzle's dynamic types
  */
 export type DatabaseClient = Database | Transaction
+
+/**
+ * The process-wide database client, read on FIRST USE rather than at import.
+ *
+ * `import { database as db }` is a named binding, and Vitest validates named
+ * bindings when the importing module is LINKED. So a test that declares its own
+ * `vi.mock('@auxx/database', …)` without a `database` key kills this file — and
+ * everything downstream of it — at collection with `No "database" export is
+ * defined on the "@auxx/database" mock`, before a single test runs.
+ *
+ * That matters far out of proportion to this file, because `cache/providers/
+ * agents-provider.ts` imports `MediaAssetService` eagerly: the chain
+ * `anything -> @auxx/lib/cache -> agents-provider -> media-asset-service ->
+ * base-service` puts this binding in the import graph of most router tests. A
+ * namespace import has no per-export link check, so the property access below
+ * happens when a service is CONSTRUCTED — by which point a real app has a real
+ * database, and a test that never constructs one never touches it.
+ *
+ * See `plans/testing/database-mock-collection-hazard.md`.
+ */
+export function defaultDatabase(): DatabaseClient {
+  return auxxDatabase.database
+}
 
 /**
  * Narrow a Drizzle `.returning()` / `.limit(1)` result to its single row.
@@ -47,7 +72,11 @@ export abstract class BaseService<
   protected readonly organizationId?: string
   protected readonly userId?: string
 
-  constructor(organizationId?: string, userId?: string, dbInstance: DatabaseClient = db) {
+  constructor(
+    organizationId?: string,
+    userId?: string,
+    dbInstance: DatabaseClient = defaultDatabase()
+  ) {
     this.organizationId = organizationId
     this.userId = userId
     this.db = dbInstance

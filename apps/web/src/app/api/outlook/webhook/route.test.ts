@@ -15,12 +15,10 @@ import { GET, POST } from './route'
  * an empty body, so every create/renew got a 500 and Outlook push stayed dead.
  */
 
-vi.mock('@auxx/database', () => ({ database: {}, schema: {} }))
+vi.mock('@auxx/database', async () => (await import('~/test/database-mock')).mockAuxxDatabase())
 vi.mock('@auxx/lib/email', () => ({ MessageService: class {} }))
 vi.mock('@auxx/lib/webhooks', () => ({ timingSafeStringEqual: () => true }))
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 const URL_BASE = 'https://app.auxx.ai/api/outlook/webhook'
 
@@ -76,14 +74,18 @@ describe('notification payloads', () => {
     expect(response.status).toBe(400)
   })
 
-  it('acknowledges an empty notification batch with 200', async () => {
+  // 202, not 200: the handler acknowledges the batch and processes it out of
+  // band to stay inside Graph's 3-second ack window (see the route's header).
+  // This assertion read 200 while the file was collecting ZERO tests, so the
+  // drift went unseen — the hazard this suite's mocks now guard against.
+  it('acknowledges an empty notification batch with 202', async () => {
     const request = new Request(URL_BASE, {
       method: 'POST',
       body: JSON.stringify({ value: [] }),
     }) as never
     const response = await POST(request)
 
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(202)
     await expect(response.json()).resolves.toMatchObject({ success: true, processed: 0 })
   })
 })
