@@ -244,6 +244,16 @@ function ReplyComposeEditorComponent({
   // was live in every mode with `disabled={isSending}` as its only gate.
   const isNewCompose = mode === 'new'
   const canSwitchChannel = isNewCompose || isEmailChannel
+
+  // A conversational channel's composer is always on — `useReplyBox` re-opens it
+  // the instant it closes (see `channelUsesAlwaysOnComposer`), so an inline X
+  // discards the draft and immediately gets a fresh empty composer back. That is
+  // a flicker, not an exit, so the button is not offered.
+  //
+  // Floating/dialog mode keeps it: there the X is a window control
+  // (`handleCloseClick`, no discard) and closing genuinely puts the composer
+  // away.
+  const showCloseButton = isDialogMode || isEmailChannel
   const pinnedChannelLabel =
     selectedChannel?.identifier ??
     selectedChannelFromList?.identifier ??
@@ -513,7 +523,16 @@ function ReplyComposeEditorComponent({
           providerError: null,
           attempts: 1,
           attachments,
-          messageType: 'EMAIL',
+          // Must match what the server will echo. `Message.messageType` is not
+          // stored — `message-query.service` derives it from the channel's
+          // provider on every read — so hardcoding EMAIL here rendered a
+          // just-sent SMS through `EmailDisplay` until the echo landed and
+          // flipped it to a bubble.
+          //
+          // The cast bridges two unions that drifted: the store's ends in
+          // `CALL`, the DB enum's in `OPENPHONE`. No capability entry declares
+          // either, so every value this can produce is in both.
+          messageType: (platformCaps?.messageType ?? 'EMAIL') as MessageMeta['messageType'],
         }
         appendOptimisticMessage(utils, sentMessage.threadId, optimistic)
 
@@ -1300,15 +1319,17 @@ function ReplyComposeEditorComponent({
               </Button>
             )}
 
-            {/* Close/Discard button */}
-            <Button
-              size='icon-sm'
-              variant='ghost'
-              className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
-              onClick={isDialogMode ? handleCloseClick : handleDiscardClick}
-              disabled={isSending || isUpserting || (isDeleting && !isDialogMode)}>
-              {isDeleting && !isDialogMode ? <Loader2 className='size-4 animate-spin' /> : <X />}
-            </Button>
+            {/* Close/Discard button — hidden on an always-on messaging composer */}
+            {showCloseButton && (
+              <Button
+                size='icon-sm'
+                variant='ghost'
+                className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
+                onClick={isDialogMode ? handleCloseClick : handleDiscardClick}
+                disabled={isSending || isUpserting || (isDeleting && !isDialogMode)}>
+                {isDeleting && !isDialogMode ? <Loader2 className='size-4 animate-spin' /> : <X />}
+              </Button>
+            )}
           </div>
         </div>
 

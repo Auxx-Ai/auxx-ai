@@ -1,9 +1,10 @@
 // packages/lib/src/channels/capabilities.ts
 
-import { IdentifierType, IntegrationProviderType } from '@auxx/database/enums'
+import { IdentifierType, IntegrationProviderType, MessageType } from '@auxx/database/enums'
 import type {
   IdentifierType as IdentifierTypeValue,
   IntegrationProviderType as IntegrationProviderTypeValue,
+  MessageType as MessageTypeValue,
 } from '@auxx/database/types'
 
 /**
@@ -85,6 +86,23 @@ export interface PlatformCapabilities {
    * participants at all. Callers must handle that rather than defaulting.
    */
   identifierType?: IdentifierTypeValue
+  /**
+   * The `MessageType` a message on this channel reads back as.
+   *
+   * `Message.messageType` is NOT a stored column — it was removed and is derived
+   * from `Integration.provider` on every read
+   * (`messages/message-query.service.ts` → `getMessageTypeFromProvider`). That
+   * function is the server-side authority and this field MUST agree with it;
+   * `__tests__/capabilities.message-type.test.ts` asserts the two maps match for
+   * every provider.
+   *
+   * It is restated here because `getMessageTypeFromProvider` lives in
+   * `providers/`, which has no client-safe subpath — the composer needs this
+   * answer to stamp an optimistic row with the same value the server echo will
+   * carry, and stamping the wrong one flips a just-sent SMS through the email
+   * renderer until the echo lands.
+   */
+  messageType: MessageTypeValue
   /** Free-form note surfaced to the LLM in the catalog stanza. */
   notes?: string
 }
@@ -110,6 +128,7 @@ export type ComposerCapabilities = Pick<
   | 'richText'
   | 'signature'
   | 'maxMessageLength'
+  | 'messageType'
 >
 
 /**
@@ -130,6 +149,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.google]: {
     channel: 'email',
     channelGroup: 'email',
+    messageType: MessageType.EMAIL,
     newOutbound: true,
     threadReply: true,
     subject: true,
@@ -144,6 +164,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.outlook]: {
     channel: 'email',
     channelGroup: 'email',
+    messageType: MessageType.EMAIL,
     newOutbound: true,
     threadReply: true,
     subject: true,
@@ -158,6 +179,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.email]: {
     channel: 'email',
     channelGroup: 'email',
+    messageType: MessageType.EMAIL,
     newOutbound: true,
     threadReply: true,
     subject: true,
@@ -172,6 +194,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.imap]: {
     channel: 'email',
     channelGroup: 'email',
+    messageType: MessageType.EMAIL,
     newOutbound: true,
     threadReply: true,
     subject: true,
@@ -186,6 +209,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.mailgun]: {
     channel: 'email',
     channelGroup: 'email',
+    messageType: MessageType.EMAIL,
     newOutbound: true,
     threadReply: true,
     subject: true,
@@ -200,6 +224,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.facebook]: {
     channel: 'messaging',
     channelGroup: 'facebook',
+    messageType: MessageType.FACEBOOK,
     newOutbound: false,
     threadReply: true,
     subject: false,
@@ -215,6 +240,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.instagram]: {
     channel: 'messaging',
     channelGroup: 'instagram',
+    messageType: MessageType.INSTAGRAM,
     newOutbound: false,
     threadReply: true,
     subject: false,
@@ -229,6 +255,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.sms]: {
     channel: 'messaging',
     channelGroup: 'sms',
+    messageType: MessageType.SMS,
     newOutbound: true,
     threadReply: true,
     subject: false,
@@ -246,6 +273,10 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.openphone]: {
     channel: 'messaging',
     channelGroup: 'sms',
+    // Quo also ingests call records, but a composer send is always a text —
+    // and the read path derives one type per provider, so SMS is the answer
+    // for every message on this channel.
+    messageType: MessageType.SMS,
     newOutbound: true,
     threadReply: true,
     subject: false,
@@ -272,6 +303,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.whatsapp]: {
     channel: 'messaging',
     channelGroup: 'whatsapp',
+    messageType: MessageType.WHATSAPP,
     newOutbound: true,
     threadReply: true,
     subject: false,
@@ -287,6 +319,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.chat]: {
     channel: 'messaging',
     channelGroup: 'chat',
+    messageType: MessageType.CHAT,
     newOutbound: true,
     threadReply: true,
     subject: false,
@@ -302,6 +335,9 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
     // Data-only integration — not a messaging channel. Excluded from the
     // catalog by callers via `channel` filter or `newOutbound + threadReply`.
     channel: 'messaging',
+    // Never produces messages. EMAIL only to agree with the server-side
+    // `getMessageTypeFromProvider`, whose fallback is EMAIL.
+    messageType: MessageType.EMAIL,
     newOutbound: false,
     threadReply: false,
     subject: false,
