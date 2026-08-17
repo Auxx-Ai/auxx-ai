@@ -247,6 +247,34 @@ export const FieldValue = pgTable(
         table.valueDate.asc().nullsLast()
       )
       .where(sql`"valueDate" IS NOT NULL`),
+
+    // Substring search over stored field VALUES — the only way to find a record
+    // by a value it holds (plans/email-editor/recipient-search.md §4.4).
+    //
+    // `EntityInstance.searchText` is `displayName + secondaryDisplayValue` and
+    // nothing else (`resources/search/record-search-sql.ts:14-18`), so record
+    // text search cannot match a field value. Measured: a 7-digit phone query
+    // against the full record text predicate matched **0 rows** over 100k
+    // contacts that all had phone numbers. With this index, `FieldValue`-first
+    // answers the same query in **0.30 ms** over 200k rows.
+    //
+    // ⚠️ **This is the one index here whose write cost is worth watching.** The
+    // five `FieldValue_lookup_*_idx` above are plain btrees; a GIN trigram index
+    // is not comparable, and this one covers EVERY `valueText` row, not just the
+    // identifier-bearing ones — on the dev DB that is 1 957 identifier values
+    // out of 39 234 rows, so it carries ~20x the rows it exists for. It cannot
+    // be narrowed: `entityDefinitionId` holds a per-org CUID rather than the
+    // literal `'contact'` its comment suggests, and `CustomField.type` is a join
+    // away and unreachable from an index predicate. Accepted deliberately,
+    // because the alternative is a recipient search that cannot find a phone
+    // number. Re-measure write latency on a bulk import; if it bites, the escape
+    // hatch is a dedicated identifier-lookup table, not a narrower index.
+    //
+    // Partial on the same principle as the lookup indexes: one index update per
+    // row, only for rows that populate this column.
+    index('FieldValue_org_field_valueText_trgm_idx')
+      .using('gin', table.organizationId, table.fieldId, table.valueText.op('gin_trgm_ops'))
+      .where(sql`"valueText" IS NOT NULL`),
   ]
 )
 

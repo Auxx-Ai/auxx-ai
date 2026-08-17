@@ -1,0 +1,4 @@
+CREATE INDEX "FieldValue_org_field_valueText_trgm_idx" ON "FieldValue" USING gin ("organizationId","fieldId","valueText" gin_trgm_ops) WHERE "valueText" IS NOT NULL;--> statement-breakpoint
+CREATE INDEX "Participant_org_displayName_trgm_idx" ON "Participant" USING gin ("organizationId","displayName" gin_trgm_ops);--> statement-breakpoint
+CREATE INDEX "Participant_org_identifier_trgm_idx" ON "Participant" USING gin ("organizationId","identifier" gin_trgm_ops);--> statement-breakpoint
+CREATE INDEX "Participant_org_lastSent_idx" ON "Participant" USING btree ("organizationId","lastSentMessageAt" DESC NULLS LAST);

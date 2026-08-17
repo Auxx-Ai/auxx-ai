@@ -2339,6 +2339,13 @@
       "when": 1786750551596,
       "tag": "0333_duplicate_suggestion",
       "breakpoints": true
+    },
+    {
+      "idx": 334,
+      "version": "7",
+      "when": 1786992306020,
+      "tag": "0334_participant_and_fieldvalue_search_indexes",
+      "breakpoints": true
     }
   ]
 }
