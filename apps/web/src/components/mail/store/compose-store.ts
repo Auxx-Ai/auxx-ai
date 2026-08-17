@@ -25,11 +25,31 @@ export interface ComposeInstance {
   zIndex: number
   subject: string
   pendingFocus: boolean
+  /**
+   * The draft this composer has autosaved into, which is how {@link
+   * ComposeStore.findByDraft} recognises it. A composer opened as `mode: 'new'`
+   * or `'reply'` creates its draft *while open*, and that id only ever lived in
+   * the editor's own state — so opening the same draft from the drafts list
+   * matched nothing and opened a SECOND composer onto it.
+   *
+   * 🔴 Deliberately NOT written into `draft`. That field is the editor's
+   * `initialDraft` prop, and the editor re-derives its entire state (recipients,
+   * body, attachments) whenever the prop's id changes — pushing a freshly-saved
+   * id back in would wipe the draft the user is still typing.
+   */
+  savedDraftId: string | null
 }
 
 type OpenConfig = Omit<
   ComposeInstance,
-  'id' | 'displayMode' | 'portalTargetId' | 'position' | 'zIndex' | 'subject' | 'pendingFocus'
+  | 'id'
+  | 'displayMode'
+  | 'portalTargetId'
+  | 'position'
+  | 'zIndex'
+  | 'subject'
+  | 'pendingFocus'
+  | 'savedDraftId'
 > & {
   displayMode?: DisplayMode
   pendingFocus?: boolean
@@ -49,6 +69,8 @@ interface ComposeStore {
   bringToFront: (id: string) => void
   updatePosition: (id: string, position: { x: number; y: number }) => void
   updateSubject: (id: string, subject: string) => void
+  /** Record the draft autosave just wrote (or `null` when it was deleted). */
+  recordSavedDraft: (id: string, draftId: string | null) => void
   dock: (id: string, portalTargetId: string) => void
   undock: (id: string) => void
   clearPendingFocus: (id: string) => void
@@ -99,6 +121,7 @@ export const useComposeStore = create<ComposeStore>((set, get) => ({
       subject:
         config.draft?.subject || config.presetValues?.subject || config.thread?.subject || '',
       pendingFocus: config.pendingFocus ?? false,
+      savedDraftId: null,
     }
 
     console.log('[ComposeStore] open', id, instance.displayMode, instance.mode)
@@ -158,6 +181,14 @@ export const useComposeStore = create<ComposeStore>((set, get) => ({
     }))
   },
 
+  recordSavedDraft: (id, draftId) => {
+    set((state) => ({
+      instances: state.instances.map((i) =>
+        i.id === id && i.savedDraftId !== draftId ? { ...i, savedDraftId: draftId } : i
+      ),
+    }))
+  },
+
   dock: (id, portalTargetId) => {
     set((state) => ({
       instances: state.instances.map((i) =>
@@ -194,6 +225,6 @@ export const useComposeStore = create<ComposeStore>((set, get) => ({
   },
 
   findByDraft: (draftId) => {
-    return get().instances.find((i) => i.draft?.id === draftId)
+    return get().instances.find((i) => i.draft?.id === draftId || i.savedDraftId === draftId)
   },
 }))

@@ -114,6 +114,18 @@ interface RecipientInputProps {
    * Ignored by the email model.
    */
   defaultRegion?: PhoneRegion
+  /**
+   * Whether the selected channel carries carbon copies at all
+   * (`PlatformCapabilities.ccBcc`). False on SMS, FB, IG — every channel whose
+   * envelope has one recipient list — and it must gate the chip menu's "Move to
+   * Cc/Bcc" rows, not just the header's Cc/Bcc toggles: the move writes a
+   * recipient into a field the composer never renders and the send never reads,
+   * so the recipient silently disappears.
+   *
+   * Absent → true, which is email, the model for every caller without resolved
+   * capabilities.
+   */
+  supportsCcBcc?: boolean
 }
 
 const FIELD_LABELS: Record<RecipientField, string> = { TO: 'To', CC: 'Cc', BCC: 'Bcc' }
@@ -166,6 +178,7 @@ function RecipientBadge({
   highlightedIndex,
   disabled,
   field,
+  supportsCcBcc = true,
   onRemove,
   onMoveTo,
   onSwitchIdentifier,
@@ -189,6 +202,8 @@ function RecipientBadge({
   highlightedIndex: number | null
   disabled?: boolean
   field: RecipientField
+  /** See {@link RecipientInputProps.supportsCcBcc} — gates the move rows. */
+  supportsCcBcc?: boolean
   onRemove: (id: string) => void
   onMoveTo: (id: string, target: RecipientField) => void
   onSwitchIdentifier: (
@@ -208,6 +223,11 @@ function RecipientBadge({
   const displayIdentifier = spec.formatDisplay(person.identifier)
   const displayName = person.name ?? displayIdentifier
   const isHighlighted = highlightedIndex === index
+  /**
+   * On a channel without carbon copies this is empty, and the menu ends after
+   * the addresses — a Cc that cannot be sent must not be offerable.
+   */
+  const moveTargets = ALL_FIELDS.filter((f) => f !== field && (supportsCcBcc || f === 'TO'))
 
   /**
    * The contact's other addresses, fetched ON OPEN.
@@ -386,10 +406,10 @@ function RecipientBadge({
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuSeparator />
+            {moveTargets.length > 0 && <DropdownMenuSeparator />}
           </>
         )}
-        {ALL_FIELDS.filter((f) => f !== field).map((target) => (
+        {moveTargets.map((target) => (
           <DropdownMenuItem key={target} onSelect={() => onMoveTo(person.id, target)}>
             <Mail />
             Move to {FIELD_LABELS[target]}
@@ -414,6 +434,7 @@ export function RecipientInput({
   popoverClassName,
   recipientModel,
   defaultRegion = DEFAULT_PHONE_REGION,
+  supportsCcBcc = true,
 }: RecipientInputProps) {
   const spec = useMemo(
     () => getIdentifierModel(recipientModel, defaultRegion),
@@ -690,6 +711,7 @@ export function RecipientInput({
           highlightedIndex={highlightedIndex}
           disabled={disabled}
           field={field}
+          supportsCcBcc={supportsCcBcc}
           onRemove={(id) => {
             onRemove(id)
             setHighlightedIndex(null)
