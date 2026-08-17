@@ -1,13 +1,16 @@
 // apps/web/src/components/mail/email-editor/identifier-model.ts
 
-import { IdentifierType } from '@auxx/database/enums'
 import type { IdentifierType as IdentifierTypeType } from '@auxx/database/types'
-import type { PlatformCapabilities } from '@auxx/lib/channels/client'
+import {
+  EMAIL_IDENTIFIER_FIELDS,
+  PHONE_IDENTIFIER_FIELDS,
+  type RecipientModel,
+} from '@auxx/lib/participants/channel-identifier-fields'
 import { formatPhoneNumber } from '@auxx/utils'
 import { type CountryCode, parsePhoneNumberFromString } from 'libphonenumber-js'
 
 /** The shape of identifier a channel addresses — `PlatformCapabilities.recipientModel`. */
-export type RecipientModel = PlatformCapabilities['recipientModel']
+export type { RecipientModel }
 
 /**
  * ISO-3166 region a national (no `+`) phone number is parsed against.
@@ -38,10 +41,12 @@ export function regionFromIdentifier(identifier?: string | null): PhoneRegion {
  * which contact field holds the candidate values, and what to call the thing
  * in copy.
  *
- * Keyed by `recipientModel` so the composer stays capability-driven — the same
- * switch the agent path uses in
- * `packages/lib/src/ai/kopilot/capabilities/mail/recipient-resolver.ts`
- * (`identifierTypesForIntegration` / `systemAttributeForChannel`).
+ * Keyed by `recipientModel` so the composer stays capability-driven. The
+ * model→field half now comes from `@auxx/lib/participants/channel-identifier-fields`,
+ * which the agent send path (`recipient-resolver.ts`) binds too — so there is one
+ * answer to "which contact field does this channel address", not two that agree
+ * by inspection. What stays local is genuinely UI: validation, display
+ * formatting, and copy.
  */
 export interface IdentifierModelSpec {
   /** `IdentifierType` committed on every recipient of this model. */
@@ -49,10 +54,13 @@ export interface IdentifierModelSpec {
 
   /**
    * `systemAttribute` candidates on the contact definition, in preference
-   * order. The first one that resolves to a field wins. Mirrors
-   * `systemAttributeForChannel` in the kopilot recipient resolver.
+   * order. The first one that resolves to a field wins.
+   *
+   * Comes from `@auxx/lib/participants/channel-identifier-fields` — the SAME
+   * switch the agent send path binds. It used to be restated here, which is how
+   * a composer reading `primary_email` on a phone channel becomes possible.
    */
-  systemAttributes: string[]
+  systemAttributes: readonly string[]
 
   /**
    * Key on the picker row's raw `data` holding the record's primary value —
@@ -94,8 +102,8 @@ export interface IdentifierModelSpec {
 const EMAIL_RE = /\S+@\S+\.\S+/
 
 const EMAIL_SPEC: IdentifierModelSpec = {
-  identifierType: IdentifierType.EMAIL,
-  systemAttributes: ['primary_email'],
+  identifierType: EMAIL_IDENTIFIER_FIELDS.identifierType,
+  systemAttributes: EMAIL_IDENTIFIER_FIELDS.systemAttributes,
   rowDataKey: 'email',
   secondaryInfoIsIdentifier: true,
   normalize: (raw) => {
@@ -117,10 +125,8 @@ const EMAIL_SPEC: IdentifierModelSpec = {
  */
 function createPhoneSpec(region: PhoneRegion): IdentifierModelSpec {
   return {
-    identifierType: IdentifierType.PHONE,
-    // `phone` is what the contact registry seeds (contact-fields.ts); older /
-    // connector-provisioned orgs can carry `primary_phone`.
-    systemAttributes: ['phone', 'primary_phone'],
+    identifierType: PHONE_IDENTIFIER_FIELDS.identifierType,
+    systemAttributes: PHONE_IDENTIFIER_FIELDS.systemAttributes,
     rowDataKey: 'phone',
     secondaryInfoIsIdentifier: false,
     // `formatPhoneNumber` is THE phone normalizer (libphonenumber-backed, E.164

@@ -868,6 +868,12 @@
       "import": "./dist/participants/index.mjs",
       "default": "./src/participants/index.ts"
     },
+    "./participants/channel-identifier-fields": {
+      "types": "./src/participants/channel-identifier-fields.ts",
+      "source": "./src/participants/channel-identifier-fields.ts",
+      "import": "./dist/participants/channel-identifier-fields.mjs",
+      "default": "./src/participants/channel-identifier-fields.ts"
+    },
     "./permissions": {
       "types": "./src/permissions/index.ts",
       "source": "./src/permissions/index.ts",
