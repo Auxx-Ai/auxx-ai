@@ -19,11 +19,13 @@ import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
 import type { DraftMapping, MappingDraftMutations } from '../stores/connector-draft-store'
 import {
+  bareTokenNodePath,
   bindingFor,
   isBareToken,
   removeBindingForSource,
   retargetFormulaEntry,
   setEntryIdentityRole,
+  toNodePath,
   upsertBinding,
 } from '../ui/field-mapping-edits'
 import type { IdentityRole } from '../ui/identity-role-control'
@@ -123,19 +125,12 @@ export function useMappingActions({
     )
   }
 
+  // `sourcePath` is the tree's NODE path. Both halves go through the shared edits
+  // module so the stored expression carries the BINDING form (`emails[0].value`) the
+  // runtime can resolve — writing the node form verbatim, as this used to, produced a
+  // binding that looked right in the builder and resolved to `undefined` at sync.
   const assignTarget = (sourcePath: string, targetRef: string) => {
-    // Drop any prior bare-token entry bound to this source (1 source → 1 target), then
-    // append a fresh entry with a stable id.
-    const next = fieldMappings.filter(
-      (e) => !(isBareToken(e.expression) && e.expression.replace(/^\{|\}$/g, '') === sourcePath)
-    )
-    next.push({
-      id: generateId(),
-      targetFieldRef: targetRef,
-      expression: `{${sourcePath}}`,
-      sourceFields: { [sourcePath]: sourcePath },
-    })
-    writeEntries(next)
+    writeEntries(upsertBinding(fieldMappings, sourcePath, targetRef))
   }
 
   const clearEntry = (id: string) => writeEntries(fieldMappings.filter((e) => e.id !== id))
@@ -155,18 +150,17 @@ export function useMappingActions({
         e.identityRole?.kind === 'externalId' ? { ...e, identityRole: undefined } : e
       )
     }
+    // Matched in NODE space, minted in BINDING space — same contract as `assignTarget`.
+    const nodePath = toNodePath(sourcePath)
     const idx = next.findIndex(
-      (e) => isBareToken(e.expression) && e.expression.replace(/^\{|\}$/g, '') === sourcePath
+      (e) => isBareToken(e.expression) && bareTokenNodePath(e.expression) === nodePath
     )
     if (idx === -1) {
       if (role == null) return
       next = [
         ...next,
         {
-          id: generateId(),
-          targetFieldRef: null,
-          expression: `{${sourcePath}}`,
-          sourceFields: { [sourcePath]: sourcePath },
+          ...bindingFor(sourcePath, null),
           identityRole:
             role === 'externalId' ? { kind: 'externalId' } : { kind: 'match', normalize: 'none' },
         },
