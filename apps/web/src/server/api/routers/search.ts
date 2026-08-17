@@ -1,11 +1,8 @@
 import { schema } from '@auxx/database'
-import { getCachedEntityDefId, getCachedUserInstanceGrants } from '@auxx/lib/cache'
 import { InboxService } from '@auxx/lib/inboxes'
 import { IsOperatorValue, SearchOperator } from '@auxx/lib/mail-query'
-import { buildMailVisibilityPredicate } from '@auxx/lib/mail-query/visibility-scope'
 import { listMembersWithUser } from '@auxx/lib/members'
-import { searchRecipients } from '@auxx/lib/participants/search'
-import { PermissionKey, resolveRecordVisibilityScope } from '@auxx/lib/permissions'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { listAll } from '@auxx/lib/resources'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, count as drizzleCount, eq, ilike, inArray, or, sql } from 'drizzle-orm'
@@ -468,6 +465,29 @@ export const searchRouter = createTRPCRouter({
       // Same coarse mail door as `participants` above — this is the same
       // `Participant` corpus reached through a better query.
       ctx.capabilities.assert(PermissionKey.inboxesView)
+
+      // 🔴 Lazy imports, and NOT a style choice. At module scope these pull
+      // `@auxx/lib/cache`'s provider graph and `visibility-scope`'s
+      // `import { database }`, both of which touch `schema` / the db singleton
+      // while the module is being evaluated. That broke COLLECTION for every
+      // router test that mocks `@auxx/database` — `search-participant-gate.test.ts`
+      // went from 17 passing tests to 0 with `No "database" export is defined on
+      // the "@auxx/database" mock`. Introduced by #1670 and missed because a suite
+      // collecting zero tests does not read as a failure at a glance. Same reason
+      // `@auxx/lib/apps` and the workflow engine are imported dynamically.
+      const [
+        { getCachedEntityDefId },
+        { getCachedUserInstanceGrants },
+        { buildMailVisibilityPredicate },
+        { searchRecipients },
+        { resolveRecordVisibilityScope },
+      ] = await Promise.all([
+        import('@auxx/lib/cache/org-cache-helpers'),
+        import('@auxx/lib/cache/user-cache-helpers'),
+        import('@auxx/lib/mail-query/visibility-scope'),
+        import('@auxx/lib/participants/search'),
+        import('@auxx/lib/permissions'),
+      ])
       const organizationId = ctx.session.organizationId
       const userId = ctx.session.user.id
 

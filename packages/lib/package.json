@@ -202,11 +202,23 @@
       "import": "./dist/cache/index.mjs",
       "default": "./src/cache/index.ts"
     },
+    "./cache/org-cache-helpers": {
+      "types": "./src/cache/org-cache-helpers.ts",
+      "source": "./src/cache/org-cache-helpers.ts",
+      "import": "./dist/cache/org-cache-helpers.mjs",
+      "default": "./src/cache/org-cache-helpers.ts"
+    },
     "./cache/providers/governing-instance-ids-provider": {
       "types": "./src/cache/providers/governing-instance-ids-provider.ts",
       "source": "./src/cache/providers/governing-instance-ids-provider.ts",
       "import": "./dist/cache/providers/governing-instance-ids-provider.mjs",
       "default": "./src/cache/providers/governing-instance-ids-provider.ts"
+    },
+    "./cache/user-cache-helpers": {
+      "types": "./src/cache/user-cache-helpers.ts",
+      "source": "./src/cache/user-cache-helpers.ts",
+      "import": "./dist/cache/user-cache-helpers.mjs",
+      "default": "./src/cache/user-cache-helpers.ts"
     },
     "./channels": {
       "types": "./src/channels/index.ts",
