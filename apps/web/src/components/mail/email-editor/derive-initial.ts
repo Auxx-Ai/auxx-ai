@@ -1,5 +1,6 @@
 import { ParticipantRole } from '@auxx/database/enums'
 import { htmlToDoc } from '@auxx/lib/tiptap'
+import { generateId } from '@auxx/utils'
 import type { JSONContent } from '@tiptap/core'
 import type {
   DraftMessageType,
@@ -112,7 +113,7 @@ export function deriveInitialState({
         return
       }
       const recipient: RecipientState = {
-        id: participant.id,
+        id: generateId(),
         identifier: participant.identifier,
         identifierType: participant.identifierType,
         name: participant.name,
@@ -163,26 +164,31 @@ export function deriveInitialState({
     const from = sourceMessage.from
     if (from) {
       to.push({
-        id: from.id,
+        id: generateId(),
         identifier: from.identifier,
         identifierType: from.identifierType,
         name: from.name,
       })
     }
-    // For reply all, add other participants to CC
+    // For reply all, add other participants to CC.
+    //
+    // Deduped on `identifier`, NOT on the chip id: a chip id is minted per chip
+    // and can never equal a `Participant.id`, so the old `addedIds` set would
+    // have matched nothing and replied-all to the sender twice. Identifier is
+    // also the key `upsertRecipient` and `deduplicateRecipients` already use.
     if (mode === 'replyAll') {
-      const addedIds = new Set(to.map((r) => r.id))
+      const addedIdentifiers = new Set(to.map((r) => r.identifier))
       sourceMessage.participants?.forEach((p) => {
         const participant = p.participant
-        if (!participant || addedIds.has(participant.id)) return
+        if (!participant || addedIdentifiers.has(participant.identifier)) return
         if (p.role === ParticipantRole.TO || p.role === ParticipantRole.CC) {
           cc.push({
-            id: participant.id,
+            id: generateId(),
             identifier: participant.identifier,
             identifierType: participant.identifierType,
             name: participant.name,
           })
-          addedIds.add(participant.id)
+          addedIdentifiers.add(participant.identifier)
         }
       })
     }

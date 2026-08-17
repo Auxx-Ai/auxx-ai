@@ -10,6 +10,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
+import { generateId } from '@auxx/utils'
 import { stableStringify } from '@auxx/utils/json'
 import type { JSONContent } from '@tiptap/core'
 import {
@@ -380,7 +381,8 @@ function ReplyComposeEditorComponent({
             ...prev,
             TO: [
               {
-                id: threadCounterparty.id,
+                // `threadCounterparty.id` is a `Participant.id` — not a chip id.
+                id: generateId(),
                 identifier: threadCounterparty.identifier,
                 identifierType: threadCounterparty.identifierType,
                 name: threadCounterparty.name,
@@ -795,17 +797,21 @@ function ReplyComposeEditorComponent({
     (
       role: 'TO' | 'CC' | 'BCC',
       contactData: {
-        id: string
+        recordId: string
         identifier: string
         identifierType: IdentifierType
         name?: string | null
       }
     ) => {
+      // The chip id is minted here; the contact's id goes to `recordId`. Writing
+      // the record id into `id` made two addresses of one contact collide — see
+      // the note on `RecipientState.id`.
       upsertRecipient(role, {
-        id: contactData.id,
+        id: generateId(),
         identifier: contactData.identifier,
         identifierType: contactData.identifierType,
         name: contactData.name,
+        recordId: contactData.recordId,
       })
     },
     [upsertRecipient]
@@ -1383,6 +1389,14 @@ function ReplyComposeEditorComponent({
                 <div className='flex items-center gap-2 px-4 py-2'>
                   <span className='w-10 shrink-0 text-sm text-muted-foreground'>To:</span>
                   <RecipientInput
+                    // Remount on a From switch that changes the identifier model.
+                    // `reconcile-channel-switch` fixes the committed chips, but
+                    // the input keeps per-contact address lists fetched under the
+                    // OLD spec plus a half-typed value — so a pick made right
+                    // after switching email→phone offered email addresses and
+                    // committed one with `identifierType: PHONE`. Shipped in
+                    // #1654; reply mode can't reach it because From is pinned.
+                    key={platformCaps?.recipientModel ?? 'email'}
                     ref={toInputRef}
                     recipientModel={platformCaps?.recipientModel}
                     defaultRegion={phoneRegion}
@@ -1438,6 +1452,7 @@ function ReplyComposeEditorComponent({
                   <div className='flex items-center gap-2 px-4 py-2'>
                     <span className='w-10 shrink-0 text-sm text-muted-foreground'>Cc:</span>
                     <RecipientInput
+                      key={platformCaps?.recipientModel ?? 'email'}
                       ref={ccInputRef}
                       recipientModel={platformCaps?.recipientModel}
                       defaultRegion={phoneRegion}
@@ -1473,6 +1488,7 @@ function ReplyComposeEditorComponent({
                   <div className='flex items-center gap-2 px-4 py-2'>
                     <span className='w-10 shrink-0 text-sm text-muted-foreground'>Bcc:</span>
                     <RecipientInput
+                      key={platformCaps?.recipientModel ?? 'email'}
                       ref={bccInputRef}
                       recipientModel={platformCaps?.recipientModel}
                       defaultRegion={phoneRegion}

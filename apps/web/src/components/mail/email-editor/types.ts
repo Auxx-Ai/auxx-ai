@@ -187,10 +187,36 @@ export type LocalAttachment = FileAttachment & {
 
 export type EditorMode = 'reply' | 'replyAll' | 'forward' | 'new' | 'draft'
 export interface RecipientState {
+  /**
+   * Chip identity, minted per chip with `generateId()`.
+   *
+   * 🔴 **NEVER a domain id.** This used to carry whatever id the chip's source
+   * happened to have — an `EntityInstance.id` from the record picker
+   * (`handleContactSelect`), a `Participant.id` from a draft, a reply's `from`
+   * or the always-on seed, or a `temp_<now>_<identifier>` string from typing.
+   * Four keyspaces in one field, and `removeRecipient` filters on it while the
+   * badge list keys on it — so two chips sourced from the SAME contact (two of
+   * Jane's email addresses, which the picker deliberately allows) collided:
+   * duplicate React keys, and `×` on either chip removed BOTH.
+   *
+   * Use {@link RecipientState.recordId} when you need the contact.
+   */
   id: string
   identifier: string
   identifierType: IdentifierType
   name?: string | null
+  /**
+   * `EntityInstance.id` of the contact this identifier belongs to, when the chip
+   * came from a source that knew one (the record picker). Absent for typed,
+   * pasted, reply-derived and draft-restored chips — the send payload
+   * (`toPayload`) carries only `{identifier, identifierType, name}`, so a chip
+   * that survives a draft round-trip comes back without it.
+   *
+   * Consumed by nothing yet; it is the prerequisite for the chip-menu
+   * "switch to another address" surface
+   * (`plans/email-editor/recipient-address-switch.md`).
+   */
+  recordId?: string
 }
 
 export type Recipients = {

@@ -124,22 +124,28 @@ function emailValues(addresses: string[], recordId = 'contact:c1') {
 }
 
 function renderInput(
-  recipients: Array<{ id: string; identifier: string; identifierType: 'EMAIL' }>,
+  recipients: Array<{
+    id: string
+    identifier: string
+    identifierType: 'EMAIL'
+    recordId?: string
+  }>,
   onContactSelect = vi.fn(),
-  onAdd = vi.fn()
+  onAdd = vi.fn(),
+  onRemove = vi.fn()
 ) {
   const utils = render(
     <RecipientInput
       recipients={recipients as never}
       field='TO'
       onAdd={onAdd}
-      onRemove={vi.fn()}
+      onRemove={onRemove}
       onMoveTo={vi.fn()}
       onContactSelect={onContactSelect}
       placeholder='To'
     />
   )
-  return { ...utils, onContactSelect, onAdd }
+  return { ...utils, onContactSelect, onAdd, onRemove }
 }
 
 interface PhoneRecipientStub {
@@ -209,7 +215,9 @@ describe('RecipientInput — contact expansion into N addresses', () => {
 
     await userEvent.click(rowB)
     expect(onContactSelect).toHaveBeenCalledWith({
-      id: 'c1',
+      // The contact's `EntityInstance.id`, under `recordId` — the chip id is
+      // minted by the parent, never the record id (see `RecipientState.id`).
+      recordId: 'c1',
       identifier: 'b@x.com',
       identifierType: 'EMAIL',
       name: 'Ada Lovelace',
@@ -224,7 +232,7 @@ describe('RecipientInput — contact expansion into N addresses', () => {
 
     await waitFor(() =>
       expect(onContactSelect).toHaveBeenCalledWith({
-        id: 'c1',
+        recordId: 'c1',
         identifier: 'a@x.com',
         identifierType: 'EMAIL',
         name: 'Ada Lovelace',
@@ -295,6 +303,43 @@ describe('RecipientInput — contact expansion into N addresses', () => {
   })
 })
 
+// Two addresses of ONE contact is a supported motion — the exclude filter keeps
+// a contact pickable until every address of theirs is a recipient. It used to
+// produce two chips carrying the SAME id, because `handleContactSelect` wrote
+// the contact's `EntityInstance.id` into `RecipientState.id`: duplicate React
+// keys, and `onRemove(id)` matching both chips in the parent's filter.
+describe('two chips sourced from the same contact', () => {
+  const bothOfAdas = [
+    { id: 'chip-1', identifier: 'a@x.com', identifierType: 'EMAIL' as const, recordId: 'c1' },
+    { id: 'chip-2', identifier: 'b@x.com', identifierType: 'EMAIL' as const, recordId: 'c1' },
+  ]
+
+  it('renders one badge per address', () => {
+    renderInput(bothOfAdas)
+
+    expect(screen.getByRole('option', { name: 'Recipient: a@x.com' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Recipient: b@x.com' })).toBeInTheDocument()
+  })
+
+  it('removes only the clicked chip — onRemove gets that chip id, not the shared recordId', async () => {
+    const { onRemove } = renderInput(bothOfAdas, vi.fn(), vi.fn(), vi.fn())
+
+    await userEvent.click(screen.getByLabelText('Remove b@x.com'))
+
+    expect(onRemove).toHaveBeenCalledTimes(1)
+    expect(onRemove).toHaveBeenCalledWith('chip-2')
+    expect(onRemove).not.toHaveBeenCalledWith('c1')
+  })
+
+  // Worth being precise about what these two tests do and do not cover: they pin
+  // the CONTRACT (distinct ids in → the right id back out), not the defect. The
+  // defect was the parent minting `id: contactData.id`, and what actually makes
+  // that unrepresentable is the type — `onContactSelect` now takes `recordId`,
+  // so no caller can hand a record id to the field the badge list keys on.
+  // Reproducing the original two-identical-chips state needs the whole editor;
+  // the type is the stronger guarantee, so it is deliberately not restated here.
+})
+
 // Quo (formerly OpenPhone) is the first channel whose recipient is a phone
 // number, not an address. The same input has to accept E.164, reject anything
 // libphonenumber can't parse, commit `PHONE`, and read the contact's
@@ -359,7 +404,7 @@ describe('RecipientInput — phone recipientModel', () => {
     await userEvent.click(screen.getByRole('option', { name: /\+442071838750/ }))
 
     expect(onContactSelect).toHaveBeenCalledWith({
-      id: 'c1',
+      recordId: 'c1',
       identifier: '+442071838750',
       identifierType: 'PHONE',
       name: 'Ada Lovelace',
