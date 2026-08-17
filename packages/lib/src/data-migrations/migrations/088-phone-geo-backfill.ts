@@ -136,6 +136,10 @@ export const migration088PhoneGeoBackfill: DataMigrationDef = {
 
         const inserts: Array<typeof schema.FieldValue.$inferInsert> = []
         for (const contact of contacts.rows) {
+          // No region argument: `valueText` is E.164 (`fieldValueSchemas.phone` normalizes on
+          // write), which is self-describing. Any legacy national-format row resolves to `null`
+          // rather than being guessed against US — the right outcome for a job whose entire
+          // output is a claim about where a number is from.
           const geo = lookupPhoneGeo(contact.valueText)
           if (!geo) continue
           for (const target of org.targets) {

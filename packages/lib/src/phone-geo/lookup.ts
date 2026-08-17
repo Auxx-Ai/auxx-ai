@@ -22,8 +22,8 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { createScopedLogger } from '@auxx/logger'
+import { type PhoneRegion, parseValidPhone } from '@auxx/utils'
 import { deserialize } from 'bson'
-import { type CountryCode, parsePhoneNumberFromString } from 'libphonenumber-js'
 import type { PhoneGeo } from './types'
 
 const logger = createScopedLogger('phone-geo')
@@ -215,24 +215,35 @@ export function warmPhoneGeo(): void {
 }
 
 /**
- * Derive city/region/country/timezone from an E.164 phone number.
+ * Derive city/region/country/timezone from a phone number.
  *
- * Pure and synchronous — no database, no network. Returns `null` when the number is unparseable
- * or nothing at all could be derived.
+ * Pure and synchronous — no database, no network. Returns `null` when the number is unparseable,
+ * invalid, or nothing at all could be derived.
  *
- * @param e164 A phone number. Anything `libphonenumber-js` can parse works, but callers should
- *   pass E.164; values read from `Participant.identifier` are only digit-stripped and must go
- *   through `formatPhoneNumber` from `@auxx/utils` first.
- * @param defaultCountry Region assumed for numbers written without a `+` prefix.
+ * 🔴 **A national (no `+`) number without an explicit `region` returns `null` rather than being
+ * guessed at.** Assuming a region here fails *silently*: E.164 drops the trunk prefix, so parsing
+ * Berlin's `030 901820` against `US` does not error — it yields a plausible answer for a number
+ * the caller never meant. Since this function's whole job is to say where a number is from, a
+ * wrong region produces a confidently wrong city. E.164 input is self-describing and needs no
+ * region, which is every production caller: the hook and the backfill both read `FieldValue`,
+ * already normalized by `fieldValueSchemas.phone`.
+ *
+ * @param phone A phone number. E.164 (`+13102030000`) needs no `region`.
+ * @param region Region a national (no `+`) number is parsed against. Derive it from the relevant
+ *   channel's own number via `regionFromIdentifier` — never a global default. Values read from
+ *   `Participant.identifier` are only digit-stripped, not E.164, so they need this too.
  */
 export function lookupPhoneGeo(
-  e164: string | null | undefined,
-  defaultCountry: CountryCode = 'US'
+  phone: string | null | undefined,
+  region?: PhoneRegion
 ): PhoneGeo | null {
-  if (!e164) return null
+  if (!phone) return null
 
-  const parsed = parsePhoneNumberFromString(e164.trim(), defaultCountry)
-  if (!parsed?.isValid()) return null
+  const trimmed = phone.trim()
+  if (!trimmed.startsWith('+') && !region) return null
+
+  const parsed = parseValidPhone(trimmed, region)
+  if (!parsed) return null
 
   const callingCode = String(parsed.countryCallingCode)
   const nationalNumber = parsed.nationalNumber

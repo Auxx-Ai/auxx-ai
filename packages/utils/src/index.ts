@@ -29,6 +29,7 @@ export {
   getInitials,
   getInitialsFromName,
   type PhoneRegion,
+  parseValidPhone,
   regionFromIdentifier,
 } from './contact'
 // Counter utilities

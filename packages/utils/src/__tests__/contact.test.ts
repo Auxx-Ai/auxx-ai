@@ -1,7 +1,7 @@
 // packages/utils/src/__tests__/contact.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { formatPhoneNumber } from '../contact'
+import { formatPhoneNumber, parseValidPhone } from '../contact'
 
 describe('formatPhoneNumber', () => {
   describe('US national numbers (the default country)', () => {
@@ -65,5 +65,47 @@ describe('formatPhoneNumber', () => {
     it('returns null for an unknown country calling code', () => {
       expect(formatPhoneNumber('+999 1234567')).toBeNull()
     })
+  })
+})
+
+describe('parseValidPhone', () => {
+  it('returns the parsed number, not just the E.164 string', () => {
+    // The reason this exists alongside formatPhoneNumber: callers need the parts.
+    // `phoneSearchPatterns` wants `nationalNumber`, `lookupPhoneGeo` wants
+    // `countryCallingCode` + `nationalNumber` + `country`.
+    const parsed = parseValidPhone('+13102030000')
+    expect(parsed?.number).toBe('+13102030000')
+    expect(parsed?.nationalNumber).toBe('3102030000')
+    expect(parsed?.countryCallingCode).toBe('1')
+    expect(parsed?.country).toBe('US')
+  })
+
+  it('honors an explicit region for national input', () => {
+    expect(parseValidPhone('030 901820', 'DE')?.number).toBe('+4930901820')
+  })
+
+  it('applies the isValid gate, not a bare parse', () => {
+    // `parsePhoneNumberFromString('415', 'US')` returns a PhoneNumber for `+1415`.
+    // Letting that through would invent a `1415` search pattern that matches
+    // `+13161415000` — a false positive nobody typed.
+    expect(parseValidPhone('415')).toBeNull()
+    expect(parseValidPhone('0123456789')).toBeNull()
+  })
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['empty', ''],
+    ['whitespace', '   '],
+    ['garbage', 'not a phone'],
+  ])('returns null for %s', (_label, input) => {
+    expect(parseValidPhone(input)).toBeNull()
+  })
+
+  it('agrees with formatPhoneNumber on every verdict', () => {
+    // The two must never disagree — formatPhoneNumber is defined over this.
+    for (const input of ['+13102030000', '4155551234', '415', 'not a phone', '', '+999 1234567']) {
+      expect(parseValidPhone(input)?.number ?? null).toBe(formatPhoneNumber(input))
+    }
   })
 })

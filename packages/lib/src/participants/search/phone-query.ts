@@ -1,7 +1,6 @@
 // packages/lib/src/participants/search/phone-query.ts
 
-import type { PhoneRegion } from '@auxx/utils'
-import { parsePhoneNumberFromString } from 'libphonenumber-js'
+import { type PhoneRegion, parseValidPhone } from '@auxx/utils'
 
 /**
  * Minimum pattern length. Below three characters `pg_trgm` extracts no full
@@ -56,14 +55,16 @@ export function phoneSearchPatterns(query: string, region: PhoneRegion): string[
   if (digits.length < TRIGRAM_FLOOR) return []
 
   const patterns = new Set<string>()
-  const parsed = parsePhoneNumberFromString(query, region)
-  // 🔴 `isValid()`, not merely "parsed" — the same gate `formatPhoneNumber` uses.
-  // `parsePhoneNumberFromString` happily returns a PhoneNumber for a fragment:
-  // `('415', 'US')` yields `+1415`, whose patterns would be `1415` and `415`. That
-  // synthetic `1415` is a real false-positive arm (it matches `+13161415000`), and
-  // it is invented rather than typed. An invalid or partial parse contributes
-  // nothing, and the raw-digits pattern below carries the fragment instead.
-  if (parsed?.isValid()) {
+  // 🔴 `parseValidPhone`, not a bare parse — it carries the `isValid()` gate that
+  // `formatPhoneNumber` and `lookupPhoneGeo` share, so "valid" cannot drift between
+  // search and the write path. `parsePhoneNumberFromString` happily returns a
+  // PhoneNumber for a fragment: `('415', 'US')` yields `+1415`, whose patterns would
+  // be `1415` and `415`. That synthetic `1415` is a real false-positive arm (it
+  // matches `+13161415000`), and it is invented rather than typed. An invalid or
+  // partial parse contributes nothing, and the raw-digits pattern below carries the
+  // fragment instead.
+  const parsed = parseValidPhone(query, region)
+  if (parsed) {
     // `.number` is `+4930901820`; drop the `+` so the pattern is a substring of
     // the stored identifier rather than an anchored equality.
     patterns.add(parsed.number.slice(1))
