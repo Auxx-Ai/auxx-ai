@@ -14,6 +14,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
+import { generateId } from '@auxx/utils'
 import { Copy, Mail, Phone, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
@@ -33,6 +34,7 @@ import {
   type PhoneRegion,
   type RecipientModel,
 } from './identifier-model'
+import type { RecipientState } from './types'
 
 export type RecipientField = 'TO' | 'CC' | 'BCC'
 
@@ -44,12 +46,9 @@ export type RecipientField = 'TO' | 'CC' | 'BCC'
  */
 const PASTE_SEPARATORS = /[,;\n\t]+/
 
-interface RecipientState {
-  id: string
-  identifier: string
-  identifierType: IdentifierTypeType
-  name?: string | null
-}
+// `RecipientState` is imported from `./types`, not redeclared here. It carried a
+// structurally identical local copy until the `id`/`recordId` split, which is
+// exactly the drift a second declaration invites.
 
 /** Imperative handle exposed via ref for parent components */
 export interface RecipientInputHandle {
@@ -64,8 +63,14 @@ interface RecipientInputProps {
   onAdd: (recipient: RecipientState) => void
   onRemove: (id: string) => void
   onMoveTo: (id: string, target: RecipientField) => void
+  /**
+   * A picked contact's identifier, committed. Carries `recordId` — the contact's
+   * `EntityInstance.id` — and **not** a chip id: the parent mints that. Passing
+   * the record id as the chip id is the collision documented on
+   * {@link RecipientState.id}.
+   */
   onContactSelect: (contact: {
-    id: string
+    recordId: string
     identifier: string
     identifierType: IdentifierTypeType
     name?: string | null
@@ -261,9 +266,8 @@ export function RecipientInput({
   const tryCommitInput = (): boolean => {
     const normalized = spec.normalize(inputValue)
     if (!normalized) return false
-    const dummyId = `temp_${Date.now()}_${normalized}`
     onAdd({
-      id: dummyId,
+      id: generateId(),
       identifier: normalized,
       identifierType: spec.identifierType,
       name: null,
@@ -379,7 +383,7 @@ export function RecipientInput({
   const commitContactAddress = useCallback(
     (contactId: string, address: string, name: string | null) => {
       onContactSelect({
-        id: contactId,
+        recordId: contactId,
         identifier: spec.normalize(address) ?? address,
         identifierType: spec.identifierType,
         name,
@@ -526,7 +530,6 @@ export function RecipientInput({
     // grown as we go since `recipients` doesn't update mid-loop.
     const seen = new Set(excludeIdentifiers)
     const leftover: string[] = []
-    const now = Date.now()
     for (const part of merged.split(PASTE_SEPARATORS)) {
       const trimmed = part.trim()
       if (!trimmed) continue
@@ -539,7 +542,7 @@ export function RecipientInput({
       if (seen.has(key)) continue
       seen.add(key)
       onAdd({
-        id: `temp_${now}_${normalized}`,
+        id: generateId(),
         identifier: normalized,
         identifierType: spec.identifierType,
         name: null,
