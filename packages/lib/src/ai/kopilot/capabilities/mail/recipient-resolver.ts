@@ -6,6 +6,10 @@ import { isRecordId, parseRecordId, type RecordId } from '@auxx/types/resource'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import type { IntegrationCatalogEntry } from '../../../../cache/integration-catalog'
 import { getCachedCustomFields } from '../../../../cache/org-cache-helpers'
+import {
+  identifierFieldsForModel,
+  identifierTypesForModel,
+} from '../../../../participants/channel-identifier-fields'
 import { Result, type TypedResult } from '../../../../result'
 import type { ToolContext } from '../../../agent-framework/tool-context'
 
@@ -44,42 +48,6 @@ export class RecipientResolutionError extends Error {
 const CUID_RE = /^[a-z0-9]{20,32}$/i
 const PHONE_RE = /^\+?[\d\s().-]{7,}$/
 
-type ChannelIdTypes = readonly IdentifierType[]
-
-function identifierTypesForIntegration(integration: IntegrationCatalogEntry): ChannelIdTypes {
-  switch (integration.recipientModel) {
-    case 'email':
-      return ['EMAIL']
-    case 'phone':
-      return ['PHONE']
-    case 'thread_only':
-      // Facebook/Instagram replies — both PSID variants accepted; specific tool
-      // calls reach this path only when threadReply mode resolves recipients.
-      return ['FACEBOOK_PSID', 'INSTAGRAM_IGSID']
-    case 'platform_user':
-      return []
-  }
-}
-
-/**
- * `systemAttribute` value on the contact's identifier `CustomField` for each
- * channel. Used as the fallback path when no `Participant` exists for the
- * contact yet (e.g. brand-new contact with only the email/phone set as a
- * field value, no inbound message history).
- */
-function systemAttributeForChannel(
-  integration: IntegrationCatalogEntry
-): { systemAttributes: string[]; identifierType: IdentifierType } | undefined {
-  switch (integration.recipientModel) {
-    case 'email':
-      return { systemAttributes: ['primary_email'], identifierType: 'EMAIL' }
-    case 'phone':
-      return { systemAttributes: ['phone', 'primary_phone'], identifierType: 'PHONE' }
-    default:
-      return undefined
-  }
-}
-
 /**
  * Look up the contact's primary identifier (email/phone) directly on the
  * `FieldValue` table for the relevant `systemAttribute` `CustomField`. This
@@ -93,7 +61,7 @@ async function lookupIdentifierFromFieldValue(
   ctx: ToolContext,
   entityDefinitionId: string,
   entityInstanceId: string,
-  systemAttributes: string[]
+  systemAttributes: readonly string[]
 ): Promise<string | undefined> {
   const customFields = await getCachedCustomFields(ctx.organizationId, entityDefinitionId)
   const matchingFieldIds = customFields
@@ -144,7 +112,7 @@ export async function resolveRecipients(
   integration: IntegrationCatalogEntry,
   ctx: ToolContext
 ): Promise<TypedResult<ResolvedRecipient[], RecipientResolutionError>> {
-  const acceptableTypes = identifierTypesForIntegration(integration)
+  const acceptableTypes = identifierTypesForModel(integration.recipientModel)
   if (acceptableTypes.length === 0) {
     return Result.error(
       new RecipientResolutionError(
@@ -208,7 +176,7 @@ export async function resolveRecipients(
         const parsed = parseRecordId(entry.value as RecordId)
         const matches = byInstance.get(parsed.entityInstanceId)
         // The contact's primary identifier: first FieldValue row by sortKey.
-        const sysAttr = systemAttributeForChannel(integration)
+        const sysAttr = identifierFieldsForModel(integration.recipientModel)
         const primaryIdentifier = sysAttr
           ? await lookupIdentifierFromFieldValue(
               ctx,
