@@ -34,6 +34,7 @@ import {
   recomputeOnLineChange,
   recomputeOnQuoteBillingChange,
 } from '../money/totals-hooks'
+import { derivePhoneGeoOnChange, warmPhoneGeo } from '../phone-geo'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import {
   enqueueQuickbooksInvoiceSyncOnSent,
@@ -185,6 +186,18 @@ export function registerAllHooks(): void {
   // field on every entity without flipping `hasEntityFieldChangeHooks` on for entities that have
   // no address fields.
   registerFieldTypeChangeHooks(FieldTypeEnum.ADDRESS_STRUCT, [normalizeAddressOnChange])
+
+  // Phone geo derivation — same field-type-keyed reasoning as the address hook above: one
+  // registration covers every PHONE_INTL field on every entity, so SMS ingest, panel edits, CSV
+  // import, connector sync and Kopilot all get it from a single door. Fills only BLANK
+  // city/region/country/timezone (chat's visitor-IP geo and human input both outrank an area
+  // code), and no-ops on entities that have no such fields. Unlike the address hook this needs
+  // no fire-and-forget — the lookup is an in-memory table read, not a MapTiler call.
+  registerFieldTypeChangeHooks(FieldTypeEnum.PHONE_INTL, [derivePhoneGeoOnChange])
+  // Deserialize the geocoding tables now rather than on the first phone write. Co-located with
+  // the registration so the warm can never drift away from the hook that needs it; the worker
+  // additionally calls this at boot. Idempotent and never throws.
+  warmPhoneGeo()
 
   // Route planner build contract item 8 (09-route-planner.md §B): pin the work order's visit
   // row(s) whenever its address geocodes — unscheduled backlog jobs need pins too. Rides the

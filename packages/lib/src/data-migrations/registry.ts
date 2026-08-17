@@ -52,6 +52,7 @@ import { migration084PrimaryEmailUnique } from './migrations/084-primary-email-u
 import { migration085MultiEmailWebsiteFlip } from './migrations/085-multi-email-website-flip'
 import { migration086MultiPhoneFlip } from './migrations/086-multi-phone-flip'
 import { migration087KnowledgeRetrievalSources } from './migrations/087-knowledge-retrieval-sources'
+import { migration088PhoneGeoBackfill } from './migrations/088-phone-geo-backfill'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -130,6 +131,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration085MultiEmailWebsiteFlip,
     migration086MultiPhoneFlip,
     migration087KnowledgeRetrievalSources,
+    migration088PhoneGeoBackfill,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

@@ -964,6 +964,12 @@
       "import": "./dist/permissions/visibility/client.mjs",
       "default": "./src/permissions/visibility/client.ts"
     },
+    "./phone-geo": {
+      "types": "./src/phone-geo/index.ts",
+      "source": "./src/phone-geo/index.ts",
+      "import": "./dist/phone-geo/index.mjs",
+      "default": "./src/phone-geo/index.ts"
+    },
     "./placeholders": {
       "types": "./src/placeholders/index.ts",
       "source": "./src/placeholders/index.ts",
@@ -1489,6 +1495,7 @@
     "@trpc/server": "catalog:",
     "addressparser": "^1.0.1",
     "ajv": "^8",
+    "bson": "catalog:",
     "bullmq": "catalog:",
     "cheerio": "^1.1.2",
     "cohere-ai": "^7.18.1",
@@ -1519,6 +1526,7 @@
     "json-logic-js": "^2.0.5",
     "langsmith": "^0.3.0",
     "ldapjs": "^3.0.7",
+    "libphonenumber-geo-carrier": "catalog:",
     "libphonenumber-js": "catalog:",
     "lru-cache": "11.1.0",
     "lucide-react": "catalog:",
