@@ -1,10 +1,14 @@
 // apps/web/src/components/mail/chat-timeline.ts
 //
-// Interleave admin-side chat messages with thread lifecycle events
+// Interleave admin-side conversational messages with thread lifecycle events
 // (taken_over, returned_to_ai, archived, reopened, assignee:changed,
 // visitor:identified) into a single sorted render list. Consecutive
-// same-sender CHAT messages within a 5-minute window collapse into a
+// same-sender bubble messages within a 5-minute window collapse into a
 // `chat-group`; any event between them breaks the cluster.
+//
+// "Bubble message" is `isBubbleMessage` — CHAT *and* SMS/WhatsApp/DM. Gating on
+// `messageType === 'CHAT'` is what kept SMS out of the bubble renderer and in
+// the email-shaped fallback card.
 //
 // Mirrors the widget's `buildTimeline` in
 // `apps/chat-widget/src/views/conversation/conversation-view.tsx`, but
@@ -14,6 +18,7 @@
 
 import type { MessageMeta } from '~/components/threads/store'
 import type { ChatThreadEvent } from './chat-panel/system-line'
+import { isBubbleMessage } from './utils/message-bubble'
 
 const CHAT_GROUP_WINDOW_MS = 5 * 60_000
 
@@ -24,7 +29,7 @@ export type ChatTimelineItem =
 
 /**
  * Interleave messages and thread events by timestamp, collapsing consecutive
- * same-sender CHAT messages into groups. `index` / `startIndex` / `endIndex`
+ * same-sender bubble messages into groups. `index` / `startIndex` / `endIndex`
  * point back into the original `messages` array so existing per-message UI
  * (latest-message check, animation delay) keeps working.
  */
@@ -60,7 +65,7 @@ export function buildChatTimeline(
       out.push({ kind: 'event', event: entry.event })
       continue
     }
-    if (entry.message.messageType !== 'CHAT') {
+    if (!isBubbleMessage(entry.message.messageType)) {
       out.push({ kind: 'single', message: entry.message, index: entry.index })
       continue
     }
@@ -70,7 +75,7 @@ export function buildChatTimeline(
     while (i + 1 < entries.length) {
       const next = entries[i + 1]!
       if (next.kind !== 'message') break
-      if (!canGroupChat(run[run.length - 1]!, next.message)) break
+      if (!canGroupBubble(run[run.length - 1]!, next.message)) break
       run.push(next.message)
       endIndex = next.index
       i++
@@ -89,8 +94,12 @@ function messageTimestamp(m: MessageMeta): number {
   return 0
 }
 
-function canGroupChat(a: MessageMeta, b: MessageMeta): boolean {
-  if (b.messageType !== 'CHAT') return false
+function canGroupBubble(a: MessageMeta, b: MessageMeta): boolean {
+  if (!isBubbleMessage(b.messageType)) return false
+  // Same transport only. One channel per thread makes a mixed run unlikely, but
+  // `openphone` alone emits SMS and CALL, and a merged stack of two different
+  // message shapes would render as one conversation turn.
+  if (a.messageType !== b.messageType) return false
   if (a.isInbound !== b.isInbound) return false
   if (fromParticipant(a) !== fromParticipant(b)) return false
   const aT = messageTimestamp(a) || null
