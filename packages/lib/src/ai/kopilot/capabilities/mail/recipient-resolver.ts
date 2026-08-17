@@ -3,6 +3,7 @@
 import { schema } from '@auxx/database'
 import type { IdentifierType } from '@auxx/database/types'
 import { isRecordId, parseRecordId, type RecordId } from '@auxx/types/resource'
+import { formatPhoneNumber, type PhoneRegion, regionFromIdentifier } from '@auxx/utils'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import type { IntegrationCatalogEntry } from '../../../../cache/integration-catalog'
 import { getCachedCustomFields } from '../../../../cache/org-cache-helpers'
@@ -84,6 +85,44 @@ async function lookupIdentifierFromFieldValue(
   return undefined
 }
 
+/**
+ * Canonical form of a recipient identifier, or `null` when the value is not a
+ * valid identifier of that type.
+ *
+ * 🔴 **Phone goes through `formatPhoneNumber`, never a hand-rolled strip.** This
+ * used to be `value.replace(/[\s().-]/g, '')`, which is separator removal and not
+ * normalization: E.164 drops the trunk prefix, so `030 901820` became
+ * `030901820` where storage and the send both expect `+4930901820`, and
+ * `(415) 555-1234` became `4155551234` rather than `+14155551234`. The result was
+ * a `Participant.identifier` matching no stored row and an address handed to the
+ * channel raw. `formatPhoneNumber` is THE normalizer — the write validator,
+ * `normalizeForLookup` and the import resolver all funnel through it
+ * specifically so write and lookup cannot drift (`@auxx/utils` `contact.ts`).
+ *
+ * `region` matters and must come from the SENDING channel's own number
+ * (`regionFromIdentifier(integration.identifier)`), not a global default: an org
+ * with a German and a US number parses the same national input differently
+ * depending on which one it is sending from.
+ *
+ * Returning `null` rather than a best-effort string is deliberate — an invalid
+ * number should reach the LLM as a resolution error it can act on, not become a
+ * silently undeliverable send. Compare `normalizeOwnIdentifier`
+ * (`channels/own-identities.ts`), which applies the same rule but returns `''`
+ * because its contract is "never matches an own identity".
+ */
+export function normalizeRecipientIdentifier(
+  value: string,
+  type: IdentifierType,
+  region: PhoneRegion
+): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (type === 'PHONE') return formatPhoneNumber(trimmed, region)
+  if (type === 'EMAIL') return trimmed.toLowerCase()
+  // PSIDs / chat-visitor ids are opaque provider tokens — pass through as-is.
+  return trimmed
+}
+
 function detectFormat(entry: string): 'recordId' | 'participantId' | 'email' | 'phone' | 'unknown' {
   if (entry.includes(':') && isRecordId(entry)) return 'recordId'
   if (entry.includes('@')) return 'email'
@@ -113,6 +152,8 @@ export async function resolveRecipients(
   ctx: ToolContext
 ): Promise<TypedResult<ResolvedRecipient[], RecipientResolutionError>> {
   const acceptableTypes = identifierTypesForModel(integration.recipientModel)
+  // Region for national (no `+`) phone input: the sending channel's own number.
+  const region = regionFromIdentifier(integration.identifier)
   if (acceptableTypes.length === 0) {
     return Result.error(
       new RecipientResolutionError(
@@ -187,9 +228,25 @@ export async function resolveRecipients(
           : undefined
         // Prefer the participant matching the primary identifier; otherwise
         // fall back to the stable most-recently-used ordering above.
+        //
+        // 🔴 Both sides are normalized, not just lowercased. `own-identities.ts`
+        // states the rule and the reason: ingest's `normalizeIdentifier(x, PHONE)`
+        // is a bare digit-strip, so `+18889155797` and `18889155797` can both
+        // exist as stored identifiers while the contact's field value is E.164.
+        // A `toLowerCase()` comparison misses that, and the miss is silent — it
+        // falls through to `matches[0]` and addresses a DIFFERENT number of the
+        // same person.
+        const primaryNormalized =
+          primaryIdentifier && sysAttr
+            ? normalizeRecipientIdentifier(primaryIdentifier, sysAttr.identifierType, region)
+            : undefined
         const pick =
-          (primaryIdentifier &&
-            matches?.find((p) => p.identifier.toLowerCase() === primaryIdentifier.toLowerCase())) ||
+          (primaryNormalized &&
+            matches?.find(
+              (p) =>
+                normalizeRecipientIdentifier(p.identifier, p.identifierType, region) ===
+                primaryNormalized
+            )) ||
           matches?.[0]
         if (pick) {
           resolved.push({
@@ -207,16 +264,27 @@ export async function resolveRecipients(
         // from FieldValue via the contact's primary_email / phone
         // systemAttribute above.
         if (sysAttr && primaryIdentifier) {
+          const normalized = normalizeRecipientIdentifier(
+            primaryIdentifier,
+            sysAttr.identifierType,
+            region
+          )
+          if (!normalized) {
+            return Result.error(
+              new RecipientResolutionError(
+                `Contact's ${integration.channel} identifier "${primaryIdentifier}" is not a valid ${sysAttr.identifierType.toLowerCase()}`,
+                entry.value,
+                entry.role
+              )
+            )
+          }
           resolved.push({
             recordId: entry.value,
-            identifier:
-              sysAttr.identifierType === 'EMAIL'
-                ? primaryIdentifier.toLowerCase()
-                : sysAttr.identifierType === 'PHONE'
-                  ? primaryIdentifier.replace(/[\s().-]/g, '')
-                  : primaryIdentifier,
+            identifier: normalized,
             identifierType: sysAttr.identifierType,
             role: entry.role,
+            // The stored value, not the normalized one — this is the label a
+            // human recognizes on the confirmation card.
             displayName: primaryIdentifier,
           })
           break
@@ -269,7 +337,7 @@ export async function resolveRecipients(
           )
         }
         resolved.push({
-          identifier: entry.value.trim().toLowerCase(),
+          identifier: normalizeRecipientIdentifier(entry.value, 'EMAIL', region) ?? entry.value,
           identifierType: 'EMAIL',
           role: entry.role,
         })
@@ -285,8 +353,18 @@ export async function resolveRecipients(
             )
           )
         }
+        const normalizedPhone = normalizeRecipientIdentifier(entry.value, 'PHONE', region)
+        if (!normalizedPhone) {
+          return Result.error(
+            new RecipientResolutionError(
+              `"${entry.value}" is not a valid phone number${region === 'US' ? '' : ` for region ${region}`} — use E.164 (e.g. +14155551234)`,
+              entry.value,
+              entry.role
+            )
+          )
+        }
         resolved.push({
-          identifier: entry.value.replace(/[\s().-]/g, ''),
+          identifier: normalizedPhone,
           identifierType: 'PHONE',
           role: entry.role,
         })

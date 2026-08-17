@@ -6,34 +6,24 @@ import {
   PHONE_IDENTIFIER_FIELDS,
   type RecipientModel,
 } from '@auxx/lib/participants/channel-identifier-fields'
-import { formatPhoneNumber } from '@auxx/utils'
-import { type CountryCode, parsePhoneNumberFromString } from 'libphonenumber-js'
+import {
+  DEFAULT_PHONE_REGION,
+  formatPhoneNumber,
+  type PhoneRegion,
+  regionFromIdentifier,
+} from '@auxx/utils'
+import { parsePhoneNumberFromString } from 'libphonenumber-js'
 
 /** The shape of identifier a channel addresses — `PlatformCapabilities.recipientModel`. */
 export type { RecipientModel }
 
 /**
- * ISO-3166 region a national (no `+`) phone number is parsed against.
- * Re-exported so callers don't have to reach into `libphonenumber-js`.
+ * Region handling lives in `@auxx/utils` beside `formatPhoneNumber`, because the
+ * agent send path needs the same answer for the same reason (a channel's own
+ * number is what tells you how to parse a national number for that channel).
+ * Re-exported here so the composer's existing imports keep working.
  */
-export type PhoneRegion = CountryCode
-
-/** Region assumed when the sending channel has no parseable E.164 number. */
-export const DEFAULT_PHONE_REGION: PhoneRegion = 'US'
-
-/**
- * Region implied by a channel's OWN sending number.
- *
- * There is no `country` on the org profile, and an org with a German and a US
- * number should parse national input differently depending on which one it is
- * sending from — so the From channel's E.164 identifier is both the cheaper
- * and the more correct source. Falls back to {@link DEFAULT_PHONE_REGION} when
- * the channel carries no number (every email channel) or it doesn't parse.
- */
-export function regionFromIdentifier(identifier?: string | null): PhoneRegion {
-  if (!identifier) return DEFAULT_PHONE_REGION
-  return parsePhoneNumberFromString(identifier.trim())?.country ?? DEFAULT_PHONE_REGION
-}
+export { DEFAULT_PHONE_REGION, type PhoneRegion, regionFromIdentifier }
 
 /**
  * Everything the recipient input needs to know about ONE identifier shape:

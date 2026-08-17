@@ -18,6 +18,7 @@ export { getGroupPosition, groupConsecutiveComments } from './comments'
 // Contact utilities
 export {
   type ContactName,
+  DEFAULT_PHONE_REGION,
   formatCityName,
   formatCompanyName,
   formatComplexName,
@@ -27,6 +28,8 @@ export {
   getFullName,
   getInitials,
   getInitialsFromName,
+  type PhoneRegion,
+  regionFromIdentifier,
 } from './contact'
 // Counter utilities
 export { createCounter, createIdAllocator } from './counter'

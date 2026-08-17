@@ -95,6 +95,35 @@ export const formatPhoneNumber = (
   return parsed?.isValid() ? parsed.number : null
 }
 
+/** ISO-3166 region a national (no `+`) phone number is parsed against. */
+export type PhoneRegion = CountryCode
+
+/** Region assumed when nothing better is known. Matches `formatPhoneNumber`'s own default. */
+export const DEFAULT_PHONE_REGION: PhoneRegion = 'US'
+
+/**
+ * Region implied by an E.164 identifier — typically a channel's OWN sending
+ * number.
+ *
+ * This is the region to hand {@link formatPhoneNumber} when normalizing a
+ * national (no `+`) number for that channel. It is both cheaper and more correct
+ * than the org profile: an org with a German and a US number must parse
+ * `030 901820` differently depending on which one it is sending from, and there
+ * is no per-send country on the profile to express that.
+ *
+ * 🔴 **Getting this wrong is silent.** E.164 drops the trunk prefix, so parsing
+ * a Berlin number against `US` does not fail loudly — it yields `null` (caller
+ * sees "invalid") or, worse, a plausible `+1` number for input that happens to
+ * fit the NANP. Prefer a real region over the default whenever one is available.
+ *
+ * Falls back to {@link DEFAULT_PHONE_REGION} when the identifier is absent (every
+ * email channel) or does not parse.
+ */
+export const regionFromIdentifier = (identifier?: string | null): PhoneRegion => {
+  if (!identifier) return DEFAULT_PHONE_REGION
+  return parsePhoneNumberFromString(identifier.trim())?.country ?? DEFAULT_PHONE_REGION
+}
+
 export const formatStreetAddress = (street: string | null): string | null => {
   if (!street || typeof street !== 'string') return null // Handle empty or invalid input
 
