@@ -7,6 +7,7 @@ import { configService } from '@auxx/credentials'
 import { closePools } from '@auxx/database'
 import { registerChannelHooks } from '@auxx/lib/channels'
 import { closeAllQueues, closeFlowProducer } from '@auxx/lib/jobs/queues'
+import { warmPhoneGeo } from '@auxx/lib/phone-geo'
 import { shutdownPostHog } from '@auxx/lib/posthog/posthog-client'
 import { serve } from '@hono/node-server'
 import type { Worker } from 'bullmq'
@@ -30,6 +31,10 @@ let inboundEmailPoller: InboundEmailPoller | null = null
 async function initializeApp() {
   await configService.init()
   registerChannelHooks()
+  // Deserialize the phone geocoding tables (~13ms) up front. The worker runs mail/SMS ingest,
+  // which is the heaviest producer of phone writes, so paying this at boot keeps it off the
+  // first inbound message. Idempotent and never throws.
+  warmPhoneGeo()
 
   console.log('Setting up schedules...')
   await setupSchedules()
