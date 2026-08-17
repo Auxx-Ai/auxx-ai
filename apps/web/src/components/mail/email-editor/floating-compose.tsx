@@ -9,7 +9,6 @@ import type React from 'react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useChannel } from '~/components/channels/hooks/use-channels'
-import ChatComposer from '../chat-composer'
 import { ChatPanel } from '../chat-panel'
 import type { ComposeInstance } from '../store/compose-store'
 import { useComposeStore } from '../store/compose-store'
@@ -210,7 +209,7 @@ export function FloatingCompose({ instance }: { instance: ComposeInstance }) {
     !editorMounted || (instance.mode === 'draft' && instance.draft?.id && isDraftLoading)
 
   // Resolve the integration's provider to decide which composer to mount.
-  // Chat threads use the dedicated ChatComposer; everything else (email +
+  // Chat threads use the dedicated ChatPanel; everything else (email +
   // FB/IG/SMS for now) flows through ReplyComposeEditor.
   const threadChannel = useChannel(instance.thread?.integrationId)
   const isChat = threadChannel?.provider === 'chat'
@@ -225,25 +224,20 @@ export function FloatingCompose({ instance }: { instance: ComposeInstance }) {
     <div className='flex items-center justify-center rounded-[20px] bg-background p-8'>
       <Loader2 className='size-6 animate-spin text-muted-foreground' />
     </div>
-  ) : isChat && instance.thread && instance.displayMode !== 'inline' ? (
+  ) : isChat && instance.thread ? (
+    // One component across both modes — see the note on `ChatPanel.expanded`.
+    // Picking between `<ChatPanel>` and a bare `<ChatComposer>` here is what
+    // used to remount the chat composer on every pop-out.
     <ChatPanel
       thread={instance.thread}
-      isDialogMode={true}
+      expanded={instance.displayMode !== 'inline'}
       onClose={handleClose}
       onSendSuccess={() => {}}
+      onPopOut={handlePopOut}
       onMinimize={instance.displayMode === 'floating' ? handleMinimize : undefined}
       onDockBack={canDockBack ? handleDockBack : undefined}
       instanceId={instance.id}
       dragHandleProps={dragHandleProps}
-    />
-  ) : isChat && instance.thread ? (
-    <ChatComposer
-      thread={instance.thread}
-      isDialogMode={false}
-      onClose={handleClose}
-      onSendSuccess={() => {}}
-      onPopOut={handlePopOut}
-      instanceId={instance.id}
     />
   ) : (
     <ReplyComposeEditor

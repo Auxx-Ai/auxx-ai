@@ -13,7 +13,11 @@ import { act, useEffect, useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useComposeStore } from '../store/compose-store'
 
-const h = vi.hoisted(() => ({ mounts: 0 }))
+const h = vi.hoisted(() => ({
+  mounts: 0,
+  chatMounts: 0,
+  provider: undefined as string | undefined,
+}))
 
 /**
  * Stands in for the whole composer. The uncontrolled input IS the thing under
@@ -36,9 +40,18 @@ vi.mock('./index', () => ({
   },
 }))
 
-vi.mock('../chat-panel', () => ({ ChatPanel: () => null }))
-vi.mock('../chat-composer', () => ({ default: () => null }))
-vi.mock('~/components/channels/hooks/use-channels', () => ({ useChannel: () => undefined }))
+/** Chat threads render this instead, docked or not — only `expanded` differs. */
+vi.mock('../chat-panel', () => ({
+  ChatPanel: ({ expanded }: { expanded: boolean }) => {
+    useEffect(() => {
+      h.chatMounts++
+    }, [])
+    return <div data-testid='chat' data-expanded={String(expanded)} />
+  },
+}))
+vi.mock('~/components/channels/hooks/use-channels', () => ({
+  useChannel: () => (h.provider ? { provider: h.provider } : undefined),
+}))
 vi.mock('./hooks/use-draft', () => ({ useDraft: () => ({ draft: null, isLoading: false }) }))
 
 const { FloatingCompose } = await import('./floating-compose')
@@ -57,6 +70,8 @@ function Harness() {
 
 beforeEach(() => {
   h.mounts = 0
+  h.chatMounts = 0
+  h.provider = undefined
   useComposeStore.setState({ instances: [], nextZIndex: 101 })
 })
 
@@ -182,6 +197,20 @@ describe('FloatingCompose — pop-out and dock-back', () => {
     // mid-address must not drop the user out of the field.
     expect(composer()).toHaveFocus()
     expect((composer() as HTMLInputElement).selectionStart).toBe('jane@corp.com'.length)
+  })
+
+  it('keeps a chat thread on ONE component across the move', () => {
+    h.provider = 'chat'
+    const id = openInlineCompose()
+
+    expect(screen.getByTestId('chat')).toHaveAttribute('data-expanded', 'false')
+
+    act(() => useComposeStore.getState().undock(id))
+
+    // Same component, told to wear its chrome — not a swap to a different one,
+    // which is what used to destroy the chat composer's editor.
+    expect(screen.getByTestId('chat')).toHaveAttribute('data-expanded', 'true')
+    expect(h.chatMounts).toBe(1)
   })
 
   it('takes its host with it when the instance closes', () => {
