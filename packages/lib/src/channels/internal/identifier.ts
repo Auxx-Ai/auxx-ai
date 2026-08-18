@@ -26,6 +26,13 @@ export function getIdentifier(channel: IdentifierRow | null): string | undefined
     if ('email' in metadata && typeof metadata.email === 'string') return metadata.email
     if ('phoneNumber' in metadata && typeof metadata.phoneNumber === 'string')
       return metadata.phoneNumber
+    // Meta social channels identify by the account they post as, not an address:
+    // the IG handle where there is one, otherwise the Facebook Page name. Read
+    // from metadata rather than `Integration.name` so channels connected before
+    // the name was persisted still show something other than a bare provider label.
+    if ('instagramUsername' in metadata && typeof metadata.instagramUsername === 'string')
+      return metadata.instagramUsername
+    if ('pageName' in metadata && typeof metadata.pageName === 'string') return metadata.pageName
   }
   return channel.name || undefined
 }

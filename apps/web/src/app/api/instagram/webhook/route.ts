@@ -2,12 +2,16 @@
 
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
-import type { MessageData } from '@auxx/lib/email'
 import { MessageStorageService } from '@auxx/lib/email'
-import type { InstagramIntegrationMetadata } from '@auxx/lib/providers'
+import type {
+  MetaWebhookEnvelope,
+  MetaWebhookMessagingEvent,
+  SocialIntegrationMetadata,
+} from '@auxx/lib/providers/social/types'
+import { convertMetaWebhookEventToMessageData } from '@auxx/lib/providers/social/webhook-message'
 import { metaPreset, verifyWebhook } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('instagram-webhook')
@@ -62,9 +66,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   logger.debug('Instagram webhook signature verified.')
 
   // 2. Parse Body
-  let payload: any
+  let payload: MetaWebhookEnvelope
   try {
-    payload = JSON.parse(bodyText)
+    payload = JSON.parse(bodyText) as MetaWebhookEnvelope
   } catch (e) {
     logger.error('Failed to parse Instagram webhook payload:', { error: e })
     return NextResponse.json({ error: 'Bad Request: Invalid JSON' }, { status: 400 })
@@ -73,79 +77,93 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // 3. Process Instagram Events
   if (payload.object === 'instagram') {
     const storageService = new MessageStorageService()
-    const processingPromises = payload.entry?.map(async (entry: any) => {
+    const processingPromises = (payload.entry ?? []).map(async (entry) => {
+      // Comments / mentions ride on `entry.changes`, a different envelope with
+      // different identity. Not subscribed today; the branch exists so WS10 is a
+      // filled-in case rather than a restructure.
+      if (entry.changes?.length) {
+        logger.debug('Ignoring Instagram changes event (comments not yet ingested).', {
+          entryId: entry.id,
+          changeCount: entry.changes.length,
+        })
+      }
+
       if (!entry.messaging || !Array.isArray(entry.messaging)) {
         logger.debug('Skipping Instagram entry without messaging array.', { entryId: entry.id })
         return
       }
 
-      for (const event of entry.messaging) {
-        // Check for actual message events and ignore echoes
-        if (event.message && !event.message.is_echo) {
-          const senderIgsid = event.sender.id // Instagram Scoped User ID
-          const recipientIgbid = event.recipient.id // Instagram Business Account ID
-          const messageContent = event.message
-          // const timestamp = event.timestamp
-
-          logger.info(`Processing incoming Instagram message`, {
-            senderIgsid,
-            recipientIgbid,
-            mid: messageContent.mid,
+      for (const event of entry.messaging as MetaWebhookMessagingEvent[]) {
+        if (!event.message) {
+          logger.debug('Ignoring non-message event in Instagram webhook:', {
+            eventType: Object.keys(event)[0],
           })
+          continue
+        }
 
-          // Find the integration based on the recipient IGBID
-          const [integration] = await db
-            .select({
-              id: schema.Integration.id,
-              organizationId: schema.Integration.organizationId,
-              metadata: schema.Integration.metadata,
-            })
-            .from(schema.Integration)
-            .where(
-              and(
-                eq(schema.Integration.provider, 'instagram'),
-                eq(schema.Integration.enabled, true),
-                sql`${schema.Integration.metadata} ->> 'instagramBusinessAccountId' = ${recipientIgbid}`
-              )
+        if (event.message.is_echo) {
+          logger.debug('Received Instagram message echo, ignoring.', { mid: event.message.mid })
+          continue
+        }
+
+        const recipientIgbid = event.recipient?.id
+        if (!recipientIgbid) {
+          logger.warn('Instagram messaging event has no recipient IGBID; skipping.', { event })
+          continue
+        }
+
+        // `isNull(deletedAt)`: disconnect is a soft delete, so without this a
+        // disconnected channel keeps ingesting while `enabled` stayed true.
+        const [integration] = await db
+          .select({
+            id: schema.Integration.id,
+            organizationId: schema.Integration.organizationId,
+            metadata: schema.Integration.metadata,
+          })
+          .from(schema.Integration)
+          .where(
+            and(
+              eq(schema.Integration.provider, 'instagram'),
+              eq(schema.Integration.enabled, true),
+              isNull(schema.Integration.deletedAt),
+              sql`${schema.Integration.metadata} ->> 'instagramBusinessAccountId' = ${recipientIgbid}`
             )
-            .limit(1)
-
-          if (!integration) {
-            logger.warn(
-              `No active Instagram integration found for IGBID ${recipientIgbid}. Skipping message.`
-            )
-            continue
-          }
-
-          // Convert and store the message
-          const messageData = convertInstagramWebhookEventToMessageData(
-            event,
-            integration.id,
-            integration.organizationId,
-            integration.metadata as Partial<InstagramIntegrationMetadata> | null
           )
+          .limit(1)
 
-          if (messageData) {
-            try {
-              await storageService.storeMessage(messageData)
-              logger.info(`Successfully stored Instagram message`, {
-                mid: messageContent.mid,
-                integrationId: integration.id,
-              })
-            } catch (storeError: any) {
-              logger.error(`Failed to store Instagram message`, {
-                mid: messageContent.mid,
-                integrationId: integration.id,
-                error: storeError.message,
-              })
-            }
-          } else {
-            logger.warn('Failed to convert Instagram webhook event to MessageData', { event })
-          }
-        } else {
-          // Handle or ignore other event types (delivery, read, echo)
-          logger.debug('Ignoring non-message or echo event in Instagram webhook:', {
-            eventType: event.message ? 'echo' : Object.keys(event)[0],
+        if (!integration) {
+          logger.warn(
+            `No active Instagram integration found for IGBID ${recipientIgbid}. Skipping message.`
+          )
+          continue
+        }
+
+        const messageData = convertMetaWebhookEventToMessageData({
+          event,
+          integrationId: integration.id,
+          organizationId: integration.organizationId,
+          pageId: recipientIgbid,
+          platform: 'instagram',
+          metadata: integration.metadata as SocialIntegrationMetadata | null,
+        })
+
+        if (!messageData) {
+          logger.warn('Failed to convert Instagram webhook event to MessageData', { event })
+          continue
+        }
+
+        try {
+          await storageService.storeMessage(messageData)
+          logger.info('Successfully stored Instagram message', {
+            mid: event.message.mid,
+            integrationId: integration.id,
+            externalThreadId: messageData.externalThreadId,
+          })
+        } catch (storeError) {
+          logger.error('Failed to store Instagram message', {
+            mid: event.message.mid,
+            integrationId: integration.id,
+            error: storeError instanceof Error ? storeError.message : String(storeError),
           })
         }
       }
@@ -157,84 +175,4 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // 4. Respond OK quickly
   return NextResponse.json({ status: 'success' }, { status: 200 })
-}
-
-/**
- * Helper to convert Instagram webhook event to MessageData.
- */
-function convertInstagramWebhookEventToMessageData(
-  event: any,
-  integrationId: string,
-  organizationId: string,
-  integrationMetadata: Partial<InstagramIntegrationMetadata> | null
-): MessageData | null {
-  try {
-    const senderIgsid = event.sender.id
-    const recipientIgbid = event.recipient.id // This is our IGBID
-    const timestamp = event.timestamp
-    const message = event.message
-    const messageId = message.mid // Instagram message ID
-
-    const metadata = integrationMetadata
-    const igUsername = metadata?.instagramUsername // Our username
-
-    // Directionality: Webhook always receives messages sent TO the business account
-    const isInbound = true
-
-    const fromParticipant = { name: undefined, identifier: senderIgsid } // Sender is the user (IGSID)
-    const toParticipant = { name: igUsername, identifier: recipientIgbid } // Recipient is the business (IGBID)
-
-    const text = message.text
-    const attachments = (message.attachments || []).map((att: any) => ({
-      filename: att.payload?.title || att.type || 'attachment',
-      mimeType: att.type,
-      size: 0,
-      inline: false,
-      contentLocation: att.payload?.url,
-    }))
-
-    const createdTime = new Date(timestamp)
-
-    // Determine Thread ID: Requires mapping IGSID to a conversation ID.
-    // This mapping isn't provided directly. A common approach is to fetch
-    // the conversation ID using the page ID and user IGSID, or use the
-    // IGSID itself as a proxy (less ideal as it doesn't group threads correctly
-    // if the same user messages via FB Messenger and Instagram).
-    // Using IGSID as placeholder - !!! NEEDS REPLACEMENT WITH CONVERSATION LOOKUP/MAPPING !!!
-    const externalThreadId = senderIgsid
-
-    const messageData: MessageData = {
-      externalId: messageId,
-      externalThreadId: externalThreadId, // Placeholder - fetch conversation ID
-      integrationId: integrationId,
-      // Note: integrationType and messageType removed - derived from Integration.provider
-      organizationId: organizationId,
-      createdTime: createdTime,
-      sentAt: createdTime,
-      receivedAt: createdTime,
-      subject: undefined,
-      from: fromParticipant,
-      to: [toParticipant],
-      cc: [],
-      bcc: [],
-      replyTo: [],
-      // Instagram has no inbound attachment ingestor, so no MessageAttachment rows
-      // are ever created and `providerAttachments` is never populated. Mirrors
-      // InstagramProvider.convertToMessageData — `hasAttachments` is a workflow
-      // trigger filter, so claiming true fires attachment rules for bytes that
-      // were never fetched. The `attachments` local still drives the snippet fallback.
-      hasAttachments: false,
-      textPlain: text,
-      snippet: text ? text.substring(0, 100) : attachments[0]?.filename || '',
-      isInbound: isInbound,
-      metadata: { event: event },
-      keywords: [],
-      labelIds: [],
-    }
-
-    return messageData
-  } catch (error: any) {
-    logger.error('Failed to convert Instagram webhook event', { error: error.message, event })
-    return null
-  }
 }

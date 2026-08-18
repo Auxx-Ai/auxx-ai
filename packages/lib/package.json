@@ -1078,6 +1078,18 @@
       "import": "./dist/providers/openphone/webhook-message.mjs",
       "default": "./src/providers/openphone/webhook-message.ts"
     },
+    "./providers/social/types": {
+      "types": "./src/providers/social/types.ts",
+      "source": "./src/providers/social/types.ts",
+      "import": "./dist/providers/social/types.mjs",
+      "default": "./src/providers/social/types.ts"
+    },
+    "./providers/social/webhook-message": {
+      "types": "./src/providers/social/webhook-message.ts",
+      "source": "./src/providers/social/webhook-message.ts",
+      "import": "./dist/providers/social/webhook-message.mjs",
+      "default": "./src/providers/social/webhook-message.ts"
+    },
     "./quick-actions": {
       "types": "./src/quick-actions/index.ts",
       "source": "./src/quick-actions/index.ts",

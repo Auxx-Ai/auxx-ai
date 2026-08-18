@@ -19,6 +19,7 @@ import type {
 import { getChannelTokens } from '../channel-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
+import { socialThreadKey } from '../social/thread-key'
 import { type FacebookIntegrationMetadata, FacebookOAuthService } from './facebook-oauth'
 
 const logger = createScopedLogger('facebook-provider')
@@ -184,6 +185,21 @@ export class FacebookProvider
         hasSettings: true,
       })
     }
+    // Received-time trigger cutoff (webhook-push-migration plan Phase 2.5; the same
+    // contract Gmail/Outlook/Quo use). While the initial backfill is incomplete,
+    // ingest stores historical messages but suppresses `message:received` for
+    // anything received before the connect epoch — otherwise a backfill mass-fires
+    // workflows, agent runs and AI classification against years of real customer
+    // mail. Live inbound is unaffected: its `receivedAt` is after the cutoff.
+    const socialMeta = integration.metadata as {
+      backfillCutoffAt?: string
+      initialBackfillCompletedAt?: string
+    }
+    this.storageService.setBackfillCutoff(
+      socialMeta.backfillCutoffAt && !socialMeta.initialBackfillCompletedAt
+        ? new Date(socialMeta.backfillCutoffAt)
+        : null
+    )
     logger.info(`FacebookProvider initialized successfully for Page ID: ${this.pageId}`, {
       integrationId,
     })
@@ -524,7 +540,11 @@ export class FacebookProvider
       // Construct the MessageData object for storage
       const messageData: MessageData = {
         externalId: externalId,
-        externalThreadId: conversationId, // Use FB Conversation ID
+        // NOT the `t_…` conversation id. The webhook never receives one, so the
+        // REST path must derive the SAME pair key the webhook derives or the same
+        // conversation lands in two threads. The conversation id is kept in
+        // `metadata` for deep links only.
+        externalThreadId: socialThreadKey(this.pageId, userContext.psid),
         integrationId: this.integrationId,
         inboxId: this.inboxId,
         organizationId: this.organizationId,
@@ -552,6 +572,7 @@ export class FacebookProvider
         isInbound: isInbound,
         metadata: {
           // Store raw event parts for debugging or future use
+          fb_conversation_id: conversationId,
           fb_from: message.from,
           fb_to: message.to,
           fb_message: message.message,
