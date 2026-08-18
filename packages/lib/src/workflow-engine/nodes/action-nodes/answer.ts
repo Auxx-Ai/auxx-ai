@@ -282,6 +282,10 @@ export class AnswerProcessor extends BaseNodeProcessor {
     }
 
     // 4. Process recipients - convert email strings to ParticipantInput format
+    //
+    // The id space follows the channel, not the field name, but the provider is
+    // not known here — `MessageSenderService.resolveRecipients` normalises the
+    // type for channels whose recipient model fixes it (Messenger, Instagram).
     const toParticipants: ParticipantInput[] = resolvedTo.map((email) => ({
       identifier: email,
       identifierType: IdentifierType.EMAIL,

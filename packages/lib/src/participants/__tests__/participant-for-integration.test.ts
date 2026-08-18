@@ -132,8 +132,10 @@ describe('findOrCreateParticipantForIntegration', () => {
   })
 
   it('never falls back to the channel display name as an identifier', async () => {
-    // `getIdentifier` ends with `channel.name` for UI labelling. A display name
-    // is not routable and must never become a Participant identifier.
+    // A display name is not routable and must never become a Participant
+    // identifier. `getIdentifier` no longer reads `channel.name` at all (display
+    // labelling moved to `getChannelLabel`), so this is now structural — the
+    // test stays as the regression guard for that split.
     h.integrationRow = {
       provider: 'openphone',
       email: null,
