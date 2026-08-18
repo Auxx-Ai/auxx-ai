@@ -1,6 +1,7 @@
 // ~/server/api/routers/channel-reauth.ts
 
 import { schema } from '@auxx/database'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { TRPCError } from '@trpc/server'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
@@ -51,6 +52,9 @@ export const channelReauthRouter = createTRPCRouter({
           .update(schema.Credential)
           .set({ requiresReauth: false })
           .where(eq(schema.Credential.id, integration.credentialId))
+        // The banner reads from the cached channel list — recompute it or the
+        // dismissed banner reappears on the next fetch.
+        await onCacheEvent('channel.auth-state.changed', { orgId: organizationId })
       }
 
       return {
