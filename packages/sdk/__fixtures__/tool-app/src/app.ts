@@ -66,12 +66,74 @@ export const app = {
             resource: {
               toJSON: () => ({ type: 'string', _metadata: { label: 'Resource' } }),
             },
+            // A select the outputs condition on — slack's `sendTo` shape.
+            target: {
+              toJSON: () => ({
+                type: 'select',
+                _metadata: {
+                  label: 'Target',
+                  options: [{ value: 'channel' }, { value: 'user' }],
+                },
+              }),
+            },
           },
-          outputs: {},
+          outputs: {
+            messageId: {
+              toJSON: () => ({ type: 'string', _metadata: { label: 'Message ID' } }),
+            },
+          },
+          // Dynamic per-selection outputs — the shape the canvas computes live
+          // in the app iframe. `explode` throws, to prove one bad selection
+          // degrades to `{}` rather than failing the author's whole publish.
+          computeOutputs: (inputs: { operation?: string; target?: string }) => {
+            if (inputs.operation === 'send') {
+              const base = {
+                messageId: {
+                  toJSON: () => ({ type: 'string', _metadata: { label: 'Message ID' } }),
+                },
+                sentAt: { toJSON: () => ({ type: 'string', _metadata: { label: 'Sent at' } }) },
+              }
+              // Conditional on a second input — invisible unless the extractor
+              // varies `target`.
+              if (inputs.target === 'channel') {
+                return {
+                  ...base,
+                  channelId: { toJSON: () => ({ type: 'string', _metadata: {} }) },
+                }
+              }
+              if (inputs.target === 'user') {
+                return { ...base, userId: { toJSON: () => ({ type: 'string', _metadata: {} }) } }
+              }
+              return base
+            }
+            if (inputs.operation === 'react') {
+              return {
+                reactionId: {
+                  toJSON: () => ({ type: 'string', _metadata: { label: 'Reaction ID' } }),
+                },
+              }
+            }
+            throw new Error('computeOutputs blew up for this selection')
+          },
         },
         toolMap: {
           'message.send': 'send_message',
+          'message.react': 'send_message',
+          'message.explode': 'send_message',
         },
+        config: {
+          requiresConnection: true,
+          canRunSingle: false,
+        },
+        execute: async () => ({}),
+      },
+      {
+        // Declares neither `config` nor `schema.outputs` — the shape every
+        // pre-projection catalog has. Must NOT gain the optional keys.
+        id: 'bare',
+        label: 'Bare',
+        schema: { inputs: {} },
+        toolMap: { 'thing.do': 'send_message' },
         execute: async () => ({}),
       },
     ],

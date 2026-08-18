@@ -128,7 +128,7 @@ describe('compileAndExtractCatalog', () => {
     expect(catalog.agent.triggers[0]).not.toHaveProperty('defaultEnabled')
 
     // Workflow blocks — `toolMap` is the dispatcher table the runtime reads.
-    expect(catalog.workflow.blocks).toHaveLength(1)
+    expect(catalog.workflow.blocks).toHaveLength(2)
     expect(catalog.workflow.blocks[0]).toMatchObject({
       id: 'messaging',
       label: 'Messaging',
@@ -138,6 +138,48 @@ describe('compileAndExtractCatalog', () => {
         'message.send': 'send_message',
       },
     })
+    // `schema.outputs` reaches the catalog for blocks, same as it already did
+    // for triggers — the compiler used to call only the inputs serializer.
+    expect(catalog.workflow.blocks[0]?.outputsJsonSchema).toEqual({
+      messageId: { type: 'string', _metadata: { label: 'Message ID' } },
+    })
+    // Per-operation outputs — `computeOutputs` evaluated once per toolMap key at
+    // publish time. This is what gives the server the same per-selection shapes
+    // the canvas computes live in the app iframe.
+    expect(catalog.workflow.blocks[0]?.opOutputsJsonSchema).toEqual({
+      // `channelId`/`userId` are conditional on the `target` select, and appear
+      // only because the extractor varies each select input one value at a time
+      // and unions. Slack's `message.send`/`sendTo` is the real instance.
+      'message.send': {
+        messageId: { type: 'string', _metadata: { label: 'Message ID' } },
+        sentAt: { type: 'string', _metadata: { label: 'Sent at' } },
+        channelId: { type: 'string', _metadata: {} },
+        userId: { type: 'string', _metadata: {} },
+      },
+      'message.react': {
+        reactionId: { type: 'string', _metadata: { label: 'Reaction ID' } },
+      },
+      // Threw. Degraded to `{}` — "unknown shape" — and the publish still
+      // succeeded, which is the whole point of catching per key.
+      'message.explode': {},
+    })
+
+    // `config` members the catalog projects. Carried verbatim, so `false` is
+    // preserved and distinguishable from absent.
+    expect(catalog.workflow.blocks[0]?.requiresConnection).toBe(true)
+    expect(catalog.workflow.blocks[0]?.canRunSingle).toBe(false)
+
+    // A block declaring neither must not acquire the keys at all. `undefined`
+    // has to stay distinguishable from `false` — every consumer treats absent
+    // as "unknown, fall back", and `false` as "the author said no".
+    const bare = catalog.workflow.blocks[1]
+    expect(bare?.id).toBe('bare')
+    expect(bare).not.toHaveProperty('requiresConnection')
+    expect(bare).not.toHaveProperty('canRunSingle')
+    expect(bare?.outputsJsonSchema).toEqual({})
+    // No `computeOutputs` at all ⇒ an entry per op, each `{}` (unknown), rather
+    // than a missing key the reader would have to special-case.
+    expect(bare?.opOutputsJsonSchema).toEqual({ 'thing.do': {} })
 
     // App-registered custom fields — projected from `app.fields[]`. Carries the
     // catalog the platform provisions on install/connect (Phase 5/7).

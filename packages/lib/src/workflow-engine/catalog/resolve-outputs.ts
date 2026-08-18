@@ -4,6 +4,7 @@ import { err, ok, type Result } from 'neverthrow'
 import { getCachedResources } from '../../cache'
 import { NotFoundError } from '../../errors'
 import type { UnifiedVariable } from '../types/unified-variable'
+import { type AppBlockLookup, buildAppBlockLookup, resolveAppBlockOutputs } from './app-manifests'
 import { buildOutputContextFromResources } from './build-output-context'
 import { buildUpstreamMap, type EdgeMeta, type NodeMeta, topologicalSort } from './graph-vars'
 import { getManifest } from './registry'
@@ -74,7 +75,8 @@ function findVariableInTree(
 function resolveInTopoOrder(
   allResources: Awaited<ReturnType<typeof getCachedResources>>,
   nodes: NodeMeta[],
-  edges: EdgeMeta[]
+  edges: EdgeMeta[],
+  appBlocks: AppBlockLookup
 ): Map<string, UnifiedVariable[]> {
   const topoOrder = topologicalSort(nodes, edges)
   const nodeMap = new Map(nodes.map((n) => [n.id, n]))
@@ -89,6 +91,21 @@ function resolveInTopoOrder(
     if (!node) continue
 
     const nodeType: string | undefined = node.data?.type ?? node.type
+
+    // App blocks resolve from their catalog projection, not the core registry —
+    // they are never registered there and never will be (D1). Checked before
+    // the manifest bail below, which is what used to give every app-block node
+    // an empty output set and let the agent invent refs against it (§1).
+    //
+    // A positive lookup is the guard: only a block the org actually has
+    // installed resolves. Do NOT widen this to "any type containing a colon" —
+    // that is `hasProcessor`'s fail-open, and it does not belong here (D8).
+    const appBlock = nodeType ? appBlocks.get(nodeType) : undefined
+    if (appBlock) {
+      memo.set(nodeId, resolveAppBlockOutputs(appBlock, node.data, nodeId).variables)
+      continue
+    }
+
     const manifest = nodeType ? getManifest(nodeType) : undefined
     if (!manifest?.resolveOutputs) {
       // Not-yet-migrated or unknown type (`NOT_YET_MIGRATED` — `crud`/`find`
@@ -120,6 +137,23 @@ function resolveInTopoOrder(
 }
 
 /**
+ * The app-block lookup for this graph, or an empty one when the graph has no
+ * candidate node — a `${appId}:${blockId}` type is the only thing that could
+ * match, so a graph of purely core nodes must not pay for an `installedApps`
+ * cache read. The colon test is a cheap pre-filter, never an authorization
+ * decision: the real gate is the positive map lookup in `resolveInTopoOrder`.
+ */
+const EMPTY_APP_BLOCKS: AppBlockLookup = new Map()
+
+async function appBlocksForGraph(orgId: string, nodes: NodeMeta[]): Promise<AppBlockLookup> {
+  const hasCandidate = nodes.some((n) => {
+    const type = n.data?.type ?? n.type
+    return typeof type === 'string' && type.includes(':')
+  })
+  return hasCandidate ? await buildAppBlockLookup(orgId) : EMPTY_APP_BLOCKS
+}
+
+/**
  * Outputs for one node, given the full graph for upstream resolution.
  *
  * Only walks `nodeId`'s own ancestor set (via `buildUpstreamMap`), not the
@@ -143,8 +177,11 @@ export async function resolveNodeOutputs(
   const relevantIds = new Set([...ancestorIds, nodeId])
   const relevantNodes = graph.nodes.filter((n) => relevantIds.has(n.id))
 
-  const allResources = await getCachedResources(orgId)
-  const memo = resolveInTopoOrder(allResources, relevantNodes, graph.edges)
+  const [allResources, appBlocks] = await Promise.all([
+    getCachedResources(orgId),
+    appBlocksForGraph(orgId, relevantNodes),
+  ])
+  const memo = resolveInTopoOrder(allResources, relevantNodes, graph.edges, appBlocks)
   return ok(memo.get(nodeId) ?? [])
 }
 
@@ -158,7 +195,10 @@ export async function resolveGraphOutputs(
   orgId: string,
   params: { graph: WorkflowOutputGraph }
 ): Promise<Result<Map<string, UnifiedVariable[]>, Error>> {
-  const allResources = await getCachedResources(orgId)
-  const memo = resolveInTopoOrder(allResources, params.graph.nodes, params.graph.edges)
+  const [allResources, appBlocks] = await Promise.all([
+    getCachedResources(orgId),
+    appBlocksForGraph(orgId, params.graph.nodes),
+  ])
+  const memo = resolveInTopoOrder(allResources, params.graph.nodes, params.graph.edges, appBlocks)
   return ok(memo)
 }

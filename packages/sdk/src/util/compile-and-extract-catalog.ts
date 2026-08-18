@@ -147,6 +147,20 @@ export interface CatalogBlock {
   /** Dispatch table: `${resource}.${operation}` → tool id. */
   toolMap: Record<string, string>
   refs: Array<{ path: string[]; kind: string }>
+  /** The block's declared `schema.outputs`. `{}` for router-style blocks — real
+   *  outputs come per-operation from the tool `toolMap` dispatches to. Optional:
+   *  absent on catalogs published before this projection. */
+  outputsJsonSchema?: Record<string, unknown>
+  /** `config.requiresConnection`. Optional, and `undefined` means **unknown**,
+   *  NOT `false` — older catalogs carry nothing. */
+  requiresConnection?: boolean
+  /** `config.canRunSingle` (SDK default `true`). Optional — absent ⇒ true. */
+  canRunSingle?: boolean
+  /** Per-operation outputs keyed by `${resource}.${operation}` — `computeOutputs`
+   *  evaluated once per `toolMap` key at publish time. `{}` for an op means
+   *  UNKNOWN shape (not declared / returned nothing / threw), never "emits
+   *  nothing". Optional: absent on catalogs published before this projection. */
+  opOutputsJsonSchema?: Record<string, Record<string, unknown>>
 }
 
 /**
@@ -643,8 +657,18 @@ export async function compileAndExtractCatalog(): Promise<
       iconKey: null,
       color: block.color,
       inputsJsonSchema: serializeWorkflowSchemaInputs(block.schema),
+      outputsJsonSchema: serializeWorkflowSchemaOutputs(block.schema),
+      opOutputsJsonSchema: projectOpOutputs(block),
       toolMap: block.toolMap ?? {},
       refs: [],
+      // Spread-when-present, never `?? false`: a consumer must be able to tell
+      // "the author said no" from "this catalog predates the projection".
+      ...(block.config?.requiresConnection !== undefined
+        ? { requiresConnection: block.config.requiresConnection }
+        : {}),
+      ...(block.config?.canRunSingle !== undefined
+        ? { canRunSingle: block.config.canRunSingle }
+        : {}),
     })
   }
 
@@ -845,6 +869,93 @@ export async function compileAndExtractCatalog(): Promise<
 }
 
 /**
+ * Evaluate a block's `computeOutputs` per `toolMap` key, so the catalog carries
+ * the per-selection output shapes the canvas computes live in the app iframe.
+ * Without this the server sees only the dispatched TOOL's declared outputs,
+ * which is an open `z.record` on most published apps.
+ *
+ * `computeOutputs` returns the same `Record<string, FieldNode>` shape as
+ * `schema.outputs`, so the existing field serializer handles its result
+ * unchanged.
+ *
+ * Most blocks read only `resource` + `operation`, but some condition on another
+ * input too (slack's `message.send` on `sendTo`), so each select-typed input is
+ * additionally varied one value at a time and the results unioned — see the
+ * comments in the loop for why one-at-a-time and what the union costs.
+ */
+function selectOptionValues(
+  inputsJsonSchema: Record<string, unknown>
+): Array<readonly [string, unknown[]]> {
+  const out: Array<readonly [string, unknown[]]> = []
+  for (const [name, node] of Object.entries(inputsJsonSchema)) {
+    // `resource`/`operation` are already the loop axis — varying them here would
+    // ask a block about a selection that is not the one being projected.
+    if (name === 'resource' || name === 'operation') continue
+    const options = (node as { _metadata?: { options?: unknown } } | null)?._metadata?.options
+    if (!Array.isArray(options) || options.length === 0) continue
+    const values = options.map((o) =>
+      o && typeof o === 'object' && 'value' in o ? (o as { value: unknown }).value : o
+    )
+    out.push([name, values] as const)
+  }
+  return out
+}
+
+function projectOpOutputs(block: RawBlock): Record<string, Record<string, unknown>> {
+  const computeOutputs = block.schema?.computeOutputs
+  const toolMapKeys = Object.keys(block.toolMap ?? {})
+  const opOutputs: Record<string, Record<string, unknown>> = {}
+
+  if (typeof computeOutputs !== 'function') {
+    for (const key of toolMapKeys) {
+      const [resource, operation] = key.split('.')
+      if (resource && operation) opOutputs[key] = {}
+    }
+    return opOutputs
+  }
+
+  const selects = selectOptionValues(serializeWorkflowSchemaInputs(block.schema))
+
+  for (const key of toolMapKeys) {
+    const [resource, operation] = key.split('.')
+    if (!resource || !operation) continue
+
+    // THIRD-PARTY CODE RUNS HERE. Every call is caught independently: one
+    // selection that throws must degrade to nothing, never fail the author's
+    // whole publish. The extraction bundle also stubs `@auxx/sdk/client` and
+    // every `*.server` module, so a `computeOutputs` reaching into either gets a
+    // null-returning no-op or a throw — which is what this absorbs.
+    const call = (inputs: Record<string, unknown>): Record<string, unknown> => {
+      try {
+        return serializeWorkflowSchemaFields(computeOutputs(inputs))
+      } catch {
+        return {}
+      }
+    }
+
+    // The base selection first, so its fields keep leading position, then each
+    // select input varied ONE AT A TIME and unioned. One-at-a-time keeps this
+    // O(sum of options) rather than O(product) — and it is a no-op for the
+    // blocks whose `computeOutputs` reads only resource+operation, which is all
+    // of them but slack's `message.send` / `sendTo`.
+    //
+    // The union is a SUPERSET for conditional outputs: the agent may see a field
+    // that only appears under a different selection. That is the safe direction
+    // (never missing a field the block can emit); the canvas still computes the
+    // exact per-selection set live, because there the conditioning input is set.
+    let merged = call({ resource, operation })
+    for (const [field, values] of selects) {
+      for (const value of values) {
+        merged = { ...merged, ...call({ resource, operation, [field]: value }) }
+      }
+    }
+    opOutputs[key] = merged
+  }
+
+  return opOutputs
+}
+
+/**
  * Serialize a WorkflowSchema's `inputs` object into a plain JSON record. Each
  * field carries a `toJSON()` from `base-node.ts` — fields that don't are passed
  * through as-is and rely on the JSON-serializable check at the catalog level.
@@ -928,11 +1039,20 @@ interface RawBlock {
   color?: string
   schema?: RawWorkflowSchema
   toolMap?: Record<string, string>
+  /** `WorkflowBlockConfig` — only the two members the catalog projects. */
+  config?: { requiresConnection?: boolean; canRunSingle?: boolean }
 }
 
 interface RawWorkflowSchema {
   inputs?: Record<string, unknown>
   outputs?: Record<string, unknown>
+  /**
+   * The block's dynamic-output function. Called at publish time, once per
+   * `toolMap` key — see {@link projectOpOutputs}. Returns the same
+   * `Record<string, FieldNode>` shape as `outputs`, so the existing field
+   * serializer consumes it unchanged.
+   */
+  computeOutputs?: (inputs: Record<string, unknown>) => Record<string, unknown>
 }
 
 interface RawAppField {

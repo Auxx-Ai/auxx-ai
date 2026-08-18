@@ -393,6 +393,57 @@ export interface CachedAction extends CatalogAction {
   inputsJsonSchema: Record<string, unknown>
 }
 
+/**
+ * One `${resource}.${operation}` of an app workflow block, joined from the
+ * deployment's **full** `catalog.tools` registry via `CatalogBlock.toolMap`.
+ * Block tools carry no agent surface and so are absent from `agent.tools` —
+ * the same reason `CachedAction` joins from `catalog.tools` rather than
+ * client-side.
+ *
+ * This is the server's only view of what an app block produces.
+ * `CatalogBlock` itself carries no outputs, and the block's own
+ * `computeOutputs` is a function that runs inside the app iframe — see
+ * `plans/kopilot/workflow/17-app-block-authoring-and-connections.md` §2.3.
+ */
+export interface CachedBlockOp {
+  /** `${resource}.${operation}` — the `toolMap` key the dispatcher routes on. */
+  key: string
+  resource: string
+  operation: string
+  toolId: string
+  /**
+   * The dispatched tool's declared inputs. ADVISORY for authoring: most blocks
+   * forward the flat panel input to `ctx.runTool` unchanged, but some (whatsapp)
+   * project it first, so this is the tool's contract and not necessarily the
+   * block's.
+   */
+  inputsJsonSchema: Record<string, unknown>
+  /**
+   * The dispatched tool's declared outputs — the shape the engine writes as
+   * `${nodeId}.${field}`.
+   *
+   * Frequently an OPEN object (`{ type: 'object', additionalProperties: {} }`,
+   * i.e. a `z.record` with no named properties): as of 2026-08-18 only 71 of
+   * 261 published ops declare named output properties, and shopify/quickbooks/
+   * github/stripe/ms-teams/notion/gog-sheets/gog-contacts declare none on any
+   * op. Callers must treat a property-less schema as *unknown*, never as
+   * "produces nothing".
+   */
+  outputsJsonSchema: Record<string, unknown>
+  requiresConnection: boolean
+  /** `tool.exampleOutput`, when the app declared one. No published app does yet. */
+  exampleOutput?: unknown
+}
+
+/**
+ * A workflow block projection with its per-operation contracts resolved.
+ * `ops` is empty when the block declares no `toolMap`, and drops entries whose
+ * tool id is missing from the catalog or whose key is not `resource.operation`.
+ */
+export interface CachedWorkflowBlock extends CatalogBlock {
+  ops: CachedBlockOp[]
+}
+
 export interface CachedAgentToolset extends CatalogToolset {
   /** Short header text used inside the app/sub-group render. Falls back to `name`. */
   shortLabel?: string
@@ -494,7 +545,7 @@ export interface CachedInstalledApp {
   agentTools?: CachedAgentTool[]
   agentToolsets?: CachedAgentToolset[]
   agentTriggers?: CatalogTriggerProjection[]
-  workflowBlocks?: CatalogBlock[]
+  workflowBlocks?: CachedWorkflowBlock[]
   workflowTriggers?: CatalogTriggerProjection[]
   actions?: CachedAction[]
   /**
@@ -802,7 +853,9 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // v2: connectionDefinition (singular) → connectionDefinitions (pair). Bump on shape changes.
   // v4: CachedAction.inputHints (dynamic-select pickers). See plans/actions/09-dynamic-action-inputs.md.
   // v5: + methods[] (multi-connection-per-app). See plans/connections/multi-connection-per-app.md.
-  installedApps: { prefix: 'org:installed-apps:v5', ttlSeconds: 900 },
+  // v6: workflowBlocks carry `ops[]` (toolMap → catalog.tools join) so the server
+  //     can resolve what an app block produces. See plans/kopilot/workflow/17-*.md §4 A2.
+  installedApps: { prefix: 'org:installed-apps:v6', ttlSeconds: 900 },
   mcpServers: { prefix: 'org:mcpServers', ttlSeconds: ONE_DAY },
   // Read per CRUD event by trigger dispatch; changes only on admin edits →
   // 5 s local window (dispatch enqueues jobs, so peer staleness is benign).

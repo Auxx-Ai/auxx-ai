@@ -1,12 +1,67 @@
 // packages/lib/src/cache/providers/installed-apps-provider.ts
 
 import { gateConnectionVariables, resolveOwnClientRequirement } from '@auxx/credentials/connections'
+import type { CatalogBlock, CatalogTool } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getBuiltinAuxxInstalledRow } from '../../agents/builtin-installed-row'
 import { getRegisteredToolName } from '../../ai/kopilot/capabilities/apps/tool-naming'
-import type { CachedAction, CachedAgentTool, CachedInstalledApp } from '../org-cache-keys'
+import type {
+  CachedAction,
+  CachedAgentTool,
+  CachedBlockOp,
+  CachedInstalledApp,
+  CachedWorkflowBlock,
+} from '../org-cache-keys'
 import type { CacheProvider } from '../org-cache-provider'
+
+/**
+ * Join each workflow block to the contracts of the tools its `toolMap`
+ * dispatches to, from the deployment's **full** `catalog.tools` registry.
+ *
+ * Why the full registry and not `agent.tools`: block tools carry no agent
+ * surface, so they are absent there — the same reason `CachedAction` joins
+ * from `catalog.tools`.
+ *
+ * Why at all: `CatalogBlock` declares no outputs, and the block's own
+ * `computeOutputs` is a function that only runs inside the app iframe. The
+ * dispatched tool's `outputsJsonSchema` is the only server-readable answer to
+ * "what does this node produce". See
+ * `plans/kopilot/workflow/17-app-block-authoring-and-connections.md` §2.3/D3.
+ *
+ * Malformed entries are dropped, never thrown: a dangling tool id or a key
+ * that isn't `resource.operation` is an app-authoring mistake, and failing the
+ * projection would poison the whole org's `installedApps` cache over one bad
+ * block.
+ */
+export function projectWorkflowBlocks(
+  blocks: CatalogBlock[] | undefined,
+  tools: CatalogTool[] | undefined
+): CachedWorkflowBlock[] | undefined {
+  if (!blocks) return undefined
+  const toolById = new Map((tools ?? []).map((t) => [t.id, t]))
+  return blocks.map((block) => ({
+    ...block,
+    ops: Object.entries(block.toolMap ?? {}).flatMap<CachedBlockOp>(([key, toolId]) => {
+      const tool = toolById.get(toolId)
+      if (!tool) return []
+      const [resource, operation, ...rest] = key.split('.')
+      if (!resource || !operation || rest.length > 0) return []
+      return [
+        {
+          key,
+          resource,
+          operation,
+          toolId,
+          inputsJsonSchema: tool.inputsJsonSchema,
+          outputsJsonSchema: tool.outputsJsonSchema,
+          requiresConnection: tool.requiresConnection,
+          ...(tool.exampleOutput !== undefined ? { exampleOutput: tool.exampleOutput } : {}),
+        },
+      ]
+    }),
+  }))
+}
 
 /**
  * Computes installed apps with connection definitions for an organization.
@@ -135,6 +190,11 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
         (a) => ({ ...a, inputsJsonSchema: toolInputsById.get(a.toolId) ?? {} })
       )
 
+      const workflowBlocks = projectWorkflowBlocks(
+        inst.currentDeployment?.catalog?.workflow.blocks,
+        inst.currentDeployment?.catalog?.tools
+      )
+
       return {
         installationId: inst.id,
         installationType: inst.installationType as 'development' | 'production',
@@ -204,7 +264,7 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
         agentTools,
         agentToolsets: inst.currentDeployment?.catalog?.agent.toolsets ?? undefined,
         agentTriggers: inst.currentDeployment?.catalog?.agent.triggers ?? undefined,
-        workflowBlocks: inst.currentDeployment?.catalog?.workflow.blocks ?? undefined,
+        workflowBlocks,
         workflowTriggers: inst.currentDeployment?.catalog?.workflow.triggers ?? undefined,
         actions,
         dataConnectors: inst.currentDeployment?.catalog?.dataConnectors ?? undefined,
