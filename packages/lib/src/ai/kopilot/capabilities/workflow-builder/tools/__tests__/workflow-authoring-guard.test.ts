@@ -143,6 +143,7 @@ const installedApps = vi.fn(async (..._a: unknown[]) => [
     app: { id: 'appfedex', slug: 'fedex', title: 'Fedex', description: null, avatarUrl: null },
     orgConnectionPresent: false,
     orgConnectionExpiresAt: null,
+    methods: [{ id: 'cd-1', key: 'oauth2', label: 'FedEx account', global: true }],
     workflowBlocks: [
       {
         id: 'fedex',
@@ -166,6 +167,57 @@ const installedApps = vi.fn(async (..._a: unknown[]) => [
 ])
 vi.mock('../../../../../../cache', () => ({
   getCachedInstalledApps: (...a: unknown[]) => installedApps(...a),
+}))
+
+/**
+ * Every `kind:'app'` credential in the org — personal rows and other apps'
+ * rows included, because filtering them out is `list_app_connections`' job and
+ * a fixture that pre-filters would prove nothing.
+ */
+const appConnections = vi.fn(async (..._a: unknown[]) =>
+  ok([
+    {
+      id: 'cred-primary',
+      appId: 'appfedex',
+      appName: 'Fedex',
+      label: 'FedEx (workspace)',
+      connectionStatus: 'connected',
+      global: true,
+      userId: null,
+      isDefault: true,
+      connectionVariables: { accountNumber: '4711', shopDomain: 'acme.example' },
+    },
+    {
+      id: 'cred-secondary',
+      appId: 'appfedex',
+      appName: 'Fedex',
+      label: 'FedEx EU',
+      connectionStatus: 'expired',
+      global: true,
+      userId: null,
+    },
+    {
+      id: 'cred-personal',
+      appId: 'appfedex',
+      appName: 'Fedex',
+      label: "Markus's FedEx",
+      connectionStatus: 'connected',
+      global: false,
+      userId: 'user-1',
+    },
+    {
+      id: 'cred-otherapp',
+      appId: 'apphub',
+      appName: 'HubSpot',
+      label: 'HubSpot (workspace)',
+      connectionStatus: 'connected',
+      global: true,
+      userId: null,
+    },
+  ])
+)
+vi.mock('@auxx/services/app-connections', () => ({
+  listAppConnections: (...a: unknown[]) => appConnections(...a),
 }))
 
 import { createWorkflowBuilderCapabilities } from '../../index'
@@ -246,6 +298,7 @@ const VALID_ARGS: Record<string, Record<string, unknown>> = {
   set_workflow_details: { name: 'Renamed workflow' },
   run_node: { ref: 'Wait A Bit' },
   list_app_blocks: {},
+  list_app_connections: { appSlug: 'fedex' },
 }
 
 function run(t: AgentToolDefinition, args: Record<string, unknown> = {}): Promise<AgentToolResult> {
@@ -263,7 +316,13 @@ const MUTATION_TOOLS = [
   'apply_template',
   'set_workflow_details',
 ] as const
-const VIEW_TOOLS = ['get_workflow', 'get_node', 'validate_workflow', 'list_app_blocks'] as const
+const VIEW_TOOLS = [
+  'get_workflow',
+  'get_node',
+  'validate_workflow',
+  'list_app_blocks',
+  'list_app_connections',
+] as const
 const GUARDED = [...VIEW_TOOLS, ...MUTATION_TOOLS, 'run_node'] as const
 /**
  * Discovery splits in two now.
@@ -698,6 +757,72 @@ describe('discovery tools', () => {
     const blocks = (result.output as { blocks: Array<Record<string, unknown>> }).blocks
     expect(blocks[0]).not.toHaveProperty('requiresConnection')
     expect(blocks[0]!.connected).toBe(true)
+  })
+
+  it('list_app_connections lists ONLY workspace rows for the named app', async () => {
+    // The three exclusions in one assertion: another app's row, a personal
+    // row, and — the one that matters — every field that is not one of the
+    // five. `connectionVariables` is plaintext but carries account numbers and
+    // shop domains, and picking an id needs none of it.
+    const result = await run(tool('list_app_connections'), { type: 'appfedex:fedex' })
+
+    expect(result.success).toBe(true)
+    const out = result.output as { app: string; connections: Array<Record<string, unknown>> }
+    expect(out.app).toBe('Fedex')
+    expect(out.connections.map((c) => c.connectionId)).toEqual(['cred-primary', 'cred-secondary'])
+    expect(out.connections[0]).toEqual({
+      connectionId: 'cred-primary',
+      label: 'FedEx (workspace)',
+      scope: 'organization',
+      status: 'connected',
+      isDefault: true,
+    })
+    expect(out.connections[1]).toMatchObject({ status: 'expired' })
+    for (const conn of out.connections) {
+      expect(conn).not.toHaveProperty('connectionVariables')
+      expect(conn).not.toHaveProperty('metadata')
+      expect(conn).not.toHaveProperty('userId')
+    }
+  })
+
+  it('list_app_connections resolves the app by slug as well as by node type', async () => {
+    const result = await run(tool('list_app_connections'), { appSlug: 'fedex' })
+    expect(result.success).toBe(true)
+    expect((result.output as { connections: unknown[] }).connections).toHaveLength(2)
+  })
+
+  it('list_app_connections refuses with the connect instruction when there are none', async () => {
+    // The refusal has to name the METHOD an admin would connect with, not just
+    // "a connection" — otherwise the instruction is a category, not a step.
+    appConnections.mockResolvedValueOnce(ok([]) as never)
+    const result = await run(tool('list_app_connections'), { appSlug: 'fedex' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('has no workspace connection')
+    expect(result.error).toContain('FedEx account')
+    expect(result.error).toContain('/app/settings/apps/installed/fedex/connections')
+    // Say plainly that this is not something the agent can do, or the next turn
+    // is spent trying.
+    expect(result.error).toContain("I can't create it")
+  })
+
+  it('list_app_connections needs one of type or appSlug', async () => {
+    const result = await run(tool('list_app_connections'), {})
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('appSlug')
+  })
+
+  it('list_app_connections names the fix when the app is not installed', async () => {
+    const result = await run(tool('list_app_connections'), { appSlug: 'quickbooks' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('quickbooks')
+    expect(result.error).toContain('list_app_blocks')
+  })
+
+  it('list_app_connections builds a count digest naming the app', () => {
+    expect(
+      tool('list_app_connections').buildDigest?.({ app: 'Fedex', connections: [{}, {}] })
+    ).toEqual({ label: 'Fedex connections listed', resultCount: 2 })
   })
 
   it('list_app_blocks builds a compact count digest', () => {
