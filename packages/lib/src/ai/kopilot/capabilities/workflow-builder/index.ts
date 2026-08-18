@@ -15,6 +15,7 @@ import { createFindWorkflowTemplatesTool } from './tools/find-workflow-templates
 import { createGetNodeTool } from './tools/get-node'
 import { createGetWorkflowTool } from './tools/get-workflow'
 import { createListAppBlocksTool } from './tools/list-app-blocks'
+import { createListAppConnectionsTool } from './tools/list-app-connections'
 import { createListNodeTypesTool } from './tools/list-node-types'
 import { createReplaceGraphTool } from './tools/replace-graph'
 import { createRunNodeTool } from './tools/run-node'
@@ -67,6 +68,7 @@ export function createWorkflowBuilderCapabilities(getDeps: GetToolDeps): PageCap
       // Discovery (progressive disclosure — the prompt carries no node list).
       createListNodeTypesTool(getDeps),
       createListAppBlocksTool(getDeps),
+      createListAppConnectionsTool(getDeps),
       createDescribeNodeTypeTool(getDeps),
       createFindWorkflowTemplatesTool(getDeps),
       // Read

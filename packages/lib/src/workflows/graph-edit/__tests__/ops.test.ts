@@ -54,6 +54,14 @@ vi.mock('../../../workflow-engine/catalog/resolve-outputs', async (importOrigina
   }
 })
 
+// The credential store — `checkConnectionBinding` reads one row by id. Mocked
+// so the binding rules can be exercised without a database; `getCredential` is
+// already org-scoped and secret-free, so nothing here weakens what it proves.
+const getCredential = vi.fn(async (..._a: unknown[]) => okResult({}))
+vi.mock('@auxx/credentials/store', () => ({
+  getCredential: (...a: unknown[]) => getCredential(...a),
+}))
+
 // The blocking mail guard — checked in the pipeline so it reports as an issue.
 const mailGuard = vi.fn(async (..._args: unknown[]) => {})
 vi.mock('../../mail-trigger-guard', () => ({
@@ -1148,6 +1156,154 @@ const waitOnlyGraph = (): DraftGraph => ({
     plainNode(APP_WAIT_ID, 'wait', 'Wait A Bit', { waitType: 'duration', durationAmount: 5 }),
   ],
   edges: [],
+})
+
+describe('app blocks — connection binding (§7 D2)', () => {
+  const CRED = 'i9pksgc3uj8dqpkjneq1uheb'
+
+  function acmeGraph(): DraftGraph {
+    return {
+      nodes: [
+        plainNode(ACME_NODE_ID, ACME_TYPE, 'Acme Sync', {
+          appId: ACME_APP_ID,
+          blockId: 'sync',
+          resource: 'record',
+          operation: 'archive',
+        }),
+      ],
+      edges: [],
+    }
+  }
+
+  function bind(connectionId: string) {
+    installAcme()
+    return updateNode(makeDb(acmeGraph()), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'Acme Sync',
+      config: { connectionId },
+    })
+  }
+
+  beforeEach(() => getCredential.mockReset())
+
+  it('binds a workspace connection belonging to the same app', async () => {
+    getCredential.mockResolvedValue(
+      okResult({ id: CRED, appId: ACME_APP_ID, userId: null, organizationId: ORG }) as never
+    )
+    const result = await bind(CRED)
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().applied).toBe(true)
+    expect(persistedGraph().nodes.find((n) => n.id === ACME_NODE_ID)?.data?.connectionId).toBe(CRED)
+  })
+
+  it('refuses an id that does not exist in this workspace', async () => {
+    // Org-scoped `getCredential` returns not-found for a FOREIGN row too, so a
+    // probe cannot use this to confirm another org's credential exists.
+    getCredential.mockResolvedValue(errResult(new Error('CREDENTIAL_NOT_FOUND')) as never)
+    const result = await bind(CRED)
+
+    const value = result._unsafeUnwrap()
+    expect(value.applied).toBe(false)
+    expect(serviceUpdate).not.toHaveBeenCalled()
+    const issue = value.issues.find((i) => i.field === 'connectionId')
+    expect(issue?.severity).toBe('error')
+    expect(issue?.message).toContain('does not exist in this workspace')
+    expect(issue?.message).toContain('list_app_connections')
+  })
+
+  it("refuses another app's connection", async () => {
+    // The check the RUNTIME does not do: `resolveConnectionForRuntime` resolves
+    // whatever row the id names and hands it to this block's lambda.
+    getCredential.mockResolvedValue(
+      okResult({ id: CRED, appId: 'otherapp0000000000000000', userId: null }) as never
+    )
+    const result = await bind(CRED)
+
+    const value = result._unsafeUnwrap()
+    expect(value.applied).toBe(false)
+    // That app is not installed here, so there is no title to name — the
+    // sentence has to work without one rather than reading "is a another app".
+    expect(value.issues.find((i) => i.field === 'connectionId')?.message).toContain(
+      'belongs to a different app — this node is a Acme block'
+    )
+  })
+
+  it('names the other app when that one IS installed too', async () => {
+    installAcme()
+    const apps = await getCachedInstalledApps()
+    getCachedInstalledApps.mockResolvedValue([
+      ...(apps as unknown[]),
+      {
+        installationId: 'inst_2',
+        app: { id: 'zenith00000000000000000z', slug: 'zenith', title: 'Zenith' },
+        methods: [],
+        connectionDefinitions: {},
+        orgConnectionPresent: true,
+        orgConnectionExpiresAt: null,
+        workflowBlocks: [],
+      },
+    ] as never)
+    getCredential.mockResolvedValue(
+      okResult({ id: CRED, appId: 'zenith00000000000000000z', userId: null }) as never
+    )
+    const result = await updateNode(makeDb(acmeGraph()), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'Acme Sync',
+      config: { connectionId: CRED },
+    })
+
+    const value = result._unsafeUnwrap()
+    expect(value.applied).toBe(false)
+    expect(value.issues.find((i) => i.field === 'connectionId')?.message).toContain(
+      'is a Zenith connection — this node is a Acme block'
+    )
+  })
+
+  it('refuses a PERSONAL connection, and says why', async () => {
+    // A personal credId on a shared graph pins the workflow to one person, and
+    // a scheduled run then resolves nothing.
+    getCredential.mockResolvedValue(
+      okResult({ id: CRED, appId: ACME_APP_ID, userId: 'user-1' }) as never
+    )
+    const result = await bind(CRED)
+
+    const value = result._unsafeUnwrap()
+    expect(value.applied).toBe(false)
+    const message = value.issues.find((i) => i.field === 'connectionId')?.message ?? ''
+    expect(message).toContain('personal connection')
+    expect(message).toContain('or a schedule')
+  })
+
+  it('reads no credential at all when connectionId is unset', async () => {
+    // Unbound is the healthy, normal state — the runtime resolves the workspace
+    // default. It must not cost a lookup, and must never be an issue.
+    installAcme()
+    const result = await updateNode(makeDb(acmeGraph()), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'Acme Sync',
+      config: { operation: 'sync' },
+    })
+
+    expect(result._unsafeUnwrap().applied).toBe(true)
+    expect(getCredential).not.toHaveBeenCalled()
+  })
+
+  it('reads no credential for a CORE node type carrying a connectionId-ish key', async () => {
+    const graph: DraftGraph = { nodes: [triggerNode(), loopNode()], edges: [] }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'For each order',
+      config: { connectionId: CRED },
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(getCredential).not.toHaveBeenCalled()
+  })
 })
 
 describe('reference gate — O1 (plan 17 §0)', () => {

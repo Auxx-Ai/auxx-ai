@@ -380,8 +380,13 @@ function buildAppBlockConfigSchema(block: CachedWorkflowBlock): z.ZodType<AppBlo
   return z.object(shape).passthrough() as unknown as z.ZodType<AppBlockConfig>
 }
 
-/** Where an admin connects an app — named in prose because `auxx://` has no settings kind. */
-function connectionsPath(inst: CachedInstalledApp): string {
+/**
+ * Where an admin connects an app — named in prose because `auxx://` has no
+ * settings kind (plan 17 D2). Exported so the connection tools quote the same
+ * path as the tier-2 issue: two spellings of the same instruction is how a user
+ * ends up on the wrong page.
+ */
+export function connectionsPath(inst: CachedInstalledApp): string {
   return `Settings → Apps → ${inst.app.title} → Connections (/app/settings/apps/installed/${inst.app.slug}/connections)`
 }
 

@@ -24,8 +24,10 @@ describe('buildWorkflowBuilderPromptSection', () => {
     // Operation first, or the block resolves no outputs at all.
     expect(prompt).toContain('set `resource` and `operation` FIRST')
     expect(prompt).toContain('resolves NO outputs')
-    // Unbound is the healthy default (§0 S1).
+    // Unbound is the healthy default (§0 S1), and binding is the exception.
     expect(prompt).toContain('leave `connectionId` unset')
+    expect(prompt).toContain('`list_app_connections`')
+    expect(prompt).toContain('Personal connections are never listed or bindable')
   })
 
   it('forbids auxx:// deep links for workflow nodes', () => {

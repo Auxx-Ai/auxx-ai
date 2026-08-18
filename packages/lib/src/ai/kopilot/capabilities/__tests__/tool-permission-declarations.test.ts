@@ -95,6 +95,7 @@ const IDEMPOTENT_READ_TOOLS = [
   'find_threads',
   'find_workflow_templates',
   'list_app_blocks',
+  'list_app_connections',
   'get_article',
   'get_article_section',
   'get_entity',

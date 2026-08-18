@@ -36,6 +36,7 @@ import { assertMailTriggerNotPersonal } from '../mail-trigger-guard'
 import { calculateContainerSize, getLayoutByDagre, getLayoutForChildNodes } from './layout'
 import { LAYOUT_SPACING, NODE_ADDITION_CONFIG } from './layout-constants'
 import { resolveConnectionSpec } from './normalize/connection'
+import { checkConnectionBinding } from './normalize/connection-binding'
 import { normalizeFriendlyRefs, type ResourceAliasIndex } from './normalize/friendly-refs'
 import { normalizeAiPromptConfig } from './normalize/prompt'
 import { checkVariableRefsAgainstOutputs } from './normalize/ref-check'
@@ -387,9 +388,14 @@ async function normalizeConfig(
   }
   const friendly = normalizeFriendlyRefs(rest, { nodes, resourceAliases: aliases })
   const resource = await normalizeResourceConfig(organizationId, type, friendly.data)
+  // An app block's bound credential (plan 17 D2). Issues only — there is no
+  // correct id to substitute, and an `error` here blocks the persist, which is
+  // the point: a node pinned to a credential that does not resolve fails at RUN
+  // time otherwise.
+  const binding = await checkConnectionBinding(organizationId, type, resource.config)
   return {
     config: { ...normalizeAiPromptConfig(type, resource.config), ...prose },
-    issues: [...friendly.issues, ...resource.issues],
+    issues: [...friendly.issues, ...resource.issues, ...binding],
   }
 }
 
