@@ -1051,12 +1051,23 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     // Initialize services. Configured automation acts as AUTOMATION_SYSTEM
     // (§8.2): full on org inboxes, zero on personal — the §7 write gates
     // enforce it per thread.
+    //
+    // The WORKFLOW is the actor (thread-events §5.5): `sys.userId` is the
+    // workflow AUTHOR's user id, and attributing the change to them reads as
+    // "Alice archived this" when Alice's automation did. Lifecycle events
+    // carry `data.source: { kind: 'workflow', id, runId }` with a null actor.
     const viewer = await getAutomationVisibility(organizationId)
+    const workflowId = (await contextManager.getVariable('sys.workflowId')) as string | undefined
+    const executionId = (await contextManager.getVariable('sys.executionId')) as string | undefined
     const mutationService = new ThreadMutationService(
       organizationId,
       database,
       undefined,
-      userId,
+      {
+        kind: 'workflow',
+        ...(workflowId ? { id: workflowId } : {}),
+        ...(executionId ? { runId: executionId } : {}),
+      },
       viewer
     )
     const unreadService = new UnreadService(organizationId, userId, viewer)

@@ -1,22 +1,22 @@
-// packages/lib/src/data-migrations/migrations/089-backfill-participant-display-name.test.ts
+// packages/lib/src/data-migrations/migrations/091-backfill-participant-display-name.test.ts
 
 import { describe, expect, it } from 'vitest'
 import { calculateDisplayName } from '../../ingest/participants/display'
 import { ALL_DATA_MIGRATIONS } from '../registry'
 import {
   DISPLAY_NAME_SQL,
-  migration089BackfillParticipantDisplayName as migration,
-} from './089-backfill-participant-display-name'
+  migration091BackfillParticipantDisplayName as migration,
+} from './091-backfill-participant-display-name'
 
 /**
  * Row-level behaviour is pinned against a real database in
- * `089-backfill-participant-display-name.int.test.ts`. What is worth pinning
+ * `091-backfill-participant-display-name.int.test.ts`. What is worth pinning
  * WITHOUT one is the id/registry contract and the one property of the SQL that a
  * well-meaning simplification would destroy.
  */
-describe('migration089BackfillParticipantDisplayName', () => {
+describe('migration091BackfillParticipantDisplayName', () => {
   it('is registered with the id its filename claims', () => {
-    expect(migration.id).toBe('089-backfill-participant-display-name')
+    expect(migration.id).toBe('091-backfill-participant-display-name')
   })
 
   it('is registered exactly once', () => {

@@ -14,6 +14,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PhoneRegion } from './identifier-model'
+import type { RecipientField } from './recipient-input'
 
 interface CandidateStub {
   identifier: string
@@ -596,6 +597,82 @@ describe('RecipientBadge — other addresses', () => {
     expect(screen.queryByText('Other addresses')).not.toBeInTheDocument()
     // The rest of the menu is untouched.
     expect(screen.getByRole('menuitem', { name: /Copy 'typed@x\.com'/ })).toBeInTheDocument()
+  })
+})
+
+// The chip menu's "Move to Cc/Bcc" rows against `PlatformCapabilities.ccBcc`.
+// SMS/FB/IG have one recipient list, so the header hides the Cc/Bcc toggles —
+// but the menu offered the move anyway, and moving a recipient into a field
+// nothing renders and no send reads is how a recipient silently disappears.
+describe('RecipientBadge — moving between fields', () => {
+  const chip = {
+    id: 'chip-1',
+    identifier: 'jane@corp.com',
+    identifierType: 'EMAIL' as const,
+    recordId: 'c1',
+  }
+
+  function renderField(supportsCcBcc: boolean | undefined, field: RecipientField = 'TO') {
+    return render(
+      <RecipientInput
+        recipients={[chip] as never}
+        field={field}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+        onMoveTo={vi.fn()}
+        onSwitchIdentifier={vi.fn()}
+        onContactSelect={vi.fn()}
+        placeholder='To'
+        supportsCcBcc={supportsCcBcc}
+      />
+    )
+  }
+
+  async function openChipMenu() {
+    await userEvent.click(screen.getByRole('option', { name: 'Recipient: jane@corp.com' }))
+    return screen.findByRole('menu')
+  }
+
+  it('offers Cc and Bcc on an email channel', async () => {
+    renderField(true)
+
+    await openChipMenu()
+
+    expect(screen.getByRole('menuitem', { name: 'Move to Cc' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Move to Bcc' })).toBeInTheDocument()
+  })
+
+  it('defaults to offering them — an unresolved channel is an email channel', async () => {
+    renderField(undefined)
+
+    await openChipMenu()
+
+    expect(screen.getByRole('menuitem', { name: 'Move to Cc' })).toBeInTheDocument()
+  })
+
+  it('offers neither on a channel without carbon copies', async () => {
+    renderField(false)
+
+    await openChipMenu()
+
+    expect(screen.queryByRole('menuitem', { name: /Move to/ })).not.toBeInTheDocument()
+    // The rest of the menu still stands — this gates two rows, not the menu.
+    expect(screen.getByRole('menuitem', { name: /Copy 'jane@corp\.com'/ })).toBeInTheDocument()
+  })
+
+  it('drops the separator the move rows were under, not just the rows', async () => {
+    h.contactIdentifiers = [
+      { identifier: 'jane@corp.com', identifierType: 'EMAIL', onRecord: true, rank: 0 },
+      { identifier: 'j.smith@corp.com', identifierType: 'EMAIL', onRecord: true, rank: 1 },
+    ]
+    renderField(false)
+
+    const menu = await openChipMenu()
+
+    // "Other addresses" is present, so the section renders — and its closing
+    // separator would otherwise dangle at the bottom of the menu.
+    expect(screen.getByText('Other addresses')).toBeInTheDocument()
+    expect(within(menu).getAllByRole('separator')).toHaveLength(1)
   })
 })
 

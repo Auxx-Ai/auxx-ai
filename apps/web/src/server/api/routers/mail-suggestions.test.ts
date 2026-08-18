@@ -451,7 +451,21 @@ const {
 vi.mock('@auxx/lib/mail-suggestions', () => hoisted.mailSuggestions)
 vi.mock('@auxx/lib/mail-unsubscribe', () => hoisted.mailUnsubscribe)
 vi.mock('@auxx/lib/channels', () => hoisted.channels)
-vi.mock('@auxx/lib/mail-filters', () => hoisted.mailFilters)
+/**
+ * `hoisted.mailFilters` is a full REPLACEMENT, so every export it does not list
+ * is dropped — and `mail-filters.ts`'s create path calls
+ * `normalizePhoneConditionValues`, which arrived after this file was written
+ * (#1660). The result was `No "normalizePhoneConditionValues" export is defined
+ * on the "@auxx/lib/mail-filters" mock` at call time. Hand back the REAL one
+ * from its leaf path (the barrel hangs under vitest) rather than a stub, so the
+ * accept path exercises the same normalization production does.
+ */
+vi.mock('@auxx/lib/mail-filters', async () => ({
+  ...hoisted.mailFilters,
+  normalizePhoneConditionValues: (
+    await vi.importActual<Record<string, unknown>>('@auxx/lib/mail-filters/normalize-conditions')
+  ).normalizePhoneConditionValues,
+}))
 vi.mock('@auxx/lib/mail-filters/evaluate', () => ({
   assertFilterConditionsCompile: hoisted.assertFilterConditionsCompile,
 }))

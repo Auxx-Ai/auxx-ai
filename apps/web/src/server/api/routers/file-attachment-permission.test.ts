@@ -70,33 +70,35 @@ vi.mock('@auxx/lib/files', () => ({
   createMediaAssetService,
 }))
 
-vi.mock('@auxx/database', () => ({
-  database: {},
-  schema: {
-    MediaAsset: {
-      id: 'MediaAsset.id',
-      name: 'MediaAsset.name',
-      mimeType: 'MediaAsset.mimeType',
-      size: 'MediaAsset.size',
-      organizationId: 'MediaAsset.organizationId',
-      deletedAt: 'MediaAsset.deletedAt',
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: {},
+    schema: {
+      MediaAsset: {
+        id: 'MediaAsset.id',
+        name: 'MediaAsset.name',
+        mimeType: 'MediaAsset.mimeType',
+        size: 'MediaAsset.size',
+        organizationId: 'MediaAsset.organizationId',
+        deletedAt: 'MediaAsset.deletedAt',
+      },
+      FolderFile: {
+        id: 'FolderFile.id',
+        name: 'FolderFile.name',
+        mimeType: 'FolderFile.mimeType',
+        size: 'FolderFile.size',
+        organizationId: 'FolderFile.organizationId',
+        deletedAt: 'FolderFile.deletedAt',
+      },
+      Document: {
+        id: 'Document.id',
+        datasetId: 'Document.datasetId',
+        mediaAssetId: 'Document.mediaAssetId',
+        organizationId: 'Document.organizationId',
+      },
     },
-    FolderFile: {
-      id: 'FolderFile.id',
-      name: 'FolderFile.name',
-      mimeType: 'FolderFile.mimeType',
-      size: 'FolderFile.size',
-      organizationId: 'FolderFile.organizationId',
-      deletedAt: 'FolderFile.deletedAt',
-    },
-    Document: {
-      id: 'Document.id',
-      datasetId: 'Document.datasetId',
-      mediaAssetId: 'Document.mediaAssetId',
-      organizationId: 'Document.organizationId',
-    },
-  },
-}))
+  })
+)
 
 vi.mock('drizzle-orm', () => ({
   and: vi.fn((...parts: unknown[]) => ({ op: 'and', parts })),
@@ -125,9 +127,7 @@ vi.mock('@auxx/lib/utils/rate-limiter/redis-rate-limiter', () => ({
 vi.mock('~/auth/session', () => ({ getSession: vi.fn() }))
 vi.mock('~/server/bootstrap', () => ({ ensureWebAppInitialized: vi.fn() }))
 
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 // Deep path on purpose — the barrel hangs (see above).
 const { CapabilitySet } = await import('@auxx/lib/permissions/capabilities/capability-set')

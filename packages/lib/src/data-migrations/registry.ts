@@ -53,7 +53,9 @@ import { migration085MultiEmailWebsiteFlip } from './migrations/085-multi-email-
 import { migration086MultiPhoneFlip } from './migrations/086-multi-phone-flip'
 import { migration087KnowledgeRetrievalSources } from './migrations/087-knowledge-retrieval-sources'
 import { migration088PhoneGeoBackfill } from './migrations/088-phone-geo-backfill'
-import { migration089BackfillParticipantDisplayName } from './migrations/089-backfill-participant-display-name'
+import { migration089ReseedPlatformProvidersAuthApply } from './migrations/089-reseed-platform-providers-auth-apply'
+import { migration090ThreadEventsExtraction } from './migrations/090-thread-events-extraction'
+import { migration091BackfillParticipantDisplayName } from './migrations/091-backfill-participant-display-name'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -133,7 +135,9 @@ function buildRegistry(): DataMigrationDef[] {
     migration086MultiPhoneFlip,
     migration087KnowledgeRetrievalSources,
     migration088PhoneGeoBackfill,
-    migration089BackfillParticipantDisplayName,
+    migration089ReseedPlatformProvidersAuthApply,
+    migration090ThreadEventsExtraction,
+    migration091BackfillParticipantDisplayName,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

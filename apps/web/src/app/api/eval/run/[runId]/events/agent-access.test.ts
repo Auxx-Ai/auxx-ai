@@ -36,24 +36,24 @@ const { getCapabilities, getSession, selectFrom } = vi.hoisted(() => ({
   selectFrom: vi.fn((_table: string) => [] as unknown[]),
 }))
 
-vi.mock('@auxx/database', () => ({
-  database: {
-    select: () => ({
-      from: (table: string) => ({ where: () => ({ limit: async () => selectFrom(table) }) }),
-    }),
-  },
-  schema: {
-    EvalRun: { id: 'id', organizationId: 'organizationId' },
-    EvalCase: { id: 'id', organizationId: 'organizationId', agentId: 'agentId' },
-    EvalSuiteRun: { id: 'id', organizationId: 'organizationId', agentId: 'agentId' },
-  },
-}))
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: {
+      select: () => ({
+        from: (table: string) => ({ where: () => ({ limit: async () => selectFrom(table) }) }),
+      }),
+    },
+    schema: {
+      EvalRun: { id: 'id', organizationId: 'organizationId' },
+      EvalCase: { id: 'id', organizationId: 'organizationId', agentId: 'agentId' },
+      EvalSuiteRun: { id: 'id', organizationId: 'organizationId', agentId: 'agentId' },
+    },
+  })
+)
 
 vi.mock('drizzle-orm', () => ({ and: vi.fn(), eq: vi.fn() }))
 
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 // The barrel hangs under vitest — stub it, keep the enums real via /client.
 vi.mock('@auxx/lib/permissions', () => ({ getCapabilities }))

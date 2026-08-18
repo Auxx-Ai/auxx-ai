@@ -267,16 +267,18 @@ const {
   assertCanActOnThreads,
 } = hoisted
 
-vi.mock('@auxx/database', () => ({
-  schema: {
-    Integration: {
-      id: 'Integration.id',
-      organizationId: 'Integration.organizationId',
-      deletedAt: 'Integration.deletedAt',
-      provider: 'Integration.provider',
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    schema: {
+      Integration: {
+        id: 'Integration.id',
+        organizationId: 'Integration.organizationId',
+        deletedAt: 'Integration.deletedAt',
+        provider: 'Integration.provider',
+      },
     },
-  },
-}))
+  })
+)
 vi.mock('drizzle-orm', () => ({
   and: (...parts: unknown[]) => parts,
   eq: (a: unknown, b: unknown) => [a, b],

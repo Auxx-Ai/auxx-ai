@@ -14,7 +14,7 @@ const MAX_BATCH_SIZE = 100
 export type SendStatus = 'PENDING' | 'SENT' | 'FAILED' | 'BOUNCED'
 
 /** Message type enum - determines how the message is rendered */
-export type MessageType = 'EMAIL' | 'FACEBOOK' | 'INSTAGRAM' | 'SMS' | 'WHATSAPP' | 'CALL' | 'CHAT'
+export type MessageType = 'EMAIL' | 'SMS' | 'CHAT' | 'CALL' | 'VOICEMAIL'
 
 /** Attachment metadata for display */
 export interface AttachmentMeta {
@@ -68,6 +68,21 @@ export interface MessageMeta {
   /** Chat-only: delivery/read receipts for the (single) recipient. ISO dates. */
   deliveredAt?: string | null
   readAt?: string | null
+
+  /**
+   * CALL/VOICEMAIL-only: call envelope. `messageType === 'VOICEMAIL'` is an
+   * unanswered call that left audio (the audio itself is a regular
+   * attachment, mimeType `audio/*`); `messageType === 'CALL'` is a completed
+   * call — `answered: false` means missed with no voicemail. Call recordings
+   * may attach to CALL messages too, also as `audio/*` attachments.
+   */
+  callMeta?: {
+    direction: 'incoming' | 'outgoing'
+    answered: boolean
+    answeredAt: string | null
+    completedAt: string | null
+    durationSeconds: number | null
+  } | null
 }
 
 /**

@@ -6,9 +6,9 @@ import { Input } from '@auxx/ui/components/input'
 import { KbdSubmit } from '@auxx/ui/components/kbd'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { toastError } from '@auxx/ui/components/toast'
-import { Boxes, CreditCard, Database, Github, Globe, MessageSquare, Plug } from 'lucide-react'
+import { Plug } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { type ComponentType, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { type TemplateGalleryCategory, TemplateGalleryDialog } from '~/components/templates/ui'
 import { api } from '~/trpc/react'
@@ -32,17 +32,16 @@ type SourceItem = {
   | { kind: 'app'; type: string; requiresConnection: boolean; appIconId: string }
 )
 
-/** Map a catalog `iconKey` to a lucide icon (server sends a stable key, not a component). */
-const ICONS: Record<string, ComponentType<{ className?: string }>> = {
-  globe: Globe,
-  'credit-card': CreditCard,
-  github: Github,
-  database: Database,
-  'message-square': MessageSquare,
-}
-function iconFor(key: string | null | undefined): ComponentType<{ className?: string }> {
-  return (key && ICONS[key]) || Boxes
-}
+/**
+ * Fallback identity when a catalog entry ships no `iconKey`.
+ *
+ * There is no lucide lookup table here any more. A template's `iconKey` is the SAME
+ * polymorphic visual-ref the app branch already renders (`brand:<slug>`, a bare lucide
+ * id, `url:`, emoji, …), so both branches go through `AppIcon`. The old hardcoded map
+ * knew five lucide names and silently fell back to `Boxes` for everything else — which
+ * is why a template could not carry a brand mark at all.
+ */
+const DEFAULT_SOURCE_ICON = 'boxes'
 
 /** Human labels + sidebar icons for the three catalog buckets. */
 const CATEGORY_LABELS: Record<string, string> = {
@@ -173,18 +172,14 @@ export function SourceTemplateDialog({ open, onOpenChange }: SourceTemplateDialo
       isLoading={catalog.isLoading}
       categories={categories}
       itemNoun='source'
-      renderIcon={(item) => {
-        const Icon = iconFor(item.iconKey)
-        return (
-          <div className='flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-background'>
-            {item.kind === 'app' ? (
-              <AppIcon iconId={item.appIconId} size='lg' />
-            ) : (
-              <Icon className='size-4' />
-            )}
-          </div>
-        )
-      }}
+      renderIcon={(item) => (
+        <div className='flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-background'>
+          <AppIcon
+            iconId={item.kind === 'app' ? item.appIconId : (item.iconKey ?? DEFAULT_SOURCE_ICON)}
+            size='lg'
+          />
+        </div>
+      )}
       renderBadges={(item) =>
         'requiresConnection' in item && item.requiresConnection ? (
           <span className='flex items-center gap-1 text-[11px] text-muted-foreground'>

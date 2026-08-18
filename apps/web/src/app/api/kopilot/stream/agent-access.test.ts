@@ -80,16 +80,9 @@ const {
   isAdminOrOwner: vi.fn(async () => false),
 }))
 
-vi.mock('@auxx/database', () => ({ database: {}, schema: {} }))
+vi.mock('@auxx/database', async () => (await import('~/test/database-mock')).mockAuxxDatabase())
 
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 // The `@auxx/lib/permissions` barrel hangs under vitest (get-capabilities,
 // record-view-scope, overage-*), and it is exactly what this route imports, so

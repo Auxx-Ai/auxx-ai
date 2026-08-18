@@ -17,7 +17,7 @@ import {
 } from '../hooks/use-source-paths'
 import type { FieldMapping } from '../hooks/use-stream-mutations'
 import type { DraftMapping } from '../stores/connector-draft-store'
-import { bareTokenSource, isBareToken } from './field-mapping-edits'
+import { bareTokenNodePath, isBareToken } from './field-mapping-edits'
 
 /** A drilled binding/formula: the flat child that owns it + the entry itself. */
 export interface DrilledEntry {
@@ -104,7 +104,7 @@ export function computeMappingView(
   for (const c of flatDrilledChildren) {
     for (const e of (c.fieldMappings ?? []) as FieldMapping[]) {
       if (e.targetFieldRef == null || !isBareToken(e.expression)) continue
-      drilledBindBySourcePath.set(bareTokenSource(e.expression), { child: c, entry: e })
+      drilledBindBySourcePath.set(bareTokenNodePath(e.expression), { child: c, entry: e })
     }
   }
 
@@ -117,10 +117,12 @@ export function computeMappingView(
       .map((entry) => ({ child, entry }))
   )
 
-  // Reverse-index bare-token entries: source path → the binding entry on it.
+  // Reverse-index bare-token entries: NODE path → the binding entry on it. Keyed in
+  // node space so an indexed binding (`emails[0].value` — the only form the runtime
+  // resolves) renders on its `emails[].value` leaf instead of vanishing.
   const sourceToEntry = new Map<string, FieldMapping>()
   for (const e of fieldMappings) {
-    if (isBareToken(e.expression)) sourceToEntry.set(bareTokenSource(e.expression), e)
+    if (isBareToken(e.expression)) sourceToEntry.set(bareTokenNodePath(e.expression), e)
   }
 
   // Visible leaf paths under THIS subtree — a bare-token entry on one renders on its leaf,
@@ -134,7 +136,7 @@ export function computeMappingView(
   const formulaEntries = fieldMappings.filter(
     (e) =>
       !isBareToken(e.expression) ||
-      (e.targetFieldRef == null && !visibleLeafPaths.has(bareTokenSource(e.expression)))
+      (e.targetFieldRef == null && !visibleLeafPaths.has(bareTokenNodePath(e.expression)))
   )
 
   return {

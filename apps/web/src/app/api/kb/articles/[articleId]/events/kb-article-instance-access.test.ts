@@ -42,16 +42,18 @@ const {
   canReadArticle: vi.fn(),
 }))
 
-vi.mock('@auxx/database', () => ({
-  database: { select },
-  schema: {
-    Article: {
-      id: 'Article.id',
-      organizationId: 'Article.organizationId',
-      homeKnowledgeBaseId: 'Article.homeKnowledgeBaseId',
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: { select },
+    schema: {
+      Article: {
+        id: 'Article.id',
+        organizationId: 'Article.organizationId',
+        homeKnowledgeBaseId: 'Article.homeKnowledgeBaseId',
+      },
     },
-  },
-}))
+  })
+)
 
 vi.mock('drizzle-orm', () => ({ and, eq }))
 
@@ -62,9 +64,7 @@ vi.mock('@auxx/lib/kb', () => ({
   kbArticleChannel: (articleId: string) => `kb:article:${articleId}`,
 }))
 
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 vi.mock('@auxx/redis', () => ({ createDedicatedClient }))
 

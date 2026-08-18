@@ -1,4 +1,4 @@
-// packages/lib/src/data-migrations/migrations/089-backfill-participant-display-name.ts
+// packages/lib/src/data-migrations/migrations/091-backfill-participant-display-name.ts
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -87,8 +87,8 @@ export const DISPLAY_NAME_SQL = `
  * Self-sufficient: touches one existing column on one table, depends on no runtime
  * step or seeded row landing first, and reads nothing from the org cache.
  */
-export const migration089BackfillParticipantDisplayName: DataMigrationDef = {
-  id: '089-backfill-participant-display-name',
+export const migration091BackfillParticipantDisplayName: DataMigrationDef = {
+  id: '091-backfill-participant-display-name',
   description: 'Backfill Participant.displayName from name, falling back to the identifier',
   async run(db: Database): Promise<void> {
     const expression = sql.raw(DISPLAY_NAME_SQL)

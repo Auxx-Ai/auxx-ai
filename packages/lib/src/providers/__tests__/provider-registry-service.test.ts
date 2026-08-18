@@ -83,6 +83,7 @@ vi.mock('@auxx/database/enums', async (importOriginal) => {
   }
 })
 
+import { UnprocessableEntityError } from '../../errors'
 import { ProviderRegistryService } from '../provider-registry-service'
 
 // ---------------------------------------------------------------------------
@@ -449,11 +450,16 @@ describe('ProviderRegistryService', () => {
       )
     })
 
-    it('should throw when the linked credential requires re-authentication', async () => {
+    it('should throw an UnprocessableEntityError when the linked credential requires re-authentication', async () => {
       const row = makeGetProviderRow({ id: 'int-reauth', provider: 'google' }, true)
       setupSelectChain([row])
 
-      await expect(service.getProvider('int-reauth')).rejects.toThrow('requires re-authentication')
+      // Must be an AuxxError (422), not a plain Error — the thread router passes
+      // AuxxErrors through so the composer toast shows this message instead of
+      // "An unexpected error occurred" from a generic 500.
+      await expect(service.getProvider('int-reauth')).rejects.toThrow(UnprocessableEntityError)
+      setupSelectChain([row])
+      await expect(service.getProvider('int-reauth')).rejects.toThrow('login has expired')
     })
 
     it('should allow getting provider for disabled integrations', async () => {

@@ -10,6 +10,7 @@ import {
   integer,
   jsonb,
   machineMailTier,
+  messageType,
   pgTable,
   sendStatus,
   sql,
@@ -41,6 +42,15 @@ export const Message = pgTable(
     integrationId: text()
       .notNull()
       .references((): AnyPgColumn => Integration.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+    // The message's FORM (email/sms/chat/call/voicemail) — renderer selection, not
+    // brand (`ChannelGroup`/`Integration.provider` already give the brand per row).
+    // Stored because a call and a text can arrive on the SAME Integration
+    // (message-type-overhaul plan §1.6, §2.7), so it cannot be derived on read.
+    // No `.default()` on purpose: ingest always stamps it explicitly
+    // (`getMessageTypeFromProvider` is now a DEFAULT, not an authority — see
+    // `providers/type-utils.ts`), so a missing value at insert time is a bug the
+    // compiler should catch, not paper over.
+    messageType: messageType().notNull(),
     isInbound: boolean().default(true).notNull(),
     isFirstInThread: boolean().default(true).notNull(),
     subject: text(),
@@ -151,6 +161,15 @@ export const Message = pgTable(
     index('Message_listId_threadId_idx')
       .using('btree', table.listId.asc().nullsLast(), table.threadId.asc().nullsLast())
       .where(sql`("listId" IS NOT NULL)`),
+    // Serves the correlated `exists(...)` that a `messageType` condition compiles
+    // to (message-type-overhaul plan §Phase 3, condition-query-builder.ts
+    // `buildMessageTypeQuery`) — threadId must be IN the index or every
+    // candidate thread degrades to a heap lookup, same reasoning as
+    // Message_listId_threadId_idx above. Partial on CALL/VOICEMAIL because
+    // those are a tiny fraction of rows; EMAIL/SMS/CHAT never hit this path.
+    index('Message_messageType_threadId_idx')
+      .using('btree', table.messageType.asc().nullsLast(), table.threadId.asc().nullsLast())
+      .where(sql`"messageType" IN ('CALL', 'VOICEMAIL')`),
     uniqueIndex('Message_organizationId_internetMessageId_key')
       .using(
         'btree',

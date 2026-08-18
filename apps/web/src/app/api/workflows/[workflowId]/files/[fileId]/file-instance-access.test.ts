@@ -37,29 +37,31 @@ const { getCapabilities, getSession, guardVersion, select, limit, del, deleteWhe
     and: vi.fn((...parts: unknown[]) => ({ op: 'and', parts })),
   }))
 
-vi.mock('@auxx/database', () => ({
-  database: { select, delete: del },
-  schema: {
-    WorkflowFile: {
-      id: 'WorkflowFile.id',
-      fileId: 'WorkflowFile.fileId',
-      workflowId: 'WorkflowFile.workflowId',
-      nodeId: 'WorkflowFile.nodeId',
-      uploadedAt: 'WorkflowFile.uploadedAt',
-      expiresAt: 'WorkflowFile.expiresAt',
-      uploadSource: 'WorkflowFile.uploadSource',
-      metadata: 'WorkflowFile.metadata',
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: { select, delete: del },
+    schema: {
+      WorkflowFile: {
+        id: 'WorkflowFile.id',
+        fileId: 'WorkflowFile.fileId',
+        workflowId: 'WorkflowFile.workflowId',
+        nodeId: 'WorkflowFile.nodeId',
+        uploadedAt: 'WorkflowFile.uploadedAt',
+        expiresAt: 'WorkflowFile.expiresAt',
+        uploadSource: 'WorkflowFile.uploadSource',
+        metadata: 'WorkflowFile.metadata',
+      },
+      File: {
+        id: 'File.id',
+        name: 'File.name',
+        mimeType: 'File.mimeType',
+        size: 'File.size',
+        url: 'File.url',
+      },
+      Workflow: { id: 'Workflow.id', organizationId: 'Workflow.organizationId' },
     },
-    File: {
-      id: 'File.id',
-      name: 'File.name',
-      mimeType: 'File.mimeType',
-      size: 'File.size',
-      url: 'File.url',
-    },
-    Workflow: { id: 'Workflow.id', organizationId: 'Workflow.organizationId' },
-  },
-}))
+  })
+)
 
 vi.mock('drizzle-orm', () => ({ and, eq }))
 

@@ -46,7 +46,7 @@ const { getCapabilities, getSession, executionService, guards } = vi.hoisted(() 
   },
 }))
 
-vi.mock('@auxx/database', () => ({ database: {}, schema: {} }))
+vi.mock('@auxx/database', async () => (await import('~/test/database-mock')).mockAuxxDatabase())
 
 // The `@auxx/lib/permissions` barrel hangs under vitest (get-capabilities,
 // record-view-scope, overage-*) — which is exactly the module this route

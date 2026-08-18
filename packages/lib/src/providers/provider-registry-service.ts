@@ -4,7 +4,9 @@ import { IntegrationProviderType as IntegrationProviderEnum } from '@auxx/databa
 import type { IntegrationProviderType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq, isNull } from 'drizzle-orm'
+import { invalidateChannelsIfStale } from '../cache'
 import type { ActiveIntegration, ProviderInstance } from '../email/message-service'
+import { UnprocessableEntityError } from '../errors'
 import type { ChannelProvider } from './channel-provider.interface'
 import { ChatProvider } from './chat/chat-provider'
 import { EmailForwardingProvider } from './email/email-forwarding-provider'
@@ -292,8 +294,18 @@ export class ProviderRegistryService {
           googleErrorDescription: authDetails.googleErrorDescription,
         })
 
-        throw new Error(
-          `Integration ${integrationId} requires re-authentication. User must re-connect the integration.`
+        // A live read just observed reauth state the cached channel list may
+        // not reflect (e.g. flagged before an invalidation existed) — self-heal
+        // so the banner/warning surfaces catch up.
+        await invalidateChannelsIfStale(this.organizationId, integrationId, {
+          requiresReauth: true,
+          enabled: integration.enabled,
+        })
+
+        // UnprocessableEntityError (not plain Error) so the tRPC layer maps it to
+        // 422 and the composer toast shows this message instead of a generic 500.
+        throw new UnprocessableEntityError(
+          "This channel's login has expired. Reconnect it under Settings → Channels."
         )
       }
 

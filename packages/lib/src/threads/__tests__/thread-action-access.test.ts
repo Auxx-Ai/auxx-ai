@@ -210,7 +210,13 @@ describe('ThreadMutationService delegates to the shared gate', () => {
   it('update is refused at `metadata`, and composes NO write', async () => {
     lensFixture.lenses = { [THREAD_A]: 'metadata' }
     const { db, writes } = recordingDb()
-    const service = new ThreadMutationService(ORG_ID, db, undefined, USER_ID, viewer())
+    const service = new ThreadMutationService(
+      ORG_ID,
+      db,
+      undefined,
+      { kind: 'user', id: USER_ID },
+      viewer()
+    )
     await expect(
       service.update(recordIdOf(THREAD_A), { status: 'ARCHIVED' })
     ).rejects.toMatchObject({ name: 'ForbiddenError', statusCode: 403 })
@@ -230,7 +236,13 @@ describe('ThreadMutationService delegates to the shared gate', () => {
   it('a member at `metadata` cannot self-assign — the gate precedes the payload', async () => {
     lensFixture.lenses = { [THREAD_A]: 'metadata' }
     const { db, writes } = recordingDb()
-    const service = new ThreadMutationService(ORG_ID, db, undefined, USER_ID, viewer())
+    const service = new ThreadMutationService(
+      ORG_ID,
+      db,
+      undefined,
+      { kind: 'user', id: USER_ID },
+      viewer()
+    )
     await expect(
       service.update(recordIdOf(THREAD_A), { assigneeId: `user:${USER_ID}` as never })
     ).rejects.toMatchObject({ name: 'ForbiddenError', statusCode: 403 })
@@ -241,7 +253,13 @@ describe('ThreadMutationService delegates to the shared gate', () => {
   it('bulk update rejects the whole set when ONE thread is sub-`full`', async () => {
     lensFixture.lenses = { [THREAD_A]: 'read', [THREAD_B]: 'identity' }
     const { db, writes } = recordingDb()
-    const service = new ThreadMutationService(ORG_ID, db, undefined, USER_ID, viewer())
+    const service = new ThreadMutationService(
+      ORG_ID,
+      db,
+      undefined,
+      { kind: 'user', id: USER_ID },
+      viewer()
+    )
     await expect(
       service.updateBulk([recordIdOf(THREAD_A), recordIdOf(THREAD_B)], { status: 'ARCHIVED' })
     ).rejects.toMatchObject({ name: 'ForbiddenError', statusCode: 403 })
@@ -253,7 +271,13 @@ describe('ThreadMutationService delegates to the shared gate', () => {
     // 403'd. Both now resolve to this one predicate.
     lensFixture.lenses = { [THREAD_A]: 'identity' }
     const { db } = recordingDb()
-    const service = new ThreadMutationService(ORG_ID, db, undefined, USER_ID, viewer())
+    const service = new ThreadMutationService(
+      ORG_ID,
+      db,
+      undefined,
+      { kind: 'user', id: USER_ID },
+      viewer()
+    )
     await expect(
       service.tagThreadsBulk([recordIdOf(THREAD_A)], ['tag:t1' as never], 'add')
     ).rejects.toMatchObject({ name: 'ForbiddenError', statusCode: 403 })
@@ -273,7 +297,13 @@ describe('ThreadMutationService delegates to the shared gate', () => {
     })
     const direct = getThreadLensBatch.mock.calls.at(-1)
 
-    const service = new ThreadMutationService(ORG_ID, db, undefined, USER_ID, viewer())
+    const service = new ThreadMutationService(
+      ORG_ID,
+      db,
+      undefined,
+      { kind: 'user', id: USER_ID },
+      viewer()
+    )
     await expect(
       service.update(recordIdOf(THREAD_A), { status: 'ARCHIVED' })
     ).rejects.toMatchObject({ name: 'ForbiddenError' })

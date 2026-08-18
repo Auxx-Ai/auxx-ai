@@ -33,17 +33,19 @@ const { getCapabilities, getSession, guardRun, select, runLimit, nodeOrderBy, eq
     and: vi.fn((...parts: unknown[]) => ({ op: 'and', parts })),
   }))
 
-vi.mock('@auxx/database', () => ({
-  database: { select },
-  schema: {
-    WorkflowRun: { id: 'WorkflowRun.id', organizationId: 'WorkflowRun.organizationId' },
-    WorkflowNodeExecution: {
-      workflowRunId: 'WorkflowNodeExecution.workflowRunId',
-      organizationId: 'WorkflowNodeExecution.organizationId',
-      createdAt: 'WorkflowNodeExecution.createdAt',
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: { select },
+    schema: {
+      WorkflowRun: { id: 'WorkflowRun.id', organizationId: 'WorkflowRun.organizationId' },
+      WorkflowNodeExecution: {
+        workflowRunId: 'WorkflowNodeExecution.workflowRunId',
+        organizationId: 'WorkflowNodeExecution.organizationId',
+        createdAt: 'WorkflowNodeExecution.createdAt',
+      },
     },
-  },
-}))
+  })
+)
 
 vi.mock('drizzle-orm', () => ({ and, eq, asc: vi.fn((c: unknown) => c) }))
 
@@ -55,9 +57,7 @@ vi.mock('@auxx/lib/workflow-engine', () => ({
   safeJsonStringify: (v: unknown) => JSON.stringify(v),
 }))
 
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 vi.mock('@auxx/redis', () => ({
   createDedicatedClient: vi.fn(async () => ({

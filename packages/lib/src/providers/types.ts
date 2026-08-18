@@ -120,36 +120,37 @@ export type ChannelProviderType =
 
 /**
  * Message Type Categories
- * Used to categorize what type of messages each provider handles
+ * Used to categorize the form of a message — see `plans/threads/message-type-overhaul.md`.
  */
 export enum MessageType {
   EMAIL = 'EMAIL',
-  FACEBOOK = 'FACEBOOK',
-  INSTAGRAM = 'INSTAGRAM',
   SMS = 'SMS',
-  WHATSAPP = 'WHATSAPP',
-  CALL = 'CALL',
   CHAT = 'CHAT',
+  CALL = 'CALL',
+  VOICEMAIL = 'VOICEMAIL',
 }
 
 /**
- * Provider to Message Type Mapping
- * Defines what message types each provider can handle
+ * Every {@link MessageType} member, in catalog order, with its author-facing
+ * label — the option list for the `messageType` filter/view field
+ * (`plans/threads/message-type-overhaul.md` §Phase 3).
+ *
+ * Mirrors `CHANNEL_GROUP_OPTIONS` (`channels/capabilities.ts:376`) in shape,
+ * but `MessageType` is a fixed five-member vocabulary rather than something
+ * derived from a per-provider capabilities map, so this is a literal list, not
+ * a derivation. Declared here (not `resources/registry/enum-values.ts`, and
+ * not deleted like that file's dead `MessageType` block) because this module
+ * is client-safe — it only imports the generated `@auxx/database/enums` — and
+ * `mail-view-field-definitions.ts`, which is used on both client and server,
+ * already reaches into it via a plain relative import.
  */
-export const PROVIDER_MESSAGE_TYPE_MAP: Record<ChannelProviderType, MessageType[]> = {
-  [ChannelProviderType.google]: [MessageType.EMAIL],
-  [ChannelProviderType.outlook]: [MessageType.EMAIL],
-  [ChannelProviderType.mailgun]: [MessageType.EMAIL],
-  [ChannelProviderType.facebook]: [MessageType.FACEBOOK],
-  [ChannelProviderType.instagram]: [MessageType.INSTAGRAM],
-  [ChannelProviderType.openphone]: [MessageType.SMS, MessageType.CALL],
-  [ChannelProviderType.whatsapp]: [MessageType.WHATSAPP],
-  [ChannelProviderType.sms]: [MessageType.SMS],
-  [ChannelProviderType.chat]: [MessageType.CHAT],
-  [ChannelProviderType.email]: [MessageType.EMAIL],
-  [ChannelProviderType.shopify]: [], // Shopify is a data provider, not messaging
-  [ChannelProviderType.imap]: [MessageType.EMAIL],
-}
+export const MESSAGE_TYPE_OPTIONS: Array<{ value: MessageType; label: string }> = [
+  { value: MessageType.EMAIL, label: 'Email' },
+  { value: MessageType.SMS, label: 'SMS' },
+  { value: MessageType.CHAT, label: 'Chat' },
+  { value: MessageType.CALL, label: 'Call' },
+  { value: MessageType.VOICEMAIL, label: 'Voicemail' },
+]
 
 /**
  * Active Messaging Providers
@@ -227,22 +228,6 @@ export function isMessagingProvider(provider: ChannelProviderType): boolean {
  */
 export function isDataProvider(provider: ChannelProviderType): boolean {
   return DATA_PROVIDERS.includes(provider as any)
-}
-
-/**
- * Get message types supported by a provider
- */
-export function getProviderMessageTypes(provider: ChannelProviderType): MessageType[] {
-  return PROVIDER_MESSAGE_TYPE_MAP[provider] || []
-}
-
-/**
- * Get providers that support a specific message type
- */
-export function getProvidersForMessageType(messageType: MessageType): ChannelProviderType[] {
-  return Object.entries(PROVIDER_MESSAGE_TYPE_MAP)
-    .filter(([_, types]) => types.includes(messageType))
-    .map(([provider]) => provider as ChannelProviderType)
 }
 
 /**

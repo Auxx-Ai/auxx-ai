@@ -1,5 +1,7 @@
 // packages/lib/src/ingest/types.ts
 
+import type { MessageType } from '../providers/types'
+
 type JsonValue = any
 type JsonArray = any
 
@@ -47,6 +49,14 @@ export interface MessageData {
   integrationId: string
   organizationId: string
 
+  /**
+   * The message's form (email/sms/chat/call/voicemail). Optional so every
+   * existing provider mapper keeps compiling unchanged — `storeMessage` falls
+   * back to `getMessageTypeFromProvider(provider)` when a mapper does not
+   * supply one. Only a mapper that can distinguish per-message (e.g. an
+   * openphone call vs. text on the same integration) needs to set this.
+   */
+  messageType?: MessageType
   isInbound: boolean
   subject?: string | null
   textHtml?: string | null

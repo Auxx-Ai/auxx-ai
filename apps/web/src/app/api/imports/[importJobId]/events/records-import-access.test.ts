@@ -41,25 +41,25 @@ const { getCapabilities, getSession, limit } = vi.hoisted(() => ({
   limit: vi.fn(),
 }))
 
-vi.mock('@auxx/database', () => ({
-  database: {
-    select: () => ({ from: () => ({ innerJoin: () => ({ where: () => ({ limit }) }) }) }),
-  },
-  schema: {
-    ImportJob: {
-      id: 'id',
-      organizationId: 'organizationId',
-      importMappingId: 'importMappingId',
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: {
+      select: () => ({ from: () => ({ innerJoin: () => ({ where: () => ({ limit }) }) }) }),
     },
-    ImportMapping: { id: 'id', entityDefinitionId: 'entityDefinitionId' },
-  },
-}))
+    schema: {
+      ImportJob: {
+        id: 'id',
+        organizationId: 'organizationId',
+        importMappingId: 'importMappingId',
+      },
+      ImportMapping: { id: 'id', entityDefinitionId: 'entityDefinitionId' },
+    },
+  })
+)
 
 vi.mock('drizzle-orm', () => ({ and: vi.fn(), eq: vi.fn() }))
 
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 // The `@auxx/lib/permissions` barrel HANGS under vitest — stub it, keep the
 // enums real via `/client` and the predicate real via the deep `capability-set`.

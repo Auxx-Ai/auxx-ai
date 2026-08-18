@@ -38,7 +38,12 @@ vi.mock('@auxx/database', async () => {
   }
 })
 
-vi.mock('@auxx/redis', () => ({
+// PARTIAL, not a replacement: `credentials/credential-lock.ts` binds
+// `createCredentialLockProvider()` at MODULE SCOPE, so a factory that omits it
+// kills this file at collection — reported as 0 tests, not as a failure.
+// `importOriginal` cannot go stale the way an enumerated list does.
+vi.mock('@auxx/redis', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getRedisClient: vi.fn().mockResolvedValue({}),
 }))
 

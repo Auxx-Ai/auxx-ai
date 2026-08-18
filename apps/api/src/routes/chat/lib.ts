@@ -5,26 +5,27 @@ import { getCachedAgentById, getCachedOrgProfile } from '@auxx/lib/cache'
 import type { ChatAttachment } from '@auxx/lib/chat'
 import { listOnDutyUserIds } from '@auxx/lib/chat-duty'
 import { shapeThreadEventForVisitor } from '@auxx/lib/events'
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import {
+  listThreadEvents,
+  VISITOR_FACING_THREAD_EVENT_TYPES,
+  type VisitorFacingThreadEventType,
+} from '@auxx/lib/thread-events'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import type { Context } from 'hono'
 
 /**
- * Thread lifecycle event types the widget renders as centered system lines.
+ * Thread lifecycle event types the widget renders as centered system lines —
+ * the FROZEN visitor-facing set (plans/threads/thread-events.md §13.3), never
+ * the full `THREAD_EVENT_TYPES` vocabulary, which grows admin-surface-only
+ * types a visitor must not learn about.
  *
- * Keep in sync with `apps/chat-widget/src/transport/thread-events.ts` —
- * the union is duplicated rather than imported because the widget cannot
- * pull `@auxx/lib/events` (server deps).
+ * `packages/chat/src/transport/thread-events.ts` duplicates the same six
+ * strings (the widget bundle cannot pull `@auxx/lib`); a parity test in
+ * `packages/lib/src/thread-events/__tests__/` pins the two sets equal.
  */
-export const WIDGET_THREAD_EVENT_TYPES = [
-  'thread:taken_over',
-  'thread:returned_to_ai',
-  'thread:archived',
-  'thread:reopened',
-  'thread:assignee:changed',
-  'thread:visitor:identified',
-] as const
+export const WIDGET_THREAD_EVENT_TYPES = VISITOR_FACING_THREAD_EVENT_TYPES
 
-export type WidgetThreadEventType = (typeof WIDGET_THREAD_EVENT_TYPES)[number]
+export type WidgetThreadEventType = VisitorFacingThreadEventType
 
 export interface WidgetThreadEvent {
   id: string
@@ -37,44 +38,40 @@ export interface WidgetThreadEvent {
 const THREAD_EVENT_LIMIT = 50
 
 /**
- * Fetch the persisted thread lifecycle events for a given thread, org-scoped.
- *
- * Uses the `Event_threadId_expr_idx` expression index on `data->>'threadId'`
- * (added in #664) plus the `Event_type_idx` to narrow to widget-visible types.
- * Returned newest-last so the widget can append in chronological order.
+ * Fetch the persisted thread lifecycle events for a given thread, org-scoped,
+ * from the dedicated `ThreadEvent` table. Filtered to the frozen visitor set
+ * and returned newest-last so the widget can append in chronological order
+ * (`listThreadEvents` pages newest-first; the widget contract stays plain
+ * `DESC LIMIT 50` + reverse, per plans/threads/thread-events.md §13.4).
  */
 export async function loadThreadEvents(
   organizationId: string,
   threadId: string
 ): Promise<WidgetThreadEvent[]> {
-  const rows = await database
-    .select({
-      id: schema.Event.id,
-      type: schema.Event.type,
-      createdAt: schema.Event.createdAt,
-      data: schema.Event.data,
-    })
-    .from(schema.Event)
-    .where(
-      and(
-        eq(schema.Event.organizationId, organizationId),
-        inArray(schema.Event.type, [...WIDGET_THREAD_EVENT_TYPES]),
-        sql`(${schema.Event.data}->>'threadId') = ${threadId}`
-      )
-    )
-    .orderBy(asc(schema.Event.createdAt))
-    .limit(THREAD_EVENT_LIMIT)
+  const result = await listThreadEvents(database, {
+    organizationId,
+    threadId,
+    limit: THREAD_EVENT_LIMIT,
+  })
+  if (result.isErr()) throw result.error
+
+  const visitorTypes = new Set<string>(WIDGET_THREAD_EVENT_TYPES)
 
   // Shaped for the visitor, exactly as the realtime publish is (plan 45 §1.5).
-  // Without this the allowlist would be cosmetic: `Event.data` is the complete
-  // internal payload and the widget fetches it straight back over HTTP, so
-  // `userId` / `previousState` would arrive by the history route instead.
-  return rows.map((r) => ({
-    id: r.id,
-    type: r.type as WidgetThreadEventType,
-    createdAt: r.createdAt,
-    data: shapeThreadEventForVisitor((r.data ?? {}) as Record<string, unknown>),
-  }))
+  // Without this the allowlist would be cosmetic: `ThreadEvent.data` is the
+  // complete internal payload and the widget fetches it straight back over
+  // HTTP, so `userId` / `previousState` would arrive by the history route
+  // instead. Type-filtered too — admin-surface types (`thread:tagged`, …) must
+  // never reach a visitor (§13.3).
+  return result.value.events
+    .filter((r) => visitorTypes.has(r.type))
+    .map((r) => ({
+      id: r.id,
+      type: r.type as WidgetThreadEventType,
+      createdAt: r.createdAt,
+      data: shapeThreadEventForVisitor((r.data ?? {}) as Record<string, unknown>),
+    }))
+    .reverse()
 }
 
 /**

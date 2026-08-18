@@ -79,21 +79,24 @@ const CREATOR_ROW = {
   rung: 'admin',
 }
 
-const { lensFixture, getThreadLensBatch } = vi.hoisted(() => {
+const { lensFixture, getThreadLensBatch, getThreadLens } = vi.hoisted(() => {
   const lensFixture: { lenses: Record<string, string> } = { lenses: {} }
   const build = async (_db: unknown, _org: string, _v: unknown, ids: string[]) => {
     const map = new Map<string, string>()
     for (const id of ids) map.set(id, lensFixture.lenses[id] ?? 'none')
     return map
   }
-  return { lensFixture, getThreadLensBatch: vi.fn(build) }
+  const single = async (_db: unknown, _org: string, _v: unknown, id: string) =>
+    lensFixture.lenses[id] ?? 'none'
+  return { lensFixture, getThreadLensBatch: vi.fn(build), getThreadLens: vi.fn(single) }
 })
 
 // The lens computation is question 4 (§2, untouched). Stubbing it here lets each
 // case name a lens directly; `assertCanActOnThreads` around it stays REAL.
 vi.mock('@auxx/lib/permissions/visibility/thread-lens', () => ({
   getThreadLensBatch,
-  getThreadLens: vi.fn(),
+  getThreadLens,
+  getLoadedThreadLens: vi.fn(),
 }))
 
 const { mail, cache, fieldValueService, resourceAccess, isAdminOrOwner, recordAuditFromCtx } =
@@ -259,9 +262,7 @@ vi.mock('@auxx/lib/placeholders', () => ({
   resolvePlaceholdersInHtml: vi.fn(async (h: string) => h),
 }))
 vi.mock('@auxx/lib/providers', () => ({ ProviderRegistryService: class {} }))
-vi.mock('@auxx/logger', () => ({
-  createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-}))
+vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 /**
  * The `@auxx/lib/permissions` barrel reaches redis/db at import time and hangs
@@ -502,6 +503,10 @@ beforeEach(() => {
     for (const id of ids) map.set(id, lensFixture.lenses[id] ?? 'none')
     return map
   })
+  getThreadLens.mockReset()
+  getThreadLens.mockImplementation(
+    async (_d, _o, _v, id: string) => lensFixture.lenses[id] ?? 'none'
+  )
   lensFixture.lenses = { [THREAD_ID]: 'read', [OTHER_THREAD_ID]: 'read' }
 
   for (const fn of Object.values(mail)) fn.mockClear()
@@ -1035,7 +1040,80 @@ describe('positive controls — over-denial is the failure mode this slice risks
 })
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 5. Structural invariants
+// 5. thread.listEvents — the per-thread lens gate (thread-events §4 / Phase 0)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('thread.listEvents — per-thread lens gate (plans/threads/thread-events.md §4)', () => {
+  const EVENT_ROW = {
+    id: 'evt_cuid0000000000000000000a',
+    organizationId: ORG_ID,
+    threadId: THREAD_ID,
+    type: 'thread:taken_over',
+    actorId: 'user:usr_actor',
+    createdAt: new Date('2026-08-01T00:00:00Z'),
+    data: { threadId: THREAD_ID, userId: 'usr_actor' },
+  }
+
+  /** The exact builder chain `listThreadEvents` awaits, resolving the fixture row. */
+  const dbWithEvents = {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          orderBy: () => ({ limit: async () => [EVENT_ROW] }),
+        }),
+      }),
+    }),
+  }
+
+  const listEvents = (caps: Caps) => threads(caps, dbWithEvents).listEvents({ threadId: THREAD_ID })
+
+  it('a viewer at lens `none` gets an empty page — no throw, no existence oracle', async () => {
+    // The §4 gap: any `inboxes.view` holder could pull 50 rows of unshaped
+    // event data for a thread whose lens on them is `none`. Empty, not a 403
+    // and not NOT_FOUND — an invisible id must fail exactly like a nonexistent
+    // one (`thread-action-access.ts`).
+    lensFixture.lenses = { [THREAD_ID]: 'none' }
+    await expect(listEvents(capabilitiesFor())).resolves.toEqual({ events: [], nextCursor: null })
+    // …and the answer came from the lens, asked about THIS thread.
+    expect(getThreadLens).toHaveBeenCalledTimes(1)
+    expect(getThreadLens.mock.calls[0]?.[3]).toBe(THREAD_ID)
+  })
+
+  it('a `metadata` viewer gets the rows — the realtime door’s exact rung', async () => {
+    // `realtime/rooms.ts` admits `thread-*` subscribers at `metadata`; the
+    // history door must agree in BOTH directions, so the rung itself passes.
+    lensFixture.lenses = { [THREAD_ID]: 'metadata' }
+    await expect(listEvents(capabilitiesFor())).resolves.toEqual({
+      events: [
+        {
+          id: EVENT_ROW.id,
+          type: EVENT_ROW.type,
+          createdAt: EVENT_ROW.createdAt.toISOString(),
+          actorId: EVENT_ROW.actorId,
+          data: EVENT_ROW.data,
+        },
+      ],
+      nextCursor: null,
+    })
+  })
+
+  it('a `read` viewer (the everyday case) gets the rows', async () => {
+    // beforeEach seeds THREAD_ID at `read`.
+    const page = await listEvents(capabilitiesFor())
+    expect(page.events).toHaveLength(1)
+    expect(getThreadLens).toHaveBeenCalledTimes(1)
+  })
+
+  it('the front door still answers first at inboxes: None — no lens is read', async () => {
+    await expect(listEvents(capabilitiesFor({ inboxes: Level.None }))).rejects.toMatchObject(
+      FORBIDDEN
+    )
+    expect(getThreadLens).not.toHaveBeenCalled()
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 6. Structural invariants
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**

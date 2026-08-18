@@ -4,7 +4,6 @@ import { type AgentConfig, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import type { CompiledProcedure, TriggerExample } from '../../agents/procedures/types'
 import type { ConditionGroup } from '../../conditions/types'
-import { MediaAssetService } from '../../files/core/media-asset-service'
 import { createScopedLogger } from '../../logger'
 import type { CachedAgent, CachedAgentProcedure, CachedAgentTrigger } from '../org-cache-keys'
 import type { CacheProvider } from '../org-cache-provider'
@@ -191,6 +190,17 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           // illustrations land. Fall back to `row.userId` when set; otherwise
           // pass the orgId as the owner (the asset is org-scoped).
           const ownerId = row.userId ?? orgId
+          // Imported lazily, and this is load-bearing rather than stylistic.
+          // A static import here bridges the org-cache barrel into `files/`,
+          // whose modules touch `@auxx/database`'s `database` and `schema` at
+          // module scope — so `anything -> @auxx/lib/cache -> agents-provider
+          // -> media-asset-service` put that subtree in the import graph of
+          // most router tests, where a partial `vi.mock('@auxx/database', …)`
+          // then killed the whole file at collection. Deferring it to the
+          // avatar branch (rare, and already behind a DB round-trip) keeps
+          // `files/` out of the graph entirely.
+          // See `plans/testing/database-mock-collection-hazard.md`.
+          const { MediaAssetService } = await import('../../files/core/media-asset-service')
           const mediaAssetService = new MediaAssetService(orgId, ownerId, db)
           try {
             avatarUrl = await mediaAssetService.getDownloadUrl(avatarAssetId)

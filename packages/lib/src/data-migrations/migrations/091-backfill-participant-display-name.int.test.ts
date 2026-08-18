@@ -1,4 +1,4 @@
-// packages/lib/src/data-migrations/migrations/089-backfill-participant-display-name.int.test.ts
+// packages/lib/src/data-migrations/migrations/091-backfill-participant-display-name.int.test.ts
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
@@ -6,7 +6,7 @@ import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import { and, eq, isNull } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { calculateDisplayName } from '../../ingest/participants/display'
-import { migration089BackfillParticipantDisplayName as migration } from './089-backfill-participant-display-name'
+import { migration091BackfillParticipantDisplayName as migration } from './091-backfill-participant-display-name'
 
 /**
  * The backfill against a real Postgres — the only place the SQL `CASE` can be

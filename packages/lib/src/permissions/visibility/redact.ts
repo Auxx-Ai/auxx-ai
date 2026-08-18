@@ -65,6 +65,9 @@ export const MESSAGE_CONTENT_FIELDS: readonly string[] = [
   'snippet',
   'htmlBodyStorageLocationId',
   'attachments',
+  // Call/voicemail duration + answered state — as much content as a snippet, just for CALL/
+  // VOICEMAIL rows (message-type-overhaul Phase 4).
+  'callMeta',
 ]
 
 /** Blanked values for redacted full-tier fields (keeps the ThreadMeta shape intact). */
@@ -137,6 +140,7 @@ const REDACTED_MESSAGE_DEFAULTS: Record<string, unknown> = {
   snippet: null,
   htmlBodyStorageLocationId: null,
   attachments: [],
+  callMeta: null,
 }
 
 /**

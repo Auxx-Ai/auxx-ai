@@ -66,8 +66,25 @@ describe('lookupPhoneGeo', () => {
     expect(result?.region).toBe('Illinois')
   })
 
-  it('parses national numbers using the default country', () => {
-    expect(lookupPhoneGeo('(310) 203-0000')?.city).toBe('Los Angeles')
+  it('parses a national number when given an explicit region', () => {
+    expect(lookupPhoneGeo('(310) 203-0000', 'US')?.city).toBe('Los Angeles')
+  })
+
+  it('refuses to guess a region for national input', () => {
+    // Assuming one fails silently: `030 901820` parsed as US would yield a plausible answer for a
+    // number the caller never meant, and this function's whole job is to say where a number is
+    // from. Returning null is the only honest answer.
+    expect(lookupPhoneGeo('(310) 203-0000')).toBeNull()
+    expect(lookupPhoneGeo('030 901820')).toBeNull()
+  })
+
+  it('parses the same national input differently per region', () => {
+    // The point of requiring a region: identical digits, different countries.
+    expect(lookupPhoneGeo('030 901820', 'DE')).toMatchObject({ country: 'Germany' })
+  })
+
+  it('needs no region for E.164, which is self-describing', () => {
+    expect(lookupPhoneGeo('+493012345678')?.country).toBe('Germany')
   })
 
   it.each([

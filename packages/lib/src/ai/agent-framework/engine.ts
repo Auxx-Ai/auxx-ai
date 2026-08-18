@@ -451,6 +451,7 @@ export class AgentEngine {
         organizationId: config.organizationId,
         userId: config.userId,
         sessionId: config.sessionId,
+        agentId: config.agentId,
         signal: config.signal,
         turnId: this.turnId ?? undefined,
         traceId: this.turnId ?? undefined,

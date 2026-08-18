@@ -1,5 +1,6 @@
 // packages/lib/src/channels/sync.ts
 
+import { invalidateChannelsIfStale } from '../cache'
 import { AuxxError, BadRequestError } from '../errors'
 import { createScopedLogger } from '../logger'
 import { SyncMessages } from '../messages/sync-messages'
@@ -23,6 +24,9 @@ export async function syncMessages(
   const channel = validated.value
 
   if (!channel.enabled) {
+    // The UI offered this action off the cached channel list — a refusal here
+    // means that snapshot is stale, so recompute it (self-heal).
+    await invalidateChannelsIfStale(ctx.organizationId, channelId, { enabled: false })
     return Result.error(new BadRequestError('Cannot sync messages for disabled channel'))
   }
 

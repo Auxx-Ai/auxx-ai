@@ -6,10 +6,14 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useEffect, useMemo, useRef } from 'react'
 import { useMessages, useThreadMutation } from '~/components/threads/hooks'
+import CallDisplay from '../call-display'
 import { ChatMessageGroup } from '../chat-message-group'
 import { buildChatTimeline } from '../chat-timeline'
 import type { EmailActions } from '../email-actions'
+import EmailDisplay from '../email-display'
+import MessageDisplay from '../message-display'
 import { SystemLine } from './system-line'
+import { SystemLineRun } from './system-line-run'
 import { useChatThreadEvents } from './use-thread-events'
 
 interface ChatPanelMessagesProps {
@@ -92,6 +96,9 @@ export function ChatPanelMessages({ threadId, popoverClassName }: ChatPanelMessa
           if (item.kind === 'event') {
             return <SystemLine key={`evt:${item.event.id}`} event={item.event} />
           }
+          if (item.kind === 'event-run') {
+            return <SystemLineRun key={`evtrun:${item.events[0]!.id}`} events={item.events} />
+          }
           if (item.kind === 'chat-group') {
             const groupIsLast = item.endIndex === messages.length - 1
             return (
@@ -104,14 +111,41 @@ export function ChatPanelMessages({ threadId, popoverClassName }: ChatPanelMessa
               />
             )
           }
-          // Non-chat messages are unexpected in a chat thread; render a
-          // compact text fallback so we still surface them.
+          // Non-chat messages are unexpected in a chat thread (the floating
+          // panel only mounts for `provider === 'chat'` threads), but
+          // `buildChatTimeline` is shared with `thread-messages.tsx` and a
+          // mixed-transport thread (e.g. openphone SMS + CALL) is possible in
+          // principle — give the "single" branch the same type switch instead
+          // of a generic text fallback.
+          const isLastMessage = item.index === messages.length - 1
+          if (item.message.messageType === 'EMAIL') {
+            return (
+              <EmailDisplay
+                key={item.message.id}
+                messageId={item.message.id}
+                messageActions={messageActions}
+                isOpen={isLastMessage}
+                isLastMessage={isLastMessage}
+              />
+            )
+          }
+          if (item.message.messageType === 'CALL' || item.message.messageType === 'VOICEMAIL') {
+            return (
+              <CallDisplay
+                key={item.message.id}
+                messageId={item.message.id}
+                messageActions={messageActions}
+                isOpen={isLastMessage}
+              />
+            )
+          }
           return (
-            <div
+            <MessageDisplay
               key={item.message.id}
-              className='mx-auto w-full max-w-2xl rounded-md border border-dashed border-muted-foreground/30 px-3 py-2 text-xs text-muted-foreground'>
-              {item.message.snippet || item.message.textPlain || '(non-chat message)'}
-            </div>
+              messageId={item.message.id}
+              messageActions={messageActions}
+              isOpen={isLastMessage}
+            />
           )
         })}
       </div>

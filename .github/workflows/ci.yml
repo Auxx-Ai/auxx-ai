@@ -156,17 +156,22 @@ jobs:
       #
       # `web` joined the list once its last 8 failing files were fixed — all of
       # them stale specs, mostly the permissions-v3 rename (`full`→`read`, and
-      # `ResourcePermission` handed to a `Rung` slot). It is 150 files / 2437
-      # tests and runs in ~25s, so it dominates this job's wall-clock.
+      # `ResourcePermission` handed to a `Rung` slot). It is 232 files / 3447
+      # tests and dominates this job's wall-clock alongside `lib`.
       #
-      # `lib` joined last: 506 files / 5764 tests, ~90s. Its 25 failures were
-      # mostly import-time, not assertion drift — `vi.mock` factories that
-      # replace a shared module wholesale (`@auxx/database`, `@auxx/logger`,
-      # `drizzle-orm`) and then die when the import graph reaches an export they
-      # did not list. `packages/lib/src/test/database-mock.ts` exists for that.
+      # `lib` joined last: 765 files / 9562 tests. Its 25 failures were mostly
+      # import-time, not assertion drift — `vi.mock` factories that replace a
+      # shared module wholesale (`@auxx/database`, `@auxx/logger`, `drizzle-orm`)
+      # and then die when the import graph reaches an export they did not list.
+      # Both suites now have helpers for exactly that, and using them is enforced
+      # by `apps/web/src/test/mock-completeness.test.ts`:
+      #   packages/lib/src/test/database-mock.ts
+      #   apps/web/src/test/{database-mock,logger-mock}.ts
       # The 4 that report as SKIPPED here are the live-API provider suites,
       # gated on `describe.skipIf(!process.env.<VENDOR>_API_KEY)` — they are
       # meant never to run on a runner.
+      # The json reporter runs ALONGSIDE the normal one purely to feed the
+      # test-count ratchet below — it costs one extra file, not an extra run.
       - name: Run tests
         run: |
           npx vitest run \
@@ -181,7 +186,23 @@ jobs:
             --project utils \
             --project ui \
             --project web \
-            --project lib
+            --project lib \
+            --reporter=default \
+            --reporter=json \
+            --outputFile=test-results.json
+
+      # Exit code alone cannot see this failure. A test file that dies during
+      # COLLECTION is reported as a suite with 0 tests, not as N failures — so
+      # #1670 silently replaced `search-participant-gate.test.ts`'s 17 passing
+      # tests with zero and survived review, CI and two subsequent merges. This
+      # asserts the property the exit code misses: no file may collect fewer
+      # tests than its baseline.
+      #
+      # `if: always()` on purpose — a run with failing tests still collects them,
+      # and a count that FELL is worth reporting in the same run that shows why.
+      - name: Test-count ratchet
+        if: always()
+        run: node scripts/ci/test-count-ratchet.js --results test-results.json
 
   ci-ok:
     name: CI

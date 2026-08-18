@@ -37,7 +37,7 @@ const {
   findFirstNavigableUnder: vi.fn(),
 }))
 
-vi.mock('@auxx/database', () => ({ database: {} }))
+vi.mock('@auxx/database', async () => (await import('~/test/database-mock')).mockAuxxDatabase())
 
 vi.mock('@auxx/lib/kb', () => ({
   KBService: class {

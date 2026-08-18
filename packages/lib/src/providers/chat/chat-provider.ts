@@ -22,6 +22,7 @@ import {
   type SendMessageResult,
 } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
+import { MessageType } from '../types'
 
 const logger = createScopedLogger('chat-provider')
 
@@ -285,6 +286,9 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
           threadId: thread.id,
           integrationId: thread.integrationId,
           organizationId: this.organizationId,
+          // This provider only ever handles the `chat` integration, so the form
+          // is fixed — no per-message derivation needed.
+          messageType: MessageType.CHAT,
           fromId: params.fromParticipantId,
           isInbound: true,
           subject: null,
@@ -326,6 +330,11 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
         }
 
         // Bump thread: lift WAITING → OPEN, update counters/latest, then refresh
+        // No `thread:reopened` emit here (thread-events Phase 5.6): the guard
+        // above rejects any non-OPEN thread, so an ARCHIVED→OPEN transition —
+        // the only one the reopen vocabulary covers — is unreachable on this
+        // path. If that guard ever softens, the emit belongs right after this
+        // UPDATE, post-commit, gated on `previousStatus === ARCHIVED`.
         // the ranked-search corpus (`mail-query/thread-search-text.ts`). This
         // path bumps counters with a Drizzle `update()` rather than the raw-SQL
         // recompute the email paths splice the corpus into, so it needs the

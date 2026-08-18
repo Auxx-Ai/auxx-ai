@@ -132,6 +132,7 @@ function ReplyComposeEditorComponent({
     instanceId ? (s.instances.find((i) => i.id === instanceId)?.pendingFocus ?? false) : false
   )
   const clearPendingFocus = useComposeStore((s) => s.clearPendingFocus)
+  const recordSavedDraft = useComposeStore((s) => s.recordSavedDraft)
 
   // Auto-focus editor when opened via reply action (not draft auto-open)
   useEffect(() => {
@@ -452,10 +453,12 @@ function ReplyComposeEditorComponent({
     onDeleteMutate: (draftId) => {
       // Clear local draft state immediately (optimistic update)
       setState((prev) => ({ ...prev, draftId: null }))
+      if (instanceId) recordSavedDraft(instanceId, null)
     },
     onDeleteError: (error, draftId) => {
       // Rollback on error
       setState((prev) => ({ ...prev, draftId }))
+      if (instanceId) recordSavedDraft(instanceId, draftId)
       // Error toast is handled by the hook
     },
   })
@@ -532,10 +535,9 @@ function ReplyComposeEditorComponent({
           // just-sent SMS through `EmailDisplay` until the echo landed and
           // flipped it to a bubble.
           //
-          // The cast bridges two unions that drifted: the store's ends in
-          // `CALL`, the DB enum's in `OPENPHONE`. No capability entry declares
-          // either, so every value this can produce is in both.
-          messageType: (platformCaps?.messageType ?? 'EMAIL') as MessageMeta['messageType'],
+          // `PlatformCapabilities.messageType` and the store's `MessageMeta.messageType`
+          // now share the same five-member vocabulary, so no cast is needed here.
+          messageType: platformCaps?.messageType ?? 'EMAIL',
         }
         appendOptimisticMessage(utils, sentMessage.threadId, optimistic)
 
@@ -661,6 +663,11 @@ function ReplyComposeEditorComponent({
         }
         return { ...prev, draftId, threadId: nextThreadId }
       })
+      // Tell the store which draft this composer now owns, so opening that draft
+      // from the drafts list raises THIS window instead of opening a second one
+      // onto the same draft (`findByDraft`). Not written into the instance's
+      // `draft` — see the note on `savedDraftId`.
+      if (instanceId) recordSavedDraft(instanceId, draftId)
       setIsDraftSaved(true)
     },
     onCacheSync: ({ threadId, draftData }) => {},
@@ -1419,6 +1426,7 @@ function ReplyComposeEditorComponent({
                     ref={toInputRef}
                     recipientModel={platformCaps?.recipientModel}
                     defaultRegion={phoneRegion}
+                    supportsCcBcc={showCcBccToggle}
                     field='TO'
                     recipients={recipients.TO}
                     onAdd={(r) => upsertRecipient('TO', r)}
@@ -1476,6 +1484,7 @@ function ReplyComposeEditorComponent({
                       ref={ccInputRef}
                       recipientModel={platformCaps?.recipientModel}
                       defaultRegion={phoneRegion}
+                      supportsCcBcc={showCcBccToggle}
                       field='CC'
                       recipients={recipients.CC}
                       onAdd={(r) => upsertRecipient('CC', r)}
@@ -1513,6 +1522,7 @@ function ReplyComposeEditorComponent({
                       ref={bccInputRef}
                       recipientModel={platformCaps?.recipientModel}
                       defaultRegion={phoneRegion}
+                      supportsCcBcc={showCcBccToggle}
                       field='BCC'
                       recipients={recipients.BCC}
                       onAdd={(r) => upsertRecipient('BCC', r)}

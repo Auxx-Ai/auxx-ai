@@ -1,6 +1,7 @@
 // packages/seed/src/domains/communication.domain.ts
 // Communication domain refinements for support threads and messages with comprehensive seeding
 
+import { getMessageTypeFromProvider } from '@auxx/lib/providers'
 import { createId } from '@paralleldrive/cuid2'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { ContentEngine } from '../generators/content-engine'
@@ -35,6 +36,8 @@ interface SeededMessage {
   id: string
   threadId: string
   integrationId: string | null
+  /** Derived from the thread's Integration.provider (see `seedMessages`). */
+  messageType: string
   isInbound: boolean
   isFirstInThread: boolean
   subject: string | null
@@ -655,6 +658,28 @@ export class CommunicationDomain {
       return
     }
 
+    // Resolve each thread's provider so seeded messages carry the right
+    // `messageType` (message-type-overhaul plan §2.7 — the column is required,
+    // no default). `ServiceIntegratorIntegration` (this.services.integrations)
+    // carries no provider, so this is a small dedicated lookup.
+    const integrationIds = [
+      ...new Set(threads.map((t: { integrationId: string | null }) => t.integrationId)),
+    ].filter((id): id is string => !!id)
+    const integrationProviderById = new Map<string, string>()
+    if (integrationIds.length > 0) {
+      const integrationRows = await db
+        .select({ id: schema.Integration.id, provider: schema.Integration.provider })
+        .from(schema.Integration)
+        .where(inArray(schema.Integration.id, integrationIds))
+      for (const row of integrationRows) {
+        integrationProviderById.set(row.id, row.provider)
+      }
+    }
+    const messageTypeForIntegration = (integrationId: string | null): string => {
+      const provider = integrationId ? integrationProviderById.get(integrationId) : undefined
+      return provider ? getMessageTypeFromProvider(provider as any) : 'EMAIL'
+    }
+
     const threadIdToIndex = new Map(threadIds.map((id, index) => [id, index]))
 
     // Get all participants with contact info
@@ -740,6 +765,7 @@ export class CommunicationDomain {
             id: messageId,
             threadId: thread.id,
             integrationId: thread.integrationId,
+            messageType: messageTypeForIntegration(thread.integrationId),
             isInbound: true,
             isFirstInThread: i === 0,
             subject: thread.subject,
@@ -780,6 +806,7 @@ export class CommunicationDomain {
             id: messageId,
             threadId: thread.id,
             integrationId: thread.integrationId,
+            messageType: messageTypeForIntegration(thread.integrationId),
             isInbound: false,
             isFirstInThread: false,
             subject: `Re: ${thread.subject}`,
