@@ -16,9 +16,10 @@ import { type Database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { type AuxxError, NotFoundError } from '../../errors'
+import { buildManifestLookup } from '../../workflow-engine/catalog/app-manifests'
 import { isDerivedKey, stripDerivedKeys } from '../../workflow-engine/catalog/derived-keys'
-import { getManifest } from '../../workflow-engine/catalog/registry'
 import { resolveGraphOutputs } from '../../workflow-engine/catalog/resolve-outputs'
+import type { ManifestLookup } from '../../workflow-engine/catalog/types'
 import type { UnifiedVariable } from '../../workflow-engine/types/unified-variable'
 import { hashWorkflowGraph } from '../graph-hash'
 import { type ResourceAliasIndex, renderPersistedRefs } from './normalize/friendly-refs'
@@ -48,6 +49,15 @@ export interface DraftContext {
   /** CAS token — hash of the stored graph; undefined when there is none yet. */
   graphHash?: string
   triggerType?: string | null
+  /**
+   * Core registry ∪ this org's installed app blocks, built once per operation.
+   *
+   * Deliberately built here rather than memoized somewhere longer-lived: the
+   * `installedApps` cache behind it has a 900s TTL, and a lookup pinned across
+   * operations would let two tool calls in one turn disagree about a block's
+   * shape with nothing able to invalidate the difference.
+   */
+  lookup: ManifestLookup
 }
 
 /** Scope every operation takes. */
@@ -96,6 +106,7 @@ export async function loadDraftContext(
     graph: toDraftGraph(rawGraph),
     ...(rawGraph ? { graphHash: hashWorkflowGraph(rawGraph) } : {}),
     triggerType: (draftRow?.triggerType as string | null | undefined) ?? null,
+    lookup: await buildManifestLookup(organizationId),
   })
 }
 
@@ -148,7 +159,11 @@ export function buildNodeSummary(
 }
 
 /** Compact graph summary with friendly refs. */
-export function buildGraphSummary(graph: DraftGraph, triggerType?: string | null): GraphSummary {
+export function buildGraphSummary(
+  graph: DraftGraph,
+  lookup: ManifestLookup,
+  triggerType?: string | null
+): GraphSummary {
   const edges: EdgeSummary[] = graph.edges.map((edge) => {
     const handle = edge.sourceHandle ?? 'source'
     return {
@@ -162,8 +177,12 @@ export function buildGraphSummary(graph: DraftGraph, triggerType?: string | null
   })
   // Nodes with no catalog manifest are read-only to this editor. Reported here
   // once instead of as a repeated per-node `info` issue — see GraphSummary.
+  // Read through `lookup`, so a block from an app THIS org has installed is no
+  // longer listed: it is authorable now. What stays listed is what genuinely is
+  // read-only — an unmigrated core type, or an orphan node whose app was
+  // uninstalled or whose deployment dropped the block.
   const readOnlyNodes = graph.nodes
-    .filter((node) => !getManifest(nodeType(node)))
+    .filter((node) => !lookup(nodeType(node)))
     .map((node) => formatNodeRef(graph.nodes, node.id))
 
   return {
@@ -208,13 +227,20 @@ export async function readDraft(
   const ctx = loaded.value
   const aliases = await buildResourceAliasIndex(params.organizationId)
 
-  const issues: Issue[] = [...validateGraphStructure(ctx.graph), ...validateNodeConfigs(ctx.graph)]
+  const issues: Issue[] = [
+    ...validateGraphStructure(ctx.graph, { lookup: ctx.lookup }),
+    ...validateNodeConfigs(ctx.graph, ctx.lookup),
+  ]
 
   const outputs: Record<string, UnifiedVariable[]> = {}
   const resolved = await resolveGraphOutputs(params.organizationId, { graph: ctx.graph })
   if (resolved.isOk()) {
     issues.push(
-      ...checkVariableRefsAgainstOutputs({ graph: ctx.graph, outputs: resolved.value }).issues
+      ...checkVariableRefsAgainstOutputs({
+        graph: ctx.graph,
+        outputs: resolved.value,
+        lookup: ctx.lookup,
+      }).issues
     )
     for (const node of ctx.graph.nodes) {
       outputs[formatNodeRef(ctx.graph.nodes, node.id)] = renderFriendlyOutputs(
@@ -230,10 +256,10 @@ export async function readDraft(
     name: ctx.appName,
     triggerType: ctx.triggerType,
     nodes: ctx.graph.nodes.map((node) => buildNodeSummary(ctx.graph, node, aliases)),
-    edges: buildGraphSummary(ctx.graph, ctx.triggerType).edges,
+    edges: buildGraphSummary(ctx.graph, ctx.lookup, ctx.triggerType).edges,
     outputs,
     issues,
-    graphSummary: buildGraphSummary(ctx.graph, ctx.triggerType),
+    graphSummary: buildGraphSummary(ctx.graph, ctx.lookup, ctx.triggerType),
   })
 }
 
@@ -260,11 +286,18 @@ export async function validateWorkflow(
   if (loaded.isErr()) return err(loaded.error)
   const ctx = loaded.value
 
-  const issues: Issue[] = [...validateGraphStructure(ctx.graph), ...validateNodeConfigs(ctx.graph)]
+  const issues: Issue[] = [
+    ...validateGraphStructure(ctx.graph, { lookup: ctx.lookup }),
+    ...validateNodeConfigs(ctx.graph, ctx.lookup),
+  ]
   const resolved = await resolveGraphOutputs(params.organizationId, { graph: ctx.graph })
   if (resolved.isOk()) {
     issues.push(
-      ...checkVariableRefsAgainstOutputs({ graph: ctx.graph, outputs: resolved.value }).issues
+      ...checkVariableRefsAgainstOutputs({
+        graph: ctx.graph,
+        outputs: resolved.value,
+        lookup: ctx.lookup,
+      }).issues
     )
   }
 

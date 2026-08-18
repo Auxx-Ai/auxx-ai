@@ -10,12 +10,16 @@
  * single source for the handle ids the canvas renders and the processors
  * emit — NEVER string-matched locally, so a rename of a branch-derivation rule
  * can't silently detach agent-authored edges.
+ *
+ * The manifest arrives as a `ManifestLookup` rather than being read from the
+ * registry here, so an app block resolves through the same path as a core type.
+ * App blocks declare no branches, so they keep landing on `source` — but by
+ * their manifest saying so, not by their manifest being absent.
  */
 
 import { err, ok, type Result } from 'neverthrow'
 import { type AuxxError, BadRequestError } from '../../../errors'
-import { getManifest } from '../../../workflow-engine/catalog/registry'
-import type { NodeBranch } from '../../../workflow-engine/catalog/types'
+import type { ManifestLookup, NodeBranch } from '../../../workflow-engine/catalog/types'
 import { describeNode, resolveNodeRef } from '../refs'
 import type { NodeMeta } from '../types'
 
@@ -46,14 +50,15 @@ function describeBranch(branch: NodeBranch): string {
  */
 export function resolveConnectionSpec(
   nodes: NodeMeta[],
-  params: { after: string; branch?: string }
+  params: { after: string; branch?: string },
+  lookup: ManifestLookup
 ): Result<ConnectionSpec, AuxxError> {
   const resolved = resolveNodeRef(nodes, params.after)
   if (resolved.isErr()) return err(resolved.error)
   const source = resolved.value.node
 
   const nodeType: string | undefined = source.data?.type ?? source.type
-  const manifest = nodeType ? getManifest(nodeType) : undefined
+  const manifest = nodeType ? lookup(nodeType) : undefined
   const branches = manifest?.connection.branches?.(source.data) ?? []
 
   const branchRef = params.branch?.trim()

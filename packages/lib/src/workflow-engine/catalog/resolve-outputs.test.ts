@@ -455,7 +455,7 @@ describe('app-block nodes', () => {
   it('returns err instead of throwing when the app-block lookup fails', async () => {
     noResources()
     getCachedInstalledApps.mockRejectedValue(new Error('installed apps unavailable'))
-    // A colon-shaped type is what routes into `buildAppBlockLookup`.
+    // A colon-shaped type is what routes into `buildManifestLookup`.
     const graph = {
       nodes: [
         { id: 'n1', type: 'app1:block1', data: { id: 'n1', type: 'app1:block1', title: 'Block' } },

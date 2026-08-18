@@ -31,9 +31,6 @@ import { extractVarIdsFromString } from './variable-inference'
 /** An app-block node type — `${appId}:${blockId}`, as persisted in `node.data.type`. */
 export type AppBlockType = string
 
-/** `${appId}:${blockId}` → the installed block, for every app installed in the org. */
-export type AppBlockLookup = ReadonlyMap<AppBlockType, CachedWorkflowBlock>
-
 /**
  * Why a resolution produced the variables it did. Callers that only need
  * variables ignore this; the authoring layer (PR B1's synthesized `validate`)
@@ -60,25 +57,6 @@ export type AppBlockOutputStatus =
 export interface AppBlockOutputs {
   variables: UnifiedVariable[]
   status: AppBlockOutputStatus
-}
-
-/**
- * Build the `${appId}:${blockId}` → block lookup for one org.
- *
- * Rides the `installedApps` org cache, so it inherits that key's invalidation
- * (`app.installed` / `app.uninstalled` / `app.deployment.changed` / …) with no
- * new wiring. Uninstalled apps are already filtered out by the provider, so a
- * node left behind by an uninstall simply does not resolve — see §11.
- */
-export async function buildAppBlockLookup(orgId: string): Promise<AppBlockLookup> {
-  const apps = await getCachedInstalledApps(orgId)
-  const byType = new Map<AppBlockType, CachedWorkflowBlock>()
-  for (const inst of apps) {
-    for (const block of inst.workflowBlocks ?? []) {
-      byType.set(`${inst.app.id}:${block.id}`, block)
-    }
-  }
-  return byType
 }
 
 /**

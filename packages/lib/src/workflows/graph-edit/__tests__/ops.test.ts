@@ -17,6 +17,9 @@ const getCachedResources = vi.fn()
 vi.mock('../../../cache', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../cache')>()),
   getCachedResources: (...args: unknown[]) => getCachedResources(...args),
+  // No installed apps: these suites exercise CORE node types, so the manifest
+  // lookup `loadDraftContext` builds must resolve to the registry alone.
+  getCachedInstalledApps: async () => [],
 }))
 
 // The persist seam writes through WorkflowService.update (lazy-imported in

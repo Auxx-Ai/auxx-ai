@@ -5,10 +5,11 @@ import { err, ok, type Result } from 'neverthrow'
 import { getCachedResources } from '../../cache'
 import { NotFoundError } from '../../errors'
 import type { UnifiedVariable } from '../types/unified-variable'
-import { type AppBlockLookup, buildAppBlockLookup, resolveAppBlockOutputs } from './app-manifests'
+import { buildManifestLookup } from './app-manifests'
 import { buildOutputContextFromResources } from './build-output-context'
 import { buildUpstreamMap, type EdgeMeta, type NodeMeta, topologicalSort } from './graph-vars'
 import { getManifest } from './registry'
+import type { ManifestLookup } from './types'
 import { getNodeIdFromVariableId } from './variable-inference'
 
 const logger = createScopedLogger('workflow-resolve-outputs')
@@ -79,7 +80,7 @@ function resolveInTopoOrder(
   allResources: Awaited<ReturnType<typeof getCachedResources>>,
   nodes: NodeMeta[],
   edges: EdgeMeta[],
-  appBlocks: AppBlockLookup
+  lookup: ManifestLookup
 ): Map<string, UnifiedVariable[]> {
   const topoOrder = topologicalSort(nodes, edges)
   const nodeMap = new Map(nodes.map((n) => [n.id, n]))
@@ -95,21 +96,16 @@ function resolveInTopoOrder(
 
     const nodeType: string | undefined = node.data?.type ?? node.type
 
-    // App blocks resolve from their catalog projection, not the core registry —
-    // they are never registered there and never will be (D1). Checked before
-    // the manifest bail below, which is what used to give every app-block node
-    // an empty output set and let the agent invent refs against it (§1).
+    // One lookup for both worlds: core types come from the registry, app blocks
+    // from a manifest synthesized off their catalog projection. There is no
+    // separate app-block arm here on purpose — a second resolution path would
+    // be free to drift from the manifest's own `resolveOutputs`, which is the
+    // duplication D1 exists to prevent.
     //
     // A positive lookup is the guard: only a block the org actually has
     // installed resolves. Do NOT widen this to "any type containing a colon" —
     // that is `hasProcessor`'s fail-open, and it does not belong here (D8).
-    const appBlock = nodeType ? appBlocks.get(nodeType) : undefined
-    if (appBlock) {
-      memo.set(nodeId, resolveAppBlockOutputs(appBlock, node.data, nodeId).variables)
-      continue
-    }
-
-    const manifest = nodeType ? getManifest(nodeType) : undefined
+    const manifest = nodeType ? lookup(nodeType) : undefined
     if (!manifest?.resolveOutputs) {
       // Not-yet-migrated or unknown type (`NOT_YET_MIGRATED` — `crud`/`find`
       // today): no server-side resolver exists yet. Empty, not an error —
@@ -140,20 +136,20 @@ function resolveInTopoOrder(
 }
 
 /**
- * The app-block lookup for this graph, or an empty one when the graph has no
- * candidate node — a `${appId}:${blockId}` type is the only thing that could
+ * The manifest lookup for this graph — the core registry alone when no node
+ * could possibly be an app block.
+ *
+ * A `${appId}:${blockId}` type is the only thing the synthesized half could
  * match, so a graph of purely core nodes must not pay for an `installedApps`
  * cache read. The colon test is a cheap pre-filter, never an authorization
- * decision: the real gate is the positive map lookup in `resolveInTopoOrder`.
+ * decision: the real gate is the positive lookup in `resolveInTopoOrder`.
  */
-const EMPTY_APP_BLOCKS: AppBlockLookup = new Map()
-
-async function appBlocksForGraph(orgId: string, nodes: NodeMeta[]): Promise<AppBlockLookup> {
+async function manifestLookupForGraph(orgId: string, nodes: NodeMeta[]): Promise<ManifestLookup> {
   const hasCandidate = nodes.some((n) => {
     const type = n.data?.type ?? n.type
     return typeof type === 'string' && type.includes(':')
   })
-  return hasCandidate ? await buildAppBlockLookup(orgId) : EMPTY_APP_BLOCKS
+  return hasCandidate ? await buildManifestLookup(orgId) : getManifest
 }
 
 /**
@@ -180,11 +176,11 @@ export async function resolveNodeOutputs(
   const relevantIds = new Set([...ancestorIds, nodeId])
   const relevantNodes = graph.nodes.filter((n) => relevantIds.has(n.id))
 
-  const [allResources, appBlocks] = await Promise.all([
+  const [allResources, lookup] = await Promise.all([
     getCachedResources(orgId),
-    appBlocksForGraph(orgId, relevantNodes),
+    manifestLookupForGraph(orgId, relevantNodes),
   ])
-  const memo = resolveInTopoOrder(allResources, relevantNodes, graph.edges, appBlocks)
+  const memo = resolveInTopoOrder(allResources, relevantNodes, graph.edges, lookup)
   return ok(memo.get(nodeId) ?? [])
 }
 
@@ -199,11 +195,11 @@ export async function resolveGraphOutputs(
   params: { graph: WorkflowOutputGraph }
 ): Promise<Result<Map<string, UnifiedVariable[]>, Error>> {
   try {
-    const [allResources, appBlocks] = await Promise.all([
+    const [allResources, lookup] = await Promise.all([
       getCachedResources(orgId),
-      appBlocksForGraph(orgId, params.graph.nodes),
+      manifestLookupForGraph(orgId, params.graph.nodes),
     ])
-    const memo = resolveInTopoOrder(allResources, params.graph.nodes, params.graph.edges, appBlocks)
+    const memo = resolveInTopoOrder(allResources, params.graph.nodes, params.graph.edges, lookup)
     return ok(memo)
   } catch (error) {
     // Outputs are ENRICHMENT, not correctness — and every caller already says
@@ -214,7 +210,7 @@ export async function resolveGraphOutputs(
     // were effectively un-caught:
     //
     //   - `getCachedResources` (Redis + Postgres)
-    //   - `appBlocksForGraph` → `buildAppBlockLookup` → the installedApps
+    //   - `manifestLookupForGraph` → `buildManifestLookup` → the installedApps
     //     provider (Redis + Postgres), reached by any graph holding an
     //     `appId:blockId` node
     //

@@ -8,9 +8,13 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
+import { getManifest } from '../../../workflow-engine/catalog/registry'
 import { BaseType } from '../../../workflow-engine/core/types'
 import type { UnifiedVariable } from '../../../workflow-engine/types/unified-variable'
 import type { NodeMeta, WorkflowOutputGraph } from '../types'
+
+/** The core registry alone — no app installed in these fixtures. */
+const coreLookup = getManifest
 
 // ref-check statically imports the catalog's server-side resolve-outputs, whose
 // cache read must not hit a real backend if the composed helper is ever used.
@@ -18,6 +22,9 @@ const getCachedResources = vi.fn().mockResolvedValue([])
 vi.mock('../../../cache', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../cache')>()),
   getCachedResources: (...args: unknown[]) => getCachedResources(...args),
+  // No installed apps: these suites exercise CORE node types, so the manifest
+  // lookup `loadDraftContext` builds must resolve to the registry alone.
+  getCachedInstalledApps: async () => [],
 }))
 
 const { checkVariableRefsAgainstOutputs } = await import('../normalize/ref-check')
@@ -86,6 +93,7 @@ const check = (refs: string[]) =>
   checkVariableRefsAgainstOutputs({
     graph: graphWith(consumerNode(refs.map((r) => `{{${r}}}`))),
     outputs: new Map([[FIND, FIND_OUTPUTS]]),
+    lookup: coreLookup,
   })
 
 describe('checkVariableRefsAgainstOutputs', () => {
@@ -161,7 +169,11 @@ describe('checkVariableRefsAgainstOutputs', () => {
 
   it('skips path validation for nodes with no declared outputs (not-yet-migrated)', () => {
     const graph = graphWith(consumerNode([`{{${FIND}.anything.at.all}}`]))
-    const { issues } = checkVariableRefsAgainstOutputs({ graph, outputs: new Map() })
+    const { issues } = checkVariableRefsAgainstOutputs({
+      graph,
+      outputs: new Map(),
+      lookup: coreLookup,
+    })
     expect(issues).toEqual([])
   })
 
@@ -180,7 +192,11 @@ describe('checkVariableRefsAgainstOutputs', () => {
       ],
       edges: [],
     }
-    const { issues } = checkVariableRefsAgainstOutputs({ graph, outputs: new Map() })
+    const { issues } = checkVariableRefsAgainstOutputs({
+      graph,
+      outputs: new Map(),
+      lookup: coreLookup,
+    })
     expect(issues).toEqual([])
   })
 })

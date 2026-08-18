@@ -23,9 +23,13 @@ import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError, ConflictError, NotFoundError } from '../../errors'
 import { isDerivedKey, stripDerivedKeys } from '../../workflow-engine/catalog/derived-keys'
 import { LOOP_HANDLES } from '../../workflow-engine/catalog/nodes/loop'
-import { getAuthorableManifests, getManifest } from '../../workflow-engine/catalog/registry'
+import { getAuthorableManifests } from '../../workflow-engine/catalog/registry'
 import { resolveGraphOutputs } from '../../workflow-engine/catalog/resolve-outputs'
-import { NodeCategory, type NodeManifest } from '../../workflow-engine/catalog/types'
+import {
+  type ManifestLookup,
+  NodeCategory,
+  type NodeManifest,
+} from '../../workflow-engine/catalog/types'
 import type { UnifiedVariable } from '../../workflow-engine/types/unified-variable'
 import { hashWorkflowGraph } from '../graph-hash'
 import { assertMailTriggerNotPersonal } from '../mail-trigger-guard'
@@ -124,6 +128,7 @@ async function runGraphMutation(
   const { graph } = plan
 
   const structural = validateGraphStructure(graph, {
+    lookup: ctx.lookup,
     ...(plan.skipAuthorableCheck ? {} : { newNodeIds: plan.newNodeIds }),
   })
   const guardIssues: Issue[] = []
@@ -146,16 +151,22 @@ async function runGraphMutation(
     return ok({
       applied: false,
       issues: [...plan.normalizeIssues, ...structural, ...guardIssues],
-      graphSummary: buildGraphSummary(ctx.graph, ctx.triggerType),
+      graphSummary: buildGraphSummary(ctx.graph, ctx.lookup, ctx.triggerType),
     })
   }
 
-  const issues: Issue[] = [...plan.normalizeIssues, ...structural, ...validateNodeConfigs(graph)]
+  const issues: Issue[] = [
+    ...plan.normalizeIssues,
+    ...structural,
+    ...validateNodeConfigs(graph, ctx.lookup),
+  ]
   let outputsMap: Map<string, UnifiedVariable[]> | undefined
   const resolved = await resolveGraphOutputs(scope.organizationId, { graph })
   if (resolved.isOk()) {
     outputsMap = resolved.value
-    issues.push(...checkVariableRefsAgainstOutputs({ graph, outputs: outputsMap }).issues)
+    issues.push(
+      ...checkVariableRefsAgainstOutputs({ graph, outputs: outputsMap, lookup: ctx.lookup }).issues
+    )
   }
 
   // Mark what this edit did NOT cause. A mutation reports the whole draft's
@@ -205,7 +216,7 @@ async function runGraphMutation(
       unchanged: true,
       ...(unchangedNode ? { node: buildNodeSummary(graph, unchangedNode, aliases) } : {}),
       issues,
-      graphSummary: buildGraphSummary(ctx.graph, ctx.triggerType),
+      graphSummary: buildGraphSummary(ctx.graph, ctx.lookup, ctx.triggerType),
     })
   }
 
@@ -273,7 +284,11 @@ async function runGraphMutation(
       ? { outputs: renderFriendlyOutputs(graph, outputsMap.get(touched.id) ?? [], aliases) }
       : {}),
     issues,
-    graphSummary: buildGraphSummary(graph, persisted.value.triggerType ?? ctx.triggerType),
+    graphSummary: buildGraphSummary(
+      graph,
+      ctx.lookup,
+      persisted.value.triggerType ?? ctx.triggerType
+    ),
   })
 }
 
@@ -307,8 +322,11 @@ async function normalizeConfig(
 }
 
 /** Manifest for an authorable type, or an actionable error naming the options. */
-function requireAuthorableManifest(type: string): Result<NodeManifest<any>, AuxxError> {
-  const manifest = getManifest(type)
+function requireAuthorableManifest(
+  type: string,
+  lookup: ManifestLookup
+): Result<NodeManifest<any>, AuxxError> {
+  const manifest = lookup(type)
   if (manifest?.agent?.authorable === true) return ok(manifest)
   const authorable = getAuthorableManifests()
     .map((m) => m.id)
@@ -355,9 +373,10 @@ function makeEdge(
 function resolveEdgeHandles(
   source: GraphNode | undefined,
   target: GraphNode,
-  sourceHandle: string
+  sourceHandle: string,
+  lookup: ManifestLookup
 ): { sourceHandle: string; targetHandle: string } {
-  if (source && isInputNodePair(source, target)) return { ...INPUT_WIRING_HANDLES }
+  if (source && isInputNodePair(source, target, lookup)) return { ...INPUT_WIRING_HANDLES }
   return { sourceHandle, targetHandle: 'target' }
 }
 
@@ -370,11 +389,11 @@ function resolveEdgeHandles(
 function updateInputNodes(
   nodes: GraphNode[],
   update: (current: string[]) => string[],
-  opts: { onlyNodeId?: string } = {}
+  opts: { lookup: ManifestLookup; onlyNodeId?: string }
 ): GraphNode[] {
   return nodes.map((node) => {
     if (opts.onlyNodeId !== undefined && node.id !== opts.onlyNodeId) return node
-    if (getManifest(nodeType(node))?.connection.acceptsInputNodes !== true) return node
+    if (opts.lookup(nodeType(node))?.connection.acceptsInputNodes !== true) return node
     const current = Array.isArray(node.data?.inputNodes)
       ? (node.data.inputNodes as unknown[]).filter((id): id is string => typeof id === 'string')
       : []
@@ -515,7 +534,7 @@ export async function addNode(
   params: AddNodeInput
 ): Promise<Result<GraphMutationResult, AuxxError>> {
   return runGraphMutation(db, params, async (ctx, aliases) => {
-    const manifestResult = requireAuthorableManifest(params.type)
+    const manifestResult = requireAuthorableManifest(params.type, ctx.lookup)
     if (manifestResult.isErr()) return err(manifestResult.error)
     const manifest = manifestResult.value
 
@@ -551,7 +570,7 @@ export async function addNode(
       const resolved = resolveNodeRef(nodes, params.inputFor)
       if (resolved.isErr()) return err(resolved.error)
       inputTarget = resolved.value.node as GraphNode
-      if (getManifest(nodeType(inputTarget))?.connection.acceptsInputNodes !== true) {
+      if (ctx.lookup(nodeType(inputTarget))?.connection.acceptsInputNodes !== true) {
         const accepting = getAuthorableManifests()
           .filter((m) => m.connection.acceptsInputNodes === true)
           .map((m) => m.id)
@@ -583,7 +602,11 @@ export async function addNode(
 
     let connection: { sourceNodeId: string; sourceHandle: string } | undefined
     if (params.after !== undefined) {
-      const spec = resolveConnectionSpec(nodes, { after: params.after, branch: params.branch })
+      const spec = resolveConnectionSpec(
+        nodes,
+        { after: params.after, branch: params.branch },
+        ctx.lookup
+      )
       if (spec.isErr()) return err(spec.error)
       connection = spec.value
       const anchor = nodes.find((n) => n.id === connection?.sourceNodeId)
@@ -685,7 +708,7 @@ export async function addNode(
     // The other half of the input-wiring rule, asked of the real node through
     // the one predicate `validateGraphStructure` uses — so this can never mint
     // an edge the validator would then reject.
-    if (inputTarget && !isInputNodePair(newNode, inputTarget)) {
+    if (inputTarget && !isInputNodePair(newNode, inputTarget, ctx.lookup)) {
       const inputTypes = getAuthorableManifests()
         .filter((m) => m.category === NodeCategory.INPUT)
         .map((m) => m.id)
@@ -702,7 +725,7 @@ export async function addNode(
 
     const newEdges: GraphEdge[] = []
     if (inputTarget) {
-      const handles = resolveEdgeHandles(newNode, inputTarget, 'source')
+      const handles = resolveEdgeHandles(newNode, inputTarget, 'source', ctx.lookup)
       newEdges.push(makeEdge(nodeId, handles.sourceHandle, inputTarget.id, handles.targetHandle))
     } else if (connection) {
       newEdges.push(makeEdge(connection.sourceNodeId, connection.sourceHandle, nodeId, 'target'))
@@ -719,7 +742,7 @@ export async function addNode(
       nextNodes = updateInputNodes(
         nextNodes as GraphNode[],
         (current) => (current.includes(nodeId) ? current : [...current, nodeId]),
-        { onlyNodeId: inputTarget.id }
+        { lookup: ctx.lookup, onlyNodeId: inputTarget.id }
       )
     }
     return ok({
@@ -778,7 +801,7 @@ export async function updateNode(
     if (resolved.isErr()) return err(resolved.error)
     const node = resolved.value.node as GraphNode
     const type = nodeType(node)
-    const manifestResult = requireAuthorableManifest(type)
+    const manifestResult = requireAuthorableManifest(type, ctx.lookup)
     if (manifestResult.isErr()) return err(manifestResult.error)
 
     const hasPatches = params.patches !== undefined
@@ -965,7 +988,8 @@ export async function deleteNodes(
       graph: {
         nodes: updateInputNodes(
           nodes.filter((n) => !toDelete.has(n.id)) as GraphNode[],
-          (current) => current.filter((id) => !toDelete.has(id))
+          (current) => current.filter((id) => !toDelete.has(id)),
+          { lookup: ctx.lookup }
         ),
         edges: [
           ...edges.filter((e) => !toDelete.has(e.source) && !toDelete.has(e.target)),
@@ -999,7 +1023,11 @@ export async function connectNodes(
 ): Promise<Result<GraphMutationResult, AuxxError>> {
   return runGraphMutation(db, params, async (ctx) => {
     const { nodes, edges } = ctx.graph
-    const spec = resolveConnectionSpec(nodes, { after: params.from, branch: params.branch })
+    const spec = resolveConnectionSpec(
+      nodes,
+      { after: params.from, branch: params.branch },
+      ctx.lookup
+    )
     if (spec.isErr()) return err(spec.error)
     const target = resolveNodeRef(nodes, params.to)
     if (target.isErr()) return err(target.error)
@@ -1010,7 +1038,7 @@ export async function connectNodes(
       nodeType(targetNode) === 'loop' &&
       (source?.parentId === targetNode.id || source?.data?.loopId === targetNode.id)
 
-    const handles = resolveEdgeHandles(source, targetNode, spec.value.sourceHandle)
+    const handles = resolveEdgeHandles(source, targetNode, spec.value.sourceHandle, ctx.lookup)
     const edge = isLoopBack
       ? makeEdge(spec.value.sourceNodeId, spec.value.sourceHandle, targetNode.id, 'loop-back', {
           isLoopBackEdge: true,
@@ -1031,7 +1059,7 @@ export async function connectNodes(
         ? updateInputNodes(
             nodes as GraphNode[],
             (current) => (current.includes(edge.source) ? current : [...current, edge.source]),
-            { onlyNodeId: targetNode.id }
+            { lookup: ctx.lookup, onlyNodeId: targetNode.id }
           )
         : nodes
 
@@ -1083,9 +1111,7 @@ export async function disconnectNodes(
       ? updateInputNodes(
           nodes as GraphNode[],
           (current) => current.filter((id) => id !== sourceId),
-          {
-            onlyNodeId: targetId,
-          }
+          { lookup: ctx.lookup, onlyNodeId: targetId }
         )
       : nodes
 
@@ -1117,7 +1143,7 @@ export async function setTrigger(
   params: SetTriggerInput
 ): Promise<Result<GraphMutationResult, AuxxError>> {
   return runGraphMutation(db, params, async (ctx, aliases) => {
-    const manifestResult = requireAuthorableManifest(params.triggerType)
+    const manifestResult = requireAuthorableManifest(params.triggerType, ctx.lookup)
     if (manifestResult.isErr()) return err(manifestResult.error)
     const manifest = manifestResult.value
     if (!manifest.triggerType) {
@@ -1134,7 +1160,7 @@ export async function setTrigger(
     }
 
     const { nodes, edges } = ctx.graph
-    const triggers = nodes.filter((n) => isTriggerNode(n as GraphNode))
+    const triggers = nodes.filter((n) => isTriggerNode(n as GraphNode, ctx.lookup))
     if (triggers.length > 1) {
       return err(
         new BadRequestError(
@@ -1261,7 +1287,7 @@ export async function replaceGraph(
     // Pass 1 — mint ids and titles so refs in configs/edges can resolve.
     const built: GraphNode[] = []
     for (const spec of params.nodes) {
-      const manifestResult = requireAuthorableManifest(spec.type)
+      const manifestResult = requireAuthorableManifest(spec.type, ctx.lookup)
       if (manifestResult.isErr()) return err(manifestResult.error)
       const manifest = manifestResult.value
       const nodeId = generateId(spec.type)
@@ -1301,7 +1327,7 @@ export async function replaceGraph(
         node.extent = 'parent'
         node.data = { ...node.data, isInLoop: true, loopId: inside.value.node.id }
       }
-      const manifest = getManifest(spec.type)
+      const manifest = ctx.lookup(spec.type)
       if (!manifest) continue
       const normalized = await normalizeConfig(
         ctx.organizationId,
@@ -1318,14 +1344,18 @@ export async function replaceGraph(
     // Pass 3 — edges through the branch resolver, loop-backs detected.
     const edges: GraphEdge[] = []
     for (const spec of params.edges) {
-      const from = resolveConnectionSpec(built, { after: spec.from, branch: spec.branch })
+      const from = resolveConnectionSpec(
+        built,
+        { after: spec.from, branch: spec.branch },
+        ctx.lookup
+      )
       if (from.isErr()) return err(from.error)
       const to = resolveNodeRef(built, spec.to)
       if (to.isErr()) return err(to.error)
       const source = built.find((n) => n.id === from.value.sourceNodeId)
       const targetNode = to.value.node as GraphNode
       const isLoopBack = nodeType(targetNode) === 'loop' && source?.parentId === targetNode.id
-      const handles = resolveEdgeHandles(source, targetNode, from.value.sourceHandle)
+      const handles = resolveEdgeHandles(source, targetNode, from.value.sourceHandle, ctx.lookup)
       const edge = isLoopBack
         ? makeEdge(from.value.sourceNodeId, from.value.sourceHandle, targetNode.id, 'loop-back', {
             isLoopBackEdge: true,
@@ -1341,8 +1371,10 @@ export async function replaceGraph(
       // `built` is mutated in place through the layout passes, so this writes
       // straight onto the node object rather than rebuilding the array.
       if (!isLoopBack && handles.targetHandle === INPUT_WIRING_HANDLES.targetHandle) {
-        const [updated] = updateInputNodes([targetNode], (current) =>
-          current.includes(edge.source) ? current : [...current, edge.source]
+        const [updated] = updateInputNodes(
+          [targetNode],
+          (current) => (current.includes(edge.source) ? current : [...current, edge.source]),
+          { lookup: ctx.lookup }
         )
         if (updated) targetNode.data = updated.data
       }

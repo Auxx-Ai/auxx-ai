@@ -23,8 +23,8 @@
  * that declares `acceptsInputNodes` (see `isInputNodePair`).
  */
 
-import { getAuthorableManifests, getManifest } from '../../workflow-engine/catalog/registry'
-import { NodeCategory } from '../../workflow-engine/catalog/types'
+import { getAuthorableManifests } from '../../workflow-engine/catalog/registry'
+import { type ManifestLookup, NodeCategory } from '../../workflow-engine/catalog/types'
 import { formatNodeRef } from './refs'
 import type { DraftGraph, GraphEdge, GraphNode, Issue } from './types'
 
@@ -63,26 +63,42 @@ export const INPUT_WIRING_HANDLES = { sourceHandle: 'input-output', targetHandle
  * `Workflow` and `WorkflowTemplate` is `form-input --input-output--> manual`,
  * 8 edges, no exceptions — so strictness rejects nothing that exists. The
  * canvas cannot author a counterexample either; its own rule is this rule.
+ *
+ * **The strictness no longer carries the app-block half of that argument.**
+ * Once `lookup` resolves app blocks, "no manifest" stops being permanent for
+ * them — so what keeps an app block off a trigger's `input` handle is now the
+ * two explicit facts its synthesized manifest states: `category` is
+ * `INTEGRATION` (≠ `INPUT`) and `acceptsInputNodes` is `false`. Strictness
+ * still guards the genuinely uncatalogued (`webhook`, `webhook-endpoint`).
  */
-export function isInputNodePair(source: GraphNode, target: GraphNode): boolean {
+export function isInputNodePair(
+  source: GraphNode,
+  target: GraphNode,
+  lookup: ManifestLookup
+): boolean {
   return (
-    getManifest(nodeType(target))?.connection.acceptsInputNodes === true &&
-    getManifest(nodeType(source))?.category === NodeCategory.INPUT
+    lookup(nodeType(target))?.connection.acceptsInputNodes === true &&
+    lookup(nodeType(source))?.category === NodeCategory.INPUT
   )
 }
 
 /** An input-provider → input-accepting wiring on the handles it must use. */
-function isInputWiring(source: GraphNode, target: GraphNode, edge: GraphEdge): boolean {
+function isInputWiring(
+  source: GraphNode,
+  target: GraphNode,
+  edge: GraphEdge,
+  lookup: ManifestLookup
+): boolean {
   return (
-    isInputNodePair(source, target) &&
+    isInputNodePair(source, target, lookup) &&
     (edge.sourceHandle ?? 'source') === INPUT_WIRING_HANDLES.sourceHandle &&
     (edge.targetHandle ?? 'target') === INPUT_WIRING_HANDLES.targetHandle
   )
 }
 
 /** Whether a node is an in-graph trigger per its catalog manifest. */
-export function isTriggerNode(node: GraphNode): boolean {
-  return getManifest(nodeType(node))?.triggerType !== undefined
+export function isTriggerNode(node: GraphNode, lookup: ManifestLookup): boolean {
+  return lookup(nodeType(node))?.triggerType !== undefined
 }
 
 /**
@@ -142,12 +158,13 @@ function cycleMembers(graph: DraftGraph): string[] {
  */
 export function validateGraphStructure(
   graph: DraftGraph,
-  opts: { newNodeIds?: ReadonlySet<string> } = {}
+  opts: { lookup: ManifestLookup; newNodeIds?: ReadonlySet<string> }
 ): Issue[] {
   const issues: Issue[] = []
   const nodes = graph.nodes
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
   const ref = (id: string) => formatNodeRef(nodes, id)
+  const { lookup } = opts
   const newNodeIds = opts.newNodeIds ?? new Set<string>()
   const authorableTypes = () =>
     getAuthorableManifests()
@@ -160,7 +177,7 @@ export function validateGraphStructure(
   // states once instead of an issue per node per read.
   for (const node of nodes) {
     const type = nodeType(node)
-    const manifest = getManifest(type)
+    const manifest = lookup(type)
     if (newNodeIds.has(node.id)) {
       if (!manifest) {
         issues.push({
@@ -215,12 +232,12 @@ export function validateGraphStructure(
       continue
     }
 
-    const sourceManifest = getManifest(nodeType(source))
+    const sourceManifest = lookup(nodeType(source))
     if (sourceManifest) {
       const branches = sourceManifest.connection.branches?.(source.data) ?? []
       const handle = edge.sourceHandle ?? 'source'
       const allowed = branches.length > 0 ? branches.map((b) => b.id) : ['source']
-      if (!allowed.includes(handle) && !isInputWiring(source, target, edge)) {
+      if (!allowed.includes(handle) && !isInputWiring(source, target, edge, lookup)) {
         issues.push({
           severity: 'error',
           nodeRef: ref(source.id),
@@ -240,7 +257,7 @@ export function validateGraphStructure(
           message: `Edge "${edge.id}" targets handle "loop-back" on ${ref(target.id)}, which is not a loop.`,
         })
       }
-    } else if (targetHandle !== 'target' && !isInputWiring(source, target, edge)) {
+    } else if (targetHandle !== 'target' && !isInputWiring(source, target, edge, lookup)) {
       issues.push({
         severity: 'error',
         nodeRef: ref(target.id),
@@ -251,7 +268,7 @@ export function validateGraphStructure(
 
   // Connection limits and non-connectable nodes.
   for (const node of nodes) {
-    const manifest = getManifest(nodeType(node))
+    const manifest = lookup(nodeType(node))
     if (!manifest) continue
     const incoming = graph.edges.filter((e) => e.target === node.id)
     const outgoing = graph.edges.filter((e) => e.source === node.id)
@@ -282,7 +299,7 @@ export function validateGraphStructure(
 
   // Trigger rules — at most one; none is a warning (a draft under construction);
   // an edge INTO a trigger is structural corruption.
-  const triggers = nodes.filter(isTriggerNode)
+  const triggers = nodes.filter((node) => isTriggerNode(node, lookup))
   if (triggers.length === 0 && nodes.length > 0) {
     issues.push({
       severity: 'warning',
@@ -303,7 +320,7 @@ export function validateGraphStructure(
     if (
       incoming.some((e) => {
         const source = nodeById.get(e.source)
-        return !source || !isInputWiring(source, trigger, e)
+        return !source || !isInputWiring(source, trigger, e, lookup)
       })
     ) {
       issues.push({
@@ -356,10 +373,10 @@ export function validateGraphStructure(
  * `validate`, per node, per field. Never blocks: a half-configured node is a
  * legitimate draft state. Validator warnings map to `warning` severity.
  */
-export function validateNodeConfigs(graph: DraftGraph): Issue[] {
+export function validateNodeConfigs(graph: DraftGraph, lookup: ManifestLookup): Issue[] {
   const issues: Issue[] = []
   for (const node of graph.nodes) {
-    const manifest = getManifest(nodeType(node))
+    const manifest = lookup(nodeType(node))
     if (!manifest) continue
     const ref = formatNodeRef(graph.nodes, node.id)
 
