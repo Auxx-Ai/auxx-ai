@@ -41,6 +41,16 @@ export interface Issue {
   message: string
   /** Machine-usable corrected form (e.g. `att.values[*].name` for `att[*].name`). */
   suggestion?: string
+  /**
+   * True when this issue is about a node the current mutation did NOT touch —
+   * it was already there and is not a consequence of this edit.
+   *
+   * Without the distinction a caller re-reads a full issue list after every
+   * write and cannot tell "I just caused this" from "this was already here",
+   * which is how one agent spent a whole turn chasing three warnings it had
+   * already fixed.
+   */
+  preExisting?: boolean
 }
 
 /**

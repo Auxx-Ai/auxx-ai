@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { generateCrudNodeVariablesFromFields } from '../../../resources/variable-generators'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
-import type { BaseNodeData, TargetBranch } from '../node-base'
+import type { BaseNodeData } from '../node-base'
 import type { OutputContext } from '../output-context'
 import { resolveResourceGeneratorInputs } from '../resource-meta'
 import {
@@ -61,7 +61,6 @@ export interface CrudNodeData extends BaseNodeData {
   // Error handling configuration
   error_strategy: CrudErrorStrategy
   default_values: CrudDefaultValue[]
-  _targetBranches?: TargetBranch[]
 }
 
 /**
@@ -92,15 +91,7 @@ export const crudNodeDataSchema = z.object({
       })
     )
     .default([]),
-  _targetBranches: z
-    .array(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-        type: z.enum(['default', 'fail']).default('default'),
-      })
-    )
-    .optional(),
+  // `_targetBranches` is DERIVED state — see catalog/derived-keys.ts.
   isValid: z.boolean().optional(),
   errors: z.array(z.string()).optional(),
   disabled: z.boolean().optional(),

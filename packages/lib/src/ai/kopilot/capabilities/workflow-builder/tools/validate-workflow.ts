@@ -39,7 +39,7 @@ export function createValidateWorkflowTool(getDeps: GetToolDeps): AgentToolDefin
     surfaces: ['builder'],
     idempotent: true,
     description:
-      'Check whether the open workflow draft would pass the publish gate — without publishing (publishing stays the user’s action). Returns publishability, publish errors/warnings, and the structural/config/reference issues.',
+      'Check whether the open workflow draft would pass the publish gate — without publishing (publishing stays the user’s action). Returns publishability, publish errors/warnings, and the structural/config/reference issues. Call it in a LATER step, never in the same tool-call batch as the edits it checks: every mutation already returns the issues for what it touched, so a same-batch call is redundant.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
     buildDigest: (output) => ({
       label: 'Workflow validated',

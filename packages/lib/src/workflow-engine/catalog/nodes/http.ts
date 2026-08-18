@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { HTTP_NODE_CONSTANTS } from '../../constants'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
-import type { BaseNodeData, TargetBranch } from '../node-base'
+import type { BaseNodeData } from '../node-base'
 import {
   type NodeBranch,
   NodeCategory,
@@ -132,7 +132,6 @@ export interface HttpNodeData extends BaseNodeData {
   ssl_verify: boolean
   error_strategy: ErrorStrategy
   default_value: DefaultValueItem[]
-  _targetBranches: TargetBranch[]
 }
 
 /**
@@ -204,13 +203,9 @@ export const httpNodeDataSchema = z.object({
   ssl_verify: z.boolean(),
   error_strategy: z.string(),
   default_value: z.array(z.object({ key: z.string(), type: z.string(), value: z.string() })),
-  _targetBranches: z.array(
-    z.object({
-      id: z.string(),
-      name: z.string(),
-      type: z.enum(['default', 'fail']).default('default'),
-    })
-  ),
+  // `_targetBranches` is DERIVED (canvas-owned) state and is deliberately not
+  // declared here — see catalog/derived-keys.ts. It used to be REQUIRED, which
+  // made every stored HTTP node report a warning nothing could clear.
 })
 
 /** Data validator for flattened structure */

@@ -229,7 +229,7 @@ describe('get_node / update_node deep patches', () => {
     })
   })
 
-  it('requires exactly one update mode and a hash for patches', async () => {
+  it('requires exactly one update mode', async () => {
     const both = await run(createUpdateNodeTool(getDeps), {
       ref: 'HTTP Request',
       config: { method: 'POST' },
@@ -237,14 +237,32 @@ describe('get_node / update_node deep patches', () => {
     })
     expect(both.success).toBe(false)
     expect(both.error).toContain('exactly one')
+    expect(updateNodeMock).not.toHaveBeenCalled()
+  })
 
-    const unhashed = await run(createUpdateNodeTool(getDeps), {
+  it('passes patches through WITHOUT a hash — the CAS is optional and lives in lib', async () => {
+    // The wrapper has no DB read, so a hash check up here could only ever say
+    // "no", never hand back the value that makes the retry work. Rejecting an
+    // unhashed call taught the model to abandon patches for `config`.
+    const result = await run(createUpdateNodeTool(getDeps), {
       ref: 'HTTP Request',
       patches: [{ op: 'set', path: ['method'], value: 'POST' }],
     })
-    expect(unhashed.success).toBe(false)
-    expect(unhashed.error).toContain('expectedConfigHash')
-    expect(updateNodeMock).not.toHaveBeenCalled()
+
+    expect(result.success).toBe(true)
+    expect(updateNodeMock).toHaveBeenCalled()
+    expect(updateNodeMock.mock.calls[0]?.[1]).not.toHaveProperty('expectedConfigHash')
+  })
+
+  it('accepts expectedConfigHash WITH config mode instead of rejecting it', async () => {
+    const result = await run(createUpdateNodeTool(getDeps), {
+      ref: 'HTTP Request',
+      config: { method: 'POST' },
+      expectedConfigHash: 'abc123',
+    })
+
+    expect(result.success).toBe(true)
+    expect(updateNodeMock.mock.calls[0]?.[1]).toMatchObject({ expectedConfigHash: 'abc123' })
   })
 })
 

@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/catalog/node-base.ts
 
 import { z } from 'zod'
-import { NodeRunningStatus } from '../core/types'
+import type { NodeRunningStatus } from '../core/types'
 
 /**
  * The pure half of the builder's node-base types (node-catalog Phase 1):
@@ -48,7 +48,14 @@ export interface NodeConnectionMetadata {
 }
 
 /**
- * Runtime/UI state properties for nodes
+ * Runtime/UI state properties for nodes.
+ *
+ * Every `_`-prefixed member here is DERIVED state (see
+ * `catalog/derived-keys.ts`): the canvas initializer writes it on load, the
+ * save path strips it, the engine never reads it, and no agent may author it.
+ * It is declared on the TS type because canvas code legitimately reads it —
+ * but it must never appear in a manifest's `configSchema`, which describes
+ * PERSISTED config.
  */
 export interface NodeRuntimeState extends NodeConnectionMetadata {
   // Selection and UI state
@@ -68,6 +75,15 @@ export interface NodeRuntimeState extends NodeConnectionMetadata {
 
   // Container relationships
   _children?: { nodeId: string; nodeType: string }[]
+
+  /**
+   * Branch handles this node renders, top-to-bottom. Declared ONCE here
+   * rather than per node type: five node interfaces used to redeclare it, and
+   * `http` additionally required it in its zod schema — a key the save path
+   * guarantees will be absent. The authoritative derivation is the manifest's
+   * `connection.branches(config)`.
+   */
+  _targetBranches?: TargetBranch[]
 }
 
 /**
@@ -159,20 +175,6 @@ export const baseNodeDataSchema = z.object({
   // Selection state
   selected: z.boolean().default(false),
 
-  // Runtime state properties (all optional)
-  _isBundled: z.boolean().optional(),
-  _inParallelHovering: z.boolean().optional(),
-  _isEntering: z.boolean().optional(),
-  _isCandidate: z.boolean().optional(),
-  _runningStatus: z.enum(NodeRunningStatus).optional(),
-  _waitingRun: z.boolean().optional(),
-  _singleRun: z.boolean().optional(),
-  _singleRunningStatus: z.enum(NodeRunningStatus).optional(),
-  _runningBranchId: z.string().optional(),
-  _retryIndex: z.number().optional(),
-  _children: z.array(z.object({ nodeId: z.string(), nodeType: z.string() })).optional(),
-  _connectedSourceHandleIds: z.array(z.string()).optional(),
-  _connectedTargetHandleIds: z.array(z.string()).optional(),
   collapsed: z.boolean().optional(),
 
   // Loop context
@@ -180,8 +182,12 @@ export const baseNodeDataSchema = z.object({
   loopId: z.string().optional(),
   isInIteration: z.boolean().optional(),
   iterationId: z.string().optional(),
-  _iterationLength: z.number().optional(),
-  _iterationIndex: z.number().optional(),
-  _loopLength: z.number().optional(),
-  _loopIndex: z.number().optional(),
+
+  // NOTE: the `_`-prefixed runtime/derived keys declared on `NodeRuntimeState`
+  // are DELIBERATELY absent from this schema. It validates PERSISTED config,
+  // and derived keys are stripped before every save — so declaring them here
+  // taught `describe_node_type` to advertise 17 phantom writable fields on
+  // most of the catalog, and taught `validateNodeConfigs` to report issues no
+  // caller could ever fix. Zod strips unknown keys, so canvas data carrying
+  // them still parses. See `catalog/derived-keys.ts`.
 })

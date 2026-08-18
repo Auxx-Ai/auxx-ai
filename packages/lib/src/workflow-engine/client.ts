@@ -88,6 +88,11 @@ export {
   type TriggerDerivationNode,
 } from './catalog/derive-trigger'
 export {
+  DERIVED_KEY_PREFIX,
+  isDerivedKey,
+  stripDerivedKeys,
+} from './catalog/derived-keys'
+export {
   buildDownstreamMap,
   buildUpstreamMap,
   computeLoopAncestry,

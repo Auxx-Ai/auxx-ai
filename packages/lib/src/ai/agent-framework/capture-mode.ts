@@ -7,10 +7,10 @@ import type { AgentEvent, AgentToolDefinition, CapturedAction } from './types'
 import {
   buildToolDigest,
   executeToolWithProgress,
+  type IdempotentToolCache,
   needsApproval,
   parseToolArgs,
   previewValue,
-  stableStringify,
   type ToolExecResult,
   validateRequiredParams,
 } from './utils'
@@ -42,7 +42,7 @@ export async function processCaptureToolCalls(
   agentTools: AgentToolDefinition[],
   agentName: string,
   ctx: ToolContext,
-  idempotentCache: Map<string, ToolExecResult>,
+  idempotentCache: IdempotentToolCache,
   existingCaptures: CapturedAction[],
   transformInput?: (toolName: string, args: Record<string, unknown>) => Record<string, unknown>,
   applyToolRestrictions?: (
@@ -266,7 +266,12 @@ export async function processCaptureToolCalls(
       args = v.args
     }
 
-    const cacheKey = tool.idempotent ? `${toolName}::${stableStringify(args)}` : null
+    const cacheKey = idempotentCache.keyFor(tool, args)
+    if (!cacheKey) {
+      // Not cacheable ⇒ this call writes; every cached read is now suspect.
+      // Same rule as the live loop — see IdempotentToolCache.
+      idempotentCache.invalidateAll()
+    }
     if (cacheKey) {
       const cached = idempotentCache.get(cacheKey)
       if (cached) {

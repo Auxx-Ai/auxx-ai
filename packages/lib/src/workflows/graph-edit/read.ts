@@ -16,6 +16,7 @@ import { type Database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { type AuxxError, NotFoundError } from '../../errors'
+import { isDerivedKey, stripDerivedKeys } from '../../workflow-engine/catalog/derived-keys'
 import { resolveGraphOutputs } from '../../workflow-engine/catalog/resolve-outputs'
 import type { UnifiedVariable } from '../../workflow-engine/types/unified-variable'
 import { hashWorkflowGraph } from '../graph-hash'
@@ -116,11 +117,9 @@ const NON_CONFIG_KEYS = new Set([
   'outputVariables',
 ])
 
-/** Hash durable node data only; `_` keys are regenerated and stripped on save. */
+/** Hash durable node data only; derived keys are regenerated and stripped on save. */
 export function hashNodeConfig(data: Record<string, unknown>): string {
-  return hashWorkflowGraph(
-    Object.fromEntries(Object.entries(data).filter(([key]) => !key.startsWith('_')))
-  )
+  return hashWorkflowGraph(stripDerivedKeys(data))
 }
 
 /** One node's summary: friendly ref + friendly-rendered config. */
@@ -131,7 +130,7 @@ export function buildNodeSummary(
 ): NodeSummary {
   const config: Record<string, unknown> = {}
   for (const [key, value] of Object.entries((node.data ?? {}) as Record<string, unknown>)) {
-    if (key.startsWith('_') || NON_CONFIG_KEYS.has(key)) continue
+    if (isDerivedKey(key) || NON_CONFIG_KEYS.has(key)) continue
     config[key] = value
   }
   const container = node.parentId ?? (node.data?.loopId as string | undefined)

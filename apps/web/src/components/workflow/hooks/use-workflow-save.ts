@@ -1,6 +1,6 @@
 // apps/web/src/components/workflow/hooks/use-workflow-save.ts
 
-import { deriveTriggerColumns } from '@auxx/lib/workflow-engine/client'
+import { deriveTriggerColumns, stripDerivedKeys } from '@auxx/lib/workflow-engine/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { debounce } from '@auxx/utils'
 import { useStoreApi } from '@xyflow/react'
@@ -123,20 +123,17 @@ export const useWorkflowSave = () => {
         return null
       }
 
-      // Clean nodes - remove UI-only properties (prefixed with _)
-      const cleanNodes = nodes.map((node) => {
-        const cleanData = Object.fromEntries(
-          Object.entries(node.data || {}).filter(([key]) => !key.startsWith('_'))
-        )
-        return { ...node, data: cleanData }
-      })
+      // Clean nodes/edges — derived (canvas-owned) keys never persist. The rule
+      // lives in lib (`stripDerivedKeys`) so this and the agent's own save seam
+      // (`graph-edit/persist.ts` cleanGraphForSave) can never drift apart.
+      const cleanNodes = nodes.map((node) => ({
+        ...node,
+        data: stripDerivedKeys(node.data || {}),
+      }))
 
-      // Clean edges - remove UI-only properties
       const cleanEdges = edges.map((edge) => {
         if (!edge.data) return edge
-        const cleanData = Object.fromEntries(
-          Object.entries(edge.data).filter(([key]) => !key.startsWith('_'))
-        )
+        const cleanData = stripDerivedKeys(edge.data)
         return { ...edge, data: Object.keys(cleanData).length > 0 ? cleanData : undefined }
       })
 

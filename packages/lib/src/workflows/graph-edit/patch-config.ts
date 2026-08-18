@@ -2,6 +2,7 @@
 
 import { err, ok, type Result } from 'neverthrow'
 import { BadRequestError } from '../../errors'
+import { isDerivedKey } from '../../workflow-engine/catalog/derived-keys'
 
 /** One unambiguous segment in an agent-visible node config path. */
 export type ConfigPathSegment = string | number
@@ -41,7 +42,7 @@ function validatePath(path: ConfigPathSegment[]): Result<void, BadRequestError> 
   if (typeof root !== 'string') {
     return err(new BadRequestError('Patch paths must start with a config field name.'))
   }
-  if (FORBIDDEN_ROOT_KEYS.has(root) || root.startsWith('_')) {
+  if (FORBIDDEN_ROOT_KEYS.has(root)) {
     return err(new BadRequestError(`Config field "${root}" cannot be patched.`))
   }
   return ok(undefined)
@@ -74,18 +75,37 @@ function descend(
   return ok((current as Record<string, unknown>)[segment])
 }
 
+/** What {@link applyConfigPatches} produced: the new config plus what it skipped. */
+export interface AppliedConfigPatches {
+  config: Record<string, unknown>
+  /**
+   * Derived-key patch paths that were IGNORED rather than rejected, rendered
+   * for a message. Empty on the normal path.
+   */
+  ignoredPaths: string[]
+}
+
 /**
  * Apply config patches to a clone. Parents must exist; `set` may create its
  * final object key, while arrays are replacement-only and never sparse.
+ *
+ * Patches rooted at a DERIVED key are dropped rather than rejected. Such a key
+ * is canvas state that no save persists and no caller can change, so a hard
+ * error taught the model to retry an edit that could never land — while the
+ * *other* patches in the same call, which usually carry the real fix, were
+ * thrown away with it. Dropping applies the real work and reports the skip.
+ * A call whose patches are ALL derived still errors: there is nothing to
+ * apply, and reporting success would claim an edit that did not happen.
  */
 export function applyConfigPatches(
   config: Record<string, unknown>,
   patches: ConfigPatch[]
-): Result<Record<string, unknown>, BadRequestError> {
+): Result<AppliedConfigPatches, BadRequestError> {
   if (patches.length === 0) {
     return err(new BadRequestError('At least one config patch is required.'))
   }
 
+  const ignoredPaths: string[] = []
   const next = structuredClone(config)
   for (const patch of patches) {
     if (
@@ -99,6 +119,12 @@ export function applyConfigPatches(
     }
     const valid = validatePath(patch.path)
     if (valid.isErr()) return err(valid.error)
+
+    const root = patch.path[0]
+    if (typeof root === 'string' && isDerivedKey(root)) {
+      ignoredPaths.push(JSON.stringify(patch.path))
+      continue
+    }
 
     let parent: unknown = next
     for (let index = 0; index < patch.path.length - 1; index += 1) {
@@ -143,5 +169,16 @@ export function applyConfigPatches(
       record[leaf] = structuredClone(patch.value)
     }
   }
-  return ok(next)
+
+  if (ignoredPaths.length === patches.length) {
+    return err(
+      new BadRequestError(
+        `Nothing to apply: ${ignoredPaths.join(', ')} ${
+          ignoredPaths.length === 1 ? 'is' : 'are'
+        } derived state, maintained automatically from the node's connections. It cannot be ` +
+          'set, and nothing needs to set it — use connect_nodes to change branch wiring.'
+      )
+    )
+  }
+  return ok({ config: next, ignoredPaths })
 }
