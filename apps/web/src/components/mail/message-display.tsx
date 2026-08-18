@@ -36,6 +36,7 @@ import {
   useThreadReadStatus,
 } from '~/components/threads/hooks'
 import type { MessageMeta } from '~/components/threads/store'
+import { participantInitials, participantLabel } from '~/components/threads/utils/participant-label'
 import { api } from '~/trpc/react'
 import { ContactHoverCard } from '../contacts/contact-hover-card'
 import { Tooltip } from '../global/tooltip'
@@ -45,7 +46,6 @@ import { useHtmlBody } from './hooks/use-html-body'
 import { useRetrySend } from './hooks/use-retry-send'
 import { SendStatusIndicator } from './send-status-indicator'
 import { supportsRichText } from './utils/channel-rich-text'
-import { initialsFor } from './utils/participant-initials'
 import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
 import { SandboxedEmailHtml } from './utils/sandboxed-email-html'
 import { toEditorMessage } from './utils/to-editor-message'
@@ -162,8 +162,8 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
   const hasActions = typeof messageActions?.onReply === 'function'
 
   const isInbound = message.isInbound
-  const senderName = sender?.displayName ?? 'Unknown'
-  const senderInitials = initialsFor(sender)
+  const senderName = sender ? participantLabel(sender) : 'Unknown'
+  const senderInitials = participantInitials(sender)
   const contactId = sender?.entityInstanceId
 
   return (

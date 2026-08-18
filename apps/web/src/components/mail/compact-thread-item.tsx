@@ -34,6 +34,7 @@ import {
   useSelectionAnchorId,
   useThreadSelectionStore,
 } from '~/components/threads/store'
+import { participantLabel } from '~/components/threads/utils/participant-label'
 import { threadFieldResolver } from '~/components/threads/utils/thread-field-resolver'
 import { useIsRecordProcessing } from '~/components/workflow/use-is-record-processing'
 import { AssigneeChip } from './assignee-chip'
@@ -172,7 +173,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
       : ''
   }, [thread?.lastMessageAt])
 
-  const senderName = senderParticipant?.displayName ?? null
+  const senderName = senderParticipant ? participantLabel(senderParticipant) : null
 
   // On subject-less channels (SMS/WhatsApp/DMs) the title slot falls back to
   // the thread's participant; `null` means "render the usual placeholder".

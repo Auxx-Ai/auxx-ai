@@ -34,7 +34,33 @@ export interface ParticipantMeta {
   avatarUrl: string | null
   /** Reference to EntityInstance (contact entity type) */
   entityInstanceId: string | null
+  /**
+   * The linked contact's `EntityInstance.displayName`, already normalized by
+   * {@link usableContactName} — `null` when there is no linked (non-archived)
+   * contact, or when its display value is just the identifier echoed back.
+   * Kept separate from `displayName` on purpose: label precedence
+   * (contactName > name > formatted identifier) is resolved in ONE client util,
+   * and the composer's "real name vs identifier" honesty must survive.
+   */
+  contactName: string | null
   isSpammer: boolean
   /** True when the participant's identifier is on the organization's own domain. */
   isInternal: boolean
+}
+
+/**
+ * Normalize a contact's display value into a usable *name* for a participant.
+ *
+ * Returns the trimmed name, or `null` when it is empty/whitespace or equal
+ * (case-insensitive, trimmed) to the participant's identifier — a contact whose
+ * display value IS the phone/email must not masquerade as a name.
+ */
+export function usableContactName(
+  contactDisplayName: string | null | undefined,
+  identifier: string | null | undefined
+): string | null {
+  const name = contactDisplayName?.trim()
+  if (!name) return null
+  if (identifier && name.toLowerCase() === identifier.trim().toLowerCase()) return null
+  return name
 }

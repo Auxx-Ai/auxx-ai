@@ -10,9 +10,10 @@ import type {
   RecordsInvalidatedEvent,
   RecordUpdatedEvent,
 } from '@auxx/lib/realtime'
-import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { getInstanceId, isRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import type { FieldReference, FieldValueKey } from '@auxx/types/field'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { patchParticipantsForContact } from '~/components/threads/store/participant-store'
 import { useOrgChannel, useRecordChannels } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 import { fieldValueFetchQueue } from '../store/field-value-fetch-queue'
@@ -97,6 +98,37 @@ function cachedValueRequests(
 }
 
 /**
+ * Record lane → participant store bridge (contact-name precedence): a contact
+ * rename/avatar change must flip mail labels live, and this lane already
+ * carries exactly that event. Instance ids are globally unique, so no def
+ * check is needed — the store scan simply matches nothing for non-contacts.
+ * Only keys present on the payload are forwarded (`undefined` = don't touch);
+ * per-participant "usable name" normalization happens inside the store patch.
+ */
+function patchParticipantsForRecordMeta(record: {
+  id: string
+  displayName?: string
+  avatarUrl?: string | null
+}) {
+  if (record.displayName === undefined && record.avatarUrl === undefined) return
+  patchParticipantsForContact(record.id, {
+    contactName: record.displayName,
+    avatarUrl: record.avatarUrl,
+  })
+}
+
+/**
+ * Deleted/archived contacts fall back to the header/identifier label —
+ * mirrors the FK `ON DELETE set null` / archived-contact semantics of the
+ * fetch path. `recordId` on these events is the composite form.
+ */
+function clearParticipantsForRecord(recordId: RecordId | string) {
+  const instanceId = isRecordId(recordId) ? getInstanceId(recordId) : recordId
+  if (!instanceId) return
+  patchParticipantsForContact(instanceId, { contactName: null, avatarUrl: null })
+}
+
+/**
  * Global hook that subscribes to real-time resource events and feeds data into
  * the existing Zustand stores. Mount once in the app layout.
  *
@@ -167,6 +199,7 @@ export function useResourceSync() {
       if (data.fieldValues?.length) {
         setValues(data.fieldValues)
       }
+      patchParticipantsForRecordMeta(data.record)
     },
     [setRecords, invalidateLists, setValues, utils]
   )
@@ -184,6 +217,7 @@ export function useResourceSync() {
       if (updatedAt !== undefined) patch.updatedAt = updatedAt
       if (Object.keys(patch).length === 0) return
       updateRecord(data.entityDefinitionId, data.record.id, patch)
+      patchParticipantsForRecordMeta(data.record)
     },
     [updateRecord]
   )
@@ -195,6 +229,7 @@ export function useResourceSync() {
       invalidateLists(data.entityDefinitionId)
       invalidateResource(data.recordId)
       utils.record.listFiltered.invalidate({ entityDefinitionId: data.entityDefinitionId })
+      clearParticipantsForRecord(data.recordId)
     },
     [removeRecord, invalidateLists, invalidateResource, utils]
   )
@@ -204,6 +239,7 @@ export function useResourceSync() {
       const data = raw as RecordArchivedEvent['data']
       invalidateLists(data.entityDefinitionId)
       utils.record.listFiltered.invalidate({ entityDefinitionId: data.entityDefinitionId })
+      clearParticipantsForRecord(data.recordId)
     },
     [invalidateLists, utils]
   )

@@ -8,6 +8,7 @@
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { describe, expect, it } from 'vitest'
 import {
+  participantDisplayLabel,
   participantRecencyScore,
   participantSearchBinding,
   participantSearchPredicate,
@@ -96,6 +97,37 @@ describe('participantSearchRank', () => {
     const { sql: text } = render(participantSearchRank('klooth', P))
     expect(weight).toBe('2')
     expect(text).toContain(`COALESCE(similarity(p."displayName", $1), 0) * ${weight}`)
+  })
+})
+
+describe('participantDisplayLabel', () => {
+  it('COALESCEs the usable contact name over the participant displayName', () => {
+    const { sql: text } = render(participantDisplayLabel(P, 'ct'))
+    // Blank/NULL contact names collapse to NULL…
+    expect(text).toContain(`WHEN BTRIM(COALESCE(ct."displayName", '')) = '' THEN NULL`)
+    // …and a contact whose display value IS the identifier must not masquerade
+    // as a name — same rule as `usableContactName` in `../client.ts`.
+    expect(text).toContain(
+      `WHEN LOWER(BTRIM(ct."displayName")) = LOWER(BTRIM(p."identifier")) THEN NULL`
+    )
+    expect(text).toContain(`ELSE BTRIM(ct."displayName")`)
+    expect(text).toContain(`p."displayName")`)
+  })
+
+  it('🔴 stays out of the match predicate and the rank — label only', () => {
+    // A contact renamed five minutes ago must still be findable by the old
+    // header name, and the trigram indexes only cover the stored columns.
+    const contactRef = 'ct."displayName"'
+    expect(render(participantSearchPredicate('klooth', P)).sql).not.toContain(contactRef)
+    expect(render(participantSearchRank('klooth', P)).sql).not.toContain(contactRef)
+  })
+
+  it('respects both aliases it was built with', () => {
+    const { sql: text } = render(participantDisplayLabel(participantSearchBinding('cand'), 'ei2'))
+    expect(text).toContain('ei2."displayName"')
+    expect(text).toContain('cand."identifier"')
+    expect(text).not.toContain('ct."displayName"')
+    expect(text).not.toContain('p."displayName"')
   })
 })
 

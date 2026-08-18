@@ -2,10 +2,11 @@ import { schema } from '@auxx/database'
 import { InboxService } from '@auxx/lib/inboxes'
 import { IsOperatorValue, SearchOperator } from '@auxx/lib/mail-query'
 import { listMembersWithUser } from '@auxx/lib/members'
+import { usableContactName } from '@auxx/lib/participants'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { listAll } from '@auxx/lib/resources'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, count as drizzleCount, eq, ilike, inArray, or, sql } from 'drizzle-orm'
+import { and, asc, count as drizzleCount, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -58,15 +59,44 @@ const getStatusDescription = (status: string): string => {
   }
   return descriptions[status] || ''
 }
-// Helper function to get display name with entity instance (contact) priority
-const getParticipantDisplayName = (participant: any) => {
-  // Try entityInstance (was contact before migration)
-  const entity = participant.entityInstance || participant.contact
-  if (entity) {
-    const contactName = [entity.firstName, entity.lastName].filter(Boolean).join(' ')
-    if (contactName) return contactName
-  }
-  return participant.displayName || participant.name || participant.identifier
+// Batch-resolve linked (non-archived) contact display names for participant
+// rows — one query, keyed by entityInstanceId. The previous helper read
+// `participant.entityInstance || participant.contact`, but no caller ever
+// joined that relation, so the contact branch was dead code.
+const fetchContactNames = async (
+  db: any,
+  organizationId: string,
+  participants: Array<{ entityInstanceId: string | null }>
+): Promise<Map<string, string | null>> => {
+  const contactIds = [
+    ...new Set(
+      participants
+        .map((p) => p.entityInstanceId)
+        .filter((id): id is string => typeof id === 'string')
+    ),
+  ]
+  if (contactIds.length === 0) return new Map()
+  const rows = await db
+    .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        inArray(schema.EntityInstance.id, contactIds),
+        eq(schema.EntityInstance.organizationId, organizationId),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+  return new Map(rows.map((r: { id: string; displayName: string | null }) => [r.id, r.displayName]))
+}
+
+// Label with contact-name precedence — the same normalization the
+// `ParticipantMeta` fetch path uses (`usableContactName`).
+const getParticipantDisplayName = (participant: any, contactNames: Map<string, string | null>) => {
+  const contactName = usableContactName(
+    participant.entityInstanceId ? contactNames.get(participant.entityInstanceId) : null,
+    participant.identifier
+  )
+  return contactName || participant.displayName || participant.name || participant.identifier
 }
 // Helper function to save search query with limit management
 const saveSearchQuery = async (ctx: any, query: string) => {
@@ -261,11 +291,12 @@ export const searchRouter = createTRPCRouter({
               )
             )
             .limit(10)
+          const contactNames = await fetchContactNames(ctx.db, organizationId, participants)
           suggestions.push(
             ...participants.map((p: any) => ({
               type: 'participant',
               value: p.identifier,
-              label: getParticipantDisplayName(p),
+              label: getParticipantDisplayName(p, contactNames),
               secondary: p.identifier,
             }))
           )
@@ -419,10 +450,11 @@ export const searchRouter = createTRPCRouter({
           )
         )
         .limit(20)
+      const contactNames = await fetchContactNames(ctx.db, organizationId, participants)
       return participants.map((p: any) => ({
         id: p.id,
         identifier: p.identifier,
-        displayName: getParticipantDisplayName(p),
+        displayName: getParticipantDisplayName(p, contactNames),
         identifierType: p.identifierType,
         contactId: p.entityInstanceId,
         contact: p.contact || null,

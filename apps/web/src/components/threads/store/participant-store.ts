@@ -1,6 +1,7 @@
 // apps/web/src/components/threads/store/participant-store.ts
 
 import '~/lib/immer-config'
+import { usableContactName } from '@auxx/lib/participants/client'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
@@ -37,6 +38,12 @@ export interface ParticipantMeta {
   avatarUrl: string | null
   /** Reference to EntityInstance (contact entity type) */
   entityInstanceId: string | null
+  /**
+   * The linked contact's display name, normalized server-side (`null` when
+   * empty or just the identifier echoed back). Label precedence is resolved in
+   * `~/components/threads/utils/participant-label`.
+   */
+  contactName: string | null
   isSpammer: boolean
   /** True when the participant's identifier is on the organization's own domain. */
   isInternal: boolean
@@ -181,3 +188,32 @@ export const useParticipantStore = create<ParticipantStoreState>()(
  * Get store state outside of React.
  */
 export const getParticipantStoreState = () => useParticipantStore.getState()
+
+/**
+ * Realtime bridge (record lane → participant store): patch every cached
+ * participant linked to a contact after a `record:*` event on the contact.
+ *
+ * `contactName` is the RAW contact display name (or `null` on delete/archive);
+ * it is normalized per participant against that participant's identifier here,
+ * because "the contact's display value is just the phone/email" depends on
+ * which participant is being labeled. `avatarUrl` merges verbatim. A key set
+ * to `undefined` is left untouched.
+ *
+ * O(n) scan over the map — it holds at most a few hundred entries.
+ */
+export function patchParticipantsForContact(
+  entityInstanceId: string,
+  patch: { contactName?: string | null; avatarUrl?: string | null }
+) {
+  useParticipantStore.setState((state) => {
+    for (const participant of state.participants.values()) {
+      if (participant.entityInstanceId !== entityInstanceId) continue
+      if (patch.contactName !== undefined) {
+        participant.contactName = usableContactName(patch.contactName, participant.identifier)
+      }
+      if (patch.avatarUrl !== undefined) {
+        participant.avatarUrl = patch.avatarUrl
+      }
+    }
+  })
+}

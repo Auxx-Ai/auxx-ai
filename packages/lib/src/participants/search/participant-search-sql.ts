@@ -101,6 +101,8 @@ export interface ParticipantSearchBinding {
    */
   cols: TextSearchColumns
   identifier: SQL
+  /** The label column, read by {@link participantDisplayLabel} only. */
+  displayName: SQL
   lastSentMessageAt: SQL
 }
 
@@ -115,6 +117,7 @@ export function participantSearchBinding(alias: string): ParticipantSearchBindin
       id: col('id'),
     },
     identifier: col('identifier'),
+    displayName: col('displayName'),
     lastSentMessageAt: col('lastSentMessageAt'),
   }
 }
@@ -177,6 +180,35 @@ export function participantSearchPredicate(
     ...phonePatterns.map((pattern) => sql`${binding.identifier} ILIKE ${`%${pattern}%`}`),
   ]
   return sql`(${sql.join(arms, sql` OR `)})`
+}
+
+/**
+ * The emitted display label for a participant row LEFT-JOINed to its linked
+ * contact: the contact's *usable* displayName wins over the participant's.
+ *
+ * "Usable" mirrors `usableContactName` (`../client.ts`): NULL/blank collapses
+ * to NULL, and a contact whose display value IS the identifier (case-insensitive,
+ * trimmed) must not masquerade as a name. The identifier fallback stays in TS
+ * (`toParticipantCandidate`), where it already lives.
+ *
+ * 🔴 **Label only.** This must never feed the match predicate or the rank —
+ * a contact renamed five minutes ago is still findable by the old header name,
+ * and the trigram indexes only cover the stored participant columns.
+ *
+ * @param binding The participant binding (identifier + displayName refs).
+ * @param contactAlias Alias of the LEFT-JOINed `EntityInstance` (filtered to
+ *   `archivedAt IS NULL` by the join, so an archived contact falls back here).
+ */
+export function participantDisplayLabel(
+  binding: ParticipantSearchBinding,
+  contactAlias: string
+): SQL {
+  const contactName = sql.raw(`${contactAlias}."displayName"`)
+  return sql`COALESCE(CASE
+    WHEN BTRIM(COALESCE(${contactName}, '')) = '' THEN NULL
+    WHEN LOWER(BTRIM(${contactName})) = LOWER(BTRIM(${binding.identifier})) THEN NULL
+    ELSE BTRIM(${contactName})
+  END, ${binding.displayName})`
 }
 
 /**

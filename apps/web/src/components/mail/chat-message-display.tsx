@@ -13,16 +13,16 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
-import { formatDistanceToNow } from 'date-fns'
+import { format } from 'date-fns'
 import { Check, CheckCheck, CopyPlusIcon, EllipsisVertical, Mail, Trash } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useMessage, useMessageParticipants, useThreadReadStatus } from '~/components/threads/hooks'
 import type { AttachmentMeta, MessageMeta } from '~/components/threads/store'
+import { participantInitials, participantLabel } from '~/components/threads/utils/participant-label'
 import { AttachmentDisplay } from '../files/utils/attachment-display'
 import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
 import { SendStatusIndicator } from './send-status-indicator'
-import { initialsFor } from './utils/participant-initials'
 
 export type ChatGroupPosition = 'solo' | 'first' | 'middle' | 'last'
 
@@ -74,8 +74,8 @@ const ChatMessageDisplay = ({
   if (!message) return null
 
   const isInbound = message.isInbound
-  const senderName = sender?.displayName ?? 'Unknown'
-  const senderInitials = initialsFor(sender)
+  const senderName = sender ? participantLabel(sender) : 'Unknown'
+  const senderInitials = participantInitials(sender)
   const content = message.textPlain ?? message.snippet ?? ''
 
   // Read-only seam: an empty `messageActions` (e.g. the palette's
@@ -207,6 +207,11 @@ const ChatMessageDisplay = ({
 
 export default ChatMessageDisplay
 
+/**
+ * Time-only ("2:41 PM") — a day separator now establishes the day for every
+ * bubble below it (plans/threads/thread-events.md §15.6), so the relative
+ * "2 hours ago" label this used to show would be redundant with it.
+ */
 function TimestampLabel({
   sentAt,
   className,
@@ -217,14 +222,14 @@ function TimestampLabel({
   const date = sentAt ? new Date(sentAt) : new Date()
   return (
     <Tooltip
-      content={sentAt ? date.toString() : ''}
+      content={sentAt ? date.toLocaleString() : ''}
       delayDuration={500}
       side='top'
       sideOffset={5}
       className='text-xs text-muted-foreground'>
       <span
         className={cn('shrink-0 whitespace-nowrap text-[10px] text-muted-foreground', className)}>
-        {formatDistanceToNow(date, { addSuffix: true })}
+        {format(date, 'h:mm a')}
       </span>
     </Tooltip>
   )

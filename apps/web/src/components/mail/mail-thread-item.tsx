@@ -58,6 +58,7 @@ import {
   useSelectionAnchorId,
   useThreadSelectionStore,
 } from '~/components/threads/store'
+import { participantLabel } from '~/components/threads/utils/participant-label'
 import { threadFieldResolver } from '~/components/threads/utils/thread-field-resolver'
 import { useIsRecordProcessing } from '~/components/workflow/use-is-record-processing'
 import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
@@ -372,7 +373,7 @@ export const MailThreadItem = memo(function MailThreadItem({
   // Show the counterparty, not the owner. Shared with `CompactThreadItem` — see
   // `useThreadRowSender` for why this is a hook and not a block of code in here.
   const displaySender = useThreadRowSender(rowParticipantIds)
-  const senderName = displaySender?.displayName ?? 'Unknown'
+  const senderName = displaySender ? participantLabel(displaySender) : 'Unknown'
 
   // On subject-less channels (SMS/WhatsApp/DMs) the title slot falls back to
   // the thread's participant; `null` means "render the usual placeholder".
