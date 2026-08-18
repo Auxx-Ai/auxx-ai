@@ -436,4 +436,47 @@ describe('app-block nodes', () => {
 
     expect(getCachedInstalledApps).not.toHaveBeenCalled()
   })
+
+  // The declared `Result<…, Error>` was never produced: both cache reads could
+  // throw straight through it, past every caller's `isOk()` guard. Since
+  // `runGraphMutation` resolves outputs BEFORE `persistDraft`, a blip in either
+  // aborted an already-validated edit and lost the user's change.
+  it('returns err instead of throwing when the resources read fails', async () => {
+    noResources()
+    getCachedResources.mockRejectedValue(new Error('redis down'))
+    const graph = { nodes: [varAssignArrayNode('n1', 'items')], edges: [] }
+
+    const result = await resolveGraphOutputs('org-1', { graph })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toBe('redis down')
+  })
+
+  it('returns err instead of throwing when the app-block lookup fails', async () => {
+    noResources()
+    getCachedInstalledApps.mockRejectedValue(new Error('installed apps unavailable'))
+    // A colon-shaped type is what routes into `buildAppBlockLookup`.
+    const graph = {
+      nodes: [
+        { id: 'n1', type: 'app1:block1', data: { id: 'n1', type: 'app1:block1', title: 'Block' } },
+      ],
+      edges: [],
+    }
+
+    const result = await resolveGraphOutputs('org-1', { graph })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toBe('installed apps unavailable')
+  })
+
+  it('wraps a non-Error throw so callers always get an Error', async () => {
+    noResources()
+    getCachedResources.mockRejectedValue('just a string')
+    const graph = { nodes: [varAssignArrayNode('n1', 'items')], edges: [] }
+
+    const result = await resolveGraphOutputs('org-1', { graph })
+
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(Error)
+    expect(result._unsafeUnwrapErr().message).toBe('just a string')
+  })
 })

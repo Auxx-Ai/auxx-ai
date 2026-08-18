@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/catalog/resolve-outputs.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedResources } from '../../cache'
 import { NotFoundError } from '../../errors'
@@ -9,6 +10,8 @@ import { buildOutputContextFromResources } from './build-output-context'
 import { buildUpstreamMap, type EdgeMeta, type NodeMeta, topologicalSort } from './graph-vars'
 import { getManifest } from './registry'
 import { getNodeIdFromVariableId } from './variable-inference'
+
+const logger = createScopedLogger('workflow-resolve-outputs')
 
 /**
  * The persisted-graph shape output resolution reads: React Flow nodes, engine
@@ -195,10 +198,40 @@ export async function resolveGraphOutputs(
   orgId: string,
   params: { graph: WorkflowOutputGraph }
 ): Promise<Result<Map<string, UnifiedVariable[]>, Error>> {
-  const [allResources, appBlocks] = await Promise.all([
-    getCachedResources(orgId),
-    appBlocksForGraph(orgId, params.graph.nodes),
-  ])
-  const memo = resolveInTopoOrder(allResources, params.graph.nodes, params.graph.edges, appBlocks)
-  return ok(memo)
+  try {
+    const [allResources, appBlocks] = await Promise.all([
+      getCachedResources(orgId),
+      appBlocksForGraph(orgId, params.graph.nodes),
+    ])
+    const memo = resolveInTopoOrder(allResources, params.graph.nodes, params.graph.edges, appBlocks)
+    return ok(memo)
+  } catch (error) {
+    // Outputs are ENRICHMENT, not correctness — and every caller already says
+    // so: `ops.ts` and `read.ts` guard on `isOk()` and simply carry on without
+    // them. But that branch is only reachable through a RETURNED `err`; a
+    // throw sails past it. This function has always declared
+    // `Result<…, Error>` and never produced one, so both cache reads below it
+    // were effectively un-caught:
+    //
+    //   - `getCachedResources` (Redis + Postgres)
+    //   - `appBlocksForGraph` → `buildAppBlockLookup` → the installedApps
+    //     provider (Redis + Postgres), reached by any graph holding an
+    //     `appId:blockId` node
+    //
+    // `runGraphMutation` calls this BEFORE `persistDraft`, so a blip in either
+    // aborted an already-validated, about-to-be-written edit and lost the
+    // user's change. Honouring the declared contract is the whole fix; no
+    // call site needs to change.
+    //
+    // Deliberately NOT degrading to an empty lookup: outputs would keep
+    // flowing minus the app-block variables, and `checkVariableRefsAgainstOutputs`
+    // would then report perfectly valid references as unresolvable — inventing
+    // issues is worse than reporting none.
+    logger.warn('Output resolution failed — continuing without outputs', {
+      orgId,
+      nodeCount: params.graph.nodes.length,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return err(error instanceof Error ? error : new Error(String(error)))
+  }
 }
