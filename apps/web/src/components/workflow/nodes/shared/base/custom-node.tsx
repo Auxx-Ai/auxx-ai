@@ -3,12 +3,15 @@
 import type { Node, NodeProps } from '@xyflow/react'
 import { useMemo } from 'react'
 import { AppWorkflowNode } from '~/components/workflow/apps/app-workflow-node'
+import { useRenderTrace } from '~/components/workflow/debug'
 import { useRegistryVersion } from '~/components/workflow/hooks'
 import type { BaseNodeData } from '~/components/workflow/types'
 import { NoteNode } from '../../core/note'
 import { unifiedNodeRegistry } from '../../unified-registry'
 
 const StandardNode = (props: NodeProps<Node<BaseNodeData>>) => {
+  useRenderTrace('StandardNode')
+
   const nodeData = props.data
   const nodeType = nodeData.type
 

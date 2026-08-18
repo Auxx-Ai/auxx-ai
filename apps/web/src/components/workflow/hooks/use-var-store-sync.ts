@@ -8,6 +8,30 @@ import { useVarStore } from '../store/use-var-store'
 import type { FlowEdge, FlowNode } from '../types'
 
 /**
+ * Whether two node arrays are equivalent *for variable purposes*.
+ *
+ * A node's coordinates cannot affect any variable, but `handleNodeDrag` replaces
+ * the whole node array on every pointer frame, so whole-array reference equality
+ * never holds during a drag. Comparing each node's `data` reference and
+ * `parentId` (in order, so an id change or a reorder counts as changed) is a
+ * reference scan rather than a deep compare: immer structural sharing in
+ * `use-node-data-update` keeps an untouched node's `data` reference intact.
+ */
+function nodesEqualForVariables(next: FlowNode[], prev: FlowNode[]): boolean {
+  if (next === prev) return true
+  if (next.length !== prev.length) return false
+
+  for (let i = 0; i < next.length; i++) {
+    const a = next[i]
+    const b = prev[i]
+    if (!a || !b) return false
+    if (a.id !== b.id || a.data !== b.data || a.parentId !== b.parentId) return false
+  }
+
+  return true
+}
+
+/**
  * Event-driven sync bridge between ReactFlow and the variable store.
  * Replaces the old 5s polling with RAF-debounced subscription.
  */
@@ -43,8 +67,11 @@ export function useVarStoreSync() {
     syncFromState(store.getState())
 
     const unsub = store.subscribe((state, prevState) => {
-      // Early bail-out: skip pan/zoom/selection (reference equality check)
-      if (state.nodes === prevState.nodes && state.edges === prevState.edges) return
+      // Early bail-out: skip pan/zoom/selection, and skip position-only changes
+      // (a drag frame) — neither can affect a variable.
+      if (state.edges === prevState.edges && nodesEqualForVariables(state.nodes, prevState.nodes)) {
+        return
+      }
 
       // Debounce with RAF to batch rapid changes (e.g., drag operations)
       if (rafId) cancelAnimationFrame(rafId)

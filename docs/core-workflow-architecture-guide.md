@@ -515,43 +515,63 @@ The mitigations in the tree today are drag gates, not fixes:
 `store/panel-store.ts:350` drops `selection:changed` while `isDragging` (else the
 panel opens mid-drag and re-renders the editor shell) and re-opens it 50 ms after
 `drag:ended`; `useOnViewportChange` is debounced 300 ms. **Read `isDragging` as
-evidence that something downstream is too expensive**, not as architecture. Two
-real fixes are available and unclaimed: skip the var-store sync when only
-`position` changed, and make the parent-id check a map lookup.
+evidence that something downstream is too expensive**, not as architecture.
 
-### There is no perf debug switch today
+Both cheap fixes have since shipped: `use-var-store-sync.ts` now bails when only
+node *positions* (or selection) changed, so a drag frame never reaches the
+`topologicalSort`, and the parent-id check is a map lookup. What remains
+per-frame is the `produce()` rebuild itself — and see the measurement below
+before assuming that is worth removing.
 
-Worth stating plainly, because it keeps getting assumed: nothing in the tree or
-in git history ever shipped one. `hooks/use-variable-performance.ts` is a
-`useDebounce` and nothing else, and `canvas/workflow-canvas.tsx:20` has a
-commented-out `DevTools` import pointing at a `~/components/devtools` that does
-not exist. Measuring today means driving React DevTools' Profiler by hand, which
-is why regressions land.
+### The perf switch — how to use it
 
-### Proposed switch (design, not shipped)
+Dev-only, and gated on `process.env.NODE_ENV` at the call site so it is
+eliminated from production builds entirely.
 
-One dev-only flag, three probes, one report. Kept here so the next person builds
-*this* rather than another ad-hoc `console.log` pass.
+- **Arm it** with the **Perf probe** toggle in the canvas's bottom-right panel,
+  or `?perf=1`, or a `workflow:perf` key in `localStorage`. The toggle writes
+  `localStorage` and reloads: `WORKFLOW_PERF_ENABLED` (`debug/perf-flag.ts`) is
+  read **once** at module evaluation precisely so nothing on a render path pays
+  for the switch when it is off, and a reload is the honest way to re-read it.
+- **Drag a node.** On `dragStop` the probe prints one `console.table` of render
+  counts plus a summary line: gesture duration, frames, dropped frames
+  (inter-frame delta > 16.7 ms), cumulative handler time and cumulative
+  `setNodes` time.
+- **The read:** a component whose `rendersPerFrame` tracks the *number of
+  affected elements* is normal; one that stays pinned regardless of which node
+  you drag is rendering repeatedly per frame, which is the bug shape.
+- `debug/user-timing.ts` also marks `updateGraph` / `topologicalSort` /
+  `computeNodeOutputs`, so a Chrome performance recording attributes them in its
+  Timings track without any console reading.
 
-- **Gate** — `?perf=1` or `localStorage['workflow:perf']`, read **once** into a
-  module-level const, and `&& process.env.NODE_ENV !== 'production'`. Reading the
-  flag must never be part of a render path, or the switch becomes its own cost.
-- **Probe 1 — render attribution.** `useRenderTrace('VariableExplorer')` bumps a
-  module counter keyed by name. No state, no re-render.
-- **Probe 2 — the drag window.** `handleNodeDragStart` opens a window;
-  `handleNodeDragStop` closes it and reports: frames, dropped frames
-  (`performance.now()` deltas > 16.7 ms), cumulative time inside `setNodes`, and
-  the per-component render counts collected since `dragStart`. One
-  `console.table`, sorted by render count — the offending subscription is
-  whatever sits at the top with a count equal to the frame count.
-- **Probe 3 — User Timing marks.** `performance.mark`/`measure` around
-  `updateGraph`, `computeNodeOutputs` and `topologicalSort`, so a Chrome
-  performance recording attributes the cost in its Timings track without any
-  console reading.
+### What the first measurement said
 
-The acceptance bar for the switch: on a 50-node graph, dragging one node should
-show render counts in the low tens, not ~60 × the number of mounted panels. Any
-component whose count tracks the frame count is the regression.
+One node dragged for ~800 ms on an 18-node / 19-edge graph, dev build:
+
+```
+812.7ms · 39 frames · 21 dropped · handler 21.9ms · setNodes 11.5ms
+StandardNode 158 renders (4.05/frame) · CustomEdge 96 renders (2.46/frame)
+```
+
+**The drag handler is not the bottleneck.** 21.9 ms over 39 frames is 0.56 ms
+per frame — 3.4 % of a 16.7 ms budget. Any plan that begins "rewrite the drag
+pipeline so it stops rebuilding the array every frame" is optimizing 3 % of a
+frame; that hypothesis is not supported, and the unwired `onNodesChange` in
+`canvas/workflow-canvas.tsx` is a curiosity rather than a cost.
+
+**One node dragged should re-render one node per frame.** `StandardNode` sat at
+4.04 and 4.05 across two drags while `CustomEdge` moved 6.39 → 2.46 with the
+dragged node's edge count. Edges tracking connectivity is expected; a node count
+pinned across different nodes points at the *same* instance rendering ~4× per
+frame. React StrictMode (`next.config.ts`) doubles renders in dev, so read that
+as ~2 logical renders where 1 would do.
+
+**Treat the dropped-frame count as contaminated.** That run had an unminified
+dev bundle, StrictMode, DevTools attached over CDP, and console log forwarding
+all inflating frame time. 54 % dropped frames under those conditions is not
+evidence of a production problem. Re-measure with DevTools closed before
+concluding anything from it, and note the render counters are keyed by component
+*name*, not instance — which is why "4.05" above is an inference, not a fact.
 
 ---
 

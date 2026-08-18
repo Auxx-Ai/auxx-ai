@@ -48,6 +48,7 @@ import { EmptyTriggerButton } from '~/components/workflow/ui/empty-trigger-butto
 import { GettingStartedOverlay } from '~/components/workflow/ui/getting-started-overlay'
 import HelpLine from '~/components/workflow/ui/helpline'
 import { createCenterOnNodeHandler } from '~/components/workflow/utils'
+import { WorkflowPerfSwitch } from '../debug/perf-switch'
 import { useContextMenu } from '../hooks/use-context-menu'
 import { CanvasNodeInfo } from '../ui/canvas-node-info'
 import { NodeContextMenu } from '../ui/node-context-menu'
@@ -405,6 +406,16 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
           <Panel position='bottom-left'>
             <WorkflowOperators />
           </Panel>
+
+          {/* Dev-only perf probe toggle. Gated on the build constant rather than
+              inside the component so the bundler drops it from production. */}
+          {process.env.NODE_ENV !== 'production' && (
+            <Panel position='bottom-right'>
+              <div className='flex items-center gap-0.5 p-0.5 bg-white/40 dark:bg-white/10 backdrop-blur-sm rounded-lg ring-black/5 ring-1'>
+                <WorkflowPerfSwitch />
+              </div>
+            </Panel>
+          )}
           <CanvasNodeInfo />
         </ReactFlow>
 
