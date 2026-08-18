@@ -791,3 +791,83 @@ describe('channelType', () => {
     expect(toSql(buildOne('channelType', 'not empty', undefined).sql)).toMatch(/true/)
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `messageType` — the FORM a message takes (email/sms/chat/call/voicemail),
+// contrasted with `channelType` above (the channel a thread ARRIVED on).
+// "Thread contains a voicemail" is a correlated `exists` over `Message`, the
+// same shape as `hasAttachments` / `list` / `senderDomain`, not the
+// `channelType` shape (message-type-overhaul plan §3a).
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('messageType', () => {
+  it('offers only operators the builder dispatches', () => {
+    const operators = offeredOperators('messageType')
+    expect(operators.length).toBeGreaterThan(0)
+
+    for (const operator of operators) {
+      const value = operator.valueType === 'none' ? undefined : ['VOICEMAIL']
+      const result = buildOne('messageType', operator.key, value)
+
+      expect({ operator: operator.key, dropped: result.droppedConditions }).toEqual({
+        operator: operator.key,
+        dropped: [],
+      })
+      expect(result.allConditionsDropped).toBe(false)
+    }
+  })
+
+  it('compiles `is`/`in` to a correlated exists over Message', () => {
+    const built = buildWithSubquery('messageType', 'is', 'VOICEMAIL')
+
+    expect(built.table).toBe(schema.Message)
+    expect(built.sqlText).toMatch(/\bexists \$\d+/)
+    expect(toParams(built.where)).toContain('VOICEMAIL')
+
+    const inMany = buildWithSubquery('messageType', 'in', ['VOICEMAIL', 'CALL'])
+    expect(toSql(inMany.where)).toMatch(/ in \(/i)
+    expect(toParams(inMany.where)).toEqual(expect.arrayContaining(['VOICEMAIL', 'CALL']))
+  })
+
+  it('negates `is not` / `not in` as NOT EXISTS over the thread', () => {
+    for (const [operator, value] of [
+      ['is not', 'VOICEMAIL'],
+      ['not in', ['VOICEMAIL']],
+    ] as const) {
+      const built = buildWithSubquery('messageType', operator, value)
+
+      expect(built.sqlText).toMatch(/\bnot exists \$\d+/)
+      expect(built.table).toBe(schema.Message)
+    }
+  })
+
+  it('answers `empty` as constant false / `not empty` as constant true — messageType is NOT NULL', () => {
+    // Dispatched explicitly rather than left to fall through: an undispatched
+    // operator is a silent DROP, which fails the whole filter OPEN (mail-filters
+    // invariant 19).
+    expect(toSql(buildOne('messageType', 'empty', undefined).sql)).toMatch(/false/)
+    expect(toSql(buildOne('messageType', 'not empty', undefined).sql)).toMatch(/true/)
+  })
+
+  it('drops the condition on an empty value list rather than matching every thread', () => {
+    const result = buildOne('messageType', 'in', [])
+
+    expect(result.allConditionsDropped).toBe(true)
+    expect(result.droppedConditions[0]?.reason).toBe('unsupported-operator-or-value')
+    expect(toSql(result.sql)).toBe(baseScopeSql())
+  })
+
+  it('filters an unknown value out of the list instead of passing it through', () => {
+    const built = buildWithSubquery('messageType', 'in', ['VOICEMAIL', 'carrier-pigeon'])
+
+    expect(toParams(built.where)).toContain('VOICEMAIL')
+    expect(toParams(built.where)).not.toContain('carrier-pigeon')
+  })
+
+  it('drops entirely when every value in the list is unknown', () => {
+    const result = buildOne('messageType', 'is', ['carrier-pigeon'])
+
+    expect(result.allConditionsDropped).toBe(true)
+    expect(toSql(result.sql)).toBe(baseScopeSql())
+  })
+})

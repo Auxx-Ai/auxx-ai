@@ -21,6 +21,7 @@ import { getThreadStoreState } from '~/components/threads/store/thread-store'
 import { useCompose } from '~/hooks/use-compose'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import CallDisplay from './call-display'
 import { ChatMessageGroup } from './chat-message-group'
 import { SystemLine } from './chat-panel/system-line'
 import { useChatThreadEvents } from './chat-panel/use-thread-events'
@@ -305,6 +306,12 @@ export function ThreadMessages() {
                   messageActions={messageActions}
                   isOpen={isLastMessage}
                   isLastMessage={isLastMessage}
+                />
+              ) : message.messageType === 'CALL' || message.messageType === 'VOICEMAIL' ? (
+                <CallDisplay
+                  messageId={message.id}
+                  messageActions={messageActions}
+                  isOpen={isLastMessage}
                 />
               ) : (
                 <MessageDisplay

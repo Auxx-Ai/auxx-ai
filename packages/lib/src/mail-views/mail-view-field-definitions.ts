@@ -5,6 +5,7 @@ import { toResourceFieldId } from '@auxx/types/field'
 import { CHANNEL_GROUP_OPTIONS } from '../channels/capabilities'
 import { getOperatorsForFieldType, type Operator } from '../conditions/operator-definitions'
 import type { FieldOptions } from '../custom-fields/field-options'
+import { MESSAGE_TYPE_OPTIONS } from '../providers/types'
 // NOTE: This file is used on both client and server.
 // Only import from client-safe paths.
 import { BaseType } from '../workflow-engine/types'
@@ -249,6 +250,28 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
     fieldType: FieldType.SINGLE_SELECT,
     options: { options: CHANNEL_GROUP_OPTIONS.map((o) => ({ value: o.value, label: o.label })) },
     description: 'Filter by the channel a conversation arrived on',
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MESSAGE TYPE FIELD
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Contrast with `channelType` above: `channelType` is the coarse channel a
+  // thread ARRIVED on (`Thread.integrationId` → `Integration.provider`).
+  // `messageType` is the FORM a message in the thread takes — a per-`Message`
+  // column (message-type-overhaul plan §2.7). They coexist because provider
+  // determines type for 11 of 12 providers but not for `openphone`, which can
+  // put a CALL/VOICEMAIL and a SMS in the same thread: `channelType is sms`
+  // matches every Quo thread, `messageType is VOICEMAIL` matches only the ones
+  // that actually contain one (plan §3a). The condition-query-builder case
+  // (`case 'messageType':`) must ship in the same commit as this entry — an
+  // undispatched condition id is dropped silently and fails the filter OPEN.
+  {
+    id: 'messageType',
+    label: 'Message type',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    options: { options: MESSAGE_TYPE_OPTIONS },
+    description: 'Filter by the kind of message a conversation contains (e.g. a voicemail)',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

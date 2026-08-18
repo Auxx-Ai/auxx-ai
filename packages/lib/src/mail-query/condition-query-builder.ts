@@ -1,6 +1,7 @@
 // packages/lib/src/mail-query/condition-query-builder.ts
 
 import { database as db, schema } from '@auxx/database'
+import { MessageTypeValues } from '@auxx/database/enums'
 
 const { Thread } = schema
 
@@ -314,6 +315,8 @@ function dispatchConditionQuery(
       return buildToQuery(op, value)
     case 'channelType':
       return buildChannelTypeQuery(op, value)
+    case 'messageType':
+      return buildMessageTypeQuery(op, value)
     case 'subject':
       return withScope(buildSubjectQuery(op, value), scopes.subject)
     case 'body':
@@ -816,6 +819,68 @@ function buildChannelTypeQuery(operator: Operator, value: unknown): SQL<unknown>
     case 'not in': {
       const groups = textList(value)
       return groups.length > 0 ? not(threadsOnGroups(groups)) : null
+    }
+    case 'empty':
+      return sql`false`
+    case 'not empty':
+      return sql`true`
+    default:
+      return null
+  }
+}
+
+/**
+ * Build the `messageType` condition — "this thread CONTAINS a message of the
+ * given FORM (email/sms/chat/call/voicemail)".
+ *
+ * A correlated `exists(select 1 from Message where Message.threadId =
+ * Thread.id and Message.messageType IN (values))` — the same shape as
+ * `hasAttachments` (`:1060` below) / `list` / `body` / `sent` / `sender`
+ * (message-type-overhaul plan §3a). A per-message column expressed as a
+ * thread condition through the established pattern, not a new capability.
+ *
+ * ⚠️ **Contrast with `buildChannelTypeQuery` above.** `channelType` resolves
+ * `Thread.integrationId → Integration.provider` and never touches `Message` —
+ * it answers *"arrived on a text channel"*. `messageType` reads
+ * `Message.messageType` per row — it answers *"contains a voicemail"*. On an
+ * ordinary thread those agree (provider determines type for 11 of 12
+ * providers), but on a mixed `openphone` thread — a voicemail and three texts
+ * on the same `Integration` — they genuinely differ, which is the entire
+ * reason this condition exists instead of reusing `channelType`.
+ *
+ * `empty` / `not empty` are dispatched as CONSTANTS rather than left to fall
+ * through: `Message.messageType` is `NOT NULL`, so no thread can lack a typed
+ * message. `SINGLE_SELECT` OFFERS these operators regardless, and an
+ * undispatched operator is a silent DROP that fails the whole filter OPEN
+ * (mail-filters invariant 19 — see `buildChannelTypeQuery`'s docstring).
+ *
+ * Unknown values (anything outside the five `MessageType` members) are
+ * dropped from the list rather than passed through to `IN (...)`.
+ */
+function buildMessageTypeQuery(operator: Operator, value: unknown): SQL<unknown> | null {
+  const { Message } = schema
+  const knownTypes = new Set<string>(MessageTypeValues)
+
+  const validTypes = (values: string[]): string[] => values.filter((v) => knownTypes.has(v))
+
+  const threadsWithType = (types: string[]): SQL<unknown> =>
+    exists(
+      db
+        .select({ id: sql`1` })
+        .from(Message)
+        .where(and(eq(Message.threadId, Thread.id), inArray(Message.messageType, types as any)))
+    )
+
+  switch (operator) {
+    case 'is':
+    case 'in': {
+      const types = validTypes(textList(value))
+      return types.length > 0 ? threadsWithType(types) : null
+    }
+    case 'is not':
+    case 'not in': {
+      const types = validTypes(textList(value))
+      return types.length > 0 ? not(threadsWithType(types)) : null
     }
     case 'empty':
       return sql`false`

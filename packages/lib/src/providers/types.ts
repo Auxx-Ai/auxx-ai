@@ -131,6 +131,28 @@ export enum MessageType {
 }
 
 /**
+ * Every {@link MessageType} member, in catalog order, with its author-facing
+ * label — the option list for the `messageType` filter/view field
+ * (`plans/threads/message-type-overhaul.md` §Phase 3).
+ *
+ * Mirrors `CHANNEL_GROUP_OPTIONS` (`channels/capabilities.ts:376`) in shape,
+ * but `MessageType` is a fixed five-member vocabulary rather than something
+ * derived from a per-provider capabilities map, so this is a literal list, not
+ * a derivation. Declared here (not `resources/registry/enum-values.ts`, and
+ * not deleted like that file's dead `MessageType` block) because this module
+ * is client-safe — it only imports the generated `@auxx/database/enums` — and
+ * `mail-view-field-definitions.ts`, which is used on both client and server,
+ * already reaches into it via a plain relative import.
+ */
+export const MESSAGE_TYPE_OPTIONS: Array<{ value: MessageType; label: string }> = [
+  { value: MessageType.EMAIL, label: 'Email' },
+  { value: MessageType.SMS, label: 'SMS' },
+  { value: MessageType.CHAT, label: 'Chat' },
+  { value: MessageType.CALL, label: 'Call' },
+  { value: MessageType.VOICEMAIL, label: 'Voicemail' },
+]
+
+/**
  * Active Messaging Providers
  * Providers that can actually send/receive messages
  */

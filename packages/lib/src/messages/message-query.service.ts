@@ -12,6 +12,7 @@ import { getThreadLensBatch } from '../permissions/visibility/thread-lens'
 import type { MessageType } from '../providers/types'
 import type {
   AttachmentMeta,
+  CallMessageMeta,
   ListMessagesByThreadResult,
   MessageMeta,
   SendStatus,
@@ -43,6 +44,16 @@ export class MessageQueryService {
   /** The viewer's lens on a set of threads (§5.2) — see {@link getThreadLensBatch}. */
   private async getThreadLenses(threadIds: string[]): Promise<Map<string, Lens>> {
     return getThreadLensBatch(this.db, this.organizationId, this.viewer, threadIds)
+  }
+
+  /**
+   * Projects `Message.metadata.call` (the `QuoCallMeta` shape `webhook-call.ts` writes) onto
+   * `MessageMeta.callMeta`. Only that one key ever reaches the client — the rest of `metadata`
+   * (e.g. `quo_webhook_event`) is never selected past this point.
+   */
+  private extractCallMeta(metadata: unknown): CallMessageMeta | null {
+    const call = (metadata as { call?: unknown } | null | undefined)?.call
+    return (call as CallMessageMeta | undefined) ?? null
   }
 
   /**
@@ -97,6 +108,7 @@ export class MessageQueryService {
         replyToId: true,
         integrationId: true,
         messageType: true,
+        metadata: true,
         sendStatus: true,
         providerError: true,
         attempts: true,
@@ -133,6 +145,7 @@ export class MessageQueryService {
         participants,
         createdById: m.createdById,
         messageType: m.messageType as MessageType,
+        callMeta: this.extractCallMeta(m.metadata),
         sendStatus: (m.sendStatus as SendStatus) ?? null,
         providerError: m.providerError ?? null,
         attempts: m.attempts ?? 0,
@@ -182,6 +195,7 @@ export class MessageQueryService {
         replyToId: true,
         integrationId: true,
         messageType: true,
+        metadata: true,
         sendStatus: true,
         providerError: true,
         attempts: true,
@@ -226,6 +240,7 @@ export class MessageQueryService {
           participants,
           createdById: m.createdById,
           messageType: m.messageType as MessageType,
+          callMeta: this.extractCallMeta(m.metadata),
           sendStatus: (m.sendStatus as SendStatus) ?? null,
           providerError: m.providerError ?? null,
           attempts: m.attempts ?? 0,

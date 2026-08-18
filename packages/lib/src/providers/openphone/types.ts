@@ -238,6 +238,9 @@ export interface QuoWebhookEventData<T = unknown> {
 /** Convenience alias for the two message events we subscribe to. */
 export type QuoMessageWebhookEvent = QuoWebhookEvent<QuoWebhookMessage>
 
+/** Convenience alias for the two call events we subscribe to (message-type-overhaul Phase 4). */
+export type QuoCallWebhookEvent = QuoWebhookEvent<QuoWebhookCall>
+
 // ---------------------------------------------------------------------------
 // Request payloads
 // ---------------------------------------------------------------------------
@@ -255,10 +258,20 @@ export interface QuoSendMessageInput {
   setInboxStatus?: 'done'
 }
 
-/** `POST /v1/webhooks/messages`. */
+/**
+ * `POST /v1/webhooks/messages`.
+ *
+ * Deliberately excludes `call.ringing` (no row is ever created for it — see
+ * `webhook-call.ts` — so subscribing would just be retry noise) and
+ * `call.summary.completed` / `call.transcript.completed` / `contact.*` (no
+ * `phoneNumberId` on the payload — see the Quo plan's "Three consequences for
+ * our route" — so today's channel-scoped lookup can never resolve them).
+ */
 export interface QuoCreateMessageWebhookInput {
   url: string
-  events: Array<'message.received' | 'message.delivered'>
+  events: Array<
+    'message.received' | 'message.delivered' | 'call.completed' | 'call.recording.completed'
+  >
   resourceIds: string[]
   label?: string
   status?: 'enabled' | 'disabled'
