@@ -360,10 +360,11 @@ export class ParticipantService {
     // provider with no declared type at all (`shopify`, or an unknown one).
     if (!identifierType || identifierType === 'CHAT_VISITOR') return null
 
+    // `getIdentifier` is routing-only by construction — it cannot return a
+    // display name, so there is nothing to defend against here any more.
     const identifier = getIdentifier({
       provider: integration.provider,
       email: integration.email,
-      name: null, // never fall back to the channel's display name as an identifier
       metadata: integration.metadata,
     })
     if (!identifier) return null

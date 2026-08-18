@@ -3,6 +3,7 @@
 import { schema } from '@auxx/database'
 import type { IntegrationProviderType } from '@auxx/database/types'
 import { and, eq, isNull } from 'drizzle-orm'
+import { getChannelLabel } from '../../channels/internal/identifier'
 import type { ChannelSettings } from '../../channels/types'
 import type { CacheProvider } from '../org-cache-provider'
 
@@ -71,7 +72,18 @@ export const channelsProvider: CacheProvider<CachedChannel[]> = {
         id: i.id,
         credentialId: i.credentialId,
         provider: i.provider,
-        displayName: i.name ?? i.email ?? i.provider,
+        // Meta channels carry their name only in `metadata` (the Page name / IG
+        // handle) — `Integration.name` is NULL on anything connected before it
+        // was persisted, which is why this goes through the shared label helper
+        // instead of reading the column directly.
+        displayName:
+          getChannelLabel({
+            provider: i.provider,
+            email: i.email,
+            name: i.name,
+            metadata,
+            chatWidget: r.chatWidget,
+          }) ?? i.provider,
         name: i.name,
         email: i.email,
         metadata,

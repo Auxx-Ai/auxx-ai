@@ -53,3 +53,29 @@ export function socialThreadKey(pageId: string, counterpartId: string): string {
 export function isSocialDmThreadKey(key: string | null | undefined): boolean {
   return !!key?.startsWith(`${SOCIAL_THREAD_KEY_NAMESPACES.dm}:`)
 }
+
+/**
+ * Inverse of {@link socialThreadKey}: recover `(pageId, counterpartId)` from a
+ * stored DM key. Returns `null` for anything else — a `comment:` key, a
+ * provider-issued id, a placeholder, or a malformed string.
+ *
+ * This is what makes a Messenger / IG reply addressable without asking Meta.
+ * Those channels are `recipientModel: 'thread_only'`: the composer has no
+ * recipient field because there is nothing for a user to type, so the outbound
+ * recipient has to come from the conversation itself. Since a DM is strictly
+ * 1:1, the key already *is* the address — no Graph round trip, no participant
+ * query.
+ *
+ * Strict on arity: ids Meta issues are numeric and never contain `:`, so a key
+ * with extra segments is a key we did not mint and must not guess at.
+ */
+export function parseSocialDmThreadKey(
+  key: string | null | undefined
+): { pageId: string; counterpartId: string } | null {
+  if (!isSocialDmThreadKey(key)) return null
+  const parts = (key as string).split(':')
+  if (parts.length !== 3) return null
+  const [, pageId, counterpartId] = parts
+  if (!pageId || !counterpartId) return null
+  return { pageId, counterpartId }
+}

@@ -6,6 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
+import { getComposerCapabilities, identifierTypeForProvider } from '../channels/capabilities'
 import {
   touchActivityForThreadLinks,
   touchInteractionForMessage,
@@ -24,6 +25,7 @@ import { getThreadLens } from '../permissions/visibility/thread-lens'
 import type { NormalizedEmailError as NormalizedEmailErrorInstance } from '../providers/error-normalization'
 import type { AttachmentFile } from '../providers/message-provider-interface'
 import type { ProviderRegistryService } from '../providers/provider-registry-service'
+import { parseSocialDmThreadKey } from '../providers/social/thread-key'
 import {
   getRealtimeService,
   publishMessageCreated,
@@ -224,7 +226,16 @@ export class MessageSenderService {
         externalId: threadContext.externalId,
       })
       // Step 2: Process participants
-      const participants = await this.processParticipants(input, threadContext.inboxId ?? null)
+      const recipients = this.resolveRecipients(
+        input,
+        capabilities.provider,
+        threadContext.externalId
+      )
+      const participants = await this.processParticipants(
+        input,
+        threadContext.inboxId ?? null,
+        recipients
+      )
       const isAutomatedSend = !this.viewer || isSystemViewer(this.viewer)
       // Step 2.4: §6 fix #3 — per-thread auto-reply alternation. Existing threads only;
       // a freshly-created (pending) thread has no prior message to alternate against.
@@ -608,9 +619,55 @@ export class MessageSenderService {
    * events for any tracked-column change these upserts cause (the composer used
    * to mutate names silently, leaving open clients stale until remount).
    */
+  /**
+   * The TO recipients for this send.
+   *
+   * `thread_only` channels (Messenger, Instagram Direct) have no recipient field
+   * anywhere: `PLATFORM_CAPABILITIES` declares the model, `requiresRecipients` is
+   * false so validation lets an empty list through, and the reply composer sends
+   * `to: []` because there is genuinely nothing for a user to type. The address is
+   * a property of the conversation instead — `socialThreadKey` derived it from the
+   * webhook as `dm:{pageId}:{counterpartId}`, so the counterpart is recoverable
+   * from the thread with no query and no Graph call.
+   *
+   * Resolved HERE rather than in the provider, deliberately. A provider-side
+   * fallback would put the right PSID on the wire while leaving the outbound row
+   * with no TO participant at all — precisely the split
+   * `findOrCreateParticipantForIntegration` documents ("The wire was always fine;
+   * only the DB row disagreed"). Deriving before `processParticipants` keeps the
+   * message's participant rollup and the wire in agreement, and fixes every
+   * caller at once: the composer, the workflow answer node, and anything later
+   * that replies on a social thread without inventing its own address lookup.
+   *
+   * An explicit `to` wins on the address; only its id space is corrected, and
+   * only on channels where that space is fixed by the channel itself.
+   */
+  private resolveRecipients(
+    input: SendMessageInput,
+    provider: string,
+    externalThreadId: string | null | undefined
+  ): SendMessageInput['to'] {
+    if (getComposerCapabilities(provider)?.recipientModel !== 'thread_only') return input.to
+    const identifierType = identifierTypeForProvider(provider)
+    if (!identifierType) return input.to
+    // A `thread_only` channel has exactly one possible id space, so any other
+    // type on a supplied recipient is definitionally wrong rather than a choice.
+    // The workflow answer node auto-resolves the right *identifier* off the
+    // thread but labels every recipient EMAIL, which would fork the participant
+    // from the one ingest already created for that person.
+    if (input.to.length > 0) {
+      return input.to.map((p) =>
+        p.identifierType === identifierType ? p : { ...p, identifierType }
+      )
+    }
+    const parsed = parseSocialDmThreadKey(externalThreadId)
+    if (!parsed) return input.to
+    return [{ identifier: parsed.counterpartId, identifierType }]
+  }
   private async processParticipants(
     input: SendMessageInput,
-    inboxId: string | null
+    inboxId: string | null,
+    recipients: SendMessageInput['to']
   ): Promise<ProcessedParticipants> {
     const publish = { inboxId, excludeSocketId: this.socketId }
     // FROM is the sending mailbox (e.g. markus@auxx.ai), not the operator's
@@ -640,7 +697,7 @@ export class MessageSenderService {
     }
     // Process all recipients in parallel
     const [toParticipants, ccParticipants, bccParticipants] = await Promise.all([
-      Promise.all(input.to.map((p) => processParticipant(p, ParticipantRole.TO))),
+      Promise.all(recipients.map((p) => processParticipant(p, ParticipantRole.TO))),
       Promise.all((input.cc || []).map((p) => processParticipant(p, ParticipantRole.CC))),
       Promise.all((input.bcc || []).map((p) => processParticipant(p, ParticipantRole.BCC))),
     ])
