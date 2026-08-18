@@ -30,13 +30,27 @@ describe('buildWorkflowBuilderPromptSection', () => {
     expect(prompt).toContain('Personal connections are never listed or bindable')
   })
 
-  it('forbids auxx:// deep links for workflow nodes', () => {
-    // Live-run finding: node ids are shaped like record ids, so the model
-    // linked them and the chat rendered every one as "Unknown".
+  it('forbids every record primitive for workflow nodes, not just the link', () => {
+    // Live-run finding: node ids are shaped like record ids. Banning only the
+    // `auxx://` link moved the model to the entity fences, which render the
+    // node id as "Record unavailable" — so all three primitives are named.
     const prompt = buildWorkflowBuilderPromptSection()
 
     expect(prompt).toContain('Workflow nodes are not CRM records')
+    expect(prompt).toContain('PLAIN TEXT')
     expect(prompt).toContain('auxx://record/<nodeId>')
+    expect(prompt).toContain('`auxx:entity-card` fence')
+    expect(prompt).toContain('`auxx:entity-list` fence')
+    expect(prompt).toContain('take CRM record ids ONLY')
+  })
+
+  it('forbids empty entity fences for non-record tool output', () => {
+    // The same run emitted `auxx:entity-list {"recordIds":[]}` after
+    // `list_app_blocks` / `list_app_connections`, rendering as "Records 0".
+    const prompt = buildWorkflowBuilderPromptSection()
+
+    expect(prompt).toContain('never an EMPTY one')
+    expect(prompt).toContain('{"recordIds": []}')
   })
 
   it('stays static — no per-org content leaks into the cached section', () => {

@@ -4,7 +4,7 @@
 
 import type { ActorId } from '@auxx/types/actor'
 import { isActorId } from '@auxx/types/actor'
-import { isRecordId, type RecordId } from '@auxx/types/resource'
+import type { RecordId } from '@auxx/types/resource'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@auxx/ui/components/hover-card'
 import { cn } from '@auxx/ui/lib/utils'
 import { ExternalLink, FileText, type LucideIcon } from 'lucide-react'
@@ -14,6 +14,7 @@ import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { TaskBadge } from '~/components/tasks/ui/task-badge'
 import { ThreadBadge } from '~/components/threads/ui/thread-badge'
 import type { LinkSnapshot } from '../../stores/kopilot-store'
+import { isPlausibleRecordId } from '../blocks/plausible-record-id'
 
 interface AuxxInlineLinkProps {
   href: string
@@ -39,7 +40,13 @@ export function AuxxInlineLink({ href, label, snapshot }: AuxxInlineLinkProps) {
       // but is not a `<defId>:<instId>` pair, and an unchecked cast reaches
       // `parseRecordId` — which console.errors on EVERY render of the chip.
       // Same shape as the `actor` arm below.
-      return isRecordId(parsed.id) ? (
+      //
+      // `isRecordId` is only a colon test, so it clears an APP-BLOCK node id
+      // (`<appId>:<blockId>-<nanoid>`) too; the local plausibility check the
+      // entity fences use rejects those as well. It still stops short of
+      // silencing `RecordHoverCard`/`RecordBadge`'s own console.error on a
+      // malformed id — that log is the only signal a bad id is reaching them.
+      return isPlausibleRecordId(parsed.id) ? (
         <RecordChip recordId={parsed.id} />
       ) : (
         <FallbackChip label={label} />
