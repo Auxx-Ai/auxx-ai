@@ -23,7 +23,7 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import CallDisplay from './call-display'
 import { ChatMessageGroup } from './chat-message-group'
-import { DaySeparator, EventBlock } from './chat-panel/system-line-run'
+import { DaySeparator, EventBlock, useCollapsedDays } from './chat-panel/system-line-run'
 import { useChatThreadEvents } from './chat-panel/use-thread-events'
 import { buildChatTimeline } from './chat-timeline'
 import EmailDisplay from './email-display'
@@ -175,6 +175,10 @@ export function ThreadMessages() {
     enabled: !!thread,
   })
 
+  // Collapsed day-separator set (§15.6) — collapsing a separator hides every
+  // timeline item under that day until the next separator.
+  const collapsedDays = useCollapsedDays(thread?.id ?? null)
+
   if (!thread) return null
 
   // Redacted rendering (mail-permissions): below `read`, message content is
@@ -240,6 +244,10 @@ export function ThreadMessages() {
 
   const isMuted = thread.status === 'TRASH' || thread.status === 'IGNORED'
 
+  // Tracks which day the map iteration is inside — set by each separator item,
+  // read by the items after it. Reset per render, mutated in render order.
+  let currentDayKey: string | null = null
+
   return (
     <div className='flex flex-col'>
       <ConfirmDialog />
@@ -273,8 +281,17 @@ export function ThreadMessages() {
         <div className={`flex flex-col gap-4 px-4 py-2 ${isMuted ? 'opacity-50' : ''}`}>
           {buildChatTimeline(messages, threadEvents).map((item) => {
             if (item.kind === 'day-separator') {
-              return <DaySeparator key={item.key} label={item.label} />
+              currentDayKey = item.key
+              return (
+                <DaySeparator
+                  key={item.key}
+                  label={item.label}
+                  collapsed={collapsedDays.isCollapsed(item.key)}
+                  onToggle={() => collapsedDays.toggle(item.key)}
+                />
+              )
             }
+            if (currentDayKey && collapsedDays.isCollapsed(currentDayKey)) return null
             if (item.kind === 'event-block') {
               return (
                 <EventBlock key={item.key} entries={item.entries} isTrailing={item.isTrailing} />
