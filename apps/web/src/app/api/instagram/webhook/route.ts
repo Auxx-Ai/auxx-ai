@@ -3,6 +3,7 @@
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { MessageStorageService } from '@auxx/lib/email'
+import { resolveSocialCounterpartName } from '@auxx/lib/providers/social/profile'
 import type {
   MetaWebhookEnvelope,
   MetaWebhookMessagingEvent,
@@ -12,7 +13,7 @@ import { convertMetaWebhookEventToMessageData } from '@auxx/lib/providers/social
 import { metaPreset, verifyWebhook } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull, sql } from 'drizzle-orm'
-import { type NextRequest, NextResponse } from 'next/server'
+import { after, type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('instagram-webhook')
 
@@ -77,6 +78,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // 3. Process Instagram Events
   if (payload.object === 'instagram') {
     const storageService = new MessageStorageService()
+    // One profile fetch per counterpart per delivery. Meta batches several
+    // events into one POST, and a burst from the same person would otherwise
+    // schedule the same Graph call once per message.
+    const scheduledNameLookups = new Set<string>()
     const processingPromises = (payload.entry ?? []).map(async (entry) => {
       // Comments / mentions ride on `entry.changes`, a different envelope with
       // different identity. Not subscribed today; the branch exists so WS10 is a
@@ -159,6 +164,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             integrationId: integration.id,
             externalThreadId: messageData.externalThreadId,
           })
+
+          // Meta's messaging webhook carries only `sender.id`, so the counterpart
+          // participant was just created with the raw id as its label. Resolving a
+          // real name costs a Graph call, which must NOT happen before the 200:
+          // Meta retries a slow webhook and eventually disables the subscription.
+          // `after()` runs it once the response is already on the wire.
+          const counterpartId = event.sender?.id
+          const lookupKey = `${integration.id}:${counterpartId}`
+          if (counterpartId && !scheduledNameLookups.has(lookupKey)) {
+            scheduledNameLookups.add(lookupKey)
+            after(() =>
+              resolveSocialCounterpartName(db, {
+                platform: 'instagram',
+                organizationId: integration.organizationId,
+                integrationId: integration.id,
+                counterpartId,
+              })
+            )
+          }
         } catch (storeError) {
           logger.error('Failed to store Instagram message', {
             mid: event.message.mid,

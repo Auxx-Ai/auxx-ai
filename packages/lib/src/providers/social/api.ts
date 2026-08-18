@@ -3,6 +3,7 @@
 import { configService } from '@auxx/credentials'
 import { createScopedLogger } from '@auxx/logger'
 import { AuxxError } from '../../errors'
+import type { SocialPlatform } from './types'
 
 const logger = createScopedLogger('social-graph-api')
 
@@ -331,6 +332,91 @@ export async function sendMessage(args: SendMessageArgs): Promise<{ messageId?: 
     }
   )
   return { messageId: result.message_id }
+}
+
+/**
+ * The subset of a Meta user-profile node this codebase reads.
+ *
+ * Every field is optional on purpose. A person who has restricted profile
+ * access — or simply never set a display name — is answered with a node that
+ * carries the id and nothing else, and that is a legitimate outcome, not an
+ * error. Callers build a label out of whatever came back and fall back to the
+ * raw PSID/IGSID when nothing did.
+ */
+export interface GraphUserProfile {
+  id?: string
+  /** Instagram: the account's display name. */
+  name?: string
+  /** Messenger: given name. */
+  first_name?: string
+  /** Messenger: family name. */
+  last_name?: string
+  /** Instagram: the `@handle`, without the `@`. */
+  username?: string
+  profile_pic?: string
+}
+
+/**
+ * Fields requested per platform.
+ *
+ * **These sets are deliberately narrow and platform-specific, and that is the
+ * whole risk in this call.** Graph rejects an entire request with error 100
+ * ("nonexisting field") when one requested field is not supported on the node,
+ * so asking for the union of both would fail on both. What is encoded here is
+ * what Meta documents for each surface:
+ *
+ * - Messenger's User Profile API on a PSID: `first_name`, `last_name`,
+ *   `profile_pic` (plus locale/timezone/gender, which we do not want). It has
+ *   NO `name` field.
+ * - Instagram's on an IGSID: `name`, `username`, `profile_pic`.
+ *
+ * Not live-verified against v26 on a real PSID at the time of writing, so the
+ * response side is handled defensively: absent fields are normal, and the whole
+ * call is non-throwing.
+ */
+const USER_PROFILE_FIELDS: Record<SocialPlatform, string> = {
+  facebook: 'first_name,last_name,profile_pic',
+  instagram: 'name,username,profile_pic',
+}
+
+/**
+ * `GET /{psid|igsid}` — the counterpart's public profile.
+ *
+ * **The one operation in this module that does not throw.** Every other op here
+ * surfaces a `GraphApiError` because its caller is doing something the user
+ * asked for and a failure has to be visible. This one runs on the ingest path
+ * for a *cosmetic* value: a display name instead of a raw id. Two entirely
+ * normal conditions — a person who restricted profile access, and a page whose
+ * token has since gone stale — would otherwise turn a delivered message into a
+ * failed webhook, and Meta retries a webhook that does not answer 200.
+ *
+ * Requires `pages_messaging` (Messenger) / `instagram_manage_messages` (IG),
+ * both already held by the connected page token.
+ *
+ * @returns the profile node, or `null` when Graph refused or answered nothing.
+ */
+export async function getUserProfile(args: {
+  platform: SocialPlatform
+  /** PSID (Messenger) or IGSID (Instagram Direct). */
+  userId: string
+  pageAccessToken: string
+}): Promise<GraphUserProfile | null> {
+  const { platform, userId, pageAccessToken } = args
+  try {
+    const profile = await graphRequest<GraphUserProfile>(userId, {
+      accessToken: pageAccessToken,
+      query: { fields: USER_PROFILE_FIELDS[platform] },
+    })
+    return profile ?? null
+  } catch (error) {
+    logger.warn('Could not read Meta user profile (ignored)', {
+      platform,
+      code: error instanceof GraphApiError ? error.code : undefined,
+      subcode: error instanceof GraphApiError ? error.subcode : undefined,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
 }
 
 export interface GraphConversation {

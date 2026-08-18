@@ -69,10 +69,16 @@ export interface ClassifyIsInternalInput {
  *    honest way to know otherwise. (`User.phoneNumber` exists but is
  *    unpopulated, un-normalized, and answering "is this a support conversation"
  *    from it is a product decision, not a lookup.)
- *  - `CHAT_VISITOR` / `FACEBOOK_PSID` / `INSTAGRAM_IGSID` → always external.
- *    There is no org-side identifier in those id spaces at all: the org's half
- *    of a chat is an EMAIL participant minted from the agent's user row
- *    (`chat/outbound.ts`), which rungs 1–3 classify on the email path.
+ *  - `FACEBOOK_PSID` / `INSTAGRAM_IGSID` → channel identities only, and the set
+ *    holds exactly one id per channel: our Page id / IG business account id.
+ *    Both sides of a Meta conversation live in this one id space — ingest mints
+ *    a page-side participant identified by the Page id — so the set is the only
+ *    thing that says which of two numeric ids is us. Every other PSID/IGSID
+ *    names the customer; do not widen this rung.
+ *  - `CHAT_VISITOR` → always external. There is no org-side identifier in that
+ *    id space at all: the org's half of a chat is an EMAIL participant minted
+ *    from the agent's user row (`chat/outbound.ts`), which rungs 1–3 classify on
+ *    the email path.
  *
  * That asymmetry is the honest ceiling of what each channel carries, not a gap
  * to close. Don't "fix" it by widening rung 3.
