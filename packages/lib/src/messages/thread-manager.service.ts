@@ -61,6 +61,7 @@ export class ThreadManagerService {
           organizationId: true,
           integrationId: true,
           externalId: true,
+          inboxId: true,
           metadata: true,
         },
       })
@@ -75,6 +76,7 @@ export class ThreadManagerService {
         integrationId: thread.integrationId,
         externalId: this.sanitizeExternalId(thread.externalId),
         isPending: false,
+        inboxId: thread.inboxId ?? null,
         metadata: thread.metadata as Record<string, any>,
       }
     }
@@ -89,6 +91,7 @@ export class ThreadManagerService {
         integrationId: reusable.integrationId,
         externalId: this.sanitizeExternalId(reusable.externalId),
         isPending: false,
+        inboxId: reusable.inboxId ?? null,
         metadata: (reusable.metadata ?? {}) as Record<string, any>,
       }
     }
@@ -106,6 +109,7 @@ export class ThreadManagerService {
       integrationId: pendingThread.integrationId,
       externalId: null,
       isPending: true,
+      inboxId: pendingThread.inboxId ?? null,
       metadata: {
         state: ThreadState.PENDING_SEND,
       },

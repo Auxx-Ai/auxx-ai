@@ -224,7 +224,7 @@ export class MessageSenderService {
         externalId: threadContext.externalId,
       })
       // Step 2: Process participants
-      const participants = await this.processParticipants(input)
+      const participants = await this.processParticipants(input, threadContext.inboxId ?? null)
       const isAutomatedSend = !this.viewer || isSystemViewer(this.viewer)
       // Step 2.4: §6 fix #3 — per-thread auto-reply alternation. Existing threads only;
       // a freshly-created (pending) thread has no prior message to alternate against.
@@ -602,16 +602,26 @@ export class MessageSenderService {
     }
   }
   /**
-   * Processes participants and ensures they exist in the database
+   * Processes participants and ensures they exist in the database.
+   *
+   * `inboxId` is the sending thread's inbox — it routes `participant:updated`
+   * events for any tracked-column change these upserts cause (the composer used
+   * to mutate names silently, leaving open clients stale until remount).
    */
-  private async processParticipants(input: SendMessageInput): Promise<ProcessedParticipants> {
+  private async processParticipants(
+    input: SendMessageInput,
+    inboxId: string | null
+  ): Promise<ProcessedParticipants> {
+    const publish = { inboxId, excludeSocketId: this.socketId }
     // FROM is the sending mailbox (e.g. markus@auxx.ai), not the operator's
     // login email — those can differ, and keying FROM off the user collapses it
     // onto a recipient when the operator's email matches a recipient. Providers
     // without a mailbox address (e.g. chat) fall back to the user identity.
     const fromParticipant =
-      (await this.participantService.findOrCreateParticipantForIntegration(input.integrationId)) ??
-      (await this.participantService.findOrCreateParticipantForUser(input.userId))
+      (await this.participantService.findOrCreateParticipantForIntegration(
+        input.integrationId,
+        publish
+      )) ?? (await this.participantService.findOrCreateParticipantForUser(input.userId, publish))
     if (!fromParticipant) {
       throw new Error(
         `Could not resolve FROM participant for integration ${input.integrationId} / user ${input.userId}`
@@ -619,7 +629,7 @@ export class MessageSenderService {
     }
     // Process recipients
     const processParticipant = async (p: (typeof input.to)[0], role: ParticipantRoleType) => {
-      const participant = await this.participantService.findOrCreateParticipant(p)
+      const participant = await this.participantService.findOrCreateParticipant(p, publish)
       if (!participant) {
         throw new Error(`Could not create participant for ${p.identifier}`)
       }

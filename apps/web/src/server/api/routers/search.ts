@@ -2,7 +2,7 @@ import { schema } from '@auxx/database'
 import { InboxService } from '@auxx/lib/inboxes'
 import { IsOperatorValue, SearchOperator } from '@auxx/lib/mail-query'
 import { listMembersWithUser } from '@auxx/lib/members'
-import { usableContactName } from '@auxx/lib/participants'
+import { calculateParticipantDisplayInfo, usableContactName } from '@auxx/lib/participants'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { listAll } from '@auxx/lib/resources'
 import { createScopedLogger } from '@auxx/logger'
@@ -90,13 +90,21 @@ const fetchContactNames = async (
 }
 
 // Label with contact-name precedence — the same normalization the
-// `ParticipantMeta` fetch path uses (`usableContactName`).
+// `ParticipantMeta` fetch path uses (`usableContactName`), then the same
+// read-time repair (`calculateParticipantDisplayInfo`): the stored
+// `displayName` is nullable and legacy CHAT_VISITOR rows persist the raw
+// session uuid there, so it is recomputed rather than trusted.
 const getParticipantDisplayName = (participant: any, contactNames: Map<string, string | null>) => {
   const contactName = usableContactName(
     participant.entityInstanceId ? contactNames.get(participant.entityInstanceId) : null,
     participant.identifier
   )
-  return contactName || participant.displayName || participant.name || participant.identifier
+  if (contactName) return contactName
+  return calculateParticipantDisplayInfo(
+    participant.name,
+    participant.identifier,
+    participant.identifierType
+  ).displayName
 }
 // Helper function to save search query with limit management
 const saveSearchQuery = async (ctx: any, query: string) => {
