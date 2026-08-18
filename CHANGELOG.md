@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.1.207](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.206...auxx-v0.1.207) (2026-08-18)
+
+
+### Features
+
+* **channels:** meta dm backfill, plus the identity bugs it exposed ([#1721](https://github.com/Auxx-Ai/auxx-ai/issues/1721)) ([ed98548](https://github.com/Auxx-Ai/auxx-ai/commit/ed98548565408365536fe4ee1a38685b6a98bc94))
+* **sdk:** add `auxx dev --once`, and fail loudly when auth is headless ([#1722](https://github.com/Auxx-Ai/auxx-ai/issues/1722)) ([7dfea50](https://github.com/Auxx-Ai/auxx-ai/commit/7dfea50c1d84ea431f2eb338b3fe7c377b61aae8))
+* **workflow:** let Kopilot author app-block nodes ([#1712](https://github.com/Auxx-Ai/auxx-ai/issues/1712)) ([2f9bcf9](https://github.com/Auxx-Ai/auxx-ai/commit/2f9bcf95daf6392137263a3f4e7a9df11cbdc742))
+* **workflow:** let kopilot bind an app block to a workspace connection ([#1720](https://github.com/Auxx-Ai/auxx-ai/issues/1720)) ([9275ef9](https://github.com/Auxx-Ai/auxx-ai/commit/9275ef90ba258ae16f42fc205d3eb33fdba04011))
+* **workflow:** let kopilot discover and describe app blocks ([#1716](https://github.com/Auxx-Ai/auxx-ai/issues/1716)) ([cc28fb9](https://github.com/Auxx-Ai/auxx-ai/commit/cc28fb99aaaf13c2ffae014051f169ef130bce99))
+* **workflow:** resolve app-block outputs server-side ([#1705](https://github.com/Auxx-Ai/auxx-ai/issues/1705)) ([4538815](https://github.com/Auxx-Ai/auxx-ai/commit/453881555c726bafdf75d113d1a187300cfeadfe))
+* **workflow:** synthesize a node manifest for app workflow blocks ([#1709](https://github.com/Auxx-Ai/auxx-ai/issues/1709)) ([7852afa](https://github.com/Auxx-Ai/auxx-ai/commit/7852afa429e138c5de04c93e24682f84557a57fc))
+* **workflow:** teach kopilot the app-block surface and trim node summaries ([#1717](https://github.com/Auxx-Ai/auxx-ai/issues/1717)) ([dc27caf](https://github.com/Auxx-Ai/auxx-ai/commit/dc27caf594baac1c1f89cf65bcbb25444ffcc439))
+
+
+### Bug Fixes
+
+* **channels:** give facebook/instagram replies a recipient and a routable sender ([#1711](https://github.com/Auxx-Ai/auxx-ai/issues/1711)) ([89997cd](https://github.com/Auxx-Ai/auxx-ai/commit/89997cdab8d5da204600903c0f6c55bedb26174a))
+* **channels:** name meta dm counterparts, mark our own page internal, un-dead the graph version ([#1713](https://github.com/Auxx-Ai/auxx-ai/issues/1713)) ([a192740](https://github.com/Auxx-Ai/auxx-ai/commit/a192740500fb87851d204b0d28c0527b034b0461))
+* **ci:** publish the sdk with npm, not pnpm ([#1723](https://github.com/Auxx-Ai/auxx-ai/issues/1723)) ([7023980](https://github.com/Auxx-Ai/auxx-ai/commit/7023980a3673340b43bc0b6c897ade6ccd4b78bd))
+* **ingest:** stop freezing threadparticipant.isinternal at its first write ([#1714](https://github.com/Auxx-Ai/auxx-ai/issues/1714)) ([5b0da12](https://github.com/Auxx-Ai/auxx-ai/commit/5b0da1249391fdf9dc4f815eb26001c99d509cd0))
+* **kopilot:** close a cap-exhausted turn with a reply instead of silence ([#1703](https://github.com/Auxx-Ai/auxx-ai/issues/1703)) ([efd03bf](https://github.com/Auxx-Ai/auxx-ai/commit/efd03bfea243573964e037a942b8799031c5a4c2))
+* **kopilot:** report no-op writes, and name read-only nodes once ([#1704](https://github.com/Auxx-Ai/auxx-ai/issues/1704)) ([5f8871a](https://github.com/Auxx-Ai/auxx-ai/commit/5f8871ab3ffc85560968cd4ede99bc889dfe8013))
+* **kopilot:** stop the agent edit loop — cache invalidation and derived-key honesty ([#1701](https://github.com/Auxx-Ai/auxx-ai/issues/1701)) ([acf36d4](https://github.com/Auxx-Ai/auxx-ai/commit/acf36d453d39b3ff99bb38b982c8462b45d667e1))
+* **kopilot:** validate a record deep-link id instead of casting it ([#1708](https://github.com/Auxx-Ai/auxx-ai/issues/1708)) ([a0541ac](https://github.com/Auxx-Ai/auxx-ai/commit/a0541ac88d01f2edadaa1ff4f42e323de4e457ab))
+* **workflow:** make resolveGraphOutputs honour its Result contract ([#1706](https://github.com/Auxx-Ai/auxx-ai/issues/1706)) ([44e36e1](https://github.com/Auxx-Ai/auxx-ai/commit/44e36e15bde9c5e3fc6856484443ba07f67d39a6))
+* **workflow:** refuse a graph edit that writes a broken variable reference ([#1718](https://github.com/Auxx-Ai/auxx-ai/issues/1718)) ([8af4aeb](https://github.com/Auxx-Ai/auxx-ai/commit/8af4aebf842e418b87dc33fdd2aa8dd418846a33))
+* **workflow:** strip braces from agent-written picker-bound field refs ([#1715](https://github.com/Auxx-Ai/auxx-ai/issues/1715)) ([70d003b](https://github.com/Auxx-Ai/auxx-ai/commit/70d003bfe3ebc1bfe86aa73b32d33115d9d1eec8))
+
+
+### Performance Improvements
+
+* **workflow:** guard whole-array store subscriptions and add a canvas drag probe ([#1707](https://github.com/Auxx-Ai/auxx-ai/issues/1707)) ([566cc22](https://github.com/Auxx-Ai/auxx-ai/commit/566cc2275ff4720fff06972fc1857740dd47cc1d))
+
 ## [0.1.206](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.205...auxx-v0.1.206) (2026-08-18)
 
 
