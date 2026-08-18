@@ -4,7 +4,7 @@
 
 import type { ActorId } from '@auxx/types/actor'
 import { isActorId } from '@auxx/types/actor'
-import type { RecordId } from '@auxx/types/resource'
+import { isRecordId, type RecordId } from '@auxx/types/resource'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@auxx/ui/components/hover-card'
 import { cn } from '@auxx/ui/lib/utils'
 import { ExternalLink, FileText, type LucideIcon } from 'lucide-react'
@@ -34,7 +34,16 @@ export function AuxxInlineLink({ href, label, snapshot }: AuxxInlineLinkProps) {
 
   switch (parsed.kind) {
     case 'record':
-      return <RecordChip recordId={parsed.id as RecordId} />
+      // Validate, don't cast. A model naming a WORKFLOW NODE
+      // (`auxx://record/crud-YPeyf8rneRJPTBBbpVm0z`) satisfies the href grammar
+      // but is not a `<defId>:<instId>` pair, and an unchecked cast reaches
+      // `parseRecordId` — which console.errors on EVERY render of the chip.
+      // Same shape as the `actor` arm below.
+      return isRecordId(parsed.id) ? (
+        <RecordChip recordId={parsed.id} />
+      ) : (
+        <FallbackChip label={label} />
+      )
     case 'thread':
       return <ThreadChip threadId={parsed.id} />
     case 'task':
