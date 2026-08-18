@@ -1,15 +1,19 @@
 # Workflow App System - Complete Architecture Guide
 
-**Last Updated**: 2026-08-14 (status refreshed; body below is largely as written 2025-10-28)
+**Last Updated**: 2026-08-18 (correction pass; body below is largely as written 2025-10-28)
 **Status**: SHIPPED and in production use
 
 > **Scope.** This guide covers workflow blocks contributed by **installed apps** —
 > the SDK schema API, the Tag-based reconciler, iframe sandboxing, bundle build
 > and loading. For Auxx's **own** workflow system — the node catalog, execution
 > engine, draft-mutation service and the Kopilot builder capability — read
-> **`docs/core-workflow-architecture-guide.md`**. The two meet only where an app
-> block renders on the canvas beside core nodes
-> (`workflow-engine/nodes/app-workflow-block-processor.ts`).
+> **`docs/core-workflow-architecture-guide.md`**. The two now meet in three
+> places: an app block renders on the canvas beside core nodes, it executes
+> through the engine's node processor
+> (`workflow-engine/nodes/app-workflow-block-processor.ts`), and it is projected
+> into the core catalog as a synthesized `NodeManifest`
+> (`workflow-engine/catalog/app-manifests.ts`) so graph-edit and the Kopilot
+> builder can author it.
 >
 > **Read the §"Implementation Status" build log as HISTORY, not as current
 > state.** It is a phase-by-phase record from the original build, and some of its
@@ -29,6 +33,42 @@
 >   source appears in this one.
 > - Bundle-load failures from `:3007` in local dev are almost always an expired
 >   AWS SSO session (`pnpm sso`), not an app-runtime bug.
+>
+> **Further corrections as of 2026-08-18** — the body below predates all of
+> these, so where it disagrees, the code wins:
+>
+> - **A node's type is `` `${appId}:${block.id}` ``, not `app:<blockId>`**
+>   (`workflow-block-registry.tsx` — `registerBlocks`, `createNodeDefinition`).
+>   The same `<appId>:<blockId>` string is what the engine, the catalog lookup
+>   and Kopilot's `add_node` all take.
+> - **Block loading is catalog-first; the iframe RPC is a dev-only fallback.**
+>   `WorkflowBlockLoader.loadFromCatalog()` reads `installation.workflowBlocks` /
+>   `.workflowTriggers` — projected from `AppDeployment.catalog` by the org-cache
+>   envelope — synchronously, with no iframe boot. `get-workflow-blocks` over RPC
+>   only runs for installations the catalog projection misses (dev deployments
+>   that haven't re-uploaded since the SDK schema changed).
+> - **Router blocks and `toolMap`.** A block may declare a
+>   `` `${resource}.${operation}` `` → tool-id dispatch table
+>   (`WorkflowBlock.toolMap`, `packages/sdk/src/root/workflow/types.ts`) and
+>   forward each op to `ctx.runTool(toolMap[key], …)`. The build extractor reads
+>   that literal and projects it into `CatalogBlock.toolMap`, alongside
+>   `outputsJsonSchema`, `opOutputsJsonSchema`, `requiresConnection` and
+>   `canRunSingle` (`packages/database/src/db/schema/app-deployment.ts`). That is
+>   how one node type covers dozens of operations — resource/operation is the
+>   node's primary configuration, and everything else about the node (its inputs,
+>   its outputs) follows from it.
+> - **Execution goes straight to the lambda.** `AppWorkflowBlockProcessor`
+>   (`packages/lib/src/workflow-engine/nodes/app-workflow-block-processor.ts`)
+>   resolves the installation deployment and the app connection, then calls
+>   `invokeLambdaExecutor({ caller: 'workflow-engine', payload: { type:
+>   'workflow-block', … } })`. The §"Backend Runtime" `executeAppWorkflowBlock`
+>   module and the `POST /:workflowId/runs/:runId/blocks/:blockId/execute` API
+>   route both still exist, but neither is on the engine's path — nothing in the
+>   repo calls the executor, and the engine never HTTP-hops to the API.
+> - **App blocks now have server-side manifests, outputs and agent
+>   authorability** — see the §"Server-side manifests, outputs and Kopilot
+>   authoring" note under Runtime Architecture. Everywhere below that implies a
+>   block's shape is only knowable by asking its iframe, read that note first.
 
 ---
 
@@ -901,13 +941,21 @@ export async function executeBlock(
 
 ### Loading System
 
-**Location**: `apps/web/src/lib/workflow/`
+**Location**: `apps/web/src/components/workflow/apps/`
 
 #### 1. WorkflowBlockLoader
 
-**File**: `apps/web/src/lib/workflow/workflow-block-loader.ts`
+**File**: `apps/web/src/components/workflow/apps/workflow-block-loader.ts`
 
 **Purpose**: Load workflow blocks from installed apps
+
+> **Stale sample below.** Loading is **catalog-first**: `loadFromCatalog()`
+> reads `installation.workflowBlocks` / `.workflowTriggers` — projected from
+> `AppDeployment.catalog` by the org-cache envelope — synchronously, with no
+> iframe boot. The `get-workflow-blocks` RPC shown here survives only as a
+> **dev-only fallback** (`loadAppWorkflowBlocks()`), for installations the
+> catalog projection misses because the dev deployment hasn't re-uploaded since
+> the SDK schema changed.
 
 ```typescript
 export class WorkflowBlockLoader {
@@ -975,7 +1023,7 @@ export class WorkflowBlockLoader {
 
 #### 2. WorkflowBlockRegistry
 
-**File**: `apps/web/src/lib/workflow/workflow-block-registry.ts`
+**File**: `apps/web/src/components/workflow/apps/workflow-block-registry.tsx`
 
 **Purpose**: Convert WorkflowBlock → NodeDefinition for ReactFlow
 
@@ -986,7 +1034,7 @@ export class WorkflowBlockRegistry {
   registerBlocks(appId: string, installationId: string, blocks: WorkflowBlock[]) {
     for (const block of blocks) {
       const nodeDefinition = this.createNodeDefinition(appId, installationId, block)
-      const nodeType = `app:${block.id}`
+      const nodeType = `${appId}:${block.id}`
       this.nodeDefinitions.set(nodeType, nodeDefinition)
     }
   }
@@ -997,7 +1045,7 @@ export class WorkflowBlockRegistry {
     block: WorkflowBlock
   ): NodeDefinition {
     return {
-      type: `app:${block.id}`,
+      type: `${appId}:${block.id}`,
       label: block.label,
       category: block.category,
       icon: block.icon,
@@ -1307,6 +1355,19 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(({
 
 **Purpose**: Execute workflow block in workflow engine
 
+> **Not the live path.** This module still exists but has **no callers** outside
+> its own barrel. The engine executes an app block through
+> `AppWorkflowBlockProcessor`
+> (`packages/lib/src/workflow-engine/nodes/app-workflow-block-processor.ts`),
+> which resolves the installation deployment
+> (`getInstallationDeployment`) and the app connection
+> (`resolveAppConnectionForRuntime`), then calls
+> `invokeLambdaExecutor({ caller: 'workflow-engine', payload: { type:
+> 'workflow-block', serverBundleSha, blockId, workflowContext, workflowInput,
+> context, timeout } })` **directly** — no HTTP hop, and no result cache: the
+> `cacheable` / `cacheTTL` block-metadata fields are declared but nothing reads
+> them. The sample below is the original design, kept for the caching sketch.
+
 ```typescript
 export async function executeAppWorkflowBlock(
   nodeData: AppWorkflowBlockNodeData,
@@ -1396,6 +1457,14 @@ async function cacheResult(cacheKey: string, result: any, config: any): Promise<
 **File**: `apps/api/src/routes/workflows/execute-workflow-block.ts`
 
 **Purpose**: API endpoint for workflow block execution
+
+> **Also not on the engine's path.** The route is real and mounted, but its
+> shape is `POST /:workflowId/runs/:runId/blocks/:blockId/execute` (runs, not
+> `executions`), and nothing in this repo calls it — the engine reaches the
+> lambda directly, per the note above. The route body below is illustrative; the
+> shipped handler resolves the run via `getWorkflowRun`, checks the org, loads
+> the installation deployment, resolves connections and invokes the same
+> `invokeLambdaExecutor`.
 
 ```typescript
 export async function executeWorkflowBlock(req: Request, res: Response) {
@@ -1617,6 +1686,82 @@ export class WorkflowSDK extends ServerSDK {
 }
 ```
 
+### Server-side manifests, outputs and Kopilot authoring
+
+*(Added 2026-08-18. This is current; the sections above it are not.)*
+
+The canvas learns a block's shape by asking its iframe. Everything that is not
+the canvas — the engine, graph-edit, ref-checking, the Kopilot workflow builder —
+has no iframe, so an app block is instead projected into the **core node
+catalog** as a synthesized `NodeManifest`.
+
+**File**: `packages/lib/src/workflow-engine/catalog/app-manifests.ts`
+(SERVER-ONLY — it reads the org cache, so it must never be re-exported from
+`workflow-engine/client.ts` or the `workflow-engine` index barrel; import it by
+relative path inside lib, or by its own leaf subpath from an app.)
+
+- `synthesizeAppBlockManifest(installedApp, block)` builds one manifest from the
+  `installedApps` org-cache projection (`CachedWorkflowBlock` = `CatalogBlock` +
+  `ops: CachedBlockOp[]`). It sets `id` to `` `${appId}:${block.id}` ``,
+  `category: NodeCategory.INTEGRATION`, a `defaultData()` that stamps the
+  identity keys (`type`, `appId`, `appSlug`, `blockId`, `title`) plus the first
+  operation, a **passthrough** `configSchema` whose `resource`/`operation` are
+  `z.enum`s over the block's `toolMap` key set, an explicit
+  `acceptsInputNodes: false` plus the block's `canRunSingle` on `connection`,
+  and `agent: { authorable: true, usage, examples }`.
+- `buildManifestLookup(orgId)` returns a `ManifestLookup`
+  (`(type) => NodeManifest | undefined`) that is the core registry **∪** this
+  org's installed blocks. App manifests are deliberately never *registered*:
+  `listManifests()` stays core-only, because `catalog-coverage.test.ts` asserts
+  exact set equality between the `NodeType` enum and {registered manifests ∪
+  `NOT_YET_MIGRATED`}, and an app block is in neither. This
+  widens the lookup, never the registry — and it is not memoized across
+  operations. Callers: `graph-edit/read.ts`, `normalize/ref-check.ts`,
+  `catalog/resolve-outputs.ts` (which only pays for the cache read when some
+  node type contains a colon) and Kopilot's `describe_node_type`.
+- `configSchema` is loose on purpose: required-ness is **per operation** while
+  the schema is per type — QuickBooks has 42 operations behind one type — so
+  per-op checking lives in `validate`, which reports a wrong/absent
+  `resource.operation`, empty required tool inputs, a missing or expired
+  workspace connection, and a `{{ref}}` stranded in a constant-mode field.
+
+**Outputs** (`resolveAppBlockOutputs`) come off a ladder, not the iframe:
+
+1. `node.data.inferredSchema` — what a real run actually returned. Wins.
+2. `block.opOutputsJsonSchema['<resource>.<operation>']` — the block's own
+   `schema.computeOutputs`, evaluated once per `toolMap` key **at publish time**
+   by the SDK's catalog extractor. Preferred, because it is the same answer the
+   canvas renders.
+3. The dispatched tool's `outputsJsonSchema`, reached through `toolMap` —
+   fallback for catalogs published before (2) existed.
+4. The block's own `schema.outputs` — op-independent, and `{}` on every block
+   published so far.
+
+Rungs 1 and 2 merge when both exist. The status the resolver returns
+(`resolved` / `inferred` / `no-operation-selected` / `unknown-operation` /
+`undeclared`) is what lets the authoring layer say *why* a node produced no
+variables instead of handing back a bare empty set. Note the shape trap: a
+block's `inputsJsonSchema` and `opOutputsJsonSchema` are SDK field `toJSON()`
+maps, while a **tool's** schemas are real JSON Schema — hence two converters
+(`fieldNodeMapToUnifiedVariables` vs `schemaPropertiesToUnifiedVariables`).
+Reading one with the other's reader yields a silent empty set.
+
+**Kopilot** can therefore author app-block nodes
+(`packages/lib/src/ai/kopilot/capabilities/workflow-builder/tools/`):
+
+- `list_app_blocks` — one compact row per installed block: the
+  `<appId>:<blockId>` type, app title/slug, label, description, the `resources`
+  it covers, `operationCount`, `requiresConnection` (omitted when the catalog
+  predates the field — absent means *unknown*, not `false`), and `connected`
+  (the denormalized `orgConnectionPresent`). The `query` filter also matches
+  operation names, but operation lists are never dumped: shopify declares 64.
+- `describe_node_type` — resolves `<appId>:<blockId>` by building the lookup
+  when the type contains a colon, so the operation vocabulary comes back as the
+  `configSchema.properties.operation` enum. `list_node_types` stays core-only.
+- Ordinary `add_node` / `update_node` set `resource`, `operation`, the block's
+  own flat input fields, `fieldModes`, and optionally a `connectionId`; leaving
+  `connectionId` unset follows the workspace default connection.
+
 ### Variable System
 
 **File**: `apps/web/src/components/workflow/store/use-var-store.ts`
@@ -1806,6 +1951,11 @@ pnpm run build
 
 #### Platform Loads Block
 
+*(Trace as written for the original RPC path. Today step 4b reads the
+deployment catalog projection off the installation instead, and only falls back
+to the iframe RPC for a dev deployment the catalog misses — see §"Loading
+System".)*
+
 ```
 1. User installs email app in organization
 2. Platform creates AppInstallation record
@@ -1840,7 +1990,7 @@ pnpm run build
 2. ReactFlow creates node:
    {
      id: 'node-abc123',
-     type: 'app:send-email',
+     type: 'email-app:send-email',
      data: {
        appId: 'email-app',
        installationId: 'inst-xyz789',
@@ -2188,6 +2338,13 @@ getOutputs: () => {
 
 **Benefit**: Single source of truth for types, validation, and outputs
 
+> For a **router-style** block — one that declares a `toolMap` and forwards each
+> `<resource>.<operation>` to `ctx.runTool` — `schema.outputs` is `{}` and the
+> real answer is per operation: `computeOutputs` evaluated per `toolMap` key at
+> publish time (`CatalogBlock.opOutputsJsonSchema`), with the dispatched tool's
+> own output schema as the fallback. See §"Server-side manifests, outputs and
+> Kopilot authoring".
+
 ### 6. Variable System with Template Resolution
 
 **Problem**: Users need to reference dynamic data in workflows
@@ -2379,15 +2536,20 @@ do not treat these boxes as open work.
 | Tag Classes | `packages/sdk/src/runtime/reconciler/tags/workflow-*.ts` |
 | TAG_REGISTRY | `packages/sdk/src/runtime/reconciler/tags/index.ts` |
 | JSX Helpers | `packages/sdk/src/client/workflow/components/` |
-| Reconstructors | `apps/web/src/lib/extensions/components/workflow/` |
-| Component Registry | `apps/web/src/lib/extensions/component-registry.tsx` |
+| Reconstructors | `apps/web/src/components/workflow/apps/primitives/` |
+| Component Registry | `apps/web/src/components/apps/runtime/component-registry.tsx` |
 | Schema Builder | `packages/sdk/src/root/workflow/` |
 | Build System | `packages/sdk/src/build/` |
-| Workflow Block Loader | `apps/web/src/lib/workflow/workflow-block-loader.ts` |
-| Workflow Block Registry | `apps/web/src/lib/workflow/workflow-block-registry.ts` |
-| App Workflow Wrappers | `apps/web/src/lib/workflow/components/` |
-| Workflow Block Executor | `packages/lib/src/workflow-engine/executors/app-workflow-block-executor.ts` |
-| API Endpoint | `apps/api/src/routes/workflows/execute-workflow-block.ts` |
+| Workflow Block Loader | `apps/web/src/components/workflow/apps/workflow-block-loader.ts` |
+| Workflow Block Registry | `apps/web/src/components/workflow/apps/workflow-block-registry.tsx` |
+| App Workflow Wrappers | `apps/web/src/components/workflow/apps/{app-workflow-node,app-workflow-panel}.tsx` |
+| Canvas output resolution | `apps/web/src/components/workflow/apps/resolve-app-outputs.ts` |
+| Engine node processor (live path) | `packages/lib/src/workflow-engine/nodes/app-workflow-block-processor.ts` |
+| Synthesized node manifests | `packages/lib/src/workflow-engine/catalog/app-manifests.ts` |
+| Catalog projection (`toolMap`, outputs) | `packages/sdk/src/util/compile-and-extract-catalog.ts`, `packages/database/src/db/schema/app-deployment.ts` |
+| Kopilot app-block tools | `packages/lib/src/ai/kopilot/capabilities/workflow-builder/tools/{list-app-blocks,describe-node-type}.ts` |
+| Workflow Block Executor (dead — no callers) | `packages/lib/src/workflow-engine/executors/app-workflow-block-executor.ts` |
+| API Endpoint (not on the engine path) | `apps/api/src/routes/workflows/execute-workflow-block.ts` |
 | Lambda Executor | `apps/lambda/src/executors/workflow-block-executor.ts` |
 | Workflow SDK | `apps/lambda/src/runtime-helpers/workflow-sdk.ts` |
 
