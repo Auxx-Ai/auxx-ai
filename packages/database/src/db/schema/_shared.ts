@@ -302,15 +302,7 @@ export const meetingMessageMethod = pgEnum('MeetingMessageMethod', [
   'counter',
   'other',
 ])
-export const messageType = pgEnum('MessageType', [
-  'EMAIL',
-  'FACEBOOK',
-  'SMS',
-  'WHATSAPP',
-  'INSTAGRAM',
-  'OPENPHONE',
-  'CHAT',
-])
+export const messageType = pgEnum('MessageType', ['EMAIL', 'SMS', 'CHAT', 'CALL', 'VOICEMAIL'])
 export const modelType = pgEnum('ModelType', [
   'LLM',
   'TEXT_EMBEDDING',

@@ -1,9 +1,11 @@
 // packages/lib/src/providers/type-utils.ts
 
 /**
- * Type utility functions for deriving message types from integration providers.
- * These utilities support the single source of truth pattern where Integration.provider
- * is the canonical field and all other type information is derived.
+ * Type utility functions for deriving a message type DEFAULT from an integration
+ * provider. `Integration.provider` remains the canonical field for brand/channel
+ * questions (see `ChannelGroup`), but `Message.messageType` is now its own stored
+ * column (message-type-overhaul plan §2.7/§3) — a call and a text can arrive on
+ * the SAME Integration, so the type can no longer be a pure function of provider.
  */
 
 import type { Database } from '@auxx/database'
@@ -12,16 +14,25 @@ import { eq, inArray } from 'drizzle-orm'
 import { ChannelProviderType, MessageType } from './types'
 
 /**
- * Derives the primary message type from a provider.
- * This is the core function that replaces stored messageType fields.
+ * Returns the DEFAULT message type a provider's messages are stamped with at
+ * write time — not a derived authority read back on every query.
+ *
+ * `Message.messageType` is a stored, `NOT NULL` column. Ingest calls this only
+ * as a fallback when a provider mapper does not supply a more specific value
+ * (`ingest/store-message.ts`), and the composer calls it to stamp an outbound
+ * row (`messages/message-composer.service.ts`). For every provider except
+ * `openphone` today, the default IS the only value that provider ever produces
+ * — but a provider mapper that can distinguish per-message (e.g. openphone
+ * telling a call from a text) is expected to set `MessageData.messageType`
+ * explicitly rather than rely on this.
  *
  * @param provider - The integration provider type
- * @returns The primary message type for this provider
+ * @returns The default message type for this provider
  *
  * @example
  * ```ts
  * const messageType = getMessageTypeFromProvider('google') // Returns 'EMAIL'
- * const messageType = getMessageTypeFromProvider('facebook') // Returns 'FACEBOOK'
+ * const messageType = getMessageTypeFromProvider('facebook') // Returns 'CHAT'
  * ```
  */
 export function getMessageTypeFromProvider(provider: ChannelProviderType): MessageType {
@@ -31,11 +42,11 @@ export function getMessageTypeFromProvider(provider: ChannelProviderType): Messa
     mailgun: MessageType.EMAIL,
     email: MessageType.EMAIL,
     imap: MessageType.EMAIL,
-    facebook: MessageType.FACEBOOK,
-    instagram: MessageType.INSTAGRAM,
+    facebook: MessageType.CHAT,
+    instagram: MessageType.CHAT,
     openphone: MessageType.SMS,
     sms: MessageType.SMS,
-    whatsapp: MessageType.WHATSAPP,
+    whatsapp: MessageType.CHAT,
     chat: MessageType.CHAT,
     shopify: MessageType.EMAIL, // Shopify uses email notifications
   }

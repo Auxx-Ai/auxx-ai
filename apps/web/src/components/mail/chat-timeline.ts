@@ -22,10 +22,18 @@ import { isBubbleMessage } from './utils/message-bubble'
 
 const CHAT_GROUP_WINDOW_MS = 5 * 60_000
 
+/**
+ * Window for collapsing consecutive same-actor events into an `event-run`
+ * (plans/threads/thread-events.md §13.5, Phase 6) — measured from the run's
+ * FIRST event, so a slow drip of changes doesn't chain into one endless run.
+ */
+export const EVENT_RUN_WINDOW_MS = 5 * 60_000
+
 export type ChatTimelineItem =
   | { kind: 'single'; message: MessageMeta; index: number }
   | { kind: 'chat-group'; messages: MessageMeta[]; startIndex: number; endIndex: number }
   | { kind: 'event'; event: ChatThreadEvent }
+  | { kind: 'event-run'; events: ChatThreadEvent[] /* always ≥2 */ }
 
 /**
  * Interleave messages and thread events by timestamp, collapsing consecutive
@@ -62,7 +70,22 @@ export function buildChatTimeline(
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]!
     if (entry.kind === 'event') {
-      out.push({ kind: 'event', event: entry.event })
+      // Collapse consecutive events (no message between them) by the same
+      // actor identity, within EVENT_RUN_WINDOW_MS of the run's start, into
+      // one `event-run`. A lone event stays a flat `event` line.
+      const run: ChatThreadEvent[] = [entry.event]
+      const runStart = entry.createdAt
+      const runKey = eventActorKey(entry.event)
+      while (i + 1 < entries.length) {
+        const next = entries[i + 1]!
+        if (next.kind !== 'event') break
+        if (eventActorKey(next.event) !== runKey) break
+        if (next.createdAt - runStart > EVENT_RUN_WINDOW_MS) break
+        run.push(next.event)
+        i++
+      }
+      if (run.length === 1) out.push({ kind: 'event', event: entry.event })
+      else out.push({ kind: 'event-run', events: run })
       continue
     }
     if (!isBubbleMessage(entry.message.messageType)) {
@@ -83,6 +106,26 @@ export function buildChatTimeline(
     out.push({ kind: 'chat-group', messages: run, startIndex, endIndex })
   }
   return out
+}
+
+/**
+ * Actor-identity key for run collapsing: the branded `actorId` when present
+ * (falling back to the legacy `data.userId` payload on pre-cut-over rows),
+ * else the automation provenance (`source.kind` + `source.id`), else a shared
+ * 'system' bucket. Two events collapse only when their keys match.
+ */
+export function eventActorKey(event: ChatThreadEvent): string {
+  if (typeof event.actorId === 'string' && event.actorId) return `actor:${event.actorId}`
+  const legacyUserId = event.data?.userId
+  if (typeof legacyUserId === 'string' && legacyUserId) return `actor:user:${legacyUserId}`
+  const source = event.data?.source
+  if (source && typeof source === 'object') {
+    const { kind, id } = source as { kind?: unknown; id?: unknown }
+    if (typeof kind === 'string') {
+      return `source:${kind}:${typeof id === 'string' ? id : ''}`
+    }
+  }
+  return 'system'
 }
 
 function messageTimestamp(m: MessageMeta): number {

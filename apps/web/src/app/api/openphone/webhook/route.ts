@@ -12,17 +12,24 @@
 // directly, exactly like the Recall/Svix call site. `openphonePreset` documents the scheme as data.
 
 import { database as db, schema } from '@auxx/database'
-import { MessageStorageService } from '@auxx/lib/email'
+import {
+  type AttachmentIngestInput,
+  InboundAttachmentIngestService,
+  MessageStorageService,
+} from '@auxx/lib/email'
 import { parseConversationIdFromDeepLink } from '@auxx/lib/providers/openphone/deep-link'
 import type {
   OpenPhoneIntegrationMetadata,
+  QuoWebhookCall,
   QuoWebhookEvent,
   QuoWebhookMessage,
 } from '@auxx/lib/providers/openphone/types'
+import { convertQuoWebhookCallEventToMessageData } from '@auxx/lib/providers/openphone/webhook-call'
 import { convertQuoWebhookEventToMessageData } from '@auxx/lib/providers/openphone/webhook-message'
+import { getRealtimeService, publishMessageUpdated } from '@auxx/lib/realtime'
 import { resolveWebhookSecret, verifyHmacSignature } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, like, sql } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('openphone-webhook')
@@ -32,6 +39,14 @@ const SIGNATURE_HEADER = 'openphone-signature'
 
 /** Replay window, in seconds. Matches the Recall/Svix call site's tolerance. */
 const TIMESTAMP_TOLERANCE_SEC = 300
+
+/**
+ * Cap on a single fetched media file (voicemail or call recording). REST never returns this
+ * media (see the Quo plan's "Inbound media"), so the webhook delivery is the only shot at it —
+ * this cap exists purely to stop a pathological response from blowing up memory, not because we
+ * expect to hit it.
+ */
+const MAX_MEDIA_BYTES = 25 * 1024 * 1024
 
 /** The events that carry a `phoneNumberId` and therefore resolve to one of our Integrations. */
 type QuoPhoneScopedPayload = { phoneNumberId?: string }
@@ -216,18 +231,289 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         break
       }
 
-      // Call events are logged no-ops today. The names below are the real ones — there is no
-      // `call.finished`. Turning any of these into a Message row needs a call-shaped payload
-      // mapper (voicemail/recording `media[]`), which is out of scope here.
+      // `call.ringing` never creates a row — we don't subscribe to it (see
+      // `QuoCreateMessageWebhookInput`), but a stray delivery (e.g. from a webhook created
+      // before this shipped) is still handled as a harmless no-op rather than falling to
+      // `default`, so it's obvious in logs this is deliberate, not unhandled.
       case 'call.ringing':
-      case 'call.completed':
-      case 'call.recording.completed':
-        logger.info('Received Quo call event (no-op)', {
-          type: payload.type,
+        logger.info('Received Quo call.ringing event (no-op)', {
           eventId: payload.id,
           integrationId: integration.id,
         })
         break
+
+      // A completed (answered or missed) call becomes a Message row: `CALL`, or `VOICEMAIL`
+      // when the call carries voicemail audio. Voicemail bytes are fetched right here, because
+      // REST never returns call media at all (message-type-overhaul plan §"Inbound media") —
+      // this webhook delivery is the only chance to capture them.
+      case 'call.completed': {
+        const event = payload as QuoWebhookEvent<QuoWebhookCall>
+        logger.info('Processing Quo call.completed event', {
+          eventId: payload.id,
+          integrationId: integration.id,
+        })
+
+        const conversationId = resolveQuoConversationId(event, { integrationId: integration.id })
+        const messageData = convertQuoWebhookCallEventToMessageData(
+          event,
+          integration.id,
+          integration.organizationId,
+          metadata,
+          conversationId
+        )
+        if (!messageData) {
+          logger.warn('Failed to convert Quo call.completed event data', { eventId: payload.id })
+          break
+        }
+
+        const storageService = new MessageStorageService(integration.organizationId)
+        let stored: { messageId: string; isNew: boolean }
+        try {
+          stored = await storageService.storeMessage(messageData)
+          logger.info('Stored Quo call', {
+            mid: messageData.externalId,
+            messageType: messageData.messageType,
+            isNew: stored.isNew,
+            integrationId: integration.id,
+          })
+        } catch (storeError) {
+          const message = storeError instanceof Error ? storeError.message : String(storeError)
+          logger.error('Failed to store Quo call', {
+            mid: messageData.externalId,
+            integrationId: integration.id,
+            error: message,
+          })
+          return NextResponse.json({ error: 'Failed to store call' }, { status: 500 })
+        }
+
+        const voicemail = event.data?.object?.voicemail
+        if (voicemail?.url) {
+          // Checked by attachment existence, NOT `stored.isNew`: after a fetch failure below we
+          // return 500 so Quo redelivers the same event, and by then `storeMessage` has already
+          // upserted the row, so `isNew` would read false on the retry and silently skip the
+          // fetch forever. An existing-attachment check is idempotent across any number of
+          // redeliveries regardless of `isNew`. Scoped to voicemail files so a recording that
+          // somehow attached first can never block the voicemail (and vice versa below).
+          const alreadyIngested = await hasExistingAttachment(
+            stored.messageId,
+            integration.organizationId,
+            'voicemail.'
+          )
+          if (alreadyIngested) {
+            logger.debug('Voicemail already ingested for this call; skipping refetch', {
+              messageId: stored.messageId,
+              eventId: payload.id,
+            })
+            break
+          }
+
+          const bytes = await fetchQuoMediaBytes(voicemail.url, {
+            eventId: payload.id,
+            kind: 'voicemail',
+          })
+          if (!bytes) {
+            // The presigned URL is only valid for this delivery attempt and REST never returns
+            // voicemail media, so a dropped fetch here is unrecoverable once this response is
+            // sent. Returning 500 makes Quo redeliver with a fresh URL; `storeMessage` already
+            // upserted on `externalId` above, so the redelivery is safe and simply retries the
+            // fetch (see the `hasExistingAttachment` guard above for why it isn't skipped).
+            return NextResponse.json({ error: 'Failed to fetch voicemail media' }, { status: 500 })
+          }
+
+          try {
+            const ingestService = new InboundAttachmentIngestService()
+            const input: AttachmentIngestInput = {
+              content: bytes,
+              filename: `voicemail.${extensionForMimeType(voicemail.type)}`,
+              mimeType: voicemail.type || 'audio/mpeg',
+              inline: false,
+              attachmentOrder: 0,
+            }
+            // `skipReconciliation`: this call only ever carries the voicemail, never the full
+            // attachment set for the message, so reconciliation would delete anything a later
+            // `call.recording.completed` adds (or vice versa).
+            await ingestService.ingestAll(
+              [input],
+              {
+                organizationId: integration.organizationId,
+                messageId: stored.messageId,
+                contentScopeId: messageData.externalId,
+              },
+              { skipReconciliation: true }
+            )
+            logger.info('Ingested Quo voicemail attachment', {
+              messageId: stored.messageId,
+              eventId: payload.id,
+            })
+          } catch (ingestError) {
+            const message = ingestError instanceof Error ? ingestError.message : String(ingestError)
+            logger.error('Failed to ingest Quo voicemail attachment', {
+              messageId: stored.messageId,
+              eventId: payload.id,
+              error: message,
+            })
+            return NextResponse.json(
+              { error: 'Failed to ingest voicemail attachment' },
+              { status: 500 }
+            )
+          }
+        }
+        break
+      }
+
+      // Attaches the recording to the call row `call.completed` already created. Dropped
+      // silently when no such row exists (a call from before this feature shipped) — there is
+      // no retriable fix for a missing parent message.
+      case 'call.recording.completed': {
+        const event = payload as QuoWebhookEvent<QuoWebhookCall>
+        const callId = event.data?.object?.id
+        logger.info('Processing Quo call.recording.completed event', {
+          eventId: payload.id,
+          integrationId: integration.id,
+        })
+
+        if (!callId) {
+          logger.warn('Quo recording event carries no call id', { eventId: payload.id })
+          break
+        }
+
+        const [existing] = await db
+          .select({
+            id: schema.Message.id,
+            threadId: schema.Message.threadId,
+            hasAttachments: schema.Message.hasAttachments,
+          })
+          .from(schema.Message)
+          .where(
+            and(
+              eq(schema.Message.organizationId, integration.organizationId),
+              eq(schema.Message.integrationId, integration.id),
+              eq(schema.Message.externalId, callId)
+            )
+          )
+          .limit(1)
+
+        if (!existing) {
+          // Recording events only flow on webhooks that also subscribe to `call.completed`, so
+          // a missing parent row is almost always an out-of-order delivery, not a call from
+          // before this shipped. 500 makes Quo redeliver, by which time the call row exists;
+          // for a genuinely orphaned recording, Quo's bounded retries give up on their own.
+          logger.warn('No stored call found for Quo recording event; retrying via 500', {
+            callId,
+            eventId: payload.id,
+            integrationId: integration.id,
+          })
+          return NextResponse.json({ error: 'No stored call for recording yet' }, { status: 500 })
+        }
+
+        // Scoped to recording files: a voicemail attachment on the same call must not read as
+        // "recording already ingested".
+        const alreadyIngested = await hasExistingAttachment(
+          existing.id,
+          integration.organizationId,
+          'recording-'
+        )
+        if (alreadyIngested) {
+          logger.debug('Recording already ingested for this call; skipping', {
+            messageId: existing.id,
+            eventId: payload.id,
+          })
+          break
+        }
+
+        const media = event.data?.object?.media ?? []
+        if (media.length === 0) {
+          logger.warn('Quo recording event carries no media', { callId, eventId: payload.id })
+          break
+        }
+
+        // All-or-nothing across the media entries: ingesting a partial set and then 500ing
+        // would make the redelivery see recordings already present and skip the rest forever
+        // (the existence check above is per-kind, not per-entry). Fetch everything first;
+        // ingest only a complete set.
+        const inputs: AttachmentIngestInput[] = []
+        let anyFetchFailed = false
+        for (let i = 0; i < media.length; i++) {
+          const item = media[i]!
+          const bytes = await fetchQuoMediaBytes(item.url, {
+            eventId: payload.id,
+            kind: 'recording',
+          })
+          if (!bytes) {
+            anyFetchFailed = true
+            break
+          }
+          inputs.push({
+            content: bytes,
+            filename: `recording-${i}.${extensionForMimeType(item.type)}`,
+            mimeType: item.type || 'audio/mpeg',
+            inline: false,
+            attachmentOrder: i,
+          })
+        }
+        if (anyFetchFailed) {
+          return NextResponse.json({ error: 'Failed to fetch recording media' }, { status: 500 })
+        }
+
+        if (inputs.length > 0) {
+          try {
+            const ingestService = new InboundAttachmentIngestService()
+            await ingestService.ingestAll(
+              inputs,
+              {
+                organizationId: integration.organizationId,
+                messageId: existing.id,
+                contentScopeId: callId,
+              },
+              { skipReconciliation: true }
+            )
+            logger.info('Ingested Quo call recording attachment(s)', {
+              messageId: existing.id,
+              count: inputs.length,
+              eventId: payload.id,
+            })
+
+            if (!existing.hasAttachments) {
+              await db
+                .update(schema.Message)
+                .set({ hasAttachments: true, updatedAt: new Date() })
+                .where(eq(schema.Message.id, existing.id))
+
+              const [thread] = await db
+                .select({ inboxId: schema.Thread.inboxId, assigneeId: schema.Thread.assigneeId })
+                .from(schema.Thread)
+                .where(eq(schema.Thread.id, existing.threadId))
+                .limit(1)
+
+              await publishMessageUpdated(getRealtimeService(), integration.organizationId, {
+                messageId: existing.id,
+                threadId: existing.threadId,
+                inboxId: thread?.inboxId ?? null,
+                assigneeId: thread?.assigneeId ?? null,
+                patch: { hasAttachments: true },
+              }).catch((error) => {
+                logger.warn('Failed to publish message:updated for Quo recording', {
+                  messageId: existing.id,
+                  error: error instanceof Error ? error.message : String(error),
+                })
+              })
+            }
+          } catch (ingestError) {
+            const message = ingestError instanceof Error ? ingestError.message : String(ingestError)
+            logger.error('Failed to ingest Quo call recording attachment(s)', {
+              messageId: existing.id,
+              eventId: payload.id,
+              error: message,
+            })
+            return NextResponse.json(
+              { error: 'Failed to ingest recording attachment' },
+              { status: 500 }
+            )
+          }
+        }
+
+        break
+      }
 
       default:
         logger.debug('Ignoring unhandled Quo event type', { type: payload.type })
@@ -244,13 +530,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 }
 
 /**
- * Recovers the Quo conversation id (`CN…`) for a message webhook event.
+ * Recovers the Quo conversation id (`CN…`) for a message OR call webhook event — both share the
+ * same envelope shape, and neither payload object carries `conversationId` (verified live, v4).
  *
- * **Why this exists.** The v4 message webhook payload carries no `conversationId` — verified
- * against a live event. Without one, `MessageData.externalThreadId` is undefined, ingest's alias
+ * **Why this exists.** Without one, `MessageData.externalThreadId` is undefined, ingest's alias
  * rung (`resolveThreadId`) has nothing to look up, `Thread.externalId` stays NULL, and every
- * inbound message opens a brand-new thread. SMS has no `In-Reply-To`/`References` either, so the
- * conversation key is the ONLY threading signal this channel has.
+ * inbound message/call opens a brand-new thread. SMS/calls have no `In-Reply-To`/`References`
+ * either, so the conversation key is the ONLY threading signal this channel has.
  *
  * The source is `data.deepLink`, whose `/c/<CN…>` segment carries the id. It is free,
  * synchronous, and arrives **inside the HMAC-signed body**, so it is authenticated by the same
@@ -263,12 +549,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
  * authenticated than the one already in hand. The webhook is the delivery mechanism for this
  * event; asking the API to repeat itself is not more correct, only slower.
  *
- * Never throws, and a miss returns `null` — which is exactly the pre-fix behaviour: the message
- * still stores, it just opens its own thread. Ingest must not be breakable by a lookup that is
- * an improvement over nothing.
+ * Never throws, and a miss returns `null` — which is exactly the pre-fix behaviour: the
+ * message/call still stores, it just opens its own thread. Ingest must not be breakable by a
+ * lookup that is an improvement over nothing.
  */
-function resolveQuoConversationId(
-  event: QuoWebhookEvent<QuoWebhookMessage>,
+function resolveQuoConversationId<T extends { id?: string }>(
+  event: QuoWebhookEvent<T>,
   ctx: { integrationId: string }
 ): string | null {
   const conversationId = parseConversationIdFromDeepLink(event.data?.deepLink)
@@ -283,6 +569,107 @@ function resolveQuoConversationId(
     hasDeepLink: !!event.data?.deepLink,
   })
   return null
+}
+
+/**
+ * Whether the message already has an Attachment row of the given kind (voicemail vs recording,
+ * distinguished by the filename prefix this route itself assigns — `Attachment.title` carries the
+ * ingest filename). Per-kind, so the two media kinds on one call never mask each other. Used to
+ * make voicemail and recording ingest idempotent across webhook redeliveries WITHOUT relying on `storeMessage`'s
+ * `isNew` flag, which flips false on any redelivery once the row exists — including a redelivery
+ * triggered by returning 500 from a failed media fetch, which is exactly the case that must still
+ * retry.
+ */
+async function hasExistingAttachment(
+  messageId: string,
+  organizationId: string,
+  titlePrefix: 'voicemail.' | 'recording-'
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: schema.Attachment.id })
+    .from(schema.Attachment)
+    .where(
+      and(
+        eq(schema.Attachment.organizationId, organizationId),
+        eq(schema.Attachment.entityType, 'MESSAGE'),
+        eq(schema.Attachment.entityId, messageId),
+        like(schema.Attachment.title, `${titlePrefix}%`)
+      )
+    )
+    .limit(1)
+  return !!row
+}
+
+/**
+ * Fetches one voicemail or recording media URL as bytes. Plain `fetch` — Quo hands out
+ * presigned CDN URLs, not API endpoints, so there is no auth header to add (`quoFetch` is
+ * JSON-only and cannot be reused here).
+ *
+ * Returns `null` on any failure (non-2xx, over the size cap, or a network error) and never
+ * throws; the caller decides retry policy.
+ */
+async function fetchQuoMediaBytes(
+  url: string,
+  ctx: { eventId: string; kind: 'voicemail' | 'recording' }
+): Promise<Buffer | null> {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) {
+      logger.error('Quo media fetch returned a non-2xx status', {
+        status: res.status,
+        kind: ctx.kind,
+        eventId: ctx.eventId,
+      })
+      return null
+    }
+
+    const contentLength = res.headers.get('content-length')
+    if (contentLength && Number(contentLength) > MAX_MEDIA_BYTES) {
+      logger.error('Quo media exceeds the size cap; skipping', {
+        contentLength,
+        kind: ctx.kind,
+        eventId: ctx.eventId,
+      })
+      return null
+    }
+
+    const arrayBuffer = await res.arrayBuffer()
+    if (arrayBuffer.byteLength > MAX_MEDIA_BYTES) {
+      logger.error('Quo media exceeded the size cap after download; skipping', {
+        size: arrayBuffer.byteLength,
+        kind: ctx.kind,
+        eventId: ctx.eventId,
+      })
+      return null
+    }
+
+    return Buffer.from(arrayBuffer)
+  } catch (error) {
+    logger.error('Quo media fetch failed', {
+      error: error instanceof Error ? error.message : String(error),
+      kind: ctx.kind,
+      eventId: ctx.eventId,
+    })
+    return null
+  }
+}
+
+/** Best-effort extension for the attachment filename. Defaults to `mp3` — Quo's common case. */
+function extensionForMimeType(mimeType: string | undefined): string {
+  switch (mimeType) {
+    case 'audio/wav':
+    case 'audio/x-wav':
+      return 'wav'
+    case 'audio/mp4':
+    case 'audio/x-m4a':
+    case 'audio/m4a':
+      return 'm4a'
+    case 'audio/ogg':
+      return 'ogg'
+    default:
+      // Includes 'audio/mpeg', Quo's common case.
+      return 'mp3'
+  }
 }
 
 /**

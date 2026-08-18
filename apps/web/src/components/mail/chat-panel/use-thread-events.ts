@@ -2,26 +2,26 @@
 'use client'
 
 import { rooms } from '@auxx/lib/realtime/client'
+import { THREAD_EVENT_TYPES } from '@auxx/lib/thread-events/client'
 import { useEffect, useMemo, useState } from 'react'
 import { useRealtimeRoom } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 import type { ChatThreadEvent, ChatThreadEventType } from './system-line'
 
-const EVENT_TYPES: ChatThreadEventType[] = [
-  'thread:taken_over',
-  'thread:returned_to_ai',
-  'thread:archived',
-  'thread:reopened',
-  'thread:assignee:changed',
-  'thread:visitor:identified',
-]
-const EVENT_TYPE_SET = new Set<string>(EVENT_TYPES)
+/** All persisted thread event types — the full vocabulary, not just the frozen visitor six. */
+const EVENT_TYPE_SET = new Set<string>(THREAD_EVENT_TYPES)
 
 /**
  * Load the persisted thread lifecycle events for a chat thread and subscribe
  * to the per-thread realtime room so new events appear without polling.
  *
- * Returns `{ events: [] }` when `enabled` is false (e.g. email threads).
+ * Pages arrive newest-first from `thread.listEvents` (keyset cursor, §13.4);
+ * this hook flattens + reverses them so `events` is always ascending for the
+ * timeline. Remaining pages auto-drain in the background (§13.4 interim), so
+ * `loadOlder`/`hasOlder` exist mainly for a future scroll-sentinel alignment;
+ * live events append at the newest end and never interact with the cursor.
+ *
+ * Returns `{ events: [] }` when `enabled` is false.
  * Dedupes by event id (the realtime publisher includes the row id +
  * createdAt in the Pusher payload).
  */
@@ -31,11 +31,31 @@ export function useChatThreadEvents({
 }: {
   threadId: string | null | undefined
   enabled: boolean
-}): { events: ChatThreadEvent[] } {
-  const query = api.thread.listEvents.useQuery(
+}): {
+  events: ChatThreadEvent[]
+  loadOlder: () => void
+  hasOlder: boolean
+  isLoading: boolean
+} {
+  const query = api.thread.listEvents.useInfiniteQuery(
     { threadId: threadId ?? '' },
-    { enabled: enabled && !!threadId, staleTime: 30_000 }
+    {
+      enabled: enabled && !!threadId,
+      staleTime: 30_000,
+      getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    }
   )
+
+  // §13.4 interim: the message list itself is unpaginated, so a truncated
+  // event set would silently misplace old events between old messages. Drain
+  // remaining pages in the background until exhausted — event counts per
+  // thread are small, and the fetching/loading guards prevent a loop. A later
+  // message-pagination effort can replace this with a shared scroll sentinel.
+  const { hasNextPage, isFetchingNextPage, isLoading: isQueryLoading, fetchNextPage } = query
+  useEffect(() => {
+    if (!hasNextPage || isFetchingNextPage || isQueryLoading) return
+    void fetchNextPage()
+  }, [hasNextPage, isFetchingNextPage, isQueryLoading, fetchNextPage])
 
   const [liveEvents, setLiveEvents] = useState<ChatThreadEvent[]>([])
 
@@ -69,6 +89,7 @@ export function useChatThreadEvents({
             id,
             type: eventName as ChatThreadEventType,
             createdAt,
+            actorId: typeof data.actorId === 'string' ? data.actorId : null,
             data,
           },
         ]
@@ -77,7 +98,10 @@ export function useChatThreadEvents({
   })
 
   const events = useMemo<ChatThreadEvent[]>(() => {
-    const base = (query.data ?? []) as ChatThreadEvent[]
+    // Pages are each DESC and pages themselves go newest → oldest, so the flat
+    // concatenation is one DESC list; reverse it once into timeline order.
+    const pages = query.data?.pages ?? []
+    const base: ChatThreadEvent[] = pages.flatMap((page) => page.events).reverse()
     if (liveEvents.length === 0) return base
     const seen = new Set(base.map((e) => e.id))
     const merged = [...base]
@@ -89,5 +113,12 @@ export function useChatThreadEvents({
     return merged
   }, [query.data, liveEvents])
 
-  return { events }
+  return {
+    events,
+    loadOlder: () => {
+      if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage()
+    },
+    hasOlder: query.hasNextPage ?? false,
+    isLoading: query.isLoading,
+  }
 }

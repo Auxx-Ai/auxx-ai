@@ -2,9 +2,9 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
+import { MESSAGE_TYPE_OPTIONS } from '../../../providers/types'
 import { BaseType } from '../../types'
 import type { ResourceField } from '../field-types'
-// Note: MessageType import removed - messageType field no longer exists in schema
 
 /**
  * Field definitions for the Message resource
@@ -120,8 +120,29 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     description: 'Plain text content of message',
   },
 
-  // Note: messageType removed - it's now derived from Integration.provider
-  // Use helper function getMessageTypeFromProvider() to get message type
+  // Phase 3 of the message-type-overhaul plan (§Phase 3). Filterable, but
+  // write-locked: `messageType` is stamped at ingest
+  // (`getMessageTypeFromProvider` as the default, provider mappers as
+  // authority for `openphone`'s CALL/VOICEMAIL split) and is never
+  // user-writable, so `creatable`/`updatable` stay false.
+  messageType: {
+    id: toFieldId('messageType'),
+    key: 'messageType',
+    label: 'Message type',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    dbColumn: 'messageType',
+    nullable: false,
+    options: { options: MESSAGE_TYPE_OPTIONS },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'The form of the message (email, SMS, chat, call, or voicemail)',
+  },
 
   isInbound: {
     id: toFieldId('isInbound'),

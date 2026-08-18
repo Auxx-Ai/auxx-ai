@@ -160,6 +160,12 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     organizationId,
     userId,
     sessionId,
+    // Background agent runs only (thread-events §5.5): when the run's
+    // principal IS the agent's own synthetic user (autonomous triggers,
+    // mentions, DMs enqueued with `userId = agent.userId`), tools attribute
+    // mutations to `agent:<id>`. Interactive runs through the worker carry the
+    // HUMAN's userId and stay user-attributed.
+    ...(agentId && agent?.userId === userId ? { agentId } : {}),
     db: database,
     domainConfig,
     callModel,

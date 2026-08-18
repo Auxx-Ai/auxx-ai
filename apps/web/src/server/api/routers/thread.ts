@@ -19,9 +19,12 @@ import {
 import { MessageSenderService } from '@auxx/lib/messages'
 import { markInvoiceSent, markQuoteSent, recordDocumentSendSignal } from '@auxx/lib/money'
 import { PermissionKey } from '@auxx/lib/permissions'
-import type { UserInstanceGrants } from '@auxx/lib/permissions/visibility'
+import { satisfiesRung } from '@auxx/lib/permissions/capabilities/rung'
+import { getThreadLens, type UserInstanceGrants } from '@auxx/lib/permissions/visibility'
 import { buildPlaceholderContextForThread, resolvePlaceholdersInHtml } from '@auxx/lib/placeholders'
 import { ProviderRegistryService } from '@auxx/lib/providers'
+import { listThreadEvents } from '@auxx/lib/thread-events'
+import type { ThreadEventType } from '@auxx/lib/thread-events/client'
 import {
   canLinkThread,
   getMailCounts,
@@ -37,7 +40,7 @@ import {
 import { createScopedLogger } from '@auxx/logger'
 import { getInstanceId, recordIdSchema } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, isAuxxError, notDemo, permissionProcedure } from '~/server/api/trpc'
 import { assertSignatureUsable } from '~/server/lib/signature-instance-access'
@@ -171,7 +174,13 @@ const getServiceDependencies = async (
   )
   // New specialized services
   const threadQuery = new ThreadQueryService(organizationId, ctx.db, viewer)
-  const threadMutation = new ThreadMutationService(organizationId, ctx.db, socketId, userId, viewer)
+  const threadMutation = new ThreadMutationService(
+    organizationId,
+    ctx.db,
+    socketId,
+    { kind: 'user', id: userId },
+    viewer
+  )
   return {
     threadQuery,
     threadMutation,
@@ -1199,52 +1208,44 @@ export const threadRouter = createTRPCRouter({
     }),
 
   // ═══════════════════════════════════════════════════════════════
-  // CHAT THREAD LIFECYCLE EVENTS (P4b-i)
-  // Centered system-line feed for the admin chat panel: takeover,
-  // return-to-AI, archive, reopen, assignee changed, visitor identified.
-  // Uses the `Event_threadId_expr_idx` expression index on
-  // `(Event.data->>'threadId')` added in #664.
+  // THREAD LIFECYCLE EVENTS (thread-events Phase 2)
+  // Centered system-line feed for the admin chat panel, served from the
+  // dedicated `ThreadEvent` table via `listThreadEvents` — keyset-cursor
+  // paginated on `(createdAt, id) DESC` (§13.4), page ≈50, newest first.
+  // The client reverses to ASC for the timeline and follows `nextCursor`
+  // for older pages.
   // ═══════════════════════════════════════════════════════════════
   listEvents: mailProcedure
-    .input(z.object({ threadId: z.string() }))
+    .input(z.object({ threadId: z.string(), cursor: z.string().nullish() }))
     .query(async ({ ctx, input }) => {
-      const { organizationId } = await getServiceDependencies(ctx)
-      const rows = await ctx.db
-        .select({
-          id: schema.Event.id,
-          type: schema.Event.type,
-          createdAt: schema.Event.createdAt,
-          data: schema.Event.data,
-        })
-        .from(schema.Event)
-        .where(
-          and(
-            eq(schema.Event.organizationId, organizationId),
-            inArray(schema.Event.type, [
-              'thread:taken_over',
-              'thread:returned_to_ai',
-              'thread:archived',
-              'thread:reopened',
-              'thread:assignee:changed',
-              'thread:visitor:identified',
-            ]),
-            sql`(${schema.Event.data}->>'threadId') = ${input.threadId}`
-          )
-        )
-        .orderBy(asc(schema.Event.createdAt))
-        .limit(50)
+      const { organizationId, viewer } = await getServiceDependencies(ctx)
 
-      return rows.map((r) => ({
-        id: r.id,
-        type: r.type as
-          | 'thread:taken_over'
-          | 'thread:returned_to_ai'
-          | 'thread:archived'
-          | 'thread:reopened'
-          | 'thread:assignee:changed'
-          | 'thread:visitor:identified',
-        createdAt: r.createdAt.toISOString(),
-        data: (r.data ?? {}) as Record<string, unknown>,
-      }))
+      // Per-thread lens gate (plans/threads/thread-events.md §4 / Phase 0): the
+      // realtime door for these same events requires the `metadata` rung
+      // (`realtime/rooms.ts`), and this history door must ask the same question.
+      // Empty rather than a 403 or NOT_FOUND — an invisible id must fail exactly
+      // like a nonexistent one (`thread-action-access.ts`), so this procedure
+      // cannot be used as an existence oracle.
+      const lens = await getThreadLens(ctx.db, organizationId, viewer, input.threadId)
+      if (!satisfiesRung(lens, 'metadata')) return { events: [], nextCursor: null }
+
+      const result = await listThreadEvents(ctx.db, {
+        organizationId,
+        threadId: input.threadId,
+        cursor: input.cursor ?? null,
+      })
+      if (result.isErr()) throw result.error
+
+      return {
+        events: result.value.events.map((r) => ({
+          id: r.id,
+          type: r.type as ThreadEventType,
+          createdAt: r.createdAt.toISOString(),
+          /** Branded ActorId string ('user:…' / 'agent:…'), null for system/automation. */
+          actorId: r.actorId ?? null,
+          data: (r.data ?? {}) as Record<string, unknown>,
+        })),
+        nextCursor: result.value.nextCursor,
+      }
     }),
 })

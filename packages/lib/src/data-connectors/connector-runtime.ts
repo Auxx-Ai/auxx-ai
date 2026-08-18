@@ -16,7 +16,7 @@ import {
 import { connectorFor } from './connectors'
 import type { DataConnectorDefinition, StreamRequestConfig } from './connectors/types'
 import { isConnectorCheckpoint } from './connectors/types'
-import type { DataConnectorRow } from './service'
+import { type DataConnectorRow, listStreams } from './service'
 
 const logger = createScopedLogger('data-connector-runtime')
 
@@ -90,8 +90,39 @@ export async function prepareConnectorFetch(
 export interface SampleConnectorFetchInput {
   /** Omitted/null for a blank stream; generic-rest ignores it, apps derive it. */
   streamKey?: string | null
-  /** The per-stream request config being edited (generic-rest). */
+  /**
+   * The per-stream request config being EDITED (generic-rest). Omit it and the
+   * stream's persisted config is loaded instead — see `resolveRequestConfig`.
+   */
   requestConfig?: StreamRequestConfig
+}
+
+/**
+ * The request shape to sample with: the unsaved one the caller is editing, else the
+ * stream's persisted config.
+ *
+ * The fallback is not an optimization. `generic-rest` builds its path from
+ * `requestConfig` alone (`request.path ?? ''`), so a caller that passes none makes it
+ * fetch the BARE base URL — a different request from the one the scheduled sync runs,
+ * which is exactly the divergence this module exists to prevent. Template- and
+ * catalog-seeded connectors hit that path: their request shape arrives at create time
+ * and lives only on the stream row, so the Connect step's "Preview records" button
+ * (which knows a `streamKey` and nothing else) sampled `https://host/v1` instead of
+ * `https://host/v1/contacts`. App connectors are unaffected — their adapter derives its
+ * own request from the stream key — and passing `requestConfig` explicitly still wins,
+ * so the Sample step keeps previewing unsaved edits.
+ */
+async function resolveRequestConfig(
+  db: Database,
+  organizationId: string,
+  connector: DataConnectorRow,
+  input: SampleConnectorFetchInput
+): Promise<StreamRequestConfig | undefined> {
+  if (input.requestConfig) return input.requestConfig
+  if (!input.streamKey) return undefined
+  const streams = await listStreams(db, organizationId, connector.id)
+  const stream = streams.find((s) => s.streamKey === input.streamKey)
+  return (stream?.requestConfig as StreamRequestConfig | null) ?? undefined
 }
 
 /**
@@ -128,6 +159,7 @@ export async function sampleConnectorFetch(
     connector,
     userId
   )
+  const requestConfig = await resolveRequestConfig(db, organizationId, connector, input)
   // Capture the first page's headers via the opt-in callback (closure). `fetch` is
   // a lazy generator, so the loop runs past the transport call + `onPageMeta`
   // before the first record reaches the `for await` below — `firstHeaders` is set
@@ -139,7 +171,7 @@ export async function sampleConnectorFetch(
     state: {},
     credential,
     config: connector.config,
-    requestConfig: input.requestConfig,
+    requestConfig,
     onPageMeta: (meta) => {
       if (meta.pageIndex === 0) firstHeaders = meta.headers
     },

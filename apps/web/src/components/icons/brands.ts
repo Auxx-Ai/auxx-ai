@@ -37,6 +37,7 @@ export const BRAND_ICONS = {
   outlook: { hasDark: false },
   paypal: { hasDark: false },
   postgresql: { hasDark: false },
+  quo: { hasDark: true },
   qwen: { hasDark: false },
   sentry: { hasDark: true },
   shopify: { hasDark: false },

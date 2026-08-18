@@ -14,6 +14,19 @@ export type SendStatus = 'PENDING' | 'SENT' | 'FAILED' | 'BOUNCED'
 export { MessageType }
 
 /**
+ * Projection of `Message.metadata.call` (written by `webhook-call.ts`'s `QuoCallMeta`) — the
+ * only call/voicemail shape exposed to the client. The raw `metadata` blob (which also carries
+ * `quo_webhook_event`) is never sent as-is.
+ */
+export interface CallMessageMeta {
+  direction: 'incoming' | 'outgoing'
+  answered: boolean
+  answeredAt: string | null
+  completedAt: string | null
+  durationSeconds: number | null
+}
+
+/**
  * Attachment metadata for display.
  */
 export interface AttachmentMeta {
@@ -71,6 +84,13 @@ export type MessageMeta = {
 
   // Message type for rendering (EMAIL, CHAT, SMS)
   messageType: MessageType
+
+  /**
+   * Call/voicemail detail, projected from `Message.metadata.call` — `null` for every
+   * non-CALL/VOICEMAIL message and for a CALL/VOICEMAIL row stored before this projection
+   * existed. Never the raw `metadata` blob.
+   */
+  callMeta?: CallMessageMeta | null
 }
 
 /**

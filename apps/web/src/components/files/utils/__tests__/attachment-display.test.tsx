@@ -159,6 +159,50 @@ describe('AttachmentDisplay', () => {
     })
   })
 
+  describe('audio attachments', () => {
+    const audioAttachment: CommentAttachmentInfo = {
+      ...mockAttachment,
+      id: 'att_audio',
+      name: 'voicemail.mp3',
+      mimeType: 'audio/mpeg',
+    }
+
+    test('renders an inline audio player instead of the download button', () => {
+      const { container } = render(<AttachmentDisplay attachment={audioAttachment} />)
+
+      expect(screen.getByText('voicemail.mp3')).toBeInTheDocument()
+      expect(container.querySelector('button')).not.toBeInTheDocument()
+      const audio = container.querySelector('audio')
+      expect(audio).toBeInTheDocument()
+      expect(audio).toHaveAttribute('src', '/api/attachments/att_audio/download')
+      expect(audio).toHaveAttribute('controls')
+      expect(audio).toHaveAttribute('preload', 'none')
+    })
+
+    test('shows the remove button for audio when requested', () => {
+      const onRemove = vi.fn()
+      render(
+        <AttachmentDisplay
+          attachment={audioAttachment}
+          showRemoveButton={true}
+          onRemove={onRemove}
+        />
+      )
+
+      const removeButton = screen.getByTitle('Remove file')
+      fireEvent.click(removeButton)
+      expect(onRemove).toHaveBeenCalledWith('att_audio')
+    })
+
+    test('applies custom className to the audio container', () => {
+      const { container } = render(
+        <AttachmentDisplay attachment={audioAttachment} className='custom-class' />
+      )
+
+      expect(container.firstChild).toHaveClass('custom-class')
+    })
+  })
+
   describe('edge cases', () => {
     test('handles attachment with zero size', () => {
       const zeroSizeAttachment: CommentAttachmentInfo = {

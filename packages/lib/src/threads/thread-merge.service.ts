@@ -3,10 +3,12 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import type { ThreadEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
+import { toActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { BadRequestError, ConflictError, NotFoundError } from '../errors'
+import { publisher } from '../events/publisher'
 import { getRealtimeService, publishThreadUpdated } from '../realtime'
 import type { ThreadMeta as RealtimeThreadMeta } from '../realtime/events'
 import { ThreadEventType, TimelineActorType, TimelineEntityType } from '../timeline/event-types'
@@ -345,6 +347,23 @@ export class ThreadMergeService {
       await this.publishMergeFanout(realtimeFanout)
     }
 
+    // Conversation-surface events (thread-events §13.1): one `thread:merged`
+    // per DIRECT source, rendered on the SURVIVING thread's timeline.
+    // Descendants carried over from earlier merges keep their original events.
+    // Post-commit via the same publishLater path as the other thread emitters;
+    // unmerge deletes the matching row. Best-effort — the merge is committed.
+    for (const sourceThreadId of result.sourceThreadIds) {
+      await publisher.publishLater({
+        type: 'thread:merged',
+        data: {
+          threadId: result.targetThreadId,
+          organizationId: input.organizationId,
+          sourceThreadId,
+          actorId: toActorId('user', input.actorUserId),
+        },
+      })
+    }
+
     return result
   }
 
@@ -460,6 +479,21 @@ export class ThreadMergeService {
           )
         )
 
+      // The conversation-surface `thread:merged` row on the surviving thread
+      // goes with the markers (thread-events §13.1: TimelineEvent markers are
+      // the mechanism — untouched above beyond this source's own rows —
+      // ThreadEvent is the surface, deleted the way the markers are).
+      await tx
+        .delete(schema.ThreadEvent)
+        .where(
+          and(
+            eq(schema.ThreadEvent.organizationId, this.organizationId),
+            eq(schema.ThreadEvent.threadId, targetId),
+            eq(schema.ThreadEvent.type, 'thread:merged'),
+            sql`${schema.ThreadEvent.data} ->> 'sourceThreadId' = ${sourceThreadId}`
+          )
+        )
+
       const existingTargetSources = (target.mergeData as ThreadMergeData | null)?.sources ?? []
       const targetSourcesAfter = existingTargetSources.filter((s) => s.threadId !== sourceThreadId)
 
@@ -569,10 +603,6 @@ export class ThreadMergeService {
     sources: ThreadEntity[]
   ): Promise<PerSourceMoveSnapshot[]> {
     const sourceIds = sources.map((s) => s.id)
-    const sourceIdsSql = sql.join(
-      sourceIds.map((id) => sql`${id}`),
-      sql.raw(', ')
-    )
 
     const [
       messages,
@@ -642,12 +672,9 @@ export class ThreadMergeService {
           )
         ),
       tx
-        .select({
-          id: schema.Event.id,
-          threadId: sql<string>`${schema.Event.data} ->> 'threadId'`.as('threadId'),
-        })
-        .from(schema.Event)
-        .where(sql`${schema.Event.data} ->> 'threadId' IN (${sourceIdsSql})`),
+        .select({ id: schema.ThreadEvent.id, threadId: schema.ThreadEvent.threadId })
+        .from(schema.ThreadEvent)
+        .where(inArray(schema.ThreadEvent.threadId, sourceIds)),
       tx
         .select({
           id: schema.CommentReference.id,
@@ -917,13 +944,13 @@ export class ThreadMergeService {
         .where(inArray(schema.LabelsOnThread.threadId, sourceIds))
     }
 
-    // Event rows reference threadId only inside the JSON `data` blob — repoint there.
+    // ThreadEvent rows carry a real threadId column — a plain UPDATE repoints
+    // them (no `updatedAt`/$onUpdate on this table, so nothing re-dirties).
     if (presence.events) {
-      await tx.execute(sql`
-        UPDATE "Event"
-        SET "data" = jsonb_set("data", '{threadId}', to_jsonb(${targetId}::text), false)
-        WHERE "data" ->> 'threadId' IN (${sourceIdsSql})
-      `)
+      await tx
+        .update(schema.ThreadEvent)
+        .set({ threadId: targetId })
+        .where(inArray(schema.ThreadEvent.threadId, sourceIds))
     }
   }
 
@@ -1219,15 +1246,10 @@ export class ThreadMergeService {
 
     const eventIds = ids('movedEventIds')
     if (eventIds.length > 0) {
-      const eventIdsSql = sql.join(
-        eventIds.map((id) => sql`${id}`),
-        sql.raw(', ')
-      )
-      await tx.execute(sql`
-        UPDATE "Event"
-        SET "data" = jsonb_set("data", '{threadId}', to_jsonb(${sourceId}::text), false)
-        WHERE id IN (${eventIdsSql})
-      `)
+      await tx
+        .update(schema.ThreadEvent)
+        .set({ threadId: sourceId })
+        .where(inArray(schema.ThreadEvent.id, eventIds))
     }
   }
 

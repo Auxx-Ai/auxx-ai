@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/testing/workflow-test-runner.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import { MessageType } from '../../providers/types'
 import type {
   ProcessedMessage,
   Workflow,
@@ -336,6 +337,7 @@ export class WorkflowTestRunner {
       externalThreadId: 'test-thread-id',
       threadId: 'test-thread',
       integrationId: 'test-integration',
+      messageType: MessageType.EMAIL,
       isInbound: true,
       isAutomatedSend: false,
       machineMailTier: null,

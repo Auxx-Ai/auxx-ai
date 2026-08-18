@@ -16,7 +16,7 @@ export interface MessageType {
   isInbound: boolean
   sentAt: Date | null
   createdAt: Date
-  messageType: 'EMAIL' | 'CHAT' | 'FACEBOOK' | 'INSTAGRAM' | 'OPENPHONE' | 'SMS'
+  messageType: 'EMAIL' | 'SMS' | 'CHAT' | 'CALL' | 'VOICEMAIL'
   from?: {
     id: string
     identifier: string

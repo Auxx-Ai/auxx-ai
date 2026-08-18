@@ -10,8 +10,7 @@ import { FacebookOAuthService } from '../providers/facebook/facebook-oauth'
 import { GoogleOAuthService } from '../providers/google/google-oauth'
 import { InstagramOAuthService } from '../providers/instagram/instagram-oauth'
 import { OutlookOAuthService } from '../providers/outlook/outlook-oauth'
-import { whereThreadMessageType } from '../providers/query-helpers'
-import { MessageType } from '../providers/types'
+import { whereThreadProvider } from '../providers/query-helpers'
 import { Result, type TypedResult } from '../result'
 import { validateChannelOwnership } from './internal/validate'
 import type { ChannelCtx } from './types'
@@ -30,11 +29,14 @@ export async function deleteChannelData(tx: DbHandle, channelId: string, provide
   logger.warn(`Deleting data for channel: ${channelId} (${provider})`)
 
   if (provider === 'chat') {
+    // Filtered by provider, not `MessageType.CHAT` — that value also covers
+    // facebook/instagram/whatsapp now (message-type-overhaul), and this branch means the
+    // `chat` provider specifically. The `integrationId` equality below already pins one
+    // Integration, so this was trivially true either way; spelled out by provider to stay
+    // correct if that ever changes.
     await tx
       .delete(schema.Thread)
-      .where(
-        and(eq(schema.Thread.integrationId, channelId), whereThreadMessageType(MessageType.CHAT))
-      )
+      .where(and(eq(schema.Thread.integrationId, channelId), whereThreadProvider('chat')))
     logger.info(`Deleted CHAT threads for channel ${channelId}`)
     return
   }

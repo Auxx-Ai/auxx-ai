@@ -535,10 +535,9 @@ function ReplyComposeEditorComponent({
           // just-sent SMS through `EmailDisplay` until the echo landed and
           // flipped it to a bubble.
           //
-          // The cast bridges two unions that drifted: the store's ends in
-          // `CALL`, the DB enum's in `OPENPHONE`. No capability entry declares
-          // either, so every value this can produce is in both.
-          messageType: (platformCaps?.messageType ?? 'EMAIL') as MessageMeta['messageType'],
+          // `PlatformCapabilities.messageType` and the store's `MessageMeta.messageType`
+          // now share the same five-member vocabulary, so no cast is needed here.
+          messageType: platformCaps?.messageType ?? 'EMAIL',
         }
         appendOptimisticMessage(utils, sentMessage.threadId, optimistic)
 

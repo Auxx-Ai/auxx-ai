@@ -311,7 +311,11 @@ export class OpenPhoneProvider
   // -------------------------------------------------------------------------
 
   /**
-   * Arms a `message.received` / `message.delivered` webhook scoped to this channel's number.
+   * Arms a `message.received` / `message.delivered` / `call.completed` /
+   * `call.recording.completed` webhook scoped to this channel's number (message-type-overhaul
+   * Phase 4). Deliberately excludes `call.ringing` (no-op — no row is ever created for it) and
+   * the summary/transcript/contact events, which carry no `phoneNumberId` and cannot be resolved
+   * by the route's channel-scoped lookup — see `QuoCreateMessageWebhookInput`.
    *
    * ```
    * POST /v1/webhooks/messages
@@ -361,7 +365,12 @@ export class OpenPhoneProvider
 
     const created = await createMessageWebhook(this.apiKey!, {
       url: callbackUrl,
-      events: ['message.received', 'message.delivered'],
+      events: [
+        'message.received',
+        'message.delivered',
+        'call.completed',
+        'call.recording.completed',
+      ],
       // Per-number rather than `["*"]`: it matches the one-channel-one-webhook model the rest of
       // the code assumes and makes teardown on disconnect unambiguous.
       resourceIds: [this.phoneNumberId!],

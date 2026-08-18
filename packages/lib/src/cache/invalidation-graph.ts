@@ -63,6 +63,13 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'channel.toggled': ['channels'],
   'channel.settings_updated': ['channels'],
   'channel.inbox-link.changed': ['channels', 'inboxes'],
+  // requiresReauth/lastAuthError live on the Credential but are served to the UI
+  // through the cached channel list — without this, an auth failure stays
+  // invisible until the day-long TTL expires or an unrelated channel event fires.
+  'channel.auth-state.changed': ['channels'],
+  // Emitted by `invalidateChannelsIfStale` when a live DB read observes channel
+  // state (enabled/requiresReauth) the cached snapshot disagrees with.
+  'channel.stale-state.detected': ['channels'],
 
   'group.created': ['groups'],
   'group.updated': ['groups'],

@@ -534,7 +534,7 @@ export const inboxRouter = createTRPCRouter({
         organizationId,
         ctx.db,
         undefined,
-        userId,
+        { kind: 'user', id: userId },
         viewer
       )
       return threadMutation.countIntegrationThreadsInInbox(
@@ -593,7 +593,7 @@ export const inboxRouter = createTRPCRouter({
         organizationId,
         ctx.db,
         socketId,
-        userId,
+        { kind: 'user', id: userId },
         viewer
       )
 

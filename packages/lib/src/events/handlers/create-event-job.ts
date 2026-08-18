@@ -2,16 +2,20 @@
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { THREAD_EVENT_TYPES } from '../../thread-events/client'
 import type { AuxxEvent } from '../types'
-import { THREAD_REALTIME_EVENT_TYPES } from './publish-thread-event-to-realtime'
 
 const logger = createScopedLogger('create-event-job')
 
+/** The full thread lifecycle vocabulary `publishThreadEventToRealtime` owns. */
+const THREAD_EVENT_TYPE_SET = new Set<string>(THREAD_EVENT_TYPES)
+
 export const createEventJob = async ({ data: event }: { data: AuxxEvent }) => {
-  // Thread lifecycle events are persisted by `publishThreadEventToRealtime`
-  // so the realtime payload can carry the row id + createdAt for client-side
-  // dedupe. Skip here to avoid double-insert.
-  if (THREAD_REALTIME_EVENT_TYPES.has(event.type)) return
+  // Thread lifecycle events are persisted as `ThreadEvent` rows by
+  // `publishThreadEventToRealtime` (the single writer — the realtime payload
+  // carries the row id + createdAt for client-side dedupe). No `Event` row is
+  // written for them at all (plans/threads/thread-events.md §12.1).
+  if (THREAD_EVENT_TYPE_SET.has(event.type)) return
   await createEvent(event)
 }
 

@@ -266,6 +266,9 @@ async function processChatTurnInternal(ctx: JobContext<ChatTurnJobPayload>): Pro
         organizationId,
         reason: handoffReason,
         source: handedOff ? 'agent_tool' : 'procedure',
+        // The AGENT took the thread over — the emitted `thread:taken_over`
+        // renders with an `agent:` actor badge (thread-events §13.7).
+        actor: { kind: 'agent', id: agentId },
       })
     } catch (err) {
       logger.error('Handoff failed to flip thread', {

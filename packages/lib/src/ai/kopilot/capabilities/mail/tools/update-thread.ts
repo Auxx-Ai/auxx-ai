@@ -125,12 +125,18 @@ export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinitio
 
       // Kopilot acts as the invoking user (§8.1): mutations require `full`
       // lens on the thread — the service's write gate enforces it.
+      //
+      // Attribution (thread-events §5.5): a BACKGROUND agent run carries
+      // `agentDeps.agentId`, so events say `agent:<id>` instead of the agent's
+      // synthetic user; interactive runs attribute the human driving the turn.
       const viewer = await getCachedUserInstanceGrants(agentDeps.userId, agentDeps.organizationId)
       const service = new ThreadMutationService(
         agentDeps.organizationId,
         db,
         undefined,
-        agentDeps.userId,
+        agentDeps.agentId
+          ? { kind: 'agent', id: agentDeps.agentId }
+          : { kind: 'user', id: agentDeps.userId },
         viewer
       )
       const changes: Record<string, unknown> = {}

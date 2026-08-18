@@ -127,6 +127,33 @@ export async function onCacheEvent(
   }
 }
 
+/**
+ * Self-heal for the cached channel list: call when a live DB read just refused
+ * an action because of channel state (`enabled` / `requiresReauth`) the cached
+ * snapshot may not reflect — e.g. sync refused on a disabled channel, send
+ * refused on an expired login. Recomputes `channels` only when the cache
+ * actually disagrees, so hot paths that keep hitting a broken channel
+ * (pollers, retried sends) recompute at most once. Best-effort: a cache
+ * hiccup must never mask the caller's real error.
+ */
+export async function invalidateChannelsIfStale(
+  orgId: string,
+  channelId: string,
+  live: { enabled?: boolean; requiresReauth?: boolean }
+): Promise<void> {
+  try {
+    const channels = await getOrgCache().get(orgId, 'channels')
+    const cached = channels.find((c) => c.id === channelId)
+    if (!cached) return
+    const stale =
+      (live.enabled !== undefined && cached.enabled !== live.enabled) ||
+      (live.requiresReauth !== undefined && cached.requiresReauth !== live.requiresReauth)
+    if (stale) await onCacheEvent('channel.stale-state.detected', { orgId })
+  } catch {
+    // swallow — self-heal only
+  }
+}
+
 /** Flush everything for an org (e.g. org deletion) */
 export async function flushOrganization(orgId: string): Promise<void> {
   await getOrgCache().flush(orgId)

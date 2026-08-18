@@ -113,7 +113,7 @@ async function retroactivelyIgnoreThreads(
     ctx.organizationId,
     ctx.db,
     undefined,
-    undefined,
+    { kind: 'system', name: 'exclude-senders' },
     SYSTEM_VISIBILITY
   )
 

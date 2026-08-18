@@ -49,6 +49,56 @@ export function AttachmentDisplay({
   }
 
   const isImage = isPreviewableImage(attachment.mimeType)
+  const isAudio = attachment.mimeType?.toLowerCase().startsWith('audio/') ?? false
+
+  // Audio (voicemail / call recording) attachments get an inline player
+  // instead of the click-to-download chip — nesting <audio controls> inside
+  // the download <button> below would make play/seek clicks also trigger a
+  // download navigation, so this is a separate, non-button container. The
+  // player streams from the same `/download` route the button uses (a 302 to
+  // a presigned URL); the route's Content-Disposition only applies to direct
+  // navigation, not to a media element's fetch.
+  if (isAudio) {
+    return (
+      <div
+        className={cn(
+          'flex flex-col gap-2 rounded-xl border bg-gray-50/50 p-2 ps-3 dark:bg-muted',
+          className
+        )}>
+        <div className='flex min-w-0 items-center gap-3'>
+          <FileIcon
+            mimeType={attachment.mimeType || 'audio/mpeg'}
+            className='size-4 shrink-0 text-gray-500'
+          />
+          <div className='min-w-0 flex-1'>
+            <span className='block truncate text-sm font-medium' title={attachment.name}>
+              {attachment.name}
+            </span>
+            {attachment.size && (
+              <div className='text-xs text-gray-500'>{formatBytes(attachment.size ?? 0)}</div>
+            )}
+          </div>
+          {showRemoveButton && onRemove && (
+            <Button
+              variant='ghost'
+              size='icon-sm'
+              onClick={handleRemove}
+              title='Remove file'
+              className='rounded-full hover:bg-bad-200/50 hover:text-bad-500'>
+              <Trash2 />
+            </Button>
+          )}
+        </div>
+        <audio
+          controls
+          preload='none'
+          className='h-8 w-full min-w-0'
+          src={`/api/attachments/${attachment.id}/download`}>
+          <track kind='captions' />
+        </audio>
+      </div>
+    )
+  }
 
   return (
     <button
