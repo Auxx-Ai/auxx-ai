@@ -156,6 +156,42 @@ export interface CatalogBlock {
   /** Dispatch table: `${resource}.${operation}` → tool id. */
   toolMap: Record<string, string>
   refs: Array<{ path: string[]; kind: string }>
+  /**
+   * The block's declared `schema.outputs`. `{}` for every router-style block in
+   * practice — real outputs come **per operation** from the tool `toolMap`
+   * dispatches to (see `CachedBlockOp` in `@auxx/lib`). Present for
+   * completeness and for future non-router blocks.
+   *
+   * Optional — absent on catalogs published before this projection existed.
+   */
+  outputsJsonSchema?: Record<string, unknown>
+  /**
+   * `config.requiresConnection`.
+   *
+   * Optional, and `undefined` means **unknown**, NOT `false`: catalogs
+   * published before this projection carry nothing, and callers must fall back
+   * to the per-app approximation ("does this app have a ConnectionDefinition?")
+   * rather than concluding the block needs no connection.
+   */
+  requiresConnection?: boolean
+  /** `config.canRunSingle` (SDK default `true`). Optional — absent ⇒ true. */
+  canRunSingle?: boolean
+  /**
+   * Per-operation outputs, keyed by `${resource}.${operation}` — the block's own
+   * `schema.computeOutputs` evaluated once per `toolMap` key at publish time.
+   *
+   * This is the block's answer to "what do I emit for this selection", and it is
+   * the same answer the canvas renders, so agent and canvas agree by
+   * construction. Preferred over the dispatched tool's `outputsJsonSchema`,
+   * which describes the TOOL and is an open `z.record` on most published apps.
+   *
+   * An entry is `{}` when the block declares no `computeOutputs`, when it
+   * returns nothing for that selection, or when it threw during extraction —
+   * all three mean **unknown shape**, never "emits nothing".
+   *
+   * Optional — absent on catalogs published before this projection.
+   */
+  opOutputsJsonSchema?: Record<string, Record<string, unknown>>
 }
 
 /**

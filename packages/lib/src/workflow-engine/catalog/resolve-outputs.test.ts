@@ -8,9 +8,11 @@ import { BaseType } from '../core/types'
 // dies at collection (see `resource-trigger-base.test.ts`). Only the one read this
 // module makes is stubbed.
 const getCachedResources = vi.fn()
+const getCachedInstalledApps = vi.fn()
 vi.mock('../../cache', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../cache')>()),
   getCachedResources: (...args: unknown[]) => getCachedResources(...args),
+  getCachedInstalledApps: (...args: unknown[]) => getCachedInstalledApps(...args),
 }))
 
 // Partial mock: a synthetic `__throwing__` type whose resolver always crashes,
@@ -36,6 +38,8 @@ const { resolveGraphOutputs, resolveNodeOutputs } = await import('./resolve-outp
 const noResources = () => {
   getCachedResources.mockReset()
   getCachedResources.mockResolvedValue([])
+  getCachedInstalledApps.mockReset()
+  getCachedInstalledApps.mockResolvedValue([])
 }
 
 /** `var-assign` node data producing an ARRAY output — a deterministic, resource-free
@@ -282,5 +286,154 @@ describe('scheduled manifest config-less guards', () => {
     expect(
       extractScheduledTriggerVariables({ id: 's1', type: 'scheduled', title: 'Schedule' } as never)
     ).toEqual([])
+  })
+})
+
+describe('app-block nodes', () => {
+  const APP = 'z3prnwpd3rt31mp7f9yxo5m6'
+  const TYPE = `${APP}:fedex`
+  const NODE_ID = `${TYPE}-DmJuCD8M2cAE0Hqdua0Ns`
+
+  /** One installed app contributing one block with one declared operation. */
+  const installedFedex = () => [
+    {
+      app: { id: APP, slug: 'fedex' },
+      workflowBlocks: [
+        {
+          id: 'fedex',
+          label: 'FedEx',
+          iconKey: null,
+          inputsJsonSchema: {},
+          toolMap: { 'shipment.track': 'fedex_block_track' },
+          refs: [],
+          ops: [
+            {
+              key: 'shipment.track',
+              resource: 'shipment',
+              operation: 'track',
+              toolId: 'fedex_block_track',
+              inputsJsonSchema: {},
+              outputsJsonSchema: {
+                type: 'object',
+                properties: {
+                  trackingNumber: { type: 'string' },
+                  isDelivered: { type: 'boolean' },
+                },
+              },
+              requiresConnection: true,
+            },
+          ],
+        },
+      ],
+    },
+  ]
+
+  const fedexNode = (data: Record<string, unknown>) => ({
+    id: NODE_ID,
+    type: 'standard',
+    data: { id: NODE_ID, type: TYPE, title: 'FedEx', appId: APP, blockId: 'fedex', ...data },
+  })
+
+  it('resolves outputs from the catalog projection, not the core registry', async () => {
+    // The §1 regression: this returned [] for every app block, which let the
+    // agent write `{{FedEx.record.id}}` and have it pass ref-checking.
+    noResources()
+    getCachedInstalledApps.mockResolvedValue(installedFedex())
+    const graph = { nodes: [fedexNode({ resource: 'shipment', operation: 'track' })], edges: [] }
+
+    const result = await resolveGraphOutputs('org-1', { graph })
+
+    expect(
+      result
+        ._unsafeUnwrap()
+        .get(NODE_ID)
+        ?.map((v) => v.id)
+    ).toEqual([`${NODE_ID}.trackingNumber`, `${NODE_ID}.isDelivered`])
+  })
+
+  it('resolves the same node through the single-node entry point', async () => {
+    noResources()
+    getCachedInstalledApps.mockResolvedValue(installedFedex())
+    const graph = { nodes: [fedexNode({ resource: 'shipment', operation: 'track' })], edges: [] }
+
+    const result = await resolveNodeOutputs('org-1', { graph, nodeId: NODE_ID })
+
+    expect(result._unsafeUnwrap().map((v) => v.id)).toEqual([
+      `${NODE_ID}.trackingNumber`,
+      `${NODE_ID}.isDelivered`,
+    ])
+  })
+
+  it('feeds an app block’s outputs to a downstream node’s resolveVariable', async () => {
+    noResources()
+    getCachedInstalledApps.mockResolvedValue(installedFedex())
+    const graph = {
+      nodes: [
+        fedexNode({ resource: 'shipment', operation: 'track' }),
+        listFilterNode('n2', NODE_ID, 'trackingNumber'),
+      ],
+      edges: [{ id: 'e1', source: NODE_ID, target: 'n2' }],
+    }
+
+    const result = await resolveGraphOutputs('org-1', { graph })
+
+    // The point is that the upstream memo entry is non-empty and the walk
+    // completes — an app block is now a legitimate variable source.
+    expect((result._unsafeUnwrap().get(NODE_ID) ?? []).length).toBe(2)
+    expect(result.isOk()).toBe(true)
+  })
+
+  it('returns [] with no operation picked, and does not throw', async () => {
+    noResources()
+    getCachedInstalledApps.mockResolvedValue(installedFedex())
+    const graph = { nodes: [fedexNode({})], edges: [] }
+
+    const result = await resolveGraphOutputs('org-1', { graph })
+    expect(result._unsafeUnwrap().get(NODE_ID)).toEqual([])
+  })
+
+  it('returns [] for a node whose app is no longer installed', async () => {
+    // Orphan node from an uninstalled app — the provider filters uninstalled
+    // rows out, so the lookup misses and the node falls through to read-only.
+    noResources()
+    getCachedInstalledApps.mockResolvedValue([])
+    const graph = { nodes: [fedexNode({ resource: 'shipment', operation: 'track' })], edges: [] }
+
+    const result = await resolveGraphOutputs('org-1', { graph })
+    expect(result._unsafeUnwrap().get(NODE_ID)).toEqual([])
+  })
+
+  it('lets inferredSchema from a real run win', async () => {
+    noResources()
+    getCachedInstalledApps.mockResolvedValue(installedFedex())
+    const graph = {
+      nodes: [
+        fedexNode({
+          resource: 'shipment',
+          operation: 'track',
+          inferredSchema: { type: 'object', properties: { observedOnly: { type: 'string' } } },
+        }),
+      ],
+      edges: [],
+    }
+
+    const result = await resolveGraphOutputs('org-1', { graph })
+
+    expect(
+      result
+        ._unsafeUnwrap()
+        .get(NODE_ID)
+        ?.map((v) => v.id)
+    ).toContain(`${NODE_ID}.observedOnly`)
+  })
+
+  it('skips the installed-apps read entirely for a graph of core nodes', async () => {
+    // A colon-free graph must not pay for an org-cache read it cannot use.
+    noResources()
+    const graph = { nodes: [varAssignArrayNode('n1', 'items')], edges: [] }
+
+    await resolveGraphOutputs('org-1', { graph })
+
+    expect(getCachedInstalledApps).not.toHaveBeenCalled()
   })
 })
