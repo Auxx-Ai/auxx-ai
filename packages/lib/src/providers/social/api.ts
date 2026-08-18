@@ -248,6 +248,23 @@ export async function getPageIgAccount(
   return result.instagram_business_account ?? null
 }
 
+/**
+ * Webhook fields each channel subscribes its Page to.
+ *
+ * Exported so the provisioning hook, the provider's `setupWebhook`, and
+ * `recoverChannel`'s re-arm all use the SAME set. A silent re-arm that subscribes
+ * a narrower set is how a channel ends up "connected" but deaf to half its events.
+ *
+ * Both objects subscribe on the **Page** — `/{page-id}/subscribed_apps` — including
+ * Instagram, whose events are delivered for the IG account linked to that page.
+ *
+ * Comments/feed are deliberately absent: post comments are WS10, not yet ingested.
+ */
+export const SOCIAL_SUBSCRIBED_FIELDS = {
+  facebook: 'messages,messaging_postbacks,message_reads',
+  instagram: 'messages,messaging_postbacks',
+} as const
+
 /** `POST /{pageId}/subscribed_apps` — the social analogue of arming a Gmail watch. */
 export async function subscribePageToApp(
   pageId: string,
