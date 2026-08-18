@@ -41,7 +41,7 @@ ConnectionDefinition (blueprint)  ──<  Credential (one per org/user connecti
 ```
 
 A definition is owned by exactly one of four things; a credential belongs to one
-of four families. Those two axes are the whole model.
+of three families. Those two axes are the whole model.
 
 ---
 
@@ -73,7 +73,7 @@ so a duplicate app method could slip in).
 
 | Column | Purpose |
 |---|---|
-| `connectionType` | `'oauth2-code'` \| `'secret'` \| `'none'` — the auth mechanism (§3). |
+| `connectionType` | `'oauth2-code'` \| `'client-credentials'` \| `'secret'` \| `'hosted-provision'` \| `'none'` — the auth mechanism (§3). |
 | `key` | Method id within an app (`'oauth2'`, `'api_key'`). The addressable identity of one connection method (§5). NOT NULL for apps; null for mcp/platform. |
 | `global` | `true` = org-wide credential, `false` = per-user. A property of the method/provider. |
 | `major` | Version major — definitions are versioned. |
@@ -84,7 +84,7 @@ so a duplicate app method could slip in).
 
 ---
 
-## 3. The three connection types
+## 3. The five connection types
 
 `connectionType` decides the connect UX and what `Credential` stores.
 
@@ -95,6 +95,17 @@ clicks "Connect", is redirected, and the callback exchanges the code for an
 access + refresh token. Tokens are **lazily refreshed on use** (§7). For apps,
 routes are `apps/web/src/app/api/apps/[slug]/oauth2/{authorize,callback}/route.ts`.
 
+### `client-credentials`
+The server-minted machine-to-machine grant. Same minting columns as
+`oauth2-code` minus the browser-redirect half: no authorize redirect, no popup,
+no user. `mintClientCredentialToken` POSTs the `client_id`/`client_secret`
+(secret connection variables, resolved through the same
+`resolveOAuth2RefreshConfig` fallback as refresh) straight to the token
+endpoint, rotates the minted token onto `secrets.accessToken` and stamps
+`expiresAt`. **No refresh token is written** — expiry re-mints from the
+id/secret. Downstream it is an ordinary bearer connection: `authApply` treats it
+exactly like `oauth2-code`.
+
 ### `secret`
 No redirect — the user pastes value(s) that the platform encrypts.
 - **Single secret** (no `connectionVariables`): one input; the consumer reads `connection.value`.
@@ -102,6 +113,19 @@ No redirect — the user pastes value(s) that the platform encrypts.
 
 On **edit/reconnect** a stored secret is never sent back to the client — the form
 seeds a masked sentinel and only changed fields are persisted (§9).
+
+### `hosted-provision`
+Platform-built-in providers only. The platform calls the provider's API to
+create-or-find a resource, sends the user through the provider's **hosted**
+onboarding flow, and persists the returned identifier — no OAuth code exchange
+and no secret-field dialog. A `HostedProvisionHandler`
+(`packages/lib/src/connections/hosted-provision/types.ts`, resolved from the
+definition's `hostedProvisionKey` by a lazy `import()` in
+`hosted-provision/resolve.ts`) supplies `start()` — idempotent, because a
+mid-flow refresh re-enters it and must not create a second resource — and
+`complete()`, which returns the provider account id, plaintext connection
+variables, an optional secret bag, a display label, and a `ready` flag. Stripe
+Connect is the shipped example.
 
 ### `none`
 No credentials, no connect UI.
@@ -174,14 +198,18 @@ authed request from the connection alone.
 
 `packages/database/src/db/schema/credential.ts`
 
-One table behind four families, discriminated by `kind`:
+One table behind three families, discriminated by `kind`:
 
 | `kind` | `type` | Owner FK | Example |
 |---|---|---|---|
 | `app` | null | `appId` + `appInstallationId` | Acme's Stripe connection |
 | `mcp` | null | `mcpServerId` | An MCP server connection |
-| `integration` | provider (`'gmail'`) | — | A connected Gmail inbox |
-| `workflow` | type (`'telegram-bot'`, or a `providerKey`) | — | A workflow bot token |
+| `connection` | denormalized `providerKey` (`'gmail'`, `'telegram-bot'`, `'openaiApi'`) | — | A connected Gmail inbox; a workflow bot token |
+
+`connection` is the default (`kind` defaults to `'connection'`) and covers what
+used to be split across `integration` and `workflow` rows. `type` is a
+denormalization of the resolved `ConnectionDefinition.providerKey` and is NULL
+for the `app`/`mcp` kinds, where the owner FK identifies the target.
 
 Key columns:
 
@@ -336,7 +364,7 @@ mechanism, branch on `connection.type` (oauth2 vs secret). See
 | Definition schema | `packages/database/src/db/schema/connection-definition.ts` |
 | Credential schema | `packages/database/src/db/schema/credential.ts` |
 | Runtime resolver | `packages/lib/src/connections/resolve-connection-for-runtime.ts` |
-| Definition loader / refresh config | `packages/lib/src/connections/resolve-connection-definition.ts` |
+| Definition loader / refresh config | `packages/credentials/src/connections/resolve-connection-definition.ts` |
 | `authApply` helper | `packages/lib/src/connections/auth-apply.ts` |
 | Save (platform/unified) | `packages/lib/src/connections/save-connection.ts` |
 | Save (app) | `packages/lib/src/apps/connections/save-app-connection.ts` |
