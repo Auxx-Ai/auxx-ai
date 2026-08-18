@@ -40,6 +40,7 @@ import {
   useThreadReadStatus,
 } from '~/components/threads/hooks'
 import type { MessageMeta } from '~/components/threads/store'
+import { participantInitials } from '~/components/threads/utils/participant-label'
 import { api } from '~/trpc/react'
 import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
@@ -49,7 +50,6 @@ import { useRetrySend } from './hooks/use-retry-send'
 import { ParticipantList, type ParticipantListEntry } from './participant-display'
 import { SendStatusIndicator } from './send-status-indicator'
 import { supportsRichText } from './utils/channel-rich-text'
-import { initialsFor } from './utils/participant-initials'
 import { resolveInlineEmailHtml } from './utils/resolve-inline-email-html'
 import { SandboxedEmailHtml } from './utils/sandboxed-email-html'
 import { toEditorMessage } from './utils/to-editor-message'
@@ -223,7 +223,7 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
   }
 
   const isMe = !message.isInbound
-  const senderInitials = initialsFor(from)
+  const senderInitials = participantInitials(from)
 
   // Outbound messages carry a blue frame; a send that never landed swaps it for
   // a red one so the failure reads from the card, not just the status icon.

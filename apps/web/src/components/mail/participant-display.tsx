@@ -19,6 +19,7 @@ import { useQueryState } from 'nuqs'
 import React from 'react'
 import { useParticipant, useThreadMutation } from '~/components/threads/hooks'
 import type { ParticipantMeta } from '~/components/threads/store'
+import { participantLabel } from '~/components/threads/utils/participant-label'
 import { api } from '~/trpc/react'
 
 /** Role types for message participants */
@@ -87,9 +88,9 @@ export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
     return null
   }
 
-  const { id, identifier, identifierType, name, displayName, entityInstanceId, isInternal } =
-    participant
-  const displayLabel = displayName || identifier
+  const { id, identifier, identifierType, name, entityInstanceId, isInternal } = participant
+  // Label only — the details span below keeps showing the raw identifier.
+  const displayLabel = participantLabel(participant)
 
   const senderDomain =
     identifierType === 'EMAIL' ? (identifier.split('@')[1] ?? undefined) : undefined

@@ -165,6 +165,36 @@ describe('resolveThreadTitle', () => {
     ).toBe('Ada Lovelace')
   })
 
+  it('lets a linked CRM contact name win over the header-derived one', () => {
+    expect(
+      resolveThreadTitle({
+        subject: '',
+        integrationProvider: 'openphone',
+        participant: phoneParticipant({
+          name: 'BS',
+          displayName: 'BS',
+          contactName: 'Bruno Klooth',
+        }),
+      })
+    ).toBe('Bruno Klooth')
+  })
+
+  it('ignores contactName on internal participants', () => {
+    // A stray auto-created contact must not retitle a thread after a teammate.
+    expect(
+      resolveThreadTitle({
+        subject: '',
+        integrationProvider: 'openphone',
+        participant: phoneParticipant({
+          name: 'Support Line',
+          displayName: 'Support Line',
+          contactName: 'Wrong Contact',
+          isInternal: true,
+        }),
+      })
+    ).toBe('Support Line')
+  })
+
   it('falls back to a formatted phone number when there is no name', () => {
     expect(
       resolveThreadTitle({

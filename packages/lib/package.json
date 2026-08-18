@@ -904,6 +904,12 @@
       "import": "./dist/participants/channel-identifier-fields.mjs",
       "default": "./src/participants/channel-identifier-fields.ts"
     },
+    "./participants/client": {
+      "types": "./src/participants/client.ts",
+      "source": "./src/participants/client.ts",
+      "import": "./dist/participants/client.mjs",
+      "default": "./src/participants/client.ts"
+    },
     "./participants/search": {
       "types": "./src/participants/search/index.ts",
       "source": "./src/participants/search/index.ts",

@@ -35,6 +35,7 @@ import {
   type RecipientModel,
 } from '../channel-identifier-fields'
 import {
+  participantDisplayLabel,
   participantSearchBinding,
   participantSearchPredicate,
   participantSearchRank,
@@ -349,16 +350,23 @@ async function participantArm(
   const predicate = participantSearchPredicate(input.query, p, input.phonePatterns)
   const lens = lensExists(sql`c."id"`, params.threadVisibility)
 
+  // The linked contact joins for the LABEL only (`participantDisplayLabel`) —
+  // predicate and rank stay on the stored participant columns, so match/rank
+  // behavior and the trigram index plan are untouched.
   const result = await db.execute(sql`
     WITH candidates AS (
       SELECT p."id",
              p."identifier",
              p."identifierType",
-             p."displayName",
+             ${participantDisplayLabel(p, 'ct')} AS "displayName",
              p."entityInstanceId",
              p."lastSentMessageAt",
              ${rank} AS score
       FROM ${schema.Participant} p
+      LEFT JOIN ${schema.EntityInstance} ct
+        ON ct."id" = p."entityInstanceId"
+        AND ct."organizationId" = ${params.organizationId}
+        AND ct."archivedAt" IS NULL
       WHERE p."organizationId" = ${params.organizationId}
         AND NOT p."isSpammer"
         AND p."identifierType" IN ${inList(input.identifierTypes)}
@@ -402,16 +410,23 @@ async function recentlyMailedArm(
   input: { identifierTypes: readonly IdentifierType[]; limit: number }
 ): Promise<ParticipantArmResult> {
   const lens = lensExists(sql`p."id"`, params.threadVisibility)
+  const p = participantSearchBinding('p')
 
+  // Same label-only contact join as `participantArm` — the empty-query list
+  // feeds the same picker, so its rows must carry the same name.
   const result = await db.execute(sql`
     SELECT p."id",
            p."identifier",
            p."identifierType",
-           p."displayName",
+           ${participantDisplayLabel(p, 'ct')} AS "displayName",
            p."entityInstanceId",
            p."lastSentMessageAt",
            0::float8 AS score
     FROM ${schema.Participant} p
+    LEFT JOIN ${schema.EntityInstance} ct
+      ON ct."id" = p."entityInstanceId"
+      AND ct."organizationId" = ${params.organizationId}
+      AND ct."archivedAt" IS NULL
     WHERE p."organizationId" = ${params.organizationId}
       AND NOT p."isSpammer"
       AND p."identifierType" IN ${inList(input.identifierTypes)}

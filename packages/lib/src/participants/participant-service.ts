@@ -3,12 +3,12 @@
 import { type Database, database, schema } from '@auxx/database'
 import type { IdentifierType, ParticipantEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { identifierTypeForProvider } from '../channels/capabilities'
 import { getIdentifier } from '../channels/internal/identifier'
 import { generateVisitorName } from '../chat/visitor-naming'
 import { classifyIsInternal } from './classify-internal'
-import type { ParticipantIdentifierType, ParticipantMeta } from './client'
+import { type ParticipantIdentifierType, type ParticipantMeta, usableContactName } from './client'
 
 const logger = createScopedLogger('participant-service')
 
@@ -357,6 +357,30 @@ export class ParticipantService {
       },
     })
 
+    // Read-time contact projection: resolve linked contacts in one batch so a
+    // renamed contact surfaces on mail without any write-through into
+    // `Participant.name`. Archived contacts are skipped, so their participants
+    // fall back to the header/identifier label (design decision 6).
+    const contactIds = [
+      ...new Set(
+        participants
+          .map((p) => p.entityInstanceId)
+          .filter((id): id is string => typeof id === 'string')
+      ),
+    ]
+    const contacts =
+      contactIds.length > 0
+        ? await this.db.query.EntityInstance.findMany({
+            where: and(
+              inArray(schema.EntityInstance.id, contactIds),
+              eq(schema.EntityInstance.organizationId, this.organizationId),
+              isNull(schema.EntityInstance.archivedAt)
+            ),
+            columns: { id: true, displayName: true, avatarUrl: true },
+          })
+        : []
+    const contactById = new Map(contacts.map((c) => [c.id, c]))
+
     const participantMap = new Map(
       participants.map((p) => {
         // Trust the recomputed values over whatever's persisted: legacy
@@ -367,6 +391,7 @@ export class ParticipantService {
           p.identifier,
           p.identifierType
         )
+        const contact = p.entityInstanceId ? contactById.get(p.entityInstanceId) : undefined
 
         const meta: ParticipantMeta = {
           id: p.id,
@@ -375,8 +400,9 @@ export class ParticipantService {
           identifierType: p.identifierType as ParticipantIdentifierType,
           displayName,
           initials: p.initials || initials,
-          avatarUrl: null,
+          avatarUrl: contact?.avatarUrl ?? null,
           entityInstanceId: p.entityInstanceId,
+          contactName: usableContactName(contact?.displayName, p.identifier),
           isSpammer: p.isSpammer ?? false,
           isInternal: p.isInternal ?? false,
         }

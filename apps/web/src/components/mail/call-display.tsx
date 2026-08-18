@@ -9,11 +9,11 @@ import { Phone, PhoneMissed, PhoneOutgoing, Voicemail } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { useMessage, useMessageParticipants } from '~/components/threads/hooks'
 import type { AttachmentMeta } from '~/components/threads/store'
+import { participantInitials, participantLabel } from '~/components/threads/utils/participant-label'
 import { ContactHoverCard } from '../contacts/contact-hover-card'
 import { AttachmentDisplay } from '../files/utils/attachment-display'
 import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
-import { initialsFor } from './utils/participant-initials'
 
 interface CallDisplayProps {
   /** Message ID to display */
@@ -57,8 +57,8 @@ const CallDisplay = ({ messageId }: CallDisplayProps) => {
           : { Icon: Phone, title: 'Call' }
 
   const isInbound = message.isInbound
-  const senderName = sender?.displayName ?? 'Unknown'
-  const senderInitials = initialsFor(sender)
+  const senderName = sender ? participantLabel(sender) : 'Unknown'
+  const senderInitials = participantInitials(sender)
   const contactId = sender?.entityInstanceId
   const nonInlineAttachments = (message.attachments ?? []).filter((a) => !a.inline)
   const duration =

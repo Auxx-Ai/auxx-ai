@@ -7,11 +7,14 @@ import type { ParticipantMeta } from '../store'
 /**
  * The slice of a participant a thread title needs. Deliberately a `Pick` so any
  * surface holding a full {@link ParticipantMeta} can pass it straight through.
+ * `contactName`/`isInternal` are optional so narrower legacy slices still fit;
+ * when present, a linked contact's name tops the derived-title chain.
  */
 export type ThreadTitleParticipant = Pick<
   ParticipantMeta,
   'name' | 'identifier' | 'identifierType' | 'displayName'
->
+> &
+  Partial<Pick<ParticipantMeta, 'contactName' | 'isInternal'>>
 
 /**
  * Whether a channel's threads carry a real subject line.
@@ -123,6 +126,12 @@ export function resolveThreadTitle({
   if (trimmedSubject) return trimmedSubject
 
   if (channelCarriesSubject(integrationProvider)) return null
+
+  // A linked contact's name wins over the header-derived one — same precedence
+  // as `participantLabel`, guarded on `isInternal` so a stray auto-created
+  // contact can't retitle a thread after a teammate.
+  const contactName = participant?.isInternal ? null : participant?.contactName?.trim()
+  if (contactName) return contactName
 
   const name = participant?.name?.trim()
   if (name) return name
