@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/utils/workflow-initializer.ts
 
+import type { TargetBranch } from '@auxx/lib/workflow-engine/client'
 import { getConnectedEdges } from '@xyflow/react'
 import type { CrudNodeData } from '../nodes/core/crud/types'
 import type { HttpNodeData } from '../nodes/core/http/types'
@@ -13,18 +14,25 @@ import { branchNameCorrect } from './branch-name-correct'
 import { calculateZIndex } from './edge-utils'
 
 /**
- * Calculate target branches based on node type and current data
+ * Calculate target branches based on node type and current data.
+ *
+ * Derived state — `_targetBranches` is stripped on every save and rebuilt
+ * here on load. The authoritative derivation is each manifest's
+ * `connection.branches(config)`; these arms mirror it and should collapse
+ * into it (see `catalog/derived-keys.ts`).
  */
-export const calculateTargetBranches = (
-  nodeData: FlowNode['data']
-): Array<{ id: string; name: string; type?: string }> | undefined => {
+export const calculateTargetBranches = (nodeData: FlowNode['data']): TargetBranch[] | undefined => {
   switch (nodeData.type) {
     case NodeType.IF_ELSE: {
       const ifElseData = nodeData as IfElseNodeData
       // Build branches from cases + ELSE branch
-      const branches = [
-        ...(ifElseData.cases || []).map((c) => ({ id: c.case_id, name: '' })),
-        { id: 'false', name: '' },
+      const branches: TargetBranch[] = [
+        ...(ifElseData.cases || []).map((c) => ({
+          id: c.case_id,
+          name: '',
+          type: 'default' as const,
+        })),
+        { id: 'false', name: '', type: 'default' as const },
       ]
       // Apply proper naming (IF/ELSE for 2 branches, CASE 1/2/ELSE for multiple)
       return branchNameCorrect(branches)
@@ -41,7 +49,7 @@ export const calculateTargetBranches = (
           ...classifierData.categories.map((cat) => ({
             id: cat.id,
             name: cat.name,
-            type: 'default',
+            type: 'default' as const,
           })),
           { id: 'unmatched', name: 'Unmatched', type: 'default' },
         ]
@@ -51,7 +59,7 @@ export const calculateTargetBranches = (
 
     case NodeType.HTTP: {
       const httpData = nodeData as HttpNodeData
-      const branches = [{ id: 'source', name: '', type: 'default' }]
+      const branches: TargetBranch[] = [{ id: 'source', name: '', type: 'default' }]
       // Add fail branch if error strategy is set to fail
       if (httpData.error_strategy === ErrorStrategy.fail) {
         branches.push({ id: 'fail', name: 'Fail', type: 'fail' })
@@ -61,7 +69,7 @@ export const calculateTargetBranches = (
 
     case NodeType.CRUD: {
       const crudData = nodeData as CrudNodeData
-      const branches = [{ id: 'source', name: '', type: 'default' }]
+      const branches: TargetBranch[] = [{ id: 'source', name: '', type: 'default' }]
 
       // Add fail branch if error strategy is set to fail
       if (`${crudData.error_strategy}` === 'fail') {

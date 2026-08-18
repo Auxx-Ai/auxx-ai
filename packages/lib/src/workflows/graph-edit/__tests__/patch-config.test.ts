@@ -17,11 +17,12 @@ describe('applyConfigPatches', () => {
     ])
 
     expect(result.isOk()).toBe(true)
-    expect(result._unsafeUnwrap()).toEqual({
+    expect(result._unsafeUnwrap().config).toEqual({
       model: { completion_params: { temperature: 0.2, max_tokens: 500 } },
       schema: { properties: { 'order.total': { type: 'number' } } },
       cases: [{ id: 'case-1', logical_operator: 'or' }],
     })
+    expect(result._unsafeUnwrap().ignoredPaths).toEqual([])
     expect(original.model.completion_params.temperature).toBe(0.7)
   })
 
@@ -31,7 +32,7 @@ describe('applyConfigPatches', () => {
       { op: 'unset', path: ['authorization', 'token'] },
     ])
 
-    expect(result._unsafeUnwrap()).toEqual({ authorization: { type: 'bearer' } })
+    expect(result._unsafeUnwrap().config).toEqual({ authorization: { type: 'bearer' } })
   })
 
   it.each([
@@ -39,13 +40,37 @@ describe('applyConfigPatches', () => {
     [{ op: 'set', path: ['items', 1], value: 'b' }],
     [{ op: 'unset', path: ['items', 0] }],
     [{ op: 'set', path: ['__proto__', 'polluted'], value: true }],
-    [{ op: 'set', path: ['_targetBranches'], value: [] }],
     [{ op: 'set', path: ['id'], value: 'evil' }],
   ])('rejects unsafe or ambiguous path operations: %j', (patch) => {
     const result = applyConfigPatches({ items: ['a'] }, [patch] as Parameters<
       typeof applyConfigPatches
     >[1])
     expect(result.isErr()).toBe(true)
+  })
+
+  it('IGNORES a derived-key patch and still applies the real ones', () => {
+    // A `_`-rooted path is canvas state no save persists and no caller can
+    // change. Rejecting the whole call threw away the sibling patches that
+    // carried the actual fix, and left the model retrying an edit that could
+    // never land.
+    const result = applyConfigPatches({ url: '', items: ['a'] }, [
+      { op: 'set', path: ['_targetBranches'], value: [] },
+      { op: 'set', path: ['url'], value: 'https://example.com' },
+    ])
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().config).toEqual({ url: 'https://example.com', items: ['a'] })
+    expect(result._unsafeUnwrap().ignoredPaths).toEqual(['["_targetBranches"]'])
+  })
+
+  it('errors when EVERY patch is a derived key — there is nothing to apply', () => {
+    const result = applyConfigPatches({ url: '' }, [
+      { op: 'set', path: ['_targetBranches'], value: [] },
+    ])
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('derived state')
+    expect(result._unsafeUnwrapErr().message).toContain('connect_nodes')
   })
 
   it('does not mutate the input when a later patch fails', () => {

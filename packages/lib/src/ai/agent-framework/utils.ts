@@ -1,6 +1,7 @@
 // packages/lib/src/ai/agent-framework/utils.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import { stableStringify } from '@auxx/utils/json'
 import type { Message, ToolCall } from '../clients/base/types'
 import type { ToolContext } from './tool-context'
 import type {
@@ -510,3 +511,47 @@ function findLastFinalAssistantIdx(messages: SessionMessage[]): number {
 // re-exported so existing `import { stableStringify } from './utils'` call sites
 // keep working.
 export { stableStringify } from '@auxx/utils/json'
+
+/**
+ * Per-turn dedupe cache for read-only tool results.
+ *
+ * INVARIANT: a cached read is only valid while nothing in the turn has
+ * written. Any dispatch of a NON-idempotent tool — success or failure, since a
+ * failed write may still have partially landed — drops the whole cache, so a
+ * read that follows a write always re-executes.
+ *
+ * Without that rule the cache is a correctness bug, not an optimization: for a
+ * tool whose args are `{}` the key is constant for the entire turn, so the
+ * FIRST answer is replayed forever. An agent that fixes a workflow and re-reads
+ * it to confirm gets served the pre-fix graph, concludes nothing landed, and
+ * fixes it again — which is exactly how one real turn burned all 30 iterations
+ * and never produced a reply. Seven capabilities carried the same shape
+ * (workflow-builder, kb, entities, agents-builder, mail, record-views, tasks);
+ * `get_eval_run` is the sharpest case, a poll that could never observe its run
+ * finish.
+ *
+ * Scoping invalidation per resource would need every tool annotated and would
+ * fail OPEN on the ones nobody annotated. Dropping everything costs one
+ * redundant read and cannot be wrong.
+ */
+export class IdempotentToolCache {
+  private readonly entries = new Map<string, ToolExecResult>()
+
+  /** Cache key for a call, or null when the tool is not cacheable (i.e. writes). */
+  keyFor(tool: AgentToolDefinition, args: Record<string, unknown>): string | null {
+    return tool.idempotent ? `${tool.name}::${stableStringify(args)}` : null
+  }
+
+  get(key: string): ToolExecResult | undefined {
+    return this.entries.get(key)
+  }
+
+  set(key: string, result: ToolExecResult): void {
+    this.entries.set(key, result)
+  }
+
+  /** Called immediately BEFORE a non-idempotent tool executes. */
+  invalidateAll(): void {
+    this.entries.clear()
+  }
+}

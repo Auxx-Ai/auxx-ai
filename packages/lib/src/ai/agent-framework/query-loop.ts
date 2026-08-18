@@ -24,6 +24,7 @@ import type {
 } from './types'
 import {
   buildToolDigest,
+  IdempotentToolCache,
   needsApproval,
   parseToolArgs,
   previewArgs,
@@ -140,8 +141,8 @@ export async function* agentQueryLoop(
   // successful calls to them (see `AgentToolDefinition.endsTurn`).
   const endsTurnToolNames = new Set(agent.tools.filter((t) => t.endsTurn).map((t) => t.name))
 
-  /** Per-turn cache of idempotent tool results. */
-  const idempotentCache = new Map<string, ToolExecResult>()
+  /** Per-turn cache of idempotent tool results; dropped whole on any write. */
+  const idempotentCache = new IdempotentToolCache()
 
   // Open a single assistant message for this entire agent run — or reuse
   // the paused message's id when resuming, so the frontend appends parts to
@@ -1274,7 +1275,7 @@ async function* executeToolCalls(
   agentName: string,
   messageId: string,
   ctx: ToolContext,
-  idempotentCache: Map<string, ToolExecResult>,
+  idempotentCache: IdempotentToolCache,
   transformInput?: (toolName: string, args: Record<string, unknown>) => Record<string, unknown>,
   applyToolRestrictions?: AgentEngineConfig['applyToolRestrictions']
 ): AsyncGenerator<AgentEvent, ToolExecResult[]> {
@@ -1390,10 +1391,27 @@ async function* executeToolCalls(
       ;(parts[partIndex] as ToolCallPart).args = args
     }
 
-    const cacheKey = tool.idempotent ? `${toolName}::${stableStringify(args)}` : null
+    const cacheKey = idempotentCache.keyFor(tool, args)
+    if (!cacheKey) {
+      // Not cacheable ⇒ this call writes. Every cached read is now suspect,
+      // including one queued LATER IN THIS SAME BATCH: executeToolCalls is a
+      // sequential await loop, so batch order is execution order, and
+      // `[update_node, …, validate_workflow]` is the exact shape that broke.
+      idempotentCache.invalidateAll()
+    }
     if (cacheKey) {
       const cached = idempotentCache.get(cacheKey)
       if (cached) {
+        // A cache hit produced NO log line at all before this, which is why the
+        // replay bug took a forensic pass to find: the hit branch `continue`s
+        // above the 'Tool result' line every real execution passes through.
+        logger.debug('Tool result (cached)', {
+          turnId: ctx.turnId,
+          toolCallId: toolCall.id,
+          agent: agentName,
+          tool: toolName,
+          cacheKey,
+        })
         yield {
           type: 'tool-call-completed',
           messageId,

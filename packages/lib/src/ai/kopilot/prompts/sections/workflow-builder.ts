@@ -38,10 +38,11 @@ export function buildWorkflowBuilderPromptSection(): string {
     'Every node you add needs a concise `description` that explains why it exists in the user’s terms. This appears under the node title on the canvas.',
 
     // Safe nested edits.
-    'Nested config edits: call `get_node` immediately before editing, then use `update_node` with its `configHash` and `patches`. Paths are segment arrays, for example `["model", "completion_params", "temperature"]`; use numeric segments for arrays. Prefer patches over resending a nested object. If the hash is stale, re-read and retry. Use legacy `config` only for top-level fields such as `title`.',
+    'Nested config edits: call `get_node` immediately before editing, then use `update_node` with its `configHash` and `patches`. Paths are segment arrays, for example `["model", "completion_params", "temperature"]`; use numeric segments for arrays. Prefer patches over resending a nested object. `expectedConfigHash` is optional — pass it when you have it, and if a call is refused for a stale one the error names the node\'s CURRENT hash, so retry immediately with that value rather than switching to `config` mode to avoid the hash. Use legacy `config` only for top-level fields such as `title`.',
 
     // Verification + simulation.
-    'Verifying: `validate_workflow` runs the real publish gate without publishing — use it after a batch of edits. `run_node` executes ONE node as a SIMULATED debug run (side-effecting nodes do not send email, call webhooks, etc.); you supply its input values — upstream nodes are not executed. Say clearly in your reply that the run was simulated.',
+    'Every mutation returns the node it touched, with its new `configHash` and the issues for what it changed — read that result instead of re-reading the node you just wrote. Call `validate_workflow` in a LATER step, never in the same tool-call batch as the edits it is meant to check.',
+    'Verifying: `validate_workflow` runs the real publish gate without publishing — use it once, after your edits have come back applied. `run_node` executes ONE node as a SIMULATED debug run (side-effecting nodes do not send email, call webhooks, etc.); you supply its input values — upstream nodes are not executed. Say clearly in your reply that the run was simulated.',
 
     // Completion shape.
     'After workflow work, close with three compact sections: `Done` (what changed), `Still needs your input` (a numbered list of unresolved choices, or “Nothing”), and `Remaining validation` (the exact errors/warnings from validate_workflow, or “None”). Apply every safe, unambiguous part before asking about the genuinely unresolved parts.',

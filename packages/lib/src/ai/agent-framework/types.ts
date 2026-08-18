@@ -258,10 +258,18 @@ export interface AgentToolDefinition {
    */
   requiresApproval?: boolean | ((args: Record<string, unknown>) => boolean)
   /**
-   * Marks this tool as a read-only / side-effect-free operation. When true, the
-   * agent query loop caches the first call's result for the duration of the turn
-   * and reuses it on any subsequent call with identical args — avoiding redundant
-   * DB/API roundtrips when the LLM retries the same lookup.
+   * Marks this tool as read-only / side-effect-free. When true, the query loop
+   * caches the first call's result and replays it for identical args **until
+   * any non-idempotent tool runs in the same turn**, which drops the whole
+   * cache (see `IdempotentToolCache`).
+   *
+   * Declare it only when BOTH hold:
+   *  - the tool writes nothing, AND
+   *  - its answer can only be changed by a non-idempotent tool call.
+   *
+   * A tool that WRITES must leave this unset — that is what makes the
+   * invalidation above correct for every reader in the turn. Enforced by
+   * `kopilot/capabilities/__tests__/tool-permission-declarations.test.ts`.
    */
   idempotent?: boolean
   /**

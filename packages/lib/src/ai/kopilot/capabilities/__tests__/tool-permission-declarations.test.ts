@@ -84,6 +84,49 @@ import { createWorkflowBuilderCapabilities } from '../workflow-builder'
 
 const ORG = 'org-1'
 
+/**
+ * Tools declaring `idempotent: true` — every one read-only, and every one
+ * whose answer can only change when a non-idempotent tool runs in the same
+ * turn. That second clause is what the flag actually promises; see the test
+ * at the bottom of this file for why it matters.
+ */
+const IDEMPOTENT_READ_TOOLS = [
+  'describe_node_type',
+  'find_threads',
+  'find_workflow_templates',
+  'get_article',
+  'get_article_section',
+  'get_entity',
+  'get_entity_history',
+  'get_eval_case',
+  'get_eval_run',
+  'get_node',
+  'get_suite_diff',
+  'get_thread_detail',
+  'get_transcript',
+  'get_workflow',
+  'list_articles',
+  'list_drafts',
+  'list_entities',
+  'list_entity_fields',
+  'list_eval_cases',
+  'list_field_changes',
+  'list_groups',
+  'list_members',
+  'list_node_types',
+  'list_notes',
+  'list_table_views',
+  'list_tags',
+  'list_tasks',
+  'list_transcripts_for_entity',
+  'query_records',
+  'resolve_block_by_heading',
+  'search_docs',
+  'search_entities',
+  'search_knowledge',
+  'validate_workflow',
+] as const
+
 // Tool factories capture `getDeps` for execute-time use only; construction never
 // calls it — except the builder factory, which reads `sessionContext` to resolve
 // the agent under edit.
@@ -269,6 +312,37 @@ describe('agent tool permission declarations — registry enumeration', () => {
       .filter((t) => t.permission?.target === 'bridge')
       .map((t) => t.name)
     expect(bridges).toEqual([])
+  })
+
+  /**
+   * The `idempotent` flag is a CORRECTNESS declaration, not a hint: the query
+   * loop replays a cached answer for identical args until a non-idempotent
+   * tool runs, at which point the whole cache is dropped. A WRITE tool that
+   * declared it would suppress that invalidation for every reader in the turn
+   * — the failure mode that let an agent re-read a workflow it had just
+   * edited, be served the pre-edit graph, and re-fix it until the iteration
+   * cap. See `agent-framework/utils.ts` IdempotentToolCache.
+   *
+   * Pinned exactly, both ways, like the two curated sets above — a NEW tool
+   * that sets the flag fails until someone adds it here, which is the moment
+   * to check it is genuinely read-only. `permission.level` cannot be the
+   * discriminator: the eval reads are `admin` because the agents area has a
+   * single rung, not because they write.
+   */
+  it('the idempotent set is EXACTLY the curated read-only list', async () => {
+    const declared = (await collectNativeTools())
+      .filter((tool) => tool.idempotent === true)
+      .map((tool) => tool.name)
+      .sort()
+    expect(declared).toEqual([...IDEMPOTENT_READ_TOOLS].sort())
+  })
+
+  it('no approval-gated tool declares itself idempotent', async () => {
+    // Approval means the call does something worth confirming — i.e. it writes.
+    const offenders = (await collectNativeTools())
+      .filter((tool) => tool.idempotent === true && tool.requiresApproval !== undefined)
+      .map((tool) => tool.name)
+    expect(offenders).toEqual([])
   })
 
   it('every tool reachable through a real registry declares a permission', async () => {

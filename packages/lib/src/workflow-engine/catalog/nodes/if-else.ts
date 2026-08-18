@@ -4,7 +4,7 @@ import { generateId } from '@auxx/utils/generateId'
 import { z } from 'zod'
 import { ALL_OPERATOR_KEYS, type Operator } from '../../../conditions/client'
 import { BaseType } from '../../core/types'
-import type { BaseNodeData, TargetBranch } from '../node-base'
+import type { BaseNodeData } from '../node-base'
 import {
   type NodeBranch,
   NodeCategory,
@@ -58,7 +58,6 @@ export interface NodeCase {
  */
 export interface IfElseNodeData extends BaseNodeData {
   cases: NodeCase[]
-  _targetBranches?: TargetBranch[]
 }
 
 /**
@@ -97,15 +96,7 @@ export const ifElseNodeDataSchema = z.object({
   title: z.string().min(1),
   desc: z.string().optional(),
   cases: z.array(caseSchema).min(1),
-  _targetBranches: z
-    .array(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-        type: z.enum(['default', 'fail']).default('default'),
-      })
-    )
-    .optional(),
+  // `_targetBranches` is DERIVED state — see catalog/derived-keys.ts.
 
   // Other node data properties
   isValid: z.boolean().optional(),

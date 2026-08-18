@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
-import { type BaseNodeData, baseNodeDataSchema, type TargetBranch } from '../node-base'
+import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
 import {
   type NodeBranch,
   NodeCategory,
@@ -81,7 +81,6 @@ export interface HumanConfirmationNodeData extends BaseNodeData {
 
   // Branch configuration
   /** Target branches for human confirmation outcomes */
-  _targetBranches?: TargetBranch[]
 }
 
 /**

@@ -21,6 +21,7 @@ import { incrementTitle, nextKeyAfter } from '@auxx/utils'
 import { generateId } from '@auxx/utils/generateId'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError, ConflictError, NotFoundError } from '../../errors'
+import { isDerivedKey, stripDerivedKeys } from '../../workflow-engine/catalog/derived-keys'
 import { LOOP_HANDLES } from '../../workflow-engine/catalog/nodes/loop'
 import { getAuthorableManifests, getManifest } from '../../workflow-engine/catalog/registry'
 import { resolveGraphOutputs } from '../../workflow-engine/catalog/resolve-outputs'
@@ -154,6 +155,19 @@ async function runGraphMutation(
   if (resolved.isOk()) {
     outputsMap = resolved.value
     issues.push(...checkVariableRefsAgainstOutputs({ graph, outputs: outputsMap }).issues)
+  }
+
+  // Mark what this edit did NOT cause. A mutation reports the whole draft's
+  // issues, so an untouched node's long-standing warning is indistinguishable
+  // from damage the current call just did — and a caller that cannot tell them
+  // apart keeps "fixing" things it never broke.
+  const touchedRefs = new Set(
+    [...(plan.newNodeIds ?? []), ...(plan.touchedNodeId ? [plan.touchedNodeId] : [])].map((id) =>
+      formatNodeRef(graph.nodes, id)
+    )
+  )
+  for (const issue of issues) {
+    if (issue.nodeRef && !touchedRefs.has(issue.nodeRef)) issue.preExisting = true
   }
 
   // Pre-turn snapshot — captured only now that the write is certain to be
@@ -687,27 +701,34 @@ interface UpdateNodeBaseInput extends GraphMutationScope {
   ref: string
 }
 
-/** Input for {@link updateNode}: a legacy shallow merge or guarded deep patches. */
-export type UpdateNodeInput = UpdateNodeBaseInput &
-  (
-    | {
-        /** Friendly config, shallow-merged over the node's current data. */
-        config: Record<string, unknown>
-        patches?: never
-        expectedConfigHash?: never
-      }
-    | {
-        /** Atomic edits against the complete friendly config returned by `get_node`. */
-        patches: ConfigPatch[]
-        /** `configHash` from the same `get_node` result used to choose the patch paths. */
-        expectedConfigHash: string
-        config?: never
-      }
-  )
+/** Input for {@link updateNode}: a legacy shallow merge or deep patches. */
+export type UpdateNodeInput = UpdateNodeBaseInput & {
+  /** Friendly config, shallow-merged over the node's current data. */
+  config?: Record<string, unknown>
+  /** Atomic edits against the complete friendly config returned by `get_node`. */
+  patches?: ConfigPatch[]
+  /**
+   * OPTIONAL optimistic-concurrency token — the `configHash` from the
+   * `get_node`/mutation result the caller chose its edit against. Honoured
+   * with BOTH modes.
+   *
+   * It is not required, and that is deliberate. The write is already guarded
+   * at the graph level: `runGraphMutation` reloads the draft inside the
+   * mutation and `persistDraft` CASes on `expectedGraphHash`, so a concurrent
+   * save can never be silently overwritten with or without this token. What
+   * the node hash adds is narrower — it catches "the patch paths were chosen
+   * against a shape that has since changed". Worth checking when offered;
+   * not worth failing an otherwise-correct edit over, which is what a hard
+   * requirement did: a caller that lost the hash could not make ANY progress
+   * and fell back to the shallow `config` mode to escape it.
+   */
+  expectedConfigHash?: string
+}
 
 /**
- * Update one node using either the legacy top-level merge or atomic, stale-safe
- * deep patches. `id`, `type`, and derived keys cannot be patched.
+ * Update one node using either the legacy top-level merge or atomic deep
+ * patches. `id` and `type` cannot be written; derived keys are ignored with a
+ * reported issue rather than rejected (see `applyConfigPatches`).
  */
 export async function updateNode(
   db: Database,
@@ -721,29 +742,52 @@ export async function updateNode(
     const manifestResult = requireAuthorableManifest(type)
     if (manifestResult.isErr()) return err(manifestResult.error)
 
+    const hasPatches = params.patches !== undefined
+    const hasConfig = params.config !== undefined
+    if (hasPatches === hasConfig) {
+      return err(new BadRequestError('Pass exactly one of config or patches.'))
+    }
+
+    // One optimistic-concurrency check for both modes. Absent ⇒ no check; the
+    // graph-level CAS in `persistDraft` still guards the write. Present and
+    // stale ⇒ conflict, and the message carries the CURRENT hash so the next
+    // call can succeed without another read.
+    const actualConfigHash = hashNodeConfig((node.data ?? {}) as Record<string, unknown>)
+    if (params.expectedConfigHash && params.expectedConfigHash !== actualConfigHash) {
+      return err(
+        new ConflictError(
+          'This node changed after it was read. Nothing was overwritten. Its current ' +
+            `configHash is "${actualConfigHash}" — re-read it with get_node, confirm your ` +
+            'edit still applies, and retry with that hash.'
+        )
+      )
+    }
+
     let nextData: Record<string, unknown>
     let normalized: Awaited<ReturnType<typeof normalizeConfig>>
+    const derivedIssues: Issue[] = []
+    const refLabel = formatNodeRef(ctx.graph.nodes, node.id)
 
-    if ('patches' in params) {
-      const actualConfigHash = hashNodeConfig((node.data ?? {}) as Record<string, unknown>)
-      if (params.expectedConfigHash !== actualConfigHash) {
-        return err(
-          new ConflictError(
-            'This node changed after get_node returned it. Re-read the node and retry the ' +
-              'patches with its new configHash. Nothing was overwritten.'
-          )
-        )
-      }
-
+    if (params.patches) {
       const currentFriendly = buildNodeSummary(ctx.graph, node, aliases).config
       const patched = applyConfigPatches(currentFriendly, params.patches)
       if (patched.isErr()) return err(patched.error)
+      if (patched.value.ignoredPaths.length > 0) {
+        derivedIssues.push({
+          severity: 'info',
+          nodeRef: refLabel,
+          message:
+            `Ignored ${patched.value.ignoredPaths.join(', ')} — derived state, maintained ` +
+            "automatically from the node's connections. The other edits were applied; use " +
+            'connect_nodes to change branch wiring.',
+        })
+      }
       normalized = await normalizeConfig(
         ctx.organizationId,
         ctx.graph.nodes,
         aliases,
         type,
-        patched.value
+        patched.value.config
       )
       const { id: _id, type: _type, ...replacement } = normalized.config
 
@@ -758,9 +802,33 @@ export async function updateNode(
         ctx.graph.nodes,
         aliases,
         type,
-        params.config
+        params.config as Record<string, unknown>
       )
-      const { id: _id, type: _type, ...mergeable } = normalized.config
+      const { id: _id, type: _type, ...merged } = normalized.config
+      // Same derived-key treatment as the patch path — the two modes must not
+      // disagree about what a caller may write. `config` used to accept them
+      // silently and let persist drop them, so the identical edit was a hard
+      // error one way and a no-op the other.
+      const ignored = Object.keys(merged).filter(isDerivedKey)
+      if (ignored.length === Object.keys(merged).length && ignored.length > 0) {
+        return err(
+          new BadRequestError(
+            `Nothing to apply: ${ignored.join(', ')} ${ignored.length === 1 ? 'is' : 'are'} ` +
+              "derived state, maintained automatically from the node's connections. Use " +
+              'connect_nodes to change branch wiring.'
+          )
+        )
+      }
+      if (ignored.length > 0) {
+        derivedIssues.push({
+          severity: 'info',
+          nodeRef: refLabel,
+          message:
+            `Ignored ${ignored.join(', ')} — derived state, maintained automatically from ` +
+            "the node's connections. The other fields were applied.",
+        })
+      }
+      const mergeable = stripDerivedKeys(merged)
       nextData = { ...(node.data as Record<string, unknown>), ...mergeable }
     }
 
@@ -769,7 +837,7 @@ export async function updateNode(
       graph: { ...ctx.graph, nodes: nextNodes },
       touchedNodeId: node.id,
       newNodeIds: new Set([node.id]),
-      normalizeIssues: normalized.issues,
+      normalizeIssues: [...normalized.issues, ...derivedIssues],
     })
   })
 }

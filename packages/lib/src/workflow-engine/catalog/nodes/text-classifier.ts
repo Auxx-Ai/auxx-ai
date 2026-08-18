@@ -4,7 +4,7 @@ import { generateId } from '@auxx/utils/generateId'
 import { z } from 'zod'
 import { AI_NODE_CONSTANTS } from '../../constants'
 import { BaseType } from '../../core/types'
-import type { BaseNodeData, TargetBranch } from '../node-base'
+import type { BaseNodeData } from '../node-base'
 import {
   type NodeBranch,
   NodeCategory,
@@ -90,7 +90,6 @@ export interface TextClassifierNodeData extends BaseNodeData {
   vision: VisionConfig
   instruction: InstructionConfig
   outputMode?: TextClassifierOutputMode
-  _targetBranches?: TargetBranch[]
 }
 
 /**

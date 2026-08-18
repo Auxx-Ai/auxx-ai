@@ -756,8 +756,9 @@ describe('updateNode / disconnectNodes', () => {
     })
   })
 
-  it('rejects a patch based on a stale get_node configHash without persisting', async () => {
-    const graph: DraftGraph = { nodes: [triggerNode(), loopNode()], edges: [] }
+  it('rejects a patch based on a stale configHash, naming the CURRENT hash', async () => {
+    const loop = loopNode()
+    const graph: DraftGraph = { nodes: [triggerNode(), loop], edges: [] }
     const result = await updateNode(makeDb(graph), {
       workflowAppId: APP,
       organizationId: ORG,
@@ -767,8 +768,115 @@ describe('updateNode / disconnectNodes', () => {
     })
 
     expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr().message).toContain('Re-read the node')
+    // The value that makes the retry succeed rides the error — a caller that
+    // lost its hash used to have no way back except abandoning the mode.
+    expect(result._unsafeUnwrapErr().message).toContain(hashWorkflowGraph(loop.data))
+    expect(result._unsafeUnwrapErr().message).toContain('get_node')
     expect(serviceUpdate).not.toHaveBeenCalled()
+  })
+
+  it('applies patches WITHOUT expectedConfigHash — the CAS is optional', async () => {
+    // The graph-level CAS in persistDraft already prevents a concurrent save
+    // being overwritten; the node hash only narrows "my paths were chosen
+    // against a stale shape". Requiring it made a lost hash unrecoverable.
+    const graph: DraftGraph = { nodes: [triggerNode(), loopNode()], edges: [] }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'For each order',
+      patches: [{ op: 'set', path: ['maxIterations'], value: 5 }],
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(persistedGraph().nodes.find((n) => n.id === LOOP_ID)?.data?.maxIterations).toBe(5)
+  })
+
+  it('ignores a derived-key patch, applies its siblings, and says so', async () => {
+    const graph: DraftGraph = { nodes: [triggerNode(), loopNode()], edges: [] }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'For each order',
+      patches: [
+        { op: 'set', path: ['_targetBranches'], value: [] },
+        { op: 'set', path: ['maxIterations'], value: 7 },
+      ],
+    })
+
+    expect(result.isOk()).toBe(true)
+    const value = result._unsafeUnwrap()
+    expect(value.applied).toBe(true)
+    expect(persistedGraph().nodes.find((n) => n.id === LOOP_ID)?.data?.maxIterations).toBe(7)
+    expect(
+      value.issues.some(
+        (issue) => issue.severity === 'info' && issue.message.includes('_targetBranches')
+      )
+    ).toBe(true)
+  })
+
+  it("marks an untouched node's issues preExisting, and the edited node's not", async () => {
+    const brokenId = 'crud-bbbbbbbbbbbbbbbbbbbbb'
+    const crud: GraphNode = {
+      id: brokenId,
+      position: { x: 0, y: 0 },
+      data: { id: brokenId, type: 'crud', title: 'Create Ticket', mode: 'create' },
+    }
+    const graph: DraftGraph = { nodes: [triggerNode(), loopNode(), crud], edges: [] }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'For each order',
+      config: { maxIterations: 4 },
+    })
+
+    expect(result.isOk()).toBe(true)
+    const issues = result._unsafeUnwrap().issues.filter((issue) => issue.nodeRef)
+    // The half-configured CRUD node was already broken before this edit.
+    expect(issues.some((issue) => issue.nodeRef === 'Create Ticket')).toBe(true)
+    for (const issue of issues) {
+      expect(issue.preExisting === true, `${issue.nodeRef}: ${issue.message}`).toBe(
+        issue.nodeRef !== 'For each order'
+      )
+    }
+  })
+
+  it('rejects a config-mode write of ONLY derived keys instead of silently dropping it', async () => {
+    // `config` used to spread derived keys into node data and let persist strip
+    // them, so the same edit was a hard error through `patches` and a silent
+    // no-op through `config`. Both modes now agree.
+    const graph: DraftGraph = { nodes: [triggerNode(), loopNode()], edges: [] }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'For each order',
+      config: { _targetBranches: [] },
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('derived state')
+    expect(serviceUpdate).not.toHaveBeenCalled()
+  })
+
+  it('honours expectedConfigHash with config mode instead of rejecting it', async () => {
+    const loop = loopNode()
+    const graph: DraftGraph = { nodes: [triggerNode(), loop], edges: [] }
+    const stale = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'For each order',
+      config: { maxIterations: 3 },
+      expectedConfigHash: 'stale',
+    })
+    expect(stale.isErr()).toBe(true)
+
+    const fresh = await updateNode(makeDb({ nodes: [triggerNode(), loopNode()], edges: [] }), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'For each order',
+      config: { maxIterations: 3 },
+      expectedConfigHash: hashWorkflowGraph(loop.data),
+    })
+    expect(fresh.isOk()).toBe(true)
   })
 
   it('disconnectNodes removes the edge and errors when none exists', async () => {

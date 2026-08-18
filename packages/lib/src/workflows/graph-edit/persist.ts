@@ -28,14 +28,10 @@ import type { Database } from '@auxx/database'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { deriveTriggerColumns } from '../../workflow-engine/catalog/derive-trigger'
+import { stripDerivedKeys } from '../../workflow-engine/catalog/derived-keys'
 import type { WorkflowTriggerType, WorkflowUpdateInput } from '../types'
 import type { GraphEditScope } from './read'
 import type { DraftGraph, GraphEdge, GraphNode } from './types'
-
-/** Strip `_`-prefixed keys — derived state the initializer regenerates on load. */
-function stripDerivedKeys(record: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(record).filter(([key]) => !key.startsWith('_')))
-}
 
 /**
  * The same cleanup the canvas save applies (`use-workflow-save.ts`

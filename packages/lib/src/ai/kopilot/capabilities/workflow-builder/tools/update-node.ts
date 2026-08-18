@@ -19,7 +19,7 @@ export function createUpdateNodeTool(getDeps: GetToolDeps): AgentToolDefinition 
     displayName: 'Update workflow node',
     surfaces: ['builder'],
     description:
-      'Update one node of the open workflow draft. Use `config` for a legacy top-level shallow merge, or `patches` plus the configHash from get_node for atomic deep set/unset edits that preserve nested siblings. Pass exactly one mode. Patch paths are arrays of field names and numeric array indexes.',
+      'Update one node of the open workflow draft. TWO modes, pass exactly one: (1) `patches` — atomic deep set/unset that preserves nested siblings; this is the default choice. (2) `config` — a shallow merge of TOP-LEVEL fields only (title, simple scalars). `expectedConfigHash` is optional with either mode: pass the configHash from your last read and the edit is rejected if the node changed underneath you; omit it and the edit still applies. The result carries the node back with its new configHash — do not re-read it.',
     parameters: {
       type: 'object',
       properties: {
@@ -31,7 +31,9 @@ export function createUpdateNodeTool(getDeps: GetToolDeps): AgentToolDefinition 
         },
         expectedConfigHash: {
           type: 'string',
-          description: 'Opaque configHash from get_node; required with patches.',
+          description:
+            'Optional optimistic-concurrency token: the opaque configHash from the get_node ' +
+            'or mutation result this edit was chosen against. Checked when given.',
         },
         patches: {
           type: 'array',
@@ -98,38 +100,24 @@ export function createUpdateNodeTool(getDeps: GetToolDeps): AgentToolDefinition 
       }
       const patches =
         hasPatches && Array.isArray(args.patches) ? (args.patches as ConfigPatch[]) : []
+      if (hasPatches && patches.length === 0) {
+        return { success: false, output: null, error: 'patches must contain at least one edit.' }
+      }
       const expectedConfigHash =
         typeof args.expectedConfigHash === 'string' ? args.expectedConfigHash.trim() : ''
-      if (hasPatches && (patches.length === 0 || !expectedConfigHash)) {
-        return {
-          success: false,
-          output: null,
-          error: 'patches must be non-empty and expectedConfigHash is required.',
-        }
-      }
-      if (hasConfig && args.expectedConfigHash !== undefined) {
-        return {
-          success: false,
-          output: null,
-          error: 'expectedConfigHash is only used with patches.',
-        }
-      }
 
+      // Everything hash-shaped is enforced in lib, where the node — and so its
+      // CURRENT hash — is in hand and can ride the error message. Checking it
+      // up here could only ever say "no", never "here is the right value".
       const { db } = getDeps()
       // Lazy import — see get-workflow.ts.
       const { updateNode } = await import('../../../../../workflows/graph-edit')
-      const result = hasPatches
-        ? await updateNode(db, {
-            ...write.scope,
-            ref,
-            patches,
-            expectedConfigHash,
-          })
-        : await updateNode(db, {
-            ...write.scope,
-            ref,
-            config: config!,
-          })
+      const result = await updateNode(db, {
+        ...write.scope,
+        ref,
+        ...(hasPatches ? { patches } : { config: config as Record<string, unknown> }),
+        ...(expectedConfigHash ? { expectedConfigHash } : {}),
+      })
       return mutationToToolResult(result, (value) =>
         value.applied ? `Updated ${value.node?.title ?? ref}` : `Update ${ref} blocked`
       )
