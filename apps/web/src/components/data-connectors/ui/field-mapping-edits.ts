@@ -16,13 +16,58 @@ export function bareTokenSource(expression: string): string {
   return expression.replace(/^\{|\}$/g, '')
 }
 
-/** A fresh bare-token binding for `sourcePath` → `targetFieldRef` (null = unassigned). */
+// ── The two array-path vocabularies ──────────────────────────────────────────
+// A leaf inside a NAMED array property is spelled differently by the schema tree
+// and by the runtime, and the builder sits between them:
+//
+//   NODE path    `defaultFields.emails[].value`   — what `use-source-paths` names
+//                the element shape, and what `[]` means everywhere else in the
+//                builder (a fan-out `rootPath` addressing EVERY element).
+//   BINDING path `defaultFields.emails[0].value`  — what `map-record.getByPath`
+//                resolves. Its `INDEXED_SEGMENT` is `/^(.*?)\[(\d+)\]$/`, so a
+//                digit-less `[]` never matches: the segment is read as the literal
+//                key `emails[]`, and the whole path resolves `undefined`.
+//
+// Writing the node path straight into an expression — which is what the builder
+// did — produces a binding that resolves to nothing. It is not inert: the key
+// still reaches the write set carrying `undefined`. Multi-value targets are
+// protected (`entity-sink` skips blanks on `options.multi`), a scalar target on
+// the default `overwrite` strategy is not.
+//
+// So both directions need translating, and the two functions below are the only
+// places that know it. Neither touches a TRAILING `[]` — that is a branch/rootPath
+// fan-out marker, a different thing from addressing one element's leaf.
+
+/** NODE → BINDING: address the first element (`emails[].value` → `emails[0].value`). */
+export function toBindingPath(nodePath: string): string {
+  return nodePath.replace(/\[\]\./g, '[0].')
+}
+
+/** BINDING → NODE: array-normalize for tree matching (`emails[0].value` → `emails[].value`). */
+export function toNodePath(bindingPath: string): string {
+  return bindingPath.replace(/\[\d+\]\./g, '[].')
+}
+
+/**
+ * The NODE path a bare-token binding renders on — the key every source-tree lookup
+ * must use, so a stored `[0]` binding finds its `[]` leaf.
+ */
+export function bareTokenNodePath(expression: string): string {
+  return toNodePath(bareTokenSource(expression))
+}
+
+/**
+ * A fresh bare-token binding for `sourcePath` → `targetFieldRef` (null = unassigned).
+ * `sourcePath` is a NODE path (that is what the tree hands every caller); the stored
+ * expression is its BINDING form so the runtime can resolve it.
+ */
 export function bindingFor(sourcePath: string, targetFieldRef: string | null): FieldMapping {
+  const bindingPath = toBindingPath(sourcePath)
   return {
     id: generateId(),
     targetFieldRef,
-    expression: `{${sourcePath}}`,
-    sourceFields: { [sourcePath]: sourcePath },
+    expression: `{${bindingPath}}`,
+    sourceFields: { [bindingPath]: bindingPath },
   }
 }
 
@@ -39,13 +84,17 @@ export function upsertBinding(
   return [...removeBindingForSource(entries, sourcePath), bindingFor(sourcePath, targetFieldRef)]
 }
 
-/** Drop the bare-token binding on `sourcePath` (if any). */
+/**
+ * Drop the bare-token binding on `sourcePath` (if any). Compared in NODE space so
+ * one leaf never ends up carrying two bindings that differ only by array spelling.
+ */
 export function removeBindingForSource(
   entries: FieldMapping[],
   sourcePath: string
 ): FieldMapping[] {
+  const nodePath = toNodePath(sourcePath)
   return entries.filter(
-    (e) => !(isBareToken(e.expression) && bareTokenSource(e.expression) === sourcePath)
+    (e) => !(isBareToken(e.expression) && bareTokenNodePath(e.expression) === nodePath)
   )
 }
 

@@ -804,7 +804,9 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         validation: { minLength: 17, maxLength: 17 },
       },
     ],
-    authApply: BEARER,
+    // `{apiKey}`, not the shared `BEARER` — see the openphone note below. `{value}`
+    // is empty for a `secret` connection whose variable carries any other name.
+    authApply: { in: 'header', name: 'Authorization', format: 'Bearer {apiKey}' },
     baseUrlTemplate: 'https://api.airtable.com/v0',
     uiMetadata: { icon: 'brand:airtable', category: 'data', brandColor: '#fcb401' },
   },
@@ -830,16 +832,26 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
   //    (`POST /v1/webhooks/messages` → `data.key`), which `setupWebhook` persists.
   //
   // providerKey stays `openphone` everywhere it is persisted (labels-only rename).
-  // `authApply: BEARER` is verified working — Quo tolerates the `Bearer ` prefix,
-  // and the Quo contacts data-connector binds to this same definition. (Mailgun is
-  // intentionally absent — its key is a platform env, not a per-org connection.)
+  // (Mailgun is intentionally absent — its key is a platform env, not a per-org
+  // connection.)
+  //
+  // AUTH APPLIES `{apiKey}`, NOT THE SHARED `BEARER` CONSTANT. `BEARER` is
+  // `Bearer {value}`, and `{value}` resolves to `secrets.accessToken || secrets.secret`
+  // (`resolve-connection-for-runtime.secretValue`) — neither of which a `secret`
+  // connection with NAMED variables ever sets: `saveConnection` files a secret-flagged
+  // variable under `secrets.fields.<key>`. `{value}`'s only other fallback is a field
+  // literally named `value` (which is why `httpHeaderAuth` names its variable that).
+  // With `BEARER` here the connector sent `Authorization: Bearer ` — empty — and every
+  // request 401'd; the channel never noticed because `providers/openphone/api.ts`
+  // hand-rolls its own header and never goes through `applyAuth`. Raw (no `Bearer `
+  // prefix) matches Quo's docs and that same channel code; Quo accepts either form.
   // ────────────────────────────────────────────────────────────────────────
   {
     providerKey: 'openphone',
     connectionType: 'secret',
     label: 'Quo',
     global: true,
-    authApply: BEARER,
+    authApply: { in: 'header', name: 'Authorization', format: '{apiKey}' },
     connectionVariables: [
       {
         key: 'apiKey',
@@ -852,7 +864,10 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         validation: { minLength: 10, message: 'API key must be at least 10 characters.' },
       },
     ],
-    uiMetadata: { icon: 'brand:openphone', category: 'other', brandColor: '#6366f1' },
+    // `brand:quo`, not `brand:openphone` — the latter had no file on disk, so this
+    // rendered as a fallback identity. The provider KEY stays `openphone` (it is
+    // persisted on every Credential row); only the mark is renamed.
+    uiMetadata: { icon: 'brand:quo', category: 'other', brandColor: '#0e0f17' },
   },
 
   // ────────────────────────────────────────────────────────────────────────
