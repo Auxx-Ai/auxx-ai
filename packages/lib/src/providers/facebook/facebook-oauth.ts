@@ -10,7 +10,7 @@ import { deleteChannelTokens, getChannelTokens } from '../channel-token-accessor
 import { markCredentialReauth } from '../credential-auth-state'
 
 const logger = createScopedLogger('facebook-oauth')
-const DEFAULT_API_VERSION = 'v19.0'
+const DEFAULT_API_VERSION = 'v26.0'
 
 // Interface describing the data stored for Facebook integration authentication
 export interface FacebookIntegrationMetadata {

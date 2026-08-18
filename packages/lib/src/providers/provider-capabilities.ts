@@ -94,12 +94,23 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
       messagesPerMinute: 200,
       messagesPerHour: 1000,
     },
-    // TODO: FB DMs have no subject and use PSID identifiers — flags below match
-    // today's behavior. De-emailing the FB pipeline is a separate refactor.
-    requiresSubject: true,
-    requiresRecipients: true,
-    countsAgainstOutboundEmailsQuota: true,
+    metadata: {
+      // Messenger rejects a message body over 2000 characters.
+      maxMessageLength: 2000,
+      supportsUnicode: true,
+    },
+    // De-emailed (FB/IG plan WS4). A Messenger DM has no subject, and its
+    // recipient is a PSID the composer never types — the thread already knows who
+    // it is talking to, so demanding recipients puts an empty required field in
+    // front of every reply. It is also not email, so it must not burn the
+    // outbound-email quota.
+    requiresSubject: false,
+    requiresRecipients: false,
+    countsAgainstOutboundEmailsQuota: false,
     triggersPostSendSync: true,
+    // TRUE and load-bearing: the send returns a `mid`, and reconciliation is what
+    // binds it to the thread so the webhook echo of our own send dedupes instead
+    // of arriving as a second message.
     requiresSendReconciliation: true,
     supportsRichText: false,
   },
@@ -136,10 +147,15 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
       messagesPerMinute: 100,
       messagesPerHour: 500,
     },
-    // TODO: see FB note above — Instagram DM flags match today's behavior.
-    requiresSubject: true,
-    requiresRecipients: true,
-    countsAgainstOutboundEmailsQuota: true,
+    metadata: {
+      // Instagram Direct caps a message body at 1000 characters — half Messenger's.
+      maxMessageLength: 1000,
+      supportsUnicode: true,
+    },
+    // De-emailed — see the Messenger note above; same reasoning, IGSID instead of PSID.
+    requiresSubject: false,
+    requiresRecipients: false,
+    countsAgainstOutboundEmailsQuota: false,
     triggersPostSendSync: true,
     requiresSendReconciliation: true,
     supportsRichText: false,

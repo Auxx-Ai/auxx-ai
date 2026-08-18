@@ -11,7 +11,7 @@ import { deleteChannelTokens, getChannelTokens } from '../channel-token-accessor
 import { markCredentialReauth } from '../credential-auth-state'
 
 const logger = createScopedLogger('instagram-oauth')
-const DEFAULT_API_VERSION = 'v19.0'
+const DEFAULT_API_VERSION = 'v26.0'
 
 // Interface describing the data stored for Instagram integration authentication
 // Managed via a Facebook Page

@@ -19,6 +19,7 @@ import type {
 import { getChannelTokens } from '../channel-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
+import { sendSocialMessage } from '../social/send'
 import { socialThreadKey } from '../social/thread-key'
 import { type InstagramIntegrationMetadata, InstagramOAuthService } from './instagram-oauth'
 
@@ -26,15 +27,6 @@ const logger = createScopedLogger('instagram-provider')
 const DEFAULT_API_VERSION = 'v19.0'
 
 // --- Interface Definitions (Align with Graph API) ---
-interface InstagramSendMessagePayload {
-  recipient: {
-    id: string
-  } // Instagram-Scoped User ID (IGSID)
-  messaging_type: 'RESPONSE'
-  message: {
-    text?: string
-  }
-}
 // Structure of message content within webhook/API response
 interface InstagramGraphMessageContent {
   mid: string // Message ID
@@ -244,53 +236,39 @@ export class InstagramProvider
       throw new Error('Instagram message must contain text.')
       // TODO: Handle attachments if needed (complex process involving uploads or asset URLs)
     }
-    // Construct the payload
-    const payload: InstagramSendMessagePayload = {
-      recipient: { id: recipientIgsid },
-      messaging_type: 'RESPONSE', // Assume responding within 24h window
-      message: { text: options.text },
-      // TODO: Handle messaging_type variations (e.g., MESSAGE_TAG) via options.metadata if needed
-    }
-    // API endpoint uses the *Facebook Page ID* associated with the Instagram account
-    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/${this.pageId}/messages?access_token=${this.pageAccessToken}`
-    try {
-      logger.debug(
-        `Sending Instagram message from IGBID ${this.instagramBusinessAccountId} (via Page ${this.pageId}) to IGSID ${recipientIgsid}`
-      )
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'AuxxInstagramProvider/1.0' },
-        body: JSON.stringify(payload),
-      })
-      const data = await response.json()
-      // Check for API errors
-      if (!response.ok || data.error) {
-        logger.error('Failed to send Instagram message via Graph API', {
-          status: response.status,
-          error: data.error,
-          pageId: this.pageId,
-          recipient: recipientIgsid,
-          integrationId: this.integrationId,
-        })
-        throw new Error(
-          `Instagram API error: ${data.error?.message || 'Unknown send error'} (Code: ${data.error?.code})`
-        )
-      }
-      logger.info('Instagram message sent successfully', {
-        recipientIgsid,
-        messageId: data.message_id,
-        integrationId: this.integrationId,
-      })
-      // Return the message ID provided by the API
-      return { id: data.message_id, success: true }
-    } catch (error: any) {
-      logger.error('Network/fetch error sending message via Instagram API:', {
-        error: error.message,
-        integrationId: this.integrationId,
-      })
-      throw error // Re-throw for the caller
-    }
+    // Shared with Messenger — see `social/send.ts`.
+    //
+    // Addressed by the linked **Facebook Page id**, not the IG account id. This
+    // preserves what the hand-rolled call did (its comment called the choice out
+    // explicitly) and matches WS4 of the plan. Meta has published both shapes over
+    // the years — `/{page-id}/messages` for a page-linked IG account under Facebook
+    // Login, `/{ig-user-id}/messages` under Instagram Login — and we have never sent
+    // an IG message successfully, so this is UNVERIFIED either way. Verify against a
+    // real send (gate step 4) before treating it as settled.
+    //
+    // Note this is a different id from the one the thread key uses: the key is
+    // built on the IGBID because that is what the webhook puts in `recipient.id`.
+    const { messageId, policy } = await sendSocialMessage({
+      platform: 'instagram',
+      integrationId: this.integrationId!,
+      pageId: this.pageId!,
+      pageAccessToken: this.pageAccessToken!,
+      recipientId: recipientIgsid,
+      text: options.text,
+      externalThreadId: options.externalThreadId,
+      automated: options.automated,
+    })
+
+    logger.info('Instagram message sent successfully', {
+      recipientIgsid,
+      messageId,
+      messagingType: policy.messagingType,
+      integrationId: this.integrationId,
+    })
+
+    return { id: messageId, success: true }
   }
+
   /** Confirms webhook setup (managed externally via FB App Dashboard) */
   async setupWebhook(callbackUrl: string): Promise<void> {
     await this.ensureInitialized()

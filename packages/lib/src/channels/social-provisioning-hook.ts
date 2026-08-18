@@ -24,11 +24,24 @@ import { resolveConnectionForRuntime } from '../connections/resolve-connection-f
 import { publisher } from '../events'
 import { InboxService } from '../inboxes/inbox-service'
 import { setChannelTokens } from '../providers/channel-token-accessor'
+import { subscribePageToApp as subscribePageToAppApi } from '../providers/social/api'
 import { assertSharedConnectInbox } from './connect-inbox'
 
 const logger = createScopedLogger('social-provisioning-hook')
 
-const DEFAULT_API_VERSION = 'v19.0'
+/**
+ * Webhook fields each channel subscribes its Page to.
+ *
+ * Named so `recoverChannel` (WS5) re-arms with exactly the same set — a silent
+ * token refresh that subscribes a narrower set is how a channel ends up
+ * "connected" but deaf. Comments/feed are deliberately absent: WS10.
+ */
+const SUBSCRIBED_FIELDS = {
+  facebook: 'messages,messaging_postbacks,message_reads',
+  instagram: 'messages,messaging_postbacks',
+} as const
+
+const DEFAULT_API_VERSION = 'v26.0'
 
 type SocialProvider = 'facebook' | 'instagram'
 
@@ -227,27 +240,16 @@ async function subscribePageToApp(
   pageId: string,
   pageToken: string
 ): Promise<void> {
-  const url = `https://graph.facebook.com/${apiVersion()}/${pageId}/subscribed_apps`
   const subscribedFields =
-    provider === 'instagram'
-      ? 'messages,messaging_postbacks'
-      : 'messages,messaging_postbacks,message_reads'
-  const params = new URLSearchParams({
-    subscribed_fields: subscribedFields,
-    access_token: pageToken,
-  })
+    provider === 'instagram' ? SUBSCRIBED_FIELDS.instagram : SUBSCRIBED_FIELDS.facebook
   try {
-    const res = await fetch(url, { method: 'POST', body: params })
-    const data = await res.json()
-    if (!res.ok || !data.success) {
-      logger.warn('Page webhook subscription failed — real-time messages may not arrive', {
-        pageId,
-        provider,
-        status: res.status,
-      })
-    }
+    await subscribePageToAppApi(pageId, pageToken, subscribedFields)
+    logger.info('Page subscribed to app webhook', { pageId, provider, subscribedFields })
   } catch (error) {
-    logger.error('Error subscribing Page to app webhook', {
+    // Swallowed on purpose: a failed subscription means real-time delivery is off,
+    // but the channel is otherwise connected and `recoverChannel` re-arms it. A
+    // throw here would abort provisioning after the Integration row already exists.
+    logger.error('Error subscribing Page to app webhook — real-time messages may not arrive', {
       pageId,
       provider,
       error: error instanceof Error ? error.message : String(error),
