@@ -70,6 +70,17 @@ class Authenticator {
    */
   private async promptToAuthenticate(): Promise<Result<string, AuthError | any>> {
     if (process.env.NODE_ENV !== 'test') {
+      // Nobody is there to press Enter. `stdin.once('data')` never fires on a
+      // closed or piped stream — it emits 'end' — so the awaited promise never
+      // settles, the event loop drains, and the process exits **0 having done
+      // nothing**. A batch caller reads that as success. Refuse loudly instead.
+      if (!process.stdin.isTTY) {
+        process.stderr.write(
+          'Not logged in, and this is not an interactive terminal.\n' +
+            'Set AUXX_API_KEY (headless/CI), or run `auxx login` in a terminal first.\n'
+        )
+        process.exit(1)
+      }
       process.stdout.write('You need to log in with Auxx. Press Enter to continue...\n\n')
       await new Promise((resolve) => process.stdin.once('data', resolve))
     }
