@@ -430,12 +430,17 @@ export const CONFIG_VARIABLES = {
     isSensitive: true,
     isEnvOnly: false,
   },
+  // This default wins over every `|| DEFAULT_*_API_VERSION` fallback in calling code —
+  // `configService.get` returns it whenever the env var is absent — so it is the one
+  // place the Graph version is really decided. Keep it on a supported version: v19.0 is
+  // past deprecation and Graph silently answers as a current one (observed live
+  // 2026-08-17, `paging.next` links came back stamped v25.0).
   FACEBOOK_GRAPH_API_VERSION: {
     key: 'FACEBOOK_GRAPH_API_VERSION',
     description: 'Facebook Graph API version',
     type: ConfigVariableType.STRING,
     group: ConfigVariableGroup.FACEBOOK,
-    defaultValue: 'v19.0',
+    defaultValue: 'v26.0',
     isSensitive: false,
     isEnvOnly: false,
   },

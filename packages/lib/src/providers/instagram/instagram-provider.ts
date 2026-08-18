@@ -25,7 +25,9 @@ import { socialThreadKey } from '../social/thread-key'
 import { type InstagramIntegrationMetadata, InstagramOAuthService } from './instagram-oauth'
 
 const logger = createScopedLogger('instagram-provider')
-const DEFAULT_API_VERSION = 'v19.0'
+// v19.0 is past deprecation — Graph silently answers as a current version
+// (observed live 2026-08-17: `paging.next` links came back stamped v25.0).
+const DEFAULT_API_VERSION = 'v26.0'
 
 // --- Interface Definitions (Align with Graph API) ---
 // Structure of message content within webhook/API response

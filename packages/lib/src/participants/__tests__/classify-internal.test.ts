@@ -83,16 +83,58 @@ describe('classifyIsInternal', () => {
     })
   })
 
-  describe('id spaces that only ever name the customer', () => {
-    for (const type of [
-      IdentifierType.CHAT_VISITOR,
-      IdentifierType.FACEBOOK_PSID,
-      IdentifierType.INSTAGRAM_IGSID,
-    ]) {
-      it(`${type} is always external`, async () => {
-        expect(await classify('some-opaque-id', type)).toBe(false)
-      })
+  describe('CHAT_VISITOR — an id space that only ever names the customer', () => {
+    it('is always external', async () => {
+      // The org's half of a chat is an EMAIL participant minted from the agent's
+      // user row, so no visitor id is ever ours.
+      expect(await classify('some-opaque-id', IdentifierType.CHAT_VISITOR)).toBe(false)
+    })
+  })
+
+  describe('Meta ids — one id space, both sides in it', () => {
+    // Unlike chat, a Meta channel DOES have an org-side identifier in the
+    // customer's id space: ingest mints a page-side participant keyed on the
+    // page id / IG business account id. The own-identity set is the only thing
+    // that tells our numeric id from theirs.
+    const META_OWN = {
+      [IdentifierType.FACEBOOK_PSID]: new Set(['869289333164075']),
+      [IdentifierType.INSTAGRAM_IGSID]: new Set(['17841400000000000']),
     }
+
+    const classifyMeta = (
+      identifier: string,
+      identifierType: (typeof IdentifierType)[keyof typeof IdentifierType]
+    ) =>
+      classifyIsInternal({
+        organizationId: 'org_1',
+        identifier,
+        identifierType,
+        ownIdentities: META_OWN,
+      })
+
+    it('our own Facebook page is internal', async () => {
+      expect(await classifyMeta('869289333164075', IdentifierType.FACEBOOK_PSID)).toBe(true)
+    })
+
+    it('our own Instagram business account is internal', async () => {
+      expect(await classifyMeta('17841400000000000', IdentifierType.INSTAGRAM_IGSID)).toBe(true)
+    })
+
+    it("a customer's PSID on the same channel stays external", async () => {
+      // The load-bearing case: over-matching here would attribute every
+      // Messenger thread to nobody and break the sender column outright.
+      expect(await classifyMeta('27893553143563440', IdentifierType.FACEBOOK_PSID)).toBe(false)
+      expect(await classifyMeta('27893553143563440', IdentifierType.INSTAGRAM_IGSID)).toBe(false)
+    })
+
+    it('does not cross the two Meta id spaces', async () => {
+      expect(await classifyMeta('17841400000000000', IdentifierType.FACEBOOK_PSID)).toBe(false)
+      expect(await classifyMeta('869289333164075', IdentifierType.INSTAGRAM_IGSID)).toBe(false)
+    })
+
+    it('is external when no Meta channel is connected', async () => {
+      expect(await classify('869289333164075', IdentifierType.FACEBOOK_PSID)).toBe(false)
+    })
   })
 
   describe('phone normalization', () => {

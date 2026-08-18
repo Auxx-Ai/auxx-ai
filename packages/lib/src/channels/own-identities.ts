@@ -28,10 +28,32 @@ export type OwnIdentitySets = Readonly<Partial<Record<IdentifierTypeValue, Reado
  *    it is itself an `Integration.email` row (provider `email`,
  *    `metadata.systemManaged: true`).
  *  - `PHONE` — `metadata.phoneNumber`, normalized to E.164.
- *  - `CHAT_VISITOR` / `FACEBOOK_PSID` / `INSTAGRAM_IGSID` — nothing. There is no
- *    org-side identifier in those id spaces: the org's half of a chat is an
- *    EMAIL participant minted from the agent's user row (`chat/outbound.ts`),
- *    and a PSID/IGSID always names the customer.
+ *  - `FACEBOOK_PSID` / `INSTAGRAM_IGSID` — the channel's own Meta account id:
+ *    `metadata.pageId` on a `facebook` channel, `metadata.instagramBusinessAccountId`
+ *    on an `instagram` one.
+ *  - `CHAT_VISITOR` — nothing, and unlike the Meta arm that premise still holds:
+ *    the org's half of a chat is an EMAIL participant minted from the agent's
+ *    user row (`chat/outbound.ts`), so no org-side identifier exists in the
+ *    visitor id space at all.
+ *
+ * **Why the Meta arm exists — do not "simplify" it away.** On a Meta channel
+ * BOTH sides of the conversation live in ONE id space: our Page id and the
+ * customer's PSID are both `FACEBOOK_PSID`, and nothing but this set tells them
+ * apart. (Email is the same shape — our address and theirs are both `EMAIL` —
+ * but there the address itself carries the distinction; a bare numeric Meta id
+ * carries none.) Ingest mints a page-side participant identified by the Page id
+ * (`providers/social/webhook-message.ts`) and the composer sends FROM that same
+ * id, so with no Meta arm our own Page is stored `isInternal: false` and the
+ * thread list — which names a thread after its most recent *external*
+ * participant — attributes every Meta conversation to ourselves.
+ *
+ * Exactly ONE id per channel is ours: the account id the channel routes as. Any
+ * other PSID/IGSID names the customer, so this arm must never widen to "every
+ * Meta id we have seen". It also reads the field the channel's own id space
+ * names rather than going through `getIdentifier`, because an `instagram`
+ * channel's metadata carries BOTH `pageId` (the Facebook page it publishes
+ * through) and `instagramBusinessAccountId` — only the latter shares an id space
+ * with the IGSIDs on its threads.
  *
  * **Phone identifiers are normalized through `formatPhoneNumber`, both here and
  * at every comparison site.** `Integration.metadata.phoneNumber` is E.164 today
@@ -50,6 +72,8 @@ export function buildOrgOwnIdentitySets(
 ): OwnIdentitySets {
   const emails = new Set<string>()
   const phones = new Set<string>()
+  const facebookPageIds = new Set<string>()
+  const instagramAccountIds = new Set<string>()
 
   for (const channel of channels) {
     if (channel.inboxId && options?.excludeInboxIds?.has(channel.inboxId)) continue
@@ -63,16 +87,29 @@ export function buildOrgOwnIdentitySets(
     addAliasArray(emails, metadata?.userEmails) // Gmail verified send-as
 
     const type = identifierTypeForProvider(channel.provider)
-    if (type !== IdentifierType.PHONE) continue
-    const identifier = getIdentifier(channel)
-    if (!identifier) continue
-    const normalized = normalizeOwnIdentifier(identifier, IdentifierType.PHONE)
-    if (normalized) phones.add(normalized)
+
+    if (type === IdentifierType.PHONE) {
+      const identifier = getIdentifier(channel)
+      if (!identifier) continue
+      const normalized = normalizeOwnIdentifier(identifier, IdentifierType.PHONE)
+      if (normalized) phones.add(normalized)
+      continue
+    }
+
+    // The Meta arm — see the "why" in the doc comment above. One id per channel,
+    // read off the field its own id space names.
+    if (type === IdentifierType.FACEBOOK_PSID) {
+      addMetadataId(facebookPageIds, metadata?.pageId, type)
+    } else if (type === IdentifierType.INSTAGRAM_IGSID) {
+      addMetadataId(instagramAccountIds, metadata?.instagramBusinessAccountId, type)
+    }
   }
 
   const sets: Partial<Record<IdentifierTypeValue, ReadonlySet<string>>> = {}
   if (emails.size > 0) sets[IdentifierType.EMAIL] = emails
   if (phones.size > 0) sets[IdentifierType.PHONE] = phones
+  if (facebookPageIds.size > 0) sets[IdentifierType.FACEBOOK_PSID] = facebookPageIds
+  if (instagramAccountIds.size > 0) sets[IdentifierType.INSTAGRAM_IGSID] = instagramAccountIds
   return sets
 }
 
@@ -135,6 +172,13 @@ export function buildOrgOwnEmailAddressSet(
 ): Set<string> {
   const emails = buildOrgOwnIdentitySets(channels, options)[IdentifierType.EMAIL]
   return new Set(emails ?? [])
+}
+
+/** Adds one metadata-sourced identifier to `target`, folded for its type, if it is a usable string. */
+function addMetadataId(target: Set<string>, value: unknown, type: IdentifierTypeValue): void {
+  if (typeof value !== 'string') return
+  const normalized = normalizeOwnIdentifier(value, type)
+  if (normalized) target.add(normalized)
 }
 
 /** Adds every non-empty string entry of `value` (lowercased, trimmed) to `target`. */

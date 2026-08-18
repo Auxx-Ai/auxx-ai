@@ -198,14 +198,125 @@ describe('buildOrgOwnIdentitySets — the phone arm', () => {
     expect(sets[IdentifierType.PHONE]).toBeUndefined()
   })
 
-  it('contributes nothing for chat and social channels', () => {
-    // Their org side is an EMAIL participant minted from the agent's user row;
-    // a CHAT_VISITOR / PSID / IGSID always names the customer.
+  it('contributes nothing for a chat channel', () => {
+    // Chat's org side is an EMAIL participant minted from the agent's user row,
+    // so a CHAT_VISITOR identifier always names the customer. Unlike the Meta
+    // channels below, that premise still holds.
     const sets = buildOrgOwnIdentitySets([
       channel({ provider: 'chat' as CachedChannel['provider'], email: null, name: 'Widget' }),
-      channel({ provider: 'facebook' as CachedChannel['provider'], email: null, name: 'Page' }),
     ])
     expect(sets[IdentifierType.CHAT_VISITOR]).toBeUndefined()
+  })
+})
+
+describe('buildOrgOwnIdentitySets — the Meta arm', () => {
+  const PAGE_ID = '869289333164075'
+  const IGBID = '17841400000000000'
+  const CUSTOMER_PSID = '27893553143563440'
+
+  const facebook = (metadata: unknown, overrides: Partial<CachedChannel> = {}) =>
+    channel({
+      id: 'fb',
+      provider: 'facebook' as CachedChannel['provider'],
+      email: null,
+      name: 'Auxx-Lift',
+      metadata,
+      ...overrides,
+    })
+
+  const instagram = (metadata: unknown, overrides: Partial<CachedChannel> = {}) =>
+    channel({
+      id: 'ig',
+      provider: 'instagram' as CachedChannel['provider'],
+      email: null,
+      name: 'auxxlift',
+      metadata,
+      ...overrides,
+    })
+
+  it('puts a Facebook page id in the FACEBOOK_PSID bucket', () => {
+    const sets = buildOrgOwnIdentitySets([facebook({ pageId: PAGE_ID, pageName: 'Auxx-Lift' })])
+    expect(sets[IdentifierType.FACEBOOK_PSID]).toEqual(new Set([PAGE_ID]))
+    expect(isOwnChannelIdentity(sets, PAGE_ID, IdentifierType.FACEBOOK_PSID)).toBe(true)
+  })
+
+  it('leaves a customer PSID on that same channel external — the whole point', () => {
+    // Both sides of a Messenger thread live in the FACEBOOK_PSID space. Only the
+    // page id is ours; a set that matched anything broader would flip every
+    // customer to internal and empty the thread list of counterparts.
+    const sets = buildOrgOwnIdentitySets([facebook({ pageId: PAGE_ID, pageName: 'Auxx-Lift' })])
+    expect(isOwnChannelIdentity(sets, CUSTOMER_PSID, IdentifierType.FACEBOOK_PSID)).toBe(false)
+  })
+
+  it('puts an Instagram business account id in the INSTAGRAM_IGSID bucket', () => {
+    const sets = buildOrgOwnIdentitySets([
+      instagram({
+        pageId: PAGE_ID,
+        pageName: 'Auxx-Lift',
+        instagramBusinessAccountId: IGBID,
+        instagramUsername: 'auxxlift',
+      }),
+    ])
+    expect(sets[IdentifierType.INSTAGRAM_IGSID]).toEqual(new Set([IGBID]))
+    expect(isOwnChannelIdentity(sets, IGBID, IdentifierType.INSTAGRAM_IGSID)).toBe(true)
+    expect(isOwnChannelIdentity(sets, CUSTOMER_PSID, IdentifierType.INSTAGRAM_IGSID)).toBe(false)
+  })
+
+  it('reads only the field the channel routes as — an IG channel carries a pageId that is not its identity', () => {
+    // `upsertSocialIntegration` writes `pageId` on BOTH providers; on an
+    // Instagram channel it names the page the account publishes through, and no
+    // IGSID participant is ever keyed on it.
+    const sets = buildOrgOwnIdentitySets([
+      instagram({ pageId: PAGE_ID, instagramBusinessAccountId: IGBID }),
+    ])
     expect(sets[IdentifierType.FACEBOOK_PSID]).toBeUndefined()
+    expect(sets[IdentifierType.INSTAGRAM_IGSID]).toEqual(new Set([IGBID]))
+  })
+
+  it('never crosses the two Meta id spaces', () => {
+    const sets = buildOrgOwnIdentitySets([
+      facebook({ pageId: PAGE_ID }),
+      instagram({ pageId: PAGE_ID, instagramBusinessAccountId: IGBID }),
+    ])
+    expect(isOwnChannelIdentity(sets, IGBID, IdentifierType.FACEBOOK_PSID)).toBe(false)
+    expect(isOwnChannelIdentity(sets, PAGE_ID, IdentifierType.INSTAGRAM_IGSID)).toBe(false)
+    expect(isOwnChannelIdentity(sets, PAGE_ID, IdentifierType.EMAIL)).toBe(false)
+  })
+
+  it('omits the buckets when no Meta channel is connected, or its id is missing', () => {
+    expect(
+      buildOrgOwnIdentitySets([channel({ email: 'support@company.com' })])[
+        IdentifierType.FACEBOOK_PSID
+      ]
+    ).toBeUndefined()
+    expect(buildOrgOwnIdentitySets([facebook(null)])[IdentifierType.FACEBOOK_PSID]).toBeUndefined()
+    expect(
+      buildOrgOwnIdentitySets([facebook({ pageName: 'Auxx-Lift' })])[IdentifierType.FACEBOOK_PSID]
+    ).toBeUndefined()
+    expect(
+      buildOrgOwnIdentitySets([facebook({ pageId: 12345 })])[IdentifierType.FACEBOOK_PSID]
+    ).toBeUndefined()
+    expect(
+      buildOrgOwnIdentitySets([instagram({ pageId: PAGE_ID })])[IdentifierType.INSTAGRAM_IGSID]
+    ).toBeUndefined()
+  })
+
+  it('honours excludeInboxIds on Meta channels too', () => {
+    const sets = buildOrgOwnIdentitySets(
+      [facebook({ pageId: PAGE_ID }, { inboxId: 'ibx_personal' })],
+      { excludeInboxIds: new Set(['ibx_personal']) }
+    )
+    expect(sets[IdentifierType.FACEBOOK_PSID]).toBeUndefined()
+  })
+
+  it('stays out of the email arm — buildOrgOwnEmailAddressSet returns only emails', () => {
+    // `getOrgOwnEmailAddresses` (SES direction, `fromOwnAddress`) reads that set
+    // and has no business seeing an account id.
+    const emails = buildOrgOwnEmailAddressSet([
+      facebook({ pageId: PAGE_ID, pageName: 'Auxx-Lift' }),
+      instagram({ pageId: PAGE_ID, instagramBusinessAccountId: IGBID }),
+      channel({ id: 'mail', email: 'support@company.com' }),
+    ])
+    expect(emails).toEqual(new Set(['support@company.com']))
   })
 })
