@@ -110,7 +110,11 @@ Each `RoomDef.authorize` enforces its own rule:
   `InboxService.hasUserAccess`); the `none` triage slug is open to all members.
 - **events / presence** — caller is an org member.
 - **user** — `ctx.session.userId === userId`.
-- **thread** (admin) — any authenticated session (org scoping handled upstream).
+- **thread** (admin) — member of the thread's owning org **and**
+  `effectiveLens ≥ metadata` on the thread (`getThreadLens` + `satisfiesRung`);
+  fails closed. The tRPC history door (`thread.listEvents`) asks the same lens
+  question, returning empty rather than a 403 so an invisible thread id fails
+  exactly like a nonexistent one.
 - **chat session** (`chat-*`) — public, always allowed; channel name is an
   unguessable random session id, the `authorize` hook is unreachable because Pusher
   never asks the server to sign public channels.
@@ -348,9 +352,14 @@ re-subscribes only when the room key itself changes.
 - `useMessageArrivalCue` coalesces inbound `message:created` over a 1s window into a
   single toast/chime/favicon cue, suppressing outbound sends and the
   actively-viewed thread.
-- **`useThreadEvents`** (chat panel) subscribes to `chatThread(threadId)` for
-  lifecycle events (`thread:taken_over`, `returned_to_ai`, `archived`, …), merging
-  persisted (`thread.listEvents`) with live, deduped by event id.
+- **`useChatThreadEvents`** (`chat-panel/use-thread-events.ts`, but rendered on
+  **every** channel's thread view, not just chat) subscribes to
+  `chatThread(threadId)` for lifecycle events (`thread:taken_over`, `archived`,
+  `assignee:changed`, `tagged`, `merged`, …), merging persisted history with live
+  events, deduped by event id. Persisted history is `thread.listEvents` — keyset-
+  cursor pages off the dedicated `ThreadEvent` table (newest-first, reversed
+  client-side, older pages drained in the background until exhausted). See
+  `channels-mail-architecture-guide.md` §3 for the table and its boundary rule.
 
 ### C. Agent / procedure / eval admin state
 
@@ -392,7 +401,7 @@ small. It does **not** use `PusherRealtimeAdapter` or `@auxx/lib/realtime/client
 | Auth endpoint | `/api/pusher/auth` (session) | `/api/chat/pusher/auth` (passport bearer) |
 | Message stream | `message:created` on inbox channel | `new-message` on public `chat-{sessionId}` |
 | Cross-thread | `thread:updated` on inbox | `thread-updated` on `private-visitor-{id}` |
-| Lifecycle | `thread:*` on `thread-{id}` | same `thread-{id}` **plus** redundant `visitor-{id}` |
+| Lifecycle | all `thread:*` types on `thread-{id}` | the six visitor-facing types only, on `thread-{id}` **plus** redundant `visitor-{id}` |
 | Dependencies | full `@auxx/lib` | none |
 
 Widget specifics:
@@ -405,8 +414,10 @@ Widget specifics:
   (before the widget is opened) so the unread badge updates while closed; it
   survives identity rotation via an epoch bump.
 - Event type definitions are **duplicated locally** (`transport/thread-events.ts`)
-  rather than imported, kept in sync by hand with `apps/api`'s
-  `WIDGET_THREAD_EVENT_TYPES`.
+  rather than imported (`packages/chat` has no `@auxx/lib` dependency), pinned by
+  a set-equality test (`packages/lib/src/thread-events/__tests__/visitor-parity.test.ts`)
+  to the **frozen** `VISITOR_FACING_THREAD_EVENT_TYPES` — the original six — and
+  deliberately NOT to the growing admin-side `THREAD_EVENT_TYPES` vocabulary.
 
 This is a deliberate "two clients" decision (bundle isolation) — don't try to DRY
 the widget client and the admin adapter into one.
@@ -429,11 +440,13 @@ Inbound (visitor → agent) flows through `ChatProvider.receiveMessage`; outboun
 `skipInboxMessagePublish: true` (the `MessageSenderService` already published the
 inbox event). Agent replies are composed in `process-chat-turn.ts`.
 
-**Thread lifecycle** events (takeover, archive, reopen, assignee change, visitor
-identified) are persisted then fanned out by
-`events/handlers/publish-thread-event-to-realtime.ts` to **both** `thread-{id}`
-(admin + open widget) and `visitor-{id}` (widget in any state, deduped by event id
-client-side).
+**Thread lifecycle** events (takeover, archive, reopen, assignee change, tag,
+merge, …) are persisted to the dedicated `ThreadEvent` table then fanned out by
+`events/handlers/publish-thread-event-to-realtime.ts`. Every type goes to
+`thread-{id}` (admin + open widget); the `visitor-{id}` publish is
+**allowlist-gated** on the frozen six `VISITOR_FACING_THREAD_EVENT_TYPES` and
+shaped down to `{threadId, id, createdAt}` — a visitor must never learn a thread
+was tagged or merged. Dedupe by event id client-side.
 
 > Pusher frames never carry attachment URLs (10KB limit). The widget resolves them
 > lazily via `/api/chat/attachments/{id}/url` with a short TTL.
@@ -523,7 +536,7 @@ stay untouched.
 
 **Server chat publishing**
 - `packages/lib/src/chat/realtime.ts` — `publishChatMessageCreated`, `publishVisitorThreadCreated`
-- `packages/lib/src/events/handlers/publish-thread-event-to-realtime.ts` — lifecycle dual fan-out
+- `packages/lib/src/events/handlers/publish-thread-event-to-realtime.ts` — lifecycle persist (`ThreadEvent`) + gated dual fan-out
 - `packages/lib/src/chat/agent/process-chat-turn.ts` — agent reply composition
 - `apps/api/src/routes/chat/pusher-auth.ts` — widget channel auth
 - `apps/api/src/routes/chat/{threads,initialize}.ts` — message POST / bootstrap

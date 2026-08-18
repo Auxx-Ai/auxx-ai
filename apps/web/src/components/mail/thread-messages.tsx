@@ -23,8 +23,7 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import CallDisplay from './call-display'
 import { ChatMessageGroup } from './chat-message-group'
-import { SystemLine } from './chat-panel/system-line'
-import { SystemLineRun } from './chat-panel/system-line-run'
+import { DaySeparator, EventBlock } from './chat-panel/system-line-run'
 import { useChatThreadEvents } from './chat-panel/use-thread-events'
 import { buildChatTimeline } from './chat-timeline'
 import EmailDisplay from './email-display'
@@ -273,11 +272,13 @@ export function ThreadMessages() {
         {/* Email messages */}
         <div className={`flex flex-col gap-4 px-4 py-2 ${isMuted ? 'opacity-50' : ''}`}>
           {buildChatTimeline(messages, threadEvents).map((item) => {
-            if (item.kind === 'event') {
-              return <SystemLine key={`evt:${item.event.id}`} event={item.event} />
+            if (item.kind === 'day-separator') {
+              return <DaySeparator key={item.key} label={item.label} />
             }
-            if (item.kind === 'event-run') {
-              return <SystemLineRun key={`evtrun:${item.events[0]!.id}`} events={item.events} />
+            if (item.kind === 'event-block') {
+              return (
+                <EventBlock key={item.key} entries={item.entries} isTrailing={item.isTrailing} />
+              )
             }
             if (item.kind === 'chat-group') {
               const groupIsLast =
