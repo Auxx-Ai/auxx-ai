@@ -348,9 +348,10 @@ describe('FindProcessor - Thread and Message Support', () => {
       expect(result.errors).toHaveLength(0)
     })
 
-    it('should reject removed messageType field (no longer in schema)', async () => {
-      // messageType was removed from the message schema - it's now derived from Integration.provider
-      const node = findNode('find_message_8', 'Find Message - Removed Field', {
+    it('should accept the messageType field (stored column, registered again)', async () => {
+      // messageType returned as a stored, filterable registry field in the
+      // message-type overhaul (Phase 3) — it must validate like any other field.
+      const node = findNode('find_message_8', 'Find Message - Message Type', {
         resourceType: 'message',
         findMode: 'findOne',
         conditions: [
@@ -366,9 +367,8 @@ describe('FindProcessor - Thread and Message Support', () => {
 
       const result = await findProcessor.validate(node)
 
-      expect(result.valid).toBe(false)
-      expect(result.errors.length).toBeGreaterThan(0)
-      expect(result.errors[0]).toContain('Invalid field')
+      expect(result.valid).toBe(true)
+      expect(result.errors).toHaveLength(0)
     })
 
     it('should reject unknown thread field', async () => {
