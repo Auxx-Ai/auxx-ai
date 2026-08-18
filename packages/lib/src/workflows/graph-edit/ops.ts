@@ -27,6 +27,7 @@ import { getAuthorableManifests, getManifest } from '../../workflow-engine/catal
 import { resolveGraphOutputs } from '../../workflow-engine/catalog/resolve-outputs'
 import { NodeCategory, type NodeManifest } from '../../workflow-engine/catalog/types'
 import type { UnifiedVariable } from '../../workflow-engine/types/unified-variable'
+import { hashWorkflowGraph } from '../graph-hash'
 import { assertMailTriggerNotPersonal } from '../mail-trigger-guard'
 import { calculateContainerSize, getLayoutByDagre, getLayoutForChildNodes } from './layout'
 import { LAYOUT_SPACING, NODE_ADDITION_CONFIG } from './layout-constants'
@@ -36,7 +37,7 @@ import { normalizeAiPromptConfig } from './normalize/prompt'
 import { checkVariableRefsAgainstOutputs } from './normalize/ref-check'
 import { buildResourceAliasIndex, normalizeResourceConfig } from './normalize/resource-refs'
 import { applyConfigPatches, type ConfigPatch } from './patch-config'
-import { persistDraft, publishDraftUpdatedSignal } from './persist'
+import { cleanGraphForSave, persistDraft, publishDraftUpdatedSignal } from './persist'
 import {
   DEFAULT_NODE_SIZE,
   findNearestEmptySpace,
@@ -168,6 +169,44 @@ async function runGraphMutation(
   )
   for (const issue of issues) {
     if (issue.nodeRef && !touchedRefs.has(issue.nodeRef)) issue.preExisting = true
+  }
+
+  // NO-OP SHORT-CIRCUIT: a mutation whose cleaned graph hashes to what was
+  // loaded changed nothing. Skip the write, the turn snapshot and the realtime
+  // signal, and SAY so — without this the caller cannot tell "my edit landed"
+  // from "my edit was already the state", so it keeps re-issuing it. The
+  // logged failure turn wrote the same HTTP config twice and the same CRUD
+  // config three times, each to an identical hash, and nothing told it.
+  //
+  // Stays `applied: true`: the requested state holds. `applied: false` is the
+  // BLOCKING-issue vocabulary (`mutationToToolResult` renders it as
+  // "Update X blocked"), and telling the model a harmless idempotent write
+  // failed is the loop this whole plan exists to kill.
+  //
+  // `hashWorkflowGraph(cleanGraphForSave(…))` is exactly what the next load
+  // will hash (`read.ts` hashes the stored graph, and the stored graph is
+  // always the cleaned one), so the comparison is exact, not approximate.
+  //
+  // Guarded on the non-graph fields: `set_workflow_details` and
+  // `apply_template` pass envVars/variables/icon through this same seam and
+  // must not be short-circuited by an unchanged *graph*.
+  const touchesOnlyGraph =
+    plan.envVars === undefined && plan.variables === undefined && plan.icon === undefined
+  if (
+    touchesOnlyGraph &&
+    ctx.graphHash !== undefined &&
+    hashWorkflowGraph(cleanGraphForSave(graph)) === ctx.graphHash
+  ) {
+    const unchangedNode = plan.touchedNodeId
+      ? graph.nodes.find((n) => n.id === plan.touchedNodeId)
+      : undefined
+    return ok({
+      applied: true,
+      unchanged: true,
+      ...(unchangedNode ? { node: buildNodeSummary(graph, unchangedNode, aliases) } : {}),
+      issues,
+      graphSummary: buildGraphSummary(ctx.graph, ctx.triggerType),
+    })
   }
 
   // Pre-turn snapshot — captured only now that the write is certain to be

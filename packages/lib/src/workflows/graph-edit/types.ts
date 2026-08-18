@@ -148,6 +148,17 @@ export interface GraphSummary {
   edges: EdgeSummary[]
   /** The draft row's trigger type column (what the workflow fires on). */
   triggerType?: string | null
+  /**
+   * Refs of nodes this editor can read but not author — no catalog manifest
+   * (app blocks, not-yet-migrated types).
+   *
+   * Stated ONCE here, as data, rather than as one `info` issue per node per
+   * read. The agent does need to know a node is untouchable; it does not need
+   * to be told twice on every single read, forever. A workflow with two app
+   * blocks put two un-actionable issues on every `get_workflow`, `get_node`,
+   * `validate_workflow` AND every mutation result for the whole turn.
+   */
+  readOnlyNodes?: string[]
 }
 
 /**
@@ -159,6 +170,13 @@ export interface GraphSummary {
  */
 export interface GraphMutationResult {
   applied: boolean
+  /**
+   * The mutation was a NO-OP: the requested state already held, so nothing was
+   * written, snapshotted, or signalled. Still `applied: true` — the caller got
+   * what it asked for. Only `applied: false` means "blocked, go fix
+   * something".
+   */
+  unchanged?: boolean
   /** The touched node, when the operation targets one. */
   node?: NodeSummary
   /** The touched node's resolved outputs, friendly-rendered — wire refs from these. */

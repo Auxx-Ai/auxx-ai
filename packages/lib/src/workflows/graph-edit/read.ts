@@ -17,6 +17,7 @@ import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { type AuxxError, NotFoundError } from '../../errors'
 import { isDerivedKey, stripDerivedKeys } from '../../workflow-engine/catalog/derived-keys'
+import { getManifest } from '../../workflow-engine/catalog/registry'
 import { resolveGraphOutputs } from '../../workflow-engine/catalog/resolve-outputs'
 import type { UnifiedVariable } from '../../workflow-engine/types/unified-variable'
 import { hashWorkflowGraph } from '../graph-hash'
@@ -159,6 +160,12 @@ export function buildGraphSummary(graph: DraftGraph, triggerType?: string | null
         : {}),
     }
   })
+  // Nodes with no catalog manifest are read-only to this editor. Reported here
+  // once instead of as a repeated per-node `info` issue — see GraphSummary.
+  const readOnlyNodes = graph.nodes
+    .filter((node) => !getManifest(nodeType(node)))
+    .map((node) => formatNodeRef(graph.nodes, node.id))
+
   return {
     nodeCount: graph.nodes.length,
     edgeCount: graph.edges.length,
@@ -172,6 +179,7 @@ export function buildGraphSummary(graph: DraftGraph, triggerType?: string | null
     }),
     edges,
     triggerType: triggerType ?? null,
+    ...(readOnlyNodes.length > 0 ? { readOnlyNodes } : {}),
   }
 }
 

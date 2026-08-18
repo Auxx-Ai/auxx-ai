@@ -91,6 +91,8 @@ export function projectOutputs(outputs: unknown[] | undefined): ProjectedOutput[
 /** The projected success output every graph mutation tool returns. */
 export interface ProjectedMutation {
   applied: boolean
+  /** Nothing was written because the requested state already held. */
+  unchanged?: boolean
   /** Human line for the status pill — also what `buildDigest` picks up. */
   summary: string
   node?: ProjectedNode
@@ -123,7 +125,13 @@ export function mutationToToolResult(
   const value = result.value
   const projected: ProjectedMutation = {
     applied: value.applied,
-    summary: summarize(value),
+    ...(value.unchanged ? { unchanged: true } : {}),
+    // Say plainly that nothing moved. `summarize` would otherwise report
+    // "Updated X" for a write that wrote nothing, which is what let the model
+    // re-issue the same edit without ever learning it was already applied.
+    summary: value.unchanged
+      ? `No change — ${value.node?.title ?? 'the target'} already had these values.`
+      : summarize(value),
     ...(value.node ? { node: projectNode(value.node) } : {}),
     ...(value.outputs ? { outputs: projectOutputs(value.outputs) } : {}),
     issues: value.issues,
