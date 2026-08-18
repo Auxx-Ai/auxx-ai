@@ -3,7 +3,7 @@
   "name": "Quo Contacts",
   "description": "Sync your Quo (formerly OpenPhone) address book into contacts. Bind the same Quo API key the SMS channel uses — connect once, both share the credential.",
   "categories": ["communication", "crm"],
-  "iconKey": "message-square",
+  "iconKey": "brand:quo",
   "requiresConnection": true,
   "connection": {
     "providerKey": "openphone",

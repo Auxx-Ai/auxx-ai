@@ -864,7 +864,10 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         validation: { minLength: 10, message: 'API key must be at least 10 characters.' },
       },
     ],
-    uiMetadata: { icon: 'brand:openphone', category: 'other', brandColor: '#6366f1' },
+    // `brand:quo`, not `brand:openphone` — the latter had no file on disk, so this
+    // rendered as a fallback identity. The provider KEY stays `openphone` (it is
+    // persisted on every Credential row); only the mark is renamed.
+    uiMetadata: { icon: 'brand:quo', category: 'other', brandColor: '#0e0f17' },
   },
 
   // ────────────────────────────────────────────────────────────────────────
