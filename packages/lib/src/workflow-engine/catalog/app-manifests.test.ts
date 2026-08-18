@@ -5,13 +5,29 @@
 //
 // See plans/kopilot/workflow/17-app-block-authoring-and-connections.md §4 A3.
 
-import { describe, expect, it } from 'vitest'
-import type { CachedBlockOp, CachedWorkflowBlock } from '../../cache/org-cache-keys'
+import { describe, expect, it, vi } from 'vitest'
+import type {
+  CachedBlockOp,
+  CachedInstalledApp,
+  CachedWorkflowBlock,
+} from '../../cache/org-cache-keys'
+
+// Partial mock — the cache barrel is imported by half of lib, and replacing it
+// wholesale dies at collection. Only the one read this module makes is stubbed.
+const getCachedInstalledApps = vi.fn()
+vi.mock('../../cache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../cache')>()),
+  getCachedInstalledApps: (...args: unknown[]) => getCachedInstalledApps(...args),
+}))
+
 import {
+  buildManifestLookup,
   fieldNodeMapToUnifiedVariables,
   resolveAppBlockOutputs,
   schemaPropertiesToUnifiedVariables,
+  synthesizeAppBlockManifest,
 } from './app-manifests'
+import { NodeCategory } from './types'
 
 const NODE = 'fedex-DmJuCD8M2cAE0Hqdua0Ns'
 
@@ -360,5 +376,394 @@ describe('resolveAppBlockOutputs', () => {
     expect(
       resolveAppBlockOutputs(block([]), { resource: 'shipment', operation: 'track' }, NODE)
     ).toEqual({ variables: [], status: 'unknown-operation' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The synthesized manifest (PR B1)
+// ---------------------------------------------------------------------------
+
+/** The block's own `inputsJsonSchema` — the SDK field `toJSON()` map the panel declares. */
+const fedexInputs: Record<string, unknown> = {
+  resource: { type: 'select', _metadata: { options: ['shipment'] } },
+  operation: { type: 'select', _metadata: { options: ['track', 'watch'] } },
+  trackingNumber: { type: 'string', _metadata: { label: 'Tracking number' } },
+  referenceType: {
+    type: 'select',
+    _metadata: { options: ['PART_NUMBER'], defaultValue: 'PART_NUMBER' },
+  },
+}
+
+function installedApp(overrides: Partial<CachedInstalledApp> = {}): CachedInstalledApp {
+  return {
+    installationId: 'inst_1',
+    installationType: 'production',
+    installedAt: '2026-08-01T00:00:00.000Z',
+    app: {
+      id: 'z3prnwpd3rt31mp7f9yxo5m6',
+      slug: 'fedex',
+      title: 'FedEx',
+      description: null,
+      avatarUrl: null,
+      category: null,
+    },
+    currentDeployment: null,
+    methods: [],
+    connectionDefinitions: {},
+    orgConnectionPresent: true,
+    orgConnectionExpiresAt: null,
+    ...overrides,
+  } as CachedInstalledApp
+}
+
+/** A block shaped like the real FedEx one: two ops, declared panel inputs. */
+function fedexBlock(overrides: Partial<CachedWorkflowBlock> = {}): CachedWorkflowBlock {
+  return {
+    ...block([op('shipment.track', trackOutputs), op('shipment.watch', openOutputs)]),
+    description: 'Track FedEx shipments',
+    inputsJsonSchema: fedexInputs,
+    toolMap: { 'shipment.track': 'tool_track', 'shipment.watch': 'tool_watch' },
+    ...overrides,
+  }
+}
+
+const APP_TYPE = 'z3prnwpd3rt31mp7f9yxo5m6:fedex'
+
+function manifestFor(
+  blockOverrides: Partial<CachedWorkflowBlock> = {},
+  appOverrides: Partial<CachedInstalledApp> = {}
+) {
+  return synthesizeAppBlockManifest(installedApp(appOverrides), fedexBlock(blockOverrides))
+}
+
+/** Config an agent would have to write to get a clean node — the "healthy" baseline. */
+const healthyConfig = {
+  type: APP_TYPE,
+  appId: 'z3prnwpd3rt31mp7f9yxo5m6',
+  blockId: 'fedex',
+  resource: 'shipment',
+  operation: 'track',
+  trackingNumber: '123',
+}
+
+describe('synthesizeAppBlockManifest — shape', () => {
+  it('parses its own defaultData with its own configSchema', () => {
+    // The invariant `catalog-coverage.test.ts` enforces for every REGISTERED
+    // manifest. Synthesized ones are outside that suite's set by design, so it
+    // has to be asserted here or nothing checks it.
+    const manifest = manifestFor()
+
+    expect(manifest.configSchema.safeParse(manifest.defaultData()).success).toBe(true)
+  })
+
+  it('stamps identity and the first operation into defaultData', () => {
+    expect(manifestFor().defaultData()).toMatchObject({
+      type: APP_TYPE,
+      appId: 'z3prnwpd3rt31mp7f9yxo5m6',
+      appSlug: 'fedex',
+      blockId: 'fedex',
+      title: 'FedEx',
+      resource: 'shipment',
+      operation: 'track',
+      // From the panel field's declared `_metadata.defaultValue`.
+      referenceType: 'PART_NUMBER',
+    })
+    // Resolved at run time from `appId`; the canvas does not persist it either.
+    expect(manifestFor().defaultData()).not.toHaveProperty('installationId')
+  })
+
+  it('is an INTEGRATION node that never accepts input wiring', () => {
+    // Until B1 this was enforced by accident — `isInputNodePair` disqualified
+    // any node whose manifest was missing. That stops being true the moment app
+    // blocks HAVE manifests, so both facts are now explicit.
+    const manifest = manifestFor()
+
+    expect(manifest.category).toBe(NodeCategory.INTEGRATION)
+    expect(manifest.connection.acceptsInputNodes).toBe(false)
+    expect(manifest.connection.branches).toBeUndefined()
+  })
+
+  it('honours the projected canRunSingle, defaulting to true', () => {
+    // `undefined` is a pre-projection catalog, and today's behaviour for those
+    // is runnable — `run-node.ts` only refuses on an explicit `false`.
+    expect(manifestFor().connection.canRunSingle).toBe(true)
+    expect(manifestFor({ canRunSingle: false }).connection.canRunSingle).toBe(false)
+  })
+
+  it('keeps app-authored config keys through the schema, and declares no derived key', () => {
+    const parsed = manifestFor().configSchema.safeParse({
+      ...healthyConfig,
+      somethingTheAppInvented: 'kept',
+    })
+
+    expect(parsed.success && (parsed.data as Record<string, unknown>).somethingTheAppInvented).toBe(
+      'kept'
+    )
+    // No `configSchema` may declare a derived (`_`-prefixed) key — the invariant
+    // `derived-keys.ts` exists to protect, which cost every stored HTTP node a
+    // permanent unfixable warning when it was broken.
+    const shape = (manifestFor().configSchema as unknown as { shape: Record<string, unknown> })
+      .shape
+    expect(Object.keys(shape).filter((k) => k.startsWith('_'))).toEqual([])
+  })
+
+  it('rejects an operation the block does not offer, at the schema level', () => {
+    expect(
+      manifestFor().configSchema.safeParse({ ...healthyConfig, operation: 'teleport' }).success
+    ).toBe(false)
+  })
+
+  it('degrades to a free-string operation when the catalog predates the ops projection', () => {
+    // An enum over an empty op set would reject every stored node.
+    const manifest = manifestFor({ ops: [], toolMap: {} })
+
+    expect(
+      manifest.configSchema.safeParse({ ...healthyConfig, operation: 'anything' }).success
+    ).toBe(true)
+  })
+
+  it('is authorable, and names its operations in bounded usage text', () => {
+    const manifest = manifestFor()
+
+    expect(manifest.agent?.authorable).toBe(true)
+    expect(manifest.agent?.usage).toContain('shipment.track')
+    expect(manifest.agent?.examples[0]?.config).toMatchObject({
+      resource: 'shipment',
+      operation: 'track',
+    })
+  })
+
+  it('summarizes instead of listing when a block has many operations', () => {
+    // QuickBooks has 42 behind one type; the prompt budget is not unbounded.
+    const many = Array.from({ length: 40 }, (_, i) => op(`res.op${i}`, openOutputs))
+    const usage = manifestFor({ ops: many }).agent?.usage ?? ''
+
+    expect(usage).toContain('more (call describe_app_block)')
+    expect(usage).not.toContain('res.op39')
+  })
+
+  it('delegates resolveOutputs to the ladder', () => {
+    const vars = manifestFor().resolveOutputs?.(
+      { resource: 'shipment', operation: 'track' },
+      NODE,
+      { allResources: [], resolveVariable: () => undefined }
+    )
+
+    expect(vars?.map((v) => v.id)).toContain(`${NODE}.trackingNumber`)
+  })
+})
+
+describe('synthesizeAppBlockManifest — validate', () => {
+  /** Only the errors whose message concerns `field`, so a table stays readable. */
+  const errorsFor = (config: Record<string, unknown>, field: string, manifest = manifestFor()) =>
+    manifest.validate(config).errors.filter((e) => e.field === field)
+
+  it('accepts a fully configured node', () => {
+    const result = manifestFor().validate(healthyConfig)
+
+    expect(result.isValid).toBe(true)
+    expect(result.errors).toEqual([])
+  })
+
+  it('errors on an operation the block no longer offers', () => {
+    // Tier 2, so this gates `run_node` for this node and NOTHING else — the
+    // mutation-blocking half lives in `validateGraphStructure`, keyed on
+    // `newNodeIds`, so one drifted node never makes a workflow uneditable.
+    const errors = errorsFor({ ...healthyConfig, operation: 'teleport' }, 'operation')
+
+    expect(errors[0]?.type).toBe('error')
+    expect(errors[0]?.message).toContain('shipment.track')
+  })
+
+  it('errors when no operation is selected', () => {
+    expect(errorsFor({ type: APP_TYPE }, 'operation')[0]?.type).toBe('error')
+  })
+
+  it('says nothing about operations when the catalog predates the ops projection', () => {
+    // Flagging every healthy node until its app is republished would be worse
+    // than silence.
+    const manifest = manifestFor({ ops: [], toolMap: {} })
+
+    expect(errorsFor({ type: APP_TYPE }, 'operation', manifest)).toEqual([])
+  })
+
+  it('warns — never errors — on a missing required tool input', () => {
+    // Advisory: most blocks forward the flat panel input unchanged, but some
+    // project it first, so a required name here is the TOOL's, not the block's.
+    const withRequired = manifestFor({
+      ops: [
+        {
+          ...op('shipment.track', trackOutputs),
+          inputsJsonSchema: {
+            type: 'object',
+            required: ['trackingNumber'],
+            properties: { trackingNumber: { type: 'string' } },
+          },
+        },
+      ],
+    })
+
+    const errors = errorsFor(
+      { ...healthyConfig, trackingNumber: '' },
+      'trackingNumber',
+      withRequired
+    )
+    expect(errors[0]?.type).toBe('warning')
+    expect(withRequired.validate(healthyConfig).errors).toEqual([])
+  })
+
+  it('warns about a {{ref}} stranded in a constant-mode field', () => {
+    // The engine passes constant fields through RAW, so the app receives the
+    // literal text. Nothing else reports it: `extractVariables` mirrors the
+    // engine and skips constant fields, so ref-checking cannot see it either.
+    const errors = errorsFor(
+      { ...healthyConfig, trackingNumber: '{{FedEx.trackingNumber}}' },
+      'trackingNumber'
+    )
+
+    expect(errors[0]?.type).toBe('warning')
+    expect(errors[0]?.message).toContain('fieldModes.trackingNumber')
+  })
+
+  it('says nothing when that same ref is properly in variable mode', () => {
+    expect(
+      errorsFor(
+        {
+          ...healthyConfig,
+          trackingNumber: '{{FedEx.trackingNumber}}',
+          fieldModes: { trackingNumber: false },
+        },
+        'trackingNumber'
+      )
+    ).toEqual([])
+  })
+})
+
+describe('synthesizeAppBlockManifest — the connection issue', () => {
+  const connectionErrors = (
+    app: Partial<CachedInstalledApp>,
+    blockOverrides: Partial<CachedWorkflowBlock> = {}
+  ) =>
+    manifestFor(blockOverrides, app)
+      .validate(healthyConfig)
+      .errors.filter((e) => e.field === 'connectionId')
+
+  it('says nothing when the node is simply unbound and the workspace is connected', () => {
+    // Unbound is the NORMAL, healthy state: the runtime resolver takes its
+    // `appId` arm and picks the org default. Firing on a missing `connectionId`
+    // would put an issue on nearly every app node in every workflow.
+    expect(connectionErrors({ orgConnectionPresent: true })).toEqual([])
+  })
+
+  it('errors when the block declares it needs a connection and the workspace has none', () => {
+    const errors = connectionErrors({ orgConnectionPresent: false }, { requiresConnection: true })
+
+    expect(errors[0]?.type).toBe('error')
+    expect(errors[0]?.message).toContain('Settings → Apps → FedEx → Connections')
+  })
+
+  it('only warns when the requirement is the per-app approximation', () => {
+    // `requiresConnection: undefined` means UNKNOWN, not false — the catalog
+    // predates the projection. Refusing to run on an approximation would punish
+    // a block that may genuinely need no connection.
+    const errors = connectionErrors({
+      orgConnectionPresent: false,
+      connectionDefinitions: { organization: {} as never },
+    })
+
+    expect(errors[0]?.type).toBe('warning')
+  })
+
+  it('says nothing when the app declares no connection definition at all', () => {
+    expect(connectionErrors({ orgConnectionPresent: false })).toEqual([])
+  })
+
+  it('says nothing when the block declares it needs no connection', () => {
+    expect(
+      connectionErrors({ orgConnectionPresent: false }, { requiresConnection: false })
+    ).toEqual([])
+  })
+
+  it('warns when the workspace connection is present but expired', () => {
+    const errors = connectionErrors({
+      orgConnectionPresent: true,
+      orgConnectionExpiresAt: '2020-01-01T00:00:00.000Z',
+    })
+
+    expect(errors[0]?.type).toBe('warning')
+    expect(errors[0]?.message).toContain('expired')
+  })
+})
+
+describe('synthesizeAppBlockManifest — extractVariables', () => {
+  const extract = (config: Record<string, unknown>) =>
+    manifestFor().extractVariables?.(config) ?? []
+
+  it('reads refs only from fields in variable mode', () => {
+    // Exactly the engine's contract, and the canvas's. All three must agree on
+    // which strings are refs, or ref-checking validates a different set than
+    // the one that gets resolved.
+    expect(
+      extract({
+        ...healthyConfig,
+        trackingNumber: '{{other.value}}',
+        fieldModes: { trackingNumber: false },
+      })
+    ).toEqual(['other.value'])
+
+    expect(extract({ ...healthyConfig, trackingNumber: '{{other.value}}' })).toEqual([])
+  })
+
+  it('treats a bare value in variable mode as a PICKER-mode path', () => {
+    expect(
+      extract({
+        ...healthyConfig,
+        trackingNumber: 'node_a.id',
+        fieldModes: { trackingNumber: false },
+      })
+    ).toEqual(['node_a.id'])
+  })
+
+  it('never reads a platform-owned key', () => {
+    expect(
+      extract({
+        ...healthyConfig,
+        title: '{{never.this}}',
+        connectionId: '{{nor.this}}',
+        fieldModes: { title: false, connectionId: false },
+      })
+    ).toEqual([])
+  })
+})
+
+describe('buildManifestLookup', () => {
+  it('resolves core types from the registry and app blocks from the org cache', async () => {
+    getCachedInstalledApps.mockReset()
+    getCachedInstalledApps.mockResolvedValue([
+      { ...installedApp(), workflowBlocks: [fedexBlock()] },
+    ])
+
+    const lookup = await buildManifestLookup('org_1')
+
+    expect(lookup('wait')?.id).toBe('wait')
+    expect(lookup(APP_TYPE)?.category).toBe(NodeCategory.INTEGRATION)
+    // An uninstalled app's leftover node: the provider filters it out, so it
+    // simply does not resolve and stays read-only.
+    expect(lookup('some-other-app:block')).toBeUndefined()
+  })
+
+  it('widens the lookup, never the registry', async () => {
+    // `catalog-coverage.test.ts` asserts exact set equality between the
+    // `NodeType` enum and {registered manifests ∪ NOT_YET_MIGRATED}. An app
+    // block is in neither, so it must never enter the shared Map.
+    getCachedInstalledApps.mockReset()
+    getCachedInstalledApps.mockResolvedValue([
+      { ...installedApp(), workflowBlocks: [fedexBlock()] },
+    ])
+    await buildManifestLookup('org_1')
+
+    const { getManifest, listManifests } = await import('./registry')
+    expect(getManifest(APP_TYPE)).toBeUndefined()
+    expect(listManifests().some((m) => m.id.includes(':'))).toBe(false)
   })
 })

@@ -137,3 +137,22 @@ export interface NodeManifest<TConfig = unknown> {
   connection: NodeConnectionRules<TConfig>
   agent?: NodeAgentDocs
 }
+
+/**
+ * How a caller resolves a node type to its manifest.
+ *
+ * The core registry (`getManifest`) answers for the 27 migrated platform types
+ * and nothing else. App workflow blocks are **per-org data**, not platform
+ * code — they are declared by an installed app's published catalog — so their
+ * manifests are synthesized per request (`buildManifestLookup`) and reach the
+ * sync call sites through this function rather than through the registry Map.
+ *
+ * Two things follow, and both are deliberate:
+ *  - `getManifest` stays synchronous, pure and core-only. It has ~30 call
+ *    sites, including the browser registry merge, which has no org context.
+ *  - Wherever a call site can see app blocks, this parameter is **required**,
+ *    never optional-defaulting-to-`getManifest`. A silent fallback to the core
+ *    registry is how a caller quietly loses app-block awareness; make
+ *    forgetting it a compile error.
+ */
+export type ManifestLookup = (type: string) => NodeManifest<any> | undefined
