@@ -4,6 +4,7 @@ import { IntegrationProviderType as IntegrationProviderEnum } from '@auxx/databa
 import type { IntegrationProviderType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq, isNull } from 'drizzle-orm'
+import { invalidateChannelsIfStale } from '../cache'
 import type { ActiveIntegration, ProviderInstance } from '../email/message-service'
 import { UnprocessableEntityError } from '../errors'
 import type { ChannelProvider } from './channel-provider.interface'
@@ -291,6 +292,14 @@ export class ProviderRegistryService {
           consecutiveFailures: authDetails.consecutiveFailures,
           googleError: authDetails.googleError,
           googleErrorDescription: authDetails.googleErrorDescription,
+        })
+
+        // A live read just observed reauth state the cached channel list may
+        // not reflect (e.g. flagged before an invalidation existed) — self-heal
+        // so the banner/warning surfaces catch up.
+        await invalidateChannelsIfStale(this.organizationId, integrationId, {
+          requiresReauth: true,
+          enabled: integration.enabled,
         })
 
         // UnprocessableEntityError (not plain Error) so the tRPC layer maps it to

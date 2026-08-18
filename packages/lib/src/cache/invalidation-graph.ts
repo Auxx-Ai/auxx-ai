@@ -67,6 +67,9 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // through the cached channel list — without this, an auth failure stays
   // invisible until the day-long TTL expires or an unrelated channel event fires.
   'channel.auth-state.changed': ['channels'],
+  // Emitted by `invalidateChannelsIfStale` when a live DB read observes channel
+  // state (enabled/requiresReauth) the cached snapshot disagrees with.
+  'channel.stale-state.detected': ['channels'],
 
   'group.created': ['groups'],
   'group.updated': ['groups'],
