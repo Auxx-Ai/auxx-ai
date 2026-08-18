@@ -19,6 +19,7 @@ import type {
 import { getChannelTokens } from '../channel-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
+import { sendSocialMessage } from '../social/send'
 import { socialThreadKey } from '../social/thread-key'
 import { type FacebookIntegrationMetadata, FacebookOAuthService } from './facebook-oauth'
 
@@ -26,23 +27,6 @@ const logger = createScopedLogger('facebook-provider')
 const DEFAULT_API_VERSION = 'v19.0'
 
 // --- Interface Definitions (for clarity, align with Graph API responses) ---
-interface FacebookSendMessagePayload {
-  recipient: {
-    id: string
-  } // PSID of the recipient
-  messaging_type: 'RESPONSE' | 'UPDATE' | 'MESSAGE_TAG' // Typically RESPONSE
-  message: {
-    text?: string
-    attachment?: {
-      // Simplified attachment structure
-      type: 'image' | 'audio' | 'video' | 'file' | 'template'
-      payload: {
-        url?: string
-        is_reusable?: boolean
-      }
-    }
-  }
-}
 interface FacebookWebhookMessage {
   mid: string // Message ID
   text?: string
@@ -246,53 +230,33 @@ export class FacebookProvider
     if (!options.text) {
       throw new Error('Facebook message must contain text (attachments not implemented).')
     }
-    // Construct the payload for the Graph API
-    const payload: FacebookSendMessagePayload = {
-      recipient: { id: recipientPsid },
-      messaging_type: 'RESPONSE', // Assume response within 24h window
-      message: {
-        text: options.text,
-        // TODO: Handle options.attachments if needed (complex)
-      },
-      // TODO: Handle messaging_type variations (e.g., MESSAGE_TAG) via options.metadata
-    }
-    const apiUrl = `https://graph.facebook.com/${this.apiVersion}/me/messages?access_token=${this.pageAccessToken}`
-    try {
-      logger.debug(`Sending Facebook message from Page ${this.pageId} to PSID ${recipientPsid}`)
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'AuxxFacebookProvider/1.0' },
-        body: JSON.stringify(payload),
-      })
-      const data = await response.json()
-      if (!response.ok || data.error) {
-        logger.error('Failed to send Facebook message via Graph API', {
-          status: response.status,
-          error: data.error,
-          pageId: this.pageId,
-          recipient: recipientPsid,
-          integrationId: this.integrationId,
-        })
-        throw new Error(
-          `Facebook API error: ${data.error?.message || 'Unknown send error'} (Code: ${data.error?.code})`
-        )
-      }
-      logger.info('Facebook message sent successfully', {
-        recipientPsid,
-        messageId: data.message_id,
-        integrationId: this.integrationId,
-      })
-      // Return the message ID provided by Facebook
-      return { id: data.message_id, success: true }
-    } catch (error: any) {
-      logger.error('Network/fetch error sending message via Facebook API:', {
-        error: error.message,
-        integrationId: this.integrationId,
-      })
-      // Re-throw the error for the caller to handle
-      throw error
-    }
+    // Messaging-window policy (24h `RESPONSE`, `HUMAN_AGENT` outside it, automation
+    // blocked outside it) plus the Graph call itself live in `social/send.ts` so
+    // both channels share one implementation and the policy is unit-testable.
+    const { messageId, policy } = await sendSocialMessage({
+      platform: 'facebook',
+      integrationId: this.integrationId!,
+      pageId: this.pageId!,
+      pageAccessToken: this.pageAccessToken!,
+      recipientId: recipientPsid,
+      text: options.text,
+      externalThreadId: options.externalThreadId,
+      automated: options.automated,
+    })
+
+    logger.info('Facebook message sent successfully', {
+      recipientPsid,
+      messageId,
+      messagingType: policy.messagingType,
+      integrationId: this.integrationId,
+    })
+
+    // The `mid` is the same id space the webhook echo and the REST sync use, so
+    // stamping it as `externalId` is what makes `(integrationId, externalId)`
+    // dedupe this send across all three doors.
+    return { id: messageId, success: true }
   }
+
   /** Confirms webhook setup (managed externally via FB App Dashboard) */
   async setupWebhook(callbackUrl: string): Promise<void> {
     await this.ensureInitialized()
