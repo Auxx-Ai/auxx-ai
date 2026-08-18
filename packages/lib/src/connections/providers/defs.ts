@@ -157,9 +157,18 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     connectionType: 'oauth2-code',
     label: 'Facebook',
     global: false,
-    oauth2AuthorizeUrl: 'https://www.facebook.com/v19.0/dialog/oauth',
-    oauth2AccessTokenUrl: 'https://graph.facebook.com/v19.0/oauth/access_token',
-    oauth2Scopes: ['pages_messaging', 'pages_manage_metadata', 'pages_read_engagement'],
+    oauth2AuthorizeUrl: 'https://www.facebook.com/v26.0/dialog/oauth',
+    oauth2AccessTokenUrl: 'https://graph.facebook.com/v26.0/oauth/access_token',
+    // pages_show_list + business_management are declared dependencies of the
+    // messaging permissions; without business_management, pages owned by a
+    // Business portfolio are missing from /me/accounts at connect time.
+    oauth2Scopes: [
+      'pages_messaging',
+      'pages_manage_metadata',
+      'pages_read_engagement',
+      'pages_show_list',
+      'business_management',
+    ],
     systemClientIdEnv: 'FACEBOOK_APP_ID',
     systemClientSecretEnv: 'FACEBOOK_APP_SECRET',
     oauth2Features: { additionalAuthorizeParams: { response_type: 'code' } },
@@ -172,14 +181,16 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     label: 'Instagram',
     global: false,
     // Instagram Messaging authorizes through the Facebook login dialog + Facebook app.
-    oauth2AuthorizeUrl: 'https://www.facebook.com/v19.0/dialog/oauth',
-    oauth2AccessTokenUrl: 'https://graph.facebook.com/v19.0/oauth/access_token',
+    oauth2AuthorizeUrl: 'https://www.facebook.com/v26.0/dialog/oauth',
+    oauth2AccessTokenUrl: 'https://graph.facebook.com/v26.0/oauth/access_token',
     oauth2Scopes: [
       'instagram_basic',
       'instagram_manage_messages',
       'pages_messaging',
       'pages_manage_metadata',
       'pages_read_engagement',
+      'pages_show_list',
+      'business_management',
     ],
     systemClientIdEnv: 'FACEBOOK_APP_ID',
     systemClientSecretEnv: 'FACEBOOK_APP_SECRET',
