@@ -372,6 +372,26 @@ export function isNodeVariable(variableId: string | undefined): boolean {
 }
 
 /**
+ * Every ref one picker-bound field contributes, whichever shape it holds.
+ *
+ * A canvas-bound field stores a BARE `nodeId.path`; anything written as text —
+ * which is what the agent's `update_node` patches produce — stores the braced
+ * `{{nodeId.path}}` form, possibly several inside one string.
+ * {@link isNodeVariable} only tests for a dot, so a braced value passes it too
+ * and every caller that trusted it recorded the ref verbatim, braces and all.
+ * `ref-check` then reads `{{nodeId` as the node name and reports a perfectly
+ * valid reference as "points at unknown node", with a did-you-mean that is the
+ * same id un-braced — an error the agent cannot act on. Route braced values
+ * through {@link extractVarIdsFromString} first, and the bare form still wins
+ * the fast path.
+ */
+export function extractFieldVariableIds(value: unknown): string[] {
+  if (typeof value !== 'string' || !value) return []
+  if (containsVariableReference(value)) return extractVarIdsFromString(value)
+  return isNodeVariable(value) ? [value] : []
+}
+
+/**
  * Check if a field is in variable mode (not constant mode)
  * fieldModes[field] === true means constant mode
  * fieldModes[field] === false or undefined means variable mode

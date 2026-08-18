@@ -6,7 +6,7 @@ import type { UnifiedVariable } from '../../types/unified-variable'
 import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
 import { createNestedVariable } from '../variable-conversion'
-import { extractVarIdsFromString, isNodeVariable, isVariableMode } from '../variable-inference'
+import { extractFieldVariableIds, isVariableMode } from '../variable-inference'
 
 /**
  * The knowledge-retrieval node's catalog manifest.
@@ -186,11 +186,7 @@ export function extractKnowledgeRetrievalVariables(
 
   // Extract from query (if in variable mode)
   if (data.query && isVariableMode(fieldModes, 'query')) {
-    if (isNodeVariable(data.query)) {
-      variableIds.add(data.query)
-    } else {
-      extractVarIdsFromString(data.query).forEach((id) => variableIds.add(id))
-    }
+    extractFieldVariableIds(data.query).forEach((id) => variableIds.add(id))
   }
 
   // Extract from sources (each row's id can be a variable)
@@ -198,38 +194,24 @@ export function extractKnowledgeRetrievalVariables(
     data.sources.forEach((row, index) => {
       const rawId = sourceRawId(row)
       if (rawId && isVariableMode(fieldModes, sourceFieldKey(row, index))) {
-        if (isNodeVariable(rawId)) {
-          variableIds.add(rawId)
-        } else {
-          extractVarIdsFromString(rawId).forEach((id) => variableIds.add(id))
-        }
+        extractFieldVariableIds(rawId).forEach((id) => variableIds.add(id))
       }
     })
   }
 
   // Extract from searchType (if in variable mode)
-  if (
-    data.searchType &&
-    isVariableMode(fieldModes, 'searchType') &&
-    isNodeVariable(data.searchType)
-  ) {
-    variableIds.add(data.searchType)
+  if (data.searchType && isVariableMode(fieldModes, 'searchType')) {
+    extractFieldVariableIds(data.searchType).forEach((id) => variableIds.add(id))
   }
 
   // Extract from limit (if in variable mode)
   if (data.limit !== undefined && isVariableMode(fieldModes, 'limit')) {
-    const limitStr = String(data.limit)
-    if (isNodeVariable(limitStr)) {
-      variableIds.add(limitStr)
-    }
+    extractFieldVariableIds(String(data.limit)).forEach((id) => variableIds.add(id))
   }
 
   // Extract from similarityThreshold (if in variable mode)
   if (data.similarityThreshold !== undefined && isVariableMode(fieldModes, 'similarityThreshold')) {
-    const thresholdStr = String(data.similarityThreshold)
-    if (isNodeVariable(thresholdStr)) {
-      variableIds.add(thresholdStr)
-    }
+    extractFieldVariableIds(String(data.similarityThreshold)).forEach((id) => variableIds.add(id))
   }
 
   return Array.from(variableIds)

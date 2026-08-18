@@ -14,7 +14,7 @@ import {
   type NodeManifest,
   type NodeValidationResult,
 } from '../types'
-import { extractVarIdsFromString, isNodeVariable } from '../variable-inference'
+import { extractFieldVariableIds, extractVarIdsFromString } from '../variable-inference'
 
 /**
  * The crud node's catalog manifest — resource-backed like find, plus a
@@ -226,9 +226,7 @@ export function extractCrudVariables(data: Partial<CrudNodeData>): string[] {
   const variableIds = new Set<string>()
 
   // Extract from resourceId (for update/delete operations)
-  if (isNodeVariable(data.resourceId)) {
-    variableIds.add(data.resourceId!)
-  }
+  extractFieldVariableIds(data.resourceId).forEach((id) => variableIds.add(id))
 
   // Extract from field values (for create/update operations)
   if (data.data) {

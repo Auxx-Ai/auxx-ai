@@ -8,7 +8,11 @@ import type { UnifiedVariable } from '../../types/unified-variable'
 import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
 import { createNestedVariable } from '../variable-conversion'
-import { extractVarIdsFromString, isNodeVariable, isVariableMode } from '../variable-inference'
+import {
+  extractFieldVariableIds,
+  extractVarIdsFromString,
+  isVariableMode,
+} from '../variable-inference'
 
 /**
  * The dataset node's catalog manifest.
@@ -149,20 +153,12 @@ export function extractDatasetVariables(data: Partial<DatasetNodeData>): string[
 
   // Extract from datasetId (if in variable mode)
   if (data.datasetId && isVariableMode(fieldModes, 'datasetId')) {
-    if (isNodeVariable(data.datasetId)) {
-      variableIds.add(data.datasetId)
-    } else {
-      extractVarIdsFromString(data.datasetId).forEach((id) => variableIds.add(id))
-    }
+    extractFieldVariableIds(data.datasetId).forEach((id) => variableIds.add(id))
   }
 
   // Extract from chunks (typically a variable reference like "chunker.chunks")
   if (data.chunks) {
-    if (isNodeVariable(data.chunks)) {
-      variableIds.add(data.chunks)
-    } else {
-      extractVarIdsFromString(data.chunks).forEach((id) => variableIds.add(id))
-    }
+    extractFieldVariableIds(data.chunks).forEach((id) => variableIds.add(id))
   }
 
   // Extract from documentTitle (if in variable mode)
@@ -177,9 +173,7 @@ export function extractDatasetVariables(data: Partial<DatasetNodeData>): string[
 
   // Extract from fileId (if in variable mode)
   if (data.fileId && isVariableMode(fieldModes, 'fileId')) {
-    if (isNodeVariable(data.fileId)) {
-      variableIds.add(data.fileId)
-    }
+    extractFieldVariableIds(data.fileId).forEach((id) => variableIds.add(id))
   }
 
   // Extract from the processing options bound to a variable — the two boolean
@@ -187,8 +181,8 @@ export function extractDatasetVariables(data: Partial<DatasetNodeData>): string[
   // mode
   for (const field of ['skipEmbedding', 'waitForEmbeddings', 'embeddingTimeoutMinutes'] as const) {
     const value = data[field]
-    if (typeof value === 'string' && isVariableMode(fieldModes, field) && isNodeVariable(value)) {
-      variableIds.add(value)
+    if (isVariableMode(fieldModes, field)) {
+      extractFieldVariableIds(value).forEach((id) => variableIds.add(id))
     }
   }
 

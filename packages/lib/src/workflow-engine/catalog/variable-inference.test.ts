@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  extractFieldVariableIds,
   parseArraySegmentsFromId,
   parseVariablePath,
   setSegmentAccessor,
@@ -179,5 +180,44 @@ describe('setSegmentAccessor', () => {
     // rewriting there would corrupt the key into "find_1.ord[0]ers".
     expect(setSegmentAccessor('find_1.orders[*]', 'find_1.ord', '0')).toBe('find_1.orders[*]')
     expect(setSegmentAccessor('find_1.orders[*]', 'other.path', '0')).toBe('find_1.orders[*]')
+  })
+})
+
+/**
+ * The two shapes a picker-bound field can hold. The canvas writes bare ids;
+ * `update_node` patches write the braced form. `isNodeVariable` accepts both
+ * (it only tests for a dot), which is why callers must go through this helper
+ * rather than trusting it — see plan-17 §9.1.
+ */
+describe('extractFieldVariableIds', () => {
+  it('returns the bare picker-written id as-is', () => {
+    expect(extractFieldVariableIds('find1.count')).toEqual(['find1.count'])
+  })
+
+  it('strips the braces off an agent-written ref', () => {
+    expect(extractFieldVariableIds('{{find1.count}}')).toEqual(['find1.count'])
+  })
+
+  it('handles a node id containing a colon (app blocks)', () => {
+    expect(extractFieldVariableIds('{{appid:fedex-abc.trackingNumber}}')).toEqual([
+      'appid:fedex-abc.trackingNumber',
+    ])
+  })
+
+  it('returns every ref embedded in a mixed string', () => {
+    expect(extractFieldVariableIds('id-{{a.b}}-and-{{c.d}}')).toEqual(['a.b', 'c.d'])
+  })
+
+  it('ignores plain text, non-strings and dotless values', () => {
+    expect(extractFieldVariableIds('just text')).toEqual([])
+    expect(extractFieldVariableIds('nodot')).toEqual([])
+    expect(extractFieldVariableIds(undefined)).toEqual([])
+    expect(extractFieldVariableIds(42)).toEqual([])
+    expect(extractFieldVariableIds('')).toEqual([])
+  })
+
+  it('skips env/sys refs in the bare form, matching isNodeVariable', () => {
+    expect(extractFieldVariableIds('env.THRESHOLD')).toEqual([])
+    expect(extractFieldVariableIds('sys.userId')).toEqual([])
   })
 })
