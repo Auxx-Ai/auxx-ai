@@ -7,9 +7,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import {
   type IntegrationSettings, // Per-integration record-creation/filter settings
-  type MessageData, // Data structure expected by storage service
   MessageStorageService,
-  type ParticipantInputData, // Structure for participant info from provider
 } from '../../email/email-storage' // Adjust path
 import type {
   ChannelProvider,
@@ -21,7 +19,11 @@ import { BaseMessageProvider, type MessageProvider } from '../message-provider-i
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 import { SOCIAL_SUBSCRIBED_FIELDS, subscribePageToApp, unsubscribePageFromApp } from '../social/api'
 import { sendSocialMessage } from '../social/send'
-import { socialThreadKey } from '../social/thread-key'
+import {
+  resolveSocialBackfillCutoff,
+  type SocialSyncMetadata,
+  syncSocialMessages,
+} from '../social/sync'
 import { type FacebookIntegrationMetadata, FacebookOAuthService } from './facebook-oauth'
 
 const logger = createScopedLogger('facebook-provider')
@@ -29,57 +31,18 @@ const logger = createScopedLogger('facebook-provider')
 // (observed live 2026-08-17: `paging.next` links came back stamped v25.0).
 const DEFAULT_API_VERSION = 'v26.0'
 
-// --- Interface Definitions (for clarity, align with Graph API responses) ---
-interface FacebookWebhookMessage {
-  mid: string // Message ID
-  text?: string
-  attachments?: Array<{
-    type: string
-    payload: {
-      url?: string
-      title?: string
-    }
-  }>
-}
-// Structure of participant from conversation or message webhook
-interface FacebookGraphParticipant {
-  id: string // PSID or Page ID
-  name?: string
-}
-/** Generic shape of a paginated Graph API edge response. */
-interface FacebookGraphListResponse<T> {
-  data?: T[]
-  paging?: {
-    next?: string | null
-  }
-  error?: {
-    message?: string
-    code?: number
-  }
-}
-/** Conversation node returned by the /{page-id}/conversations edge. */
-interface FacebookGraphConversation {
-  id?: string
-  updated_time?: string
-  participants?: {
-    data?: FacebookGraphParticipant[]
-  }
-}
-/** Message node returned by the /{conversation-id}/messages edge. */
-interface FacebookGraphMessage {
-  id?: string
-  created_time?: string
-  from?: FacebookGraphParticipant
-  to?: unknown
-  message?: unknown
-}
-// --- End Interfaces ---
+/**
+ * `Integration.metadata` as this provider reads it: the OAuth/page identity plus the
+ * backfill bookkeeping `social/sync.ts` owns.
+ */
+type FacebookProviderMetadata = FacebookIntegrationMetadata & SocialSyncMetadata
+
 export class FacebookProvider
   extends BaseMessageProvider
   implements ChannelProvider, MessageProvider
 {
   private inboxId: string | undefined = undefined
-  private metadata: FacebookIntegrationMetadata | null = null
+  private metadata: FacebookProviderMetadata | null = null
   private pageAccessToken: string | null = null
   private pageId: string | null = null
   private apiVersion: string
@@ -148,7 +111,7 @@ export class FacebookProvider
     const tokens = await getChannelTokens(integrationId)
     // Safely cast and extract metadata
     try {
-      this.metadata = integration.metadata as unknown as FacebookIntegrationMetadata
+      this.metadata = integration.metadata as unknown as FacebookProviderMetadata
       this.pageAccessToken = tokens.accessToken // Decrypted LL Page Token
       this.pageId = this.metadata.pageId
       if (!this.pageId || !this.pageAccessToken) {
@@ -172,21 +135,7 @@ export class FacebookProvider
         hasSettings: true,
       })
     }
-    // Received-time trigger cutoff (webhook-push-migration plan Phase 2.5; the same
-    // contract Gmail/Outlook/Quo use). While the initial backfill is incomplete,
-    // ingest stores historical messages but suppresses `message:received` for
-    // anything received before the connect epoch — otherwise a backfill mass-fires
-    // workflows, agent runs and AI classification against years of real customer
-    // mail. Live inbound is unaffected: its `receivedAt` is after the cutoff.
-    const socialMeta = integration.metadata as {
-      backfillCutoffAt?: string
-      initialBackfillCompletedAt?: string
-    }
-    this.storageService.setBackfillCutoff(
-      socialMeta.backfillCutoffAt && !socialMeta.initialBackfillCompletedAt
-        ? new Date(socialMeta.backfillCutoffAt)
-        : null
-    )
+    this.storageService.setBackfillCutoff(resolveSocialBackfillCutoff(this.metadata))
     logger.info(`FacebookProvider initialized successfully for Page ID: ${this.pageId}`, {
       integrationId,
     })
@@ -290,282 +239,35 @@ export class FacebookProvider
     })
   }
   /**
-   * Synchronizes messages from Facebook Messenger using the Conversation API.
+   * Backfills / catches up Messenger history for this Page.
+   *
+   * The walk itself lives in `social/sync.ts` because Messenger and Instagram Direct
+   * are the same ladder over the same edge, differing only in the `platform` param and
+   * in which id counts as "us". What used to be here — ~180 lines of raw `fetch` with
+   * the access token in the query string, a `since` filter applied *after* paginating
+   * all 500+ conversations, and `fields=message{text,attachments,mid}` expanding a
+   * scalar — is gone rather than repaired.
    */
   async syncMessages(since?: Date): Promise<void> {
     await this.ensureInitialized()
-    logger.info('Starting Facebook message sync', {
-      pageId: this.pageId,
-      since: since?.toISOString(),
-      integrationId: this.integrationId,
-    })
-    try {
-      // Initial URL for conversations endpoint
-      let conversationsLink: string | null =
-        `https://graph.facebook.com/${this.apiVersion}/${this.pageId}/conversations?platform=messenger&fields=id,participants{id,name},updated_time,snippet&access_token=${this.pageAccessToken}`
-      let totalMessagesProcessed = 0
-      const processedConversationIds = new Set<string>() // Track processed convos to avoid duplicate message fetching if API behaves unexpectedly
-      // --- Paginate through Conversations ---
-      while (conversationsLink) {
-        logger.debug(
-          `Fetching conversations page: ${conversationsLink.split('access_token=')[0]}...`,
-          { integrationId: this.integrationId }
-        )
-        const convoRes = await fetch(conversationsLink)
-        const convoData =
-          (await convoRes.json()) as FacebookGraphListResponse<FacebookGraphConversation>
-        if (!convoRes.ok || convoData.error) {
-          logger.error('Failed to fetch conversations', {
-            status: convoRes.status,
-            error: convoData.error,
-            pageId: this.pageId,
-          })
-          throw new Error(`Failed to fetch conversations: ${convoData.error?.message}`)
-        }
-        const conversations = convoData.data || []
-        logger.info(`Fetched ${conversations.length} conversations on this page.`, {
-          integrationId: this.integrationId,
-        })
-        if (conversations.length === 0) break // Exit if no more conversations
-        // --- Process Messages within each Conversation ---
-        for (const conversation of conversations) {
-          const conversationId = conversation.id // This is the FB Conversation ID (our externalThreadId)
-          if (!conversationId || processedConversationIds.has(conversationId)) {
-            continue // Skip if no ID or already processed
-          }
-          processedConversationIds.add(conversationId)
-          // Check conversation update time against 'since' if provided
-          if (since && conversation.updated_time) {
-            const updatedTime = new Date(conversation.updated_time)
-            if (updatedTime < since) {
-              logger.debug(
-                `Skipping conversation ${conversationId} updated at ${updatedTime.toISOString()} (before 'since' date ${since.toISOString()})`
-              )
-              continue
-            }
-          }
-          // Extract user participant info from the conversation context
-          let userContext: {
-            psid: string
-            name?: string
-          } | null = null
-          if (conversation.participants?.data) {
-            const userParticipant = conversation.participants.data.find(
-              (p: FacebookGraphParticipant) => p.id !== this.pageId
-            )
-            if (userParticipant) {
-              userContext = { psid: userParticipant.id, name: userParticipant.name }
-            }
-          }
-          if (!userContext) {
-            logger.warn(
-              `Could not determine user PSID for conversation ${conversationId}, skipping message fetching for this conversation.`
-            )
-            continue
-          }
-          // --- Paginate through Messages for this Conversation ---
-          let messagesLink: string | null =
-            `https://graph.facebook.com/${this.apiVersion}/${conversationId}/messages?access_token=${this.pageAccessToken}&fields=id,created_time,from{id,name},to{id,name},message{text,attachments,mid}` // Added mid
-          const messagesToStore: MessageData[] = []
-          // Apply 'since' filter to message fetching as well (more granular)
-          if (since) {
-            messagesLink += `&since=${Math.floor(since.getTime() / 1000)}`
-          }
-          while (messagesLink) {
-            logger.debug(
-              `Fetching messages page for FB conversation ${conversationId}: ${messagesLink.split('access_token=')[0]}...`,
-              { integrationId: this.integrationId }
-            )
-            const msgRes = await fetch(messagesLink)
-            const msgData = (await msgRes.json()) as FacebookGraphListResponse<FacebookGraphMessage>
-            if (!msgRes.ok || msgData.error) {
-              logger.error(`Failed to fetch messages for conversation ${conversationId}`, {
-                status: msgRes.status,
-                error: msgData.error,
-              })
-              messagesLink = null // Stop fetching for this conversation on error
-              break // Break message loop
-            }
-            const messages = msgData.data || []
-            if (messages.length === 0) break // Exit message loop if no messages on page
-            logger.debug(
-              `Fetched ${messages.length} messages for FB conversation ${conversationId} on this page.`,
-              { integrationId: this.integrationId }
-            )
-            for (const message of messages) {
-              // Pass the user context extracted from the conversation
-              const converted = this.convertFacebookMessageToMessageData(
-                message,
-                conversationId,
-                userContext
-              )
-              if (converted) {
-                messagesToStore.push(converted)
-              }
-            }
-            messagesLink = msgData.paging?.next ?? null // Get next page link for messages
-          } // End message pagination loop
-          // --- Store fetched messages for this conversation ---
-          if (messagesToStore.length > 0) {
-            // Batch store messages accepts MessageData[]
-            const storedCount = await this.storageService.batchStoreMessages(messagesToStore)
-            totalMessagesProcessed += storedCount
-            logger.info(
-              `Stored ${storedCount}/${messagesToStore.length} messages for FB conversation ${conversationId}.`,
-              { integrationId: this.integrationId }
-            )
-          }
-        } // End conversation loop
-        conversationsLink = convoData.paging?.next ?? null // Get next page link for conversations
-      } // End conversation pagination loop
-      // Update last synced time after successful completion
-      await db
-        .update(schema.Integration)
-        .set({ lastSyncedAt: new Date() })
-        .where(eq(schema.Integration.id, this.integrationId!))
-      logger.info(
-        `Facebook sync completed. Processed approximately ${totalMessagesProcessed} messages.`,
-        { integrationId: this.integrationId }
-      )
-    } catch (error: any) {
-      logger.error('Error during Facebook message sync:', {
-        error: error.message,
-        integrationId: this.integrationId,
-      })
-      // Update last synced time even on failure to mark the attempt? Optional.
-      await db
-        .update(schema.Integration)
-        .set({ lastSyncedAt: new Date() })
-        .where(eq(schema.Integration.id, this.integrationId!))
-        .catch((updateErr: unknown) =>
-          logger.error('Failed to update lastSyncedAt after sync error', { updateErr })
-        )
-      throw error // Re-throw the error
-    }
-  }
-  /**
-   * Converts a Facebook message object (from Graph API) to our standard MessageData format,
-   * using ParticipantInputData structure.
-   */
-  private convertFacebookMessageToMessageData(
-    message: any, // Raw message object from Graph API /{conv-id}/messages edge
-    conversationId: string, // FB Conversation ID
-    userContext: {
-      psid: string
-      name?: string
-    } // User PSID and optional name from conversation context
-  ): MessageData | null {
-    // Ensure provider is initialized
-    if (!this.integrationId || !this.pageId || !this.metadata) {
-      logger.error('Provider state invalid during message conversion.')
-      return null
-    }
-    try {
-      // Extract core message details
-      const fbMessageContent: FacebookWebhookMessage = message.message || {}
-      // Use the nested message ID (mid) if available, otherwise fall back to the top-level message ID (id)
-      const externalId = fbMessageContent.mid || message.id
-      const createdTime = new Date(message.created_time)
-      // Determine sender: Use 'from' field provided by Graph API
-      const sender: FacebookGraphParticipant | undefined = message.from
-      if (!sender?.id) {
-        logger.warn('Could not determine sender ID for Facebook message', { messageId: externalId })
-        return null // Cannot process without sender
-      }
-      let fromInput: ParticipantInputData
-      let toInput: ParticipantInputData
-      let isInbound = false
-      // Check if the sender is the user (PSID matches user context)
-      if (sender.id === userContext.psid) {
-        isInbound = true
-        fromInput = { identifier: sender.id, name: sender.name ?? userContext.name } // User PSID (sender)
-        toInput = { identifier: this.pageId, name: this.metadata.pageName } // Page ID (recipient)
-      }
-      // Check if the sender is the page itself
-      else if (sender.id === this.pageId) {
-        isInbound = false
-        fromInput = { identifier: this.pageId, name: sender.name ?? this.metadata.pageName } // Page ID (sender)
-        // The recipient must be the user in this case
-        toInput = { identifier: userContext.psid, name: userContext.name } // User PSID (recipient)
-      }
-      // Check if the sender is the page's associated business account (should be same as pageId usually)
-      else if (this.metadata.pageId && sender.id === this.metadata.pageId) {
-        // Treat this also as outbound
-        isInbound = false
-        fromInput = { identifier: sender.id, name: sender.name ?? this.metadata.pageName } // Page ID (sender)
-        toInput = { identifier: userContext.psid, name: userContext.name } // User PSID (recipient)
-      } else {
-        logger.error('Could not determine participant roles for Facebook message', {
-          messageId: externalId,
-          senderId: sender.id,
-          userPsid: userContext.psid,
-          pageId: this.pageId,
-        })
-        return null // Skip if roles are unclear
-      }
-      // const text = fbMessageContent.text
-      // Process attachments
-      const attachments = (fbMessageContent.attachments || []).map((att: any) => ({
-        filename: att.payload?.title || att.type || 'attachment',
-        mimeType: att.type, // Facebook's type, not standard MIME
-        size: 0, // Size often not available
-        inline: false,
-        contentLocation: att.payload?.url, // URL if available
-      }))
-      // Construct the MessageData object for storage
-      const messageData: MessageData = {
-        externalId: externalId,
-        // NOT the `t_…` conversation id. The webhook never receives one, so the
-        // REST path must derive the SAME pair key the webhook derives or the same
-        // conversation lands in two threads. The conversation id is kept in
-        // `metadata` for deep links only.
-        externalThreadId: socialThreadKey(this.pageId, userContext.psid),
-        integrationId: this.integrationId,
-        inboxId: this.inboxId,
+    await syncSocialMessages({
+      target: {
+        platform: 'facebook',
+        graphPlatform: 'messenger',
+        pageId: this.pageId!,
+        // On Messenger the Page id is both the addressable edge and our identity in
+        // the thread key — the two coincide here and do NOT on Instagram.
+        ourId: this.pageId!,
+        ourName: this.metadata?.pageName,
+        pageAccessToken: this.pageAccessToken!,
+        integrationId: this.integrationId!,
         organizationId: this.organizationId,
-        createdTime: createdTime,
-        sentAt: createdTime, // Use created_time as best estimate for send/receive
-        receivedAt: createdTime,
-        subject: `${sender.name} commented on your Facebook post`, // No subject in Messenger
-        from: fromInput, // Use ParticipantInputData
-        to: [toInput], // Use ParticipantInputData (always single recipient conceptually)
-        cc: [],
-        bcc: [],
-        replyTo: [],
-        // Facebook has no inbound attachment ingestor, so no MessageAttachment
-        // rows are ever created and `providerAttachments` is never populated.
-        // `hasAttachments` is a workflow trigger filter (see
-        // workflow-engine/nodes/trigger-nodes/message-received.ts), so claiming
-        // true here fires attachment rules for bytes that were never fetched.
-        // The `attachments` local below still drives the snippet fallback.
-        hasAttachments: false,
-        textPlain: message.message, //text,
-        textHtml: undefined, // No HTML support
-        snippet: message.message
-          ? message.message.substring(0, 100)
-          : attachments[0]?.filename || '', // Basic snippet
-        isInbound: isInbound,
-        metadata: {
-          // Store raw event parts for debugging or future use
-          fb_conversation_id: conversationId,
-          fb_from: message.from,
-          fb_to: message.to,
-          fb_message: message.message,
-          fb_created_time: message.created_time,
-        },
-        // Default values for non-applicable fields
-        keywords: [],
-        labelIds: [],
-      }
-      return messageData
-    } catch (error: any) {
-      logger.error('Error converting Facebook message object to MessageData', {
-        error: error.message,
-        messageId: message?.id, // Log the raw message ID if available
-        integrationId: this.integrationId,
-      })
-      return null // Return null if conversion fails
-    }
+        inboxId: this.inboxId,
+      },
+      metadata: this.metadata!,
+      storage: this.storageService,
+      since,
+    })
   }
   /** Returns the provider name */
   getProviderName(): string {

@@ -159,18 +159,39 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     providerKey: 'facebook',
     connectionType: 'oauth2-code',
     label: 'Facebook',
-    global: false,
+    // ORG-scoped, like the `gmail` / `outlookMail` channel definitions above and unlike
+    // the per-user `googleOAuth2Api` / `outlookOAuth2Api` workflow connections. A Page is
+    // a company asset: whoever authorises it, the channel belongs to the org.
+    //
+    // This was `false`, and the cost was not theoretical. `global` decides the credential's
+    // scope at the OAuth callback (`userId: personal ? userId : global ? null : userId`),
+    // so every Page connect minted a USER-scoped credential; `connections.list` derives
+    // scope as `userId ? 'user' : 'organization'`, so the row read back as `user` while
+    // the connect flow believed it was an `organization` connect. `buildConnectionVerify`
+    // matches on `r.scope === a.scope`, so its poll never matched, and the connect dialog
+    // span on "Connecting…" until the 180s timeout — on a connect that had *succeeded*.
+    // A cross-origin dev tunnel makes it worse but is not the cause: the tunnel only
+    // drops the popup `postMessage`, which is exactly when the verify backstop is supposed
+    // to carry the settle. (This is WS8 in plans/channels/facebook-instagram-runtime-fixes.md.)
+    //
+    // Personal connects are unaffected — `metadata.personal` is checked first, which is how
+    // `gmail` is global AND still supports a personal mailbox.
+    global: true,
     oauth2AuthorizeUrl: 'https://www.facebook.com/v26.0/dialog/oauth',
     oauth2AccessTokenUrl: 'https://graph.facebook.com/v26.0/oauth/access_token',
-    // pages_show_list + business_management are declared dependencies of the
-    // messaging permissions; without business_management, pages owned by a
-    // Business portfolio are missing from /me/accounts at connect time.
+    // `business_management` REMOVED 2026-08-18, under test. It was requested on the
+    // claim that Pages owned by a Business portfolio are absent from /me/accounts
+    // without it — a claim asserted in two places and verified in none. Meta defines
+    // the permission as managing/claiming business assets on behalf of other
+    // businesses, which is not what we do, and App Review asks for examples of exactly
+    // that — making it the riskiest line in the submission. If a Business-portfolio
+    // Page connects fine without it, it stays out. See
+    // plans/channels/meta-app-review-submission.md §1.
     oauth2Scopes: [
       'pages_messaging',
       'pages_manage_metadata',
       'pages_read_engagement',
       'pages_show_list',
-      'business_management',
     ],
     systemClientIdEnv: 'FACEBOOK_APP_ID',
     systemClientSecretEnv: 'FACEBOOK_APP_SECRET',
@@ -182,10 +203,37 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     providerKey: 'instagram',
     connectionType: 'oauth2-code',
     label: 'Instagram',
-    global: false,
+    // ORG-scoped — same reasoning as the `facebook` entry above; see the note there for
+    // why `false` left the connect dialog spinning on a successful connect.
+    global: true,
     // Instagram Messaging authorizes through the Facebook login dialog + Facebook app.
     oauth2AuthorizeUrl: 'https://www.facebook.com/v26.0/dialog/oauth',
     oauth2AccessTokenUrl: 'https://graph.facebook.com/v26.0/oauth/access_token',
+    // `business_management` removed here too — same test, see the facebook entry.
+    //
+    // ⚠️ DO NOT rename the two `instagram_*` scopes to `instagram_business_*`.
+    // A connect attempt on 2026-08-18 failed with `Invalid Scopes: instagram_basic,
+    // instagram_manage_messages`, and the obvious-looking fix is the wrong one:
+    //
+    //   - `instagram_basic` / `instagram_manage_messages` are the CURRENT, non-deprecated
+    //     names for **Instagram API with Facebook Login** (host graph.facebook.com), which
+    //     is the configuration this whole channel is built on — page token, Page-level
+    //     `subscribed_apps`, `/{page-id}/messages`.
+    //     https://developers.facebook.com/docs/instagram-platform/overview/
+    //   - `instagram_business_basic` / `instagram_business_manage_messages` belong to the
+    //     OTHER configuration, **Instagram API with Instagram Login** (host
+    //     graph.instagram.com, Instagram's own OAuth dialog). Meta's 2025-01-27 rename was
+    //     `business_basic` → `instagram_business_basic` *within that namespace*; it did not
+    //     touch the Facebook-Login names. Sending them through the Facebook dialog would be
+    //     rejected as invalid too.
+    //
+    // "Invalid Scopes" here means the APP cannot request the permission, not that the name
+    // is wrong: on Meta's use-case dashboard a permission only becomes requestable once the
+    // matching use case exists. The Instagram use case must be added and customized to
+    // "API setup with Facebook login" (+ "Add required messaging permissions"), alongside
+    // Facebook Login for Business and Messenger-with-Instagram-settings. That is a manual
+    // dashboard step — no code change fixes it. Note only the two `instagram_*` scopes were
+    // rejected, so the Pages/Messenger side of the app is already configured.
     oauth2Scopes: [
       'instagram_basic',
       'instagram_manage_messages',
@@ -193,7 +241,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       'pages_manage_metadata',
       'pages_read_engagement',
       'pages_show_list',
-      'business_management',
     ],
     systemClientIdEnv: 'FACEBOOK_APP_ID',
     systemClientSecretEnv: 'FACEBOOK_APP_SECRET',

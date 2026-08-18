@@ -16,7 +16,12 @@ export { linkContactToCompanyByDomain } from './companies/link-contact'
 // Contacts
 export { createContactAfterOutboundMessage } from './contacts/create-after-outbound'
 export { ensureContactsForRecipients } from './contacts/ensure-for-recipients'
-export { buildServerExternalId, chatExternalId, shopifyExternalId } from './contacts/external-id'
+export {
+  buildServerExternalId,
+  chatExternalId,
+  metaExternalId,
+  shopifyExternalId,
+} from './contacts/external-id'
 export { findOrCreateContactForParticipant } from './contacts/find-or-create'
 export type {
   FindOrCreateContactFromJwtInput,
@@ -24,6 +29,10 @@ export type {
 } from './contacts/find-or-create-from-jwt'
 export { findOrCreateContactFromJwt } from './contacts/find-or-create-from-jwt'
 export { hasOrganizationSentToParticipant } from './contacts/has-sent-to'
+export {
+  type ContactIdentityCandidate,
+  contactIdentityCandidate,
+} from './contacts/identity-candidate'
 // Context
 export type { CreateIngestContextOptions, IngestContext } from './context'
 export { buildOwnIdentitySets, createIngestContext, resetBatchCaches } from './context'
