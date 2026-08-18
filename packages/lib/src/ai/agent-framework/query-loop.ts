@@ -2,7 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils/generateId'
-import type { ToolCall, UsageMetrics } from '../clients/base/types'
+import type { Message, ToolCall, UsageMetrics } from '../clients/base/types'
 import { processCaptureToolCalls } from './capture-mode'
 import { KopilotContextStore, readContextSlice, syncContextSlice } from './context'
 import type { ToolContext } from './tool-context'
@@ -144,6 +144,14 @@ export async function* agentQueryLoop(
   /** Per-turn cache of idempotent tool results; dropped whole on any write. */
   const idempotentCache = new IdempotentToolCache()
 
+  /**
+   * Set by `finalizeTurn`. False after the loop means we left it WITHOUT a
+   * final assistant message — the abnormal exit, which is what a turn that
+   * runs the iteration cap out looks like to the user: a lot of visible work
+   * and then silence.
+   */
+  let turnFinalized = false
+
   // Open a single assistant message for this entire agent run — or reuse
   // the paused message's id when resuming, so the frontend appends parts to
   // the existing bubble rather than rendering a new one.
@@ -254,6 +262,7 @@ export async function* agentQueryLoop(
       currentState = await agent.processResult(finalText, opts.toolCalls, currentState, ctx)
     }
 
+    turnFinalized = true
     return {
       type: 'assistant-message-finished',
       messageId,
@@ -1075,6 +1084,93 @@ export async function* agentQueryLoop(
     }
   }
 
+  // ===== ITERATION CAP: GRACEFUL CLOSE =====
+  // Running the cap out used to drop straight through to the abnormal-exit
+  // commit below, so the user saw a turn that did a lot of work and then said
+  // NOTHING. Give the model one last call with its tools WITHHELD: it cannot
+  // start more work, so the only thing it can produce is the summary the user
+  // is owed. Abort is a different exit and stays silent — the user asked for
+  // it — and any failure here falls through to the original path, so this can
+  // only add a reply, never remove one.
+  const iterationsExhausted =
+    !turnFinalized && !config.signal?.aborted && iteration >= maxIterations
+  if (iterationsExhausted) {
+    logger.warn('Iteration cap reached — closing the turn with a tools-withheld call', {
+      turnId,
+      agent: agent.name,
+      iterations: iteration,
+      maxIterations,
+    })
+    try {
+      if (parts.some((p) => p.type === 'tool_call' && (p as ToolCallPart).status === 'running')) {
+        markRunningPartsAsError(parts, 'Turn ended before tool completed')
+      }
+      currentState = upsertAssistantMessage()
+      const closingMessages: Message[] = [
+        ...(await agent.buildMessages(currentState, ctx)),
+        {
+          role: 'system',
+          content:
+            'You have run out of tool steps for this turn — no further tool calls are ' +
+            'possible. Reply to the user now with what you actually accomplished, what ' +
+            'still needs their input, and what remains unverified. Do not claim work you ' +
+            'did not complete.',
+        },
+      ]
+      let openTextIdx = -1
+      let closingContent = ''
+      for await (const event of config.callModel({
+        model: agent.model ?? config.domainConfig.defaultModel,
+        provider: agent.provider ?? config.domainConfig.defaultProvider,
+        messages: closingMessages,
+        // The whole mechanism: no tools means no further work is expressible.
+        parameters: agent.parameters,
+        signal: config.signal,
+      })) {
+        if (event.type === 'text-delta') {
+          if (openTextIdx === -1 || parts[openTextIdx]?.type !== 'text') {
+            parts.push({ type: 'text', text: '', agent: agent.name })
+            openTextIdx = parts.length - 1
+          }
+          ;(parts[openTextIdx] as TextPart).text += event.delta
+          yield { type: 'text-delta', messageId, partIndex: openTextIdx, delta: event.delta }
+        } else if (event.type === 'done') {
+          closingContent = event.content
+          if (event.usage && (event.usage.total_tokens ?? 0) > 0) {
+            const record: IterationUsage = {
+              iteration: iteration + 1,
+              provider: agent.provider ?? config.domainConfig.defaultProvider,
+              model: agent.model ?? config.domainConfig.defaultModel,
+              providerType: event.providerType as IterationUsage['providerType'],
+              credentialSource: event.credentialSource as IterationUsage['credentialSource'],
+              usage: event.usage,
+              ...(event.finishReason ? { finishReason: event.finishReason } : {}),
+            }
+            turnIterations.push(record)
+            segmentIterations.push(record)
+            accumulateUsage(turnUsage, event.usage)
+          }
+          // Buffered-completion fallback, same rule as the main loop.
+          if (closingContent.length > 0 && openTextIdx === -1) {
+            parts.push({ type: 'text', text: closingContent, agent: agent.name })
+            openTextIdx = parts.length - 1
+          }
+        }
+      }
+      if (openTextIdx !== -1) {
+        yield await finalizeTurn({ runProcessResult: true, toolCalls: [] })
+      }
+    } catch (error) {
+      // Never let the closing call turn a completed-but-silent turn into a
+      // failed one — fall through to the original abnormal-exit commit.
+      logger.warn('Closing call after iteration cap failed', {
+        turnId,
+        agent: agent.name,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   // Loop exit (max iterations hit without natural termination, or aborted).
   // Make sure the persisted message reflects whatever we built; if no
   // assistant-message-finished was emitted yet, this is an abnormal exit —
@@ -1092,7 +1188,12 @@ export async function* agentQueryLoop(
     },
   })
 
-  logger.info('Agent completed', { turnId, agent: agent.name, iterations: iteration })
+  logger.info('Agent completed', {
+    turnId,
+    agent: agent.name,
+    iterations: iteration,
+    ...(iterationsExhausted ? { iterationsExhausted: true } : {}),
+  })
 
   return currentState
 }
