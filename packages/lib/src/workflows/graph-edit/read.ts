@@ -110,11 +110,25 @@ export async function loadDraftContext(
   })
 }
 
-/** Data keys that are identity/bookkeeping, not config — withheld from summaries. */
+/**
+ * Data keys that are identity/bookkeeping, not config — withheld from summaries.
+ *
+ * `appId`/`appSlug`/`blockId` are an app block's identity, stamped by
+ * `add_node` from the synthesized manifest's `defaultData` and never settable:
+ * `appId` and `blockId` are already the two halves of `type`, and re-emitting
+ * all three in every node summary spent space on every read for nothing.
+ * Withholding them also makes them durable — the `patches` path deletes every
+ * key the summary showed before re-applying, so a key that is not in the
+ * summary survives the write untouched. `connectionId` and `fieldModes` stay in
+ * config on purpose: both are agent-settable.
+ */
 const NON_CONFIG_KEYS = new Set([
   'id',
   'type',
   'title',
+  'appId',
+  'appSlug',
+  'blockId',
   'desc',
   'icon',
   'selected',

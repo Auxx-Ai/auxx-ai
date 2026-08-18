@@ -1231,6 +1231,48 @@ describe('app blocks — authoring (§5 B3 checkpoint)', () => {
     )
   })
 
+  it('withholds app identity from the node summary, and the patch path keeps it', async () => {
+    // C3 hygiene: `appId`/`appSlug`/`blockId` are stamped identity, not config —
+    // `appId` and `blockId` are already the two halves of `type`. Withholding
+    // them also makes them DURABLE: the `patches` path deletes every key the
+    // summary showed before re-applying, so a key the summary never showed
+    // survives the write untouched.
+    installAcme()
+    const graph: DraftGraph = {
+      nodes: [
+        plainNode(ACME_NODE_ID, ACME_TYPE, 'Acme Sync', {
+          appId: ACME_APP_ID,
+          appSlug: 'acme',
+          blockId: 'sync',
+          resource: 'record',
+          operation: 'sync',
+        }),
+      ],
+      edges: [],
+    }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'Acme Sync',
+      patches: [{ op: 'set', path: ['operation'], value: 'archive' }],
+    })
+
+    expect(result.isOk()).toBe(true)
+    const summary = result._unsafeUnwrap().node
+    expect(summary?.config).not.toHaveProperty('appId')
+    expect(summary?.config).not.toHaveProperty('appSlug')
+    expect(summary?.config).not.toHaveProperty('blockId')
+    expect(summary?.config).toMatchObject({ resource: 'record', operation: 'archive' })
+
+    // Still on the node, so the processor can still dispatch it.
+    expect(persistedGraph().nodes.find((n) => n.id === ACME_NODE_ID)?.data).toMatchObject({
+      appId: ACME_APP_ID,
+      appSlug: 'acme',
+      blockId: 'sync',
+      operation: 'archive',
+    })
+  })
+
   it('names the app-block shape when the type resolves to nothing', async () => {
     // Listing the ~27 core ids at someone who typed a colon answers a question
     // they did not ask.

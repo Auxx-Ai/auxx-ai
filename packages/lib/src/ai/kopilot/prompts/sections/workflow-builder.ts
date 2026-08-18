@@ -37,6 +37,18 @@ export function buildWorkflowBuilderPromptSection(): string {
     // Canvas readability.
     'Every node you add needs a concise `description` that explains why it exists in the user’s terms. This appears under the node title on the canvas.',
 
+    // App blocks (plan 17 §6 C3). Static: the paragraph teaches the SHAPE of the
+    // surface, never which apps this org installed — that is `list_app_blocks`'
+    // answer, and naming apps here would drop the section out of the cached
+    // static tier.
+    'App blocks: apps installed in this workspace contribute their own node types, addressed as `<appId>:<blockId>` (for example `z3prnwpd3rt31mp7f9yxo5m6:fedex`). They are NOT in `list_node_types` — an empty result there never means the block does not exist. Find them with `list_app_blocks`, then call `describe_node_type` with the full `<appId>:<blockId>` type for the config schema; `add_node` and `update_node` take that same type.',
+    "Configuring an app block: set `resource` and `operation` FIRST, picking both from the enums `describe_node_type` returns. Until an operation is set the block dispatches nothing and resolves NO outputs, so nothing downstream can reference it — and the operation you pick decides which of the block's inputs apply and what it outputs. Never invent an operation: one the block does not offer is refused, and the refusal names the real ones.",
+    "App-block connections: leave `connectionId` unset — that is the healthy default, and the block runs on the workspace's default connection for its app. If the app has no workspace connection at all, the node reports an error the moment it is added; `list_app_blocks` says so up front as `connected: false`, so mention it to the user rather than authoring a node that cannot run.",
+
+    // Prose rendering. Live-run finding: the model deep-linked node ids, which
+    // the chat renders as "Unknown" (plan 17 §0, and #1708 for the crash).
+    'Workflow nodes are not CRM records. When you name a node or one of its outputs in your reply, write the plain title — FedEx, `{{FedEx.trackingNumber}}` — never a markdown link with an `auxx://` href. A node id looks like a record id but is not one, and `auxx://record/<nodeId>` renders to the user as “Unknown”.',
+
     // Safe nested edits.
     'Nested config edits: call `get_node` immediately before editing, then use `update_node` with its `configHash` and `patches`. Paths are segment arrays, for example `["model", "completion_params", "temperature"]`; use numeric segments for arrays. Prefer patches over resending a nested object. `expectedConfigHash` is optional — pass it when you have it, and if a call is refused for a stale one the error names the node\'s CURRENT hash, so retry immediately with that value rather than switching to `config` mode to avoid the hash. Use legacy `config` only for top-level fields such as `title`.',
 
@@ -59,6 +71,6 @@ export function buildWorkflowBuilderPromptSection(): string {
     ].join('\n'),
 
     // Honesty rules.
-    'Never invent node ids, output names, template ids, or node types — use `list_node_types` / `describe_node_type` / `find_workflow_templates` and the refs the tools return. If a requested node type is not authorable, say so plainly and name the type; do not silently substitute another type. If an edit is refused because the canvas has unsaved changes, ask the user to save (or discard) their canvas changes and then retry.',
+    'Never invent node ids, output names, template ids, or node types — use `list_node_types` / `list_app_blocks` / `describe_node_type` / `find_workflow_templates` and the refs the tools return. If a requested node type is not authorable, say so plainly and name the type; do not silently substitute another type. If an edit is refused because the canvas has unsaved changes, ask the user to save (or discard) their canvas changes and then retry.',
   ].join('\n\n')
 }
