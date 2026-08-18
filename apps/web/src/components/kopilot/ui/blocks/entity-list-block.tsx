@@ -2,13 +2,14 @@
 
 'use client'
 
-import { getDefinitionId, isRecordId } from '@auxx/lib/resources/client'
+import { getDefinitionId } from '@auxx/lib/resources/client'
 import { motion } from 'motion/react'
 import { useResource } from '~/components/resources'
 import { BlockCard } from './block-card'
 import type { BlockRendererProps } from './block-registry'
 import type { EntityListData } from './block-schemas'
 import { EntityCardItem } from './entity-card-item'
+import { isPlausibleRecordId } from './plausible-record-id'
 import { useStreamSafeIds } from './use-stream-safe-ids'
 
 export function EntityListBlock({
@@ -16,13 +17,24 @@ export function EntityListBlock({
   lastValueTruncated,
   skipEntrance,
 }: BlockRendererProps<EntityListData>) {
-  // Ids are model-authored; drop anything that isn't a well-formed
-  // `entityDef:instance` id, since it could never resolve to a record.
-  const recordIds = useStreamSafeIds(data.recordIds ?? [], lastValueTruncated).filter(isRecordId)
+  // Ids are model-authored; drop anything that isn't a plausible
+  // `entityDef:instance` id, since it could never resolve to a record — an
+  // app-block WORKFLOW NODE id has a colon and would otherwise become a row of
+  // "Record unavailable".
+  const recordIds = useStreamSafeIds(data.recordIds ?? [], lastValueTruncated).filter(
+    isPlausibleRecordId
+  )
   const snapshot = data.snapshot
   const firstId = recordIds[0]
   const entityDefId = firstId ? getDefinitionId(firstId) : null
   const { resource } = useResource(entityDefId)
+
+  // Nothing addressable: either the fence is still streaming its first id, or
+  // the model emitted a list that holds no records at all (live run: an empty
+  // `{"recordIds": []}` after a workflow tool). Both used to render as a bare
+  // "Records 0" card — render nothing instead. `AuxxBlock` stays mounted, so a
+  // streaming list still fades in the moment its first id lands.
+  if (recordIds.length === 0) return null
 
   return (
     <div className='not-prose my-2'>

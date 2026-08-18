@@ -135,7 +135,7 @@ export function createListAppConnectionsTool(getDeps: GetToolDeps): AgentToolDef
           success: false,
           output: null,
           error:
-            `${inst.app.title} has no workspace connection in this workspace, so its blocks cannot run. ` +
+            `${inst.app.title} has no workspace connection, so its blocks cannot run. ` +
             `An admin needs to connect one${method ? ` — ${method.label}` : ''} at ${connectionsPath(inst)}. ` +
             `I can't create it: connecting requires signing in to ${inst.app.title}, which only a person can do.`,
         }
