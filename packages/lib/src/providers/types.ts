@@ -120,35 +120,14 @@ export type ChannelProviderType =
 
 /**
  * Message Type Categories
- * Used to categorize what type of messages each provider handles
+ * Used to categorize the form of a message — see `plans/threads/message-type-overhaul.md`.
  */
 export enum MessageType {
   EMAIL = 'EMAIL',
-  FACEBOOK = 'FACEBOOK',
-  INSTAGRAM = 'INSTAGRAM',
   SMS = 'SMS',
-  WHATSAPP = 'WHATSAPP',
-  CALL = 'CALL',
   CHAT = 'CHAT',
-}
-
-/**
- * Provider to Message Type Mapping
- * Defines what message types each provider can handle
- */
-export const PROVIDER_MESSAGE_TYPE_MAP: Record<ChannelProviderType, MessageType[]> = {
-  [ChannelProviderType.google]: [MessageType.EMAIL],
-  [ChannelProviderType.outlook]: [MessageType.EMAIL],
-  [ChannelProviderType.mailgun]: [MessageType.EMAIL],
-  [ChannelProviderType.facebook]: [MessageType.FACEBOOK],
-  [ChannelProviderType.instagram]: [MessageType.INSTAGRAM],
-  [ChannelProviderType.openphone]: [MessageType.SMS, MessageType.CALL],
-  [ChannelProviderType.whatsapp]: [MessageType.WHATSAPP],
-  [ChannelProviderType.sms]: [MessageType.SMS],
-  [ChannelProviderType.chat]: [MessageType.CHAT],
-  [ChannelProviderType.email]: [MessageType.EMAIL],
-  [ChannelProviderType.shopify]: [], // Shopify is a data provider, not messaging
-  [ChannelProviderType.imap]: [MessageType.EMAIL],
+  CALL = 'CALL',
+  VOICEMAIL = 'VOICEMAIL',
 }
 
 /**
@@ -227,22 +206,6 @@ export function isMessagingProvider(provider: ChannelProviderType): boolean {
  */
 export function isDataProvider(provider: ChannelProviderType): boolean {
   return DATA_PROVIDERS.includes(provider as any)
-}
-
-/**
- * Get message types supported by a provider
- */
-export function getProviderMessageTypes(provider: ChannelProviderType): MessageType[] {
-  return PROVIDER_MESSAGE_TYPE_MAP[provider] || []
-}
-
-/**
- * Get providers that support a specific message type
- */
-export function getProvidersForMessageType(messageType: MessageType): ChannelProviderType[] {
-  return Object.entries(PROVIDER_MESSAGE_TYPE_MAP)
-    .filter(([_, types]) => types.includes(messageType))
-    .map(([provider]) => provider as ChannelProviderType)
 }
 
 /**

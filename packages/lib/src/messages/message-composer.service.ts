@@ -6,6 +6,9 @@ import { ParticipantRole, SendStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import { convert as htmlToText } from 'html-to-text'
+import { getOrgChannelProviderMap } from '../channels/cache'
+import { getMessageTypeFromProvider } from '../providers/type-utils'
+import { MessageType } from '../providers/types'
 import { type FileAttachment, MessageAttachmentService } from './message-attachment.service'
 import type { ComposedMessage, ProcessedParticipants } from './types/message-sending.types'
 
@@ -184,6 +187,17 @@ export class MessageComposerService {
       throw new Error(`Thread ${input.threadId} not found`)
     }
 
+    // The composer only ever creates SMS/EMAIL/CHAT rows (message-type-overhaul
+    // plan §3) — `PLATFORM_CAPABILITIES[provider].messageType` is "the type the
+    // composer stamps on an outbound row". Read from the org cache rather than a
+    // fresh query (org-cache-first house rule); an unresolved provider (channel
+    // deleted between compose and send) falls back to EMAIL rather than throwing.
+    const providerMap = await getOrgChannelProviderMap(input.organizationId, this.db)
+    const composerProvider = providerMap.get(input.integrationId)
+    const messageType = composerProvider
+      ? getMessageTypeFromProvider(composerProvider)
+      : MessageType.EMAIL
+
     // Create message with participants in a transaction
     const result = await this.db.transaction(async (tx: Transaction) => {
       // Create the message
@@ -195,6 +209,7 @@ export class MessageComposerService {
           organizationId: input.organizationId,
           integrationId: input.integrationId,
           // Note: integrationType removed - derived from Integration.provider
+          messageType,
           createdById: input.userId,
 
           // Use placeholder external IDs that will be updated

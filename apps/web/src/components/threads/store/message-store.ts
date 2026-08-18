@@ -14,7 +14,7 @@ const MAX_BATCH_SIZE = 100
 export type SendStatus = 'PENDING' | 'SENT' | 'FAILED' | 'BOUNCED'
 
 /** Message type enum - determines how the message is rendered */
-export type MessageType = 'EMAIL' | 'FACEBOOK' | 'INSTAGRAM' | 'SMS' | 'WHATSAPP' | 'CALL' | 'CHAT'
+export type MessageType = 'EMAIL' | 'SMS' | 'CHAT' | 'CALL' | 'VOICEMAIL'
 
 /** Attachment metadata for display */
 export interface AttachmentMeta {

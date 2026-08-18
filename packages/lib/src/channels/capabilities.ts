@@ -87,20 +87,23 @@ export interface PlatformCapabilities {
    */
   identifierType?: IdentifierTypeValue
   /**
-   * The `MessageType` a message on this channel reads back as.
+   * The `MessageType` the composer stamps on an OUTBOUND row for this channel.
    *
-   * `Message.messageType` is NOT a stored column — it was removed and is derived
-   * from `Integration.provider` on every read
-   * (`messages/message-query.service.ts` → `getMessageTypeFromProvider`). That
-   * function is the server-side authority and this field MUST agree with it;
-   * `__tests__/capabilities.message-type.test.ts` asserts the two maps match for
-   * every provider.
+   * `Message.messageType` IS a stored, `NOT NULL` column (message-type-overhaul
+   * plan §2.7/§3) — it can no longer be a pure function of `Integration.provider`,
+   * because a call and a text can arrive on the SAME integration. This field is
+   * NOT "the type every message on this channel reads back as" (a Quo thread can
+   * hold rows of more than one `MessageType`); it is the default
+   * `getMessageTypeFromProvider` (`providers/type-utils.ts`) returns for this
+   * provider, which is what `ingest/store-message.ts` falls back to and what the
+   * composer only ever creates (SMS/EMAIL/CHAT). `__tests__/capabilities.message-type.test.ts`
+   * asserts the two maps agree for every provider.
    *
    * It is restated here because `getMessageTypeFromProvider` lives in
    * `providers/`, which has no client-safe subpath — the composer needs this
-   * answer to stamp an optimistic row with the same value the server echo will
-   * carry, and stamping the wrong one flips a just-sent SMS through the email
-   * renderer until the echo lands.
+   * answer to stamp an optimistic row with the same value the server-stamped row
+   * will carry, and stamping the wrong one flips a just-sent SMS through the
+   * email renderer until the echo lands.
    */
   messageType: MessageTypeValue
   /** Free-form note surfaced to the LLM in the catalog stanza. */
@@ -224,7 +227,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.facebook]: {
     channel: 'messaging',
     channelGroup: 'facebook',
-    messageType: MessageType.FACEBOOK,
+    messageType: MessageType.CHAT,
     newOutbound: false,
     threadReply: true,
     subject: false,
@@ -240,7 +243,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.instagram]: {
     channel: 'messaging',
     channelGroup: 'instagram',
-    messageType: MessageType.INSTAGRAM,
+    messageType: MessageType.CHAT,
     newOutbound: false,
     threadReply: true,
     subject: false,
@@ -303,7 +306,7 @@ export const PLATFORM_CAPABILITIES: Record<IntegrationProviderTypeValue, Platfor
   [IntegrationProviderType.whatsapp]: {
     channel: 'messaging',
     channelGroup: 'whatsapp',
-    messageType: MessageType.WHATSAPP,
+    messageType: MessageType.CHAT,
     newOutbound: true,
     threadReply: true,
     subject: false,

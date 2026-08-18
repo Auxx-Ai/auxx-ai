@@ -4,14 +4,12 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { type ParticipantId, toParticipantId } from '@auxx/types'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { getOrgChannelProviderMap } from '../channels/cache'
 import { NotFoundError } from '../errors'
 import type { MailViewer } from '../permissions/visibility/context'
 import type { Lens } from '../permissions/visibility/lens'
 import { redactMessage } from '../permissions/visibility/redact'
 import { getThreadLensBatch } from '../permissions/visibility/thread-lens'
-import { getMessageTypeFromProvider } from '../providers/type-utils'
-import { ChannelProviderType } from '../providers/types'
+import type { MessageType } from '../providers/types'
 import type {
   AttachmentMeta,
   ListMessagesByThreadResult,
@@ -69,8 +67,6 @@ export class MessageQueryService {
       return { messages: [], total: 0 }
     }
 
-    const providerMap = await getOrgChannelProviderMap(this.organizationId, this.db)
-
     // All messages in Message table are sent messages (drafts are in Draft table)
     const rows = await this.db.query.Message.findMany({
       where: and(
@@ -100,6 +96,7 @@ export class MessageQueryService {
         fromId: true,
         replyToId: true,
         integrationId: true,
+        messageType: true,
         sendStatus: true,
         providerError: true,
         attempts: true,
@@ -114,9 +111,6 @@ export class MessageQueryService {
     const messages: MessageMeta[] = rows.map((m) => {
       const participantData = participantsByMessage.get(m.id)
       const participants = this.buildParticipantIds(m, participantData)
-
-      const provider = providerMap.get(m.integrationId) ?? ChannelProviderType.google
-      const messageType = getMessageTypeFromProvider(provider)
 
       const hasObjectBackedHtml = !!m.htmlBodyStorageLocationId
 
@@ -138,7 +132,7 @@ export class MessageQueryService {
         createdAt: m.createdAt.toISOString(),
         participants,
         createdById: m.createdById,
-        messageType,
+        messageType: m.messageType as MessageType,
         sendStatus: (m.sendStatus as SendStatus) ?? null,
         providerError: m.providerError ?? null,
         attempts: m.attempts ?? 0,
@@ -162,9 +156,6 @@ export class MessageQueryService {
       organizationId: this.organizationId,
       count: ids.length,
     })
-
-    // Get cached provider map for this organization
-    const providerMap = await getOrgChannelProviderMap(this.organizationId, this.db)
 
     // Fetch messages
     const messages = await this.db.query.Message.findMany({
@@ -190,6 +181,7 @@ export class MessageQueryService {
         fromId: true,
         replyToId: true,
         integrationId: true,
+        messageType: true,
         sendStatus: true,
         providerError: true,
         attempts: true,
@@ -214,10 +206,6 @@ export class MessageQueryService {
         const participantData = participantsByMessage.get(m.id)
         const participants = this.buildParticipantIds(m, participantData)
 
-        // Derive messageType from integration provider
-        const provider = providerMap.get(m.integrationId) ?? ChannelProviderType.google
-        const messageType = getMessageTypeFromProvider(provider)
-
         const hasObjectBackedHtml = !!m.htmlBodyStorageLocationId
 
         const meta: MessageMeta = {
@@ -237,7 +225,7 @@ export class MessageQueryService {
           createdAt: m.createdAt.toISOString(),
           participants,
           createdById: m.createdById,
-          messageType,
+          messageType: m.messageType as MessageType,
           sendStatus: (m.sendStatus as SendStatus) ?? null,
           providerError: m.providerError ?? null,
           attempts: m.attempts ?? 0,

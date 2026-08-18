@@ -164,31 +164,6 @@ export const ThreadStatus = {
 } as const
 
 /**
- * Message Type Enum
- * Source: packages/database/src/db/schema/_shared.ts:228
- * Database enum: messageType
- */
-export const MessageType = {
-  EMAIL: 'EMAIL',
-  FACEBOOK: 'FACEBOOK',
-  SMS: 'SMS',
-  WHATSAPP: 'WHATSAPP',
-  INSTAGRAM: 'INSTAGRAM',
-  OPENPHONE: 'OPENPHONE',
-  CHAT: 'CHAT',
-
-  values: [
-    { value: 'EMAIL', label: 'Email', color: 'blue' },
-    { value: 'FACEBOOK', label: 'Facebook', color: 'indigo' },
-    { value: 'SMS', label: 'SMS', color: 'green' },
-    { value: 'WHATSAPP', label: 'WhatsApp', color: 'teal' },
-    { value: 'INSTAGRAM', label: 'Instagram', color: 'pink' },
-    { value: 'OPENPHONE', label: 'OpenPhone', color: 'purple' },
-    { value: 'CHAT', label: 'Chat', color: 'amber' },
-  ] satisfies FieldOptionItem[],
-} as const
-
-/**
  * Read Status Enum
  * Virtual enum for thread read/unread actions (not a database enum)
  * Used for CRUD thread update operations
