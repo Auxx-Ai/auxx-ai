@@ -109,10 +109,20 @@ jobs:
         working-directory: packages/sdk
         run: pnpm pack
 
+      # `npm publish`, not `pnpm publish`: pnpm forwards its own `--no-git-checks`
+      # down to npm, and npm has no such flag. It used to warn and carry on;
+      # the `npm install -g npm@latest` step above now pulls a version that
+      # errors (EUNKNOWNCONFIG) — which broke this job with the package already
+      # built and packed. npm is also what performs the Trusted Publishing
+      # exchange, so calling it directly is the shorter path anyway.
+      #
+      # Safe here because @auxx/sdk has no `workspace:` dependencies — nothing
+      # needs pnpm's protocol rewriting on publish. Re-check that before adding
+      # one.
       - name: Publish to npm
         if: ${{ !inputs.dry-run }}
         working-directory: packages/sdk
-        run: pnpm publish --access public --tag ${{ inputs.tag }} --no-git-checks --provenance
+        run: npm publish --access public --tag ${{ inputs.tag }} --provenance
 
       - name: Check tag availability
         if: ${{ !inputs.dry-run }}
