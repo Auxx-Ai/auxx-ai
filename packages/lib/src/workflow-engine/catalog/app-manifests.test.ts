@@ -575,6 +575,20 @@ describe('synthesizeAppBlockManifest — validate', () => {
     expect(errors[0]?.message).toContain('shipment.track')
   })
 
+  it('marks ONLY the operation errors as blocking authoring', () => {
+    // `blocksAuthoring` is what lets `validateGraphStructure` refuse a write
+    // for a node the caller just authored. It must not leak onto the other
+    // tier-2 errors: a workspace with no connection yet is a legitimate state
+    // to add a node in, and blocking it would be unfixable from the editor.
+    const unconnected = manifestFor(
+      { requiresConnection: true },
+      { orgConnectionPresent: false }
+    ).validate({ ...healthyConfig, operation: 'teleport' }).errors
+
+    expect(unconnected.filter((e) => e.blocksAuthoring).map((e) => e.field)).toEqual(['operation'])
+    expect(unconnected.some((e) => e.field === 'connectionId' && e.type === 'error')).toBe(true)
+  })
+
   it('errors when no operation is selected', () => {
     expect(errorsFor({ type: APP_TYPE }, 'operation')[0]?.type).toBe('error')
   })

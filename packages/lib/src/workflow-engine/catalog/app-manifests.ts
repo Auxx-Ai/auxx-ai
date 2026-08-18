@@ -422,12 +422,19 @@ function validateAppBlockConfig(
       field: 'operation',
       message: `This ${appTitle} block has no operation selected, so it cannot run and produces no outputs. Set resource and operation to one of: ${opKeys.join(', ')}.`,
       type: 'error',
+      blocksAuthoring: true,
     })
   } else if (!op) {
     errors.push({
       field: 'operation',
       message: `"${resource}.${operation}" is not an operation this ${appTitle} block offers — the app may have changed it. Available: ${opKeys.join(', ')}.`,
       type: 'error',
+      // Authoring a node on an operation the block does not dispatch is the
+      // same class of defect as a fabricated `{{Node.field}}` ref: nothing
+      // downstream contradicts it, so the author believes it worked. A
+      // PRE-EXISTING node in this state still only gates `run_node` — the
+      // asymmetry lives in `validateGraphStructure`, keyed on `newNodeIds`.
+      blocksAuthoring: true,
     })
   }
 

@@ -140,6 +140,75 @@ describe('validateGraphStructure', () => {
   })
 })
 
+describe('validateGraphStructure — the S2 op asymmetry', () => {
+  const fabricated = (): DraftGraph => ({
+    nodes: [manualNode(), appBlockNode({ operation: 'teleport' })],
+    edges: [],
+  })
+
+  it('BLOCKS a newly authored node whose operation the block does not offer', () => {
+    // Same class of defect as a fabricated `{{Node.field}}` ref: nothing
+    // downstream contradicts it, so the author believes the write worked.
+    const blocking = errors(
+      validateGraphStructure(fabricated(), { lookup: withApp, newNodeIds: new Set([BLOCK_ID]) })
+    )
+
+    expect(blocking).toHaveLength(1)
+    expect(blocking[0]?.field).toBe('operation')
+    expect(blocking[0]?.message).toContain('shipment.track')
+  })
+
+  it('never blocks the SAME defect on a pre-existing node', () => {
+    // An app upgrade dropped the operation under a stored node. Blocking here
+    // would make the whole workflow uneditable over one drifted node — the
+    // #1649 shape. It is still reported (and still refuses `run_node`) through
+    // the non-blocking tier-2 pass.
+    expect(errors(validateGraphStructure(fabricated(), { lookup: withApp }))).toEqual([])
+    expect(
+      validateNodeConfigs(fabricated(), withApp).some(
+        (i) => i.severity === 'error' && i.field === 'operation'
+      )
+    ).toBe(true)
+  })
+
+  it('does not promote the other tier-2 errors a validator reports', () => {
+    // A missing WORKSPACE CONNECTION is a tier-2 `error` — it gates `run_node`
+    // because the run is guaranteed to fail. It must NOT block the write:
+    // adding a node before anyone has connected the app is legitimate
+    // authoring, and refusing it would be unfixable from inside the editor.
+    const unconnected: ManifestLookup = (type) =>
+      getManifest(type) ??
+      (type === APP_TYPE
+        ? synthesizeAppBlockManifest(
+            { ...installation, orgConnectionPresent: false } as CachedInstalledApp,
+            { ...block, requiresConnection: true }
+          )
+        : undefined)
+    const graph: DraftGraph = { nodes: [manualNode(), appBlockNode()], edges: [] }
+
+    expect(
+      errors(
+        validateGraphStructure(graph, { lookup: unconnected, newNodeIds: new Set([BLOCK_ID]) })
+      )
+    ).toEqual([])
+    expect(
+      validateNodeConfigs(graph, unconnected).some(
+        (i) => i.severity === 'error' && i.field === 'connectionId'
+      )
+    ).toBe(true)
+  })
+
+  it('promotes nothing for core types', () => {
+    // No core manifest sets `blocksAuthoring`, so the newNodeIds arm must stay
+    // exactly as strict as it was — type existence and authorability only.
+    const graph: DraftGraph = { nodes: [manualNode()], edges: [] }
+
+    expect(
+      errors(validateGraphStructure(graph, { lookup: withApp, newNodeIds: new Set([MANUAL_ID]) }))
+    ).toEqual([])
+  })
+})
+
 describe('validateNodeConfigs', () => {
   it('says nothing about an app block the core registry cannot see', () => {
     // `if (!manifest) continue` — zero config validation, ever. This is the

@@ -321,21 +321,52 @@ async function normalizeConfig(
   }
 }
 
-/** Manifest for an authorable type, or an actionable error naming the options. */
+/**
+ * Manifest for an authorable type, or an actionable error naming the options.
+ *
+ * The message splits on the SHAPE of the type, because the two populations have
+ * different fixes and one list cannot serve both. A core type is one of ~27
+ * platform ids, so listing them is the fix. An app block is `<appId>:<blockId>`,
+ * per-org and unbounded — listing every installed block would be a wall of text
+ * on an error whose real cause is almost always that the app is not installed
+ * here, or the id was invented. Naming the 27 core types at someone who typed a
+ * colon is worse than useless: it answers a question they did not ask.
+ */
 function requireAuthorableManifest(
   type: string,
   lookup: ManifestLookup
 ): Result<NodeManifest<any>, AuxxError> {
   const manifest = lookup(type)
   if (manifest?.agent?.authorable === true) return ok(manifest)
-  const authorable = getAuthorableManifests()
-    .map((m) => m.id)
-    .sort()
-    .join(', ')
+
+  if (manifest) {
+    return err(
+      new BadRequestError(
+        `Node type "${type}" cannot be authored here. Authorable types: ${getAuthorableManifests()
+          .map((m) => m.id)
+          .sort()
+          .join(', ')}.`
+      )
+    )
+  }
+
+  if (type.includes(':')) {
+    return err(
+      new BadRequestError(
+        `Node type "${type}" is shaped like an app block (<appId>:<blockId>), but no app ` +
+          'installed in this workspace contributes it. Either the app is not installed, its ' +
+          'current deployment no longer declares that block, or the id is wrong.'
+      )
+    )
+  }
+
   return err(
     new BadRequestError(
-      `Node type "${type}" ${manifest ? 'cannot be authored here' : 'does not exist'}. ` +
-        `Authorable types: ${authorable}.`
+      `Node type "${type}" does not exist. Core node types: ${getAuthorableManifests()
+        .map((m) => m.id)
+        .sort()
+        .join(', ')}. Blocks contributed by installed apps are addressed as ` +
+        '"<appId>:<blockId>" and are not in that list.'
     )
   )
 }
