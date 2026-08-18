@@ -16,6 +16,7 @@ import { generateGitignore } from '../util/generate-gitignore.js'
 import { generateSettingsFiles } from '../util/generate-settings-files.js'
 import { hardExit } from '../util/hard-exit.js'
 import { printMessage } from '../util/print-message.js'
+import { spinnerify } from '../util/spinner.js'
 import { printJsError, printTsError } from '../util/typescript.js'
 import { boot } from './dev/boot.js'
 import { bundleJavaScript } from './dev/bundle-javascript.js'
@@ -23,8 +24,8 @@ import { bundleJavaScript } from './dev/bundle-javascript.js'
 import { onboarding } from './dev/onboarding.js'
 import { printBuildContextError } from './dev/prepare-build-context.js'
 import { upload } from './dev/upload.js'
-
 import { validateTypeScript } from './dev/validate-typescript.js'
+import { bundleJavaScript as bundleOnce } from './version/create/bundle-javascript.js'
 
 const notifyTsErrors = (errors: any[]) => {
   try {
@@ -46,14 +47,21 @@ const notifyJsErrors = (errors: { errors: []; warnings: [] }) => {
 
 export const optionsSchema = z.object({
   organization: z.string().optional(),
+  once: z.boolean().optional(),
 })
 type CleanupFunction = () => void
 
 export const dev = new Command('dev')
   .description('Develop your Auxx.ai app')
   .addOption(new Option('-o, --organization <handle>', 'The handle of the organization to use'))
+  .addOption(
+    new Option(
+      '--once',
+      'Deploy once and exit — bundle, extract the catalog, upload, create the development deployment. No local server, no file watching.'
+    )
+  )
   .action(async (unparsedOptions) => {
-    const { organization: organizationSlug } = optionsSchema.parse(unparsedOptions)
+    const { organization: organizationSlug, once } = optionsSchema.parse(unparsedOptions)
 
     const cleanupFunctions: CleanupFunction[] = []
 
@@ -130,9 +138,72 @@ export const dev = new Command('dev')
       }
     }
     try {
+      // `--once` refuses to PROMPT for the organization. `determineOrganization`
+      // asks when the account has several and none was named — fine for an
+      // interactive session, a hang for the batch loop that this flag exists to
+      // serve (stdout piped, nobody watching). One org, or `-o`, or refuse.
+      if (once && !organizationSlug && !process.stdin.isTTY) {
+        hardExit('`auxx dev --once` needs an organization: pass -o <handle>.')
+      }
+
       const { appId, appSlug, organization, environmentVariables, cliVersion } = await boot({
         organizationSlug,
       })
+
+      // One-shot: exactly what a watch cycle uploads, without becoming a
+      // watcher. `version create`'s bundler is reused deliberately — it is the
+      // one that runs `compileAndExtractCatalog()` and fails loudly when
+      // extraction breaks, which is the whole point of deploying at all.
+      if (once) {
+        const bundleResult = await spinnerify(
+          'Bundling JavaScript...',
+          'Bundling complete',
+          bundleOnce
+        )
+        if (isErrored(bundleResult)) {
+          if (bundleResult.error.code === 'ERROR_EXTRACTING_CATALOG') {
+            const catalogError = bundleResult.error.error
+            const detail =
+              'message' in catalogError
+                ? catalogError.message
+                : 'error' in catalogError
+                  ? catalogError.error.message
+                  : ''
+            hardExit(
+              `Catalog extraction failed (${catalogError.code})${detail ? `: ${detail}` : ''}`
+            )
+          }
+          if (bundleResult.error.code === 'ERROR_BUILDING_BUNDLE') {
+            const { error } = bundleResult.error
+            if (error.code === 'BUILD_JAVASCRIPT_ERROR') {
+              error.errors?.forEach((e: any) => printJsError(e, 'error'))
+              error.warnings?.forEach((w: any) => printJsError(w, 'warning'))
+            } else {
+              printBuildContextError(error)
+            }
+            process.exit(1)
+          }
+          hardExit(`Build failed: ${JSON.stringify(bundleResult.error)}`)
+        }
+        const { bundles, settingsSchema, catalog } = bundleResult.value
+        const uploadResult = await upload({
+          contents: bundles,
+          appId,
+          targetOrganizationId: organization.id,
+          environmentVariables,
+          cliVersion,
+          settingsSchema,
+          catalog,
+        })
+        if (isErrored(uploadResult)) {
+          printUploadError(uploadResult)
+          process.exit(1)
+        }
+        process.stdout.write(
+          `${chalk.green('✓ ')}Development deployment created for ${organization.name}\n`
+        )
+        process.exit(0)
+      }
 
       // const cleanupGraphqlServer = graphqlServer()
 
