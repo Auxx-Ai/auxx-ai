@@ -818,6 +818,7 @@ describe('updateNode / disconnectNodes', () => {
     const brokenId = 'crud-bbbbbbbbbbbbbbbbbbbbb'
     const crud: GraphNode = {
       id: brokenId,
+      type: 'standard',
       position: { x: 0, y: 0 },
       data: { id: brokenId, type: 'crud', title: 'Create Ticket', mode: 'create' },
     }
@@ -838,6 +839,69 @@ describe('updateNode / disconnectNodes', () => {
         issue.nodeRef !== 'For each order'
       )
     }
+  })
+
+  it('names uncatalogued nodes ONCE on the summary, not as an issue per read', async () => {
+    // Anything with no catalog manifest — an app block, or a not-yet-migrated
+    // type like `webhook` — used to emit an `info` issue on every read and
+    // every mutation result: un-actionable noise that buried the issues that
+    // WERE actionable. It is a fact about the graph, so it rides the summary.
+    //
+    // `webhook` rather than an `appId:blockId` app block on purpose: a
+    // colon-shaped type sends `resolveGraphOutputs` into the org cache for the
+    // app-block lookup, which this suite's bare mock db cannot serve.
+    const readOnlyId = 'webhook-aaaaaaaaaaaaaaaaaa'
+    const readOnly: GraphNode = {
+      id: readOnlyId,
+      type: 'standard',
+      position: { x: 900, y: 100 },
+      data: { id: readOnlyId, type: 'webhook', title: 'Incoming Webhook' },
+    }
+    const graph: DraftGraph = { nodes: [triggerNode(), loopNode(), readOnly], edges: [] }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'For each order',
+      config: { maxIterations: 11 },
+    })
+
+    expect(result.isOk()).toBe(true)
+    const value = result._unsafeUnwrap()
+    expect(value.graphSummary.readOnlyNodes).toEqual(['Incoming Webhook'])
+    expect(value.issues.some((i) => /not in the catalog|read-only/.test(i.message))).toBe(false)
+  })
+
+  it('reports a re-issued identical edit as unchanged and does NOT write', async () => {
+    // The logged failure turn wrote the same config repeatedly, each time to an
+    // identical hash, and nothing told it. `applied` stays true — the requested
+    // state holds; `applied: false` is the blocking-issue vocabulary.
+    const graph: DraftGraph = { nodes: [triggerNode(), loopNode()], edges: [] }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'For each order',
+      // loopNode() already has maxIterations: 100.
+      config: { maxIterations: 100 },
+    })
+
+    expect(result.isOk()).toBe(true)
+    const value = result._unsafeUnwrap()
+    expect(value.applied).toBe(true)
+    expect(value.unchanged).toBe(true)
+    expect(serviceUpdate).not.toHaveBeenCalled()
+  })
+
+  it('a real edit is NOT reported unchanged', async () => {
+    const graph: DraftGraph = { nodes: [triggerNode(), loopNode()], edges: [] }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'For each order',
+      config: { maxIterations: 42 },
+    })
+
+    expect(result._unsafeUnwrap().unchanged).toBeUndefined()
+    expect(serviceUpdate).toHaveBeenCalled()
   })
 
   it('rejects a config-mode write of ONLY derived keys instead of silently dropping it', async () => {

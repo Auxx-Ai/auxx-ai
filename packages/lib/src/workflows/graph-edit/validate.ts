@@ -155,7 +155,9 @@ export function validateGraphStructure(
       .sort()
       .join(', ')
 
-  // Node types — authorable for introduced nodes, informational otherwise.
+  // Node types — an INTRODUCED node must be authorable; an existing one that
+  // has no manifest is merely read-only, which `GraphSummary.readOnlyNodes`
+  // states once instead of an issue per node per read.
   for (const node of nodes) {
     const type = nodeType(node)
     const manifest = getManifest(type)
@@ -173,13 +175,11 @@ export function validateGraphStructure(
           message: `Node type "${type}" cannot be authored here. Authorable types: ${authorableTypes()}.`,
         })
       }
-    } else if (!manifest) {
-      issues.push({
-        severity: 'info',
-        nodeRef: ref(node.id),
-        message: `Node type "${type}" is not in the catalog — it is read-only to this editor.`,
-      })
     }
+    // A node with no manifest that the caller did NOT introduce is simply
+    // read-only. That is reported once on `GraphSummary.readOnlyNodes`, not as
+    // an issue per node per read — it is never actionable, and repeating it
+    // buries the issues that are.
   }
 
   // Containment — parentId must name an existing loop node.
