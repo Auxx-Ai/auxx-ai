@@ -2,7 +2,7 @@
 
 # Channels & Mail Architecture Guide
 
-**Last Updated:** 2026-08-01
+**Last Updated:** 2026-08-17
 **Scope:** The conversation layer — how an external mailbox or messaging account becomes a
 **channel**, how its mail lands in **threads/messages** through the inbound doors (webhook push,
 two-phase polling, SES forwarding), how a reply goes back out, and who is allowed to see any of
@@ -170,6 +170,32 @@ merge stick), `ThreadEntityLink` (secondary record links; the primary lives on `
 
 `Participant` is org-scoped and unique on `(organizationId, identifier, identifierType)`, carries
 `isInternal` (own-domain), `isSpammer`, and `entityInstanceId` for the contact link.
+
+### `ThreadEvent` — the inline lifecycle timeline
+
+Append-only system-line events rendered between message bubbles on **every** channel ("Markus
+took over", "Archived by workflow *Auto-close*", "tagged with x, y, z"): `threadId` (real FK,
+cascade-on-delete), `type`, `actorId`, `data` jsonb, `createdAt` — no `updatedAt`, nothing
+updates these rows. **Single writer**: `events/handlers/publish-thread-event-to-realtime.ts`
+persists the row, then fans it out over realtime (visitor fan-out allowlist-gated — see gotcha
+28). Read via `@auxx/lib/thread-events` (`listThreadEvents`, keyset-cursor on
+`(createdAt, id) DESC`).
+
+The `type` vocabulary is plain `text`, defined **once** in `@auxx/lib/thread-events/client`
+(`THREAD_EVENT_TYPES` — grows over time; `VISITOR_FACING_THREAD_EVENT_TYPES` — frozen at the
+original six). The strings double as Pusher event names and public webhook event names
+(`thread:archived`/`thread:reopened`), so they are never renamed. `actorId` is a branded
+`ActorId` (`user:…`/`agent:…`) rendered as an avatar badge; automation writes `actorId = null`
+plus `data.source` provenance (`{kind: 'workflow' | 'mail_filter' | …, id, runId?, name?}`)
+rendered as copy — emitters pass a `ThreadActor` descriptor and `threadActorToEventFields`
+does the mapping.
+
+**Boundary rule (do not re-litigate):** `ThreadEvent` = **conversation-surface** history,
+rendered inline in the thread view; `TimelineEvent` = **record-surface** history, rendered in
+the record drawer's timeline tab. Merge is deliberately both: the `TimelineEvent` merge
+markers are the *mechanism* (unmerge reads them back) and the `thread:merged` `ThreadEvent`
+on the surviving thread is the *surface* (deleted on unmerge). Design record:
+`plans/threads/thread-events.md`.
 
 ---
 
@@ -648,7 +674,7 @@ without that, a member could list a row whose every field then redacts.
 | `channel.ts` (1095 ln) | connect/prepare, list, disconnect, toggle, sync, settings, allowed/excluded senders, chat-widget CRUD, IMAP connect/test, `resetSyncState` |
 | `channel-reauth.ts` | reconnect + sync-breaker reset |
 | `inbox.ts` | inbox CRUD, members, floors, channel routing, `myLenses` |
-| `thread.ts` (1250 ln) | list/get/status/assign/merge/link/handoff |
+| `thread.ts` (1250 ln) | list/get/status/assign/merge/link/handoff, `listEvents` (lifecycle timeline, cursor-paginated, lens-gated) |
 | `message.ts`, `draft.ts`, `label.ts`, `mailView.ts`, `mailDomain.ts`, `participant.ts`, `emailTemplate.ts` | |
 
 The area is unusually well test-covered at the router layer — `mail-router-front-door.test.ts`,
@@ -720,6 +746,14 @@ components in `~/components/mail` (thread list/display/composer, chat panel, sea
 27. **Outlook webhook callbacks must be HTTPS.** Build them via
     `providers/webhook-callback-base.ts` (`NGROK_URL || WEBAPP_URL`), never from `WEBAPP_URL`
     directly — Graph rejects `http://` and dev arming silently falls back to polling.
+28. **Thread lifecycle events gate at the `metadata` rung on BOTH doors.** The `thread-{id}`
+    realtime room and `thread.listEvents` must ask the same lens question, and `listEvents`
+    returns empty — never 403/404 — so an invisible thread id fails exactly like a
+    nonexistent one. The visitor fan-out is an **allowlist frozen at the original six**
+    (`VISITOR_FACING_THREAD_EVENT_TYPES`): new event types are admin-surface only unless
+    deliberately added, and a type whose payload narrates an identity/read-tier fact
+    (subject, body snippet) must not join the vocabulary at all — it would leak through the
+    events sidecar what `redactThreadMeta` blanks on the thread itself.
 
 ---
 
@@ -763,8 +797,13 @@ message-sync,message-processing,email}-worker.ts`.
 `links.service.ts`, `thread-merge.service.ts`, `handoff.service.ts`),
 `packages/lib/src/email/labels/`.
 
+**Lifecycle timeline** — `packages/lib/src/thread-events/` (`client.ts` vocabulary + `ThreadActor`,
+queries/mutations), `packages/lib/src/events/handlers/publish-thread-event-to-realtime.ts` (the
+single writer), `apps/web/src/components/mail/chat-timeline.ts` (interleave + event-run grouping),
+`apps/web/src/components/mail/chat-panel/{use-thread-events.ts,system-line.tsx}`.
+
 **Schema** — `packages/database/src/db/schema/`: `integration.ts`, `inbox-integration.ts`,
-`thread.ts`, `message.ts`, `participant.ts`, `thread-participant.ts`, `message-participant.ts`,
+`thread.ts`, `thread-event.ts`, `message.ts`, `participant.ts`, `thread-participant.ts`, `message-participant.ts`,
 `thread-external-key.ts`, `thread-entity-link.ts`, `thread-read-status.ts`, `message-receipt.ts`,
 `label.ts`, `labels-on-thread.ts`, `integration-tag-label.ts`, `scheduled-message.ts`,
 `mail-view.ts`, `mail-domain.ts`, `email-address.ts`, `email-template.ts`, `email-embedding.ts`.
