@@ -1639,6 +1639,32 @@ export const adminRouter = createTRPCRouter({
   }),
 
   /**
+   * Re-bake the platform `ConnectionDefinition` rows from the deployed catalog and
+   * the worker's current config — the no-deploy path for rotating a platform OAuth
+   * client.
+   *
+   * Enqueued rather than run inline, deliberately: the client id/secret are read
+   * from the resolving process's config, and the worker is where these have always
+   * been applied (`dataMigrationsJob`). Running it here would bake whatever the web
+   * service's env happens to hold.
+   */
+  reseedConnectionProviders: superAdminProcedure.mutation(async ({ ctx }) => {
+    const { enqueueReseedConnectionProviders } = await import('@auxx/lib/jobs')
+    await enqueueReseedConnectionProviders()
+    await recordAuditFromCtx(ctx, {
+      organizationId: null,
+      category: 'settings',
+      action: 'org.migrations_run',
+      actorType: 'admin',
+      visibility: 'internal',
+      targetType: 'Organization',
+      targetId: null,
+      metadata: { scope: 'all', trigger: 'reseed-connection-providers' },
+    })
+    return { success: true }
+  }),
+
+  /**
    * Clear a failed migration's ledger row and re-enqueue a run. Migrations after it
    * run too once it succeeds (fail-stop is lifted).
    */

@@ -20,8 +20,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { toastError } from '@auxx/ui/components/toast'
 import { Search, X } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { api } from '~/trpc/react'
 import { ConfigDrawer } from './config-drawer'
@@ -35,6 +37,8 @@ import { ConfigTable } from './ui/config-table'
 export function ConfigView() {
   const { data: groups, isLoading } = api.configVariable.getGrouped.useQuery()
   const { data: status } = api.configVariable.getStatus.useQuery()
+
+  const [confirm, ConfirmDialog] = useConfirm()
 
   /** Filter state from store */
   const search = useConfigStore((state) => state.search)
@@ -61,6 +65,32 @@ export function ConfigView() {
 
   const isDbEnabled = status?.isDbEnabled ?? false
 
+  /**
+   * Re-bake the platform `ConnectionDefinition` rows from the current config.
+   *
+   * Lives on THIS page because this is where someone stands after rotating a
+   * platform OAuth client: the rows bake an encrypted copy of the client id and
+   * secret at seed time, so changing the value — here or in the environment — is
+   * inert until something re-runs the seed. Before this button that something was
+   * a one-line data migration and a full release.
+   */
+  const reseedProviders = api.admin.reseedConnectionProviders.useMutation({
+    onError: (error) => toastError({ title: 'Reseed failed to start', description: error.message }),
+  })
+
+  const handleReseedProviders = async () => {
+    const confirmed = await confirm({
+      title: 'Reseed connection providers?',
+      description:
+        'Re-writes the built-in connection definitions from the deployed catalog and the ' +
+        'current config, including the encrypted platform OAuth client id and secret. ' +
+        'Idempotent — existing connections keep working.',
+      confirmText: 'Reseed',
+      cancelText: 'Cancel',
+    })
+    if (confirmed) reseedProviders.mutate()
+  }
+
   const { dockedPanels, overlays } = useDockedPanels([
     {
       key: 'config-detail',
@@ -78,8 +108,19 @@ export function ConfigView() {
 
   return (
     <>
+      <ConfirmDialog />
       <MainPage>
-        <MainPageHeader>
+        <MainPageHeader
+          action={
+            <Button
+              variant='outline'
+              size='sm'
+              loading={reseedProviders.isPending}
+              loadingText='Reseeding...'
+              onClick={handleReseedProviders}>
+              Reseed connection providers
+            </Button>
+          }>
           <MainPageBreadcrumb>
             <MainPageBreadcrumbItem title='Admin' href='/admin' />
             <MainPageBreadcrumbItem title='Config' />
