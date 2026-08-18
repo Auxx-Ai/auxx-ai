@@ -176,7 +176,15 @@ async function fetchUserPages(token: string): Promise<FacebookPage[]> {
   return data.data
 }
 
-/** The Instagram Business Account linked to a Page, if any. */
+/**
+ * The Instagram Business Account linked to a Page, if any — the per-page probe.
+ *
+ * Only reached when `/me/accounts` did not already expand the field (it asks for
+ * `instagram_business_account{id,username}` in the same request), so this is the
+ * fallback, not the primary read. Failures are logged rather than swallowed
+ * silently: a null here is indistinguishable from "no linked account", and that
+ * ambiguity is exactly what produced a misleading "link the account" error.
+ */
 async function fetchInstagramAccount(
   pageId: string,
   pageToken: string
@@ -185,14 +193,27 @@ async function fetchInstagramAccount(
     const url = `https://graph.facebook.com/${apiVersion()}/${pageId}?fields=instagram_business_account{id,username}&access_token=${pageToken}`
     const res = await fetch(url)
     const data = await res.json()
-    if (res.ok && data.instagram_business_account) {
+    if (res.ok && data.instagram_business_account?.id) {
       return {
         id: data.instagram_business_account.id,
         username: data.instagram_business_account.username,
       }
     }
+    if (!res.ok || data.error) {
+      logger.warn('Could not read instagram_business_account for a Page', {
+        pageId,
+        status: res.status,
+        code: data?.error?.code,
+        subcode: data?.error?.error_subcode,
+        error: data?.error?.message,
+      })
+    }
     return null
-  } catch {
+  } catch (error) {
+    logger.warn('instagram_business_account probe errored', {
+      pageId,
+      error: error instanceof Error ? error.message : String(error),
+    })
     return null
   }
 }
@@ -236,8 +257,19 @@ async function discoverIdentity(
   }
 
   // Instagram: pick the first Page with a linked Instagram Business Account.
+  //
+  // `/me/accounts` already expanded `instagram_business_account{id,username}`, so
+  // read that first and only probe the Page node when it is absent. The probe used
+  // to run unconditionally: N extra Graph round trips per connect, and — because it
+  // returns null on any failure — a transient error was reported to the user as
+  // "no linked Instagram account", which is a different problem with a different fix.
   for (const page of pages) {
-    const igAccount = await fetchInstagramAccount(page.id, page.access_token)
+    const igAccount: InstagramAccount | null = page.instagram_business_account?.id
+      ? {
+          id: page.instagram_business_account.id,
+          username: page.instagram_business_account.username ?? '',
+        }
+      : await fetchInstagramAccount(page.id, page.access_token)
     if (igAccount) {
       const longLivedPageToken = await exchangeForLongLived(page.access_token)
       return {
@@ -252,9 +284,17 @@ async function discoverIdentity(
       }
     }
   }
+  // Deliberately names BOTH causes. An absent `instagram_business_account` does not
+  // prove there is no linked account: Graph omits a permission-gated field rather
+  // than erroring, so a grant without `instagram_basic` answers exactly like a Page
+  // with nothing linked. The Instagram scopes are only requestable once the app's
+  // Instagram use case is configured for "API setup with Facebook login" — until
+  // then the login dialog rejects them as invalid and this is what the user sees.
   throw new Error(
-    'No managed Facebook Page with a linked Instagram Professional account was found. ' +
-      'Link the account and grant permissions, then retry.'
+    `No linked Instagram Professional account was found on any of the ${pages.length} managed ` +
+      `Facebook Page(s) (${pages.map((page) => page.name).join(', ')}). Either no Instagram ` +
+      'Professional account is linked to the Page, or the connection was granted without the ' +
+      'instagram_basic permission — in which case Graph hides the link rather than reporting it.'
   )
 }
 

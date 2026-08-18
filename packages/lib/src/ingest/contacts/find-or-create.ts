@@ -5,12 +5,12 @@ import {
   ParticipantRole as ParticipantRoleEnum,
 } from '@auxx/database/enums'
 import type { ParticipantEntity as Participant, ParticipantRole } from '@auxx/database/types'
-import { formatPhoneNumber } from '@auxx/utils'
 import { linkContactToCompanyByDomain } from '../companies/link-contact'
 import type { IngestContext } from '../context'
 import { getOwnDomains } from '../domain/classifier'
 import { getNamesFromParticipant } from '../participants/display'
 import { hasOrganizationSentToParticipant } from './has-sent-to'
+import { contactIdentityCandidate } from './identity-candidate'
 
 /** Roles that make a participant a recipient of an outbound message. */
 const OUTBOUND_RECIPIENT_ROLES: readonly ParticipantRole[] = [
@@ -62,36 +62,19 @@ export async function findOrCreateContactForParticipant(
     const handler = ctx.crudHandler
     const force = options?.force ?? false
 
-    // Chat-widget visitors are identified by an opaque session id (cookie value),
-    // not an email/phone — `Participant.identifier` is a cuid, not addressable.
-    // The other identifier types all carry a real address we can use as a dedupe
-    // key on the contact (`primary_email` / `phone`); chat visitors don't, so we
-    // skip the identifier-keyed lookup and rely on `Participant.entityInstanceId`
-    // for dedupe on the caller side.
-    const isChatVisitor = participant.identifierType === 'CHAT_VISITOR'
+    // Which contact attribute this identifier dedupes on — `primary_email`,
+    // `phone`, or the `RecordIdentity` index via `external_id`. See
+    // `contactIdentityCandidate` for why the mapping is per-type and what a
+    // `null` costs. Social ids (PSID/IGSID) resolve to a namespaced
+    // `external_id` (`"facebook:123…"`), which is an index row, not a cell.
+    const identity = contactIdentityCandidate(participant)
 
-    // A PHONE participant is not guaranteed to carry a dialable number: SMS
-    // short codes (`12345`) and alphanumeric sender IDs (`AUXX`) arrive with
-    // the same identifier type. The write validator normalizes to E.164 and
-    // REJECTS those, so writing one would throw inside ingest. Treat them like
-    // chat visitors — no phone value, no identifier-keyed dedupe.
-    const isAddressablePhone =
-      participant.identifierType !== IdentifierTypeEnum.PHONE ||
-      formatPhoneNumber(participant.identifier) !== null
-
-    if (!isAddressablePhone) {
+    if (!identity && participant.identifierType === IdentifierTypeEnum.PHONE) {
       ctx.logger.debug('Participant phone identifier is not a dialable number', {
         participantId: participant.id,
         identifier: participant.identifier,
       })
     }
-
-    const systemAttr =
-      isChatVisitor || !isAddressablePhone
-        ? null
-        : participant.identifierType === IdentifierTypeEnum.PHONE
-          ? 'phone'
-          : 'primary_email'
 
     // Never auto-create a contact for the integration owner's own addresses.
     // `force` is the documented escape hatch for the user-initiated
@@ -105,14 +88,22 @@ export async function findOrCreateContactForParticipant(
     }
 
     if (!force && mode === 'none') {
-      if (!systemAttr) return null
-      const existing = await handler.findByField('contact', systemAttr, participant.identifier)
+      if (!identity) return null
+      const existing = await handler.findByField(
+        'contact',
+        identity.systemAttribute,
+        identity.value
+      )
       return existing?.id ?? null
     }
 
     if (!force && mode === 'selective' && messageContext) {
-      if (systemAttr) {
-        const existing = await handler.findByField('contact', systemAttr, participant.identifier)
+      if (identity) {
+        const existing = await handler.findByField(
+          'contact',
+          identity.systemAttribute,
+          identity.value
+        )
         if (existing) return existing.id
       }
 
@@ -141,29 +132,26 @@ export async function findOrCreateContactForParticipant(
       contact_status: 'ACTIVE',
     }
 
-    if (participant.identifierType === IdentifierTypeEnum.PHONE && isAddressablePhone) {
-      // Array-wrapped for shape consistency with multi-value fields
-      // (options.multi) — the write path auto-unwraps length-1 arrays on
-      // single-value fields. Create-only: matched contacts never get their
-      // identifier re-written here (no-append is the locked ingest decision).
-      createValues.phone = [participant.identifier]
-    }
-
     let contactId: string
-    if (isChatVisitor || !systemAttr) {
+    if (!identity) {
       // No identifier-keyed dedupe — just create. The caller writes the new id
-      // back to `Participant.entityInstanceId`, which is the only stable dedupe
-      // key we have for chat visitors.
+      // back to `Participant.entityInstanceId`, which is then the only dedupe
+      // key: a chat visitor's session cuid and an SMS short code are not
+      // identities anyone else issues.
       const { instance } = await handler.create('contact', createValues)
       contactId = instance.id
     } else {
       // `findBy` stays scalar (it drives the lookup); the create data gets the
       // array-wrapped identifier so a fresh contact's email/phone lands in the
       // multi-value shape (createValues spreads after findBy in findOrCreate).
-      const findBy: Record<string, unknown> = { [systemAttr]: participant.identifier }
+      // For `external_id` the array form is load-bearing rather than cosmetic:
+      // `UnifiedCrudHandler.create` peels an ARRAY-valued `external_id` off and
+      // mirrors each entry into `RecordIdentity`; a scalar would fall through to
+      // the FieldValue writer for an attribute that no longer exists as a cell.
+      const findBy: Record<string, unknown> = { [identity.systemAttribute]: identity.value }
       const { instance } = await handler.findOrCreate('contact', findBy, {
         ...createValues,
-        [systemAttr]: [participant.identifier],
+        [identity.systemAttribute]: [identity.value],
       })
       contactId = instance.id
     }

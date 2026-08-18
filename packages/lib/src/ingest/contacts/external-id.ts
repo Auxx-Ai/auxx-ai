@@ -15,7 +15,7 @@
  * helper when the source is parsed from a page the user is viewing.
  */
 
-export type ServerExternalIdSource = 'chat' | 'shopify'
+export type ServerExternalIdSource = 'chat' | 'shopify' | 'facebook' | 'instagram'
 
 export function buildServerExternalId(source: ServerExternalIdSource, raw: string): string {
   const v = raw.trim()
@@ -35,4 +35,28 @@ export function chatExternalId(userId: string): string {
  */
 export function shopifyExternalId(shopDomain: string, customerId: string): string {
   return buildServerExternalId('shopify', `${shopDomain.trim()}:${customerId.trim()}`)
+}
+
+/**
+ * Build the canonical `facebook:<psid>` / `instagram:<igsid>` external id for a
+ * Meta DM counterpart.
+ *
+ * **Deliberately NOT account-scoped, unlike `shopifyExternalId`.** That helper
+ * folds the shop domain in because Shopify customer ids are per-store sequences
+ * that genuinely collide across two stores in one org. A PSID is not a sequence:
+ * Meta issues one per (Page, person) pair out of a global id space and does not
+ * reuse them, so two Pages under one org cannot mint the same value and the
+ * `RecordIdentity_identity_key` unique index cannot collide. Scoping would also
+ * mean threading the active integration's Page id down into the contact layer,
+ * which ingest deliberately does not pass — `ctx.ownIdentities` holds the org's
+ * page ids as an unordered SET, so it cannot say which Page a given PSID came
+ * from, which is exactly the question scoping would need answered.
+ *
+ * What this shares with Shopify is the `RecordIdentity_record_kind_key` limit:
+ * one identity per source per contact. If the same human DMs two of our Pages
+ * they hold two PSIDs, and only one can be indexed against a single contact —
+ * the same constraint a two-store Shopify org already lives with.
+ */
+export function metaExternalId(platform: 'facebook' | 'instagram', id: string): string {
+  return buildServerExternalId(platform, id)
 }
