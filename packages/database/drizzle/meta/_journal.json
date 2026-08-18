@@ -2374,6 +2374,13 @@
       "when": 1787013191465,
       "tag": "0338_drop_event_threadid_expr_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 339,
+      "version": "7",
+      "when": 1787016353993,
+      "tag": "0339_message_type_filter_index",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+CREATE INDEX "Message_messageType_threadId_idx" ON "Message" USING btree ("messageType","threadId") WHERE "messageType" IN ('CALL', 'VOICEMAIL');
