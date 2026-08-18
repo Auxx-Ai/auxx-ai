@@ -6,7 +6,7 @@ import type { UnifiedVariable } from '../../types/unified-variable'
 import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
 import { createNestedVariable } from '../variable-conversion'
-import { extractVarIdsFromString, isNodeVariable, isVariableMode } from '../variable-inference'
+import { extractFieldVariableIds, isVariableMode } from '../variable-inference'
 
 /**
  * The chunker node's catalog manifest.
@@ -127,20 +127,12 @@ export function extractChunkerVariables(data: Partial<ChunkerNodeData>): string[
 
   // Extract from content
   if (data.content && isVariableMode(fieldModes, 'content')) {
-    if (isNodeVariable(data.content)) {
-      variableIds.add(data.content)
-    } else {
-      extractVarIdsFromString(data.content).forEach((id) => variableIds.add(id))
-    }
+    extractFieldVariableIds(data.content).forEach((id) => variableIds.add(id))
   }
 
   // Extract from delimiter
   if (data.delimiter && isVariableMode(fieldModes, 'delimiter')) {
-    if (isNodeVariable(data.delimiter)) {
-      variableIds.add(data.delimiter)
-    } else {
-      extractVarIdsFromString(data.delimiter).forEach((id) => variableIds.add(id))
-    }
+    extractFieldVariableIds(data.delimiter).forEach((id) => variableIds.add(id))
   }
 
   // Extract from the numeric/boolean settings — each holds a reference string
@@ -152,8 +144,8 @@ export function extractChunkerVariables(data: Partial<ChunkerNodeData>): string[
     'removeUrlsAndEmails',
   ] as const) {
     const value = data[field]
-    if (typeof value === 'string' && isVariableMode(fieldModes, field) && isNodeVariable(value)) {
-      variableIds.add(value)
+    if (isVariableMode(fieldModes, field)) {
+      extractFieldVariableIds(value).forEach((id) => variableIds.add(id))
     }
   }
 

@@ -200,3 +200,62 @@ describe('checkVariableRefsAgainstOutputs', () => {
     expect(issues).toEqual([])
   })
 })
+
+/**
+ * Live regression from plan-17 §9.1: a `{{ref}}` the AGENT wrote into a
+ * picker-bound field.
+ *
+ * The canvas writes those fields bare (`nodeId.path`); `update_node` patches
+ * write the braced `{{nodeId.path}}` form. `isNodeVariable` only tests for a
+ * dot, so every extractor that trusted it recorded the braced string verbatim
+ * — and ref-check then read `{{nodeId` as the node name. In dev that turned a
+ * perfectly valid `{{FedEx.trackingNumber}}` on a crud `resourceId` into
+ * `points at unknown node "{{z3prn…:fedex-DmJu…"`, suggesting the same id
+ * un-braced: an error the agent could not act on, and one that hid the real
+ * path error underneath it.
+ */
+describe('braced refs in picker-bound fields (crud.resourceId)', () => {
+  const crudConsumer = (resourceId: string): NodeMeta => ({
+    id: CONSUMER,
+    type: 'standard',
+    data: {
+      id: CONSUMER,
+      type: 'crud',
+      title: 'Update Record',
+      mode: 'update',
+      resourceType: 'contact',
+      resourceId,
+      data: {},
+    },
+  })
+
+  const checkResourceId = (resourceId: string) =>
+    checkVariableRefsAgainstOutputs({
+      graph: graphWith(crudConsumer(resourceId)),
+      outputs: new Map([[FIND, FIND_OUTPUTS]]),
+      lookup: coreLookup,
+    })
+
+  it('accepts a valid braced ref instead of calling the node unknown', () => {
+    expect(checkResourceId(`{{${FIND}.count}}`).issues).toEqual([])
+  })
+
+  it('still accepts the bare picker-written form', () => {
+    expect(checkResourceId(`${FIND}.count`).issues).toEqual([])
+  })
+
+  it('reports the PATH error with candidates, not a bogus unknown-node error', () => {
+    const { issues } = checkResourceId(`{{${FIND}.${TICKET_ID}.emial}}`)
+    expect(issues).toHaveLength(1)
+    expect(issues[0]!.message).not.toContain('unknown node')
+    expect(issues[0]!.message).toContain('No output "emial" on node Find Contact')
+    expect(issues[0]!.suggestion).toBe(`${FIND}.${TICKET_ID}.email`)
+  })
+
+  it('never emits a doubly-braced message for a genuinely unknown node', () => {
+    const { issues } = checkResourceId('{{ghostaaaaaaaaaaaaaaaa.id}}')
+    expect(issues).toHaveLength(1)
+    expect(issues[0]!.message).toContain('points at unknown node "ghostaaaaaaaaaaaaaaaa"')
+    expect(issues[0]!.message).not.toContain('{{{{')
+  })
+})

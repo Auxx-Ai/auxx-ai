@@ -6,7 +6,7 @@ import type { UnifiedVariable } from '../../types/unified-variable'
 import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
 import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
 import { createNestedVariable } from '../variable-conversion'
-import { extractVarIdsFromString, isNodeVariable, isVariableMode } from '../variable-inference'
+import { extractFieldVariableIds, isVariableMode } from '../variable-inference'
 
 /**
  * The document-extractor node's catalog manifest.
@@ -125,36 +125,28 @@ export function extractDocumentExtractorVariables(
 
   // Extract from fileId (for file source type)
   if (data.sourceType === DocumentSourceType.FILE && data.fileId) {
-    if (isVariableMode(fieldModes, 'fileId') && isNodeVariable(data.fileId)) {
-      variableIds.add(data.fileId)
+    if (isVariableMode(fieldModes, 'fileId')) {
+      extractFieldVariableIds(data.fileId).forEach((id) => variableIds.add(id))
     }
   }
 
   // Extract from url (for URL source type — may contain variable references)
   if (data.sourceType === DocumentSourceType.URL && data.url) {
     if (isVariableMode(fieldModes, 'url')) {
-      if (isNodeVariable(data.url)) {
-        variableIds.add(data.url)
-      } else {
-        extractVarIdsFromString(data.url).forEach((id) => variableIds.add(id))
-      }
+      extractFieldVariableIds(data.url).forEach((id) => variableIds.add(id))
     }
   }
 
   // Extract from language (string field that could contain variables)
   if (data.language && isVariableMode(fieldModes, 'language')) {
-    if (isNodeVariable(data.language)) {
-      variableIds.add(data.language)
-    } else {
-      extractVarIdsFromString(data.language).forEach((id) => variableIds.add(id))
-    }
+    extractFieldVariableIds(data.language).forEach((id) => variableIds.add(id))
   }
 
   // Extract from the extraction toggles bound to a variable
   for (const field of ['preserveFormatting', 'extractImages'] as const) {
     const value = data[field]
-    if (typeof value === 'string' && isVariableMode(fieldModes, field) && isNodeVariable(value)) {
-      variableIds.add(value)
+    if (isVariableMode(fieldModes, field)) {
+      extractFieldVariableIds(value).forEach((id) => variableIds.add(id))
     }
   }
 
