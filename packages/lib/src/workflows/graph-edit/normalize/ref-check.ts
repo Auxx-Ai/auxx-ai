@@ -20,9 +20,10 @@
  */
 
 import { err, ok, type Result } from 'neverthrow'
+import { buildManifestLookup } from '../../../workflow-engine/catalog/app-manifests'
 import { buildUpstreamMap } from '../../../workflow-engine/catalog/graph-vars'
-import { getManifest } from '../../../workflow-engine/catalog/registry'
 import { resolveGraphOutputs } from '../../../workflow-engine/catalog/resolve-outputs'
+import type { ManifestLookup } from '../../../workflow-engine/catalog/types'
 import type { UnifiedVariable } from '../../../workflow-engine/types/unified-variable'
 import { firstPathSegment, rewriteVariableRefs } from '../../variable-ref-rewriter'
 import { closestMatches, formatNodeRef, nodeTitle } from '../refs'
@@ -135,8 +136,8 @@ function collectionCorrection(rawPath: string, idMap: Map<string, UnifiedVariabl
 }
 
 /** Extract every variable ref a node reads: manifest extractor first, generic walk otherwise. */
-function extractNodeRefs(node: NodeMeta, nodeIds: Set<string>): string[] {
-  const manifest = getManifest(node.data?.type ?? node.type)
+function extractNodeRefs(node: NodeMeta, nodeIds: Set<string>, lookup: ManifestLookup): string[] {
+  const manifest = lookup(node.data?.type ?? node.type)
   if (manifest?.extractVariables) {
     try {
       return manifest.extractVariables(node.data)
@@ -187,8 +188,9 @@ function containerAncestors(node: NodeMeta, nodeById: Map<string, NodeMeta>): Se
 export function checkVariableRefsAgainstOutputs(params: {
   graph: WorkflowOutputGraph
   outputs: Map<string, UnifiedVariable[]>
+  lookup: ManifestLookup
 }): RefCheckResult {
-  const { graph, outputs } = params
+  const { graph, outputs, lookup } = params
   const issues: Issue[] = []
   const corrections: RefCorrection[] = []
 
@@ -212,7 +214,7 @@ export function checkVariableRefsAgainstOutputs(params: {
     const upstream = upstreamMap.get(consumer.id) ?? new Set<string>()
     const containers = containerAncestors(consumer, nodeById)
 
-    for (const rawPath of extractNodeRefs(consumer, nodeIds)) {
+    for (const rawPath of extractNodeRefs(consumer, nodeIds, lookup)) {
       const head = firstPathSegment(rawPath)
       if (!head || RESERVED_PREFIXES.has(head)) continue
       // A head-only string carries no output path to validate — and bare
@@ -328,5 +330,11 @@ export async function checkGraphRefs(
 ): Promise<Result<RefCheckResult, Error>> {
   const outputs = await resolveGraphOutputs(orgId, { graph: params.graph })
   if (outputs.isErr()) return err(outputs.error)
-  return ok(checkVariableRefsAgainstOutputs({ graph: params.graph, outputs: outputs.value }))
+  return ok(
+    checkVariableRefsAgainstOutputs({
+      graph: params.graph,
+      outputs: outputs.value,
+      lookup: await buildManifestLookup(orgId),
+    })
+  )
 }

@@ -32,7 +32,6 @@
 import type { Database } from '@auxx/database'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
-import { getManifest } from '../../workflow-engine/catalog/registry'
 import { type GraphEditScope, loadDraftContext } from './read'
 import { describeNode, resolveNodeRef } from './refs'
 import type { GraphNode, Issue } from './types'
@@ -91,7 +90,7 @@ export async function runNode(
   // `form-input`, which never executes at all — `NON_EXECUTABLE_NODE_TYPES`)
   // are refused HERE. Sent on, they reach the engine, get skipped, and come
   // back as a meaningless "succeeded" with no outputs.
-  const manifest = getManifest(nodeType(node))
+  const manifest = ctx.lookup(nodeType(node))
   if (manifest?.connection.canRunSingle === false) {
     return err(
       new BadRequestError(
@@ -103,7 +102,7 @@ export async function runNode(
 
   // Tier-2 config validation, scoped to this node — a run needs a valid
   // config even though a draft legitimately persists without one.
-  const configIssues = validateNodeConfigs({ nodes: [node], edges: [] })
+  const configIssues = validateNodeConfigs({ nodes: [node], edges: [] }, ctx.lookup)
   const blocking = configIssues.filter((issue) => issue.severity === 'error')
   if (blocking.length > 0) {
     return err(

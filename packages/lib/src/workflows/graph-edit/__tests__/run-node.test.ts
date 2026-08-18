@@ -12,6 +12,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NotFoundError, UnprocessableEntityError } from '../../../errors'
 
+// Partial mock — `loadDraftContext` builds the per-org manifest lookup, which
+// reads the installed-apps org cache. No app is installed in these fixtures, so
+// the lookup must resolve to the core registry alone. Partial, never wholesale:
+// the cache barrel is imported by half of lib and replacing it dies at
+// collection.
+vi.mock('../../../cache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../cache')>()),
+  getCachedInstalledApps: async () => [],
+}))
+
 // The execution service constructs the whole engine off its constructor —
 // replaced so none of that module graph loads (run-node lazy-imports it).
 const runSingleNode = vi.fn()

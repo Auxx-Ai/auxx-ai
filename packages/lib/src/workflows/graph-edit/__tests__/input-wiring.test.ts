@@ -22,6 +22,9 @@ const getCachedResources = vi.fn()
 vi.mock('../../../cache', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../cache')>()),
   getCachedResources: (...args: unknown[]) => getCachedResources(...args),
+  // No installed apps: these suites exercise CORE node types, so the manifest
+  // lookup `loadDraftContext` builds must resolve to the registry alone.
+  getCachedInstalledApps: async () => [],
 }))
 
 // The persist seam writes through WorkflowService.update (lazy-imported in
@@ -49,11 +52,15 @@ const { runNode } = await import('../run-node')
 import { BadRequestError } from '../../../errors'
 import { manualManifest } from '../../../workflow-engine/catalog/nodes/manual'
 import { staticOutputContext } from '../../../workflow-engine/catalog/output-context'
+import { getManifest } from '../../../workflow-engine/catalog/registry'
 // The SHIPPED template, loaded rather than re-typed, so this test cannot drift
 // away from the graph shape that actually exists in the repo.
 import manualTicketTriage from '../../templates/manual-ticket-triage.template.json'
 import type { DraftGraph, GraphEdge, GraphNode } from '../types'
 import { validateGraphStructure } from '../validate'
+
+/** The core registry alone — no app installed in these fixtures. */
+const coreLookup = getManifest
 
 const ORG = 'org_1'
 const APP = 'wfapp_1'
@@ -187,7 +194,7 @@ beforeEach(() => {
 
 describe('validateGraphStructure — input wiring (§2)', () => {
   it('the shipped manual-ticket-triage graph produces ZERO blocking issues', () => {
-    const issues = validateGraphStructure(TEMPLATE_GRAPH)
+    const issues = validateGraphStructure(TEMPLATE_GRAPH, { lookup: coreLookup })
     expect(errors(issues)).toEqual([])
   })
 
@@ -196,7 +203,7 @@ describe('validateGraphStructure — input wiring (§2)', () => {
       nodes: [formInputNode(), manualNode(), waitNode()],
       edges: [inputEdge(FORM_ID, MANUAL_ID), edge(MANUAL_ID, 'source', WAIT_ID)],
     }
-    expect(errors(validateGraphStructure(graph))).toEqual([])
+    expect(errors(validateGraphStructure(graph, { lookup: coreLookup }))).toEqual([])
   })
 
   it('an input-handle edge into a node that does NOT accept inputs is still an error', () => {
@@ -204,7 +211,7 @@ describe('validateGraphStructure — input wiring (§2)', () => {
       nodes: [manualNode(), formInputNode(), waitNode()],
       edges: [edge(MANUAL_ID, 'source', WAIT_ID), inputEdge(FORM_ID, WAIT_ID)],
     }
-    const blocking = errors(validateGraphStructure(graph))
+    const blocking = errors(validateGraphStructure(graph, { lookup: coreLookup }))
     expect(blocking.some((i) => /unknown handle "input"/.test(i.message))).toBe(true)
   })
 
@@ -213,7 +220,7 @@ describe('validateGraphStructure — input wiring (§2)', () => {
       nodes: [manualNode(), waitNode()],
       edges: [edge(WAIT_ID, 'source', MANUAL_ID)],
     }
-    const blocking = errors(validateGraphStructure(graph))
+    const blocking = errors(validateGraphStructure(graph, { lookup: coreLookup }))
     expect(blocking.some((i) => /incoming connections/.test(i.message))).toBe(true)
   })
 
@@ -222,7 +229,7 @@ describe('validateGraphStructure — input wiring (§2)', () => {
       nodes: [formInputNode(), manualNode()],
       edges: [edge(FORM_ID, 'source', MANUAL_ID)],
     }
-    const blocking = errors(validateGraphStructure(graph))
+    const blocking = errors(validateGraphStructure(graph, { lookup: coreLookup }))
     expect(blocking.some((i) => /incoming connections/.test(i.message))).toBe(true)
   })
 
@@ -247,7 +254,7 @@ describe('validateGraphStructure — input wiring (§2)', () => {
       ],
       edges: [inputEdge(APP_BLOCK_ID, MANUAL_ID)],
     }
-    const blocking = errors(validateGraphStructure(graph))
+    const blocking = errors(validateGraphStructure(graph, { lookup: coreLookup }))
     expect(blocking.some((i) => /unknown handle "input"/.test(i.message))).toBe(true)
     expect(blocking.some((i) => /incoming connections/.test(i.message))).toBe(true)
   })
@@ -416,7 +423,7 @@ describe('addNode({ inputFor }) (§4b)', () => {
 
     // Canvas parity, and the graph the writer produced is one the validator accepts.
     expect(persisted.nodes.find((n) => n.id === MANUAL_ID)?.data?.inputNodes).toEqual([created.id])
-    expect(errors(validateGraphStructure(persisted))).toEqual([])
+    expect(errors(validateGraphStructure(persisted, { lookup: coreLookup }))).toEqual([])
   })
 
   it('stacks a second field left of the trigger with an ordered run-form position', async () => {
@@ -460,7 +467,7 @@ describe('addNode({ inputFor }) (§4b)', () => {
       subject.id,
       body.id,
     ])
-    expect(errors(validateGraphStructure(afterSecond))).toEqual([])
+    expect(errors(validateGraphStructure(afterSecond, { lookup: coreLookup }))).toEqual([])
   })
 
   it('keeps a `position` the caller set explicitly', async () => {

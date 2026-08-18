@@ -1,6 +1,6 @@
 // packages/lib/src/workflow-engine/catalog/app-manifests.test.ts
 // Server-side app-block output resolution. Pure over catalog shapes — the org
-// cache read (`buildAppBlockLookup`) is covered by resolve-outputs.test.ts,
+// cache read (`buildManifestLookup`) is covered by resolve-outputs.test.ts,
 // which exercises it through the graph walk.
 //
 // See plans/kopilot/workflow/17-app-block-authoring-and-connections.md §4 A3.

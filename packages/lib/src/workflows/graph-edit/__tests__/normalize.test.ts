@@ -15,6 +15,9 @@ const getCachedResources = vi.fn()
 vi.mock('../../../cache', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../cache')>()),
   getCachedResources: (...args: unknown[]) => getCachedResources(...args),
+  // No installed apps: these suites exercise CORE node types, so the manifest
+  // lookup `loadDraftContext` builds must resolve to the registry alone.
+  getCachedInstalledApps: async () => [],
 }))
 
 const { resolveConnectionSpec } = await import('../normalize/connection')
@@ -24,7 +27,11 @@ const { buildResourceAliasIndex, normalizeResourceConfig, resolveResourceRef } =
   '../normalize/resource-refs'
 )
 
+import { getManifest } from '../../../workflow-engine/catalog/registry'
 import type { NodeMeta } from '../types'
+
+/** The core registry alone — no app installed in these fixtures. */
+const coreLookup = getManifest
 
 const ORG = 'org_1'
 const TICKET_ID = 'i5aezsg4bc6n8gof2uan3wcf'
@@ -233,7 +240,9 @@ describe('resolveConnectionSpec', () => {
   const nodes = [ifElse, wait, http]
 
   it('connects after a branchless node on the default source handle', () => {
-    expect(resolveConnectionSpec(nodes, { after: 'Wait A Bit' })._unsafeUnwrap()).toEqual({
+    expect(
+      resolveConnectionSpec(nodes, { after: 'Wait A Bit' }, coreLookup)._unsafeUnwrap()
+    ).toEqual({
       sourceNodeId: 'w1aaaaaaaaaaaaaaaaaaaa',
       sourceHandle: 'source',
     })
@@ -241,28 +250,38 @@ describe('resolveConnectionSpec', () => {
 
   it('resolves a branch by display name through manifest.connection.branches', () => {
     expect(
-      resolveConnectionSpec(nodes, { after: 'Route It', branch: 'else' })._unsafeUnwrap()
+      resolveConnectionSpec(
+        nodes,
+        { after: 'Route It', branch: 'else' },
+        coreLookup
+      )._unsafeUnwrap()
     ).toEqual({ sourceNodeId: 'if1aaaaaaaaaaaaaaaaaaa', sourceHandle: 'false' })
     expect(
-      resolveConnectionSpec(nodes, { after: 'Route It', branch: 'IF' })._unsafeUnwrap()
+      resolveConnectionSpec(nodes, { after: 'Route It', branch: 'IF' }, coreLookup)._unsafeUnwrap()
     ).toEqual({ sourceNodeId: 'if1aaaaaaaaaaaaaaaaaaa', sourceHandle: 'case-a' })
   })
 
   it('resolves a branch by handle id', () => {
     expect(
-      resolveConnectionSpec(nodes, { after: 'Call API', branch: 'fail' })._unsafeUnwrap()
+      resolveConnectionSpec(
+        nodes,
+        { after: 'Call API', branch: 'fail' },
+        coreLookup
+      )._unsafeUnwrap()
     ).toEqual({ sourceNodeId: 'h1aaaaaaaaaaaaaaaaaaaa', sourceHandle: 'fail' })
   })
 
   it('uses the single default branch when none is specified (http)', () => {
-    expect(resolveConnectionSpec(nodes, { after: 'Call API' })._unsafeUnwrap()).toEqual({
-      sourceNodeId: 'h1aaaaaaaaaaaaaaaaaaaa',
-      sourceHandle: 'source',
-    })
+    expect(resolveConnectionSpec(nodes, { after: 'Call API' }, coreLookup)._unsafeUnwrap()).toEqual(
+      {
+        sourceNodeId: 'h1aaaaaaaaaaaaaaaaaaaa',
+        sourceHandle: 'source',
+      }
+    )
   })
 
   it('errors when a multi-branch node gets no branch, naming every branch', () => {
-    const result = resolveConnectionSpec(nodes, { after: 'Route It' })
+    const result = resolveConnectionSpec(nodes, { after: 'Route It' }, coreLookup)
     expect(result.isErr()).toBe(true)
     const message = result._unsafeUnwrapErr().message
     expect(message).toContain('case-a')
@@ -270,7 +289,11 @@ describe('resolveConnectionSpec', () => {
   })
 
   it('errors on an unknown branch, naming the candidates', () => {
-    const result = resolveConnectionSpec(nodes, { after: 'Route It', branch: 'no match' })
+    const result = resolveConnectionSpec(
+      nodes,
+      { after: 'Route It', branch: 'no match' },
+      coreLookup
+    )
     expect(result.isErr()).toBe(true)
     const message = result._unsafeUnwrapErr().message
     expect(message).toContain('No branch "no match"')
@@ -279,12 +302,12 @@ describe('resolveConnectionSpec', () => {
   })
 
   it('errors when a branch is named on a branchless node', () => {
-    const result = resolveConnectionSpec(nodes, { after: 'Wait A Bit', branch: 'fail' })
+    const result = resolveConnectionSpec(nodes, { after: 'Wait A Bit', branch: 'fail' }, coreLookup)
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toContain('has no branches')
   })
 
   it('propagates node-ref resolution errors (unknown after)', () => {
-    expect(resolveConnectionSpec(nodes, { after: 'Ghost' }).isErr()).toBe(true)
+    expect(resolveConnectionSpec(nodes, { after: 'Ghost' }, coreLookup).isErr()).toBe(true)
   })
 })
