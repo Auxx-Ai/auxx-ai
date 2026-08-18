@@ -12,8 +12,7 @@ import { buildChatTimeline } from '../chat-timeline'
 import type { EmailActions } from '../email-actions'
 import EmailDisplay from '../email-display'
 import MessageDisplay from '../message-display'
-import { SystemLine } from './system-line'
-import { SystemLineRun } from './system-line-run'
+import { DaySeparator, EventBlock } from './system-line-run'
 import { useChatThreadEvents } from './use-thread-events'
 
 interface ChatPanelMessagesProps {
@@ -93,11 +92,11 @@ export function ChatPanelMessages({ threadId, popoverClassName }: ChatPanelMessa
       scrollbarClassName='w-1!'>
       <div className='flex flex-col gap-2 px-3 py-2 pe-4'>
         {items.map((item) => {
-          if (item.kind === 'event') {
-            return <SystemLine key={`evt:${item.event.id}`} event={item.event} />
+          if (item.kind === 'day-separator') {
+            return <DaySeparator key={item.key} label={item.label} />
           }
-          if (item.kind === 'event-run') {
-            return <SystemLineRun key={`evtrun:${item.events[0]!.id}`} events={item.events} />
+          if (item.kind === 'event-block') {
+            return <EventBlock key={item.key} entries={item.entries} isTrailing={item.isTrailing} />
           }
           if (item.kind === 'chat-group') {
             const groupIsLast = item.endIndex === messages.length - 1
