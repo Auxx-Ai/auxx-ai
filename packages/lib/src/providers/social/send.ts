@@ -4,7 +4,7 @@ import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq } from 'drizzle-orm'
 import { BadRequestError } from '../../errors'
-import { type MessagingType, sendMessage } from './api'
+import { type MessagingType, sendAttachment, sendMessage } from './api'
 import type { SocialPlatform } from './types'
 
 const logger = createScopedLogger('social-send')
@@ -107,6 +107,13 @@ export function resolveSendPolicy(args: {
   return { messagingType: 'MESSAGE_TAG', tag: HUMAN_AGENT_TAG, lastInboundAt, withinWindow }
 }
 
+/** One file to send. Bytes, because the composer already has them in hand. */
+export interface SocialSendAttachment {
+  content: Buffer
+  filename: string
+  contentType: string
+}
+
 export interface SendSocialMessageArgs {
   platform: SocialPlatform
   integrationId: string
@@ -114,7 +121,17 @@ export interface SendSocialMessageArgs {
   pageId: string
   pageAccessToken: string
   recipientId: string
-  text: string
+  /** Empty when this message carries an attachment instead — never both. */
+  text?: string
+  /**
+   * The file this message carries, if any.
+   *
+   * Exactly one, and never together with `text`: Meta's `message` object takes
+   * `text` OR `attachment`. A composer send with a caption and two photos is
+   * three messages, split upstream by `MessageSenderService` so each one gets its
+   * own row and its own `mid` — see `canSendTextWithAttachment`.
+   */
+  attachment?: SocialSendAttachment
   externalThreadId?: string
   automated?: boolean
 }
@@ -128,12 +145,18 @@ export interface SendSocialMessageArgs {
 export async function sendSocialMessage(
   args: SendSocialMessageArgs
 ): Promise<{ messageId?: string; policy: SocialSendPolicy }> {
-  const { platform, integrationId, pageId, pageAccessToken, recipientId, text } = args
+  const { platform, integrationId, pageId, pageAccessToken, recipientId, text, attachment } = args
+
+  if (!attachment && !text) {
+    throw new BadRequestError('A message must carry text or an attachment.')
+  }
 
   const lastInboundAt = args.externalThreadId
     ? await getLastInboundAt(integrationId, args.externalThreadId)
     : null
 
+  // The window policy is the same for both — an attachment outside 24 hours is as
+  // much an unsolicited message as a sentence is, and Meta enforces it identically.
   const policy = resolveSendPolicy({ lastInboundAt, automated: args.automated === true })
 
   logger.info('Sending social message', {
@@ -141,16 +164,28 @@ export async function sendSocialMessage(
     integrationId,
     messagingType: policy.messagingType,
     withinWindow: policy.withinWindow,
+    hasAttachment: !!attachment,
   })
 
-  const { messageId } = await sendMessage({
-    pageId,
-    pageAccessToken,
-    recipientId,
-    text,
-    messagingType: policy.messagingType,
-    tag: policy.tag,
-  })
+  const { messageId } = attachment
+    ? await sendAttachment({
+        pageId,
+        pageAccessToken,
+        recipientId,
+        content: attachment.content,
+        filename: attachment.filename,
+        contentType: attachment.contentType,
+        messagingType: policy.messagingType,
+        tag: policy.tag,
+      })
+    : await sendMessage({
+        pageId,
+        pageAccessToken,
+        recipientId,
+        text: text!,
+        messagingType: policy.messagingType,
+        tag: policy.tag,
+      })
 
   return { messageId, policy }
 }

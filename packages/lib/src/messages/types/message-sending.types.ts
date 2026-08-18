@@ -150,6 +150,29 @@ export interface SentMessage {
    * participant-less row that waits on the realtime echo / refetch.
    */
   participants?: { id: string; role: ParticipantRole }[]
+  /**
+   * Every message this send became, primary first — set only when the provider
+   * could not carry it in one message (Meta: one attachment, never beside text;
+   * see `splitSendForProvider`).
+   *
+   * The composer needs it because the originating tab is excluded from its own
+   * `message:created` echo (`excludeSocketId`), so its optimistic row is the only
+   * thing it sees until a refetch. Without this it would render ONE row carrying
+   * both the text and the files, which is not what was sent and not what the
+   * customer sees.
+   */
+  splitMessages?: SplitSentMessage[]
+}
+
+/** One message of a split send, as the composer needs to render it. */
+export interface SplitSentMessage {
+  id: string
+  threadId: string
+  sentAt: Date | null
+  /** The MediaAsset ids this message carried — matched against the staged files. */
+  attachmentIds: string[]
+  /** Whether this is the part that carried the composed text. */
+  hasText: boolean
 }
 /**
  * Reconciliation input

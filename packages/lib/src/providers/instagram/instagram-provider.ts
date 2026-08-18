@@ -183,9 +183,18 @@ export class InstagramProvider
         "Recipient IGSID (Instagram-Scoped User ID) is required in 'to' field for Instagram messages."
       )
     }
-    if (!options.text) {
-      throw new Error('Instagram message must contain text.')
-      // TODO: Handle attachments if needed (complex process involving uploads or asset URLs)
+    // One attachment per message, never beside text: Meta's `message` object takes
+    // `text` OR `attachment`. `MessageSenderService` has already split a composer
+    // send that needs both, so anything arriving here is a single message —
+    // extra attachments would be silently dropped, so refuse them instead.
+    const attachment = options.attachments?.[0]
+    if (options.attachments && options.attachments.length > 1) {
+      throw new Error(
+        'Meta accepts one attachment per message; the send should have been split upstream.'
+      )
+    }
+    if (!options.text && !attachment) {
+      throw new Error('A message must contain text or an attachment.')
     }
     // Shared with Messenger — see `social/send.ts`.
     //
@@ -205,7 +214,16 @@ export class InstagramProvider
       pageId: this.pageId!,
       pageAccessToken: this.pageAccessToken!,
       recipientId: recipientIgsid,
-      text: options.text,
+      text: attachment ? undefined : options.text,
+      attachment: attachment
+        ? {
+            content: Buffer.isBuffer(attachment.content)
+              ? attachment.content
+              : Buffer.from(attachment.content),
+            filename: attachment.filename,
+            contentType: attachment.contentType,
+          }
+        : undefined,
       externalThreadId: options.externalThreadId,
       automated: options.automated,
     })

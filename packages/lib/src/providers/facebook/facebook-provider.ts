@@ -179,8 +179,18 @@ export class FacebookProvider
         "Recipient PSID (Page-Scoped ID) is required in 'to' field for Facebook messages."
       )
     }
-    if (!options.text) {
-      throw new Error('Facebook message must contain text (attachments not implemented).')
+    // One attachment per message, never beside text: Meta's `message` object takes
+    // `text` OR `attachment`. `MessageSenderService` has already split a composer
+    // send that needs both, so anything arriving here is a single message —
+    // extra attachments would be silently dropped, so refuse them instead.
+    const attachment = options.attachments?.[0]
+    if (options.attachments && options.attachments.length > 1) {
+      throw new Error(
+        'Meta accepts one attachment per message; the send should have been split upstream.'
+      )
+    }
+    if (!options.text && !attachment) {
+      throw new Error('A message must contain text or an attachment.')
     }
     // Messaging-window policy (24h `RESPONSE`, `HUMAN_AGENT` outside it, automation
     // blocked outside it) plus the Graph call itself live in `social/send.ts` so
@@ -191,7 +201,16 @@ export class FacebookProvider
       pageId: this.pageId!,
       pageAccessToken: this.pageAccessToken!,
       recipientId: recipientPsid,
-      text: options.text,
+      text: attachment ? undefined : options.text,
+      attachment: attachment
+        ? {
+            content: Buffer.isBuffer(attachment.content)
+              ? attachment.content
+              : Buffer.from(attachment.content),
+            filename: attachment.filename,
+            contentType: attachment.contentType,
+          }
+        : undefined,
       externalThreadId: options.externalThreadId,
       automated: options.automated,
     })
