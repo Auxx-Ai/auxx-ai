@@ -139,13 +139,25 @@ export function mutationToToolResult(
   }
   if (!value.applied) {
     const blocking = value.issues.filter((issue) => issue.severity === 'error')
+    // Fresh first, inherited ones labelled: a refused edit lists the whole
+    // draft's errors, and without the split the caller reads damage it did not
+    // do as the reason it was refused — then "fixes" a node it never touched.
+    const shown = (blocking.length > 0 ? blocking : value.issues)
+      .slice()
+      .sort((a, b) => Number(a.preExisting ?? false) - Number(b.preExisting ?? false))
     return {
       success: false,
       output: projected,
       error:
         'The edit was NOT applied — blocking issues:\n' +
-        (blocking.length > 0 ? blocking : value.issues)
-          .map((issue) => `- ${issue.nodeRef ? `${issue.nodeRef}: ` : ''}${issue.message}`)
+        shown
+          .map(
+            (issue) =>
+              `- ${issue.nodeRef ? `${issue.nodeRef}: ` : ''}${issue.message}` +
+              (issue.preExisting
+                ? ' (pre-existing — already in the draft, not what blocked this edit)'
+                : '')
+          )
           .join('\n'),
     }
   }

@@ -101,6 +101,44 @@ interface MutationPlan {
 }
 
 /**
+ * Stable identity for a reference error: the node it sits on plus the ref
+ * itself. Keyed on the node ID rather than the friendly `nodeRef`, because a
+ * mutation that renames a node changes every `nodeRef` in the draft — and a
+ * rename must not make an old broken ref read as newly written.
+ */
+function refErrorKey(graph: DraftGraph, issue: Issue): string {
+  const nodeId = graph.nodes.find((n) => formatNodeRef(graph.nodes, n.id) === issue.nodeRef)?.id
+  return `${nodeId ?? issue.nodeRef ?? ''}|${issue.ref ?? issue.message}`
+}
+
+/**
+ * The reference errors the draft carried BEFORE this mutation — the set O1's
+ * gate subtracts, so only what the current call introduced can block it.
+ *
+ * Returns `null`, NOT an empty set, when the pre-edit outputs cannot be
+ * resolved: an empty set reads as "the draft carried no errors", which would
+ * make every candidate look freshly written and fail the write CLOSED on a
+ * cache blip. `null` means unknown, and unknown never blocks.
+ */
+async function inheritedRefErrorKeys(
+  organizationId: string,
+  ctx: Pick<DraftContext, 'graph' | 'lookup'>
+): Promise<Set<string> | null> {
+  const resolved = await resolveGraphOutputs(organizationId, { graph: ctx.graph })
+  if (resolved.isErr()) return null
+  const before = checkVariableRefsAgainstOutputs({
+    graph: ctx.graph,
+    outputs: resolved.value,
+    lookup: ctx.lookup,
+  })
+  return new Set(
+    before.issues
+      .filter((i) => i.severity === 'error')
+      .map((issue) => refErrorKey(ctx.graph, issue))
+  )
+}
+
+/**
  * The shared mutation pipeline. Blocking tiers (normalize errors, structural
  * errors, the mail-trigger guard) return `applied: false` with the original
  * graph untouched; everything else persists through the one seam
@@ -161,12 +199,14 @@ async function runGraphMutation(
     ...validateNodeConfigs(graph, ctx.lookup),
   ]
   let outputsMap: Map<string, UnifiedVariable[]> | undefined
+  const refIssues: Issue[] = []
   const resolved = await resolveGraphOutputs(scope.organizationId, { graph })
   if (resolved.isOk()) {
     outputsMap = resolved.value
-    issues.push(
+    refIssues.push(
       ...checkVariableRefsAgainstOutputs({ graph, outputs: outputsMap, lookup: ctx.lookup }).issues
     )
+    issues.push(...refIssues)
   }
 
   // Mark what this edit did NOT cause. A mutation reports the whole draft's
@@ -180,6 +220,38 @@ async function runGraphMutation(
   )
   for (const issue of issues) {
     if (issue.nodeRef && !touchedRefs.has(issue.nodeRef)) issue.preExisting = true
+  }
+
+  // O1 (plan 17 §0): a bad reference THIS call wrote, against outputs it could
+  // see, is the same class of defect as a fabricated `resource.operation` — the
+  // author believes it succeeded and nothing downstream contradicts it. So tier
+  // 3 gates the write for what this mutation INTRODUCED, and stays non-blocking
+  // for everything else.
+  //
+  // The asymmetry is what keeps it safe. A ref error the draft already carried
+  // never blocks, so a workflow that is already broken stays editable (#1649);
+  // `delete_nodes`, `disconnect_nodes` and `apply_template` name no touched
+  // node at all, so breaking a downstream ref by removing its producer — or
+  // applying a curated template — is still allowed.
+  const candidates = refIssues.filter((i) => i.severity === 'error' && i.preExisting !== true)
+  if (candidates.length > 0) {
+    // The node-level `preExisting` stamp is not enough on its own: editing one
+    // field of a node that ALREADY carried a broken ref marks that old error as
+    // untouched-by-nobody, and gating on it would make the node uneditable —
+    // exactly the trap this asymmetry exists to avoid. So compare against the
+    // errors the draft carried BEFORE the mutation, and block only the
+    // difference. Paid for only when there is something to block.
+    const inherited = await inheritedRefErrorKeys(scope.organizationId, ctx)
+    const introduced = inherited
+      ? candidates.filter((issue) => !inherited.has(refErrorKey(graph, issue)))
+      : []
+    if (introduced.length > 0) {
+      return ok({
+        applied: false,
+        issues,
+        graphSummary: buildGraphSummary(ctx.graph, ctx.lookup, ctx.triggerType),
+      })
+    }
   }
 
   // NO-OP SHORT-CIRCUIT: a mutation whose cleaned graph hashes to what was

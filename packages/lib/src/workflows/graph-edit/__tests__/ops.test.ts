@@ -8,8 +8,8 @@
  * column re-derivation through the persist seam, and the readDraft shape.
  */
 
-import { err as errResult } from 'neverthrow'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { err as errResult, ok as okResult } from 'neverthrow'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Partial mock — the cache barrel is imported by half of lib; replacing it
 // wholesale dies at collection. Only the read the graph-edit path makes is stubbed.
@@ -1148,6 +1148,145 @@ const waitOnlyGraph = (): DraftGraph => ({
     plainNode(APP_WAIT_ID, 'wait', 'Wait A Bit', { waitType: 'duration', durationAmount: 5 }),
   ],
   edges: [],
+})
+
+describe('reference gate — O1 (plan 17 §0)', () => {
+  const HTTP_ID = 'http-aaaaaaaaaaaaaaaaaaaaa'
+
+  /** The trigger declares exactly one output, so `.bogus` is provably wrong. */
+  function stubTriggerOutputs() {
+    resolveGraphOutputs.mockImplementation(async () =>
+      okResult(
+        new Map([
+          [TRIGGER_ID, [{ id: `${TRIGGER_ID}.timestamp`, label: 'Timestamp', type: 'string' }]],
+        ])
+      )
+    )
+  }
+
+  function httpNode(url: string): GraphNode {
+    return {
+      id: HTTP_ID,
+      type: 'standard',
+      position: { x: 500, y: 200 },
+      data: { id: HTTP_ID, type: 'http', title: 'Post To Webhook', method: 'GET', url },
+    }
+  }
+
+  beforeEach(stubTriggerOutputs)
+  afterEach(() => resolveGraphOutputs.mockReset())
+
+  it('refuses an edit that writes a reference the outputs do not have', async () => {
+    // The S2 asymmetry, applied to tier 3: a ref this call wrote — against
+    // outputs it could see — is a defect nothing downstream contradicts.
+    const graph: DraftGraph = {
+      nodes: [triggerNode(), httpNode('https://example.com')],
+      edges: [edge(TRIGGER_ID, 'source', HTTP_ID)],
+    }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'Post To Webhook',
+      config: { url: 'https://example.com/{{Every Morning.bogus}}' },
+    })
+
+    expect(result.isOk()).toBe(true)
+    const value = result._unsafeUnwrap()
+    expect(value.applied).toBe(false)
+    expect(serviceUpdate).not.toHaveBeenCalled()
+    const blocking = value.issues.filter((i) => i.severity === 'error' && !i.preExisting)
+    expect(blocking.some((i) => /bogus/.test(i.message))).toBe(true)
+  })
+
+  it('applies the same edit when the reference resolves', async () => {
+    const graph: DraftGraph = {
+      nodes: [triggerNode(), httpNode('https://example.com')],
+      edges: [edge(TRIGGER_ID, 'source', HTTP_ID)],
+    }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'Post To Webhook',
+      config: { url: 'https://example.com/{{Every Morning.timestamp}}' },
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().applied).toBe(true)
+    expect(serviceUpdate).toHaveBeenCalled()
+  })
+
+  it('still edits a node that ALREADY carried a broken reference', async () => {
+    // The #1649 trap: the `preExisting` stamp is per NODE, so an old bad ref on
+    // the very node being edited looks fresh. Gating on that alone would make
+    // the node uneditable — the gate subtracts the draft's before-state instead.
+    const graph: DraftGraph = {
+      nodes: [triggerNode(), httpNode(`https://example.com/{{${TRIGGER_ID}.bogus}}`)],
+      edges: [edge(TRIGGER_ID, 'source', HTTP_ID)],
+    }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'Post To Webhook',
+      config: { method: 'POST' },
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().applied).toBe(true)
+    expect(persistedGraph().nodes.find((n) => n.id === HTTP_ID)?.data?.method).toBe('POST')
+    // Reported, never silent — tier 3 is still a report for what it inherited.
+    expect(
+      result._unsafeUnwrap().issues.some((i) => i.severity === 'error' && /bogus/.test(i.message))
+    ).toBe(true)
+  })
+
+  it('does not block a delete that strands a downstream reference', async () => {
+    // Removing a producer is an intentional, user-requested act, and
+    // `deleteNodes` names no touched node — so the stranded refs it leaves
+    // behind are reported, not refused.
+    const graph: DraftGraph = {
+      nodes: [triggerNode(), httpNode(`https://example.com/{{${TRIGGER_ID}.timestamp}}`)],
+      edges: [edge(TRIGGER_ID, 'source', HTTP_ID)],
+    }
+    const result = await deleteNodes(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      refs: ['Every Morning'],
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().applied).toBe(true)
+    expect(serviceUpdate).toHaveBeenCalled()
+  })
+
+  it('fails OPEN when the before-state cannot be resolved', async () => {
+    // No "before" to compare against ⇒ nothing is provably fresh. Refusing a
+    // write on an unknown is worse than flagging one.
+    let call = 0
+    resolveGraphOutputs.mockImplementation(async () => {
+      call += 1
+      // First call is the post-edit graph; the second is the before-pass.
+      return call === 1
+        ? okResult(
+            new Map([
+              [TRIGGER_ID, [{ id: `${TRIGGER_ID}.timestamp`, label: 'Timestamp', type: 'string' }]],
+            ])
+          )
+        : errResult(new Error('redis down'))
+    })
+    const graph: DraftGraph = {
+      nodes: [triggerNode(), httpNode('https://example.com')],
+      edges: [edge(TRIGGER_ID, 'source', HTTP_ID)],
+    }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'Post To Webhook',
+      config: { url: 'https://example.com/{{Every Morning.bogus}}' },
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().applied).toBe(true)
+  })
 })
 
 describe('app blocks — authoring (§5 B3 checkpoint)', () => {
