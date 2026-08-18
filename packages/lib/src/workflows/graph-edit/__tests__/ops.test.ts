@@ -8,6 +8,7 @@
  * column re-derivation through the persist seam, and the readDraft shape.
  */
 
+import { err as errResult } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Partial mock — the cache barrel is imported by half of lib; replacing it
@@ -29,6 +30,24 @@ vi.mock('../../workflow-service', () => ({
     }
   },
 }))
+
+// Partial mock — `resolveGraphOutputs` is a collaborator of the mutation
+// pipeline, not the thing under test here. Stubbing the cache instead would
+// not work: `normalizeConfig` reads resources too, so a rejection would land
+// in the wrong place. Partial, never wholesale — a full replacement of a
+// shared module dies at collection.
+const resolveGraphOutputs = vi.fn()
+vi.mock('../../../workflow-engine/catalog/resolve-outputs', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../../workflow-engine/catalog/resolve-outputs')>()
+  return {
+    ...actual,
+    resolveGraphOutputs: (...args: unknown[]) =>
+      resolveGraphOutputs.getMockImplementation()
+        ? resolveGraphOutputs(...args)
+        : actual.resolveGraphOutputs(...(args as Parameters<typeof actual.resolveGraphOutputs>)),
+  }
+})
 
 // The blocking mail guard — checked in the pipeline so it reports as an issue.
 const mailGuard = vi.fn(async (..._args: unknown[]) => {})
@@ -869,6 +888,30 @@ describe('updateNode / disconnectNodes', () => {
     const value = result._unsafeUnwrap()
     expect(value.graphSummary.readOnlyNodes).toEqual(['Incoming Webhook'])
     expect(value.issues.some((i) => /not in the catalog|read-only/.test(i.message))).toBe(false)
+  })
+
+  it('still persists the edit when output resolution fails', async () => {
+    // Outputs are enrichment, resolved BEFORE persistDraft. A throw there used
+    // to sail past `if (resolved.isOk())` and abort an already-validated edit,
+    // losing the user's change over a cache blip. Now it returns err, the
+    // guard does what it was written to do, and the write lands without
+    // outputs — and WITHOUT inventing unresolvable-ref issues.
+    resolveGraphOutputs.mockImplementation(async () => errResult(new Error('redis down')))
+    const graph: DraftGraph = { nodes: [triggerNode(), loopNode()], edges: [] }
+
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'For each order',
+      config: { maxIterations: 9 },
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().applied).toBe(true)
+    expect(result._unsafeUnwrap().outputs).toBeUndefined()
+    expect(serviceUpdate).toHaveBeenCalled()
+    expect(persistedGraph().nodes.find((n) => n.id === LOOP_ID)?.data?.maxIterations).toBe(9)
+    resolveGraphOutputs.mockReset()
   })
 
   it('reports a re-issued identical edit as unchanged and does NOT write', async () => {
