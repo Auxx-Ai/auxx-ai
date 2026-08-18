@@ -14,6 +14,7 @@ import { createDisconnectNodesTool } from './tools/disconnect-nodes'
 import { createFindWorkflowTemplatesTool } from './tools/find-workflow-templates'
 import { createGetNodeTool } from './tools/get-node'
 import { createGetWorkflowTool } from './tools/get-workflow'
+import { createListAppBlocksTool } from './tools/list-app-blocks'
 import { createListNodeTypesTool } from './tools/list-node-types'
 import { createReplaceGraphTool } from './tools/replace-graph'
 import { createRunNodeTool } from './tools/run-node'
@@ -65,6 +66,7 @@ export function createWorkflowBuilderCapabilities(getDeps: GetToolDeps): PageCap
     tools: [
       // Discovery (progressive disclosure — the prompt carries no node list).
       createListNodeTypesTool(getDeps),
+      createListAppBlocksTool(getDeps),
       createDescribeNodeTypeTool(getDeps),
       createFindWorkflowTemplatesTool(getDeps),
       // Read

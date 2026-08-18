@@ -94,6 +94,7 @@ const IDEMPOTENT_READ_TOOLS = [
   'describe_node_type',
   'find_threads',
   'find_workflow_templates',
+  'list_app_blocks',
   'get_article',
   'get_article_section',
   'get_entity',
@@ -224,11 +225,16 @@ const NO_AUTHORIZATION_REQUIRED: readonly string[] = [
   'assign_variable',
   'suggest_replies',
   'search_docs',
-  // workflow.builder discovery — static product data (the node-type registry
-  // and the public template gallery), identical for every org. Everything that
-  // touches the workflow itself routes through `resolveWorkflowAuthoring`.
+  // workflow.builder discovery — static product data (the CORE node-type
+  // registry and the public template gallery), identical for every org.
+  // Everything that touches the workflow itself routes through
+  // `resolveWorkflowAuthoring`.
+  //
+  // `describe_node_type` LEFT this list when it learned to answer for app-block
+  // types: those come from the org's installed apps, so its answer is no longer
+  // org-independent and it now takes the `workflowsView` area rung. That is
+  // exactly the change this list exists to force someone to make deliberately.
   'list_node_types',
-  'describe_node_type',
   'find_workflow_templates',
 ]
 

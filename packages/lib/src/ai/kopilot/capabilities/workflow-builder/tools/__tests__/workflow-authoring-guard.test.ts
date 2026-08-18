@@ -131,6 +131,43 @@ vi.mock('@auxx/services/workflow-templates', () => ({
   getAllTemplates: vi.fn(async () => ok([])),
 }))
 
+/**
+ * The installed-app fleet `list_app_blocks` lists and `buildManifestLookup`
+ * synthesizes from. Two apps on purpose: one contributing a block, one
+ * contributing none — the second is what proves the list is per-BLOCK, not
+ * per-app.
+ */
+const installedApps = vi.fn(async (..._a: unknown[]) => [
+  {
+    installationId: 'inst-1',
+    app: { id: 'appfedex', slug: 'fedex', title: 'Fedex', description: null, avatarUrl: null },
+    orgConnectionPresent: false,
+    orgConnectionExpiresAt: null,
+    workflowBlocks: [
+      {
+        id: 'fedex',
+        label: 'FedEx',
+        description: 'Track FedEx shipments',
+        requiresConnection: true,
+        ops: [
+          { key: 'shipment.track', resource: 'shipment', operation: 'track', toolId: 't1' },
+          { key: 'shipment.watch', resource: 'shipment', operation: 'watch', toolId: 't2' },
+        ],
+      },
+    ],
+  },
+  {
+    installationId: 'inst-2',
+    app: { id: 'apphub', slug: 'hubspot', title: 'HubSpot', description: null, avatarUrl: null },
+    orgConnectionPresent: true,
+    orgConnectionExpiresAt: null,
+    workflowBlocks: [],
+  },
+])
+vi.mock('../../../../../../cache', () => ({
+  getCachedInstalledApps: (...a: unknown[]) => installedApps(...a),
+}))
+
 import { createWorkflowBuilderCapabilities } from '../../index'
 import { DIRTY_CANVAS_ERROR, NO_WORKFLOW_REF_ERROR } from '../workflow-authoring-guard'
 
@@ -208,6 +245,7 @@ const VALID_ARGS: Record<string, Record<string, unknown>> = {
   apply_template: { templateId: 'file:x' },
   set_workflow_details: { name: 'Renamed workflow' },
   run_node: { ref: 'Wait A Bit' },
+  list_app_blocks: {},
 }
 
 function run(t: AgentToolDefinition, args: Record<string, unknown> = {}): Promise<AgentToolResult> {
@@ -225,9 +263,20 @@ const MUTATION_TOOLS = [
   'apply_template',
   'set_workflow_details',
 ] as const
-const VIEW_TOOLS = ['get_workflow', 'get_node', 'validate_workflow'] as const
+const VIEW_TOOLS = ['get_workflow', 'get_node', 'validate_workflow', 'list_app_blocks'] as const
 const GUARDED = [...VIEW_TOOLS, ...MUTATION_TOOLS, 'run_node'] as const
-const DISCOVERY = ['list_node_types', 'describe_node_type', 'find_workflow_templates'] as const
+/**
+ * Discovery splits in two now.
+ *
+ * `describe_node_type` answers for app-block types, which are per-ORG installed
+ * data, so it takes the `workflowsView` area rung — but NOT a workflow ref: it
+ * is addressed by type id and there is no instance to gate on. It is therefore
+ * in neither bucket, and `AREA_ONLY` names that third state explicitly rather
+ * than letting it fall out of the enumeration unnoticed.
+ */
+const UNGATED_DISCOVERY = ['list_node_types', 'find_workflow_templates'] as const
+const AREA_ONLY = ['describe_node_type'] as const
+const DISCOVERY = [...UNGATED_DISCOVERY, ...AREA_ONLY] as const
 
 beforeEach(() => {
   caps = makeCaps()
@@ -242,6 +291,7 @@ beforeEach(() => {
   updateWorkflowDetails.mockClear()
   publishDraftUpdatedSignal.mockClear()
   beginWorkflowTurnLock.mockClear()
+  installedApps.mockClear()
 })
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -304,6 +354,29 @@ describe('workflow.builder authorization enumeration', () => {
       await expect(run(tool(name)), name).rejects.toThrow(ForbiddenError)
     }
     expect(opMock).not.toHaveBeenCalled()
+  })
+
+  /**
+   * `describe_node_type` answers for app-block types, which are per-org, so it
+   * must not stay ungated — but it takes no workflow ref, so the enumeration
+   * above cannot cover it. Asserted here on both rungs, and asserted to still
+   * work WITHOUT a workflow ref, because losing that would break every
+   * off-builder caller for no security gain.
+   */
+  it('area-only tools take the workflows rung but need no workflow ref', async () => {
+    refs = []
+    for (const name of AREA_ONLY) {
+      const allowed = await run(tool(name), VALID_ARGS[name] ?? { type: 'wait' })
+      expect(allowed.success, name).toBe(true)
+
+      caps = undefined
+      await expect(run(tool(name), { type: 'wait' }), name).rejects.toThrow(ForbiddenError)
+
+      caps = makeCaps()
+      caps.can.mockReturnValue(false)
+      await expect(run(tool(name), { type: 'wait' }), name).rejects.toThrow(ForbiddenError)
+      caps = makeCaps()
+    }
   })
 
   it('a crafted foreign-org ref reads as "not in this workspace" — silent for reads, thrown for writes', async () => {
@@ -529,6 +602,109 @@ describe('discovery tools', () => {
     const result = await run(tool('describe_node_type'), { type: 'quantum-blockchain' })
     expect(result.success).toBe(false)
     expect(result.error).toContain('quantum-blockchain')
+  })
+
+  /**
+   * The §9.1 blocker: before this, `describe_node_type` read the CORE registry
+   * only, so the one tool an agent calls before configuring an unfamiliar type
+   * told it every app-block type did not exist — and it then refused to write a
+   * node the write path would have accepted.
+   */
+  it('describe_node_type resolves an app-block type, with its operation vocabulary', async () => {
+    const result = await run(tool('describe_node_type'), { type: 'appfedex:fedex' })
+    expect(result.success).toBe(true)
+    const out = result.output as Record<string, any>
+    expect(out.type).toBe('appfedex:fedex')
+    expect(out.authorable).toBe(true)
+    // The vocabulary the agent could not otherwise reach — an enum, because the
+    // synthesized manifest declares `operation` as `z.enum` over the real ops.
+    expect(out.configSchema.properties.operation.enum).toEqual(['track', 'watch'])
+    expect(out.configSchema.properties.resource.enum).toEqual(['shipment'])
+    expect(out.usage).toContain('shipment.track')
+  })
+
+  it('describe_node_type does not read the org cache for a core type', async () => {
+    await run(tool('describe_node_type'), { type: 'wait' })
+    expect(installedApps).not.toHaveBeenCalled()
+  })
+
+  it('describe_node_type gives a colon type the app-block-shaped refusal', async () => {
+    const result = await run(tool('describe_node_type'), { type: 'jira:issue' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('shaped like an app block')
+    expect(result.error).toContain('list_app_blocks')
+  })
+
+  it('list_app_blocks lists one row per installed BLOCK, not per app', async () => {
+    const result = await run(tool('list_app_blocks'))
+    expect(result.success).toBe(true)
+    const blocks = (result.output as { blocks: Array<Record<string, unknown>> }).blocks
+    // HubSpot is installed but contributes no block — it must not appear.
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0]).toMatchObject({
+      type: 'appfedex:fedex',
+      app: 'Fedex',
+      appSlug: 'fedex',
+      label: 'FedEx',
+      resources: ['shipment'],
+      operationCount: 2,
+      requiresConnection: true,
+      connected: false,
+    })
+    // The vocabulary is describe_node_type's job — quickbooks declares 42
+    // operations and shopify 64, so listing them here would swamp the answer.
+    expect(blocks[0]).not.toHaveProperty('operations')
+  })
+
+  it('list_app_blocks searches app, label, description and operation names (unemitted)', async () => {
+    for (const query of ['fedex', 'FEDEX SHIPMENTS', 'shipment.watch', 'appfedex:fedex']) {
+      const result = await run(tool('list_app_blocks'), { query })
+      expect(result.success, query).toBe(true)
+      expect((result.output as { blocks: unknown[] }).blocks, query).toHaveLength(1)
+    }
+  })
+
+  it('list_app_blocks reports an actionable error when nothing matches', async () => {
+    const result = await run(tool('list_app_blocks'), { query: 'quantum-blockchain' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('quantum-blockchain')
+    expect(result.error).toContain('without a query')
+  })
+
+  it('list_app_blocks says so when no installed app contributes a block', async () => {
+    installedApps.mockResolvedValueOnce([])
+    const result = await run(tool('list_app_blocks'))
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('No app installed in this workspace')
+  })
+
+  /**
+   * `requiresConnection: undefined` means UNKNOWN — a catalog published before
+   * the field existed simply does not say. Emitting `false` there would let the
+   * agent read a guess as a fact, so the key is omitted instead.
+   */
+  it('list_app_blocks omits requiresConnection rather than guessing false', async () => {
+    installedApps.mockResolvedValueOnce([
+      {
+        installationId: 'inst-3',
+        app: { id: 'appold', slug: 'old', title: 'Old', description: null, avatarUrl: null },
+        orgConnectionPresent: true,
+        orgConnectionExpiresAt: null,
+        workflowBlocks: [{ id: 'blk', label: 'Blk', description: 'd', ops: [] }],
+      },
+    ] as never)
+    const result = await run(tool('list_app_blocks'))
+    expect(result.success).toBe(true)
+    const blocks = (result.output as { blocks: Array<Record<string, unknown>> }).blocks
+    expect(blocks[0]).not.toHaveProperty('requiresConnection')
+    expect(blocks[0]!.connected).toBe(true)
+  })
+
+  it('list_app_blocks builds a compact count digest', () => {
+    expect(tool('list_app_blocks').buildDigest?.({ blocks: [{}, {}, {}] })).toEqual({
+      label: 'App blocks listed',
+      resultCount: 3,
+    })
   })
 })
 

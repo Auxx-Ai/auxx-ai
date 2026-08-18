@@ -21,7 +21,7 @@ export function createListNodeTypesTool(getDeps: GetToolDeps): AgentToolDefiniti
     surfaces: ['builder'],
     idempotent: true,
     description:
-      'List or search workflow node types: id, display name, one-line description, category, whether it is a trigger, and whether you may author it. Call describe_node_type before configuring one.',
+      'List or search workflow node types: id, display name, one-line description, category, whether it is a trigger, and whether you may author it. Call describe_node_type before configuring one. This is the CORE catalog only — blocks contributed by installed apps are addressed as "<appId>:<blockId>" and are listed by list_app_blocks, so an empty result here does not mean no such block exists.',
     parameters: {
       type: 'object',
       properties: {
@@ -75,7 +75,7 @@ export function createListNodeTypesTool(getDeps: GetToolDeps): AgentToolDefiniti
         return {
           success: false,
           output: null,
-          error: `No node types match ${filter || 'the supplied filters'}. Call list_node_types without filters to see the full catalog.`,
+          error: `No CORE node types match ${filter || 'the supplied filters'}. Call list_node_types without filters to see the full catalog — and list_app_blocks for blocks contributed by installed apps, which are not in it.`,
         }
       }
       return { success: true, output: { types } }
