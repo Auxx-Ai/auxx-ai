@@ -112,9 +112,25 @@ describe('convertMetaWebhookEventToMessageData', () => {
     })
 
     expect(result?.snippet).toBe('receipt')
-    // No inbound attachment ingestor exists, so claiming true would fire
-    // attachment workflow rules for bytes that were never fetched.
+    expect(result?.hasAttachments).toBe(true)
+  })
+
+  it('claims no attachments for a payload with nothing downloadable behind it', () => {
+    const result = convertMetaWebhookEventToMessageData({
+      event: inbound({
+        message: {
+          mid: 'm_att_2',
+          attachments: [{ type: 'location', payload: { title: 'Berlin' } }],
+        },
+      }),
+      ...BASE,
+    })
+
+    // `hasAttachments` gates the workflow trigger filter, so it has to mean
+    // "there is a file on this message", not "the payload had an attachments key".
     expect(result?.hasAttachments).toBe(false)
+    // The snippet still names it — "Berlin" beats an empty bubble.
+    expect(result?.snippet).toBe('Berlin')
   })
 })
 

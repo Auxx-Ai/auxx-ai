@@ -499,6 +499,30 @@ Per message, in order:
    `applyMailCountDeltas`, `touchActivityForThreadLinks`, the `MessageReceivedEvent` on the event
    bus, and realtime publishes (unless batched).
 
+### Attachments are ingested *after* the message row, per channel
+
+`storeMessage` never fetches bytes. Attachment ingest is a separate post-store step each
+channel wires itself, because only the provider knows how to get the bytes: Gmail fetches
+them from its API (`GmailInboundContentIngestor`), SES parses them out of the raw MIME
+(`InboundEmailProcessor`), and Meta downloads a signed CDN link
+(`providers/social/attachments.ts`). All three converge on
+`InboundAttachmentIngestService.ingestAll`, which writes StorageLocation → MediaAsset →
+`Attachment(entityType: 'MESSAGE')`, and all three are idempotent through
+`deriveAttachmentId(contentScopeId, order, filename)` — so a re-delivered webhook or a
+re-synced conversation lands on the same rows.
+
+`Message.hasAttachments` therefore means **"the payload declared a file"**, not "the bytes
+are stored". It is set at conversion time, before ingest, and deliberately: it is the
+`message:received` workflow trigger's filter, which is evaluated at store time — a flag
+flipped after ingest could never fire an attachment rule. A provider with no ingestor at
+all (Quo/SMS today) must keep it `false`, or it fires rules against files that will never
+exist.
+
+Ingest runs after `message:created` has already gone out with an empty attachment list, so
+a live-inbound path should publish `message:updated` with the stored attachments once it
+finishes — otherwise the file only appears on the next refetch. Sync paths do not: a
+backfill publishes nothing per message by design.
+
 **Thread status on personal channels** derives from Gmail labels (`INBOX` → `OPEN`, sent-only /
 archived / label-only → `ARCHIVED`, `TRASH`/`SPAM` straight through). Shared inboxes never call
 this — they keep everything-open helpdesk semantics.

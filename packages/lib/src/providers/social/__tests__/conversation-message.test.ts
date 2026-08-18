@@ -251,7 +251,7 @@ describe('convertGraphConversationMessageToMessageData', () => {
     expect(result?.subject).toBeUndefined()
   })
 
-  it('never claims attachments, because nothing ingests their bytes', () => {
+  it('claims no attachments for a descriptor with no URL to download', () => {
     const result = convertGraphConversationMessageToMessageData({
       message: node({
         message: { attachments: [{ type: 'image', payload: { title: 'receipt.png' } }] },
@@ -262,6 +262,42 @@ describe('convertGraphConversationMessageToMessageData', () => {
     expect(result?.hasAttachments).toBe(false)
     // The attachment still names the message, so an image-only DM is not a blank row.
     expect(result?.snippet).toBe('receipt.png')
+  })
+
+  it("claims attachments from the node's own `attachments` connection", () => {
+    const result = convertGraphConversationMessageToMessageData({
+      message: node({
+        message: undefined,
+        attachments: {
+          data: [
+            {
+              id: 'a1',
+              name: 'receipt.png',
+              mime_type: 'image/png',
+              size: 1024,
+              image_data: { url: 'https://lookaside.fbsbx.com/a1' },
+            },
+          ],
+        },
+      }),
+      ...BASE,
+    })
+
+    expect(result?.hasAttachments).toBe(true)
+    expect(result?.snippet).toBe('receipt.png')
+  })
+
+  it('claims attachments from the tolerated object body when the connection is absent', () => {
+    const result = convertGraphConversationMessageToMessageData({
+      message: node({
+        message: {
+          attachments: [{ type: 'image', payload: { url: 'https://lookaside.fbsbx.com/b1' } }],
+        },
+      }),
+      ...BASE,
+    })
+
+    expect(result?.hasAttachments).toBe(true)
   })
 
   it('drops a node with no id, no sender, an unparseable time, or a third-party sender', () => {

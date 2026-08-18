@@ -1078,6 +1078,12 @@
       "import": "./dist/providers/openphone/webhook-message.mjs",
       "default": "./src/providers/openphone/webhook-message.ts"
     },
+    "./providers/social/attachments": {
+      "types": "./src/providers/social/attachments.ts",
+      "source": "./src/providers/social/attachments.ts",
+      "import": "./dist/providers/social/attachments.mjs",
+      "default": "./src/providers/social/attachments.ts"
+    },
     "./providers/social/profile": {
       "types": "./src/providers/social/profile.ts",
       "source": "./src/providers/social/profile.ts",
