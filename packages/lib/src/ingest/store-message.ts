@@ -981,6 +981,27 @@ export async function storeMessage(
       !!ctx.backfillCutoffAt &&
       !!messageData.receivedAt &&
       messageData.receivedAt < ctx.backfillCutoffAt
+
+    // Auto-reopen surface event (thread-events §13.7): the INBOX-label reopen
+    // inside the transaction above is likely the highest-volume
+    // `thread:reopened` in the product, and it previously hand-rolled its own
+    // realtime patch while writing no event. Post-commit, same publishLater
+    // path as every other emitter. Null actor + system provenance — no human
+    // reopened this, the inbound mail did. `didReopen` requires a personal
+    // email channel, so there is never a chat visitor to fan out to.
+    if (didReopen) {
+      await publisher.publishLater({
+        type: 'thread:reopened',
+        data: {
+          threadId: thread.id,
+          organizationId: messageData.organizationId,
+          actorId: null,
+          source: { kind: 'system' },
+          visitorParticipantId: null,
+        },
+      })
+    }
+
     if (messageData.isInbound && !ctx.isInitialSync && !suppressedByBackfillCutoff) {
       const fromAddress = senderParticipant.identifier?.trim().toLowerCase()
       const ownAddresses = buildOrgOwnEmailAddressSet(

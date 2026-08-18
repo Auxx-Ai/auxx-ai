@@ -13,6 +13,7 @@ import type { EmailActions } from '../email-actions'
 import EmailDisplay from '../email-display'
 import MessageDisplay from '../message-display'
 import { SystemLine } from './system-line'
+import { SystemLineRun } from './system-line-run'
 import { useChatThreadEvents } from './use-thread-events'
 
 interface ChatPanelMessagesProps {
@@ -94,6 +95,9 @@ export function ChatPanelMessages({ threadId, popoverClassName }: ChatPanelMessa
         {items.map((item) => {
           if (item.kind === 'event') {
             return <SystemLine key={`evt:${item.event.id}`} event={item.event} />
+          }
+          if (item.kind === 'event-run') {
+            return <SystemLineRun key={`evtrun:${item.events[0]!.id}`} events={item.events} />
           }
           if (item.kind === 'chat-group') {
             const groupIsLast = item.endIndex === messages.length - 1

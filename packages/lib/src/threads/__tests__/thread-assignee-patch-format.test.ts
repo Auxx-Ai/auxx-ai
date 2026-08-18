@@ -144,7 +144,13 @@ describe('ThreadMutationService.update — assignee patch format', () => {
       ],
       [{ id: THREAD_ID, inboxId: null, assigneeId: NEW_ASSIGNEE }]
     )
-    return new ThreadMutationService(ORG_ID, db, undefined, ACTOR_ID, viewer())
+    return new ThreadMutationService(
+      ORG_ID,
+      db,
+      undefined,
+      { kind: 'user', id: ACTOR_ID },
+      viewer()
+    )
   }
 
   it('publishes an ActorId, not the bare column value', async () => {
@@ -161,10 +167,13 @@ describe('ThreadMutationService.update — assignee patch format', () => {
       [[{ inboxId: null, status: 'OPEN', assigneeId: OLD_ASSIGNEE, integrationId: null }], []],
       [{ id: THREAD_ID, inboxId: null, assigneeId: null }]
     )
-    await new ThreadMutationService(ORG_ID, db, undefined, ACTOR_ID, viewer()).update(
-      `thread:${THREAD_ID}` as never,
-      { assigneeId: null }
-    )
+    await new ThreadMutationService(
+      ORG_ID,
+      db,
+      undefined,
+      { kind: 'user', id: ACTOR_ID },
+      viewer()
+    ).update(`thread:${THREAD_ID}` as never, { assigneeId: null })
 
     expect(publishedPatch().assigneeId).toBeNull()
   })
@@ -193,10 +202,13 @@ describe('ThreadMutationService.updateBulk — assignee patch format', () => {
       ],
       [{ id: THREAD_ID, inboxId: null, assigneeId: NEW_ASSIGNEE }]
     )
-    await new ThreadMutationService(ORG_ID, db, undefined, ACTOR_ID, viewer()).updateBulk(
-      [`thread:${THREAD_ID}` as never],
-      { assigneeId: `user:${NEW_ASSIGNEE}` as never }
-    )
+    await new ThreadMutationService(
+      ORG_ID,
+      db,
+      undefined,
+      { kind: 'user', id: ACTOR_ID },
+      viewer()
+    ).updateBulk([`thread:${THREAD_ID}` as never], { assigneeId: `user:${NEW_ASSIGNEE}` as never })
 
     expect(publishedPatch().assigneeId).toBe(`user:${NEW_ASSIGNEE}`)
   })

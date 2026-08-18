@@ -15,6 +15,7 @@ import { buildDefIdToSlug } from '../permissions/capabilities/resolve-capability
 import type { MailViewer } from '../permissions/visibility/context'
 import { getRealtimeService, publishThreadDeleted, publishThreadUpdated } from '../realtime'
 import type { ThreadMeta } from '../realtime/events'
+import { type ThreadActor, threadActorToEventFields } from '../thread-events/client'
 import { assertCanActOnThreads } from './thread-action-access'
 import { ThreadMergeService } from './thread-merge.service'
 import type { ChatThreadMetadata } from './types'
@@ -86,12 +87,14 @@ export class ThreadMutationService {
   private readonly socketId?: string
 
   /**
-   * Acting user id, used to attribute lifecycle events
-   * (`thread:archived`, `thread:reopened`, `thread:assignee:changed`).
-   * Workers / workflow nodes with no human actor leave this undefined and
-   * skip the user-attributed event emission.
+   * The acting principal (thread-events §5.5): who or what performs this
+   * mutation. `user`/`agent` kinds attribute lifecycle events via the branded
+   * `actorId`; automation kinds (`mail_filter`, `workflow`, `classification`,
+   * `system`, …) carry provenance in `data.source` with a null actor. Events
+   * emit regardless — an undefined actor means "unknown principal", not
+   * "don't emit" (§12.4).
    */
-  private readonly actorUserId?: string
+  private readonly actor?: ThreadActor
 
   /**
    * Visibility principal (§7): acting on a thread requires `full` lens.
@@ -110,16 +113,21 @@ export class ThreadMutationService {
     organizationId: string,
     db: Database,
     socketId: string | undefined,
-    actorUserId: string | undefined,
+    actor: ThreadActor | undefined,
     viewer: MailViewer,
     options?: { origin?: 'provider-sync' }
   ) {
     this.organizationId = organizationId
     this.db = db
     this.socketId = socketId
-    this.actorUserId = actorUserId
+    this.actor = actor
     this.viewer = viewer
     this.origin = options?.origin
+  }
+
+  /** The acting HUMAN user id, when the actor is a user (merge attribution, count reconcile). */
+  private get actorUserId(): string | undefined {
+    return this.actor?.kind === 'user' ? this.actor.id : undefined
   }
 
   /**
@@ -346,10 +354,12 @@ export class ThreadMutationService {
 
       // Lifecycle events — emit after the DB write succeeds. Each fires
       // through the same `publisher.publishLater` path used elsewhere so
-      // persistence (createEventJob) + realtime fan-out (per-thread room)
-      // stay in lockstep. ARCHIVED is our "done" state; un-ARCHIVING (to any
-      // other status) is a reopen.
-      if ('status' in dbUpdates && this.actorUserId) {
+      // persistence + realtime fan-out (per-thread room) stay in lockstep.
+      // ARCHIVED is our "done" state; un-ARCHIVING (to any other status) is a
+      // reopen. Emits UNCONDITIONALLY (§12.4): no actor means a null-actor
+      // event with `data.source` provenance, never a silent state change.
+      const actorFields = threadActorToEventFields(this.actor)
+      if ('status' in dbUpdates) {
         const nextStatus = dbUpdates.status
         const prevStatus = previous?.status
         if (nextStatus === 'ARCHIVED' && prevStatus !== 'ARCHIVED') {
@@ -358,7 +368,8 @@ export class ThreadMutationService {
             data: {
               threadId,
               organizationId: this.organizationId,
-              userId: this.actorUserId,
+              ...(this.actorUserId ? { userId: this.actorUserId } : {}),
+              ...actorFields,
               visitorParticipantId,
             },
           })
@@ -368,7 +379,8 @@ export class ThreadMutationService {
             data: {
               threadId,
               organizationId: this.organizationId,
-              userId: this.actorUserId,
+              ...(this.actorUserId ? { userId: this.actorUserId } : {}),
+              ...actorFields,
               visitorParticipantId,
             },
           })
@@ -382,6 +394,7 @@ export class ThreadMutationService {
             organizationId: this.organizationId,
             fromUserId: previous?.assigneeId ?? null,
             toUserId: dbUpdates.assigneeId,
+            ...actorFields,
             visitorParticipantId,
           },
         })
@@ -665,6 +678,7 @@ export class ThreadMutationService {
           id: schema.Thread.id,
           inboxId: schema.Thread.inboxId,
           status: schema.Thread.status,
+          assigneeId: schema.Thread.assigneeId,
           integrationId: schema.Thread.integrationId,
         })
         .from(schema.Thread)
@@ -733,6 +747,55 @@ export class ThreadMutationService {
               )
             )
           )
+        }
+      }
+
+      // Lifecycle events, one per affected thread (thread-events §13.2 finding
+      // 3): bulk "mark done" from the toolbar and exclude-senders' IGNORED
+      // sweep were silent before this. Only the transitions the vocabulary
+      // covers emit — to ARCHIVED = archived, from ARCHIVED = reopened; other
+      // status hops (e.g. OPEN→IGNORED) and inbox moves have no event type yet
+      // and stay silent. `previousRows` carries each thread's actual prior
+      // status/assignee, so previousState is per-thread real, not inferred.
+      const updatedIds = new Set(result.map((r) => r.id))
+      const bulkActorFields = threadActorToEventFields(this.actor)
+      if ('status' in dbUpdates) {
+        const nextStatus = dbUpdates.status
+        for (const prev of previousRows) {
+          if (!updatedIds.has(prev.id)) continue
+          const wasArchived = prev.status === 'ARCHIVED'
+          const type =
+            nextStatus === 'ARCHIVED' && !wasArchived
+              ? ('thread:archived' as const)
+              : wasArchived && nextStatus !== 'ARCHIVED'
+                ? ('thread:reopened' as const)
+                : null
+          if (!type) continue
+          await publisher.publishLater({
+            type,
+            data: {
+              threadId: prev.id,
+              organizationId: this.organizationId,
+              ...(this.actorUserId ? { userId: this.actorUserId } : {}),
+              ...bulkActorFields,
+            },
+          })
+        }
+      }
+      if ('assigneeId' in dbUpdates) {
+        for (const prev of previousRows) {
+          if (!updatedIds.has(prev.id)) continue
+          if ((prev.assigneeId ?? null) === (dbUpdates.assigneeId ?? null)) continue
+          await publisher.publishLater({
+            type: 'thread:assignee:changed',
+            data: {
+              threadId: prev.id,
+              organizationId: this.organizationId,
+              fromUserId: prev.assigneeId ?? null,
+              toUserId: dbUpdates.assigneeId ?? null,
+              ...bulkActorFields,
+            },
+          })
         }
       }
 
@@ -1044,7 +1107,10 @@ export class ThreadMutationService {
     relatedRecordIds: RecordId[],
     operation: 'add' | 'remove' | 'set' = 'add'
   ): Promise<{ created: number; skipped: number; errors: string[] }> {
-    if (!recordIds.length || !relatedRecordIds.length) {
+    // An empty tag list is a no-op for add/remove, but for 'set' it means
+    // "clear every tag" — the generic field-value door routes clear-all here
+    // (thread-events §13.7 finding 2) and an early return would swallow it.
+    if (!recordIds.length || (!relatedRecordIds.length && operation !== 'set')) {
       return { created: 0, skipped: 0, errors: [] }
     }
 
@@ -1115,7 +1181,21 @@ export class ThreadMutationService {
         created = recordIds.length * relatedRecordIds.length
       }
 
-      await this.publishTagChanges(threadIds, tagsBefore)
+      // Read the post-write tag sets ONCE; the realtime patch and the event
+      // emission both diff against them. Best-effort as a block — the tags are
+      // already committed, so a failed read-back degrades to "stale until
+      // reload" and must never fail the write.
+      try {
+        const tagsAfter = await batchGetThreadTagIds(this.db, threadIds, this.organizationId)
+        await this.publishTagChanges(threadIds, tagsBefore, tagsAfter)
+        await this.emitTagEvents(threadIds, tagsBefore, tagsAfter)
+      } catch (error) {
+        logger.warn('Failed to publish thread tag updates', {
+          organizationId: this.organizationId,
+          threadCount: threadIds.length,
+          error: error instanceof Error ? error.message : error,
+        })
+      }
 
       logger.info(`Bulk thread tagging completed`, { operation, created, skipped })
       return { created, skipped, errors }
@@ -1152,10 +1232,10 @@ export class ThreadMutationService {
    */
   private async publishTagChanges(
     threadIds: string[],
-    tagsBefore: Map<string, string[]>
+    tagsBefore: Map<string, string[]>,
+    tagsAfter: Map<string, string[]>
   ): Promise<void> {
     try {
-      const tagsAfter = await batchGetThreadTagIds(this.db, threadIds, this.organizationId)
       const changed = threadIds.filter((id) => !sameTagSet(tagsBefore.get(id), tagsAfter.get(id)))
       if (changed.length === 0) return
 
@@ -1203,6 +1283,93 @@ export class ThreadMutationService {
       await this.markCountsStale()
     } catch (error) {
       logger.warn('Failed to publish thread tag updates', {
+        organizationId: this.organizationId,
+        threadCount: threadIds.length,
+        error: error instanceof Error ? error.message : error,
+      })
+    }
+  }
+
+  /**
+   * Emit `thread:tagged` / `thread:untagged` for the threads whose tag set
+   * actually moved — ONE event per thread per direction, carrying the full
+   * added/removed list (thread-events §13.2), not one per tag. This is the
+   * single emit site for every tag door: mail filters, AI classification, the
+   * workflow CRUD node, Kopilot, the bulk toolbar and the rerouted field-value
+   * write all funnel through `tagThreadsBulk`.
+   *
+   * Tag names are snapshotted in ONE batched `EntityInstance.displayName` read
+   * across every changed tag id — no per-thread queries. Best-effort: the tags
+   * are already committed, so an emit failure must never fail the write.
+   */
+  private async emitTagEvents(
+    threadIds: string[],
+    tagsBefore: Map<string, string[]>,
+    tagsAfter: Map<string, string[]>
+  ): Promise<void> {
+    try {
+      const diffs = threadIds
+        .map((threadId) => {
+          const before = new Set(tagsBefore.get(threadId) ?? [])
+          const after = new Set(tagsAfter.get(threadId) ?? [])
+          return {
+            threadId,
+            added: [...after].filter((id) => !before.has(id)),
+            removed: [...before].filter((id) => !after.has(id)),
+          }
+        })
+        .filter((d) => d.added.length > 0 || d.removed.length > 0)
+      if (diffs.length === 0) return
+
+      // One batched name snapshot for every tag id any thread gained or lost.
+      // Ids in the maps are tag RecordIds (`<def>:<instance>`), so resolve the
+      // instance part for the lookup and keep the RecordId in the payload.
+      const allTagIds = [...new Set(diffs.flatMap((d) => [...d.added, ...d.removed]))]
+      const nameRows = await this.db
+        .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
+        .from(schema.EntityInstance)
+        .where(
+          and(
+            inArray(
+              schema.EntityInstance.id,
+              allTagIds.map((id) => getInstanceId(id as RecordId))
+            ),
+            eq(schema.EntityInstance.organizationId, this.organizationId)
+          )
+        )
+      const nameById = new Map(nameRows.map((r) => [r.id, r.displayName ?? '']))
+      const namesFor = (ids: string[]) =>
+        ids.map((id) => nameById.get(getInstanceId(id as RecordId)) ?? '')
+
+      const actorFields = threadActorToEventFields(this.actor)
+      for (const diff of diffs) {
+        if (diff.added.length > 0) {
+          await publisher.publishLater({
+            type: 'thread:tagged',
+            data: {
+              threadId: diff.threadId,
+              organizationId: this.organizationId,
+              tagIds: diff.added,
+              tagNames: namesFor(diff.added),
+              ...actorFields,
+            },
+          })
+        }
+        if (diff.removed.length > 0) {
+          await publisher.publishLater({
+            type: 'thread:untagged',
+            data: {
+              threadId: diff.threadId,
+              organizationId: this.organizationId,
+              tagIds: diff.removed,
+              tagNames: namesFor(diff.removed),
+              ...actorFields,
+            },
+          })
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to emit thread tag events', {
         organizationId: this.organizationId,
         threadCount: threadIds.length,
         error: error instanceof Error ? error.message : error,

@@ -101,6 +101,7 @@ export async function* agentQueryLoop(
     organizationId: config.organizationId,
     userId: config.userId,
     sessionId: config.sessionId,
+    agentId: config.agentId,
     signal: config.signal,
     turnId,
     traceId: turnId,

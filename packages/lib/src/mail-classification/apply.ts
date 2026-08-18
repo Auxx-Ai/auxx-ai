@@ -74,13 +74,14 @@ export async function applyClassificationTag(params: {
       requireCachedEntityDefId(organizationId, 'tag'),
     ])
 
-    // No socketId (nothing to self-echo-suppress) and no actorUserId (there is
-    // no human actor) — the classifier is the actor.
+    // No socketId (nothing to self-echo-suppress) and no human actor — the
+    // CLASSIFIER is the actor (thread-events §5.5): tag events carry
+    // `data.source: { kind: 'classification' }` with a null actorId.
     const service = new ThreadMutationService(
       organizationId,
       db,
       undefined,
-      undefined,
+      { kind: 'classification' },
       SYSTEM_VISIBILITY
     )
     await service.tagThreadsBulk(

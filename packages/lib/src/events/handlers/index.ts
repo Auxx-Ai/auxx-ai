@@ -13,10 +13,7 @@ export { handleSyncRecordRules } from './handle-sync-record-rules'
 export { ingestBounceMessage } from './ingest-bounce-message'
 export { projectSignalToTimeline } from './project-signal-to-timeline'
 export { EventHandlers, publishEventJob } from './publish-event-job'
-export {
-  publishThreadEventToRealtime,
-  THREAD_REALTIME_EVENT_TYPES,
-} from './publish-thread-event-to-realtime'
+export { publishThreadEventToRealtime } from './publish-thread-event-to-realtime'
 export { publishToAnalyticsJob } from './publish-to-analytics-job'
 export { sendInvitationUserJob } from './send-invitation-user-job'
 export { triggerAgents } from './trigger-agents'

@@ -292,6 +292,12 @@
       "import": "./dist/connections/providers/index.mjs",
       "default": "./src/connections/providers/index.ts"
     },
+    "./connections/providers/defs": {
+      "types": "./src/connections/providers/defs.ts",
+      "source": "./src/connections/providers/defs.ts",
+      "import": "./dist/connections/providers/defs.mjs",
+      "default": "./src/connections/providers/defs.ts"
+    },
     "./constants/provider-icons": {
       "types": "./src/constants/provider-icons.ts",
       "source": "./src/constants/provider-icons.ts",
@@ -351,6 +357,12 @@
       "source": "./src/data-connectors/client.ts",
       "import": "./dist/data-connectors/client.mjs",
       "default": "./src/data-connectors/client.ts"
+    },
+    "./data-connectors/templates/connector-template-registry": {
+      "types": "./src/data-connectors/templates/connector-template-registry.ts",
+      "source": "./src/data-connectors/templates/connector-template-registry.ts",
+      "import": "./dist/data-connectors/templates/connector-template-registry.mjs",
+      "default": "./src/data-connectors/templates/connector-template-registry.ts"
     },
     "./data-migrations": {
       "types": "./src/data-migrations/index.ts",
@@ -1042,6 +1054,12 @@
       "import": "./dist/providers/openphone/types.mjs",
       "default": "./src/providers/openphone/types.ts"
     },
+    "./providers/openphone/webhook-call": {
+      "types": "./src/providers/openphone/webhook-call.ts",
+      "source": "./src/providers/openphone/webhook-call.ts",
+      "import": "./dist/providers/openphone/webhook-call.mjs",
+      "default": "./src/providers/openphone/webhook-call.ts"
+    },
     "./providers/openphone/webhook-message": {
       "types": "./src/providers/openphone/webhook-message.ts",
       "source": "./src/providers/openphone/webhook-message.ts",
@@ -1293,6 +1311,18 @@
       "source": "./src/test/database-mock.ts",
       "import": "./dist/test/database-mock.mjs",
       "default": "./src/test/database-mock.ts"
+    },
+    "./thread-events": {
+      "types": "./src/thread-events/index.ts",
+      "source": "./src/thread-events/index.ts",
+      "import": "./dist/thread-events/index.mjs",
+      "default": "./src/thread-events/index.ts"
+    },
+    "./thread-events/client": {
+      "types": "./src/thread-events/client.ts",
+      "source": "./src/thread-events/client.ts",
+      "import": "./dist/thread-events/client.mjs",
+      "default": "./src/thread-events/client.ts"
     },
     "./threads": {
       "types": "./src/threads/index.ts",

@@ -61,7 +61,7 @@ async function setThreadStatusByMessageExternalIds(
     ctx.organizationId,
     ctx.db,
     ctx.socketId,
-    undefined,
+    { kind: 'system', name: 'provider-sync' },
     SYSTEM_VISIBILITY,
     { origin: 'provider-sync' }
   )

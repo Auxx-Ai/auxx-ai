@@ -175,11 +175,13 @@ export async function undoMailFilterRun(
 
   const { ThreadMutationService } = await import('../threads/thread-mutation.service')
   const { SYSTEM_VISIBILITY } = await import('../permissions/visibility/context')
+  // The FILTER is the actor for the reversal too (thread-events §5.5) — the
+  // undo restores what the run changed, and the run id ties the events to it.
   const service = new ThreadMutationService(
     organizationId,
     db,
     undefined,
-    undefined,
+    { kind: 'mail_filter', id: run.filterId, runId: run.id },
     SYSTEM_VISIBILITY
   )
   const threadRecordId = toRecordId('thread', run.threadId)

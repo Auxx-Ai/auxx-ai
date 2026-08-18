@@ -1,7 +1,5 @@
 // packages/lib/src/events/visitor-event-shaping.ts
 
-import type { AuxxEvent } from './types'
-
 /**
  * The ONLY fields of a thread lifecycle event that may reach a chat visitor
  * (plan 45 §1.5).
@@ -46,13 +44,7 @@ export function shapeThreadEventForVisitor(data: Record<string, unknown>): Recor
   return out
 }
 
-/** Thread lifecycle event types with a visitor-facing sink. */
-export type VisitorFacingThreadEventType = Extract<
-  AuxxEvent['type'],
-  | 'thread:archived'
-  | 'thread:reopened'
-  | 'thread:taken_over'
-  | 'thread:returned_to_ai'
-  | 'thread:assignee:changed'
-  | 'thread:visitor:identified'
->
+// The frozen visitor vocabulary lives in ONE place —
+// `@auxx/lib/thread-events/client` (plans/threads/thread-events.md §5.4) —
+// re-exported here so `@auxx/lib/events` consumers keep their import path.
+export type { VisitorFacingThreadEventType } from '../thread-events/client'

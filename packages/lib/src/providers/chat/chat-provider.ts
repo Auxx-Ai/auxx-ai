@@ -330,6 +330,11 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
         }
 
         // Bump thread: lift WAITING → OPEN, update counters/latest, then refresh
+        // No `thread:reopened` emit here (thread-events Phase 5.6): the guard
+        // above rejects any non-OPEN thread, so an ARCHIVED→OPEN transition —
+        // the only one the reopen vocabulary covers — is unreachable on this
+        // path. If that guard ever softens, the emit belongs right after this
+        // UPDATE, post-commit, gated on `previousStatus === ARCHIVED`.
         // the ranked-search corpus (`mail-query/thread-search-text.ts`). This
         // path bumps counters with a Drizzle `update()` rather than the raw-SQL
         // recompute the email paths splice the corpus into, so it needs the
