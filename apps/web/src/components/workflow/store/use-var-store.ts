@@ -16,6 +16,7 @@ import { immer } from 'zustand/middleware/immer'
 import { BaseType, type UnifiedVariable } from '~/components/workflow/types'
 import { cloneAndRewriteVariableIds } from '~/components/workflow/utils/variable-cloning'
 import { getNodeIdFromVariableId } from '~/components/workflow/utils/variable-utils'
+import { measureSync } from '../debug'
 import type { EnvVar } from '../types'
 import {
   buildVariableIndex,
@@ -370,143 +371,152 @@ export const useVarStore = create<VarStoreState>()(
         },
 
         updateGraph: (nodes: NodeMeta[], edges: EdgeMeta[]) => {
-          const state = get()
+          measureSync('workflow:updateGraph', () => {
+            const state = get()
 
-          // Detect structural changes (nodes added/removed, edges changed, parentIds changed)
-          const prevNodeIds = new Set(state.graph.nodes.map((n) => n.id))
-          const newNodeIds = new Set(nodes.map((n) => n.id))
-          const nodeMap = new Map(nodes.map((n) => [n.id, n]))
+            // Detect structural changes (nodes added/removed, edges changed, parentIds changed)
+            const prevNodeMap = new Map(state.graph.nodes.map((n) => [n.id, n]))
+            const newNodeIds = new Set(nodes.map((n) => n.id))
+            const nodeMap = new Map(nodes.map((n) => [n.id, n]))
 
-          const nodesChanged =
-            prevNodeIds.size !== newNodeIds.size ||
-            [...prevNodeIds].some((id) => !newNodeIds.has(id)) ||
-            [...newNodeIds].some((id) => !prevNodeIds.has(id))
+            const nodesChanged =
+              prevNodeMap.size !== newNodeIds.size || nodes.some((n) => !prevNodeMap.has(n.id))
 
-          const edgesChanged =
-            state.graph.edges.length !== edges.length ||
-            state.graph.edges.some(
-              (e, i) =>
-                e.id !== edges[i]?.id ||
-                e.source !== edges[i]?.source ||
-                e.target !== edges[i]?.target
-            )
+            const edgesChanged =
+              state.graph.edges.length !== edges.length ||
+              state.graph.edges.some(
+                (e, i) =>
+                  e.id !== edges[i]?.id ||
+                  e.source !== edges[i]?.source ||
+                  e.target !== edges[i]?.target
+              )
 
-          const parentIdsChanged = nodes.some((n) => {
-            const prev = state.graph.nodes.find((p) => p.id === n.id)
-            return prev && prev.parentId !== n.parentId
-          })
+            const parentIdsChanged = nodes.some((n) => {
+              const prev = prevNodeMap.get(n.id)
+              return !!prev && prev.parentId !== n.parentId
+            })
 
-          const structureChanged = nodesChanged || edgesChanged
+            const structureChanged = nodesChanged || edgesChanged
 
-          // Rebuild graph maps if structure changed
-          let upstreamMap = state.upstreamMap
-          let downstreamMap = state.downstreamMap
-          if (structureChanged) {
-            upstreamMap = buildUpstreamMap(edges, nodes)
-            downstreamMap = buildDownstreamMap(upstreamMap)
-          }
-
-          // Rebuild loop ancestry if parentIds or structure changed
-          let loopAncestry = state.loopAncestry
-          if (structureChanged || parentIdsChanged) {
-            loopAncestry = computeLoopAncestry(nodes)
-          }
-
-          // Compute outputs in topological order for changed nodes
-          const topoOrder = topologicalSort(nodes, edges)
-          const newNodeOutputs = new Map(state.nodeOutputs)
-
-          // Remove deleted nodes
-          for (const [nodeId] of state.nodeOutputs) {
-            if (!newNodeIds.has(nodeId)) {
-              newNodeOutputs.delete(nodeId)
+            // Rebuild graph maps if structure changed
+            let upstreamMap = state.upstreamMap
+            let downstreamMap = state.downstreamMap
+            if (structureChanged) {
+              upstreamMap = buildUpstreamMap(edges, nodes)
+              downstreamMap = buildDownstreamMap(upstreamMap)
             }
-          }
 
-          // Build resolver that reads from already-computed outputs
-          const resolveVariable = (variableId: string): UnifiedVariable | undefined => {
-            const sourceNodeId = getNodeIdFromVariableId(variableId)
-            const outputs = newNodeOutputs.get(sourceNodeId)
-            if (!outputs) return undefined
-            return findVariableInTree(outputs.variables, variableId)
-          }
+            // Rebuild loop ancestry if parentIds or structure changed
+            let loopAncestry = state.loopAncestry
+            if (structureChanged || parentIdsChanged) {
+              loopAncestry = computeLoopAncestry(nodes)
+            }
 
-          // Compute outputs in topo order for nodes whose data changed
-          let outputsChanged = false
-          for (const nodeId of topoOrder) {
-            const node = nodeMap.get(nodeId)
-            if (!node) continue
-
-            const existing = newNodeOutputs.get(nodeId)
-            // Skip if data reference hasn't changed (Immer structural sharing)
-            if (existing && existing.dataRef === node.data) continue
-
-            const nodeType = node.data?.type || node.type || ''
-            const outputs = computeNodeOutputs(
-              nodeId,
-              nodeType,
-              node.data,
-              state.resources,
-              resolveVariable
+            // Compute outputs in topological order for changed nodes
+            const topoOrder = measureSync('workflow:topologicalSort', () =>
+              topologicalSort(nodes, edges)
             )
+            const newNodeOutputs = new Map(state.nodeOutputs)
 
-            newNodeOutputs.set(nodeId, {
-              type: nodeType,
-              dataRef: node.data,
-              variables: outputs,
-            })
-            outputsChanged = true
-          }
-
-          // Skip availability + index recomputation if nothing changed
-          if (!outputsChanged && !structureChanged && !parentIdsChanged) {
-            set((s) => {
-              s.graph = { nodes, edges }
-            })
-            return
-          }
-
-          // Compute availability for all nodes
-          const newAvailability = new Map<string, AvailabilityEntry>()
-          for (const node of nodes) {
-            const vars = computeNodeAvailability(
-              node.id,
-              newNodeOutputs,
-              upstreamMap,
-              loopAncestry,
-              { nodes },
-              state.environmentVariables,
-              state.systemVariables,
-              resolveVariable
-            )
-            newAvailability.set(node.id, { variables: vars })
-          }
-
-          // Rebuild variable index
-          const newVariableIndex = buildVariableIndex(
-            newNodeOutputs,
-            state.environmentVariables,
-            state.systemVariables
-          )
-
-          // Also add loop iteration variables to the index
-          for (const node of nodes) {
-            const loopVars = computeLoopVariables(node.id, loopAncestry, { nodes }, resolveVariable)
-            for (const loopVar of loopVars) {
-              for (const flat of flattenVariableForStorage(loopVar)) {
-                newVariableIndex.set(flat.id, flat)
+            // Remove deleted nodes
+            for (const [nodeId] of state.nodeOutputs) {
+              if (!newNodeIds.has(nodeId)) {
+                newNodeOutputs.delete(nodeId)
               }
             }
-          }
 
-          set((s) => {
-            s.graph = { nodes, edges }
-            s.nodeOutputs = newNodeOutputs
-            s.upstreamMap = upstreamMap
-            s.downstreamMap = downstreamMap
-            s.loopAncestry = loopAncestry
-            s.availability = newAvailability
-            s.variableIndex = newVariableIndex
+            // Build resolver that reads from already-computed outputs
+            const resolveVariable = (variableId: string): UnifiedVariable | undefined => {
+              const sourceNodeId = getNodeIdFromVariableId(variableId)
+              const outputs = newNodeOutputs.get(sourceNodeId)
+              if (!outputs) return undefined
+              return findVariableInTree(outputs.variables, variableId)
+            }
+
+            // Compute outputs in topo order for nodes whose data changed
+            let outputsChanged = false
+            measureSync('workflow:computeNodeOutputs', () => {
+              for (const nodeId of topoOrder) {
+                const node = nodeMap.get(nodeId)
+                if (!node) continue
+
+                const existing = newNodeOutputs.get(nodeId)
+                // Skip if data reference hasn't changed (Immer structural sharing)
+                if (existing && existing.dataRef === node.data) continue
+
+                const nodeType = node.data?.type || node.type || ''
+                const outputs = computeNodeOutputs(
+                  nodeId,
+                  nodeType,
+                  node.data,
+                  state.resources,
+                  resolveVariable
+                )
+
+                newNodeOutputs.set(nodeId, {
+                  type: nodeType,
+                  dataRef: node.data,
+                  variables: outputs,
+                })
+                outputsChanged = true
+              }
+            })
+
+            // Skip availability + index recomputation if nothing changed
+            if (!outputsChanged && !structureChanged && !parentIdsChanged) {
+              set((s) => {
+                s.graph = { nodes, edges }
+              })
+              return
+            }
+
+            // Compute availability for all nodes
+            const newAvailability = new Map<string, AvailabilityEntry>()
+            for (const node of nodes) {
+              const vars = computeNodeAvailability(
+                node.id,
+                newNodeOutputs,
+                upstreamMap,
+                loopAncestry,
+                { nodes },
+                state.environmentVariables,
+                state.systemVariables,
+                resolveVariable
+              )
+              newAvailability.set(node.id, { variables: vars })
+            }
+
+            // Rebuild variable index
+            const newVariableIndex = buildVariableIndex(
+              newNodeOutputs,
+              state.environmentVariables,
+              state.systemVariables
+            )
+
+            // Also add loop iteration variables to the index
+            for (const node of nodes) {
+              const loopVars = computeLoopVariables(
+                node.id,
+                loopAncestry,
+                { nodes },
+                resolveVariable
+              )
+              for (const loopVar of loopVars) {
+                for (const flat of flattenVariableForStorage(loopVar)) {
+                  newVariableIndex.set(flat.id, flat)
+                }
+              }
+            }
+
+            set((s) => {
+              s.graph = { nodes, edges }
+              s.nodeOutputs = newNodeOutputs
+              s.upstreamMap = upstreamMap
+              s.downstreamMap = downstreamMap
+              s.loopAncestry = loopAncestry
+              s.availability = newAvailability
+              s.variableIndex = newVariableIndex
+            })
           })
         },
 

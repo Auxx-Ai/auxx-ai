@@ -18,6 +18,12 @@ import {
 import { produce } from 'immer'
 import { useCallback, useRef } from 'react'
 import {
+  endDragWindow,
+  perfNow,
+  recordDragFrame,
+  startDragWindow,
+} from '~/components/workflow/debug'
+import {
   useHelpline,
   useNodesReadOnly,
   useNodeValidation,
@@ -680,6 +686,14 @@ export const useNodesInteractions = () => {
       const { nodes, setNodes } = store.getState()
       e.stopPropagation()
 
+      const frameStartedAt = perfNow()
+      let setNodesMs = 0
+      const applyNodes = (next: FlowNode[]) => {
+        const startedAt = perfNow()
+        setNodes(next)
+        setNodesMs += perfNow() - startedAt
+      }
+
       // Get all selected nodes
       const selectedNodes = nodes.filter((n) => n.selected)
       const isMultiDrag = selectedNodes.length > 1 && selectedNodes.some((n) => n.id === node.id)
@@ -704,7 +718,7 @@ export const useNodesInteractions = () => {
             }
           })
         })
-        setNodes(newNodes)
+        applyNodes(newNodes)
       } else {
         // const { restrict } = handleNodeLoopChildDrag(node)
         // Single node drag - original behavior
@@ -723,11 +737,13 @@ export const useNodesInteractions = () => {
           // }
           currentNode.position = { ...node.position }
         })
-        setNodes(newNodes)
+        applyNodes(newNodes)
       }
 
       // Update helplines during drag
       handleSetHelpline(node)
+
+      recordDragFrame(frameStartedAt, setNodesMs)
     },
     [getNodesReadOnly, store, handleSetHelpline]
   )
@@ -735,6 +751,8 @@ export const useNodesInteractions = () => {
   const handleNodeDragStart = useCallback<OnNodeDrag<FlowNode>>(
     (_event, node) => {
       if (getNodesReadOnly()) return
+
+      startDragWindow()
 
       // Store initial position of the dragged node
       dragNodeStartPosition.current = { x: node.position.x, y: node.position.y }
@@ -795,6 +813,8 @@ export const useNodesInteractions = () => {
       // Reset start positions
       dragNodeStartPosition.current = null
       dragStartPositions.current.clear()
+
+      endDragWindow()
     },
     [getNodesReadOnly, debouncedSave, handleClearHelpline]
   )

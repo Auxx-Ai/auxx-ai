@@ -6,12 +6,13 @@ import { fileURLToPath } from 'node:url'
 
 /**
  * Shared filesystem plumbing for the parity suite's static readers
- * (`engine-write-scrape.ts`, `builder-declared-keys.ts`) — both need to locate
- * the monorepo root and read/strip source files, and neither should carry its
- * own copy of that logic. Split out of `engine-contract.ts` when it was
- * deleted (node-catalog Phase 1 exit criterion) so the two readers it used to
- * house — one genuinely ENGINE-side, one BUILDER-side — don't depend on each
- * other just to find a path.
+ * (`engine-write-scrape.ts`, `builder-declared-keys.ts`,
+ * `store-subscription-scrape.test.ts`) — all need to locate the monorepo root
+ * and read/strip source files, and none should carry its own copy of that
+ * logic. Split out of `engine-contract.ts` when it was deleted (node-catalog
+ * Phase 1 exit criterion) so the two readers it used to house — one genuinely
+ * ENGINE-side, one BUILDER-side — don't depend on each other just to find a
+ * path.
  */
 
 /** Walk up from this file until the monorepo root (the one with `packages/lib`). */
@@ -28,12 +29,38 @@ export function repoRoot(): string {
 export const ENGINE_ROOT = join(repoRoot(), 'packages/lib/src/workflow-engine')
 export const BUILDER_ROOT = join(repoRoot(), 'apps/web/src/components/workflow/nodes')
 
-/** List every non-test `.ts` source file under `dir`, recursively. */
-export function listSources(dir: string, out: string[] = []): string[] {
+/**
+ * The whole builder tree, not just its node definitions.
+ *
+ * `BUILDER_ROOT` is deliberately narrower (`.../workflow/nodes`) because the
+ * builder↔engine contract only lives in the node folders. The store-subscription
+ * scrape (`store-subscription-scrape.test.ts`) has to see the canvas, panels and
+ * hooks too, and those sit beside `nodes/`, not under it.
+ */
+export const WORKFLOW_ROOT = join(repoRoot(), 'apps/web/src/components/workflow')
+
+/**
+ * List every non-test source file under `dir`, recursively.
+ *
+ * `extensions` defaults to `.ts` alone — the engine and node-catalog readers
+ * that predate this parameter scan pure-TypeScript trees and must keep
+ * ignoring React files. Pass `['.ts', '.tsx']` to include components; the
+ * test-file exclusion covers both suffixes either way.
+ *
+ * @param dir - Directory to walk.
+ * @param extensions - File suffixes to collect (matched with `endsWith`).
+ * @param out - Accumulator, supplied by the recursion.
+ */
+export function listSources(
+  dir: string,
+  extensions: readonly string[] = ['.ts'],
+  out: string[] = []
+): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry)
-    if (statSync(full).isDirectory()) listSources(full, out)
-    else if (full.endsWith('.ts') && !/\.(test|spec)\.ts$/.test(full)) out.push(full)
+    if (statSync(full).isDirectory()) listSources(full, extensions, out)
+    else if (extensions.some((ext) => full.endsWith(ext)) && !/\.(test|spec)\.tsx?$/.test(full))
+      out.push(full)
   }
   return out
 }

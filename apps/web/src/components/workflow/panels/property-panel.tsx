@@ -4,6 +4,7 @@ import { useStore } from '@xyflow/react'
 import React, { useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { isWorkflowNode, NodeType } from '~/components/workflow/types'
+import { useRenderTrace } from '../debug'
 import { useRegistryVersion } from '../hooks'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import { usePanelStore } from '../store/panel-store'
@@ -23,6 +24,8 @@ interface NodePanelBodyProps {
  * The header is rendered by the node panel itself via `PanelFrameHeader`.
  */
 const NodePanelBody: React.FC<NodePanelBodyProps> = React.memo(({ nodeId }) => {
+  useRenderTrace('NodePanelBody')
+
   const closeDrawer = usePanelStore((state) => state.closeDrawer)
 
   // Subscribe to registry updates to detect when app blocks are loaded

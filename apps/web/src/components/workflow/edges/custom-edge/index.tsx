@@ -4,6 +4,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { BaseEdge, EdgeLabelRenderer, type EdgeProps, useReactFlow } from '@xyflow/react'
 import { Plus, Trash2 } from 'lucide-react'
 import { memo, useCallback, useMemo, useState } from 'react'
+import { useRenderTrace } from '~/components/workflow/debug'
 import { useAvailableBlocks, useEdgeInteractions } from '~/components/workflow/hooks'
 import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
 import type { EdgeData } from '~/components/workflow/types'
@@ -42,6 +43,8 @@ const CustomEdge = memo<EdgeProps>(
     targetY,
     selected = false,
   }: EdgeProps) => {
+    useRenderTrace('CustomEdge')
+
     // Type guard for edge data with stable defaults
     const edgeData = useMemo(() => {
       const defaultData: EdgeData = {

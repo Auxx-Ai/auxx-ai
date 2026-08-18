@@ -16,7 +16,6 @@ import {
 import { Kbd } from '@auxx/ui/components/kbd'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { useStore } from '@xyflow/react'
 import { Check, ChevronLeft, ChevronRight, Copy, Search } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -146,9 +145,6 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
 
   const { variables, groups, allVariables } = useAvailableVariables({ nodeId })
 
-  // Get nodes from React Flow store for loop context resolution
-  const nodes = useStore((state) => state.nodes)
-
   // Performance optimizations
   const debouncedSearch = useDebounce(search, CONSTANTS.DEBOUNCE_MS)
 
@@ -261,8 +257,14 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
     (variable: UnifiedVariable) => {
       const finalVariable = variable
 
-      // Try to convert array[*] notation to loop.item if inside a loop
-      // const convertedVariable = convertArrayWildcardToLoopItem(variable, nodeId, nodes)
+      // Try to convert array[*] notation to loop.item if inside a loop.
+      // Never implemented — `convertArrayWildcardToLoopItem` does not exist anywhere in
+      // the tree (only `convert-array-wildcard.test.ts` describes the intended logic).
+      // Whoever revives it must read loop context from `useVarStore`'s `loopAncestry`
+      // map, NOT from React Flow's node array: React Flow replaces `state.nodes` with a
+      // new array on every drag frame, so subscribing to it re-renders every open
+      // explorer ~60x/s for the whole duration of every node drag.
+      // const convertedVariable = convertArrayWildcardToLoopItem(variable, nodeId)
 
       // if (convertedVariable) {
       //   finalVariable = convertedVariable
