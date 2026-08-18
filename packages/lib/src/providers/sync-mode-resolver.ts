@@ -58,6 +58,18 @@ export function resolveEffectiveSyncMode(integration: {
     return 'webhook'
   }
 
+  if (integration.provider === 'facebook' || integration.provider === 'instagram') {
+    // Meta delivers page messages by webhook only — there is no polling story for
+    // Messenger/IG DMs beyond the REST conversation backfill, which is a separate
+    // job. Without this branch they fall through to 'polling' below and
+    // `WebhookManagerService.setupWebhooks` early-returns, silently no-opping the
+    // page `subscribed_apps` arm (same trap Quo documents above).
+    //
+    // The app-level webhook config (callback URL, verify token, subscribed objects)
+    // stays manual in the Meta App Dashboard; only the per-page subscription is ours.
+    return 'webhook'
+  }
+
   // Default for future providers (IMAP, etc.)
   return 'polling'
 }

@@ -19,6 +19,7 @@ import type {
 import { getChannelTokens } from '../channel-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
+import { SOCIAL_SUBSCRIBED_FIELDS, subscribePageToApp, unsubscribePageFromApp } from '../social/api'
 import { sendSocialMessage } from '../social/send'
 import { socialThreadKey } from '../social/thread-key'
 import { type FacebookIntegrationMetadata, FacebookOAuthService } from './facebook-oauth'
@@ -257,26 +258,34 @@ export class FacebookProvider
     return { id: messageId, success: true }
   }
 
-  /** Confirms webhook setup (managed externally via FB App Dashboard) */
-  async setupWebhook(callbackUrl: string): Promise<void> {
+  /**
+   * Subscribe this Page to the app's webhook.
+   *
+   * Real work now, not a log line. The APP-level config (callback URL, verify
+   * token, which objects the app listens to) stays manual in the Meta App
+   * Dashboard — only the per-page subscription is ours to arm, and it is the half
+   * that goes missing when a page is reconnected or a token is refreshed silently.
+   *
+   * `callbackUrl` is accepted for interface parity and deliberately unused: Meta
+   * has no per-page callback: every page on the app posts to the app's one URL.
+   */
+  async setupWebhook(_callbackUrl: string): Promise<void> {
     await this.ensureInitialized()
-    // Actual subscription is done via OAuthService.subscribePageToApp and FB App Dashboard.
-    // This method serves as a placeholder or potential verification step.
-    logger.info(
-      `Facebook webhook setup confirmation check for Page ID: ${this.pageId}. Ensure webhooks are configured in the Facebook App Dashboard pointing to the correct callback URL.`,
-      { integrationId: this.integrationId, expectedCallback: callbackUrl }
-    )
-    return Promise.resolve()
+    await subscribePageToApp(this.pageId!, this.pageAccessToken!, SOCIAL_SUBSCRIBED_FIELDS.facebook)
+    logger.info('Facebook page subscribed to app webhook', {
+      integrationId: this.integrationId,
+      pageId: this.pageId,
+      subscribedFields: SOCIAL_SUBSCRIBED_FIELDS.facebook,
+    })
   }
-  /** Confirms webhook removal (managed externally via FB App Dashboard/Disconnect) */
+  /** Unsubscribe this Page from the app's webhook — real `DELETE`, not a log line. */
   async removeWebhook(): Promise<void> {
     await this.ensureInitialized()
-    // Actual unsubscription is done via OAuthService.unsubscribePageFromApp during disconnect.
-    logger.info(
-      `Facebook webhook removal confirmation check for Page ID: ${this.pageId}. Unsubscription is typically handled during integration disconnect.`,
-      { integrationId: this.integrationId }
-    )
-    return Promise.resolve()
+    await unsubscribePageFromApp(this.pageId!, this.pageAccessToken!)
+    logger.info('Facebook page unsubscribed from app webhook', {
+      integrationId: this.integrationId,
+      pageId: this.pageId,
+    })
   }
   /**
    * Synchronizes messages from Facebook Messenger using the Conversation API.

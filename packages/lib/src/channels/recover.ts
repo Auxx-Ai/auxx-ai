@@ -116,6 +116,22 @@ export async function recoverChannel(
     await armQuoWebhook(channelId, ctx.organizationId)
   }
 
+  // Same two-path reasoning as Outlook and Quo above, and the FB/IG case is the one
+  // most likely to bite in dev: `OAUTH_REDIRECT_BASE` moving with an ngrok tunnel
+  // changes the app-level callback, and a page whose `subscribed_apps` arm was never
+  // re-run stays silent while looking perfectly connected. Re-arming is idempotent —
+  // Meta treats a repeat POST as a no-op — so re-running it can never double-subscribe.
+  if (channel.provider === 'facebook' || channel.provider === 'instagram') {
+    const { rearmSocialPageSubscription } = await import('./social-channel')
+    await rearmSocialPageSubscription(channelId, channel.provider).catch((error) =>
+      logger.warn('Social page re-subscribe failed during channel recovery', {
+        channelId,
+        provider: channel.provider,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    )
+  }
+
   // After the metadata write, not before: `toggle`'s own invalidation fires
   // while the stale `auth` block is still on the row, and the cached channel
   // list carries both `metadata` and `enabled`.

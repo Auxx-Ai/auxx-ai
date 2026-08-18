@@ -19,6 +19,7 @@ import type {
 import { getChannelTokens } from '../channel-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
+import { SOCIAL_SUBSCRIBED_FIELDS, subscribePageToApp, unsubscribePageFromApp } from '../social/api'
 import { sendSocialMessage } from '../social/send'
 import { socialThreadKey } from '../social/thread-key'
 import { type InstagramIntegrationMetadata, InstagramOAuthService } from './instagram-oauth'
@@ -269,24 +270,35 @@ export class InstagramProvider
     return { id: messageId, success: true }
   }
 
-  /** Confirms webhook setup (managed externally via FB App Dashboard) */
-  async setupWebhook(callbackUrl: string): Promise<void> {
+  /**
+   * Subscribe the linked Page to the app's webhook for the `instagram` object.
+   *
+   * Subscribes on the **Page** id, not the IG account id — that is where Meta
+   * holds the subscription for a page-linked Instagram account. App-level config
+   * stays manual in the Meta App Dashboard.
+   */
+  async setupWebhook(_callbackUrl: string): Promise<void> {
     await this.ensureInitialized()
-    logger.info(
-      `Instagram webhook setup confirmation check for Page ID: ${this.pageId}. Ensure webhooks are configured in the Facebook App Dashboard for the 'instagram' object.`,
-      { integrationId: this.integrationId, expectedCallback: callbackUrl }
+    await subscribePageToApp(
+      this.pageId!,
+      this.pageAccessToken!,
+      SOCIAL_SUBSCRIBED_FIELDS.instagram
     )
-    // Verification/subscription occurs during OAuth and via FB App Dashboard settings.
-    return Promise.resolve()
+    logger.info('Instagram page subscribed to app webhook', {
+      integrationId: this.integrationId,
+      pageId: this.pageId,
+      igBusinessAccountId: this.instagramBusinessAccountId,
+      subscribedFields: SOCIAL_SUBSCRIBED_FIELDS.instagram,
+    })
   }
-  /** Confirms webhook removal (managed externally via FB App Dashboard/Disconnect) */
+  /** Unsubscribe the linked Page from the app's webhook. */
   async removeWebhook(): Promise<void> {
     await this.ensureInitialized()
-    logger.info(
-      `Instagram webhook removal confirmation check for Page ID: ${this.pageId}. Unsubscription is handled during integration disconnect.`,
-      { integrationId: this.integrationId }
-    )
-    return Promise.resolve()
+    await unsubscribePageFromApp(this.pageId!, this.pageAccessToken!)
+    logger.info('Instagram page unsubscribed from app webhook', {
+      integrationId: this.integrationId,
+      pageId: this.pageId,
+    })
   }
   /**
    * Synchronizes messages from Instagram via the linked Facebook Page's Conversation API.

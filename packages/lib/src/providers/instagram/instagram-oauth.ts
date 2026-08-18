@@ -9,6 +9,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { deleteChannelTokens, getChannelTokens } from '../channel-token-accessor'
 import { markCredentialReauth } from '../credential-auth-state'
+import { isLastChannelForFacebookUser } from '../social/disconnect'
 
 const logger = createScopedLogger('instagram-oauth')
 const DEFAULT_API_VERSION = 'v26.0'
@@ -112,7 +113,15 @@ export class InstagramOAuthService {
         logger.warn('Missing Page ID or PAT, cannot unsubscribe webhooks.', { integrationId })
       }
 
-      if (facebookUserId && userAccessToken && userAccessToken !== 'N/A') {
+      // Gated: `DELETE /{user-id}/permissions` revokes the app for the WHOLE
+      // Facebook account, so revoking here while a sibling channel (the Facebook
+      // page this IG account is linked to, another page) still uses that login
+      // silently kills it. The per-page unsubscribe above is the real teardown;
+      // this step is only correct when nothing else depends on the grant.
+      const mayRevokeAppPermissions =
+        !!facebookUserId && (await isLastChannelForFacebookUser({ integrationId, facebookUserId }))
+
+      if (mayRevokeAppPermissions && userAccessToken && userAccessToken !== 'N/A') {
         const revokeUrl = `https://graph.facebook.com/${this.apiVersion}/${facebookUserId}/permissions`
         const revokeParams = new URLSearchParams({ access_token: userAccessToken })
         try {

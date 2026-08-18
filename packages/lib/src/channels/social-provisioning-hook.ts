@@ -17,29 +17,20 @@
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
 import type { PostConnectHook, PostConnectHookContext } from '../connections/post-connect-hooks'
 import { resolveConnectionForRuntime } from '../connections/resolve-connection-for-runtime'
 import { publisher } from '../events'
 import { InboxService } from '../inboxes/inbox-service'
 import { setChannelTokens } from '../providers/channel-token-accessor'
-import { subscribePageToApp as subscribePageToAppApi } from '../providers/social/api'
+import {
+  SOCIAL_SUBSCRIBED_FIELDS,
+  subscribePageToApp as subscribePageToAppApi,
+} from '../providers/social/api'
 import { assertSharedConnectInbox } from './connect-inbox'
 
 const logger = createScopedLogger('social-provisioning-hook')
-
-/**
- * Webhook fields each channel subscribes its Page to.
- *
- * Named so `recoverChannel` (WS5) re-arms with exactly the same set — a silent
- * token refresh that subscribes a narrower set is how a channel ends up
- * "connected" but deaf. Comments/feed are deliberately absent: WS10.
- */
-const SUBSCRIBED_FIELDS = {
-  facebook: 'messages,messaging_postbacks,message_reads',
-  instagram: 'messages,messaging_postbacks',
-} as const
 
 const DEFAULT_API_VERSION = 'v26.0'
 
@@ -54,6 +45,28 @@ interface FacebookPage {
   id: string
   name: string
   access_token: string
+  /** Expanded in the same `/me/accounts` call — one extra field, no extra request. */
+  instagram_business_account?: { id?: string; username?: string }
+}
+
+/**
+ * A page the connecting user administers, trimmed to what a picker needs.
+ *
+ * Cached on the CREDENTIAL, not the Integration: it describes the OAuth grant
+ * (what this token can reach), not one channel. Auto-select-first stays for v1 —
+ * the user can already steer it from Facebook's own "choose pages" consent step —
+ * but caching the full list is what makes a real picker, or "add another channel
+ * from this connection", possible later without a second OAuth round trip.
+ *
+ * Deliberately does NOT include page access tokens: those live encrypted on the
+ * credential, and a plaintext copy in a metadata blob is a credential leak waiting
+ * to be logged.
+ */
+export interface CachedSocialPage {
+  id: string
+  name: string
+  igBusinessAccountId?: string
+  igUsername?: string
 }
 
 interface InstagramAccount {
@@ -68,6 +81,8 @@ interface SocialIdentity {
   longLivedPageToken: string
   longLivedUserToken: string
   facebookUserId?: string
+  /** Every page this grant can reach — cached for a future picker (see CachedSocialPage). */
+  availablePages: CachedSocialPage[]
   instagramAccountId?: string
   instagramUsername?: string
 }
@@ -150,7 +165,7 @@ async function fetchFacebookUserId(token: string): Promise<string | undefined> {
 
 /** Pages the user manages, each with its own page access token. */
 async function fetchUserPages(token: string): Promise<FacebookPage[]> {
-  const url = `https://graph.facebook.com/${apiVersion()}/me/accounts?fields=id,name,access_token&access_token=${token}`
+  const url = `https://graph.facebook.com/${apiVersion()}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${token}`
   const res = await fetch(url)
   const data = await res.json()
   if (!res.ok || !Array.isArray(data.data)) {
@@ -200,6 +215,13 @@ async function discoverIdentity(
     )
   }
 
+  const availablePages: CachedSocialPage[] = pages.map((page) => ({
+    id: page.id,
+    name: page.name,
+    igBusinessAccountId: page.instagram_business_account?.id,
+    igUsername: page.instagram_business_account?.username,
+  }))
+
   if (provider === 'facebook') {
     const page = pages[0]!
     const longLivedPageToken = await exchangeForLongLived(page.access_token)
@@ -209,6 +231,7 @@ async function discoverIdentity(
       longLivedPageToken,
       longLivedUserToken,
       facebookUserId,
+      availablePages,
     }
   }
 
@@ -223,6 +246,7 @@ async function discoverIdentity(
         longLivedPageToken,
         longLivedUserToken,
         facebookUserId,
+        availablePages,
         instagramAccountId: igAccount.id,
         instagramUsername: igAccount.username,
       }
@@ -241,7 +265,9 @@ async function subscribePageToApp(
   pageToken: string
 ): Promise<void> {
   const subscribedFields =
-    provider === 'instagram' ? SUBSCRIBED_FIELDS.instagram : SUBSCRIBED_FIELDS.facebook
+    provider === 'instagram'
+      ? SOCIAL_SUBSCRIBED_FIELDS.instagram
+      : SOCIAL_SUBSCRIBED_FIELDS.facebook
   try {
     await subscribePageToAppApi(pageId, pageToken, subscribedFields)
     logger.info('Page subscribed to app webhook', { pageId, provider, subscribedFields })
@@ -291,7 +317,12 @@ async function upsertSocialIntegration(args: {
     .where(
       and(
         eq(schema.Integration.organizationId, organizationId),
-        eq(schema.Integration.provider, provider)
+        eq(schema.Integration.provider, provider),
+        // Disconnect is a SOFT delete. Without this, a reconnect after disconnect
+        // relinks the tombstoned row: the connect reports success, the Integration
+        // is updated, and the channel never appears anywhere — every list path
+        // filters `deletedAt`. Both sibling hooks document this exact failure.
+        isNull(schema.Integration.deletedAt)
       )
     )
   const existing =
@@ -346,6 +377,31 @@ async function upsertSocialIntegration(args: {
   return { id: created!.id, isNew: true, displayName }
 }
 
+/**
+ * Cache the trimmed page list on the credential.
+ *
+ * jsonb MERGE under a `meta` key so this cannot clobber whatever else the
+ * credential's metadata carries (OAuth bookkeeping written by the connections
+ * layer), and best-effort: a channel that connected fine must not fail
+ * provisioning because a convenience cache could not be written.
+ */
+async function cacheAvailablePages(credentialId: string, pages: CachedSocialPage[]): Promise<void> {
+  try {
+    const metaJson = JSON.stringify({ meta: { pages, cachedAt: new Date().toISOString() } })
+    await db
+      .update(schema.Credential)
+      .set({
+        metadata: sql`COALESCE(${schema.Credential.metadata}, '{}'::jsonb) || ${metaJson}::jsonb`,
+      })
+      .where(eq(schema.Credential.id, credentialId))
+  } catch (error) {
+    logger.warn('Failed to cache available pages on the credential', {
+      credentialId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
 /** The social channel post-connect hook — handles `facebook` and `instagram`. */
 export const socialProvisioningHook: PostConnectHook = {
   providerKeys: ['facebook', 'instagram'],
@@ -394,6 +450,8 @@ export const socialProvisioningHook: PostConnectHook = {
       const inboxService = new InboxService(db, ctx.organizationId, ctx.userId)
       await inboxService.addIntegration(recordId, integration.id)
     }
+
+    await cacheAvailablePages(ctx.credentialId, identity.availablePages)
 
     await subscribePageToApp(provider, identity.pageId, identity.longLivedPageToken)
 
