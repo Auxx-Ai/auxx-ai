@@ -36,6 +36,23 @@ export interface ProviderCapabilities {
   canAttachFiles: boolean
   maxAttachmentSize?: number // in bytes
   supportedAttachmentTypes?: string[]
+  /**
+   * How many attachments one message on this provider can carry. Undefined = no
+   * per-message limit (email).
+   *
+   * Meta's Send API takes exactly one, which is why this exists: a composer send
+   * that exceeds it is SPLIT into several messages by `MessageSenderService`
+   * rather than truncated, so every provider id we are handed back belongs to a
+   * row of ours and ingest can dedupe it on the next sync.
+   */
+  maxAttachmentsPerMessage?: number
+  /**
+   * Whether one message can carry text AND an attachment. Undefined = yes.
+   *
+   * False on Meta: its `message` object takes `text` or `attachment`, never both,
+   * so a caption and a photo are two messages.
+   */
+  canSendTextWithAttachment?: boolean
 
   // Special features
   canScheduleSend: boolean

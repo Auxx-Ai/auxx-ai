@@ -41,6 +41,7 @@ import { createUsageGuard } from '../usage/create-usage-guard'
 import { checkAutomatedSendLimits, notifyAdminsOfSendBreakerTrip } from './automated-send-guard'
 import { MessageComposerService } from './message-composer.service'
 import { MessageReconcilerService } from './message-reconciler.service'
+import { splitSendForProvider } from './split-send'
 import { ThreadManagerService } from './thread-manager.service'
 import type {
   ComposedMessage,
@@ -56,6 +57,16 @@ import type {
 } from './types/message-sending.types'
 
 const logger = createScopedLogger('message-sender')
+
+/**
+ * Send-internal state, never part of the public input.
+ *
+ * `splitContinuation` marks parts 2..N of one split send so the auto-reply
+ * alternation guard does not treat them as a second automated reply.
+ */
+interface SendInternalOptions {
+  splitContinuation?: boolean
+}
 
 /** Module default connection, reachable from inside the constructor where the
  *  `db` parameter shadows the `database as db` import. */
@@ -147,6 +158,52 @@ export class MessageSenderService {
    * §7 send gate — only bites when an interactive viewer was provided.
    * `none` reads as not-found; `metadata`/`subject` as restricted.
    */
+  /**
+   * Send the parts of one split composer send, in order, as separate messages.
+   *
+   * Sequential, never concurrent: Messenger renders in arrival order, so a
+   * caption racing its photo would read backwards. The FIRST part's result is
+   * what the caller gets — it is the message the composer's optimistic row
+   * represents.
+   *
+   * A part that fails throws, leaving the earlier parts sent. That is the honest
+   * outcome for a multi-message send: they really did arrive, and swallowing the
+   * failure would tell the user their photo went out when it did not.
+   */
+  private async sendSplitParts(parts: SendMessageInput[]): Promise<SentMessage> {
+    logger.info('Splitting send into separate provider messages', {
+      partCount: parts.length,
+      integrationId: parts[0]?.integrationId,
+    })
+
+    const results: SentMessage[] = []
+    for (const [index, part] of parts.entries()) {
+      const first = results[0]
+      const pinned =
+        first && this.isPlaceholderThreadId(part.threadId)
+          ? // The first part may have CREATED the thread. Later parts must land on
+            // it rather than opening one thread per attachment.
+            { ...part, threadId: first.threadId }
+          : part
+      results.push(await this.sendMessage(pinned, { splitContinuation: index > 0 }))
+    }
+
+    // The caller gets the first message, plus the shape of the whole send — the
+    // composer's optimistic row is the only thing the sending tab sees (its own
+    // `message:created` is suppressed by `excludeSocketId`), so it has to know
+    // this became several rows.
+    return {
+      ...results[0]!,
+      splitMessages: results.map((sent, index) => ({
+        id: sent.id,
+        threadId: sent.threadId,
+        sentAt: sent.sentAt,
+        attachmentIds: parts[index]?.attachmentIds ?? [],
+        hasText: !!(parts[index]?.textHtml?.trim() || parts[index]?.textPlain?.trim()),
+      })),
+    }
+  }
+
   private async assertCanSendOnThread(threadId: string | null): Promise<void> {
     if (!threadId || !this.viewer || isSystemViewer(this.viewer)) return
     const lens = await getThreadLens(this.db ?? db, this.organizationId, this.viewer, threadId)
@@ -171,7 +228,7 @@ export class MessageSenderService {
   /**
    * Main entry point for sending messages
    */
-  async sendMessage(input: SendMessageInput): Promise<SentMessage> {
+  async sendMessage(input: SendMessageInput, internal?: SendInternalOptions): Promise<SentMessage> {
     logger.info('Starting message send', {
       userId: input.userId,
       organizationId: input.organizationId,
@@ -187,6 +244,13 @@ export class MessageSenderService {
     // Validate input (capability-driven — subject/recipients depend on provider)
     const capabilities = await this.getCapabilitiesForIntegration(input.integrationId)
     this.validateInput(input, capabilities)
+
+    // A send the provider cannot carry in one message becomes several, each with
+    // its own row — see `splitSendForProvider` for why this is not a loop inside
+    // the provider. Every part is unsplittable by construction, so the recursion
+    // is one level deep.
+    const parts = splitSendForProvider(input, capabilities)
+    if (parts.length > 1) return this.sendSplitParts(parts)
     // Usage guard: count outbound email before sending (skip for providers that
     // don't count, e.g. chat).
     if (capabilities.countsAgainstOutboundEmailsQuota) {
@@ -239,7 +303,11 @@ export class MessageSenderService {
       const isAutomatedSend = !this.viewer || isSystemViewer(this.viewer)
       // Step 2.4: §6 fix #3 — per-thread auto-reply alternation. Existing threads only;
       // a freshly-created (pending) thread has no prior message to alternate against.
-      if (isAutomatedSend && !threadContext.isPending) {
+      // `splitContinuation`: parts 2..N of ONE split send are not a second
+      // automated reply, and the guard would block them precisely because part 1
+      // just landed. The guard still applies to the first part, which is the one
+      // that represents the send.
+      if (isAutomatedSend && !threadContext.isPending && !internal?.splitContinuation) {
         await this.assertAlternation(threadContext.id, input.organizationId)
       }
       // Step 2.5: Send-time suppression + List-Unsubscribe context (signals plan 02
@@ -592,6 +660,8 @@ export class MessageSenderService {
     countsAgainstOutboundEmailsQuota: boolean
     triggersPostSendSync: boolean
     requiresSendReconciliation: boolean
+    maxAttachmentsPerMessage?: number
+    canSendTextWithAttachment?: boolean
   }> {
     const [integration] = await (this.db ?? db)
       .select({ provider: schema.Integration.provider })
@@ -610,6 +680,10 @@ export class MessageSenderService {
       countsAgainstOutboundEmailsQuota: caps.countsAgainstOutboundEmailsQuota,
       triggersPostSendSync: caps.triggersPostSendSync,
       requiresSendReconciliation: caps.requiresSendReconciliation,
+      // The send SHAPE — how many attachments one message may carry, and whether
+      // it may carry text beside them. Drives `splitSendForProvider`.
+      maxAttachmentsPerMessage: caps.maxAttachmentsPerMessage,
+      canSendTextWithAttachment: caps.canSendTextWithAttachment,
     }
   }
   /**

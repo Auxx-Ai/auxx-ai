@@ -507,6 +507,36 @@ this — they keep everything-open helpdesk semantics.
 
 ## 11. Outbound — composer → sender → provider
 
+### One composer send is not always one message
+
+`MessageSenderService.sendMessage` first asks `splitSendForProvider` whether the
+provider can carry this send in **one** message. Two capabilities decide it —
+`maxAttachmentsPerMessage` and `canSendTextWithAttachment` (`providers/types.ts`).
+Email answers yes to everything and is never split. Meta answers no to both: its
+Send API's `message` object takes `text` **or** one `attachment`, so a caption
+with two photos becomes three messages, sent in order, each with its own row.
+
+**The split is here rather than inside the provider because of ingest, not
+aesthetics.** Each Meta message returns its own `mid`, and a `Message` row holds
+one `externalId` — the key `(integrationId, externalId)` dedupes on. A provider
+that sent three and reported one would leave two ids belonging to no row of ours,
+and the next scheduled sync (FB/IG are in `sync-all-messages-job`) would re-import
+them as duplicate outbound messages. It also matches what the customer sees:
+Messenger renders three bubbles whatever we do.
+
+Parts 2..N carry `splitContinuation`, which skips the auto-reply alternation
+guard — they are one send, not a workflow replying to itself. Send-level fields
+(`messageId`, `draftMessageId`, `signatureId`, `includePreviousMessage`) belong to
+the first part only. A part that fails throws with the earlier parts already sent,
+which is the honest outcome: they really did arrive.
+
+`SentMessage.splitMessages` reports the whole shape back to the composer, which
+needs it because the originating tab is excluded from its own `message:created`
+echo (`excludeSocketId`) — its optimistic row is the only thing it sees until a
+refetch.
+
+
+
 `MessageComposerService` commits the `Message` row **before** the provider is called, mints the
 `sendToken`, and resolves attachments. `MessageSenderService` then:
 

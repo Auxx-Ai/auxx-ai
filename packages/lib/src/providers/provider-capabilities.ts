@@ -84,6 +84,10 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
     canBulkOperations: false,
     canAttachFiles: true,
     maxAttachmentSize: 10 * 1024 * 1024, // 10MB
+    // Meta's `message` object takes `text` OR one `attachment`, never both — a
+    // caption with a photo is two messages, split by `MessageSenderService`.
+    maxAttachmentsPerMessage: 1,
+    canSendTextWithAttachment: false,
     supportedAttachmentTypes: ['image/jpeg', 'image/png', 'image/gif', 'video/mp4'],
     canScheduleSend: false,
     canTrackOpens: false,
@@ -137,6 +141,10 @@ export const PROVIDER_CAPABILITIES: Record<ChannelProviderType, ProviderCapabili
     canBulkOperations: false,
     canAttachFiles: true,
     maxAttachmentSize: 8 * 1024 * 1024, // 8MB
+    // Meta's `message` object takes `text` OR one `attachment`, never both — a
+    // caption with a photo is two messages, split by `MessageSenderService`.
+    maxAttachmentsPerMessage: 1,
+    canSendTextWithAttachment: false,
     supportedAttachmentTypes: ['image/jpeg', 'image/png', 'video/mp4'],
     canScheduleSend: false,
     canTrackOpens: false,

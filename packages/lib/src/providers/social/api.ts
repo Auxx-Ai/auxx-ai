@@ -128,6 +128,14 @@ export interface GraphRequestOptions {
   query?: Record<string, string | number | boolean | undefined>
   /** JSON body for POST. */
   body?: Record<string, unknown>
+  /**
+   * Multipart body for POST, used by the attachment upload.
+   *
+   * Mutually exclusive with `body`. The `Content-Type` header is deliberately
+   * left unset when this is present — `fetch` has to generate it itself so the
+   * multipart boundary matches the body it encoded.
+   */
+  formData?: FormData
   /** Full URL to call instead of building one — for following `paging.next`. */
   url?: string
 }
@@ -151,7 +159,7 @@ export interface GraphRequestOptions {
  * is throttling, `GraphApiError` otherwise, all carrying Meta's `code`/`subcode`.
  */
 export async function graphRequest<T>(path: string, options: GraphRequestOptions): Promise<T> {
-  const { accessToken, method = 'GET', query, body, url } = options
+  const { accessToken, method = 'GET', query, body, formData, url } = options
 
   let target: string
   if (url) {
@@ -175,6 +183,7 @@ export async function graphRequest<T>(path: string, options: GraphRequestOptions
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
+      ...(formData ? { body: formData } : {}),
     })
   } catch (error) {
     // Transport failure — no Graph envelope to read.
@@ -330,6 +339,85 @@ export async function sendMessage(args: SendMessageArgs): Promise<{ messageId?: 
         message: { text },
       },
     }
+  )
+  return { messageId: result.message_id }
+}
+
+/** The five `message.attachment.type` words Meta's Send API accepts. */
+export type SendAttachmentType = 'image' | 'video' | 'audio' | 'file'
+
+export interface SendAttachmentArgs extends Omit<SendMessageArgs, 'text'> {
+  content: Buffer
+  filename: string
+  contentType: string
+}
+
+/**
+ * Which `attachment.type` a file goes out as.
+ *
+ * Meta renders by this word, not by the MIME type: a JPEG sent as `file`
+ * arrives as a download link rather than a photo, so getting this wrong is a
+ * visible product regression rather than an error.
+ */
+export function sendAttachmentTypeForMimeType(mimeType: string): SendAttachmentType {
+  const normalized = mimeType.toLowerCase()
+  if (normalized.startsWith('image/')) return 'image'
+  if (normalized.startsWith('video/')) return 'video'
+  if (normalized.startsWith('audio/')) return 'audio'
+  return 'file'
+}
+
+/**
+ * `POST /{pageId}/messages` with the bytes attached — the multipart form of
+ * {@link sendMessage}.
+ *
+ * **Uploads the bytes rather than handing Meta a URL.** The Send API also
+ * accepts `payload: {url}`, which would mean minting a presigned S3 link and
+ * trusting Meta to fetch it before it expires; uploading keeps private storage
+ * private and removes a dependency on our object store being reachable from
+ * Meta's crawlers at all.
+ *
+ * `is_reusable: false` because these are one-shot support replies. A reusable
+ * upload returns an `attachment_id` worth keeping only if the same file goes to
+ * many people, which is the marketing case, not this one.
+ *
+ * **One attachment per message, and never alongside text** — Meta's `message`
+ * object takes `text` OR `attachment`. The split into separate messages happens
+ * upstream in `MessageSenderService`, so that every message we send has its own
+ * `mid` to store; see `canSendTextWithAttachment` in the provider capabilities.
+ */
+export async function sendAttachment(args: SendAttachmentArgs): Promise<{ messageId?: string }> {
+  const {
+    pageId,
+    pageAccessToken,
+    recipientId,
+    content,
+    filename,
+    contentType,
+    messagingType = 'RESPONSE',
+    tag,
+  } = args
+
+  const form = new FormData()
+  form.append('recipient', JSON.stringify({ id: recipientId }))
+  form.append('messaging_type', messagingType)
+  if (tag) form.append('tag', tag)
+  form.append(
+    'message',
+    JSON.stringify({
+      attachment: {
+        type: sendAttachmentTypeForMimeType(contentType),
+        payload: { is_reusable: false },
+      },
+    })
+  )
+  // `filedata` is the field name Meta's Send API looks for; anything else is
+  // accepted by the HTTP layer and then rejected as a message with no attachment.
+  form.append('filedata', new Blob([new Uint8Array(content)], { type: contentType }), filename)
+
+  const result = await graphRequest<{ message_id?: string; recipient_id?: string }>(
+    `${pageId}/messages`,
+    { accessToken: pageAccessToken, method: 'POST', formData: form }
   )
   return { messageId: result.message_id }
 }
