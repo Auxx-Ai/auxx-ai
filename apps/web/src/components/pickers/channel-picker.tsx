@@ -6,7 +6,7 @@ import type { SelectOption } from '@auxx/types/custom-field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Star } from 'lucide-react'
+import { Star, TriangleAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
@@ -44,6 +44,26 @@ interface ChannelPickerProps {
  */
 function channelLabel(channel: { identifier?: string; email?: string; name: string | null }) {
   return channel.identifier || channel.email || channel.name || 'Unnamed channel'
+}
+
+/**
+ * Whether the channel's credential needs a reconnect before it can send.
+ * Checked directly (not via `getIntegrationStatus`) because the threshold
+ * disable after repeated auth failures flips `enabled` off, and the status
+ * helper reports those channels as `disabled` — but the send would still fail
+ * with the same login-expired error, so the picker warns on both.
+ */
+function needsReconnect(channel: { requiresReauth: boolean; lastAuthError: string | null }) {
+  return channel.requiresReauth || !!channel.lastAuthError
+}
+
+/** Amber warning mirroring the connected-apps pickers (`connection-picker.tsx`). */
+function ReconnectWarning() {
+  return (
+    <Tooltip content='Login expired — sending will fail until this channel is reconnected'>
+      <TriangleAlert className='size-3.5 shrink-0 text-amber-600' />
+    </Tooltip>
+  )
 }
 
 export function ChannelPicker({
@@ -115,7 +135,10 @@ export function ChannelPicker({
           hideIcon={triggerProps?.hideIcon}
           asCombobox
           className={triggerProps?.className}>
-          <Badge variant='user'>{displayName}</Badge>
+          <span className='flex items-center gap-1.5'>
+            <Badge variant='user'>{displayName}</Badge>
+            {selected && needsReconnect(selected) && <ReconnectWarning />}
+          </span>
         </PickerTrigger>
       </PopoverTrigger>
       <PopoverContent className={cn('w-auto min-w-[240px] p-0', className)}>
@@ -139,22 +162,28 @@ export function ChannelPicker({
           browseLabel='Manage channels'
           renderItemAction={(opt) => {
             const isDefault = opt.value === defaultChannelId
+            const channel = channels.find((c) => c.id === opt.value)
             return (
-              <Tooltip content={isDefault ? 'Default channel' : 'Make default'}>
-                <button
-                  type='button'
-                  aria-label={isDefault ? 'Default channel' : 'Make default'}
-                  className={cn(
-                    'flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-primary-200',
-                    !isDefault && 'opacity-0 group-hover/item:opacity-100'
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    updateUserSetting('compose.defaultIntegrationId', opt.value)
-                  }}>
-                  <Star className={cn('size-3', isDefault && 'fill-yellow-400 text-yellow-400')} />
-                </button>
-              </Tooltip>
+              <>
+                {channel && needsReconnect(channel) && <ReconnectWarning />}
+                <Tooltip content={isDefault ? 'Default channel' : 'Make default'}>
+                  <button
+                    type='button'
+                    aria-label={isDefault ? 'Default channel' : 'Make default'}
+                    className={cn(
+                      'flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-primary-200',
+                      !isDefault && 'opacity-0 group-hover/item:opacity-100'
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      updateUserSetting('compose.defaultIntegrationId', opt.value)
+                    }}>
+                    <Star
+                      className={cn('size-3', isDefault && 'fill-yellow-400 text-yellow-400')}
+                    />
+                  </button>
+                </Tooltip>
+              </>
             )
           }}
         />
