@@ -44,6 +44,7 @@ export {
   flushOrganization,
   invalidateAppCatalog,
   invalidateAppSlugMap,
+  invalidateChannelsIfStale,
   invalidatePlans,
   invalidateWorkflowTemplates,
   onCacheEvent,
