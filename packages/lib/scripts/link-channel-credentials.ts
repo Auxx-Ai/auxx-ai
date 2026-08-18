@@ -14,8 +14,12 @@ import { and, eq, isNull } from 'drizzle-orm'
 const PROVIDER_TO_PROVIDER_KEY: Record<string, string> = {
   google: 'gmail',
   outlook: 'outlookMail',
-  facebook: 'facebookOAuth2Api',
-  instagram: 'instagramOAuth2Api',
+  // The CHANNEL defs, not the workflow `facebookOAuth2Api`/`instagramOAuth2Api`
+  // connectors — those are a different (and non-functional) pair keyed on env vars
+  // that do not exist. Mapping to them here meant this script could never resolve a
+  // def id for a social channel and silently linked nothing.
+  facebook: 'facebook',
+  instagram: 'instagram',
   shopify: 'shopifyOAuth2Api',
   imap: 'imap',
   email: 'smtp',
