@@ -1,110 +1,141 @@
-# Setup Guide for Facebook Messenger Integration
+# Facebook Messenger & Instagram DM setup
+
+Both channels run on **one Meta app** and **one OAuth route**. Instagram Messaging is a
+child of the Facebook Graph API, so there is no separate Instagram app, client id, or
+verify token — connecting Instagram means authorizing the same Facebook app against a
+Page that has an Instagram professional account linked to it.
+
+> Architecture decisions behind this (why Facebook Login rather than Instagram Login,
+> why page tokens rather than the 60-day refresh treadmill) live in
+> `plans/channels/facebook-instagram-channel-rewrite.md`.
 
 ## Prerequisites
 
-- A Facebook account
-- A Facebook Page (the integration connects to a Page, not a personal profile)
+- A Facebook account with a **Page** (the integration connects to a Page, never a personal profile)
+- For Instagram: an Instagram **professional** account (Business or Creator), linked to
+  that Page, with **Settings → Messages → Allow access to messages** turned on. Without
+  that toggle Meta delivers no message webhooks for the account, and nothing in the
+  connect flow will tell you.
 
-## Step 1: Create a Facebook App
+## 1. Create the Meta app
 
-1. Go to [Meta for Developers](https://developers.facebook.com/)
-2. Click **My Apps** in the top-right corner
-3. Click **Create App**
-4. Select **Other** as the use case, then click **Next**
-5. Select **Business** as the app type, then click **Next**
-6. Enter an app name (e.g., "Auxx AI Support")
-7. Enter a contact email
-8. Optionally select a Business Portfolio, then click **Create App**
+1. [Meta for Developers](https://developers.facebook.com/) → **My Apps** → **Create App**
+2. Use case: **Other** → type: **Business**
+3. Name it, add a contact email, create.
+4. Add the **Messenger** product, and **Facebook Login** (Login is what the connect flow uses).
 
-## Step 2: Get App ID and App Secret
+## 2. App ID and secret
 
-1. In your app dashboard, go to **App Settings** > **Basic**
-2. Copy the **App ID** — this is your `FACEBOOK_APP_ID`
-3. Click **Show** next to the App Secret field, enter your password
-4. Copy the **App Secret** — this is your `FACEBOOK_APP_SECRET`
+**App Settings → Basic.** Copy the App ID and (after **Show**) the App Secret.
 
-## Step 3: Add Messenger Product
+| Variable | Value |
+| --- | --- |
+| `FACEBOOK_APP_ID` | App ID |
+| `FACEBOOK_APP_SECRET` | App Secret |
+| `FACEBOOK_GRAPH_API_VERSION` | `v26.0` |
+| `FACEBOOK_WEBHOOK_VERIFY_TOKEN` | `openssl rand -hex 32` |
 
-1. In the left sidebar, click **Add Product**
-2. Find **Messenger** and click **Set Up**
-3. This adds the Messenger product to your app
+**Set these in the worker's env too, not just the web app's.** Message sync runs in
+`@auxx/worker`, which loads its own `.env` — a version pinned only in the root `.env` will
+not reach it.
 
-## Step 4: Configure OAuth Redirect URI
+> `FACEBOOK_GRAPH_API_VERSION` must not be left at an old value. Graph answers a
+> deprecated version by silently serving a current one and returning `paging.next` links
+> stamped with the newer version, so a stale pin produces requests whose behaviour you
+> cannot predict from the code.
 
-1. In the left sidebar, go to **Facebook Login** > **Settings** (if Facebook Login was auto-added) or add the **Facebook Login** product first
-2. Under **Valid OAuth Redirect URIs**, add:
+### After ANY credential change: re-seed
 
-```
-https://app.auxx.ai/api/facebook/oauth2/callback
-```
-
-3. Click **Save Changes**
-
-## Step 5: Configure Webhook
-
-1. In the left sidebar, go to **Messenger** > **Messenger API Settings**
-2. Scroll to the **Webhooks** section and click **Add Callback URL**
-3. Enter the following:
-   - **Callback URL**: `https://app.auxx.ai/api/facebook/webhook`
-   - **Verify Token**: A random string you generate (see step below)
-4. Click **Verify and Save**
-
-### Generate the Verify Token
-
-Generate a random token to use as `FACEBOOK_WEBHOOK_VERIFY_TOKEN`:
+`ensurePlatformProviders` bakes **encrypted copies** of the OAuth client into the
+`ConnectionDefinition` rows at seed time. Editing env alone is inert at runtime — the old
+client is still in the database, and the connect fails with "App not active".
 
 ```bash
-openssl rand -hex 32
+npx dotenv -- npx tsx packages/lib/scripts/reseed-platform-providers.ts
 ```
 
-Set this value in your environment/secrets, and use the same value in the webhook **Verify Token** field above.
+## 3. OAuth redirect URI
 
-## Step 6: Subscribe to Webhook Events
+The callback is keyed on the **ConnectionDefinition id**, not the provider name:
 
-1. After verifying the webhook, you need to subscribe your Page to events
-2. In the **Webhooks** section, click **Add Subscriptions**
-3. Select the following fields:
-   - `messages` — Receive incoming messages
-   - `messaging_postbacks` — Receive postback button clicks
-   - `message_deliveries` — Delivery confirmations
-   - `message_reads` — Read receipts
+```
+{BASE}/api/connections/{connectionDefinitionId}/oauth2/callback
+```
 
-## Step 7: Connect Your Page
+**That id is a cuid, and it differs per environment** — dev and production have separate
+seeded rows. There is no static URL to copy. Read the ids for your environment:
 
-1. In the **Webhooks** section, under **Page Subscriptions**, select the Facebook Page you want to connect
-2. Click **Subscribe** to link the page to your app
-3. This step is also handled automatically during the OAuth flow in the app
+```sql
+SELECT id, "providerKey" FROM "ConnectionDefinition"
+WHERE "providerKey" IN ('facebook', 'instagram');
+```
 
-## Step 8: Configure App Permissions
+Register **both** resulting URLs under **Facebook Login → Settings → Valid OAuth Redirect
+URIs**.
 
-1. Go to **App Review** > **Permissions and Features**
-2. Request the following permissions:
-   - `pages_messaging` — Send and receive messages
-   - `pages_manage_metadata` — Subscribe to webhooks
-   - `pages_read_engagement` — Read messages and conversations
+In dev, `{BASE}` is `NGROK_URL` when set, otherwise `WEBAPP_URL` — the tunnel host, not
+`localhost:3000`, because Meta will not redirect to a private address.
 
-> **Note:** For development/testing, these permissions work immediately for app admins and testers. For production use with external users, you need to submit for App Review.
+## 4. Webhooks
 
-## Step 9: Set Environment Variables
+App-level webhook configuration is **manual, in the App Dashboard**. Only the *per-page*
+subscription is automated (the connect flow and `recoverChannel` both arm it).
 
-Set the following environment variables in your app:
+**Messenger → Messenger API Settings → Webhooks → Add Callback URL:**
 
-| Variable                         | Value                                        |
-| -------------------------------- | -------------------------------------------- |
-| `FACEBOOK_APP_ID`                | App ID from Step 2                           |
-| `FACEBOOK_APP_SECRET`            | App Secret from Step 2                       |
-| `FACEBOOK_GRAPH_API_VERSION`     | `v19.0` (default, already set)               |
-| `FACEBOOK_WEBHOOK_VERIFY_TOKEN`  | Random string from Step 5                    |
+- Callback URL: `{BASE}/api/facebook/webhook`
+- Verify Token: your `FACEBOOK_WEBHOOK_VERIFY_TOKEN`
 
-## Step 10: Switch to Live Mode
+Subscribe the `page` object to: `messages`, `messaging_postbacks`, `message_reads`.
 
-1. At the top of your app dashboard, toggle the app mode from **Development** to **Live**
-2. You may need to complete a few requirements:
-   - Add a Privacy Policy URL in **App Settings** > **Basic**
-   - Complete any required App Review submissions
+**Instagram → Webhooks** (separate callback, same verify token):
+
+- Callback URL: `{BASE}/api/instagram/webhook`
+- Subscribe the `instagram` object to: `messages`, `messaging_postbacks`
+
+Do **not** subscribe `feed` or `comments`. Post comments are not ingested — the routes
+log and drop them — so subscribing only makes the gap look handled.
+
+The verify handshake is a `GET` with `hub.challenge`; a mismatch answers 403 and Meta
+shows "The URL couldn't be validated".
+
+## 5. Permissions
+
+Requested by the connect flow (`connections/providers/defs.ts`):
+
+- **Facebook:** `pages_messaging`, `pages_manage_metadata`, `pages_read_engagement`,
+  `pages_show_list`, `business_management`
+- **Instagram:** the same five, plus `instagram_basic` and `instagram_manage_messages`
+
+`business_management` is not optional: without it, Pages owned by a Business portfolio
+are simply absent from `/me/accounts` at connect time, and the connect fails with
+"No Facebook Pages found" on an account that plainly has Pages.
+
+In **Development** mode these work immediately for people holding a role on the app
+(admin, developer, tester) against Pages they administer — no App Review. External users
+need App Review and Live mode.
+
+Two review items worth knowing before you rely on them:
+
+- **Human Agent** — required to reply outside Meta's 24-hour messaging window. Auxx uses
+  the `HUMAN_AGENT` tag for composer replies past the window; automated (agent/workflow)
+  sends are blocked there rather than tagged, because tagging bot traffic as human is a
+  policy violation Meta detects.
+- Instagram message webhooks may require the app to be **Live** even for role-holders.
+
+## 6. Connect
+
+In Auxx: **Settings → Channels → Add channel → Facebook** (or Instagram). Facebook's own
+consent step is where you choose which Pages to grant; Auxx currently auto-selects the
+first eligible Page, so grant only the Page you want, or steer it there.
 
 ## Troubleshooting
 
-- **Webhook verification fails:** Ensure the verify token in Meta Developer Console matches your `FACEBOOK_WEBHOOK_VERIFY_TOKEN` env variable exactly, and that the webhook endpoint is publicly accessible.
-- **Not receiving messages:** Check that the Page is subscribed to the webhook events and that the app is in Live mode for non-admin users.
-- **Token errors:** Facebook Page Access Tokens obtained via the OAuth flow are long-lived but can still be invalidated if the user removes the app from their Page settings.
+| Symptom | Cause |
+| --- | --- |
+| "App not active" on connect | Env changed without re-seeding — see §2. |
+| Webhook validation fails | Verify token mismatch, or `{BASE}` not publicly reachable. |
+| Connected, but no messages arrive | The Page subscription did not arm. Check `GET /{pageId}/subscribed_apps`. Reconnecting through the OAuth popup re-arms it; so does channel recovery. |
+| Instagram connects but stays silent | "Allow access to messages" is off, the IG account is not professional, or the app needs to be Live. |
+| Connect succeeds, channel never appears | Historically a disconnected (soft-deleted) row being relinked. Fixed — but check `Integration.deletedAt` if it recurs. |
+| Token errors after working fine | Page tokens are long-lived but die if the user removes the app from Page settings. Surfaces as `requiresReauth`; there is no refresh grant. |

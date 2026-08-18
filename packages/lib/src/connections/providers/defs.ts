@@ -144,8 +144,11 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     uiMetadata: { icon: 'brand:outlook', category: 'email', brandColor: '#0078d4' },
   },
   // ── Social messaging channel defs (Facebook + Instagram) ────────────────────
-  // These are the CHANNEL defs (providerKey == Integration.provider class), distinct
-  // from the workflow `facebookOAuth2Api`/`instagramOAuth2Api` connectors below. Both
+  // These are the CHANNEL defs (providerKey == Integration.provider class), and as of
+  // 2026-08-17 the ONLY Facebook/Instagram defs — the workflow `facebookOAuth2Api` /
+  // `instagramOAuth2Api` connectors that used to sit below were deleted: they keyed on
+  // `FACEBOOK_CLIENT_ID`/`INSTAGRAM_CLIENT_ID` env vars that exist nowhere, and the
+  // Instagram one pointed at the Basic Display API Meta retired in Dec 2024. Both
   // use the platform Facebook app (IG Messaging is a Facebook-Graph child — no separate
   // Instagram app) and authorize through the Facebook login dialog. The OAuth code
   // exchange yields a USER token; the social post-connect hook derives the long-lived
@@ -232,42 +235,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     baseUrlTemplate: 'https://{shop}.myshopify.com/admin/api/2024-10',
     uiMetadata: { icon: 'brand:shopify', category: 'ecommerce', brandColor: '#5d8a66' },
   },
-  {
-    providerKey: 'facebookOAuth2Api',
-    connectionType: 'oauth2-code',
-    label: 'Facebook OAuth2',
-    global: false,
-    oauth2AuthorizeUrl: 'https://www.facebook.com/v18.0/dialog/oauth',
-    oauth2AccessTokenUrl: 'https://graph.facebook.com/v18.0/oauth/access_token',
-    oauth2Scopes: [
-      'pages_manage_metadata',
-      'pages_read_engagement',
-      'pages_manage_posts',
-      'pages_messaging',
-      'pages_show_list',
-      'business_management',
-    ],
-    systemClientIdEnv: 'FACEBOOK_CLIENT_ID',
-    systemClientSecretEnv: 'FACEBOOK_CLIENT_SECRET',
-    oauth2Features: { additionalAuthorizeParams: { response_type: 'code', display: 'popup' } },
-    authApply: BEARER,
-    uiMetadata: { icon: 'brand:facebook', category: 'social', brandColor: '#1877f2' },
-  },
-  {
-    providerKey: 'instagramOAuth2Api',
-    connectionType: 'oauth2-code',
-    label: 'Instagram OAuth2',
-    global: false,
-    oauth2AuthorizeUrl: 'https://api.instagram.com/oauth/authorize',
-    oauth2AccessTokenUrl: 'https://api.instagram.com/oauth/access_token',
-    oauth2Scopes: ['user_profile', 'user_media'],
-    systemClientIdEnv: 'INSTAGRAM_CLIENT_ID',
-    systemClientSecretEnv: 'INSTAGRAM_CLIENT_SECRET',
-    oauth2Features: { additionalAuthorizeParams: { response_type: 'code' } },
-    authApply: BEARER,
-    uiMetadata: { icon: 'brand:instagram', category: 'social', brandColor: '#e4405f' },
-  },
-
   // ────────────────────────────────────────────────────────────────────────
   // Storage OAuth2 providers (per-user, platform client creds)
   // ────────────────────────────────────────────────────────────────────────
