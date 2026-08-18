@@ -262,6 +262,12 @@
       "import": "./dist/chat/agent/index.mjs",
       "default": "./src/chat/agent/index.ts"
     },
+    "./chat/visitor-naming": {
+      "types": "./src/chat/visitor-naming.ts",
+      "source": "./src/chat/visitor-naming.ts",
+      "import": "./dist/chat/visitor-naming.mjs",
+      "default": "./src/chat/visitor-naming.ts"
+    },
     "./comments": {
       "types": "./src/comments/index.ts",
       "source": "./src/comments/index.ts",

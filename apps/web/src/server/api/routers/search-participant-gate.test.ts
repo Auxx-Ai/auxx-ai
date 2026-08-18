@@ -72,7 +72,15 @@ vi.mock('drizzle-orm', () => ({
   ilike: (...args: unknown[]) => ({ ilike: args }),
   asc: (x: unknown) => x,
   inArray: (...args: unknown[]) => ({ inArray: args }),
+  isNull: (x: unknown) => ({ isNull: x }),
   count: () => ({ count: true }),
+  // `@auxx/lib/participants` (the barrel `search.ts` imports since #1691)
+  // reaches modules that build `sql` fragments at module scope — the tag must
+  // exist for collection even though no assertion ever compiles SQL.
+  sql: Object.assign((strings: TemplateStringsArray, ...vals: unknown[]) => ({ strings, vals }), {
+    raw: (s: string) => ({ raw: s }),
+    join: (...args: unknown[]) => ({ join: args }),
+  }),
 }))
 
 // Spread form rather than a `schema:` override, because this file needs COLUMN-

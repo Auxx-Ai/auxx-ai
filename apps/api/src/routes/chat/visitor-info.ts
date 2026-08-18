@@ -1,10 +1,11 @@
 // apps/api/src/routes/chat/visitor-info.ts
 
 import { issueChatPassport } from '@auxx/credentials/passport'
-import { database } from '@auxx/database'
+import { database, schema } from '@auxx/database'
 import { patchChatThreadMetadata, updateVisitorClaimedIdentity } from '@auxx/lib/chat'
 import { publisher } from '@auxx/lib/events'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { parseIdentifyPayload } from './identify'
 import { applyChatCorsHeaders } from './lib'
@@ -57,10 +58,19 @@ visitorInfoRoute.patch('/', async (c) => {
     })
 
     // Overwrite the synthetic `Chat user #xxxx` displayName so message FROM
-    // and future thread subjects pick up the real identity.
+    // and future thread subjects pick up the real identity. The thread's inbox
+    // routes the resulting `participant:updated` to the right lens channels.
+    const thread = await database.query.Thread.findFirst({
+      where: and(
+        eq(schema.Thread.id, body.threadId),
+        eq(schema.Thread.organizationId, chat.organizationId)
+      ),
+      columns: { inboxId: true },
+    })
     await updateVisitorClaimedIdentity(ctx, chat.visitorParticipantId, {
       name: claimedVisitorName,
       email: claimedVisitorEmail,
+      inboxId: thread?.inboxId ?? null,
     })
 
     // Emit `thread:visitor:identified` once an email is attached to an active

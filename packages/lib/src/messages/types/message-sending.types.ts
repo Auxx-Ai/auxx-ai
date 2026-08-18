@@ -52,6 +52,12 @@ export interface ThreadContext {
   integrationId: string
   externalId: string | null
   isPending: boolean
+  /**
+   * The thread's inbox — realtime routing context for `participant:updated`
+   * publishes on the compose path. Optional because the retry path builds a
+   * minimal context; absent/null routes to the admin-only `none` channel.
+   */
+  inboxId?: string | null
   metadata?: Record<string, any>
 }
 /**

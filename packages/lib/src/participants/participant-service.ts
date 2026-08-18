@@ -6,9 +6,14 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { identifierTypeForProvider } from '../channels/capabilities'
 import { getIdentifier } from '../channels/internal/identifier'
-import { generateVisitorName } from '../chat/visitor-naming'
 import { classifyIsInternal } from './classify-internal'
 import { type ParticipantIdentifierType, type ParticipantMeta, usableContactName } from './client'
+import { calculateParticipantDisplayInfo } from './display-info'
+import {
+  diffParticipantNamePatch,
+  type ParticipantPublishContext,
+  publishParticipantPatch,
+} from './publish-participant-changes'
 
 const logger = createScopedLogger('participant-service')
 
@@ -64,11 +69,10 @@ export class ParticipantService {
   /**
    * Calculates display name and initials for a participant.
    *
-   * For anonymous chat visitors the raw identifier is an opaque session UUID,
-   * so when there's no name we surface the friendly `Chat user #xxxx` handle
-   * instead. This is the single source of truth — every consumer that reads
-   * `ParticipantMeta.displayName` gets the correct label without needing its
-   * own fallback chain.
+   * Delegates to the exported {@link calculateParticipantDisplayInfo} — the
+   * single source of truth shared with the search router — so every consumer
+   * that reads `ParticipantMeta.displayName` gets the correct label (friendly
+   * chat-visitor handles included) without needing its own fallback chain.
    */
   private _calculateDisplayInfo(
     name?: string | null,
@@ -78,32 +82,7 @@ export class ParticipantService {
     displayName: string
     initials: string
   } {
-    const validName = name?.trim()
-    const trimmedIdentifier = identifier?.trim()
-    const identifierFallback =
-      identifierType === 'CHAT_VISITOR' && trimmedIdentifier
-        ? generateVisitorName(trimmedIdentifier)
-        : (trimmedIdentifier ?? 'Unknown')
-    const validIdentifier = identifierFallback
-    const displayName = validName || validIdentifier
-    let initials = '?'
-    if (validName) {
-      const nameParts = validName.split(' ').filter(Boolean)
-      if (nameParts.length > 1) {
-        initials =
-          `${nameParts[0]?.[0] ?? ''}${nameParts[nameParts.length - 1]?.[0] ?? ''}`.toUpperCase()
-      } else if (nameParts.length === 1) {
-        initials = (nameParts[0]?.[0] ?? '').toUpperCase()
-      }
-    } else if (validIdentifier) {
-      initials = (validIdentifier[0] ?? '?').toUpperCase()
-      if (validIdentifier.includes('@')) {
-        initials = (validIdentifier.split('@')[0]?.[0] ?? '?').toUpperCase()
-      }
-    }
-    if (initials.length > 2) initials = initials.substring(0, 2)
-    if (!initials || initials === '?') initials = displayName[0]?.toUpperCase() ?? '?'
-    return { displayName, initials }
+    return calculateParticipantDisplayInfo(name, identifier, identifierType)
   }
 
   /**
@@ -111,11 +90,21 @@ export class ParticipantService {
    * Ensures the participant is linked to the correct organization.
    * Normalizes email identifiers to lowercase.
    *
+   * When `publish` is supplied, tracked column changes (name / displayName /
+   * isInternal) on an EXISTING row emit `participant:updated` on the given
+   * inbox's lens channels — same diff-then-publish contract as ingest's
+   * `findOrCreateParticipantRecord`. Callers with no inbox context omit it and
+   * stay silent; publish failures never propagate.
+   *
    * @param input - The participant identifier, type, and optional name.
+   * @param publish - Optional realtime routing context (triggering inbox).
    * @returns The found or created Participant record.
    * @throws Error if input is invalid or database operation fails.
    */
-  async findOrCreateParticipant(input: FindOrCreateParticipantInput): Promise<ParticipantEntity> {
+  async findOrCreateParticipant(
+    input: FindOrCreateParticipantInput,
+    publish?: ParticipantPublishContext
+  ): Promise<ParticipantEntity> {
     let { identifier, identifierType, name } = input
     if (!identifier || !identifierType) {
       throw new Error('Identifier and identifierType are required.')
@@ -134,6 +123,32 @@ export class ParticipantService {
     try {
       const { displayName, initials } = this._calculateDisplayInfo(name, identifier, identifierType)
       const isInternal = await this._classifyIsInternal(identifier, identifierType)
+
+      // Capture pre-upsert state so tracked column changes can emit
+      // `participant:updated` (ingest precedent: a cheap point-lookup on the
+      // unique index). Skipped entirely for silent callers.
+      let previous:
+        | { name: string | null; displayName: string | null; isInternal: boolean | null }
+        | undefined
+      if (publish) {
+        const rows = await this.db
+          .select({
+            name: schema.Participant.name,
+            displayName: schema.Participant.displayName,
+            isInternal: schema.Participant.isInternal,
+          })
+          .from(schema.Participant)
+          .where(
+            and(
+              eq(schema.Participant.organizationId, this.organizationId),
+              eq(schema.Participant.identifier, identifier),
+              eq(schema.Participant.identifierType, identifierType)
+            )
+          )
+          .limit(1)
+        previous = rows[0]
+      }
+
       const updateValues: Record<string, unknown> = {
         ...(name !== undefined && { name: name }),
         ...(displayName !== undefined && { displayName: displayName }),
@@ -166,6 +181,27 @@ export class ParticipantService {
         })
         .returning()
 
+      // Emit only when this was an UPDATE (previous row existed) AND a tracked
+      // column actually changed — new rows don't get an event, matching ingest
+      // (the FE looks them up on demand). Fire-and-forget: the helper swallows
+      // publish failures so a realtime hiccup can never fail a send.
+      if (publish && previous && participant) {
+        const patch = diffParticipantNamePatch(previous, {
+          name: participant.name,
+          displayName: participant.displayName,
+          isInternal: participant.isInternal,
+        })
+        if (Object.keys(patch).length > 0) {
+          await publishParticipantPatch({
+            organizationId: this.organizationId,
+            participantId: participant.id,
+            patch,
+            inboxId: publish.inboxId,
+            excludeSocketId: publish.excludeSocketId,
+          })
+        }
+      }
+
       if (!participant!.entityInstanceId) {
         logger.debug(`Participant ${participant!.id} created/found without entity instance link.`)
       }
@@ -195,7 +231,10 @@ export class ParticipantService {
    * @returns The found or created Participant record for the user.
    * @throws Error if the user is not found, doesn't belong to the organization, or lacks an email.
    */
-  async findOrCreateParticipantForUser(userId: string): Promise<ParticipantEntity> {
+  async findOrCreateParticipantForUser(
+    userId: string,
+    publish?: ParticipantPublishContext
+  ): Promise<ParticipantEntity> {
     logger.debug('Finding or creating participant for user', {
       userId,
       organizationId: this.organizationId,
@@ -227,11 +266,14 @@ export class ParticipantService {
       throw new Error(`User ${userId} lacks required email address.`)
     }
     try {
-      const participant = await this.findOrCreateParticipant({
-        identifier: user.email,
-        identifierType: 'EMAIL' as IdentifierType,
-        name: user.name,
-      })
+      const participant = await this.findOrCreateParticipant(
+        {
+          identifier: user.email,
+          identifierType: 'EMAIL' as IdentifierType,
+          name: user.name,
+        },
+        publish
+      )
       logger.info('Successfully found/created participant for user', {
         userId,
         participantId: participant.id,
@@ -278,7 +320,8 @@ export class ParticipantService {
    * @returns The channel-identity Participant, or null to fall back.
    */
   async findOrCreateParticipantForIntegration(
-    integrationId: string
+    integrationId: string,
+    publish?: ParticipantPublishContext
   ): Promise<ParticipantEntity | null> {
     const [integration] = await this.db
       .select({
@@ -319,11 +362,14 @@ export class ParticipantService {
     })
     if (!identifier) return null
 
-    return this.findOrCreateParticipant({
-      identifier,
-      identifierType: identifierType as IdentifierType,
-      name: integration.name,
-    })
+    return this.findOrCreateParticipant(
+      {
+        identifier,
+        identifierType: identifierType as IdentifierType,
+        name: integration.name,
+      },
+      publish
+    )
   }
 
   /**

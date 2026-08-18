@@ -11,6 +11,7 @@ import {
 import { findOrCreateVisitorParticipant } from '@auxx/lib/chat-widget/visitor'
 import { type GeoLocation, lookupIp } from '@auxx/lib/geo'
 import { findOrCreateContactFromJwt } from '@auxx/lib/ingest'
+import { diffParticipantNamePatch, publishParticipantPatch } from '@auxx/lib/participants'
 import { RedisRateLimiter } from '@auxx/lib/utils/rate-limiter'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
@@ -373,6 +374,30 @@ passportRoute.post('/', async (c) => {
             .update(schema.Participant)
             .set(participantUpdates)
             .where(eq(schema.Participant.id, participant.id))
+
+          // Emit `participant:updated` when the verified identity actually
+          // changed the label — open mail lists/bubbles flip without remount.
+          // Routed via the chat channel's inbox; fire-and-forget (the helper
+          // never throws), so a realtime hiccup can't block the mint.
+          if (displayName) {
+            const patch = diffParticipantNamePatch(
+              { name: participant.name, displayName: participant.displayName },
+              { name: displayName, displayName }
+            )
+            if (Object.keys(patch).length > 0) {
+              const [inboxLink] = await database
+                .select({ inboxId: schema.InboxIntegration.inboxId })
+                .from(schema.InboxIntegration)
+                .where(eq(schema.InboxIntegration.integrationId, channelId))
+                .limit(1)
+              await publishParticipantPatch({
+                organizationId: widget.organizationId,
+                participantId: participant.id,
+                patch,
+                inboxId: inboxLink?.inboxId ?? null,
+              })
+            }
+          }
         }
 
         // Shopify storefront identity (plans/chat/v6 phase-5 §2): write the

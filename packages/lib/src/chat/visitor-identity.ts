@@ -5,6 +5,10 @@ import type { ParticipantEntity } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'
 import { BadRequestError } from '../errors'
 import type { GeoLocation } from '../geo'
+import {
+  diffParticipantNamePatch,
+  publishParticipantPatch,
+} from '../participants/publish-participant-changes'
 import { Result, type TypedResult } from '../result'
 import type { ServiceContext } from './types'
 import { generateVisitorName } from './visitor-naming'
@@ -67,11 +71,15 @@ export async function findOrCreateVisitorParticipant(
  * identity (name/email). Overwrites the synthetic `Chat user #xxxx` label
  * baked in at create time so message headers and threads start showing the
  * real name. No-op if neither field is provided.
+ *
+ * When a tracked label column actually changes, emits `participant:updated` on
+ * `opts.inboxId`'s lens channels (fire-and-forget — a realtime failure never
+ * fails the identity claim) so open mail lists/bubbles flip without remount.
  */
 export async function updateVisitorClaimedIdentity(
   ctx: ServiceContext,
   visitorParticipantId: string,
-  opts: { name?: string; email?: string }
+  opts: { name?: string; email?: string; inboxId?: string | null }
 ): Promise<TypedResult<undefined, Error>> {
   const trimmedName = opts.name?.trim()
   const trimmedEmail = opts.email?.trim()
@@ -87,6 +95,18 @@ export async function updateVisitorClaimedIdentity(
       updates.displayName = trimmedEmail
     }
 
+    // Pre-read the tracked columns so the publish below fires only on a real
+    // change (ingest's diff-then-publish contract). Also tells us whether the
+    // scoped UPDATE can match at all — no row, no event.
+    const previous = await ctx.db.query.Participant.findFirst({
+      where: and(
+        eq(schema.Participant.id, visitorParticipantId),
+        eq(schema.Participant.organizationId, ctx.organizationId),
+        eq(schema.Participant.identifierType, 'CHAT_VISITOR')
+      ),
+      columns: { name: true, displayName: true },
+    })
+
     await ctx.db
       .update(schema.Participant)
       .set(updates)
@@ -97,6 +117,21 @@ export async function updateVisitorClaimedIdentity(
           eq(schema.Participant.identifierType, 'CHAT_VISITOR')
         )
       )
+
+    if (previous) {
+      const patch = diffParticipantNamePatch(previous, {
+        name: trimmedName ?? previous.name,
+        displayName: (updates.displayName as string | undefined) ?? previous.displayName,
+      })
+      if (Object.keys(patch).length > 0) {
+        await publishParticipantPatch({
+          organizationId: ctx.organizationId,
+          participantId: visitorParticipantId,
+          patch,
+          inboxId: opts.inboxId ?? null,
+        })
+      }
+    }
     return Result.nil()
   } catch (error) {
     return Result.error(error instanceof Error ? error : new Error(String(error)))
