@@ -14,6 +14,8 @@ export {
   stripePreset,
 } from './presets'
 export { resolveWebhookSecret } from './secret/resolve'
+export type { SignedRequest } from './signed-request'
+export { parseSignedRequest } from './signed-request'
 export type {
   HmacAlgo,
   HmacEncoding,

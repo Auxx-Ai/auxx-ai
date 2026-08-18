@@ -223,6 +223,12 @@ export class FacebookOAuthService {
         .set({
           enabled: false,
           metadata: null,
+          // Cleared per the column's own convention ("cleared by removeWebhook/revoke").
+          // Revoke only disables the row — it does NOT set `deletedAt` — so without this
+          // the channel stays inside the unique partial index on
+          // `(provider, webhookRouteKey)` and holds the Facebook Page hostage against a
+          // reconnect from another organization.
+          webhookRouteKey: null,
           updatedAt: new Date(),
         })
         .where(eq(schema.Integration.id, integrationId))

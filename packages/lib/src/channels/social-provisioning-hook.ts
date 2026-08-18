@@ -21,6 +21,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
 import type { PostConnectHook, PostConnectHookContext } from '../connections/post-connect-hooks'
 import { resolveConnectionForRuntime } from '../connections/resolve-connection-for-runtime'
+import { ConflictError } from '../errors'
 import { publisher } from '../events'
 import { InboxService } from '../inboxes/inbox-service'
 import { setChannelTokens } from '../providers/channel-token-accessor'
@@ -80,7 +81,13 @@ interface SocialIdentity {
   pageName: string
   longLivedPageToken: string
   longLivedUserToken: string
-  facebookUserId?: string
+  /**
+   * The connecting user's app-scoped id (ASID). Required, not optional: it is the ONLY
+   * join key Meta's data-deletion / deauthorize callback gives us, so a channel stored
+   * without it can never be matched to a deletion request. `discoverIdentity` refuses to
+   * return an identity without one — see `fetchFacebookUserId`.
+   */
+  facebookUserId: string
   /** Every page this grant can reach — cached for a future picker (see CachedSocialPage). */
   availablePages: CachedSocialPage[]
   instagramAccountId?: string
@@ -151,16 +158,33 @@ async function exchangeForLongLived(shortToken: string): Promise<string> {
   }
 }
 
-async function fetchFacebookUserId(token: string): Promise<string | undefined> {
+/**
+ * The connecting user's app-scoped id (ASID) — `GET /me?fields=id`.
+ *
+ * Throws rather than returning undefined. Meta's data-deletion and deauthorize callbacks
+ * POST a `signed_request` whose payload carries `user_id` and nothing else — no page id,
+ * no email, no org — so `Integration.metadata.userId` is the only thing that can resolve
+ * a callback to a channel. Swallowing a transient Graph failure here used to provision a
+ * channel with no `userId`, permanently invisible to that callback: we would hand Meta a
+ * confirmation code while the user's tokens sat untouched in `Credential`. A retryable
+ * connect error is the far better failure, so this is fatal to the connect.
+ */
+async function fetchFacebookUserId(token: string): Promise<string> {
+  let data: { id?: string; error?: { message?: string } } = {}
   try {
     const res = await fetch(
       `https://graph.facebook.com/${apiVersion()}/me?fields=id&access_token=${token}`
     )
-    const data = await res.json()
-    return data?.id
-  } catch {
-    return undefined
+    data = await res.json()
+  } catch (error) {
+    data = { error: { message: error instanceof Error ? error.message : String(error) } }
   }
+  if (!data?.id) {
+    throw new Error(
+      `Could not retrieve your Facebook account: ${data?.error?.message ?? 'ensure permissions were granted'}. Please try connecting again.`
+    )
+  }
+  return data.id
 }
 
 /** Pages the user manages, each with its own page access token. */
@@ -222,6 +246,10 @@ async function fetchInstagramAccount(
  * Discover the Page (and, for Instagram, its linked IG Business Account) and mint the
  * long-lived page token. v1 auto-selects the first matching Page (Facebook: the first page;
  * Instagram: the first page that has a linked IG account) — multi-page selection is deferred.
+ *
+ * Throws — and so aborts the connect — if the Facebook user id cannot be resolved, before any
+ * Integration row is written. Every identity this returns therefore carries a `facebookUserId`,
+ * which is what makes the resulting channel reachable by Meta's data-deletion callback.
  */
 async function discoverIdentity(
   provider: SocialProvider,
@@ -324,6 +352,44 @@ async function subscribePageToApp(
 }
 
 /**
+ * Postgres unique_violation (SQLSTATE 23505) raised by
+ * `Integration_provider_webhookRouteKey_key` — the unique partial index on
+ * `(provider, webhookRouteKey)` among live rows.
+ *
+ * Drizzle wraps the raw `pg` error (which carries `.code` / `.constraint`) in a
+ * `DrizzleQueryError` and hangs the original off `.cause`, so both spots are checked.
+ * The constraint name is checked too: `Integration` carries other unique indexes
+ * (`(organizationId, provider, email)`), and only this one means "someone else owns
+ * this Page".
+ */
+function isRouteKeyConflict(error: unknown): boolean {
+  const chain = [error, (error as { cause?: unknown })?.cause]
+  return chain.some((node) => {
+    const e = node as { code?: string; constraint?: string } | undefined
+    return e?.code === '23505' && e?.constraint === 'Integration_provider_webhookRouteKey_key'
+  })
+}
+
+/**
+ * The connect-time failure a duplicate Page produces, phrased for the person who just
+ * clicked Connect and will see this string in the OAuth popup.
+ *
+ * Before `webhookRouteKey` was adopted the second org connected happily and then split
+ * that Page's inbound DMs between two tenants at random — the unique index turns that
+ * silent mis-delivery into this error, which is the whole point of WS17.
+ */
+function duplicateRouteKeyError(provider: SocialProvider, displayName: string): ConflictError {
+  const subject =
+    provider === 'instagram'
+      ? `The Instagram account “${displayName}”`
+      : `The Facebook Page “${displayName}”`
+  return new ConflictError(
+    `${subject} is already connected to another Auxx organization. A Page can only deliver ` +
+      'its messages to one organization — disconnect it there first, then connect it here.'
+  )
+}
+
+/**
  * Create the Integration row, or relink the credential onto the existing one (reauth / reconnect).
  * Social channels are matched by the Page id (Facebook) or Instagram Business Account id
  * (Instagram) carried in metadata, not by the email column (which stays null).
@@ -379,41 +445,61 @@ async function upsertSocialIntegration(args: {
     // closed, or dropping the channel's record-creation settings. Same rule
     // `quo-channel.ts` documents at its own upsert.
     const metadataJson = JSON.stringify(metadata)
-    await db
-      .update(schema.Integration)
-      .set({
-        credentialId,
-        enabled: true,
-        name: displayName,
-        metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb) || ${metadataJson}::jsonb`,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.Integration.id, existing.id))
+    try {
+      await db
+        .update(schema.Integration)
+        .set({
+          credentialId,
+          enabled: true,
+          name: displayName,
+          // The inbound routing index. Same value as the metadata id above — this is an
+          // index, not a migration of truth; the jsonb keys stay and are read for plenty
+          // besides routing. Written on relink too, because a revoke nulls the column
+          // while leaving the row alive, so a reconnect has to re-claim it.
+          webhookRouteKey: matchId,
+          metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb) || ${metadataJson}::jsonb`,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.Integration.id, existing.id))
+    } catch (error) {
+      if (isRouteKeyConflict(error)) throw duplicateRouteKeyError(provider, displayName)
+      throw error
+    }
     return { id: existing.id, isNew: false, displayName }
   }
 
-  const [created] = await db
-    .insert(schema.Integration)
-    .values({
-      organizationId,
-      provider,
-      credentialId,
-      enabled: true,
-      // Persisted, not just emitted on the `integration:connected` event — this is
-      // what every channel surface reads to label the row. Without it FB/IG render
-      // as a bare "Facebook Integration" with no page name anywhere.
-      name: displayName,
-      // Received-time trigger cutoff, stamped at the connect epoch and ONLY on a
-      // first connect (a reconnect must not reopen a window that already closed).
-      // Consumed by both providers' `initialize()` via `setBackfillCutoff`, so a
-      // history backfill stores messages without firing `message:received` for
-      // them. Lifted by `initialBackfillCompletedAt` when the capped backfill
-      // (WS7) finishes; until that exists the window stays open, which is the
-      // safe direction — live inbound still fires, only history stays silent.
-      metadata: { ...metadata, backfillCutoffAt: new Date().toISOString() } as any,
-      updatedAt: new Date(),
-    })
-    .returning({ id: schema.Integration.id })
+  let created: { id: string } | undefined
+  try {
+    ;[created] = await db
+      .insert(schema.Integration)
+      .values({
+        organizationId,
+        provider,
+        credentialId,
+        enabled: true,
+        // Persisted, not just emitted on the `integration:connected` event — this is
+        // what every channel surface reads to label the row. Without it FB/IG render
+        // as a bare "Facebook Integration" with no page name anywhere.
+        name: displayName,
+        // The inbound routing index — what both webhook routes resolve a delivery on.
+        // Its unique partial index across live rows is what makes "the same Page in two
+        // organizations" unrepresentable instead of a silent 50/50 message split.
+        webhookRouteKey: matchId,
+        // Received-time trigger cutoff, stamped at the connect epoch and ONLY on a
+        // first connect (a reconnect must not reopen a window that already closed).
+        // Consumed by both providers' `initialize()` via `setBackfillCutoff`, so a
+        // history backfill stores messages without firing `message:received` for
+        // them. Lifted by `initialBackfillCompletedAt` when the capped backfill
+        // (WS7) finishes; until that exists the window stays open, which is the
+        // safe direction — live inbound still fires, only history stays silent.
+        metadata: { ...metadata, backfillCutoffAt: new Date().toISOString() } as any,
+        updatedAt: new Date(),
+      })
+      .returning({ id: schema.Integration.id })
+  } catch (error) {
+    if (isRouteKeyConflict(error)) throw duplicateRouteKeyError(provider, displayName)
+    throw error
+  }
   return { id: created!.id, isNew: true, displayName }
 }
 

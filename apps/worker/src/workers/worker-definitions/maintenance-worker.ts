@@ -14,6 +14,7 @@ import {
   appStorageSweepJob,
   cleanupExpiredMediaAssetsJob,
   type DemoSeedJobData,
+  dataDeletionJob,
   dataMigrationsJob,
   demoCleanupJob,
   dispatchDigestJob,
@@ -216,6 +217,14 @@ export const jobMappings = {
 
   // Data migrations runner (enqueued at boot + from the superadmin panel)
   dataMigrationsJob,
+
+  // Provider data-deletion / deauthorize teardown (plans/channels/
+  // meta-data-deletion-callback.md §4.4). ON-DEMAND, one job per inbound
+  // callback — deliberately NOT scheduled. Revokes + soft-deletes for
+  // `data_deletion`, disables only for `deauthorize`, and parks the three
+  // Shopify compliance kinds in `processing`. Safe to retry: an already
+  // `completed` request is a no-op inside `executeDeletionRequest`.
+  dataDeletionJob,
 
   // Platform connection-provider reseed (superadmin panel only). Re-bakes the
   // ConnectionDefinition rows from the deployed catalog + this process's config,

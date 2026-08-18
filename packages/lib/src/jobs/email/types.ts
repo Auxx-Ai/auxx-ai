@@ -33,6 +33,7 @@ export const emailTypeSchema = z.enum([
   'visit-reassigned',
   'visit-daily-digest',
   'payment-receipt',
+  'meta-channel-disconnected',
 ])
 
 export type EmailType = z.infer<typeof emailTypeSchema>
@@ -232,6 +233,17 @@ export type EmailPayloadByType = {
    * business (From display name + Reply-To + logo/footer), while the From address stays the
    * Auxx-verified SES domain. All amounts are integer cents.
    */
+  /**
+   * A Facebook/Instagram channel was taken offline by a Meta deauthorize or data-deletion
+   * callback. `app-removed` pauses the channel, `data-deletion` disconnects it.
+   */
+  'meta-channel-disconnected': WithRecipient<{
+    organizationName: string
+    channelName: string
+    platform: 'facebook' | 'instagram'
+    reason: 'app-removed' | 'data-deletion'
+    channelsUrl?: string
+  }>
   'payment-receipt': WithRecipient<
     EmailBrandIdentity & {
       context: 'deposit' | 'invoice'

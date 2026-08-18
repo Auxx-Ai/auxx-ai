@@ -33,6 +33,10 @@ const KNOWN_ROUTE_PREFIXES = new Set([
   'two-factor',
   // (public) routes
   'accept-invitation',
+  // Meta's data-deletion status page. Unauthenticated by contract — without
+  // this entry the segment reads as an org handle and 302s to /login, which
+  // fails Meta's dashboard validator.
+  'data-deletion',
   'pay',
   'quote',
   'sequences',

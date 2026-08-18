@@ -16,7 +16,7 @@ import type {
 import { convertMetaWebhookEventToMessageData } from '@auxx/lib/providers/social/webhook-message'
 import { metaPreset, verifyWebhook } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { after, type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('instagram-webhook')
@@ -121,6 +121,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           continue
         }
 
+        // Resolved on `webhookRouteKey`, the column built for exactly this: its unique
+        // partial index on `(provider, webhookRouteKey)` among live rows means one
+        // Instagram Business Account can only ever belong to one channel, so this
+        // `.limit(1)` is a real answer rather than whichever row Postgres returned first.
         // `isNull(deletedAt)`: disconnect is a soft delete, so without this a
         // disconnected channel keeps ingesting while `enabled` stayed true.
         const [integration] = await db
@@ -135,7 +139,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               eq(schema.Integration.provider, 'instagram'),
               eq(schema.Integration.enabled, true),
               isNull(schema.Integration.deletedAt),
-              sql`${schema.Integration.metadata} ->> 'instagramBusinessAccountId' = ${recipientIgbid}`
+              eq(schema.Integration.webhookRouteKey, recipientIgbid)
             )
           )
           .limit(1)
