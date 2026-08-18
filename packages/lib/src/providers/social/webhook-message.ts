@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type { MessageData } from '../../ingest/types'
+import { webhookAttachmentRefs } from './attachments'
 import { socialThreadKey } from './thread-key'
 import type {
   MetaWebhookMessagingEvent,
@@ -106,8 +107,16 @@ export function convertMetaWebhookEventToMessageData(
     }
 
     const text = message?.text
+    const attachmentRefs = webhookAttachmentRefs(message)
+    // The snippet still falls back to the raw first attachment, which may be a
+    // kind we deliberately do not download (a share, a location). "shared a link"
+    // is a better snippet than an empty one.
     const firstAttachmentName =
-      message?.attachments?.[0]?.payload?.title || message?.attachments?.[0]?.type || ''
+      attachmentRefs[0]?.name ||
+      attachmentRefs[0]?.type ||
+      message?.attachments?.[0]?.payload?.title ||
+      message?.attachments?.[0]?.type ||
+      ''
 
     return {
       externalId,
@@ -123,10 +132,12 @@ export function convertMetaWebhookEventToMessageData(
       cc: [],
       bcc: [],
       replyTo: [],
-      // Neither channel has an inbound attachment ingestor, so no MessageAttachment
-      // rows are ever created. `hasAttachments` is a workflow trigger filter, so
-      // claiming true fires attachment rules for bytes that were never fetched.
-      hasAttachments: false,
+      // True as soon as the payload declares a downloadable attachment, not once
+      // the bytes land. It describes the MESSAGE — the customer did send a photo —
+      // and the workflow trigger filter reads it at store time, which is before the
+      // route's `after()` ingest could possibly have finished. `Attachment` rows
+      // follow from `ingestSocialAttachments`.
+      hasAttachments: attachmentRefs.length > 0,
       textPlain: text ?? undefined,
       textHtml: undefined,
       snippet: text ? text.substring(0, SNIPPET_LENGTH) : firstAttachmentName,

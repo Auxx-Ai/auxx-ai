@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => {
     updateWhere,
     listConversations: vi.fn(),
     listConversationMessages: vi.fn(),
+    ingestSocialAttachments: vi.fn().mockResolvedValue(0),
+    selectWhere: vi.fn().mockResolvedValue([]),
   }
 })
 
@@ -34,8 +36,13 @@ vi.mock('@auxx/database', async () => {
   const { createChainableDatabaseMock, createSchemaMock } = await import(
     '../../../test/database-mock'
   )
+  const select = () => ({ from: () => ({ where: mocks.selectWhere }) })
   const database = new Proxy(createChainableDatabaseMock(), {
-    get: (target: any, prop: string) => (prop === 'update' ? mocks.update : target[prop]),
+    get: (target: any, prop: string) => {
+      if (prop === 'update') return mocks.update
+      if (prop === 'select') return select
+      return target[prop]
+    },
   })
   return {
     database,
@@ -56,6 +63,13 @@ vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api')>()),
   listConversations: mocks.listConversations,
   listConversationMessages: mocks.listConversationMessages,
+}))
+
+// Partial mock again — the converter imports the ref extractors from this module, so
+// replacing it wholesale would take `hasAttachments` down with the spy.
+vi.mock('../attachments', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../attachments')>()),
+  ingestSocialAttachments: mocks.ingestSocialAttachments,
 }))
 
 const { resolveSocialBackfillCutoff, syncSocialMessages } = await import('../sync')
@@ -135,6 +149,8 @@ function metadataWrites(): any[] {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.listConversationMessages.mockResolvedValue({ data: [] })
+  mocks.selectWhere.mockResolvedValue([])
+  mocks.ingestSocialAttachments.mockResolvedValue(0)
 })
 
 describe('resolveSocialBackfillCutoff — fail closed', () => {
@@ -489,5 +505,54 @@ describe('syncSocialMessages — incremental', () => {
     const [stored, , isInitialSync] = store.batchStoreMessages.mock.calls[0]!
     expect(stored.map((m: any) => m.externalId)).toEqual(['m_fresh', 'm_edge'])
     expect(isInitialSync).toBe(false)
+  })
+})
+
+describe('attachment ingest', () => {
+  it("recovers the stored message ids and ingests each node's attachments", async () => {
+    // `batchStoreMessages` answers with a count, and `Attachment` rows hang off a
+    // `Message.id` — so the ids come back out of the `(integrationId, externalId)`
+    // index. Getting that lookup wrong stores every photo against nothing, silently.
+    mocks.listConversations.mockResolvedValue({
+      data: [conversation('t_1', '2026-08-18T10:00:00+0000')],
+      paging: { next: null },
+    })
+    mocks.listConversationMessages.mockResolvedValue({
+      data: [
+        {
+          ...messageNode('m_photo', 'psid_t_1'),
+          message: undefined,
+          attachments: { data: [{ image_data: { url: 'https://cdn/photo.jpg' } }] },
+        },
+        messageNode('m_text', 'psid_t_1'),
+      ],
+    })
+    mocks.selectWhere.mockResolvedValue([{ id: 'msg_row_1', externalId: 'm_photo' }])
+
+    await syncSocialMessages({ target: target(), metadata: {}, storage: storage() })
+
+    expect(mocks.ingestSocialAttachments).toHaveBeenCalledTimes(1)
+    expect(mocks.ingestSocialAttachments).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'msg_row_1',
+        contentScopeId: 'm_photo',
+        organizationId: 'org_1',
+        platform: 'facebook',
+        refs: [expect.objectContaining({ url: 'https://cdn/photo.jpg', type: 'image' })],
+      })
+    )
+  })
+
+  it('does not query for ids when no node in the conversation has an attachment', async () => {
+    mocks.listConversations.mockResolvedValue({
+      data: [conversation('t_1', '2026-08-18T10:00:00+0000')],
+      paging: { next: null },
+    })
+    mocks.listConversationMessages.mockResolvedValue({ data: [messageNode('m_text', 'psid_t_1')] })
+
+    await syncSocialMessages({ target: target(), metadata: {}, storage: storage() })
+
+    expect(mocks.selectWhere).not.toHaveBeenCalled()
+    expect(mocks.ingestSocialAttachments).not.toHaveBeenCalled()
   })
 })

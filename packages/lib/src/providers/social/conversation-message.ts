@@ -3,6 +3,11 @@
 import { createScopedLogger } from '@auxx/logger'
 import type { MessageData } from '../../ingest/types'
 import type { GraphConversation, GraphConversationMessage } from './api'
+import {
+  conversationAttachmentRefs,
+  type SocialAttachmentRef,
+  webhookAttachmentRefs,
+} from './attachments'
 import { socialThreadKey } from './thread-key'
 import type { SocialPlatform } from './types'
 
@@ -72,6 +77,26 @@ function conversationMessageAttachments(
     return body.attachments
   }
   return []
+}
+
+/**
+ * Every attachment on a conversation-message node, from whichever of the two
+ * places Graph put them.
+ *
+ * The node's own `attachments` connection is the documented one and wins. The
+ * fallback exists because the `message` field's object shape — the one this
+ * module already tolerates rather than trusts — carries webhook-style
+ * `{type, payload:{url}}` entries, and dropping those would mean a payload we
+ * *did* understand still lost its photo. The two are alternatives, never merged:
+ * a node answering both would be describing the same files twice, and duplicate
+ * `attachmentOrder`s would store them twice.
+ */
+export function conversationMessageAttachmentRefs(
+  message: TolerantConversationMessage | undefined | null
+): SocialAttachmentRef[] {
+  const fromConnection = conversationAttachmentRefs(message)
+  if (fromConnection.length > 0) return fromConnection
+  return webhookAttachmentRefs({ attachments: conversationMessageAttachments(message?.message) })
 }
 
 /**
@@ -276,8 +301,16 @@ export function convertGraphConversationMessageToMessageData(
     }
 
     const text = conversationMessageText(message.message)
-    const attachments = conversationMessageAttachments(message.message)
-    const firstAttachmentName = attachments[0]?.payload?.title || attachments[0]?.type || ''
+    const attachmentRefs = conversationMessageAttachmentRefs(message)
+    // The snippet still falls back to the raw first descriptor, which may be a
+    // kind we deliberately do not download (a share, a location).
+    const rawAttachments = conversationMessageAttachments(message.message)
+    const firstAttachmentName =
+      attachmentRefs[0]?.name ||
+      attachmentRefs[0]?.type ||
+      rawAttachments[0]?.payload?.title ||
+      rawAttachments[0]?.type ||
+      ''
 
     return {
       externalId,
@@ -300,11 +333,12 @@ export function convertGraphConversationMessageToMessageData(
       cc: [],
       bcc: [],
       replyTo: [],
-      // Neither channel has an inbound attachment ingestor, so no MessageAttachment
-      // rows exist. `hasAttachments` is a workflow trigger filter, so claiming true
-      // fires attachment rules against bytes that were never fetched. The attachment
-      // list above only feeds the snippet fallback.
-      hasAttachments: false,
+      // True as soon as the payload declares a downloadable attachment, not once
+      // the bytes land. It describes the MESSAGE — the customer did send a photo —
+      // and the workflow trigger filter reads it at store time, which is before
+      // any ingestor could have finished. `Attachment` rows follow from
+      // `ingestSocialAttachments`, the same order Gmail's ingest uses.
+      hasAttachments: attachmentRefs.length > 0,
       textPlain: text,
       textHtml: undefined,
       snippet: text ? text.substring(0, SNIPPET_LENGTH) : firstAttachmentName,

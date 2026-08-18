@@ -450,6 +450,23 @@ export async function listConversations(args: {
   })
 }
 
+/**
+ * One entry on a message node's `attachments` connection.
+ *
+ * Graph splits the download URL by media kind instead of answering a single
+ * `url`, and every field here is optional because the connection is requested
+ * **bare** — see {@link listConversationMessages}.
+ */
+export interface GraphMessageAttachment {
+  id?: string
+  name?: string
+  mime_type?: string
+  size?: number
+  file_url?: string
+  image_data?: { url?: string; preview_url?: string }
+  video_data?: { url?: string; preview_url?: string }
+}
+
 export interface GraphConversationMessage {
   id?: string
   created_time?: string
@@ -461,9 +478,31 @@ export interface GraphConversationMessage {
    * both providers used to do) is an invalid expansion, not a richer payload.
    */
   message?: string
+  /** Absent on a text-only message, and on any node this request could not expand. */
+  attachments?: { data?: GraphMessageAttachment[] }
 }
 
-/** `GET /{conversationId}/messages` — one page of messages, newest-first. */
+/** Without `attachments` — the field set proven live by the first backfill. */
+const CONVERSATION_MESSAGE_FIELDS = 'id,created_time,from,to,message'
+
+/**
+ * With attachments. Requested **bare**, never as `attachments{...}`: subfield
+ * expansion is exactly what made the old `message{text,attachments,mid}` an
+ * invalid request rather than a richer one, and a bare connection cannot be
+ * mis-expanded.
+ */
+const CONVERSATION_MESSAGE_FIELDS_WITH_ATTACHMENTS = `${CONVERSATION_MESSAGE_FIELDS},attachments`
+
+/**
+ * `GET /{conversationId}/messages` — one page of messages, newest-first.
+ *
+ * Asks for `attachments` and **falls back to the field set without it** on a
+ * non-auth, non-throttle error. Instagram Direct and Messenger are two platforms
+ * on one edge and only Messenger's support for this connection is documented; if
+ * IG rejects the field, the fallback costs one extra request per conversation
+ * instead of turning every conversation into a logged skip — which is how a
+ * backfill silently stores nothing at all.
+ */
 export async function listConversationMessages(args: {
   conversationId: string
   pageAccessToken: string
@@ -471,11 +510,27 @@ export async function listConversationMessages(args: {
   limit?: number
 }): Promise<GraphListResponse<GraphConversationMessage>> {
   const { conversationId, pageAccessToken, nextUrl, limit } = args
-  return graphRequest<GraphListResponse<GraphConversationMessage>>(`${conversationId}/messages`, {
-    accessToken: pageAccessToken,
-    url: nextUrl,
-    query: { fields: 'id,created_time,from,to,message', limit },
-  })
+  try {
+    return await graphRequest<GraphListResponse<GraphConversationMessage>>(
+      `${conversationId}/messages`,
+      {
+        accessToken: pageAccessToken,
+        url: nextUrl,
+        query: { fields: CONVERSATION_MESSAGE_FIELDS_WITH_ATTACHMENTS, limit },
+      }
+    )
+  } catch (error) {
+    if (isReauthRequired(error) || isRateLimited(error)) throw error
+    logger.warn('Conversation messages request rejected with attachments; retrying without', {
+      conversationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return graphRequest<GraphListResponse<GraphConversationMessage>>(`${conversationId}/messages`, {
+      accessToken: pageAccessToken,
+      url: nextUrl,
+      query: { fields: CONVERSATION_MESSAGE_FIELDS, limit },
+    })
+  }
 }
 
 /** `GET /debug_token` — validity, scopes and expiry of a token. */

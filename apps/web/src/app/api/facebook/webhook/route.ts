@@ -3,6 +3,10 @@
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { MessageStorageService } from '@auxx/lib/email'
+import {
+  ingestStoredMessageAttachments,
+  webhookAttachmentRefs,
+} from '@auxx/lib/providers/social/attachments'
 import { resolveSocialCounterpartName } from '@auxx/lib/providers/social/profile'
 import type {
   MetaWebhookEnvelope,
@@ -169,12 +173,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
 
         try {
-          await storageService.storeMessage(messageData)
+          const { messageId } = await storageService.storeMessage(messageData)
           logger.info('Successfully stored Facebook message', {
             mid: event.message.mid,
             integrationId: integration.id,
             externalThreadId: messageData.externalThreadId,
           })
+
+          // Attachment bytes live on a signed CDN link that has to be fetched.
+          // Same rule as the name lookup below: never before the 200. The
+          // message is already stored and already says `hasAttachments`, so a
+          // failed download costs the file, not the message.
+          const attachmentRefs = webhookAttachmentRefs(event.message)
+          if (attachmentRefs.length > 0) {
+            after(() =>
+              ingestStoredMessageAttachments(db, {
+                refs: attachmentRefs,
+                organizationId: integration.organizationId,
+                messageId,
+                contentScopeId: messageData.externalId,
+                platform: 'facebook',
+              })
+            )
+          }
 
           // Meta's messaging webhook carries only `sender.id`, so the counterpart
           // participant was just created with the raw id as its label. Resolving a

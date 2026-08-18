@@ -2,7 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import type { MessageData } from '../../ingest/types'
 import {
   type GraphConversation,
@@ -11,7 +11,10 @@ import {
   listConversationMessages,
   listConversations,
 } from './api'
+import { ingestSocialAttachments, type SocialAttachmentRef } from './attachments'
 import {
+  conversationMessageAttachmentRefs,
+  conversationMessageExternalId,
   convertGraphConversationMessageToMessageData,
   pickConversationCounterpart,
   type TolerantConversationMessage,
@@ -479,7 +482,76 @@ async function ingestConversation(
   // `isInitialSync` on the backfill leg suppresses `message:received` for the whole
   // batch independently of the received-time cutoff — two guards, because publishing
   // five years of history into workflow triggers and agent runs is not recoverable.
-  return storage.batchStoreMessages(messages, undefined, options.isInitialBackfill)
+  const stored = await storage.batchStoreMessages(messages, undefined, options.isInitialBackfill)
+
+  await ingestConversationAttachments(target, nodes, messages)
+
+  return stored
+}
+
+/**
+ * Downloads the attachments of a conversation's just-stored messages.
+ *
+ * Runs after the batch rather than inside the converter because `Attachment` rows
+ * hang off a `Message.id`, and `batchStoreMessages` answers with a count — so the
+ * ids are recovered here with one indexed lookup on
+ * `(integrationId, externalId)`, the same key ingest deduped on.
+ *
+ * No realtime patch: a backfill publishes nothing per message by design
+ * (`isInitialSync`), and an incremental run's messages arrive by webhook first —
+ * whose own `after()` ingest already fetched these bytes and made this a no-op.
+ *
+ * Never throws. A backfill that has stored a conversation must advance its cursor
+ * even if every CDN link in it had expired.
+ */
+async function ingestConversationAttachments(
+  target: SocialSyncTarget,
+  nodes: TolerantConversationMessage[],
+  stored: MessageData[]
+): Promise<void> {
+  const refsByExternalId = new Map<string, SocialAttachmentRef[]>()
+  for (const node of nodes) {
+    const refs = conversationMessageAttachmentRefs(node)
+    if (refs.length === 0) continue
+    const externalId = conversationMessageExternalId(node)
+    if (externalId) refsByExternalId.set(externalId, refs)
+  }
+  if (refsByExternalId.size === 0) return
+
+  const externalIds = stored
+    .map((message) => message.externalId)
+    .filter((externalId) => refsByExternalId.has(externalId))
+  if (externalIds.length === 0) return
+
+  try {
+    const rows = await db
+      .select({ id: schema.Message.id, externalId: schema.Message.externalId })
+      .from(schema.Message)
+      .where(
+        and(
+          eq(schema.Message.integrationId, target.integrationId),
+          inArray(schema.Message.externalId, externalIds)
+        )
+      )
+
+    for (const row of rows) {
+      const refs = row.externalId ? refsByExternalId.get(row.externalId) : undefined
+      if (!refs || !row.externalId) continue
+      await ingestSocialAttachments({
+        refs,
+        organizationId: target.organizationId,
+        messageId: row.id,
+        contentScopeId: row.externalId,
+        platform: target.platform,
+      })
+    }
+  } catch (error) {
+    logger.error('Attachment ingest failed for a Meta conversation (ignored)', {
+      platform: target.platform,
+      integrationId: target.integrationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 /**
