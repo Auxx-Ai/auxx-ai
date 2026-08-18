@@ -2,6 +2,7 @@ import type { InvitationStatus, SYNC_STATUS, UserEntity as User } from '@auxx/da
 import type { RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import type { SignalKind } from '../signals/types'
+import type { ThreadEventSource } from '../thread-events/client'
 import type { TimelineFieldChangeSnapshotValue } from '../timeline/field-change-snapshot'
 export type Events =
   | 'user:created'
@@ -30,6 +31,9 @@ export type Events =
   | 'thread:returned_to_ai'
   | 'thread:assignee:changed'
   | 'thread:visitor:identified'
+  | 'thread:tagged'
+  | 'thread:untagged'
+  | 'thread:merged'
   | 'message:comment:created'
   | 'message:assignee:changed'
   | 'message:tag:added'
@@ -277,8 +281,12 @@ export type ThreadArchivedEvent = AuxxEventGeneric<
   {
     threadId: string
     organizationId: string
-    /** The user who archived the thread. */
-    userId: string
+    /** The user who archived the thread. Absent for automation/system actors. */
+    userId?: string
+    /** Branded acting principal ('user:…' / 'agent:…'); null/absent for automation. */
+    actorId?: string | null
+    /** Automation provenance when no addressable principal acted (§5.5). */
+    source?: ThreadEventSource
     /**
      * Chat visitor Participant id from `Thread.metadata` (`null` for email
      * threads). Emitters that have the thread row in hand set this so the
@@ -299,8 +307,12 @@ export type ThreadReopenedEvent = AuxxEventGeneric<
   {
     threadId: string
     organizationId: string
-    /** The user who reopened the thread. */
-    userId: string
+    /** The user who reopened the thread. Absent for automation/system actors. */
+    userId?: string
+    /** See ThreadArchivedEvent.actorId. */
+    actorId?: string | null
+    /** See ThreadArchivedEvent.source. */
+    source?: ThreadEventSource
     /** See ThreadArchivedEvent.visitorParticipantId. */
     visitorParticipantId?: string | null
   }
@@ -317,8 +329,12 @@ export type ThreadTakenOverEvent = AuxxEventGeneric<
   {
     threadId: string
     organizationId: string
-    /** The user who took the thread over (new assignee / driver). */
-    userId: string
+    /** The user who took the thread over (new assignee / driver). Absent for agent/system flips. */
+    userId?: string
+    /** See ThreadArchivedEvent.actorId. */
+    actorId?: string | null
+    /** See ThreadArchivedEvent.source. */
+    source?: ThreadEventSource
     /** Handoff state prior to the take-over (always `'ai'` today, but typed for future flows). */
     previousState: 'ai' | 'human'
     /** See ThreadArchivedEvent.visitorParticipantId. */
@@ -343,6 +359,10 @@ export type ThreadAssigneeChangedEvent = AuxxEventGeneric<
     organizationId: string
     fromUserId: string | null
     toUserId: string | null
+    /** See ThreadArchivedEvent.actorId. */
+    actorId?: string | null
+    /** See ThreadArchivedEvent.source. */
+    source?: ThreadEventSource
     /** See ThreadArchivedEvent.visitorParticipantId. */
     visitorParticipantId?: string | null
   }
@@ -355,6 +375,50 @@ export type ThreadVisitorIdentifiedEvent = AuxxEventGeneric<
     visitorEmail: string
     /** Visitor Participant id (the chat visitor's stable Participant row). */
     participantId: string
+  }
+>
+export type ThreadTaggedEvent = AuxxEventGeneric<
+  'thread:tagged',
+  {
+    threadId: string
+    organizationId: string
+    /** Tag RecordIds ADDED by this operation (not the thread's full tag set). */
+    tagIds: string[]
+    /** Display names snapshot for the added tags, same order as `tagIds`. */
+    tagNames: string[]
+    /** See ThreadArchivedEvent.actorId. */
+    actorId?: string | null
+    /** See ThreadArchivedEvent.source. */
+    source?: ThreadEventSource
+  }
+>
+export type ThreadUntaggedEvent = AuxxEventGeneric<
+  'thread:untagged',
+  {
+    threadId: string
+    organizationId: string
+    /** Tag RecordIds REMOVED by this operation. */
+    tagIds: string[]
+    /** Display names snapshot for the removed tags, same order as `tagIds`. */
+    tagNames: string[]
+    /** See ThreadArchivedEvent.actorId. */
+    actorId?: string | null
+    /** See ThreadArchivedEvent.source. */
+    source?: ThreadEventSource
+  }
+>
+export type ThreadMergedEvent = AuxxEventGeneric<
+  'thread:merged',
+  {
+    /** The SURVIVING thread — the event renders on its timeline. */
+    threadId: string
+    organizationId: string
+    /** The source thread that was merged into `threadId`. */
+    sourceThreadId: string
+    /** See ThreadArchivedEvent.actorId. */
+    actorId?: string | null
+    /** See ThreadArchivedEvent.source. */
+    source?: ThreadEventSource
   }
 >
 export type ProjectCreatedEvent = AuxxEventGeneric<
@@ -1003,6 +1067,9 @@ export type AuxxEvent =
   | ThreadReturnedToAiEvent
   | ThreadAssigneeChangedEvent
   | ThreadVisitorIdentifiedEvent
+  | ThreadTaggedEvent
+  | ThreadUntaggedEvent
+  | ThreadMergedEvent
   | MessageSyncPendingEvent
   | MessageSyncProcessingEvent
   | MessageSyncCompleteEvent
@@ -1127,6 +1194,9 @@ export interface IEventsHandlers {
   'thread:returned_to_ai': EventHandlerEntry<ThreadReturnedToAiEvent>
   'thread:assignee:changed': EventHandlerEntry<ThreadAssigneeChangedEvent>
   'thread:visitor:identified': EventHandlerEntry<ThreadVisitorIdentifiedEvent>
+  'thread:tagged': EventHandlerEntry<ThreadTaggedEvent>
+  'thread:untagged': EventHandlerEntry<ThreadUntaggedEvent>
+  'thread:merged': EventHandlerEntry<ThreadMergedEvent>
   'message:processing:started': EventHandlerEntry<MessageProcessingStartedEvent>
   'message:processing:completed': EventHandlerEntry<MessageProcessingCompletedEvent>
   'message:processing:failed': EventHandlerEntry<MessageProcessingFailedEvent>

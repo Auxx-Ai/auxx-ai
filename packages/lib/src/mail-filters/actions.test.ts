@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
   update: vi.fn(),
   loadMessage: vi.fn(),
   byAppId: vi.fn(),
+  ctorArgs: [] as unknown[][],
 }))
 
 vi.mock('../jobs/queues', () => ({ getQueue: h.getQueue }))
@@ -30,6 +31,9 @@ vi.mock('../jobs/queues/types', () => ({
 }))
 vi.mock('../threads/thread-mutation.service', () => ({
   ThreadMutationService: class {
+    constructor(...args: unknown[]) {
+      h.ctorArgs.push(args)
+    }
     update(...args: unknown[]) {
       return h.update(...args)
     }
@@ -163,6 +167,33 @@ describe('assign is USERS ONLY — Thread.assigneeId FKs User.id', () => {
 
     expect(result).toMatchObject({ status: 'skipped' })
     expect(h.update).not.toHaveBeenCalled()
+  })
+})
+
+describe('the FILTER is the acting principal (thread-events §5.5)', () => {
+  it('constructs ThreadMutationService with a mail_filter actor carrying id, runId and name', async () => {
+    h.ctorArgs.length = 0
+    await executeMailFilterAction(
+      { type: 'set-status', status: 'ARCHIVED' },
+      { ...ctx('live'), runId: 'run_1' }
+    )
+
+    // Constructor: (organizationId, db, socketId, actor, viewer). The actor is
+    // what the lifecycle events map onto `data.source` — a regression here
+    // silently strips filter provenance off every emitted thread event.
+    expect(h.ctorArgs[0]?.[3]).toEqual({
+      kind: 'mail_filter',
+      id: 'flt_1',
+      runId: 'run_1',
+      name: 'Newsletters',
+    })
+  })
+
+  it('omits runId when the context has none (undo-less legacy callers)', async () => {
+    h.ctorArgs.length = 0
+    await executeMailFilterAction({ type: 'set-status', status: 'ARCHIVED' }, ctx('live'))
+
+    expect(h.ctorArgs[0]?.[3]).toEqual({ kind: 'mail_filter', id: 'flt_1', name: 'Newsletters' })
   })
 })
 

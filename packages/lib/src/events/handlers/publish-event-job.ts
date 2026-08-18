@@ -116,6 +116,12 @@ export const EventHandlers: IEventsHandlers = {
   'thread:returned_to_ai': [publishThreadEventToRealtime],
   'thread:assignee:changed': [publishThreadEventToRealtime],
   'thread:visitor:identified': [publishThreadEventToRealtime],
+  // Admin-surface-only thread events (thread-events §13.2) — the handler's
+  // visitor fan-out is gated on the FROZEN visitor set, so these never reach
+  // the public visitor channel.
+  'thread:tagged': [publishThreadEventToRealtime],
+  'thread:untagged': [publishThreadEventToRealtime],
+  'thread:merged': [publishThreadEventToRealtime],
 
   'messages:sync:pending': [],
   'messages:sync:processing': [],

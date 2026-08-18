@@ -85,6 +85,11 @@ export interface MailFilterActionContext {
    * agent or a workflow. Everything else behaves identically on both paths.
    */
   source: MailFilterRunSource
+  /**
+   * The claimed `MailFilterRun.id` for this firing — carried onto the thread
+   * events' `data.source.runId` so a rendered line can deep-link the run.
+   */
+  runId?: string
 }
 
 /**
@@ -103,14 +108,20 @@ async function threadService(ctx: MailFilterActionContext) {
     import('../threads/thread-mutation.service'),
     import('../permissions/visibility/context'),
   ])
-  // No socketId (nothing to self-echo-suppress) and no actorUserId (there is no
-  // human actor) — the filter is the actor, and the MailFilterRun row is the
-  // audit trail.
+  // No socketId (nothing to self-echo-suppress) and no human actor — the
+  // FILTER is the actor (thread-events §5.5): lifecycle events carry
+  // `data.source: { kind: 'mail_filter', … }` with a null actorId, and the
+  // MailFilterRun row remains the audit trail.
   return new ThreadMutationService(
     ctx.organizationId,
     ctx.db,
     undefined,
-    undefined,
+    {
+      kind: 'mail_filter',
+      id: ctx.filter.id,
+      ...(ctx.runId ? { runId: ctx.runId } : {}),
+      name: ctx.filter.name,
+    },
     SYSTEM_VISIBILITY
   )
 }

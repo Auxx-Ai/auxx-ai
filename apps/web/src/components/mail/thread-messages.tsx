@@ -24,6 +24,7 @@ import { api } from '~/trpc/react'
 import CallDisplay from './call-display'
 import { ChatMessageGroup } from './chat-message-group'
 import { SystemLine } from './chat-panel/system-line'
+import { SystemLineRun } from './chat-panel/system-line-run'
 import { useChatThreadEvents } from './chat-panel/use-thread-events'
 import { buildChatTimeline } from './chat-timeline'
 import EmailDisplay from './email-display'
@@ -166,13 +167,13 @@ export function ThreadMessages() {
     enabled: !!thread,
   })
 
-  // Chat thread lifecycle events (taken_over, returned_to_ai, archived,
-  // reopened, assignee:changed, visitor:identified). Only loaded for chat
-  // threads — email threads return an empty list and pay no realtime cost.
-  const isChatChannel = channel?.provider === 'chat'
+  // Thread lifecycle events (taken_over, returned_to_ai, archived, reopened,
+  // assignee:changed, visitor:identified, tagged, untagged, merged). They fire
+  // on every transport — email and SMS threads get the same inline timeline
+  // as chat (plans/threads/thread-events.md §8, Phase 4).
   const { events: threadEvents } = useChatThreadEvents({
     threadId: thread?.id ?? null,
-    enabled: !!thread && isChatChannel,
+    enabled: !!thread,
   })
 
   if (!thread) return null
@@ -274,6 +275,9 @@ export function ThreadMessages() {
           {buildChatTimeline(messages, threadEvents).map((item) => {
             if (item.kind === 'event') {
               return <SystemLine key={`evt:${item.event.id}`} event={item.event} />
+            }
+            if (item.kind === 'event-run') {
+              return <SystemLineRun key={`evtrun:${item.events[0]!.id}`} events={item.events} />
             }
             if (item.kind === 'chat-group') {
               const groupIsLast =

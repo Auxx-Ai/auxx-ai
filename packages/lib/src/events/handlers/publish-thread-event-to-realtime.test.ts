@@ -1,15 +1,18 @@
 // packages/lib/src/events/handlers/publish-thread-event-to-realtime.test.ts
-// Plan 45 §3.5 — the two unshaped sinks of the thread-lifecycle publish.
+// Plan 45 §3.5 — the two unshaped sinks of the thread-lifecycle publish — plus
+// the thread-events §13.3.2 visitor-set gate.
 //
 // The negative assertions are the valuable ones. `rooms.visitor(...)` is a PUBLIC
 // Pusher channel, so the visitor payload must carry no internal principal id and
-// no handoff state; `rooms.chatThread(...)` admits a `metadata`-lens member, and
-// its payload deliberately DOES carry `visitorEmail` — the tier decision from
-// §1.5, pinned here so changing it is a deliberate act rather than a refactor.
+// no handoff state, and non-visitor-facing types (`thread:tagged`, …) must never
+// be published there at all; `rooms.chatThread(...)` admits a `metadata`-lens
+// member, and its payload deliberately DOES carry `visitorEmail` — the tier
+// decision from §1.5, pinned here so changing it is a deliberate act rather than
+// a refactor.
 //
 // Schema is a Proxy (Drizzle-columns-undefined-under-vitest gotcha — see project
-// memory), which is fine: this handler's DB use is one insert whose return value
-// is all the assertions need.
+// memory), which is fine: this handler's DB use is one insert (via
+// `recordThreadEvent`) whose return value is all the assertions need.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -145,6 +148,26 @@ describe('§3.5 — the public visitor channel', () => {
     expect(payloadFor('visitor-')).toBeUndefined()
     expect(payloadFor('thread-')).toBeDefined()
   })
+
+  // thread-events §13.3.2: the visitor fan-out is gated on the FROZEN visitor
+  // set, not on membership in the handler's owned-type set. A non-visitor-facing
+  // type reaches the admin thread room but never the public visitor channel —
+  // even with a visitorParticipantId in hand, and even type + timestamp would be
+  // an activity leak.
+  it("keeps a non-visitor-facing type ('thread:tagged') off the visitor channel", async () => {
+    await publishThreadEventToRealtime(
+      job('thread:tagged', {
+        threadId: 'thr_1',
+        organizationId: 'org_1',
+        tagIds: ['tag_1'],
+        tagNames: ['VIP'],
+        visitorParticipantId: 'part_v',
+      })
+    )
+
+    expect(payloadFor('thread-')).toBeDefined()
+    expect(payloadFor('visitor-')).toBeUndefined()
+  })
 })
 
 describe('§3.5 — the metadata-lens member channel keeps the full payload', () => {
@@ -178,5 +201,81 @@ describe('§3.5 — the metadata-lens member channel keeps the full payload', ()
     )
 
     expect(payloadFor('thread-')).toMatchObject({ userId: 'usr_agent', previousState: 'ai' })
+  })
+
+  // Phase 2: `actorId` is resolved at write time as a branded ActorId string and
+  // rides on the member payload (the visitor allowlist drops it, pinned above by
+  // the exact-keys assertion).
+  it('carries the branded actorId — acting user for taken_over', async () => {
+    await publishThreadEventToRealtime(
+      job('thread:taken_over', {
+        threadId: 'thr_1',
+        organizationId: 'org_1',
+        userId: 'usr_agent',
+        previousState: 'ai',
+      })
+    )
+
+    expect(payloadFor('thread-')).toMatchObject({ actorId: 'user:usr_agent' })
+  })
+
+  it('carries the branded actorId — the NEW assignee for assignee:changed', async () => {
+    await publishThreadEventToRealtime(
+      job('thread:assignee:changed', {
+        threadId: 'thr_1',
+        organizationId: 'org_1',
+        fromUserId: 'usr_a',
+        toUserId: 'usr_b',
+      })
+    )
+
+    expect(payloadFor('thread-')).toMatchObject({ actorId: 'user:usr_b' })
+  })
+
+  it('carries a null actorId when the payload has no addressable actor', async () => {
+    await publishThreadEventToRealtime(
+      job('thread:visitor:identified', {
+        threadId: 'thr_1',
+        organizationId: 'org_1',
+        visitorEmail: 'someone@example.com',
+        participantId: 'part_v',
+      })
+    )
+
+    expect(payloadFor('thread-')).toMatchObject({ actorId: null })
+  })
+
+  // Phase 5 (thread-events §5.5): emitters that know their principal write an
+  // explicit `data.actorId`, and the handler must PREFER it over the legacy
+  // userId/toUserId derivation — an agent take-over carries a meaningless
+  // synthetic userId, and deriving from it would resurrect the misattribution.
+  it('prefers an explicit data.actorId over the userId derivation', async () => {
+    await publishThreadEventToRealtime(
+      job('thread:taken_over', {
+        threadId: 'thr_1',
+        organizationId: 'org_1',
+        userId: 'usr_synthetic',
+        actorId: 'agent:agt_1',
+        previousState: 'ai',
+      })
+    )
+
+    expect(payloadFor('thread-')).toMatchObject({ actorId: 'agent:agt_1' })
+  })
+
+  it('respects an explicit null actorId (automation) and keeps the source provenance', async () => {
+    await publishThreadEventToRealtime(
+      job('thread:archived', {
+        threadId: 'thr_1',
+        organizationId: 'org_1',
+        actorId: null,
+        source: { kind: 'mail_filter', id: 'flt_1', runId: 'run_1', name: 'Auto-close' },
+      })
+    )
+
+    expect(payloadFor('thread-')).toMatchObject({
+      actorId: null,
+      source: { kind: 'mail_filter', id: 'flt_1', runId: 'run_1', name: 'Auto-close' },
+    })
   })
 })

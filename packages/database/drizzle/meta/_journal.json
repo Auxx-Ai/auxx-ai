@@ -2360,6 +2360,20 @@
       "when": 1787011116137,
       "tag": "0336_message_type_column",
       "breakpoints": true
+    },
+    {
+      "idx": 337,
+      "version": "7",
+      "when": 1787012780311,
+      "tag": "0337_thread_event_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 338,
+      "version": "7",
+      "when": 1787013191465,
+      "tag": "0338_drop_event_threadid_expr_idx",
+      "breakpoints": true
     }
   ]
 }

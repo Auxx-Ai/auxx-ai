@@ -822,6 +822,8 @@ export interface AgentEngineConfig {
   userId: string
   /** Session ID (for persistence) */
   sessionId: string
+  /** See {@link AgentDeps.agentId} — background agent runs only; interactive runs leave it unset. */
+  agentId?: string
   /**
    * Database handle threaded into every tool's `ToolContext` at execution
    * time. Required so tools have a uniform db source regardless of caller.
@@ -928,6 +930,14 @@ export interface AgentDeps {
   signal?: AbortSignal
   /** Unique ID for the current turn — stable across all events, logs, and tool calls in one request */
   turnId?: string
+  /**
+   * The acting Agent's id when this run is a BACKGROUND agent run (autonomous
+   * trigger etc.) whose principal is the agent's own synthetic user — set so
+   * tools can attribute mutations to `agent:<id>` instead of that synthetic
+   * user (thread-events §5.5). Undefined on interactive runs, where `userId`
+   * is the human driving the turn.
+   */
+  agentId?: string
 }
 
 // ===== AGENT EVENTS =====

@@ -1,0 +1,1 @@
+DROP INDEX "Event_threadId_expr_idx";

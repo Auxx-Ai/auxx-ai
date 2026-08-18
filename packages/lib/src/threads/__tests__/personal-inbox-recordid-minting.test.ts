@@ -238,7 +238,13 @@ describe('thread-query getThreadMetaBatch — per-thread inbox definition', () =
 describe('thread-mutation realtime patch — inbox definition', () => {
   async function updateInto(inboxId: string, bulk: boolean) {
     const { ThreadMutationService } = await import('../thread-mutation.service')
-    const svc = new ThreadMutationService(ORG, db, undefined, 'user_1', systemViewer)
+    const svc = new ThreadMutationService(
+      ORG,
+      db,
+      undefined,
+      { kind: 'user', id: 'user_1' },
+      systemViewer
+    )
     h.updateReturning = [{ id: 't_1', inboxId, assigneeId: null }]
     if (bulk) {
       await svc.updateBulk(['thread:t_1' as never], { inboxId: `inbox:${inboxId}` as never })

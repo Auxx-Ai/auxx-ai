@@ -1493,7 +1493,7 @@ export async function undoMailReclassifyRun(
       input.organizationId,
       db,
       undefined,
-      undefined,
+      { kind: 'classification' },
       SYSTEM_VISIBILITY
     )
 

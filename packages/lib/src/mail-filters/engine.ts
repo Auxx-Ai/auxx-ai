@@ -174,6 +174,8 @@ export async function fireMailFilters(input: FireMailFiltersInput): Promise<Fire
         // refuses `run-agent` / `run-workflow` (D18). See
         // `RETROACTIVE_SKIPPED_ACTION_TYPES`.
         source,
+        // Provenance for the thread events the actions emit (§5.5).
+        runId,
       }
 
       // Captured BEFORE anything mutates — see `captureUndoState`.

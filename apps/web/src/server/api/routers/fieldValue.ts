@@ -10,6 +10,7 @@ import { recordIdSchema } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { assertFieldValueHostsWritable } from '~/server/lib/field-value-host-access'
+import { rerouteThreadTagSet } from '~/server/lib/thread-tag-reroute'
 import { capabilityProcedure, createTRPCRouter } from '../trpc'
 
 /** Schema for FieldReference - either ResourceFieldId or FieldPath */
@@ -68,6 +69,23 @@ export const fieldValueRouter = createTRPCRouter({
         userId: ctx.session.user.id,
         hosts: [input.recordId as RecordId],
       })
+
+      // Thread-tag replace? Reroute onto `tagThreadsBulk` — the single emit
+      // site for `thread:tagged`/`thread:untagged` and the mail realtime patch
+      // (thread-events §13.7 finding 2). Same underlying write, same response
+      // shape; returns null for everything that is not a thread-tag 'set'.
+      const rerouted = await rerouteThreadTagSet({
+        db: ctx.db,
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        socketId: ctx.headers.get('x-realtime-socket-id') ?? undefined,
+        recordId: input.recordId as RecordId,
+        fieldId: input.fieldId,
+        value: input.value,
+        mode: input.mode,
+        ai: input.ai,
+      })
+      if (rerouted) return rerouted
 
       const service = new FieldValueService(
         ctx.session.organizationId,
