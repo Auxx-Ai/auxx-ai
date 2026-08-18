@@ -81,10 +81,17 @@ describe('buildChatTimeline', () => {
     expect(items[0]).toMatchObject({ kind: 'single', index: 0 })
   })
 
-  it('keeps WhatsApp and DM messages on the bubble path', () => {
-    for (const messageType of ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM'] as const) {
+  it('keeps CHAT and SMS messages on the bubble path', () => {
+    for (const messageType of ['CHAT', 'SMS'] as const) {
       const items = buildChatTimeline([message('m1', { messageType })], [])
       expect(items[0]?.kind, messageType).toBe('chat-group')
+    }
+  })
+
+  it('never bubbles CALL or VOICEMAIL', () => {
+    for (const messageType of ['CALL', 'VOICEMAIL'] as const) {
+      const items = buildChatTimeline([message('m1', { messageType })], [])
+      expect(items[0], messageType).toMatchObject({ kind: 'single', index: 0 })
     }
   })
 })

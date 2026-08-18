@@ -19,6 +19,8 @@ import {
 import { publisher } from '../events/publisher'
 import type { MessageReceivedEvent } from '../events/types'
 import { toInboxRecordId } from '../inbox-record-ids'
+import { getMessageTypeFromProvider } from '../providers/type-utils'
+import { type ChannelProviderType, MessageType } from '../providers/types'
 import {
   getRealtimeService,
   publishMessageCreated,
@@ -581,6 +583,18 @@ export async function storeMessage(
         flippedUserIds = flipped.map((f) => f.userId)
       }
 
+      // A mapper-supplied value wins (e.g. openphone distinguishing a call from a
+      // text on the same integration); otherwise fall back to the provider's
+      // default form. `getMessageTypeFromProvider` requires a provider, so an
+      // integration that vanished by ingest time (soft-deleted) falls back to
+      // EMAIL directly rather than being cast through it.
+      const ingestProvider = ctx.providerByIntegrationId.get(messageData.integrationId)
+      const messageType =
+        messageData.messageType ??
+        (ingestProvider
+          ? getMessageTypeFromProvider(ingestProvider as ChannelProviderType)
+          : MessageType.EMAIL)
+
       const messageRecords = await tx
         .insert(schema.Message)
         .values({
@@ -596,6 +610,7 @@ export async function storeMessage(
           threadId: thread.id,
           organizationId: messageData.organizationId,
           integrationId: messageData.integrationId,
+          messageType,
           historyId: messageData.historyId ? Number(messageData.historyId) : null,
           createdAt: messageData.createdTime,
           updatedAt: new Date(),

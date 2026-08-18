@@ -2346,6 +2346,20 @@
       "when": 1786992306020,
       "tag": "0334_participant_and_fieldvalue_search_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 335,
+      "version": "7",
+      "when": 1787010826370,
+      "tag": "0335_message_type_vocabulary",
+      "breakpoints": true
+    },
+    {
+      "idx": 336,
+      "version": "7",
+      "when": 1787011116137,
+      "tag": "0336_message_type_column",
+      "breakpoints": true
     }
   ]
 }

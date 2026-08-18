@@ -3,6 +3,8 @@
 import { schema } from '@auxx/database'
 import { ThreadStatus } from '@auxx/database/enums'
 import { sql } from 'drizzle-orm'
+import { getMessageTypeFromProvider } from '../../providers/type-utils'
+import { type ChannelProviderType, MessageType } from '../../providers/types'
 import type { IngestContext } from '../context'
 import { findOrCreateParticipantRecord } from '../participants/find-or-create'
 import { determineIdentifierType } from '../participants/normalize'
@@ -71,6 +73,16 @@ export async function storeIgnoredMessage(
     true
   )
 
+  // Same fallback as `storeMessage`: a mapper-supplied value wins, otherwise the
+  // provider's default form; an integration that vanished by ingest time
+  // (soft-deleted) falls back to EMAIL rather than being cast through the map.
+  const ignoredProvider = ctx.providerByIntegrationId.get(messageData.integrationId)
+  const messageType =
+    messageData.messageType ??
+    (ignoredProvider
+      ? getMessageTypeFromProvider(ignoredProvider as ChannelProviderType)
+      : MessageType.EMAIL)
+
   const [message] = await ctx.db
     .insert(schema.Message)
     .values({
@@ -80,6 +92,7 @@ export async function storeIgnoredMessage(
       threadId: thread.id,
       organizationId: messageData.organizationId,
       integrationId: messageData.integrationId,
+      messageType,
       internetMessageId: messageData.internetMessageId,
       // Both are NOT NULL with no column default — omitting them makes Postgres
       // reject the row outright. Mirrors `storeMessage`'s insert.

@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import type { ResourceField } from '../field-types'
-// Note: MessageType import removed - messageType field no longer exists in schema
+// `messageType` has no entry in MESSAGE_FIELDS below — see the comment there.
 
 /**
  * Field definitions for the Message resource
@@ -120,8 +120,13 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     description: 'Plain text content of message',
   },
 
-  // Note: messageType removed - it's now derived from Integration.provider
-  // Use helper function getMessageTypeFromProvider() to get message type
+  // `messageType` IS a stored column again (message-type-overhaul plan §2.7)
+  // but is deliberately NOT registered as a field here: it is an internal
+  // render discriminator (email/sms/chat/call/voicemail), not a user-facing
+  // vocabulary — provider already determines it for 11 of 12 providers, and
+  // `channelType` is the filter vocabulary rule authors actually want (plan
+  // §2.6). Re-adding it here as `filterable: true` is Phase 3, deferred until
+  // someone asks for a "Voicemails" view.
 
   isInbound: {
     id: toFieldId('isInbound'),

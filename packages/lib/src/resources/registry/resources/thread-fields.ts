@@ -112,8 +112,13 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     description: 'Change thread status (Open, Archive, Spam, Trash)',
   },
 
-  // Note: messageType removed - it's now derived from Integration.provider
-  // Use helper function getMessageTypeFromProvider() to get message type
+  // `messageType` stays removed at the THREAD level by design — even now that
+  // `Message.messageType` is a stored column again (message-type-overhaul plan
+  // §2.7), it is a per-ROW value. A thread scalar can't express a mixed thread
+  // (a voicemail and three texts on the same Quo integration), which is the
+  // whole point of storing it — see plan §1.5. The container-level questions
+  // this instinct points at are already answered by `PlatformCapabilities.channel`
+  // and `ChannelGroup`, both keyed on `Integration.provider`.
 
   messageCount: {
     id: toFieldId('messageCount'),

@@ -34,7 +34,7 @@ export function toEditorMessage(
     isInbound: message.isInbound,
     sentAt: message.sentAt ? new Date(message.sentAt) : null,
     createdAt: new Date(message.createdAt),
-    messageType: message.messageType as MessageType['messageType'],
+    messageType: message.messageType,
     sendStatus: message.sendStatus,
     providerError: message.providerError,
     attempts: message.attempts,

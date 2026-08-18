@@ -83,8 +83,7 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
       isInbound: sourceMessageMeta.isInbound,
       sentAt: sourceMessageMeta.sentAt ? new Date(sourceMessageMeta.sentAt) : null,
       createdAt: new Date(sourceMessageMeta.createdAt),
-      // Cast messageType - store may have additional types (WHATSAPP, CALL) not in editor type
-      messageType: sourceMessageMeta.messageType as EditorMessageType['messageType'],
+      messageType: sourceMessageMeta.messageType,
       from: fromParticipant
         ? {
             id: fromParticipant.id,

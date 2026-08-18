@@ -96,9 +96,9 @@ export function whereMessageProvider(provider: ChannelProviderType | ChannelProv
  *   where: whereThreadMessageType('EMAIL')
  * })
  *
- * // Get social media threads
- * const socialThreads = await db.query.Thread.findMany({
- *   where: whereThreadMessageType(['FACEBOOK', 'INSTAGRAM'])
+ * // Get chat threads (chat widget + social DMs)
+ * const chatThreads = await db.query.Thread.findMany({
+ *   where: whereThreadMessageType('CHAT')
  * })
  * ```
  */
@@ -113,22 +113,16 @@ export function whereThreadMessageType(messageType: MessageType | MessageType[])
       case 'EMAIL':
         providers.push('google', 'outlook', 'mailgun', 'email')
         break
-      case 'FACEBOOK':
-        providers.push('facebook')
-        break
-      case 'INSTAGRAM':
-        providers.push('instagram')
-        break
       case 'SMS':
         providers.push('openphone', 'sms')
         break
-      case 'WHATSAPP':
-        providers.push('whatsapp')
-        break
       case 'CHAT':
-        providers.push('chat')
+        providers.push('chat', 'facebook', 'instagram', 'whatsapp')
         break
       case 'CALL':
+        providers.push('openphone')
+        break
+      case 'VOICEMAIL':
         providers.push('openphone')
         break
     }
@@ -164,22 +158,16 @@ export function whereMessageMessageType(messageType: MessageType | MessageType[]
       case 'EMAIL':
         providers.push('google', 'outlook', 'mailgun', 'email')
         break
-      case 'FACEBOOK':
-        providers.push('facebook')
-        break
-      case 'INSTAGRAM':
-        providers.push('instagram')
-        break
       case 'SMS':
         providers.push('openphone', 'sms')
         break
-      case 'WHATSAPP':
-        providers.push('whatsapp')
-        break
       case 'CHAT':
-        providers.push('chat')
+        providers.push('chat', 'facebook', 'instagram', 'whatsapp')
         break
       case 'CALL':
+        providers.push('openphone')
+        break
+      case 'VOICEMAIL':
         providers.push('openphone')
         break
     }

@@ -598,15 +598,7 @@ export const MeetingMessageMethodValues = [
   'other',
 ] as const
 
-export const MessageTypeValues = [
-  'EMAIL',
-  'FACEBOOK',
-  'SMS',
-  'WHATSAPP',
-  'INSTAGRAM',
-  'OPENPHONE',
-  'CHAT',
-] as const
+export const MessageTypeValues = ['EMAIL', 'SMS', 'CHAT', 'CALL', 'VOICEMAIL'] as const
 
 export const AiModelTypeValues = [
   'LLM',
@@ -1320,12 +1312,10 @@ export const MeetingMessageMethod = {
 
 export const MessageType = {
   EMAIL: 'EMAIL',
-  FACEBOOK: 'FACEBOOK',
   SMS: 'SMS',
-  WHATSAPP: 'WHATSAPP',
-  INSTAGRAM: 'INSTAGRAM',
-  OPENPHONE: 'OPENPHONE',
   CHAT: 'CHAT',
+  CALL: 'CALL',
+  VOICEMAIL: 'VOICEMAIL',
 } as const
 
 export const AiModelType = {
