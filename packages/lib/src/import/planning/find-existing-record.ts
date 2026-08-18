@@ -189,11 +189,13 @@ async function findInCustomEntity(
   })
 
   if (result.isErr()) {
-    // Sole candidate uncoercible (e.g. malformed email cell) — no match.
-    logger.debug('Identifier value not coercible for lookup', {
+    // An uncoercible identifier (a malformed email cell) no longer lands here —
+    // the core returns an empty result for it, which falls through to `null` below
+    // and means the same thing. Kept as the Result guard for a structural failure.
+    logger.debug('Identifier lookup failed', {
       entityDefinitionId,
       identifierField: identifierField.key,
-      value,
+      error: result.error.message,
     })
     return null
   }

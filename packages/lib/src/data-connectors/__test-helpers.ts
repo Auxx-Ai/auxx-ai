@@ -13,6 +13,7 @@
 
 import type { Database } from '@auxx/database'
 import type { ManifestCollector } from '../record-rules/sync-manifest-collector'
+import { newRecordFailureTally } from './record-failure-tally'
 import type { SyncCtx } from './sinks/types'
 
 /**
@@ -60,6 +61,7 @@ export function makeSyncCtx(over: Partial<SyncCtx> = {}): SyncCtx {
     crud: {} as SyncCtx['crud'],
     ownedCrud: {} as SyncCtx['ownedCrud'],
     counters: zeroRunCounters(),
+    failureTally: newRecordFailureTally(),
     manifest: noopManifestCollector(),
     touchedDefs: new Set<string>(),
     ...over,

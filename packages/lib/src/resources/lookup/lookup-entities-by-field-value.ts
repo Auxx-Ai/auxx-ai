@@ -7,9 +7,11 @@ import { createScopedLogger } from '@auxx/logger'
 import type { FieldId } from '@auxx/types/field'
 import { createTypedValueInput } from '@auxx/types/field-value'
 import { type AnyColumn, and, asc, eq, isNull, type SQL } from 'drizzle-orm'
-import { err, ok, type Result } from 'neverthrow'
+// `Result` stays on the signature (house style, and it leaves room for a real
+// structural failure later) even though every path now returns `ok` — an
+// unresolvable candidate is an empty result, not an error. See the docblock.
+import { ok, type Result } from 'neverthrow'
 import { getCachedFieldMap } from '../../cache'
-import { BadRequestError } from '../../errors'
 import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
 import { typedColumnMatch } from '../../field-values/typed-column-match'
 import { type RecordId, toRecordId } from '../resource-id'
@@ -131,10 +133,24 @@ export function buildLookupCondition(field: CustomFieldEntity, rawValue: unknown
  * Ordering is deterministic (entityId, then sortKey).
  *
  * Candidate failure handling: a candidate whose field doesn't exist OR whose
- * value can't be coerced / normalized is **skipped with a warning log**, not
- * an error. Only returns `err(BadRequestError)` when ALL candidates fail —
- * otherwise one garbage input would take down a best-effort fallback chain
- * (e.g. externalId → email).
+ * value can't be coerced / normalized is **skipped with a warning log**, never
+ * an error — including when EVERY candidate fails, which returns an empty
+ * result. An unparseable VALUE is data, not a malformed call: nothing in the
+ * table can equal `+190239478` once libphonenumber refuses to parse it, so
+ * "no candidate could match" is an empty result, not a 400.
+ *
+ * This used to `err(BadRequestError)` on the all-fail case, which made the same
+ * garbage input fatal or harmless depending only on how many OTHER candidates
+ * the caller happened to pass — and the all-fail case is where the blast radius
+ * is largest, not smallest. It cost a whole connector sync: one Quo contact
+ * carrying a malformed phone as its only `match` key threw out of
+ * `crud.lookupByField` (which unwraps by throwing), past `entity-sink`'s
+ * `resolveIdentity`, up through the slice loop — whose catch rethrows anything
+ * that is not a rate limit or an abort — and the RUN closed as failed. 57 of
+ * the 4222 numbers in that address book are unparseable, so the first one hit
+ * ended the sync. `import/planning/find-existing-record.ts` had already written
+ * "sole candidate uncoercible — no match" locally, which is the same conclusion
+ * reached one caller at a time; it belongs here instead.
  *
  * Does not filter on `capabilities.hidden`: the extension is a system
  * integration and is allowed to address hidden fields (externalId).
@@ -299,18 +315,13 @@ export async function lookupEntitiesByFieldValue(
     }
   }
 
-  if (!anyValid && candidates.length > 0) {
-    return err(
-      new BadRequestError(
-        `lookupEntitiesByFieldValue: no candidate was valid. Skipped: ${JSON.stringify(skipped)}`
-      )
-    )
-  }
   if (skipped.length > 0) {
-    logger.warn('lookupEntitiesByFieldValue: skipped candidates', {
-      entityDef: entityDefinitionId,
-      skipped,
-    })
+    // `warn` when NOTHING was usable — the caller asked a question no query could
+    // answer, which is worth noticing even though it is not an error. A partial
+    // skip beside a valid candidate is informational.
+    const payload = { entityDef: entityDefinitionId, allSkipped: !anyValid, skipped }
+    if (anyValid) logger.info('lookupEntitiesByFieldValue: skipped candidates', payload)
+    else logger.warn('lookupEntitiesByFieldValue: no candidate was usable', payload)
   }
 
   return ok({ items, hasMore })

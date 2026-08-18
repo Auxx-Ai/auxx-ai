@@ -21,6 +21,7 @@ import { ConnectorRateLimitError } from './connectors'
 import { isConnectorCheckpoint } from './connectors/types'
 import { publishConnectorSync } from './realtime'
 import { archiveExternalId } from './reconciliation'
+import { newRecordFailureTally } from './record-failure-tally'
 import { resolveRelationships } from './relationship-pass'
 import {
   countConnectorItems,
@@ -262,6 +263,7 @@ async function buildWebhookCtx(
     crud,
     ownedCrud,
     counters,
+    failureTally: newRecordFailureTally(),
     manifest,
     touchedDefs: new Set<string>(),
     connectionMeta,
