@@ -2,9 +2,9 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
+import { MESSAGE_TYPE_OPTIONS } from '../../../providers/types'
 import { BaseType } from '../../types'
 import type { ResourceField } from '../field-types'
-// `messageType` has no entry in MESSAGE_FIELDS below — see the comment there.
 
 /**
  * Field definitions for the Message resource
@@ -120,13 +120,29 @@ export const MESSAGE_FIELDS: Record<string, ResourceField> = {
     description: 'Plain text content of message',
   },
 
-  // `messageType` IS a stored column again (message-type-overhaul plan §2.7)
-  // but is deliberately NOT registered as a field here: it is an internal
-  // render discriminator (email/sms/chat/call/voicemail), not a user-facing
-  // vocabulary — provider already determines it for 11 of 12 providers, and
-  // `channelType` is the filter vocabulary rule authors actually want (plan
-  // §2.6). Re-adding it here as `filterable: true` is Phase 3, deferred until
-  // someone asks for a "Voicemails" view.
+  // Phase 3 of the message-type-overhaul plan (§Phase 3). Filterable, but
+  // write-locked: `messageType` is stamped at ingest
+  // (`getMessageTypeFromProvider` as the default, provider mappers as
+  // authority for `openphone`'s CALL/VOICEMAIL split) and is never
+  // user-writable, so `creatable`/`updatable` stay false.
+  messageType: {
+    id: toFieldId('messageType'),
+    key: 'messageType',
+    label: 'Message type',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    dbColumn: 'messageType',
+    nullable: false,
+    options: { options: MESSAGE_TYPE_OPTIONS },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'The form of the message (email, SMS, chat, call, or voicemail)',
+  },
 
   isInbound: {
     id: toFieldId('isInbound'),

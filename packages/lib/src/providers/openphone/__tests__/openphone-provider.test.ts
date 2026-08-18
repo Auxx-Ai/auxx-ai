@@ -149,7 +149,12 @@ describe('OpenPhoneProvider.setupWebhook', () => {
 
     const body = mocks.createMessageWebhook.mock.calls[0]![1]
     expect(body.url).toBe(CALLBACK_URL)
-    expect(body.events).toEqual(['message.received', 'message.delivered'])
+    expect(body.events).toEqual([
+      'message.received',
+      'message.delivered',
+      'call.completed',
+      'call.recording.completed',
+    ])
     // Per-number, not `["*"]` — one channel owns one webhook.
     expect(body.resourceIds).toEqual([PHONE_NUMBER_ID])
     // Created ENABLED, because Quo webhooks are immutable — `/v1/webhooks/{id}` routes only GET
