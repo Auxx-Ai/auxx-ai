@@ -96,15 +96,17 @@ function GroupRow({
 
   return (
     <div className='flex flex-col'>
+      {/* -mx-2/px-2 lets the hover pill breathe past the content on both sides
+          while the count dot stays aligned with the rail (rail shifts +8px). */}
       <button
         type='button'
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
         title={fullRange}
         className={cn(
-          'relative flex w-full items-center gap-2 rounded-md py-1 pl-0 text-left transition-colors hover:bg-muted',
+          'relative -mx-2 flex items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-muted',
           headerHasRail &&
-            'before:absolute before:inset-y-0 before:left-[7.5px] before:w-px before:bg-border'
+            'before:absolute before:inset-y-0 before:left-[15.5px] before:w-px before:bg-border'
         )}>
         <span
           aria-hidden
@@ -112,7 +114,13 @@ function GroupRow({
           {events.length}
         </span>
         <Facepile actors={facepile} />
-        <span className='min-w-0 flex-1 truncate text-sm text-foreground'>{summary}</span>
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate text-sm transition-colors',
+            expanded ? 'text-foreground' : 'text-foreground/70'
+          )}>
+          {summary}
+        </span>
         <span className='shrink-0 text-[10px] text-muted-foreground'>{timeRange}</span>
         <CollapsibleChevron open={expanded} className='size-3 shrink-0 text-muted-foreground' />
       </button>
@@ -134,20 +142,68 @@ function GroupRow({
 /**
  * Viewer-local day divider spanning the whole conversation — message bubbles
  * AND event rows share this one day spine (§15.6). "Today" / "Yesterday" /
- * weekday / "Aug 12" labeling comes from `buildChatTimeline`; this just draws
- * the Slack/WhatsApp-style centered line.
+ * weekday / "Aug 12" labeling comes from `buildChatTimeline`; this draws the
+ * Slack/WhatsApp-style centered line. With `onToggle`, the label is a pill
+ * button that collapses/expands everything under this day (until the next
+ * separator) — the consumer owns the collapsed set and skips the day's items.
  */
-export function DaySeparator({ label }: { label: string }) {
+export function DaySeparator({
+  label,
+  collapsed = false,
+  onToggle,
+}: {
+  label: string
+  collapsed?: boolean
+  onToggle?: () => void
+}) {
   return (
     <div
       role='separator'
       aria-label={label}
       className='mx-auto flex w-full max-w-2xl items-center gap-3 px-4 py-1'>
       <Separator className='flex-1' />
-      <span className='shrink-0 text-[11px] font-medium text-muted-foreground'>{label}</span>
+      {onToggle ? (
+        <button
+          type='button'
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          className='flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'>
+          {label}
+          <CollapsibleChevron open={!collapsed} className='size-3' />
+        </button>
+      ) : (
+        <span className='shrink-0 text-[11px] font-medium text-muted-foreground'>{label}</span>
+      )}
       <Separator className='flex-1' />
     </div>
   )
+}
+
+/**
+ * Collapsed-day set for the §15.6 separators — the consumer calls
+ * `isCollapsed(sep.key)` while iterating the timeline and skips a day's items.
+ * Resets when `resetKey` (the thread id) changes, so a collapsed "Yesterday"
+ * on one thread doesn't collapse another thread's.
+ */
+export function useCollapsedDays(resetKey: string | null | undefined): {
+  isCollapsed: (dayKey: string) => boolean
+  toggle: (dayKey: string) => void
+} {
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resetKey is deliberately the only trigger
+  useEffect(() => {
+    setCollapsed(new Set())
+  }, [resetKey])
+  const isCollapsed = useCallback((dayKey: string) => collapsed.has(dayKey), [collapsed])
+  const toggle = useCallback((dayKey: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(dayKey)) next.delete(dayKey)
+      else next.add(dayKey)
+      return next
+    })
+  }, [])
+  return { isCollapsed, toggle }
 }
 
 function Facepile({ actors }: { actors: FacepileActor[] }) {

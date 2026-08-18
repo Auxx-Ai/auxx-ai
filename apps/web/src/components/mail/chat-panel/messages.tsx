@@ -12,7 +12,7 @@ import { buildChatTimeline } from '../chat-timeline'
 import type { EmailActions } from '../email-actions'
 import EmailDisplay from '../email-display'
 import MessageDisplay from '../message-display'
-import { DaySeparator, EventBlock } from './system-line-run'
+import { DaySeparator, EventBlock, useCollapsedDays } from './system-line-run'
 import { useChatThreadEvents } from './use-thread-events'
 
 interface ChatPanelMessagesProps {
@@ -30,6 +30,7 @@ export function ChatPanelMessages({ threadId, popoverClassName }: ChatPanelMessa
   const { messages, isLoading } = useMessages({ threadId })
   const { events } = useChatThreadEvents({ threadId, enabled: true })
   const { update: updateThread } = useThreadMutation()
+  const collapsedDays = useCollapsedDays(threadId)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const messageActions = useMemo<EmailActions>(
@@ -85,6 +86,10 @@ export function ChatPanelMessages({ threadId, popoverClassName }: ChatPanelMessa
 
   const items = buildChatTimeline(messages, events)
 
+  // Tracks which day the map iteration is inside — set by each separator item,
+  // read by the items after it. Reset per render, mutated in render order.
+  let currentDayKey: string | null = null
+
   return (
     <ScrollArea
       viewportRef={scrollRef}
@@ -93,8 +98,17 @@ export function ChatPanelMessages({ threadId, popoverClassName }: ChatPanelMessa
       <div className='flex flex-col gap-2 px-3 py-2 pe-4'>
         {items.map((item) => {
           if (item.kind === 'day-separator') {
-            return <DaySeparator key={item.key} label={item.label} />
+            currentDayKey = item.key
+            return (
+              <DaySeparator
+                key={item.key}
+                label={item.label}
+                collapsed={collapsedDays.isCollapsed(item.key)}
+                onToggle={() => collapsedDays.toggle(item.key)}
+              />
+            )
           }
+          if (currentDayKey && collapsedDays.isCollapsed(currentDayKey)) return null
           if (item.kind === 'event-block') {
             return <EventBlock key={item.key} entries={item.entries} isTrailing={item.isTrailing} />
           }
