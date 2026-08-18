@@ -149,8 +149,13 @@ export interface GraphSummary {
   /** The draft row's trigger type column (what the workflow fires on). */
   triggerType?: string | null
   /**
-   * Refs of nodes this editor can read but not author — no catalog manifest
-   * (app blocks, not-yet-migrated types).
+   * Refs of nodes this editor can read but not author — nothing the manifest
+   * lookup resolves.
+   *
+   * Post-B2 that is a NARROWER set than it used to be: a block from an app
+   * this org has installed is authorable and no longer listed. What remains is
+   * a not-yet-migrated core type, or an orphan whose app was uninstalled or
+   * whose deployment dropped the block.
    *
    * Stated ONCE here, as data, rather than as one `info` issue per node per
    * read. The agent does need to know a node is untouchable; it does not need

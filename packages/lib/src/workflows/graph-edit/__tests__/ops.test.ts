@@ -14,12 +14,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Partial mock — the cache barrel is imported by half of lib; replacing it
 // wholesale dies at collection. Only the read the graph-edit path makes is stubbed.
 const getCachedResources = vi.fn()
+const getCachedInstalledApps = vi.fn()
 vi.mock('../../../cache', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../cache')>()),
   getCachedResources: (...args: unknown[]) => getCachedResources(...args),
-  // No installed apps: these suites exercise CORE node types, so the manifest
-  // lookup `loadDraftContext` builds must resolve to the registry alone.
-  getCachedInstalledApps: async () => [],
+  // Controllable per test: most cases exercise CORE node types and want the
+  // manifest lookup to resolve to the registry alone; the app-block suite
+  // below installs one.
+  getCachedInstalledApps: (...args: unknown[]) => getCachedInstalledApps(...args),
 }))
 
 // The persist seam writes through WorkflowService.update (lazy-imported in
@@ -202,6 +204,8 @@ function persistedGraph(): DraftGraph {
 beforeEach(() => {
   getCachedResources.mockReset()
   getCachedResources.mockResolvedValue(RESOURCES)
+  getCachedInstalledApps.mockReset()
+  getCachedInstalledApps.mockResolvedValue([])
   mailGuard.mockReset()
   mailGuard.mockResolvedValue(undefined)
   serviceUpdate.mockReset()
@@ -1055,5 +1059,204 @@ describe('readDraft (§1)', () => {
     // Outputs keyed by friendly ref.
     expect(Object.keys(draft.outputs)).toContain('Every Morning')
     expect(Object.keys(draft.outputs)).toContain('Cool Down')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// App blocks, end to end (plan 17 PR B3)
+//
+// The checkpoint the plan describes: Kopilot can add and edit a node
+// contributed by an installed app. Everything below goes through the real
+// mutation pipeline — `loadDraftContext` builds the manifest lookup off the
+// stubbed org cache, exactly as it does in production.
+// ---------------------------------------------------------------------------
+
+const ACME_APP_ID = 'acme00000000000000000000'
+const ACME_TYPE = `${ACME_APP_ID}:sync`
+const ACME_NODE_ID = 'acme-sync-aaaaaaaaaaaaaaa'
+const APP_WAIT_ID = 'wait-aaaaaaaaaaaaaaaaaaaaa'
+
+function plainNode(id: string, type: string, title: string, data: Record<string, unknown>) {
+  return {
+    id,
+    type: 'standard',
+    position: { x: 100, y: 200 },
+    width: 244,
+    height: 100,
+    data: { id, type, title, ...data },
+  } as GraphNode
+}
+
+function installAcme() {
+  getCachedInstalledApps.mockResolvedValue([
+    {
+      installationId: 'inst_1',
+      installationType: 'production',
+      installedAt: '2026-08-01T00:00:00.000Z',
+      app: {
+        id: ACME_APP_ID,
+        slug: 'acme',
+        title: 'Acme',
+        description: null,
+        avatarUrl: null,
+        category: null,
+      },
+      currentDeployment: null,
+      methods: [],
+      connectionDefinitions: {},
+      orgConnectionPresent: true,
+      orgConnectionExpiresAt: null,
+      workflowBlocks: [
+        {
+          id: 'sync',
+          label: 'Acme Sync',
+          description: 'Sync a record with Acme',
+          iconKey: null,
+          inputsJsonSchema: {
+            recordId: { type: 'string', _metadata: { label: 'Record' } },
+          },
+          toolMap: { 'record.sync': 'tool_sync', 'record.archive': 'tool_archive' },
+          refs: [],
+          ops: [
+            {
+              key: 'record.sync',
+              resource: 'record',
+              operation: 'sync',
+              toolId: 'tool_sync',
+              inputsJsonSchema: {},
+              outputsJsonSchema: {},
+              requiresConnection: false,
+            },
+            {
+              key: 'record.archive',
+              resource: 'record',
+              operation: 'archive',
+              toolId: 'tool_archive',
+              inputsJsonSchema: {},
+              outputsJsonSchema: {},
+              requiresConnection: false,
+            },
+          ],
+        },
+      ],
+    },
+  ])
+}
+
+const waitOnlyGraph = (): DraftGraph => ({
+  nodes: [
+    plainNode(APP_WAIT_ID, 'wait', 'Wait A Bit', { waitType: 'duration', durationAmount: 5 }),
+  ],
+  edges: [],
+})
+
+describe('app blocks — authoring (§5 B3 checkpoint)', () => {
+  it('adds a node contributed by an installed app', async () => {
+    installAcme()
+    const result = await addNode(makeDb(waitOnlyGraph()), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      type: ACME_TYPE,
+      after: 'Wait A Bit',
+      config: { resource: 'record', operation: 'archive' },
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().applied).toBe(true)
+
+    const added = persistedGraph().nodes.find((n) => n.data?.type === ACME_TYPE)
+    expect(added?.data).toMatchObject({
+      type: ACME_TYPE,
+      appId: ACME_APP_ID,
+      appSlug: 'acme',
+      blockId: 'sync',
+      title: 'Acme Sync',
+      resource: 'record',
+      operation: 'archive',
+    })
+    // A plain downstream edge on the default source handle — app blocks
+    // declare no branches.
+    expect(persistedGraph().edges).toContainEqual(
+      expect.objectContaining({ source: APP_WAIT_ID, sourceHandle: 'source', target: added?.id })
+    )
+  })
+
+  it('refuses a node whose operation the block does not offer', async () => {
+    // S2: a FABRICATED operation must fail the write, or the agent believes it
+    // succeeded and nothing downstream says otherwise.
+    installAcme()
+    const result = await addNode(makeDb(waitOnlyGraph()), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      type: ACME_TYPE,
+      after: 'Wait A Bit',
+      config: { resource: 'record', operation: 'teleport' },
+    })
+
+    expect(result.isOk()).toBe(true)
+    const value = result._unsafeUnwrap()
+    expect(value.applied).toBe(false)
+    expect(value.issues.some((i) => i.severity === 'error' && i.field === 'operation')).toBe(true)
+    expect(serviceUpdate).not.toHaveBeenCalled()
+  })
+
+  it('edits an existing app-block node — the hard 400 is gone', async () => {
+    // `updateNode` checks the EXISTING node's type through
+    // `requireAuthorableManifest`, which used to reject every app block
+    // outright. This is the §1 log's blocked path.
+    installAcme()
+    const graph: DraftGraph = {
+      nodes: [
+        plainNode(APP_WAIT_ID, 'wait', 'Wait A Bit', { waitType: 'duration', durationAmount: 5 }),
+        plainNode(ACME_NODE_ID, ACME_TYPE, 'Acme Sync', {
+          appId: ACME_APP_ID,
+          blockId: 'sync',
+          resource: 'record',
+          operation: 'sync',
+        }),
+      ],
+      edges: [],
+    }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'Acme Sync',
+      config: { resource: 'record', operation: 'archive' },
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().applied).toBe(true)
+    expect(persistedGraph().nodes.find((n) => n.id === ACME_NODE_ID)?.data?.operation).toBe(
+      'archive'
+    )
+  })
+
+  it('names the app-block shape when the type resolves to nothing', async () => {
+    // Listing the ~27 core ids at someone who typed a colon answers a question
+    // they did not ask.
+    const result = await addNode(makeDb(waitOnlyGraph()), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      type: 'notinstalled0000000000000:sync',
+      after: 'Wait A Bit',
+    })
+
+    expect(result.isErr()).toBe(true)
+    const message = result._unsafeUnwrapErr().message
+    expect(message).toContain('<appId>:<blockId>')
+    expect(message).toContain('not installed')
+    expect(message).not.toContain('wait, ')
+  })
+
+  it('still lists the core types for a plain unknown type', async () => {
+    const result = await addNode(makeDb(waitOnlyGraph()), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      type: 'nonsense',
+      after: 'Wait A Bit',
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('Core node types:')
   })
 })

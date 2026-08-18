@@ -19,12 +19,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Partial mock — the cache barrel is imported by half of lib; replacing it
 // wholesale dies at collection. Only the read the graph-edit path makes is stubbed.
 const getCachedResources = vi.fn()
+const getCachedInstalledApps = vi.fn()
 vi.mock('../../../cache', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../cache')>()),
   getCachedResources: (...args: unknown[]) => getCachedResources(...args),
-  // No installed apps: these suites exercise CORE node types, so the manifest
-  // lookup `loadDraftContext` builds must resolve to the registry alone.
-  getCachedInstalledApps: async () => [],
+  // Controllable per test: most cases exercise CORE node types and want the
+  // manifest lookup to resolve to the registry alone, but the app-block case
+  // below needs a real installed block.
+  getCachedInstalledApps: (...args: unknown[]) => getCachedInstalledApps(...args),
 }))
 
 // The persist seam writes through WorkflowService.update (lazy-imported in
@@ -182,6 +184,8 @@ function errors(issues: ReturnType<typeof validateGraphStructure>) {
 beforeEach(() => {
   getCachedResources.mockReset()
   getCachedResources.mockResolvedValue([])
+  getCachedInstalledApps.mockReset()
+  getCachedInstalledApps.mockResolvedValue([])
   mailGuard.mockReset()
   mailGuard.mockResolvedValue(undefined)
   serviceUpdate.mockReset()
@@ -307,14 +311,64 @@ describe('edge handle resolution (§4a)', () => {
   })
 
   /**
-   * `isInputNodePair` is strict on the SOURCE side, and app-block node types
-   * are uncatalogued permanently (installed apps never ship a manifest). So an
-   * app-block aimed at the trigger stays a plain `source` → `target` edge and
-   * is rejected exactly as it was before §2 — the exception belongs to
-   * catalogued INPUT-category types alone, not to "anything unknown".
+   * `isInputNodePair` is strict on the SOURCE side, and the exception belongs
+   * to catalogued INPUT-category types alone — never to "anything unknown".
+   *
+   * **Re-pointed at a CATALOGUED app block (plan 17 §9).** This case used to
+   * pass because an app block had no manifest at all, which is exactly the
+   * condition B2 removed. Asserting it against an uncatalogued type now proves
+   * nothing about app blocks — it proves the generic unknown-type path, which
+   * the `webhook` case below already covers. What must hold today is that a
+   * block from an app the org HAS installed, whose manifest resolves and which
+   * is authorable, is still refused as input wiring: by its declared
+   * `category: INTEGRATION` and `acceptsInputNodes: false`, not by absence.
    */
-  it('an uncatalogued app-block source never mints an input wiring', async () => {
+  it('a CATALOGUED app-block source never mints an input wiring', async () => {
+    const APP_ID = 'acme00000000000000000000'
+    const APP_BLOCK_TYPE = `${APP_ID}:sync`
     const APP_BLOCK_ID = 'app-block-aaaaaaaaaaaaaa'
+    getCachedInstalledApps.mockResolvedValue([
+      {
+        installationId: 'inst_1',
+        installationType: 'production',
+        installedAt: '2026-08-01T00:00:00.000Z',
+        app: {
+          id: APP_ID,
+          slug: 'acme',
+          title: 'Acme',
+          description: null,
+          avatarUrl: null,
+          category: null,
+        },
+        currentDeployment: null,
+        methods: [],
+        connectionDefinitions: {},
+        orgConnectionPresent: true,
+        orgConnectionExpiresAt: null,
+        workflowBlocks: [
+          {
+            id: 'sync',
+            label: 'Acme Sync',
+            iconKey: null,
+            inputsJsonSchema: {},
+            toolMap: { 'record.sync': 'tool_sync' },
+            refs: [],
+            ops: [
+              {
+                key: 'record.sync',
+                resource: 'record',
+                operation: 'sync',
+                toolId: 'tool_sync',
+                inputsJsonSchema: {},
+                outputsJsonSchema: {},
+                requiresConnection: false,
+              },
+            ],
+          },
+        ],
+      },
+    ])
+
     const graph: DraftGraph = {
       nodes: [
         {
@@ -323,7 +377,15 @@ describe('edge handle resolution (§4a)', () => {
           position: { x: -200, y: 100 },
           width: 244,
           height: 100,
-          data: { id: APP_BLOCK_ID, type: 'app:acme:sync', title: 'Acme Sync' },
+          data: {
+            id: APP_BLOCK_ID,
+            type: APP_BLOCK_TYPE,
+            title: 'Acme Sync',
+            appId: APP_ID,
+            blockId: 'sync',
+            resource: 'record',
+            operation: 'sync',
+          },
         },
         manualNode(),
         waitNode(),
@@ -337,6 +399,40 @@ describe('edge handle resolution (§4a)', () => {
       to: 'Manual Trigger',
     })
     expect(result.isOk()).toBe(true)
+    // The discriminator: the block RESOLVED. Without this the test would keep
+    // passing if the stub broke and it silently fell back to the uncatalogued
+    // path — which is precisely how the pre-B2 version of this case stopped
+    // testing what its name claims.
+    expect(result._unsafeUnwrap().graphSummary?.readOnlyNodes).toBeUndefined()
+    expect(result._unsafeUnwrap().applied).toBe(false)
+    expect(serviceUpdate).not.toHaveBeenCalled()
+  })
+
+  it('an uncatalogued type is still refused too — the generic path', async () => {
+    const UNKNOWN_ID = 'app-block-aaaaaaaaaaaaaa'
+    const graph: DraftGraph = {
+      nodes: [
+        {
+          id: UNKNOWN_ID,
+          type: 'standard',
+          position: { x: -200, y: 100 },
+          width: 244,
+          height: 100,
+          data: { id: UNKNOWN_ID, type: 'app:acme:sync', title: 'Acme Sync' },
+        },
+        manualNode(),
+        waitNode(),
+      ],
+      edges: [edge(MANUAL_ID, 'source', WAIT_ID)],
+    }
+    const result = await connectNodes(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      from: 'Acme Sync',
+      to: 'Manual Trigger',
+    })
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().graphSummary?.readOnlyNodes).toEqual(['Acme Sync'])
     expect(result._unsafeUnwrap().applied).toBe(false)
     expect(serviceUpdate).not.toHaveBeenCalled()
   })

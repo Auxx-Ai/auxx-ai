@@ -24,7 +24,8 @@ import { NodeType } from '../types/node-types'
  *
  * The NOT_YET_MIGRATED list is the migration tracker and may only shrink.
  * App blocks (`appId:blockId` dynamic types) are outside NodeType and outside
- * this contract — they get a declarative adapter in a later wave.
+ * this contract — they reach consumers through a per-org `ManifestLookup`
+ * (`buildManifestLookup`), never through the registry.
  */
 describe('node catalog coverage', () => {
   const nodeTypes = new Set<string>(Object.values(NodeType))
@@ -35,6 +36,15 @@ describe('node catalog coverage', () => {
     const uncovered = [...nodeTypes].filter((t) => !migrated.has(t) && !notYetMigrated.has(t))
     const doubleCovered = [...nodeTypes].filter((t) => migrated.has(t) && notYetMigrated.has(t))
     expect({ uncovered, doubleCovered }).toEqual({ uncovered: [], doubleCovered: [] })
+  })
+
+  it('registers no app-block manifest — the lookup widens, the registry does not', () => {
+    // `buildManifestLookup` returns `getManifest(type) ?? synthesized`, and the
+    // synthesized half must stay OUT of the shared Map. If a refactor ever
+    // registered app blocks instead, every assertion in this file would start
+    // reporting per-org data as an unmigrated NodeType, and NOT_YET_MIGRATED's
+    // "may only shrink" invariant would break with nothing else catching it.
+    expect(listManifests().filter((manifest) => manifest.id.includes(':'))).toEqual([])
   })
 
   it('lists no unknown types in NOT_YET_MIGRATED and registers no unknown manifests', () => {

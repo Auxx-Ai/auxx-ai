@@ -24,7 +24,11 @@
  */
 
 import { getAuthorableManifests } from '../../workflow-engine/catalog/registry'
-import { type ManifestLookup, NodeCategory } from '../../workflow-engine/catalog/types'
+import {
+  type ManifestLookup,
+  NodeCategory,
+  type NodeValidationResult,
+} from '../../workflow-engine/catalog/types'
 import { formatNodeRef } from './refs'
 import type { DraftGraph, GraphEdge, GraphNode, Issue } from './types'
 
@@ -80,6 +84,22 @@ export function isInputNodePair(
     lookup(nodeType(target))?.connection.acceptsInputNodes === true &&
     lookup(nodeType(source))?.category === NodeCategory.INPUT
   )
+}
+
+/**
+ * The `blocksAuthoring` errors a manifest reports for this node's config, or
+ * none. A validator crashing on half-built data must not take the pipeline
+ * down — same tolerance `validateNodeConfigs` applies.
+ */
+function authoringBlockers(
+  manifest: NonNullable<ReturnType<ManifestLookup>>,
+  node: GraphNode
+): NodeValidationResult['errors'] {
+  try {
+    return manifest.validate(node.data).errors.filter((error) => error.blocksAuthoring === true)
+  } catch {
+    return []
+  }
 }
 
 /** An input-provider → input-accepting wiring on the handles it must use. */
@@ -191,6 +211,25 @@ export function validateGraphStructure(
           nodeRef: ref(node.id),
           message: `Node type "${type}" cannot be authored here. Authorable types: ${authorableTypes()}.`,
         })
+      } else {
+        // The type exists and may be authored — but the CONFIG can still name
+        // something that does not, and only the manifest knows its own
+        // vocabulary. `blocksAuthoring` is how a validator says "this is
+        // malformed, not merely unusable"; everything else it reports stays
+        // tier-2 and lands non-blocking through `validateNodeConfigs`.
+        //
+        // Deliberately scoped to `newNodeIds`, the same asymmetry the type
+        // check above uses: a node the caller just wrote must fail the write,
+        // while a pre-existing one that drifted (an app upgrade dropped its
+        // operation) must never make the whole workflow uneditable.
+        for (const error of authoringBlockers(manifest, node)) {
+          issues.push({
+            severity: 'error',
+            nodeRef: ref(node.id),
+            ...(error.field ? { field: error.field } : {}),
+            message: error.message,
+          })
+        }
       }
     }
     // A node with no manifest that the caller did NOT introduce is simply

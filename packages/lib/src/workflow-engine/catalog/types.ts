@@ -44,7 +44,28 @@ export enum NodeCategory {
  */
 export interface NodeValidationResult {
   isValid: boolean
-  errors: Array<{ field: string; message: string; type?: 'warning' | 'error' }>
+  errors: Array<{
+    field: string
+    message: string
+    type?: 'warning' | 'error'
+    /**
+     * This defect makes the node MALFORMED, not merely unusable — so a caller
+     * that is authoring the node right now must refuse the write.
+     *
+     * The distinction matters because the two are genuinely different. An
+     * ordinary `error` says "running this will fail" and gates `run_node`; a
+     * half-configured draft legitimately persists and the user fixes it later.
+     * A `blocksAuthoring` error says the config names something that does not
+     * exist — a fabricated app-block operation, say — which nothing downstream
+     * would contradict, so the author would believe it succeeded.
+     *
+     * Read ONLY for nodes a mutation introduced (`newNodeIds` in
+     * `validateGraphStructure`). A pre-existing node carrying one — an app
+     * upgrade dropped its operation — must never block a graph-wide edit, or
+     * one drifted node makes the whole workflow uneditable.
+     */
+    blocksAuthoring?: boolean
+  }>
 }
 
 /** A branch handle a node exposes for a given config (if-else cases, fail branches, …). */
