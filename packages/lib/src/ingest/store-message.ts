@@ -736,6 +736,31 @@ export async function storeMessage(
               // Prefer a freshly resolved contact link / name; keep the old one otherwise.
               entityInstanceId: sql`COALESCE(excluded."entityInstanceId", ${schema.ThreadParticipant.entityInstanceId})`,
               name: sql`COALESCE(excluded."name", ${schema.ThreadParticipant.name})`,
+              // Unconditional last-writer-wins, unlike `name` above — the same rule
+              // `Participant.isInternal` follows, and for the same reason: it is derived
+              // from org configuration (connected channels, org domains), never from
+              // message content, so every recomputation is at least as good as the last.
+              //
+              // Omitting it froze the column at its first write. That is not academic:
+              // `buildSenderSortExpression` names a thread after its most recent
+              // *external* participant and reads THIS table, so a channel identity that
+              // only became recognisable later — our own Meta Page, once the own-identity
+              // arm learned Page ids — stayed `false` forever and every Meta thread went
+              // on attributing itself to us instead of to the customer. New traffic did
+              // not heal it, because new traffic took this branch.
+              isInternal: sql`excluded."isInternal"`,
+              // Unconditional last-writer-wins, unlike `name` above — the same rule
+              // `Participant.isInternal` follows, and for the same reason: it is derived
+              // from org configuration (connected channels, org domains), never from
+              // message content, so every recomputation is at least as good as the last.
+              //
+              // Omitting it froze the column at its first write. That is not academic:
+              // `buildSenderSortExpression` names a thread after its most recent
+              // *external* participant and reads THIS table, so a channel identity that
+              // only became recognisable later — our own Meta Page, once the own-identity
+              // arm learned Page ids — stayed `false` forever and every Meta thread went
+              // on attributing itself to us instead of to the customer. New traffic did
+              // not heal it, because new traffic took this branch.
             },
           })
       }
