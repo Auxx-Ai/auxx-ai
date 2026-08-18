@@ -4,6 +4,7 @@
 // Platform OAuth client id/secret are read from env and ENCRYPTED into the row
 // (§9.3), so the runtime path is uniform with app/mcp definitions (no env branch).
 
+import { configService } from '@auxx/credentials'
 import { encryptValue } from '@auxx/credentials/crypto'
 import { type Database, database as defaultDb, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -17,19 +18,28 @@ const PLATFORM_MAJOR = 1
 
 /**
  * Build the ConnectionDefinition column values for a provider def. OAuth client
- * id/secret are pulled from their named env vars and encrypted; when the env var
- * is unset the column is left `undefined` so existing values are not clobbered.
+ * id/secret are pulled from their named config keys and encrypted; when the key
+ * resolves to nothing the column is left `undefined` so existing values are not
+ * clobbered.
+ *
+ * Read through `configService`, not `process.env` directly: it resolves a DB
+ * override first and falls back to `process.env`, so with
+ * `IS_CONFIG_VARIABLES_IN_DB_ENABLED` on, rotating a platform OAuth client is an
+ * edit in the admin config panel plus a reseed — no environment change, no
+ * restart, no release. With the flag off this is exactly the previous behaviour.
  */
 function toRowValues(def: PlatformProviderDef): Record<string, unknown> {
-  const clientId = def.systemClientIdEnv ? process.env[def.systemClientIdEnv] : undefined
-  const clientSecret = def.systemClientSecretEnv
-    ? process.env[def.systemClientSecretEnv]
+  const clientId = def.systemClientIdEnv
+    ? configService.get<string>(def.systemClientIdEnv)
     : undefined
-  // Approval gate (§3.1): the platform client is usable unless its env flag is an
+  const clientSecret = def.systemClientSecretEnv
+    ? configService.get<string>(def.systemClientSecretEnv)
+    : undefined
+  // Approval gate (§3.1): the platform client is usable unless its flag is an
   // explicit 'false'. Unset → true (ops continuity), so providers without the flag
   // keep working with their platform client.
   const platformClientApproved = def.systemClientApprovedEnv
-    ? process.env[def.systemClientApprovedEnv] !== 'false'
+    ? configService.get<string>(def.systemClientApprovedEnv) !== 'false'
     : true
 
   return {
@@ -49,7 +59,13 @@ function toRowValues(def: PlatformProviderDef): Record<string, unknown> {
     connectionVariables: def.connectionVariables ?? [],
     authApply: def.authApply ?? null,
     baseUrlTemplate: def.baseUrlTemplate ?? null,
-    // Only write client creds when the env var is set (avoid clobbering on re-upsert).
+    // Stamped explicitly because the column has no `$onUpdate`. Without it a reseed
+    // leaves no trace in the row at all, and the one question this operation exists
+    // to answer — "did my new client secret actually land?" — has no answer in the
+    // database. The log line below says WHICH providers got creds; this says when.
+    updatedAt: new Date(),
+    // Only write client creds when config resolves a value (avoid clobbering on
+    // re-upsert from a process whose env carries only some of them).
     ...(clientId ? { oauth2ClientId: encryptValue(clientId) } : {}),
     ...(clientSecret ? { oauth2ClientSecret: encryptValue(clientSecret) } : {}),
   }
@@ -61,6 +77,11 @@ function toRowValues(def: PlatformProviderDef): Record<string, unknown> {
  * Credential.connectionDefinitionId FKs survive re-seeds.
  */
 export async function ensurePlatformProviders(db: Database = defaultDb): Promise<void> {
+  /** Providers whose system client id AND secret both resolved this run. */
+  const credentialed: string[] = []
+  /** Providers that declare a system client but whose config carried no value. */
+  const skipped: string[] = []
+
   for (const def of PLATFORM_PROVIDER_DEFS) {
     const existing = await db
       .select({ id: schema.ConnectionDefinition.id })
@@ -74,6 +95,17 @@ export async function ensurePlatformProviders(db: Database = defaultDb): Promise
       .limit(1)
 
     const values = toRowValues(def)
+
+    // A def that declares a system client but resolved no value is the silent
+    // failure mode of this whole operation: the columns are deliberately left
+    // untouched rather than nulled, so the run reports success while the row keeps
+    // the PREVIOUS secret. Naming those providers is what makes a missing or
+    // misspelled config key visible instead of looking like a no-op success.
+    if (def.systemClientIdEnv || def.systemClientSecretEnv) {
+      ;(values.oauth2ClientId && values.oauth2ClientSecret ? credentialed : skipped).push(
+        def.providerKey
+      )
+    }
 
     if (existing.length > 0) {
       await db
@@ -89,7 +121,13 @@ export async function ensurePlatformProviders(db: Database = defaultDb): Promise
     }
   }
 
-  logger.info('Ensured platform connection providers', { count: PLATFORM_PROVIDER_DEFS.length })
+  logger.info('Ensured platform connection providers', {
+    count: PLATFORM_PROVIDER_DEFS.length,
+    credentialed,
+    // Non-empty here means those providers kept whatever secret was baked before —
+    // check the config keys named by their `systemClientIdEnv`/`systemClientSecretEnv`.
+    skippedMissingConfig: skipped,
+  })
 }
 
 /** Convenience predicate: is this a platform built-in provider key? */

@@ -56,6 +56,7 @@ import { migration088PhoneGeoBackfill } from './migrations/088-phone-geo-backfil
 import { migration089ReseedPlatformProvidersAuthApply } from './migrations/089-reseed-platform-providers-auth-apply'
 import { migration090ThreadEventsExtraction } from './migrations/090-thread-events-extraction'
 import { migration091BackfillParticipantDisplayName } from './migrations/091-backfill-participant-display-name'
+import { migration092ReseedPlatformProvidersMetaGlobal } from './migrations/092-reseed-platform-providers-meta-global'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -138,6 +139,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration089ReseedPlatformProvidersAuthApply,
     migration090ThreadEventsExtraction,
     migration091BackfillParticipantDisplayName,
+    migration092ReseedPlatformProvidersMetaGlobal,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

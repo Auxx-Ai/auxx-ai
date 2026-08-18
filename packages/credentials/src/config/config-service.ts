@@ -386,6 +386,20 @@ export class ConfigService {
   }
 
   /** Refresh the cache from DB. */
+  /**
+   * Re-read every DB override into this process's cache, now.
+   *
+   * The cache otherwise refreshes on a 5-minute timer, which is fine for reads but
+   * not for a job that must act on a value an admin JUST wrote from another
+   * process — the connection-provider reseed bakes the platform OAuth client into
+   * a row, and baking the previous secret would look like it worked. No-op when DB
+   * overrides are disabled, where `get()` reads `process.env` at call time anyway.
+   */
+  async refresh(): Promise<void> {
+    if (!this.isDbEnabled) return
+    await this.refreshCache()
+  }
+
   private async refreshCache(): Promise<void> {
     try {
       const storage = await this.getStorage()

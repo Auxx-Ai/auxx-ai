@@ -35,6 +35,7 @@ import {
   reconcileRecordIdentitiesJob,
   recordUsageEventJob,
   recurringVisitsJob,
+  reseedConnectionProvidersJob,
   sendGettingStartedEmailsJob,
   sendMidTrialEmailsJob,
   sendTrialConversionEmailsJob,
@@ -215,6 +216,11 @@ export const jobMappings = {
 
   // Data migrations runner (enqueued at boot + from the superadmin panel)
   dataMigrationsJob,
+
+  // Platform connection-provider reseed (superadmin panel only). Re-bakes the
+  // ConnectionDefinition rows from the deployed catalog + this process's config,
+  // so rotating a platform OAuth client is a button, not a release.
+  reseedConnectionProvidersJob,
 
   // RecordIdentity drift backstop (daily; rebuilds the index from
   // FieldValue ⋈ CustomField(isIdentity) for any un-instrumented writer)

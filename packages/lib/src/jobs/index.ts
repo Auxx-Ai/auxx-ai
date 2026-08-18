@@ -210,6 +210,10 @@ export {
 } from './maintenance/reconcile-record-identities-job'
 // Dispatch recurring engine daily sweep (M2c)
 export { recurringVisitsJob } from './maintenance/recurring-visits-job'
+export {
+  enqueueReseedConnectionProviders,
+  reseedConnectionProvidersJob,
+} from './maintenance/reseed-connection-providers-job'
 // Client-notifications sequence enrollment hourly sweep (plan 19 §4.3, decision #13)
 export { sequenceEnrollmentSweepJob } from './maintenance/sequence-enrollment-sweep-job'
 export {
