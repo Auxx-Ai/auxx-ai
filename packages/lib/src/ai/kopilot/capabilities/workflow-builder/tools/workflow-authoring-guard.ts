@@ -3,6 +3,7 @@
 import { schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { ForbiddenError } from '../../../../../errors'
+import type { CapabilityView } from '../../../../../permissions/capabilities/capability-view'
 import { PermissionKey } from '../../../../../permissions/capabilities/registry'
 import { beginWorkflowTurnLock } from '../../../../../workflows/graph-edit/turn-lock'
 import { assertWorkflowAppNotSystemOwned } from '../../../../../workflows/workflow-app-access-guard'
@@ -47,6 +48,41 @@ export type WorkflowAuthoringResolution =
  * cheaper than the router it mirrors.
  */
 export type WorkflowAuthoringTier = 'view' | 'edit' | 'admin'
+
+/**
+ * Rungs (1) and (2) of {@link resolveWorkflowAuthoring}, on their own: fail
+ * closed on absent capabilities, then the `workflowsView` area key.
+ *
+ * Extracted so the CATALOG tools — the ones that answer "what node types exist
+ * and what config do they take" — can assert the area without the rest of the
+ * ladder. They have no workflow instance to gate on: they take a type id, not a
+ * ref, and requiring a session workflow would make them unusable off the
+ * builder page for no security gain. Everything instance-shaped (org scope, the
+ * per-workflow rung, system-owned lockdown, the dirty gate, the turn lock)
+ * stays below, where a workflow id actually exists.
+ *
+ * It is a function rather than two copied `if`s so the fail-closed decision has
+ * exactly ONE definition. Throws `ForbiddenError` on both rungs, same as the
+ * full gate.
+ *
+ * Declared as an assertion signature, not `void`: extracting the null check out
+ * of {@link resolveWorkflowAuthoring} would otherwise cost it the narrowing it
+ * used to get from the inline `if`, and every later `capabilities.` call below
+ * would need a non-null assertion — turning a refactor into three new places
+ * where a future edit could silently deref undefined.
+ */
+export function assertWorkflowAreaAccess(
+  capabilities: CapabilityView | undefined
+): asserts capabilities is CapabilityView {
+  if (!capabilities) {
+    throw new ForbiddenError(
+      'This session carries no permission context — workflow editing is unavailable.'
+    )
+  }
+  if (!capabilities.can(PermissionKey.workflowsView)) {
+    throw new ForbiddenError('You don’t have permission to work with workflows.')
+  }
+}
 
 /**
  * **The** authorization gate for every graph tool in the `workflow.builder`
@@ -99,17 +135,10 @@ export async function resolveWorkflowAuthoring(
   const organizationId = agentDeps.organizationId
 
   // (1) Fail closed — see the docblock. Deliberately opposite the lib-wide
-  // `undefined ⇒ unrestricted` convention, so it is stated loudly here.
-  if (!capabilities) {
-    throw new ForbiddenError(
-      'This session carries no permission context — workflow editing is unavailable.'
-    )
-  }
-
-  // (2) Area rung.
-  if (!capabilities.can(PermissionKey.workflowsView)) {
-    throw new ForbiddenError('You don’t have permission to work with workflows.')
-  }
+  // `undefined ⇒ unrestricted` convention, so it is stated loudly there.
+  // (2) Area rung. Both live in `assertWorkflowAreaAccess` so the catalog tools
+  // share this exact decision rather than reimplementing it.
+  assertWorkflowAreaAccess(capabilities)
 
   // (3) Org scope. The id comes from client-supplied session refs — verify it
   // belongs to THIS org before any instance assert, so a foreign id reads as
