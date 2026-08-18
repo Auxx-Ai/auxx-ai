@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   previousRow: null as Record<string, unknown> | null,
   returnedRow: {} as Record<string, unknown>,
   selectCalls: 0,
+  lastConflictSet: null as Record<string, unknown> | null,
 }))
 
 vi.mock('@auxx/database', async () => {
@@ -63,7 +64,10 @@ function makeService() {
     },
     insert: () => ({
       values: () => ({
-        onConflictDoUpdate: () => ({ returning: async () => [h.returnedRow] }),
+        onConflictDoUpdate: (args: { set: Record<string, unknown> }) => {
+          h.lastConflictSet = args.set
+          return { returning: async () => [h.returnedRow] }
+        },
       }),
     }),
   } as any
@@ -89,6 +93,7 @@ beforeEach(() => {
   h.previousRow = null
   h.returnedRow = returnedRow()
   h.selectCalls = 0
+  h.lastConflictSet = null
 })
 
 const INPUT = {
@@ -157,6 +162,36 @@ describe('findOrCreateParticipant participant:updated emission', () => {
       expect.objectContaining({ patch: { isInternal: false } }),
       undefined
     )
+  })
+
+  it('a nameless input never downgrades the name trio on conflict (upgrade-only)', async () => {
+    // The chips send `name: null` for a raw typed/pasted address — the
+    // conflict-set must leave name/displayName/initials untouched (ingest's
+    // rule), and with nothing overwritten there is nothing to publish.
+    h.previousRow = { name: 'Anna Klooth', displayName: 'Anna Klooth', isInternal: false }
+
+    await makeService().findOrCreateParticipant(
+      { identifier: 'anna@example.com', identifierType: 'EMAIL' as never, name: null },
+      { inboxId: 'inbox_1' }
+    )
+
+    expect(h.lastConflictSet).not.toHaveProperty('name')
+    expect(h.lastConflictSet).not.toHaveProperty('displayName')
+    expect(h.lastConflictSet).not.toHaveProperty('initials')
+    expect(h.lastConflictSet).toHaveProperty('isInternal')
+    expect(publishSpy).not.toHaveBeenCalled()
+  })
+
+  it('a usable name still overwrites the trio together on conflict', async () => {
+    h.previousRow = { name: 'Anna', displayName: 'Anna', isInternal: false }
+
+    await makeService().findOrCreateParticipant(INPUT, { inboxId: 'inbox_1' })
+
+    expect(h.lastConflictSet).toMatchObject({
+      name: 'Anna Klooth',
+      displayName: 'Anna Klooth',
+      initials: 'AK',
+    })
   })
 
   it('a publish failure never fails the upsert', async () => {

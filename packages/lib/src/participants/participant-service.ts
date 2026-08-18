@@ -149,10 +149,16 @@ export class ParticipantService {
         previous = rows[0]
       }
 
+      // Never downgrade a known name to a bare address — ingest's rule
+      // (`ingest/participants/find-or-create.ts`): the name trio only
+      // overwrites when this write actually carries a usable name. A raw
+      // typed/pasted address (the chips send `name: null`) leaves the row's
+      // best-known name untouched; the insert branch below still gets the
+      // identifier-fallback displayName for brand-new rows. This also means
+      // the diff-then-publish underneath can never emit a name downgrade.
+      const hasUsableName = !!name?.trim()
       const updateValues: Record<string, unknown> = {
-        ...(name !== undefined && { name: name }),
-        ...(displayName !== undefined && { displayName: displayName }),
-        ...(initials !== undefined && { initials: initials }),
+        ...(hasUsableName && { name, displayName, initials }),
         // Recomputed on every upsert — see the matching note in
         // `ingest/participants/find-or-create.ts`. Derived from org config, not
         // from message content, so last-writer-wins is always an improvement.
