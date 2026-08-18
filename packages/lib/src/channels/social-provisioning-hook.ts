@@ -17,7 +17,7 @@
 import { configService } from '@auxx/credentials'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
 import type { PostConnectHook, PostConnectHookContext } from '../connections/post-connect-hooks'
 import { resolveConnectionForRuntime } from '../connections/resolve-connection-for-runtime'
@@ -300,9 +300,21 @@ async function upsertSocialIntegration(args: {
     }) ?? null
 
   if (existing) {
+    // jsonb MERGE, never replace. `backfillCutoffAt` / `initialBackfillCompletedAt`
+    // and any `settings` live in this same blob, and a wholesale `.set({ metadata })`
+    // on reconnect would wipe them — reopening a suppression window that has already
+    // closed, or dropping the channel's record-creation settings. Same rule
+    // `quo-channel.ts` documents at its own upsert.
+    const metadataJson = JSON.stringify(metadata)
     await db
       .update(schema.Integration)
-      .set({ credentialId, enabled: true, metadata: metadata as any, updatedAt: new Date() })
+      .set({
+        credentialId,
+        enabled: true,
+        name: displayName,
+        metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb) || ${metadataJson}::jsonb`,
+        updatedAt: new Date(),
+      })
       .where(eq(schema.Integration.id, existing.id))
     return { id: existing.id, isNew: false, displayName }
   }
@@ -314,7 +326,18 @@ async function upsertSocialIntegration(args: {
       provider,
       credentialId,
       enabled: true,
-      metadata: metadata as any,
+      // Persisted, not just emitted on the `integration:connected` event — this is
+      // what every channel surface reads to label the row. Without it FB/IG render
+      // as a bare "Facebook Integration" with no page name anywhere.
+      name: displayName,
+      // Received-time trigger cutoff, stamped at the connect epoch and ONLY on a
+      // first connect (a reconnect must not reopen a window that already closed).
+      // Consumed by both providers' `initialize()` via `setBackfillCutoff`, so a
+      // history backfill stores messages without firing `message:received` for
+      // them. Lifted by `initialBackfillCompletedAt` when the capped backfill
+      // (WS7) finishes; until that exists the window stays open, which is the
+      // safe direction — live inbound still fires, only history stays silent.
+      metadata: { ...metadata, backfillCutoffAt: new Date().toISOString() } as any,
       updatedAt: new Date(),
     })
     .returning({ id: schema.Integration.id })

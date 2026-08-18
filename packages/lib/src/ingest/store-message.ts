@@ -207,6 +207,13 @@ export async function storeMessage(
         }
       }
 
+      // The incoming conversation key may differ from the one this thread was
+      // created under — the same message reaching us through two doors under two
+      // keys is exactly the fork the alias table exists to prevent. Recording it
+      // here is what makes the NEXT message under the incoming key resolve at
+      // rung 1 instead of opening a second thread.
+      await recordThreadExternalKey(ctx, messageData, existingByMsgId.threadId)
+
       await updateThreadMetadataEfficient(ctx, existingByMsgId.threadId)
       return { messageId: existingByMsgId.id, isNew: false }
     }
@@ -246,7 +253,15 @@ export async function storeMessage(
         }
       }
 
+      // Same reasoning as the `existingByMsgId` branch above, and this is the arm
+      // that matters for providers with no RFC 5322 fallback: `reconcileMessage`
+      // dedupes on `(integrationId, externalId)`, so a message seen by both the
+      // webhook and the REST sync binds whichever conversation key the second door
+      // presented to the thread the first door created. Facebook/Instagram depend
+      // on this — `resolveThreadId` gates its header-chain rung to outlook/imap, so
+      // for them a rung-1 miss forks with nothing to catch it.
       if (existingMessage.threadId) {
+        await recordThreadExternalKey(ctx, messageData, existingMessage.threadId)
         await updateThreadMetadataEfficient(ctx, existingMessage.threadId)
       }
 
