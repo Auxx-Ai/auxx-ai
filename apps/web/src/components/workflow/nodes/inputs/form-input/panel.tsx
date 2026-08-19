@@ -47,7 +47,7 @@ function getDefaultTypeOptions(inputType: BaseType): TypeOptions {
         },
       }
     case BaseType.ENUM:
-      return { enum: [] }
+      return { enum: { options: [], multiple: false } }
     case BaseType.FILE:
       return {
         file: {
@@ -107,6 +107,8 @@ const FormInputPanelComponent: React.FC<FormInputPanelProps> = ({ nodeId, data }
   const { inputs: nodeData, setInputs: setNodeData } = useNodeCrud<FormInputNodeData>(nodeId, data)
 
   const inputType = nodeData.inputType || BaseType.STRING
+  const enumOptions = nodeData.typeOptions?.enum?.options ?? []
+  const isMulti = nodeData.typeOptions?.enum?.multiple ?? false
 
   /**
    * Handle input type change - reset type-specific options and default value
@@ -132,6 +134,28 @@ const FormInputPanelComponent: React.FC<FormInputPanelProps> = ({ nodeId, data }
         draft.typeOptions = { ...draft.typeOptions, ...options }
       })
       setNodeData(newData)
+    },
+    [nodeData, setNodeData]
+  )
+
+  /**
+   * Toggle a Select between single and multiple.
+   *
+   * Clears `defaultValue` as well: the two modes store different shapes (a
+   * scalar vs an array), so carrying the old default across would leave the
+   * run form holding a value its control cannot render.
+   */
+  const handleMultipleChange = useCallback(
+    (_content: string, multiple: boolean) => {
+      setNodeData(
+        produce(nodeData, (draft) => {
+          draft.typeOptions = {
+            ...draft.typeOptions,
+            enum: { options: draft.typeOptions?.enum?.options ?? [], multiple },
+          }
+          draft.defaultValue = undefined
+        })
+      )
     },
     [nodeData, setNodeData]
   )
@@ -172,10 +196,28 @@ const FormInputPanelComponent: React.FC<FormInputPanelProps> = ({ nodeId, data }
 
       case BaseType.ENUM:
         return (
-          <OptionsEditor
-            options={nodeData.typeOptions?.enum}
-            onChange={(options) => handleTypeOptionsChange({ enum: options })}
-          />
+          <div className='flex flex-col gap-2'>
+            <VarEditorField className='p-0'>
+              <VarEditorFieldRow
+                title='Multiple'
+                description='Let users pick more than one option'
+                type={BaseType.BOOLEAN}>
+                <ConstantInputAdapter
+                  value={isMulti}
+                  onChange={handleMultipleChange}
+                  varType={BaseType.BOOLEAN}
+                  fieldOptions={{ variant: 'switch' }}
+                  disabled={isReadOnly}
+                />
+              </VarEditorFieldRow>
+            </VarEditorField>
+            <OptionsEditor
+              options={enumOptions}
+              onChange={(options) =>
+                handleTypeOptionsChange({ enum: { options, multiple: isMulti } })
+              }
+            />
+          </div>
         )
 
       case BaseType.ADDRESS:
@@ -311,7 +353,8 @@ const FormInputPanelComponent: React.FC<FormInputPanelProps> = ({ nodeId, data }
                 placeholder='Enter default value'
                 disabled={isReadOnly}
                 fieldOptions={{
-                  enum: nodeData.typeOptions?.enum,
+                  enum: enumOptions,
+                  multiSelect: isMulti,
                   currency: nodeData.typeOptions?.currency,
                   string: nodeData.typeOptions?.string,
                 }}

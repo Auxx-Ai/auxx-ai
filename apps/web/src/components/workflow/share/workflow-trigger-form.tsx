@@ -2,6 +2,7 @@
 
 'use client'
 
+import { isEmptyFormInputValue } from '@auxx/lib/workflow-engine/client'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { usePassport } from '@auxx/ui/passport'
@@ -136,12 +137,15 @@ export function WorkflowTriggerForm({ submitButtonText }: WorkflowTriggerFormPro
     for (const config of formInputConfigs) {
       const value = inputs[config.nodeId]
 
-      // Determine if value is empty based on type
-      // For booleans, false is a valid value - only undefined/null is empty
+      // Determine if value is empty based on type.
+      // For booleans, false is a valid value - only undefined/null is empty.
+      // Everything else defers to the shared rule the SERVER validates with
+      // (`isEmptyFormInputValue`), so a required multi-select submitting `[]`
+      // fails here with an inline field error instead of as a 400 on submit.
       const isEmpty =
         config.inputType === BaseType.BOOLEAN
           ? value === undefined || value === null
-          : value === undefined || value === null || value === ''
+          : isEmptyFormInputValue(value)
 
       // Check required - handle different types appropriately
       if (config.required && isEmpty) {

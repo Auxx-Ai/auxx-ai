@@ -21,7 +21,7 @@ export const VAR_TYPE_LABELS: Record<BaseType, string> = {
   [BaseType.EMAIL]: 'Email',
   [BaseType.URL]: 'URL',
   [BaseType.PHONE]: 'Phone',
-  [BaseType.ENUM]: 'Enum',
+  [BaseType.ENUM]: 'Select',
   [BaseType.JSON]: 'JSON',
   [BaseType.RELATION]: 'Relation',
   [BaseType.ACTOR]: 'Actor',

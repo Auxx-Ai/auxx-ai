@@ -131,4 +131,79 @@ describe('ManualTriggerProcessor', () => {
     expect(await contextManager.getVariable('form-input-1.inputType')).toBe('boolean')
     expect(await contextManager.getVariable('form-input-1.label')).toBe('Confirm')
   })
+
+  /**
+   * The SELECT round-trip through the REAL runtime path.
+   *
+   * A wired form-input is NON_EXECUTABLE, so its own processor never runs and
+   * this trigger is what actually publishes the variables. The catalog's
+   * `getFormInputOutputVariables` only says what the picker will OFFER — these
+   * assert what an execution genuinely writes, which is what `{{...}}` resolves
+   * against.
+   */
+  const selectGraph = (multiple: boolean) => ({
+    graph: {
+      nodes: [
+        {
+          nodeId: 'form-input-1',
+          type: 'form-input',
+          data: {
+            inputType: 'enum',
+            label: 'Areas',
+            typeOptions: {
+              enum: {
+                multiple,
+                options: [
+                  { label: 'Billing', value: 'billing' },
+                  { label: 'Shipping', value: 'shipping' },
+                ],
+              },
+            },
+          },
+        },
+      ],
+    },
+  })
+
+  it('writes a scalar `value` for a single SELECT', async () => {
+    const contextManager = runContext('user-1')
+    contextManager.setVariable('sys.triggerData', { 'form-input-1': 'billing' })
+    contextManager.setVariable('sys.workflow', selectGraph(false))
+
+    await run(contextManager)
+
+    expect(await contextManager.getVariable('form-input-1.value')).toBe('billing')
+    expect(await contextManager.getVariable('form-input-1.isEmpty')).toBe(false)
+  })
+
+  it('writes values/count for a multiple SELECT', async () => {
+    const contextManager = runContext('user-1')
+    contextManager.setVariable('sys.triggerData', {
+      'form-input-1': ['billing', 'shipping'],
+    })
+    contextManager.setVariable('sys.workflow', selectGraph(true))
+
+    await run(contextManager)
+
+    expect(await contextManager.getVariable('form-input-1.values')).toEqual(['billing', 'shipping'])
+    expect(await contextManager.getVariable('form-input-1.count')).toBe(2)
+    expect(await contextManager.getVariable('form-input-1.isEmpty')).toBe(false)
+  })
+
+  /**
+   * `[]` is what a multi SELECT submits when nothing is picked. It passes every
+   * scalar emptiness test, so `isEmpty` reported false until the rule moved to
+   * the shared `isEmptyFormInputValue`.
+   */
+  it('reports isEmpty for a multiple SELECT with nothing picked', async () => {
+    const contextManager = runContext('user-1')
+    contextManager.setVariable('sys.triggerData', { 'form-input-1': [] })
+    contextManager.setVariable('sys.workflow', selectGraph(true))
+
+    await run(contextManager)
+
+    expect(await contextManager.getVariable('form-input-1.values')).toEqual([])
+    expect(await contextManager.getVariable('form-input-1.count')).toBe(0)
+    expect(await contextManager.getVariable('form-input-1.isEmpty')).toBe(true)
+  })
 })
