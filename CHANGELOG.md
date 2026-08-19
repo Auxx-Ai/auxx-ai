@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.208](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.207...auxx-v0.1.208) (2026-08-19)
+
+
+### Features
+
+* **channels:** ingest inbound meta attachments ([#1724](https://github.com/Auxx-Ai/auxx-ai/issues/1724)) ([5a42eae](https://github.com/Auxx-Ai/auxx-ai/commit/5a42eae602c18c625db15b9541b5704fc6244b9f))
+* **channels:** meta data deletion and deauthorize callbacks ([#1729](https://github.com/Auxx-Ai/auxx-ai/issues/1729)) ([8c3d05b](https://github.com/Auxx-Ai/auxx-ai/commit/8c3d05bf39e945f7bad04e869f68e87019b36803))
+* **channels:** send attachments on meta channels ([#1726](https://github.com/Auxx-Ai/auxx-ai/issues/1726)) ([fc628dd](https://github.com/Auxx-Ai/auxx-ai/commit/fc628dde6109f2222c96277a5321e06a1bfa438a))
+* **connections:** reseed platform providers without a release ([#1728](https://github.com/Auxx-Ai/auxx-ai/issues/1728)) ([6cb4367](https://github.com/Auxx-Ai/auxx-ai/commit/6cb4367e8c3740353f0635948925e4bc02203e11))
+
+
+### Bug Fixes
+
+* **channels:** drop placeholder attachment links, and purge business_management ([#1730](https://github.com/Auxx-Ai/auxx-ai/issues/1730)) ([8423e9b](https://github.com/Auxx-Ai/auxx-ai/commit/8423e9bd3bb9d3370ae6434b79984eb92a0fa3a7))
+* **kopilot:** stop rendering workflow node ids as record cards ([#1727](https://github.com/Auxx-Ai/auxx-ai/issues/1727)) ([c70e8f6](https://github.com/Auxx-Ai/auxx-ai/commit/c70e8f63bee8bcc4a91ef686413977538fced290))
+
 ## [0.1.207](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.206...auxx-v0.1.207) (2026-08-18)
 
 
