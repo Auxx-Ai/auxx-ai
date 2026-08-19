@@ -146,6 +146,10 @@ export function Combobox(props: ComboboxProps) {
                   <CommandItem
                     key={options.value}
                     value={options.value}
+                    // cmdk indexes `value` only. When it is an opaque id (an ISO code, a
+                    // CUID) the visible label is unsearchable, so index it as a keyword —
+                    // `onSelect` still hands back the raw `value`.
+                    keywords={[options.label]}
                     onSelect={(currentValue) => {
                       onChangeValue(currentValue === value ? '' : currentValue)
                       setOpen(false)

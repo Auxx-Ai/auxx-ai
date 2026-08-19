@@ -1,13 +1,11 @@
 'use client'
 
-import { Combobox } from '@auxx/ui/components/combobox'
-import { Input, inputVariants } from '@auxx/ui/components/input'
+import { CountrySelect } from '@auxx/ui/components/country-select'
+import { Input } from '@auxx/ui/components/input'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronsUpDown } from 'lucide-react'
 // apps/web/src/components/fields/inputs/address-struct-input-field.tsx
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
-import { countries } from '~/constants/countries'
 import { usePropertyContext } from '../property-provider'
 
 /**
@@ -142,28 +140,16 @@ export function AddressStructFields({
           disabled={disabled}
         />
         <div className='min-w-0 flex-1'>
-          <Combobox
-            options={countries}
-            placeholder='Country'
-            emptyText={<span>No countries found</span>}
+          {/* Shared picker: full ISO 3166-1 list, flag on the left, blue selected check.
+              Rows are indexed by country name, so "United" finds both United States and
+              United Kingdom — the previous Combobox indexed the alpha-2 code alone. */}
+          <CountrySelect
             value={value.country}
-            onChangeValue={(val) => handleFieldChange('country', val)}
+            onChange={(code) => handleFieldChange('country', code)}
             disabled={disabled}
-            trigger={
-              <button
-                type='button'
-                disabled={disabled}
-                className={cn(
-                  inputVariants({ size: 'sm', variant: inputVariant }),
-                  'flex w-full cursor-pointer items-center justify-between',
-                  disabled && 'cursor-not-allowed opacity-50'
-                )}>
-                <span className={cn(!value.country && 'text-primary-500')}>
-                  {countries.find((c) => c.value === value.country)?.label || 'Country'}
-                </span>
-                <ChevronsUpDown className='size-3 shrink-0 opacity-50' />
-              </button>
-            }
+            placeholder='Country'
+            variant={inputVariant === 'transparent' ? 'transparent' : 'default'}
+            size='sm'
           />
         </div>
       </div>

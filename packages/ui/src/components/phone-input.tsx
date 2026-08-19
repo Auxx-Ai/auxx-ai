@@ -1,17 +1,17 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, PhoneIcon } from 'lucide-react'
+import { PhoneIcon } from 'lucide-react'
 // packages/ui/src/components/phone-input.tsx
 import React, { createContext, useContext, useId, useMemo, useRef, useState } from 'react'
 import * as RPNInput from 'react-phone-number-input'
 import flags from 'react-phone-number-input/flags'
 import {
   Command,
+  CommandDetailItem,
   CommandEmpty,
   CommandGroup,
   CommandInput,
-  CommandItem,
   CommandList,
   CommandSeparator,
 } from './command'
@@ -137,6 +137,41 @@ function PhoneInput({ className, autoFocus, ...props }: React.ComponentProps<'in
 
 PhoneInput.displayName = 'PhoneInput'
 
+/**
+ * One country row in the picker: flag, name, optional dial code, blue selected check.
+ * The dial code sits in `secondary` (inline, right after the name) rather than `trailing`,
+ * so the row's right edge belongs to the selection check alone.
+ */
+function CountryRow({
+  option,
+  selected,
+  showCallingCode,
+  onSelect,
+}: {
+  option: { value: RPNInput.Country; label: string; callingCode: string }
+  selected: boolean
+  showCallingCode: boolean
+  onSelect: (code: RPNInput.Country) => void
+}) {
+  return (
+    <CommandDetailItem
+      // Label first so typing a country name filters — cmdk indexes this string, and the
+      // ISO code alone (e.g. `US`) would make "United" match nothing.
+      value={`${option.label} ${option.callingCode}`}
+      title={option.label}
+      icon={<FlagComponent country={option.value} countryName={option.label} />}
+      secondary={
+        showCallingCode ? (
+          <span className='text-muted-foreground text-xs'>{option.callingCode}</span>
+        ) : undefined
+      }
+      selected={selected}
+      selectionMode='check'
+      onSelect={() => onSelect(option.value)}
+    />
+  )
+}
+
 /** Props for the CountrySelect component */
 type CountrySelectProps = {
   disabled?: boolean
@@ -238,19 +273,13 @@ const CountrySelect = ({
                   {countryOptions
                     .filter((option) => option.value === value)
                     .map((option) => (
-                      <CommandItem
+                      <CountryRow
                         key={option.value}
-                        value={`${option.label} ${option.callingCode}`}
-                        onSelect={() => handleSelect(option.value)}>
-                        <FlagComponent country={option.value} countryName={option.label} />
-                        <span className='flex-1 truncate'>{option.label}</span>
-                        {showCallingCodes && (
-                          <span className='text-muted-foreground text-xs'>
-                            {option.callingCode}
-                          </span>
-                        )}
-                        <Check className='ml-auto size-4' />
-                      </CommandItem>
+                        option={option}
+                        selected
+                        showCallingCode={showCallingCodes}
+                        onSelect={handleSelect}
+                      />
                     ))}
                 </CommandGroup>
                 <CommandSeparator />
@@ -263,18 +292,13 @@ const CountrySelect = ({
                   {countryOptions
                     .filter((option) => option.value === favoriteCountry)
                     .map((option) => (
-                      <CommandItem
+                      <CountryRow
                         key={option.value}
-                        value={`${option.label} ${option.callingCode}`}
-                        onSelect={() => handleSelect(option.value)}>
-                        <FlagComponent country={option.value} countryName={option.label} />
-                        <span className='flex-1 truncate'>{option.label}</span>
-                        {showCallingCodes && (
-                          <span className='text-muted-foreground text-xs'>
-                            {option.callingCode}
-                          </span>
-                        )}
-                      </CommandItem>
+                        option={option}
+                        selected={false}
+                        showCallingCode={showCallingCodes}
+                        onSelect={handleSelect}
+                      />
                     ))}
                 </CommandGroup>
                 <CommandSeparator />
@@ -285,16 +309,13 @@ const CountrySelect = ({
               {countryOptions
                 .filter((option) => option.value !== value && option.value !== favoriteCountry)
                 .map((option) => (
-                  <CommandItem
+                  <CountryRow
                     key={option.value}
-                    value={`${option.label} ${option.callingCode}`}
-                    onSelect={() => handleSelect(option.value)}>
-                    <FlagComponent country={option.value} countryName={option.label} />
-                    <span className='flex-1 truncate'>{option.label}</span>
-                    {showCallingCodes && (
-                      <span className='text-muted-foreground text-xs'>{option.callingCode}</span>
-                    )}
-                  </CommandItem>
+                    option={option}
+                    selected={false}
+                    showCallingCode={showCallingCodes}
+                    onSelect={handleSelect}
+                  />
                 ))}
             </CommandGroup>
           </CommandList>
