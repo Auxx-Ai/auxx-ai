@@ -155,25 +155,25 @@ const BOOLEAN_GATES = {
     unverifiedApps: false,
     kopilot: true,
     callRecordings: false,
-    todayInbox: false,
-    learnedMemory: false,
-    // Duplicate suggestions. `false` on every tier while the engine rolls out —
-    // flipped per-org through the admin feature override. A missing key reads as
-    // no-access on both the server (`FeaturePermissionService.hasAccess`) and the
-    // client (`useFeatureFlags().hasAccess`), so orgs whose cached feature blob
-    // predates this seed behave identically to a seeded `false`.
-    duplicateDetection: false,
+    todayInbox: true,
+    learnedMemory: true,
+    // Duplicate suggestions. On for every tier now that the engine has rolled out.
+    // A missing key still reads as no-access on both the server
+    // (`FeaturePermissionService.hasAccess`) and the client
+    // (`useFeatureFlags().hasAccess`), so an org whose plan row predates this seed
+    // stays off until "Update Feature Limits" is pressed on /admin/plans — turning it
+    // off again for a single org is an admin feature override, not a seed change.
+    duplicateDetection: true,
     agents: true,
-    agentProcedures: false,
-    mcp: false,
+    agentProcedures: true,
+    mcp: true,
     dataConnectors: true,
     dashboards: true,
-    dispatch: false,
-    // Sequences is metered by `sequencesLimit`, not bundled with `dispatch` — the
-    // dispatch-triggered client-notification templates stay unreachable without the
-    // `dispatch` gate (see client-notifications-settings-page.tsx, which requires
-    // both), but manual/CRM outbound cadences are the general-purpose half and demo
-    // should show them off.
+    dispatch: true,
+    // Sequences is metered by `sequencesLimit`, not bundled with `dispatch`. Demo
+    // now carries both gates, so the dispatch-triggered client-notification templates
+    // are reachable here too (see client-notifications-settings-page.tsx, which
+    // requires both) alongside the manual/CRM outbound cadences.
     sequences: true,
     // Demo carried `mailPermissions: true` before plan v3/03 §7.6 folded that key
     // into this one, so the demo org keeps demoing sharing (D9).
@@ -195,12 +195,12 @@ const BOOLEAN_GATES = {
     unverifiedApps: true,
     kopilot: true,
     callRecordings: false,
-    todayInbox: false,
-    learnedMemory: false,
-    duplicateDetection: false,
+    todayInbox: true,
+    learnedMemory: true,
+    duplicateDetection: true,
     agents: true,
-    agentProcedures: false,
-    mcp: false,
+    agentProcedures: true,
+    mcp: true,
     dataConnectors: true,
     dashboards: true,
     dispatch: false,
@@ -221,12 +221,12 @@ const BOOLEAN_GATES = {
     unverifiedApps: true,
     kopilot: true,
     callRecordings: false,
-    todayInbox: false,
-    learnedMemory: false,
-    duplicateDetection: false,
+    todayInbox: true,
+    learnedMemory: true,
+    duplicateDetection: true,
     agents: true,
-    agentProcedures: false,
-    mcp: false,
+    agentProcedures: true,
+    mcp: true,
     dataConnectors: true,
     dashboards: true,
     dispatch: false,
@@ -248,12 +248,12 @@ const BOOLEAN_GATES = {
     unverifiedApps: true,
     kopilot: true,
     callRecordings: false,
-    todayInbox: false,
-    learnedMemory: false,
-    duplicateDetection: false,
+    todayInbox: true,
+    learnedMemory: true,
+    duplicateDetection: true,
     agents: true,
-    agentProcedures: false,
-    mcp: false,
+    agentProcedures: true,
+    mcp: true,
     dataConnectors: true,
     dashboards: true,
     dispatch: true,
@@ -274,12 +274,12 @@ const BOOLEAN_GATES = {
     unverifiedApps: true,
     kopilot: true,
     callRecordings: false,
-    todayInbox: false,
-    learnedMemory: false,
-    duplicateDetection: false,
+    todayInbox: true,
+    learnedMemory: true,
+    duplicateDetection: true,
     agents: true,
-    agentProcedures: false,
-    mcp: false,
+    agentProcedures: true,
+    mcp: true,
     dataConnectors: true,
     dashboards: true,
     dispatch: true,
