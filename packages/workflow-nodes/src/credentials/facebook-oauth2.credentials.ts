@@ -37,14 +37,24 @@ export class FacebookOAuth2Api implements ICredentialType {
     systemClientIdEnv: 'FACEBOOK_CLIENT_ID',
     systemClientSecretEnv: 'FACEBOOK_CLIENT_SECRET',
 
-    // Facebook Graph API scopes
+    // Facebook Graph API scopes.
+    //
+    // `business_management` was dropped 2026-08-18: messaging provably does not need it
+    // (see docs/setup-facebook.md §5), and it is the riskiest line in the App Review
+    // submission — Meta defines it as managing business assets on behalf of OTHER
+    // businesses, which is not what we do. Keep it out of every scope list on this app,
+    // including dead ones, so a reviewer never sees the app request it.
+    //
+    // NOTE: this whole credential type is inert. It keys on `FACEBOOK_CLIENT_ID` /
+    // `FACEBOOK_CLIENT_SECRET`, which exist in no env file, and points at Graph v18.0.
+    // The live Facebook/Instagram CHANNEL defs are in
+    // `packages/lib/src/connections/providers/defs.ts` — edit those, not this.
     scopes: [
       'pages_manage_metadata', // Manage page metadata
       'pages_read_engagement', // Read page engagement
       'pages_manage_posts', // Manage page posts
       'pages_messaging', // Send/receive messages
       'pages_show_list', // Access to pages list
-      'business_management', // Business management
     ],
 
     // Facebook-specific OAuth parameters
