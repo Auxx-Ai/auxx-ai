@@ -30,9 +30,13 @@ function ColorTagPicker({ onChange, value, disabled = false }: ColorPickerProps)
           <button
             key={color.id}
             className={cn(
-              'flex h-6 w-6 items-center justify-center rounded-full transition-all hover:scale-110 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+              'flex h-6 w-6 items-center justify-center rounded-full transition-all hover:scale-110',
+              'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               color.swatch,
-              isSelected && 'ring-2 ring-blue-500 ring-offset-2'
+              // Keyboard focus reads as muted so it never competes with the blue
+              // selection ring; on the selected swatch the selection ring stands.
+              !isSelected && 'focus-visible:ring-muted-foreground/50',
+              isSelected && 'ring-2 ring-blue-500 ring-offset-2 ring-offset-background'
             )}
             onClick={() => onChange(color.id)}
             type='button'
