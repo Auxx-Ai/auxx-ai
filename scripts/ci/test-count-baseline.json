@@ -466,7 +466,7 @@
     "packages/lib/src/conditions/evaluate.test.ts": 16,
     "packages/lib/src/conditions/operator-definitions.test.ts": 25,
     "packages/lib/src/connections/__tests__/auth-apply.test.ts": 15,
-    "packages/lib/src/connections/__tests__/platform-auth-apply.test.ts": 20,
+    "packages/lib/src/connections/__tests__/platform-auth-apply.test.ts": 18,
     "packages/lib/src/connections/__tests__/resolve-provider-key.test.ts": 7,
     "packages/lib/src/connections/__tests__/save-connection.test.ts": 6,
     "packages/lib/src/connections/transports/__tests__/http-pacing.test.ts": 7,
