@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.212](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.211...auxx-v0.1.212) (2026-08-19)
+
+
+### Features
+
+* **billing:** turn on ai + procedure feature gates by default ([#1748](https://github.com/Auxx-Ai/auxx-ai/issues/1748)) ([686d5c9](https://github.com/Auxx-Ai/auxx-ai/commit/686d5c91e29ed5837fcb5eac54bab3a871e4cb5a))
+
+
+### Bug Fixes
+
+* **workflow:** open a panel for app nodes whose app isn't installed ([#1750](https://github.com/Auxx-Ai/auxx-ai/issues/1750)) ([4d366ba](https://github.com/Auxx-Ai/auxx-ai/commit/4d366baa18f9b0d45b5e9a542afd27d7df7e3e63))
+
 ## [0.1.211](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.210...auxx-v0.1.211) (2026-08-19)
 
 
