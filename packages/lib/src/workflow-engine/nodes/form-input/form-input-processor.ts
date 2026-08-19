@@ -1,9 +1,11 @@
 // packages/lib/src/workflow-engine/nodes/form-input/form-input-processor.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type {
-  FormInputNodeData as CatalogFormInputNodeData,
-  TypeOptions,
+import {
+  type FormInputNodeData as CatalogFormInputNodeData,
+  isEmptyFormInputValue,
+  isMultiSelect,
+  type TypeOptions,
 } from '../../catalog/nodes/form-input'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
@@ -66,7 +68,7 @@ export function applyFormInputOutputVariables(params: {
 
   if (label !== undefined) ctx.setNodeVariable(nodeId, 'label', label)
   ctx.setNodeVariable(nodeId, 'inputType', inputType)
-  ctx.setNodeVariable(nodeId, 'isEmpty', value === undefined || value === null || value === '')
+  ctx.setNodeVariable(nodeId, 'isEmpty', isEmptyFormInputValue(value))
 }
 
 /**
@@ -196,8 +198,8 @@ export class FormInputNodeProcessor implements NodeProcessor {
       errors.push('Label is required')
     }
 
-    if (config.inputType === BaseType.ENUM && !config.typeOptions?.enum?.length) {
-      warnings.push('Enum type has no options defined')
+    if (config.inputType === BaseType.ENUM && !config.typeOptions?.enum?.options?.length) {
+      warnings.push('Select type has no options defined')
     }
 
     return { valid: errors.length === 0, errors, warnings }
@@ -214,6 +216,15 @@ function setTypedOutputVariables(
   typeOptions: TypeOptions | undefined,
   ctx: ExecutionContextManager
 ): void {
+  // A multi Select submits an array and therefore writes the array contract
+  // (`values` + `count`), exactly as the catalog's `getFormInputOutputVariables`
+  // advertises for it. Both sides route through `isMultiSelect` so they cannot
+  // disagree about which shape a node produces.
+  if (isMultiSelect({ inputType, typeOptions })) {
+    setArrayOutputs(nodeId, value, ctx)
+    return
+  }
+
   switch (inputType) {
     case BaseType.ADDRESS:
       setAddressOutputs(nodeId, value, ctx)
@@ -232,7 +243,8 @@ function setTypedOutputVariables(
       break
 
     default:
-      // Simple types: STRING, NUMBER, BOOLEAN, EMAIL, URL, PHONE, DATE, DATETIME, TIME, ENUM
+      // Simple types: STRING, NUMBER, BOOLEAN, EMAIL, URL, PHONE, DATE, DATETIME, TIME,
+      // and a single Select.
       ctx.setNodeVariable(nodeId, 'value', value)
   }
 }

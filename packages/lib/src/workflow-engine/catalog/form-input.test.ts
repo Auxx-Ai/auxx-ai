@@ -133,23 +133,39 @@ describe('validateFormInputData', () => {
     })
   })
 
-  it('flags an option-less ENUM as a warning, not a blocker', () => {
+  it('flags an option-less SELECT as a warning, not a blocker', () => {
     const result = validateFormInputData(node({ label: 'Priority', inputType: BaseType.ENUM }))
     expect(result.isValid).toBe(true)
     expect(result.errors).toEqual([
-      { field: 'typeOptions.enum', message: 'At least one option is required', type: 'warning' },
+      {
+        field: 'typeOptions.enum.options',
+        message: 'At least one option is required',
+        type: 'warning',
+      },
     ])
   })
 
-  it('passes a configured ENUM field', () => {
+  it('passes a configured SELECT field', () => {
     const result = validateFormInputData(
       node({
         label: 'Priority',
         inputType: BaseType.ENUM,
-        typeOptions: { enum: [{ label: 'High', value: 'high' }] },
+        typeOptions: { enum: { options: [{ label: 'High', value: 'high' }] } },
       })
     )
     expect(result).toEqual({ isValid: true, errors: [] })
+  })
+
+  it('warns on an option-less SELECT regardless of the multiple flag', () => {
+    const result = validateFormInputData(
+      node({
+        label: 'Areas',
+        inputType: BaseType.ENUM,
+        typeOptions: { enum: { options: [], multiple: true } },
+      })
+    )
+    expect(result.isValid).toBe(true)
+    expect(result.errors).toHaveLength(1)
   })
 })
 
@@ -205,6 +221,35 @@ describe('getFormInputOutputVariables', () => {
       const variables = getFormInputOutputVariables(node({ inputType }), NODE_ID)
       expect(paths(variables)).toEqual(['values', 'count', ...COMMON])
     }
+  })
+
+  /**
+   * The single/multiple split is the whole point of the `multiple` flag: a
+   * multi Select submits an array, so it must advertise the array contract or
+   * every downstream reference to `{{node.value}}` resolves to nothing.
+   */
+  it('advertises a scalar `value` for a single SELECT', () => {
+    const variables = getFormInputOutputVariables(
+      node({
+        inputType: BaseType.ENUM,
+        typeOptions: { enum: { options: [{ label: 'High', value: 'high' }] } },
+      }),
+      NODE_ID
+    )
+    expect(paths(variables)).toEqual(['value', ...COMMON])
+    expect(variables[0]?.type).toBe(BaseType.ENUM)
+  })
+
+  it('advertises values/count for a multiple SELECT', () => {
+    const variables = getFormInputOutputVariables(
+      node({
+        inputType: BaseType.ENUM,
+        typeOptions: { enum: { multiple: true, options: [{ label: 'High', value: 'high' }] } },
+      }),
+      NODE_ID
+    )
+    expect(paths(variables)).toEqual(['values', 'count', ...COMMON])
+    expect(variables[0]?.type).toBe(BaseType.ARRAY)
   })
 
   it('expands CURRENCY into amount/currency/formatted', () => {

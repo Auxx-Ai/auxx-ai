@@ -124,7 +124,7 @@ export const getVarTypeName = (type: BaseType): string => {
     case BaseType.PHONE:
       return 'Phone'
     case BaseType.ENUM:
-      return 'Enum'
+      return 'Select'
     case BaseType.JSON:
       return 'JSON'
     case BaseType.REFERENCE:

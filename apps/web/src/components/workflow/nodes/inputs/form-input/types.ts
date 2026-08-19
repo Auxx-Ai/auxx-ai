@@ -21,6 +21,7 @@ export type {
   BooleanTypeOptions,
   CurrencyTypeOptions,
   EnumOption,
+  EnumTypeOptions,
   FileTypeOptions,
   StringTypeOptions,
   TypeOptions,

@@ -46,7 +46,7 @@ const TYPE_STYLES: Record<ConfigVariableType, { label: string; icon: LucideIcon 
   STRING: { label: 'String', icon: Type },
   NUMBER: { label: 'Number', icon: Hash },
   BOOLEAN: { label: 'Boolean', icon: ToggleLeft },
-  ENUM: { label: 'Enum', icon: List },
+  ENUM: { label: 'Select', icon: List },
   ARRAY: { label: 'Array', icon: Braces },
 }
 

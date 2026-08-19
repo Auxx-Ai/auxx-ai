@@ -119,8 +119,29 @@ export const FormInputField = memo(function FormInputField({
     )
   }
 
+  // Type-specific options, in the flat `FieldOptions` shape the input layer
+  // speaks. This MUST be handed to `getInputComponent` too, not just to
+  // `getSpecificPropsForType`: the multi-select branch lives in the component
+  // lookup, so a multi Select rendered without it silently falls back to the
+  // single-choice control.
+  const fieldOptions = {
+    enum: typeOptions?.enum?.options,
+    multiSelect: typeOptions?.enum?.multiple,
+    currency: typeOptions?.currency
+      ? {
+          currencyCode: typeOptions.currency.currencyCode,
+          decimals: typeOptions.currency.decimals,
+          currencyDisplay: typeOptions.currency.currencyDisplay,
+          useGrouping: typeOptions.currency.useGrouping,
+        }
+      : undefined,
+    variant: typeOptions?.boolean?.variant,
+    allowMultiple: typeOptions?.file?.allowMultiple,
+    string: typeOptions?.string,
+  }
+
   // Get the appropriate input component for this type
-  const InputComponent = getInputComponent(inputType)
+  const InputComponent = getInputComponent(inputType, fieldOptions)
 
   // Build common props following NodeInputProps interface
   const commonProps = {
@@ -139,21 +160,7 @@ export const FormInputField = memo(function FormInputField({
     required,
     placeholder: placeholder || `Enter ${label}`,
     defaultValue, // Pass through for fallback in input components (e.g., EnumInput)
-    ...getSpecificPropsForType(inputType, {
-      fieldOptions: {
-        enum: typeOptions?.enum,
-        currency: typeOptions?.currency
-          ? {
-              currencyCode: typeOptions.currency.currencyCode,
-              decimals: typeOptions.currency.decimals,
-              currencyDisplay: typeOptions.currency.currencyDisplay,
-              useGrouping: typeOptions.currency.useGrouping,
-            }
-          : undefined,
-        variant: typeOptions?.boolean?.variant,
-        allowMultiple: typeOptions?.file?.allowMultiple,
-      },
-    }),
+    ...getSpecificPropsForType(inputType, { fieldOptions }),
   }
 
   return (

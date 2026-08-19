@@ -37,11 +37,58 @@ import { createNestedVariable, createUnifiedOutputVariable } from '../variable-c
  */
 
 /**
- * Select option for ENUM type
+ * A single choice on a SELECT (`BaseType.ENUM`) field.
  */
 export interface EnumOption {
   label: string
   value: string
+}
+
+/**
+ * Select options for ENUM type.
+ *
+ * `multiple` turns the field into a multi-select. It is NOT cosmetic: it
+ * changes the submitted value from a scalar to an array, and with it the
+ * variables this node advertises (`value` becomes `values` + `count` — see
+ * {@link getFormInputOutputVariables}). The engine's
+ * `setTypedOutputVariables` and `validateFormInputs` branch on the same flag.
+ *
+ * Note the shape is nested rather than a bare `EnumOption[]` precisely so the
+ * flag has somewhere to live, matching every sibling option object below.
+ */
+export interface EnumTypeOptions {
+  options: EnumOption[]
+  /** Allow selecting more than one option. Defaults to false (single select). */
+  multiple?: boolean
+}
+
+/**
+ * Whether a form-input field submits several values rather than one.
+ *
+ * Currently only a Select (`BaseType.ENUM`) with `multiple` qualifies — TAGS and
+ * ARRAY are inherently multi-value and are matched by type, not by this flag.
+ * Exported because the builder panel, the run-form renderer, the engine
+ * processor and the submission validator all have to agree on the answer.
+ */
+export function isMultiSelect(field: {
+  inputType?: BaseType
+  typeOptions?: { enum?: { multiple?: boolean } }
+}): boolean {
+  return field.inputType === BaseType.ENUM && field.typeOptions?.enum?.multiple === true
+}
+
+/**
+ * Whether a submitted form-input value counts as "no answer".
+ *
+ * `[]` has to be in the set: every multi-value field (a multi Select, TAGS,
+ * ARRAY) submits an empty array when the person picks nothing, and none of the
+ * scalar tests catch it. Shared by the `isEmpty` output variable and the
+ * submission validator's required check so a field cannot be simultaneously
+ * "required and satisfied" and "empty" downstream.
+ */
+export function isEmptyFormInputValue(value: unknown): boolean {
+  if (value === undefined || value === null || value === '') return true
+  return Array.isArray(value) && value.length === 0
 }
 
 /**
@@ -105,7 +152,7 @@ export interface StringTypeOptions {
  * Type-specific options union
  */
 export interface TypeOptions {
-  enum?: EnumOption[]
+  enum?: EnumTypeOptions
   file?: FileTypeOptions
   currency?: CurrencyTypeOptions
   address?: AddressTypeOptions
@@ -128,7 +175,7 @@ export interface FormInputNodeData extends BaseNodeData {
   inputType: BaseType
   placeholder?: string
   required?: boolean
-  defaultValue?: string | number | boolean | null
+  defaultValue?: string | number | boolean | string[] | null
   /** Helper text shown to end users when filling the input field */
   hint?: string
 
@@ -161,7 +208,12 @@ const enumOptionSchema = z.object({
  */
 const typeOptionsSchema = z
   .object({
-    enum: z.array(enumOptionSchema).optional(),
+    enum: z
+      .object({
+        options: z.array(enumOptionSchema),
+        multiple: z.boolean().optional(),
+      })
+      .optional(),
     file: z
       .object({
         allowMultiple: z.boolean(),
@@ -250,9 +302,9 @@ export function validateFormInputData(data: FormInputNodeData): NodeValidationRe
   const inputType = data.inputType || BaseType.STRING
 
   if (inputType === BaseType.ENUM) {
-    if (!data.typeOptions?.enum?.length) {
+    if (!data.typeOptions?.enum?.options?.length) {
       errors.push({
-        field: 'typeOptions.enum',
+        field: 'typeOptions.enum.options',
         message: 'At least one option is required',
         type: 'warning',
       })
@@ -281,7 +333,13 @@ export function getFormInputOutputVariables(
   const variables: UnifiedVariable[] = []
   const inputType = data.inputType || BaseType.STRING
 
-  switch (inputType) {
+  // A multi Select submits an array, so it advertises the SAME contract as
+  // TAGS/ARRAY (`values` + `count`, not a scalar `value`) and is resolved
+  // through that arm. The engine's `setTypedOutputVariables` makes the same
+  // substitution — the two must not drift.
+  const resolvedType = isMultiSelect(data) ? BaseType.ARRAY : inputType
+
+  switch (resolvedType) {
     case BaseType.ADDRESS:
       variables.push(
         createNestedVariable({
@@ -394,7 +452,7 @@ export function getFormInputOutputVariables(
       break
 
     default:
-      // STRING, NUMBER, BOOLEAN, EMAIL, URL, PHONE, DATE, DATETIME, TIME, ENUM
+      // STRING, NUMBER, BOOLEAN, EMAIL, URL, PHONE, DATE, DATETIME, TIME
       variables.push(
         createUnifiedOutputVariable({
           nodeId,
@@ -475,9 +533,12 @@ export const formInputManifest: NodeManifest<FormInputNodeData> = {
       'string, number, boolean, email, url, phone, date, datetime, time, enum, file, currency, ' +
       'address, tags, array — it decides both the form control and the variables the node ' +
       'advertises downstream (`value` for simple types; `value.street1`… for address; ' +
-      '`file` or `files`/`fileCount` for file; `values`/`count` for tags and array; plus ' +
-      '`label`, `inputType` and `isEmpty` for every type). Type-specific settings go under ' +
-      '`typeOptions.<type>`: `enum` needs a non-empty option list, `file` takes ' +
+      '`file` or `files`/`fileCount` for file; `values`/`count` for tags, array and a ' +
+      'multi-select enum; plus `label`, `inputType` and `isEmpty` for every type). ' +
+      'Type-specific settings go under `typeOptions.<type>`: `enum` takes ' +
+      '`{ options: [{ label, value }], multiple }` and needs a non-empty `options` list — ' +
+      'set `multiple: true` for a multi-select, which makes the field submit an array and ' +
+      'switches its output from `value` to `values`/`count`. `file` takes ' +
       '`allowMultiple` / `maxFiles` / `allowedFileTypes`, `string` takes ' +
       '`multiline` / `minLength` / `maxLength`.',
     examples: [
@@ -499,6 +560,40 @@ export const formInputManifest: NodeManifest<FormInputNodeData> = {
           inputType: 'string',
           required: true,
           typeOptions: { string: { multiline: true, maxLength: 2000 } },
+        },
+      },
+      {
+        description: 'A single-choice dropdown',
+        config: {
+          title: 'Priority',
+          label: 'Priority',
+          inputType: 'enum',
+          required: true,
+          typeOptions: {
+            enum: {
+              options: [
+                { label: 'Low', value: 'low' },
+                { label: 'High', value: 'high' },
+              ],
+            },
+          },
+        },
+      },
+      {
+        description: 'A multi-select — submits an array, outputs values/count',
+        config: {
+          title: 'Affected Areas',
+          label: 'Affected areas',
+          inputType: 'enum',
+          typeOptions: {
+            enum: {
+              multiple: true,
+              options: [
+                { label: 'Billing', value: 'billing' },
+                { label: 'Shipping', value: 'shipping' },
+              ],
+            },
+          },
         },
       },
       {

@@ -1,7 +1,11 @@
 // packages/lib/src/workflow-engine/validation/form-input-validator.ts
 
 import { getExtensionsForCategories } from '../../files/file-type-constants'
-import type { FormInputNodeData } from '../catalog/nodes/form-input'
+import {
+  type FormInputNodeData,
+  isEmptyFormInputValue,
+  isMultiSelect,
+} from '../catalog/nodes/form-input'
 import { BaseType } from '../core/types'
 
 /**
@@ -76,7 +80,7 @@ export function validateFormInputs(graph: any, inputs: Record<string, any>): Val
 
   for (const config of configs) {
     const value = inputs[config.nodeId]
-    const isEmpty = value === undefined || value === null || value === ''
+    const isEmpty = isEmptyFormInputValue(value)
 
     // Required check
     if (config.required && isEmpty) {
@@ -125,10 +129,19 @@ export function validateFormInputs(graph: any, inputs: Record<string, any>): Val
         }
         break
 
-      case BaseType.ENUM:
-        if (config.typeOptions?.enum) {
-          const validValues = config.typeOptions.enum.map((o) => o.value)
-          if (!validValues.includes(String(value))) {
+      case BaseType.ENUM: {
+        const options = config.typeOptions?.enum?.options
+        if (options) {
+          const validValues = new Set(options.map((o) => o.value))
+          // A multi Select submits an array; every member has to be a declared
+          // option. `String(value)` on an array yields "a,b", which matches no
+          // option — so the two cases cannot share one comparison.
+          const selected = isMultiSelect(config)
+            ? Array.isArray(value)
+              ? value
+              : [value]
+            : [value]
+          if (selected.some((v) => !validValues.has(String(v)))) {
             errors.push({
               nodeId: config.nodeId,
               field: config.label,
@@ -137,6 +150,7 @@ export function validateFormInputs(graph: any, inputs: Record<string, any>): Val
           }
         }
         break
+      }
 
       case BaseType.BOOLEAN:
         if (typeof value !== 'boolean' && value !== 'true' && value !== 'false') {
