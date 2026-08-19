@@ -1,7 +1,7 @@
 // packages/lib/src/channels/disconnect.ts
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { clearImportCache } from '../email/polling-import-cache'
 import type { NotFoundError } from '../errors'
 import { enqueueStorageCleanupJob } from '../jobs/maintenance/storage-cleanup-job'
@@ -20,10 +20,19 @@ const logger = createScopedLogger('channels.disconnect')
 type DbHandle = Database | Transaction
 
 /**
- * Delete threads + messages for a channel, clean up MediaAssets, and mark
- * StorageLocations for async S3 deletion. Exported for the personal-inbox
- * delete path (§11.4), which destroys channel data without the ownership
- * validation `disconnect` performs (its integration is already soft-deleted).
+ * Mark a channel's data for destruction and drop its threads.
+ *
+ * Deliberately does NOT hard-delete media. Attachment assets carry derived rows
+ * (thumbnails are their own `MediaAsset`, linked back through
+ * `MediaAssetVersion.derivedFromVersionId`, a self-FK with NO ACTION on delete), so a
+ * `DELETE` here can raise 23503 and take the whole disconnect with it — leaving the
+ * channel permanently undisconnectable. Everything below is set-based and UPDATE-only
+ * apart from the thread delete, which cascades cleanly. The destructive half runs in
+ * `storageCleanupJob`, where it is batched and retryable.
+ *
+ * Exported for the personal-inbox delete path (§11.4), which destroys channel data
+ * without the ownership validation `disconnect` performs (its integration is already
+ * soft-deleted).
  */
 export async function deleteChannelData(tx: DbHandle, channelId: string, provider: string) {
   logger.warn(`Deleting data for channel: ${channelId} (${provider})`)
@@ -41,67 +50,58 @@ export async function deleteChannelData(tx: DbHandle, channelId: string, provide
     return
   }
 
-  const messageRows = await tx
-    .select({ id: schema.Message.id })
-    .from(schema.Message)
-    .where(eq(schema.Message.integrationId, channelId))
-  const messageIds = messageRows.map((r) => r.id)
-  logger.info(`Found ${messageIds.length} messages for channel ${channelId}`)
+  // Email body blobs. Nothing else points at these StorageLocations once the messages
+  // below are gone, so marking them here is safe to sweep whenever the job runs.
+  await tx
+    .update(schema.StorageLocation)
+    .set({ deletedAt: new Date() })
+    .where(
+      sql`${schema.StorageLocation.id} IN (
+        SELECT ${schema.Message.htmlBodyStorageLocationId}
+        FROM ${schema.Message}
+        WHERE ${schema.Message.integrationId} = ${channelId}
+        AND ${schema.Message.htmlBodyStorageLocationId} IS NOT NULL
+      )`
+    )
 
-  if (messageIds.length > 0) {
-    const assetRows = await tx
-      .selectDistinct({ assetId: schema.Attachment.assetId })
-      .from(schema.Attachment)
-      .where(
-        and(
-          eq(schema.Attachment.entityType, 'MESSAGE'),
-          inArray(schema.Attachment.entityId, messageIds),
-          isNotNull(schema.Attachment.assetId)
-        )
-      )
-    const mediaAssetIds = assetRows.map((r) => r.assetId).filter(Boolean) as string[]
-    logger.info(`Found ${mediaAssetIds.length} MediaAssets for channel ${channelId}`)
+  // Soft-delete the attachment assets while the `Message` rows they hang off still
+  // exist — this is the last moment the join is available. The job purges them for
+  // real; until then the markers keep them off read paths, and a soft-deleted source
+  // version is exactly what `cleanupOrphanedThumbnails` treats as orphaned, so the
+  // nightly reaper is a free backstop if the job never lands.
+  const channelAssetIds = sql`(
+    SELECT a."assetId"
+    FROM ${schema.Attachment} a
+    JOIN ${schema.Message} m ON m."id" = a."entityId"
+    WHERE a."entityType" = 'MESSAGE'
+      AND a."assetId" IS NOT NULL
+      AND m."integrationId" = ${channelId}
+  )`
 
-    // Mark email body StorageLocations as deleted
-    await tx
-      .update(schema.StorageLocation)
-      .set({ deletedAt: new Date() })
-      .where(
-        sql`${schema.StorageLocation.id} IN (
-          SELECT ${schema.Message.htmlBodyStorageLocationId}
-          FROM ${schema.Message}
-          WHERE ${schema.Message.integrationId} = ${channelId}
-          AND ${schema.Message.htmlBodyStorageLocationId} IS NOT NULL
-        )`
-      )
+  await tx
+    .update(schema.MediaAssetVersion)
+    .set({ deletedAt: new Date() })
+    .where(
+      sql`${schema.MediaAssetVersion.assetId} IN ${channelAssetIds} AND ${schema.MediaAssetVersion.deletedAt} IS NULL`
+    )
 
-    // Mark attachment StorageLocations as deleted (via MediaAssetVersion)
-    if (mediaAssetIds.length > 0) {
-      await tx
-        .update(schema.StorageLocation)
-        .set({ deletedAt: new Date() })
-        .where(
-          sql`${schema.StorageLocation.id} IN (
-            SELECT ${schema.MediaAssetVersion.storageLocationId}
-            FROM ${schema.MediaAssetVersion}
-            WHERE ${schema.MediaAssetVersion.assetId} IN (${sql.join(
-              mediaAssetIds.map((id) => sql`${id}`),
-              sql`, `
-            )})
-            AND ${schema.MediaAssetVersion.storageLocationId} IS NOT NULL
-          )`
-        )
+  await tx
+    .update(schema.MediaAsset)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(
+      sql`${schema.MediaAsset.id} IN ${channelAssetIds} AND ${schema.MediaAsset.deletedAt} IS NULL`
+    )
 
-      await tx.delete(schema.MediaAsset).where(inArray(schema.MediaAsset.id, mediaAssetIds))
-      logger.info(`Deleted ${mediaAssetIds.length} MediaAssets for channel ${channelId}`)
-    }
-  }
-
-  await tx.delete(schema.Message).where(eq(schema.Message.integrationId, channelId))
-  logger.info(`Deleted messages for channel ${channelId}`)
-
+  // One statement: `Message`, `ThreadEvent`, `MessageParticipant`, `ThreadParticipant`,
+  // `LabelsOnThread`, `Draft`, `ScheduledMessage`, `ThreadExternalKey`, `ThreadReadStatus`
+  // and `EmailEmbedding` all cascade off `Thread`. Deleting messages first would only
+  // churn `Thread.latestMessageId` (SET NULL) on the way out.
+  //
+  // 🔴 Stays synchronous. `Thread` has no soft-delete column and no mail list path
+  // filters on `Integration.deletedAt`, so deferring this leaves disconnected mail
+  // sitting in the inbox until the worker catches up.
   await tx.delete(schema.Thread).where(eq(schema.Thread.integrationId, channelId))
-  logger.info(`Deleted threads for channel ${channelId}`)
+  logger.info(`Deleted threads for channel ${channelId}, media marked for async purge`)
 }
 
 /**
