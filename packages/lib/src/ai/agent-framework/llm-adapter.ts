@@ -7,6 +7,7 @@ import { LLMOrchestrator } from '../orchestrator/llm-orchestrator'
 import type { LLMInvocationRequest, UsageSource, UsageTrackingService } from '../orchestrator/types'
 import { UsageTrackingService as DefaultUsageTrackingService } from '../usage/usage-tracking-service'
 import type { LLMCallParams, LLMStreamEvent } from './types'
+import { normalizeCallUsage } from './usage-metering'
 
 const logger = createScopedLogger('agent-llm')
 
@@ -325,31 +326,25 @@ export function createCallModel(config: LLMAdapterConfig) {
     // avoid the logger's `token`/`secret`/`apikey` redaction markers so the
     // counts actually survive into the log (the `usage` object above is
     // redacted because its keys contain "token"). See plans/kopilot/cache/.
+    //
+    // The provider-semantics normalization used to be inlined right here, which
+    // meant the numbers we LOGGED and the numbers the engine's turn budget
+    // METERED came from two different formulas. Both now read
+    // `normalizeCallUsage`, so the log line and the budget cannot drift.
     if (lastUsage.total_tokens > 0) {
-      const cachedInput = lastUsage.cached_input_tokens ?? 0
-      const cacheWrite = lastUsage.cache_write_tokens ?? 0
-      const promptInput = lastUsage.prompt_tokens
-      // Provider semantics differ: OpenAI's prompt_tokens INCLUDES cached reads;
-      // Anthropic's EXCLUDES them. Normalize to a single total + rate-limit cost.
-      const includesCached = (provider ?? '').toLowerCase().includes('openai')
-      const totalInput = includesCached
-        ? promptInput + cacheWrite
-        : promptInput + cachedInput + cacheWrite
-      // Input that actually counts toward the provider's input rate limit
-      // (cached reads are free on Anthropic/OpenAI; cache writes are not).
-      const rateLimitInput = includesCached
-        ? promptInput - cachedInput + cacheWrite
-        : promptInput + cacheWrite
+      const norm = normalizeCallUsage(lastUsage, provider)
       logger.info('LLM cache metrics', {
         provider,
         model,
-        promptInput,
-        cachedInput,
-        cacheWrite,
-        outputCount: lastUsage.completion_tokens,
-        totalInput,
-        rateLimitInput,
-        cachedPct: totalInput > 0 ? Math.round((cachedInput / totalInput) * 100) : 0,
+        promptInput: norm.promptInput,
+        cachedInput: norm.cachedInput,
+        cacheWrite: norm.cacheWrite,
+        outputCount: norm.completion,
+        totalInput: norm.totalInput,
+        rateLimitInput: norm.rateLimitInput,
+        // What one call contributes to the per-turn token budget.
+        meteredTokens: norm.meteredTokens,
+        cachedPct: norm.totalInput > 0 ? Math.round((norm.cachedInput / norm.totalInput) * 100) : 0,
       })
     }
 

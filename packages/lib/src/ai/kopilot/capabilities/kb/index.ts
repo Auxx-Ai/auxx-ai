@@ -12,7 +12,10 @@ import { createListArticlesTool } from './tools/list-articles'
 import { createMoveBlocksTool } from './tools/move-blocks'
 import { createReplaceBlockTool } from './tools/replace-block'
 import { createResolveBlockByHeadingTool } from './tools/resolve-block-by-heading'
-import { finalizeKopilotKbTurn, revertKopilotKbTurn } from './tools/write-helpers'
+// `revertKopilotKbTurn` is deliberately NOT imported here: the rollback is the
+// user's click on the turn-review banner (`kb.revertKopilotTurn`), never
+// something this hook performs — see `onTurnEnd` below.
+import { finalizeKopilotKbTurn } from './tools/write-helpers'
 
 export const KB_PAGE = 'kb'
 const GLOBAL_PAGE = '__global__'
@@ -53,36 +56,53 @@ export function createKbCapabilities(getDeps: GetToolDeps): PageCapability {
         ? ['Read, rewrite, and restructure the active knowledge-base article']
         : [],
     lifecycle: {
-      // A KB turn runs a turn-scoped transaction against the active article: the
-      // first write captures a pre-turn snapshot in Redis and locks the article;
-      // turn end must finalize (release lock, keep snapshot for Undo) or revert
-      // (restore snapshot, unlock). Every block-CRUD write resolves its target
-      // from `findRef(sessionContext, 'article')`, so a turn touches exactly one
+      // A KB turn runs against the active article: its first write captures a
+      // pre-turn snapshot in Redis and emits the `locked: true` editor signal.
+      // Turn end always finalizes — `finalizeKopilotKbTurn` means "release the
+      // lock, KEEP the snapshot so the turn stays reviewable", which is already
+      // the shape every outcome wants. (Note the contrast with the workflow
+      // builder, whose finalize DISCARDS its snapshot because the canvas owns
+      // undo of a completed turn; KB has no client-side history, so its Undo is
+      // always the server snapshot.)
+      //
+      // [C5] Revert is NEVER automatic (plans/kopilot/workflow/20 §2, Q1). The
+      // old `else` branch here threw the turn's block edits away on any
+      // non-`completed` outcome — so a turn that rewrote six sections and then
+      // tripped the token budget lost all six, even though every block-CRUD op
+      // had already persisted through its own hash guard and the user had
+      // watched them land. `exhausted` / `aborted` / `error` all leave the
+      // article as N complete, valid patches; the rollback is offered by the
+      // turn-review banner (`kb.revertKopilotTurn` / `kb.keepKopilotTurn`,
+      // both turn-pinned) — the user's click, never the server's inference.
+      //
+      // Every block-CRUD write resolves its target from
+      // `findRef(sessionContext, 'article')`, so a turn touches exactly one
       // article — the active one. The snapshot keyed by `(articleId, turnId)` is
       // already the "did THIS turn write it" record: `readKopilotSnapshot` with
       // the turn id returns null unless this turn wrote the article, which also
       // stops a prior turn's still-pending review snapshot (24h TTL) from being
-      // finalized/reverted here.
+      // finalized here. That same read is why the unlock can live inside the
+      // snapshot branch (unlike the workflow capability's lock release): the KB
+      // lock is only ever emitted alongside a capture, so a read-only turn never
+      // locked the editor and has nothing to release.
       async onTurnEnd(outcome, { turnId }) {
-        const { db, organizationId, userId, sessionContext } = getDeps()
+        const { sessionContext } = getDeps()
         const articleId = findRef(sessionContext, 'article')?.id
         if (!articleId) return
-        const snapshot = await readKopilotSnapshot(articleId, turnId)
-        if (!snapshot) return
         try {
-          if (outcome === 'completed') {
-            await finalizeKopilotKbTurn({ articleId })
-          } else {
-            // `expectedTurnId` is load-bearing now that we derive `articleId`
-            // from `sessionContext` rather than a per-turn touched list: it
-            // rejects a stale (prior-turn) snapshot so a later failed turn can't
-            // roll back an article it never wrote.
-            await revertKopilotKbTurn({
-              db,
-              organizationId,
-              userId,
+          // Inside the try — the domain config swallows a throwing hook, but
+          // this must not depend on that.
+          const snapshot = await readKopilotSnapshot(articleId, turnId)
+          if (!snapshot) return
+          await finalizeKopilotKbTurn({ articleId })
+          if (outcome !== 'completed') {
+            // Warn (not error): the edits survived and the article is
+            // reviewable — but a turn that stopped early yet kept its writes
+            // is worth seeing in OpenObserve.
+            logger.warn('Kopilot KB turn stopped early — edits kept, snapshot retained', {
               articleId,
-              expectedTurnId: turnId,
+              turnId,
+              outcome,
             })
           }
         } catch (err) {

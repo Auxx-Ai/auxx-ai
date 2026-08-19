@@ -16,7 +16,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../../../errors'
-import { hashWorkflowGraph } from '../../graph-hash'
+import { hashGraphSemantics, hashWorkflowGraph } from '../../graph-hash'
 
 // Partial mock — the cache barrel is imported by half of lib; replacing it
 // wholesale dies at collection. Only the read the graph-edit path makes is stubbed.
@@ -71,9 +71,12 @@ vi.mock('../../../realtime', () => ({
 }))
 
 const { addNode } = await import('../ops')
-const { finalizeWorkflowTurn, readWorkflowTurnSnapshot, revertWorkflowTurn } = await import(
-  '../turn-snapshot'
-)
+const {
+  finalizeWorkflowTurn,
+  readWorkflowTurnSnapshot,
+  recordWorkflowTurnEnding,
+  revertWorkflowTurn,
+} = await import('../turn-snapshot')
 
 import type { DraftGraph, GraphNode } from '../types'
 
@@ -146,12 +149,19 @@ beforeEach(() => {
   mailGuard.mockResolvedValue(undefined)
   publishWorkflowDraftUpdated.mockReset()
   serviceUpdate.mockReset()
+  // `WorkflowService.update` returns `hashWorkflowGraph` of the row it just
+  // wrote — the same function `loadDraftContext` runs over the stored column.
+  // The fake must keep that identity or the post-turn hash means nothing.
   serviceUpdate.mockImplementation(async (_org: string, input: Record<string, unknown>) => ({
-    graphHash: 'hash-after',
+    graphHash: input.graph ? hashWorkflowGraph(input.graph) : null,
     triggerType: input.triggerType ?? null,
     entityDefinitionId: input.entityDefinitionId ?? null,
   }))
 })
+
+/** The graph the last persist actually wrote — i.e. what the canvas now holds. */
+const persistedGraph = (): DraftGraph =>
+  (serviceUpdate.mock.calls.at(-1)?.[1] as { graph: DraftGraph }).graph
 
 describe('turn snapshot capture', () => {
   it('captures the PRE-edit graph on the first mutation of a turn', async () => {
@@ -175,7 +185,7 @@ describe('turn snapshot capture', () => {
     const first = await readWorkflowTurnSnapshot(APP, TURN_A)
 
     // Second mutation of the SAME turn, on the now-grown draft.
-    const grown = (serviceUpdate.mock.calls.at(-1)?.[1] as { graph: DraftGraph }).graph
+    const grown = persistedGraph()
     const result = await addNode(makeDb(grown), {
       ...scope(TURN_A),
       type: 'wait',
@@ -185,8 +195,16 @@ describe('turn snapshot capture', () => {
     expect(result.isOk()).toBe(true)
 
     const second = await readWorkflowTurnSnapshot(APP, TURN_A)
-    expect(second).toEqual(first) // still the turn's ORIGINAL pre-edit graph
+    // Still the turn's ORIGINAL pre-edit state — everything the capture owns
+    // is byte-identical.
+    expect({ ...second, postTurnGraphSemanticHash: undefined }).toEqual({
+      ...first,
+      postTurnGraphSemanticHash: undefined,
+    })
     expect(second?.graph.nodes).toHaveLength(1)
+    // ...but the post-turn hash tracks the LATEST write, not the first.
+    expect(second?.postTurnGraphSemanticHash).toBe(hashGraphSemantics(persistedGraph()))
+    expect(second?.postTurnGraphSemanticHash).not.toBe(first?.postTurnGraphSemanticHash)
   })
 
   it('takes no snapshot without a turnId, and none when the mutation is rejected', async () => {
@@ -209,17 +227,11 @@ describe('revert / finalize lifecycle', () => {
   it('a failed turn restores the exact prior graph through the persist seam', async () => {
     const graph = baseGraph()
     await addWait(makeDb(graph), TURN_A)
+
+    // The draft now holds exactly what the turn wrote — an untouched canvas.
+    const mutated = persistedGraph()
     serviceUpdate.mockClear()
     publishWorkflowDraftUpdated.mockClear()
-
-    // The draft now holds the mutated graph; revert must write back the original.
-    const mutated = { ...baseGraph(), nodes: [...baseGraph().nodes] }
-    mutated.nodes.push({
-      id: 'wait-zzzzzzzzzzzzzzzzzzzzz',
-      type: 'standard',
-      position: { x: 500, y: 200 },
-      data: { id: 'wait-zzzzzzzzzzzzzzzzzzzzz', type: 'wait', title: 'Wait A Bit' },
-    })
     const db = makeDb(mutated)
 
     const reverted = await revertWorkflowTurn(db, scope(), TURN_A)
@@ -271,6 +283,227 @@ describe('revert / finalize lifecycle', () => {
 
     await finalizeWorkflowTurn(APP, TURN_B)
     expect(await readWorkflowTurnSnapshot(APP, TURN_B)).toBeNull()
+  })
+})
+
+/**
+ * Plan 20 §5 / [C3] + §10.4. `persistDraft`'s CAS token is read fresh
+ * microseconds before the write, so it guards a race INSIDE the revert and
+ * nothing across time. Because phase D makes the revert a user-clickable Undo
+ * that can fire minutes later, the snapshot carries the hash of the graph the
+ * turn LEFT BEHIND, and the revert refuses when the live draft no longer
+ * matches it.
+ */
+describe('post-turn hash guard', () => {
+  /** A hand edit landing on the canvas after the turn stopped writing. */
+  function withExtraNode(graph: DraftGraph): DraftGraph {
+    return {
+      ...graph,
+      nodes: [
+        ...graph.nodes,
+        {
+          id: 'wait-yyyyyyyyyyyyyyyyyyyyy',
+          type: 'standard',
+          position: { x: 900, y: 200 },
+          data: { id: 'wait-yyyyyyyyyyyyyyyyyyyyy', type: 'wait', title: 'Human Edit' },
+        },
+      ],
+    }
+  }
+
+  it('stamps the hash of what the write actually stored', async () => {
+    await addWait(makeDb(baseGraph()), TURN_A)
+    const snapshot = await readWorkflowTurnSnapshot(APP, TURN_A)
+    expect(snapshot?.postTurnGraphSemanticHash).toBe(hashGraphSemantics(persistedGraph()))
+    // Never the PRE-turn graph — that is what `graph` already holds.
+    expect(snapshot?.postTurnGraphSemanticHash).not.toBe(hashGraphSemantics(baseGraph()))
+  })
+
+  it('does not stamp for a non-turn caller (no snapshot to stamp)', async () => {
+    await addWait(makeDb(baseGraph()))
+    expect(redisStore.size).toBe(0)
+  })
+
+  it('refuses with a ConflictError when the canvas changed after the turn', async () => {
+    await addWait(makeDb(baseGraph()), TURN_A)
+    const divergent = withExtraNode(persistedGraph())
+    serviceUpdate.mockClear()
+    publishWorkflowDraftUpdated.mockClear()
+
+    const reverted = await revertWorkflowTurn(makeDb(divergent), scope(), TURN_A)
+    expect(reverted.isErr()).toBe(true)
+    const error = reverted._unsafeUnwrapErr()
+    expect(error).toBeInstanceOf(ConflictError)
+    expect(error.statusCode).toBe(409)
+    expect(error.details.reason).toBe('canvas-changed-since-turn')
+    expect(error.message).toMatch(/changed since that turn finished/i)
+    expect(error.message).toMatch(/nothing was reverted/i)
+
+    // The pre-turn graph was NOT restored, and no canvas was told to refetch.
+    expect(serviceUpdate).not.toHaveBeenCalled()
+    expect(publishWorkflowDraftUpdated).not.toHaveBeenCalled()
+    // The snapshot is left in place — refusing must not destroy the record.
+    expect((await readWorkflowTurnSnapshot(APP, TURN_A))?.turnId).toBe(TURN_A)
+  })
+
+  it('the two refusals are distinguishable by class and status', async () => {
+    // (a) canvas moved on → 409
+    await addWait(makeDb(baseGraph()), TURN_A)
+    const divergent = withExtraNode(persistedGraph())
+    const conflict = (
+      await revertWorkflowTurn(makeDb(divergent), scope(), TURN_A)
+    )._unsafeUnwrapErr()
+
+    // (b) snapshot gone (manual save cleared it / TTL / superseded turn) → 404
+    redisStore.clear()
+    const missing = (
+      await revertWorkflowTurn(makeDb(divergent), scope(), TURN_A)
+    )._unsafeUnwrapErr()
+
+    expect(conflict).toBeInstanceOf(ConflictError)
+    expect(conflict).not.toBeInstanceOf(NotFoundError)
+    expect(missing).toBeInstanceOf(NotFoundError)
+    expect(missing).not.toBeInstanceOf(ConflictError)
+    expect([conflict.statusCode, missing.statusCode]).toEqual([409, 404])
+    expect(conflict.message).not.toBe(missing.message)
+  })
+
+  it('reverts a canvas that only the turn touched, hash and all', async () => {
+    await addWait(makeDb(baseGraph()), TURN_A)
+    const untouched = persistedGraph()
+    serviceUpdate.mockClear()
+
+    const reverted = await revertWorkflowTurn(makeDb(untouched), scope(), TURN_A)
+    expect(reverted.isOk()).toBe(true)
+    const written = (serviceUpdate.mock.calls.at(-1)?.[1] as { graph: DraftGraph }).graph
+    expect(written.nodes.map((n) => n.id)).toEqual([TRIGGER_ID])
+  })
+
+  it('compares against the LAST write of the turn, not the first', async () => {
+    await addWait(makeDb(baseGraph()), TURN_A)
+    const afterFirst = persistedGraph()
+    // Same turn writes again — the canvas the user is left looking at is this one.
+    await addNode(makeDb(afterFirst), {
+      ...scope(TURN_A),
+      type: 'wait',
+      title: 'Wait Again',
+      after: 'Wait A Bit',
+    })
+    const afterSecond = persistedGraph()
+    serviceUpdate.mockClear()
+
+    // A canvas still sitting on the FIRST write is a diverged canvas.
+    const stale = await revertWorkflowTurn(makeDb(afterFirst), scope(), TURN_A)
+    expect(stale._unsafeUnwrapErr()).toBeInstanceOf(ConflictError)
+    expect(serviceUpdate).not.toHaveBeenCalled()
+
+    // Reverting against the turn's FINAL graph is what succeeds.
+    expect((await revertWorkflowTurn(makeDb(afterSecond), scope(), TURN_A)).isOk()).toBe(true)
+  })
+
+  it('fails OPEN for a snapshot captured before the hash was recorded', async () => {
+    // A snapshot written by the previous deploy: no `postTurnGraphSemanticHash`. It
+    // must still be undoable — unknown never turns into a hard refusal.
+    redisStore.set(`workflow:graph:${APP}:preturn`, {
+      turnId: TURN_A,
+      name: 'My Flow',
+      description: 'Original description',
+      graph: baseGraph(),
+      triggerType: 'scheduled',
+      capturedAt: Date.now(),
+    })
+
+    const divergent = withExtraNode(baseGraph())
+    const reverted = await revertWorkflowTurn(makeDb(divergent), scope(), TURN_A)
+    expect(reverted.isOk()).toBe(true)
+    expect(serviceUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it('survives a turn that never finalized — the snapshot stays undoable', async () => {
+    await addWait(makeDb(baseGraph()), TURN_A)
+    const afterTurn = persistedGraph()
+    // Turn dies: no `finalizeWorkflowTurn`, no automatic revert (plan 20 §2).
+    const snapshot = await readWorkflowTurnSnapshot(APP, TURN_A)
+    expect(snapshot?.turnId).toBe(TURN_A)
+    expect(snapshot?.postTurnGraphSemanticHash).toBe(hashGraphSemantics(afterTurn))
+
+    // ...and a much later Undo still works against the untouched canvas.
+    serviceUpdate.mockClear()
+    expect((await revertWorkflowTurn(makeDb(afterTurn), scope(), TURN_A)).isOk()).toBe(true)
+    expect(await readWorkflowTurnSnapshot(APP, TURN_A)).toBeNull()
+  })
+})
+
+/**
+ * Plan 20 §5 / §9 phase D — "the turn says why it stopped". The snapshot is a
+ * graph, not a transcript, so the ONLY way the Undo offer can name a reason is
+ * a label written at turn end. Three rules: it labels its own turn, it can
+ * never relabel a fresher one, and its absence is inert.
+ */
+describe('turn-ending stamp', () => {
+  it('labels the turn’s own snapshot without disturbing anything else', async () => {
+    await addWait(makeDb(baseGraph()), TURN_A)
+    const before = await readWorkflowTurnSnapshot(APP, TURN_A)
+
+    await recordWorkflowTurnEnding(APP, TURN_A, 'exhausted')
+
+    const after = await readWorkflowTurnSnapshot(APP, TURN_A)
+    expect(after?.endedAs).toBe('exhausted')
+    // ADDITIVE, not a finalize: the snapshot, its pre-turn graph and the
+    // post-turn hash the revert guards on all survive untouched ([C4]).
+    expect(after?.turnId).toBe(TURN_A)
+    expect(after?.graph).toEqual(before?.graph)
+    expect(after?.postTurnGraphSemanticHash).toBe(before?.postTurnGraphSemanticHash)
+    expect(after?.capturedAt).toBe(before?.capturedAt)
+  })
+
+  it.each([
+    'exhausted',
+    'aborted',
+    'error',
+  ] as const)('records %s verbatim — the banner’s wording is derived, never guessed', async (ending) => {
+    await addWait(makeDb(baseGraph()), TURN_A)
+    await recordWorkflowTurnEnding(APP, TURN_A, ending)
+    expect((await readWorkflowTurnSnapshot(APP, TURN_A))?.endedAs).toBe(ending)
+  })
+
+  it('a stale turn cannot stamp a fresher turn’s slot', async () => {
+    await addWait(makeDb(baseGraph()), TURN_B)
+    // Turn A ended late, after B already superseded the slot. Its ending
+    // describes a turn whose snapshot is gone — writing it here would put a
+    // wrong reason on the offer the user is actually looking at.
+    await recordWorkflowTurnEnding(APP, TURN_A, 'error')
+    const snapshot = await readWorkflowTurnSnapshot(APP, TURN_B)
+    expect(snapshot?.turnId).toBe(TURN_B)
+    expect(snapshot?.endedAs).toBeUndefined()
+  })
+
+  it('stamping a turn that never wrote creates nothing to undo', async () => {
+    await recordWorkflowTurnEnding(APP, TURN_A, 'aborted')
+    expect(redisStore.size).toBe(0)
+    expect(await readWorkflowTurnSnapshot(APP, TURN_A)).toBeNull()
+  })
+
+  it('a failed stamp is swallowed and leaves the offer intact', async () => {
+    await addWait(makeDb(baseGraph()), TURN_A)
+    const redis = await import('@auxx/redis')
+    const setRedisData = vi.mocked(redis.setRedisData)
+    setRedisData.mockRejectedValueOnce(new Error('redis down'))
+
+    // Best-effort: turn end must not throw, and the cost of the failure is the
+    // adjective — never the Undo.
+    await expect(recordWorkflowTurnEnding(APP, TURN_A, 'exhausted')).resolves.toBeUndefined()
+    const snapshot = await readWorkflowTurnSnapshot(APP, TURN_A)
+    expect(snapshot?.endedAs).toBeUndefined()
+    expect((await revertWorkflowTurn(makeDb(persistedGraph()), scope(), TURN_A)).isOk()).toBe(true)
+  })
+
+  it('an unlabelled snapshot is still fully undoable — absence never gates the offer', async () => {
+    await addWait(makeDb(baseGraph()), TURN_A)
+    // No stamp at all: pre-deploy snapshot, or a turn that died before its
+    // turn-end hook ran.
+    expect((await readWorkflowTurnSnapshot(APP, TURN_A))?.endedAs).toBeUndefined()
+    expect((await revertWorkflowTurn(makeDb(persistedGraph()), scope(), TURN_A)).isOk()).toBe(true)
   })
 })
 
@@ -332,5 +565,87 @@ describe('hash-CAS surfacing (07 §6)', () => {
     expect(error.message).toMatch(/retry/i)
     // No refresh signal for a write that never landed.
     expect(publishWorkflowDraftUpdated).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Plan 20 F5 — reproduced in the browser 2026-08-19. Merely OPENING the builder
+ * fires an autosave carrying a fresh `viewport` and `selected: true` over
+ * byte-identical node content. Both the snapshot clear and the revert guard used
+ * to key off the full-document hash, so that phantom save destroyed the Undo
+ * offer about eight seconds after it appeared — without the user touching
+ * anything.
+ *
+ * These pin the distinction the fix rests on: presentation churn is not an edit,
+ * but anything the user actually authored still is.
+ */
+describe('F5 — presentation churn is not an authored change', () => {
+  /** What React Flow rewrites just from the canvas being looked at. */
+  const withPresentationChurn = (g: DraftGraph): DraftGraph => ({
+    ...g,
+    viewport: { x: -124.9, y: 70.25, zoom: 0.7 },
+    nodes: g.nodes.map((n) => ({
+      ...n,
+      selected: true,
+      dragging: false,
+      width: 244,
+      height: 100,
+    })),
+  })
+
+  it('hashes identically across selection, drag-state, measurement and viewport', () => {
+    const base = baseGraph()
+    expect(hashGraphSemantics(withPresentationChurn(base))).toBe(hashGraphSemantics(base))
+    // The full-document hash is what made this a bug — it disagrees. Keep that
+    // contrast pinned: `hashWorkflowGraph` MUST stay whole-document, because two
+    // tabs disagreeing about the viewport is still a real save conflict.
+    expect(hashWorkflowGraph(withPresentationChurn(base))).not.toBe(hashWorkflowGraph(base))
+  })
+
+  it('still sees a real edit — a moved node, a changed title, a new node', () => {
+    const base = baseGraph()
+    const baseHash = hashGraphSemantics(base)
+
+    const moved = {
+      ...base,
+      nodes: base.nodes.map((n, i) => (i === 0 ? { ...n, position: { x: 1, y: 2 } } : n)),
+    }
+    expect(hashGraphSemantics(moved)).not.toBe(baseHash)
+
+    const retitled = {
+      ...base,
+      nodes: base.nodes.map((n, i) =>
+        i === 0 ? { ...n, data: { ...n.data, title: 'Renamed by hand' } } : n
+      ),
+    }
+    expect(hashGraphSemantics(retitled)).not.toBe(baseHash)
+
+    const added = {
+      ...base,
+      nodes: [...base.nodes, { ...base.nodes[0]!, id: 'brand-new-node' }],
+    }
+    expect(hashGraphSemantics(added)).not.toBe(baseHash)
+  })
+
+  it('a revert survives a canvas that was only opened, and still refuses a real edit', async () => {
+    await addWait(makeDb(baseGraph()), TURN_A)
+    const afterTurn = persistedGraph()
+
+    // The phantom autosave: same content, new viewport + selection.
+    const opened = withPresentationChurn(afterTurn)
+    const survives = await revertWorkflowTurn(makeDb(opened), scope(), TURN_A)
+    expect(survives.isOk()).toBe(true)
+
+    // And the guard still bites on an actual hand edit.
+    await addWait(makeDb(baseGraph()), TURN_B)
+    const edited = {
+      ...persistedGraph(),
+      nodes: persistedGraph().nodes.map((n, i) =>
+        i === 0 ? { ...n, position: { x: 999, y: 999 } } : n
+      ),
+    }
+    const refused = await revertWorkflowTurn(makeDb(edited), scope(), TURN_B)
+    expect(refused.isErr()).toBe(true)
+    expect(refused._unsafeUnwrapErr()).toBeInstanceOf(ConflictError)
   })
 })

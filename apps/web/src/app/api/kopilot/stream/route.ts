@@ -39,6 +39,7 @@ import {
   createWorkflowBuilderCapabilities,
   findRef,
   generateSessionTitle,
+  KOPILOT_TURN_BUDGET,
   LAST_CONTEXT_KEY,
   LAST_PAGE_KEY,
   resolveContinuationSurface,
@@ -965,8 +966,7 @@ async function runInProcessPath(params: {
     domainConfig: domainConfig as unknown as AgentDomainConfig,
     callModel,
     signal: request.signal,
-    maxTotalIterations: 100,
-    maxApprovalsPerTurn: 50,
+    ...KOPILOT_TURN_BUDGET,
   }
 
   // Create engine with restored state (including approval state if paused)

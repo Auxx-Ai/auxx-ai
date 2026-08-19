@@ -453,10 +453,14 @@ export async function* agentQueryLoop(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       logger.error('LLM error', { turnId, agent: agent.name, iteration, error: errorMessage })
+      // A provider/stream failure, not a resource cap — `'internal'` so the
+      // engine's outcome mapping treats it as a real error rather than
+      // exhaustion.
       yield {
         type: 'turn-error',
         messageId,
         error: `LLM error in ${agent.name}: ${errorMessage}`,
+        reason: 'internal',
       }
       // Flip any still-running tool_call parts to error so the persisted
       // shape doesn't carry zombies.
@@ -1103,10 +1107,14 @@ export async function* agentQueryLoop(
           iteration,
           lastError,
         })
+        // Exhaustion, not corruption: the turn's earlier work all landed, the
+        // loop just stopped burning calls on a tool that keeps failing. The
+        // `reason` is what tells the engine that — never the message text.
         yield {
           type: 'turn-error',
           messageId,
           error: `Tool \`${onlyName}\` failed ${failingToolStreak} times in a row: ${lastError}`,
+          reason: 'tool-failure-streak',
         }
         markRunningPartsAsError(parts, 'Same-tool failure streak')
         currentState = upsertAssistantMessage()
@@ -1312,12 +1320,33 @@ function findApprovalTool(
   })
 }
 
+/**
+ * Roll one call's usage into the turn-total carried on the assistant message.
+ *
+ * The cache fields ride along because dropping them made the persisted metadata
+ * under-report the cache dimension entirely — a turn that read 200k tokens from
+ * the prompt cache looked identical to one that paid for all of them. They are
+ * only materialized when a provider actually reported them, so a cache-blind
+ * provider keeps the keys absent rather than claiming a measured zero.
+ *
+ * This is a reporting fix, not the turn budget's input: the budget meters off
+ * the per-call `IterationUsage` records, which keep raw usage AND the provider
+ * each call ran on — and the provider is what decides whether `prompt_tokens`
+ * already contains the cached reads. A roll-up can span providers, so it cannot
+ * answer that question at all.
+ */
 function accumulateUsage(target: UsageMetrics, src: UsageMetrics): void {
   target.prompt_tokens = (target.prompt_tokens ?? 0) + (src.prompt_tokens ?? 0)
   target.completion_tokens = (target.completion_tokens ?? 0) + (src.completion_tokens ?? 0)
   target.total_tokens =
     (target.total_tokens ?? 0) +
     (src.total_tokens ?? (src.prompt_tokens ?? 0) + (src.completion_tokens ?? 0))
+  if (src.cached_input_tokens !== undefined) {
+    target.cached_input_tokens = (target.cached_input_tokens ?? 0) + src.cached_input_tokens
+  }
+  if (src.cache_write_tokens !== undefined) {
+    target.cache_write_tokens = (target.cache_write_tokens ?? 0) + src.cache_write_tokens
+  }
 }
 
 function markRunningPartsAsError(parts: ContentPart[], reason: string): void {

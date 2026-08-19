@@ -94,21 +94,25 @@ export function createWorkflowBuilderCapabilities(getDeps: GetToolDeps): PageCap
         ? ['Read, build, and edit the workflow open in this builder']
         : ['Read the workflow open in this builder'],
     lifecycle: {
-      // A workflow turn is a turn-scoped transaction against the open draft:
-      // the first mutation captures a pre-turn snapshot in Redis
-      // (`graph-edit/turn-snapshot.ts`, inside `runGraphMutation`); turn end
-      // discards it (completed — the turn committed atomically) or reverts
-      // (restore the pre-turn graph, guarded by `expectedTurnId`). Undo of a
-      // successful turn is the CANVAS's job: the builder's realtime subscriber
-      // records each Kopilot edit as a normal client-side history entry, so
-      // the snapshot exists only for failed-turn atomicity — there is no
-      // per-turn Undo card and no server-side undo of a completed turn.
+      // A workflow turn writes through a pre-turn snapshot: the first mutation
+      // captures the prior graph in Redis (`graph-edit/turn-snapshot.ts`,
+      // inside `runGraphMutation`). Turn end has exactly ONE job now —
+      // `completed` discards the snapshot; every other outcome leaves it
+      // alone. **Revert is never automatic** (plans/kopilot/workflow/20 §2,
+      // Q1): each mutation persisted independently, through its own
+      // validation, its own ref gate, its own hash-CAS and its own realtime
+      // signal, so a turn that stopped early leaves N complete, valid edits
+      // the user already watched land — not a corrupt half-write.
+      // Undo of a COMPLETED turn is the CANVAS's job: the builder's realtime
+      // subscriber records each Kopilot edit as a normal client-side history
+      // entry. Undo of a turn that stopped early is the USER's click on the
+      // phase-D card, served from the snapshot this hook deliberately keeps.
       // The snapshot keyed by `(workflowAppId, turnId)` IS the "did THIS turn
       // write" record: `readWorkflowTurnSnapshot` with the turn id returns
       // null unless this turn wrote, which also stops a prior turn's
       // still-pending snapshot (24h TTL) from being touched here.
       async onTurnEnd(outcome, { turnId }) {
-        const { db, sessionContext, organizationId } = getDeps()
+        const { sessionContext, organizationId } = getDeps()
         const workflowAppId = findRef(sessionContext, 'workflow')?.id
         if (!workflowAppId) return
 
@@ -118,7 +122,9 @@ export function createWorkflowBuilderCapabilities(getDeps: GetToolDeps): PageCap
         // releasing inside the `if (!snapshot)` path would strand the canvas
         // read-only for the whole of every question-only turn. Turn-checked
         // inside, and its own try/catch so a Redis failure cannot stop the
-        // revert that follows.
+        // snapshot bookkeeping that follows. This ordering holds for EVERY
+        // outcome — an exhausted or aborted turn must not leave the canvas
+        // locked either.
         const { endWorkflowTurnLock } = await import('../../../../workflows/graph-edit/turn-lock')
         try {
           await endWorkflowTurnLock(organizationId, workflowAppId, turnId)
@@ -130,35 +136,70 @@ export function createWorkflowBuilderCapabilities(getDeps: GetToolDeps): PageCap
           })
         }
 
-        // Lazy import — turn-snapshot pulls @auxx/redis and (via the revert
-        // path) the persist seam; neither belongs in this capability's
-        // import-time graph, and the laziness keeps tests free to mock the
-        // graph-edit module wholesale.
-        const { finalizeWorkflowTurn, readWorkflowTurnSnapshot, revertWorkflowTurn } = await import(
-          '../../../../workflows/graph-edit/turn-snapshot'
-        )
-        const snapshot = await readWorkflowTurnSnapshot(workflowAppId, turnId)
-        if (!snapshot) return
         try {
-          if (outcome === 'completed') {
-            // The turn committed — discard its snapshot (turn-checked, so a
-            // fresher turn's slot is never cleared). Keeping it would only
-            // leave a stale revert target around; client-side canvas history
-            // owns undo from here.
-            await finalizeWorkflowTurn(workflowAppId, turnId)
-            return
-          }
-          // `expectedTurnId` (the third argument) is load-bearing: it rejects
-          // a stale prior-turn snapshot so a later failed turn can never roll
-          // back a workflow it didn't touch.
-          const reverted = await revertWorkflowTurn(db, { workflowAppId, organizationId }, turnId)
-          if (reverted.isErr()) {
-            logger.error('Kopilot workflow turn revert failed', {
+          // Lazy import — turn-snapshot pulls @auxx/redis and the persist seam;
+          // neither belongs in this capability's import-time graph, and the
+          // laziness keeps tests free to mock the graph-edit module wholesale.
+          // `revertWorkflowTurn` is deliberately NOT imported here any more:
+          // the restore is offered by the phase-D card (tRPC), never performed
+          // by this hook. Inside the try with the read — the engine swallows a
+          // throwing hook, but this must not depend on that.
+          const { finalizeWorkflowTurn, readWorkflowTurnSnapshot, recordWorkflowTurnEnding } =
+            await import('../../../../workflows/graph-edit/turn-snapshot')
+          const snapshot = await readWorkflowTurnSnapshot(workflowAppId, turnId)
+          if (!snapshot) return
+          if (outcome !== 'completed') {
+            // [C4] The turn stopped early — KEEP the work AND the snapshot.
+            //
+            // Not reverting is the point of plan 20: `exhausted` (token
+            // budget / iteration cap / failure streak), `aborted` (page
+            // reload, navigate-away) and even `error` all leave a draft that
+            // is N complete, individually persisted mutations. A draft graph
+            // has no atomicity requirement to protect — "half-finished" is
+            // what the canvas looks like every time a human stops mid-thought.
+            //
+            // Not FINALIZING is just as load-bearing, and less obvious.
+            // Finalizing DISCARDS the snapshot, which is the only recovery
+            // path this turn has left — and it is exactly what phase D's Undo
+            // card consumes. `delete_nodes` carries no approval gate, so a
+            // turn that deletes five nodes and then trips the budget leaves
+            // them deleted; the snapshot is what makes that recoverable.
+            //
+            // Leaving it behind is safe, not a leak — do NOT "tidy this up":
+            //  - the slot is one-per-workflow (`workflow:graph:<id>:preturn`)
+            //  - `captureWorkflowTurnSnapshot` overwrites it on the NEXT
+            //    turn's first write
+            //  - `readWorkflowTurnSnapshot` is turn-checked, so a superseded
+            //    caller reads null rather than a foreign turn's graph
+            //  - `clearWorkflowTurnSnapshot` wipes it unconditionally on a
+            //    manual canvas save
+            //  - Redis expires it after 24h
+            // Stamp HOW it ended onto the snapshot before returning. This is
+            // the ONLY place the ending is knowable and durable at once: the
+            // engine classifies the terminal event and hands it here, then the
+            // turn is gone — the snapshot is a graph, not a transcript, so
+            // without this stamp the Undo offer can only say "stopped early".
+            //
+            // ADDITIVE, not a finalize — [C4] above still holds in full. It
+            // rewrites one field of the same slot and cannot delete it, and it
+            // is turn-checked inside, so a superseded turn relabels nothing.
+            // Best-effort by construction (it swallows its own failures), so a
+            // Redis blip costs the adjective, never the offer.
+            await recordWorkflowTurnEnding(workflowAppId, turnId, outcome)
+            // Warn (not error): nothing is broken, but a turn that kept work
+            // it did not finish is worth seeing in the logs.
+            logger.warn('Kopilot workflow turn stopped early — edits kept, snapshot retained', {
               workflowAppId,
               turnId,
-              error: reverted.error.message,
+              outcome,
             })
+            return
           }
+          // The turn committed — discard its snapshot (turn-checked, so a
+          // fresher turn's slot is never cleared). Keeping it would only
+          // leave a stale revert target around; client-side canvas history
+          // owns undo from here.
+          await finalizeWorkflowTurn(workflowAppId, turnId)
         } catch (err) {
           logger.error('Kopilot turn-end workflow lifecycle failed', {
             workflowAppId,

@@ -12,7 +12,7 @@ import { getQueue, Queues } from '../jobs/queues'
 import type { TriggerDerivationNode } from '../workflow-engine/catalog/derive-trigger'
 import { deriveTriggerLinkColumns } from '../workflow-engine/catalog/derive-trigger-server'
 import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
-import { hashWorkflowGraph } from './graph-hash'
+import { hashGraphSemantics, hashWorkflowGraph } from './graph-hash'
 import { assertMailTriggerNotPersonal } from './mail-trigger-guard'
 import { PollingTriggerService } from './polling-trigger-service'
 import { ScheduledTriggerService } from './scheduled-trigger-service'
@@ -589,14 +589,32 @@ export class WorkflowService {
       // A non-Kopilot graph write invalidates the per-turn Undo snapshot (KB
       // parity: KBService clears on every manual save unless the agent path
       // bypasses). Only the graph-edit persist seam sets `preserveTurnSnapshot`.
+      //
+      // Gated on a SEMANTIC change, not on "a graph was posted". The editor
+      // autosaves on load, and that save carries a fresh viewport plus
+      // `selected: true` over byte-identical node content — so clearing on any
+      // graph-bearing write destroyed the pending Undo offer about eight
+      // seconds after it appeared, without the user touching anything
+      // (plan 20 F5, reproduced in the browser 2026-08-19).
+      //
+      // Safe to relax only because `revertWorkflowTurn` now refuses when the
+      // live draft no longer matches what the turn left behind: THAT is what
+      // stops a stale Undo clobbering hand edits, and this clear no longer has
+      // to be the blunt instrument standing in for it.
+      //
       // Best-effort + lazy — the snapshot module pulls @auxx/redis, which must
       // not become an import-time dependency of every WorkflowService caller.
       if (graph !== undefined && !preserveTurnSnapshot) {
-        try {
-          const { clearWorkflowTurnSnapshot } = await import('./graph-edit/turn-snapshot')
-          await clearWorkflowTurnSnapshot(id)
-        } catch {
-          // A leftover snapshot expires via TTL; never fail the save over it.
+        const previousGraph = existingWorkflowApp.draftWorkflow?.graph
+        const authoredChange =
+          previousGraph == null || hashGraphSemantics(previousGraph) !== hashGraphSemantics(graph)
+        if (authoredChange) {
+          try {
+            const { clearWorkflowTurnSnapshot } = await import('./graph-edit/turn-snapshot')
+            await clearWorkflowTurnSnapshot(id)
+          } catch {
+            // A leftover snapshot expires via TTL; never fail the save over it.
+          }
         }
       }
 

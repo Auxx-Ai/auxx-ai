@@ -15,6 +15,11 @@ import type { JobContext } from '../../jobs/types'
 import { docToText } from '../../tiptap'
 import { buildInstructionReferenceResolver } from '../kopilot/prompts/resolve-instruction-references'
 import type { TriggerContext, TriggerKind } from '../kopilot/prompts/trigger-context'
+// Leaf module, imported by path rather than through `../kopilot`'s barrel: the
+// barrel pulls the whole capability tree (which imports agent-framework) back
+// into this file and would close a real import cycle. `turn-budget.ts` itself
+// imports nothing, so this direction is safe as a static import.
+import { KOPILOT_TURN_BUDGET } from '../kopilot/turn-budget'
 import { resolveAgentRunCapabilities } from './agent-run-capabilities'
 import { KopilotContextStore, readContextSlice } from './context'
 import { type AgentRuntimeDomain, buildEffectiveAgentRuntime } from './effective-runtime'
@@ -176,10 +181,12 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     // No-op for master Kopilot (no tools declare bindings + empty overrides).
     // See plans/chat/v8 phase-4.
     applyToolRestrictions: runtime.applyToolRestrictions,
-    // Kopilot domain: long-running plans routinely chain >5 approvals
-    // (one per ticket reply, etc.) and need iteration headroom for plan
-    // step churn. Other domains stay on framework defaults.
-    ...(domain === 'kopilot' ? { maxTotalIterations: 100, maxApprovalsPerTurn: 50 } : {}),
+    // Kopilot domain: its own turn budget (see `KOPILOT_TURN_BUDGET` for why
+    // each number is what it is). Shared with the SSE route in apps/web so the
+    // worker and streaming paths can never drift — `shouldUseWorker()` is
+    // env-gated, so any divergence would stay invisible until it flipped.
+    // Other domains stay on framework defaults.
+    ...(domain === 'kopilot' ? KOPILOT_TURN_BUDGET : {}),
     ...(data.approvalMode ? { approvalMode: data.approvalMode } : {}),
   }
 

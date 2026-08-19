@@ -704,6 +704,30 @@ export interface Route {
 
 // ===== DOMAIN CONFIG =====
 
+/**
+ * How a turn ended, as reported to {@link AgentDomainConfig.onTurnEnd}.
+ *
+ * The distinction that matters to a domain hook is **"is anything broken?"**,
+ * and only `'error'` answers yes:
+ *
+ * - `'completed'` — the turn reached `turn-completed`. Normal finish.
+ * - `'exhausted'` — a resource cap stopped the turn: the per-turn token budget,
+ *   the max-total-iterations cap, the max-approvals-per-turn cap, or the
+ *   same-tool failure streak. The work
+ *   already done is intact — the draft/document is N complete, individually
+ *   valid mutations, each of which went through its own validation and its own
+ *   write. The turn simply ran out of room.
+ * - `'aborted'` — the caller's abort signal fired, or the consumer stopped
+ *   draining the event stream (a client disconnect, page reload, navigate-away).
+ *   Same shape as `'exhausted'`: nothing is broken, the turn just stopped.
+ * - `'error'` — an unexpected failure: a thrown exception, an LLM/stream
+ *   failure, a misconfigured route or agent. This is the only outcome that
+ *   says the turn itself went wrong.
+ *
+ * Neither `'exhausted'` nor `'aborted'` implies the domain should undo anything.
+ */
+export type TurnOutcome = 'completed' | 'exhausted' | 'aborted' | 'error'
+
 /** Domain-specific configuration — each consumer (Kopilot, Builder) provides one */
 export interface AgentDomainConfig<TDomainState = Record<string, unknown>> {
   /** Domain identifier (matches AgentSessionType) */
@@ -793,17 +817,22 @@ export interface AgentDomainConfig<TDomainState = Record<string, unknown>> {
    * BullMQ path), so a domain can commit or roll back side-effects keyed off
    * domain state regardless of where the turn ran.
    *
-   * `outcome` is `'completed'` for a clean finish and `'error'` for a
-   * turn-error, an aborted run, or a client disconnect. It does NOT fire when
-   * a turn pauses for approval (the turn isn't over). Must not throw — the
-   * engine wraps it in try/catch so a hook failure can't mask the turn result.
+   * `outcome` is a {@link TurnOutcome}: `'completed'` for a clean finish,
+   * `'exhausted'` when a resource cap (token budget, iteration cap, approval
+   * cap, same-tool failure streak) stopped the turn, `'aborted'` when the abort signal fired or
+   * the consumer stopped draining the stream, and `'error'` for anything that
+   * actually went wrong. `'exhausted'` and `'aborted'` both mean *the
+   * draft/document is N complete, valid mutations and nothing is broken* — a
+   * hook must not treat them as corruption. It does NOT fire when a turn pauses
+   * for approval (the turn isn't over). Must not throw — the engine wraps it in
+   * try/catch so a hook failure can't mask the turn result.
    *
    * `turnId` is the engine's id for the turn that just ended (undefined only if
    * no turn was active). Domains that scope per-turn side-effects by turn id —
    * e.g. fanning the hook out to capability lifecycles — read it here instead of
    * smuggling turn-ephemeral identity through the persisted `domainState`.
    */
-  onTurnEnd?: (state: AgentState, outcome: 'completed' | 'error', turnId?: string) => Promise<void>
+  onTurnEnd?: (state: AgentState, outcome: TurnOutcome, turnId?: string) => Promise<void>
   /**
    * Optional hook to clear per-turn domain state at the start of a NEW user
    * turn (`submitMessage`) — NOT on approval-resume, which continues the same
@@ -841,7 +870,13 @@ export interface AgentEngineConfig {
   domainConfig: AgentDomainConfig
   /** LLM call function (injected, wraps LLMOrchestrator) */
   callModel: (params: LLMCallParams) => AsyncGenerator<LLMStreamEvent>
-  /** Optional abort signal */
+  /**
+   * Optional caller-owned abort signal. The engine mints its OWN controller per
+   * turn (that is what `engine.interrupt()` drives) and composes the two with
+   * `AbortSignal.any`, so aborting either one stops the turn. Passing this is
+   * therefore an alternative to wiring `interrupt()` by hand, not a duplicate
+   * of it.
+   */
   signal?: AbortSignal
   /** Max total iterations across all agents in a pipeline run (default: 50) */
   maxTotalIterations?: number
@@ -966,6 +1001,31 @@ export interface TurnUsageSummary {
 }
 
 /**
+ * Why a `turn-error` was emitted — a machine-readable discriminator so consumers
+ * never have to pattern-match the human-readable `error` string.
+ *
+ * The first four are resource caps and map to {@link TurnOutcome} `'exhausted'`;
+ * `'internal'` (and an unset reason) maps to `'error'`.
+ *
+ * - `'token-budget'` — the turn's cumulative token usage crossed
+ *   `maxTokensPerTurn`.
+ * - `'max-iterations'` — the route crossed `maxTotalIterations`.
+ * - `'max-approvals'` — the turn chained more approved tool calls than
+ *   `maxApprovalsPerTurn`. It stops BETWEEN approvals, so every one of them
+ *   completed — a long authoring turn hitting this has all its work intact.
+ * - `'tool-failure-streak'` — the same tool failed `SAME_TOOL_FAILURE_LIMIT`
+ *   times in a row, so the loop stopped rather than keep burning calls on it.
+ * - `'internal'` — something actually went wrong: an LLM/stream failure, a
+ *   misconfigured route or agent, a tool that couldn't be resumed.
+ */
+export type TurnErrorReason =
+  | 'token-budget'
+  | 'max-iterations'
+  | 'max-approvals'
+  | 'tool-failure-streak'
+  | 'internal'
+
+/**
  * Events emitted by the engine during turn execution — streamed to the frontend.
  * Every event (except `done`) carries a `turnId` tying it to a single user request.
  *
@@ -977,7 +1037,7 @@ export interface TurnUsageSummary {
 export type AgentEvent = { turnId?: string } & (
   | { type: 'turn-started'; route: string; agents: string[]; budget: TurnBudget }
   | { type: 'turn-completed'; route: string; usage: TurnUsageSummary }
-  | { type: 'turn-error'; error: string; messageId?: string }
+  | { type: 'turn-error'; error: string; messageId?: string; reason?: TurnErrorReason }
   | { type: 'agent-started'; agent: string }
   /** Opens a new assistant message. The frontend appends an empty bubble keyed by `messageId`. */
   | { type: 'assistant-message-started'; messageId: string; agent: string }
