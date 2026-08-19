@@ -44,6 +44,28 @@ const SAME_TOOL_FAILURE_LIMIT = 3
 // before we conclude the model is done and repeating itself, and finalize
 // the turn gracefully with its text as the final reply.
 const SAME_TOOL_SUCCESS_LIMIT = 3
+// How many times one IDENTICAL (name, args) call may be dispatched in a single
+// turn before the loop stops running it and answers the model itself.
+//
+// Separate from the two streak limits above because both of those are
+// consecutive-iteration AND outcome-scoped: they need every call in the
+// iteration to be the same tool and to share an outcome, so a single
+// interleaved tool that succeeds resets them to zero. A production turn
+// rewording the same failing search 33 times never tripped either one, and
+// simply ran the iteration cap out. This budget is turn-wide and
+// outcome-blind — nothing the model interleaves can reset it — and it is
+// deliberately keyed on EXACT args, so a poll loop with a moving cursor and a
+// retry after fixing a validation error both stay out of its blast radius.
+const IDENTICAL_CALL_BUDGET = 3
+
+/** The synthetic answer returned in place of an over-budget identical call. */
+function buildRepeatBudgetNotice(toolName: string, priorCalls: number): string {
+  return (
+    `You have already called \`${toolName}\` with these exact arguments ${priorCalls} times ` +
+    'and received the same answer. It will not change. Use what you have — either call a ' +
+    'different tool, call this one with meaningfully different arguments, or reply to the user.'
+  )
+}
 
 /**
  * Core agent query loop — emits one assistant message per turn with a
@@ -136,6 +158,15 @@ export async function* agentQueryLoop(
   let failingToolStreak = 0
   let repeatSuccessKey: string | null = null
   let repeatSuccessStreak = 0
+  /**
+   * Turn-wide identical-call ledger: `stableStringify([toolName, args])` ⇒ how
+   * many times that exact call has been DISPATCHED this turn. Counts across
+   * iterations and across outcomes; nothing resets it inside the turn, which is
+   * the whole point (see `IDENTICAL_CALL_BUDGET`). Its lifetime is this
+   * `agentQueryLoop` invocation, so a new turn starts empty — as does the
+   * resumed segment after an approval pause, matching `idempotentCache`.
+   */
+  const identicalCallCounts = new Map<string, number>()
 
   // Tools that terminate the turn when an iteration consists solely of
   // successful calls to them (see `AgentToolDefinition.endsTurn`).
@@ -908,6 +939,39 @@ export async function* agentQueryLoop(
       return currentState
     }
 
+    // ===== TURN-WIDE IDENTICAL-CALL BUDGET =====
+    // Accounted BEFORE dispatch so an over-budget call never runs again, and
+    // in the main loop rather than inside `executeToolCalls` so the ledger sits
+    // beside the two streak guards it complements and the warn line can carry
+    // `iteration` like they do. The dispatcher is handed a per-call verdict and
+    // synthesizes the result in place, which keeps `results` index-aligned with
+    // `toolCalls` — the invariant the part-stamping loop below relies on — and
+    // keeps the `tool-call-started` / `tool-call-completed` event pair intact
+    // for the blocked call. Keyed on the RAW parsed args, the same projection
+    // the success-streak guard uses, so `transformToolInput` can't split one
+    // repeated call into two ledger entries.
+    const budgetBlocked = new Map<string, string>()
+    for (const tc of toolCalls) {
+      const key = stableStringify([tc.function.name, parseToolArgs(tc)])
+      const priorCalls = identicalCallCounts.get(key) ?? 0
+      if (priorCalls >= IDENTICAL_CALL_BUDGET) {
+        budgetBlocked.set(tc.id, buildRepeatBudgetNotice(tc.function.name, priorCalls))
+        logger.warn(
+          'Identical-call budget exhausted — answering the model instead of dispatching',
+          {
+            turnId,
+            agent: agent.name,
+            tool: tc.function.name,
+            streak: priorCalls,
+            iteration,
+            args: previewArgs(parseToolArgs(tc)),
+          }
+        )
+        continue
+      }
+      identicalCallCounts.set(key, priorCalls + 1)
+    }
+
     // ===== NORMAL TOOL EXECUTION =====
     const toolCallGen = executeToolCalls(
       toolCalls,
@@ -918,6 +982,7 @@ export async function* agentQueryLoop(
       messageId,
       ctx,
       idempotentCache,
+      budgetBlocked,
       config.domainConfig.transformToolInput
         ? (toolName, args) => config.domainConfig.transformToolInput!(toolName, args, currentState)
         : undefined,
@@ -937,14 +1002,18 @@ export async function* agentQueryLoop(
     // Capture successful tool results into the context store (tool:*/call:*)
     // before domain hooks. Captures the raw output, not the `transformToolResult`
     // rewrite (which only adjusts the LLM-visible payload).
+    // A repeat-budget notice is a message to the model, not a tool output —
+    // capturing it would make `tool:<name>` resolve to the guard text instead
+    // of the real answer the model is being told to reuse.
     for (const r of toolResults.results) {
-      if (r.success) ctx.context.captureToolResult(r.toolCallId, r.toolName, r.output)
+      if (r.success && !r.repeatBudgetBlocked)
+        ctx.context.captureToolResult(r.toolCallId, r.toolName, r.output)
     }
 
     // Domain `onToolResult` hook (state mining).
     if (config.domainConfig.onToolResult) {
       for (const r of toolResults.results) {
-        if (!r.success) continue
+        if (!r.success || r.repeatBudgetBlocked) continue
         const toolResult: AgentToolResult = {
           success: r.success,
           output: r.output,
@@ -958,7 +1027,7 @@ export async function* agentQueryLoop(
     // Domain `transformToolResult` hook (rewrite LLM-visible payload).
     if (config.domainConfig.transformToolResult) {
       for (const r of toolResults.results) {
-        if (!r.success) continue
+        if (!r.success || r.repeatBudgetBlocked) continue
         const transformed = config.domainConfig.transformToolResult(
           r.toolName,
           { success: r.success, output: r.output, error: r.error },
@@ -1367,6 +1436,11 @@ function translateCaptureEvent(
 /**
  * Async-generator tool dispatcher (message-scoped). Yields per-tool events
  * keyed by `messageId` + `partIndex` and returns the per-call results.
+ *
+ * `budgetBlocked` maps a `toolCall.id` to the notice the turn-wide
+ * identical-call budget already decided to answer with; those calls are never
+ * dispatched, but they still produce an in-order result so the caller's
+ * index alignment between `toolCalls` and the returned results holds.
  */
 async function* executeToolCalls(
   toolCalls: ToolCall[],
@@ -1377,6 +1451,7 @@ async function* executeToolCalls(
   messageId: string,
   ctx: ToolContext,
   idempotentCache: IdempotentToolCache,
+  budgetBlocked: Map<string, string>,
   transformInput?: (toolName: string, args: Record<string, unknown>) => Record<string, unknown>,
   applyToolRestrictions?: AgentEngineConfig['applyToolRestrictions']
 ): AsyncGenerator<AgentEvent, ToolExecResult[]> {
@@ -1414,6 +1489,31 @@ async function* executeToolCalls(
 
     // Approval-required tools never reach here.
     if (needsApproval(tool, args)) continue
+
+    // Over the turn-wide identical-call budget: answer the model instead of
+    // running the tool again. Deliberately NOT an error — the turn keeps every
+    // other tool and can still finish the work, unlike the same-tool failure
+    // streak, which ends the turn outright.
+    const budgetNotice = budgetBlocked.get(toolCall.id)
+    if (budgetNotice) {
+      const output = { note: budgetNotice }
+      yield {
+        type: 'tool-call-completed',
+        messageId,
+        partIndex,
+        toolCallId: toolCall.id,
+        agent: agentName,
+        output,
+      }
+      results.push({
+        toolCallId: toolCall.id,
+        toolName,
+        output,
+        success: true,
+        repeatBudgetBlocked: true,
+      })
+      continue
+    }
 
     // Per-agent restriction clamp — pins / overrides args before the tool
     // validates or executes. The rewritten object is the one that flows on.
