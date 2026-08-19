@@ -21,6 +21,46 @@ import { OrganizationSeeder } from '../seed/organization-seeder'
 import { SystemUserService } from '../users/system-user-service'
 
 const logger = createScopedLogger('organization-service')
+
+/** The `pg` driver error fields worth logging when a query fails. */
+interface PostgresErrorFields {
+  code?: string
+  constraint?: string
+  table?: string
+  column?: string
+  detail?: string
+  message?: string
+}
+
+/**
+ * Walk an error's `cause` chain and pull out the underlying Postgres driver fields.
+ *
+ * Drizzle wraps driver errors in a `DrizzleQueryError` whose own `message` is just
+ * `Failed query: <sql>` — the SQLSTATE and the constraint name that actually identify the
+ * problem sit one or more levels down on `cause`. Without this, a cascade failure logs as an
+ * opaque "Failed query: delete from ..." and the offending constraint has to be rediscovered
+ * by reproducing the delete.
+ */
+function extractPostgresError(error: unknown): PostgresErrorFields | null {
+  let current: unknown = error
+  // Bounded walk — `cause` chains are short, and a cyclic one must not hang the handler.
+  for (let depth = 0; current instanceof Error && depth < 5; depth++) {
+    const candidate = current as Error & PostgresErrorFields
+    if (typeof candidate.code === 'string') {
+      return {
+        code: candidate.code,
+        constraint: candidate.constraint,
+        table: candidate.table,
+        column: candidate.column,
+        detail: candidate.detail,
+        message: candidate.message,
+      }
+    }
+    current = candidate.cause
+  }
+  return null
+}
+
 /**
  * Service class for managing core Organization operations, including deletion.
  */
@@ -436,10 +476,43 @@ export class OrganizationService {
       try {
         // Dynamically import to avoid circular dependency
         const { stripeClient } = await import('@auxx/billing')
-        await stripeClient.getClient().subscriptions.cancel(activeSubscription.stripeSubscriptionId)
-        logger.info(
-          `Canceled Stripe subscription ${activeSubscription.stripeSubscriptionId} for org ${organizationId}`
-        )
+        const stripe = stripeClient.getClient()
+
+        // Read before cancelling. This call runs BEFORE the transaction on purpose and that
+        // ordering is deliberate, not an oversight: cancelling first and failing the delete
+        // leaves an org with no subscription (recoverable), while deleting first and failing
+        // the cancel leaves Stripe billing a customer who no longer has an account (not).
+        //
+        // The cost of that ordering is that a failed deletion leaves the subscription already
+        // cancelled — so the retry must not blow up on it. A blind `cancel()` throws on an
+        // already-cancelled subscription, which turned every retry into the misleading
+        // "Please cancel your subscription first" error and made the org permanently
+        // undeletable through the UI. `resource_missing` matters too: a `stripeSubscriptionId`
+        // minted on a Stripe account we no longer hold keys for does not resolve, and that
+        // must not wedge deletion either.
+        const remote = await stripe.subscriptions
+          .retrieve(activeSubscription.stripeSubscriptionId)
+          .catch((err: unknown) => {
+            if ((err as { code?: string })?.code === 'resource_missing') return null
+            throw err
+          })
+
+        if (!remote) {
+          logger.warn('Stripe subscription not found — nothing to cancel, continuing deletion', {
+            organizationId,
+            stripeSubscriptionId: activeSubscription.stripeSubscriptionId,
+          })
+        } else if (remote.status === 'canceled') {
+          logger.info('Stripe subscription already canceled — continuing deletion', {
+            organizationId,
+            stripeSubscriptionId: activeSubscription.stripeSubscriptionId,
+          })
+        } else {
+          await stripe.subscriptions.cancel(activeSubscription.stripeSubscriptionId)
+          logger.info(
+            `Canceled Stripe subscription ${activeSubscription.stripeSubscriptionId} for org ${organizationId}`
+          )
+        }
       } catch (stripeError) {
         logger.error('Failed to cancel Stripe subscription before org deletion', {
           organizationId,
@@ -620,13 +693,24 @@ export class OrganizationService {
       // Return success status and whether the *requesting owner* was deleted
       return { success: true, userDeleted: requestingUserWasDeleted }
     } catch (error) {
+      // Drizzle wraps driver errors in a `DrizzleQueryError` whose message is only
+      // `Failed query: delete from "Organization" ...` — the SQLSTATE, constraint name, table
+      // and detail all live on `cause`. Logging the bare error therefore threw away the one
+      // thing needed to diagnose a failure, and the `message.includes('constraint')` branch
+      // below never matched the very errors it was written for, because the wrapper message
+      // does not contain the word. Unwrap first, then classify.
+      const pg = extractPostgresError(error)
       logger.error(
         `CRITICAL Error during organization deletion transaction (incl. other user deletion) for org ${organizationId}:`,
-        { error }
+        { error, postgres: pg }
       )
-      // Handle database constraint errors
-      if (error instanceof Error && error.message.includes('constraint')) {
-        logger.error(`Database constraint error: ${error.message}`)
+      // Handle database constraint errors — SQLSTATE class 23 is integrity_constraint_violation
+      // (23503 foreign_key_violation, 23502 not_null_violation, 23505 unique_violation).
+      if (pg?.code?.startsWith('23')) {
+        logger.error('Database constraint error during organization deletion', {
+          organizationId,
+          ...pg,
+        })
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message:
