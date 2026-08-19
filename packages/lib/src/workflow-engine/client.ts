@@ -404,6 +404,19 @@ export {
   waitManifest,
   waitNodeDataSchema,
 } from './catalog/nodes/wait'
+export {
+  validateWebhookData,
+  type WebhookBodySchema,
+  type WebhookNodeData as CatalogWebhookNodeData,
+  webhookManifest,
+  webhookNodeDataSchema,
+} from './catalog/nodes/webhook'
+export {
+  validateWebhookEndpointData,
+  type WebhookEndpointNodeData as CatalogWebhookEndpointNodeData,
+  webhookEndpointManifest,
+  webhookEndpointNodeDataSchema,
+} from './catalog/nodes/webhook-endpoint'
 export { NOT_YET_MIGRATED } from './catalog/not-yet-migrated'
 export {
   type OutputContext,

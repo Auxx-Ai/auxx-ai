@@ -107,10 +107,12 @@ function resolveInTopoOrder(
     // that is `hasProcessor`'s fail-open, and it does not belong here (D8).
     const manifest = nodeType ? lookup(nodeType) : undefined
     if (!manifest?.resolveOutputs) {
-      // Not-yet-migrated or unknown type (`NOT_YET_MIGRATED` — `crud`/`find`
-      // today): no server-side resolver exists yet. Empty, not an error —
-      // same "nothing to report" the four context-reading resolvers give a
-      // node with no resource picked yet.
+      // Unknown type, or an app block this org does not have installed: no
+      // resolver to call. (`NOT_YET_MIGRATED` is empty now — every platform
+      // type carries one — but the guard stays, because the lookup also
+      // answers for per-org app blocks.) Empty, not an error — the same
+      // "nothing to report" the context-reading resolvers give a node with no
+      // resource picked yet.
       memo.set(nodeId, [])
       continue
     }
