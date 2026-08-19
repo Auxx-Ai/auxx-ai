@@ -13,21 +13,21 @@ import {
 import { LayoutTemplate, Plus, Workflow } from 'lucide-react'
 import { useState } from 'react'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
-import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { WorkflowTemplateDialog } from '~/components/workflow/dialogs/workflow-template-dialog'
+import { useCreateWorkflow } from '~/components/workflow/hooks/use-create-workflow'
 import { useOrganization } from '~/hooks/use-organization'
 import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useWorkflows } from '../providers/workflows-provider'
 
 export function CreateWorkflowButton() {
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const currentOrganization = useOrganization()
   const { isAtLimit, getLimit } = useFeatureFlags()
   const { can } = useAccess()
   const { stats } = useWorkflows()
+  const { createWorkflow, isCreating } = useCreateWorkflow()
   const atLimit = isAtLimit(FeatureKey.workflowsLimit, stats.total)
   const workflowLimit = getLimit(FeatureKey.workflowsLimit)
 
@@ -57,13 +57,13 @@ export function CreateWorkflowButton() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size='sm'>
+          <Button size='sm' loading={isCreating} loadingText='Creating...'>
             <Plus />
             Create Workflow
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align='end' className='w-50'>
-          <DropdownMenuItem onClick={() => setCreateDialogOpen(true)}>
+          <DropdownMenuItem onClick={() => void createWorkflow()}>
             <Workflow />
             Create from scratch
           </DropdownMenuItem>
@@ -76,11 +76,6 @@ export function CreateWorkflowButton() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <WorkflowFormDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-        mode='create'
-      />
       <WorkflowTemplateDialog
         open={templateDialogOpen}
         onOpenChange={setTemplateDialogOpen}

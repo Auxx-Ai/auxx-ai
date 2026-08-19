@@ -140,7 +140,6 @@ export function WorkflowBreadcrumbSwitcher({
           onOpenChange={(open) => {
             if (!open) setEditing(null)
           }}
-          mode='edit'
           workflow={{
             id: editing.id,
             name: editing.name,

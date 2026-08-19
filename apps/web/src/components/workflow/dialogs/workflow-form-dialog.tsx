@@ -17,98 +17,60 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
-import { useRouter } from 'next/navigation'
 import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
-/**
- * Props type for WorkflowFormDialog using discriminated union
- * Ensures workflow data is required when mode is 'edit'
- */
-type WorkflowFormDialogProps =
-  | {
-      open: boolean
-      onOpenChange: (open: boolean) => void
-      mode: 'create'
-    }
-  | {
-      open: boolean
-      onOpenChange: (open: boolean) => void
-      mode: 'edit'
-      workflow: {
-        id: string
-        name: string
-        description?: string | null
-        icon?: { iconId: string; color: string } | null
-      }
-    }
+interface WorkflowFormDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workflow: {
+    id: string
+    name: string
+    description?: string | null
+    icon?: { iconId: string; color: string } | null
+  }
+}
 
-/** Default icon value for new workflows */
+/** Shown when a workflow has no icon of its own. */
 const DEFAULT_ICON: IconPickerValue = { icon: 'zap', color: 'blue' }
 
 /**
- * Dialog for creating new workflows or editing existing workflow metadata
- * Supports both create and edit modes with type-safe props
+ * Edit a workflow's name, description and icon.
+ *
+ * Edit-only by design: creating from scratch no longer asks for any of this —
+ * `useCreateWorkflow` posts an empty create and the server mints an "Untitled
+ * workflow" name plus a starter icon, so the user lands on the canvas straight
+ * away. This dialog is how they fix those later, reached from the builder
+ * header's Settings button, the breadcrumb switcher, and the list rows.
  */
-export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
-  const { open, onOpenChange } = props
-  const router = useRouter()
+export function WorkflowFormDialog({ open, onOpenChange, workflow }: WorkflowFormDialogProps) {
   const utils = api.useUtils()
-  const posthog = useAnalytics()
 
   const nameInputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [iconValue, setIconValue] = useState<IconPickerValue>(DEFAULT_ICON)
 
-  // Reset form when dialog opens with appropriate values
-  // biome-ignore lint/correctness/useExhaustiveDependencies: props.workflow fields are intentionally excluded to only reset on open/mode change
+  // Reset the form to the workflow's stored values each time the dialog opens.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: workflow fields are intentionally excluded so a background refetch can't clobber in-flight edits
   useEffect(() => {
     if (open) {
-      if (props.mode === 'edit') {
-        setName(props.workflow.name)
-        setDescription(props.workflow.description ?? '')
-        setIconValue(
-          props.workflow.icon
-            ? { icon: props.workflow.icon.iconId, color: props.workflow.icon.color }
-            : DEFAULT_ICON
-        )
-      } else {
-        setName('')
-        setDescription('')
-        setIconValue(DEFAULT_ICON)
-      }
+      setName(workflow.name)
+      setDescription(workflow.description ?? '')
+      setIconValue(
+        workflow.icon ? { icon: workflow.icon.iconId, color: workflow.icon.color } : DEFAULT_ICON
+      )
     }
-  }, [open, props.mode])
-
-  const createWorkflow = api.workflow.create.useMutation({
-    onSuccess: () => {
-      // Close dialog and reset form
-      onOpenChange(false)
-      setName('')
-      setDescription('')
-      setIconValue(DEFAULT_ICON)
-      void utils.workflow.list.invalidate()
-    },
-    onError: (error) => {
-      toastError({ title: 'Failed to create workflow', description: error.message })
-    },
-  })
+  }, [open])
 
   const updateWorkflow = api.workflow.update.useMutation({
     onSuccess: () => {
       onOpenChange(false)
-      setName('')
-      setDescription('')
-      setIconValue(DEFAULT_ICON)
       // Invalidate to refresh the workflow data in the UI. `list` matters too:
       // the breadcrumb switcher renames from a row, so its own list must repaint.
-      if (props.mode === 'edit') {
-        void utils.workflow.getById.invalidate({ id: props.workflow.id })
-        void utils.workflow.list.invalidate()
-      }
+      void utils.workflow.getById.invalidate({ id: workflow.id })
+      void utils.workflow.list.invalidate()
     },
     onError: (error) => {
       toastError({ title: 'Failed to update workflow', description: error.message })
@@ -123,52 +85,15 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
       return
     }
 
-    const iconData = { iconId: iconValue.icon, color: iconValue.color }
-
-    if (props.mode === 'create') {
-      const result = await createWorkflow.mutateAsync({
-        name: name.trim(),
-        description: description.trim(),
-        enabled: false,
-        icon: iconData,
-      })
-
-      if (result?.id) {
-        posthog?.capture('workflow_created', { workflow_id: result.id })
-        router.push(`/app/workflows/${result.id}`)
-      }
-    } else {
-      await updateWorkflow.mutateAsync({
-        id: props.workflow.id,
-        name: name.trim(),
-        description: description.trim(),
-        icon: iconData,
-      })
-    }
+    await updateWorkflow.mutateAsync({
+      id: workflow.id,
+      name: name.trim(),
+      description: description.trim(),
+      icon: { iconId: iconValue.icon, color: iconValue.color },
+    })
   }
 
-  const handleCancel = () => {
-    onOpenChange(false)
-    setName('')
-    setDescription('')
-    setIconValue(DEFAULT_ICON)
-  }
-
-  // Dynamic UI text based on mode
-  const isPending = props.mode === 'create' ? createWorkflow.isPending : updateWorkflow.isPending
-
-  const dialogTitle = props.mode === 'create' ? 'Create New Workflow' : 'Edit Workflow'
-
-  const dialogDescription =
-    props.mode === 'create'
-      ? 'Create a new workflow to automate your business processes.'
-      : 'Update the name and description of your workflow.'
-
-  const submitButtonText = props.mode === 'create' ? 'Create Workflow' : 'Save Changes'
-
-  const loadingText = props.mode === 'create' ? 'Creating...' : 'Saving...'
-
-  const error = props.mode === 'create' ? createWorkflow.error : updateWorkflow.error
+  const isPending = updateWorkflow.isPending
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -181,8 +106,8 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
         }}>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{dialogTitle}</DialogTitle>
-            <DialogDescription>{dialogDescription}</DialogDescription>
+            <DialogTitle>Edit Workflow</DialogTitle>
+            <DialogDescription>Update the name and description of your workflow.</DialogDescription>
           </DialogHeader>
 
           <div className='grid gap-4'>
@@ -219,7 +144,9 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
                 rows={3}
               />
             </div>
-            {error && <div className='text-sm text-destructive'>{error.message}</div>}
+            {updateWorkflow.error && (
+              <div className='text-sm text-destructive'>{updateWorkflow.error.message}</div>
+            )}
           </div>
 
           <DialogFooter>
@@ -227,7 +154,7 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
               type='button'
               variant='ghost'
               size='sm'
-              onClick={handleCancel}
+              onClick={() => onOpenChange(false)}
               disabled={isPending}>
               Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
@@ -236,8 +163,8 @@ export function WorkflowFormDialog(props: WorkflowFormDialogProps) {
               variant='outline'
               size='sm'
               loading={isPending}
-              loadingText={loadingText}>
-              {submitButtonText} <KbdSubmit variant='outline' size='sm' />
+              loadingText='Saving...'>
+              Save Changes <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>
         </form>

@@ -54,6 +54,7 @@ interface WorkflowTemplateDialogProps {
  */
 export function WorkflowTemplateDialog({ open, onOpenChange }: WorkflowTemplateDialogProps) {
   const router = useRouter()
+  const utils = api.useUtils()
   const { theme } = useTheme()
   const { appInstallations } = useAppsContext()
   const { resources, getResourceById } = useResources()
@@ -103,6 +104,11 @@ export function WorkflowTemplateDialog({ open, onOpenChange }: WorkflowTemplateD
   const createWorkflow = api.workflow.create.useMutation({
     onSuccess: (workflow) => {
       onOpenChange(false)
+      // Same reason as `useCreateWorkflow`: the list's 30s `staleTime` means a
+      // remount inside that window serves the pre-create page, and staleness
+      // expiring on its own never refetches. `refetchType: 'none'` marks it for
+      // the next mount without repainting the list we are leaving.
+      void utils.workflow.list.invalidate(undefined, { refetchType: 'none' })
       router.push(`/app/workflows/${workflow.id}`)
     },
     onError: (error) => {
