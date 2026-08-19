@@ -19,6 +19,7 @@ export interface StorageCleanupJobData {
 }
 
 interface CleanupResult {
+  mediaAssetsPurged: number
   storageLocationsDeleted: number
   s3ObjectsDeleted: number
   redisKeysCleared: number
@@ -46,6 +47,7 @@ export async function storageCleanupJob(
   })
 
   const result: CleanupResult = {
+    mediaAssetsPurged: 0,
     storageLocationsDeleted: 0,
     s3ObjectsDeleted: 0,
     redisKeysCleared: 0,
@@ -54,6 +56,27 @@ export async function storageCleanupJob(
   }
 
   try {
+    // Phase 0: Purge media left behind by deleted messages.
+    //
+    // 🔴 Must run BEFORE the StorageLocation sweep. `MediaAssetVersion.storageLocationId`
+    // is ON DELETE CASCADE, so hard-deleting a StorageLocation first cascade-deletes the
+    // version while `MediaAsset.currentVersionId` (NO ACTION) still points at it — 23503.
+    await ctx.updateProgress(5)
+    try {
+      await purgeDanglingMessageAssets(organizationId, result)
+    } catch (error) {
+      // Never fail the job here. An asset can be pinned by a non-Attachment FK
+      // (`Document.mediaAssetId`, KB/ChatWidget logos — all NO ACTION), and one poison
+      // batch must not wedge the S3 sweep, Redis cleanup and Integration hard-delete
+      // behind it. The nightly thumbnail reaper is the backstop for derived rows.
+      const message = error instanceof Error ? error.message : String(error)
+      logger.warn('Dangling media purge failed, continuing cleanup', {
+        organizationId,
+        error: message,
+      })
+      result.errors.push(`Media purge failed: ${message}`)
+    }
+
     // Phase 1: Delete S3 objects for marked StorageLocations
     await ctx.updateProgress(10)
     await deleteMarkedStorageLocations(organizationId, result)
@@ -102,6 +125,124 @@ export async function storageCleanupJob(
     })
     throw error
   }
+}
+
+const ASSET_PURGE_BATCH = 500
+const ASSET_PURGE_MAX_ROUNDS = 100
+
+/**
+ * Hard-delete the MediaAssets whose only tie to anything was a message that no longer
+ * exists — the destructive half of `deleteChannelData`.
+ *
+ * Work is derived from live table state rather than the job payload, so this is
+ * idempotent across retries and also reaps orphans left by earlier disconnects.
+ *
+ * Two constraints shape the queries:
+ *
+ * 1. An asset is only purgeable if EVERY `Attachment` row pointing at it is a dangling
+ *    MESSAGE row. Attachments are polymorphic (`entityId` is not an FK), so a row of any
+ *    other `entityType` is conservatively treated as still live — as is a
+ *    `temp-message-%` placeholder, which is an OPEN COMPOSER holding an upload whose
+ *    message does not exist yet (`use-composer-attachments.ts:50`). Reading those as
+ *    dangling would delete an attachment out from under someone mid-send.
+ * 2. Thumbnails are their own `MediaAsset`, tied to the source only by
+ *    `MediaAssetVersion.derivedFromVersionId` — a self-FK with NO ACTION on delete. They
+ *    have no `Attachment` row of their own, so query 1 never sees them, and deleting a
+ *    source without them raises 23503. `expandDerivedAssets` pulls in that closure so the
+ *    whole set goes in ONE statement, where NO ACTION is checked at statement end with
+ *    every referencing row already gone.
+ */
+async function purgeDanglingMessageAssets(
+  organizationId: string,
+  result: CleanupResult
+): Promise<void> {
+  for (let round = 0; round < ASSET_PURGE_MAX_ROUNDS; round++) {
+    const dangling = await db.execute(sql`
+      SELECT DISTINCT a."assetId"
+      FROM ${schema.Attachment} a
+      WHERE a."organizationId" = ${organizationId}
+        AND a."entityType" = 'MESSAGE'
+        AND a."assetId" IS NOT NULL
+        AND a."entityId" NOT LIKE 'temp-message-%'
+        AND NOT EXISTS (SELECT 1 FROM ${schema.Message} m WHERE m."id" = a."entityId")
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ${schema.Attachment} o
+          WHERE o."assetId" = a."assetId"
+            AND (
+              o."entityType" <> 'MESSAGE'
+              OR o."entityId" LIKE 'temp-message-%'
+              OR EXISTS (SELECT 1 FROM ${schema.Message} m2 WHERE m2."id" = o."entityId")
+            )
+        )
+      LIMIT ${ASSET_PURGE_BATCH}
+    `)
+
+    const seedIds = ((dangling.rows ?? []) as { assetId: string }[]).map((r) => r.assetId)
+    if (seedIds.length === 0) return
+
+    const assetIds = await expandDerivedAssets(seedIds)
+    const idList = sql.join(
+      assetIds.map((id) => sql`${id}`),
+      sql`, `
+    )
+
+    // Mark storage first — the delete below cascades the versions away, and an unmarked
+    // StorageLocation is an S3 object nothing will ever reap.
+    await db.execute(sql`
+      UPDATE ${schema.StorageLocation} SET "deletedAt" = now()
+      WHERE "deletedAt" IS NULL
+        AND "id" IN (
+          SELECT v."storageLocationId"
+          FROM ${schema.MediaAssetVersion} v
+          WHERE v."assetId" IN (${idList}) AND v."storageLocationId" IS NOT NULL
+        )
+    `)
+
+    await db.execute(sql`DELETE FROM ${schema.MediaAsset} WHERE "id" IN (${idList})`)
+    result.mediaAssetsPurged += assetIds.length
+
+    logger.info('Purged dangling message assets', {
+      organizationId,
+      seeds: seedIds.length,
+      withDerived: assetIds.length,
+      totalPurged: result.mediaAssetsPurged,
+    })
+
+    if (seedIds.length < ASSET_PURGE_BATCH) return
+  }
+
+  // Bounded so a batch that somehow deletes nothing cannot spin. The next disconnect —
+  // or the next org cleanup — picks up where this left off.
+  logger.warn('Dangling media purge hit its round cap, deferring the rest', {
+    organizationId,
+    purged: result.mediaAssetsPurged,
+  })
+}
+
+/**
+ * Expand a set of MediaAssets to include every asset derived from them, transitively.
+ */
+async function expandDerivedAssets(assetIds: string[]): Promise<string[]> {
+  const result = await db.execute(sql`
+    WITH RECURSIVE closure AS (
+      SELECT v."id", v."assetId"
+      FROM ${schema.MediaAssetVersion} v
+      WHERE v."assetId" IN (${sql.join(
+        assetIds.map((id) => sql`${id}`),
+        sql`, `
+      )})
+      UNION
+      SELECT c."id", c."assetId"
+      FROM ${schema.MediaAssetVersion} c
+      JOIN closure p ON c."derivedFromVersionId" = p."id"
+    )
+    SELECT DISTINCT "assetId" FROM closure
+  `)
+
+  const ids = new Set(assetIds)
+  for (const row of (result.rows ?? []) as { assetId: string }[]) ids.add(row.assetId)
+  return [...ids]
 }
 
 /**
