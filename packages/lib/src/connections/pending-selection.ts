@@ -20,7 +20,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 
 const logger = createScopedLogger('pending-selection')
 
@@ -212,19 +212,37 @@ export async function deleteSupersededPendingCredentials(args: {
     const stale = rows.filter((row) => row.id !== keepCredentialId && parseSelection(row.metadata))
     if (stale.length === 0) return
 
-    // Belt and braces: only delete rows nothing points at. A pending credential has no
+    // Belt and braces: only delete rows nothing LIVE points at. A pending credential has no
     // Integration by construction, so a hit here means our own invariant broke — skip it
     // rather than cascade a live channel's credential away.
+    //
+    // ⚠️ `isNull(deletedAt)` is what makes that reasoning true. Disconnect is a SOFT delete, so a
+    // tombstoned Integration keeps pointing at its credential forever — and a connect that died
+    // part-way through provisioning leaves exactly that shape. Without this filter the tombstone
+    // read as "the invariant broke", the superseded credential was skipped, and its marker
+    // survived every subsequent connect: `pendingConnectSelection` kept resuming a picker for a
+    // credential whose token had already been swapped away, on every page load, forever. The FK is
+    // `ON DELETE SET NULL`, so deleting the credential leaves the tombstone intact and unlinked.
     const { deleteCredential } = await import('@auxx/credentials/store')
     for (const row of stale) {
       const referenced = await db.query.Integration.findFirst({
-        where: eq(schema.Integration.credentialId, row.id),
+        where: and(
+          eq(schema.Integration.credentialId, row.id),
+          isNull(schema.Integration.deletedAt)
+        ),
         columns: { id: true },
       })
       if (referenced) {
-        logger.warn('Pending credential is referenced by an Integration — not deleting', {
-          credentialId: row.id,
-        })
+        // Genuinely live — leave the credential alone, but the marker must still go. A superseded
+        // selection can never be completed (a newer connect owns the flow now), so keeping it only
+        // means re-offering a choice that cannot be taken.
+        logger.warn(
+          'Pending credential is referenced by a live Integration — clearing its marker',
+          {
+            credentialId: row.id,
+          }
+        )
+        await clearPendingSelection(row.id, organizationId).catch(() => {})
         continue
       }
       const deleted = await deleteCredential(row.id, organizationId)
