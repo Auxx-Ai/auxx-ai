@@ -36,6 +36,13 @@ function renderPopupTerminationPage(payload: {
   ok: boolean
   credId?: string | null
   error?: string | null
+  /**
+   * The connect committed a credential but provisioned nothing — it needs a choice the user can
+   * only make in the app (e.g. which Facebook Page). A latency hint ONLY: the opener re-reads the
+   * authoritative server query on settle either way, because the `verify` poll can win this race
+   * and settle before this page is ever read.
+   */
+  awaiting?: string | null
   originOfOpener: string
 }): NextResponse {
   const message = {
@@ -43,13 +50,16 @@ function renderPopupTerminationPage(payload: {
     ok: payload.ok,
     credId: payload.credId ?? null,
     error: payload.error ?? null,
+    awaiting: payload.awaiting ?? null,
   }
   const serializedMessage = JSON.stringify(message).replace(/</g, '\\u003c')
   const serializedOrigin = JSON.stringify(payload.originOfOpener).replace(/</g, '\\u003c')
-  const heading = payload.ok ? 'Connected' : 'Connection failed'
-  const body = payload.ok
-    ? 'You can close this window.'
-    : `Something went wrong: ${payload.error ?? 'Unknown error'}. You can close this window.`
+  const heading = payload.awaiting ? 'Almost there' : payload.ok ? 'Connected' : 'Connection failed'
+  const body = payload.awaiting
+    ? 'Head back to Auxx to finish setting up this channel. You can close this window.'
+    : payload.ok
+      ? 'You can close this window.'
+      : `Something went wrong: ${payload.error ?? 'Unknown error'}. You can close this window.`
 
   const html = `<!doctype html>
 <html>
@@ -298,8 +308,9 @@ export async function GET(
     // + inbox link + webhook arming here). The credential is already committed, so the hook
     // can resolve a fresh token. A failure surfaces via the shared error redirect below so a
     // half-provisioned channel never looks connected.
+    let awaiting: string | null = null
     if (connDef.providerKey) {
-      await runPostConnectHook(connDef.providerKey, {
+      const hookResult = await runPostConnectHook(connDef.providerKey, {
         credentialId: result.value,
         providerKey: connDef.providerKey,
         organizationId: metadata.organizationId,
@@ -308,12 +319,14 @@ export async function GET(
         ...(metadata.personal && { personal: true }),
         ...(metadata.postConnect && { extra: metadata.postConnect }),
       })
+      awaiting = hookResult?.awaiting?.kind ?? null
     }
 
     if (isPopup) {
       const popupResponse = renderPopupTerminationPage({
         ok: true,
         credId: result.value,
+        awaiting,
         originOfOpener,
       })
       popupResponse.cookies.delete('oauth_return_to')

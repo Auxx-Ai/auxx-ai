@@ -37,8 +37,19 @@ export {
   resolveHostedProvisionHandler,
 } from './hosted-provision'
 export {
+  clearPendingSelection,
+  deleteSupersededPendingCredentials,
+  findPendingSelectionForUser,
+  type PendingConnectSelection,
+  type PendingSelectionKind,
+  type PendingSelectionRow,
+  readPendingSelection,
+  writePendingSelection,
+} from './pending-selection'
+export {
   type PostConnectHook,
   type PostConnectHookContext,
+  type PostConnectHookResult,
   registerPostConnectHook,
   runPostConnectHook,
 } from './post-connect-hooks'

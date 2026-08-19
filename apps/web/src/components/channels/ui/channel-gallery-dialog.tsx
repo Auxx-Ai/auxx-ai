@@ -25,6 +25,7 @@ import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { CHANNEL_CATALOG, CHANNEL_CATEGORIES, type ChannelCatalogItem } from '../catalog'
 import { getIntegrationProviderIcon } from './channel-icon'
+import { ConnectSelectionDialog } from './connect-selection-dialog'
 import ImapConnectForm from './imap-connect-form'
 import { InboxDestinationField, useInboxDestination } from './inbox-destination-field'
 import QuoConnectForm from './quo-connect-form'
@@ -114,6 +115,15 @@ export function ChannelGalleryDialog({
       void utils.channel.list.invalidate()
       void utils.inbox.settingsList.invalidate()
       void utils.record.listAll.invalidate()
+      onOpenChange(false)
+    },
+    // The credential committed but NOTHING was provisioned — the connect needs a choice (which
+    // Facebook Page). Close the gallery so the picker is the only thing on screen, and pull the
+    // pending query so it opens without waiting for a refetch interval. Deliberately NOT
+    // `onConnected`: there is no channel yet, and invalidating `channel.list` here would render
+    // a success the user has not earned.
+    onAwaiting: () => {
+      void utils.channel.pendingConnectSelection.invalidate()
       onOpenChange(false)
     },
   })
@@ -505,6 +515,9 @@ export function ChannelGalleryDialog({
         }}
       />
       {flow.Dialogs}
+      {/* Self-drives from `channel.pendingConnectSelection`, so mounting it here covers all
+          three gallery hosts (channels-page, inbox-list, inbox-detail). */}
+      <ConnectSelectionDialog />
     </>
   )
 }

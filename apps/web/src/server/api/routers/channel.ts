@@ -17,10 +17,12 @@ import {
   list as listChannels,
   listQuoPhoneNumbers,
   provisionQuoChannel,
+  provisionSocialChannel,
   readCachedQuoNumbers,
   recoverChannel,
   requireChannelManageAccess,
   resolveChannelDefinitionId,
+  type SocialPageSelectionPayload,
   supportsPersonalChannelConnection,
   syncAllMessages,
   syncMessages,
@@ -34,7 +36,7 @@ import {
   type UpdateChatWidgetInput,
   updateChatWidget,
 } from '@auxx/lib/chat-widget/config'
-import { resolveOwnClientRequirement } from '@auxx/lib/connections'
+import { findPendingSelectionForUser, resolveOwnClientRequirement } from '@auxx/lib/connections'
 import { getUserOrganizationId } from '@auxx/lib/email'
 import { SyncMessages } from '@auxx/lib/messages'
 import {
@@ -49,7 +51,7 @@ import { fanOutAuxxChatAudienceToShopify } from '@auxx/lib/shopify'
 import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { count, eq } from 'drizzle-orm'
+import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, permissionProcedure, protectedProcedure } from '../trpc'
@@ -69,6 +71,17 @@ async function checkChannelLimit(db: Database, organizationId: string) {
       })
     }
   }
+}
+
+/**
+ * Compile-time exhaustiveness guard for `PendingSelectionKind`.
+ *
+ * A new selection kind that nobody mapped to options would otherwise return `null` and dead-end
+ * the user in a connect that never finishes — this makes it a build error instead.
+ */
+function assertNoPendingKind(kind: never): null {
+  logger.warn('Unhandled pending selection kind', { kind })
+  return null
 }
 
 /**
@@ -1019,6 +1032,113 @@ export const channelRouter = createTRPCRouter({
    * number is validated against a live `GET /v1/phone-numbers` (never the cached list) and gets
    * its own Integration + inbox link.
    */
+  /**
+   * The connect this user left waiting on a choice, if any.
+   *
+   * A query, not a mutation — no secret rides the input, so it is safe in a react-query key —
+   * and it is the AUTHORITY for resuming a two-phase connect, not the popup's `awaiting` flag.
+   * The popup can settle via its `verify` poll before the termination page is ever read, so
+   * every abandonment path (popup blocked, COOP severed, tab closed, page reloaded) converges
+   * here instead: the picker re-opens on the next mount.
+   *
+   * Returns the GENERIC option shape rather than provider nouns. Mapping Pages → options happens
+   * here so the dialog that renders it stays reusable; a second selection kind is a `switch` arm,
+   * not a new component.
+   *
+   * Scoped to org + `createdById`: the person who ran the OAuth is the person who finishes it,
+   * because the grant — and the app-scoped user id stamped from it — is theirs.
+   */
+  pendingConnectSelection: protectedProcedure.query(async ({ ctx }) => {
+    const { userId } = ctx.session
+    const organizationId = getUserOrganizationId(ctx.session)
+    // Social channels are shared-only (`supportsPersonalConnection === false`), so there is no
+    // personal branch to consider here.
+    await requirePermission(userId, organizationId, PermissionKey.channelsManage)
+
+    const pending = await findPendingSelectionForUser<SocialPageSelectionPayload>(
+      organizationId,
+      userId
+    )
+    if (!pending) return null
+
+    switch (pending.selection.kind) {
+      case 'social-page-selection': {
+        const { payload } = pending.selection
+        const candidateIds = new Set(payload.candidateIds)
+
+        // Turn a ConflictError at submit time into a disabled card at pick time: a Page already
+        // claimed by a live channel in this org cannot be picked again.
+        const live = await ctx.db
+          .select({ webhookRouteKey: schema.Integration.webhookRouteKey })
+          .from(schema.Integration)
+          .where(
+            and(
+              eq(schema.Integration.organizationId, organizationId),
+              eq(schema.Integration.provider, payload.provider),
+              isNull(schema.Integration.deletedAt)
+            )
+          )
+        const connected = new Set(live.map((row) => row.webhookRouteKey).filter(Boolean))
+
+        return {
+          kind: pending.selection.kind,
+          credentialId: pending.credentialId,
+          providerKey: pending.selection.providerKey,
+          options: payload.pages.map((page) => {
+            const claimed =
+              payload.provider === 'instagram'
+                ? !!page.igBusinessAccountId && connected.has(page.igBusinessAccountId)
+                : connected.has(page.id)
+            const selectable = candidateIds.has(page.id) && !claimed
+            return {
+              id: page.id,
+              label: page.name,
+              sublabel: page.igUsername ? `@${page.igUsername}` : null,
+              selectable,
+              disabledReason: selectable
+                ? null
+                : claimed
+                  ? 'Already connected'
+                  : 'No Instagram account linked',
+            }
+          }),
+        }
+      }
+      default:
+        // Exhaustive by construction — `PendingSelectionKind` is a closed union, so a new member
+        // fails the build here rather than silently returning null and dead-ending the user.
+        return assertNoPendingKind(pending.selection.kind)
+    }
+  }),
+
+  /**
+   * Finish a two-phase social connect by choosing which Page becomes the channel.
+   *
+   * Deliberately kind-SPECIFIC: the resume query above is generic because the dialog reads it,
+   * but only the domain knows what a choice means, so a generic `completePendingSelection` would
+   * just be a dispatch table with one entry.
+   *
+   * The channel limit is re-checked here, not only in `prepareConnect` before the OAuth hop: an
+   * arbitrary amount of wall-clock (and another admin's connect) can pass before the picker is
+   * submitted.
+   */
+  selectSocialPage: protectedProcedure
+    .use(notDemo('connect a Facebook Page'))
+    .input(z.object({ credentialId: z.string().min(1), pageId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { userId } = ctx.session
+      const organizationId = getUserOrganizationId(ctx.session)
+      await requirePermission(userId, organizationId, PermissionKey.channelsManage)
+      await checkChannelLimit(ctx.db, organizationId)
+
+      return provisionSocialChannel({
+        credentialId: input.credentialId,
+        organizationId,
+        userId,
+        pageId: input.pageId,
+      })
+    }),
+
   addQuoNumber: protectedProcedure
     .use(notDemo('add Quo phone numbers'))
     .input(

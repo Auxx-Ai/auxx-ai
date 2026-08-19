@@ -53,7 +53,7 @@ export function useMcpOAuthPopup() {
         fallbackUrl: authorizeUrl,
         channelName: 'oauth-mcp-connect',
         windowName: 'auxx-mcp-oauth',
-        onDone: (ok) => onDone(ok),
+        onDone: ({ ok }) => onDone(ok),
         verify: verifyFn,
       })
     },

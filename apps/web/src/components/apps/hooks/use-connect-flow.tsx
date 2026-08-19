@@ -147,6 +147,15 @@ export interface UseConnectFlowOptions {
   /** Fired when a connect attempt produces a new credId. */
   onConnected?: (credId: string, args: ConnectFlowArgs) => void
   /**
+   * Fired INSTEAD of `onConnected` when the connect committed a credential but provisioned
+   * nothing, because it needs a choice the user makes in the app (e.g. which Facebook Page).
+   * `kind` names the outstanding selection.
+   *
+   * Callers should open the picker rather than treating this as a finished connect — a channel
+   * does not exist yet.
+   */
+  onAwaiting?: (kind: string, credId: string | null, args: ConnectFlowArgs) => void
+  /**
    * Render the editable connection-name row in the field dialog (fresh connects only). The typed
    * name rides through to the save as `payload.name`; reconnect never shows it. Defaults off — the
    * name falls back to `ConnectFlowArgs.name` (seeded via `start`) or the target title.
@@ -176,7 +185,7 @@ function pickDef(args: ConnectFlowArgs): ConnectFlowDefinition | null | undefine
 }
 
 export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectFlow {
-  const { onConnected, mode = 'popup', showName } = options
+  const { onConnected, onAwaiting, mode = 'popup', showName } = options
   const utils = api.useUtils()
 
   // Shared OAuth-popup lifecycle: single-settle via message / server-side verify poll / hard
@@ -289,10 +298,21 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         fallbackUrl,
         channelName: 'oauth-app-connect',
         verify: a.verify ?? buildConnectionVerify(utils, a),
-        onDone: (ok, credId, matchedExisting) => {
+        onDone: ({ ok, credId, matchedExisting, awaiting }) => {
           invalidateForOwner(owner)
           setArgs(null)
           const resolvedId = credId ?? (ok ? (a.connectionId ?? null) : null)
+          if (ok && awaiting) {
+            // The credential committed but NOTHING was provisioned — the connect needs a choice
+            // (e.g. which Facebook Page). `onConnected` must not fire: the gallery's handler
+            // invalidates and closes, which is wrong while a selection is outstanding.
+            //
+            // `awaiting` here is only a latency hint. The picker self-drives from the server's
+            // pending-selection query, so a settle that LOST the race to the verify poll (and
+            // therefore never saw this flag) still opens the picker — one query later.
+            onAwaiting?.(awaiting, resolvedId, a)
+            return
+          }
           if (ok && resolvedId) {
             setLastConnectedCredId(resolvedId)
             onConnected?.(resolvedId, a)
@@ -305,7 +325,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         },
       })
     },
-    [mode, openPopup, utils, onConnected, invalidateForOwner]
+    [mode, openPopup, utils, onConnected, onAwaiting, invalidateForOwner]
   )
 
   // `hosted-provision` (platform providers only — Account-Links-style onboarding): no dialog, no

@@ -78,7 +78,7 @@ export function CalendarSyncToggle({ integrationId, disabled }: CalendarSyncTogg
             const integration = status.integrations.find((i) => i.id === integrationId)
             return integration?.calendarSyncEnabled ? true : null
           },
-          onDone: (ok) => {
+          onDone: ({ ok }) => {
             void utils.calendar.getSyncStatus.invalidate()
             if (ok) void utils.channel.list.invalidate()
           },
