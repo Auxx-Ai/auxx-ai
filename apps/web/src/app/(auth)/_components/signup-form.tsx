@@ -17,7 +17,7 @@ import PhoneInputWithFlag from '@auxx/ui/components/phone-input'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Turnstile } from '@marsidev/react-turnstile'
-import { Mail, Smartphone } from 'lucide-react'
+import { Check, Mail, Smartphone } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -92,7 +92,7 @@ export function SignUpForm() {
   )
   const invitedEmail = invitation?.valid ? invitation.email : null
 
-  const [step, setStep] = useState<'initial' | 'email' | 'phone' | 'otp'>('initial')
+  const [step, setStep] = useState<'initial' | 'email' | 'phone' | 'otp' | 'verify'>('initial')
   const [contact, setContact] = useState('') // Email or phone number
   const [password, setPassword] = useState('')
   const [otp, setOtp] = useState('')
@@ -199,10 +199,43 @@ export function SignUpForm() {
       } else {
         posthog?.capture('user_signed_up', { method: 'phone' })
         // On successful verification, create account
-        router.push('/app/settings')
+        router.push('/app')
       }
     } catch (err: any) {
       setError(err.message || 'Verification failed.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Where the verification link lands once it is clicked. Resolved in one place
+  // so a resent mail behaves exactly like the one sent at signup — an invited
+  // signup must complete its invitation rather than land on an empty /app.
+  const resolveVerificationCallback = () => {
+    const callbackUrl = new URLSearchParams(window.location.search).get('callbackUrl')
+    return callbackUrl || (invitationToken ? `/accept-invitation?token=${invitationToken}` : '/app')
+  }
+
+  // Send the verification mail again for the address the account was created
+  // with. `requireEmailVerification` means this link is the only way in, so the
+  // verify step has to be able to re-issue it.
+  const handleResendVerification = async () => {
+    setError('')
+    setIsLoading(true)
+
+    try {
+      const { error: err } = await client.sendVerificationEmail({
+        email: contact,
+        callbackURL: resolveVerificationCallback(),
+      })
+
+      if (err) {
+        setError(err.message ?? 'Failed to resend the verification email.')
+      } else {
+        startResendTimeout()
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend the verification email.')
     } finally {
       setIsLoading(false)
     }
@@ -240,8 +273,7 @@ export function SignUpForm() {
         name: '',
         // Land an invited signup back on the invitation so it completes, rather
         // than on an empty /app they have no organization for yet.
-        callbackURL:
-          callbackUrl || (invitationToken ? `/accept-invitation?token=${invitationToken}` : '/app'),
+        callbackURL: resolveVerificationCallback(),
         signupSource,
         // Not persisted on the user — read by the auth before-hook to bind this
         // account to the invitation. See auth/server.ts.
@@ -260,18 +292,12 @@ export function SignUpForm() {
         })
       } else {
         posthog?.capture('user_signed_up', { method: 'email' })
-        toastSuccess({
-          title: 'Account Created',
-          description: 'Verify your email!',
-        })
-        const loginUrl = new URLSearchParams()
-        loginUrl.set('email', values.email)
-        // Preserve callbackUrl if present (e.g., from invitation flow)
-        const callbackUrl = new URLSearchParams(window.location.search).get('callbackUrl')
-        if (callbackUrl) {
-          loginUrl.set('callbackUrl', callbackUrl)
-        }
-        router.push(`/login?${loginUrl.toString()}`)
+        // `requireEmailVerification` is on, so the password they just chose
+        // cannot sign them in yet — sending them to /login would only offer a
+        // form that rejects them. The verification link is the way in.
+        setContact(invitedEmail ?? values.email)
+        setStep('verify')
+        startResendTimeout()
       }
     } catch (error: any) {
       setError(error.message || 'Registration failed.')
@@ -504,6 +530,70 @@ export function SignUpForm() {
                     </motion.div>
                   )}
 
+                  {/* Post-signup verification step. The account exists but the
+                      verification link is the only way to sign in, so this is
+                      the terminal screen for an email signup — not /login. */}
+                  {step === 'verify' && (
+                    <motion.div
+                      key='verify'
+                      initial='enter'
+                      animate='center'
+                      exit='exit'
+                      variants={variants}
+                      transition={{ duration: 0.3 }}
+                      className='py-2 text-center'>
+                      <div className='relative mx-auto mb-5 size-16'>
+                        {/* Ring that expands away from the badge on entry */}
+                        <motion.span
+                          initial={{ scale: 0.8, opacity: 0.55 }}
+                          animate={{ scale: 1.7, opacity: 0 }}
+                          transition={{ duration: 0.7, delay: 0.15, ease: 'easeOut' }}
+                          className='absolute inset-0 rounded-full bg-green-500'
+                        />
+                        <motion.div
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ type: 'spring', stiffness: 420, damping: 16, delay: 0.1 }}
+                          className='relative flex size-16 items-center justify-center rounded-full bg-green-500'>
+                          <motion.span
+                            initial={{ scale: 0.3, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{
+                              type: 'spring',
+                              stiffness: 500,
+                              damping: 18,
+                              delay: 0.3,
+                            }}>
+                            <Check className='size-8 text-white' strokeWidth={3} />
+                          </motion.span>
+                        </motion.div>
+                      </div>
+
+                      <div className='font-semibold leading-none tracking-tight pb-3 text-xl'>
+                        Check your email
+                      </div>
+                      <p className='text-sm text-white/60'>
+                        We sent a verification link to <span className='text-white'>{contact}</span>
+                        . Click it to activate your account and finish signing in.
+                      </p>
+
+                      <Button
+                        variant='translucent'
+                        className='mt-6 w-full'
+                        disabled={resendTimeout > 0 || isLoading}
+                        loading={isLoading}
+                        loadingText='Sending...'
+                        onClick={handleResendVerification}>
+                        Resend email
+                      </Button>
+                      <p className='mt-3 text-xs text-white/60'>
+                        {resendTimeout > 0
+                          ? `You can request another email in ${resendTimeout} seconds.`
+                          : "Didn't get it? Check your spam folder, then resend."}
+                      </p>
+                    </motion.div>
+                  )}
+
                   {/* Phone sign-up step */}
                   {step === 'phone' && (
                     <motion.div
@@ -677,7 +767,9 @@ export function SignUpForm() {
           <Link href='/login'>Log in</Link>
         </Button>
       </p>
-      {turnstileSiteKey && (
+      {/* The challenge only guards the signup call — once the account exists
+          the verify step has nothing left to protect. */}
+      {turnstileSiteKey && step !== 'verify' && (
         <div className='min-h-[75px]'>
           <Turnstile
             ref={turnstileRef}
