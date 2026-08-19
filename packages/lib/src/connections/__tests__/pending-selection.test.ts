@@ -16,6 +16,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const captured: { sets: unknown[]; selects: unknown[] } = { sets: [], selects: [] }
 
+/** Controllable per-test: what the superseded-credential reference check finds. */
+const { integrationFindFirst, deleteCredential } = vi.hoisted(() => ({
+  integrationFindFirst: vi.fn(async (): Promise<unknown> => undefined),
+  deleteCredential: vi.fn(async () => ({ isErr: () => false })),
+}))
+
+vi.mock('@auxx/credentials/store', () => ({ deleteCredential }))
+
 /** Rows the next `select()` chain resolves to. */
 let selectRows: Array<Record<string, unknown>> = []
 
@@ -49,7 +57,7 @@ vi.mock('@auxx/database', async () => {
     database: {
       select: () => selectChain(),
       update: () => updateChain(),
-      query: { Integration: { findFirst: vi.fn(async () => undefined) } },
+      query: { Integration: { findFirst: integrationFindFirst } },
     },
   }
 })
@@ -59,6 +67,7 @@ const {
   readPendingSelection,
   findPendingSelectionForUser,
   clearPendingSelection,
+  deleteSupersededPendingCredentials,
 } = await import('../pending-selection')
 
 const dialect = new PgDialect()
@@ -81,6 +90,8 @@ beforeEach(() => {
   captured.sets = []
   captured.selects = []
   selectRows = []
+  integrationFindFirst.mockResolvedValue(undefined)
+  deleteCredential.mockResolvedValue({ isErr: () => false })
 })
 
 describe('writePendingSelection', () => {
@@ -179,5 +190,66 @@ describe('findPendingSelectionForUser', () => {
     await expect(
       findPendingSelectionForUser(ORG, USER, ['social-page-selection'])
     ).resolves.toMatchObject({ credentialId: CRED })
+  })
+})
+
+/**
+ * A superseded pending credential must stop mattering — by deletion, or at minimum by losing its
+ * marker.
+ *
+ * The failure this pins was silent and permanent. Disconnect is a SOFT delete, and a connect that
+ * died part-way through provisioning leaves a tombstoned Integration still pointing at its
+ * credential. The reference check had no `deletedAt` filter, so it read that tombstone as "a live
+ * channel depends on this" and skipped the row — leaving the marker in place. From then on
+ * `pendingConnectSelection` resumed the picker on every page load, for a credential whose token had
+ * already been swapped away, and no later connect ever cleared it.
+ */
+describe('deleteSupersededPendingCredentials', () => {
+  const args = {
+    organizationId: ORG,
+    userId: USER,
+    providerKey: 'facebook',
+    keepCredentialId: CRED,
+  }
+  const staleRow = {
+    id: 'cred_stale',
+    metadata: { pendingSelection: { ...marker, createdAt: 'x' } },
+  }
+
+  it('asks only about LIVE Integrations — a tombstone must not pin the credential', async () => {
+    selectRows = [staleRow]
+
+    await deleteSupersededPendingCredentials(args)
+
+    // Asserted on the rendered predicate, not on the outcome: with the mock answering `undefined`
+    // either way, a check that had dropped the `deletedAt` filter would still delete the row here
+    // and pass an outcome-only test. The filter IS the fix.
+    const where = (integrationFindFirst.mock.calls[0]?.[0] as { where: unknown }).where
+    const { sql } = dialect.sqlToQuery(where as never)
+    expect(sql).toContain('"Integration"."deletedAt" is null')
+    expect(deleteCredential).toHaveBeenCalledWith('cred_stale', ORG)
+  })
+
+  it('clears the marker instead of deleting when a LIVE Integration references it', async () => {
+    selectRows = [staleRow]
+    integrationFindFirst.mockResolvedValue({ id: 'int_live' })
+
+    await deleteSupersededPendingCredentials(args)
+
+    // The credential survives — something live depends on it.
+    expect(deleteCredential).not.toHaveBeenCalled()
+    // ...but the marker must not, or the picker resumes forever on a connect nobody can finish.
+    const { sql } = renderLastSet()
+    expect(sql).toContain('-')
+    expect(captured.sets.length).toBe(1)
+  })
+
+  it('never touches the credential being connected right now', async () => {
+    selectRows = [{ id: CRED, metadata: { pendingSelection: { ...marker, createdAt: 'x' } } }]
+
+    await deleteSupersededPendingCredentials(args)
+
+    expect(deleteCredential).not.toHaveBeenCalled()
+    expect(captured.sets).toEqual([])
   })
 })
