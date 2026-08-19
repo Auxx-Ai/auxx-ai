@@ -162,7 +162,13 @@ export function CommandPalette() {
             />
           ) : null}
 
-          <DialogNavPages value={page} className='max-sm:min-h-0 max-sm:flex-1'>
+          {/* Every palette page pads itself in full (`p-4` around body *and*
+              footer), so the nested-footer gutter would stack on top of it and
+              indent the buttons past the fields. The footer's own `pt-4` stays. */}
+          <DialogNavPages
+            value={page}
+            footerGutter={false}
+            className='max-sm:min-h-0 max-sm:flex-1'>
             <DialogNavPage value='root' size='md'>
               <RootPage sections={sections} recentActions={recentActions} />
             </DialogNavPage>

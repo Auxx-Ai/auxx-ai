@@ -188,9 +188,10 @@ export function WebhookEndpointConfigureForm({
       className='flex flex-col'>
       {/* The gutter lives on the body, not the `<form>`: `DialogNavPages` re-gutters a
           nested `[data-slot=dialog-footer]` on the assumption that the footer is an
-          unpadded sibling of the padded body. Padding the form instead stacks both
-          gutters and indents the buttons past the fields. The bottom edge is left to
-          the footer's own `pt-4`; only the footer-less host pads it here. */}
+          unpadded sibling of the padded body (its `footerGutter` default). Padding the
+          form instead stacks both gutters and indents the buttons past the fields. The
+          bottom edge is left to the footer's own `pt-4`; only the footer-less host pads
+          it here. */}
       <div className={showFooter ? 'flex flex-col gap-4 px-4 pt-4' : 'flex flex-col gap-4 p-4'}>
         {isEdit && endpoint && <CopyRow label='Webhook URL' value={endpoint.url} icon={<Link />} />}
 
