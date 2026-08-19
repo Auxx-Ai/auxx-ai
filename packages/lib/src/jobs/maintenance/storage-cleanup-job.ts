@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { clearImportCache } from '../../email/polling-import-cache'
+import { purgeMediaAssets } from '../../files/core/media-asset-purge'
 import { StorageManager } from '../../files/storage/storage-manager'
 import type { JobContext } from '../types/job-context'
 
@@ -148,7 +149,7 @@ const ASSET_PURGE_MAX_ROUNDS = 100
  * 2. Thumbnails are their own `MediaAsset`, tied to the source only by
  *    `MediaAssetVersion.derivedFromVersionId` — a self-FK with NO ACTION on delete. They
  *    have no `Attachment` row of their own, so query 1 never sees them, and deleting a
- *    source without them raises 23503. `expandDerivedAssets` pulls in that closure so the
+ *    source without them raises 23503. `purgeMediaAssets` pulls in that closure so the
  *    whole set goes in ONE statement, where NO ACTION is checked at statement end with
  *    every referencing row already gone.
  */
@@ -181,25 +182,7 @@ async function purgeDanglingMessageAssets(
     const seedIds = ((dangling.rows ?? []) as { assetId: string }[]).map((r) => r.assetId)
     if (seedIds.length === 0) return
 
-    const assetIds = await expandDerivedAssets(seedIds)
-    const idList = sql.join(
-      assetIds.map((id) => sql`${id}`),
-      sql`, `
-    )
-
-    // Mark storage first — the delete below cascades the versions away, and an unmarked
-    // StorageLocation is an S3 object nothing will ever reap.
-    await db.execute(sql`
-      UPDATE ${schema.StorageLocation} SET "deletedAt" = now()
-      WHERE "deletedAt" IS NULL
-        AND "id" IN (
-          SELECT v."storageLocationId"
-          FROM ${schema.MediaAssetVersion} v
-          WHERE v."assetId" IN (${idList}) AND v."storageLocationId" IS NOT NULL
-        )
-    `)
-
-    await db.execute(sql`DELETE FROM ${schema.MediaAsset} WHERE "id" IN (${idList})`)
+    const assetIds = await purgeMediaAssets(db, seedIds)
     result.mediaAssetsPurged += assetIds.length
 
     logger.info('Purged dangling message assets', {
@@ -218,31 +201,6 @@ async function purgeDanglingMessageAssets(
     organizationId,
     purged: result.mediaAssetsPurged,
   })
-}
-
-/**
- * Expand a set of MediaAssets to include every asset derived from them, transitively.
- */
-async function expandDerivedAssets(assetIds: string[]): Promise<string[]> {
-  const result = await db.execute(sql`
-    WITH RECURSIVE closure AS (
-      SELECT v."id", v."assetId"
-      FROM ${schema.MediaAssetVersion} v
-      WHERE v."assetId" IN (${sql.join(
-        assetIds.map((id) => sql`${id}`),
-        sql`, `
-      )})
-      UNION
-      SELECT c."id", c."assetId"
-      FROM ${schema.MediaAssetVersion} c
-      JOIN closure p ON c."derivedFromVersionId" = p."id"
-    )
-    SELECT DISTINCT "assetId" FROM closure
-  `)
-
-  const ids = new Set(assetIds)
-  for (const row of (result.rows ?? []) as { assetId: string }[]) ids.add(row.assetId)
-  return [...ids]
 }
 
 /**

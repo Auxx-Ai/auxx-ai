@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { eq, exists, not, sql } from 'drizzle-orm'
 import { createAttachmentService } from '../core/attachment-service'
 import { createFileService } from '../core/file-service'
+import { purgeMediaAssets } from '../core/media-asset-purge'
 import { createMediaAssetService } from '../core/media-asset-service'
 import { ThumbnailService } from '../core/thumbnail-service'
 
@@ -96,7 +97,11 @@ export async function deleteEntityFiles(
           if (file) {
             await database.delete(schema.FolderFile).where(eq(schema.FolderFile.id, file.id))
           } else if (asset) {
-            await database.delete(schema.MediaAsset).where(eq(schema.MediaAsset.id, asset.id))
+            // Thumbnails are separate MediaAssets referencing this one through
+            // `derivedFromVersionId` (NO ACTION), so a bare delete raises 23503. Drop
+            // their S3 objects first, then purge the whole closure in one statement.
+            if (deleteFromStorage) await cleanupAssetThumbnails(asset.id)
+            await purgeMediaAssets(database, [asset.id])
           }
           logger.info(`Deleted ${file ? 'file' : 'asset'} record: ${item.id}`)
         } else if (markAsDeleted) {
