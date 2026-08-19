@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.210](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.209...auxx-v0.1.210) (2026-08-19)
+
+
+### Features
+
+* **channels:** pick the facebook page at connect time ([#1734](https://github.com/Auxx-Ai/auxx-ai/issues/1734)) ([e74aebe](https://github.com/Auxx-Ai/auxx-ai/commit/e74aebe25911cb56cad9b3d76f397e789d896ca1))
+
+
+### Bug Fixes
+
+* **channels:** defer channel media deletion to the cleanup job ([#1737](https://github.com/Auxx-Ai/auxx-ai/issues/1737)) ([7eeb6bd](https://github.com/Auxx-Ai/auxx-ai/commit/7eeb6bdbf0680fc6160fa6da7a1163bb8f597672))
+* **channels:** make the social page picker a step of the connect dialog ([#1739](https://github.com/Auxx-Ai/auxx-ai/issues/1739)) ([a79d515](https://github.com/Auxx-Ai/auxx-ai/commit/a79d515e51763e011eb9c123c6b650f8564e6c83))
+* **connections:** stop a tombstoned channel pinning a stale pending marker ([#1740](https://github.com/Auxx-Ai/auxx-ai/issues/1740)) ([a8c7f09](https://github.com/Auxx-Ai/auxx-ai/commit/a8c7f095f5fd17c21da6e956889399a537dab3fe))
+* **files:** purge derived assets when deleting a MediaAsset ([#1738](https://github.com/Auxx-Ai/auxx-ai/issues/1738)) ([a26b5d5](https://github.com/Auxx-Ai/auxx-ai/commit/a26b5d53c7e4463a51ec7aa819ee2d1da3e07a89))
+* **kopilot:** keep a failed turn's work instead of reverting it ([#1741](https://github.com/Auxx-Ai/auxx-ai/issues/1741)) ([aea9cd0](https://github.com/Auxx-Ai/auxx-ai/commit/aea9cd0acc96e2ab9596c1274b5750cf8d3f1a16))
+* **kopilot:** stop the app-block discovery loop, and offer install from chat ([#1736](https://github.com/Auxx-Ai/auxx-ai/issues/1736)) ([a13f50e](https://github.com/Auxx-Ai/auxx-ai/commit/a13f50e3b615a002c51ad3255ab0e880ef34d10e))
+
 ## [0.1.209](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.208...auxx-v0.1.209) (2026-08-19)
 
 
