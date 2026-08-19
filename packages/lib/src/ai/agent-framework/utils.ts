@@ -35,6 +35,15 @@ export interface ToolExecResult {
    * `ToolCallPart` so the wire layer can re-fence the output for the model.
    */
   outputBoundary?: { server: string; tool: string }
+  /**
+   * Set on a synthetic result produced by the turn-wide identical-call budget
+   * (see `IDENTICAL_CALL_BUDGET` in query-loop.ts) instead of dispatching the
+   * tool. It is a message to the model, NOT a tool output — the query loop
+   * therefore keeps it out of the context store (`tool:*` / `call:*`) and out
+   * of the domain `onToolResult` / `transformToolResult` hooks, so a guard
+   * notice can never shadow the real result those readers expect.
+   */
+  repeatBudgetBlocked?: boolean
 }
 
 /**

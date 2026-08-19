@@ -138,27 +138,58 @@ export function mutationToToolResult(
     graphSummary: value.graphSummary,
   }
   if (!value.applied) {
-    const blocking = value.issues.filter((issue) => issue.severity === 'error')
+    // `blockedBy` names the issues that ACTUALLY refused the write. Severity is
+    // not causality: a refused edit reports the whole draft, and several
+    // `severity: 'error'` entries block nothing — "<App> has no workspace
+    // connection" is the common one, an error because the block cannot RUN, yet
+    // never a reason the edit cannot be AUTHORED. Printing those under
+    // "blocking issues" is a lie the caller acts on: the 2026-08-18 turn was
+    // refused for a bad upstream reference, read the co-reported FedEx
+    // connection error as the cause, and reported to the user that the workflow
+    // was blocked on connections. Fall back to severity only when the mutation
+    // did not say (the structural/normalize/mail-trigger path returns exactly
+    // its own blockers, so severity IS causality there).
+    const errors = value.issues.filter((issue) => issue.severity === 'error')
+    const blocking = value.blockedBy?.length
+      ? value.blockedBy
+      : errors.length
+        ? errors
+        : value.issues
     // Fresh first, inherited ones labelled: a refused edit lists the whole
     // draft's errors, and without the split the caller reads damage it did not
     // do as the reason it was refused — then "fixes" a node it never touched.
-    const shown = (blocking.length > 0 ? blocking : value.issues)
+    const shown = blocking
       .slice()
       .sort((a, b) => Number(a.preExisting ?? false) - Number(b.preExisting ?? false))
+    const render = (issue: Issue) =>
+      `- ${issue.nodeRef ? `${issue.nodeRef}: ` : ''}${issue.message}`
+    // Everything else that is wrong but did NOT refuse this edit. Still worth
+    // saying — a missing connection means the node will not run once authored —
+    // but said under a heading that cannot be mistaken for the cause.
+    const alsoPresent = value.blockedBy?.length
+      ? value.issues.filter(
+          (issue) => issue.severity === 'error' && !value.blockedBy?.includes(issue)
+        )
+      : []
     return {
       success: false,
       output: projected,
       error:
-        'The edit was NOT applied — blocking issues:\n' +
+        'The edit was NOT applied. This is what blocked it:\n' +
         shown
           .map(
             (issue) =>
-              `- ${issue.nodeRef ? `${issue.nodeRef}: ` : ''}${issue.message}` +
+              render(issue) +
               (issue.preExisting
                 ? ' (pre-existing — already in the draft, not what blocked this edit)'
                 : '')
           )
-          .join('\n'),
+          .join('\n') +
+        (alsoPresent.length > 0
+          ? '\n\nAlso present, but NOT what blocked this edit — fixing these will not make the ' +
+            'edit apply:\n' +
+            alsoPresent.map(render).join('\n')
+          : ''),
     }
   }
   return { success: true, output: projected }

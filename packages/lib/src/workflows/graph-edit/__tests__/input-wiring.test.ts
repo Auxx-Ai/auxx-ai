@@ -604,6 +604,52 @@ describe('addNode({ inputFor }) (§4b)', () => {
     expect(serviceUpdate).not.toHaveBeenCalled()
   })
 
+  it('refuses `after: <a form field>`, and names the trigger to use instead', async () => {
+    // The 2026-08-18 failure. A form-input's edge runs BACKWARDS into the
+    // trigger, so it has no forward flow: `after: "Ticket Subject"` builds a
+    // node whose only ancestor is that one field, every SIBLING field is
+    // invisible to it, and the first `{{Other Field.value}}` it writes fails
+    // the upstream ref check one step later — with a message about references
+    // that never names the real mistake. Refuse it where the fix can be said.
+    const graph: DraftGraph = {
+      nodes: [formInputNode(), manualNode([FORM_ID]), waitNode()],
+      edges: [
+        edge(FORM_ID, 'input-output', MANUAL_ID, 'input'),
+        edge(MANUAL_ID, 'source', WAIT_ID),
+      ],
+    }
+    const result = await addNode(makeDb(graph), {
+      ...scope,
+      type: 'wait',
+      after: 'Ticket Subject',
+    })
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+    const message = result._unsafeUnwrapErr().message
+    expect(message).toMatch(/is an input node/)
+    // The correction is the whole point — it must name the trigger, not just
+    // say no.
+    expect(message).toMatch(/Manual Trigger/)
+    expect(message).toMatch(/upstream/)
+    expect(serviceUpdate).not.toHaveBeenCalled()
+  })
+
+  it('still allows `after: <the trigger>` with fields on its run form', async () => {
+    // The other half: the guard must reject the field, never the trigger that
+    // owns it, or it would make a form-driven workflow unauthorable.
+    const graph: DraftGraph = {
+      nodes: [formInputNode(), manualNode([FORM_ID])],
+      edges: [edge(FORM_ID, 'input-output', MANUAL_ID, 'input')],
+    }
+    const result = await addNode(makeDb(graph), {
+      ...scope,
+      type: 'wait',
+      after: 'Manual Trigger',
+    })
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().applied).toBe(true)
+  })
+
   it('refuses `inputFor` combined with `after`', async () => {
     const result = await addNode(makeDb(triggerGraph()), {
       ...scope,

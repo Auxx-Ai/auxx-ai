@@ -30,6 +30,19 @@ describe('buildWorkflowBuilderPromptSection', () => {
     expect(prompt).toContain('Personal connections are never listed or bindable')
   })
 
+  it('rules out rewording a no-match `list_app_blocks` query', () => {
+    // Live-run failure: 33 `list_app_blocks` calls with reworded queries until
+    // the iteration cap ended the turn. The empty result is an answer, and
+    // `notInstalled` is where the turn goes next.
+    const prompt = buildWorkflowBuilderPromptSection()
+
+    expect(prompt).toContain('do NOT call it again with a reworded query')
+    expect(prompt).toContain('the answer will not change')
+    expect(prompt).toContain('`notInstalled`')
+    expect(prompt).toContain('emit an `auxx:app-install` block')
+    expect(prompt).toContain('say plainly that no app provides that capability')
+  })
+
   it('forbids every record primitive for workflow nodes, not just the link', () => {
     // Live-run finding: node ids are shaped like record ids. Banning only the
     // `auxx://` link moved the model to the entity fences, which render the

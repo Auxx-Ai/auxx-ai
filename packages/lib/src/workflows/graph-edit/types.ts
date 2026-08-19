@@ -187,6 +187,25 @@ export interface GraphMutationResult {
   /** The touched node's resolved outputs, friendly-rendered — wire refs from these. */
   outputs?: unknown[]
   issues: Issue[]
+  /**
+   * The issues that ACTUALLY refused this mutation — set only alongside
+   * `applied: false`, and only by the O1 ref gate, which is the only thing in
+   * `runGraphMutation` that blocks on a subset of `issues`.
+   *
+   * It exists because severity is not causality. A refused edit reports the
+   * whole draft's issues, and several of them are `severity: 'error'` without
+   * ever blocking anything — an app block whose app has no workspace
+   * connection is the common one. A renderer that reprints every error under
+   * "blocking issues" therefore tells the caller a lie it will act on: the
+   * logged 2026-08-18 turn was refused for a bad upstream reference, read the
+   * co-reported FedEx connection error as the cause, and told the user the
+   * workflow was blocked on connections. It was not.
+   *
+   * Absent ⇒ the caller has no better information than severity (the
+   * structural/normalize/mail-trigger path returns exactly its blockers) and
+   * should fall back to it.
+   */
+  blockedBy?: Issue[]
   graphSummary: GraphSummary
 }
 

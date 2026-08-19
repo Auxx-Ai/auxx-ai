@@ -8,7 +8,8 @@ const BUILDER_SURFACE: ReadonlySet<AgentSurface> = new Set(['builder'])
 /**
  * Rich-block catalog section. Schemas sourced from a specific tool
  * (e.g. `auxx:draft-list` needs `list_drafts`; `auxx://doc/<slug>` needs
- * `search_docs`/`search_knowledge`) are dropped when those tools aren't
+ * `search_docs`/`search_knowledge`; `auxx:app-install` needs the
+ * `notInstalled` array `list_app_blocks` returns) are dropped when those tools aren't
  * resolved for this turn — otherwise the model is invited to emit blocks
  * it can't populate.
  *
@@ -26,6 +27,7 @@ export const blockCatalog: PromptSection = {
     const has = (name: string) => ctx.toolNames.has(name)
     const hasDrafts = has('list_drafts')
     const hasDocs = has('search_docs') || has('search_knowledge')
+    const hasAppBlocks = has('list_app_blocks')
 
     const draftListSchema = hasDrafts
       ? `
@@ -35,6 +37,18 @@ export const blockCatalog: PromptSection = {
 {"draftIds": ["thread:<threadId>", "draft:<draftId>"]}
 \\\`\\\`\\\`
 - IDs come from \`list_drafts\` only. \`thread:\` rows open the thread; \`draft:\` rows open the composer.`
+      : ''
+
+    const appInstallSchema = hasAppBlocks
+      ? `
+
+#### \`auxx:app-install\`
+\\\`\\\`\\\`auxx:app-install
+{"appSlug": "ups"}
+\\\`\\\`\\\`
+- Offers an app this workspace has NOT installed. Emit it when a capability the user asked for shows up in \`list_app_blocks\`' \`notInstalled\` — name in prose what the app would give them, then one block per app.
+- \`appSlug\` is copied verbatim from a tool result. Never invent one: a slug that is not in the catalog renders as unavailable instead of an install button.
+- Installing is the user's click, not your action. Say what the app unlocks and stop there; do not report it as installed or build on it.`
       : ''
 
     const docInlineExample = hasDocs ? `\n  [Connect Gmail](auxx://doc/<slug>)` : ''
@@ -101,7 +115,7 @@ Never pass \`entity:…\`, \`field:…\`, or \`tool:…\` strings where a record
 
 #### \`auxx:table\`
 Use only for (a) side-by-side comparison of 2–3 records (one column per record, one row per field) or (b) ad-hoc tabular data that isn't a record list. Plain record lists use \`auxx:entity-list\`.
-Schema: \`{ columns: [{label, align?}], rows: [[{text, recordId?, type?, actorId?, tags?, href?}]] }\`. Every cell needs \`text\`. \`type\`: \`date\` | \`tags\` | \`email\` | \`phone\` | \`currency\` | \`number\`. Max ~20 rows.
+Schema: \`{ columns: [{label, align?}], rows: [[{text, recordId?, type?, actorId?, tags?, href?}]] }\`. Every cell needs \`text\`. \`type\`: \`date\` | \`tags\` | \`email\` | \`phone\` | \`currency\` | \`number\`. Max ~20 rows.${appInstallSchema}
 
 ### Inline references — \`auxx://\` links
 

@@ -247,9 +247,15 @@ async function runGraphMutation(
       ? candidates.filter((issue) => !inherited.has(refErrorKey(graph, issue)))
       : []
     if (introduced.length > 0) {
+      // Name the cause, not just the symptom set. `issues` is the whole
+      // draft's report and carries `severity: 'error'` entries that block
+      // nothing (a missing app connection, most often); without this the
+      // renderer prints them all under "blocking issues" and the caller
+      // "fixes" the wrong thing. See `GraphMutationResult.blockedBy`.
       return ok({
         applied: false,
         issues,
+        blockedBy: introduced,
         graphSummary: buildGraphSummary(ctx.graph, ctx.lookup, ctx.triggerType),
       })
     }
@@ -719,6 +725,38 @@ export async function addNode(
       if (spec.isErr()) return err(spec.error)
       connection = spec.value
       const anchor = nodes.find((n) => n.id === connection?.sourceNodeId)
+
+      // An INPUT node declares a field on a trigger's RUN FORM, and its edge
+      // runs BACKWARDS into that trigger (see `inputFor` above) — so it has no
+      // forward flow to hang anything off. `after: <form field>` builds a node
+      // whose only ancestor is that one field: every sibling field on the same
+      // form is invisible to it, and the first `{{Other Field.value}}` ref it
+      // writes fails the upstream check one step later, with a message about
+      // references that never names the real mistake. That is exactly how the
+      // 2026-08-18 turn failed twice — `after: "Carrier"` for a block that
+      // needed `after: "Manual Trigger"`. Refuse it here, where the fix can be
+      // stated. Mirrors the `inputFor`/`after` rejection above: both say "this
+      // describes no graph the canvas can draw".
+      if (anchor && ctx.lookup(nodeType(anchor))?.category === NodeCategory.INPUT) {
+        const formTarget = nodes.find((n) =>
+          edges.some(
+            (e) =>
+              e.source === anchor.id &&
+              e.target === n.id &&
+              (e.sourceHandle ?? 'source') === INPUT_WIRING_HANDLES.sourceHandle
+          )
+        )
+        return err(
+          new BadRequestError(
+            `${describeNode(anchor)} is an input node — it declares a field on ` +
+              `${formTarget ? describeNode(formTarget) : 'a trigger'}'s run form and nothing ` +
+              'flows out of it, so no node can be added after it. Add after ' +
+              `${formTarget ? describeNode(formTarget) : 'the trigger'} instead; every field on ` +
+              'that run form is then upstream of the new node and readable by it.'
+          )
+        )
+      }
+
       // Entering a loop through its loop-start handle IS containment; adding
       // after a loop child stays inside the same container.
       if (connection.sourceHandle === LOOP_HANDLES.LOOP_START) {

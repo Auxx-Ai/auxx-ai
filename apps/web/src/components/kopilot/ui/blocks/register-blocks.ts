@@ -1,5 +1,6 @@
 // apps/web/src/components/kopilot/ui/blocks/register-blocks.ts
 
+import { AppInstallBlock } from './app-install-block'
 import { registerApprovalCard } from './approval-card-registry'
 import { registerBlockRenderer } from './block-registry'
 import { BulkUpdateApprovalCard } from './bulk-update-approval-card'
@@ -25,6 +26,7 @@ registerBlockRenderer('plan-steps', PlanStepsBlock)
 registerBlockRenderer('table', TableBlock)
 registerBlockRenderer('task-list', TaskListBlock)
 registerBlockRenderer('draft-list', DraftListBlock)
+registerBlockRenderer('app-install', AppInstallBlock)
 
 registerApprovalCard('reply_to_thread', DraftApprovalCard)
 registerApprovalCard('start_new_conversation', DraftApprovalCard)

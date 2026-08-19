@@ -1352,6 +1352,106 @@ describe('reference gate — O1 (plan 17 §0)', () => {
     expect(serviceUpdate).not.toHaveBeenCalled()
     const blocking = value.issues.filter((i) => i.severity === 'error' && !i.preExisting)
     expect(blocking.some((i) => /bogus/.test(i.message))).toBe(true)
+    // The refusal names its own cause — severity alone cannot, see the
+    // co-reported-connection-error case below.
+    expect(value.blockedBy).toBeDefined()
+    expect(value.blockedBy).toHaveLength(1)
+    expect(value.blockedBy?.[0]?.message).toMatch(/bogus/)
+  })
+
+  it('blockedBy names ONLY the ref error, not a co-reported connection error', async () => {
+    // The 2026-08-18 misdiagnosis. An app block whose app has no workspace
+    // connection reports `severity: 'error'` — the block cannot RUN — but that
+    // never blocks AUTHORING, and the O1 gate does not consider it. A renderer
+    // keying off severity therefore prints it under "blocking issues", and the
+    // caller (correctly, given what it was told) reports the workflow as
+    // blocked on connections when a bad reference was the only reason.
+    getCachedInstalledApps.mockResolvedValue([
+      {
+        installationId: 'inst_1',
+        installationType: 'production',
+        installedAt: '2026-08-01T00:00:00.000Z',
+        app: {
+          id: ACME_APP_ID,
+          slug: 'acme',
+          title: 'Acme',
+          description: null,
+          avatarUrl: null,
+          category: null,
+        },
+        currentDeployment: null,
+        methods: [],
+        connectionDefinitions: {},
+        // The two facts that make the connection issue an ERROR.
+        orgConnectionPresent: false,
+        orgConnectionExpiresAt: null,
+        workflowBlocks: [
+          {
+            id: 'sync',
+            label: 'Acme Sync',
+            description: 'Sync a record with Acme',
+            iconKey: null,
+            requiresConnection: true,
+            inputsJsonSchema: {
+              recordId: { type: 'string', _metadata: { label: 'Record' } },
+            },
+            toolMap: { 'record.sync': 'tool_sync' },
+            refs: [],
+            ops: [
+              {
+                key: 'record.sync',
+                resource: 'record',
+                operation: 'sync',
+                toolId: 'tool_sync',
+                inputsJsonSchema: {},
+                outputsJsonSchema: {},
+                requiresConnection: true,
+              },
+            ],
+          },
+        ],
+      },
+    ] as never)
+
+    const graph: DraftGraph = {
+      nodes: [
+        triggerNode(),
+        plainNode(ACME_NODE_ID, ACME_TYPE, 'Acme Sync', {
+          appId: ACME_APP_ID,
+          blockId: 'sync',
+          resource: 'record',
+          operation: 'sync',
+        }),
+      ],
+      edges: [edge(TRIGGER_ID, 'source', ACME_NODE_ID)],
+    }
+    const result = await updateNode(makeDb(graph), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      ref: 'Acme Sync',
+      // `fieldModes` flips recordId out of constant mode, so the ref is a REF
+      // and reaches the O1 gate rather than being stored as literal text.
+      config: {
+        resource: 'record',
+        operation: 'sync',
+        recordId: '{{Every Morning.bogus}}',
+        fieldModes: { recordId: false },
+      },
+    })
+
+    const value = result._unsafeUnwrap()
+    expect(value.applied).toBe(false)
+
+    // BOTH are reported — the connection problem is real and the caller should
+    // hear about it.
+    const connectionIssue = value.issues.find((i) => i.field === 'connectionId')
+    expect(connectionIssue?.severity).toBe('error')
+    expect(connectionIssue?.message).toMatch(/no workspace connection/)
+
+    // But only ONE of them refused the edit.
+    expect(value.blockedBy).toHaveLength(1)
+    expect(value.blockedBy?.[0]?.message).toMatch(/bogus/)
+    expect(value.blockedBy).not.toContain(connectionIssue)
   })
 
   it('applies the same edit when the reference resolves', async () => {
