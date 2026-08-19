@@ -2,20 +2,22 @@
 
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { useUpdateNodeInternals } from '@xyflow/react'
-import { Download } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { useOptionalMessageClient } from '~/components/apps/runtime/hooks/use-optional-message-client'
 import { reconstructReactTree } from '~/components/apps/runtime/reconstruct-react-tree'
+import { AppIcon } from '~/components/apps/ui/app-icon'
+import { InlineAppInstallButton } from '~/components/apps/ui/app-install-button'
 import { useNodeCrud } from '~/components/workflow/hooks/use-node-data-update'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
 import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
 import type { BaseNodeData } from '~/components/workflow/types'
 import { NodeSourceHandle } from '~/components/workflow/ui/node-handle/source-handle'
 import { NodeTargetHandle } from '~/components/workflow/ui/node-handle/target-handle'
+import { useOptionalAccess } from '~/providers/capabilities-provider'
+import { api } from '~/trpc/react'
 
 /**
  * Recursively check a serialized component tree for connection handles.
@@ -104,6 +106,20 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
   // Detect "not installed" state: appSlug present but no installationId resolved
   const appSlug = data.appSlug as string | undefined
   const isNotInstalled = !isLoading && !!appId && !installationId && !!appSlug
+
+  // The app's own avatar and title — `getBySlug` answers for uninstalled apps,
+  // and without it the node falls back to the registry's generic `box` icon and
+  // identifies nothing. Skipped entirely while the app is installed.
+  const uninstalledApp = api.apps.getBySlug.useQuery(
+    { appSlug: appSlug ?? '' },
+    { enabled: isNotInstalled, retry: false, staleTime: 5 * 60 * 1000 }
+  )
+
+  // `apps.install` is `permissionProcedure(integrationsManage)` — a member
+  // without it would click into a 403 toast. Unknown outside a
+  // `CapabilitiesProvider` (the public viewer): stay visible, the server gates.
+  const access = useOptionalAccess()
+  const canInstall = access ? access.can(PermissionKey.integrationsManage) : true
 
   // Reactive message client — re-renders when client becomes available or errors
   const { messageClient, initError } = useOptionalMessageClient({
@@ -330,7 +346,15 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
   }
 
   return (
-    <BaseNode id={id} data={data} selected={selected}>
+    <BaseNode
+      id={id}
+      data={data}
+      selected={selected}
+      icon={
+        isNotInstalled && uninstalledApp.data ? (
+          <AppIcon iconId={uninstalledApp.data.app.avatarUrl ?? 'package'} size='default' />
+        ) : undefined
+      }>
       {/* Render fallback handles when the iframe component hasn't loaded yet,
           or when it loaded but declares no handles of its own (the SDK's
           default text-only node). Without this, such nodes have no handles
@@ -346,21 +370,15 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
             </div>
           </div>
         ) : isNotInstalled ? (
-          <div className='flex flex-col items-center gap-2 p-3'>
-            <span className='text-sm font-medium'>{data.title || appSlug}</span>
-            <Badge variant='outline' className='text-xs text-amber-600 border-amber-300'>
-              App not installed
-            </Badge>
-            <Button
-              size='sm'
-              variant='outline'
-              onClick={(e) => {
-                e.stopPropagation()
-                window.open(`/app/settings/apps/${appSlug}`, '_blank')
-              }}>
-              <Download className='size-3' />
-              Install
-            </Button>
+          // One row, like every other node body. The corner badge already says
+          // something is wrong (the not-installed issue flows through
+          // `useAppNodeIssueResolver`), and the panel carries the full story —
+          // the node only needs the one affordance.
+          <div className='px-3'>
+            <div className='flex h-6 items-center justify-between gap-2'>
+              <span className='truncate text-xs text-muted-foreground'>Not installed</span>
+              {canInstall && appSlug && <InlineAppInstallButton appSlug={appSlug} />}
+            </div>
           </div>
         ) : displayError ? (
           <div className='px-3'>

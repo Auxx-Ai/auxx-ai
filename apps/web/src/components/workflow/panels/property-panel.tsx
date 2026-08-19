@@ -3,6 +3,8 @@
 import { useStore } from '@xyflow/react'
 import React, { useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/shallow'
+import { AppNodeFallbackPanel } from '~/components/workflow/apps/app-node-fallback-panel'
+import { isAppNodeType } from '~/components/workflow/apps/app-node-meta'
 import { isWorkflowNode, NodeType } from '~/components/workflow/types'
 import { useRenderTrace } from '../debug'
 import { useRegistryVersion } from '../hooks'
@@ -52,7 +54,17 @@ const NodePanelBody: React.FC<NodePanelBodyProps> = React.memo(({ nodeId }) => {
     return null
   }, [nodeType, registryVersion])
 
-  const shouldShowPanel = !!(node && nodeType !== NodeType.NOTE && PanelComponent)
+  // An app node (`<appId>:<blockId>`) with no registered panel is NOT a node
+  // that vanished: its app may be uninstalled, still loading its blocks, or no
+  // longer shipping this block. Closing the drawer on it is what made clicking
+  // such a node do nothing at all, so it gets the fallback panel instead —
+  // mirroring the fallback `StandardNode` already applies to the node itself.
+  const useAppFallback = !!(node && !PanelComponent && isAppNodeType(nodeType))
+  const shouldShowPanel = !!(
+    node &&
+    nodeType !== NodeType.NOTE &&
+    (PanelComponent || useAppFallback)
+  )
 
   // A node that vanished (deleted, or a note) has no frame to show — close the
   // drawer in an effect rather than during render.
@@ -64,6 +76,10 @@ const NodePanelBody: React.FC<NodePanelBodyProps> = React.memo(({ nodeId }) => {
 
   if (!shouldShowPanel) {
     return null
+  }
+
+  if (!PanelComponent) {
+    return <AppNodeFallbackPanel key={node.id} nodeId={node.id} data={node.data} />
   }
 
   return <PanelComponent key={node.id} nodeId={node.id} data={node.data} />

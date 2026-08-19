@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { useDebounce } from '~/hooks/use-debounced-value'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 import type { BaseNodeData } from '../types'
-import { useAppConnectionIssueResolver } from './use-app-connection-issue'
+import { useAppNodeIssueResolver } from './use-app-node-issue'
 import { useNodeConnections } from './use-node-connections'
 
 interface UseNodeValidationProps {
@@ -39,7 +39,7 @@ export function useNodeValidationErrors({
   enabled = true,
 }: UseNodeValidationProps): ValidationState {
   const { needsOutgoingConnection } = useNodeConnections(nodeId, data.type)
-  const resolveAppConnectionIssue = useAppConnectionIssueResolver()
+  const resolveAppNodeIssue = useAppNodeIssueResolver()
 
   // Debounce the data to avoid excessive validation
   const debouncedData = useDebounce(data, 300)
@@ -68,10 +68,11 @@ export function useNodeValidationErrors({
       })
     }
 
-    // App nodes: a missing/expired connection is a node problem like any other
-    const connectionIssue = resolveAppConnectionIssue(debouncedData)
-    if (connectionIssue) {
-      issues.push(connectionIssue)
+    // App nodes: an uninstalled app or a missing/expired connection is a node
+    // problem like any other
+    const appIssue = resolveAppNodeIssue(debouncedData)
+    if (appIssue) {
+      issues.push(appIssue)
     }
 
     // Run schema validator
@@ -99,7 +100,7 @@ export function useNodeValidationErrors({
       hasErrors: errors.length > 0,
       hasWarnings: warnings.length > 0,
     }
-  }, [debouncedData, needsOutgoingConnection, enabled, data.type, resolveAppConnectionIssue])
+  }, [debouncedData, needsOutgoingConnection, enabled, data.type, resolveAppNodeIssue])
 
   return validation
 }

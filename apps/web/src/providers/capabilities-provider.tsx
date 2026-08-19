@@ -341,6 +341,18 @@ export function useAccess(): CapabilitiesContextType {
 }
 
 /**
+ * Same as {@link useAccess} but returns `undefined` outside a
+ * `CapabilitiesProvider` instead of throwing. For shared components that also
+ * render on surfaces with no capability context — the public workflow viewer
+ * mounts the same nodes as the builder. Callers must decide what "unknown"
+ * means for them; a degrade-only affordance should stay VISIBLE, since the
+ * server gates independently either way.
+ */
+export function useOptionalAccess(): CapabilitiesContextType | undefined {
+  return useContext(CapabilitiesContext)
+}
+
+/**
  * Redirect to `/access-denied` unless the viewer holds `key`.
  *
  * The capability replacement for `useUser({ requireRoles })` (plan 39 §3.1) —
