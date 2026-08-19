@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.213](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.212...auxx-v0.1.213) (2026-08-19)
+
+
+### Bug Fixes
+
+* **ci:** clear the typecheck and test-count ratchets on main ([#1753](https://github.com/Auxx-Ai/auxx-ai/issues/1753)) ([7612857](https://github.com/Auxx-Ai/auxx-ai/commit/7612857fbbc7f7b893fc300499572a3912556bdf))
+* **dispatch:** stop the setup wizard reopening and refresh the board on worker add ([#1754](https://github.com/Auxx-Ai/auxx-ai/issues/1754)) ([d366c9a](https://github.com/Auxx-Ai/auxx-ai/commit/d366c9add3c46b4fb478e146fb0e273f022f87ee))
+* **ui:** make the address country selector searchable and consistent ([#1751](https://github.com/Auxx-Ai/auxx-ai/issues/1751)) ([64fca2a](https://github.com/Auxx-Ai/auxx-ai/commit/64fca2a823d1d64c784a42ad2c45654fc3563ceb))
+
 ## [0.1.212](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.211...auxx-v0.1.212) (2026-08-19)
 
 
