@@ -84,6 +84,14 @@ export const Integration = pgTable(
     uniqueIndex('Integration_provider_webhookRouteKey_key')
       .using('btree', table.provider.asc().nullsLast(), table.webhookRouteKey.asc().nullsLast())
       .where(sql`${table.webhookRouteKey} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+    // Meta data-deletion / deauthorize callbacks join on the app-scoped Facebook user id,
+    // which is many-channels-per-value by design (one login, three Pages) — so it cannot
+    // live in `webhookRouteKey`'s unique (provider, key) index. Non-unique partial
+    // expression index instead; taken for exactness of the access path, not for speed.
+    // See plans/channels/meta-data-deletion-callback.md §4.2.
+    index('Integration_social_userId_idx')
+      .using('btree', sql`(${table.metadata} ->> 'userId')`)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.provider} IN ('facebook','instagram')`),
   ]
 )
 

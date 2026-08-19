@@ -153,6 +153,15 @@ export {
   type AppStorageSweepStats,
   appStorageSweepJob,
 } from './maintenance/app-storage-sweep-job'
+// Per-request provider deletion / deauthorize teardown
+// (plans/channels/meta-data-deletion-callback.md §4.4). On-demand: enqueued by the
+// Meta signed_request routes and the Shopify compliance webhook, never scheduled.
+export {
+  DATA_DELETION_JOB_NAME,
+  type DataDeletionJobData,
+  dataDeletionJob,
+  enqueueDataDeletionJob,
+} from './maintenance/data-deletion-job'
 export {
   dataMigrationsJob,
   enqueueDataMigrationsRun,

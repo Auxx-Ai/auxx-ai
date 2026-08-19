@@ -16,7 +16,7 @@ import type {
 import { convertMetaWebhookEventToMessageData } from '@auxx/lib/providers/social/webhook-message'
 import { metaPreset, verifyWebhook } from '@auxx/lib/webhooks'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { after, type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('facebook-webhook')
@@ -132,6 +132,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           continue
         }
 
+        // Resolved on `webhookRouteKey`, the column built for exactly this: its unique
+        // partial index on `(provider, webhookRouteKey)` among live rows means one Page
+        // can only ever belong to one channel, so this `.limit(1)` is a real answer
+        // rather than whichever row Postgres happened to return first.
         // `isNull(deletedAt)`: disconnect is a soft delete, so without this a
         // disconnected channel keeps ingesting for as long as `enabled` stayed true.
         const [integration] = await db
@@ -146,7 +150,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               eq(schema.Integration.provider, 'facebook'),
               eq(schema.Integration.enabled, true),
               isNull(schema.Integration.deletedAt),
-              sql`${schema.Integration.metadata} ->> 'pageId' = ${recipientPageId}`
+              eq(schema.Integration.webhookRouteKey, recipientPageId)
             )
           )
           .limit(1)

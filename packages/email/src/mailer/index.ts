@@ -18,6 +18,9 @@ import {
   InviteText,
   JoinOrganizationEmail,
   JoinOrganizationText,
+  MetaChannelDisconnectedEmail,
+  type MetaChannelDisconnectedEmailProps,
+  MetaChannelDisconnectedText,
   MidTrialEmail,
   MidTrialText,
   PasswordResetNotifyEmail,
@@ -1278,6 +1281,37 @@ export const sendPaymentReceiptEmail = async ({
     })
   } catch (error) {
     logger.error('Error in sendPaymentReceiptEmail', { error })
+    throw error
+  }
+}
+
+/**
+ * Notify an org admin that a Facebook/Instagram channel stopped working because the person who
+ * connected it removed the app (`app-removed` — paused) or asked Meta to delete their data
+ * (`data-deletion` — disconnected). The org's conversation history is untouched either way.
+ */
+export const sendMetaChannelDisconnectedEmail = async ({
+  email,
+  ...templateProps
+}: MetaChannelDisconnectedEmailProps & {
+  email: UserEmail
+}): Promise<boolean> => {
+  try {
+    const html = await render(await MetaChannelDisconnectedEmail(templateProps))
+    const text = MetaChannelDisconnectedText(templateProps)
+    const platformLabel = templateProps.platform === 'instagram' ? 'Instagram' : 'Facebook'
+    const stateLabel = templateProps.reason === 'app-removed' ? 'paused' : 'disconnected'
+
+    return await sendEmail({
+      to: email,
+      subject: formatSubject(
+        `Your ${platformLabel} channel "${templateProps.channelName}" is ${stateLabel}`
+      ),
+      html,
+      text,
+    })
+  } catch (error) {
+    logger.error('Error in sendMetaChannelDisconnectedEmail', { error })
     throw error
   }
 }

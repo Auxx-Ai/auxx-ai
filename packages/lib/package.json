@@ -370,6 +370,18 @@
       "import": "./dist/data-connectors/templates/connector-template-registry.mjs",
       "default": "./src/data-connectors/templates/connector-template-registry.ts"
     },
+    "./data-deletion": {
+      "types": "./src/data-deletion/index.ts",
+      "source": "./src/data-deletion/index.ts",
+      "import": "./dist/data-deletion/index.mjs",
+      "default": "./src/data-deletion/index.ts"
+    },
+    "./data-deletion/client": {
+      "types": "./src/data-deletion/client.ts",
+      "source": "./src/data-deletion/client.ts",
+      "import": "./dist/data-deletion/client.mjs",
+      "default": "./src/data-deletion/client.ts"
+    },
     "./data-migrations": {
       "types": "./src/data-migrations/index.ts",
       "source": "./src/data-migrations/index.ts",

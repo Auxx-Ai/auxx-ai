@@ -53,6 +53,13 @@ export { JoinOrganizationEmail, JoinOrganizationText } from './invite/join-organ
 export { DataDeletionEmail, DataDeletionText } from './lifecycle/data-deletion-email'
 // Lifecycle templates
 export { GettingStartedEmail, GettingStartedText } from './lifecycle/getting-started-email'
+export {
+  MetaChannelDisconnectedEmail,
+  type MetaChannelDisconnectedEmailProps,
+  MetaChannelDisconnectedText,
+  type MetaChannelDisconnectReason,
+  type MetaChannelPlatform,
+} from './lifecycle/meta-channel-disconnected-email'
 export { MidTrialEmail, MidTrialText } from './lifecycle/mid-trial-email'
 export { TrialConversionEmail, TrialConversionText } from './lifecycle/trial-conversion-email'
 export {

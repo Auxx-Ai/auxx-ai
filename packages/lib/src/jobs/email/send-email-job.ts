@@ -9,6 +9,7 @@ import {
   sendGettingStartedEmail,
   sendInviteEmail,
   sendJoinOrganizationEmail,
+  sendMetaChannelDisconnectedEmail,
   sendMidTrialEmail,
   sendPasswordResetNotifyEmail,
   sendPaymentFailedEmail,
@@ -330,6 +331,16 @@ const handlers: {
       businessWebsite: p.businessWebsite,
       logoUrl: p.logoUrl,
       accentColor: p.accentColor,
+    }),
+  'meta-channel-disconnected': (p) =>
+    sendMetaChannelDisconnectedEmail({
+      email: p.recipient.email,
+      name: p.recipient.name || 'there',
+      organizationName: p.organizationName,
+      channelName: p.channelName,
+      platform: p.platform,
+      reason: p.reason,
+      channelsUrl: p.channelsUrl,
     }),
 }
 
