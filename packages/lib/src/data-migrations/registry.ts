@@ -58,6 +58,7 @@ import { migration090ThreadEventsExtraction } from './migrations/090-thread-even
 import { migration091BackfillParticipantDisplayName } from './migrations/091-backfill-participant-display-name'
 import { migration092ReseedPlatformProvidersMetaGlobal } from './migrations/092-reseed-platform-providers-meta-global'
 import { migration093BackfillSocialWebhookRouteKey } from './migrations/093-backfill-social-webhook-route-key'
+import { migration094StripeAccountCutover } from './migrations/094-stripe-account-cutover'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -142,6 +143,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration091BackfillParticipantDisplayName,
     migration092ReseedPlatformProvidersMetaGlobal,
     migration093BackfillSocialWebhookRouteKey,
+    migration094StripeAccountCutover,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))
