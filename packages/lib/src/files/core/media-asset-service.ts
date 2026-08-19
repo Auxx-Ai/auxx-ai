@@ -26,6 +26,7 @@ import {
 import type { PgColumn } from 'drizzle-orm/pg-core'
 import type { DownloadRef } from '../adapters/base-adapter'
 import { BaseService, type DatabaseClient, defaultDatabase } from './base-service'
+import { purgeMediaAssets } from './media-asset-purge'
 import type { ContentAccessible } from './mixins/content-accessible'
 import type { Versioned } from './mixins/versioned'
 import type {
@@ -1406,6 +1407,21 @@ export class MediaAssetService
       this.db
     )
     await thumbnailService.deleteThumbnailsForSource(version.id)
+
+    // `deleteThumbnailsForSource` drops the S3 objects but only SOFT-deletes the rows,
+    // and a thumbnail is a separate MediaAsset pointing back here through
+    // `derivedFromVersionId` (NO ACTION) — so the version delete below would still be
+    // blocked by them. Purge the derived assets outright.
+    const derived = await this.db
+      .selectDistinct({ assetId: schema.MediaAssetVersion.assetId })
+      .from(schema.MediaAssetVersion)
+      .where(eq(schema.MediaAssetVersion.derivedFromVersionId, version.id))
+    if (derived.length > 0) {
+      await purgeMediaAssets(
+        this.db,
+        derived.map((d) => d.assetId)
+      )
+    }
 
     await this.db
       .delete(schema.MediaAssetVersion)
