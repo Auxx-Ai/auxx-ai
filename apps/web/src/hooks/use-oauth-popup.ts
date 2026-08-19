@@ -12,6 +12,24 @@ interface OAuthDonePayload {
   error?: string | null
   /** True when the connect matched an existing identity and updated it in place (no new row). */
   matchedExisting?: boolean
+  /**
+   * Set when the credential committed but nothing was provisioned — the connect needs a choice
+   * the user makes in the app (e.g. which Facebook Page). Carries the selection `kind`.
+   *
+   * A LATENCY HINT, not the authority: the `verify` poll can settle before this page is read, so
+   * the caller must re-read the server's pending-selection query on every settle regardless.
+   */
+  awaiting?: string | null
+}
+
+/** What a settled popup flow reports back. */
+export interface OAuthPopupResult {
+  ok: boolean
+  credId: string | null
+  /** The connect deduped onto an existing identity (update-in-place). */
+  matchedExisting: boolean
+  /** A selection `kind` the connect is waiting on, or null. See {@link OAuthDonePayload.awaiting}. */
+  awaiting: string | null
 }
 
 export interface OpenOAuthPopupOptions {
@@ -24,10 +42,11 @@ export interface OpenOAuthPopupOptions {
   /** `window.open` target name (defaults to `auxx-oauth`). */
   windowName?: string
   /**
-   * Settled exactly once: `ok` + the connected credId when known. `matchedExisting` is true when
-   * the connect deduped onto an existing identity (update-in-place) — the caller toasts it.
+   * Settled exactly once. An object rather than positional args: the settle carries four facts
+   * now (`ok`, `credId`, `matchedExisting`, `awaiting`) and a positional list that long reads
+   * wrong at every call site.
    */
-  onDone: (ok: boolean, credId?: string | null, matchedExisting?: boolean) => void
+  onDone: (result: OAuthPopupResult) => void
   /**
    * Authoritative success backstop, polled every {@link verifyIntervalMs}. Resolve to a credId
    * (or `true`) once the connect is observed server-side; `null`/`false` while still pending.
@@ -112,7 +131,7 @@ export function useOAuthPopup() {
         ok: boolean,
         credId?: string | null,
         error?: string | null,
-        opts?: { closePopup?: boolean; matchedExisting?: boolean }
+        opts?: { closePopup?: boolean; matchedExisting?: boolean; awaiting?: string | null }
       ) => {
         if (settled) return
         settled = true
@@ -127,7 +146,12 @@ export function useOAuthPopup() {
         if (!ok && error) {
           toastError({ title: 'Failed to connect', description: error })
         }
-        onDone(ok, credId ?? null, opts?.matchedExisting ?? false)
+        onDone({
+          ok,
+          credId: credId ?? null,
+          matchedExisting: opts?.matchedExisting ?? false,
+          awaiting: opts?.awaiting ?? null,
+        })
       }
 
       const handleDone = (payload: OAuthDonePayload) => {
@@ -137,6 +161,7 @@ export function useOAuthPopup() {
           payload.ok ? undefined : payload.error || 'Connection failed',
           {
             matchedExisting: payload.matchedExisting ?? false,
+            awaiting: payload.awaiting ?? null,
           }
         )
       }

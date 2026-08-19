@@ -58,6 +58,16 @@ export {
   updateAllowedSenders,
   updateSettings,
 } from './settings'
+export {
+  findLiveSocialIntegrationForCredential,
+  type PendingSocialPageSelection,
+  type ProvisionSocialChannelInput,
+  provisionSocialChannel,
+  SOCIAL_PAGE_SELECTION_KIND,
+  type SocialCandidateSet,
+  type SocialPageSelectionPayload,
+  selectSocialCandidates,
+} from './social-page-selection'
 export { getAllStats } from './stats'
 export { syncAllMessages, syncMessages } from './sync'
 export { toggle } from './toggle'

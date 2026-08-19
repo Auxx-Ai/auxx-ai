@@ -6,6 +6,7 @@
 // registered for the provider — most platform providers are "just a Credential".
 
 import { createScopedLogger } from '@auxx/logger'
+import type { PendingSelectionKind } from './pending-selection'
 
 const logger = createScopedLogger('post-connect-hooks')
 
@@ -28,10 +29,28 @@ export interface PostConnectHookContext {
   extra?: Record<string, unknown>
 }
 
+/**
+ * What a hook reports back when it could NOT finish the connect on its own.
+ *
+ * `undefined` (or a hook that returns nothing) means "provisioned, done" — the shape every
+ * existing hook already satisfies, which is why widening the return type edits no hook body.
+ */
+export interface PostConnectHookResult {
+  /**
+   * The connect stopped short of provisioning and needs a user choice to finish. The user's
+   * answer is collected by a domain-specific mutation; this only names WHAT is outstanding.
+   *
+   * Typed as `PendingSelectionKind` rather than an inline literal so a second waiting provider
+   * is a union member instead of a signature change rippling through the OAuth callback, the
+   * popup payload, and the connect flow.
+   */
+  awaiting?: { kind: PendingSelectionKind; credentialId: string }
+}
+
 export interface PostConnectHook {
   /** Provider keys this hook handles. */
   providerKeys: string[]
-  run(ctx: PostConnectHookContext): Promise<void>
+  run(ctx: PostConnectHookContext): Promise<void | PostConnectHookResult>
 }
 
 const registry = new Map<string, PostConnectHook>()
@@ -43,13 +62,18 @@ export function registerPostConnectHook(hook: PostConnectHook): void {
   }
 }
 
-/** Run the hook registered for `providerKey`, if any. No-op otherwise. */
+/**
+ * Run the hook registered for `providerKey`, if any. No-op (and `undefined`) otherwise.
+ *
+ * A result carrying `awaiting` means the credential is committed but nothing was provisioned —
+ * the caller must not report the connect as finished. See `pending-selection.ts`.
+ */
 export async function runPostConnectHook(
   providerKey: string,
   ctx: PostConnectHookContext
-): Promise<void> {
+): Promise<PostConnectHookResult | undefined> {
   const hook = registry.get(providerKey)
-  if (!hook) return
+  if (!hook) return undefined
   logger.info('Running post-connect hook', { providerKey, credentialId: ctx.credentialId })
-  await hook.run(ctx)
+  return (await hook.run(ctx)) ?? undefined
 }
