@@ -9,6 +9,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Star, TriangleAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { channelLabel } from '~/components/channels/channel-label'
 import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
 import { useSendableChannels } from '~/components/channels/store/channel-store'
 import { Tooltip } from '~/components/global/tooltip'
@@ -31,19 +32,6 @@ interface ChannelPickerProps {
   triggerProps?: PickerTriggerOptions
   /** className forwarded to PopoverContent (e.g. for z-index override) */
   className?: string
-}
-
-/**
- * What the user sees in the From row: the address the message will come FROM.
- *
- * `identifier` is the server-resolved sending identity (`channels/internal/
- * identifier.ts`) — email for mail channels, `metadata.phoneNumber` for
- * Quo/SMS, widget name for chat. Reading `email` first, as this did, renders an
- * empty badge for a phone channel: an SMS `Integration` carries no `email`, and
- * `name` is null on a channel the user never renamed.
- */
-function channelLabel(channel: { identifier?: string; email?: string; name: string | null }) {
-  return channel.identifier || channel.email || channel.name || 'Unnamed channel'
 }
 
 /**
