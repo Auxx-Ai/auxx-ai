@@ -1,8 +1,10 @@
 // packages/lib/src/ingest/contacts/identity-candidate.ts
 
-import type { IdentifierTypeValue } from '@auxx/database/enums'
 import { IdentifierType as IdentifierTypeEnum } from '@auxx/database/enums'
-import type { ParticipantEntity as Participant } from '@auxx/database/types'
+import type {
+  IdentifierType as IdentifierTypeValue,
+  ParticipantEntity as Participant,
+} from '@auxx/database/types'
 import { formatPhoneNumber } from '@auxx/utils'
 import { metaExternalId } from './external-id'
 

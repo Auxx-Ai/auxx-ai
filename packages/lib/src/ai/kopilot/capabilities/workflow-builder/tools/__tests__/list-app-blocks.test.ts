@@ -67,7 +67,7 @@ const installedApps = vi.fn(async (..._a: unknown[]) => [
 ])
 
 /** The global marketplace cache — no org scope, no DB read. */
-const publishedApps = vi.fn(async () => [
+const publishedApps = vi.fn(async (..._a: unknown[]) => [
   { id: 'appfedex', slug: 'fedex', title: 'Fedex', description: 'Track FedEx shipments' },
   { id: 'apphubspot-v2', slug: 'hubspot', title: 'HubSpot', description: 'CRM' },
   { id: 'appups', slug: 'ups', title: 'UPS', description: 'Track UPS shipments' },

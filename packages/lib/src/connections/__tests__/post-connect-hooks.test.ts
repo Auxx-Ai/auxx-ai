@@ -19,7 +19,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  */
 
 const { publish, getRealtimeService } = vi.hoisted(() => {
-  const publish = vi.fn(async () => true)
+  const publish = vi.fn(async (_room: string, _event: string, _payload: unknown) => true)
   return { publish, getRealtimeService: vi.fn(() => ({ publish })) }
 })
 

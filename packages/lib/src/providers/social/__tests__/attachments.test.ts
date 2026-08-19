@@ -18,7 +18,7 @@ import {
 const CONTEXT = { platform: 'facebook' as const, messageId: 'msg_1' }
 
 function response(body: Buffer, headers: Record<string, string>, status = 200): Response {
-  return new Response(body, { status, headers })
+  return new Response(new Uint8Array(body), { status, headers })
 }
 
 afterEach(() => {

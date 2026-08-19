@@ -18,7 +18,7 @@ const captured: { sets: unknown[]; selects: unknown[] } = { sets: [], selects: [
 
 /** Controllable per-test: what the superseded-credential reference check finds. */
 const { integrationFindFirst, deleteCredential } = vi.hoisted(() => ({
-  integrationFindFirst: vi.fn(async (): Promise<unknown> => undefined),
+  integrationFindFirst: vi.fn(async (_args?: unknown): Promise<unknown> => undefined),
   deleteCredential: vi.fn(async () => ({ isErr: () => false })),
 }))
 
