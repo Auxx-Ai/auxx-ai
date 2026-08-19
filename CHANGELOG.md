@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.209](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.208...auxx-v0.1.209) (2026-08-19)
+
+
+### Features
+
+* **billing:** add stripe account cutover data migration ([#1733](https://github.com/Auxx-Ai/auxx-ai/issues/1733)) ([d20385d](https://github.com/Auxx-Ai/auxx-ai/commit/d20385d679e4dc1a22258fea88f30516fb29b2ea))
+
+
+### Bug Fixes
+
+* **organizations:** unblock org deletion on member avatars ([#1731](https://github.com/Auxx-Ai/auxx-ai/issues/1731)) ([c3bf9e9](https://github.com/Auxx-Ai/auxx-ai/commit/c3bf9e9a8b7d0056bfba6cbb929c1867c9fb01eb))
+
 ## [0.1.208](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.207...auxx-v0.1.208) (2026-08-19)
 
 
