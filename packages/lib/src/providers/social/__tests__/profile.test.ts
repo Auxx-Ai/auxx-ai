@@ -16,9 +16,10 @@ import { buildSocialDisplayName, resolveSocialCounterpartName } from '../profile
  * call at all — that lookup IS the cache.
  */
 
-const { getChannelTokens, findOrCreateParticipant } = vi.hoisted(() => ({
+const { getChannelTokens, findOrCreateParticipant, repairContactName } = vi.hoisted(() => ({
   getChannelTokens: vi.fn(),
   findOrCreateParticipant: vi.fn(),
+  repairContactName: vi.fn(),
 }))
 
 vi.mock('../../channel-token-accessor', () => ({ getChannelTokens }))
@@ -27,6 +28,10 @@ vi.mock('../../../participants/participant-service', () => ({
   ParticipantService: class {
     findOrCreateParticipant = findOrCreateParticipant
   },
+}))
+
+vi.mock('../../../ingest/contacts/repair-name', () => ({
+  repairContactNameFromParticipant: repairContactName,
 }))
 
 /** Queue one array per `select(...).from(...).where(...).limit(...)` in order. */
@@ -58,12 +63,14 @@ beforeEach(() => {
   fetchMock.mockReset()
   getChannelTokens.mockReset()
   findOrCreateParticipant.mockReset()
+  repairContactName.mockReset()
+  repairContactName.mockResolvedValue(false)
   getChannelTokens.mockResolvedValue({
     accessToken: 'page-token',
     refreshToken: null,
     expiresAt: null,
   })
-  findOrCreateParticipant.mockResolvedValue({ id: 'participant_1' })
+  findOrCreateParticipant.mockResolvedValue({ id: 'participant_1', entityInstanceId: null })
 })
 
 afterEach(() => {
@@ -203,7 +210,7 @@ describe('resolveSocialCounterpartName', () => {
   })
 
   it('spends no Graph call when the participant already has a name', async () => {
-    const db = fakeDb([[{ name: 'Ada Lovelace' }]])
+    const db = fakeDb([[{ name: 'Ada Lovelace', entityInstanceId: null }]])
 
     await expect(
       resolveSocialCounterpartName(db, { ...base, platform: 'facebook' })
@@ -213,9 +220,51 @@ describe('resolveSocialCounterpartName', () => {
     expect(findOrCreateParticipant).not.toHaveBeenCalled()
   })
 
+  // The contact is minted on the first outbound reply, which can land before
+  // Graph answers — so the record keeps the raw PSID while the participant gets
+  // the name. Nothing else in the system ever revisits it.
+  it('repairs the linked contact after resolving a name', async () => {
+    fetchMock.mockResolvedValue(graphOk({ first_name: 'Ada', last_name: 'Lovelace' }))
+    findOrCreateParticipant.mockResolvedValue({
+      id: 'participant_1',
+      entityInstanceId: 'contact_1',
+    })
+    const db = fakeDb([[{ name: null, entityInstanceId: 'contact_1' }], [{ inboxId: 'inbox_1' }]])
+
+    await resolveSocialCounterpartName(db, { ...base, platform: 'facebook' })
+
+    expect(repairContactName).toHaveBeenCalledWith(db, {
+      organizationId: 'org_1',
+      entityInstanceId: 'contact_1',
+      identifier: '27893553143563440',
+      name: 'Ada Lovelace',
+    })
+  })
+
+  // The name can arrive from the backfill's conversation edge instead of from
+  // here, in which case this early return is the ONLY place that ever sees both
+  // a named participant and its unnamed contact.
+  it('repairs the linked contact even when the participant was already named', async () => {
+    const db = fakeDb([[{ name: 'Ada Lovelace', entityInstanceId: 'contact_1' }]])
+
+    await expect(
+      resolveSocialCounterpartName(db, { ...base, platform: 'facebook' })
+    ).resolves.toBeUndefined()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(repairContactName).toHaveBeenCalledWith(db, {
+      organizationId: 'org_1',
+      entityInstanceId: 'contact_1',
+      identifier: '27893553143563440',
+      name: 'Ada Lovelace',
+    })
+  })
+
   it('does NOT treat the raw id stored as a name as "already named"', async () => {
     fetchMock.mockResolvedValue(graphOk({ first_name: 'Ada', last_name: 'Lovelace' }))
-    const db = fakeDb([[{ name: '27893553143563440' }], [{ inboxId: 'inbox_1' }]])
+    const db = fakeDb([
+      [{ name: '27893553143563440', entityInstanceId: null }],
+      [{ inboxId: 'inbox_1' }],
+    ])
 
     await expect(resolveSocialCounterpartName(db, { ...base, platform: 'facebook' })).resolves.toBe(
       'Ada Lovelace'

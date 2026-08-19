@@ -4,6 +4,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { identifierTypeForProvider } from '../../channels/capabilities'
+import { repairContactNameFromParticipant } from '../../ingest/contacts/repair-name'
 import { ParticipantService } from '../../participants/participant-service'
 import { getChannelTokens } from '../channel-token-accessor'
 import { type GraphUserProfile, getUserProfile } from './api'
@@ -115,7 +116,10 @@ export async function resolveSocialCounterpartName(
     }
 
     const [existing] = await db
-      .select({ name: schema.Participant.name })
+      .select({
+        name: schema.Participant.name,
+        entityInstanceId: schema.Participant.entityInstanceId,
+      })
       .from(schema.Participant)
       .where(
         and(
@@ -126,7 +130,20 @@ export async function resolveSocialCounterpartName(
       )
       .limit(1)
 
-    if (existing && hasResolvedName(existing.name, counterpartId)) return undefined
+    if (existing && hasResolvedName(existing.name, counterpartId)) {
+      // Named already, so no Graph call — but the CONTACT may still not be. A
+      // participant can acquire its name from the backfill's conversation edge
+      // rather than from here, in which case this early return is the only place
+      // that ever sees both halves. The repair is one indexed point-read that
+      // exits immediately once the record carries a real name.
+      await repairContactNameFromParticipant(db, {
+        organizationId,
+        entityInstanceId: existing.entityInstanceId,
+        identifier: counterpartId,
+        name: existing.name!.trim(),
+      })
+      return undefined
+    }
 
     const tokens = await getChannelTokens(integrationId)
     if (!tokens.accessToken) {
@@ -154,10 +171,23 @@ export async function resolveSocialCounterpartName(
 
     const inboxId = args.inboxId ?? (await resolveInboxId(db, integrationId))
     const participantService = new ParticipantService(organizationId, db)
-    await participantService.findOrCreateParticipant(
+    const participant = await participantService.findOrCreateParticipant(
       { identifier: counterpartId, identifierType, name },
       { inboxId }
     )
+
+    // A contact may already exist for this participant, minted before the name
+    // was known — selective mode creates one on the first outbound reply, which
+    // can land seconds after the inbound message that triggered this lookup and
+    // long before Graph answers. Ingest names such a contact from a participant
+    // that had none, and nothing else ever revisits it, so the record keeps the
+    // raw PSID/IGSID forever. This is the write that closes that window.
+    await repairContactNameFromParticipant(db, {
+      organizationId,
+      entityInstanceId: participant.entityInstanceId,
+      identifier: counterpartId,
+      name,
+    })
 
     logger.info('Resolved Meta counterpart display name', { platform, integrationId })
     return name
