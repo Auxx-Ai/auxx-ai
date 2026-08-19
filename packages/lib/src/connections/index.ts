@@ -30,6 +30,10 @@ export {
   type RuntimeConnectionAuthData,
 } from './auth-apply'
 export {
+  CONNECTION_SETTLED_EVENT,
+  type ConnectionSettledEvent,
+} from './connect-events'
+export {
   type HostedProvisionCompleteCtx,
   type HostedProvisionCompleteResult,
   type HostedProvisionHandler,

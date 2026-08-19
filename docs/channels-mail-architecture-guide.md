@@ -2,7 +2,7 @@
 
 # Channels & Mail Architecture Guide
 
-**Last Updated:** 2026-08-17
+**Last Updated:** 2026-08-19
 **Scope:** The conversation layer — how an external mailbox or messaging account becomes a
 **channel**, how its mail lands in **threads/messages** through the inbound doors (webhook push,
 two-phase polling, SES forwarding), how a reply goes back out, and who is allowed to see any of
@@ -25,7 +25,10 @@ it (**the mail lens**).
 2. [Core Concepts & Vocabulary](#2-core-concepts--vocabulary)
 3. [The Data Model](#3-the-data-model)
 4. [Providers](#4-providers)
-5. [Connecting a Channel](#5-connecting-a-channel)
+5. [Connecting a Channel](#5-connecting-a-channel) — [browser path](#51-the-browser-path) ·
+   [callback](#52-the-callback--what-commits-and-when) · [hooks](#53-the-post-connect-hooks) ·
+   [two-phase connect](#54-two-phase-connect--when-the-hook-cannot-finish) ·
+   [settling the popup](#55-settling-the-popup--the-rule-that-keeps-biting)
 6. [Inboxes — Shared vs Personal](#6-inboxes--shared-vs-personal)
 7. [Inbound Door 1 — Webhook Push](#7-inbound-door-1--webhook-push)
 8. [Inbound Door 2 — Two-Phase Polling](#8-inbound-door-2--two-phase-polling)
@@ -247,9 +250,69 @@ revoked token stops the pipeline instead of burning retries.
 
 ## 5. Connecting a Channel
 
-Channels connect through the **generic connections/OAuth machinery** (see
-`connections-architecture-guide.md`), not a bespoke flow. The callback commits the `Credential`,
-then runs a **post-connect hook**:
+A connect has two halves: the **generic connections/OAuth machinery** (the credential —
+`connections-architecture-guide.md`) and a channel-specific **post-connect hook** (the
+Integration, the inbox link, the sync door). There is no bespoke channel OAuth flow. A minority
+of channels — FB/IG — cannot finish in the hook and run a **two-phase** connect (§5.4).
+
+### 5.1 The browser path
+
+Every connect starts in `ChannelGalleryDialog`
+(`apps/web/src/components/channels/ui/channel-gallery-dialog.tsx`), whose catalog is
+`components/channels/catalog.ts`. Its detail step makes the **destination inbox mandatory before
+connecting** (channels v2): `useInboxDestination`'s `resolve()` picks or creates the inbox and
+returns its id, which rides the authorize URL as `pc_inboxId`.
+
+`channel.prepareConnect` resolves the `ConnectionDefinition` for the chosen provider, asserts
+authority (`channelsManage` for a shared connect; open to every member for a personal one) and
+reports the BYO-client requirement. `useConnectFlow.connectWith` then builds the authorize URL:
+
+```
+/api/connections/<providerKey>/oauth2/authorize
+    ?mode=popup                # popup transport (§5.5); absent ⇒ full-page redirect
+    &personal=1                # personal channel connect, gated server-side
+    &var_clientId=…            # BYO OAuth client (own-client defs)
+    &pc_inboxId=…              # post-connect context → the hook's `ctx.extra`
+```
+
+Addressed by **`providerKey`, not the definition row id**: the authorize route mirrors that path
+segment into the OAuth `redirect_uri`, and providers only have the stable providerKey form
+registered — the row id differs per environment.
+
+IMAP, Quo and chat never touch this path; they have their own forms
+(`channel.connectImap` / `channel.testImapConnection`, `QuoConnectForm`, `createChatChannel`).
+
+### 5.2 The callback — what commits, and when
+
+`apps/web/src/app/api/connections/[connectionDefinitionId]/oauth2/callback/route.ts`, in order:
+
+1. exchange the code,
+2. **`saveConnection` commits the `Credential`** — and *replaces* `Credential.metadata`
+   wholesale, it is not a jsonb merge,
+3. `runPostConnectHook(providerKey, ctx)` — the channel is built here, and the hook's outcome is
+   pushed to the connecting user as `connection:settled` (§5.5) before this step returns,
+4. render the popup termination page carrying `{ ok, credId, awaiting }`.
+
+Three consequences follow from that order, and each has bitten:
+
+- **The credential exists before anything is provisioned.** It is visible in `connections.list`
+  seconds before an `Integration` does. Any "did the connect work" poll keyed on the credential
+  answers *yes* while the hook is still running — see §5.5.
+- **A marker written before step 2 is erased.** `pending-selection` survives only by running
+  after it (§5.4).
+- **A hook throw surfaces as the shared error redirect**, so a half-provisioned channel never
+  renders as connected.
+
+### 5.3 The post-connect hooks
+
+`channels/register-hooks.ts` wires them up; `CHANNEL_PROVIDER_TO_KEY` / `resolveChannelDefinitionId`
+(`channels/channel-connection-def.ts`) map between the connection `providerKey` (`gmail`,
+`outlookMail`) and the Integration `provider` (`google`, `outlook`).
+
+A hook that finishes does all of: create-or-relink the `Integration`, write the channel tokens
+(`setChannelTokens`), link it to an inbox, stamp `metadata.backfillCutoffAt` (the trigger cutoff,
+§8) on a *first* connect only, arm the push door, clear the `channels` org cache
+(`onCacheEvent('channel.connected')`) and publish `integration:connected`.
 
 `channels/provisioning-hook.ts` (Gmail/Outlook) — resolve a fresh access token, fetch the account
 email, discover Outlook aliases, create-or-relink the `Integration`, link it to an inbox, seed sync
@@ -260,25 +323,112 @@ walk so push only ever sees future mail, then arms; on failure the row is stampe
 polling scanner would skip it). A new channel then still kicks the polling pipeline once for its
 initial history backfill (§8). Reconnects re-arm without re-backfilling; the *silent* token-refresh
 reconnect path never reaches this hook, so `recoverChannel` re-arms too.
-`channels/social-provisioning-hook.ts` (Facebook/Instagram) and
-`channels/openphone-provisioning-hook.ts` do the equivalent for their platforms;
-`channels/register-hooks.ts` wires them up.
+`channels/social-provisioning-hook.ts` (Facebook/Instagram, §5.4) and
+`channels/openphone-provisioning-hook.ts` do the equivalent for their platforms.
 
-`CHANNEL_PROVIDER_TO_KEY` / `resolveChannelDefinitionId` (`channels/channel-connection-def.ts`)
-map between the connection `providerKey` (`gmail`, `outlookMail`) and the Integration `provider`
-(`google`, `outlook`).
+From here on the channel is fed by the inbound doors: push (§7), polling + the one-shot initial
+backfill (§8), or forwarding (§9).
+
+### 5.4 Two-phase connect — when the hook cannot finish
+
+A Facebook grant reaches **every** Page the connecting user administers, and only one of them
+becomes the channel. That list can only exist *after* the OAuth hop (there is no token before
+it), so it cannot be a form field the way Quo's phone-number picker is. The hook therefore stops
+short: it parks a marker and provisions **nothing** — no Integration, no page token, no webhook.
+
+| Piece | Where |
+| --- | --- |
+| The marker (kind-agnostic) | `connections/pending-selection.ts` → `Credential.metadata.pendingSelection`, written with a jsonb **merge** |
+| The hook result | `PostConnectHookResult.awaiting = { kind, credentialId }` (`connections/post-connect-hooks.ts`) |
+| The candidate rules + phase two | `channels/social-page-selection.ts` |
+| The resume query (**the authority**) | `channel.pendingConnectSelection` — maps Pages to generic `{ id, label, sublabel, selectable, disabledReason }` |
+| The settle push | `connection:settled` on `rooms.user(connectingUserId)`, from `runPostConnectHook` (§5.5) |
+| The picker | `channels/ui/connect-selection-page.tsx` — a **page of the connect dialog**, knows no Meta nouns |
+| The submit | `channel.selectSocialPage` → `provisionSocialChannel` |
+
+Rules worth knowing before touching any of it:
+
+- **A fresh connect always asks — even when the grant reaches exactly one Page.** That is not an
+  oversight to optimise away: Meta's app review has to see what `pages_show_list` is *for*, and
+  most reviewer test accounts administer one Page, which is precisely the case an
+  ambiguity-gated picker would skip. The picker IS the permission's justification.
+- **A full-OAuth reconnect of a LIVE channel is forced onto the Page it already has**
+  (`findLiveSocialIntegrationForCredential`) — a mis-click there would move a live channel onto a
+  different Page or collide with the `webhookRouteKey` unique index. The rule keys on the
+  *Integration*, not on `connectionId`, and its `isNull(deletedAt)` is what keeps a reconnect
+  *after a disconnect* a fresh connect that legitimately gets the picker again.
+- **Phase two re-fetches `/me/accounts` live** and validates the chosen page against it. The
+  cached page list on the credential is a convenience for rendering, never a provisioning input.
+- **A Page already claimed by a live channel renders disabled**, turning phase two's
+  `webhookRouteKey` `ConflictError` into a pick-time affordance.
+- **Cancel leaves the marker on the credential** — that is what makes "reload and finish later"
+  work. The pending window deliberately holds the *short-lived* user token, which expires on its
+  own within the hour, so the state is self-limiting. Superseded pending credentials from
+  repeated abandoned connects are deleted (`deleteSupersededPendingCredentials`).
+- The ASID (`facebookUserId`) is fetched and thrown on *before* any write, marker included: a
+  channel Meta's deletion callback cannot join to must never exist.
+
+### 5.5 Settling a two-phase connect — push, don't poll
+
+The OAuth callback runs the post-connect hook **before** it can render anything back to the
+browser (§5.2 step 3 precedes step 4), and that hook is several sequential Graph round trips
+long. So for the whole time the connect is actually being decided, the tab that started it has
+been told nothing.
+
+Everything that used to go wrong here went wrong because the *appearance of the picker* was made
+to depend on a signal:
+
+- `useOAuthPopup` settles from whichever lands first — the termination page's
+  `postMessage`/`BroadcastChannel`, a `verify` poll, or a hard timeout — and only the first
+  carries `awaiting`.
+- Its heuristic cancel fires on nothing more than the **opener regaining focus**, which a user
+  clicking back into the app does routinely while the hook is still running. That settles the
+  flow and tears the listeners down, so the real answer arrives to no one.
+- React Query's focus refetch does not cover the gap: it keys on `visibilitychange`, which a
+  closing popup does not raise on the opener's tab.
+- And `utils.*.fetch()` honours `staleTime` (30s by default here, `query-client.ts`), so a
+  client-side poll built on it re-serves a cached `null` for half a minute instead of asking.
+
+Two rules, and the whole class of bug goes away.
+
+**1. Clicking Connect opens the selection step — nothing else does.** A social connect *always*
+parks a choice, so `channel-gallery-dialog.tsx` moves to the step on click, with the OAuth popup
+opening on top of it. Signals only ever *fill it in*, which makes a slow, lost, or duplicated one
+cost latency and nothing else. The step is a page of the same dialog (`GalleryExtraPage` on
+`TemplateGalleryDialog`), so the connect surface never disappears and reappears.
+
+**2. The outcome is pushed, not polled.** `runPostConnectHook` publishes
+`connection:settled` (`connections/connect-events.ts`) on `rooms.user(userId)` the instant the
+hook resolves — provisioned, parked, or thrown. It is addressed to the **user**, not to a window,
+so it survives COOP severing, a blocked popup, a closed tab, and a flow that already settled.
+
+The push is a **signal, not a source of truth** — realtime is a no-op when Pusher is unconfigured,
+so the event carries no options and nothing may exist only as this event. `pendingConnectSelection`
+stays the authority (it is where the `channelsManage` check lives), backed by a poll that runs
+**only while the step is waiting**, plus a timeout floor. `awaiting` on the popup payload survives
+as what it always was: a latency hint that saves one poll interval.
+
+The resume path is unchanged in spirit and simpler in fact: hosts that are a landing surface for a
+parked connect pass `resumePendingConnect`, and the dialog opens itself onto the step. Cancel
+still leaves the marker on the credential, so "finish later" works; the dismissed credential id is
+remembered client-side so the resume path doesn't reopen what the user just closed.
+
+### 5.6 Personal vs shared, IMAP, billing
 
 **Personal vs shared is decided at connect time.** `supportsPersonalChannelConnection(providerKey)`
 gates it on `PROVIDER_CAPABILITIES[provider].supportsPersonalConnection` and the OAuth authorize
 route enforces it server-side — the wizard step is ergonomics only. A shared connect asserts its
 target inbox (`assertSharedConnectInbox`); a personal connect calls `provisionPersonalInbox`.
+Social channels are shared-only, so no FB/IG path has a personal branch to consider.
 
 **IMAP** does not go through OAuth — `channel.connectImap` / `channel.testImapConnection` take
 host/port/credentials directly.
 
 **Billing.** `countBillableChannels` excludes soft-deleted rows, `isExample` seeds, and
 `metadata.systemManaged` (the auto-provisioned `*@mail.auxx.ai` forwarding address). The create
-guard and the overage detector both call it, so they cannot drift.
+guard and the overage detector both call it, so they cannot drift. The limit is re-checked at
+phase two as well as at `prepareConnect` — arbitrary wall-clock (and another admin's connect) can
+pass in between.
 
 ---
 
@@ -808,6 +958,20 @@ components in `~/components/mail` (thread list/display/composer, chat panel, sea
     deliberately added, and a type whose payload narrates an identity/read-tier fact
     (subject, body snippet) must not join the vocabulary at all — it would leak through the
     events sidecar what `redactThreadMeta` blanks on the thread itself.
+29. **A committed credential is not a connected channel.** The OAuth callback commits the
+    `Credential` before it runs the post-connect hook, so anything that polls `connections.list`
+    to answer "did the connect work" answers *yes* while provisioning is still in flight. Listen
+    for the hook's own `connection:settled`, or read its outcome (`channel.list`, or the parked
+    selection) — §5.5.
+30. **Never make the picker's *appearance* depend on a connect signal.** Clicking Connect opens
+    the step; `connection:settled` and `pendingConnectSelection` only fill it in. `awaiting` is a
+    latency hint, the query is the authority, and `utils.*.fetch()` honours `staleTime` — §5.5.
+31. **`getIdentifier` is a routing identity, never a label.** On FB/IG it is the bare Page / IG
+    account id, and it becomes the FROM `Participant` of every outbound message from that channel.
+    Anything user-facing reads `getChannelLabel` / the cached `displayName`.
+32. **A fresh FB/IG connect always shows the Page picker, even for a one-Page grant.** It is the
+    demonstration Meta's app review requires for `pages_show_list`, not a UX nicety to gate on
+    ambiguity — §5.4.
 
 ---
 
@@ -816,7 +980,16 @@ components in `~/components/mail` (thread list/display/composer, chat panel, sea
 **Channels** — `packages/lib/src/channels/`: `lifecycle.ts` (create/link), `list.ts` (+
 `countBillableChannels`), `manage-access.ts` (per-channel authority), `personal-connection.ts`,
 `provisioning-hook.ts` / `social-provisioning-hook.ts` / `openphone-provisioning-hook.ts`,
-`settings.ts`, `sync.ts`, `disconnect.ts`, `capabilities.ts`, `types.ts`.
+`register-hooks.ts`, `channel-connection-def.ts`, `connect-inbox.ts`,
+`social-page-selection.ts` + `internal/social-integration.ts` (two-phase FB/IG connect),
+`internal/identifier.ts` (`getIdentifier` = routing identity vs `getChannelLabel` = display),
+`settings.ts`, `sync.ts`, `recover.ts`, `disconnect.ts`, `capabilities.ts`, `types.ts`.
+
+**Connect (client + seam)** — `apps/web/src/components/channels/ui/channel-gallery-dialog.tsx`
+(+ `connect-selection-page.tsx`, `inbox-destination-field.tsx`),
+`apps/web/src/components/apps/hooks/use-connect-flow.tsx`, `apps/web/src/hooks/use-oauth-popup.ts`,
+`apps/web/src/app/api/connections/[connectionDefinitionId]/oauth2/{authorize,callback}/route.ts`,
+`packages/lib/src/connections/{post-connect-hooks,pending-selection,save-connection}.ts`.
 
 **Providers** — `packages/lib/src/providers/`: `channel-provider.interface.ts`,
 `provider-registry-service.ts`, `provider-capabilities.ts`, `sync-mode-resolver.ts`,

@@ -221,16 +221,27 @@ describe('socialProvisioningHook — Facebook user id is mandatory', () => {
 })
 
 describe('socialProvisioningHook — candidate gating', () => {
-  it('provisions with zero extra clicks when the grant has one Page', async () => {
+  it('still asks when the grant reaches exactly one Page', async () => {
+    // A single Page is a confirmation, not a choice — and it runs anyway. Meta's app review has
+    // to see what `pages_show_list` is used for, and an auto-selecting connect shows a reviewer
+    // nothing. Reverting this to a zero-click path breaks that justification, not just a test.
     stubGraph({ pages: [{ id: 'page-1', name: 'Acme', access_token: 'page-token' }] })
 
     const result = await socialProvisioningHook.run(ctx)
 
-    expect(result).toBeUndefined()
-    expect(setChannelTokens).toHaveBeenCalledTimes(1)
-    expect(subscribePageToApp).toHaveBeenCalledWith('facebook', 'page-1', expect.any(String))
-    expect(assertSharedConnectInbox).toHaveBeenCalled()
-    expect(writePendingSelection).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      awaiting: { kind: 'social-page-selection', credentialId: 'cred_cuid00000000000000000000' },
+    })
+    expect(upsertSocialIntegration).not.toHaveBeenCalled()
+    expect(setChannelTokens).not.toHaveBeenCalled()
+    expect(subscribePageToApp).not.toHaveBeenCalled()
+    expect(writePendingSelection).toHaveBeenCalledWith(
+      'cred_cuid00000000000000000000',
+      'org_cuid000000000000000000000',
+      expect.objectContaining({
+        payload: expect.objectContaining({ candidateIds: ['page-1'] }),
+      })
+    )
   })
 
   it('provisions NOTHING when two Pages are candidates', async () => {
@@ -345,7 +356,7 @@ describe('socialProvisioningHook — reconnect forces the bound Page', () => {
 })
 
 describe('socialProvisioningHook — Instagram candidates', () => {
-  it('auto-selects the one Page with a linked account, and probes nothing', async () => {
+  it('offers only the one Page with a linked account, and probes nothing', async () => {
     const { probeCalls } = stubGraph({
       pages: [
         { id: 'page-1', name: 'Acme', access_token: 't1' },
@@ -360,14 +371,25 @@ describe('socialProvisioningHook — Instagram candidates', () => {
 
     const result = await socialProvisioningHook.run(igCtx)
 
-    expect(result).toBeUndefined()
+    expect(result).toMatchObject({ awaiting: { kind: 'social-page-selection' } })
     // Rule 2: something came back expanded, so the per-page probe never runs.
     expect(probeCalls).toEqual([])
-    expect(upsertSocialIntegration).toHaveBeenCalledWith(
+    // `page-1` has no linked account, so it rides along as a DISABLED option rather than a
+    // candidate — the picker renders the whole grant, and only candidates are selectable.
+    expect(writePendingSelection).toHaveBeenCalledWith(
+      'cred_cuid00000000000000000000',
+      'org_cuid000000000000000000000',
       expect.objectContaining({
-        identity: expect.objectContaining({ pageId: 'page-2', instagramAccountId: 'ig-2' }),
+        payload: expect.objectContaining({
+          candidateIds: ['page-2'],
+          pages: [
+            expect.objectContaining({ id: 'page-1' }),
+            expect.objectContaining({ id: 'page-2', igBusinessAccountId: 'ig-2' }),
+          ],
+        }),
       })
     )
+    expect(upsertSocialIntegration).not.toHaveBeenCalled()
   })
 
   it('asks when two Pages both have linked accounts', async () => {

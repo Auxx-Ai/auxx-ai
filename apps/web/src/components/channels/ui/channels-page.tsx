@@ -139,7 +139,11 @@ export function ChannelsPage() {
           <SuppressionList />
         </TabsContent>
 
-        <ChannelGalleryDialog open={galleryOpen} onOpenChange={setGalleryOpen} />
+        <ChannelGalleryDialog
+          open={galleryOpen}
+          onOpenChange={setGalleryOpen}
+          resumePendingConnect
+        />
       </SettingsPage>
     </Tabs>
   )

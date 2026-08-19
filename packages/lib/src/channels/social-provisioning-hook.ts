@@ -1,15 +1,19 @@
 // packages/lib/src/channels/social-provisioning-hook.ts
 // Post-connect provisioning for social channels (Facebook / Instagram). The generic OAuth
 // callback commits a Credential holding the short-lived Facebook USER token, then runs this
-// hook to discover the grant and decide whether the connect can finish on its own:
-//
-//   0 or 1 candidate Page → provision immediately (the zero-click path, unchanged)
-//   2+ candidate Pages    → park a pending marker and return `awaiting` — NO Integration, NO
-//                           page token, NO webhook — for the in-app picker to finish
+// hook to discover the grant. A FRESH connect never finishes here: it parks a pending marker and
+// returns `awaiting` — NO Integration, NO page token, NO webhook — for the in-app picker to
+// finish. The one exception is a full-OAuth reconnect of a live channel, which is forced onto the
+// Page it already has (see below) and provisions inline.
 //
 // `/me/accounts` returns every Page the connecting user administers. Auto-selecting `pages[0]`
-// gave a multi-Page business whichever Page Graph happened to return first, silently. The picker
-// is gated on genuine ambiguity, so a single-Page connect is still zero extra clicks.
+// gave a multi-Page business whichever Page Graph happened to return first, silently.
+//
+// The picker runs even when the grant reaches exactly ONE Page, where it is a confirmation rather
+// than a choice. That is deliberate and NOT a UX oversight: Meta's app review requires us to
+// demonstrate what `pages_show_list` is for, and a connect that silently auto-selects shows a
+// reviewer nothing. A screen that lists the Pages the grant reached, and connects the one the
+// user picks, IS the justification for the permission.
 //
 // Token model: the page token is what every runtime read (facebook-provider / instagram-provider
 // / getPageAccessToken / revoke) needs, and getChannelTokens already serves the credential secret
@@ -142,11 +146,11 @@ async function resolveInstagramFor(page: FacebookPage): Promise<InstagramAccount
 }
 
 /**
- * Turn one chosen Page into a channel — the tail both the single-candidate connect and the
- * forced reconnect run.
+ * Turn one chosen Page into a channel — the tail the forced reconnect runs. A fresh connect never
+ * reaches it; the picker's `provisionSocialChannel` is what provisions those.
  *
  * Deliberately the SAME body phase two runs (`provisionSocialChannel`): token swap → Integration
- * upsert → inbox link → page cache → webhook → publish. Two copies of this is how the zero-click
+ * upsert → inbox link → page cache → webhook → publish. Two copies of this is how the reconnect
  * path and the picker path would drift.
  */
 async function provisionChosenPage(
@@ -269,52 +273,46 @@ export const socialProvisioningHook: PostConnectHook = {
       return
     }
 
-    const { candidates, instagramByPageId } = await selectSocialCandidates(provider, grant.pages)
-    const chosen = candidates.length === 1 ? candidates[0]! : null
+    const { candidates } = await selectSocialCandidates(provider, grant.pages)
 
-    if (!chosen) {
-      // PICKER PATH — validate the inbox first so a bad one fails here rather than after the
-      // user has picked, park the marker, and hand the choice to the UI. Nothing is provisioned.
-      const inboxRecordId = await assertSharedConnectInbox(
-        db,
-        ctx.organizationId,
-        ctx.extra?.inboxId as string | undefined
-      )
+    // PICKER PATH — validate the inbox first so a bad one fails here rather than after the user
+    // has picked, park the marker, and hand the choice to the UI. Nothing is provisioned.
+    const inboxRecordId = await assertSharedConnectInbox(
+      db,
+      ctx.organizationId,
+      ctx.extra?.inboxId as string | undefined
+    )
 
-      // Repeated abandoned connects would otherwise accumulate orphan credentials, because
-      // `saveConnection` with no `connectionId` always INSERTs. Caps them at one per
-      // (org, provider, user).
-      await deleteSupersededPendingCredentials({
-        organizationId: ctx.organizationId,
-        userId: ctx.userId,
-        providerKey: ctx.providerKey,
-        keepCredentialId: ctx.credentialId,
-      })
+    // Repeated abandoned connects would otherwise accumulate orphan credentials, because
+    // `saveConnection` with no `connectionId` always INSERTs. Caps them at one per
+    // (org, provider, user).
+    await deleteSupersededPendingCredentials({
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      providerKey: ctx.providerKey,
+      keepCredentialId: ctx.credentialId,
+    })
 
-      const payload: SocialPageSelectionPayload = {
-        provider,
-        inboxRecordId,
-        facebookUserId: grant.facebookUserId,
-        candidateIds: candidates.map((page) => page.id),
-        pages: grant.availablePages,
-      }
-      await writePendingSelection<SocialPageSelectionPayload>(
-        ctx.credentialId,
-        ctx.organizationId,
-        { kind: SOCIAL_PAGE_SELECTION_KIND, providerKey: ctx.providerKey, payload }
-      )
-      await cacheAvailablePages(ctx.credentialId, grant.availablePages)
-
-      logger.info('Social connect awaiting a page selection', {
-        credentialId: ctx.credentialId,
-        provider,
-        candidates: candidates.length,
-        pages: grant.pages.length,
-      })
-      return { awaiting: { kind: SOCIAL_PAGE_SELECTION_KIND, credentialId: ctx.credentialId } }
+    const payload: SocialPageSelectionPayload = {
+      provider,
+      inboxRecordId,
+      facebookUserId: grant.facebookUserId,
+      candidateIds: candidates.map((page) => page.id),
+      pages: grant.availablePages,
     }
+    await writePendingSelection<SocialPageSelectionPayload>(ctx.credentialId, ctx.organizationId, {
+      kind: SOCIAL_PAGE_SELECTION_KIND,
+      providerKey: ctx.providerKey,
+      payload,
+    })
+    await cacheAvailablePages(ctx.credentialId, grant.availablePages)
 
-    // ZERO-CLICK PATH — one candidate, nothing to ask.
-    await provisionChosenPage(ctx, provider, grant, chosen, instagramByPageId.get(chosen.id))
+    logger.info('Social connect awaiting a page selection', {
+      credentialId: ctx.credentialId,
+      provider,
+      candidates: candidates.length,
+      pages: grant.pages.length,
+    })
+    return { awaiting: { kind: SOCIAL_PAGE_SELECTION_KIND, credentialId: ctx.credentialId } }
   },
 }

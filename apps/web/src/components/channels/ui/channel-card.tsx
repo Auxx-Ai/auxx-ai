@@ -127,13 +127,14 @@ export function ChannelCard({ channel, inboxes }: { channel: Channel; inboxes: I
         channel.provider === 'chat' ||
         isForwarding ||
         isSyncing ||
-        syncMessages.isPending,
+        syncMessages.isPending ||
+        disconnect.isPending,
       onClick: () => syncMessages.mutate({ integrationId: channel.id, days: 7 }),
     },
     {
       label: channel.enabled ? 'Disable' : 'Enable',
       icon: <Power />,
-      disabled: !canManage,
+      disabled: !canManage || disconnect.isPending,
       onClick: () => toggle.mutate({ integrationId: channel.id, enabled: !channel.enabled }),
     },
     ...(channel.requiresReauth
@@ -147,10 +148,17 @@ export function ChannelCard({ channel, inboxes }: { channel: Channel; inboxes: I
         ]
       : []),
     {
-      label: 'Disconnect',
+      // `disconnect` is the slowest mutation on this card by a wide margin — an OAuth revoke
+      // round trip, then a transaction that hard-deletes every Thread and Message the channel
+      // owns, then cache + counter + cleanup-job work. On a mailbox with real history that is
+      // seconds, and without this the card sits there looking completely untouched the whole
+      // time: no spinner, no dimming, the menu still fully interactive. That reads as "I
+      // disconnected it and it's still there", and invites a second click on a channel that is
+      // already being deleted.
+      label: disconnect.isPending ? 'Disconnecting…' : 'Disconnect',
       icon: <Trash2 />,
       destructive: true,
-      disabled: !canManage || isForwarding,
+      disabled: !canManage || isForwarding || disconnect.isPending,
       onClick: handleDisconnect,
     },
   ]
@@ -158,6 +166,10 @@ export function ChannelCard({ channel, inboxes }: { channel: Channel; inboxes: I
   return (
     <>
       <ListCard
+        // Dimmed and inert for the whole delete: it is a multi-second destructive mutation with
+        // no other on-card signal, and the tile stays clickable through to its (now doomed)
+        // detail route otherwise.
+        className={disconnect.isPending ? 'pointer-events-none opacity-60' : undefined}
         icon={getIntegrationProviderIcon(channel.provider, 'size-4')}
         title={displayName}
         subtitle={
@@ -168,7 +180,12 @@ export function ChannelCard({ channel, inboxes }: { channel: Channel; inboxes: I
               : ''}
           </span>
         }
-        status={channelStatus(channel)}
+        status={
+          // The dot is the only always-visible state on the tile, so it carries the disconnect
+          // too — the menu is closed by the time the mutation starts, and the confirm dialog has
+          // already dismissed.
+          disconnect.isPending ? { tone: 'muted', label: 'Disconnecting…' } : channelStatus(channel)
+        }
         badges={renderBadgeChips(chips)}
         href={`${DETAIL_BASE}/${channel.id}`}
         menuItems={menuItems}

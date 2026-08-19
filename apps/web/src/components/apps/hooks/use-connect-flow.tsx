@@ -104,6 +104,11 @@ export interface ConnectFlowArgs {
    * connection-list snapshot verify. Required when the credential isn't visible in
    * `connections.list` / `apps.listConnections` — e.g. channel credentials, which only the
    * `channelReauth` router can observe — where the default verify polls `null` forever.
+   *
+   * NOT the place to detect a connect the post-connect hook has yet to finish. The callback
+   * commits the credential *before* it runs the hook, so any verify can settle mid-provisioning;
+   * a surface that needs the hook's own outcome subscribes to `connection:settled`
+   * (`@auxx/lib/connections/client`) instead of polling for it.
    */
   verify?: () => Promise<string | boolean | null>
 }

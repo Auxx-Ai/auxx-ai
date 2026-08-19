@@ -125,7 +125,11 @@ export default function IntegrationTabs() {
     <Tabs defaultValue={activeTab} onValueChange={handleTabChange} className='w-full'>
       <SettingsPage
         title={title}
-        description={integration.identifier || 'Manage your integration settings'}
+        // `identifier` is a ROUTING identity, not a label — on a Meta channel it is the bare
+        // Page / IG account id, which read as a mystery number in the page header.
+        description={
+          integration.displayName || integration.identifier || 'Manage your integration settings'
+        }
         breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, parentCrumb, { title }]}
         button={
           <div className='flex items-center gap-3'>

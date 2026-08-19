@@ -135,9 +135,39 @@ describe('channels.list cache + live merge', () => {
     expect(int!.throttleRetryAfter).toEqual(new Date('2025-01-04'))
   })
 
-  it('falls back to nullish live state when no live row is found', async () => {
+  /**
+   * The database — not the cache — decides which channels exist.
+   *
+   * The row set starts as the org cache's `channels` entry, so before this rule a channel stayed
+   * listed for exactly as long as the cache said it existed: a disconnect whose invalidation
+   * failed, or lost a race with a concurrent recompute, kept rendering a channel that was gone.
+   * The live query already asks for these ids with `deletedAt IS NULL`, so the answer was there
+   * the whole time and was only being used for sync columns.
+   *
+   * This used to assert the opposite — that a cached channel with no live row is still returned,
+   * with nullish sync state. That was a test of the `??` defaults rather than a decision about
+   * deleted channels, and the defaults are covered below on a row that does exist.
+   */
+  it('drops a cached channel the database no longer confirms — a disconnect cannot linger', async () => {
     const { list } = await import('../list')
     const db = buildMockDb([])
+    const result = await list({ db, organizationId: 'org_1' })
+
+    expect(result.channels).toHaveLength(0)
+  })
+
+  it('still defaults nullish sync columns on a channel that has never synced', async () => {
+    const { list } = await import('../list')
+    const db = buildMockDb([
+      {
+        id: 'int_1',
+        syncStatus: null,
+        syncStage: null,
+        syncStageStartedAt: null,
+        throttleFailureCount: null,
+        throttleRetryAfter: null,
+      },
+    ])
     const result = await list({ db, organizationId: 'org_1' })
     const int = result.channels[0]
 
