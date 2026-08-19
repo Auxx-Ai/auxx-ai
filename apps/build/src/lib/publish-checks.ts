@@ -81,19 +81,32 @@ export interface ConnectionForPublishCheck {
   // Presence-only — credential values never ship on the list path
   hasClientId: boolean
   hasClientSecret: boolean
-  oauth2Scopes: string[] | null
+}
+
+/**
+ * Whether a connection mints its own tokens and therefore needs OAuth validation before publish.
+ * Types 'secret' and 'none' carry no OAuth config. Keep every publish surface on this predicate —
+ * a checklist row that disagrees with it blocks submission with nothing on screen to explain why.
+ */
+export function isMintingConnection(connection: ConnectionForPublishCheck): boolean {
+  return (
+    connection.connectionType === 'oauth2-code' ||
+    connection.connectionType === 'client-credentials'
+  )
 }
 
 /**
  * Check that all token-minting connections (oauth2-code, client-credentials) are fully configured.
  * Connections with type 'secret' or 'none' require no validation. `client-credentials` mints with
  * no browser step, so it needs the same fields as oauth2-code minus the Authorize URL.
+ *
+ * Scopes are deliberately NOT required: plenty of providers (UPS among them) take no scope on the
+ * authorize request, and the connections form already treats the field as optional. Demanding one
+ * here only forced developers to invent a placeholder that then gets sent to the provider.
  * @returns true if no minting connections exist, or all are properly configured
  */
 export function isConnectionsConfigComplete(connections: ConnectionForPublishCheck[]): boolean {
-  const mintingConnections = connections.filter(
-    (c) => c.connectionType === 'oauth2-code' || c.connectionType === 'client-credentials'
-  )
+  const mintingConnections = connections.filter(isMintingConnection)
   if (mintingConnections.length === 0) return true
 
   return mintingConnections.every((c) => {
@@ -104,7 +117,6 @@ export function isConnectionsConfigComplete(connections: ConnectionForPublishChe
       oauth2AccessTokenUrl: isValidStringField(c.oauth2AccessTokenUrl),
       oauth2ClientId: c.hasClientId,
       oauth2ClientSecret: c.hasClientSecret,
-      oauth2Scopes: (c.oauth2Scopes ?? []).length > 0,
     }
     return Object.values(checks).every((check) => check)
   })
