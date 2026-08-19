@@ -165,8 +165,14 @@ const installedApps = vi.fn(async (..._a: unknown[]) => [
     workflowBlocks: [],
   },
 ])
+/** The global marketplace catalog `list_app_blocks` offers as installable. */
+const publishedApps = vi.fn(async () => [
+  { id: 'appfedex', slug: 'fedex', title: 'Fedex', description: 'Track FedEx shipments' },
+  { id: 'appups', slug: 'ups', title: 'UPS', description: 'Track UPS shipments' },
+])
 vi.mock('../../../../../../cache', () => ({
   getCachedInstalledApps: (...a: unknown[]) => installedApps(...a),
+  getCachedPublishedApps: (...a: unknown[]) => publishedApps(...a),
 }))
 
 /**
@@ -723,18 +729,31 @@ describe('discovery tools', () => {
     }
   })
 
-  it('list_app_blocks reports an actionable error when nothing matches', async () => {
+  /**
+   * An empty search result is an ANSWER (plan 19 §2). It used to come back as
+   * `success: false`, which rendered `Failed: List App Blocks` and taught the
+   * model to reword its query — 33 times, in the transcript that motivated the
+   * change. The guidance moved into `note`; the branch coverage lives in
+   * `list-app-blocks.test.ts`.
+   */
+  it('list_app_blocks answers, not fails, when nothing matches', async () => {
     const result = await run(tool('list_app_blocks'), { query: 'quantum-blockchain' })
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('quantum-blockchain')
-    expect(result.error).toContain('without a query')
+    expect(result.success).toBe(true)
+    const out = result.output as { blocks: unknown[]; note: string }
+    expect(out.blocks).toEqual([])
+    expect(out.note).toContain('quantum-blockchain')
   })
 
   it('list_app_blocks says so when no installed app contributes a block', async () => {
     installedApps.mockResolvedValueOnce([])
     const result = await run(tool('list_app_blocks'))
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('No app installed in this workspace')
+    expect(result.success).toBe(true)
+    const out = result.output as { blocks: unknown[]; notInstalled: unknown[]; note: string }
+    expect(out.blocks).toEqual([])
+    expect(out.note).toContain('No app installed in this workspace')
+    // …and the marketplace half of the answer: nothing installed here, so both
+    // published apps are installable.
+    expect(out.notInstalled).toHaveLength(2)
   })
 
   /**
