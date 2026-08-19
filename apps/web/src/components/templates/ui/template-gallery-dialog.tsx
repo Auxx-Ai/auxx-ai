@@ -42,6 +42,30 @@ interface DetailHelpers {
   close: () => void
 }
 
+/**
+ * A page that is NOT an item's detail — a step the gallery navigates to on its own, above both
+ * list and detail. Present means active: the shell shows this page for as long as the caller
+ * passes it, so the caller drives navigation by producing/withholding the object rather than by
+ * calling a navigate function.
+ *
+ * It exists because some flows have a step the catalog cannot express. Finishing a two-phase
+ * connect is the case today: the OAuth hop is over, so "the Facebook detail page" is no longer
+ * what the user is looking at, and `back` to a connect form that already ran would be a lie. The
+ * page therefore declares its own crumb, its own width, its own footer, and offers Back only if
+ * the caller says going back means something.
+ */
+export interface GalleryExtraPage {
+  /** Trailing crumb, after the gallery's own. */
+  crumb: string
+  /** Page width, `DialogNavPage` size tokens. Defaults to `md`. */
+  size?: ComponentProps<typeof DialogNavPage>['size']
+  render: (helpers: DetailHelpers) => ReactNode
+  /** Footer actions beside Cancel. */
+  footer?: ReactNode
+  /** Omit for no Back button — the correct default for a step that cannot be undone. */
+  onBack?: () => void
+}
+
 interface TemplateGalleryDialogProps<T extends TemplateGalleryItem> {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -91,6 +115,12 @@ interface TemplateGalleryDialogProps<T extends TemplateGalleryItem> {
   onDetailExit?: () => void
 
   /**
+   * Take over the body with a caller-driven step (see {@link GalleryExtraPage}). Non-null wins
+   * over both list and detail.
+   */
+  extraPage?: GalleryExtraPage | null
+
+  /**
    * Controlled selection — only entity needs this (preSelectedTemplateIds opens
    * straight into the detail page). Uncontrolled when omitted.
    */
@@ -132,6 +162,7 @@ export function TemplateGalleryDialog<T extends TemplateGalleryItem>({
   renderDetailFooter,
   detailBusy,
   onDetailExit,
+  extraPage,
   selectedId,
   onSelectedIdChange,
   contentProps,
@@ -192,7 +223,9 @@ export function TemplateGalleryDialog<T extends TemplateGalleryItem>({
     [items, currentSelectedId]
   )
 
-  const page = currentSelectedId != null && renderDetail ? 'detail' : 'list'
+  // `extra` wins: it is a step the caller navigated to deliberately, and the selection behind it
+  // (if any) is stale context by then, not the page the user is on.
+  const page = extraPage ? 'extra' : currentSelectedId != null && renderDetail ? 'detail' : 'list'
 
   function setSelected(id: string | null) {
     if (!isControlled) setInternalSelectedId(id)
@@ -234,16 +267,9 @@ export function TemplateGalleryDialog<T extends TemplateGalleryItem>({
           <DialogNav
             title={title}
             description={description}
-            onBack={page === 'detail' ? back : undefined}
+            onBack={page === 'extra' ? extraPage?.onBack : page === 'detail' ? back : undefined}
             backDisabled={detailBusy}
-            crumbs={
-              page === 'detail' && selectedItem
-                ? [
-                    { label: crumbLabel, icon: crumbIcon, onClick: back },
-                    { label: detailCrumb?.(selectedItem) ?? selectedItem.name },
-                  ]
-                : [{ label: crumbLabel, icon: crumbIcon }]
-            }
+            crumbs={crumbs()}
           />
 
           <DialogNavPages value={page}>
@@ -252,6 +278,9 @@ export function TemplateGalleryDialog<T extends TemplateGalleryItem>({
             </DialogNavPage>
             <DialogNavPage value='detail' size={detailSize}>
               {selectedItem && renderDetail?.(selectedItem, helpers)}
+            </DialogNavPage>
+            <DialogNavPage value='extra' size={extraPage?.size ?? 'md'}>
+              {extraPage?.render(helpers)}
             </DialogNavPage>
           </DialogNavPages>
 
@@ -265,6 +294,7 @@ export function TemplateGalleryDialog<T extends TemplateGalleryItem>({
               <Button size='sm' variant='ghost' onClick={close} disabled={detailBusy}>
                 Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
               </Button>
+              {page === 'extra' && extraPage?.footer}
               {page === 'detail' && selectedItem && renderDetailFooter?.(selectedItem, helpers)}
             </div>
           </div>
@@ -272,6 +302,24 @@ export function TemplateGalleryDialog<T extends TemplateGalleryItem>({
       </DialogContent>
     </Dialog>
   )
+
+  function crumbs() {
+    if (page === 'extra' && extraPage) {
+      // The gallery crumb is a jump only when Back is — an extra page with no way back has no
+      // clickable ancestor either, or the crumb becomes the escape hatch Back deliberately isn't.
+      return [
+        { label: crumbLabel, icon: crumbIcon, onClick: extraPage.onBack },
+        { label: extraPage.crumb },
+      ]
+    }
+    if (page === 'detail' && selectedItem) {
+      return [
+        { label: crumbLabel, icon: crumbIcon, onClick: back },
+        { label: detailCrumb?.(selectedItem) ?? selectedItem.name },
+      ]
+    }
+    return [{ label: crumbLabel, icon: crumbIcon }]
+  }
 
   function renderList() {
     return (

@@ -1090,16 +1090,27 @@ export const channelRouter = createTRPCRouter({
                 ? !!page.igBusinessAccountId && connected.has(page.igBusinessAccountId)
                 : connected.has(page.id)
             const selectable = candidateIds.has(page.id) && !claimed
+            const disabledReason = selectable
+              ? null
+              : claimed
+                ? 'Already connected in this organization'
+                : 'No linked Instagram Professional account'
             return {
               id: page.id,
               label: page.name,
               sublabel: page.igUsername ? `@${page.igUsername}` : null,
+              /**
+               * The line UNDER the label — always populated, because a card with a bare title and
+               * an empty description row reads as broken.
+               *
+               * Why the Page id when the option is pickable: it is the only other fact we hold
+               * about a Page, it is what the channel's `identifier` and `webhookRouteKey` become,
+               * and it is the one thing that tells two identically-named Pages apart — which is
+               * exactly the situation this picker exists for.
+               */
+              description: disabledReason ?? `Page ID ${page.id}`,
               selectable,
-              disabledReason: selectable
-                ? null
-                : claimed
-                  ? 'Already connected'
-                  : 'No Instagram account linked',
+              disabledReason,
             }
           }),
         }

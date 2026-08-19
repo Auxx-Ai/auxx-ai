@@ -11,7 +11,7 @@ import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { toastError } from '@auxx/ui/components/toast'
 import { ChevronDown, ChevronRight, Lock, Users, Waypoints } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   type ConnectFlowArgs,
   type ConnectFlowDefinition,
@@ -25,7 +25,7 @@ import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { CHANNEL_CATALOG, CHANNEL_CATEGORIES, type ChannelCatalogItem } from '../catalog'
 import { getIntegrationProviderIcon } from './channel-icon'
-import { ConnectSelectionDialog } from './connect-selection-dialog'
+import { useConnectSelection } from './connect-selection-page'
 import ImapConnectForm from './imap-connect-form'
 import { InboxDestinationField, useInboxDestination } from './inbox-destination-field'
 import QuoConnectForm from './quo-connect-form'
@@ -42,6 +42,17 @@ interface ChannelGalleryDialogProps {
   personalOnly?: boolean
   /** OAuth return destination. */
   returnTo?: string
+  /**
+   * Also resume a two-phase connect parked before this dialog opened — a reload mid-pick, a popup
+   * that was blocked into a full-page redirect, a closed tab. The dialog opens itself onto the
+   * selection step when it finds one.
+   *
+   * Opt-in per host, because self-opening is only correct where the parked connect could have
+   * landed: the channels settings page (the OAuth `returnTo`) and an inbox's detail page. The
+   * personal-inbox gallery never sets it — a personal connect parks nothing, and its members
+   * can't read the query anyway.
+   */
+  resumePendingConnect?: boolean
 }
 
 /**
@@ -55,6 +66,7 @@ export function ChannelGalleryDialog({
   initialInboxId,
   personalOnly = false,
   returnTo = DEFAULT_RETURN_TO,
+  resumePendingConnect = false,
 }: ChannelGalleryDialogProps) {
   const router = useRouter()
   const utils = api.useUtils()
@@ -109,28 +121,68 @@ export function ChannelGalleryDialog({
   const { data: providers = [] } = api.connections.listProviders.useQuery(undefined, {
     enabled: open && !personalOnly,
   })
+  /** A channel now exists — refresh every list that shows one, and get out of the way. */
+  function finishConnect() {
+    void utils.channel.list.invalidate()
+    void utils.inbox.settingsList.invalidate()
+    void utils.record.listAll.invalidate()
+    onOpenChange(false)
+  }
+
+  /**
+   * Whether the selection step owns the dialog body, readable from `flow`'s callbacks — which are
+   * declared before it. A ref rather than an ordering shuffle because the two genuinely refer to
+   * each other: the flow suppresses its settle while the step is up, and the step releases the
+   * flow when the server answers.
+   */
+  const selectionActive = useRef(false)
+
   const flow = useConnectFlow({
     showName: true,
+    // Suppressed while the selection step owns the body: the popup settled on a credential, but
+    // a two-phase connect has no channel yet, and closing here would take the picker with it.
     onConnected: () => {
-      void utils.channel.list.invalidate()
-      void utils.inbox.settingsList.invalidate()
-      void utils.record.listAll.invalidate()
-      onOpenChange(false)
+      if (selectionActive.current) return
+      finishConnect()
     },
-    // The credential committed but NOTHING was provisioned — the connect needs a choice (which
-    // Facebook Page). Close the gallery so the picker is the only thing on screen, and pull the
-    // pending query so it opens without waiting for a refetch interval. Deliberately NOT
-    // `onConnected`: there is no channel yet, and invalidating `channel.list` here would render
-    // a success the user has not earned.
-    onAwaiting: () => {
-      void utils.channel.pendingConnectSelection.invalidate()
-      onOpenChange(false)
-    },
+    // The popup's `awaiting` hint. Purely a latency shortcut now — the step is already on screen
+    // and its own signals fill it in — so all this does is skip one poll interval.
+    onAwaiting: () => void utils.channel.pendingConnectSelection.invalidate(),
   })
+
+  /**
+   * The selection step, for connects the OAuth callback cannot finish on its own (which Facebook
+   * Page becomes the channel).
+   *
+   * Nothing here waits for a signal to decide whether to show it: `connectOAuth` calls `begin()`
+   * on click, and the step fills itself in from `connection:settled` / its own poll. See
+   * `connect-selection-page.tsx` for why that inversion is the whole fix.
+   */
+  const selection = useConnectSelection({
+    enabled: !personalOnly && canConnectShared,
+    resume: resumePendingConnect,
+    // Whatever the popup is still doing, the server has answered — release the busy state so a
+    // popup that can no longer be observed (COOP, a closed tab) doesn't hold the UI to its
+    // 180s ceiling.
+    onSettled: () => flow.cancel(),
+    onFinished: finishConnect,
+  })
+  // `extraPage` is a fresh object every render, so gate on the boolean — otherwise every effect
+  // and ref keyed on it churns once per render for the whole life of the step.
+  const onSelectionStep = !!selection.extraPage
+  selectionActive.current = onSelectionStep
+
+  // Resume: a parked connect found on mount opens the dialog onto its step.
+  useEffect(() => {
+    if (onSelectionStep && !open) onOpenChange(true)
+  }, [onSelectionStep, open, onOpenChange])
 
   const createChatChannel = api.channel.createChatChannel.useMutation()
 
-  const detailBusy = createChatChannel.isPending || inbox.creating || flow.pending
+  // Not applied on the selection step: the popup flow can still read as pending there (an
+  // unobservable popup holds `pending` until its ceiling), and Cancel is the only way out of it.
+  const detailBusy =
+    !onSelectionStep && (createChatChannel.isPending || inbox.creating || flow.pending)
 
   function resetDetail() {
     inbox.reset()
@@ -173,6 +225,10 @@ export function ChannelGalleryDialog({
     if (!prep.data) return
     try {
       const postConnect = isPersonal ? undefined : { inboxId: await inbox.resolve() }
+      // A social connect always stops short of provisioning to ask which Page (even for a grant
+      // that reached exactly one — see `connect-selection-page.tsx`), so move to that step NOW,
+      // with the popup opening on top of it. Nothing later has to decide to open it.
+      if (item.kind === 'social') selection.begin()
       // BYO-client id/secret are collected inline (renderOwnClientFields) — `connectWith` skips
       // the hook's own variable dialog and submits these values straight into the OAuth kickoff.
       flow.connectWith(
@@ -444,7 +500,12 @@ export function ChannelGalleryDialog({
     <>
       <TemplateGalleryDialog<ChannelCatalogItem>
         open={open}
-        onOpenChange={onOpenChange}
+        onOpenChange={(next) => {
+          // The shell's Cancel is a host-level close, so dismissing the selection step arrives
+          // here. Tell it, or the resume path re-opens what the user just closed.
+          if (!next && onSelectionStep) selection.dismiss()
+          onOpenChange(next)
+        }}
         title={personalOnly ? 'Connect personal account' : 'Add a channel'}
         description={
           personalOnly
@@ -459,6 +520,7 @@ export function ChannelGalleryDialog({
         selectedId={selectedId}
         onSelectedIdChange={setSelectedId}
         detailSize='lg'
+        extraPage={selection.extraPage}
         onDetailExit={resetDetail}
         detailBusy={detailBusy}
         renderIcon={(item) => (
@@ -515,9 +577,6 @@ export function ChannelGalleryDialog({
         }}
       />
       {flow.Dialogs}
-      {/* Self-drives from `channel.pendingConnectSelection`, so mounting it here covers all
-          three gallery hosts (channels-page, inbox-list, inbox-detail). */}
-      <ConnectSelectionDialog />
     </>
   )
 }

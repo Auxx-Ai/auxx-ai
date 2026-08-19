@@ -60,6 +60,20 @@ export async function list(ctx: ChannelCtx) {
     : []
   const liveMap = new Map(liveState.map((r) => [r.id, r]))
 
+  /**
+   * Existence is a DATABASE fact; the cache only supplies metadata.
+   *
+   * The row set above comes from the org cache, so a channel survived in this list for exactly as
+   * long as the cache said it existed — and a disconnect that failed to invalidate (or lost a race
+   * with a concurrent recompute) kept rendering a channel that is gone. The `liveState` query
+   * already asks the database for these exact ids with `deletedAt IS NULL`; it just threw the
+   * answer away and used it for sync columns only.
+   *
+   * So drop anything the database does not confirm. Disconnect is a soft delete, and there are no
+   * read replicas, so a cached id with no live row is deleted — never merely lagging.
+   */
+  cached = cached.filter((c) => liveMap.has(c.id))
+
   const syncingIds = liveState.filter((r) => r.syncStatus === 'SYNCING').map((r) => r.id)
   const importCounts = await Promise.all(
     syncingIds.map(async (id) => ({ id, count: await getImportCacheSize(id) }))
@@ -72,6 +86,10 @@ export async function list(ctx: ChannelCtx) {
       id: c.id,
       provider: c.provider,
       name: c.name,
+      // The human label (`getChannelLabel`), as opposed to `identifier` below, which is the
+      // routing identity and is a bare Page id on Meta channels. Anything user-facing reads
+      // this; anything that addresses or keys a participant reads `identifier`.
+      displayName: c.displayName,
       enabled: c.enabled,
       updatedAt: toDate(c.updatedAt),
       lastSyncedAt: toDate(c.lastSyncedAt),

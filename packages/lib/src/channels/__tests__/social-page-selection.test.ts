@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   setChannelTokens,
-  assertSharedConnectInbox,
+  assertSharedConnectInboxByRecordId,
   upsertSocialIntegration,
   cacheAvailablePages,
   subscribePageToApp,
@@ -21,7 +21,7 @@ const {
   publishLater,
 } = vi.hoisted(() => ({
   setChannelTokens: vi.fn(async () => {}),
-  assertSharedConnectInbox: vi.fn(async () => 'rec_inbox'),
+  assertSharedConnectInboxByRecordId: vi.fn(async () => 'rec_inbox'),
   upsertSocialIntegration: vi.fn(async () => ({ id: 'int_1', isNew: true, displayName: 'Acme' })),
   cacheAvailablePages: vi.fn(async () => {}),
   subscribePageToApp: vi.fn(async () => {}),
@@ -58,7 +58,7 @@ vi.mock('../../providers/social/api', () => ({
   SOCIAL_SUBSCRIBED_FIELDS: { facebook: [], instagram: [] },
   subscribePageToApp: vi.fn(async () => {}),
 }))
-vi.mock('../connect-inbox', () => ({ assertSharedConnectInbox }))
+vi.mock('../connect-inbox', () => ({ assertSharedConnectInboxByRecordId }))
 vi.mock('../../connections/pending-selection', () => ({
   readPendingSelection,
   clearPendingSelection,
@@ -279,7 +279,11 @@ describe('provisionSocialChannel', () => {
     })
 
     expect(result).toEqual({ integrationId: 'int_1' })
-    expect(assertSharedConnectInbox).toHaveBeenCalledWith(expect.anything(), ORG, 'rec_other')
+    expect(assertSharedConnectInboxByRecordId).toHaveBeenCalledWith(
+      expect.anything(),
+      ORG,
+      'rec_other'
+    )
     // Nothing to clear — and clearing unconditionally would be a pointless write on this path.
     expect(clearPendingSelection).not.toHaveBeenCalled()
   })
@@ -314,5 +318,41 @@ describe('provisionSocialChannel', () => {
       })
     ).rejects.toThrow(/“Acme” has no linked Instagram Professional account/)
     expect(upsertSocialIntegration).not.toHaveBeenCalled()
+  })
+
+  /**
+   * A rejected inbox must leave NOTHING behind.
+   *
+   * This check used to run after `upsertSocialIntegration`, so a bad inbox id created a live
+   * Integration holding the Page's `webhookRouteKey` and no inbox link — and because
+   * `pendingConnectSelection` marks a Page whose route key is already claimed as "Already
+   * connected", the retry rendered every option disabled. One bad id burned the Page.
+   *
+   * Asserted on the WRITERS, not on the thrown error: an implementation that validated late would
+   * still reject with the same message and pass an error-only assertion.
+   */
+  it('creates no Integration when the inbox is rejected', async () => {
+    const pages = [page('page-1', 'Acme')]
+    readPendingSelection.mockResolvedValue(pendingFor('facebook', pages))
+    stubGraph({ pages })
+    assertSharedConnectInboxByRecordId.mockRejectedValueOnce(
+      new Error('Inbox not found in this organization')
+    )
+
+    await expect(
+      provisionSocialChannel({
+        credentialId: CRED,
+        organizationId: ORG,
+        userId: USER,
+        pageId: 'page-1',
+      })
+    ).rejects.toThrow(/Inbox not found/)
+
+    expect(upsertSocialIntegration).not.toHaveBeenCalled()
+    expect(setChannelTokens).not.toHaveBeenCalled()
+    expect(subscribePageToApp).not.toHaveBeenCalled()
+    expect(addIntegration).not.toHaveBeenCalled()
+    // The marker survives, so the user can finish the connect once the inbox is sorted out.
+    expect(clearPendingSelection).not.toHaveBeenCalled()
   })
 })

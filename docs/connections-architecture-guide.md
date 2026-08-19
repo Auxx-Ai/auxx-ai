@@ -2,7 +2,7 @@
 
 # Connections & Credentials Architecture Guide
 
-Date: 2026-06-19
+Date: 2026-06-19 (last updated 2026-08-19)
 Status: Reference guide
 
 How Auxx stores, defines, and resolves every external credential — OAuth tokens,
@@ -275,6 +275,12 @@ detection reliable; fresh connects poll for a new credential id, reconnects watc
 the credential's `updatedAt` stamp move. Falls back to a full-page redirect when
 the popup is blocked.
 
+**No verify can answer "did the hook finish?".** It watches the *credential*, which the
+callback commits **before** it runs the post-connect hook — so for any provider whose
+connect is only finished by that hook, it reports success while provisioning is still
+in flight (§9.4). That question is answered by a push, not a poll: `runPostConnectHook`
+publishes `connection:settled` on the connecting user's realtime room.
+
 ### 9.2 Editing a secret without leaking it — the mask lifecycle
 
 A stored secret must **never** travel back to the client to seed an edit form.
@@ -314,6 +320,52 @@ The `isOAuthMint` discriminator lives in both save paths; the resulting log
 records `mode: 'replace' | 'merge'`. Required-field validation is sentinel-aware
 (both client `validateValue` and the routers): a kept (masked) secret satisfies
 `required` on edit, so the user isn't forced to re-enter an unchanged secret.
+
+### 9.4 Post-connect hooks, and a connect that cannot finish
+
+The OAuth callback commits the credential and then runs
+`runPostConnectHook(providerKey, ctx)` (`packages/lib/src/connections/post-connect-hooks.ts`) —
+the seam where a provider turns "we hold a token" into "the thing the user asked for exists"
+(a channel, an inbox link, an armed webhook). Most providers register no hook: a platform
+connection is *just a credential*.
+
+A hook returns nothing when it provisioned, or `{ awaiting: { kind, credentialId } }` when it
+**deliberately provisioned nothing** because the connect needs a choice only the user can make —
+and that choice is only knowable *after* the OAuth hop, so it cannot be a form field. The one
+case today is which Facebook Page becomes the channel.
+
+`packages/lib/src/connections/pending-selection.ts` owns that parked state and nothing else (no
+provider calls, no domain tables): a `pendingSelection` blob on `Credential.metadata`, written
+with a jsonb **merge**, carrying a `kind` discriminator every resume path switches on. Rules:
+
+- **Ordering is load-bearing.** `saveConnection`'s OAuth-mint arm *replaces* `Credential.metadata`
+  wholesale (§9.3), and the callback runs it before the hook. A marker written any earlier is
+  silently erased; it survives purely by being written after.
+- **The outcome is pushed.** `runPostConnectHook` publishes `ConnectionSettledEvent`
+  (`connect-events.ts`) on `rooms.user(connectingUserId)` for every resolution — provisioned,
+  parked, or thrown — before returning or rethrowing. Addressed to the *user*, so it survives
+  everything that can happen to the popup: COOP severing, a blocked popup redirected full-page, a
+  closed tab, or a flow that already settled on its cancel heuristic. It is a **signal, not a
+  source of truth**: realtime is a no-op when Pusher is unconfigured, so it carries no options and
+  nothing may exist only as this event. Client contract: `@auxx/lib/connections/client`.
+- **`awaiting` on the popup payload is a latency hint, never the authority.** The termination page
+  only renders once the hook returns, so the `verify` poll (§9.1) can settle the flow first and
+  report a plain success.
+- **Never make a surface's *appearance* depend on any of these signals.** The UI that collects the
+  answer should be on screen from the click, with the signals only filling it in — see
+  `channels-mail-architecture-guide.md` §5.5 for the version of this that had to be learned twice.
+- **The resume query is what the UI drives from**, so the picker survives a blocked popup, a COOP
+  severing, a closed tab or a reload. Scope it to org + `createdById`: the person who ran the
+  OAuth is the person who finishes it.
+- **Cancel leaves the marker.** Deleting it on dismiss is what would make "finish later"
+  impossible; the short-lived token beside it expires on its own.
+- Repeated abandoned connects accumulate credentials (a no-`connectionId` save always INSERTs), so
+  cap them — `deleteSupersededPendingCredentials`.
+
+The channel-side implementation of all of this is
+`channels-mail-architecture-guide.md` §5.4.
+
+---
 
 ---
 
@@ -376,6 +428,10 @@ mechanism, branch on `connection.type` (oauth2 vs secret). See
 | App SDK `Connection` | `packages/sdk/src/server/connections.ts` |
 | Shared connect dialog | `apps/web/src/components/connections/ui/connection-detail-{dialog,page}.tsx` |
 | OAuth popup hook | `apps/web/src/hooks/use-oauth-popup.ts` |
+| Connect flow (client) | `apps/web/src/components/apps/hooks/use-connect-flow.tsx` |
+| Post-connect hooks | `packages/lib/src/connections/post-connect-hooks.ts` |
+| Parked selection (two-phase connect) | `packages/lib/src/connections/pending-selection.ts` |
+| Connect settle event (client contract) | `packages/lib/src/connections/connect-events.ts` → `@auxx/lib/connections/client` |
 | App connection config UI | `apps/build/src/app/(portal)/[slug]/apps/[app_slug]/connections/page.tsx` |
 | OAuth routes (apps) | `apps/web/src/app/api/apps/[slug]/oauth2/{authorize,callback}/route.ts` |
 | App-author guide (§3) | `docs/app-implementation-template-v3.md` |

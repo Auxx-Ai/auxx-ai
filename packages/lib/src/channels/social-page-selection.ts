@@ -37,7 +37,7 @@ import {
   fetchUserPages,
   type InstagramAccount,
 } from '../providers/social/connect-api'
-import { assertSharedConnectInbox } from './connect-inbox'
+import { assertSharedConnectInboxByRecordId } from './connect-inbox'
 import {
   type CachedSocialPage,
   cacheAvailablePages,
@@ -72,7 +72,7 @@ export type PendingSocialPageSelection = PendingConnectSelection<SocialPageSelec
 
 /** The outcome of applying the §candidate rules to one grant. */
 export interface SocialCandidateSet {
-  /** Pages the user may pick. Length 1 → auto-select; length > 1 → picker. */
+  /** Pages the user may pick. Always at least one — a grant that reaches none throws. */
   candidates: FacebookPage[]
   /** Resolved IG account per candidate page id (Instagram only; empty for Facebook). */
   instagramByPageId: Map<string, InstagramAccount>
@@ -215,7 +215,8 @@ export interface ProvisionSocialChannelInput {
  * Phase two: turn a chosen Page into a channel.
  *
  * Steps, in order:
- *  1. resolve the inbox + ASID (argument first, pending marker second — neither → NotFound);
+ *  1. resolve AND re-validate the inbox (argument first, pending marker second — neither →
+ *     NotFound). Before any write, so a rejection leaves nothing behind;
  *  2. resolve and long-live the credential's user token (a dead token is the EXPECTED abandonment
  *     path — the pending window deliberately holds a short-lived token, see the hook);
  *  3. re-fetch `/me/accounts` and validate the chosen page against it — a stale cache must never
@@ -243,6 +244,25 @@ export async function provisionSocialChannel(
   }
 
   const provider: SocialProvider = payload?.provider ?? 'facebook'
+
+  /**
+   * Re-validate the inbox HERE — before any Graph call and long before the Integration exists.
+   *
+   * This check used to sit next to the inbox link, after `upsertSocialIntegration` had already
+   * created the channel and written its tokens. Failing closed that late is not failing closed at
+   * all: the rejection left a LIVE Integration holding the Page's `webhookRouteKey` and no inbox
+   * link, and because `pendingConnectSelection` marks a Page whose route key is already claimed as
+   * "Already connected", the retry showed every option disabled. One bad inbox id therefore burned
+   * the Page permanently, from the user's side of the screen.
+   *
+   * Nothing before the upsert writes anything, so a throw from here leaves the connect exactly as
+   * it was — still parked, still finishable.
+   */
+  const validatedInboxRecordId = await assertSharedConnectInboxByRecordId(
+    db,
+    organizationId,
+    inboxRecordId
+  )
 
   const userToken = await resolveUserTokenForCredential({ credentialId, organizationId, userId })
   const longLivedUserToken = await exchangeForLongLived(userToken)
@@ -320,14 +340,15 @@ export async function provisionSocialChannel(
     { createdById: userId }
   )
 
-  // Re-validated even though phase one validated it: the inbox could have been deleted or turned
-  // personal in the meantime, and this must fail closed.
+  // Validated at the top of this function, not here — see `validatedInboxRecordId`.
   const existingLink = await db.query.InboxIntegration.findFirst({
     where: eq(schema.InboxIntegration.integrationId, integration.id),
   })
   if (!existingLink) {
-    const recordId = await assertSharedConnectInbox(db, organizationId, inboxRecordId)
-    await new InboxService(db, organizationId, userId).addIntegration(recordId, integration.id)
+    await new InboxService(db, organizationId, userId).addIntegration(
+      validatedInboxRecordId,
+      integration.id
+    )
   }
 
   await cacheAvailablePages(

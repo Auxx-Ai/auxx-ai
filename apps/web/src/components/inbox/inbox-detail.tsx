@@ -284,6 +284,7 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
           open={galleryOpen}
           onOpenChange={setGalleryOpen}
           initialInboxId={inbox.id}
+          resumePendingConnect
         />
       )}
 

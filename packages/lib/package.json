@@ -292,6 +292,12 @@
       "import": "./dist/connections/index.mjs",
       "default": "./src/connections/index.ts"
     },
+    "./connections/client": {
+      "types": "./src/connections/client.ts",
+      "source": "./src/connections/client.ts",
+      "import": "./dist/connections/client.mjs",
+      "default": "./src/connections/client.ts"
+    },
     "./connections/providers": {
       "types": "./src/connections/providers/index.ts",
       "source": "./src/connections/providers/index.ts",

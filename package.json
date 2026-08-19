@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "build": "turbo build",
-    "dev": "pnpm db:env:check:strict && docker compose up -d --wait && pnpm run build --filter=@auxx/sdk --filter=@auxx/services && turbo dev dev:platform-runtime --concurrency=20 --parallel",
+    "dev": "pnpm db:env:check:strict && docker compose up -d --wait && pnpm run build --filter=@auxx/sdk --filter=@auxx/services && turbo dev dev:platform-runtime --concurrency=30 --parallel",
     "dev:down": "docker compose down",
     "start": "turbo start",
     "sst:dev": "sst dev --stage=${STAGE:-dev}",
