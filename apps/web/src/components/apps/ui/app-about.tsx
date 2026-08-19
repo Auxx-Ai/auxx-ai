@@ -17,7 +17,7 @@ type CapabilityGroup = RouterOutputs['apps']['getBySlug']['capabilities']['tools
  * A capability count badge ("8 Tools") with a hover tooltip listing the item
  * names and a "+N more" line when the list is capped.
  */
-function CapabilityBadge({
+export function CapabilityBadge({
   group,
   icon: Icon,
   singular,

@@ -25,6 +25,13 @@ interface BaseNodeProps {
   className?: string
   children: ReactNode
   nodeType?: 'standard' | 'input'
+  /**
+   * Header icon override. The registry answers for every node whose definition
+   * is registered; an app node whose app isn't installed has no definition and
+   * would otherwise fall back to the generic `box`, stripping the step of the
+   * only thing that identifies it.
+   */
+  icon?: ReactNode
 }
 
 /**
@@ -69,11 +76,11 @@ const StatusIndicator = ({ status }: { status: NodeRunningStatus | null }) => {
  * Handles have `.node-handle` class and use absolute positioning.
  */
 export const BaseNode = memo<BaseNodeProps>(
-  ({ id, data, selected, className, children, nodeType = 'standard' }) => {
+  ({ id, data, selected, className, children, nodeType = 'standard', icon: iconOverride }) => {
     const status = useNodeStatus(id)
     const isDisabled = data.disabled || false
     const isCollapsed = data.collapsed || false
-    const icon = unifiedNodeRegistry.getNodeIcon(data.type, 'size-4', data)
+    const icon = iconOverride ?? unifiedNodeRegistry.getNodeIcon(data.type, 'size-4', data)
     const color = unifiedNodeRegistry.getColor(data.type)
     const { handleToggleCollapse } = useNodesInteractions()
     const updateNodeInternals = useUpdateNodeInternals()

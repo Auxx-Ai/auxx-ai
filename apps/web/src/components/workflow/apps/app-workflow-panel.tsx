@@ -2,8 +2,6 @@
 
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
-import { Download } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { suppressConnectionDialog } from '~/components/apps/runtime/connection-dialog-suppression'
@@ -16,6 +14,7 @@ import type { WorkflowBlock } from '~/components/workflow/types/block-types'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import { collectHiddenFields } from '~/components/workflow/utils/collect-hidden-fields'
 import { convertOutputFieldsToVariables } from '~/components/workflow/utils/type-mapping'
+import { AppNodeFallbackPanel } from './app-node-fallback-panel'
 import { AppPollingSection } from './app-polling-section'
 import { AppWorkflowFieldContext } from './app-workflow-field-context'
 import { computeOutputSignature, resolveAppBlockOutputFields } from './resolve-app-outputs'
@@ -368,23 +367,12 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
     const displayError =
       error || (initError ? `Extension failed to load: ${initError.message}` : null)
 
+    // Reachable only when the app is uninstalled while this builder is open —
+    // the block stays registered, so the registry still routes here. A cold
+    // load of the same workflow never gets this far: with no registered panel,
+    // `NodePanelBody` renders `AppNodeFallbackPanel` directly.
     if (isNotInstalled) {
-      return (
-        <BasePanel title={propData?.title ?? 'App Node'} nodeId={nodeId} data={nodeData}>
-          <div className='space-y-4 p-4'>
-            <p className='text-sm text-muted-foreground'>
-              This node requires the <strong>{propData?.title ?? nodeAppSlug}</strong> app to
-              function.
-            </p>
-            <Button
-              variant='outline'
-              onClick={() => window.open(`/app/settings/apps/${nodeAppSlug}`, '_blank')}>
-              <Download className='size-3' />
-              Install App
-            </Button>
-          </div>
-        </BasePanel>
-      )
+      return <AppNodeFallbackPanel nodeId={nodeId} data={nodeData} />
     }
 
     return (
