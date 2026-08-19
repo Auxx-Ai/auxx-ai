@@ -44,7 +44,16 @@ export const User = pgTable(
     phoneNumberVerified: boolean().default(false),
     updatedAt: timestamp({ precision: 3 }).notNull(),
     emailVerified: boolean().default(false).notNull(),
-    avatarAssetId: text().references((): AnyPgColumn => MediaAsset.id, { onUpdate: 'cascade' }),
+    // `onDelete: 'set null'` is load-bearing: `MediaAsset` is org-scoped and cascade-deleted
+    // with its Organization, but `User` is not — a user outlives the orgs they belong to. With
+    // the default NO ACTION, deleting an org whose member had ever set an avatar aborted the
+    // whole cascade with a 23503 on this constraint, so org deletion succeeded or failed purely
+    // on whether anyone had uploaded a profile picture. Losing the asset means losing the
+    // avatar, which is exactly what null here means.
+    avatarAssetId: text().references((): AnyPgColumn => MediaAsset.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     userType: userType().default('USER').notNull(),
     firstName: text(),
     lastName: text(),
