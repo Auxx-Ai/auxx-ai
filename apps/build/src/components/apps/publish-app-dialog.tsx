@@ -21,6 +21,7 @@ import {
   type ConnectionForPublishCheck,
   isConnectionsConfigComplete,
   isMainAppListingComplete,
+  isMintingConnection,
   isOAuthConfigComplete,
 } from '~/lib/publish-checks'
 import { api, type RouterOutputs } from '~/trpc/react'
@@ -281,13 +282,12 @@ export function PublishAppDialog({
     oauth2AccessTokenUrl: c.oauth2AccessTokenUrl,
     hasClientId: c.hasClientId,
     hasClientSecret: c.hasClientSecret,
-    oauth2Scopes: c.oauth2Scopes,
   }))
 
   // Compute checklist states
   const isListingComplete = publishCheckApp ? isMainAppListingComplete(publishCheckApp) : false
   const isOAuthComplete = publishCheckApp ? isOAuthConfigComplete(publishCheckApp) : false
-  const hasOAuthConnections = connectionCheckData.some((c) => c.connectionType === 'oauth2-code')
+  const hasMintingConnections = connectionCheckData.some(isMintingConnection)
   const isConnectionsComplete = isConnectionsConfigComplete(connectionCheckData)
   const hasDeploymentOrOAuth = hasProdDeployment || Boolean(app?.hasOauth)
 
@@ -313,8 +313,8 @@ export function PublishAppDialog({
           },
         ]
       : []),
-    // Only show connection OAuth check if at least one oauth2-code connection exists
-    ...(hasOAuthConnections
+    // Only show the connection check when a connection actually mints tokens
+    ...(hasMintingConnections
       ? [
           {
             id: 'connection-oauth',
