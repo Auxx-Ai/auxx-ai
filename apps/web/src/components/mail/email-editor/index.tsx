@@ -27,6 +27,7 @@ import {
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
+import { channelLabel } from '~/components/channels/channel-label'
 import { useChannel, useChannels } from '~/components/channels/hooks/use-channels'
 import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
 import { EditorToolbar } from '~/components/editor/editor-button'
@@ -257,12 +258,13 @@ function ReplyComposeEditorComponent({
   // (`handleCloseClick`, no discard) and closing genuinely puts the composer
   // away.
   const showCloseButton = isDialogMode || isEmailChannel
-  const pinnedChannelLabel =
-    selectedChannel?.identifier ??
-    selectedChannelFromList?.identifier ??
-    selectedChannel?.email ??
-    selectedChannel?.name ??
-    'Unknown channel'
+  // Same rule as the picker's badge, so a pinned From and a switchable From read
+  // identically: an address where the channel has one, the account's display
+  // name where `identifier` is an opaque routing id (Meta Page id / IG account
+  // id). Reading `identifier` unconditionally, as this did, put a bare Page
+  // number in the From row of every Facebook and Instagram reply.
+  const pinnedChannelRow = selectedChannel ?? selectedChannelFromList
+  const pinnedChannelLabel = pinnedChannelRow ? channelLabel(pinnedChannelRow) : 'Unknown channel'
 
   // Every channel this org can send from, so a From switch can resolve the
   // INCOMING channel's capabilities (the memo above only covers the current
@@ -287,6 +289,14 @@ function ReplyComposeEditorComponent({
   const [isSending, setIsSending] = useState(false)
   const [isDraftSaved, setIsDraftSaved] = useState(!!initialDraft)
   const [showNoToWarning, setShowNoToWarning] = useState(false)
+
+  // The rule under From is the divider ABOVE the next header row — Cc, Bcc and
+  // Subject each bring their own leading one, so From only owns the divider that
+  // introduces To. On a channel with neither (Facebook/Instagram are
+  // `thread_only`, chat is `platform_user`, and all three are `subject: false`)
+  // there is no next row, and the rule stacked against the header block's own
+  // bottom border as a double line.
+  const showFromSeparator = showRecipientField || (showSubjectField && showSubject)
 
   // Mark the draft dirty so autosave picks up changes.
   const markDraftDirty = useCallback(() => setIsDraftSaved(false), [])
@@ -1408,7 +1418,7 @@ function ReplyComposeEditorComponent({
                   )}
                 </div>
               </div>
-              <Separator className='mx-4 w-auto' />
+              {showFromSeparator && <Separator className='mx-4 w-auto' />}
 
               {/* To Field & Toggles */}
               {showRecipientField && (
