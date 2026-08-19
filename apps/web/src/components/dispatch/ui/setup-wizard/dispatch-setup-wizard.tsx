@@ -9,11 +9,12 @@ import { api } from '~/trpc/react'
 import { WizardAddressPage } from './wizard-address-page'
 import { WizardDonePage } from './wizard-done-page'
 import { WizardHoursPage } from './wizard-hours-page'
+import { WizardPricingPage } from './wizard-pricing-page'
 import type { WizardStepHandle } from './wizard-step-handle'
 import { WizardWelcomePage } from './wizard-welcome-page'
 import { WizardWorkersPage } from './wizard-workers-page'
 
-const PAGES = ['welcome', 'workers', 'address', 'hours', 'done'] as const
+const PAGES = ['welcome', 'workers', 'address', 'hours', 'pricing', 'done'] as const
 type WizardPage = (typeof PAGES)[number]
 
 const PAGE_TITLES: Record<WizardPage, string> = {
@@ -21,6 +22,7 @@ const PAGE_TITLES: Record<WizardPage, string> = {
   workers: 'Workers',
   address: 'Business address',
   hours: 'Operating hours',
+  pricing: 'Pricing',
   done: "You're set",
 }
 
@@ -30,9 +32,10 @@ export interface DispatchSetupWizardProps {
 }
 
 /**
- * `DispatchSetupWizard` (plans/dispatch/32-onboarding.md Part C) — a five-page `DialogNav` wizard
- * covering the three dispatch must-haves (workers, business address, operating hours) before a
- * "you're set" page pointing at the checklist for the remaining record-creation steps.
+ * `DispatchSetupWizard` (plans/dispatch/32-onboarding.md Part C) — a six-page `DialogNav` wizard
+ * covering the three dispatch must-haves (workers, business address, operating hours) plus the
+ * two pricing prerequisites (a catalog item, a default tax rate) before a "you're set" page
+ * pointing at the checklist for the remaining record-creation steps.
  *
  * Pages write real data (worker upsert, `documents.business` setting, weekly-hours mutation),
  * never a wizard-local progress record. Workers saves on every pick; Address and Hours hold a
@@ -47,6 +50,7 @@ export function DispatchSetupWizard({ open, onOpenChange }: DispatchSetupWizardP
   const [page, setPage] = useState<WizardPage>('welcome')
   const addressRef = useRef<WizardStepHandle | null>(null)
   const hoursRef = useRef<WizardStepHandle | null>(null)
+  const pricingRef = useRef<WizardStepHandle | null>(null)
 
   // Reset to the first page each time the wizard is (re)opened.
   useEffect(() => {
@@ -54,10 +58,18 @@ export function DispatchSetupWizard({ open, onOpenChange }: DispatchSetupWizardP
   }, [open])
 
   const utils = api.useUtils()
-  // Invalidate the cached status so a remounted gate (navigate away + back) sees the stamp —
-  // without this the stale `wizardCompletedAt: null` re-opens the wizard on every return visit.
+  // Write the stamp into the cache up front, then invalidate. `finish()` is often the last thing
+  // that happens before a navigation away from `/app/dispatch` (the done page's "Log a service
+  // request" link), which unmounts the gate — an invalidation that lands after that only marks the
+  // entry stale, so the stale `wizardCompletedAt: null` is what a remounted gate would read.
   const setWizardCompleted = api.gettingStarted.setWizardCompleted.useMutation({
-    onSuccess: () => utils.gettingStarted.getStatus.invalidate(),
+    onMutate: () => {
+      utils.gettingStarted.getStatus.setData({ checklist: 'dispatch' }, (prev) =>
+        prev ? { ...prev, wizardCompletedAt: new Date().toISOString() } : prev
+      )
+    },
+    // `onSettled`, not `onSuccess`: a failed write must not leave the optimistic stamp standing.
+    onSettled: () => utils.gettingStarted.getStatus.invalidate(),
   })
 
   const index = PAGES.indexOf(page)
@@ -65,7 +77,13 @@ export function DispatchSetupWizard({ open, onOpenChange }: DispatchSetupWizardP
   /** Ask the current page (if it registered a handle) whether it's safe to navigate away. */
   const attemptLeave = () => {
     const handle =
-      page === 'address' ? addressRef.current : page === 'hours' ? hoursRef.current : null
+      page === 'address'
+        ? addressRef.current
+        : page === 'hours'
+          ? hoursRef.current
+          : page === 'pricing'
+            ? pricingRef.current
+            : null
     return handle?.tryAdvance() ?? true
   }
 
@@ -103,6 +121,9 @@ export function DispatchSetupWizard({ open, onOpenChange }: DispatchSetupWizardP
           </DialogNavPage>
           <DialogNavPage value='hours' size='xl'>
             <WizardHoursPage ref={hoursRef} />
+          </DialogNavPage>
+          <DialogNavPage value='pricing' size='lg'>
+            <WizardPricingPage ref={pricingRef} />
           </DialogNavPage>
           <DialogNavPage value='done' size='md'>
             <WizardDonePage onFinish={finish} />

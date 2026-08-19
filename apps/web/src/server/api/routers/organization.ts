@@ -13,6 +13,7 @@ import {
 } from '@auxx/lib/members'
 import { OrganizationService } from '@auxx/lib/organizations'
 import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
+import { seedDocumentBusinessFromProfile } from '@auxx/lib/settings'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
@@ -157,6 +158,15 @@ export const organizationRouter = createTRPCRouter({
           userEmail: userEmail ?? undefined,
           handle: organization.handle,
         })
+      }
+
+      // Onboarding's last step is the first moment the org profile actually holds a name and
+      // website — the signup path created the row with `name: ''`, so `seedNewOrganization`'s
+      // pass had nothing to copy. Fill the blank `documents.business` fields now, before the
+      // first quote or invoice is ever rendered. Fill-blanks-only, so it can never clobber a
+      // name typed in Dispatch → General; fires its own `org.settings.changed`.
+      if (name !== undefined || website !== undefined) {
+        await seedDocumentBusinessFromProfile({ organizationId, db: ctx.db })
       }
 
       // Deliberately does NOT touch `User.completedOnboarding`. The user-level flag

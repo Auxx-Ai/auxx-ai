@@ -17,6 +17,7 @@ import { ensureSystemProfiles } from '../permissions/profiles'
 import { seedSuggestedRecordRules } from '../record-rules'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { seedClientNotificationSequences } from '../sequences'
+import { seedDocumentBusinessFromProfile } from '../settings'
 import { buildSystemSnippetTemplates } from '../snippets'
 import { SystemUserService } from '../users/system-user-service'
 import { seedAiCategoryTags } from './ai-category-tags'
@@ -214,6 +215,7 @@ export class OrganizationSeeder {
           : this.seedTrialSubscription(organizationId),
         this.seedAiProviderQuotas(organizationId),
         this.seedSystemModelDefaults(organizationId),
+        seedDocumentBusinessFromProfile({ organizationId, db: this.db }),
       ])
       // AFTER the parallel step, not inside it: suggested mail filters need the default
       // shared inbox `seedInboxes` creates (a `MailFilter` requires a NOT NULL `inboxId`,

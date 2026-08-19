@@ -798,7 +798,7 @@ export const SAMPLE_QUOTE_PDF_PAYLOAD: QuotePdfPayload = {
   total: 55699,
   settings: {
     business: { companyName: 'Your Company' },
-    branding: { logo: null, accentColor: '', paperSize: 'a4', dateFormat: 'MMM d, yyyy' },
+    branding: { logo: null, accentColor: '', paperSize: 'letter', dateFormat: 'MMM d, yyyy' },
     quote: {
       defaultTerms: '',
       validDays: 30,

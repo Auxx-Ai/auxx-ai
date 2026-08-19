@@ -29,6 +29,8 @@ export const DISPATCH_GOAL_KEYS = [
   'add-workers',
   'set-address',
   'set-hours',
+  'add-product',
+  'set-tax-rate',
   'create-request',
   'create-work-order',
   'schedule-visit',

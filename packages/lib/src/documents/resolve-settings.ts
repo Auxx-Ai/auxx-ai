@@ -117,7 +117,7 @@ export async function resolveDocumentSettings(
     branding: {
       logo,
       accentColor: (settings['documents.accentColor'] as string | null) ?? '',
-      paperSize: (settings['documents.paperSize'] as 'a4' | 'letter' | null) ?? 'a4',
+      paperSize: (settings['documents.paperSize'] as 'a4' | 'letter' | null) ?? 'letter',
       dateFormat: (settings['documents.dateFormat'] as string | null) ?? 'MMM d, yyyy',
     },
     quote: {

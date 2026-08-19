@@ -8,6 +8,7 @@ import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import type { DispatchWorkerRow } from '../ui/worker-card'
+import { useInvalidateWorkers } from './use-invalidate-workers'
 
 const EMPTY_ADDRESS: AddressStruct = {
   street1: '',
@@ -45,10 +46,9 @@ export type WorkerProfileDraftApi = ReturnType<typeof useWorkerProfileDraft>
  * defaults and adopts the row by value once it exists; save/remove are no-ops until then.
  */
 export function useWorkerProfileDraft(worker: DispatchWorkerRow | null, onRemoved: () => void) {
-  const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
 
-  const invalidate = () => utils.dispatch.listWorkers.invalidate()
+  const invalidate = useInvalidateWorkers()
 
   const upsertWorker = api.dispatch.upsertWorker.useMutation({
     onSuccess: invalidate,

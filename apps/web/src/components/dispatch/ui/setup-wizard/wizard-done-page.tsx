@@ -11,7 +11,7 @@ interface WizardDonePageProps {
 }
 
 /**
- * Page 5 (last) of `DispatchSetupWizard` — a short "you're set" page pointing at the checklist's
+ * Page 6 (last) of `DispatchSetupWizard` — a short "you're set" page pointing at the checklist's
  * remaining record-creation steps (service request → work order → visit), which stay visible in
  * the dispatch sidebar checklist after this wizard closes.
  */

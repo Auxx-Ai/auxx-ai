@@ -547,7 +547,9 @@ export const SETTINGS_CATALOG = {
     scope: 'DOCUMENTS',
     access: 'org',
     fieldType: 'SINGLE_SELECT',
-    defaultValue: 'a4',
+    // US Letter is the default: the dispatch/field-service customer base is US-first, and an
+    // org that never opens Documents settings should get PDFs that print on the paper it owns.
+    defaultValue: 'letter',
     description: 'Paper size for quote/invoice PDF rendering',
     options: {
       options: [
