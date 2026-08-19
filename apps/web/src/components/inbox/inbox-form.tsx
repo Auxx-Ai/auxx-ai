@@ -34,7 +34,6 @@ import {
 } from '~/components/permissions/utils/grantee'
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
-import { FormColorTagPicker } from '~/components/tags/ui/color-tag-picker'
 import {
   type InboxItem,
   invalidateInboxRecordLists,
@@ -48,6 +47,7 @@ import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { InboxMembersPage } from './inbox-members-page'
+import { InboxNameField } from './ui/inbox-name-field'
 
 /** A grantee row as the form edits it. */
 interface FormGrant {
@@ -641,7 +641,8 @@ export function InboxForm({
   // so the footer remains an unpadded sibling of the body, which is what
   // `DialogNavPages` re-gutters via its `[data-slot=dialog-footer]` rule. Padding the
   // form instead stacks both gutters and indents the buttons past the fields.
-  // The palette host supplies its own padding.
+  // The palette host pads the whole page instead and turns that rule off
+  // (`footerGutter={false}`), so this form stays unpadded in both hosts.
   const configurePage = (
     <form
       onSubmit={(e) => {
@@ -666,11 +667,11 @@ export function InboxForm({
             isRequired
             validationError={errors.name}
             validationType='error'>
-            <FieldInputAdapter
-              fieldType={FieldType.TEXT}
-              value={values.name}
-              onChange={(val) => handleChange('name', (val as string) ?? '')}
-              placeholder='Enter inbox name'
+            <InboxNameField
+              name={values.name}
+              onNameChange={(val) => handleChange('name', val)}
+              color={values.color}
+              onColorChange={(color) => handleChange('color', color)}
               disabled={isPending}
             />
           </FieldPanelRow>
@@ -685,16 +686,6 @@ export function InboxForm({
               disabled={isPending}
               fieldOptions={{ multiline: true }}
             />
-          </FieldPanelRow>
-
-          {/* Color */}
-          <FieldPanelRow title='Color' type={BaseType.ENUM} showIcon>
-            <div className='py-2'>
-              <FormColorTagPicker
-                value={values.color}
-                onChange={(color) => handleChange('color', color)}
-              />
-            </div>
           </FieldPanelRow>
 
           {/* Access section — org admins and inbox Managers only */}

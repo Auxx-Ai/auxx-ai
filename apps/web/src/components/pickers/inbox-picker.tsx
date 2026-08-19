@@ -6,12 +6,13 @@ import {
   type SelectOption,
   type SelectOptionColor,
 } from '@auxx/types/custom-field'
-import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { useCallback, useMemo, useState } from 'react'
 import { InboxDialog } from '~/components/inbox/inbox-dialog'
 import { type InboxItem, useInboxes } from '~/components/threads/hooks'
+import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
+import { TagsView } from '~/components/ui/tags-view'
 import { MultiSelectPicker } from './multi-select-picker'
 
 /** Props for InboxPicker component */
@@ -26,24 +27,39 @@ interface InboxPickerProps {
   className?: string
   inboxes?: InboxItem[]
   children?: React.ReactNode
+  disabled?: boolean
   align?: 'start' | 'center' | 'end'
   side?: 'top' | 'right' | 'bottom' | 'left'
   sideOffset?: number
   style?: React.CSSProperties
+  /** Trigger placeholder when nothing is selected. */
+  placeholder?: string
   /**
-   * Passed through to the default trigger `<Button>` (variant/className/size/…)
-   * when no custom `children` trigger is given. Lets callers match the shared
-   * `w-full ps-0 pe-1` flush-in-a-`FieldPanelRow` sizing convention without
-   * hand-rolling a trigger, see `docs/ui-design-guide.md` §5.
+   * Overrides the default trigger's rendered value, forcing it to read as
+   * selected. For a caller whose "selected" state isn't one of the options —
+   * the channel connect step's pending "New inbox", say.
    */
-  triggerProps?: React.ComponentProps<typeof Button>
+  selectedLabel?: React.ReactNode
+  /**
+   * Replaces the footer "Create inbox" action. The default opens {@link InboxDialog},
+   * which creates the inbox immediately; a caller that must defer the write until its
+   * own submit (the channel connect step) passes its own handler instead.
+   */
+  onCreate?: () => void
+  createLabel?: string
+  /**
+   * Customizes the default {@link PickerTrigger} when no `children` trigger is given.
+   * Lets callers match the shared `w-full ps-0 pe-1` flush-in-a-`FieldPanelRow` sizing
+   * convention without hand-rolling a trigger, see `docs/ui-design-guide.md` §5.
+   */
+  triggerProps?: PickerTriggerOptions
 }
 
 /** Special value for "Select All" option */
 export const INBOX_SELECT_ALL_VALUE = '__all__'
 
 /** `Inbox.color` is a free-form string column; anything off-palette falls back. */
-function toOptionColor(color: string | null | undefined): SelectOptionColor {
+export function toOptionColor(color: string | null | undefined): SelectOptionColor {
   return typeof color === 'string' && (SELECT_OPTION_COLORS as readonly string[]).includes(color)
     ? (color as SelectOptionColor)
     : 'indigo'
@@ -64,6 +80,11 @@ export function InboxPicker({
   className,
   inboxes: externalInboxes,
   children,
+  disabled,
+  placeholder = 'Select inbox',
+  selectedLabel,
+  onCreate,
+  createLabel = 'Create inbox',
   triggerProps,
   ...props
 }: InboxPickerProps) {
@@ -74,7 +95,7 @@ export function InboxPicker({
 
   // Fetch inboxes if not provided. Personal inboxes are never valid
   // routing/move targets (mail-permissions §11), exclude them everywhere.
-  const { inboxes: fetchedInboxes } = useInboxes()
+  const { inboxes: fetchedInboxes } = useInboxes({ enabled: !externalInboxes })
   const inboxes = (externalInboxes || fetchedInboxes || []).filter((inbox) => !inbox.isPersonal)
 
   // Dialog state for creating new inbox
@@ -126,10 +147,18 @@ export function InboxPicker({
     [setIsOpen]
   )
 
-  // Handle create button click
+  // Handle create button click — the caller's handler wins over the dialog. The override
+  // closes the popover (its UI lands where the popover was); the dialog path deliberately
+  // does not, because unmounting the popover in the same commit hands focus back to the
+  // trigger and takes it off the dialog that just opened.
   const handleCreate = useCallback(() => {
+    if (onCreate) {
+      setIsOpen(false)
+      onCreate()
+      return
+    }
     setDialogOpen(true)
-  }, [])
+  }, [onCreate, setIsOpen])
 
   // Handle dialog success (optionally select the new inbox)
   const handleDialogSuccess = useCallback(
@@ -144,15 +173,32 @@ export function InboxPicker({
     [allowMultiple, selected, onChange, setIsOpen]
   )
 
+  const hasValue = selectedLabel !== undefined || selected.length > 0
+
+  const trigger = children ?? (
+    <PickerTrigger
+      open={isOpen}
+      disabled={disabled}
+      variant={triggerProps?.variant ?? 'transparent'}
+      size={triggerProps?.size}
+      hasValue={hasValue}
+      placeholder={placeholder}
+      showClear={triggerProps?.showClear ?? allowMultiple}
+      onClear={() => onChange?.([])}
+      icon={triggerProps?.icon}
+      iconPosition={triggerProps?.iconPosition}
+      hideIcon={triggerProps?.hideIcon}
+      asCombobox
+      className={triggerProps?.className}>
+      {selectedLabel ?? <TagsView value={selected} options={options} className='flex-1' />}
+    </PickerTrigger>
+  )
+
   return (
     <>
       <Popover open={isOpen} onOpenChange={setIsOpen}>
-        <PopoverTrigger asChild>
-          {children || (
-            <Button variant='outline' {...triggerProps}>
-              Select Inbox{allowMultiple ? 'es' : ''}
-            </Button>
-          )}
+        <PopoverTrigger asChild disabled={disabled}>
+          {trigger}
         </PopoverTrigger>
         <PopoverContent
           className={cn('w-[300px] p-0 backdrop-blur-sm bg-popover/60', className)}
@@ -167,12 +213,13 @@ export function InboxPicker({
             canAdd={false}
             multi={allowMultiple}
             onCreate={handleCreate}
-            createLabel='Create inbox'
+            createLabel={createLabel}
+            disabled={disabled}
           />
         </PopoverContent>
       </Popover>
 
-      {/* Inbox creation dialog */}
+      {/* Inbox creation dialog — only the default (non-overridden) create path. */}
       {dialogOpen && (
         <InboxDialog
           open={dialogOpen}

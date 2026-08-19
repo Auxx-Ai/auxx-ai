@@ -1,20 +1,20 @@
 // apps/web/src/components/channels/ui/inbox-destination-field.tsx
 'use client'
 
-import { FieldType } from '@auxx/database/enums'
+import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import type { Lens } from '@auxx/lib/permissions/visibility/client'
-import type { SelectOption } from '@auxx/types/custom-field'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { Lock, UsersIcon } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
+import { InboxNameField } from '~/components/inbox/ui/inbox-name-field'
 import {
   GranularPermissionsUpgradeDialog,
   useGranularPermissionsGated,
 } from '~/components/mail-permissions/ui/granular-permissions-gate'
 import { LensSelect } from '~/components/mail-permissions/ui/lens-select'
+import { InboxPicker } from '~/components/pickers/inbox-picker'
 import { useInboxes } from '~/components/threads/hooks'
 import { invalidateInboxRecordLists } from '~/components/threads/hooks/use-inbox'
 import { BaseType } from '~/components/workflow/types'
@@ -33,6 +33,8 @@ export interface InboxDestinationController {
   setSelection: (value: string) => void
   name: string
   setName: (value: string) => void
+  color: SelectOptionColor
+  setColor: (color: SelectOptionColor) => void
   accessType: 'anyone' | 'restricted'
   onAccessTypeChange: (value: string) => void
   floorLens: Exclude<Lens, 'none'>
@@ -71,6 +73,7 @@ export function useInboxDestination(
   // isn't a shared inbox it simply won't match an option and the user picks one.
   const [selection, setSelection] = useState<string>(initialInboxId ?? '')
   const [name, setName] = useState('')
+  const [color, setColor] = useState<SelectOptionColor>(DEFAULT_SELECT_OPTION_COLOR)
   const [accessType, setAccessType] = useState<'anyone' | 'restricted'>('anyone')
   const [floorLens, setFloorLens] = useState<Exclude<Lens, 'none'>>('read')
   const [upgradeOpen, setUpgradeOpen] = useState(false)
@@ -98,17 +101,19 @@ export function useInboxDestination(
     const targetLens: Lens = accessType === 'anyone' ? floorLens : 'none'
     const created = await createInbox.mutateAsync({
       name: name.trim(),
+      color,
       status: 'ACTIVE',
       defaultLens: targetLens,
     })
     utils.inbox.myLenses.invalidate()
     invalidateInboxRecordLists(utils)
     return created.id
-  }, [isCreate, selection, accessType, floorLens, name, createInbox, utils])
+  }, [isCreate, selection, accessType, floorLens, name, color, createInbox, utils])
 
   const reset = useCallback(() => {
     setSelection('')
     setName('')
+    setColor(DEFAULT_SELECT_OPTION_COLOR)
     setAccessType('anyone')
     setFloorLens('read')
     setUpgradeOpen(false)
@@ -120,6 +125,8 @@ export function useInboxDestination(
     setSelection,
     name,
     setName,
+    color,
+    setColor,
     accessType,
     onAccessTypeChange,
     floorLens,
@@ -153,6 +160,8 @@ export function InboxDestinationField({
     setSelection,
     name,
     setName,
+    color,
+    setColor,
     accessType,
     onAccessTypeChange,
     floorLens,
@@ -163,24 +172,36 @@ export function InboxDestinationField({
     isCreate,
   } = controller
 
-  // Existing shared inboxes + a trailing "Create new inbox" choice.
-  const inboxOptions = useMemo<SelectOption[]>(
-    () => [
-      ...shared.map((inbox) => ({ value: inbox.id, label: inbox.name })),
-      { value: CREATE_NEW, label: 'Create new inbox' },
-    ],
-    [shared]
+  // `InboxPicker` speaks RecordIds; `selection` is a bare instance id, because that is
+  // what `resolve()` hands to `pc_inboxId` (see `channels/connect-inbox.ts`). Convert at
+  // both edges rather than storing the RecordId — the conversion has to happen somewhere,
+  // and doing it here keeps the id the rest of the connect flow sees unambiguous.
+  const selectedRecordIds = useMemo(() => {
+    const match = shared.find((inbox) => inbox.id === selection)
+    return match ? [match.recordId] : []
+  }, [shared, selection])
+
+  const handlePick = useCallback(
+    (recordIds: string[]) => {
+      const picked = shared.find((inbox) => inbox.recordId === recordIds[0])
+      setSelection(picked?.id ?? '')
+    },
+    [shared, setSelection]
   )
 
   return (
     <>
       <FieldPanelRow title='Deliver to inbox' type={BaseType.STRING} showIcon isRequired>
-        <FieldInputAdapter
-          fieldType={FieldType.SINGLE_SELECT}
-          fieldOptions={{ options: inboxOptions }}
-          value={selection}
-          onChange={(v) => setSelection(Array.isArray(v) ? (v[0] ?? '') : ((v as string) ?? ''))}
+        <InboxPicker
+          inboxes={shared}
+          selected={selectedRecordIds}
+          onChange={handlePick}
           placeholder='Choose an inbox'
+          // Deferred create: flips this field into its inline name/access rows instead of
+          // opening `InboxDialog`, which would write the inbox before the channel connects.
+          onCreate={() => setSelection(CREATE_NEW)}
+          createLabel='Create new inbox'
+          selectedLabel={isCreate ? 'New inbox' : undefined}
           triggerProps={FIELD_TRIGGER_PROPS}
           disabled={disabled}
         />
@@ -189,12 +210,12 @@ export function InboxDestinationField({
       {isCreate && (
         <>
           <FieldPanelRow title='Inbox name' type={BaseType.STRING} showIcon isRequired>
-            <FieldInputAdapter
-              fieldType={FieldType.TEXT}
-              value={name}
-              onChange={(v) => setName((v as string) ?? '')}
+            <InboxNameField
+              name={name}
+              onNameChange={setName}
+              color={color}
+              onColorChange={setColor}
               placeholder='e.g. Support'
-              triggerProps={FIELD_TRIGGER_PROPS}
               disabled={disabled}
             />
           </FieldPanelRow>
@@ -203,7 +224,7 @@ export function InboxDestinationField({
             <RadioGroup
               value={accessType}
               onValueChange={onAccessTypeChange}
-              className='grid gap-2 sm:grid-cols-2'>
+              className='grid gap-2 py-2 pe-2'>
               <RadioGroupItemCard
                 value='anyone'
                 label='Everyone'
