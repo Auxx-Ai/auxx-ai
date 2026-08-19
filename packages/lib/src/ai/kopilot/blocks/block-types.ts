@@ -21,12 +21,15 @@ export const REFERENCE_BLOCK_TYPES = [
   'draft-list',
   'plan-steps',
   'table',
+  'app-install',
 ] as const
 export type ReferenceBlockType = (typeof REFERENCE_BLOCK_TYPES)[number]
 
 /**
  * Subset of reference blocks that carry ids and receive snapshot injection.
  * `table` is excluded — it packs its own display data per-cell, no ids.
+ * `app-install` is excluded — it carries only a slug, and its card reads every
+ * display field from `apps.getBySlug` in the client.
  */
 export const SNAPSHOT_INJECTABLE_TYPES = [
   'entity-card',

@@ -199,6 +199,20 @@ export const tableBlockSchema = z.object({
   rows: z.array(z.array(tableCellPartialSafe)).optional(),
 })
 
+/**
+ * `auxx:app-install` — an offer to install (and then connect) a marketplace app
+ * without leaving the surface the card renders in.
+ *
+ * `appSlug` is optional for the same reason every other payload field is: the
+ * partial-JSON parser emits `{}` and then a truncated `{"appSlug":"u` mid-stream,
+ * and a required field would fail validation on those frames, flipping the block
+ * to `FallbackBlock` and re-running its entrance animation. The renderer
+ * withholds a truncated slug via `useStreamSafeIds` instead.
+ */
+export const appInstallSchema = z.object({
+  appSlug: z.string().optional(),
+})
+
 /** Registry of block type → Zod schema */
 export const BLOCK_SCHEMAS: Record<string, z.ZodType> = {
   'thread-list': threadListSchema,
@@ -209,6 +223,7 @@ export const BLOCK_SCHEMAS: Record<string, z.ZodType> = {
   table: tableBlockSchema,
   'task-list': taskListSchema,
   'draft-list': draftListSchema,
+  'app-install': appInstallSchema,
 }
 
 /** Inferred types for block components */
@@ -227,3 +242,4 @@ export type TableColumnData = z.infer<typeof tableColumnSchema>
 export type TableBlockData = z.infer<typeof tableBlockSchema>
 export type TaskListData = z.infer<typeof taskListSchema>
 export type DraftListData = z.infer<typeof draftListSchema>
+export type AppInstallData = z.infer<typeof appInstallSchema>

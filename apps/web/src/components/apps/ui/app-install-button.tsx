@@ -212,14 +212,25 @@ type InlineAppInstallButtonProps = {
   appSlug: string
   /** Custom content for the button. Defaults to "Install" with download icon */
   children?: React.ReactNode
+  /**
+   * Fired after a successful install, once installations and the app's
+   * `getBySlug` cache have both been refreshed. Lets a caller advance its own
+   * state (e.g. Kopilot's install card moving on to Connect) without polling.
+   */
+  onInstalled?: () => void
 }
 
 /**
  * Lightweight install button that self-determines install status.
  * Use in contexts where you want inline install without navigating away.
  */
-export function InlineAppInstallButton({ appSlug, children }: InlineAppInstallButtonProps) {
+export function InlineAppInstallButton({
+  appSlug,
+  children,
+  onInstalled,
+}: InlineAppInstallButtonProps) {
   const { appInstallations, refreshInstallations } = useAppsContext()
+  const utils = api.useUtils()
   const posthog = useAnalytics()
   const { isDemo } = useDemo()
   const [demoDialogOpen, setDemoDialogOpen] = useState(false)
@@ -229,7 +240,10 @@ export function InlineAppInstallButton({ appSlug, children }: InlineAppInstallBu
   const install = api.apps.install.useMutation({
     onSuccess: async () => {
       posthog?.capture('app_installed', { app_slug: appSlug })
-      await refreshInstallations()
+      // Mirrors `AppInstallButton` — a stale `getBySlug` after an install is
+      // wrong for every consumer, not just the one that noticed.
+      await Promise.all([refreshInstallations(), utils.apps.getBySlug.invalidate({ appSlug })])
+      onInstalled?.()
     },
     onError: (error) => {
       toastError({ title: 'Failed to install app', description: error.message })
