@@ -132,11 +132,14 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
         <WorkflowFormDialog
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
-          mode='edit'
           workflow={{
             id: workflowId,
             name: workflow.name,
             description: workflow.description,
+            // Must be passed: the dialog posts whatever icon its picker holds,
+            // so omitting it here would silently overwrite the workflow's icon
+            // with the picker's fallback on every rename from this header.
+            icon: workflow.icon,
           }}
         />
       )}

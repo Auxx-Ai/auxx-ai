@@ -171,7 +171,6 @@ function WorkflowCard({ workflow }: WorkflowCardProps) {
       <WorkflowFormDialog
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
-        mode='edit'
         workflow={{
           id: workflow.id,
           name: workflow.name,

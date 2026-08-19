@@ -10,8 +10,8 @@ import { useState } from 'react'
 import { useAgentMutations } from '~/components/agents/hooks/use-agent-mutations'
 import { AgentTemplateDialog } from '~/components/agents/ui/dialogs/agent-template-dialog'
 import { useCreateTaskStore } from '~/components/tasks/stores/create-task-store'
-import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { WorkflowTemplateDialog } from '~/components/workflow/dialogs/workflow-template-dialog'
+import { useCreateWorkflow } from '~/components/workflow/hooks/use-create-workflow'
 import { useOrganization } from '~/hooks/use-organization'
 
 type SidebarItemActionsResult = {
@@ -26,12 +26,12 @@ type SidebarItemActionsResult = {
  * Dialogs are rendered separately so they persist when the dropdown closes.
  */
 export function useSidebarItemActions(): SidebarItemActionsResult {
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [agentTemplateDialogOpen, setAgentTemplateDialogOpen] = useState(false)
   const currentOrganization = useOrganization()
   const router = useRouter()
   const { createAgent, isCreating } = useAgentMutations()
+  const { createWorkflow, isCreating: isCreatingWorkflow } = useCreateWorkflow()
 
   async function handleCreateAgentFromScratch() {
     const created = await createAgent()
@@ -65,9 +65,10 @@ export function useSidebarItemActions(): SidebarItemActionsResult {
       workflows: () => (
         <>
           <DropdownMenuItem
+            disabled={isCreatingWorkflow}
             onClick={(e) => {
               e.stopPropagation()
-              setCreateDialogOpen(true)
+              void createWorkflow()
             }}>
             <Workflow /> Create blank
           </DropdownMenuItem>
@@ -94,13 +95,6 @@ export function useSidebarItemActions(): SidebarItemActionsResult {
     },
     dialogs: (
       <>
-        {createDialogOpen && (
-          <WorkflowFormDialog
-            open={createDialogOpen}
-            onOpenChange={setCreateDialogOpen}
-            mode='create'
-          />
-        )}
         {templateDialogOpen && (
           <WorkflowTemplateDialog
             open={templateDialogOpen}

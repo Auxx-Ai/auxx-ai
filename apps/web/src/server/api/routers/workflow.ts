@@ -77,7 +77,12 @@ async function assertWorkflowLimitNotReached(organizationId: string): Promise<vo
 }
 // Create workflow schema
 const createWorkflowSchema = z.object({
-  name: z.string().min(1, 'Workflow name is required'),
+  /**
+   * Optional: the create-from-scratch path posts nothing and lets
+   * `WorkflowService.create` mint the next free "Untitled workflow" name along
+   * with a starter icon. The template dialog still supplies both.
+   */
+  name: z.string().min(1, 'Workflow name is required').optional(),
   description: z.string().optional(),
   enabled: z.boolean().default(false),
   icon: z
@@ -590,7 +595,12 @@ export const workflowRouter = createTRPCRouter({
         action: 'workflow.created',
         targetType: 'WorkflowApp',
         targetId: (created as { id?: string } | null)?.id ?? null,
-        metadata: { name: input.name, templateId: input.templateId ?? null },
+        // The resolved name, not `input.name` — create-from-scratch posts none
+        // and the service mints it, so the audit row would otherwise be blank.
+        metadata: {
+          name: (created as { name?: string } | null)?.name ?? input.name ?? null,
+          templateId: input.templateId ?? null,
+        },
       })
       return created
     }),

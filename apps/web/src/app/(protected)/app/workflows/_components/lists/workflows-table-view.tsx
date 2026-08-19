@@ -38,6 +38,7 @@ export function WorkflowsTableView() {
     id: string
     name: string
     description?: string | null
+    icon?: { iconId: string; color: string } | null
   } | null>(null)
 
   // Per-workflow instance access (plan 30 §4). Rename / enable-disable / delete
@@ -76,7 +77,12 @@ export function WorkflowsTableView() {
     }
   }
 
-  const handleEditClick = (workflow: { id: string; name: string; description?: string | null }) => {
+  const handleEditClick = (workflow: {
+    id: string
+    name: string
+    description?: string | null
+    icon?: { iconId: string; color: string } | null
+  }) => {
     setSelectedWorkflow(workflow)
     setEditDialogOpen(true)
   }
@@ -156,6 +162,10 @@ export function WorkflowsTableView() {
                               id: workflow.id,
                               name: workflow.name,
                               description: workflow.description,
+                              // Carry the icon through: the dialog saves
+                              // whatever its picker holds, so dropping it here
+                              // resets the workflow's icon on every rename.
+                              icon: workflow.icon,
                             })
                           }>
                           <Edit />
@@ -199,7 +209,6 @@ export function WorkflowsTableView() {
         <WorkflowFormDialog
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
-          mode='edit'
           workflow={selectedWorkflow}
         />
       )}

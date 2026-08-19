@@ -6,8 +6,8 @@ import { Button } from '@auxx/ui/components/button'
 import { FileText, Plus, Search, Workflow } from 'lucide-react'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
-import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { WorkflowTemplateDialog } from '~/components/workflow/dialogs/workflow-template-dialog'
+import { useCreateWorkflow } from '~/components/workflow/hooks/use-create-workflow'
 import { useOrganization } from '~/hooks/use-organization'
 import { useAccess } from '~/providers/capabilities-provider'
 
@@ -20,9 +20,9 @@ export function WorkflowsEmptyState({
   searchQuery,
   selectedTriggerType,
 }: WorkflowsEmptyStateProps) {
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showTemplateDialog, setShowTemplateDialog] = useState(false)
   const organization = useOrganization()
+  const { createWorkflow, isCreating } = useCreateWorkflow()
   const { can } = useAccess()
   const canCreate = can(PermissionKey.workflowsManage)
   const hasFilters = searchQuery || selectedTriggerType
@@ -68,7 +68,9 @@ export function WorkflowsEmptyState({
                 type='button'
                 size='sm'
                 variant='outline'
-                onClick={() => setShowCreateDialog(true)}>
+                loading={isCreating}
+                loadingText='Creating...'
+                onClick={() => void createWorkflow()}>
                 <Plus />
                 Create Workflow
               </Button>
@@ -79,11 +81,6 @@ export function WorkflowsEmptyState({
             </div>
           ) : undefined
         }
-      />
-      <WorkflowFormDialog
-        open={showCreateDialog}
-        onOpenChange={setShowCreateDialog}
-        mode='create'
       />
       <WorkflowTemplateDialog
         open={showTemplateDialog}

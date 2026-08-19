@@ -48,7 +48,11 @@ export interface WorkflowFilter {
   includeIds?: readonly string[]
 }
 export interface WorkflowCreateInput {
-  name: string
+  /**
+   * Omit to have `create` mint the next free "Untitled workflow" name — the
+   * create-from-scratch path builds the workflow without asking for one.
+   */
+  name?: string
   description?: string
   enabled: boolean
   icon?: { iconId: string; color: string }

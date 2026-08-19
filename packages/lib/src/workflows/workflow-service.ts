@@ -3,7 +3,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils/generateId'
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
 import { canonicalizeEntityDefinitionId, getCachedResources } from '../cache/org-cache-helpers'
 import { getCachedWorkflowAppsList } from '../cache/workflow-app-queries'
@@ -12,6 +12,7 @@ import { getQueue, Queues } from '../jobs/queues'
 import type { TriggerDerivationNode } from '../workflow-engine/catalog/derive-trigger'
 import { deriveTriggerLinkColumns } from '../workflow-engine/catalog/derive-trigger-server'
 import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
+import { nextUntitledWorkflowName, pickDefaultWorkflowIcon } from './default-workflow-identity'
 import { hashGraphSemantics, hashWorkflowGraph } from './graph-hash'
 import { assertMailTriggerNotPersonal } from './mail-trigger-guard'
 import { PollingTriggerService } from './polling-trigger-service'
@@ -179,6 +180,40 @@ export class WorkflowService {
   }
 
   /**
+   * Fill in the name and icon a create-from-scratch caller left off.
+   *
+   * The name is read straight from the DB rather than the `workflowApps` org
+   * cache: the cache's local window means a second create moments later could
+   * still see the pre-insert list and mint the same number. A duplicate name is
+   * only cosmetic (nothing is unique-constrained), but one narrow org-scoped
+   * query on a user-initiated action is cheaper than explaining the collision.
+   * System-owned apps (`ownerType IS NOT NULL`) are excluded — they are hidden
+   * from every org-facing surface, so they must not push the counter along.
+   */
+  private async resolveWorkflowIdentity(
+    organizationId: string,
+    name: string | undefined,
+    icon: { iconId: string; color: string } | undefined
+  ): Promise<{ name: string; icon: { iconId: string; color: string } | undefined }> {
+    if (name && icon) return { name, icon }
+
+    const rows = await this.db
+      .select({ name: schema.WorkflowApp.name })
+      .from(schema.WorkflowApp)
+      .where(
+        and(
+          eq(schema.WorkflowApp.organizationId, organizationId),
+          isNull(schema.WorkflowApp.ownerType)
+        )
+      )
+
+    return {
+      name: name ?? nextUntitledWorkflowName(rows.map((row) => row.name)),
+      icon: icon ?? pickDefaultWorkflowIcon(rows.length),
+    }
+  }
+
+  /**
    * Create a new workflow app with initial workflow version
    */
   async create(organizationId: string, userId: string, input: WorkflowCreateInput): Promise<any> {
@@ -194,6 +229,14 @@ export class WorkflowService {
       variables,
     } = input
     const finalTriggerType = triggerType || WorkflowTriggerType.MESSAGE_RECEIVED
+    // Create-from-scratch posts neither name nor icon: the user goes straight to
+    // the canvas and renames from the header later. Resolving both here rather
+    // than at the router keeps every door (web, sidebar, empty state) identical.
+    const { name: finalName, icon: finalIcon } = await this.resolveWorkflowIdentity(
+      organizationId,
+      name,
+      icon
+    )
     // This column is written by a dozen callers (builder save, template install,
     // seed, duplicate, the REST door) and read with strict equality by every
     // dispatcher. Canonicalize on the way in so the row only ever holds one
@@ -202,7 +245,7 @@ export class WorkflowService {
       ? await canonicalizeEntityDefinitionId(organizationId, entityDefinitionId)
       : entityDefinitionId
 
-    logger.info('Creating workflow app', { organizationId, userId, name })
+    logger.info('Creating workflow app', { organizationId, userId, name: finalName })
 
     // §8.2: personal channels are not automatable — reject at save time.
     await assertMailTriggerNotPersonal(this.db, organizationId, graph)
@@ -214,10 +257,10 @@ export class WorkflowService {
         const [workflowApp] = await tx
           .insert(schema.WorkflowApp)
           .values({
-            name,
+            name: finalName,
             description,
             enabled,
-            icon: icon as any,
+            icon: finalIcon as any,
             organizationId,
             createdById: userId,
             updatedAt: new Date(),
@@ -228,7 +271,7 @@ export class WorkflowService {
         const [draftWorkflow] = await tx
           .insert(schema.Workflow)
           .values({
-            name: `${name} (Draft)`,
+            name: `${finalName} (Draft)`,
             description,
             triggerType: finalTriggerType,
             entityDefinitionId: finalEntityDefinitionId,
