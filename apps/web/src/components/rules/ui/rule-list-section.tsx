@@ -50,7 +50,7 @@ export interface RuleListSectionProps<R extends RuleListRow> {
   subtitle: (row: R) => ReactNode
   /** Card description line. */
   describe: (row: R) => string
-  /** Header-end chips, e.g. "Managed" / "Disabled". */
+  /** Footer chips, e.g. "Managed" / "Disabled". */
   badges?: (row: R) => ListCardBadgeChip[]
   /**
    * Rows that can't be edited or deleted (feature-provisioned). Their menu drops
@@ -155,7 +155,7 @@ export function RuleListSection<R extends RuleListRow>({
         subtitle={subtitle(row)}
         description={describe(row)}
         icon={<Icon className='size-4' />}
-        headerEnd={chips.length > 0 ? renderBadgeChips(chips) : undefined}
+        badges={chips.length > 0 ? renderBadgeChips(chips) : undefined}
         onClick={() => (locked ? onViewRuns(row) : onEdit(row))}
         menuItems={menuItems}
       />
