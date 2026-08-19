@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
 import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
+import { useInvalidateWorkers } from '../../hooks/use-invalidate-workers'
 import { WorkerCard } from '../worker-card'
 
 /**
@@ -16,7 +17,7 @@ import { WorkerCard } from '../worker-card'
  * row — there's no page-local draft, so leaving the page (forward or back) never loses anything.
  */
 export function WizardWorkersPage() {
-  const utils = api.useUtils()
+  const invalidateWorkers = useInvalidateWorkers()
   const [selected, setSelected] = useState<ActorId[]>([])
 
   const { data: workers, isLoading } = api.dispatch.listWorkers.useQuery(undefined, {
@@ -25,7 +26,7 @@ export function WizardWorkersPage() {
 
   const upsertWorker = api.dispatch.upsertWorker.useMutation({
     onSuccess: () => {
-      utils.dispatch.listWorkers.invalidate()
+      invalidateWorkers()
       setSelected([])
     },
     onError: (error) => toastError({ title: 'Error adding worker', description: error.message }),

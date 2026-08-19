@@ -135,6 +135,14 @@ async function hasEntityInstance(ctx: GettingStartedContext, entityType: string)
   return rows.length > 0
 }
 
+/** At least one tax rate preset in the `documents.taxRates` org setting. */
+async function hasTaxRate(ctx: GettingStartedContext): Promise<boolean> {
+  const settings = await getOrgCache().get(ctx.organizationId, 'orgSettings')
+  const rates = settings['documents.taxRates']
+  return Array.isArray(rates) && rates.length > 0
+}
+
+const hasCatalogItem = (ctx: GettingStartedContext) => hasEntityInstance(ctx, 'catalog_item')
 const hasServiceRequest = (ctx: GettingStartedContext) => hasEntityInstance(ctx, 'service_request')
 const hasWorkOrder = (ctx: GettingStartedContext) => hasEntityInstance(ctx, 'work_order')
 
@@ -167,6 +175,8 @@ const AUTO_SIGNALS: Record<ChecklistId, Partial<Record<GoalKey, Signal>>> = {
     'add-workers': hasWorkers,
     'set-address': hasBusinessAddress,
     'set-hours': hasOrgHours,
+    'add-product': hasCatalogItem,
+    'set-tax-rate': hasTaxRate,
     'create-request': hasServiceRequest,
     'create-work-order': hasWorkOrder,
     'schedule-visit': hasScheduledVisit,

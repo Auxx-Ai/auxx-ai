@@ -16,6 +16,7 @@ import { useSettings } from '~/hooks/use-settings'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
+import { useInvalidateWorkers } from '../hooks/use-invalidate-workers'
 import { useWorkerHoursDraft } from '../hooks/use-worker-hours-draft'
 import { useWorkerProfileDraft } from '../hooks/use-worker-profile-draft'
 import { WorkerHoursPage } from './worker-hours-page'
@@ -72,7 +73,7 @@ export function WorkerDialog({ open, onOpenChange, workerId, initialPage }: Work
  * per edit).
  */
 function WorkerDialogContent({ open, onOpenChange, workerId, initialPage }: WorkerDialogProps) {
-  const utils = api.useUtils()
+  const invalidateWorkers = useInvalidateWorkers()
   const { getSetting } = useSettings({ scope: 'GENERAL' })
 
   const { data: workers } = api.dispatch.listWorkers.useQuery(undefined, {
@@ -89,7 +90,7 @@ function WorkerDialogContent({ open, onOpenChange, workerId, initialPage }: Work
 
   const addWorker = api.dispatch.upsertWorker.useMutation({
     onSuccess: (created) => {
-      utils.dispatch.listWorkers.invalidate()
+      invalidateWorkers()
       setCreatedWorkerId(created.id)
     },
     onError: (error) => toastError({ title: 'Error adding worker', description: error.message }),

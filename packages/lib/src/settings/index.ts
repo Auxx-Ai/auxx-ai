@@ -7,6 +7,7 @@
 
 export { isSettingKey, SETTINGS_CATALOG, type SettingConfig, type SettingKey } from './catalog'
 export { normalizeSettingValue } from './normalize-setting-value'
+export { seedDocumentBusinessFromProfile } from './seed-document-business'
 export {
   batchUpdateOrganizationSettings,
   getAllOrganizationSettings,
