@@ -155,6 +155,13 @@ export interface DialogNavPagesProps {
   value: string
   children: ReactNode
   className?: string
+  /**
+   * Re-apply the dialog gutter to a footer nested inside a page (default `true`).
+   * Set `false` when the host already pads each page in full — body *and* footer,
+   * as the command palette does — otherwise the two gutters stack and the buttons
+   * indent past the fields.
+   */
+  footerGutter?: boolean
 }
 
 /**
@@ -164,7 +171,12 @@ export interface DialogNavPagesProps {
  * content. The active page crossfades in. Pair with a `DialogContent
  * size='content'` shell so the card width follows the animating body.
  */
-export function DialogNavPages({ value, children, className }: DialogNavPagesProps) {
+export function DialogNavPages({
+  value,
+  children,
+  className,
+  footerGutter = true,
+}: DialogNavPagesProps) {
   const [height, setHeight] = useState<number | 'auto'>('auto')
   const ref = useRef<HTMLDivElement>(null)
   // The first measured height (from the observer, post-paint) must snap, not
@@ -219,9 +231,11 @@ export function DialogNavPages({ value, children, className }: DialogNavPagesPro
         // the footer is a sibling of that body, so its buttons sit flush against
         // the (rounded, overflow-hidden) card edges and get clipped. Re-apply the
         // dialog's standard `p-4` gutter to any nested footer via its data-slot.
+        // Only the horizontal + bottom edges — the footer's own `pt-4` stands.
         // Footers rendered as a *sibling* of DialogNavPages (the common wizard
         // layout) aren't descendants, so they keep their own padding untouched.
-        '[&_[data-slot=dialog-footer]]:px-4 [&_[data-slot=dialog-footer]]:pb-4',
+        // Hosts that pad the whole page (footer included) opt out via `footerGutter`.
+        footerGutter && '[&_[data-slot=dialog-footer]]:px-4 [&_[data-slot=dialog-footer]]:pb-4',
         className
       )}>
       {/* Stable measuring wrapper: the keyed page below remounts on every change,
