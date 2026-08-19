@@ -4,7 +4,7 @@ import { IntegrationProviderType, ParticipantRole, SendStatus } from '@auxx/data
 import type { ParticipantRole as ParticipantRoleType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, like, or, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { getComposerCapabilities, identifierTypeForProvider } from '../channels/capabilities'
 import {
@@ -555,6 +555,7 @@ export class MessageSenderService {
       // Step 10: Convert temp attachments to permanent after successful send
       if (input.attachmentIds && input.attachmentIds.length > 0 && sendResult.success) {
         await this.convertAttachmentsToPermanent(input.attachmentIds)
+        await this.discardTempAttachmentLinks(input.attachmentIds)
       }
       // Step 11: Return result, carrying the resolved participants so the
       // client can render the optimistic row with correct from/to immediately.
@@ -1452,6 +1453,53 @@ export class MessageSenderService {
       }
     }
   }
+  /**
+   * Drops the composer's placeholder `Attachment` links once the real ones exist.
+   *
+   * The composer uploads before a draft exists, so `MessageAttachmentProcessor`
+   * keys the link row to a synthetic `temp-message-<ts>-<rand>` entity id
+   * (`files/upload/processors/entity-processors.ts`). The send then writes a
+   * second link row against the real message id — and nothing ever removed the
+   * first, so every attachment send left a row pointing at a message that does
+   * not exist. Seven had accumulated in dev between 2026-03 and 2026-08, one per
+   * attachment ever sent.
+   *
+   * Deleting is right rather than re-parenting: the real row is already written
+   * with the correct `sort`/`role`, so re-parenting would produce a duplicate
+   * attachment on the message instead of a dangling one beside it.
+   *
+   * Matching on the `temp-message-` prefix is what makes this safe — a row bound
+   * to a real message can never match, so a send that reuses an asset another
+   * message also carries cannot lose that message's link.
+   *
+   * Best-effort: a failure here must never fail a send that already went out.
+   */
+  private async discardTempAttachmentLinks(ids: string[]): Promise<void> {
+    if (ids.length === 0) return
+    try {
+      const deleted = await (this.db ?? db)
+        .delete(schema.Attachment)
+        .where(
+          and(
+            eq(schema.Attachment.organizationId, this.organizationId),
+            like(schema.Attachment.entityId, 'temp-message-%'),
+            // `inArray`, never a raw `IN ${ids}` — a bare array in a Drizzle
+            // template binds as ONE parameter and silently matches nothing.
+            or(inArray(schema.Attachment.assetId, ids), inArray(schema.Attachment.fileId, ids))
+          )
+        )
+        .returning({ id: schema.Attachment.id })
+      if (deleted.length > 0) {
+        logger.info('Discarded placeholder attachment links after send', {
+          count: deleted.length,
+          organizationId: this.organizationId,
+        })
+      }
+    } catch (error) {
+      logger.error('Failed to discard placeholder attachment links', { error, ids })
+    }
+  }
+
   /**
    * Retries sending a failed message
    * - Validates the message exists and is in failed state
