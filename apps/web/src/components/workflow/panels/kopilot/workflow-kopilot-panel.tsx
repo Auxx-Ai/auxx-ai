@@ -16,6 +16,7 @@ import { useFreshSessionEstablished } from '~/components/kopilot/hooks/use-fresh
 import { KopilotChatProvider } from '~/components/kopilot/options'
 import { KopilotChat } from '~/components/kopilot/ui/kopilot-chat'
 import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
+import { WorkflowKopilotSuggestions } from '~/components/workflow/panels/kopilot/workflow-kopilot-suggestions'
 import { PanelFrameHeader } from '~/components/workflow/panels/panel-frame-chrome'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
@@ -83,6 +84,10 @@ export function WorkflowKopilotPanel({ workflowAppId }: WorkflowKopilotPanelProp
           activeWorkflowIsDirty={isDirty}
         />
       )}
+      {/* Builder-shaped empty-chat prompts. Any registered slice replaces the
+          generic inbox fallback wholesale, so this must stay mounted whenever
+          the chat itself can render. */}
+      {kopilotEnabled && workflowAppId && <WorkflowKopilotSuggestions />}
       <PanelFrameHeader
         icon={<SparkleIcon className='shrink-0' />}
         title='Kopilot'
