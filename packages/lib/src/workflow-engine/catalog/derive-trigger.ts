@@ -61,9 +61,9 @@ export type DerivedTriggerLinks =
  * Pure graph-side half of the app/webhook trigger-column derivation — the
  * server-side branches `workflow-service.update` used to inline (HANDOFF item
  * 5). Unlike {@link deriveTriggerColumns}, `triggerType` is an INPUT here, not
- * derived: the save path trusts the caller-posted type, and the catalog cannot
- * yet resolve webhook / webhook-endpoint / app trigger types itself (they are
- * `NOT_YET_MIGRATED`).
+ * derived: the save path trusts the caller-posted type, and the catalog still
+ * cannot resolve the two dynamic APP trigger types itself (they are per-org
+ * data, synthesized by `buildManifestLookup`, never registered).
  *
  * The server-side composition that resolves the installation id lives in
  * `derive-trigger-server.ts` (server-only leaf module — do not fold it in
@@ -121,11 +121,10 @@ export interface DerivedTriggerColumns {
  *    `triggerType` at the generic RESOURCE_TRIGGER and no entity id.
  *
  * `resolveTriggerType` maps a node's `data.type` to its trigger type. The
- * default consults the catalog, which covers every migrated trigger; apps/web
- * passes its registry-backed resolver because the canvas can also hold
- * not-yet-migrated triggers (webhook, webhook-endpoint) and dynamic app
- * triggers (`appId:triggerId` → APP_TRIGGER / APP_POLLING_TRIGGER) the catalog
- * cannot see yet.
+ * default consults the catalog, which now covers every platform trigger;
+ * apps/web still passes its registry-backed resolver because the canvas can
+ * also hold dynamic app triggers (`appId:triggerId` → APP_TRIGGER /
+ * APP_POLLING_TRIGGER), which are per-org data the core registry never sees.
  */
 export function deriveTriggerColumns(
   nodes: readonly TriggerDerivationNode[],

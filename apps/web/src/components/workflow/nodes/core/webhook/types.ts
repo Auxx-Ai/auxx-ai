@@ -1,7 +1,15 @@
 // apps/web/src/components/workflow/nodes/core/webhook/types.ts
 
-import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
+import type { CatalogWebhookNodeData } from '@auxx/lib/workflow-engine/client'
+import type { SpecificNode } from '~/components/workflow/types/node-base'
+import type { NodeType } from '~/components/workflow/types/node-types'
 import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
+
+// The data half moved to the node catalog
+// (`@auxx/lib/workflow-engine/catalog/nodes/webhook`). The node data narrows
+// `type` to the web NodeType enum and `bodySchema.schema` to the schema
+// editor's `SchemaRoot` (the catalog keeps that member loose for exactly this
+// reason). `WebhookTestEvent` below is web-only and stays.
 
 /**
  * Represents a webhook test event that is captured and stored for debugging
@@ -28,17 +36,9 @@ export interface WebhookTestEvent {
 /**
  * Data interface for the Webhook node (flattened structure)
  */
-export interface WebhookNodeData extends BaseNodeData {
-  // Webhook-specific fields (previously in config)
-  method: 'GET' | 'POST'
+export interface WebhookNodeData extends CatalogWebhookNodeData {
+  type: NodeType
   bodySchema?: { enabled: boolean; schema?: SchemaRoot }
-  authType?: 'bearer' | 'apiKey' | 'hmac' | null
-  authConfig?: { secret?: string; headerName?: string }
-  responseConfig?: {
-    statusCode: number
-    body?: string // Can include variables
-    headers?: Record<string, string>
-  }
 }
 
 /**

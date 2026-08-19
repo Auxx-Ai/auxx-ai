@@ -1,20 +1,21 @@
 // packages/lib/src/workflow-engine/nodes/trigger-nodes/webhook-processor.ts
 
+import type { WebhookNodeData } from '../../catalog/nodes/webhook'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
 
 /**
- * Data interface for webhook node
+ * The slice of the webhook node's persisted config this processor reads. The
+ * shape itself lives in the catalog (`catalog/nodes/webhook`) — this is a
+ * projection of it, not a second declaration.
+ *
+ * Note it is the NODE CONFIG, not the delivery: what the request actually
+ * carried (`headers`, `query`, `body`) arrives as `context.triggerData`, which
+ * the route builds and this processor republishes as node variables.
  */
-interface WebhookData {
-  method: 'GET' | 'POST'
-  bodySchema?: { schema: object; uiSchema?: object }
-  authType?: 'bearer' | 'apiKey' | 'hmac' | null
-  authConfig?: { secret?: string; headerName?: string }
-  responseConfig?: { statusCode: number; body?: string; headers?: Record<string, string> }
-}
+type WebhookConfig = Pick<WebhookNodeData, 'method'>
 
 /**
  * Processor for webhook trigger nodes
@@ -79,7 +80,7 @@ export class WebhookProcessor extends BaseNodeProcessor {
   protected async validateNodeConfig(node: WorkflowNode): Promise<ValidationResult> {
     const errors: string[] = []
     const warnings: string[] = []
-    const data = node.data as unknown as WebhookData
+    const data = node.data as unknown as WebhookConfig
 
     if (!data.method) {
       errors.push('HTTP method is required')

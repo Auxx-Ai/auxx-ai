@@ -27,6 +27,8 @@ import { scheduledTriggerManifest } from './nodes/scheduled'
 import { textClassifierManifest } from './nodes/text-classifier'
 import { varAssignManifest } from './nodes/var-assign'
 import { waitManifest } from './nodes/wait'
+import { webhookManifest } from './nodes/webhook'
+import { webhookEndpointManifest } from './nodes/webhook-endpoint'
 import type { NodeManifest } from './types'
 
 /**
@@ -68,6 +70,8 @@ const ALL_MANIFESTS: NodeManifest<any>[] = [
   textClassifierManifest,
   varAssignManifest,
   waitManifest,
+  webhookManifest,
+  webhookEndpointManifest,
 ]
 
 const manifests = new Map<string, NodeManifest<any>>(ALL_MANIFESTS.map((m) => [m.id, m]))

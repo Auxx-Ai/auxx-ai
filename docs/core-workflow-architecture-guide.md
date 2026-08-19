@@ -61,9 +61,11 @@ because of what that cost.
 | `connection` | target/source handle rules, incl. `branches` |
 | `agentSchema?` / `fromAgentConfig?` / `agent?` | the friendly shape Kopilot authors against |
 
-`catalog/registry.ts` holds them (**26** manifests today);
-`catalog/not-yet-migrated.ts` lists node types that still live only in web
-(**3**: `webhook`, `webhook-endpoint`, `form-input`).
+`catalog/registry.ts` holds them (**29** manifests — every platform node type);
+`catalog/not-yet-migrated.ts` lists node types that still live only in web, and
+is **empty**: the migration is complete. It stays in the tree because of the
+coupling below — it is what makes adding a node type an explicit decision, not
+only migrating one. A NEW type may not be parked there; the list only shrinks.
 
 **The tracker and the `NodeType` enum are COUPLED.** `parity/catalog-coverage.test.ts`
 asserts exact set equality between the enum and {registered manifests ∪
@@ -615,9 +617,9 @@ Rules that are easy to get wrong:
   write that way sends the caller off to repair something that is already
   correct. The no-op check is guarded on `envVars`/`variables`/`icon`, which
   `set_workflow_details` and `apply_template` pass through the same seam.
-- **A node with no manifest is not an issue.** Uncatalogued nodes (app blocks,
-  not-yet-migrated types) are named once on `GraphSummary.readOnlyNodes`, never
-  as a per-node `info` issue — an un-actionable line repeated on every read
+- **A node with no manifest is not an issue.** Uncatalogued nodes (an app block
+  whose app was uninstalled, a retired type on a legacy graph) are named once on
+  `GraphSummary.readOnlyNodes`, never as a per-node `info` issue — an un-actionable line repeated on every read
   buries the issues that ARE actionable.
 - **Outputs are enrichment; they must never fail a write.**
   `resolveGraphOutputs` runs BEFORE `persistDraft`, so it returns

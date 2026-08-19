@@ -10,8 +10,10 @@ import type { OutputResolver } from './output-context'
  * `registerFromManifest`), the engine processors, and — later — Kopilot's
  * authoring tools. Replaces the three drifting copies (builder
  * `NodeDefinition`, engine shadow interfaces, and the parity suite's static
- * extraction) one migrated node type at a time; `not-yet-migrated.ts` is the
- * tracker.
+ * extraction) one migrated node type at a time. The migration is COMPLETE —
+ * `not-yet-migrated.ts`, the tracker, is empty — but it stays, because the
+ * coverage test it anchors is what forces a NEW node type to be an explicit
+ * decision too.
  */
 
 /**
@@ -162,9 +164,9 @@ export interface NodeManifest<TConfig = unknown> {
 /**
  * How a caller resolves a node type to its manifest.
  *
- * The core registry (`getManifest`) answers for the 27 migrated platform types
- * and nothing else. App workflow blocks are **per-org data**, not platform
- * code — they are declared by an installed app's published catalog — so their
+ * The core registry (`getManifest`) answers for the 29 platform node types
+ * (every member of the builder's `NodeType` enum) and nothing else. App
+ * workflow blocks are **per-org data**, not platform code — they are declared by an installed app's published catalog — so their
  * manifests are synthesized per request (`buildManifestLookup`) and reach the
  * sync call sites through this function rather than through the registry Map.
  *

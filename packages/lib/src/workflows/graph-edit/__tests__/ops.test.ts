@@ -876,20 +876,23 @@ describe('updateNode / disconnectNodes', () => {
   })
 
   it('names uncatalogued nodes ONCE on the summary, not as an issue per read', async () => {
-    // Anything with no catalog manifest — an app block, or a not-yet-migrated
-    // type like `webhook` — used to emit an `info` issue on every read and
-    // every mutation result: un-actionable noise that buried the issues that
-    // WERE actionable. It is a fact about the graph, so it rides the summary.
+    // Anything with no catalog manifest — an app block whose app was
+    // uninstalled, or a retired core type still sitting on an old graph — used
+    // to emit an `info` issue on every read and every mutation result:
+    // un-actionable noise that buried the issues that WERE actionable. It is a
+    // fact about the graph, so it rides the summary.
     //
-    // `webhook` rather than an `appId:blockId` app block on purpose: a
-    // colon-shaped type sends `resolveGraphOutputs` into the org cache for the
-    // app-block lookup, which this suite's bare mock db cannot serve.
-    const readOnlyId = 'webhook-aaaaaaaaaaaaaaaaaa'
+    // `number-input` (retired during the catalog burn-down, and still
+    // persistable on a legacy graph) rather than an `appId:blockId` app block
+    // on purpose: a colon-shaped type sends `resolveGraphOutputs` into the org
+    // cache for the app-block lookup, which this suite's bare mock db cannot
+    // serve.
+    const readOnlyId = 'legacy-aaaaaaaaaaaaaaaaaa'
     const readOnly: GraphNode = {
       id: readOnlyId,
       type: 'standard',
       position: { x: 900, y: 100 },
-      data: { id: readOnlyId, type: 'webhook', title: 'Incoming Webhook' },
+      data: { id: readOnlyId, type: 'number-input', title: 'Incoming Webhook' },
     }
     const graph: DraftGraph = { nodes: [triggerNode(), loopNode(), readOnly], edges: [] }
     const result = await updateNode(makeDb(graph), {

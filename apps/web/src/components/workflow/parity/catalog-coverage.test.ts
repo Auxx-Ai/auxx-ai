@@ -115,8 +115,14 @@ describe('defineFromManifest', () => {
     expect(definition.validator?.({ title: 'ok' }).isValid).toBe(true)
   })
 
-  it('resolves migrated types and stays undefined-safe for unmigrated ones', () => {
+  it('resolves platform types and stays undefined-safe for everything else', () => {
     expect(getManifest('wait')?.displayName).toBe('Wait')
-    expect(getManifest('webhook')).toBeUndefined()
+    expect(getManifest('webhook')?.displayName).toBe('Webhook')
+    // NOT_YET_MIGRATED is empty now, so the undefined arm can no longer be
+    // pinned to an unmigrated platform type. It still matters: `getManifest`
+    // is core-only, and an app block (per-org data, reached through
+    // `buildManifestLookup`) must never resolve through it.
+    expect(getManifest('quickbooks:create-invoice')).toBeUndefined()
+    expect(getManifest('not-a-node-type')).toBeUndefined()
   })
 })

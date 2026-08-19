@@ -1,22 +1,21 @@
 // packages/lib/src/workflow-engine/nodes/trigger-nodes/webhook-endpoint.ts
 
+import type { WebhookEndpointNodeData } from '../../catalog/nodes/webhook-endpoint'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
 import { BaseNodeProcessor } from '../base-node'
 
 /**
- * Config (`node.data`) for the WEBHOOK_ENDPOINT trigger node, written by
- * `apps/web/src/components/workflow/nodes/core/webhook-trigger/panel.tsx`.
+ * The slice of the WEBHOOK_ENDPOINT node's persisted config this processor
+ * reads. The shape lives in the catalog (`catalog/nodes/webhook-endpoint`);
+ * this is a projection of it, widened to `Partial` because a legacy or
+ * half-configured node legitimately carries neither key and both reads below
+ * already fall back.
  */
-interface WebhookEndpointTriggerData {
-  /** Id of the `WebhookEndpoint` whose deliveries fire this workflow. */
-  webhookEndpointId?: string
-  /** Optional topic scope — blank matches every delivery. */
-  topic?: string
-  /** Cached endpoint display name (label only, never read at run time). */
-  webhookEndpointName?: string
-}
+type WebhookEndpointTriggerData = Partial<
+  Pick<WebhookEndpointNodeData, 'webhookEndpointId' | 'topic'>
+>
 
 /**
  * Platform provenance that `executeAppTriggeredWorkflow` nests under `_meta`
@@ -44,8 +43,8 @@ interface WebhookEndpointTriggerMeta {
  *   - `topic`             → `_meta.topic`, falling back to the configured topic
  *   - `webhookEndpointId` → `_meta.webhook_endpoint_id`, falling back to config
  *
- * which is exactly what the builder's `webhookTriggerDefinition.outputVariables`
- * advertises. `body` is typed OBJECT there because that is the overwhelmingly
+ * which is exactly what the catalog manifest's `resolveOutputs`
+ * (`catalog/nodes/webhook-endpoint.ts`) advertises. `body` is typed OBJECT there because that is the overwhelmingly
  * common case, but a sender may post an array or a non-JSON string and the
  * payload is passed through rather than coerced.
  */
@@ -90,7 +89,7 @@ export class WebhookEndpointTriggerProcessor extends BaseNodeProcessor {
       bodyType: Array.isArray(body) ? 'array' : typeof body,
     })
 
-    // Advertised output variables (see `webhook-trigger/schema.ts`)
+    // Advertised output variables (see `catalog/nodes/webhook-endpoint.ts`)
     contextManager.setNodeVariable(node.nodeId, 'topic', topic)
     contextManager.setNodeVariable(node.nodeId, 'webhookEndpointId', webhookEndpointId)
     contextManager.setNodeVariable(node.nodeId, 'body', body)
