@@ -497,7 +497,15 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
           )}
           <EditorContent
             editor={editor}
-            className={cn('w-full flex flex-col px-3 py-2 text-sm flex-1 [&>.prose]:flex-1')}
+            className={cn(
+              'w-full flex flex-col text-sm flex-1',
+              // All padding lives on the ProseMirror element rather than this
+              // wrapper, so the contenteditable covers the full box and every
+              // click inside it focuses the caret instead of landing on dead
+              // gutter. `pb-9` reserves the height of the absolutely
+              // positioned toolbar below.
+              '[&>.prose]:flex-1 [&>.prose]:px-3 [&>.prose]:pt-2 [&>.prose]:pb-9'
+            )}
           />
           {/* Reference picker (@) — tabbed people/records/messages/articles */}
           {allowReferencePicker && (
@@ -567,8 +575,8 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
             </InlinePickerPopover>
           )}
         </div>
-        <div className='flex items-center justify-between p-1 '>
-          <div className='flex items-center gap-0.5 overflow-y-auto no-scrollbar overscroll-contain'>
+        <div className='pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between p-1'>
+          <div className='pointer-events-auto flex items-center gap-0.5 overflow-y-auto no-scrollbar overscroll-contain'>
             {allowModelPicker && (
               <AiModelPicker
                 value={selectedModelId ?? systemLlmDefault}
@@ -594,7 +602,7 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
               />
             )}
           </div>
-          <div className='flex items-center gap-0.5 shrink-0'>
+          <div className='pointer-events-auto flex items-center gap-0.5 shrink-0'>
             {allowSlashCommands && (
               <Tooltip content='Insert prompt template' shortcut='/' allowInteraction>
                 <Button
