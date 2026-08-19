@@ -3,7 +3,7 @@
 import type { Database } from '@auxx/database'
 import type { ResolvedKnowledgeScope } from '../../../agents/resolve-knowledge-scope'
 import type { CapabilityView } from '../../../permissions/capabilities/capability-view'
-import type { AgentDeps, AgentToolDefinition } from '../../agent-framework/types'
+import type { AgentDeps, AgentToolDefinition, TurnOutcome } from '../../agent-framework/types'
 import type { SessionContext } from '../types'
 
 /** Dependencies injected into tool execution (superset of AgentDeps) */
@@ -74,12 +74,22 @@ export interface CapabilityTurnDeps {
  */
 export interface CapabilityLifecycle {
   /**
-   * Fired once at the end of a turn. `outcome` mirrors the engine
-   * (`'completed'` for a clean finish, `'error'` for a turn-error / abort /
-   * disconnect). Sources everything but `turnId` from the capability's own
-   * `GetToolDeps` closure. Must not throw — the domain config wraps it.
+   * Fired once at the end of a turn. `outcome` is the engine's
+   * {@link TurnOutcome}, forwarded verbatim by the domain config — one source
+   * of truth, never a locally restated union.
+   *
+   * Only `'error'` means something actually went wrong. `'exhausted'` (a
+   * resource cap: token budget, iteration cap, same-tool failure streak) and
+   * `'aborted'` (abort signal / client disconnect / page reload) both leave the
+   * capability's turn-scoped resource as N complete, individually valid
+   * mutations — **a hook must never treat them as corruption and roll them
+   * back** (plans/kopilot/workflow/20 §2). Restoring a snapshot is offered to
+   * the user, never performed here.
+   *
+   * Sources everything but `turnId` from the capability's own `GetToolDeps`
+   * closure. Must not throw — the domain config wraps it.
    */
-  onTurnEnd?(outcome: 'completed' | 'error', deps: CapabilityTurnDeps): Promise<void>
+  onTurnEnd?(outcome: TurnOutcome, deps: CapabilityTurnDeps): Promise<void>
 }
 
 /** A page capability set — tools available on a specific page */

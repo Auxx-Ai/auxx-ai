@@ -62,6 +62,7 @@ export {
   type TaskNotificationSummary,
   type TaskSnapshot,
 } from './task-notifications'
+export { KOPILOT_TURN_BUDGET } from './turn-budget'
 export type {
   KopilotDomainState,
   PlanState,

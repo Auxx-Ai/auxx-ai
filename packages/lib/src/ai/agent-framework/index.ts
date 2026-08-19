@@ -64,6 +64,8 @@ export type {
   ThinkingPart,
   ToolCallPart,
   ToolCallStatus,
+  TurnErrorReason,
+  TurnOutcome,
   UserSessionMessage,
 } from './types'
 

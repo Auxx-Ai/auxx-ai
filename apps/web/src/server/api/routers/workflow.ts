@@ -23,12 +23,17 @@ import {
   WorkflowStatsService,
   WorkflowVersionService,
 } from '@auxx/lib/workflows'
-import { readWorkflowTurnLock } from '@auxx/lib/workflows/graph-edit'
+import {
+  finalizeWorkflowTurn,
+  readWorkflowTurnLock,
+  readWorkflowTurnSnapshot,
+  revertWorkflowTurn,
+} from '@auxx/lib/workflows/graph-edit'
 import { getWorkflowAppsByTrigger } from '@auxx/services/workflows'
 import { type RecordId, recordIdSchema } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils/generateId'
 import { TRPCError } from '@trpc/server'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import {
@@ -375,6 +380,179 @@ export const workflowRouter = createTRPCRouter({
       ctx.capabilities.assertViewInstance('workflow', input.workflowAppId)
       const lock = await readWorkflowTurnLock(input.workflowAppId)
       return { active: lock !== null, turnId: lock?.turnId ?? null }
+    }),
+  /**
+   * Recover a pending Kopilot turn review for this workflow — the `base` half
+   * of the post-turn banner, or `null` when nothing is pending (plan 20 §5,
+   * phase D). The workflow twin of `kb.getKopilotTurnReview`, and the two are
+   * deliberately the same shape: a query that runs on mount (so the review
+   * survives a refresh, which no agent event does) and is re-read on the turn
+   * boundary for liveness.
+   *
+   * THE SNAPSHOT'S EXISTENCE *IS* THE SIGNAL. After plan 20 phase A the
+   * workflow-builder capability never reverts automatically and only calls
+   * `finalizeWorkflowTurn` on a COMPLETED turn, so the one-slot-per-workflow
+   * pre-turn snapshot survives exactly one situation: a turn that wrote to the
+   * draft and then stopped without completing (token budget, disconnect, a
+   * throw). Every other path clears it — success finalizes, a manual canvas
+   * save calls `clearWorkflowTurnSnapshot`, the next turn's first write
+   * overwrites the slot, and Redis expires it after 24h. That is why this reads
+   * the snapshot server-side instead of plumbing `turnId` through SSE: the SSE
+   * stream never carries one, and the offer has to survive a reload anyway.
+   *
+   * `view` rung like `kopilotTurnStatus` — the offer is *shown* to anyone who
+   * can see the canvas; taking it is gated at instance `edit` on the mutation.
+   *
+   * Deliberately reads Redis BEFORE the DB: the overwhelmingly common answer is
+   * "no snapshot", and that costs one Redis GET with no query at all. The org
+   * predicate on the row lookup below is what pins the workflow to the caller's
+   * org before any real data (the node counts) is returned — `workflow` is
+   * `baselineAtCreate: false`, so a row-less/foreign id falls back to the
+   * caller's AREA level and would otherwise sail through `assertViewInstance`.
+   */
+  getKopilotTurnReview: permissionProcedure(PermissionKey.workflowsView)
+    .input(z.object({ workflowAppId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      ctx.capabilities.assertViewInstance('workflow', input.workflowAppId)
+
+      const snapshot = await readWorkflowTurnSnapshot(input.workflowAppId)
+      if (!snapshot) return null
+
+      // A turn still holding the draft has not "stopped early" — it is mid-write.
+      // Its snapshot is live fuel for a revert that only becomes an offer once
+      // the turn is over, so offering it now would let the user undo underneath
+      // a running agent.
+      const lock = await readWorkflowTurnLock(input.workflowAppId)
+      if (lock?.turnId === snapshot.turnId) return null
+
+      // Node counts, not edit counts: the snapshot records the graph, never a
+      // tool-call log, so "12 edits were applied" is not provable from here.
+      // The current count is computed IN SQL (`jsonb_array_length`) so this
+      // costs one indexed row and never ships the whole graph jsonb over the
+      // wire — the same reason it does not go through `loadDraftContext`, which
+      // would also build a manifest lookup off the org cache for nothing.
+      const [row] = await ctx.db
+        .select({
+          id: schema.WorkflowApp.id,
+          draftNodeCount: sql<number>`
+            case when jsonb_typeof(${schema.Workflow.graph} -> 'nodes') = 'array'
+              then jsonb_array_length(${schema.Workflow.graph} -> 'nodes')
+              else 0 end
+          `,
+        })
+        .from(schema.WorkflowApp)
+        // LEFT, not INNER: a workflow whose draft row does not exist yet is a
+        // real state (`WorkflowService.update` creates it on first persist), and
+        // it must still resolve the app row that proves org ownership.
+        .leftJoin(schema.Workflow, eq(schema.Workflow.id, schema.WorkflowApp.draftWorkflowId))
+        .where(
+          and(
+            eq(schema.WorkflowApp.id, input.workflowAppId),
+            eq(schema.WorkflowApp.organizationId, ctx.session.organizationId)
+          )
+        )
+        .limit(1)
+      if (!row) return null
+
+      return {
+        turnId: snapshot.turnId,
+        capturedAt: snapshot.capturedAt,
+        /** Nodes on the canvas the moment before the turn's first write. */
+        preTurnNodeCount: snapshot.graph.nodes.length,
+        /** Nodes on the draft right now — the turn's result, still in place. */
+        currentNodeCount: Number(row.draftNodeCount ?? 0),
+        /**
+         * How the turn ended (`exhausted` / `aborted` / `error`), stamped on
+         * the snapshot at turn end. NULL is a real, expected answer — a
+         * snapshot from before the field existed, a turn that died before its
+         * turn-end hook ran, or a stamp whose Redis write failed — and the
+         * banner must fall back to its generic wording rather than withhold
+         * the offer. Normalised to null (not omitted) so the client sees one
+         * shape.
+         */
+        endedAs: snapshot.endedAs ?? null,
+      }
+    }),
+  /**
+   * Take the offer above: restore the exact pre-turn graph.
+   *
+   * Instance `edit`, like every other draft-writing mutation in this file — the
+   * offer renders at `view`, but undoing a turn rewrites the draft.
+   *
+   * `turnId` is an INPUT rather than re-derived server-side on purpose: it is
+   * the one the query handed this client, so a card left open across a newer
+   * turn cannot revert a turn the user never saw. `revertWorkflowTurn` checks it
+   * against the slot and refuses with `NotFoundError` when they disagree.
+   *
+   * Three outcomes reach the client, and the card is expected to tell them
+   * apart — the two refusals carry messages written to be shown verbatim:
+   * `NotFoundError` (404, the snapshot is gone), `ConflictError` (409, the
+   * canvas moved on since the turn — `details.reason ===
+   * 'canvas-changed-since-turn'` — or `persistDraft`'s own CAS losing to a save
+   * racing the revert), and success. NOTHING is written on either refusal; the
+   * 409 additionally leaves the snapshot in place, so that offer stays live and
+   * can be retried once the canvas is back where the turn left it.
+   */
+  revertKopilotTurn: permissionProcedure(PermissionKey.workflowsView)
+    .input(z.object({ workflowAppId: z.string(), turnId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertEditInstance('workflow', input.workflowAppId)
+      await assertWorkflowAppNotSystemOwned(ctx.db, {
+        workflowAppId: input.workflowAppId,
+        organizationId: ctx.session.organizationId,
+        isSuperAdmin: ctx.session.isSuperAdmin,
+      })
+      // No try/catch: the AuxxError travels as-is and `auxxErrorMiddleware`
+      // maps 404/409 to the matching tRPC code. Wrapping it here would flatten
+      // both into a 500 and take the user-facing message with it.
+      const reverted = await revertWorkflowTurn(
+        ctx.db,
+        {
+          workflowAppId: input.workflowAppId,
+          organizationId: ctx.session.organizationId,
+        },
+        input.turnId
+      )
+      if (reverted.isErr()) throw reverted.error
+      return { reverted: true }
+    }),
+  /**
+   * Commit the turn — the user is happy with what it left behind. Discards the
+   * pre-turn snapshot, which removes the Undo affordance; the turn lock was
+   * already released by the capability's `onTurnEnd`.
+   *
+   * The workflow twin of `kb.keepKopilotTurn`, including its soft
+   * `{ ok, reason }` return: Keep is not destructive and its only failure mode
+   * is "there was nothing left to keep", which is indistinguishable from
+   * success from the user's side — a thrown 404 would be noise.
+   *
+   * Turn-pinned through `finalizeWorkflowTurn`, so a stale Keep button cannot
+   * clear a NEWER turn's snapshot and silently destroy that turn's recovery
+   * path. Without this the only way an offer went away was the 24h TTL.
+   */
+  keepKopilotTurn: permissionProcedure(PermissionKey.workflowsView)
+    .input(z.object({ workflowAppId: z.string(), turnId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      ctx.capabilities.assertEditInstance('workflow', input.workflowAppId)
+      // Snapshots are keyed by workflowAppId alone in Redis, so pin the org
+      // before touching one — `workflow` is `baselineAtCreate: false` and a
+      // row-less (foreign) id falls back to the caller's AREA level.
+      const [workflowApp] = await ctx.db
+        .select({ id: schema.WorkflowApp.id })
+        .from(schema.WorkflowApp)
+        .where(
+          and(
+            eq(schema.WorkflowApp.id, input.workflowAppId),
+            eq(schema.WorkflowApp.organizationId, ctx.session.organizationId)
+          )
+        )
+        .limit(1)
+      if (!workflowApp) return { ok: false as const, reason: 'not_found' as const }
+
+      const snapshot = await readWorkflowTurnSnapshot(input.workflowAppId, input.turnId)
+      if (!snapshot) return { ok: false as const, reason: 'turn_mismatch' as const }
+      await finalizeWorkflowTurn(input.workflowAppId, input.turnId)
+      return { ok: true as const }
     }),
   /**
    * Create a new workflow app with initial workflow version

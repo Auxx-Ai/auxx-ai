@@ -122,8 +122,11 @@ export {
   clearWorkflowTurnSnapshot,
   finalizeWorkflowTurn,
   readWorkflowTurnSnapshot,
+  recordWorkflowTurnEnding,
+  recordWorkflowTurnPostHash,
   revertWorkflowTurn,
   type WorkflowPreTurnSnapshot,
+  type WorkflowTurnEnding,
 } from './turn-snapshot'
 export type {
   DraftGraph,

@@ -27,6 +27,7 @@ import { WorkflowHistoryProvider } from '../store/workflow-history-provider'
 import { useWorkflowStore } from '../store/workflow-store'
 import { WorkflowStoreProvider } from '../store/workflow-store-provider'
 import type { FlowEdge, FlowNode } from '../types'
+import { KopilotTurnReviewBanner } from '../ui/kopilot-turn-review-banner'
 import { WorkflowEditorProvider } from './workflow-editor-provider'
 
 interface WorkflowEditorProps {
@@ -81,6 +82,12 @@ const WorkflowEditorInner = memo<{
       <div className='workflow-editor flex flex-col h-full rounded-2xl'>
         {/* Toolbar */}
         <WorkflowToolbar className='flex-shrink-0' />
+
+        {/* Keep/Undo for a Kopilot turn that stopped early and left its edits
+            behind (plan 20 phase D). Mounted HERE, not in the Kopilot panel:
+            that frame is a peer overlay and unmounts whenever another panel is
+            popped, and this offer has to stay reachable for 24h. */}
+        <KopilotTurnReviewBanner workflowAppId={workflow?.id} />
 
         {/* Main content */}
         <div className='flex-1 min-h-0 w-full flex flex-row'>

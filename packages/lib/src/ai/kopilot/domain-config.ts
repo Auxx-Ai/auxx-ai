@@ -13,6 +13,7 @@ import type {
   AgentToolDefinition,
   AgentToolResult,
   PostProcessResult,
+  TurnOutcome,
   TurnSnapshots,
 } from '../agent-framework/types'
 import { resolveUtilityModel } from '../providers/utility-model'
@@ -236,15 +237,14 @@ export function createKopilotDomainConfig(
         ? { content: next, linkSnapshots }
         : { content: next }
     },
-    async onTurnEnd(
-      _state: AgentState,
-      outcome: 'completed' | 'error',
-      turnId?: string
-    ): Promise<void> {
+    async onTurnEnd(_state: AgentState, outcome: TurnOutcome, turnId?: string): Promise<void> {
       // Fan the engine's turn-end out to every capability that declares a
       // lifecycle — capability-scoped cleanup (e.g. the KB snapshot/lock
       // transaction) lives with the capability, not here. The domain config
       // stays capability-agnostic: no per-tool sniffing, no KB imports.
+      // `outcome` is forwarded VERBATIM: the four-way TurnOutcome is the whole
+      // point (a capability must be able to tell "ran out of room" from "went
+      // wrong"), so this fan-out must never collapse it back to two states.
       if (!turnId) return
       for (const lifecycle of capabilityRegistry?.getLifecycles() ?? []) {
         if (!lifecycle.onTurnEnd) continue

@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils/generateId'
+import type { UsageMetrics } from '../clients/base/types'
 import { KopilotContextStore, readContextSlice, syncContextSlice } from './context'
 import { manageContext } from './context-manager'
 import { type AgentQueryResumeHint, agentQueryLoop } from './query-loop'
@@ -14,20 +15,38 @@ import {
   type AssistantSessionMessage,
   type ContentPart,
   createEmptyTurnSnapshots,
+  type IterationUsage,
   type ResumeOptions,
   type Route,
   type SessionMessage,
   type SystemSessionMessage,
   type ToolCallPart,
   type TurnBudget,
+  type TurnErrorReason,
+  type TurnOutcome,
   type TurnUsageSummary,
 } from './types'
+import { meterRollupTokens, normalizeCallUsage } from './usage-metering'
 import { buildToolDigest, executeToolWithProgress } from './utils'
 
 const logger = createScopedLogger('agent-engine')
 const DEFAULT_MAX_TOTAL_ITERATIONS = 50
 const DEFAULT_MAX_TOKENS_PER_TURN = 200_000
 const DEFAULT_MAX_APPROVALS_PER_TURN = 5
+
+/**
+ * The `turn-error` reasons that mean "ran out of room", not "went wrong".
+ * A turn that trips one of these has already done N complete, individually
+ * valid pieces of work — nothing is broken, so `onTurnEnd` hears `'exhausted'`
+ * rather than `'error'`. Membership is what keeps the mapping off the
+ * human-readable `error` string.
+ */
+const EXHAUSTION_REASONS: ReadonlySet<TurnErrorReason> = new Set([
+  'token-budget',
+  'max-iterations',
+  'max-approvals',
+  'tool-failure-streak',
+])
 
 /**
  * AgentEngine — session owner and turn orchestrator.
@@ -42,6 +61,13 @@ export class AgentEngine {
   private abortController: AbortController | null = null
   private turnId: string | null = null
   private turnTokensUsed = 0
+  /**
+   * What `maxTokensPerTurn` is actually compared against — see
+   * {@link AgentEngine.accumulateUsage}. Deliberately separate from
+   * `turnTokensUsed`, which stays the provider-reported grand total so
+   * `TurnUsageSummary` keeps reporting what the turn really consumed.
+   */
+  private turnMeteredTokens = 0
   private turnPromptTokens = 0
   private turnCompletionTokens = 0
   private turnLlmCalls = 0
@@ -117,11 +143,7 @@ export class AgentEngine {
       contextSummary: this.config.domainConfig.summarizeContext?.(context),
     })
 
-    this.abortController = new AbortController()
-    const configWithAbort: AgentEngineConfig = {
-      ...this.config,
-      signal: this.abortController.signal,
-    }
+    const configWithAbort = this.startTurnAbort()
 
     try {
       yield* this.withTurnEnd(this.tagTurnId(this.runPipeline(configWithAbort)))
@@ -158,17 +180,17 @@ export class AgentEngine {
 
     const pending = this.state.pendingToolCall
     if (!pending) {
-      yield this.tagEvent({ type: 'turn-error', error: 'No pending tool call to resume' })
+      yield this.tagEvent({
+        type: 'turn-error',
+        error: 'No pending tool call to resume',
+        reason: 'internal',
+      })
       return
     }
 
     const route = this.state.currentRoute ?? 'default'
 
-    this.abortController = new AbortController()
-    const configWithAbort: AgentEngineConfig = {
-      ...this.config,
-      signal: this.abortController.signal,
-    }
+    const configWithAbort = this.startTurnAbort()
 
     try {
       yield* this.withTurnEnd(this.tagTurnId(this.runResume(opts, route, configWithAbort)))
@@ -197,11 +219,7 @@ export class AgentEngine {
   async *continueTurn(): AsyncGenerator<AgentEvent> {
     if (!this.turnId) this.turnId = generateId('turn')
 
-    this.abortController = new AbortController()
-    const configWithAbort: AgentEngineConfig = {
-      ...this.config,
-      signal: this.abortController.signal,
-    }
+    const configWithAbort = this.startTurnAbort()
 
     logger.info('Turn continued (no new user message)', {
       turnId: this.turnId,
@@ -244,6 +262,7 @@ export class AgentEngine {
         yield this.tagEvent({
           type: 'turn-error',
           error: `Supervisor agent "${domainConfig.supervisorAgent}" not found`,
+          reason: 'internal',
         })
         return
       }
@@ -261,6 +280,7 @@ export class AgentEngine {
       yield this.tagEvent({
         type: 'turn-error',
         error: `No routes configured in domain "${domainConfig.type}"`,
+        reason: 'internal',
       })
       return
     }
@@ -286,14 +306,25 @@ export class AgentEngine {
     for (const agentName of route.agents) {
       if (config.signal?.aborted) break
       if (totalIterations >= budget.maxIterations) {
-        yield this.tagEvent({ type: 'turn-error', error: 'Max total iterations exceeded' })
-        return
-      }
-      if (this.turnTokensUsed >= budget.maxTokensPerTurn) {
+        logger.warn('Max total iterations exceeded — closing the turn', {
+          turnId: this.turnId,
+          sessionId: this.config.sessionId,
+          reason: 'max-iterations',
+          totalIterations,
+          maxIterations: budget.maxIterations,
+          turnTokensUsed: this.turnTokensUsed,
+          turnMeteredTokens: this.turnMeteredTokens,
+          llmCalls: this.turnLlmCalls,
+        })
         yield this.tagEvent({
           type: 'turn-error',
-          error: `Turn exceeded token budget (${this.turnTokensUsed}/${budget.maxTokensPerTurn})`,
+          error: 'Max total iterations exceeded',
+          reason: 'max-iterations',
         })
+        return
+      }
+      if (this.turnMeteredTokens >= budget.maxTokensPerTurn) {
+        yield this.tokenBudgetExit(budget)
         return
       }
 
@@ -304,6 +335,7 @@ export class AgentEngine {
         yield this.tagEvent({
           type: 'turn-error',
           error: `Agent "${agentName}" not found in domain config`,
+          reason: 'internal',
         })
         return
       }
@@ -313,13 +345,18 @@ export class AgentEngine {
         if (event.type === 'turn-error') return
         // Roll up usage from each assistant message finish for budget enforcement.
         if (event.type === 'assistant-message-finished' && event.usage) {
-          totalIterations++
-          this.accumulateUsage(event.usage)
-          if (this.turnTokensUsed >= budget.maxTokensPerTurn) {
-            yield this.tagEvent({
-              type: 'turn-error',
-              error: `Turn exceeded token budget (${this.turnTokensUsed}/${budget.maxTokensPerTurn})`,
-            })
+          // `assistant-message-finished` fires ONCE PER AGENT RUN, not once per
+          // LLM iteration — so `totalIterations++` made `maxTotalIterations`
+          // count agents in the route, which is structurally unreachable on a
+          // single-agent route (1 vs a cap of 100). The event's `iterations`
+          // array is the per-LLM-call billing breakdown for this segment, so it
+          // is the real iteration count. Caveat: query-loop skips zero-usage
+          // calls when building it, so this slightly UNDERCOUNTS — still vastly
+          // closer to the knob's documented meaning than a flat 1.
+          totalIterations += event.iterations?.length ?? 1
+          this.accumulateUsage(event)
+          if (this.turnMeteredTokens >= budget.maxTokensPerTurn) {
+            yield this.tokenBudgetExit(budget)
             return
           }
         }
@@ -370,6 +407,7 @@ export class AgentEngine {
       yield this.tagEvent({
         type: 'turn-error',
         error: `Paused tool_call part not found (messageId=${pending.messageId}, partIndex=${pending.partIndex})`,
+        reason: 'internal',
       })
       return
     }
@@ -438,6 +476,7 @@ export class AgentEngine {
           yield this.tagEvent({
             type: 'turn-error',
             error: `Invalid input amendment for "${pending.toolName}": ${issues}`,
+            reason: 'internal',
           })
           return
         }
@@ -672,11 +711,25 @@ export class AgentEngine {
       }
     }
 
-    // Enforce max-approvals cap.
+    // Enforce max-approvals cap. This fires BETWEEN approvals — the one that
+    // tripped it already executed and settled — so it is exhaustion, not
+    // corruption. A long authoring turn that chains approvals is exactly the
+    // shape that reaches it.
     if ((this.state.approvalsThisTurn ?? 0) > budget.maxApprovalsPerTurn) {
+      logger.warn('Max approvals per turn exceeded — closing the turn', {
+        turnId: this.turnId,
+        sessionId: this.config.sessionId,
+        reason: 'max-approvals',
+        approvalsThisTurn: this.state.approvalsThisTurn,
+        maxApprovalsPerTurn: budget.maxApprovalsPerTurn,
+        turnTokensUsed: this.turnTokensUsed,
+        turnMeteredTokens: this.turnMeteredTokens,
+        llmCalls: this.turnLlmCalls,
+      })
       yield this.tagEvent({
         type: 'turn-error',
         error: `Exceeded max approvals per turn (${budget.maxApprovalsPerTurn})`,
+        reason: 'max-approvals',
       })
       return
     }
@@ -690,6 +743,7 @@ export class AgentEngine {
       yield this.tagEvent({
         type: 'turn-error',
         error: `Agent "${pending.agentName}" not found for re-entry`,
+        reason: 'internal',
       })
       return
     }
@@ -714,12 +768,9 @@ export class AgentEngine {
       yield event
       if (event.type === 'turn-error') return
       if (event.type === 'assistant-message-finished' && event.usage) {
-        this.accumulateUsage(event.usage)
-        if (this.turnTokensUsed >= budget.maxTokensPerTurn) {
-          yield this.tagEvent({
-            type: 'turn-error',
-            error: `Turn exceeded token budget (${this.turnTokensUsed}/${budget.maxTokensPerTurn})`,
-          })
+        this.accumulateUsage(event)
+        if (this.turnMeteredTokens >= budget.maxTokensPerTurn) {
+          yield this.tokenBudgetExit(budget)
           return
         }
       }
@@ -741,6 +792,44 @@ export class AgentEngine {
 
   // ===== HELPERS =====
 
+  /**
+   * Open a fresh per-turn abort scope and return the config the turn runs on.
+   *
+   * The engine mints its own `AbortController` because that is what
+   * `interrupt()` drives. It used to write that signal straight over
+   * `config.signal`, so a caller that supplied one had it silently discarded —
+   * the documented field did nothing, and every caller only worked because it
+   * ALSO wired `interrupt()` by hand. `AbortSignal.any` composes the two so
+   * either source really stops the turn.
+   */
+  private startTurnAbort(): AgentEngineConfig {
+    this.abortController = new AbortController()
+    const callerSignal = this.config.signal
+    return {
+      ...this.config,
+      signal: callerSignal
+        ? AbortSignal.any([this.abortController.signal, callerSignal])
+        : this.abortController.signal,
+    }
+  }
+
+  /** Did either abort source fire? Read by `withTurnEnd`'s finally guard. */
+  private isTurnAborted(): boolean {
+    return this.abortController?.signal.aborted === true || this.config.signal?.aborted === true
+  }
+
+  /**
+   * Classify a `turn-error` for {@link AgentDomainConfig.onTurnEnd}.
+   *
+   * Deliberately reads only the event's `reason` discriminator — the `error`
+   * string is a human-readable message that changes freely, and matching on it
+   * is how "ran out of tokens after twelve good edits" gets mistaken for
+   * "threw mid-write".
+   */
+  private outcomeForTurnError(reason: TurnErrorReason | undefined): TurnOutcome {
+    return reason !== undefined && EXHAUSTION_REASONS.has(reason) ? 'exhausted' : 'error'
+  }
+
   private buildTurnBudget(config: AgentEngineConfig): TurnBudget {
     return {
       maxTokensPerTurn: config.maxTokensPerTurn ?? DEFAULT_MAX_TOKENS_PER_TURN,
@@ -749,22 +838,90 @@ export class AgentEngine {
     }
   }
 
+  /**
+   * The token-budget exit, shared by the three sites that meter turn usage
+   * (between agents, after each assistant message, and on the resume path).
+   *
+   * The log line is the point of the helper: these exits used to emit an event
+   * and nothing else, so a turn discarded on a token tally left no trace at all
+   * in log search. `reason` is what lets `withTurnEnd` classify this as
+   * exhaustion without reading the message text.
+   */
+  private tokenBudgetExit(budget: TurnBudget): AgentEvent {
+    logger.warn('Turn exceeded token budget — closing the turn', {
+      turnId: this.turnId,
+      sessionId: this.config.sessionId,
+      reason: 'token-budget',
+      turnTokensUsed: this.turnTokensUsed,
+      turnMeteredTokens: this.turnMeteredTokens,
+      maxTokensPerTurn: budget.maxTokensPerTurn,
+      llmCalls: this.turnLlmCalls,
+    })
+    return this.tagEvent({
+      type: 'turn-error',
+      error: `Turn exceeded token budget (${this.turnMeteredTokens}/${budget.maxTokensPerTurn})`,
+      reason: 'token-budget',
+    })
+  }
+
   private resetTurnUsage(): void {
     this.turnTokensUsed = 0
+    this.turnMeteredTokens = 0
     this.turnPromptTokens = 0
     this.turnCompletionTokens = 0
     this.turnLlmCalls = 0
   }
 
-  private accumulateUsage(usage: {
-    prompt_tokens?: number
-    completion_tokens?: number
-    total_tokens?: number
-  }): void {
+  /**
+   * Roll an `assistant-message-finished` event into the turn's usage counters.
+   *
+   * **The budget meters off `event.iterations`, not `event.usage`** — three
+   * reasons, all load-bearing:
+   *
+   * 1. *Unit.* `event.usage` is the query loop's cumulative roll-up of
+   *    `total_tokens`, and `total_tokens` includes prompt tokens while the whole
+   *    conversation is re-sent every iteration. Metering it charges the same
+   *    prompt once per tool round-trip, so the budget measured iteration count
+   *    wearing a token-shaped mask. The per-call records carry the cache fields,
+   *    which is what makes "charge only for new input" expressible at all.
+   * 2. *Provider.* Whether `prompt_tokens` already contains the cached reads
+   *    depends on which provider served the call. `IterationUsage` keeps that;
+   *    a roll-up spanning two providers cannot answer it.
+   * 3. *Double-charging.* `iterations` is the query loop's `segmentIterations` —
+   *    reset across a pause/resume — whereas `usage` is seeded from the paused
+   *    message and therefore re-counts the pre-pause calls. It is exactly the
+   *    source billing already drains, for exactly this reason.
+   *
+   * `turnTokensUsed` / `turnPromptTokens` / `turnCompletionTokens` remain the
+   * provider-reported grand totals for reporting. Only `turnMeteredTokens`
+   * gates the budget.
+   */
+  private accumulateUsage(event: { usage?: UsageMetrics; iterations?: IterationUsage[] }): void {
+    const records = event.iterations
+    if (records && records.length > 0) {
+      for (const record of records) {
+        const norm = normalizeCallUsage(record.usage, record.provider)
+        this.turnPromptTokens += norm.promptInput
+        this.turnCompletionTokens += norm.completion
+        this.turnTokensUsed += record.usage.total_tokens ?? norm.promptInput + norm.completion
+        this.turnMeteredTokens += norm.meteredTokens
+        this.turnLlmCalls += 1
+      }
+      return
+    }
+
+    // No per-call records: the query loop only builds them for calls reporting
+    // a non-zero `total_tokens`, so this is the degenerate case where a provider
+    // reported prompt/completion but no total. Meter the roll-up on the
+    // documented fallback (`prompt + completion`) — never NaN, and never a
+    // silent 0, which would disable the budget outright.
+    const usage = event.usage
+    if (!usage) return
     this.turnPromptTokens += usage.prompt_tokens ?? 0
     this.turnCompletionTokens += usage.completion_tokens ?? 0
     this.turnTokensUsed +=
       usage.total_tokens ?? (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0)
+    this.turnMeteredTokens += meterRollupTokens(usage)
     this.turnLlmCalls += 1
   }
 
@@ -794,12 +951,19 @@ export class AgentEngine {
    * Wrap a turn's event stream so the domain's `onTurnEnd` hook fires exactly
    * once with the resolved outcome, before the terminal event is yielded.
    *
-   * Terminal events drive the normal path (`turn-completed` → 'completed',
-   * `turn-error` → 'error'). An abnormal close that yields no terminal event —
-   * abort, client disconnect, a thrown error — fires 'error' from the finally
-   * guard so locks release and the turn rolls back. The one exception is an
-   * approval pause: it returns without a terminal event but the turn isn't
-   * over, so `waitingForApproval` suppresses the guard.
+   * Terminal events drive the normal path: `turn-completed` → `'completed'`,
+   * and a `turn-error` is classified by its `reason` — a resource cap becomes
+   * `'exhausted'`, anything else `'error'` (see {@link outcomeForTurnError}).
+   *
+   * An abnormal close that yields no terminal event — a client disconnect that
+   * cancels this generator, a thrown error — hits the `finally` guard, which
+   * reads the abort flag to tell `'aborted'` from `'error'`. Note that an abort
+   * the engine is still *draining* does NOT come through here: the route loop
+   * breaks and falls through to `turn-completed`. It is specifically the
+   * undrained close that lands in the guard.
+   *
+   * The one exception is an approval pause: it returns without a terminal event
+   * but the turn isn't over, so `waitingForApproval` suppresses the guard.
    *
    * A hook failure is logged and swallowed; it must never mask the turn result.
    */
@@ -810,7 +974,7 @@ export class AgentEngine {
       return
     }
     let fired = false
-    const fire = async (outcome: 'completed' | 'error') => {
+    const fire = async (outcome: TurnOutcome) => {
       if (fired) return
       fired = true
       try {
@@ -826,11 +990,19 @@ export class AgentEngine {
     try {
       for await (const event of gen) {
         if (event.type === 'turn-completed') await fire('completed')
-        else if (event.type === 'turn-error') await fire('error')
+        else if (event.type === 'turn-error') await fire(this.outcomeForTurnError(event.reason))
         yield event
       }
     } finally {
-      if (!fired && !this.state.waitingForApproval) await fire('error')
+      // LOAD-BEARING ORDERING: `this.abortController` is still non-null here.
+      // `submitMessage` / `resume` / `continueTurn` null it in an OUTER finally,
+      // and an outer finally only runs after the delegated generator's own
+      // finally has completed — so the flag is still readable at this point.
+      // Moving the null-out inward, or hoisting this guard outward, silently
+      // turns every disconnect back into `'error'`.
+      if (!fired && !this.state.waitingForApproval) {
+        await fire(this.isTurnAborted() ? 'aborted' : 'error')
+      }
     }
   }
 

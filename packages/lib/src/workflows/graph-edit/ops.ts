@@ -61,7 +61,7 @@ import {
   renderFriendlyOutputs,
 } from './read'
 import { describeNode, formatNodeRef, resolveNodeRef } from './refs'
-import { captureWorkflowTurnSnapshot } from './turn-snapshot'
+import { captureWorkflowTurnSnapshot, recordWorkflowTurnPostHash } from './turn-snapshot'
 import type { DraftGraph, GraphEdge, GraphMutationResult, GraphNode, Issue, Point } from './types'
 import {
   INPUT_WIRING_HANDLES,
@@ -335,6 +335,21 @@ async function runGraphMutation(
       )
     }
     return err(persisted.error)
+  }
+
+  // Stamp what the turn now leaves behind. Last write of the turn wins, so
+  // this is the post-turn hash a later Undo compares the live draft against —
+  // the snapshot's capture ran before the FIRST write and cannot know it.
+  //
+  // The SEMANTIC hash, not `graphHash`: the canvas autosaves a new viewport and
+  // selection just from being opened, and against the full-document hash that
+  // reads as "someone edited this" and kills the Undo offer (plan 20 F5).
+  if (scope.turnId !== undefined) {
+    await recordWorkflowTurnPostHash(
+      scope.workflowAppId,
+      scope.turnId,
+      persisted.value.graphSemanticHash
+    )
   }
 
   // Refresh signal AFTER the successful persist — open canvases refetch.

@@ -4,13 +4,15 @@
  * Per-turn pre-edit snapshot of the draft graph — SERVER-ONLY (Redis + the
  * persist seam). Mirrors `kb/kopilot-snapshot.ts` (`03-graph-edit-service.md`
  * §7): the FIRST mutation of a turn stores the pre-edit graph under
- * `(workflowAppId, turnId)` with a 24h TTL. The snapshot exists ONLY for
- * failed-turn atomicity: on turn FAILURE the lifecycle reverts (restores the
- * exact prior graph and workflow details through `persistDraft`); on turn SUCCESS it is discarded
- * via {@link finalizeWorkflowTurn}. Undo of a completed turn is client-side —
- * the builder's `workflow:draft-updated` subscriber records each Kopilot edit
- * as a normal canvas history entry, so there is no per-turn Undo card and no
- * server-side undo. Residual cleanup is the next turn's capture overwriting
+ * `(workflowAppId, turnId)` with a 24h TTL. The snapshot exists ONLY to make a
+ * turn's edits reversible AS A GROUP: {@link revertWorkflowTurn} restores the
+ * exact prior graph and workflow details through `persistDraft`, and on turn
+ * SUCCESS it is discarded via {@link finalizeWorkflowTurn}. Undo of a
+ * completed turn is client-side — the builder's `workflow:draft-updated`
+ * subscriber records each Kopilot edit as a normal canvas history entry.
+ * The snapshot deliberately OUTLIVES a turn that stopped early (nothing
+ * consumes it at turn end), so the recovery path is still there when the
+ * caller offers it; residual cleanup is the next turn's capture overwriting
  * the slot, the TTL, or a manual draft save clearing it via
  * {@link clearWorkflowTurnSnapshot}.
  *
@@ -22,6 +24,19 @@
  * snapshot in the slot means the asking turn was superseded, and restoring it
  * would roll the draft back past edits the asking turn never made.
  *
+ * The turn id is only half the check. Because the restore is offered rather
+ * than performed, it can be taken long after the turn ended, so the snapshot
+ * also carries the hash of the graph the turn LEFT BEHIND
+ * (`postTurnGraphSemanticHash`, stamped per write by
+ * {@link recordWorkflowTurnPostHash}). If the draft no longer hashes to that,
+ * the canvas moved on and the revert refuses — see {@link revertWorkflowTurn}.
+ *
+ * The snapshot also carries HOW its turn ended (`endedAs`, stamped once at turn
+ * end by {@link recordWorkflowTurnEnding}), because the offer has to be able to
+ * say why it exists and by then the turn is over — nothing else on this side
+ * remembers. It is additive bookkeeping only: absence must never suppress the
+ * offer.
+ *
  * No permission checks live here (house rule): the capability layer asserts
  * `assertEditInstance('workflow', workflowAppId)` +
  * `assertWorkflowAppNotSystemOwned` before calling in.
@@ -31,7 +46,8 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { deleteRedisData, getRedisData, setRedisData } from '@auxx/redis'
 import { err, type Result } from 'neverthrow'
-import { type AuxxError, NotFoundError } from '../../errors'
+import { type AuxxError, ConflictError, NotFoundError } from '../../errors'
+import { hashGraphSemantics } from '../graph-hash'
 import { type PersistDraftOutcome, persistDraft, publishDraftUpdatedSignal } from './persist'
 import { type GraphEditScope, loadDraftContext } from './read'
 import type { DraftGraph } from './types'
@@ -39,6 +55,23 @@ import type { DraftGraph } from './types'
 const logger = createScopedLogger('workflow-turn-snapshot')
 
 const TTL_SECONDS = 24 * 60 * 60
+
+/**
+ * How the turn that owns a snapshot ended — the three non-`completed` members
+ * of the agent framework's `TurnOutcome`, mirrored here rather than imported.
+ *
+ * WHY MIRRORED: `workflows/graph-edit` is a headless draft-editing module and
+ * must not take a dependency on `ai/agent-framework` to name three strings.
+ * The two vocabularies cannot drift silently anyway — the capability passes
+ * `outcome` straight into {@link recordWorkflowTurnEnding} on the branch where
+ * TypeScript has already narrowed it to exactly these three, so a framework
+ * rename fails the build at the call site.
+ *
+ * `completed` is deliberately unrepresentable: a completed turn calls
+ * {@link finalizeWorkflowTurn} and its snapshot is gone, so no snapshot the
+ * user can ever be offered was left by a completed turn.
+ */
+export type WorkflowTurnEnding = 'exhausted' | 'aborted' | 'error'
 
 /**
  * Pre-turn snapshot captured before a turn's first draft write. Backs the
@@ -54,6 +87,30 @@ export interface WorkflowPreTurnSnapshot {
   /** The draft row's trigger type column at capture time (persist fallback). */
   triggerType: string | null
   capturedAt: number
+  /**
+   * Hash of the stored graph as of the turn's LAST successful write — the
+   * "did the canvas move on since?" token {@link revertWorkflowTurn} compares
+   * against. Stamped by {@link recordWorkflowTurnPostHash} after every persist
+   * in the turn (last write wins), never at capture: the capture runs BEFORE
+   * the turn's first write and is idempotent per turn, so it cannot know where
+   * the turn ends up. Undefined only for a snapshot written by code older than
+   * this field, or when a stamp's Redis write failed.
+   */
+  postTurnGraphSemanticHash?: string
+  /**
+   * How the turn ended, stamped once at turn end by
+   * {@link recordWorkflowTurnEnding}. The ONLY record of why the offer exists:
+   * the snapshot is a graph, not a tool-call log or a transcript, and by the
+   * time the Undo is offered the turn is over and there is no agent left to
+   * ask.
+   *
+   * Undefined is a first-class value, not a bug — a snapshot captured by code
+   * older than this field, a turn that died before its `onTurnEnd` hook ran at
+   * all, or a stamp whose Redis write failed. Every reader MUST fail OPEN on
+   * undefined and still make the offer: losing the adjective is a far smaller
+   * loss than losing the Undo.
+   */
+  endedAs?: WorkflowTurnEnding
 }
 
 const snapshotKey = (workflowAppId: string): string => `workflow:graph:${workflowAppId}:preturn`
@@ -92,6 +149,101 @@ export async function captureWorkflowTurnSnapshot(
   }
   await setRedisData(snapshotKey(workflowAppId), snapshot, TTL_SECONDS)
   return true
+}
+
+/**
+ * Stamp the graph hash the turn's write just produced onto the turn's own
+ * snapshot — called from the mutation pipeline AFTER every successful
+ * `persistDraft`, with the hash `persistDraft` returned (i.e. the hash of what
+ * the draft row now actually holds, which is exactly what the next
+ * `loadDraftContext` will compute). Last write wins, so once the turn stops
+ * writing the stamp IS the post-turn hash.
+ *
+ * WHY here and not at turn end: a turn that dies — token budget, disconnect,
+ * a throw — may never reach a turn-end call at all, and after plan 20 phase A
+ * the capability deliberately stops calling `finalizeWorkflowTurn` on
+ * non-completed outcomes. Those are precisely the turns whose snapshot has to
+ * survive and stay checkable, so the stamp must not depend on any turn-end
+ * hook running. Stamping per write cannot go stale: the last write to land is
+ * by definition the graph the turn left behind.
+ *
+ * Turn-checked like {@link finalizeWorkflowTurn} — a stale turn must never
+ * re-stamp a fresher turn's snapshot. Best-effort: a failed stamp leaves
+ * `postTurnGraphSemanticHash` at its previous (older) value, which makes a later
+ * revert refuse rather than clobber — the safe direction.
+ */
+export async function recordWorkflowTurnPostHash(
+  workflowAppId: string,
+  turnId: string,
+  graphSemanticHash: string | null
+): Promise<void> {
+  if (!graphSemanticHash) return
+  try {
+    const existing = (await getRedisData(
+      snapshotKey(workflowAppId)
+    )) as WorkflowPreTurnSnapshot | null
+    if (existing?.turnId !== turnId) return
+    if (existing.postTurnGraphSemanticHash === graphSemanticHash) return
+    // Re-`setex` refreshes the 24h TTL. Bounded by the turn's own duration
+    // (only this turn's writes reach this line), so the window a snapshot
+    // outlives its turn by never grows meaningfully.
+    await setRedisData(
+      snapshotKey(workflowAppId),
+      { ...existing, postTurnGraphSemanticHash: graphSemanticHash },
+      TTL_SECONDS
+    )
+  } catch (error) {
+    logger.warn('Failed to record post-turn semantic graph hash', {
+      workflowAppId,
+      turnId,
+      error: (error as Error).message,
+    })
+  }
+}
+
+/**
+ * Stamp HOW the turn ended onto the turn's own snapshot — called from the
+ * capability's `onTurnEnd` on the outcomes that keep the snapshot alive
+ * (`exhausted` / `aborted` / `error`). ADDITIVE, never a finalize: the whole
+ * point of plan 20 [C4] is that a turn which stopped early keeps both its work
+ * and its snapshot, and this only writes the label the Undo offer needs to say
+ * WHY it is there.
+ *
+ * WHY at turn end and not per write (the opposite of
+ * {@link recordWorkflowTurnPostHash}): a write cannot know how the turn will
+ * end, and the ending is exactly what a write has no view of. The cost is that
+ * a turn dying before its hook runs leaves this undefined — which is why every
+ * reader fails open (see {@link WorkflowPreTurnSnapshot.endedAs}).
+ *
+ * Turn-checked like {@link finalizeWorkflowTurn}: a stale turn must never
+ * relabel a fresher turn's snapshot with its own ending. Best-effort — a
+ * failure leaves the field undefined, i.e. today's generic wording, and the
+ * offer itself is untouched. It must never throw: it runs on a turn-end path
+ * whose one job is to leave the recovery route intact.
+ */
+export async function recordWorkflowTurnEnding(
+  workflowAppId: string,
+  turnId: string,
+  endedAs: WorkflowTurnEnding
+): Promise<void> {
+  try {
+    const existing = (await getRedisData(
+      snapshotKey(workflowAppId)
+    )) as WorkflowPreTurnSnapshot | null
+    if (existing?.turnId !== turnId) return
+    if (existing.endedAs === endedAs) return
+    // Re-`setex` refreshes the 24h TTL from turn end rather than from the
+    // turn's first write — which is the window the user actually gets to
+    // decide in, so this is the correct clock, not an accidental extension.
+    await setRedisData(snapshotKey(workflowAppId), { ...existing, endedAs }, TTL_SECONDS)
+  } catch (error) {
+    logger.warn('Failed to record workflow turn ending', {
+      workflowAppId,
+      turnId,
+      endedAs,
+      error: (error as Error).message,
+    })
+  }
 }
 
 /**
@@ -155,18 +307,31 @@ export async function clearWorkflowTurnSnapshot(workflowAppId: string): Promise<
 }
 
 /**
- * Restore the exact pre-turn graph — the FAILURE half of the turn lifecycle
- * (a completed turn's snapshot is discarded, so this is unreachable after
- * success by design).
- * The stored snapshot must belong to `turnId`: a snapshot from a prior turn
- * is REJECTED, never restored (restoring it would roll back edits this turn
- * never made), and no snapshot means the turn never wrote — also nothing to
- * revert.
+ * Restore the exact pre-turn graph. Not automatic — the caller offers it (plan
+ * 20 phase D) and the user's click is what runs it, which means it can fire
+ * minutes after the turn ended, on a canvas that has moved on.
  *
- * The restore goes through `persistDraft`, so trigger-column re-derivation,
- * the mail-trigger guard and the hash-CAS all run: a write that landed
- * between the failure and this revert surfaces as a `ConflictError` instead
- * of being clobbered. On success the snapshot is discarded and the
+ * TWO distinct refusals, and callers are expected to tell them apart because
+ * the user-facing statement differs:
+ *
+ * - `NotFoundError` (404) — there is no snapshot under `turnId`: the turn never
+ *   wrote to the draft, a later turn superseded the slot, the 24h TTL expired,
+ *   or a manual canvas save cleared it via {@link clearWorkflowTurnSnapshot}.
+ *   Nothing to undo, and nothing was touched.
+ * - `ConflictError` (409, `details.reason === 'canvas-changed-since-turn'`) —
+ *   the snapshot is there, but the draft no longer hashes to what the turn left
+ *   behind ({@link WorkflowPreTurnSnapshot.postTurnGraphSemanticHash}). Someone edited
+ *   the canvas after the turn, so restoring the pre-turn graph would destroy
+ *   work the turn never made. Refused; the snapshot is LEFT IN PLACE.
+ *
+ * That comparison is the whole point of the post-turn hash: `persistDraft`'s
+ * own CAS token is read fresh microseconds before the write, so it guards a
+ * race INSIDE this function and nothing across time. It still runs (a save
+ * racing the revert surfaces as its own `ConflictError`) — it is simply not
+ * the check that detects a diverged canvas.
+ *
+ * The restore goes through `persistDraft`, so trigger-column re-derivation and
+ * the mail-trigger guard also run. On success the snapshot is discarded and the
  * `workflow:draft-updated` signal fires (reason `system`) so open canvases
  * refetch.
  */
@@ -187,6 +352,35 @@ export async function revertWorkflowTurn(
 
   const loaded = await loadDraftContext(db, scope)
   if (loaded.isErr()) return err(loaded.error)
+
+  // Both sides are `hashGraphSemantics` over the CLEANED graph — the stamp
+  // hashes what `persistDraft` wrote, this hashes what `loadDraftContext` read
+  // back — so it is an exact comparison, not an approximation.
+  //
+  // It must be the SEMANTIC hash, not `graphHash`. Opening the builder fires an
+  // autosave carrying a fresh viewport and selection with byte-identical node
+  // content; against the full-document hash that reads as "the canvas moved on"
+  // and every Undo refuses seconds after the offer appears (plan 20 F5).
+  //
+  // Fails OPEN when either side is unknown — a snapshot captured before this
+  // field existed, or a draft row with no graph at all. Unknown must not turn
+  // a legitimate Undo into a hard refusal; the pre-existing guards (turn id,
+  // TTL, the manual-save clear, the CAS below) still apply.
+  const liveSemanticHash = loaded.value.graph ? hashGraphSemantics(loaded.value.graph) : undefined
+  if (
+    snapshot.postTurnGraphSemanticHash !== undefined &&
+    liveSemanticHash !== undefined &&
+    liveSemanticHash !== snapshot.postTurnGraphSemanticHash
+  ) {
+    return err(
+      new ConflictError(
+        'The workflow canvas has changed since that turn finished, so those edits can no ' +
+          'longer be undone as a group — undoing now would also discard the newer changes. ' +
+          'Nothing was reverted. Use the canvas history to step back instead.',
+        { reason: 'canvas-changed-since-turn' }
+      )
+    )
+  }
 
   const persisted = await persistDraft(db, scope, {
     graph: snapshot.graph,

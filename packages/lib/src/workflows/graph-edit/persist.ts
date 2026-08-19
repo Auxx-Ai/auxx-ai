@@ -29,6 +29,7 @@ import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { deriveTriggerColumns } from '../../workflow-engine/catalog/derive-trigger'
 import { stripDerivedKeys } from '../../workflow-engine/catalog/derived-keys'
+import { hashGraphSemantics } from '../graph-hash'
 import type { WorkflowTriggerType, WorkflowUpdateInput } from '../types'
 import type { GraphEditScope } from './read'
 import type { DraftGraph, GraphEdge, GraphNode } from './types'
@@ -75,6 +76,17 @@ export interface PersistDraftInput {
 /** What the persist wrote — chained into the next mutation's CAS token. */
 export interface PersistDraftOutcome {
   graphHash: string | null
+  /**
+   * Hash of the AUTHORED content only (see {@link hashGraphSemantics}) of the
+   * CLEANED graph this call wrote — the same projection `loadDraftContext`'s
+   * graph produces on the next read, so the two are directly comparable.
+   *
+   * Separate from `graphHash` because that one is the save-path CAS token and
+   * must stay full-document. This is what the Kopilot Undo offer compares
+   * against, so that merely opening the builder (which autosaves a new viewport
+   * and selection) does not read as "the canvas moved on".
+   */
+  graphSemanticHash: string
   triggerType?: string | null
   entityDefinitionId?: string | null
 }
@@ -127,6 +139,11 @@ export async function persistDraft(
     })
     return ok({
       graphHash: (updated?.graphHash as string | null | undefined) ?? null,
+      // Hashed from `graph` (the cleaned document written above), NOT
+      // `input.graph` — `cleanGraphForSave` strips derived `node.data` keys, and
+      // the next read sees the cleaned form. Hashing the input would make every
+      // later comparison a false mismatch.
+      graphSemanticHash: hashGraphSemantics(graph),
       triggerType: (updated?.triggerType as string | null | undefined) ?? triggerType ?? null,
       entityDefinitionId:
         (updated?.entityDefinitionId as string | null | undefined) ?? entityDefinitionId,
