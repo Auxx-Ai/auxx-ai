@@ -18,7 +18,10 @@ type StandaloneCountrySelectProps = {
   disabled?: boolean
   className?: string
   placeholder?: string
-  variant?: 'default' | 'translucent'
+  /** Trigger styling — `'transparent'` matches an inline field-panel input. */
+  variant?: 'default' | 'transparent' | 'translucent'
+  /** Trigger height — `'sm'` matches `Input size='sm'` rows (address sub-fields). */
+  size?: 'default' | 'sm'
 }
 
 /** Flag icon with Globe fallback instead of PhoneIcon */
@@ -37,18 +40,26 @@ function CountryFlag({ code, name }: { code: RPNInput.Country; name: string }) {
  */
 const CountrySelect = forwardRef<HTMLButtonElement, StandaloneCountrySelectProps>(
   (
-    { value, onChange, disabled, className, placeholder = 'Select country', variant = 'default' },
+    {
+      value,
+      onChange,
+      disabled,
+      className,
+      placeholder = 'Select country',
+      variant = 'default',
+      size = 'default',
+    },
     ref
   ) => {
     /** Build full country options from react-phone-number-input */
-    const options = useMemo(
-      () =>
-        RPNInput.getCountries().map((code) => ({
-          value: code,
-          label: new Intl.DisplayNames(['en'], { type: 'region' }).of(code) || code,
-        })),
-      []
-    )
+    const options = useMemo(() => {
+      // One DisplayNames instance for ~250 lookups — constructing it per country is the
+      // expensive part of this list.
+      const regionNames = new Intl.DisplayNames(['en'], { type: 'region' })
+      return RPNInput.getCountries()
+        .map((code) => ({ value: code, label: regionNames.of(code) || code }))
+        .sort((a, b) => a.label.localeCompare(b.label))
+    }, [])
 
     const selectedLabel = options.find((o) => o.value === value)?.label
 
@@ -66,8 +77,8 @@ const CountrySelect = forwardRef<HTMLButtonElement, StandaloneCountrySelectProps
             disabled={disabled}
             aria-label='Select country'
             className={cn(
-              selectTriggerVariants({ variant }),
-              'gap-2',
+              selectTriggerVariants({ variant, size }),
+              'gap-2 font-normal',
               !value && (variant === 'translucent' ? 'text-white/60' : 'text-primary-400'),
               className
             )}>

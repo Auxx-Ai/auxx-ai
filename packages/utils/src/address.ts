@@ -25,8 +25,12 @@ export interface AddressParseCandidate {
   countrySource: 'token' | 'postal-shape' | 'default'
 }
 
-// --- Country table (copied from apps/web/src/constants/countries.ts — utils must stay
-// dependency-free, so this is a data copy, not an import) ---------------------------------
+// --- Country table -------------------------------------------------------------------------
+// The parser's vocabulary, NOT the selectable country list — the picker offers all of ISO
+// 3166-1 via `Intl.DisplayNames` (see `countryNameFor`). These are the countries whose names
+// and postal shapes free-typed text is matched against; unlisted countries are still valid
+// values, they just have to be picked rather than inferred. utils stays dependency-free, so
+// this is a data table, not an import.
 
 const COUNTRIES: { code: string; name: string }[] = [
   { code: 'AU', name: 'Australia' },
@@ -194,10 +198,41 @@ function normalizeState(value: string, country: string): string {
     : trimmed
 }
 
+/**
+ * `Intl.DisplayNames` for regions — lazily built once. Only alpha-2 inputs are passed to
+ * `.of()`; anything else throws `RangeError` there, and `Intl` itself may be unavailable in
+ * an exotic runtime, so both are guarded.
+ */
+let regionNames: Intl.DisplayNames | null | undefined
+function regionDisplayNames(): Intl.DisplayNames | null {
+  if (regionNames === undefined) {
+    try {
+      regionNames = new Intl.DisplayNames(['en'], { type: 'region' })
+    } catch {
+      regionNames = null
+    }
+  }
+  return regionNames
+}
+
+/**
+ * Resolve a country code to its English name. The local `COUNTRIES` table wins so the
+ * parser's vocabulary and rendered output agree, then `Intl.DisplayNames` covers the rest
+ * of ISO 3166-1 — the picker offers every country, and without this fallback anything
+ * outside the table would render as a bare `"BR"`.
+ */
 function countryNameFor(codeOrName: string): string {
   const trimmed = codeOrName.trim()
   if (!trimmed) return ''
-  return CODE_TO_NAME.get(trimmed.toUpperCase()) ?? trimmed
+  const upper = trimmed.toUpperCase()
+  const known = CODE_TO_NAME.get(upper)
+  if (known) return known
+  if (!/^[A-Z]{2}$/.test(upper)) return trimmed
+  try {
+    return regionDisplayNames()?.of(upper) || trimmed
+  } catch {
+    return trimmed
+  }
 }
 
 /**
