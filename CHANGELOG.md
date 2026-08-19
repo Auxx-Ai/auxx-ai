@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.211](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.210...auxx-v0.1.211) (2026-08-19)
+
+
+### Bug Fixes
+
+* **channels:** stop a Meta PSID becoming a contact's name ([#1746](https://github.com/Auxx-Ai/auxx-ai/issues/1746)) ([d1ec0d2](https://github.com/Auxx-Ai/auxx-ai/commit/d1ec0d28ab78cd486eeb72aa6a36e8c4750e38db))
+* **composer:** show the account name in From, not the routing id ([#1742](https://github.com/Auxx-Ai/auxx-ai/issues/1742)) ([0ceb793](https://github.com/Auxx-Ai/auxx-ai/commit/0ceb793b5011d41ec57e8f120ad116e2e4024f6f))
+* **inboxes:** use the inbox picker on the channel connect step ([#1745](https://github.com/Auxx-Ai/auxx-ai/issues/1745)) ([681d455](https://github.com/Auxx-Ai/auxx-ai/commit/681d455accdedc0f2f740b1b5fe62bd7cdddf918))
+* **kbar:** stop the palette double-gutting nested dialog footers ([#1744](https://github.com/Auxx-Ai/auxx-ai/issues/1744)) ([d456bda](https://github.com/Auxx-Ai/auxx-ai/commit/d456bda757a9cffc3f0d660f3080f81954edbd21))
+* **rules:** move rule card badges to the card footer ([#1747](https://github.com/Auxx-Ai/auxx-ai/issues/1747)) ([6031d52](https://github.com/Auxx-Ai/auxx-ai/commit/6031d523fffd7b1912c5f1006dcdfbe35dc7d10b))
+
 ## [0.1.210](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.209...auxx-v0.1.210) (2026-08-19)
 
 
