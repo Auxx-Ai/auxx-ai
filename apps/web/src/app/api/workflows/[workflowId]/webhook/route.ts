@@ -1,12 +1,11 @@
 // apps/web/src/app/api/workflows/[workflowId]/webhook/route.ts
 
 import { database as db } from '@auxx/database'
-import { WorkflowEngine } from '@auxx/lib/workflow-engine'
-import {
-  WorkflowNodeType,
-  type WorkflowTriggerEvent,
-  WorkflowTriggerType,
-} from '@auxx/lib/workflow-engine/types'
+import { WorkflowTriggerSource } from '@auxx/database/enums'
+import { UsageLimitError } from '@auxx/lib/errors'
+import { RedisWorkflowExecutionReporter } from '@auxx/lib/workflow-engine'
+import { WorkflowNodeType } from '@auxx/lib/workflow-engine/types'
+import { WorkflowExecutionService } from '@auxx/lib/workflows'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { filterSensitiveHeaders } from '@auxx/utils/headers'
@@ -21,10 +20,6 @@ import {
 } from '~/server/lib/webhook-test-window'
 
 const logger = createScopedLogger('api.webhook')
-
-// Initialize workflow engine
-const workflowEngine = new WorkflowEngine()
-const engineInitPromise = workflowEngine.getNodeRegistry().initializeWithDefaults()
 
 /**
  * Common webhook handler for both GET and POST requests.
@@ -192,48 +187,12 @@ async function handleWebhookRequest(
       }
     }
 
-    // Ensure the workflow engine is initialized
-    await engineInitPromise
-
     // Prepare trigger data - the data that will be available in the workflow
     const webhookData = {
       method,
       ...(method === 'POST' ? { body } : {}),
       query: Object.fromEntries(searchParams),
       headers: Object.fromEntries(req.headers.entries()),
-    }
-
-    // Create trigger event with webhook data
-    const triggerEvent: WorkflowTriggerEvent = {
-      type: WorkflowTriggerType.WEBHOOK,
-      data: webhookData,
-      timestamp: new Date(),
-      organizationId: workflowApp.organizationId,
-      userId: workflowApp.createdById || undefined,
-    }
-
-    // Transform the workflow for the engine.
-    //
-    // `graph` is the load-bearing key: `WorkflowGraphBuilder.buildGraph` reads
-    // `workflow.graph || { nodes: [], edges: [] }` and NOTHING else. Passing
-    // only the top-level `nodes`/`edges` (as this did) built an empty graph, so
-    // `findEntryNode` returned undefined, the engine threw "No entry point found
-    // in workflow", and the caller still got the configured 200 back — every
-    // published webhook workflow was a silent no-op. `executeWorkflow` takes
-    // `any` ("accept raw database format"), so nothing caught it at build time.
-    // The top-level pair stays because `toEngineFormat` sets both.
-    const engineWorkflow = {
-      id: workflow.id,
-      organizationId: workflowApp.organizationId,
-      name: workflow.name,
-      version: workflow.version,
-      triggerType: WorkflowTriggerType.WEBHOOK,
-      graph: { nodes: workflowGraph.nodes, edges: workflowGraph.edges || [] },
-      nodes: workflowGraph.nodes,
-      edges: workflowGraph.edges || [],
-      enabled: true,
-      createdAt: workflow.createdAt,
-      updatedAt: workflow.updatedAt,
     }
 
     // In test mode, skip execution and just capture the event
@@ -258,16 +217,45 @@ async function handleWebhookRequest(
       })
     }
 
-    // Production mode - execute workflow
-    const result = await workflowEngine.executeWorkflow(engineWorkflow, triggerEvent, {
-      debug: false,
-      variables: { workflowId: workflow.id, workflowAppId: workflowApp.id },
+    // Production mode — execute through the same door every other headless
+    // trigger uses. This route used to hand-build a workflow object and call
+    // `WorkflowEngine.executeWorkflow` directly, so a webhook execution created
+    // no `WorkflowRun` row: it never appeared in run history, never counted
+    // against the org's `workflowRuns` quota, and a paused node (wait, human
+    // confirmation) had no run to resume. `createRun` owns all three.
+    const executionService = new WorkflowExecutionService(db)
+    const workflowRun = await executionService.createRun({
+      workflowId: workflow.id,
+      inputs: webhookData,
+      mode: 'production',
+      // Headless: an external caller is not a user. `createWorkflowRun`
+      // resolves the org's system user — never substitute an id here.
+      userId: null,
+      organizationId: workflowApp.organizationId,
+      triggeredFrom: WorkflowTriggerSource.WEBHOOK,
+    })
+
+    // The reporter is what persists node executions and publishes progress; the
+    // old direct call passed none, so a webhook run had no per-node trace either.
+    const reporter = new RedisWorkflowExecutionReporter(workflowRun.id)
+
+    // Awaited, as before — the caller's response has always been sent after the
+    // workflow finished. A thrown execution error is recorded on the run row by
+    // `executeWorkflowAsync` before it rethrows; the caller still gets the
+    // author's configured response, because that response is the webhook's
+    // contract with the sender and a non-2xx makes senders like Shopify or
+    // Stripe retry a request that will fail again.
+    await executionService.executeWorkflowAsync(workflowRun, reporter).catch((error) => {
+      logger.error('Webhook workflow execution failed', {
+        workflowId,
+        workflowRunId: workflowRun.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
     })
 
     logger.info('Webhook workflow executed', {
       workflowId,
-      executionId: result.executionId,
-      status: result.status,
+      workflowRunId: workflowRun.id,
     })
 
     // Return configured response or default
@@ -278,7 +266,23 @@ async function handleWebhookRequest(
       headers: responseConfig?.headers || {},
     })
   } catch (error) {
-    logger.error(`Error handling webhook ${method} request`, { error })
+    // A run the org has no quota for is a refusal, not a server fault. This
+    // route creates runs now, so it is the first webhook path that can hit the
+    // plan limit — answer with the error's own status so a sender can tell
+    // "you are over your limit" from "we broke".
+    const isUsageLimit = error instanceof UsageLimitError
+    const status = isUsageLimit ? error.statusCode : 500
+
+    if (isUsageLimit) {
+      logger.warn('Webhook workflow run refused — plan limit reached', {
+        workflowId,
+        metric: error.metric,
+        current: error.current,
+        limit: error.limit,
+      })
+    } else {
+      logger.error(`Error handling webhook ${method} request`, { error })
+    }
 
     // Store error event for test mode
     const { searchParams } = new URL(req.url)
@@ -288,7 +292,7 @@ async function handleWebhookRequest(
       const redis = await getRedisClient(true)
       if (redis) {
         // Update event with error response
-        webhookTestEvent.responseStatus = 500
+        webhookTestEvent.responseStatus = status
         webhookTestEvent.responseTime = Date.now() - startTime
 
         await redis.lpush(webhookTestEventsKey(workflowId), JSON.stringify(webhookTestEvent))
@@ -297,7 +301,10 @@ async function handleWebhookRequest(
       }
     }
 
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json(
+      { error: isUsageLimit ? error.message : 'Internal server error' },
+      { status }
+    )
   }
 }
 
