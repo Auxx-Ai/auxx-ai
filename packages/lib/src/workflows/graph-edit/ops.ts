@@ -520,32 +520,10 @@ function resolveEdgeHandles(
 }
 
 /**
- * Canvas parity for `ManualNodeData.inputNodes` — the connected-input id list
- * the canvas maintains (`use-node-interactions.ts`) on any node whose
- * manifest sets `acceptsInputNodes`. Pure metadata: no output variable is
- * gated on it, so a drifted list is cosmetic, not a contract break.
- */
-function updateInputNodes(
-  nodes: GraphNode[],
-  update: (current: string[]) => string[],
-  opts: { lookup: ManifestLookup; onlyNodeId?: string }
-): GraphNode[] {
-  return nodes.map((node) => {
-    if (opts.onlyNodeId !== undefined && node.id !== opts.onlyNodeId) return node
-    if (opts.lookup(nodeType(node))?.connection.acceptsInputNodes !== true) return node
-    const current = Array.isArray(node.data?.inputNodes)
-      ? (node.data.inputNodes as unknown[]).filter((id): id is string => typeof id === 'string')
-      : []
-    const next = update(current)
-    if (next.length === current.length && next.every((id, i) => id === current[i])) return node
-    return { ...node, data: { ...node.data, inputNodes: next } }
-  })
-}
-
-/**
  * The nodes already wired into `targetId` on the input handle, in graph order.
- * Read off the EDGES rather than `data.inputNodes` — the edge is the contract
- * the validator and the engine both judge, the list is cosmetic parity.
+ * The EDGE is the whole contract — the one the validator and the engine both
+ * judge, and since the trigger no longer mirrors it into a `data.inputNodes`
+ * list, the only one there is.
  */
 function wiredInputNodes(nodes: GraphNode[], edges: GraphEdge[], targetId: string): GraphNode[] {
   const sources = new Set(
@@ -905,17 +883,9 @@ export async function addNode(
       newEdges.push(makeEdge(parent.id, LOOP_HANDLES.LOOP_START, nodeId, 'target'))
     }
 
-    let nextNodes = nodes.map((n) =>
+    const nextNodes = nodes.map((n) =>
       resizedParent && n.id === resizedParent.id ? resizedParent : n
     )
-    if (inputTarget) {
-      // Canvas parity: the target lists the input nodes wired into it.
-      nextNodes = updateInputNodes(
-        nextNodes as GraphNode[],
-        (current) => (current.includes(nodeId) ? current : [...current, nodeId]),
-        { lookup: ctx.lookup, onlyNodeId: inputTarget.id }
-      )
-    }
     return ok({
       graph: {
         nodes: [...nextNodes, newNode],
@@ -1157,11 +1127,7 @@ export async function deleteNodes(
 
     return ok({
       graph: {
-        nodes: updateInputNodes(
-          nodes.filter((n) => !toDelete.has(n.id)) as GraphNode[],
-          (current) => current.filter((id) => !toDelete.has(id)),
-          { lookup: ctx.lookup }
-        ),
+        nodes: nodes.filter((n) => !toDelete.has(n.id)),
         edges: [
           ...edges.filter((e) => !toDelete.has(e.source) && !toDelete.has(e.target)),
           ...bridged,
@@ -1224,18 +1190,8 @@ export async function connectNodes(
       )
     }
 
-    // Canvas parity: wiring an input node appends it to the target's list.
-    const nextNodes =
-      !isLoopBack && handles.targetHandle === INPUT_WIRING_HANDLES.targetHandle
-        ? updateInputNodes(
-            nodes as GraphNode[],
-            (current) => (current.includes(edge.source) ? current : [...current, edge.source]),
-            { lookup: ctx.lookup, onlyNodeId: targetNode.id }
-          )
-        : nodes
-
     return ok({
-      graph: { ...ctx.graph, nodes: nextNodes, edges: [...edges, edge] },
+      graph: { ...ctx.graph, nodes, edges: [...edges, edge] },
       touchedNodeId: targetNode.id,
       normalizeIssues: [],
     })
@@ -1271,23 +1227,8 @@ export async function disconnectNodes(
       )
     }
 
-    // Canvas parity: an input wiring that goes also leaves the target's list.
-    const droppedInputWiring = edges.some(
-      (e) =>
-        e.source === sourceId &&
-        e.target === targetId &&
-        (e.targetHandle ?? 'target') === INPUT_WIRING_HANDLES.targetHandle
-    )
-    const nextNodes = droppedInputWiring
-      ? updateInputNodes(
-          nodes as GraphNode[],
-          (current) => current.filter((id) => id !== sourceId),
-          { lookup: ctx.lookup, onlyNodeId: targetId }
-        )
-      : nodes
-
     return ok({
-      graph: { ...ctx.graph, nodes: nextNodes, edges: remaining },
+      graph: { ...ctx.graph, nodes, edges: remaining },
       normalizeIssues: [],
     })
   })
@@ -1538,17 +1479,6 @@ export async function replaceGraph(
             handles.targetHandle
           )
       if (!edges.some((e) => e.id === edge.id)) edges.push(edge)
-      // Canvas parity: an input wiring is also listed on the target node.
-      // `built` is mutated in place through the layout passes, so this writes
-      // straight onto the node object rather than rebuilding the array.
-      if (!isLoopBack && handles.targetHandle === INPUT_WIRING_HANDLES.targetHandle) {
-        const [updated] = updateInputNodes(
-          [targetNode],
-          (current) => (current.includes(edge.source) ? current : [...current, edge.source]),
-          { lookup: ctx.lookup }
-        )
-        if (updated) targetNode.data = updated.data
-      }
     }
 
     // Pass 4 — auto-layout: dagre for the top level (positions from centers,

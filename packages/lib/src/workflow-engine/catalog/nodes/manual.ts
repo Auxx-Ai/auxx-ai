@@ -1,6 +1,6 @@
 // packages/lib/src/workflow-engine/catalog/nodes/manual.ts
 
-import { z } from 'zod'
+import type { z } from 'zod'
 import { BaseType, WorkflowTriggerType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
 import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
@@ -8,18 +8,21 @@ import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../t
 import { createUnifiedOutputVariable } from '../variable-conversion'
 
 /**
- * Manual trigger node data interface
+ * Manual trigger node data interface.
+ *
+ * No `inputNodes` list: what a manual trigger collects is the set of
+ * `form-input` nodes wired into its `input` handle, and the EDGE is the only
+ * record of that. A mirrored id list on the node was append-only canvas
+ * metadata — maintained by one of the two ways to author the wire, pruned by
+ * neither — so it drifted from the edges in 7 of the 8 dev workflows that had
+ * an input edge, and nothing read it.
  */
-export interface ManualNodeData extends BaseNodeData {
-  inputNodes?: string[] // Array of connected input node IDs
-}
+export type ManualNodeData = BaseNodeData
 
 /**
  * Zod schema for manual trigger node data
  */
-export const manualNodeDataSchema = baseNodeDataSchema.extend({
-  inputNodes: z.array(z.string()).optional(),
-})
+export const manualNodeDataSchema = baseNodeDataSchema
 
 /**
  * Validate manual trigger node data
@@ -100,7 +103,6 @@ export const manualManifest: NodeManifest<ManualNodeData> = {
   defaultData: () => ({
     title: 'Manual Trigger',
     desc: 'Manually trigger workflow with user inputs',
-    inputNodes: [],
   }),
   configSchema: manualNodeDataSchema as unknown as z.ZodType<ManualNodeData>,
   validate: validateManualData,
@@ -112,8 +114,9 @@ export const manualManifest: NodeManifest<ManualNodeData> = {
   agent: {
     authorable: true,
     usage:
-      'The workflow starts when a user runs it by hand. `inputNodes` lists connected ' +
-      'form/number/file input node ids; leave empty unless input nodes exist.',
-    examples: [{ description: 'Plain manual trigger', config: { inputNodes: [] } }],
+      'The workflow starts when a user runs it by hand. It takes no config. To collect ' +
+      'values from the user, add `form-input` nodes and connect them to this node — the ' +
+      'connection IS the declaration, and their values arrive under `inputs`.',
+    examples: [{ description: 'Plain manual trigger', config: {} }],
   },
 }

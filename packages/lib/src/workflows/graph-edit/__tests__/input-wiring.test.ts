@@ -74,15 +74,26 @@ const FORM_ID = 'form-input-aaaaaaaaaaaaaaa'
 const WAIT_ID = 'wait-aaaaaaaaaaaaaaaaaaaaa'
 const SECOND_FORM_ID = 'form-input-bbbbbbbbbbbbbbb'
 
-function manualNode(inputNodes: string[] = []): GraphNode {
+function manualNode(): GraphNode {
   return {
     id: MANUAL_ID,
     type: 'standard',
     position: { x: 100, y: 300 },
     width: 244,
     height: 100,
-    data: { id: MANUAL_ID, type: 'manual', title: 'Manual Trigger', inputNodes },
+    data: { id: MANUAL_ID, type: 'manual', title: 'Manual Trigger' },
   }
+}
+
+/**
+ * The ids wired into the trigger's `input` handle, in edge order — the ONLY
+ * record of what a manual trigger collects. There is no mirrored
+ * `data.inputNodes` list any more (see `catalog/nodes/manual.ts`).
+ */
+function wiredSources(graph: DraftGraph): string[] {
+  return graph.edges
+    .filter((e) => e.target === MANUAL_ID && e.targetHandle === 'input')
+    .map((e) => e.source)
 }
 
 /** A form-input node — `NodeCategory.INPUT` in the catalog since PR 2. */
@@ -283,15 +294,11 @@ describe('edge handle resolution (§4a)', () => {
     const wired = persisted.edges.find((e) => e.source === SECOND_FORM_ID)
     expect(wired?.sourceHandle).toBe('input-output')
     expect(wired?.targetHandle).toBe('input')
-    // Canvas parity: the trigger's connected-input list gains the node id.
-    expect(persisted.nodes.find((n) => n.id === MANUAL_ID)?.data?.inputNodes).toEqual([
-      SECOND_FORM_ID,
-    ])
   })
 
-  it('a second form-input appends to inputNodes rather than replacing the first', async () => {
+  it('a second form-input is wired alongside the first, not in place of it', async () => {
     const graph: DraftGraph = {
-      nodes: [formInputNode(), secondFormInputNode(), manualNode([FORM_ID]), waitNode()],
+      nodes: [formInputNode(), secondFormInputNode(), manualNode(), waitNode()],
       edges: [inputEdge(FORM_ID, MANUAL_ID), edge(MANUAL_ID, 'source', WAIT_ID)],
     }
     const result = await connectNodes(makeDb(graph), {
@@ -303,11 +310,9 @@ describe('edge handle resolution (§4a)', () => {
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().applied).toBe(true)
 
+    // Both wires exist: the edges ARE the trigger's input list.
     const persisted = persistedGraph()
-    expect(persisted.nodes.find((n) => n.id === MANUAL_ID)?.data?.inputNodes).toEqual([
-      FORM_ID,
-      SECOND_FORM_ID,
-    ])
+    expect(wiredSources(persisted)).toEqual([FORM_ID, SECOND_FORM_ID])
   })
 
   /**
@@ -517,8 +522,10 @@ describe('addNode({ inputFor }) (§4b)', () => {
     expect(wired?.sourceHandle).toBe('input-output')
     expect(wired?.targetHandle).toBe('input')
 
-    // Canvas parity, and the graph the writer produced is one the validator accepts.
-    expect(persisted.nodes.find((n) => n.id === MANUAL_ID)?.data?.inputNodes).toEqual([created.id])
+    // The wire is the whole record: the trigger gains no config the model
+    // could later contradict. And the graph the writer produced is one the
+    // validator accepts.
+    expect(persisted.nodes.find((n) => n.id === MANUAL_ID)?.data).not.toHaveProperty('inputNodes')
     expect(errors(validateGraphStructure(persisted, { lookup: coreLookup }))).toEqual([])
   })
 
@@ -559,10 +566,7 @@ describe('addNode({ inputFor }) (§4b)', () => {
     expect(subjectPosition).not.toEqual(bodyPosition)
     expect(subjectPosition.localeCompare(bodyPosition)).toBeLessThan(0)
 
-    expect(afterSecond.nodes.find((n) => n.id === MANUAL_ID)?.data?.inputNodes).toEqual([
-      subject.id,
-      body.id,
-    ])
+    expect(wiredSources(afterSecond)).toEqual([subject.id, body.id])
     expect(errors(validateGraphStructure(afterSecond, { lookup: coreLookup }))).toEqual([])
   })
 
@@ -612,7 +616,7 @@ describe('addNode({ inputFor }) (§4b)', () => {
     // the upstream ref check one step later — with a message about references
     // that never names the real mistake. Refuse it where the fix can be said.
     const graph: DraftGraph = {
-      nodes: [formInputNode(), manualNode([FORM_ID]), waitNode()],
+      nodes: [formInputNode(), manualNode(), waitNode()],
       edges: [
         edge(FORM_ID, 'input-output', MANUAL_ID, 'input'),
         edge(MANUAL_ID, 'source', WAIT_ID),
@@ -638,7 +642,7 @@ describe('addNode({ inputFor }) (§4b)', () => {
     // The other half: the guard must reject the field, never the trigger that
     // owns it, or it would make a form-driven workflow unauthorable.
     const graph: DraftGraph = {
-      nodes: [formInputNode(), manualNode([FORM_ID])],
+      nodes: [formInputNode(), manualNode()],
       edges: [edge(FORM_ID, 'input-output', MANUAL_ID, 'input')],
     }
     const result = await addNode(makeDb(graph), {
@@ -668,7 +672,7 @@ describe('addNode({ inputFor }) (§4b)', () => {
 describe('runNode refusal for canRunSingle: false (§4)', () => {
   it('refuses to run a form-input node instead of handing it to the engine', async () => {
     const graph: DraftGraph = {
-      nodes: [formInputNode(), manualNode([FORM_ID]), waitNode()],
+      nodes: [formInputNode(), manualNode(), waitNode()],
       edges: [inputEdge(FORM_ID, MANUAL_ID), edge(MANUAL_ID, 'source', WAIT_ID)],
     }
     const result = await runNode(makeDb(graph), {
@@ -683,10 +687,16 @@ describe('runNode refusal for canRunSingle: false (§4)', () => {
   })
 })
 
-describe('inputNodes maintenance (§5)', () => {
-  it('deleteNodes on a form-input prunes it from the trigger inputNodes list', async () => {
+/**
+ * The edge is the whole contract. `ManualNodeData.inputNodes` used to mirror
+ * it and drifted in 7 of the 8 dev workflows that had an input edge — one of
+ * the two ways to author the wire maintained it, neither delete nor disconnect
+ * pruned it, and nothing read it. These tests pin that no writer resurrects it.
+ */
+describe('input wiring lives on the edge alone', () => {
+  it('deleteNodes on a form-input takes its wiring with it and writes no id list', async () => {
     const graph: DraftGraph = {
-      nodes: [formInputNode(), manualNode([FORM_ID, 'stale-input-node']), waitNode()],
+      nodes: [formInputNode(), manualNode(), waitNode()],
       edges: [inputEdge(FORM_ID, MANUAL_ID), edge(MANUAL_ID, 'source', WAIT_ID)],
     }
     const result = await deleteNodes(makeDb(graph), {
@@ -699,15 +709,13 @@ describe('inputNodes maintenance (§5)', () => {
 
     const persisted = persistedGraph()
     expect(persisted.nodes.map((n) => n.id)).toEqual([MANUAL_ID, WAIT_ID])
-    // Only the deleted id is pruned — an unrelated stale id is left alone.
-    expect(persisted.nodes.find((n) => n.id === MANUAL_ID)?.data?.inputNodes).toEqual([
-      'stale-input-node',
-    ])
+    expect(wiredSources(persisted)).toEqual([])
+    expect(persisted.nodes.find((n) => n.id === MANUAL_ID)?.data).not.toHaveProperty('inputNodes')
   })
 
-  it('disconnectNodes prunes the unwired input from the trigger inputNodes list', async () => {
+  it('disconnectNodes drops the wiring and writes no id list', async () => {
     const graph: DraftGraph = {
-      nodes: [formInputNode(), manualNode([FORM_ID]), waitNode()],
+      nodes: [formInputNode(), manualNode(), waitNode()],
       edges: [inputEdge(FORM_ID, MANUAL_ID), edge(MANUAL_ID, 'source', WAIT_ID)],
     }
     const result = await disconnectNodes(makeDb(graph), {
@@ -720,12 +728,16 @@ describe('inputNodes maintenance (§5)', () => {
 
     const persisted = persistedGraph()
     expect(persisted.edges.some((e) => e.source === FORM_ID)).toBe(false)
-    expect(persisted.nodes.find((n) => n.id === MANUAL_ID)?.data?.inputNodes).toEqual([])
+    expect(persisted.nodes.find((n) => n.id === MANUAL_ID)?.data).not.toHaveProperty('inputNodes')
+  })
+
+  it('defaultData mints no id list', () => {
+    expect(manualManifest.defaultData?.()).not.toHaveProperty('inputNodes')
   })
 
   it('manual advertises `inputs` with no connected inputs — the engine always writes it', () => {
     const variables = manualManifest.resolveOutputs?.(
-      { id: MANUAL_ID, type: 'manual', title: 'Manual Trigger', selected: false, inputNodes: [] },
+      { id: MANUAL_ID, type: 'manual', title: 'Manual Trigger', selected: false },
       MANUAL_ID,
       staticOutputContext
     )

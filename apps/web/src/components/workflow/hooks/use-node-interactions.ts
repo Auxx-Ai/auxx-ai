@@ -1049,20 +1049,13 @@ export const useNodesInteractions = () => {
       // newEdge.zIndex = calculateEdgeZIndex(newEdge as FlowEdge, nodes as FlowNode[])
 
       // 7. Update connected handles metadata
-      let updatedNodes = updateNodeConnectionMetadata(nodes, newEdge)
-
-      // NEW: Handle input connection metadata
-      if (targetHandle === 'input') {
-        // Update target node's input connections
-        updatedNodes = produce(updatedNodes, (draft) => {
-          const targetDraft = draft.find((n) => n.id === target)
-          if (!targetDraft) return
-          const inputNodes: string[] = targetDraft.data.inputNodes ?? []
-          if (!inputNodes.includes(source)) {
-            targetDraft.data.inputNodes = [...inputNodes, source]
-          }
-        })
-      }
+      //
+      // The `input`-handle wire used to ALSO be appended to the target's
+      // `data.inputNodes`. It no longer is: the edge is the only record of an
+      // input wiring. That list was append-only — the manual panel's Add
+      // button never wrote it and nothing pruned it on delete or disconnect —
+      // so it drifted, and nothing read it.
+      const updatedNodes = updateNodeConnectionMetadata(nodes, newEdge)
 
       // 8. Update state
       setNodes(updatedNodes)
