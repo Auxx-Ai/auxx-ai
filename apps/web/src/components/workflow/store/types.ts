@@ -44,6 +44,12 @@ export interface HistoryEntry {
   data: any
   label?: string
   batch?: string
+  /**
+   * Identity of the logical edit this entry belongs to. A later record with the
+   * same key overwrites this entry instead of pushing a new one — see
+   * `HistoryManager.record`.
+   */
+  coalesceKey?: string
 }
 
 /**

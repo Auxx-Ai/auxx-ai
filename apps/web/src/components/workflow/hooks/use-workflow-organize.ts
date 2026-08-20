@@ -11,12 +11,14 @@ import {
   getLayoutForChildNodes,
 } from '../utils/layout-algorithms'
 import { LAYOUT_ANIMATION, NODE_CLASSIFICATIONS } from '../utils/layout-constants'
+import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
 
 /**
  * Hook for organizing workflow layout automatically
  */
 export const useWorkflowOrganize = () => {
   const historyManager = useHistoryManager()
+  const { saveStateToHistory } = useWorkflowHistory()
   const reactFlow = useReactFlow()
   const store = useStoreApi<FlowNode, FlowEdge>()
   // Get ReactFlow actions directly
@@ -149,6 +151,10 @@ export const useWorkflowOrganize = () => {
       // Update nodes using setNodes
       setNodes(newNodes)
 
+      // Auto-layout moves every node at once, which is exactly the kind of
+      // change a user wants back. One entry, no coalesce key.
+      saveStateToHistory(WorkflowHistoryEvent.LayoutOrganize)
+
       // Set optimal viewport using canvas interaction callbacks
       setViewport({ x: 0, y: 0, zoom: LAYOUT_ANIMATION.VIEWPORT_ZOOM })
 
@@ -168,7 +174,7 @@ export const useWorkflowOrganize = () => {
       console.error('Error during layout organization:', error)
       historyManager.endBatch()
     }
-  }, [isReadOnly, store, setViewport, fitView, historyManager])
+  }, [isReadOnly, store, setViewport, fitView, historyManager, saveStateToHistory])
 
   /**
    * Simple horizontal layout for quick organization
@@ -188,9 +194,10 @@ export const useWorkflowOrganize = () => {
     }))
 
     setNodes(newNodes)
+    saveStateToHistory(WorkflowHistoryEvent.LayoutOrganize)
     fitView({ padding: 0.1 })
     historyManager.endBatch()
-  }, [isReadOnly, store, fitView, historyManager])
+  }, [isReadOnly, store, fitView, historyManager, saveStateToHistory])
 
   /**
    * Reset all nodes to center position
@@ -206,9 +213,10 @@ export const useWorkflowOrganize = () => {
     const newNodes = nodes.map((node) => ({ ...node, position: { x: 0, y: 0 } }))
 
     setNodes(newNodes)
+    saveStateToHistory(WorkflowHistoryEvent.LayoutOrganize)
     setViewport({ x: 0, y: 0, zoom: 1 })
     historyManager.endBatch()
-  }, [isReadOnly, store, setViewport, historyManager])
+  }, [isReadOnly, store, setViewport, historyManager, saveStateToHistory])
 
   // Memoize canOrganize to prevent unnecessary re-renders
   const canOrganize = useMemo(() => {

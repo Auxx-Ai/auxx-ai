@@ -4,6 +4,8 @@ import { useStoreApi } from '@xyflow/react'
 import type React from 'react'
 import { useEffect } from 'react'
 import { useWorkflowHistory } from '../hooks/use-save-to-history'
+import type { FlowNode } from '../types'
+import { mergeInteractionState } from '../utils/interaction-state'
 import { useWorkflowStore } from './workflow-store'
 import { useHistoryManager } from './workflow-store-provider'
 
@@ -44,8 +46,15 @@ export const WorkflowHistoryProvider: React.FC<WorkflowHistoryProviderProps> = (
     }
     const workflowStore = {
       setNodes: (nodes: any[]) => {
-        const { setNodes } = reactFlowStore.getState()
-        setNodes(nodes)
+        const { setNodes, nodes: liveNodes } = reactFlowStore.getState()
+        // Authored content from the snapshot, interaction state from the live
+        // canvas — the same contract `workflow:externalUpdate` and the version
+        // popover use. A history restore was the last wholesale replace that
+        // skipped it, which cost it twice: the snapshot replayed a persisted
+        // `selected` (opening a panel for a node the user was not looking at),
+        // and it carried no `measured`, so every restored node rendered at zero
+        // size for a frame.
+        setNodes(mergeInteractionState(nodes as FlowNode[], liveNodes as FlowNode[]))
         markRestoreDirty()
       },
       setEdges: (edges: any[]) => {

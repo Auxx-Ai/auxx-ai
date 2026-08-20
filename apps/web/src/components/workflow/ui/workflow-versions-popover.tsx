@@ -19,7 +19,9 @@ import React from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useCanvasStore } from '~/components/workflow/store/canvas-store'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import { useHistoryManager } from '~/components/workflow/store/workflow-store-provider'
 import type { FlowNode } from '~/components/workflow/types'
+import { snapshotGraph } from '~/components/workflow/utils/history-snapshot'
 import { storedGraphToCanvas } from '~/components/workflow/utils/interaction-state'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -72,6 +74,7 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
 
   // ReactFlow hooks for node and edge management
   const { getNodes, getEdges, setNodes, setEdges } = useReactFlow()
+  const historyManager = useHistoryManager()
   const nodes = getNodes()
   const edges = getEdges()
 
@@ -234,6 +237,19 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
             const canvas = storedGraphToCanvas(graph, getNodes() as FlowNode[])
             setNodes(canvas.nodes)
             setEdges(canvas.edges)
+
+            // Restoring a version is the most destructive canvas replacement in
+            // the builder, so it gets an undo step like every other one. Same
+            // immediate full-snapshot shape the Kopilot rehydrate records, and
+            // no coalesce key — this must never merge into a user edit.
+            // The PREVIEW path below deliberately records nothing: it is
+            // read-only and reverts on exit.
+            historyManager.record({
+              action: 'workflow_event',
+              store: 'workflow',
+              data: snapshotGraph('VersionRestore', canvas.nodes, canvas.edges),
+              label: `Restored "${versionTitle}"`,
+            })
           })
 
           // Exit read-only mode
