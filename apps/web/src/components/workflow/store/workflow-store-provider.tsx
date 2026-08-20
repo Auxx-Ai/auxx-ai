@@ -109,6 +109,7 @@ export type HistoryManagerApi = Pick<
   | 'getHistory'
   | 'getNavigationHistory'
   | 'jumpToState'
+  | 'jumpToEntryId'
   | 'getCurrentStateIndex'
   | 'clear'
 >
@@ -129,6 +130,7 @@ const noopHistoryManager: HistoryManagerApi = {
   getHistory: () => [],
   getNavigationHistory: () => [],
   jumpToState: () => {},
+  jumpToEntryId: () => {},
   getCurrentStateIndex: () => -1,
   clear: () => {},
 }

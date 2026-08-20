@@ -50,7 +50,13 @@ export const useNodeDataUpdate = () => {
       handleNodeDataUpdate(payload)
       // Variables are automatically synced by VarStoreSyncProvider
       debouncedSave()
-      saveStateToHistory(WorkflowHistoryEvent.NodeChange)
+      // Keyed per node: a burst of keystrokes in one panel is one undo step,
+      // and an edit to a DIFFERENT node starts a new one. Per-field would be
+      // finer, but `setInputs` hands over a whole data object, so which field
+      // moved is not knowable here.
+      saveStateToHistory(WorkflowHistoryEvent.NodeChange, {
+        coalesceKey: `NodeChange:${payload.id}`,
+      })
     },
     [debouncedSave, handleNodeDataUpdate, isReadOnly, saveStateToHistory]
   )

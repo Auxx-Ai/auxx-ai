@@ -17,11 +17,17 @@ const h = vi.hoisted(() => ({
   markDirty: vi.fn(),
   rfSetNodes: vi.fn(),
   rfSetEdges: vi.fn(),
+  liveNodes: [] as any[],
 }))
 
 vi.mock('@xyflow/react', () => ({
   useStoreApi: () => ({
-    getState: () => ({ setNodes: h.rfSetNodes, setEdges: h.rfSetEdges, nodes: [], edges: [] }),
+    getState: () => ({
+      setNodes: h.rfSetNodes,
+      setEdges: h.rfSetEdges,
+      nodes: h.liveNodes,
+      edges: [],
+    }),
   }),
 }))
 
@@ -65,6 +71,7 @@ describe('WorkflowHistoryProvider — restores mark the canvas dirty', () => {
     h.markDirty.mockClear()
     h.rfSetNodes.mockClear()
     h.rfSetEdges.mockClear()
+    h.liveNodes = []
     render(<WorkflowHistoryProvider>{null}</WorkflowHistoryProvider>)
   })
 
@@ -99,5 +106,61 @@ describe('WorkflowHistoryProvider — restores mark the canvas dirty', () => {
     manager.undo() // needs ≥2 states — no-op
     expect(h.rfSetNodes).not.toHaveBeenCalled()
     expect(h.markDirty).not.toHaveBeenCalled()
+  })
+})
+
+// A history snapshot is authored content. Interaction state — selection, drag
+// flag, React Flow's measured box — belongs to the canvas the user is looking
+// at, and the restore seam has to carry it across rather than replay whatever
+// the snapshot happened to store. This was the last wholesale `setNodes` in the
+// builder that skipped `mergeInteractionState`.
+describe('WorkflowHistoryProvider — restores preserve interaction state', () => {
+  let manager: HistoryManager
+
+  beforeEach(() => {
+    manager = new HistoryManager()
+    h.manager = manager
+    h.rfSetNodes.mockClear()
+    h.liveNodes = [{ id: 'n1', selected: true, measured: { width: 200, height: 80 } }]
+    render(<WorkflowHistoryProvider>{null}</WorkflowHistoryProvider>)
+  })
+
+  function snapshot(tag: string) {
+    return {
+      action: 'workflow_event',
+      store: 'workflow',
+      // No `selected`, no `measured` — exactly what the snapshot whitelist stores.
+      data: { event: 'NodeChange', nodes: [{ id: 'n1', data: { title: tag } }], edges: [] },
+      label: tag,
+    }
+  }
+
+  it('keeps the live selection and measured box on the restored node', () => {
+    manager.record(snapshot('before'))
+    manager.record(snapshot('after'))
+
+    manager.undo()
+
+    const restored = h.rfSetNodes.mock.calls.at(-1)?.[0][0]
+    expect(restored.data.title).toBe('before') // authored content from the snapshot…
+    expect(restored.selected).toBe(true) // …interaction state from the canvas
+    expect(restored.measured).toEqual({ width: 200, height: 80 })
+  })
+
+  it('leaves a node the live canvas does not have without interaction state', () => {
+    const undoingADelete = {
+      action: 'workflow_event',
+      store: 'workflow',
+      data: { event: 'NodeDelete', nodes: [{ id: 'gone', data: {} }], edges: [] },
+      label: 'restores a deleted node',
+    }
+    manager.record(undoingADelete)
+    manager.record(snapshot('after'))
+
+    manager.undo()
+
+    const restored = h.rfSetNodes.mock.calls.at(-1)?.[0][0]
+    expect(restored.id).toBe('gone')
+    expect(restored.selected).toBeUndefined()
   })
 })

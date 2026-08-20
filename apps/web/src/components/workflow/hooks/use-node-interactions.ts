@@ -488,9 +488,7 @@ export const useNodesInteractions = () => {
 
       debouncedSave()
 
-      if (currentNode.data.type === NodeType.NOTE)
-        saveStateToHistory(WorkflowHistoryEvent.NoteDelete)
-      else saveStateToHistory(WorkflowHistoryEvent.NodeDelete)
+      saveStateToHistory(WorkflowHistoryEvent.NodeDelete)
 
       closeDrawer()
     },
@@ -674,7 +672,13 @@ export const useNodesInteractions = () => {
       })
       setNodes(newNodes)
       debouncedSave()
-      saveStateToHistory(WorkflowHistoryEvent.NodeResize)
+      // `NodeResizeControl` binds `onResize`, not `onResizeEnd`, so this runs
+      // once per pointer frame. The key collapses the whole gesture into one
+      // undo step; the event type is part of it, so a resize and a drag of the
+      // same node can never merge.
+      saveStateToHistory(WorkflowHistoryEvent.NodeResize, {
+        coalesceKey: `NodeResize:${nodeId}`,
+      })
     },
     [getNodesReadOnly, store, debouncedSave, saveStateToHistory]
   )
@@ -799,10 +803,16 @@ export const useNodesInteractions = () => {
 
         // Note: No need to call updateNode directly since storeSyncCallbacks.syncNodeToStore already does it
 
-        // TODO: Save to history if not a select-triggered drag (x,y != 0,0)
-        // if (startPos.x !== 0 && startPos.y !== 0) {
-        //   saveStateToHistory(WorkflowHistoryEvent.NodeDragStop)
-        // }
+        // One entry per gesture, so no coalesce key: two separate drags of
+        // the same node are two separate undo steps.
+        //
+        // The old TODO here proposed guarding on `startPos.x !== 0 &&
+        // startPos.y !== 0` to skip select-triggered drags. That guard is
+        // wrong — it silently drops a real drag of a node parked at the
+        // origin. `positionChanged` above is the correct test, and it covers
+        // multi-select too: every selected node moves by the delta of the
+        // GRABBED node, so a zero delta on that one is a zero delta on all.
+        saveStateToHistory(WorkflowHistoryEvent.NodeDragStop)
       }
       handleClearHelpline()
 
@@ -816,7 +826,7 @@ export const useNodesInteractions = () => {
 
       endDragWindow()
     },
-    [getNodesReadOnly, debouncedSave, handleClearHelpline]
+    [getNodesReadOnly, debouncedSave, handleClearHelpline, saveStateToHistory]
   )
 
   const handleNodeSelect = useCallback(

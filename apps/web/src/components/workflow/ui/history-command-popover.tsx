@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/canvas/history-command-popover.tsx
+// apps/web/src/components/workflow/ui/history-command-popover.tsx
 
 'use client'
 
@@ -16,6 +16,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Clock, History } from 'lucide-react'
 import React from 'react'
 import { Tooltip } from '~/components/global/tooltip'
+import { storeEventBus } from '~/components/workflow/store/event-bus'
 import type { NavigationHistoryEntry } from '~/components/workflow/store/history-manager'
 import { useHistoryManager } from '~/components/workflow/store/workflow-store-provider'
 
@@ -31,35 +32,22 @@ export function HistoryCommandPopover({ open, onOpenChange }: HistoryCommandPopo
   const historyManager = useHistoryManager()
   const [historyEntries, setHistoryEntries] = React.useState<NavigationHistoryEntry[]>([])
 
-  // Update history entries when popover opens
+  // Follow the stack while the popover is open. Reading once on open made an
+  // entry that landed afterwards invisible until a close/reopen cycle — and
+  // left the rendered list describing a stack that had moved on. Subscribing
+  // costs nothing while closed, which was the constraint that mattered.
   React.useEffect(() => {
-    if (open) {
-      const entries = historyManager.getNavigationHistory()
-      // Reverse the entries to show most recent first
-      setHistoryEntries(entries.reverse())
-    }
+    if (!open) return
+    // Reverse to show most recent first.
+    const read = () => setHistoryEntries(historyManager.getNavigationHistory().reverse())
+    read()
+    return storeEventBus.on('history:changed', read)
   }, [open, historyManager])
 
-  const handleJumpToState = (reversedIndex: number) => {
-    // Since we reversed the array for display, calculate the actual index
-    const actualIndex = historyEntries.length - 1 - reversedIndex
-
-    // Calculate how many steps to undo/redo
-    const currentIndex = historyManager.getCurrentStateIndex()
-    const steps = actualIndex - currentIndex
-
-    if (steps < 0) {
-      // Need to undo
-      for (let i = 0; i < Math.abs(steps); i++) {
-        historyManager.undo()
-      }
-    } else if (steps > 0) {
-      // Need to redo
-      for (let i = 0; i < steps; i++) {
-        historyManager.redo()
-      }
-    }
-
+  // Jump by entry id, not by index: an index is only meaningful against the
+  // stack length at render time, and the stack moves underneath this list.
+  const handleJumpToState = (entryId: string) => {
+    historyManager.jumpToEntryId(entryId)
     onOpenChange(false)
   }
 
@@ -91,10 +79,10 @@ export function HistoryCommandPopover({ open, onOpenChange }: HistoryCommandPopo
             </CommandEmpty>
             {historyEntries.length > 0 && (
               <CommandGroup heading='History Timeline'>
-                {historyEntries.map((entry, index) => (
+                {historyEntries.map((entry) => (
                   <CommandItem
                     key={entry.id}
-                    onSelect={() => handleJumpToState(index)}
+                    onSelect={() => handleJumpToState(entry.id)}
                     className={cn(
                       'flex items-center gap-3 justify-between cursor-pointer data-[selected=true]:bg-info/10'
                       // entry.relativePosition === 0 && 'bg-accent/50 font-medium'

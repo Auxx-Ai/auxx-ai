@@ -1,6 +1,5 @@
 // apps/web/src/components/workflow/store/history-manager.ts
 
-// import { nanoid } from 'nanoid'
 import { v4 as uuidv4 } from 'uuid'
 import { storeEventBus } from './event-bus'
 import type { HistoryEntry } from './types'
@@ -8,6 +7,7 @@ import type { HistoryEntry } from './types'
 interface HistoryManagerOptions {
   maxHistorySize?: number
   batchingWindow?: number
+  coalesceWindow?: number
 }
 
 /**
@@ -23,22 +23,52 @@ interface StoreInstance {
 }
 
 /**
+ * Options for {@link HistoryManager.record}.
+ */
+export interface RecordOptions {
+  /**
+   * Identity of the logical edit this record belongs to, e.g.
+   * `NodeChange:<nodeId>`. A record whose key matches the top of the stack
+   * **overwrites** it instead of pushing, which is how a burst of keystrokes in
+   * one panel becomes one undo step rather than one per character.
+   *
+   * Omit it for anything that happens once per gesture (add, delete, paste,
+   * drag-stop, layout). A keyless record can never merge into a keyed session,
+   * which is what stops two unrelated edits collapsing into a single entry.
+   */
+  coalesceKey?: string
+}
+
+/**
+ * How long a coalescing session stays open, measured from its LAST write.
+ *
+ * This is an idle gap, not a maximum duration — the anchor moves forward on
+ * every merge. Both properties depend on that: a continuous gesture (resize
+ * fires per pointer frame) stays one entry however long it runs, while a field
+ * edited now and edited again after a pause becomes two entries, so the
+ * intermediate state is still reachable.
+ */
+const DEFAULT_COALESCE_WINDOW = 500
+
+/**
  * Centralized history manager for undo/redo functionality across all stores
  */
 export class HistoryManager {
   private undoStack: HistoryEntry[] = []
   private redoStack: HistoryEntry[] = []
   private stores = new Map<string, StoreInstance>()
-  private currentBatch: string | null = null
+  private currentBatch: { id: string; label: string } | null = null
   private batchTimeout: NodeJS.Timeout | null = null
   private currentStateIndex: number = -1 // Current position in combined history
 
   private maxHistorySize: number
   private batchingWindow: number
+  private coalesceWindow: number
 
   constructor(options: HistoryManagerOptions = {}) {
     this.maxHistorySize = options.maxHistorySize || 50
     this.batchingWindow = options.batchingWindow || 300
+    this.coalesceWindow = options.coalesceWindow ?? DEFAULT_COALESCE_WINDOW
   }
 
   /**
@@ -56,14 +86,49 @@ export class HistoryManager {
   }
 
   /**
-   * Record a history entry
+   * Record a history entry.
+   *
+   * Writes happen on the edit — there is no debounce in front of this. Volume
+   * is handled by coalescing on {@link RecordOptions.coalesceKey} instead of by
+   * waiting, so `canUndo()`, the undo/redo buttons and the history popover are
+   * always current, and unrelated edits can never merge into one entry.
    */
-  record(entry: Omit<HistoryEntry, 'id' | 'timestamp'>): void {
+  record(entry: Omit<HistoryEntry, 'id' | 'timestamp'>, options: RecordOptions = {}): void {
+    const { coalesceKey } = options
+    const top = this.undoStack[this.undoStack.length - 1]
+    const now = Date.now()
+
+    if (
+      coalesceKey &&
+      top?.coalesceKey === coalesceKey &&
+      now - top.timestamp < this.coalesceWindow
+    ) {
+      // The same logical edit continuing: replace the snapshot in place. Undo
+      // still lands on the state from before the session began, because that
+      // one lives in the PREVIOUS entry.
+      top.data = entry.data
+      top.label = entry.label ?? top.label
+      top.timestamp = now
+
+      // A coalesced write is a new action just as much as a pushed one, so it
+      // has to invalidate the future the same way. Without this, an undo
+      // followed by a same-key edit leaves a redo stack whose entries describe
+      // a graph that no longer exists — redo would then restore a state the
+      // user was never in.
+      this.redoStack = []
+      this.currentStateIndex = this.undoStack.length - 1
+
+      this.emitHistoryChange()
+      return
+    }
+
     const historyEntry: HistoryEntry = {
       ...entry,
       id: uuidv4(),
-      timestamp: Date.now(),
-      batch: this.currentBatch!,
+      timestamp: now,
+      label: entry.label ?? this.currentBatch?.label,
+      batch: this.currentBatch?.id,
+      coalesceKey,
     }
 
     this.undoStack.push(historyEntry)
@@ -88,14 +153,15 @@ export class HistoryManager {
   }
 
   /**
-   * Start a batch of operations
+   * Start a batch of operations. `label` names the entries recorded inside it
+   * that do not carry a label of their own.
    */
   startBatch(label: string): void {
     if (this.batchTimeout) {
       clearTimeout(this.batchTimeout)
       this.batchTimeout = null
     }
-    this.currentBatch = uuidv4()
+    this.currentBatch = { id: uuidv4(), label }
   }
 
   /**
@@ -194,7 +260,7 @@ export class HistoryManager {
     return allEntries.map((entry, index) => ({
       ...entry,
       relativePosition: index - currentIndex,
-      actionDescription: this.getActionDescription(entry),
+      actionDescription: entry.label || `${entry.action} operation`,
     }))
   }
 
@@ -231,6 +297,20 @@ export class HistoryManager {
   }
 
   /**
+   * Jump to the state a specific entry describes.
+   *
+   * The id is the address, not the index: a caller holding a rendered list of
+   * entries cannot compute a correct index once the stack has moved underneath
+   * it, and the list moves whenever an edit lands.
+   */
+  jumpToEntryId(id: string): void {
+    const allEntries = [...this.undoStack, ...this.redoStack.slice().reverse()]
+    const targetIndex = allEntries.findIndex((entry) => entry.id === id)
+    if (targetIndex === -1) return
+    this.jumpToState(targetIndex)
+  }
+
+  /**
    * Get current state position
    */
   getCurrentStateIndex(): number {
@@ -250,194 +330,6 @@ export class HistoryManager {
       this.batchTimeout = null
     }
     this.emitHistoryChange()
-  }
-
-  /**
-   * Generate human-readable action descriptions
-   */
-  private getActionDescription(entry: HistoryEntry): string {
-    const { action, data } = entry
-
-    switch (action) {
-      case 'addNode':
-        return `Added ${data.data?.title || data.type || 'node'}`
-
-      case 'updateNode':
-        return `Updated ${data.old?.data?.title || data.old?.type || 'node'}`
-
-      case 'deleteNode':
-        return `Deleted ${data.data?.title || data.type || 'node'}`
-
-      case 'addEdge':
-        return `Added connection`
-
-      case 'updateEdge':
-        return `Updated connection`
-
-      case 'deleteEdge':
-        return `Deleted connection`
-
-      case 'setVariable':
-        return `Set variable '${data.name}'`
-
-      case 'deleteVariable':
-        return `Deleted variable '${data.name}'`
-
-      default:
-        return entry.label || `${action} operation`
-    }
-  }
-
-  /**
-   * Get entries that belong to the same batch
-   */
-  // private getCurrentBatch(stack: HistoryEntry[]): HistoryEntry[] {
-  //   if (stack.length === 0) return []
-
-  //   const lastEntry = stack[stack.length - 1]
-  //   if (!lastEntry.batch) return [lastEntry]
-
-  //   // Get all entries with the same batch ID
-  //   const batch: HistoryEntry[] = []
-  //   for (let i = stack.length - 1; i >= 0; i--) {
-  //     if (stack[i].batch === lastEntry.batch) {
-  //       batch.push(stack[i])
-  //     } else {
-  //       break
-  //     }
-  //   }
-
-  //   return batch
-  // }
-
-  /**
-   * Revert a history entry (for undo)
-   */
-  private revertEntry(entry: HistoryEntry): void {
-    const store = this.stores.get(entry.store)
-    if (!store) {
-      console.warn(`Store '${entry.store}' not found for history revert`)
-      return
-    }
-
-    // Store-specific revert logic
-    switch (entry.action) {
-      case 'addNode':
-        if (store.deleteNode) {
-          store.deleteNode(entry.data.id, { skipHistory: true })
-        }
-        break
-
-      case 'updateNode':
-        if (store.updateNode && entry.data.old) {
-          store.updateNode(entry.data.id, entry.data.old, { skipHistory: true })
-        }
-        break
-
-      case 'deleteNode':
-        if (store.addNode) {
-          store.addNode(entry.data, { skipHistory: true })
-        }
-        break
-
-      case 'addEdge':
-        if (store.deleteEdge) {
-          store.deleteEdge(entry.data.id, { skipHistory: true })
-        }
-        break
-
-      case 'updateEdge':
-        if (store.updateEdge && entry.data.old) {
-          store.updateEdge(entry.data.id, entry.data.old, { skipHistory: true })
-        }
-        break
-
-      case 'deleteEdge':
-        if (store.addEdge) {
-          store.addEdge(entry.data, { skipHistory: true })
-        }
-        break
-
-      case 'setVariable':
-        if (store.setVariable && entry.data.old !== undefined) {
-          store.setVariable(entry.data.name, entry.data.old, { skipHistory: true })
-        }
-        break
-
-      case 'deleteVariable':
-        if (store.setVariable) {
-          store.setVariable(entry.data.name, entry.data.value, { skipHistory: true })
-        }
-        break
-
-      default:
-        console.warn(`Unknown history action: ${entry.action}`)
-    }
-  }
-
-  /**
-   * Apply a history entry (for redo)
-   */
-  private applyEntry(entry: HistoryEntry): void {
-    const store = this.stores.get(entry.store)
-    if (!store) {
-      console.warn(`Store '${entry.store}' not found for history apply`)
-      return
-    }
-
-    // Store-specific apply logic
-    switch (entry.action) {
-      case 'addNode':
-        if (store.addNode) {
-          store.addNode(entry.data, { skipHistory: true })
-        }
-        break
-
-      case 'updateNode':
-        if (store.updateNode && entry.data.new) {
-          store.updateNode(entry.data.id, entry.data.new, { skipHistory: true })
-        }
-        break
-
-      case 'deleteNode':
-        if (store.deleteNode) {
-          store.deleteNode(entry.data.id, { skipHistory: true })
-        }
-        break
-
-      case 'addEdge':
-        if (store.addEdge) {
-          store.addEdge(entry.data, { skipHistory: true })
-        }
-        break
-
-      case 'updateEdge':
-        if (store.updateEdge && entry.data.new) {
-          store.updateEdge(entry.data.id, entry.data.new, { skipHistory: true })
-        }
-        break
-
-      case 'deleteEdge':
-        if (store.deleteEdge) {
-          store.deleteEdge(entry.data.id, { skipHistory: true })
-        }
-        break
-
-      case 'setVariable':
-        if (store.setVariable) {
-          store.setVariable(entry.data.name, entry.data.value, { skipHistory: true })
-        }
-        break
-
-      case 'deleteVariable':
-        if (store.deleteVariable) {
-          store.deleteVariable(entry.data.name, { skipHistory: true })
-        }
-        break
-
-      default:
-        console.warn(`Unknown history action: ${entry.action}`)
-    }
   }
 
   /**

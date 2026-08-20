@@ -47,7 +47,7 @@ export {
   useRunSingleNode,
 } from './use-run-single-node'
 export {
-  useSaveToHistory,
+  getHistoryLabel,
   useWorkflowHistory,
   WorkflowHistoryEvent,
   type WorkflowHistoryEvent as WorkflowHistoryEventType,

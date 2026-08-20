@@ -7,7 +7,7 @@ import { useOrgChannel } from '~/realtime/hooks'
 import { storeEventBus } from '../store/event-bus'
 import { useWorkflowStore } from '../store/workflow-store'
 import { useHistoryManager } from '../store/workflow-store-provider'
-import type { FlowEdge, FlowNode } from '../types'
+import { snapshotGraph } from '../utils/history-snapshot'
 import { applyFetchedWorkflow, type FetchedWorkflow } from './use-workflow-init'
 
 /** Payload of the org-channel `workflow:draft-updated` event (lib `realtime/events.ts`). */
@@ -85,17 +85,13 @@ export function useWorkflowDraftRealtime(): void {
           // owns its React Flow state); viewport untouched on purpose.
           storeEventBus.emit({ type: 'workflow:externalUpdate', data: { nodes, edges } })
 
-          // ONE undo step for the whole rehydrate — same full-snapshot
-          // `workflow_event` shape `use-save-to-history` records, but written
-          // immediately so no debounced user edit can merge into it.
+          // ONE undo step for the whole rehydrate. No coalesce key, so a user
+          // edit can never absorb it however close together they land — the
+          // hazard the old debounce only made unlikely.
           historyManager.record({
             action: 'workflow_event',
             store: 'workflow',
-            data: {
-              event: 'ExternalDraftUpdate',
-              nodes: nodes.map(cloneNodeForHistory),
-              edges: edges.map(cloneEdgeForHistory),
-            },
+            data: snapshotGraph('ExternalDraftUpdate', nodes, edges),
             label: runReason === 'kopilot' ? 'Kopilot edit' : 'Workflow updated',
           })
         }
@@ -119,18 +115,4 @@ export function useWorkflowDraftRealtime(): void {
   )
 
   useOrgChannel({ onEvent })
-}
-
-/** Shallow-clone a node for the history snapshot so later canvas mutations can't rewrite it. */
-function cloneNodeForHistory(node: FlowNode): FlowNode {
-  return {
-    ...node,
-    position: { ...node.position },
-    data: node.data ? { ...node.data } : node.data,
-  }
-}
-
-/** Shallow-clone an edge for the history snapshot. */
-function cloneEdgeForHistory(edge: FlowEdge): FlowEdge {
-  return { ...edge, data: edge.data ? { ...edge.data } : undefined }
 }
