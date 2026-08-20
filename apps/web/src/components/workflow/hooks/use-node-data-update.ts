@@ -55,6 +55,7 @@ export const useNodeDataUpdate = () => {
       // finer, but `setInputs` hands over a whole data object, so which field
       // moved is not knowable here.
       saveStateToHistory(WorkflowHistoryEvent.NodeChange, {
+        nodeId: payload.id,
         coalesceKey: `NodeChange:${payload.id}`,
       })
     },

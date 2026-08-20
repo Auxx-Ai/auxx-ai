@@ -19,6 +19,41 @@ import { Tooltip } from '~/components/global/tooltip'
 import { storeEventBus } from '~/components/workflow/store/event-bus'
 import type { NavigationHistoryEntry } from '~/components/workflow/store/history-manager'
 import { useHistoryManager } from '~/components/workflow/store/workflow-store-provider'
+import { NodeBadge } from './node-badge'
+
+/**
+ * One entry's description: a badge for the node it acted on, or the plain
+ * sentence when it acted on no single node (edges, layout, a Kopilot edit, a
+ * version restore).
+ *
+ * A rename renders BOTH names — old badge, verb, new badge — with the second
+ * one iconless, so it reads as one node changing name rather than two nodes.
+ * Titles come from the entry, never a live lookup: the point of the row is what
+ * the node was called at the time.
+ */
+function HistoryEntryDescription({ entry }: { entry: NavigationHistoryEntry }) {
+  if (!entry.subject || !entry.verb) {
+    return <span className='text-sm truncate'>{entry.actionDescription}</span>
+  }
+
+  return (
+    // `min-w-0` at every level, or the badges' `truncate` cannot shrink and the
+    // row pushes the step counter off the popover instead.
+    <span className='flex min-w-0 items-center gap-1.5'>
+      <NodeBadge
+        size='sm'
+        className='min-w-0'
+        nodeId={entry.subject.id}
+        title={entry.subject.title}
+        nodeType={entry.subject.nodeType}
+      />
+      <span className='shrink-0 text-sm'>{entry.verb}</span>
+      {entry.renamedTo && (
+        <NodeBadge size='sm' className='min-w-0' title={entry.renamedTo} showIcon={false} />
+      )}
+    </span>
+  )
+}
 
 interface HistoryCommandPopoverProps {
   open: boolean
@@ -84,13 +119,13 @@ export function HistoryCommandPopover({ open, onOpenChange }: HistoryCommandPopo
                     key={entry.id}
                     onSelect={() => handleJumpToState(entry.id)}
                     className={cn(
-                      'flex items-center gap-3 justify-between cursor-pointer data-[selected=true]:bg-info/10'
+                      'flex min-w-0 items-center gap-3 justify-between cursor-pointer data-[selected=true]:bg-info/10'
                       // entry.relativePosition === 0 && 'bg-accent/50 font-medium'
                     )}>
-                    <span className='text-sm'>{entry.actionDescription}</span>
+                    <HistoryEntryDescription entry={entry} />
                     <span
                       className={cn(
-                        'text-xs',
+                        'text-xs shrink-0',
                         entry.relativePosition === 0
                           ? 'text-blue-500 font-medium'
                           : 'text-muted-foreground'

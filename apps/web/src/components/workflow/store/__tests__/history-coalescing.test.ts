@@ -241,3 +241,100 @@ describe('HistoryManager batching', () => {
     expect(manager.getHistory()[0].label).toBe('Layout organization')
   })
 })
+
+// The description half. `describe` exists so a label can be derived against the
+// state the entry is recorded ON TOP OF — the only way a delete can name what it
+// deleted, and the only way a rename can be spotted at all. Which entry counts
+// as "on top of" differs between a push and a merge, and getting that wrong is
+// what would make a rename label drift with every keystroke.
+describe('HistoryManager.record — describe', () => {
+  it('passes the current top as the baseline on a push', () => {
+    const manager = new HistoryManager()
+    const seen: (string | undefined)[] = []
+
+    manager.record(entry('first'))
+    manager.record(entry('second'), {
+      describe: (baseline) => {
+        seen.push(baseline?.label)
+        return { label: 'described' }
+      },
+    })
+
+    expect(seen).toEqual(['first'])
+    expect(manager.getHistory()[1].label).toBe('described')
+  })
+
+  it('passes the entry BELOW the merge target as the baseline on a merge', () => {
+    const manager = new HistoryManager()
+    const seen: (string | undefined)[] = []
+    const watch = (tag: string) => ({
+      coalesceKey: 'NodeChange:n1',
+      describe: (baseline: { label?: string } | undefined) => {
+        seen.push(baseline?.label)
+        return { label: tag }
+      },
+    })
+
+    manager.record(entry('pre-session'))
+    manager.record(entry('typing-1'), watch('described-1'))
+    manager.record(entry('typing-2'), watch('described-2'))
+    manager.record(entry('typing-3'), watch('described-3'))
+
+    // Every call sees the state the session STARTED from, not the partially
+    // typed entry it is about to overwrite. That is what makes a rename label
+    // converge on the final title instead of chasing each keystroke.
+    expect(seen).toEqual(['pre-session', 'pre-session', 'pre-session'])
+    expect(manager.getHistory()).toHaveLength(2)
+    expect(manager.getHistory()[1].label).toBe('described-3')
+  })
+
+  it('passes undefined on the very first record', () => {
+    const manager = new HistoryManager()
+    let called = false
+
+    manager.record(entry('first'), {
+      describe: (baseline) => {
+        called = true
+        expect(baseline).toBeUndefined()
+        return {}
+      },
+    })
+
+    expect(called).toBe(true)
+  })
+
+  it('replaces subject and verb on a merge, and CLEARS a rename that was undone', () => {
+    const manager = new HistoryManager()
+    manager.record(entry('pre-session'))
+
+    manager.record(entry('renamed'), {
+      coalesceKey: 'NodeChange:n1',
+      describe: () => ({
+        label: 'A renamed to B',
+        verb: 'renamed to',
+        subject: { id: 'n1', title: 'A' },
+        renamedTo: 'B',
+      }),
+    })
+    expect(manager.getHistory()[1].renamedTo).toBe('B')
+
+    // Typed the original name back: the entry must stop claiming a rename.
+    manager.record(entry('renamed-back'), {
+      coalesceKey: 'NodeChange:n1',
+      describe: () => ({ label: 'A changed', verb: 'changed', subject: { id: 'n1', title: 'A' } }),
+    })
+
+    const top = manager.getHistory()[1]
+    expect(top.renamedTo).toBeUndefined()
+    expect(top.verb).toBe('changed')
+    expect(top.label).toBe('A changed')
+  })
+
+  it('keeps the plain label when no describe is given', () => {
+    const manager = new HistoryManager()
+    manager.record(entry('plain'))
+
+    expect(manager.getHistory()[0].label).toBe('plain')
+    expect(manager.getHistory()[0].subject).toBeUndefined()
+  })
+})

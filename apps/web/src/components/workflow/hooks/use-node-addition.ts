@@ -22,7 +22,11 @@ import {
   type Size,
 } from '../utils/node-layout'
 import { createResizedParentNode } from '../utils/node-resize-utils'
-import { useWorkflowHistory, WorkflowHistoryEvent } from './use-save-to-history'
+import {
+  type SaveHistoryOptions,
+  useWorkflowHistory,
+  WorkflowHistoryEvent,
+} from './use-save-to-history'
 import { useWorkflowSave } from './use-workflow-save'
 // Variable syncing now handled automatically by VarStoreSyncProvider
 
@@ -298,7 +302,7 @@ export const useNodeAddition = () => {
 
         // Save and history
         debouncedSave()
-        saveStateToHistory(WorkflowHistoryEvent.NodeAdd)
+        saveStateToHistory(WorkflowHistoryEvent.NodeAdd, { nodeId: newNode.id })
 
         return newNode.id
       } catch (error) {
@@ -370,7 +374,7 @@ function handleReplaceNode(
   edges: FlowEdge[],
   store: any,
   debouncedSave: () => void,
-  saveStateToHistory: (event: WorkflowHistoryEvent) => void
+  saveStateToHistory: (event: WorkflowHistoryEvent, options?: SaveHistoryOptions) => void
 ): string {
   const nodeToReplace = nodes.find((n) => n.id === replaceNodeId)
   if (!nodeToReplace) {
@@ -453,7 +457,7 @@ function handleReplaceNode(
 
   // Save and history
   debouncedSave()
-  saveStateToHistory(WorkflowHistoryEvent.NodeAdd)
+  saveStateToHistory(WorkflowHistoryEvent.NodeAdd, { nodeId: newNode.id })
 
   return newNode.id
 }
