@@ -10,6 +10,7 @@ import {
 import { getCachedResourceFields } from '../../../cache'
 import { evaluateOperator, isKnownOperator } from '../../../conditions/evaluate-operator'
 import type { ResourceField } from '../../../resources/registry/field-types'
+import { ErrorStrategy, normalizeErrorStrategy } from '../../catalog/error-handling'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
@@ -175,10 +176,34 @@ export class ListProcessor extends BaseNodeProcessor {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       contextManager.log('ERROR', node.name, `List operation failed: ${errorMessage}`)
 
+      // Apply the node's failure policy (`catalog/error-handling.ts`). This
+      // replaces the `outputHandle: 'error'` it used to emit — a handle no
+      // manifest declared, no `node.tsx` rendered and no edge could address, so
+      // the run died anyway (plan 21 §14.2). Behaviour is preserved exactly for
+      // a node with no stored `error_strategy`: it resolves to `fail`, and
+      // `findFailureEdge` still finds nothing to route to.
+      //
+      // The `'fail'` literal stays inline here rather than in a shared helper:
+      // the builder↔engine parity reader extracts emitted handles per processor
+      // FILE, so a handle emitted from a util would drop out of the contract.
+      const strategy = normalizeErrorStrategy(
+        (node.data as { error_strategy?: unknown }).error_strategy
+      )
+      if (strategy === ErrorStrategy.continue) {
+        // `result` is the only variable this node advertises, so it is the only
+        // one the continue arm may write — publishing an `error` variable here
+        // would advertise an address the builder's picker never offers.
+        contextManager.setNodeVariable(node.nodeId, 'result', null)
+        return {
+          status: NodeRunningStatus.Succeeded,
+          output: { result: null, error: errorMessage },
+          outputHandle: 'source',
+        }
+      }
       return {
         status: NodeRunningStatus.Failed,
         error: errorMessage,
-        outputHandle: 'error', // Error output handle
+        outputHandle: 'fail',
       }
     }
   }

@@ -94,8 +94,11 @@ export {
 } from './catalog/derived-keys'
 export {
   DEFAULT_ERROR_STRATEGY,
+  type ErrorDefaultValue,
   ErrorStrategy,
+  errorDefaultValueSchema,
   errorHandlingBranches,
+  errorStrategySchema,
   hasFailBranch,
   type NodeErrorHandling,
   normalizeErrorStrategy,

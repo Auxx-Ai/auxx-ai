@@ -14,6 +14,10 @@ import { FileText, Link } from 'lucide-react'
 import type React from 'react'
 import { memo, useCallback } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks'
+import {
+  ErrorHandlingSection,
+  type ErrorStrategyUpdate,
+} from '~/components/workflow/nodes/shared/error-handling-section'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import Field from '~/components/workflow/ui/field'
 import {
@@ -43,6 +47,12 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
   data,
 }) => {
   const { inputs: nodeData, setInputs } = useNodeCrud<DocumentExtractorNodeData>(nodeId, data)
+
+  /** Failure policy — the shared control, driven by the manifest declaration. */
+  const handleErrorStrategyChange = useCallback(
+    (update: ErrorStrategyUpdate) => setInputs({ ...nodeData, ...update }),
+    [nodeData, setInputs]
+  )
 
   /**
    * Handle source type change (file/url)
@@ -283,6 +293,13 @@ const DocumentExtractorPanelComponent: React.FC<DocumentExtractorPanelProps> = (
           </VarEditorFieldRow>
         </VarEditorField>
       </Section>
+
+      <ErrorHandlingSection
+        nodeId={nodeId}
+        nodeType='document-extractor'
+        errorStrategy={nodeData.error_strategy}
+        onChange={handleErrorStrategyChange}
+      />
 
       <OutputVariablesDisplay
         outputVariables={getDocumentExtractorOutputVariables(nodeData, nodeId)}

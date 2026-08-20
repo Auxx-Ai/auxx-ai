@@ -5,8 +5,14 @@ import { z } from 'zod'
 import { DATASET_NODE_CONSTANTS } from '../../constants'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
+import { ErrorStrategy, errorHandlingBranches, errorStrategySchema } from '../error-handling'
 import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
-import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import {
+  type NodeBranch,
+  NodeCategory,
+  type NodeManifest,
+  type NodeValidationResult,
+} from '../types'
 import { createNestedVariable } from '../variable-conversion'
 import {
   extractFieldVariableIds,
@@ -75,6 +81,13 @@ export interface DatasetNodeData extends BaseNodeData {
 
   /** Track constant/variable mode per field */
   fieldModes?: Record<string, boolean>
+  /**
+   * What happens when this node fails — `fail` (route to the wireable `fail`
+   * branch) or `continue` (succeed on `source` with `success: false` and the
+   * error in the output). Optional: no node persisted before plan 21 step 4
+   * carries the key, and an absent value renders no branch.
+   */
+  error_strategy?: ErrorStrategy
 }
 
 /**
@@ -115,6 +128,9 @@ export const datasetNodeDataSchema = baseNodeDataSchema.extend({
 
   // Field modes
   fieldModes: z.record(z.string(), z.boolean()).optional(),
+
+  // Failure policy — see `catalog/error-handling.ts`.
+  error_strategy: errorStrategySchema.optional(),
 })
 
 /**
@@ -138,6 +154,17 @@ export const datasetDefaultData = (): Partial<DatasetNodeData> => ({
     waitForEmbeddings: true,
     embeddingTimeoutMinutes: true,
   },
+  // Written on create for the same reason http/crud write it: `fail` is what
+  // an unset node ALREADY does (`normalizeErrorStrategy(undefined)`), so the
+  // processor emits `outputHandle: 'fail'` on failure either way — persisting
+  // it is the node telling the truth about the handle it emits instead of
+  // recreating the undeclared-handle defect this opt-in exists to remove
+  // (plan 21 §14.4). Existing rows keep no key, and therefore no branch.
+  error_strategy: ErrorStrategy.fail,
+  _targetBranches: [
+    { id: 'source', name: '', type: 'default' },
+    { id: 'fail', name: 'Fail', type: 'fail' },
+  ],
 })
 
 /**
@@ -370,6 +397,23 @@ export const datasetManifest: NodeManifest<DatasetNodeData> = {
   resolveOutputs: getDatasetOutputVariables,
   connection: {
     canRunSingle: true,
+    /**
+     * Successful runs leave via `source`; the `fail` branch comes from the
+     * shared helper, the single site that turns `error_strategy: 'fail'` into
+     * a handle (plan 21 §15.4).
+     */
+    branches: (config): NodeBranch[] => [
+      { id: 'source', name: '', kind: 'default' },
+      ...errorHandlingBranches(config),
+    ],
+  },
+  /**
+   * A dataset write that failed has nothing to substitute (plan 21 §16.3), so
+   * `fail` or `continue` only.
+   */
+  errorHandling: {
+    strategies: [ErrorStrategy.fail, ErrorStrategy.continue],
+    defaultStrategy: ErrorStrategy.fail,
   },
   agent: {
     authorable: true,
@@ -380,7 +424,10 @@ export const datasetManifest: NodeManifest<DatasetNodeData> = {
       'not text. `waitForEmbeddings` defaults to true and is what makes a later ' +
       'knowledge-retrieval node in the SAME run able to see this document; turning it off ' +
       'reports success while the dataset still holds no vectors. The wait is bounded by ' +
-      '`embeddingTimeoutMinutes` (1–120, clamped).',
+      '`embeddingTimeoutMinutes` (1–120, clamped). ' +
+      '`error_strategy` is fail (the default — exposes a wirable "fail" branch handle; ' +
+      'leaving it unwired just means the run dies, which is the normal shape) or continue ' +
+      '(succeed on "source" with `success: false` and the error in the output).',
     examples: [
       {
         description: 'Store an extracted, chunked document and wait for its embeddings',

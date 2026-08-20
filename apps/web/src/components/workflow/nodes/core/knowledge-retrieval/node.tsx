@@ -4,6 +4,10 @@
 
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
+import {
+  hasFailBranch as hasFailBranchFor,
+  NodeFailBranch,
+} from '~/components/workflow/nodes/shared/node-fail-branch'
 import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
@@ -34,9 +38,17 @@ export const KnowledgeRetrievalNode = memo<NodeProps<KnowledgeRetrievalNodeData>
             ? 'Full-Text'
             : 'Hybrid'
 
+    // The fail lane renders off the STORED `error_strategy` — the same predicate
+    // `connection.branches` uses, so the handle this renders and the branch the
+    // catalog declares can never disagree. A node that predates the step-4
+    // opt-in carries no key and renders exactly what it always did.
+    const hasFailBranch = hasFailBranchFor(data)
+    const totalSourceHandles = hasFailBranch ? 2 : 1
+    const augmentedData = { ...data, _sourceHandleCount: totalSourceHandles }
+
     return (
-      <BaseNode id={id} data={data} selected={selected} width={244} height='auto'>
-        <NodeTargetHandle id={id} data={{ ...data, selected }} handleId='target' />
+      <BaseNode id={id} data={augmentedData} selected={selected} width={244} height='auto'>
+        <NodeTargetHandle id={id} data={{ ...augmentedData, selected }} handleId='target' />
         <div className='space-y-1 pb-2'>
           <div className='relative px-2'>
             {hasQuery || hasSources ? (
@@ -86,12 +98,13 @@ export const KnowledgeRetrievalNode = memo<NodeProps<KnowledgeRetrievalNodeData>
             <NodeSourceHandle
               handleId='source'
               id={id}
-              data={{ ...data, selected }}
+              data={{ ...augmentedData, selected }}
               handleClassName='!bottom-5'
               handleIndex={0}
-              handleTotal={1}
+              handleTotal={totalSourceHandles}
             />
           </div>
+          {hasFailBranch && <NodeFailBranch id={id} data={augmentedData} selected={selected} />}
         </div>
       </BaseNode>
     )

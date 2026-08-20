@@ -6,8 +6,20 @@ import { collectVariableIds, isNonEmptyDoc, type TiptapDoc } from '../../../tipt
 import { AI_NODE_CONSTANTS } from '../../constants'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
+import {
+  type ErrorDefaultValue,
+  ErrorStrategy,
+  errorDefaultValueSchema,
+  errorHandlingBranches,
+  errorStrategySchema,
+} from '../error-handling'
 import type { BaseNodeData } from '../node-base'
-import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import {
+  type NodeBranch,
+  NodeCategory,
+  type NodeManifest,
+  type NodeValidationResult,
+} from '../types'
 import { createUnifiedOutputVariable } from '../variable-conversion'
 import { containsVariableReference, extractVarIdsFromString } from '../variable-inference'
 
@@ -128,6 +140,24 @@ export interface AiNodeData extends BaseNodeData {
   approvalMode?: 'auto'
   /** Default 10 for AI node; agent default is 30. */
   maxIterations?: number
+
+  /**
+   * What happens when the model call fails — `fail`, `continue`, or `default`
+   * (substitute {@link AiNodeData.default_values} and carry on). Optional: no
+   * node persisted before plan 21 step 4 carries the key.
+   */
+  error_strategy?: ErrorStrategy
+  /**
+   * Substitute output variables applied when `error_strategy` is `default`.
+   * Keys are the node's own output names — `text`, `content`,
+   * `structured_output` — so `{{<node>.text}}` still resolves downstream
+   * ("if the classifier times out, use `unknown`", plan 21 §16.3).
+   *
+   * Named `default_values` to match crud rather than http's `default_value`;
+   * the two keys are a known wart and plan 24 owns the rename, so a third type
+   * joins the majority spelling instead of adding a third.
+   */
+  default_values?: ErrorDefaultValue[]
 }
 
 export const EMPTY_PROMPT_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] }
@@ -244,6 +274,9 @@ export const aiNodeDataSchema = z.object({
   appAccounts: appAccountsSchema.optional(),
   approvalMode: z.literal('auto').optional(),
   maxIterations: z.number().optional(),
+  // Failure policy — see `catalog/error-handling.ts`.
+  error_strategy: errorStrategySchema.optional(),
+  default_values: z.array(errorDefaultValueSchema).optional(),
 })
 
 /**
@@ -535,6 +568,16 @@ export const aiManifest: NodeManifest<AiNodeData> = {
     structured_output: { enabled: false },
     toolsEnabled: false,
     toolsets: [],
+    // Written on create for the same reason http/crud write it: `fail` is what
+    // an unset node ALREADY does, so the processor emits `outputHandle: 'fail'`
+    // on failure either way — persisting it is the node telling the truth about
+    // the handle it emits (plan 21 §14.4). Existing rows keep no key.
+    error_strategy: ErrorStrategy.fail,
+    default_values: [],
+    _targetBranches: [
+      { id: 'source', name: '', type: 'default' },
+      { id: 'fail', name: 'Fail', type: 'fail' },
+    ],
   }),
   configSchema: aiNodeDataSchema as unknown as z.ZodType<AiNodeData>,
   validate: validateAiData,
@@ -542,6 +585,29 @@ export const aiManifest: NodeManifest<AiNodeData> = {
   resolveOutputs: getAiOutputVariables,
   connection: {
     canRunSingle: true,
+    /**
+     * Successful runs leave via `source`; the `fail` branch comes from the
+     * shared helper, the single site that turns `error_strategy: 'fail'` into
+     * a handle (plan 21 §15.4).
+     */
+    branches: (config): NodeBranch[] => [
+      { id: 'source', name: '', kind: 'default' },
+      ...errorHandlingBranches(config),
+    ],
+  },
+  /**
+   * All three policies (Markus, plan 21 §18.1). A model call fails transiently
+   * far more often than a transform does, and unlike the RAG cluster the AI
+   * node HAS an output shape worth substituting — `text` is a plain string, so
+   * "if the classifier times out, use `unknown`" is expressible.
+   *
+   * Scoped to the `ai` type only. `answer`, `information-extractor` and
+   * `text-classifier` are AI-backed too but were never decided; they stay out
+   * until they are.
+   */
+  errorHandling: {
+    strategies: [ErrorStrategy.fail, ErrorStrategy.continue, ErrorStrategy.default],
+    defaultStrategy: ErrorStrategy.fail,
   },
   agent: {
     authorable: true,
@@ -550,7 +616,11 @@ export const aiManifest: NodeManifest<AiNodeData> = {
       'normalizer converts plain text with {{…}} refs into that shape; do not author raw Tiptap. ' +
       'Leave `model.useDefault: true` unless the user names a model. Enable `structured_output` ' +
       'with a JSON schema to get typed outputs at `{{<node>.structured_output.<key>}}`; the plain ' +
-      'response is always at `{{<node>.text}}`.',
+      'response is always at `{{<node>.text}}`. ' +
+      '`error_strategy` is fail (the default — exposes a wirable "fail" branch handle), ' +
+      'continue (succeed on "source" carrying the error) or default (substitute ' +
+      '`default_values`, a list of { key, type, value } keyed by this node’s own outputs, ' +
+      'e.g. key "text").',
     examples: [
       {
         description: 'Summarize an inbound message with the org default model',

@@ -14,18 +14,26 @@ import { calculateTargetBranches } from '../workflow-initializer'
  */
 const dataFor = (data: Record<string, unknown>) => data as unknown as FlowNode['data']
 
+const OPTED_IN = [
+  NodeType.HTTP,
+  NodeType.CRUD,
+  NodeType.AI,
+  NodeType.CHUNKER,
+  NodeType.DATASET,
+  NodeType.DOCUMENT_EXTRACTOR,
+  NodeType.KNOWLEDGE_RETRIEVAL,
+  NodeType.LIST,
+]
+
 describe('calculateTargetBranches — failure policy comes off the manifest', () => {
-  it.each([
-    NodeType.HTTP,
-    NodeType.CRUD,
-  ])('%s gets a fail lane when error_strategy is fail', (type) => {
+  it.each(OPTED_IN)('%s gets a fail lane when error_strategy is fail', (type) => {
     expect(calculateTargetBranches(dataFor({ type, error_strategy: 'fail' }))).toEqual([
       { id: 'source', name: '', type: 'default' },
       { id: 'fail', name: 'Fail', type: 'fail' },
     ])
   })
 
-  it.each([NodeType.HTTP, NodeType.CRUD])('%s gets source alone otherwise', (type) => {
+  it.each(OPTED_IN)('%s gets source alone otherwise', (type) => {
     for (const strategy of ['continue', 'default', undefined]) {
       expect(calculateTargetBranches(dataFor({ type, error_strategy: strategy }))).toEqual([
         { id: 'source', name: '', type: 'default' },
@@ -43,8 +51,10 @@ describe('calculateTargetBranches — failure policy comes off the manifest', ()
 
   it('returns undefined for a type that declares no errorHandling', () => {
     // Setting the field on a type that never opted in must not conjure a lane.
+    // `format` is the deliberate hold-out (a format failure IS a config bug);
+    // the example used to be `ai`, which opted in in plan 21 step 4.
     expect(
-      calculateTargetBranches(dataFor({ type: NodeType.AI, error_strategy: 'fail' }))
+      calculateTargetBranches(dataFor({ type: NodeType.FORMAT, error_strategy: 'fail' }))
     ).toBeUndefined()
     expect(calculateTargetBranches(dataFor({ type: NodeType.WAIT }))).toBeUndefined()
   })

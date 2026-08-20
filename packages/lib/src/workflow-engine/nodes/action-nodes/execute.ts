@@ -151,8 +151,13 @@ export class ExecuteProcessor extends BaseNodeProcessor {
         executionResults.filter((r) => r.status === 'proposed').length
       )
 
-      // Determine output handle based on success/failure
-      const outputHandle = hasErrors && config.stopOnError !== false ? 'error' : 'source'
+      // On failure this emitted `'error'` — a handle no manifest declares and
+      // no canvas renders (plan 21 §14.2). `WorkflowNodeType.EXECUTE` is
+      // engine-only: it has no catalog manifest, it is not in the palette and
+      // Kopilot cannot author it, so there is nothing to opt into a failure
+      // policy. It simply stops naming a handle; a Failed result with no handle
+      // is the same fatal outcome, honestly spelled.
+      const outputHandle = hasErrors && config.stopOnError !== false ? undefined : 'source'
 
       const status =
         hasErrors && config.stopOnError !== false

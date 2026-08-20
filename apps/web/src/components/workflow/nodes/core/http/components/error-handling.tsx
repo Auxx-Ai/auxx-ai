@@ -11,18 +11,13 @@ import {
   NumberInputIncrement,
   NumberInputScrubber,
 } from '@auxx/ui/components/input-number'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { useCallback } from 'react'
 import { CodeEditor } from '~/components/schema-editor/ui/code-editor'
-import { useEdgeInteractions } from '~/components/workflow/hooks'
+import {
+  ErrorHandlingSection,
+  type ErrorStrategyUpdate,
+} from '~/components/workflow/nodes/shared/error-handling-section'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
-import Section from '~/components/workflow/ui/section'
 import { type DefaultValueItem, ErrorStrategy, type HttpNodeData } from '../types'
 
 interface ErrorHandlingProps {
@@ -32,38 +27,22 @@ interface ErrorHandlingProps {
   onChange: (updates: Partial<HttpNodeData>) => void
 }
 
-/** Radix's `onValueChange` hands back a bare string; narrow it before storing. */
-function isErrorStrategy(value: string): value is ErrorStrategy {
-  return (Object.values(ErrorStrategy) as string[]).includes(value)
-}
-
+/**
+ * http's failure-policy panel.
+ *
+ * The strategy selector itself is the SHARED `ErrorHandlingSection`, driven by
+ * `manifest.errorHandling.strategies` — this file used to own a bespoke
+ * `<Select>` that duplicated crud's with different labels (plan 21 §15.4/§20.2).
+ * What is left here is only the part that is genuinely http-specific: the
+ * status/body/headers fields that make up the `default` substitute response.
+ *
+ * That defaults editor is deliberately NOT redesigned — plan 24 owns it.
+ */
 export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHandlingProps) {
-  const { handleEdgeDeleteByDeleteBranch } = useEdgeInteractions()
-
   // Read through the normalizer: persisted http nodes carry `'none'`, the
-  // legacy spelling of `continue` (plan 21 §15.1), and an unset value runs
-  // under the unified default, `fail`. The alias is never written back.
+  // legacy spelling of `continue` (plan 21 §15.1). The alias is never written
+  // back.
   const errorStrategy = normalizeErrorStrategy(config?.error_strategy)
-
-  // Handle error strategy change and update target branches
-  const setErrorStrategy = (newStrategy: string) => {
-    if (!isErrorStrategy(newStrategy)) return
-
-    const branches =
-      newStrategy === ErrorStrategy.fail
-        ? [
-            { id: 'source', name: '', type: 'default' as const },
-            { id: 'fail', name: 'Fail Branch', type: 'fail' as const },
-          ]
-        : [{ id: 'source', name: '', type: 'default' as const }]
-
-    onChange({ error_strategy: newStrategy, _targetBranches: branches })
-
-    // If changing from fail to something else, delete the fail branch edges
-    if (errorStrategy === ErrorStrategy.fail && newStrategy !== ErrorStrategy.fail) {
-      handleEdgeDeleteByDeleteBranch(nodeId, 'fail')
-    }
-  }
 
   // Helper function to get default value by key
   const getDefaultValue = (key: string): string => {
@@ -88,6 +67,11 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
 
     onChange({ default_value: newDefaults })
   }
+
+  const handleStrategyChange = useCallback(
+    (update: ErrorStrategyUpdate) => onChange(update as Partial<HttpNodeData>),
+    [onChange]
+  )
 
   const handleStatusCodeChange = useCallback(
     (value: number | undefined) => {
@@ -114,22 +98,11 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
   )
 
   return (
-    <Section
-      title='Error handling'
-      initialOpen={errorStrategy !== ErrorStrategy.continue}
-      enabled={errorStrategy !== ErrorStrategy.continue}
-      actions={
-        <Select value={errorStrategy} onValueChange={setErrorStrategy} disabled={isReadOnly}>
-          <SelectTrigger variant='default' size='sm' className='mb-0'>
-            <SelectValue placeholder='Select strategy' />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ErrorStrategy.continue}>Continue</SelectItem>
-            <SelectItem value={ErrorStrategy.default}>Default Values</SelectItem>
-            <SelectItem value={ErrorStrategy.fail}>Fail branch</SelectItem>
-          </SelectContent>
-        </Select>
-      }>
+    <ErrorHandlingSection
+      nodeId={nodeId}
+      nodeType='http'
+      errorStrategy={config?.error_strategy}
+      onChange={handleStrategyChange}>
       {errorStrategy === ErrorStrategy.default && (
         <div className='space-y-3'>
           {/* Status Code */}
@@ -182,9 +155,6 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
           </div>
         </div>
       )}
-      {errorStrategy === ErrorStrategy.fail && (
-        <div className='text-sm text-primary-500'>Configure a 'Fail branch' below.</div>
-      )}
-    </Section>
+    </ErrorHandlingSection>
   )
 }

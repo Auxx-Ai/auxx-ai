@@ -862,8 +862,20 @@ export class WorkflowGraphBuilder {
 /**
  * Output handles that signal a failure/error outcome. Used to log loudly when
  * such a handle has no wired edge and routing falls back to the success path.
+ *
+ * `'error'` came OUT in plan 21 step 4. This set is keyed on what a processor
+ * EMITS, and after the step-4 opt-ins no processor emits `'error'` any more —
+ * the six that did now emit the declared `'fail'` (or, for `format` and the
+ * engine-only `execute`, no handle at all). Leaving it in would have kept a
+ * defensive arm for a case the authoring layer has been made unable to produce.
+ *
+ * `'onError'` STAYS, and is deliberately not symmetric: no processor emits it
+ * either, but it is still a live STORED-edge vocabulary — `findFailureEdge`
+ * (`core/graph-navigation.ts`) keeps it as the legacy back-compat lookup, and
+ * `contract-drift-allowlist.ts` tracks it as an open question. Retiring it is
+ * that entry's decision, not this one's.
  */
-const ERROR_LIKE_HANDLES = new Set(['fail', 'error', 'onError'])
+const ERROR_LIKE_HANDLES = new Set(['fail', 'onError'])
 
 /**
  * Helper functions for working with the workflow graph

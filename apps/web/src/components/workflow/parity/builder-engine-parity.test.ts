@@ -268,12 +268,16 @@ describe('engine reader — attributes a .data read to the right node and the ri
 
 describe('engine reader — extracts the outputHandle values a processor can emit', () => {
   it('collects both arms of a conditional emission', () => {
-    // document-extractor.ts:294 `outputHandle: extractionResult.success ?
-    // 'source' : 'error'` — one expression, two emittable handles. A reader
-    // that only accepted a bare literal would see neither.
-    expect(ENGINE.get('document-extractor')?.outputHandles).toEqual(
-      expect.arrayContaining(['error', 'source'])
-    )
+    // `execute.ts` `hasErrors && stopOnError !== false ? undefined : 'source'`
+    // and `crud.ts`'s success/fail returns are the shape this pins: one
+    // expression, more than one emittable handle. A reader that only accepted a
+    // bare literal would see neither arm.
+    //
+    // The founding example WAS document-extractor's `success ? 'source' :
+    // 'error'`; plan 21 step 4 replaced the `'error'` arm with a call to the
+    // node's failure-policy helper, so the ternary is gone from that file. The
+    // reader capability is unchanged, only the specimen moved.
+    expect(ENGINE.get('crud')?.outputHandles).toEqual(expect.arrayContaining(['fail', 'source']))
   })
 
   it('does not read a ternary CONDITION literal as an emission', () => {

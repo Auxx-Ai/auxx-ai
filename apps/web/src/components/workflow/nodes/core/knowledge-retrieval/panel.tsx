@@ -16,6 +16,10 @@ import { BookOpen, Database, Plus, Trash2 } from 'lucide-react'
 import type React from 'react'
 import { memo, useCallback } from 'react'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import {
+  ErrorHandlingSection,
+  type ErrorStrategyUpdate,
+} from '~/components/workflow/nodes/shared/error-handling-section'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import {
   VarEditor,
@@ -56,6 +60,12 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
   data,
 }) => {
   const { inputs: nodeData, setInputs } = useNodeCrud<KnowledgeRetrievalNodeData>(nodeId, data)
+
+  /** Failure policy — the shared control, driven by the manifest declaration. */
+  const handleErrorStrategyChange = useCallback(
+    (update: ErrorStrategyUpdate) => setInputs({ ...nodeData, ...update }),
+    [nodeData, setInputs]
+  )
   const { isReadOnly } = useReadOnly()
 
   const sources = nodeData.sources || []
@@ -390,6 +400,13 @@ const KnowledgeRetrievalPanelComponent: React.FC<KnowledgeRetrievalPanelProps> =
           </VarEditorFieldRow>
         </VarEditorField>
       </Section>
+
+      <ErrorHandlingSection
+        nodeId={nodeId}
+        nodeType='knowledge-retrieval'
+        errorStrategy={nodeData.error_strategy}
+        onChange={handleErrorStrategyChange}
+      />
 
       <OutputVariablesDisplay
         outputVariables={getKnowledgeRetrievalOutputVariables(nodeData, nodeId)}

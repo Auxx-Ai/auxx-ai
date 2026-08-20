@@ -1190,7 +1190,7 @@ describe('ListProcessor - the operation surface is exactly what the builder offe
 
     expect(result.status).toBe(NodeRunningStatus.Failed)
     expect(result.error).toContain(`Unknown operation: ${operation}`)
-    expect(result.outputHandle).toBe('error')
+    expect(result.outputHandle).toBe('fail')
   })
 
   it('no longer treats findConfig as a source of required variables', async () => {
@@ -1233,5 +1233,33 @@ describe('ListProcessor - the operation surface is exactly what the builder offe
       createMockListNode('unique', { uniqueConfig: { by: 'field' } })
     )
     expect(invalid.errors).toContain('Unique field is required when deduplicating by field')
+  })
+})
+
+/**
+ * The step-4 acceptance criterion (plan 21, PR B). `list` used to return
+ * `outputHandle: 'error'` on failure — a handle no manifest declared and no
+ * canvas could wire, so the run died. A `list` node with no stored
+ * `error_strategy` (every row that predates the opt-in) must still die.
+ */
+describe('ListProcessor - failure policy', () => {
+  it('a node with no stored error_strategy fails onto the declared `fail` handle', async () => {
+    // `fail` resolves from the catalog-wide default. The node never rendered
+    // the handle, so no edge can address it, `findFailureEdge` finds nothing
+    // and `workflow-engine.ts` throws — the pre-opt-in outcome exactly.
+    const { result } = await runOperation('nope', {}, [{ id: 'a' }])
+    expect(result.status).toBe(NodeRunningStatus.Failed)
+    expect(result.outputHandle).toBe('fail')
+  })
+
+  it('`continue` succeeds on `source` with a null result instead', async () => {
+    const { result, variable } = await runOperation('nope', { error_strategy: 'continue' }, [
+      { id: 'a' },
+    ])
+    expect(result.status).toBe(NodeRunningStatus.Succeeded)
+    expect(result.outputHandle).toBe('source')
+    // `result` is published so `{{list_1.result}}` still resolves downstream
+    // rather than dangling; it is the only variable this node advertises.
+    expect(await variable('result')).toBeNull()
   })
 })

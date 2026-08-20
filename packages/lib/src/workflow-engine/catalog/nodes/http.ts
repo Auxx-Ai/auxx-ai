@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { HTTP_NODE_CONSTANTS } from '../../constants'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
-import { ErrorStrategy, errorHandlingBranches } from '../error-handling'
+import { ErrorStrategy, errorHandlingBranches, errorStrategySchema } from '../error-handling'
 import type { BaseNodeData } from '../node-base'
 import {
   type NodeBranch,
@@ -195,7 +195,11 @@ export const httpNodeDataSchema = z.object({
       .max(HTTP_NODE_CONSTANTS.RETRY_CONFIG.RETRY_INTERVAL.max),
   }),
   ssl_verify: z.boolean(),
-  error_strategy: z.string(),
+  // Narrowed from the bare `z.string()` this shipped with (plan 21 §20.2): an
+  // unrecognised value renders an empty <Select> in the panel while the
+  // processor silently runs the `fail` arm. `'none'` still parses — persisted
+  // http configs carry it as the legacy spelling of `continue`.
+  error_strategy: errorStrategySchema,
   default_value: z.array(z.object({ key: z.string(), type: z.string(), value: z.string() })),
   // `_targetBranches` is DERIVED (canvas-owned) state and is deliberately not
   // declared here — see catalog/derived-keys.ts. It used to be REQUIRED, which

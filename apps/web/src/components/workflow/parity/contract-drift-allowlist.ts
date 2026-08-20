@@ -199,17 +199,13 @@ export const KNOWN_BROKEN_UNADVERTISED_WRITES: Record<string, string> = {
  * emission to a rendered handle (or rendering a handle) AND deleting its entry.
  */
 export const KNOWN_BROKEN_OUTPUT_HANDLES: Record<string, string> = {
-  'handle:chunker.error':
-    "chunker.ts:384 emits 'error' on failure; the UI renders only [source], so the error branch is unwirable.",
-  'handle:dataset.error': "dataset.ts:619 emits 'error' on failure; the UI renders only [source].",
-  'handle:document-extractor.error':
-    "document-extractor.ts:294/:319 emits 'error' on extraction failure; the UI renders only [source].",
-  'handle:format.error':
-    "format-processor.ts:429 emits 'error' on failure; the UI renders only [source].",
-  'handle:knowledge-retrieval.error':
-    "knowledge-retrieval.ts:394 emits 'error' on failure; the UI renders only [source].",
-  'handle:list.error':
-    "list-processor.ts:181 emits 'error' on failure; the UI renders only [source].",
+  // The six `handle:<type>.error` entries that stood here are GONE, not
+  // silenced. Plan 21 step 4 (PR B) took §14.4's option C: `document-extractor`,
+  // `chunker`, `dataset`, `knowledge-retrieval`, `list` and `ai` declare
+  // `errorHandling` on their manifests and now emit the DECLARED `fail` handle
+  // their `node.tsx` renders, while `format` (a format failure IS a config bug)
+  // and the engine-only `execute` emit no handle on failure at all. One error
+  // vocabulary, not two.
   'routing:engine-core.onError':
     "graph-navigation.ts `findFailureEdge` keeps 'onError' as a deliberate legacy fallback behind the emitted-handle lookup (#1560) — but no node's UI has ever rendered an onError handle, so the literal remains unrenderable. Listed until either a graph is shown to contain one (keep) or the fallback is retired (delete).",
 }

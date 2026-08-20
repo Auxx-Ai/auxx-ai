@@ -475,7 +475,7 @@ function describeBranchRef(branch: { id: string; name: string }): string {
  * gate (plan 21 §7.6). This is that backstop: it surfaces on every mutation
  * result and in `validate_workflow`, before the agent writes its summary.
  *
- * Two deliberate exclusions:
+ * Three deliberate exclusions:
  *  - **Fallback branches** (`false`/`default`/`unmatched`) are silent. Leaving
  *    "nothing matched" unwired is the normal shape of an if-else, not an
  *    oversight, and warning on it would fire on nearly every branching node in
@@ -483,6 +483,15 @@ function describeBranchRef(branch: { id: string; name: string }): string {
  *  - **The plain `source` handle** is silent for the same reason: a terminal
  *    node is a legitimate end of a graph, and `source` is an output, not a
  *    branch anybody chose.
+ *  - **`fail` branches** (`kind === 'fail'`) are silent, for exactly the ELSE
+ *    reason. An unwired fail branch means *"let it fail"* — the run dies, which
+ *    is the legitimate default behaviour of every node that has no failure
+ *    policy at all. #1766 made http's `defaultData()` write
+ *    `error_strategy: 'fail'`, so from that commit every newly created http
+ *    node rendered a fail branch and immediately warned "has nothing wired" on
+ *    its own defaults. That was pure noise. Keyed on `kind`, not on the id
+ *    string, because the id is a per-manifest choice and the kind is the
+ *    contract (`NodeBranch.kind`, `catalog/types.ts`).
  *
  * Severity is `warning` — a half-built branch is a legitimate intermediate
  * state and blocking it would break incremental building. The one `error` is a
@@ -503,6 +512,7 @@ export function validateBranchWiring(graph: DraftGraph, lookup: ManifestLookup):
     const ref = formatNodeRef(graph.nodes, node.id)
 
     for (const branch of branches) {
+      if (branch.kind === 'fail') continue
       if (FALLBACK_BRANCH_IDS.has(branch.id) || branch.id === 'source') continue
       const wired = graph.edges.some(
         (edge) => edge.source === node.id && edgeSourceHandle(edge) === branch.id

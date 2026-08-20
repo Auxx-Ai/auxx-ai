@@ -3,6 +3,10 @@
 import type { ResourceFieldId } from '@auxx/types/field'
 import { type FC, memo, useMemo } from 'react'
 import { useFields } from '~/components/resources/hooks/use-field'
+import {
+  hasFailBranch as hasFailBranchFor,
+  NodeFailBranch,
+} from '~/components/workflow/nodes/shared/node-fail-branch'
 import type { NodeProps } from '~/components/workflow/types'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { getIcon } from '~/components/workflow/utils/icon-helper'
@@ -71,9 +75,17 @@ export const ListNode: FC<NodeProps<ListNodeData>> = memo((props) => {
 
   const operationSummary = getOperationSummary()
 
+  // The fail lane renders off the STORED `error_strategy` — the same predicate
+  // `connection.branches` uses, so the handle this renders and the branch the
+  // catalog declares can never disagree. A node that predates the step-4
+  // opt-in carries no key and renders exactly what it always did.
+  const hasFailBranch = hasFailBranchFor(data)
+  const totalSourceHandles = hasFailBranch ? 2 : 1
+  const augmentedData = { ...data, _sourceHandleCount: totalSourceHandles }
+
   return (
     <BaseNode {...props} data={data} id={id} selected={selected}>
-      <NodeTargetHandle id={id} data={{ ...data, selected }} handleId='target' />
+      <NodeTargetHandle id={id} data={{ ...augmentedData, selected }} handleId='target' />
       <div className='relative'>
         {/* Operation display */}
         <div className='px-3 py-2 space-y-2'>
@@ -103,10 +115,13 @@ export const ListNode: FC<NodeProps<ListNodeData>> = memo((props) => {
 
         <NodeSourceHandle
           id={id}
-          data={{ ...data, selected }}
+          data={{ ...augmentedData, selected }}
           handleId='source'
-          handleClassName='!top-1/2 !-right-[0px]'
+          handleClassName={hasFailBranch ? '!bottom-5' : '!top-1/2 !-right-[0px]'}
+          handleIndex={0}
+          handleTotal={totalSourceHandles}
         />
+        {hasFailBranch && <NodeFailBranch id={id} data={augmentedData} selected={selected} />}
       </div>
     </BaseNode>
   )

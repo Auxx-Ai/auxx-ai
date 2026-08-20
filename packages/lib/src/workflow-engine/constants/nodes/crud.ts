@@ -13,9 +13,6 @@ export const CRUD_NODE_CONSTANTS = {
   // Operation modes
   OPERATION_MODES: ['create', 'update', 'delete'] as const,
 
-  // Error strategies
-  ERROR_STRATEGIES: ['fail', 'continue', 'default'] as const,
-
   // Default values
   DEFAULT_VALUES: {
     MAX_COUNT: 20,
@@ -46,7 +43,10 @@ export const CRUD_NODE_CONSTANTS = {
 // Type exports for better type inference
 export type CrudResourceType = (typeof CRUD_NODE_CONSTANTS.RESOURCE_TYPES)[number]
 export type CrudOperationMode = (typeof CRUD_NODE_CONSTANTS.OPERATION_MODES)[number]
-export type CrudErrorStrategy = (typeof CRUD_NODE_CONSTANTS.ERROR_STRATEGIES)[number]
+// `CrudErrorStrategy` used to be declared here over `ERROR_STRATEGIES` — a
+// THIRD copy of the failure-policy vocabulary with zero importers (plan 21
+// §20.2). The one vocabulary is `ErrorStrategy` in
+// `catalog/error-handling.ts`; import that.
 
 // Helper type for default values
 export interface CrudDefaultValueConfig {

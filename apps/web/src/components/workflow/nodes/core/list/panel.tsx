@@ -16,6 +16,10 @@ import { v4 as generateId } from 'uuid'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { useVariable } from '~/components/workflow/hooks/use-var-store-sync'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
+import {
+  ErrorHandlingSection,
+  type ErrorStrategyUpdate,
+} from '~/components/workflow/nodes/shared/error-handling-section'
 import { useVarStore } from '~/components/workflow/store/use-var-store'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import Field from '~/components/workflow/ui/field'
@@ -44,6 +48,12 @@ interface ListPanelProps {
 const ListPanelComponent: React.FC<ListPanelProps> = ({ nodeId, data }) => {
   const { isReadOnly } = useReadOnly()
   const { inputs: nodeData, setInputs: setNodeData } = useNodeCrud<ListNodeData>(nodeId, data)
+
+  /** Failure policy — the shared control, driven by the manifest declaration. */
+  const handleErrorStrategyChange = useCallback(
+    (update: ErrorStrategyUpdate) => setNodeData({ ...nodeData, ...update }),
+    [nodeData, setNodeData]
+  )
 
   // Extract variable ID from inputList (format: "{{variableId}}" or "variableId")
   const inputVariableId = useMemo(() => {
@@ -258,6 +268,13 @@ const ListPanelComponent: React.FC<ListPanelProps> = ({ nodeId, data }) => {
       </Section>
 
       {/* Output Variables */}
+      <ErrorHandlingSection
+        nodeId={nodeId}
+        nodeType='list'
+        errorStrategy={nodeData.error_strategy}
+        onChange={handleErrorStrategyChange}
+      />
+
       <OutputVariablesDisplay outputVariables={outputVariables} initialOpen={false} />
     </BasePanel>
   )

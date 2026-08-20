@@ -23,6 +23,10 @@ import { memo, useCallback, useMemo } from 'react'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResource, useResourceFields } from '~/components/resources'
 import { useNodeCrud } from '~/components/workflow/hooks'
+import {
+  ErrorHandlingSection,
+  type ErrorStrategyUpdate,
+} from '~/components/workflow/nodes/shared/error-handling-section'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import Field from '~/components/workflow/ui/field'
 import type { FieldOptions } from '~/components/workflow/ui/input-editor/get-input-component'
@@ -162,11 +166,12 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
   )
 
   const handleErrorStrategyChange = useCallback(
-    (errorStrategy: ErrorStrategy) => {
+    (update: ErrorStrategyUpdate) => {
       const newData = produce(nodeData, (draft) => {
-        draft.error_strategy = errorStrategy
+        draft.error_strategy = update.error_strategy
+        draft._targetBranches = update._targetBranches
         draft.default_values =
-          errorStrategy === ErrorStrategy.default ? nodeData.default_values || [] : []
+          update.error_strategy === ErrorStrategy.default ? nodeData.default_values || [] : []
       })
       setInputs(newData)
       if (!showValidation) setShowValidation(true)
@@ -482,59 +487,37 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         </Section>
       )}
 
-      <Section
-        title='Error Handling'
-        collapsible={nodeData.error_strategy === ErrorStrategy.default}
-        open={nodeData.error_strategy === ErrorStrategy.default}
+      {/* The selector is the SHARED control (plan 21 §15.4) — this panel used
+          to own an inline <Select> that duplicated http's with different
+          labels. Only the defaults editor is crud-specific, and plan 24 owns
+          its redesign, so it is passed through untouched. */}
+      <ErrorHandlingSection
+        nodeId={nodeId}
+        nodeType='crud'
+        errorStrategy={nodeData.error_strategy}
+        onChange={handleErrorStrategyChange}
         className='[&>[data-slot=section]]:pb-0!'
-        actions={
-          <Select
-            value={nodeData.error_strategy || ErrorStrategy.fail}
-            onValueChange={handleErrorStrategyChange}>
-            <SelectTrigger size='sm'>
-              <SelectValue placeholder='Select strategy' />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem
-                value={ErrorStrategy.fail}
-                description='Stop workflow and route to fail branch'>
-                Fail
-              </SelectItem>
-              <SelectItem
-                value={ErrorStrategy.continue}
-                description='Continue workflow with error information'>
-                Continue
-              </SelectItem>
-              <SelectItem
-                value={ErrorStrategy.default}
-                description='Use default values and continue'>
-                Default Values
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        }>
-        {showValidation && getFieldErrorMessage('error_strategy') && (
-          <ValidationMessage
-            type={hasFieldErrorOfType('error_strategy', 'error') ? 'error' : 'warning'}
-            message={getFieldErrorMessage('error_strategy')!}
-          />
-        )}
-
-        {nodeData.error_strategy === ErrorStrategy.default && (
-          <Field title='Default Values' description='Fallback values to use when operations fail'>
-            <DefaultValuesEditor
-              defaultValues={nodeData.default_values || []}
-              onChange={handleDefaultValuesChange}
+        footer={
+          showValidation && getFieldErrorMessage('error_strategy') ? (
+            <ValidationMessage
+              type={hasFieldErrorOfType('error_strategy', 'error') ? 'error' : 'warning'}
+              message={getFieldErrorMessage('error_strategy')!}
             />
-            {showValidation && getFieldErrorMessage('default_values') && (
-              <ValidationMessage
-                type={hasFieldErrorOfType('default_values', 'error') ? 'error' : 'warning'}
-                message={getFieldErrorMessage('default_values')!}
-              />
-            )}
-          </Field>
-        )}
-      </Section>
+          ) : undefined
+        }>
+        <Field title='Default Values' description='Fallback values to use when operations fail'>
+          <DefaultValuesEditor
+            defaultValues={nodeData.default_values || []}
+            onChange={handleDefaultValuesChange}
+          />
+          {showValidation && getFieldErrorMessage('default_values') && (
+            <ValidationMessage
+              type={hasFieldErrorOfType('default_values', 'error') ? 'error' : 'warning'}
+              message={getFieldErrorMessage('default_values')!}
+            />
+          )}
+        </Field>
+      </ErrorHandlingSection>
 
       <OutputVariablesDisplay
         outputVariables={getCrudNodeOutputVariables(nodeData, nodeId, {

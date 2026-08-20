@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/catalog/error-handling.ts
 
+import { z } from 'zod'
 import type { NodeBranch } from './types'
 
 /**
@@ -120,3 +121,42 @@ export function hasFailBranch(config: unknown): boolean {
 export function errorHandlingBranches(config: unknown): NodeBranch[] {
   return hasFailBranch(config) ? [{ id: 'fail', name: 'Fail', kind: 'fail' }] : []
 }
+
+/**
+ * The persisted `error_strategy` field, for a node type's `configSchema`.
+ *
+ * Narrower than the `z.string()` `http` shipped with (plan 21 §20.2): an
+ * unrecognised string is a config bug, and letting one through means the panel
+ * renders an empty `<Select>` while the processor silently runs the `fail` arm.
+ *
+ * `'none'` is accepted because persisted http configs carry it — it is the
+ * legacy spelling of `continue` ({@link LEGACY_ALIASES}) — so a stored graph
+ * must still parse. It is never written again; every reader resolves it with
+ * {@link normalizeErrorStrategy}, which is why this stays a plain union rather
+ * than a `.transform()`: `configSchema` is the *shape* contract, and rewriting
+ * a value during validation would make the parsed config disagree with the row.
+ *
+ * Types opting in after http/crud use `errorStrategySchema.optional()`: no
+ * existing row of theirs carries the key, and an absent value is what
+ * {@link hasFailBranch} needs to see to render no branch.
+ */
+export const errorStrategySchema = z.union([z.enum(ErrorStrategy), z.literal('none')])
+
+/**
+ * A substitute value applied when the policy is `default` — `{ key, type,
+ * value }`, where `value` is a string representation parsed per `type` and may
+ * carry `{{…}}` refs.
+ *
+ * Declared here because two node types already ship the identical shape under
+ * two names (`http.default_value`, `crud.default_values`). The KEYS are not
+ * unified — that rename is plan 24's — but a third type does not get to invent
+ * a third item shape.
+ */
+export const errorDefaultValueSchema = z.object({
+  key: z.string(),
+  type: z.enum(['string', 'number', 'boolean', 'object', 'array']),
+  value: z.string(),
+})
+
+/** A substitute value applied when the policy is `default`. */
+export type ErrorDefaultValue = z.infer<typeof errorDefaultValueSchema>
