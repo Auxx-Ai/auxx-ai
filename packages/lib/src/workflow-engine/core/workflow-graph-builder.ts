@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/core/workflow-graph-builder.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { errorHandlingBranches } from '../catalog/error-handling'
+import { ERROR_LIKE_HANDLES, errorHandlingBranches } from '../catalog/error-handling'
 import { getManifest } from '../catalog/registry'
 import type { NodeProcessorRegistry } from './node-processor-registry'
 import type { ForkPointInfo, JoinPointInfo, Workflow, WorkflowEdge, WorkflowNode } from './types'
@@ -875,7 +875,10 @@ export class WorkflowGraphBuilder {
  * `contract-drift-allowlist.ts` tracks it as an open question. Retiring it is
  * that entry's decision, not this one's.
  */
-const ERROR_LIKE_HANDLES = new Set(['fail', 'onError'])
+// Lives in `catalog/error-handling.ts` beside the policy that produces the
+// handle — `scopeOutputsToHandle` needs the same set to decide which handle
+// gets the failure-scoped output list, and two spellings would drift.
+export { ERROR_LIKE_HANDLES }
 
 /**
  * Helper functions for working with the workflow graph

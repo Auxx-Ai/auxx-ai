@@ -415,8 +415,8 @@
             "retry_interval": 2000
           },
           "ssl_verify": true,
-          "error_strategy": "default",
-          "default_value": [],
+          "error_strategy": "fail",
+          "default_values": [],
           "_targetBranches": [
             {
               "id": "source",

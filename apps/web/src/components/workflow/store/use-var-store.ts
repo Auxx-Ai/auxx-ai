@@ -3,10 +3,11 @@
 import type { Resource } from '@auxx/lib/resources/client'
 import {
   buildDownstreamMap,
-  buildUpstreamMap,
+  buildUpstreamHandleMap,
   computeLoopAncestry,
   type EdgeMeta,
   type GraphLoopContext,
+  getManifest,
   type NodeMeta,
   topologicalSort,
 } from '@auxx/lib/workflow-engine/client'
@@ -18,6 +19,7 @@ import { cloneAndRewriteVariableIds } from '~/components/workflow/utils/variable
 import { getNodeIdFromVariableId } from '~/components/workflow/utils/variable-utils'
 import { measureSync } from '../debug'
 import type { EnvVar } from '../types'
+import { markPathConditional, scopeAncestorOutputs } from './branch-scope'
 import {
   buildVariableIndex,
   computeNodeOutputs,
@@ -49,6 +51,13 @@ interface VarStoreState {
   resources: Map<string, Resource>
 
   // === Derived (computed on write, cached) ===
+  /**
+   * consumerId → ancestorId → the ancestor's own source handles that reach it.
+   * The branch-aware form; {@link VarStoreState.upstreamMap} is its key-set
+   * projection, kept because ordering and the downstream inversion only ever
+   * need "who", not "on which branch".
+   */
+  upstreamHandleMap: Map<string, Map<string, Set<string>>>
   upstreamMap: Map<string, Set<string>>
   downstreamMap: Map<string, Set<string>>
   loopAncestry: Map<string, LoopContext[]>
@@ -77,6 +86,7 @@ interface VarStoreState {
 /** Stable empty arrays to avoid new references (Zustand v5 safety) */
 const EMPTY_VARS: UnifiedVariable[] = []
 const EMPTY_LOOP_CONTEXTS: LoopContext[] = []
+const EMPTY_ANCESTOR_HANDLES: Map<string, Set<string>> = new Map()
 
 /**
  * Compute loop iteration variables for a node.
@@ -188,28 +198,56 @@ function computeLoopVariables(
 /**
  * Compute availability for a single node.
  * Collects upstream outputs + loop variables + env + sys.
+ *
+ * Upstream outputs are BRANCH-SCOPED (plan 24 §4, §8.1): an ancestor only
+ * offers what it writes on the handles this consumer is reachable on. A node on
+ * a crud node's `fail` branch is no longer offered the record that path never
+ * created; a node reachable on both `source` and `fail` still sees the union,
+ * with the difference marked `pathConditional`.
  */
 function computeNodeAvailability(
   nodeId: string,
   nodeOutputs: Map<string, NodeOutput>,
-  upstreamMap: Map<string, Set<string>>,
+  upstreamHandleMap: Map<string, Map<string, Set<string>>>,
   loopAncestry: Map<string, LoopContext[]>,
   graph: { nodes: NodeMeta[] },
   environmentVariables: Map<string, EnvVar>,
   systemVariables: Map<string, UnifiedVariable>,
   resolveVariable: (variableId: string) => UnifiedVariable | undefined
 ): UnifiedVariable[] {
-  const upstreamNodeIds = upstreamMap.get(nodeId) || new Set()
+  const ancestorHandles = upstreamHandleMap.get(nodeId) || EMPTY_ANCESTOR_HANDLES
   const nodeLoopContexts = loopAncestry.get(nodeId) || EMPTY_LOOP_CONTEXTS
   const parentLoopIds = new Set(nodeLoopContexts.map((ctx) => ctx.loopNodeId))
 
   const allVars: UnifiedVariable[] = []
 
-  // Collect upstream node output variables (flattened)
-  for (const upstreamId of upstreamNodeIds) {
-    const nodeVars = nodeOutputs.get(upstreamId)?.variables || EMPTY_VARS
-    for (const variable of nodeVars) {
-      const flattenedVars = flattenVariableForStorage(variable)
+  // Collect upstream node output variables (scoped, then flattened).
+  //
+  // ONE pass per (consumer, ancestor) pair, never one per handle: the union is
+  // taken over variable ids inside `scopeAncestorOutputs` first, so an ancestor
+  // reachable on two handles still contributes each variable exactly once. A
+  // per-handle loop that pushed as it went would duplicate every row the two
+  // handles share.
+  for (const [upstreamId, handles] of ancestorHandles) {
+    const output = nodeOutputs.get(upstreamId)
+    const declared = output?.variables || EMPTY_VARS
+
+    // The catalog manifest, NOT `unifiedNodeRegistry` — the browser registry
+    // `computeNodeOutputs` reads carries app blocks and React components but no
+    // `errorHandling`. App blocks never declare one, so a miss here correctly
+    // means "no per-handle difference" rather than "unknown".
+    const errorHandling = output?.type ? getManifest(output.type)?.errorHandling : undefined
+    const { variables, conditional } = scopeAncestorOutputs({
+      ancestorId: upstreamId,
+      handles,
+      declared,
+      errorHandling,
+      config: output?.dataRef,
+    })
+
+    for (const variable of variables) {
+      const scoped = conditional.has(variable.id) ? markPathConditional(variable) : variable
+      const flattenedVars = flattenVariableForStorage(scoped)
       for (const v of flattenedVars) {
         const varNodeId = getNodeIdFromVariableId(v.id)
         // Filter out parent loop output variables (loop iteration vars added separately)
@@ -248,6 +286,7 @@ export const useVarStore = create<VarStoreState>()(
       environmentVariables: new Map([] as [string, EnvVar][]),
       systemVariables: new Map([] as [string, UnifiedVariable][]),
       resources: new Map([] as [string, Resource][]),
+      upstreamHandleMap: new Map([] as [string, Map<string, Set<string>>][]),
       upstreamMap: new Map([] as [string, Set<string>][]),
       downstreamMap: new Map([] as [string, Set<string>][]),
       loopAncestry: new Map([] as [string, LoopContext[]][]),
@@ -382,13 +421,20 @@ export const useVarStore = create<VarStoreState>()(
             const nodesChanged =
               prevNodeMap.size !== newNodeIds.size || nodes.some((n) => !prevNodeMap.has(n.id))
 
+            // `sourceHandle` is part of the comparison because availability is
+            // now branch-scoped: rewriting an edge's handle IN PLACE — which is
+            // exactly what switching a node's `error_strategy` does to its
+            // outgoing edges — changes what every descendant may read while
+            // leaving id/source/target identical. Before branch scoping this
+            // was harmless; after it, omitting it is a stale-availability bug.
             const edgesChanged =
               state.graph.edges.length !== edges.length ||
               state.graph.edges.some(
                 (e, i) =>
                   e.id !== edges[i]?.id ||
                   e.source !== edges[i]?.source ||
-                  e.target !== edges[i]?.target
+                  e.target !== edges[i]?.target ||
+                  e.sourceHandle !== edges[i]?.sourceHandle
               )
 
             const parentIdsChanged = nodes.some((n) => {
@@ -398,11 +444,23 @@ export const useVarStore = create<VarStoreState>()(
 
             const structureChanged = nodesChanged || edgesChanged
 
-            // Rebuild graph maps if structure changed
+            // Rebuild graph maps if structure changed.
+            //
+            // The handle map is built once and `upstreamMap` projected off it,
+            // rather than calling `buildUpstreamMap` as well — that function IS
+            // this projection (`graph-vars.ts`), so calling both would walk the
+            // graph twice on every structural edit for the same answer.
+            let upstreamHandleMap = state.upstreamHandleMap
             let upstreamMap = state.upstreamMap
             let downstreamMap = state.downstreamMap
             if (structureChanged) {
-              upstreamMap = buildUpstreamMap(edges, nodes)
+              upstreamHandleMap = buildUpstreamHandleMap(edges, nodes)
+              upstreamMap = new Map(
+                Array.from(upstreamHandleMap, ([consumerId, ancestors]) => [
+                  consumerId,
+                  new Set(ancestors.keys()),
+                ])
+              )
               downstreamMap = buildDownstreamMap(upstreamMap)
             }
 
@@ -476,7 +534,7 @@ export const useVarStore = create<VarStoreState>()(
               const vars = computeNodeAvailability(
                 node.id,
                 newNodeOutputs,
-                upstreamMap,
+                upstreamHandleMap,
                 loopAncestry,
                 { nodes },
                 state.environmentVariables,
@@ -511,6 +569,7 @@ export const useVarStore = create<VarStoreState>()(
             set((s) => {
               s.graph = { nodes, edges }
               s.nodeOutputs = newNodeOutputs
+              s.upstreamHandleMap = upstreamHandleMap
               s.upstreamMap = upstreamMap
               s.downstreamMap = downstreamMap
               s.loopAncestry = loopAncestry
@@ -564,7 +623,7 @@ export const useVarStore = create<VarStoreState>()(
               const vars = computeNodeAvailability(
                 affectedId,
                 s.nodeOutputs,
-                s.upstreamMap,
+                s.upstreamHandleMap,
                 s.loopAncestry,
                 s.graph,
                 s.environmentVariables,
@@ -638,7 +697,7 @@ export const useVarStore = create<VarStoreState>()(
               const vars = computeNodeAvailability(
                 node.id,
                 state.nodeOutputs,
-                state.upstreamMap,
+                state.upstreamHandleMap,
                 state.loopAncestry,
                 state.graph,
                 state.environmentVariables,
@@ -676,7 +735,7 @@ export const useVarStore = create<VarStoreState>()(
               const vars = computeNodeAvailability(
                 node.id,
                 state.nodeOutputs,
-                state.upstreamMap,
+                state.upstreamHandleMap,
                 state.loopAncestry,
                 state.graph,
                 state.environmentVariables,
@@ -711,7 +770,7 @@ export const useVarStore = create<VarStoreState>()(
               const vars = computeNodeAvailability(
                 node.id,
                 state.nodeOutputs,
-                state.upstreamMap,
+                state.upstreamHandleMap,
                 state.loopAncestry,
                 state.graph,
                 state.environmentVariables,

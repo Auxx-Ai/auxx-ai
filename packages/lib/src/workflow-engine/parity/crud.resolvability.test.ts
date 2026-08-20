@@ -379,7 +379,12 @@ describe('CRUD node resolvability', () => {
       resourceId: VENDOR_UPDATE_INSTANCE_ID,
       data: { name: 'Initech Supply' },
       error_strategy: ErrorStrategy.default,
-      default_values: [{ key: 'fallbackNote', type: 'string', value: 'applied fallback' }],
+      // A DECLARED output path, not a free-text name. Plan 24's closed key
+      // set (O5) is what let `known-broken.ts`'s
+      // CRUD_DEFAULT_VALUE_DYNAMIC_KEY_REASON pin be retired: every configured
+      // key is now something the manifest declares, so the write is covered by
+      // the declaration and `assertWrittenCovered` passes without an exception.
+      default_values: [{ key: 'id', type: 'string', value: 'vendor-fallback-id' }],
     })
 
     // `default` with configured default_values still SUCCEEDS the node
@@ -413,8 +418,11 @@ describe('CRUD node resolvability', () => {
     assertWrittenCovered(written, declared, 'crud.update.default-strategy')
     expect(await ctx.resolveVariablePath(`${nodeId}.usedDefaults`)).toBe(true)
     expect(await ctx.resolveVariablePath(`${nodeId}.defaultValues`)).toEqual({
-      fallbackNote: 'applied fallback',
+      id: 'vendor-fallback-id',
     })
+    // The substitute lands on the DECLARED path, which is the whole point of
+    // the closed key set — a downstream `{{…}}.id` now resolves.
+    expect(await ctx.resolveVariablePath(`${nodeId}.id`)).toBe('vendor-fallback-id')
   })
 
   it('error_strategy "default" with no default_values configured — falls through to fail, but usedDefaults/defaultValues still resolve', async () => {

@@ -174,6 +174,13 @@ export async function resolveNodeOutputs(
     return err(new NotFoundError(`Node not found in graph: ${nodeId}`))
   }
 
+  // NOT a branch-scoped question, and it must never become one. This reads the
+  // ancestor SET only to decide which nodes are worth resolving; the answer it
+  // returns is `nodeId`'s OWN outputs. Handle scoping (plan 24) narrows which
+  // handles an ancestor answers on — never the ancestor set — so there is
+  // nothing here to scope. Pruning against a SCOPED variable set instead would
+  // starve `ctx.resolveVariable` below, breaking every upstream-dependent
+  // resolver.
   const ancestorIds = buildUpstreamMap(graph.edges, graph.nodes).get(nodeId) ?? new Set<string>()
   const relevantIds = new Set([...ancestorIds, nodeId])
   const relevantNodes = graph.nodes.filter((n) => relevantIds.has(n.id))

@@ -22,6 +22,7 @@
  *   read the error message (plan 21 §3.1).
  */
 
+import { DEFAULT_SOURCE_HANDLE } from '../../workflow-engine/catalog/graph-vars'
 import type { NodeBranch, NodeManifest } from '../../workflow-engine/catalog/types'
 import { formatNodeRef } from './refs'
 import type { DraftGraph, GraphNode, NodeBranchSummary } from './types'
@@ -33,8 +34,14 @@ import type { DraftGraph, GraphNode, NodeBranchSummary } from './types'
  */
 export const FALLBACK_BRANCH_IDS: ReadonlySet<string> = new Set(['false', 'default', 'unmatched'])
 
-/** The plain output handle every non-branching node exposes. */
-export const DEFAULT_SOURCE_HANDLE = 'source'
+/**
+ * The plain output handle every non-branching node exposes.
+ *
+ * Re-exported, not redeclared: the catalog needs the same constant for
+ * `buildUpstreamHandleMap`'s handle defaulting and cannot import from
+ * `graph-edit` (the dependency runs the other way), so it owns the spelling.
+ */
+export { DEFAULT_SOURCE_HANDLE }
 
 /** The branches a manifest derives for this config — `[]` on absence OR on throw. */
 export function safeBranches(

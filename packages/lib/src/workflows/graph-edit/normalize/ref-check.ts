@@ -21,7 +21,11 @@
 
 import { err, ok, type Result } from 'neverthrow'
 import { buildManifestLookup } from '../../../workflow-engine/catalog/app-manifests'
-import { buildUpstreamMap } from '../../../workflow-engine/catalog/graph-vars'
+import {
+  isErrorLikeHandle,
+  scopeOutputsToHandle,
+} from '../../../workflow-engine/catalog/error-handling'
+import { buildUpstreamHandleMap } from '../../../workflow-engine/catalog/graph-vars'
 import { resolveGraphOutputs } from '../../../workflow-engine/catalog/resolve-outputs'
 import type { ManifestLookup } from '../../../workflow-engine/catalog/types'
 import type { UnifiedVariable } from '../../../workflow-engine/types/unified-variable'
@@ -135,6 +139,90 @@ function collectionCorrection(rawPath: string, idMap: Map<string, UnifiedVariabl
   return null
 }
 
+/**
+ * One source node's declared outputs, indexed in the three shapes it can
+ * answer in depending on which handle the asking consumer arrived on.
+ */
+interface ScopedIdMaps {
+  /** Everything `resolveOutputs` declared — the union across handles. */
+  unscoped: Map<string, UnifiedVariable>
+  /** What survives on the failure door (`failOutputs`). */
+  onFail: Map<string, UnifiedVariable>
+  /** What survives on `source` (`failureOnlyOutputs` subtracted under `fail`). */
+  onSource: Map<string, UnifiedVariable>
+}
+
+/** A branch-scope finding: how loud, and what to say. */
+interface ScopeIssue {
+  severity: 'warning' | 'info'
+  message: (ref: string, sourceRef: string, consumerRef: string) => string
+}
+
+/**
+ * Does `candidate` survive on the handles this consumer is reachable on?
+ *
+ * **Union over paths, not intersection.** A variable is offered if SOME path to
+ * the consumer carries it. Intersection is the "guaranteed present" rule and is
+ * the wrong one here: it breaks the legitimate one-node-handles-both-outcomes
+ * pattern, it can be empty at a fan-in, and the two failure modes are
+ * asymmetric — an over-offered variable interpolates to `''` with a WARN, while
+ * an under-offered one is a finding on a correct edit. When uncertain, be wrong
+ * in the soft direction.
+ *
+ * Three outcomes:
+ * - resolves on every reachable handle → `null`, nothing to say;
+ * - resolves on NO reachable handle → `warning`, it will be empty at run time;
+ * - resolves on some but not all (`union − intersection`) → `info`. This is the
+ *   JOIN case, and it is the one an author most needs: a node fed by both a
+ *   `source` and a `fail` branch legitimately sees the union, but half those
+ *   runs took the other path.
+ *
+ * Never `error`: the run-time consequence is an empty string, not a crash, and
+ * the blocking tier only reads `severity === 'error'`. Availability is also
+ * non-monotonic — deleting one incoming edge at a join can narrow it and turn
+ * already-saved refs into findings the author never touched — which must never
+ * refuse a write.
+ */
+function scopeIssue(params: {
+  handles: Set<string> | undefined
+  maps: ScopedIdMaps
+  candidate: string
+}): ScopeIssue | null {
+  const { handles, maps, candidate } = params
+  if (!handles || handles.size === 0) return null
+
+  let resolvesOnSome = false
+  let resolvesOnAll = true
+  for (const handle of handles) {
+    const scoped = isErrorLikeHandle(handle) ? maps.onFail : maps.onSource
+    // An empty scoped map means "this handle writes nothing", which is a real
+    // answer — unlike an empty UNSCOPED map, which means "unverifiable" and is
+    // already handled by the caller's guard.
+    if (pathResolves(candidate, scoped)) resolvesOnSome = true
+    else resolvesOnAll = false
+  }
+
+  if (resolvesOnAll) return null
+
+  if (!resolvesOnSome) {
+    return {
+      severity: 'warning',
+      message: (ref, sourceRef, consumerRef) =>
+        `"{{${ref}}}" reads an output ${sourceRef} does not produce on the branch ` +
+        `${consumerRef} is reachable from — it will be empty at run time. ` +
+        'Read it on the other branch, or reference an output that path writes.',
+    }
+  }
+
+  return {
+    severity: 'info',
+    message: (ref, sourceRef, consumerRef) =>
+      `"{{${ref}}}" is path-conditional: ${consumerRef} is reachable from more than one of ` +
+      `${sourceRef}'s branches, and only some of them write this output. It resolves on the ` +
+      'runs that took those paths and is empty on the rest.',
+  }
+}
+
 /** Extract every variable ref a node reads: manifest extractor first, generic walk otherwise. */
 function extractNodeRefs(node: NodeMeta, nodeIds: Set<string>, lookup: ManifestLookup): string[] {
   const manifest = lookup(node.data?.type ?? node.type)
@@ -180,10 +268,23 @@ function containerAncestors(node: NodeMeta, nodeById: Map<string, NodeMeta>): Se
  * 3. the path resolves in the declared output tree — numeric accessors match
  *    their `[*]` declaration, undeclared-child ("open") objects accept any
  *    deeper path, collection misuse gets a `.values[*]` suggestion, anything
- *    else gets "did you mean" candidates from the declared siblings.
+ *    else gets "did you mean" candidates from the declared siblings;
+ * 4. it survives BRANCH SCOPING — a path that resolves against the node's full
+ *    declared tree but not on the handles the consumer is reachable from is a
+ *    `warning` (empty at run time), and one that resolves on some reachable
+ *    handles but not all is an `info` (path-conditional). See {@link scopeIssue}.
  *
- * Nodes whose declared outputs are empty (not-yet-migrated types) skip check 3
- * — an empty declaration proves nothing either way.
+ * Nodes whose declared outputs are empty (not-yet-migrated types) skip checks 3
+ * and 4 — an empty declaration proves nothing either way.
+ *
+ * Checks 1–3 keep `severity: 'error'` and stay in the blocking tier. Check 4
+ * never blocks: over-offering degrades to an empty string, and refusing an edit
+ * over it would make a legitimate fan-in unauthorable.
+ *
+ * SUGGESTIONS AND CORRECTIONS ARE COMPUTED AGAINST THE UNSCOPED TREE. Scope
+ * decides the *finding*; a "did you mean" generated from a scoped sibling set
+ * would rewrite a correct ref into a different, wrong variable — and
+ * `corrections` is machine-applicable.
  */
 export function checkVariableRefsAgainstOutputs(params: {
   graph: WorkflowOutputGraph
@@ -196,22 +297,43 @@ export function checkVariableRefsAgainstOutputs(params: {
 
   const nodeIds = new Set(graph.nodes.map((n) => n.id))
   const nodeById = new Map(graph.nodes.map((n) => [n.id, n]))
-  const upstreamMap = buildUpstreamMap(graph.edges, graph.nodes)
+  const handleMap = buildUpstreamHandleMap(graph.edges, graph.nodes)
 
-  const idMapByNode = new Map<string, Map<string, UnifiedVariable>>()
-  const declaredIdMap = (nodeId: string): Map<string, UnifiedVariable> => {
-    let idMap = idMapByNode.get(nodeId)
-    if (!idMap) {
-      idMap = new Map()
-      indexTree(outputs.get(nodeId) ?? [], idMap)
-      idMapByNode.set(nodeId, idMap)
+  /**
+   * Declared-output indexes per source node, in the three shapes a source can
+   * answer in. NOT per (consumer, source) pair: scoping depends only on WHICH
+   * HANDLES the consumer is reachable on, and there are three answers total —
+   * so a per-pair cache would be O(V²) maps for no benefit.
+   */
+  const idMapsByNode = new Map<string, ScopedIdMaps>()
+  const scopedIdMaps = (source: NodeMeta): ScopedIdMaps => {
+    let maps = idMapsByNode.get(source.id)
+    if (!maps) {
+      const declared = outputs.get(source.id) ?? []
+      const errorHandling = lookup(source.data?.type ?? source.type)?.errorHandling
+      const index = (vars: UnifiedVariable[]) => {
+        const idMap = new Map<string, UnifiedVariable>()
+        indexTree(vars, idMap)
+        return idMap
+      }
+      maps = {
+        unscoped: index(declared),
+        onFail: index(
+          scopeOutputsToHandle(errorHandling, source.data, source.id, 'fail', declared)
+        ),
+        onSource: index(
+          scopeOutputsToHandle(errorHandling, source.data, source.id, 'source', declared)
+        ),
+      }
+      idMapsByNode.set(source.id, maps)
     }
-    return idMap
+    return maps
   }
 
   for (const consumer of graph.nodes) {
     const consumerRef = formatNodeRef(graph.nodes, consumer.id)
-    const upstream = upstreamMap.get(consumer.id) ?? new Set<string>()
+    const ancestorHandles = handleMap.get(consumer.id) ?? new Map<string, Set<string>>()
+    const upstream = new Set(ancestorHandles.keys())
     const containers = containerAncestors(consumer, nodeById)
 
     for (const rawPath of extractNodeRefs(consumer, nodeIds, lookup)) {
@@ -260,11 +382,33 @@ export function checkVariableRefsAgainstOutputs(params: {
         continue
       }
 
-      const idMap = declaredIdMap(source.id)
+      const maps = scopedIdMaps(source)
+      const idMap = maps.unscoped
+      // THE TRAP: guard on the UNSCOPED map. An empty *scoped* map and an empty
+      // *declared* map mean opposite things — with http's old `failOutputs: []`
+      // the scoped map is empty, and testing that here would silently skip
+      // every check on the fail branch instead of reporting anything.
       if (idMap.size === 0) continue // nothing declared (not-yet-migrated) — unverifiable
 
       const candidate = normalizeIndices(rawPath)
-      if (pathResolves(candidate, idMap)) continue
+      if (pathResolves(candidate, idMap)) {
+        // Resolves against the full declared tree. Now: does it resolve on the
+        // handles this consumer is actually reachable on?
+        const scoped = scopeIssue({
+          handles: ancestorHandles.get(source.id),
+          maps,
+          candidate,
+        })
+        if (scoped) {
+          issues.push({
+            severity: scoped.severity,
+            nodeRef: consumerRef,
+            ref: rawPath,
+            message: scoped.message(rawPath, formatNodeRef(graph.nodes, source.id), consumerRef),
+          })
+        }
+        continue
+      }
 
       const corrected = collectionCorrection(rawPath, idMap)
       if (corrected) {

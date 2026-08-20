@@ -410,7 +410,8 @@ export const chunkerManifest: NodeManifest<ChunkerNodeData> = {
    * skippable. No `default` — there is no meaningful substitute set of chunks.
    */
   errorHandling: {
-    strategies: [ErrorStrategy.fail, ErrorStrategy.continue],
+    // `fail` only — the outputs are the reason this node exists (§6.5).
+    strategies: [ErrorStrategy.fail],
     defaultStrategy: ErrorStrategy.fail,
   },
   agent: {

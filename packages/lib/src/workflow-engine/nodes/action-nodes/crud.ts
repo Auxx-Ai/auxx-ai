@@ -43,7 +43,11 @@ import {
 } from '../../../threads/links.service'
 import { ThreadMutationService, type ThreadUpdates } from '../../../threads/thread-mutation.service'
 import { UnreadService } from '../../../threads/unread-service'
-import { ErrorStrategy, normalizeErrorStrategy } from '../../catalog/error-handling'
+import {
+  coerceDefaultValue,
+  ErrorStrategy,
+  normalizeErrorStrategy,
+} from '../../catalog/error-handling'
 import type {
   CrudNodeData as CatalogCrudNodeData,
   CrudDefaultValue,
@@ -597,6 +601,11 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       resourceId,
       fieldCount: Object.keys(data).length,
     })
+    // Hoisted out of the try so the CATCH can report the same identity the
+    // success path writes. It stays the raw `resourceType` when the throw came
+    // from canonicalization itself, which is correct — there is no canonical
+    // form for a type that does not resolve.
+    let canonicalResourceType = resourceType
     try {
       // Get organization ID up front — needed for canonicalization AND the
       // resource reference below.
@@ -617,7 +626,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       // `executeCrudOperation`'s own `findCachedResource` check, but either
       // way the throw is caught below and routed through `handleCrudError`,
       // so the configured `error_strategy` is honored exactly as before.
-      const canonicalResourceType =
+      canonicalResourceType =
         resourceType === 'thread'
           ? resourceType
           : (await resolveCanonicalResource(organizationId, resourceType)).id
@@ -739,14 +748,17 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
         resourceId,
         strategy: config.error_strategy || 'fail',
       })
-      // Handle error based on strategy
+      // Handle error based on strategy. `canonicalResourceType`, not the raw
+      // `resourceType`: the success path writes the canonical id (see above),
+      // and a `resourceType` output that changes identity depending on whether
+      // the node succeeded is a drift a downstream comparison cannot survive.
       return await this.handleCrudError(
         error,
         config,
         node,
         contextManager,
         mode,
-        resourceType,
+        canonicalResourceType,
         resourceId
       )
     }
@@ -1510,30 +1522,11 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
       defaultValues.map((dv) => this.interpolateVariables(dv.value, contextManager))
     )
 
-    // Process each default value with its interpolated result
+    // Process each default value with its interpolated result. The coercion
+    // switch used to be inlined here, in http and in ai-v2 as three identical
+    // copies (plan 24 §9.6) — one helper now.
     defaultValues.forEach((defaultValue, index) => {
-      const value = interpolatedValues[index]!
-      switch (defaultValue.type) {
-        case 'string':
-          result[defaultValue.key] = value
-          break
-        case 'number':
-          result[defaultValue.key] = parseFloat(value) || 0
-          break
-        case 'boolean':
-          result[defaultValue.key] = value.toLowerCase() === 'true'
-          break
-        case 'object':
-        case 'array':
-          try {
-            result[defaultValue.key] = JSON.parse(value)
-          } catch {
-            result[defaultValue.key] = value
-          }
-          break
-        default:
-          result[defaultValue.key] = value
-      }
+      result[defaultValue.key] = coerceDefaultValue(defaultValue.type, interpolatedValues[index]!)
     })
 
     return result

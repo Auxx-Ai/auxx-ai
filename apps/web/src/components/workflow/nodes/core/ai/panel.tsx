@@ -2,6 +2,7 @@
 'use client'
 
 import type { TiptapDoc } from '@auxx/lib/tiptap'
+import { getManifest } from '@auxx/lib/workflow-engine/client'
 import { Button } from '@auxx/ui/components/button'
 import { Label } from '@auxx/ui/components/label'
 import {
@@ -15,12 +16,12 @@ import { cn } from '@auxx/ui/lib/utils'
 import { produce } from 'immer'
 import { Pencil, Plus, TriangleAlert } from 'lucide-react'
 import type React from 'react'
-import { memo, useCallback, useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { DEFAULT_TABS } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { SchemaEditorDialog } from '~/components/schema-editor/ui/schema-editor-dialog'
 import { useModelCapabilities, useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import { ErrorDefaultValuesEditor } from '~/components/workflow/nodes/shared/error-default-values-editor'
+import { DefaultValuesEditor } from '~/components/workflow/nodes/shared/default-values-editor'
 import {
   ErrorHandlingSection,
   type ErrorStrategyUpdate,
@@ -62,6 +63,12 @@ interface AiPanelProps {
 
 const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
   const { isReadOnly } = useReadOnly()
+
+  // Shared by the defaults editor's target list and the output display below.
+  const aiOutputVariables = useMemo(
+    () => aiDefinition.outputVariables?.(nodeData, nodeId, staticOutputVariableContext) || [],
+    [nodeData, nodeId]
+  )
   const [isOpen, setIsOpen] = useState(false)
   const [schema, setSchema] = useState<Record<string, unknown> | undefined>()
 
@@ -372,19 +379,18 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
         <Field
           title='Default Values'
           description='Substitute output values to use when the model call fails'>
-          <ErrorDefaultValuesEditor
-            defaultValues={nodeData.default_values || []}
+          <DefaultValuesEditor
+            nodeId={nodeId}
+            declaredOutputs={aiOutputVariables}
+            errorHandling={getManifest('ai')?.errorHandling}
+            values={nodeData.default_values || []}
             onChange={handleDefaultValuesChange}
+            isReadOnly={isReadOnly}
           />
         </Field>
       </ErrorHandlingSection>
 
-      <OutputVariablesDisplay
-        outputVariables={
-          aiDefinition.outputVariables?.(nodeData, nodeId, staticOutputVariableContext) || []
-        }
-        initialOpen={false}
-      />
+      <OutputVariablesDisplay outputVariables={aiOutputVariables} initialOpen={false} />
     </BasePanel>
   )
 }

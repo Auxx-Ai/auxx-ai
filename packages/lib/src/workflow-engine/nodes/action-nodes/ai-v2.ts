@@ -7,6 +7,7 @@ import type { Message, MultiModalContent } from '../../../ai/clients/base/types'
 import { buildInstructionReferenceResolver } from '../../../ai/kopilot/prompts/resolve-instruction-references'
 import { collectVariableIds, docToText } from '../../../tiptap'
 import {
+  coerceDefaultValue,
   type ErrorDefaultValue,
   ErrorStrategy,
   normalizeErrorStrategy,
@@ -383,10 +384,10 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
    * Parse `{ key, type, value }` substitutes into the values the `default`
    * policy publishes, interpolating `{{…}}` refs first.
    *
-   * A near-copy of crud's `processDefaultValues` — deliberately not shared:
-   * plan 24 owns the defaults editor and the `default_value`/`default_values`
-   * key split, and unifying the runtime half now would have to be unpicked by
-   * that work.
+   * The interpolation loop is this node's own (it uses
+   * `interpolateVariables`, where http uses `processText`); the coercion is
+   * the shared `coerceDefaultValue`, which plan 24 §9.6 lifted out of the
+   * three identical copies that used to live here, in crud and in http.
    */
   private async resolveDefaultValues(
     defaultValues: ErrorDefaultValue[],
@@ -397,25 +398,7 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
     )
     const result: Record<string, unknown> = {}
     defaultValues.forEach((dv, index) => {
-      const value = interpolated[index] ?? ''
-      switch (dv.type) {
-        case 'number':
-          result[dv.key] = parseFloat(value) || 0
-          break
-        case 'boolean':
-          result[dv.key] = value.toLowerCase() === 'true'
-          break
-        case 'object':
-        case 'array':
-          try {
-            result[dv.key] = JSON.parse(value)
-          } catch {
-            result[dv.key] = value
-          }
-          break
-        default:
-          result[dv.key] = value
-      }
+      result[dv.key] = coerceDefaultValue(dv.type, interpolated[index] ?? '')
     })
     return result
   }

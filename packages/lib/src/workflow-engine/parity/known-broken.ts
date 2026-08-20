@@ -185,23 +185,6 @@ const FIND_MANY_LEGACY_PLURAL_ALIAS_REASON =
   '`<node>.<resource.plural.toLowerCase()>` key so pre-migration `{{…}}` refs keep resolving. ' +
   'Retire together with the dual-write once the plural→id DataMigration has run everywhere.'
 
-/**
- * Correct by design, not a bug — same class as `contract-drift-allowlist.ts`'s
- * `EXTRACTION_BLIND_SPOTS` entries for `var-assign.myVar`/`myList`: the CRUD
- * `default` error-strategy writes one key per `default_values[].key`, which
- * is a user-configured, dynamic name (`processDefaultValues` /
- * `handleCrudError`'s `Object.entries(defaultResult).forEach(...)` loop). No
- * static manifest can declare a literal path for a name that only exists at
- * run time — `usedDefaults`/`defaultValues` (the two ALWAYS-present wrapper
- * keys) ARE declared and asserted directly in the scenario, which is the
- * actual regression-relevant surface this suite's self-check cares about.
- */
-const CRUD_DEFAULT_VALUE_DYNAMIC_KEY_REASON =
-  'Correct by design: default_values[].key is a user-configured, dynamic name ' +
-  "(processDefaultValues/handleCrudError's Object.entries loop) — no static manifest can " +
-  'declare a literal path for it. Same class as var-assign.myVar/myList in ' +
-  'contract-drift-allowlist.ts EXTRACTION_BLIND_SPOTS.'
-
 const WRITTEN_UNDECLARED_PINS: Pin[] = [
   {
     test: (key) => key === 'find_vendor_many.vendors',
@@ -210,10 +193,6 @@ const WRITTEN_UNDECLARED_PINS: Pin[] = [
   {
     test: (key) => key === 'find_thread_many.threads',
     reason: FIND_MANY_LEGACY_PLURAL_ALIAS_REASON,
-  },
-  {
-    test: (key) => key === 'crud_vendor_update_default.fallbackNote',
-    reason: CRUD_DEFAULT_VALUE_DYNAMIC_KEY_REASON,
   },
 ]
 

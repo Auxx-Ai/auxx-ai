@@ -4,7 +4,17 @@ import { z } from 'zod'
 import { HTTP_NODE_CONSTANTS } from '../../constants'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
-import { ErrorStrategy, errorHandlingBranches, errorStrategySchema } from '../error-handling'
+import {
+  defaultValueTargets,
+  type ErrorDefaultValue,
+  ErrorStrategy,
+  errorDefaultValueSchema,
+  errorHandlingBranches,
+  errorStrategySchema,
+  normalizeErrorStrategy,
+  readDefaultValues,
+  validateDefaultValues,
+} from '../error-handling'
 import type { BaseNodeData } from '../node-base'
 import {
   type NodeBranch,
@@ -110,8 +120,14 @@ export type Timeout = { connect?: number; read?: number; write?: number }
 /** Retry configuration */
 export type RetryConfig = { retry_enabled: boolean; max_retries: number; retry_interval: number }
 
-/** Default value item applied when `error_strategy` is 'default' */
-export type DefaultValueItem = { key: string; type: string; value: string }
+/**
+ * Default value item applied when `error_strategy` is 'default'.
+ *
+ * Now an alias of the shared {@link ErrorDefaultValue}: http's own `type` was
+ * a bare `string` where crud's was a 5-member enum, for one concept (plan 24
+ * §9.4). The alias stays so http's callers do not churn.
+ */
+export type DefaultValueItem = ErrorDefaultValue
 
 /** HTTP node data interface with flattened structure */
 export interface HttpNodeData extends BaseNodeData {
@@ -125,7 +141,12 @@ export interface HttpNodeData extends BaseNodeData {
   retry_config: RetryConfig
   ssl_verify: boolean
   error_strategy: ErrorStrategy
-  default_value: DefaultValueItem[]
+  /**
+   * Renamed from `default_value` (singular) to match crud and ai (plan 24
+   * §10.4). Stored graphs still carry the old key; every read goes through
+   * {@link readDefaultValues}, which retires with plan 21 §19's migration.
+   */
+  default_values: DefaultValueItem[]
 }
 
 /**
@@ -200,7 +221,11 @@ export const httpNodeDataSchema = z.object({
   // processor silently runs the `fail` arm. `'none'` still parses — persisted
   // http configs carry it as the legacy spelling of `continue`.
   error_strategy: errorStrategySchema,
-  default_value: z.array(z.object({ key: z.string(), type: z.string(), value: z.string() })),
+  // The shared item schema, so `type` is the 5-member enum here too. The
+  // legacy singular key is accepted on read so a stored graph still parses;
+  // it is never written again.
+  default_values: z.array(errorDefaultValueSchema).default([]),
+  default_value: z.array(errorDefaultValueSchema).optional(),
   // `_targetBranches` is DERIVED (canvas-owned) state and is deliberately not
   // declared here — see catalog/derived-keys.ts. It used to be REQUIRED, which
   // made every stored HTTP node report a warning nothing could clear.
@@ -299,6 +324,22 @@ export function validateHttpNodeData(data: Partial<HttpNodeData>): NodeValidatio
     })
   }
 
+  // Substitute checks. Unlike crud, http's resolver is PURE — no resource, no
+  // org cache — so the key check can run right here and reach both the panel
+  // and `validate_workflow`. The synthetic node id is only there to be
+  // stripped back off: `defaultValueTargets` returns node-relative paths.
+  errors.push(
+    ...validateDefaultValues({
+      strategy: normalizeErrorStrategy(data.error_strategy, ErrorStrategy.fail),
+      values: readDefaultValues(data),
+      targets: defaultValueTargets(
+        getHttpOutputVariables(data as HttpNodeData, 'n'),
+        'n',
+        httpManifest.errorHandling
+      ),
+    })
+  )
+
   return { isValid: errors.filter((e) => e.type === 'error').length === 0, errors }
 }
 
@@ -361,15 +402,13 @@ export function extractHttpVariableIds(data: HttpNodeData): string[] {
   }
 
   // Extract from default values
-  if (data.default_value) {
-    data.default_value.forEach((item) => {
-      if (item.key) {
-        extractVarIdsFromString(item.key).forEach((id) => variableIds.add(id))
-      }
-      if (item.value) {
-        extractVarIdsFromString(item.value).forEach((id) => variableIds.add(id))
-      }
-    })
+  for (const item of readDefaultValues(data)) {
+    if (item.key) {
+      extractVarIdsFromString(item.key).forEach((id) => variableIds.add(id))
+    }
+    if (item.value) {
+      extractVarIdsFromString(item.value).forEach((id) => variableIds.add(id))
+    }
   }
 
   return Array.from(variableIds)
@@ -449,13 +488,13 @@ export const httpManifest: NodeManifest<HttpNodeData> = {
     ssl_verify: true,
     // `fail` is the unified default (plan 21 §18.1). It is a no-op at run
     // time: the old `ErrorStrategy.default` shipped with an empty
-    // `default_value`, and the processor's `default` arm requires
-    // `default_value.length > 0`, so it always fell straight through to the
+    // `default_values`, and the processor's `default` arm requires
+    // `default_values.length > 0`, so it always fell straight through to the
     // fail return. What DOES change is `connection.branches` — the `fail`
     // branch is now visible on a default http node, which is the node telling
     // the truth about the handle it already emits (§16.4).
     error_strategy: ErrorStrategy.fail,
-    default_value: [],
+    default_values: [],
     _targetBranches: [
       { id: 'source', name: '', type: 'default' },
       { id: 'fail', name: 'Fail', type: 'fail' },
@@ -480,8 +519,18 @@ export const httpManifest: NodeManifest<HttpNodeData> = {
     ],
   },
   errorHandling: {
+    // The ONE type that keeps `continue` (plan 24 §6.5): a fire-and-forget
+    // outbound call is a real pattern, and this node is usually terminal —
+    // nothing downstream depends on what it produces.
     strategies: [ErrorStrategy.fail, ErrorStrategy.continue, ErrorStrategy.default],
     defaultStrategy: ErrorStrategy.fail,
+    // The fail arm writes these three before returning (plan 24 PR 2). It used
+    // to write NOTHING — `failOutputs: []` — which made the fail branch honest
+    // but useless: "notify support with the error" was not buildable.
+    failOutputs: ['status', 'error', 'success'],
+    // `status` and `success` are written on every path; only `error` is
+    // failure-exclusive.
+    failureOnlyOutputs: ['error'],
   },
   agent: {
     authorable: true,
@@ -489,7 +538,7 @@ export const httpManifest: NodeManifest<HttpNodeData> = {
       '`url`, `headers` and `params` may contain {{…}} refs; headers/params are newline-separated ' +
       '`key: value` lines. `body.type` picks the encoding and `body.data` holds positional payload ' +
       "items ({ key, value }). `error_strategy` is fail (default — exposes a wirable 'fail' branch " +
-      'handle), continue (succeed with the error as output), or default (apply `default_value` on ' +
+      'handle), continue (succeed with the error as output), or default (apply `default_values` on ' +
       "failure); successful responses always leave via 'source' with status/headers/body/success outputs.",
     examples: [
       {

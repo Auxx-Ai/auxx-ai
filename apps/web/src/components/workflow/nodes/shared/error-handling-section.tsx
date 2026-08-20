@@ -128,6 +128,12 @@ export function ErrorHandlingSection({
 
   if (!errorHandling) return null
 
+  // A type that declares exactly one policy has nothing to pick — plan 24 §6.5
+  // retired `continue` from every type whose outputs are the reason it exists,
+  // so `[fail]` is now the common case. A one-item `<Select>` reads as a
+  // choice that is being withheld; the copy alone is the honest rendering.
+  const onlyStrategy = errorHandling.strategies.length === 1 ? errorHandling.strategies[0] : null
+
   return (
     <Section
       className={className}
@@ -135,21 +141,25 @@ export function ErrorHandlingSection({
       collapsible={current === ErrorStrategy.default}
       open={current === ErrorStrategy.default}
       actions={
-        <Select value={current} onValueChange={setStrategy} disabled={isReadOnly}>
-          <SelectTrigger variant='default' size='sm' className='mb-0'>
-            <SelectValue placeholder='Select strategy' />
-          </SelectTrigger>
-          <SelectContent>
-            {errorHandling.strategies.map((strategy) => (
-              <SelectItem
-                key={strategy}
-                value={strategy}
-                description={STRATEGY_COPY[strategy].description}>
-                {STRATEGY_COPY[strategy].label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        onlyStrategy ? (
+          <span className='text-sm text-primary-500'>{STRATEGY_COPY[onlyStrategy].label}</span>
+        ) : (
+          <Select value={current} onValueChange={setStrategy} disabled={isReadOnly}>
+            <SelectTrigger variant='default' size='sm' className='mb-0'>
+              <SelectValue placeholder='Select strategy' />
+            </SelectTrigger>
+            <SelectContent>
+              {errorHandling.strategies.map((strategy) => (
+                <SelectItem
+                  key={strategy}
+                  value={strategy}
+                  description={STRATEGY_COPY[strategy].description}>
+                  {STRATEGY_COPY[strategy].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )
       }>
       {current === ErrorStrategy.default && children}
       {current === ErrorStrategy.fail && (

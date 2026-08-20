@@ -2,23 +2,14 @@
 
 'use client'
 
-import { normalizeErrorStrategy } from '@auxx/lib/workflow-engine/client'
-import { InputGroup, InputGroupAddon } from '@auxx/ui/components/input-group'
-import {
-  NumberInput,
-  NumberInputDecrement,
-  NumberInputField,
-  NumberInputIncrement,
-  NumberInputScrubber,
-} from '@auxx/ui/components/input-number'
-import { useCallback } from 'react'
-import { CodeEditor } from '~/components/schema-editor/ui/code-editor'
+import { getHttpOutputVariables, getManifest } from '@auxx/lib/workflow-engine/client'
+import { useCallback, useMemo } from 'react'
+import { DefaultValuesEditor } from '~/components/workflow/nodes/shared/default-values-editor'
 import {
   ErrorHandlingSection,
   type ErrorStrategyUpdate,
 } from '~/components/workflow/nodes/shared/error-handling-section'
-import { Editor } from '~/components/workflow/ui/prompt-editor'
-import { type DefaultValueItem, ErrorStrategy, type HttpNodeData } from '../types'
+import type { DefaultValueItem, HttpNodeData } from '../types'
 
 interface ErrorHandlingProps {
   nodeId: string
@@ -30,72 +21,38 @@ interface ErrorHandlingProps {
 /**
  * http's failure-policy panel.
  *
- * The strategy selector itself is the SHARED `ErrorHandlingSection`, driven by
- * `manifest.errorHandling.strategies` — this file used to own a bespoke
- * `<Select>` that duplicated crud's with different labels (plan 21 §15.4/§20.2).
- * What is left here is only the part that is genuinely http-specific: the
- * status/body/headers fields that make up the `default` substitute response.
+ * The strategy selector is the shared `ErrorHandlingSection` (plan 21 §15.4)
+ * and the substitutes editor is now the shared `DefaultValuesEditor` (plan 24
+ * §10.3) — so this file owns nothing but the wiring between them.
  *
- * That defaults editor is deliberately NOT redesigned — plan 24 owns it.
+ * What it USED to own was a fixed three-field form — Status Code, Response
+ * Body, Response Headers — with keys hard-coded as `status_code` / `headers` /
+ * `body`, no way to add or remove a row, and an upsert-only writer. Two of
+ * those three keys were wrong and the third was shadowed:
+ * `processDefaultValues` filed every key under `result.body[key]`, so the
+ * Status Code control set `body.status_code` — a path declared nowhere — while
+ * `{{Http.status}}` stayed hard-coded at 200 (plan 24 §9.1).
+ *
+ * Drawing the keys from `resolveOutputs` fixes that mechanically rather than
+ * by patching the three handlers: the picked key IS the declared output path,
+ * so `status` reaches `status`. The three fields are still reachable — they
+ * are three of the six entries in the picker — alongside `success`, `error`
+ * and `response`, which the old form could not express at all.
  */
 export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHandlingProps) {
-  // Read through the normalizer: persisted http nodes carry `'none'`, the
-  // legacy spelling of `continue` (plan 21 §15.1). The alias is never written
-  // back.
-  const errorStrategy = normalizeErrorStrategy(config?.error_strategy)
-
-  // Helper function to get default value by key
-  const getDefaultValue = (key: string): string => {
-    const item = config?.default_value?.find((item: DefaultValueItem) => item.key === key)
-    return item?.value || ''
-  }
-
-  // Helper function to update default value
-  const updateDefaultValue = (key: string, value: string, type: string = 'string') => {
-    const currentDefaults = config?.default_value || []
-    const existingIndex = currentDefaults.findIndex((item: DefaultValueItem) => item.key === key)
-
-    let newDefaults: DefaultValueItem[]
-    if (existingIndex >= 0) {
-      // Update existing value
-      newDefaults = [...currentDefaults]
-      newDefaults[existingIndex] = { key, type, value }
-    } else {
-      // Add new value
-      newDefaults = [...currentDefaults, { key, type, value }]
-    }
-
-    onChange({ default_value: newDefaults })
-  }
-
   const handleStrategyChange = useCallback(
     (update: ErrorStrategyUpdate) => onChange(update as Partial<HttpNodeData>),
     [onChange]
   )
 
-  const handleStatusCodeChange = useCallback(
-    (value: number | undefined) => {
-      updateDefaultValue('status_code', (value ?? 200).toString(), 'number')
-    },
-    // biome-ignore lint/correctness/useExhaustiveDependencies: updateDefaultValue is intentionally used as dependency
-    [updateDefaultValue]
+  const handleDefaultValuesChange = useCallback(
+    (values: DefaultValueItem[]) => onChange({ default_values: values }),
+    [onChange]
   )
 
-  const handleHeadersChange = useCallback(
-    (value: string) => {
-      updateDefaultValue('headers', value, 'object')
-    },
-    // biome-ignore lint/correctness/useExhaustiveDependencies: updateDefaultValue is intentionally used as dependency
-    [updateDefaultValue]
-  )
-
-  const handleBodyChange = useCallback(
-    (value: string) => {
-      updateDefaultValue('body', value, 'string')
-    },
-    // biome-ignore lint/correctness/useExhaustiveDependencies: updateDefaultValue is intentionally used as dependency
-    [updateDefaultValue]
-  )
+  // http's resolver is pure — no resource, no org cache — so the targets need
+  // nothing but the node's own data.
+  const outputVariables = useMemo(() => getHttpOutputVariables(config, nodeId), [config, nodeId])
 
   return (
     <ErrorHandlingSection
@@ -103,58 +60,16 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
       nodeType='http'
       errorStrategy={config?.error_strategy}
       onChange={handleStrategyChange}>
-      {errorStrategy === ErrorStrategy.default && (
-        <div className='space-y-3'>
-          {/* Status Code */}
-          <NumberInput
-            value={parseInt(getDefaultValue('status_code'), 10) || 200}
-            onValueChange={handleStatusCodeChange}
-            min={100}
-            max={599}
-            step={1}
-            disabled={isReadOnly}>
-            <div className='flex flex-col gap-1'>
-              <NumberInputScrubber htmlFor='status-code'>Status Code</NumberInputScrubber>
-              <InputGroup>
-                <InputGroupAddon align='inline-start'>
-                  <NumberInputDecrement />
-                </InputGroupAddon>
-                <NumberInputField id='status-code' placeholder='200' />
-                <InputGroupAddon align='inline-end'>
-                  <NumberInputIncrement />
-                </InputGroupAddon>
-              </InputGroup>
-            </div>
-          </NumberInput>
-
-          {/* Body */}
-          <div className='flex flex-col gap-1'>
-            <Editor
-              title={<label className='text-xs'>Response Body</label>}
-              value={getDefaultValue('body') || ''}
-              onChange={handleBodyChange}
-              nodeId={nodeId}
-              placeholder='Enter default response body or use {{variables}}...'
-              minHeight={100}
-              readOnly={isReadOnly}
-              trigger='{{'
-            />
-          </div>
-
-          {/* Headers */}
-          <div className='flex flex-col gap-1'>
-            <label className='text-xs font-medium'>Response Headers</label>
-            <CodeEditor
-              value={getDefaultValue('headers') || '{}'}
-              onUpdate={handleHeadersChange}
-              readOnly={isReadOnly}
-              className='h-[128px] rounded-md border border-primary-200'
-              editorWrapperClassName='h-[100px]'
-              hideTopMenu={false}
-            />
-          </div>
-        </div>
-      )}
+      <DefaultValuesEditor
+        nodeId={nodeId}
+        declaredOutputs={outputVariables}
+        errorHandling={getManifest('http')?.errorHandling}
+        // The legacy singular key is still on stored graphs until plan 21
+        // §19's migration runs; reading both keeps those nodes editable.
+        values={config?.default_values ?? config?.default_value ?? []}
+        onChange={handleDefaultValuesChange}
+        isReadOnly={isReadOnly}
+      />
     </ErrorHandlingSection>
   )
 }

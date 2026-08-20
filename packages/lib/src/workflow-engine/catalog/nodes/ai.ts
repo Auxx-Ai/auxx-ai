@@ -606,7 +606,9 @@ export const aiManifest: NodeManifest<AiNodeData> = {
    * until they are.
    */
   errorHandling: {
-    strategies: [ErrorStrategy.fail, ErrorStrategy.continue, ErrorStrategy.default],
+    // No `continue` — the generated text IS the point of this node
+    // (plan 24 §6.5). `default` substitutes a declared stand-in instead.
+    strategies: [ErrorStrategy.fail, ErrorStrategy.default],
     defaultStrategy: ErrorStrategy.fail,
   },
   agent: {
