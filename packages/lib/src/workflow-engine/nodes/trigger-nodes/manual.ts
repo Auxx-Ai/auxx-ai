@@ -130,9 +130,18 @@ export class ManualTriggerProcessor extends BaseNodeProcessor {
     contextManager: ExecutionContextManager
   ): Promise<{ inputType?: BaseType; typeOptions?: TypeOptions; label?: string } | null> {
     const workflow = (await contextManager.getVariable('sys.workflow')) as
-      | { graph?: { nodes?: Array<Record<string, any>> } }
+      | { nodes?: Array<Record<string, any>> }
       | undefined
-    const nodes = workflow?.graph?.nodes
+    // `sys.workflow` is the TRANSFORMED workflow (`WorkflowGraphBuilder`), whose
+    // `graph` is rebuilt as `{ edges }` alone — the nodes sit at the top level.
+    // Reading `graph.nodes` instead made this return null on every production
+    // run, so every non-STRING input silently fell back to the STRING contract
+    // and a multi-value field never published `values`/`count`.
+    //
+    // Top-level `nodes` is the ONLY shape any writer produces. The single-node
+    // executor sets a `{ id, name, workflowId }` stub with no nodes at all, and
+    // returning null there is correct: an isolated node run has no trigger form.
+    const nodes = workflow?.nodes
     if (!Array.isArray(nodes)) return null
 
     const formInputNode = nodes.find((candidate) => (candidate?.nodeId ?? candidate?.id) === nodeId)
