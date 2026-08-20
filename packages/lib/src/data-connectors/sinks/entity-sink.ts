@@ -106,6 +106,48 @@ function rejectsFormat(fieldType: string | undefined, value: unknown): boolean {
   return !fieldValueSchemas[schemaKey].safeParse(value).success
 }
 
+/** Field types whose value is a LIST, delivered by a connector as a comma string. */
+const LIST_VALUED_TYPES = new Set(['TAGS', 'MULTI_SELECT'])
+
+/**
+ * Split a connector's comma-delimited string into the list a `TAGS`/`MULTI_SELECT`
+ * field actually wants.
+ *
+ * A connector cannot source an array — the fan-out drops array-shaped source values
+ * before this layer (`hasArrayShapedSource`, "connectors cannot source arrays"), and
+ * the multi path below drops them again. So the only shape a connector CAN deliver for
+ * a list field is a comma string. Without this split that string was written whole, and
+ * a two-tag source landed as one compound tag (`'vip, gift'` as a single tag value)
+ * — i.e. a connector could never write more than one tag to a tag column.
+ *
+ * `normalizeFieldValue` already splits a comma string for these types, but the
+ * connector write path does not route through it; splitting here hands the write path
+ * the array form, which it does understand.
+ *
+ * Deliberately narrow:
+ * - LIST-valued types only. A comma is ordinary content in `TEXT` and would be
+ *   destroyed by splitting.
+ * - Non-`isMulti` only. The row-level multi path is per-row by construction and
+ *   explicitly refuses arrays; leave it exactly as it was.
+ * - A value with no comma is returned untouched, so the overwhelmingly common
+ *   single-tag case keeps its existing behaviour byte for byte.
+ */
+export function coerceListValue(
+  fieldType: string | undefined,
+  value: unknown,
+  isMulti: boolean
+): unknown {
+  if (isMulti || !fieldType || !LIST_VALUED_TYPES.has(fieldType)) return value
+  if (typeof value !== 'string' || !value.includes(',')) return value
+  const parts = value
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean)
+  // `,` / `, ,` carries no tags — fall through to the original value so the existing
+  // blank handling decides, rather than writing an empty array over the current list.
+  return parts.length > 0 ? parts : value
+}
+
 /**
  * Remove the write-set entry carrying a unique-value conflict (B1 per-value
  * tolerance). Prefers the error's `fieldId` when it names a write-set key, else
@@ -416,7 +458,7 @@ async function buildWriteSet(
     current = await ctx.crud.getFieldValues(recordId)
   }
 
-  for (const [rawRef, value] of Object.entries(record.fields)) {
+  for (const [rawRef, sourceValue] of Object.entries(record.fields)) {
     const strategy = strategyFor(rawRef)
     if (strategy === 'ignore') continue
 
@@ -430,6 +472,12 @@ async function buildWriteSet(
     const isMulti =
       !identityRefs.has(rawRef) &&
       (fieldRow?.options as { multi?: boolean } | null | undefined)?.multi === true
+
+    // A list-valued field (TAGS / MULTI_SELECT) arrives as a comma string, because a
+    // connector cannot source an array. Split it into the list form the write path
+    // understands — otherwise a multi-tag source writes ONE compound tag. Every
+    // reference to `value` below is post-coercion by design.
+    const value = coerceListValue(fieldRow?.type, sourceValue, isMulti)
 
     // Pre-flight the format-validated types (EMAIL/URL/PHONE_INTL): a value the
     // write path would refuse costs the WHOLE record if it throws inside
