@@ -126,8 +126,14 @@ vi.mock('../../users/system-user-service', () => ({
   SystemUserService: { getSystemUserForActions },
 }))
 
-// No plan/quota lookup — the guard needs a live database and is not what is under test.
-vi.mock('../../usage/create-usage-guard', () => ({ createUsageGuard: async () => null }))
+/**
+ * The guard needs a live database, so it is faked. `null` is the real fail-open
+ * shape (Redis unavailable) and is the default for every test here that is not
+ * about metering; the metering tests swap in a stub for the call they assert on.
+ */
+const consume = vi.fn(async () => ({ allowed: true, current: 1, limit: 10 }))
+let usageGuard: { consume: typeof consume } | null = null
+vi.mock('../../usage/create-usage-guard', () => ({ createUsageGuard: async () => usageGuard }))
 
 vi.mock('../../workflow-engine', () => ({
   RedisWorkflowExecutionReporter: class {
@@ -272,7 +278,10 @@ describe('createWorkflowRun — the sink that owns the resolution', () => {
     graph,
   }
 
-  async function create(userId: string | null | undefined) {
+  async function create(
+    userId: string | null | undefined,
+    extra: { endUserId?: string | null } = {}
+  ) {
     const { createWorkflowRun } = await import('../../workflows/workflow-execution-service')
     const { database } = await import('@auxx/database')
     responses = [{ from: 'WorkflowRun', rows: [] }]
@@ -282,8 +291,15 @@ describe('createWorkflowRun — the sink that owns the resolution', () => {
       inputs: {},
       mode: 'production',
       userId,
+      ...extra,
     })
   }
+
+  beforeEach(() => {
+    usageGuard = null
+    consume.mockClear()
+    consume.mockResolvedValue({ allowed: true, current: 1, limit: 10 })
+  })
 
   it.each([
     ['null', null],
@@ -300,5 +316,59 @@ describe('createWorkflowRun — the sink that owns the resolution', () => {
 
     expect(insertSpy.values?.createdBy).toBe(AUTHOR)
     expect(getSystemUserForActions).not.toHaveBeenCalled()
+  })
+
+  /**
+   * `endUserId` is an FK to `EndUser.id`, not `User.id`, and exists for exactly
+   * one door: a public share link. The public-share route used to hand-insert
+   * its own row *because* this parameter did not exist — which is how that door
+   * skipped the metering below. Every other door must keep writing `null`.
+   */
+  describe('endUserId', () => {
+    it('is null when the caller does not pass one', async () => {
+      await create(AUTHOR)
+
+      expect(insertSpy.values?.endUserId).toBeNull()
+    })
+
+    it('is written through for a public-share run', async () => {
+      await create(null, { endUserId: 'eus_1' })
+
+      expect(insertSpy.values?.endUserId).toBe('eus_1')
+      // Still the system user — an end user is not a `User`.
+      expect(insertSpy.values?.createdBy).toBe(SYSTEM_USER)
+    })
+  })
+
+  /**
+   * The metering every production door inherits by coming through here. This is
+   * the whole reason a door may not hand-insert its own `WorkflowRun`.
+   */
+  describe('the usage guard', () => {
+    it('consumes one `workflowRuns` before inserting', async () => {
+      usageGuard = { consume }
+
+      await create(AUTHOR)
+
+      expect(consume).toHaveBeenCalledWith(ORG, 'workflowRuns', { userId: AUTHOR })
+      expect(insertSpy.values).toBeDefined()
+    })
+
+    it('refuses over the limit — UsageLimitError, and no row', async () => {
+      usageGuard = { consume }
+      consume.mockResolvedValue({ allowed: false, current: 10, limit: 10 })
+      const { UsageLimitError } = await import('../../errors')
+
+      await expect(create(AUTHOR)).rejects.toBeInstanceOf(UsageLimitError)
+      expect(insertSpy.values).toBeUndefined()
+    })
+
+    it('meters an anonymous public-share run against the org, with no user', async () => {
+      usageGuard = { consume }
+
+      await create(null, { endUserId: 'eus_1' })
+
+      expect(consume).toHaveBeenCalledWith(ORG, 'workflowRuns', { userId: undefined })
+    })
   })
 })

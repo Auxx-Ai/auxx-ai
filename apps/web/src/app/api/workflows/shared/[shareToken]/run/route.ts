@@ -3,7 +3,7 @@
 import type { WorkflowShareConfig } from '@auxx/database'
 import { database, schema } from '@auxx/database'
 import { WorkflowRunStatus, WorkflowTriggerSource } from '@auxx/database/enums'
-import { SystemUserService } from '@auxx/lib/users'
+import { UsageLimitError } from '@auxx/lib/errors'
 import { getApiRateLimiter, getClientIp } from '@auxx/lib/utils/rate-limiter'
 import {
   checkWorkflowRateLimit,
@@ -13,12 +13,12 @@ import {
   WorkflowEngine,
   WorkflowEventType,
   WorkflowExecutionStatus,
-  WorkflowGraphBuilder,
   WorkflowPausedException,
   type WorkflowRateLimitConfig,
   type WorkflowTriggerEvent,
   WorkflowTriggerType,
 } from '@auxx/lib/workflow-engine'
+import { createWorkflowRun } from '@auxx/lib/workflows'
 import { createScopedLogger } from '@auxx/logger'
 import { RedisEventRouter } from '@auxx/redis'
 import {
@@ -26,7 +26,7 @@ import {
   incrementEndUserRunCount,
   verifyWorkflowPassport,
 } from '@auxx/services/workflow-share'
-import { desc, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('shared-workflow-run-api')
@@ -174,47 +174,49 @@ export async function POST(
     )
   }
 
-  // Get next sequence number for workflow runs
-  const [lastRun] = await database
-    .select({ sequenceNumber: schema.WorkflowRun.sequenceNumber })
-    .from(schema.WorkflowRun)
-    .where(eq(schema.WorkflowRun.workflowAppId, sharedWorkflow.id))
-    .orderBy(desc(schema.WorkflowRun.sequenceNumber))
-    .limit(1)
-  const sequenceNumber = (lastRun?.sequenceNumber ?? 0) + 1
-
-  // Build graph to count nodes for progress tracking
-  const graph = WorkflowGraphBuilder.buildGraph(publishedWorkflow)
-  const nodeCount = graph.nodes.size
-
-  // Get system user for this organization (public runs don't have authenticated users)
-  const systemUserId = await SystemUserService.getSystemUserForActions(
-    sharedWorkflow.organizationId
-  )
-
-  // Create workflow run record with PUBLIC_SHARE trigger source
-  const [workflowRun] = await database
-    .insert(schema.WorkflowRun)
-    .values({
+  // Every door that starts a production run goes through `createWorkflowRun` —
+  // it owns the sequence number, the node count, the system-user resolution AND
+  // the `workflowRuns` usage guard. This route used to hand-insert the row, so a
+  // public share link executed production workflows — AI nodes, HTTP calls, CRUD
+  // writes — without ever consuming the org's quota. Same hole #1774 closed for
+  // webhooks, and this door is the one anonymous end users can reach.
+  let workflowRun: Awaited<ReturnType<typeof createWorkflowRun>>
+  try {
+    workflowRun = await createWorkflowRun(database, {
+      workflow: publishedWorkflow,
       organizationId: sharedWorkflow.organizationId,
-      workflowAppId: sharedWorkflow.id,
-      workflowId: publishedWorkflow.id,
-      sequenceNumber,
-      type: publishedWorkflow.triggerType || WorkflowTriggerType.MANUAL,
-      triggeredFrom: WorkflowTriggerSource.PUBLIC_SHARE,
-      version: publishedWorkflow.version.toString(),
-      graph: publishedWorkflow.graph || {},
       inputs,
-      status: WorkflowRunStatus.RUNNING,
-      totalTokens: 0,
-      totalSteps: nodeCount,
-      createdBy: systemUserId,
+      mode: 'production',
+      // Anonymous end user — not a `User`. `createWorkflowRun` resolves the org's
+      // system user for `createdBy`; the end user is recorded in `endUserId`.
+      userId: null,
+      triggeredFrom: WorkflowTriggerSource.PUBLIC_SHARE,
       endUserId: passport.endUserId,
     })
-    .returning()
+  } catch (error) {
+    // A run the org has no quota for is a refusal, not a server fault — but the
+    // caller here is a stranger on the internet, not the org. Log the real
+    // numbers; tell the visitor nothing about the org's plan. 503, because the
+    // caller is not unauthorized (403) and nothing they do changes the outcome
+    // this month (429).
+    if (error instanceof UsageLimitError) {
+      logger.warn('Public share run refused — plan limit reached', {
+        shareToken,
+        workflowAppId: sharedWorkflow.id,
+        metric: error.metric,
+        current: error.current,
+        limit: error.limit,
+      })
+      return NextResponse.json(
+        { error: 'This workflow is temporarily unavailable. Please try again later.' },
+        { status: 503 }
+      )
+    }
+    throw error
+  }
 
   logger.info('Created shared workflow run', {
-    workflowRunId: workflowRun!.id,
+    workflowRunId: workflowRun.id,
     workflowAppId: sharedWorkflow.id,
     endUserId: passport.endUserId,
     shareToken,
@@ -313,22 +315,22 @@ export async function POST(
         // Send initial run-created event
         send({
           event: WorkflowEventType.RUN_CREATED,
-          workflowRunId: workflowRun!.id,
+          workflowRunId: workflowRun.id,
           timestamp: new Date().toISOString(),
           data: {
-            id: workflowRun!.id,
-            status: workflowRun!.status,
-            sequenceNumber: workflowRun!.sequenceNumber,
+            id: workflowRun.id,
+            status: workflowRun.status,
+            sequenceNumber: workflowRun.sequenceNumber,
           },
         })
 
         // Set up Redis event subscription
         router = RedisEventRouter.getInstance('shared-workflow-sse')
         logger.info('Setting up Redis event subscription for shared workflow', {
-          workflowRunId: workflowRun!.id,
+          workflowRunId: workflowRun.id,
         })
 
-        handlerId = await router.subscribeToWorkflowEvents(workflowRun!.id, (event: any) => {
+        handlerId = await router.subscribeToWorkflowEvents(workflowRun.id, (event: any) => {
           try {
             // Filter events based on showWorkflowDetails setting
             const filteredEvent = filterEventForPublic(event)
@@ -353,13 +355,13 @@ export async function POST(
           } catch (error) {
             logger.error('Error handling shared workflow event', {
               error: error instanceof Error ? error.message : String(error),
-              workflowRunId: workflowRun!.id,
+              workflowRunId: workflowRun.id,
             })
           }
         })
 
         // Create reporter for SSE events
-        const reporter = new RedisWorkflowExecutionReporter(workflowRun!.id)
+        const reporter = new RedisWorkflowExecutionReporter(workflowRun.id)
 
         // Initialize and execute workflow engine
         const workflowEngine = new WorkflowEngine()
@@ -372,7 +374,8 @@ export async function POST(
           data: inputs,
           timestamp: new Date(),
           organizationId: sharedWorkflow.organizationId,
-          userId: systemUserId,
+          // `createWorkflowRun` resolved the org's system user for `createdBy`.
+          userId: workflowRun.createdBy ?? undefined,
         }
 
         // Execute workflow asynchronously
@@ -380,7 +383,7 @@ export async function POST(
           .executeWorkflow(publishedWorkflow, triggerEvent, {
             debug: false,
             organizationId: sharedWorkflow.organizationId,
-            workflowRunId: workflowRun!.id,
+            workflowRunId: workflowRun.id,
             workflowAppId: sharedWorkflow.id,
             reporter,
           })
@@ -395,10 +398,10 @@ export async function POST(
                     ? WorkflowRunStatus.SUCCEEDED
                     : WorkflowRunStatus.FAILED,
                 error: result.error,
-                elapsedTime: (Date.now() - new Date(workflowRun!.createdAt).getTime()) / 1000,
+                elapsedTime: (Date.now() - new Date(workflowRun.createdAt).getTime()) / 1000,
                 finishedAt: new Date(),
               })
-              .where(eq(schema.WorkflowRun.id, workflowRun!.id))
+              .where(eq(schema.WorkflowRun.id, workflowRun.id))
           })
           .catch(async (error) => {
             // Handle workflow pause — expected behavior, not an error
@@ -410,10 +413,10 @@ export async function POST(
                   pausedAt: new Date(),
                   pausedNodeId: error.state.currentNodeId,
                 })
-                .where(eq(schema.WorkflowRun.id, workflowRun!.id))
+                .where(eq(schema.WorkflowRun.id, workflowRun.id))
 
               logger.info('Shared workflow execution paused', {
-                workflowRunId: workflowRun!.id,
+                workflowRunId: workflowRun.id,
                 nodeId: error.state.currentNodeId,
                 reason: error.state.pauseReason?.type,
               })
@@ -422,7 +425,7 @@ export async function POST(
 
             logger.error('Shared workflow execution failed', {
               error: error instanceof Error ? error.message : String(error),
-              workflowRunId: workflowRun!.id,
+              workflowRunId: workflowRun.id,
             })
 
             // Update workflow run with error
@@ -433,11 +436,11 @@ export async function POST(
                 error: error instanceof Error ? error.message : 'Workflow execution failed',
                 finishedAt: new Date(),
               })
-              .where(eq(schema.WorkflowRun.id, workflowRun!.id))
+              .where(eq(schema.WorkflowRun.id, workflowRun.id))
 
             send({
               event: WorkflowEventType.ERROR,
-              workflowRunId: workflowRun!.id,
+              workflowRunId: workflowRun.id,
               timestamp: new Date().toISOString(),
               data: {
                 message: error instanceof Error ? error.message : 'Workflow execution failed',
@@ -490,7 +493,7 @@ export async function POST(
 
         send({
           event: WorkflowEventType.ERROR,
-          workflowRunId: workflowRun?.id || 'unknown',
+          workflowRunId: workflowRun.id,
           timestamp: new Date().toISOString(),
           data: {
             message: error instanceof Error ? error.message : 'Failed to start workflow',
@@ -509,7 +512,7 @@ export async function POST(
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
-      'X-Run-Id': workflowRun?.id || '',
+      'X-Run-Id': workflowRun.id,
     },
   })
 }

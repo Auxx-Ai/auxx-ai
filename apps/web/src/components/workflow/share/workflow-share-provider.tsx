@@ -7,6 +7,7 @@ import { createContext, type ReactNode, useCallback, useContext, useRef } from '
 import { createStore, type StoreApi, useStore } from 'zustand'
 import { useEnv } from '~/providers/dehydrated-state-provider'
 import type { WorkflowSiteInfo } from './hooks/use-workflow-share'
+import { readErrorMessage } from './utils/error-message'
 
 const WORKFLOW_PASSPORT_STORAGE_PREFIX = 'auxx_passport_workflow_'
 
@@ -158,10 +159,8 @@ export function WorkflowShareProvider({ shareToken, children }: WorkflowSharePro
         credentials: 'include',
       })
       if (!res.ok) {
-        const error = await res
-          .json()
-          .catch(() => ({ message: 'You dont have access to this workflow' }))
-        throw new Error(error.message || 'You dont have access to this workflow')
+        const body = await res.json().catch(() => null)
+        throw new Error(readErrorMessage(body, 'You dont have access to this workflow'))
       }
       const { data } = await res.json()
       return {
