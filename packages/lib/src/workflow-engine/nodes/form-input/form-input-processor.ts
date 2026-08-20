@@ -234,7 +234,14 @@ function setTypedOutputVariables(
       setFileOutputs(nodeId, value, typeOptions?.file?.allowMultiple ?? false, ctx)
       break
 
+    // TAGS and ARRAY are inherently multi-value. Both MUST land here: the
+    // catalog's `getFormInputOutputVariables` advertises `values`/`count` for
+    // the pair, so routing only TAGS left an ARRAY input publishing a scalar
+    // `value` while its declared contract promised an array — the exact
+    // mismatch that makes a downstream Loop fail with "Expected array but got
+    // undefined".
     case BaseType.TAGS:
+    case BaseType.ARRAY:
       setArrayOutputs(nodeId, value, ctx)
       break
 

@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/nodes/trigger-nodes/manual.test.ts
 
 import { describe, expect, it, vi } from 'vitest'
+import { getFormInputOutputVariables } from '../../catalog/nodes/form-input'
 import { ExecutionContextManager } from '../../core/execution-context'
 import type { WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
@@ -114,16 +115,17 @@ describe('ManualTriggerProcessor', () => {
     contextManager.setVariable('sys.triggerData', { 'form-input-1': 'true' })
     // `inputType` / `typeOptions` are read off the FORM-INPUT node's data, which
     // its own panel writes — the manual trigger's data carries neither.
+    // Top-level `nodes` is the shape the engine really publishes — see
+    // `WorkflowGraphBuilder.transformNodes`. Asserting against `graph.nodes`
+    // here passed while production silently fell back to STRING.
     contextManager.setVariable('sys.workflow', {
-      graph: {
-        nodes: [
-          {
-            nodeId: 'form-input-1',
-            type: 'form-input',
-            data: { inputType: 'boolean', label: 'Confirm' },
-          },
-        ],
-      },
+      nodes: [
+        {
+          nodeId: 'form-input-1',
+          type: 'form-input',
+          data: { inputType: 'boolean', label: 'Confirm' },
+        },
+      ],
     })
 
     await run(contextManager)
@@ -141,28 +143,28 @@ describe('ManualTriggerProcessor', () => {
    * assert what an execution genuinely writes, which is what `{{...}}` resolves
    * against.
    */
-  const selectGraph = (multiple: boolean) => ({
-    graph: {
-      nodes: [
-        {
-          nodeId: 'form-input-1',
-          type: 'form-input',
-          data: {
-            inputType: 'enum',
-            label: 'Areas',
-            typeOptions: {
-              enum: {
-                multiple,
-                options: [
-                  { label: 'Billing', value: 'billing' },
-                  { label: 'Shipping', value: 'shipping' },
-                ],
-              },
-            },
-          },
+  const selectNode = (multiple: boolean) => ({
+    nodeId: 'form-input-1',
+    type: 'form-input',
+    data: {
+      inputType: 'enum',
+      label: 'Areas',
+      typeOptions: {
+        enum: {
+          multiple,
+          options: [
+            { label: 'Billing', value: 'billing' },
+            { label: 'Shipping', value: 'shipping' },
+          ],
         },
-      ],
+      },
     },
+  })
+
+  /** The engine's real shape: nodes at the top level, `graph` holding edges. */
+  const selectGraph = (multiple: boolean) => ({
+    nodes: [selectNode(multiple)],
+    graph: { edges: [] },
   })
 
   it('writes a scalar `value` for a single SELECT', async () => {
@@ -188,6 +190,65 @@ describe('ManualTriggerProcessor', () => {
     expect(await contextManager.getVariable('form-input-1.values')).toEqual(['billing', 'shipping'])
     expect(await contextManager.getVariable('form-input-1.count')).toBe(2)
     expect(await contextManager.getVariable('form-input-1.isEmpty')).toBe(false)
+  })
+
+  /**
+   * The regression behind a real "Expected array but got undefined for
+   * itemsSource: …values" failure: `sys.workflow` carries its nodes at the TOP
+   * level, but the lookup read `graph.nodes` only, so it returned null on every
+   * production run and the STRING fallback published `value` instead of
+   * `values`.
+   *
+   * Pinned to the transformed shape alone — the only one any writer produces.
+   */
+  it('resolves the form-input config off the transformed workflow', async () => {
+    const contextManager = runContext('user-1')
+    contextManager.setVariable('sys.triggerData', { 'form-input-1': ['billing'] })
+    contextManager.setVariable('sys.workflow', {
+      nodes: [selectNode(true)],
+      graph: { edges: [] },
+    })
+
+    await run(contextManager)
+
+    expect(await contextManager.getVariable('form-input-1.values')).toEqual(['billing'])
+    expect(await contextManager.getVariable('form-input-1.inputType')).toBe('enum')
+  })
+
+  /**
+   * Anti-drift: what the catalog ADVERTISES a node produces must be what an
+   * execution actually WRITES. The two live in different files
+   * (`getFormInputOutputVariables` vs `setTypedOutputVariables`) and had already
+   * drifted twice — a multi SELECT and an ARRAY input each promised
+   * `values`/`count` while the engine wrote a scalar `value`, which is what
+   * makes a downstream Loop fail with "Expected array but got undefined".
+   *
+   * Asserting the declared paths are all populated catches the next divergence
+   * without anyone having to remember both files exist.
+   */
+  it.each([
+    ['tags', undefined],
+    ['array', undefined],
+    ['enum', { enum: { multiple: true, options: [{ label: 'A', value: 'a' }] } }],
+  ])('writes every variable the catalog advertises for %s', async (inputType, typeOptions) => {
+    const data = { inputType, label: 'Areas', typeOptions } as never
+    const contextManager = runContext('user-1')
+    contextManager.setVariable('sys.triggerData', { 'form-input-1': ['a', 'b'] })
+    contextManager.setVariable('sys.workflow', {
+      nodes: [{ nodeId: 'form-input-1', type: 'form-input', data }],
+      graph: { edges: [] },
+    })
+
+    await run(contextManager)
+
+    const declared = getFormInputOutputVariables(data, 'form-input-1')
+    expect(declared.length).toBeGreaterThan(0)
+    for (const variable of declared) {
+      expect(
+        await contextManager.getVariable(variable.id),
+        `${inputType} declares ${variable.id} but the engine never wrote it`
+      ).toBeDefined()
+    }
   })
 
   /**
