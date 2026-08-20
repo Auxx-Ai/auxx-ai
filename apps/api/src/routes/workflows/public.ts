@@ -4,7 +4,7 @@
  * Public workflow routes (no authentication required)
  */
 
-import { hydrateGraph } from '@auxx/lib/workflow-engine/client'
+import { HYDRATION_OPTIONS, hydrateGraph } from '@auxx/lib/workflow-engine/client'
 import { getPublicWorkflowApp } from '@auxx/services/workflows'
 import { Hono } from 'hono'
 
@@ -100,7 +100,7 @@ publicWorkflows.get('/public/:id', async (c) => {
       // shape. `@auxx/services` is tier 2 and cannot import `@auxx/lib`, so the
       // hydration for this seam lives here at the app layer rather than in
       // `get-public-workflow-app.ts`.
-      graph: hydrateGraph(publishedWorkflow.graph as never),
+      graph: hydrateGraph(publishedWorkflow.graph as never, HYDRATION_OPTIONS),
       envVars: sanitizeEnvVarsForPublic(publishedWorkflow.envVars as EnvVar[] | null | undefined),
     },
   })

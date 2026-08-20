@@ -3,6 +3,7 @@
 'use client'
 
 import {
+  DEHYDRATION_OPTIONS,
   dehydrateGraph,
   deriveTriggerColumns,
   stripDerivedKeys,
@@ -294,11 +295,20 @@ export function WorkflowSaveProvider({ children }: { children: React.ReactNode }
       // `graph` object, so posting the live camera would rewrite the authored
       // starting view on every save, and omitting the key would erase it.
       const authoredViewport = useWorkflowStore.getState().authoredViewport
-      const stored = dehydrateGraph({
-        nodes: cleanNodes,
-        edges: cleanEdges,
-        ...(authoredViewport ? { viewport: authoredViewport } : {}),
-      } as Parameters<typeof dehydrateGraph>[0])
+      // DEHYDRATION_OPTIONS is NOT optional here. Without it `skipDefaults`
+      // defaults to off, so the strip deletes every `node.data` key whose value
+      // equals its manifest default — while every server reader hydrates with
+      // `skipDefaults: true` and never puts it back. That silently amputates
+      // real config (`http.method`, `resource-trigger.operation`,
+      // `scheduled.config`, `wait.waitType`) on the first canvas save.
+      const stored = dehydrateGraph(
+        {
+          nodes: cleanNodes,
+          edges: cleanEdges,
+          ...(authoredViewport ? { viewport: authoredViewport } : {}),
+        } as Parameters<typeof dehydrateGraph>[0],
+        DEHYDRATION_OPTIONS
+      )
 
       payload.graph = stored
       payload.triggerType = triggerType
