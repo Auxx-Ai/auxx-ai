@@ -42,18 +42,49 @@ function describeBranch(branch: NodeBranch): string {
  * Worth the few lines because a flat rejection is retried verbatim: the logged
  * turn re-issued `branch: "IF"` unchanged after re-reading the whole workflow,
  * because nothing in the rejection pointed at the branch that had taken `IF`'s
- * place (plan 21 §9.2/§10.5). Names AND ids are candidates, since either is a
- * legal address.
+ * place (plan 21 §9.2/§10.5).
+ *
+ * Ids are always candidates; a name is one only if it is an address. A
+ * `positionalName` branch is offered by id alone — suggesting its label would
+ * hand back the very string that cannot be used, and acting on the suggestion
+ * re-introduces the position bug (plan 28 §3.3). Those get {@link
+ * positionalLabelHit} instead, which explains itself.
  */
 function nearestBranches(branchRef: string, branches: NodeBranch[]): NodeBranch[] {
-  const candidates = branches.flatMap((b) => (b.name ? [b.name, b.id] : [b.id]))
+  const candidates = branches.flatMap((b) =>
+    b.name && !b.positionalName ? [b.name, b.id] : [b.id]
+  )
   const near = closestMatches(branchRef, candidates)
   const matched: NodeBranch[] = []
   for (const candidate of near) {
-    const branch = branches.find((b) => b.name === candidate || b.id === candidate)
+    const branch = branches.find(
+      (b) => (b.name === candidate && !b.positionalName) || b.id === candidate
+    )
     if (branch && !matched.includes(branch)) matched.push(branch)
   }
   return matched
+}
+
+/**
+ * The branch whose POSITIONAL label the caller just tried to address, if any.
+ *
+ * Exact match first, then the same edit-distance tolerance the "did you mean"
+ * uses, so `"CASE2"` is diagnosed as the positional attempt it is rather than
+ * falling through to a generic candidate list. What comes back is the branch
+ * currently WEARING that label — the answer to "which one did I mean?" at this
+ * instant, and the id that must be used in its place.
+ */
+function positionalLabelHit(branchRef: string, branches: NodeBranch[]): NodeBranch | undefined {
+  const positional = branches.filter((b) => b.positionalName && b.name)
+  if (positional.length === 0) return undefined
+  const needle = branchRef.toLowerCase()
+  const exact = positional.find((b) => b.name.toLowerCase() === needle)
+  if (exact) return exact
+  const [nearest] = closestMatches(
+    branchRef,
+    positional.map((b) => b.name)
+  )
+  return nearest ? positional.find((b) => b.name === nearest) : undefined
 }
 
 /**
@@ -65,7 +96,9 @@ function nearestBranches(branchRef: string, branches: NodeBranch[]): NodeBranch[
  *   nodes with several (if-else cases, classifier categories) are an error
  *   naming every branch — never a guess.
  * - Branch given: matched against `manifest.connection.branches(config)` by
- *   name then id; no match is an error naming the candidates.
+ *   name then id; no match is an error naming the candidates. A branch whose
+ *   name is a positional label (`positionalName`) is addressable by id ONLY,
+ *   and trying its label is its own error saying so.
  */
 export function resolveConnectionSpec(
   nodes: NodeMeta[],
@@ -108,10 +141,28 @@ export function resolveConnectionSpec(
   }
 
   const needle = branchRef.toLowerCase()
+  // Ids beat names on a tie, and a `positionalName` label is not tried at all:
+  // an if-else label is a function of array position, so `"CASE 2"` used to
+  // resolve to whatever was second at that instant and an inserted case
+  // silently re-pointed the edge (plan 28 §3.3).
   const match =
-    branches.find((b) => b.name.toLowerCase() === needle) ??
+    branches.find((b) => !b.positionalName && b.name.toLowerCase() === needle) ??
     branches.find((b) => b.id.toLowerCase() === needle)
   if (!match) {
+    const positional = positionalLabelHit(branchRef, branches)
+    if (positional) {
+      // Named, not merely listed: the logged turn re-issued a label verbatim
+      // because the rejection never said the label was the problem.
+      return err(
+        new BadRequestError(
+          `"${branchRef}" is a display label on node ${describeNode(source)}, not a branch ` +
+            'address. This node numbers its branches by position, so the label moves to a ' +
+            'different branch as soon as a case is added or removed. Address it by id: the ' +
+            `branch labelled "${positional.name}" is currently "${positional.id}". ` +
+            `Available branches: ${branches.map(describeBranch).join(', ')}.`
+        )
+      )
+    }
     const near = nearestBranches(branchRef, branches)
     return err(
       new BadRequestError(

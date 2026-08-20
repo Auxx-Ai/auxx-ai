@@ -153,7 +153,6 @@
           "desc": "Check if any open tickets were found",
           "cases": [
             {
-              "id": "case_found",
               "case_id": "true",
               "logical_operator": "and",
               "conditions": [

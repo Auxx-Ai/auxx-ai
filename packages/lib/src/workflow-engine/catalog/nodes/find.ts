@@ -1,6 +1,5 @@
 // packages/lib/src/workflow-engine/catalog/nodes/find.ts
 
-import { generateId } from '@auxx/utils/generateId'
 import { z } from 'zod'
 import {
   type Condition,
@@ -98,7 +97,7 @@ export function createFindNodeDefaultData(): Partial<FindNodeData> {
     conditions: [], // Keep for backward compatibility
     conditionGroups: [
       {
-        id: generateId(),
+        id: 'group-1',
         conditions: [],
         logicalOperator: 'OR',
         order: 0,

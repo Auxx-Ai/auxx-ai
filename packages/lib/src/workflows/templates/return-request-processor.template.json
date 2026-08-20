@@ -113,7 +113,6 @@
           "desc": "Check if an order number was found in the email",
           "cases": [
             {
-              "id": "case_has_order",
               "case_id": "true",
               "logical_operator": "and",
               "conditions": [
@@ -228,7 +227,6 @@
           "desc": "Check if the order meets return policy requirements",
           "cases": [
             {
-              "id": "case_eligible",
               "case_id": "true",
               "logical_operator": "and",
               "conditions": [

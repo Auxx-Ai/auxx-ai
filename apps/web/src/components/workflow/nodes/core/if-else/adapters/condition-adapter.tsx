@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/if-else/adapters/condition-adapter.tsx
 
+import { generateId } from '@auxx/utils/generateId'
 import { useCallback, useMemo, useRef } from 'react'
 import type { Condition, ConditionGroup, ConditionSystemConfig } from '~/components/conditions'
 import type { TargetBranch } from '~/components/workflow/types'
@@ -37,7 +38,10 @@ export const useIfElseConditionAdapter = ({
     const totalCases = data.cases.length
     return data.cases.map((ifElseCase, index) => {
       return {
-        id: ifElseCase.id,
+        // The group's identity IS the branch handle. `case_id` is the only id a
+        // case has (plan 28 §3.1), so the group carries it in both slots and
+        // nothing downstream has to pick between two.
+        id: ifElseCase.case_id,
         conditions: ifElseCase.conditions.map(
           (condition): Condition => ({
             id: condition.id,
@@ -75,12 +79,21 @@ export const useIfElseConditionAdapter = ({
   const onGroupsChange = useCallback(
     (updatedGroups: ConditionGroup[]) => {
       const currentData = dataRef.current
-      const updatedCases: IfElseCase[] = updatedGroups.map((group, index) => {
-        const originalCase = currentData.cases.find((c) => c.id === group.id)
-
+      const updatedCases: IfElseCase[] = updatedGroups.map((group) => {
+        // `case_id` IS the branch handle — `node.tsx` renders it, an edge stores it
+        // as `sourceHandle`, the engine returns it as `outputHandle`. It is
+        // minted once, when the case is created (`config.newGroupMetadata`
+        // below), and from then on it only travels: carried on the group's
+        // metadata, or read off `group.id`, which the `groups` memo above sets
+        // to the case's own `case_id`. It is NEVER derived from array position —
+        // a positional address re-mints a surviving sibling's handle after a
+        // delete-then-add, and two cases on one handle is a state
+        // `validateIfElseConfig` refuses outright.
+        //
+        // A legacy stored case still carrying the retired node-local `id` loses
+        // it here, on the first save: it is simply not read and not written back.
         return {
-          id: group.id,
-          case_id: group.metadata?.case_id || originalCase?.case_id || `case_${index}`,
+          case_id: group.metadata?.case_id || group.id,
           logical_operator: group.logicalOperator.toLowerCase() as 'and' | 'or',
           conditions: group.conditions.map(
             (condition): IfElseCondition => ({
@@ -100,11 +113,12 @@ export const useIfElseConditionAdapter = ({
         }
       })
 
-      // Update _targetBranches with case names
+      // Branch ids come off the cases, not off the groups, so a branch can never
+      // advertise an address no case answers to.
       const updatedTargetBranches: TargetBranch[] = [
-        ...updatedGroups.map((group) => ({
-          id: group.metadata?.case_id || '',
-          name: group.metadata?.name || '',
+        ...updatedCases.map((updatedCase, index) => ({
+          id: updatedCase.case_id,
+          name: updatedGroups[index]?.metadata?.name || '',
           type: 'default' as const,
         })),
         { id: 'false', name: 'Else', type: 'default' as const },
@@ -157,6 +171,10 @@ export const useIfElseConditionAdapter = ({
 
       // State
       readOnly,
+
+      // Mint the branch handle when the case is created. Nothing downstream may
+      // invent one, so this is the only site that ever calls `generateId` for it.
+      newGroupMetadata: () => ({ case_id: generateId() }),
 
       // Callbacks - sync case names to _targetBranches
       onGroupNameChange: handleGroupNameChange,

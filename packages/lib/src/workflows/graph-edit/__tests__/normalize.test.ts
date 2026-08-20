@@ -248,7 +248,10 @@ describe('resolveConnectionSpec', () => {
     })
   })
 
-  it('resolves a branch by display name through manifest.connection.branches', () => {
+  it('resolves a STABLE display name through manifest.connection.branches', () => {
+    // `ELSE` is derived from the reserved `false` id, not from position, so it
+    // stays a legal address. `IF`/`CASE n` do not — see the positional suite in
+    // `branch-authoring.test.ts`.
     expect(
       resolveConnectionSpec(
         nodes,
@@ -257,7 +260,11 @@ describe('resolveConnectionSpec', () => {
       )._unsafeUnwrap()
     ).toEqual({ sourceNodeId: 'if1aaaaaaaaaaaaaaaaaaa', sourceHandle: 'false' })
     expect(
-      resolveConnectionSpec(nodes, { after: 'Route It', branch: 'IF' }, coreLookup)._unsafeUnwrap()
+      resolveConnectionSpec(
+        nodes,
+        { after: 'Route It', branch: 'case-a' },
+        coreLookup
+      )._unsafeUnwrap()
     ).toEqual({ sourceNodeId: 'if1aaaaaaaaaaaaaaaaaaa', sourceHandle: 'case-a' })
   })
 

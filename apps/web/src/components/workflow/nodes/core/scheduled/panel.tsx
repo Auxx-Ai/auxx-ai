@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/nodes/core/scheduled-trigger/panel.tsx
+// apps/web/src/components/workflow/nodes/core/scheduled/panel.tsx
 
 'use client'
 
@@ -165,7 +165,7 @@ const ScheduledTriggerPanelComponent: React.FC<ScheduledTriggerPanelProps> = ({ 
           {/* Timezone Selection */}
           <Field title='Timezone' description='Select the timezone for the schedule'>
             <TimeZonePicker
-              selected={previewConfig.timezone}
+              selected={previewConfig.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
               onChange={handleTimezoneChange}
               disabled={isReadOnly}
             />

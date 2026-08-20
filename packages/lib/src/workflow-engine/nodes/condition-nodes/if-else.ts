@@ -161,25 +161,22 @@ export class IfElseProcessor extends BaseNodeProcessor {
     contextManager: ExecutionContextManager,
     evaluatedCases: EvaluatedCase[]
   ): Partial<NodeExecutionResult> {
+    // `matchedCaseId ?? 'false'`, NOT a `conditionResult ? 'true' : 'false'`
+    // fallback. That ternary's `'true'` arm was unreachable and read as though
+    // this node still had a boolean mode: `executeNode` calls this exactly
+    // twice — with the matched case's `case_id` and `true`, or with `null` and
+    // `false` — so "no matched case" and "nothing matched" are the same state,
+    // and the handle for it is the reserved ELSE. `'true'` survives only as the
+    // DEFAULT first `case_id` a new node ships with, which arrives here as a
+    // `matchedCaseId` like any other (plan 28 §3.6).
+    const outputHandle = matchedCaseId ?? 'false'
+
     // Store output variables to match frontend schema
-    contextManager.setNodeVariable(
-      node.nodeId,
-      'matched_condition',
-      matchedCaseId || (conditionResult ? 'true' : 'false')
-    )
+    contextManager.setNodeVariable(node.nodeId, 'matched_condition', outputHandle)
     contextManager.setNodeVariable(node.nodeId, 'condition_index', matchedCaseIndex)
+    // Live, and deliberately still a boolean-shaped string: this reports
+    // WHETHER a case matched, not which handle it left on.
     contextManager.setNodeVariable(node.nodeId, 'branch_taken', conditionResult ? 'true' : 'false')
-
-    // Determine output handle based on result
-    let outputHandle: string
-
-    if (matchedCaseId) {
-      // For structured cases, use the case ID as the output handle
-      outputHandle = matchedCaseId
-    } else {
-      // For simple conditions, use 'true' or 'false'
-      outputHandle = conditionResult ? 'true' : 'false'
-    }
 
     contextManager.log('DEBUG', node.name, `If-else result: outputHandle=${outputHandle}`, {
       matchedCaseId,

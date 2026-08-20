@@ -1,6 +1,5 @@
 // packages/lib/src/workflow-engine/catalog/nodes/text-classifier.ts
 
-import { generateId } from '@auxx/utils/generateId'
 import { z } from 'zod'
 import { AI_NODE_CONSTANTS } from '../../constants'
 import { BaseType } from '../../core/types'
@@ -329,7 +328,7 @@ export const textClassifierManifest: NodeManifest<TextClassifierNodeData> = {
     text: '',
     categories: [
       {
-        id: generateId(),
+        id: 'category-1',
         name: 'Category 1',
         description: '',
         text: '',

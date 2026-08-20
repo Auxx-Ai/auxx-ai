@@ -40,7 +40,6 @@ function ifElseData(cases: unknown[]): IfElseNodeData {
 
 function oneCase(caseId: string) {
   return {
-    id: `c-${caseId}`,
     case_id: caseId,
     logical_operator: 'and',
     conditions: [{ id: 'x', variableId: 'Carrier.value', comparison_operator: 'is', value: 'ups' }],
@@ -83,7 +82,7 @@ describe('validateIfElseConfig — case_id is the branch address (F1)', () => {
     // A throwing validator returns NO blockers (`authoringBlockers` swallows
     // it), so the reserved-handle rule would silently stop firing on exactly
     // the half-built config it exists to catch.
-    const data = ifElseData([{ id: 'c1', case_id: 'false', logical_operator: 'and' }])
+    const data = ifElseData([{ case_id: 'false', logical_operator: 'and' }])
     expect(() => validateIfElseConfig(data)).not.toThrow()
     expect(blockers(data)).toHaveLength(1)
   })
@@ -124,10 +123,25 @@ describe('ifElseManifest.connection.branches', () => {
       ifElseData([oneCase('carrier-fedex'), oneCase('carrier-ups')])
     )
     expect(branches).toEqual([
-      { id: 'carrier-fedex', name: 'CASE 1', kind: 'default' },
-      { id: 'carrier-ups', name: 'CASE 2', kind: 'default' },
+      { id: 'carrier-fedex', name: 'CASE 1', kind: 'default', positionalName: true },
+      { id: 'carrier-ups', name: 'CASE 2', kind: 'default', positionalName: true },
       { id: 'false', name: 'ELSE', kind: 'default' },
     ])
+  })
+
+  it('marks every case label positional, and the reserved ELSE not', () => {
+    // `CASE n` is recomputed from array position on every read, so it is a
+    // label and never an address (plan 28 §3.3). `ELSE` is derived from the
+    // `false` id instead, so it stays addressable by name.
+    const branches =
+      ifElseManifest.connection.branches?.(
+        ifElseData([oneCase('carrier-fedex'), oneCase('carrier-ups')])
+      ) ?? []
+    expect(branches.filter((b) => b.positionalName).map((b) => b.id)).toEqual([
+      'carrier-fedex',
+      'carrier-ups',
+    ])
+    expect(branches.find((b) => b.id === 'false')?.positionalName).toBeUndefined()
   })
 
   it('does not throw for cases: [] or absent cases — it degrades to ELSE', () => {
@@ -180,7 +194,6 @@ describe('variableId brace tolerance (F5, read side)', () => {
   it('extracts the unwrapped path, so ref-check never sees quadruple braces', () => {
     const data = ifElseData([
       {
-        id: 'c1',
         case_id: 'carrier-ups',
         logical_operator: 'and',
         conditions: [{ id: 'x', variableId: '{{Carrier.value}}', comparison_operator: 'is' }],

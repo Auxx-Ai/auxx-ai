@@ -52,7 +52,6 @@ describe('IfElseProcessor', () => {
       const result = await run(
         nodeWithCases([
           {
-            id: 'c1',
             case_id: 'true',
             logical_operator: 'and',
             conditions: [
@@ -79,7 +78,6 @@ describe('IfElseProcessor', () => {
       const result = await run(
         nodeWithCases([
           {
-            id: 'c1',
             case_id: 'true',
             logical_operator: 'and',
             conditions: [
@@ -106,7 +104,6 @@ describe('IfElseProcessor', () => {
       const result = await run(
         nodeWithCases([
           {
-            id: 'c1',
             case_id: 'case-high-value',
             logical_operator: 'and',
             conditions: [
@@ -132,7 +129,6 @@ describe('IfElseProcessor', () => {
       const result = await run(
         nodeWithCases([
           {
-            id: 'c1',
             case_id: 'true',
             logical_operator: 'and',
             conditions: [
@@ -159,7 +155,6 @@ describe('IfElseProcessor', () => {
       const result = await run(
         nodeWithCases([
           {
-            id: 'c1',
             case_id: 'true',
             logical_operator: 'and',
             conditions: [
@@ -183,7 +178,6 @@ describe('IfElseProcessor', () => {
       const result = await run(
         nodeWithCases([
           {
-            id: 'c1',
             case_id: 'true',
             logical_operator: 'and',
             conditions: [
@@ -208,7 +202,6 @@ describe('IfElseProcessor', () => {
       const result = await run(
         nodeWithCases([
           {
-            id: 'c1',
             case_id: 'true',
             logical_operator: 'and',
             conditions: [
@@ -237,7 +230,6 @@ describe('IfElseProcessor', () => {
     const orderGate = () =>
       nodeWithCases([
         {
-          id: 'c1',
           case_id: 'true',
           logical_operator: 'and',
           conditions: [
@@ -252,7 +244,6 @@ describe('IfElseProcessor', () => {
           ],
         },
         {
-          id: 'c2',
           case_id: 'case_email_mismatch',
           logical_operator: 'and',
           conditions: [{ id: 'c', variableId: 'order.name', comparison_operator: 'not empty' }],
@@ -290,11 +281,60 @@ describe('IfElseProcessor', () => {
     })
   })
 
+  describe('output handle — the only two states this node has (plan 28 §3.6)', () => {
+    /**
+     * `buildExecutionResult` used to end in `conditionResult ? 'true' : 'false'`,
+     * which read as though a boolean mode still existed. It does not: a match
+     * always carries a `case_id`, and no-match always arrives with
+     * `conditionResult: false`, so the `'true'` arm was unreachable. Pinned so
+     * nobody restores it — and so the ELSE handle stays literally `'false'`,
+     * which is what the manifest appends and what edges store.
+     */
+    const gate = (caseId: string) =>
+      nodeWithCases([
+        {
+          case_id: caseId,
+          logical_operator: 'and',
+          conditions: [{ id: 'a', variableId: 'order.name', comparison_operator: 'not empty' }],
+        },
+      ])
+
+    it("emits the reserved 'false' handle when nothing matched", async () => {
+      // No `order.name` set — the sole case fails.
+      const result = await run(gate('case-order-found'))
+      expect(result.outputHandle).toBe('false')
+      expect(result.output?.matched).toBe(false)
+      expect(result.output?.matchedCase).toBeNull()
+      expect(await contextManager.getNodeVariable('gate-1', 'matched_condition')).toBe('false')
+      expect(await contextManager.getNodeVariable('gate-1', 'branch_taken')).toBe('false')
+      expect(await contextManager.getNodeVariable('gate-1', 'condition_index')).toBe(-1)
+    })
+
+    it('emits the matched case_id, opaque or not', async () => {
+      contextManager.setVariable('order.name', '#1012')
+      const result = await run(gate('case-order-found'))
+      expect(result.outputHandle).toBe('case-order-found')
+      expect(await contextManager.getNodeVariable('gate-1', 'matched_condition')).toBe(
+        'case-order-found'
+      )
+      // `branch_taken` is NOT the handle — it reports whether a case matched,
+      // and stays boolean-shaped on purpose.
+      expect(await contextManager.getNodeVariable('gate-1', 'branch_taken')).toBe('true')
+      expect(await contextManager.getNodeVariable('gate-1', 'condition_index')).toBe(0)
+    })
+
+    it("emits 'true' only because that is the DEFAULT first case_id", async () => {
+      contextManager.setVariable('order.name', '#1012')
+      const result = await run(gate('true'))
+      expect(result.outputHandle).toBe('true')
+      expect(result.output?.matchedCase).toBe('true')
+    })
+  })
+
   describe('extractRequiredVariables', () => {
     it('declares variables referenced by the comparison value', async () => {
       const node = nodeWithCases([
         {
-          id: 'c1',
           case_id: 'true',
           logical_operator: 'and',
           conditions: [

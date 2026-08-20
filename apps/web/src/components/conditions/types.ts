@@ -138,6 +138,17 @@ export interface ConditionSystemConfig {
   onGroupNameChange?: (groupId: string, name: string) => void
   onGroupCollapse?: (groupId: string, collapsed: boolean) => void
   onGroupReorder?: (groupIds: string[]) => void
+  /**
+   * Seed metadata minted once, when a group is created. Called by
+   * `addGroupEnhanced`; the result is merged under any metadata the caller
+   * passes explicitly.
+   *
+   * This is how a surface whose group metadata carries an *identifier* mints it
+   * at creation instead of deriving it downstream — if-else stamps the
+   * `case_id` that becomes the node's branch handle. Surfaces that need no such
+   * identifier leave this unset and their stored groups stay untouched.
+   */
+  newGroupMetadata?: () => Partial<ConditionGroupMetadata>
 }
 
 /**

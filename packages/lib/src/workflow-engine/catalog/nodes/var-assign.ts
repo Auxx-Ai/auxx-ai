@@ -1,6 +1,5 @@
 // packages/lib/src/workflow-engine/catalog/nodes/var-assign.ts
 
-import { generateId } from '@auxx/utils/generateId'
 import { z } from 'zod'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
@@ -219,7 +218,7 @@ export const varAssignManifest: NodeManifest<VarAssignNodeData> = {
   defaultData: () => ({
     title: 'Assign Variable',
     desc: 'Create custom variables for use in subsequent nodes',
-    variables: [{ id: generateId(), name: '', type: BaseType.STRING, value: '' }],
+    variables: [{ id: 'variable-1', name: '', type: BaseType.STRING, value: '' }],
     ignoreTypeError: false,
   }),
   configSchema: varAssignNodeDataSchema as unknown as z.ZodType<VarAssignNodeData>,

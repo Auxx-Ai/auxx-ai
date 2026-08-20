@@ -139,7 +139,7 @@ function ifElseNode(): GraphNode {
       id: IFELSE_ID,
       type: 'if-else',
       title: 'Check Priority',
-      cases: [{ id: 'c1', case_id: 'true', logical_operator: 'and', conditions: [] }],
+      cases: [{ case_id: 'true', logical_operator: 'and', conditions: [] }],
     },
   }
 }
@@ -244,14 +244,14 @@ describe('addNode — branch wiring (§6)', () => {
     edges: [edge(TRIGGER_ID, 'source', IFELSE_ID)],
   })
 
-  it('resolves a branch NAME to the case handle id from manifest.connection.branches', async () => {
+  it('resolves a branch by its case handle id from manifest.connection.branches', async () => {
     const result = await addNode(makeDb(base()), {
       workflowAppId: APP,
       organizationId: ORG,
       type: 'wait',
       title: 'Then Wait',
       after: 'Check Priority',
-      branch: 'IF',
+      branch: 'true', // the case's id — the ONLY address (plan 28 §3.3)
     })
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().applied).toBe(true)
@@ -261,7 +261,24 @@ describe('addNode — branch wiring (§6)', () => {
     expect(added).toBeDefined()
     const wired = graph.edges.find((e) => e.target === added?.id)
     expect(wired?.source).toBe(IFELSE_ID)
-    expect(wired?.sourceHandle).toBe('true') // the case's id, never the display name
+    expect(wired?.sourceHandle).toBe('true')
+  })
+
+  it("refuses the positional display name 'IF', naming the id that wears it", async () => {
+    // Used to resolve to whatever case was first at that instant. An if-else
+    // label is a function of array position, so inserting a case silently
+    // re-pointed the edge (plan 28 §3.3).
+    const result = await addNode(makeDb(base()), {
+      workflowAppId: APP,
+      organizationId: ORG,
+      type: 'wait',
+      title: 'Then Wait',
+      after: 'Check Priority',
+      branch: 'IF',
+    })
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('is currently "true"')
+    expect(serviceUpdate).not.toHaveBeenCalled()
   })
 
   it("wires the ELSE branch on the reserved 'false' handle", async () => {
@@ -495,7 +512,7 @@ describe('structural vs config blocking split (§5)', () => {
       workflowAppId: APP,
       organizationId: ORG,
       from: 'Check Priority',
-      branch: 'IF',
+      branch: 'true', // the case id — the positional label is not an address
       to: 'Every Morning',
     })
     expect(result.isOk()).toBe(true)
@@ -617,7 +634,7 @@ describe('replaceGraph', () => {
           type: 'if-else',
           title: 'Route',
           config: {
-            cases: [{ id: 'c1', case_id: 'true', logical_operator: 'and', conditions: [] }],
+            cases: [{ case_id: 'true', logical_operator: 'and', conditions: [] }],
           },
         },
         { type: 'wait', title: 'On Match' },
@@ -625,7 +642,7 @@ describe('replaceGraph', () => {
       ],
       edges: [
         { from: 'Daily', to: 'Route' },
-        { from: 'Route', to: 'On Match', branch: 'IF' },
+        { from: 'Route', to: 'On Match', branch: 'true' },
         { from: 'Route', to: 'Otherwise', branch: 'ELSE' },
       ],
     })
@@ -779,7 +796,7 @@ describe('updateNode / disconnectNodes', () => {
     expect(result.isOk()).toBe(true)
     const persisted = persistedGraph().nodes.find((node) => node.id === IFELSE_ID)
     expect(persisted?.data?.cases).toEqual([
-      { id: 'c1', case_id: 'true', logical_operator: 'or', conditions: [] },
+      { case_id: 'true', logical_operator: 'or', conditions: [] },
     ])
     expect(result._unsafeUnwrap().node?.configHash).not.toBe(configHash)
   })

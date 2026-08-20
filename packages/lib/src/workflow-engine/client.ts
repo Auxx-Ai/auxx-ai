@@ -331,6 +331,7 @@ export {
   ifElseManifest,
   ifElseNodeDataSchema,
   type NodeCase,
+  type NodeCaseOf,
   type NodeCondition,
   validateIfElseConfig,
 } from './catalog/nodes/if-else'

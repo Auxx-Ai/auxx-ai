@@ -339,10 +339,6 @@ export const EXTRACTION_BLIND_SPOTS: Record<string, string> = {
   'config:wait.deliveryWindow':
     "By design, same origin: `buildSequenceGraph` emits it from the sequence's delivery window (publish.ts:99). A zero-delay wait node exists ONLY to carry it, which is why the pairing has to stay one-directional.",
 
-  // ── Handle the reader can see but production can never emit ───────────────
-  'handle:if-else.true':
-    "Dead arm, not drift: `outputHandle = conditionResult ? 'true' : 'false'` (if-else.ts:181) runs only when matchedCaseId is null, and buildExecutionResult is only ever called with (true, case_id, …) on a match (if-else.ts:138) or (false, null, …) on none (if-else.ts:150) — so the 'true' literal is unreachable. Production emits case ids and 'false', both rendered. The reachability hole in the reader's net (engine-write-scrape.ts header) seen from the other side: it proves a write EXISTS, never that it runs.",
-
   // ── Internal bookkeeping, deliberately not picker material ────────────────
   'written:ai._resolvedPromptVars':
     'By design: ai-v2.ts:165 stashes the resolved variable map for the run log ("for run-log + downstream uses"), underscore-named to mark it internal. Not a picker variable.',

@@ -1,6 +1,5 @@
 // packages/lib/src/workflow-engine/catalog/nodes/if-else.ts
 
-import { generateId } from '@auxx/utils/generateId'
 import { z } from 'zod'
 import { ALL_OPERATOR_KEYS, type Operator } from '../../../conditions/client'
 import { BaseType } from '../../core/types'
@@ -44,14 +43,33 @@ export interface IfElseCondition extends Omit<NodeCondition, 'value'> {
 }
 
 /**
- * Case definition for if-else nodes
+ * Case definition for if-else nodes — THE one declaration of a case's skeleton.
+ *
+ * `case_id` is the SOLE identifier — it is the branch handle `node.tsx` renders,
+ * what an edge stores as `sourceHandle`, what the engine returns as
+ * `outputHandle`, and what `resolveConnectionSpec` resolves a `branch` to. There
+ * used to be a second, node-local `id` beside it; it addressed nothing, nothing
+ * validated it, and 47 of 53 stored cases parked the readable name in it while
+ * the actual address read `true` (plan 28 §1.1/§1.3).
+ *
+ * Generic over the CONDITION element because the three layers genuinely disagree
+ * about that, and only that: the engine
+ * (`nodes/condition-nodes/if-else-types.ts`) requires `variableId` /
+ * `comparison_operator`, and the builder
+ * (`apps/web/.../core/if-else/types.ts`) narrows a condition's `value` to a
+ * Tiptap doc and its `varType` to `BaseType`. `case_id` and `logical_operator`
+ * are identical in all three, so they are declared HERE and nowhere else — the
+ * retired `id` lived in that shared half and had to be deleted from three files
+ * at once, which is the mistake this shape prevents recurring.
  */
-export interface NodeCase {
-  id: string
+export interface NodeCaseOf<TCondition> {
   case_id: string
   logical_operator: 'and' | 'or'
-  conditions: IfElseCondition[]
+  conditions: TCondition[]
 }
+
+/** A case as the CATALOG types it — the persisted/authored contract. */
+export type NodeCase = NodeCaseOf<IfElseCondition>
 
 /**
  * Node data for if-else nodes (flattened structure)
@@ -76,7 +94,6 @@ const conditionSchema = z.object({
  * Zod schema for if-else case
  */
 const caseSchema = z.object({
-  id: z.string(),
   case_id: z.string(),
   logical_operator: z.enum(['and', 'or']),
   conditions: z.array(conditionSchema),
@@ -322,7 +339,6 @@ export const ifElseManifest: NodeManifest<IfElseNodeData> = {
     desc: 'Branch based on conditions',
     cases: [
       {
-        id: generateId(),
         case_id: 'true',
         logical_operator: 'and',
         conditions: [],
@@ -345,12 +361,23 @@ export const ifElseManifest: NodeManifest<IfElseNodeData> = {
      * `calculateTargetBranches` (workflow-initializer.ts), which stays the
      * derived-state writer until the remaining branch-deriving types
      * (text-classifier, http, crud) migrate and both converge here.
+     *
+     * Every case branch is marked `positionalName`: `branchNameCorrect` derives
+     * `IF`/`CASE n` from ARRAY POSITION, so inserting a case renames every
+     * label after it and an address written against one of those labels would
+     * silently re-point (plan 28 §3.3). The reserved ELSE is exempt — its label
+     * is a function of the `false` id, not of where it sits — so `branch:
+     * "ELSE"` stays a legal address.
      */
     branches: (config): NodeBranch[] =>
       branchNameCorrect([
         ...(config.cases || []).map((c) => ({ id: c.case_id, name: '' })),
         { id: 'false', name: '' },
-      ]).map((b) => ({ ...b, kind: 'default' as const })),
+      ]).map((b) => ({
+        ...b,
+        kind: 'default' as const,
+        ...(b.id === 'false' ? {} : { positionalName: true }),
+      })),
   },
   agent: {
     authorable: true,
@@ -358,8 +385,11 @@ export const ifElseManifest: NodeManifest<IfElseNodeData> = {
       'Each entry in `cases` is one branch, and `case_id` IS that branch\u2019s address: it is the ' +
       'edge handle, it is what you pass as `branch` to `connect_nodes`/`add_node`, and because ' +
       'YOU author it you already know it before the node exists \u2014 so you can create the node and ' +
-      'wire its branches in the same batch. Name each case for what it matches ' +
-      '(e.g. "carrier-fedex", "priority-high"), never "true"/"false". Every `case_id` must be ' +
+      'wire its branches in the same batch. A branch\u2019s NAME ("IF", "CASE 2") is a ' +
+      'positional display label recomputed from case order \u2014 NEVER address a branch by it: ' +
+      'it names a different case as soon as one is added or removed. Name each case for what ' +
+      'it matches (e.g. "carrier-fedex", "priority-high"); "true" is the default handle of the ' +
+      'first case and is fine to keep. Every `case_id` must be ' +
       'UNIQUE, and none may be "false": this node ALWAYS exposes a reserved "false" ELSE branch ' +
       'for "nothing matched", and a case claiming that id collapses into it, so a matched case ' +
       'and a fall-through leave on the same edge. Conditions inside a case join via ' +
@@ -372,7 +402,6 @@ export const ifElseManifest: NodeManifest<IfElseNodeData> = {
         config: {
           cases: [
             {
-              id: 'c1',
               case_id: 'carrier-fedex',
               logical_operator: 'and',
               conditions: [
@@ -385,7 +414,6 @@ export const ifElseManifest: NodeManifest<IfElseNodeData> = {
               ],
             },
             {
-              id: 'c2',
               case_id: 'carrier-ups',
               logical_operator: 'and',
               conditions: [
@@ -405,7 +433,6 @@ export const ifElseManifest: NodeManifest<IfElseNodeData> = {
         config: {
           cases: [
             {
-              id: 'c1',
               case_id: 'priority-high',
               logical_operator: 'and',
               conditions: [

@@ -355,7 +355,6 @@
           "desc": "Check if a matching contact was found",
           "cases": [
             {
-              "id": "case-contact-found",
               "case_id": "case-contact-found",
               "logical_operator": "and",
               "conditions": [
@@ -519,7 +518,6 @@
           "desc": "Check if a matching order record was found",
           "cases": [
             {
-              "id": "case-order-found",
               "case_id": "case-order-found",
               "logical_operator": "and",
               "conditions": [
@@ -878,7 +876,6 @@
           "desc": "Check if order value exceeds the escalation threshold",
           "cases": [
             {
-              "id": "case-high-value",
               "case_id": "case-high-value",
               "logical_operator": "and",
               "conditions": [
