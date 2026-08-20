@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/nodes/condition-nodes/if-else-types.ts
 
 import type { Operator } from '../../../conditions/operator-definitions'
+import type { NodeCaseOf } from '../../catalog/nodes/if-else'
 import type { LogicalOperator } from '../../constants/nodes/if-else'
 /**
  * Types for if-else node condition evaluation
@@ -29,14 +30,14 @@ export interface NodeCondition {
 }
 
 /**
- * Case definition containing multiple conditions
+ * Case definition containing multiple conditions.
+ *
+ * The skeleton (`case_id`, `logical_operator`) is declared ONCE, in the catalog
+ * — `case_id` is the sole identifier and IS the branch handle (plan 28 §3.1).
+ * Only the condition element is local, because the engine requires `variableId`
+ * and `comparison_operator` where the authored contract leaves them optional.
  */
-export interface NodeCase {
-  id: string
-  case_id: string
-  logical_operator: LogicalOperator
-  conditions: NodeCondition[]
-}
+export type NodeCase = NodeCaseOf<NodeCondition>
 
 /**
  * If-else node configuration

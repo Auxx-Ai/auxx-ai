@@ -132,7 +132,6 @@
           "desc": "Check if the order has been fulfilled/shipped",
           "cases": [
             {
-              "id": "case_fulfilled",
               "case_id": "true",
               "logical_operator": "and",
               "conditions": [

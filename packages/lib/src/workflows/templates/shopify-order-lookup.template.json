@@ -106,7 +106,6 @@
           "desc": "Check if an order number was found in the email",
           "cases": [
             {
-              "id": "case_has_order",
               "case_id": "true",
               "logical_operator": "and",
               "conditions": [
@@ -194,7 +193,6 @@
           "desc": "The extracted number may not match a real order — and an order that does exist may belong to someone else. Only take the reply path when the order exists AND was placed from the address that emailed us. The order email is normalized upstream because this comparison is case-sensitive; the sender address is already lowercased at ingest.",
           "cases": [
             {
-              "id": "case_order_found",
               "case_id": "true",
               "logical_operator": "and",
               "conditions": [
@@ -215,7 +213,6 @@
               ]
             },
             {
-              "id": "case_email_mismatch",
               "case_id": "case_email_mismatch",
               "logical_operator": "and",
               "conditions": [
@@ -577,7 +574,6 @@
           "desc": "Only send if the AI decided a reply is warranted",
           "cases": [
             {
-              "id": "case_reply_order",
               "case_id": "true",
               "logical_operator": "and",
               "conditions": [
@@ -872,7 +868,6 @@
           "desc": "Only send if the AI decided a reply is warranted",
           "cases": [
             {
-              "id": "case_reply_mismatch",
               "case_id": "true",
               "logical_operator": "and",
               "conditions": [
@@ -1153,7 +1148,6 @@
           "desc": "Only send if the AI decided a reply is warranted",
           "cases": [
             {
-              "id": "case_reply_not_found",
               "case_id": "true",
               "logical_operator": "and",
               "conditions": [
@@ -1424,7 +1418,6 @@
           "desc": "Skip unrelated emails — only send when the AI marked respond true",
           "cases": [
             {
-              "id": "case_reply_no_order",
               "case_id": "true",
               "logical_operator": "and",
               "conditions": [

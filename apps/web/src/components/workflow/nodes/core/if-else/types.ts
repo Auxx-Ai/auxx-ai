@@ -4,6 +4,7 @@ import type { Operator } from '@auxx/lib/conditions/client'
 import type {
   CatalogIfElseNodeData,
   NodeCondition as CatalogNodeCondition,
+  NodeCaseOf,
 } from '@auxx/lib/workflow-engine/client'
 import type { Node as FlowNode } from '@xyflow/react'
 import type { TargetBranch } from '~/components/workflow/types'
@@ -41,14 +42,14 @@ export interface IfElseCondition extends Omit<CatalogNodeCondition, 'value' | 'v
 }
 
 /**
- * Case definition for if-else nodes
+ * Case definition for if-else nodes.
+ *
+ * The skeleton (`case_id`, `logical_operator`) is declared ONCE, in the catalog
+ * — `case_id` is the sole identifier and IS the branch handle (plan 28 §3.1).
+ * Only the condition element is local, for the Tiptap/`BaseType` narrowings
+ * above.
  */
-export interface NodeCase {
-  id: string
-  case_id: string
-  logical_operator: 'and' | 'or'
-  conditions: IfElseCondition[]
-}
+export type NodeCase = NodeCaseOf<IfElseCondition>
 
 // Re-export from store types for backward compatibility
 export type IfElseCase = NodeCase

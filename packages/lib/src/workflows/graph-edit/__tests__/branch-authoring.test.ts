@@ -65,6 +65,7 @@ const TRIGGER_ID = 'scheduled-aaaaaaaaaaaaaaaaaaaaa'
 const CARRIER_ID = 'wait-aaaaaaaaaaaaaaaaaaaaaaa'
 const IFELSE_ID = 'ifelse-aaaaaaaaaaaaaaaaaaaaa'
 const HUMAN_ID = 'human-aaaaaaaaaaaaaaaaaaaaaa'
+const CLASSIFY_ID = 'classify-aaaaaaaaaaaaaaaaa'
 
 /** The core registry alone — no app installed in these fixtures. */
 const coreLookup = getManifest
@@ -367,18 +368,8 @@ describe('T2 — the address is knowable before the node exists', () => {
     expect(edgeToIt?.sourceHandle).toBe('carrier-fedex')
   })
 
-  it('a near-miss branch ref gets a "did you mean" over both names and ids', () => {
+  it('a near-miss branch ref gets a "did you mean" over ids and stable names', () => {
     const nodes = [ifElseNode([carrierCase('true', 'x'), carrierCase('carrier-ups', 'ups')])]
-    const byName = resolveConnectionSpec(
-      nodes,
-      { after: 'Check Carrier', branch: 'CASE1' },
-      coreLookup
-    )
-    // Nearest first — "CASE 1" is one edit away, "CASE 2" two.
-    expect(byName._unsafeUnwrapErr().message).toContain(
-      'Did you mean "CASE 1" (true) or "CASE 2" (carrier-ups)?'
-    )
-
     const byId = resolveConnectionSpec(
       nodes,
       { after: 'Check Carrier', branch: 'carrier-up' },
@@ -401,6 +392,109 @@ describe('T2 — the address is knowable before the node exists', () => {
     expect(message).toContain('Available branches: "CASE 1" (true), "CASE 2" (carrier-ups)')
     expect(message).toContain('"ELSE" (false)')
     expect(message).toContain('Address a branch by its id')
+  })
+})
+
+describe('E1 — a positional label is not an address (plan 28 §3.3)', () => {
+  /** Two categories the USER named — semantic, stable, and therefore addressable. */
+  function classifierNode(): GraphNode {
+    return {
+      id: CLASSIFY_ID,
+      type: 'standard',
+      position: { x: 700, y: 400 },
+      width: 244,
+      height: 100,
+      data: {
+        id: CLASSIFY_ID,
+        type: 'text-classifier',
+        title: 'Triage',
+        text: '{{Carrier.value}}',
+        outputMode: 'branches',
+        categories: [
+          { id: 'cat-billing', name: 'Billing', description: '' },
+          { id: 'cat-shipping', name: 'Shipping', description: '' },
+        ],
+      },
+    }
+  }
+
+  const ifElse = () => [
+    ifElseNode([carrierCase('carrier-fedex', 'fedex'), carrierCase('carrier-ups', 'ups')]),
+  ]
+
+  it('refuses an if-else branch addressed by its positional name, naming the id', () => {
+    // "CASE 2" is `branchNameCorrect`'s output for whatever sits second RIGHT
+    // NOW. Resolving it wired an edge that silently re-pointed the next time a
+    // case was inserted, and the rejection has to say that — a flat "no such
+    // branch" gets retried verbatim (plan 21 §9.2/§10.5).
+    const message = resolveConnectionSpec(
+      ifElse(),
+      { after: 'Check Carrier', branch: 'CASE 2' },
+      coreLookup
+    )._unsafeUnwrapErr().message
+    expect(message).toContain('"CASE 2" is a display label')
+    expect(message).toContain('numbers its branches by position')
+    expect(message).toContain('is currently "carrier-ups"')
+  })
+
+  it('diagnoses a near-miss of a positional label the same way', () => {
+    const message = resolveConnectionSpec(
+      ifElse(),
+      { after: 'Check Carrier', branch: 'CASE2' },
+      coreLookup
+    )._unsafeUnwrapErr().message
+    expect(message).toContain('display label')
+    expect(message).toContain('is currently "carrier-ups"')
+  })
+
+  it('keeps the "did you mean" for a near-miss on the ID', () => {
+    // The candidate set drops positional NAMES — suggesting "CASE 1" would hand
+    // back the one string that cannot be used — but ids are still matched, and
+    // every candidate is still rendered label-and-id so the transcript reads.
+    const message = resolveConnectionSpec(
+      ifElse(),
+      { after: 'Check Carrier', branch: 'carrier-fede' },
+      coreLookup
+    )._unsafeUnwrapErr().message
+    expect(message).toContain('Did you mean "CASE 1" (carrier-fedex)')
+    expect(message).toContain('Address a branch by its id')
+  })
+
+  it('still resolves the case id, and the ELSE label that is NOT positional', () => {
+    expect(
+      resolveConnectionSpec(
+        ifElse(),
+        { after: 'Check Carrier', branch: 'carrier-ups' },
+        coreLookup
+      )._unsafeUnwrap()
+    ).toEqual({ sourceNodeId: IFELSE_ID, sourceHandle: 'carrier-ups' })
+    // ELSE is a function of the reserved `false` id, not of position.
+    expect(
+      resolveConnectionSpec(
+        ifElse(),
+        { after: 'Check Carrier', branch: 'ELSE' },
+        coreLookup
+      )._unsafeUnwrap()
+    ).toEqual({ sourceNodeId: IFELSE_ID, sourceHandle: 'false' })
+  })
+
+  it('keeps NAME matching for a text-classifier — its labels are the user’s own', () => {
+    // The difference the flag encodes: a category name is authored, semantic
+    // and stable, so addressing a classifier branch by name is correct.
+    expect(
+      resolveConnectionSpec(
+        [classifierNode()],
+        { after: 'Triage', branch: 'Shipping' },
+        coreLookup
+      )._unsafeUnwrap()
+    ).toEqual({ sourceNodeId: CLASSIFY_ID, sourceHandle: 'cat-shipping' })
+    expect(
+      resolveConnectionSpec(
+        [classifierNode()],
+        { after: 'Triage', branch: 'cat-billing' },
+        coreLookup
+      )._unsafeUnwrap()
+    ).toEqual({ sourceNodeId: CLASSIFY_ID, sourceHandle: 'cat-billing' })
   })
 })
 

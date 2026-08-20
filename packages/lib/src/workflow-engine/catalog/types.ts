@@ -76,6 +76,21 @@ export interface NodeBranch {
   id: string
   name: string
   kind: 'default' | 'fail'
+  /**
+   * This branch's `name` is a DISPLAY LABEL derived from its position in the
+   * branch array, so it is not an address: it renames itself the moment a
+   * sibling is added or removed, and the label a caller just read now belongs
+   * to a different branch.
+   *
+   * `resolveConnectionSpec` refuses to match `branch` against such a name and
+   * says why, instead of resolving `"CASE 2"` to whatever is second at that
+   * instant (plan 28 §3.3). Set it wherever the label is a function of order —
+   * `if-else`'s `IF`/`CASE n`, whose numbering `branchNameCorrect` recomputes on
+   * every read — and NOT where the name is stable: `text-classifier`'s
+   * categories are the user's own names, and `Fail`/`Approved`/`ELSE` are fixed
+   * per handle id.
+   */
+  positionalName?: boolean
 }
 
 /**

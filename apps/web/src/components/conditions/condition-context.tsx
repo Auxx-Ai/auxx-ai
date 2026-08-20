@@ -6,10 +6,10 @@ import { getOperatorsForBaseType } from '@auxx/lib/conditions/client'
 import { getFieldOperators } from '@auxx/lib/resources/client'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import { generateId } from '@auxx/utils/generateId'
 import { produce } from 'immer'
 import type React from 'react'
 import { createContext, useCallback, useContext, useMemo, useRef } from 'react'
-import { v4 as generateId } from 'uuid'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import type {
   Condition,
@@ -428,6 +428,14 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
       const defaultName = config.defaultGroupName || 'Group'
       const newGroupCount = groups.length + 1
 
+      // Identity is minted here, once, at creation — never derived downstream
+      // from array position, which collides the moment a group is deleted and
+      // another added. Explicit metadata from the caller wins over the seed.
+      const seeded: Partial<ConditionGroupMetadata> = {
+        ...config.newGroupMetadata?.(),
+        ...metadata,
+      }
+
       const newGroup: ConditionGroup = {
         id: generateId(),
         conditions: [],
@@ -435,11 +443,11 @@ export const ConditionProvider: React.FC<ConditionProviderProps> = ({
         order: groups.length,
         metadata: {
           name:
-            metadata?.name || (newGroupCount > 1 ? `${defaultName} ${newGroupCount}` : defaultName),
-          description: metadata?.description || '',
-          subtext: metadata?.subtext || '',
-          collapsed: metadata?.collapsed || false,
-          ...metadata,
+            seeded.name || (newGroupCount > 1 ? `${defaultName} ${newGroupCount}` : defaultName),
+          description: seeded.description || '',
+          subtext: seeded.subtext || '',
+          collapsed: seeded.collapsed || false,
+          ...seeded,
         },
       }
 

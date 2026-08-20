@@ -101,7 +101,6 @@
           "desc": "Check if the knowledge base returned relevant results",
           "cases": [
             {
-              "id": "case_found",
               "case_id": "true",
               "logical_operator": "and",
               "conditions": [

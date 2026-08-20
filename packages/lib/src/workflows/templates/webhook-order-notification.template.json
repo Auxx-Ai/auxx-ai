@@ -129,7 +129,6 @@
           "desc": "Check if HTTP request was successful",
           "cases": [
             {
-              "id": "case_success",
               "case_id": "true",
               "logical_operator": "and",
               "conditions": [

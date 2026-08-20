@@ -251,7 +251,6 @@ async function evaluateOne(operator: string, fixture: Fixture): Promise<boolean>
 
   const cases: NodeCase[] = [
     {
-      id: 'c1',
       case_id: 'true',
       logical_operator: 'and',
       conditions: [

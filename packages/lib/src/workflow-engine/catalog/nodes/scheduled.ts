@@ -258,7 +258,6 @@ export const scheduledTriggerManifest: NodeManifest<ScheduledTriggerNodeData> = 
     config: {
       triggerInterval: 'hours',
       timeBetweenTriggers: { hours: 1, isConstant: true },
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     },
     isEnabled: true,
   }),
