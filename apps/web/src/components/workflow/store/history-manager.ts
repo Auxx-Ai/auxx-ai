@@ -2,7 +2,7 @@
 
 import { v4 as uuidv4 } from 'uuid'
 import { storeEventBus } from './event-bus'
-import type { HistoryEntry } from './types'
+import type { HistoryDescription, HistoryEntry } from './types'
 
 interface HistoryManagerOptions {
   maxHistorySize?: number
@@ -37,6 +37,23 @@ export interface RecordOptions {
    * which is what stops two unrelated edits collapsing into a single entry.
    */
   coalesceKey?: string
+
+  /**
+   * Describe the entry against the state it is being recorded ON TOP OF.
+   *
+   * On a push, `baseline` is the current top of the stack. On a MERGE it is the
+   * entry *below* the one being overwritten — the state the coalescing session
+   * began from — and the result replaces the merged entry's description. Both
+   * halves matter:
+   *
+   * - The baseline is how a description can name something the new graph no
+   *   longer has, which is the only way a delete knows what it deleted.
+   * - Re-describing on every merge is how a rename converges. Typing `O`,
+   *   `Ou`, `Out`, `Output` re-diffs each time against the PRE-SESSION title,
+   *   so the entry settles on "Node 1 renamed to Output" instead of freezing at
+   *   the first keystroke or drifting to "Out renamed to Output".
+   */
+  describe?: (baseline: HistoryEntry | undefined) => HistoryDescription
 }
 
 /**
@@ -94,20 +111,29 @@ export class HistoryManager {
    * always current, and unrelated edits can never merge into one entry.
    */
   record(entry: Omit<HistoryEntry, 'id' | 'timestamp'>, options: RecordOptions = {}): void {
-    const { coalesceKey } = options
+    const { coalesceKey, describe } = options
     const top = this.undoStack[this.undoStack.length - 1]
     const now = Date.now()
 
-    if (
-      coalesceKey &&
-      top?.coalesceKey === coalesceKey &&
-      now - top.timestamp < this.coalesceWindow
-    ) {
+    const willCoalesce =
+      !!coalesceKey && top?.coalesceKey === coalesceKey && now - top.timestamp < this.coalesceWindow
+
+    // The state this entry is recorded on top of. When merging, the entry being
+    // overwritten is NOT that state — the one below it is.
+    const baseline = this.undoStack[this.undoStack.length - (willCoalesce ? 2 : 1)]
+    const described = describe?.(baseline)
+
+    if (willCoalesce) {
       // The same logical edit continuing: replace the snapshot in place. Undo
       // still lands on the state from before the session began, because that
       // one lives in the PREVIOUS entry.
       top.data = entry.data
-      top.label = entry.label ?? top.label
+      top.label = described?.label ?? entry.label ?? top.label
+      top.subject = described?.subject ?? top.subject
+      top.verb = described?.verb ?? top.verb
+      // Assigned unconditionally: a session that renames and then renames BACK
+      // must drop the claim, not keep the stale one.
+      top.renamedTo = described?.renamedTo
       top.timestamp = now
 
       // A coalesced write is a new action just as much as a pushed one, so it
@@ -124,9 +150,10 @@ export class HistoryManager {
 
     const historyEntry: HistoryEntry = {
       ...entry,
+      ...described,
       id: uuidv4(),
       timestamp: now,
-      label: entry.label ?? this.currentBatch?.label,
+      label: described?.label ?? entry.label ?? this.currentBatch?.label,
       batch: this.currentBatch?.id,
       coalesceKey,
     }

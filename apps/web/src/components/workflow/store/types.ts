@@ -36,6 +36,15 @@ export type FlowEdge = BaseFlowEdge
 /**
  * History entry for undo/redo functionality
  */
+/** The workflow node a history entry is about, named as it was AT THAT TIME. */
+export interface HistorySubject {
+  id: string
+  /** Title when the entry was recorded — not a live lookup. */
+  title: string
+  /** Node type, for the badge icon. */
+  nodeType?: string
+}
+
 export interface HistoryEntry {
   id: string
   timestamp: number
@@ -50,7 +59,22 @@ export interface HistoryEntry {
    * `HistoryManager.record`.
    */
   coalesceKey?: string
+  /**
+   * The node this entry acted on. Present only when the entry is about exactly
+   * one node, so the popover can render it as a badge instead of a sentence.
+   */
+  subject?: HistorySubject
+  /** New title, when this entry renamed {@link subject}. */
+  renamedTo?: string
+  /** Bare verb for badge rendering — `added`, `changed`, `moved`. */
+  verb?: string
 }
+
+/**
+ * The descriptive half of an entry, recomputed on every coalesced merge so a
+ * label converges with the session instead of freezing at its first keystroke.
+ */
+export type HistoryDescription = Pick<HistoryEntry, 'label' | 'subject' | 'renamedTo' | 'verb'>
 
 /**
  * User presence information for collaboration

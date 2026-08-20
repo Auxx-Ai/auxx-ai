@@ -138,7 +138,7 @@ export const useNodesInteractions = () => {
 
           // Sync and save to history
           debouncedSave()
-          saveStateToHistory(WorkflowHistoryEvent.NodeAdd)
+          saveStateToHistory(WorkflowHistoryEvent.NodeAdd, { nodeId: newNodeId })
         }
       } else if (connectionParams.nextNodeId) {
         // Adding node before target
@@ -190,7 +190,7 @@ export const useNodesInteractions = () => {
 
           // Sync and save to history
           debouncedSave()
-          saveStateToHistory(WorkflowHistoryEvent.NodeAdd)
+          saveStateToHistory(WorkflowHistoryEvent.NodeAdd, { nodeId: newNodeId })
         }
       }
     },
@@ -384,8 +384,12 @@ export const useNodesInteractions = () => {
         setEdges([...edges, ...edgesToPaste])
       }
 
-      // Save to history
-      saveStateToHistory(WorkflowHistoryEvent.NodePaste)
+      // Save to history. One pasted node gets named; several get counted,
+      // because naming one of them is worse than naming none.
+      saveStateToHistory(WorkflowHistoryEvent.NodePaste, {
+        nodeId: nodesToPaste.length === 1 ? nodesToPaste[0]?.id : undefined,
+        count: nodesToPaste.length,
+      })
       debouncedSave()
 
       // Show success toast
@@ -488,7 +492,7 @@ export const useNodesInteractions = () => {
 
       debouncedSave()
 
-      saveStateToHistory(WorkflowHistoryEvent.NodeDelete)
+      saveStateToHistory(WorkflowHistoryEvent.NodeDelete, { nodeId })
 
       closeDrawer()
     },
@@ -677,6 +681,7 @@ export const useNodesInteractions = () => {
       // undo step; the event type is part of it, so a resize and a drag of the
       // same node can never merge.
       saveStateToHistory(WorkflowHistoryEvent.NodeResize, {
+        nodeId,
         coalesceKey: `NodeResize:${nodeId}`,
       })
     },
@@ -812,7 +817,18 @@ export const useNodesInteractions = () => {
         // origin. `positionChanged` above is the correct test, and it covers
         // multi-select too: every selected node moves by the delta of the
         // GRABBED node, so a zero delta on that one is a zero delta on all.
-        saveStateToHistory(WorkflowHistoryEvent.NodeDragStop)
+        //
+        // How many nodes actually moved is recomputed the same way
+        // `handleNodeDrag` decides it — `draggedNodeIds` lives in drag START's
+        // scope and a ref would only restate what the store already knows.
+        const { nodes } = store.getState()
+        const selected = nodes.filter((n) => n.selected)
+        const isMultiDrag = selected.length > 1 && selected.some((n) => n.id === node.id)
+
+        saveStateToHistory(WorkflowHistoryEvent.NodeDragStop, {
+          nodeId: isMultiDrag ? undefined : node.id,
+          count: isMultiDrag ? selected.length : 1,
+        })
       }
       handleClearHelpline()
 
@@ -826,7 +842,7 @@ export const useNodesInteractions = () => {
 
       endDragWindow()
     },
-    [getNodesReadOnly, debouncedSave, handleClearHelpline, saveStateToHistory]
+    [getNodesReadOnly, store, debouncedSave, handleClearHelpline, saveStateToHistory]
   )
 
   const handleNodeSelect = useCallback(
@@ -1220,7 +1236,10 @@ export const useNodesInteractions = () => {
 
       setNodes(newNodes)
       debouncedSave()
-      saveStateToHistory(WorkflowHistoryEvent.NodeCollapse)
+      saveStateToHistory(WorkflowHistoryEvent.NodeCollapse, {
+        nodeId: targetNodeIds.length === 1 ? targetNodeIds[0] : undefined,
+        count: targetNodeIds.length,
+      })
     },
     [getNodesReadOnly, store, debouncedSave, saveStateToHistory]
   )
