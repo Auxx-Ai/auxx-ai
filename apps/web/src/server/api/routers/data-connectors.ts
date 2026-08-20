@@ -26,6 +26,7 @@ import {
   getConnectorReadiness,
   getConnectorTemplateById,
   listConnectors,
+  listRecommendedAppConnectors,
   listRuns,
   listSharedOwnedDefIds,
   listStreams,
@@ -220,9 +221,19 @@ export const dataConnectorRouter = createTRPCRouter({
    * first-party templates, and every installed-app connector. The apps section
    * reads the `installedApps` org-cache (already projected with
    * `catalog.dataConnectors`) — no bundle eval, no extra query.
+   *
+   * `recommended` (v9) is the discovery half: connectors from published, verified
+   * apps the org has NOT installed. It is gated on `integrations.manage` — the
+   * dialog itself only needs `connectors.manage`, so a data-ops member without
+   * install authority would otherwise be shown rows whose only CTA 403s.
+   * `ctx.capabilities` is already resolved by `permissionProcedure`, so the check
+   * costs nothing.
    */
   catalog: permissionProcedure(PermissionKey.connectorsManage).query(async ({ ctx }) => {
     const installedApps = await getCachedInstalledApps(ctx.session.organizationId)
+    const recommended = ctx.capabilities.can(PermissionKey.integrationsManage)
+      ? await listRecommendedAppConnectors(ctx.db, ctx.session.organizationId)
+      : []
     const apps = installedApps.flatMap((app) =>
       (app.dataConnectors ?? []).map((dc) => ({
         type: `app:${app.app.slug}`,
@@ -251,6 +262,7 @@ export const dataConnectorRouter = createTRPCRouter({
       ],
       templates: getAllConnectorTemplates(),
       apps,
+      recommended,
     }
   }),
 
