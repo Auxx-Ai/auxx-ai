@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react'
 import { useEnv } from '~/providers/dehydrated-state-provider'
+import { readErrorMessage } from '../utils/error-message'
 
 /**
  * Shared workflow site info from API
@@ -54,8 +55,8 @@ export function useWorkflowShare(shareToken: string) {
   const fetchSiteInfo = useCallback(async (): Promise<WorkflowSiteInfo> => {
     const res = await fetch(`${apiUrl}/workflows/share/${shareToken}/site`)
     if (!res.ok) {
-      const error = await res.json().catch(() => ({ message: 'Failed to fetch site info' }))
-      throw new Error(error.message || 'Failed to fetch site info')
+      const body = await res.json().catch(() => null)
+      throw new Error(readErrorMessage(body, 'Failed to fetch site info'))
     }
     const { data } = await res.json()
     return data
@@ -72,8 +73,8 @@ export function useWorkflowShare(shareToken: string) {
         },
       })
       if (!res.ok) {
-        const error = await res.json().catch(() => ({ message: 'Failed to fetch run status' }))
-        throw new Error(error.message || 'Failed to fetch run status')
+        const body = await res.json().catch(() => null)
+        throw new Error(readErrorMessage(body, 'Failed to fetch run status'))
       }
       const { data } = await res.json()
       return data

@@ -48,7 +48,11 @@ export {
   WorkflowExecutionEvents,
   workflowExecutionEvents,
 } from './workflow-execution-events'
-export { WorkflowExecutionService } from './workflow-execution-service'
+export {
+  type CreatedWorkflowRun,
+  createWorkflowRun,
+  WorkflowExecutionService,
+} from './workflow-execution-service'
 // Export all services
 export { toWorkflowAppResponse, WorkflowService } from './workflow-service'
 export { WorkflowStatsService } from './workflow-stats-service'

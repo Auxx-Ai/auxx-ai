@@ -5,6 +5,7 @@ import { WorkflowEventType } from '@auxx/lib/workflow-engine/client'
 import type { ContentSegment } from '@auxx/lib/workflow-engine/types/content-segment'
 import { usePassport } from '@auxx/ui/passport'
 import { useCallback, useRef } from 'react'
+import { readErrorMessage } from '../utils/error-message'
 import { useWorkflowShareStore } from '../workflow-share-provider'
 
 /**
@@ -171,8 +172,8 @@ export function useWorkflowRun(shareToken: string) {
         })
 
         if (!response.ok) {
-          const error = await response.json().catch(() => ({ message: 'Failed to start workflow' }))
-          throw new Error(error.message || 'Failed to start workflow')
+          const body = await response.json().catch(() => null)
+          throw new Error(readErrorMessage(body, 'Failed to start workflow'))
         }
 
         // Get run ID from header

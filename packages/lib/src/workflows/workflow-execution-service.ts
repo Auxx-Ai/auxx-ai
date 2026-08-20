@@ -132,6 +132,12 @@ export async function createWorkflowRun(
      * share) pass their own so run history can tell them apart.
      */
     triggeredFrom?: (typeof WorkflowTriggerSource)[keyof typeof WorkflowTriggerSource]
+    /**
+     * The `EndUser` who triggered this run, for public-share runs. Omit for
+     * every other door — an internal run has no end user, and this is an FK to
+     * `EndUser.id`, not `User.id`.
+     */
+    endUserId?: string | null
   }
 ) {
   const { workflow, organizationId, inputs, mode, userId } = params
@@ -194,6 +200,7 @@ export async function createWorkflowRun(
       totalTokens: 0,
       totalSteps: nodeCount,
       createdBy: effectiveUserId,
+      endUserId: params.endUserId ?? null,
     })
     .returning({
       id: schema.WorkflowRun.id,
