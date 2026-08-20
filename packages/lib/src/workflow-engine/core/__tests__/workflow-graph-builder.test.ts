@@ -590,3 +590,50 @@ describe('WorkflowGraphBuilder', () => {
     })
   })
 })
+
+describe('WorkflowGraphBuilder.getNodeHandles — crud declares a fail branch (plan 21 §7.3)', () => {
+  beforeEach(() => {
+    const registry = new NodeProcessorRegistry()
+    for (const type of [WorkflowNodeType.CRUD, WorkflowNodeType.HTTP]) {
+      registry.registerProcessor({
+        type,
+        preprocessNode: async () => ({ inputs: {}, metadata: {} }),
+        execute: async (node) => ({
+          nodeId: node.nodeId,
+          status: NodeRunningStatus.Succeeded,
+          output: {},
+          executionTime: 0,
+        }),
+        validate: async () => ({ valid: true, errors: [], warnings: [] }),
+      })
+    }
+    WorkflowGraphBuilder.initialize(registry)
+  })
+
+  /** The handle ids the builder registered for the one node in this workflow. */
+  function handlesFor(data: Record<string, unknown>): string[] {
+    const graph = WorkflowGraphBuilder.buildGraph({
+      id: 'wf',
+      graph: {
+        nodes: [{ id: 'n1', type: data.type as string, data }],
+        edges: [],
+      },
+    } as never)
+    return [...(graph.nodes.get('n1')?.outputHandles.keys() ?? [])]
+  }
+
+  it("registers `fail` for crud with error_strategy 'fail', mirroring http", () => {
+    // `crud` declares this branch in its manifest, renders it in node.tsx, gets
+    // it from calculateTargetBranches and emits `outputHandle: 'fail'` from its
+    // processor — but had no arm here, so it fell to `default:` and registered
+    // `source` alone. The derived metadata then lied: `hasMultipleOutputs:
+    // false` and the fail edge invisible to fork/parallel accounting.
+    expect(handlesFor({ type: 'crud', error_strategy: 'fail' })).toEqual(['source', 'fail'])
+    expect(handlesFor({ type: 'http', error_strategy: 'fail' })).toEqual(['source', 'fail'])
+  })
+
+  it('registers `source` alone when the fail branch is not enabled', () => {
+    expect(handlesFor({ type: 'crud', error_strategy: 'continue' })).toEqual(['source'])
+    expect(handlesFor({ type: 'crud' })).toEqual(['source'])
+  })
+})

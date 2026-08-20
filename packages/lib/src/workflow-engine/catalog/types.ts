@@ -124,6 +124,16 @@ export interface NodeManifest<TConfig = unknown> {
   /** Dynamic icon name based on config (optional). */
   getIcon?: (config: TConfig) => string
 
+  /**
+   * Extra words `list_node_types` searches, beyond id/displayName/description/
+   * category. NOT displayed anywhere — this exists only so the natural query
+   * finds the type. `if-else` is the motivating case: "if else", "switch",
+   * "branch" and "route" all missed `if-else`/`IF/ELSE`/`condition`, and a
+   * logged turn spent four iterations rewording before it landed on `"if"`
+   * (plan 21 §3.3).
+   */
+  synonyms?: string[]
+
   /** Only set for trigger nodes. */
   triggerType?: WorkflowTriggerType
   defaultData: () => Partial<TConfig>

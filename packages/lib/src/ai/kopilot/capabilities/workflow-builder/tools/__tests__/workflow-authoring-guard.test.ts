@@ -621,11 +621,18 @@ describe('discovery tools', () => {
     expect((byCategory.output as { types: Array<{ type: string }> }).types).toHaveLength(1)
   })
 
-  it('list_node_types reports an actionable error when filters match nothing', async () => {
+  it('list_node_types answers an empty match with success, not a tool failure', async () => {
+    // `success: false` read as a FAILED CALL and models reworded the query
+    // instead of accepting the answer — one logged turn burned four iterations
+    // before finding `if-else` (plan 21 §3.3). Same fix plan 19 applied to
+    // `list_app_blocks`.
     const result = await run(tool('list_node_types'), { query: 'quantum-blockchain' })
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('quantum-blockchain')
-    expect(result.error).toContain('without filters')
+    expect(result.success).toBe(true)
+    const output = result.output as { types: unknown[]; note: string }
+    expect(output.types).toEqual([])
+    expect(output.note).toContain('quantum-blockchain')
+    expect(output.note).toContain('a reworded query will not change the answer')
+    expect(output.note).toContain('list_app_blocks')
   })
 
   it('read and discovery tools build compact count digests', () => {
@@ -661,6 +668,27 @@ describe('discovery tools', () => {
     expect(out.type).toBe('wait')
     expect(out.configSchema).toBeTruthy()
     expect(out.connection).toBeTruthy()
+  })
+
+  it('describe_node_type keeps branch IDS and states the case_id contract', async () => {
+    // The ids used to be stripped, leaving `{name, kind}` — and the id is the
+    // ADDRESS. For an if-else the NAME is derived from array position and
+    // renames itself as cases are added, so a name handed out here is stale by
+    // the time the node exists (plan 21 §3.1/§10.2).
+    const result = await run(tool('describe_node_type'), { type: 'if-else' })
+    expect(result.success).toBe(true)
+    const out = result.output as {
+      connection: { branches: Array<{ id: string; name: string; kind: string }> }
+      branchesNote: string
+    }
+    expect(out.connection.branches).toEqual([
+      { id: 'true', name: 'IF', kind: 'default' },
+      { id: 'false', name: 'ELSE', kind: 'default' },
+    ])
+    expect(out.branchesNote).toContain('`case_id`')
+    expect(out.branchesNote).toContain('may NOT be `false`')
+    expect(out.branchesNote).toContain('must be unique')
+    expect(out.branchesNote).toContain('ACTUAL branches')
   })
 
   it('describe_node_type refuses an unknown type honestly, naming it', async () => {

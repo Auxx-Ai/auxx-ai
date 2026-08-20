@@ -18,6 +18,15 @@
  */
 
 export {
+  buildBranchSummaries,
+  FALLBACK_BRANCH_IDS,
+  safeBranches,
+} from './branches'
+export {
+  type BarePathUnwrapResult,
+  unwrapBracedBarePaths,
+} from './normalize/bare-path-fields'
+export {
   type ConnectionSpec,
   resolveConnectionSpec,
 } from './normalize/connection'
@@ -139,6 +148,7 @@ export type {
   GraphSummary,
   Issue,
   IssueSeverity,
+  NodeBranchSummary,
   NodeMeta,
   NodeRef,
   NodeSummary,
@@ -151,6 +161,7 @@ export {
   hasBlockingIssues,
   isTriggerNode,
   nodeType,
+  validateBranchWiring,
   validateGraphStructure,
   validateNodeConfigs,
 } from './validate'

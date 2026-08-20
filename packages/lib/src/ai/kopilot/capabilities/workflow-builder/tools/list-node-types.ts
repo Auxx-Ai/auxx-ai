@@ -5,6 +5,21 @@ import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 
 /**
+ * Search key: lowercased, every non-alphanumeric run collapsed to one space.
+ *
+ * A plain substring match over the raw strings is why `"if else"` missed
+ * `if-else` (hyphen) and `IF/ELSE` (slash) — the two spellings that ARE the
+ * answer. Normalizing both sides makes punctuation irrelevant, and `synonyms`
+ * covers the words that share no substring at all ("switch", "route").
+ */
+function searchNormalize(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+/**
  * Compact node-type catalog — progressive disclosure (04 §1): this is the only
  * node list in the prompt path; `describe_node_type` carries the schemas.
  * Static product data, identical for every org, so no authorization gate.
@@ -48,14 +63,14 @@ export function createListNodeTypesTool(getDeps: GetToolDeps): AgentToolDefiniti
     execute: async (args) => {
       const category = typeof args.category === 'string' ? args.category : undefined
       const query = typeof args.query === 'string' ? args.query.trim() : ''
-      const normalizedQuery = query.toLowerCase()
+      const normalizedQuery = searchNormalize(query)
       const types = listManifests()
         .filter((m) => !category || m.category === category)
         .filter(
           (m) =>
             !normalizedQuery ||
-            [m.id, m.displayName, m.description, m.category].some((value) =>
-              value.toLowerCase().includes(normalizedQuery)
+            [m.id, m.displayName, m.description, m.category, ...(m.synonyms ?? [])].some((value) =>
+              searchNormalize(value).includes(normalizedQuery)
             )
         )
         .map((m) => ({
@@ -72,10 +87,25 @@ export function createListNodeTypesTool(getDeps: GetToolDeps): AgentToolDefiniti
           ...(query ? [`query "${query}"`] : []),
           ...(category ? [`category "${category}"`] : []),
         ].join(' and ')
+        // `success: true`, deliberately. An empty result is a complete ANSWER,
+        // not a failed call — and returning `success: false` made models read
+        // it as a tool failure and reword: one logged turn burned four
+        // iterations before finding `if-else` via the one-character query
+        // "if" (plan 21 §3.3). Same fix plan 19 applied to `list_app_blocks`
+        // after 33 reworded calls in a single turn. The note ends by saying
+        // the answer is complete, because a note that only describes the world
+        // leaves "maybe a different word finds it" open.
         return {
-          success: false,
-          output: null,
-          error: `No CORE node types match ${filter || 'the supplied filters'}. Call list_node_types without filters to see the full catalog — and list_app_blocks for blocks contributed by installed apps, which are not in it.`,
+          success: true,
+          output: {
+            types: [],
+            note:
+              `No CORE node type matches ${filter || 'the supplied filters'}. This search covers ` +
+              'every core type and their synonyms, so a reworded query will not change the ' +
+              'answer — do not call this again with different words. Call list_node_types with ' +
+              'no filters to see the whole catalog, or list_app_blocks for blocks contributed ' +
+              'by installed apps, which are never in this list.',
+          },
         }
       }
       return { success: true, output: { types } }

@@ -29,6 +29,7 @@ import {
   NodeCategory,
   type NodeValidationResult,
 } from '../../workflow-engine/catalog/types'
+import { edgeSourceHandle, FALLBACK_BRANCH_IDS, safeBranches } from './branches'
 import { formatNodeRef } from './refs'
 import type { DraftGraph, GraphEdge, GraphNode, Issue } from './types'
 
@@ -273,8 +274,12 @@ export function validateGraphStructure(
 
     const sourceManifest = lookup(nodeType(source))
     if (sourceManifest) {
-      const branches = sourceManifest.connection.branches?.(source.data) ?? []
-      const handle = edge.sourceHandle ?? 'source'
+      // `safeBranches`, not a bare call: the derivation is a function of
+      // agent-authored config and this runs inside `readDraft`, so a throw here
+      // used to take out `get_workflow`/`get_node`/`validate_workflow` and every
+      // mutation at once (plan 21 §2.5).
+      const branches = safeBranches(sourceManifest, source.data)
+      const handle = edgeSourceHandle(edge)
       const allowed = branches.length > 0 ? branches.map((b) => b.id) : ['source']
       if (!allowed.includes(handle) && !isInputWiring(source, target, edge, lookup)) {
         issues.push({
@@ -445,6 +450,74 @@ export function validateNodeConfigs(graph: DraftGraph, lookup: ManifestLookup): 
       }
     } catch {
       // A validator crashing on half-built data must not take the pipeline down.
+    }
+  }
+  return issues
+}
+
+/**
+ * Node types with NO plain `source` handle — every way out is a branch, so an
+ * unwired one is a dead end rather than a merely unfinished path.
+ */
+const NO_DEFAULT_OUTPUT_TYPES = new Set(['human-confirmation'])
+
+/** `"Name" (id)` / `"id"` — how an unwired-branch issue names the branch. */
+function describeBranchRef(branch: { id: string; name: string }): string {
+  return branch.name ? `"${branch.name}" (${branch.id})` : `"${branch.id}"`
+}
+
+/**
+ * Tier-2, non-blocking: a branching node with a branch nothing is wired to.
+ *
+ * The logged 2026-08-18 turn finished with `publishable: true` and one whole
+ * carrier branch never connected, and NOTHING said so — there was no
+ * unwired-branch check in the structural tier, the config tier or the publish
+ * gate (plan 21 §7.6). This is that backstop: it surfaces on every mutation
+ * result and in `validate_workflow`, before the agent writes its summary.
+ *
+ * Two deliberate exclusions:
+ *  - **Fallback branches** (`false`/`default`/`unmatched`) are silent. Leaving
+ *    "nothing matched" unwired is the normal shape of an if-else, not an
+ *    oversight, and warning on it would fire on nearly every branching node in
+ *    every workflow.
+ *  - **The plain `source` handle** is silent for the same reason: a terminal
+ *    node is a legitimate end of a graph, and `source` is an output, not a
+ *    branch anybody chose.
+ *
+ * Severity is `warning` — a half-built branch is a legitimate intermediate
+ * state and blocking it would break incremental building. The one `error` is a
+ * node with no default output to fall through to (`human-confirmation`, whose
+ * three outcome handles are the only way out), where an unwired
+ * branch means the run dead-ends. It is still tier 2 and still NON-blocking:
+ * `runGraphMutation` blocks on the structural tier, not on this one, so a
+ * half-wired approval never refuses the next edit.
+ */
+export function validateBranchWiring(graph: DraftGraph, lookup: ManifestLookup): Issue[] {
+  const issues: Issue[] = []
+  for (const node of graph.nodes) {
+    const manifest = lookup(nodeType(node))
+    if (!manifest) continue
+    const branches = safeBranches(manifest, node.data)
+    if (branches.length < 2) continue // not a branching node for authoring purposes
+    const deadEnd = NO_DEFAULT_OUTPUT_TYPES.has(nodeType(node))
+    const ref = formatNodeRef(graph.nodes, node.id)
+
+    for (const branch of branches) {
+      if (FALLBACK_BRANCH_IDS.has(branch.id) || branch.id === 'source') continue
+      const wired = graph.edges.some(
+        (edge) => edge.source === node.id && edgeSourceHandle(edge) === branch.id
+      )
+      if (wired) continue
+      issues.push({
+        severity: deadEnd ? 'error' : 'warning',
+        nodeRef: ref,
+        field: 'branches',
+        message: deadEnd
+          ? `Branch ${describeBranchRef(branch)} has nothing wired and ${ref} has no default ` +
+            'output — the run dead-ends when this branch is taken.'
+          : `Branch ${describeBranchRef(branch)} has nothing wired — nothing runs when this ` +
+            `branch is taken. Connect it with connect_nodes(from: "${ref}", branch: "${branch.id}", to: …).`,
+      })
     }
   }
   return issues

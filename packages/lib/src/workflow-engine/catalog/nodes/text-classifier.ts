@@ -304,6 +304,17 @@ export const textClassifierManifest: NodeManifest<TextClassifierNodeData> = {
   displayName: 'Text Classifier',
   description: 'Classify text into predefined categories using AI',
   icon: 'tags',
+  /** Extra `list_node_types` search words — never displayed (see NodeManifest.synonyms). */
+  synonyms: [
+    'classify',
+    'classifier',
+    'categorize',
+    'category',
+    'triage',
+    'route',
+    'branch',
+    'switch',
+  ],
   color: '#f59e0b', // CONDITION category color
   defaultData: () => ({
     title: 'Text Classifier',

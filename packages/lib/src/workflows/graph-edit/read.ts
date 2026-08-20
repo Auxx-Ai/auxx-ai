@@ -22,6 +22,7 @@ import { resolveGraphOutputs } from '../../workflow-engine/catalog/resolve-outpu
 import type { ManifestLookup } from '../../workflow-engine/catalog/types'
 import type { UnifiedVariable } from '../../workflow-engine/types/unified-variable'
 import { hashWorkflowGraph } from '../graph-hash'
+import { buildBranchSummaries } from './branches'
 import { type ResourceAliasIndex, renderPersistedRefs } from './normalize/friendly-refs'
 import { checkVariableRefsAgainstOutputs } from './normalize/ref-check'
 import { buildResourceAliasIndex } from './normalize/resource-refs'
@@ -35,7 +36,12 @@ import type {
   Issue,
   NodeSummary,
 } from './types'
-import { nodeType, validateGraphStructure, validateNodeConfigs } from './validate'
+import {
+  nodeType,
+  validateBranchWiring,
+  validateGraphStructure,
+  validateNodeConfigs,
+} from './validate'
 
 /** Everything a mutation or read needs about the loaded draft. */
 export interface DraftContext {
@@ -148,11 +154,21 @@ export function hashNodeConfig(data: Record<string, unknown>): string {
   return hashWorkflowGraph(stripDerivedKeys(data))
 }
 
-/** One node's summary: friendly ref + friendly-rendered config. */
+/**
+ * One node's summary: friendly ref + friendly-rendered config + the node's
+ * actual branches.
+ *
+ * `lookup` is optional only because two internal callers read nothing but
+ * `config` off the result (the patch path's before-image). Pass it wherever the
+ * summary is RETURNED to a caller: without it `branches` is silently absent,
+ * and the whole point of the field is that a branching node never comes back
+ * without its vocabulary attached.
+ */
 export function buildNodeSummary(
   graph: DraftGraph,
   node: GraphNode,
-  aliases?: ResourceAliasIndex
+  aliases?: ResourceAliasIndex,
+  lookup?: ManifestLookup
 ): NodeSummary {
   const config: Record<string, unknown> = {}
   for (const [key, value] of Object.entries((node.data ?? {}) as Record<string, unknown>)) {
@@ -160,6 +176,7 @@ export function buildNodeSummary(
     config[key] = value
   }
   const container = node.parentId ?? (node.data?.loopId as string | undefined)
+  const branches = lookup ? buildBranchSummaries(graph, node, lookup(nodeType(node))) : undefined
   return {
     ref: formatNodeRef(graph.nodes, node.id),
     id: node.id,
@@ -169,6 +186,7 @@ export function buildNodeSummary(
     ...(container ? { inside: formatNodeRef(graph.nodes, container) } : {}),
     position: node.position ?? { x: 0, y: 0 },
     config: renderPersistedRefs(config, { nodes: graph.nodes, resourceAliases: aliases }),
+    ...(branches ? { branches } : {}),
   }
 }
 
@@ -244,6 +262,7 @@ export async function readDraft(
   const issues: Issue[] = [
     ...validateGraphStructure(ctx.graph, { lookup: ctx.lookup }),
     ...validateNodeConfigs(ctx.graph, ctx.lookup),
+    ...validateBranchWiring(ctx.graph, ctx.lookup),
   ]
 
   const outputs: Record<string, UnifiedVariable[]> = {}
@@ -269,7 +288,7 @@ export async function readDraft(
     workflowAppId: ctx.workflowAppId,
     name: ctx.appName,
     triggerType: ctx.triggerType,
-    nodes: ctx.graph.nodes.map((node) => buildNodeSummary(ctx.graph, node, aliases)),
+    nodes: ctx.graph.nodes.map((node) => buildNodeSummary(ctx.graph, node, aliases, ctx.lookup)),
     edges: buildGraphSummary(ctx.graph, ctx.lookup, ctx.triggerType).edges,
     outputs,
     issues,
@@ -303,6 +322,7 @@ export async function validateWorkflow(
   const issues: Issue[] = [
     ...validateGraphStructure(ctx.graph, { lookup: ctx.lookup }),
     ...validateNodeConfigs(ctx.graph, ctx.lookup),
+    ...validateBranchWiring(ctx.graph, ctx.lookup),
   ]
   const resolved = await resolveGraphOutputs(params.organizationId, { graph: ctx.graph })
   if (resolved.isOk()) {

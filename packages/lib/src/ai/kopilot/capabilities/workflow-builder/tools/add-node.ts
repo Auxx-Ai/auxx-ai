@@ -23,7 +23,7 @@ export function createAddNodeTool(getDeps: GetToolDeps): AgentToolDefinition {
     displayName: 'Add workflow node',
     surfaces: ['builder'],
     description:
-      'Add one node to the open workflow draft. Connect it with `after` (predecessor title) and optionally `branch` (branch NAME of the predecessor); place it inside a loop with `inside` (loop title); attach an input node (form-input) to a trigger’s run form with `inputFor` (trigger title). Do not send coordinates — layout is automatic. The result returns the node, its resolved outputs (wire `{{Title.path}}` refs from these), and any issues.',
+      'Add one node to the open workflow draft. Connect it with `after` (predecessor title) and optionally `branch` (branch id or name of the predecessor — for an if-else, the `case_id` you authored); place it inside a loop with `inside` (loop title); attach an input node (form-input) to a trigger’s run form with `inputFor` (trigger title). Do not send coordinates — layout is automatic. The result returns the node, its `branches` when it has any (id, name, and what is wired to each), its resolved outputs (wire `{{Title.path}}` refs from these), and any issues.',
     parameters: {
       type: 'object',
       properties: {
@@ -40,7 +40,13 @@ export function createAddNodeTool(getDeps: GetToolDeps): AgentToolDefinition {
             'Friendly config per describe_node_type — `{{Title.path}}` refs, resource slugs, plain prompts.',
         },
         after: { type: 'string', description: 'Predecessor node (title) to connect from.' },
-        branch: { type: 'string', description: 'Branch NAME of `after` to leave on.' },
+        branch: {
+          type: 'string',
+          description:
+            'Branch of `after` to leave on — its `id` (preferred: stable across config edits, ' +
+            'and for an if-else it is the `case_id` you authored) or its display name. Every ' +
+            "node read and write returns the node's `branches`; take the address from there.",
+        },
         inside: { type: 'string', description: 'Loop node (title) to place this node inside.' },
         inputFor: {
           type: 'string',

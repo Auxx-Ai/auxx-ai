@@ -112,12 +112,19 @@ export const ifElseNodeDataSchema = z.object({
  * branch is always the ELSE. Generic over the branch shape so callers that carry
  * extra fields (e.g. `type`) keep them on the result.
  * (Relocated from apps/web utils/branch-name-correct.ts, which re-exports it.)
+ *
+ * TOTAL — never throws. It used to throw `if-else node branch number must than
+ * 2` for fewer than two branches, which is exactly what a `cases: []` config
+ * produces (the manifest appends only the reserved ELSE). Both production call
+ * sites read it from a READ path (`validateGraphStructure`, which `readDraft`
+ * runs, and `resolveConnectionSpec`), so a config-shape mistake 500'd
+ * `get_workflow`, `get_node`, `validate_workflow` and every mutation at once —
+ * the agent could not even read the workflow to see what it had done
+ * (plan 21 §2.5). A degenerate config now degrades to the branches it can
+ * name; the validator is what reports it.
  */
 export const branchNameCorrect = <T extends { id: string; name: string }>(branches: T[]): T[] => {
-  const branchLength = branches.length
-  if (branchLength < 2) throw new Error('if-else node branch number must than 2')
-
-  if (branchLength === 2) {
+  if (branches.length < 3) {
     return branches.map((branch) => {
       return { ...branch, name: branch.id === 'false' ? 'ELSE' : 'IF' }
     })
@@ -132,7 +139,7 @@ export const branchNameCorrect = <T extends { id: string; name: string }>(branch
  * Validation function for if-else configuration
  */
 export const validateIfElseConfig = (data: IfElseNodeData): NodeValidationResult => {
-  const errors: Array<{ field: string; message: string; type?: 'warning' | 'error' }> = []
+  const errors: NodeValidationResult['errors'] = []
 
   // Support both old config format and new flattened format
   const dataToValidate = 'config' in data ? (data as any).config : data
@@ -148,16 +155,49 @@ export const validateIfElseConfig = (data: IfElseNodeData): NodeValidationResult
   }
 
   // Validate each case
+  const seenCaseIds = new Set<string>()
   dataToValidate.cases?.forEach((caseItem: any, index: number) => {
-    if (!caseItem.case_id?.trim()) {
+    const caseId = typeof caseItem.case_id === 'string' ? caseItem.case_id.trim() : ''
+    if (!caseId) {
       errors.push({
         field: `cases.${index}.case_id`,
         message: 'Case ID is required',
         type: 'error',
       })
+    } else if (caseId === 'false') {
+      // `false` is the reserved ELSE handle this node ALWAYS appends. A case
+      // claiming it does not create a second branch — it collapses into ELSE
+      // (`WorkflowGraphBuilder.getNodeHandles` sets one Map entry per case_id
+      // and then unconditionally sets `false`), so at run time a matched case
+      // and a nothing-matched fall-through leave on the SAME edge with nothing
+      // distinguishing them. That is a silent mis-route, which is why this
+      // blocks authoring rather than merely warning (plan 21 §2.3/§2.4: the
+      // logged turn wrote `case_id: 'false'` because the old usage string read
+      // as an instruction to).
+      errors.push({
+        field: `cases.${index}.case_id`,
+        message:
+          `case_id "false" is not allowed — "false" is the reserved ELSE handle this node ` +
+          `always exposes. Name the case for what it matches instead (e.g. "carrier-ups").`,
+        type: 'error',
+        blocksAuthoring: true,
+      })
+    } else if (seenCaseIds.has(caseId)) {
+      // Duplicate ids are *members* of the allowed handle set, so the
+      // structural handle check passes them; the collision only shows up at
+      // run time as two cases sharing one edge.
+      errors.push({
+        field: `cases.${index}.case_id`,
+        message:
+          `Duplicate case_id "${caseId}" — every case needs its own id, because case_id IS ` +
+          `the branch handle edges leave on. Two cases sharing one id share one branch.`,
+        type: 'error',
+        blocksAuthoring: true,
+      })
     }
+    if (caseId) seenCaseIds.add(caseId)
 
-    if (caseItem.conditions.length === 0) {
+    if (!caseItem.conditions || caseItem.conditions.length === 0) {
       errors.push({
         field: `cases.${index}.conditions`,
         message: 'At least one condition is required',
@@ -166,7 +206,7 @@ export const validateIfElseConfig = (data: IfElseNodeData): NodeValidationResult
     }
 
     // Validate conditions
-    caseItem.conditions.forEach((condition: any, condIndex: number) => {
+    caseItem.conditions?.forEach((condition: any, condIndex: number) => {
       if (!condition.variableId) {
         errors.push({
           field: `cases.${index}.conditions.${condIndex}.variable_selector`,
@@ -195,6 +235,22 @@ export const validateIfElseConfig = (data: IfElseNodeData): NodeValidationResult
   return { isValid: errors.filter((e) => e.type === 'error').length === 0, errors }
 }
 
+/**
+ * Strip one surrounding `{{ }}` from a condition's `variableId`.
+ *
+ * `variableId` is a BARE dotted path — the only such field in the whole builder
+ * vocabulary, where every other reference is `{{Title.path}}`. An author who
+ * writes the form they were taught everywhere else used to get a quadruple-brace
+ * error naming neither the field nor the rule (plan 21 §3.4), so the braced form
+ * is accepted here and unwrapped. The graph-edit normalizer does the same on the
+ * WRITE path and reports a warning; this is the read-side net under graphs that
+ * never went through it (templates, hand-written `replace_graph` payloads).
+ */
+export function unwrapBracedVariableId(variableId: string): string {
+  const match = /^\s*\{\{\s*([^{}]+?)\s*\}\}\s*$/.exec(variableId)
+  return match?.[1] ?? variableId
+}
+
 export function extractIfElseVariableIds(data: IfElseNodeData): string[] {
   const uniqueVariableIds = new Set<string>()
 
@@ -205,8 +261,8 @@ export function extractIfElseVariableIds(data: IfElseNodeData): string[] {
   dataToUse.cases?.forEach((caseItem: any) => {
     caseItem.conditions?.forEach((condition: any) => {
       // Add variable ID from condition
-      if (condition.variableId) {
-        uniqueVariableIds.add(condition.variableId)
+      if (typeof condition.variableId === 'string' && condition.variableId) {
+        uniqueVariableIds.add(unwrapBracedVariableId(condition.variableId))
       }
       // Extract variable IDs from condition.value editor content
       if (condition.value) {
@@ -256,6 +312,11 @@ export const ifElseManifest: NodeManifest<IfElseNodeData> = {
   description: 'Branch workflow based on conditions',
   icon: 'git-branch',
   color: '#f59e0b', // CONDITION category color
+  // `list_node_types` is a substring search, and none of the words a model
+  // actually reaches for hit `if-else` / `IF/ELSE` / `condition`. A logged turn
+  // burned four iterations on "condition if else branch", "flow_control" and
+  // "if" before finding this type (plan 21 §3.3).
+  synonyms: ['if else', 'switch', 'branch', 'route', 'routing', 'conditional', 'case', 'else'],
   defaultData: () => ({
     title: 'IF/ELSE',
     desc: 'Branch based on conditions',
@@ -294,18 +355,58 @@ export const ifElseManifest: NodeManifest<IfElseNodeData> = {
   agent: {
     authorable: true,
     usage:
-      'Each entry in `cases` is one branch: `case_id` is the edge handle, conditions join via ' +
-      '`logical_operator`. Every condition reads a `variableId` (bare dotted path) with a ' +
-      '`comparison_operator` from the shared operator registry. The ELSE branch handle is ' +
-      "always 'false'. Wire edges by branch id.",
+      'Each entry in `cases` is one branch, and `case_id` IS that branch\u2019s address: it is the ' +
+      'edge handle, it is what you pass as `branch` to `connect_nodes`/`add_node`, and because ' +
+      'YOU author it you already know it before the node exists \u2014 so you can create the node and ' +
+      'wire its branches in the same batch. Name each case for what it matches ' +
+      '(e.g. "carrier-fedex", "priority-high"), never "true"/"false". Every `case_id` must be ' +
+      'UNIQUE, and none may be "false": this node ALWAYS exposes a reserved "false" ELSE branch ' +
+      'for "nothing matched", and a case claiming that id collapses into it, so a matched case ' +
+      'and a fall-through leave on the same edge. Conditions inside a case join via ' +
+      '`logical_operator`. Every condition reads a `variableId` \u2014 a BARE dotted path such as ' +
+      '"Check Order.record.carrier", the one field in this vocabulary that is NOT wrapped in ' +
+      '{{\u2026}} \u2014 with a `comparison_operator` from the shared operator registry.',
     examples: [
       {
-        description: 'Branch on a high-priority ticket',
+        description: 'Route by carrier — one case per carrier, ELSE catches the rest',
         config: {
           cases: [
             {
               id: 'c1',
-              case_id: 'true',
+              case_id: 'carrier-fedex',
+              logical_operator: 'and',
+              conditions: [
+                {
+                  id: 'cond1',
+                  variableId: 'Carrier.value',
+                  comparison_operator: 'is',
+                  value: 'fedex',
+                },
+              ],
+            },
+            {
+              id: 'c2',
+              case_id: 'carrier-ups',
+              logical_operator: 'and',
+              conditions: [
+                {
+                  id: 'cond2',
+                  variableId: 'Carrier.value',
+                  comparison_operator: 'is',
+                  value: 'ups',
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        description: 'Single condition — wire the match on "priority-high", the rest on "false"',
+        config: {
+          cases: [
+            {
+              id: 'c1',
+              case_id: 'priority-high',
               logical_operator: 'and',
               conditions: [
                 {

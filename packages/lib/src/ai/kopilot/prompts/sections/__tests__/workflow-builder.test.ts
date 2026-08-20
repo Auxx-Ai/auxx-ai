@@ -66,6 +66,27 @@ describe('buildWorkflowBuilderPromptSection', () => {
     expect(prompt).toContain('{"recordIds": []}')
   })
 
+  it('teaches branch IDS, not the unstable derived names', () => {
+    // The old paragraph taught branch NAMES and used `branch: "High"` — a
+    // text-classifier-shaped name an if-else can never produce. Its names are
+    // derived from array position, so `IF` becomes `CASE 1` the moment a second
+    // case is authored, and the branch vocabulary the agent was handed one
+    // iteration earlier no longer exists (plan 21 §3.2/§12.2).
+    const prompt = buildWorkflowBuilderPromptSection()
+
+    expect(prompt).toContain('Address a branch by its **id**')
+    expect(prompt).toContain('the branch id IS the `case_id` you authored')
+    expect(prompt).toContain('same batch')
+    expect(prompt).toContain('`connectedTo`')
+    expect(prompt).toContain('`false` is the reserved ELSE handle')
+    // The doctrine that steered the model off the only stable address it has.
+    expect(prompt).not.toContain('never invent handle ids')
+    expect(prompt).not.toContain('branch: "High"')
+    // The honesty rules it must NOT have taken down with it.
+    expect(prompt).toContain('Never invent an output name')
+    expect(prompt).toContain('Never invent node ids, output names, template ids, or node types')
+  })
+
   it('stays static — no per-org content leaks into the cached section', () => {
     // The section is cached as one static block; naming an org's apps here
     // would drop it out of that block on every turn.

@@ -10,7 +10,7 @@ import {
 } from './graph-tool-helpers'
 import { optionalString, resolveWorkflowWrite } from './write-tool-helpers'
 
-/** Connect two nodes — branch handles resolved by NAME through the manifest. */
+/** Connect two nodes — branch handles resolved by id (or name) through the manifest. */
 export function createConnectNodesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'connect_nodes',
@@ -18,13 +18,19 @@ export function createConnectNodesTool(getDeps: GetToolDeps): AgentToolDefinitio
     displayName: 'Connect workflow nodes',
     surfaces: ['builder'],
     description:
-      'Connect two nodes of the open workflow draft. For a branching source (if-else etc.), pass the branch NAME. Connecting a loop child back to its own loop wires the loop-back edge automatically.',
+      'Connect two nodes of the open workflow draft. For a branching source (if-else etc.), pass `branch` — the branch id (for an if-else, the `case_id` you authored) or its display name. Connecting a loop child back to its own loop wires the loop-back edge automatically.',
     parameters: {
       type: 'object',
       properties: {
         from: { type: 'string', description: 'Source node title.' },
         to: { type: 'string', description: 'Target node title.' },
-        branch: { type: 'string', description: 'Branch NAME of `from` to leave on.' },
+        branch: {
+          type: 'string',
+          description:
+            'Branch of `from` to leave on — its `id` (preferred: stable across config edits, ' +
+            'and for an if-else it is the `case_id` you authored) or its display name. Every ' +
+            "node read and write returns the node's `branches`; take the address from there.",
+        },
       },
       required: ['from', 'to'],
       additionalProperties: false,
