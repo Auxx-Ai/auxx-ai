@@ -217,6 +217,13 @@ export class TemplateGraphTransformer {
           // category and the branch can never be taken — the guard used to skip
           // exactly that edge (`edge.sourceHandle && ...`), i.e. it failed open
           // on its own worst input.
+          //
+          // REACHABILITY: this arm only fires on a RAW, un-hydrated graph.
+          // `resolve-template.ts` hydrates (filling `sourceHandle ?? 'source'`)
+          // before the install door calls this, so an install can never see an
+          // absent handle — the arm is for a template WRITE, which is not yet
+          // validated (plan 23 §7; `packages/services` is tier 2 and cannot
+          // import this module, so that seam needs the app-layer treatment).
           if (!edge.sourceHandle) {
             errors.push(`Edge ${edge.id}: no sourceHandle, so it routes to no classifier category`)
             continue

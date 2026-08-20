@@ -65,7 +65,13 @@ export class PollingTriggerService {
           data: {
             workflowAppId: workflowApp.id,
             organizationId: workflowApp.organizationId,
-            nodeId: triggerNode.nodeId,
+            // `findPollingTriggerNode` returns a RAW canvas node off
+            // `workflow.graph.nodes`, which is keyed `id`. `nodeId` is the
+            // ENGINE node's field, so reading it here yielded `undefined` on
+            // every scheduled job (plan 23 §8 B-2). Latent rather than live —
+            // the job declares `nodeId: string` and never reads it — but the
+            // payload was lying about its own shape.
+            nodeId: triggerNode.id,
             appId: workflowApp.publishedWorkflow.triggerAppId,
             triggerId: workflowApp.publishedWorkflow.triggerTriggerId,
             installationId: workflowApp.publishedWorkflow.triggerInstallationId,

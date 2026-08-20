@@ -649,6 +649,12 @@ describe('the read-time defaults layer', () => {
   })
 
   it('does NOT persist a defaulted value — a default is a read-time projection, never a write', () => {
+    // NOTE: this exercises the defaults layer ON, which is the layer's own unit
+    // contract — NOT the shipped configuration. Every seam runs
+    // `skipDefaults: true` (`hydration-policy.ts`), so in production neither
+    // half of this happens. The pairing that actually ships is pinned by
+    // `hydration-policy-pairing.test.ts`; running the two halves under
+    // DIFFERENT policies is what silently amputated node config in #1771.
     const stored = dehydrateGraph(hydrateGraph(stripped))
     const data = node(stored, 't1').data!
     expect(data).not.toHaveProperty('resourceType')
@@ -828,9 +834,12 @@ describe('dehydrateGraph must NOT strip', () => {
   })
 
   it('an authored value that happens to EQUAL its manifest default reads back unchanged', () => {
-    // Dehydration does drop it from the column — that is the exact inverse of
-    // the read-time defaults layer, and it is what keeps a stored document
-    // canonical. What matters is that no reader can tell.
+    // Dehydration does drop it from the column — the exact inverse of the
+    // read-time defaults layer, which is what keeps a stored document canonical.
+    // "No reader can tell" holds ONLY because both halves here run under the
+    // same policy. Under the shipped `skipDefaults: true` neither half runs; a
+    // reader on the other policy very much can tell, which is #1771. See
+    // `hydration-policy-pairing.test.ts`.
     const graph: GraphDocument = {
       nodes: [
         {

@@ -42,11 +42,30 @@ import {
   type GraphDocument,
   hydrateGraph,
 } from '../src/workflow-engine/catalog/graph-hydration'
+import {
+  DEHYDRATION_OPTIONS,
+  HYDRATION_OPTIONS,
+} from '../src/workflow-engine/catalog/hydration-policy'
 import { projectGraphSemantics } from '../src/workflows/graph-projection'
 
 const { Workflow, WorkflowRun, WorkflowTemplate } = schema
 
 const verbose = process.argv.includes('--verbose')
+
+/**
+ * `node.data` keys a canonical document is ALLOWED to drop: dead fields with no
+ * readers, plus the derived ones hydration rebuilds under a different name.
+ */
+const DROPPABLE_DATA_KEYS = new Set([
+  'isValid',
+  'errors',
+  'outputVariables',
+  'selected',
+  'description',
+  'inputNodes',
+  'isInLoop',
+  'loopId',
+])
 
 interface Row {
   source: string
@@ -148,12 +167,17 @@ async function main() {
 
   for (const row of rows) {
     const label = `${row.source} ${row.id}`
-    const h1 = hydrateGraph(row.graph)
-    const h2 = hydrateGraph(h1)
-    const d1 = dehydrateGraph(row.graph)
-    const d2 = dehydrateGraph(d1)
-    const canonical = dehydrateGraph(h1)
-    const roundTrip = hydrateGraph(canonical)
+    // THE SHIPPED POLICY, on both sides. Running these with no options
+    // validates the defaults-layer-ON configuration, which no seam uses — that
+    // is precisely why this script passed while the canvas save path was
+    // deleting node config (#1771). A green run under the wrong policy is not
+    // evidence about production.
+    const h1 = hydrateGraph(row.graph, HYDRATION_OPTIONS)
+    const h2 = hydrateGraph(h1, HYDRATION_OPTIONS)
+    const d1 = dehydrateGraph(row.graph, DEHYDRATION_OPTIONS)
+    const d2 = dehydrateGraph(d1, DEHYDRATION_OPTIONS)
+    const canonical = dehydrateGraph(h1, DEHYDRATION_OPTIONS)
+    const roundTrip = hydrateGraph(canonical, HYDRATION_OPTIONS)
 
     if (stable(h1) !== stable(h2)) {
       failures.push(`[1 hydrate idempotent] ${label}\n    ${diffPaths(h1, h2).join('\n    ')}`)
@@ -162,11 +186,36 @@ async function main() {
       failures.push(`[2 dehydrate idempotent] ${label}\n    ${diffPaths(d1, d2).join('\n    ')}`)
     }
     // 3 — a canonical document survives read/write byte for byte.
-    const reCanonical = dehydrateGraph(roundTrip)
+    const reCanonical = dehydrateGraph(roundTrip, DEHYDRATION_OPTIONS)
     if (stable(reCanonical) !== stable(canonical)) {
       failures.push(
         `[3 canonical round trip] ${label}\n    ${diffPaths(canonical, reCanonical).join('\n    ')}`
       )
+    }
+
+    // 6 — NO `node.data` KEY MAY VANISH through a read/write cycle. Invariant 5
+    // below uses `projectGraphSemantics`, which is symmetric under any single
+    // policy and so cannot see a key that both sides agree to drop. This one
+    // compares raw key sets against the stored row and is what would have caught
+    // the #1771 config amputation.
+    const storedKeys = new Map<string, Set<string>>()
+    for (const n of (row.graph.nodes ?? []) as Array<Record<string, any>>) {
+      storedKeys.set(String(n.id), new Set(Object.keys(n.data ?? {})))
+    }
+    for (const n of (roundTrip.nodes ?? []) as unknown as Array<Record<string, any>>) {
+      const before = storedKeys.get(String(n.id))
+      if (!before) continue
+      const after = new Set(Object.keys(n.data ?? {}))
+      const vanished = [...before].filter(
+        (k) =>
+          !after.has(k) &&
+          !k.startsWith('_') && // canvas-owned by convention; never persisted
+          !k.startsWith('$') &&
+          !DROPPABLE_DATA_KEYS.has(k)
+      )
+      if (vanished.length > 0) {
+        failures.push(`[6 data key vanished] ${label} node ${n.id}: ${vanished.join(', ')}`)
+      }
     }
 
     // 5 — no CONTENT is lost, judged by the same projection the save path uses.
