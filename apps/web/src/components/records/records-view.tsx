@@ -38,7 +38,7 @@ import {
   type DynamicResourceViewHandle,
 } from '~/components/dynamic-table/dynamic-resource-view'
 import { useTableViewRealtime } from '~/components/dynamic-table/hooks/use-table-view-realtime'
-import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
+import { resolveColumnField } from '~/components/dynamic-table/utils/column-id'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { EmptyState } from '~/components/global/empty-state'
 import { MainPageLoading, MainPageNotFound } from '~/components/global/main-page-states'
@@ -491,16 +491,9 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
         | null
         | undefined
 
-    const resolveField = (columnId: string): ResourceField | null => {
-      if (columnId.startsWith('_')) return null
-      const decoded = decodeColumnId(columnId)
-      if (decoded.type === 'path') {
-        // FieldPath is a non-empty tuple; `[0]` is the guaranteed fallback.
-        const lastResourceFieldId = decoded.fieldPath.at(-1) ?? decoded.fieldPath[0]
-        return fieldMap[lastResourceFieldId] ?? null
-      }
-      return fieldMap[decoded.resourceFieldId] ?? null
-    }
+    // Path columns come back non-updatable — see `resolveColumnField`.
+    const resolveField = (columnId: string): ResourceField | null =>
+      resolveColumnField(fieldMap, columnId)
 
     return {
       enabled: true,
