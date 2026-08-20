@@ -69,6 +69,7 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
         values={config?.default_values ?? config?.default_value ?? []}
         onChange={handleDefaultValuesChange}
         isReadOnly={isReadOnly}
+        description='Substitute response values to use when the request fails'
       />
     </ErrorHandlingSection>
   )

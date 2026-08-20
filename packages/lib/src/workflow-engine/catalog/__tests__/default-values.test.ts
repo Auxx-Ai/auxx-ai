@@ -90,8 +90,16 @@ describe('defaultValueTargets', () => {
   })
 
   it('excludes the keys a manifest declares as defaultValueExclude', () => {
+    // Declared inline rather than read off a manifest: crud was the only type
+    // that carried a `defaultValueExclude`, and it lost the list along with
+    // the `default` strategy. The rule itself still has to hold for whichever
+    // type declares one next.
     const declared = [flat('id'), flat('record', BaseType.OBJECT), flat('success')]
-    const targets = defaultValueTargets(declared, NODE, crudManifest.errorHandling)
+    const targets = defaultValueTargets(declared, NODE, {
+      strategies: [ErrorStrategy.fail, ErrorStrategy.default],
+      defaultStrategy: ErrorStrategy.fail,
+      defaultValueExclude: ['success'],
+    })
     expect(targets.map((t) => t.path)).toEqual(['id', 'record'])
   })
 
@@ -208,7 +216,12 @@ describe('manifest validators surface the substitute findings', () => {
     expect(result.errors.filter((e) => e.field === 'default_values')).toEqual([])
   })
 
-  it('crud warns on `default` with an empty list', () => {
+  it('crud warns on a LEGACY `default` with an empty list', () => {
+    // crud no longer offers `default`, but the processor switches on the
+    // stored value, so a node persisted under it still runs that arm — and an
+    // empty list makes that arm a silent no-op. `validate` is the surface that
+    // says so; it is the only thing that reaches such a node now.
+
     const result = crudManifest.validate({
       title: 'Create contact',
       mode: 'create',

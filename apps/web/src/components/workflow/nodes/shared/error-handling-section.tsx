@@ -128,11 +128,29 @@ export function ErrorHandlingSection({
 
   if (!errorHandling) return null
 
+  // A strategy the manifest no longer declares but the node is still STORED
+  // under. Retiring one from a manifest does not retire it from a running
+  // graph: every processor switches on the persisted value, and
+  // `normalizeErrorStrategy` hands back any known strategy verbatim — its
+  // fallback only fires for an unrecognised string. Rendering the declared
+  // list alone would print "Fail branch" over a node the engine is running
+  // under `continue`, which is the lie plan 24 §6.5 left behind when it
+  // retired `continue` from five types, and would repeat it for the crud
+  // nodes persisted under `default`.
+  //
+  // So: offer it, flagged, and let the author retire it by picking something
+  // else. `setStrategy` still refuses to WRITE an undeclared strategy, so this
+  // is a one-way door out.
+  const isLegacyStrategy = !errorHandling.strategies.includes(current)
+  const selectable = isLegacyStrategy
+    ? [...errorHandling.strategies, current]
+    : errorHandling.strategies
+
   // A type that declares exactly one policy has nothing to pick — plan 24 §6.5
   // retired `continue` from every type whose outputs are the reason it exists,
   // so `[fail]` is now the common case. A one-item `<Select>` reads as a
   // choice that is being withheld; the copy alone is the honest rendering.
-  const onlyStrategy = errorHandling.strategies.length === 1 ? errorHandling.strategies[0] : null
+  const onlyStrategy = selectable.length === 1 ? selectable[0] : null
 
   return (
     <Section
@@ -149,18 +167,25 @@ export function ErrorHandlingSection({
               <SelectValue placeholder='Select strategy' />
             </SelectTrigger>
             <SelectContent>
-              {errorHandling.strategies.map((strategy) => (
+              {selectable.map((strategy) => (
                 <SelectItem
                   key={strategy}
                   value={strategy}
                   description={STRATEGY_COPY[strategy].description}>
                   {STRATEGY_COPY[strategy].label}
+                  {strategy === current && isLegacyStrategy ? ' (retired)' : ''}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         )
       }>
+      {isLegacyStrategy && (
+        <div className='text-sm text-bad-500'>
+          {STRATEGY_COPY[current].label} is no longer available on this node. It still runs — pick
+          another policy to retire it.
+        </div>
+      )}
       {current === ErrorStrategy.default && children}
       {current === ErrorStrategy.fail && (
         <div className='text-sm text-primary-500'>Wire the Fail branch on the canvas.</div>

@@ -150,13 +150,17 @@ export interface NodeErrorHandling {
    *
    * Only needed when a type's failure handler writes a key BEFORE the strategy
    * switch, so a configured substitute for it would either be silently
-   * overwritten or would let the author state something untrue. crud is the
-   * one such type today: `handleCrudError` writes the five-key status block
-   * unconditionally, and a `success: true` substitute on a failed create is a
-   * lie the rest of the graph would believe.
+   * overwritten or would let the author state something untrue.
    *
-   * NOT derivable from {@link failOutputs}, even though crud's two lists
-   * coincide. http's `failOutputs` is `['status', 'error', 'success']` and
+   * NO TYPE DECLARES ONE TODAY. crud was the only one — `handleCrudError`
+   * writes its five-key status block unconditionally, and a `success: true`
+   * substitute on a failed create is a lie the rest of the graph would believe
+   * — and it lost the list along with the `default` strategy itself. The field
+   * stays because the condition is a property of failure handlers, not of
+   * crud, and the next type to write before its strategy switch will need it.
+   *
+   * NOT derivable from {@link failOutputs}, even though crud's two lists used
+   * to coincide. http's `failOutputs` is `['status', 'error', 'success']` and
    * `status` is precisely the substitute the editor exists to set (plan 24
    * §9.1) — subtracting `failOutputs` here would break the headline fix.
    */
