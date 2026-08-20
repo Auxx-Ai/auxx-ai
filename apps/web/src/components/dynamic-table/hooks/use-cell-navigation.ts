@@ -5,7 +5,7 @@ import type { Table } from '@tanstack/react-table'
 import type React from 'react'
 import { useCallback, useEffect, useRef } from 'react'
 import { useSelectionStore } from '../stores/selection-store'
-import type { CellRange, CellSelectionState, RangeEndpoint } from '../types'
+import type { CellRange, CellSelectionConfig, CellSelectionState, RangeEndpoint } from '../types'
 import { isSingleCell, singleRange } from '../utils/range'
 
 interface UseCellNavigationOptions<TData> {
@@ -14,6 +14,8 @@ interface UseCellNavigationOptions<TData> {
   enabled: boolean
   /** Read-only degrade — arrow/tab/copy navigation stays on, Enter-to-edit off. */
   readOnly?: boolean
+  /** Narrows Enter-to-edit per row and per field, same as the cell's own gates. */
+  config?: CellSelectionConfig
   scrollContainerRef: React.RefObject<HTMLDivElement | null>
 }
 
@@ -29,6 +31,7 @@ export function useCellNavigation<TData>({
   tableId,
   enabled,
   readOnly,
+  config,
   scrollContainerRef,
 }: UseCellNavigationOptions<TData>) {
   /** Track last known position for resuming navigation after Escape clears */
@@ -182,6 +185,17 @@ export function useCellNavigation<TData>({
           break
         case 'Enter':
           if (!currentRange || readOnly) return
+          // Same three gates `SelectableTableCell`'s double-click applies. This
+          // listener is on `document`, so a cell handler that bails on an
+          // un-editable cell does NOT stop it — without these, Enter is a second
+          // door into the editor that skips both the per-row grant check and the
+          // per-field one (which is what keeps a relationship-PATH column, whose
+          // terminal field belongs to another definition, from ever mounting an
+          // editor bound to this row's RecordId).
+          if (config?.isRowReadOnly?.(focusAddr.rowId)) return
+          if (config?.getFieldDefinition?.(focusAddr.columnId)?.capabilities.updatable === false) {
+            return
+          }
           e.preventDefault()
           store.setEditingCell(tableId, focusAddr)
           return
@@ -222,7 +236,7 @@ export function useCellNavigation<TData>({
       }
       scrollCellIntoView(newRow.id, newCol.id, direction)
     },
-    [table, tableId, editingCell, enabled, readOnly, scrollCellIntoView]
+    [table, tableId, editingCell, enabled, readOnly, config, scrollCellIntoView]
   )
 
   useEffect(() => {

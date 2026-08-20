@@ -27,7 +27,7 @@ import {
   type DynamicResourceViewHandle,
 } from '~/components/dynamic-table/dynamic-resource-view'
 import type { ExtendedColumnDef } from '~/components/dynamic-table/types'
-import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
+import { resolveColumnField } from '~/components/dynamic-table/utils/column-id'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { EmptyState } from '~/components/global/empty-state'
 import { splitRecordSearch, useRecordsSearchStore } from '~/components/records/records-search-store'
@@ -264,16 +264,9 @@ export function ArticlesView() {
   const cellSelectionConfig: CellSelectionConfig = useMemo(() => {
     const isTagsColumn = (columnId: string) => columnId === TAGS_COLUMN_ID
 
-    const resolveField = (columnId: string): ResourceField | null => {
-      if (columnId.startsWith('_')) return null
-      const decoded = decodeColumnId(columnId)
-      if (decoded.type === 'path') {
-        // FieldPath is a non-empty tuple; `[0]` is the guaranteed fallback.
-        const last = decoded.fieldPath.at(-1) ?? decoded.fieldPath[0]
-        return fieldMap[last] ?? null
-      }
-      return fieldMap[decoded.resourceFieldId] ?? null
-    }
+    // Path columns come back non-updatable — see `resolveColumnField`.
+    const resolveField = (columnId: string): ResourceField | null =>
+      resolveColumnField(fieldMap, columnId)
 
     // A columnId IS a `fieldRefToKey` encoding, so it decodes straight back to
     // the FieldReference `getValue` expects. Every value the field-value store
