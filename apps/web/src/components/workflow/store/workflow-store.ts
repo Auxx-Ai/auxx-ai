@@ -7,12 +7,13 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import type { FlowNode } from '../types'
 import type { HelpLineHorizontalPosition, HelpLineVerticalPosition } from '../ui/helpline/types'
+import { EMPTY_SAVE_BASELINE, type WorkflowSaveBaseline } from '../utils/save-baseline'
 import { useCanvasStore } from './canvas-store'
 // import { useNodeStore } from './node-store'
 import { useEdgeStore } from './edge-store'
 import { storeEventBus } from './event-bus'
 import { historyManager } from './history-manager'
-import type { DragState, WorkflowMetadata } from './types'
+import type { DragState, WorkflowMetadata, WorkflowPendingChanges } from './types'
 import { useVarStore } from './use-var-store'
 
 /** Shape returned by `aiIntegration.getUnifiedModelData`. */
@@ -108,6 +109,46 @@ interface WorkflowStore extends DragState {
   // State management
   markDirty: () => void
   markClean: () => void
+  /**
+   * Queue a draft save from a NON-REACT caller (the edge / var / test-input
+   * stores), registered by `WorkflowSaveProvider` on mount and cleared on
+   * unmount — the same way those stores already reach {@link markDirty}.
+   *
+   * `null` outside the editor (viewer, template preview): there is no save
+   * owner there, and a queued save would have nowhere to go.
+   *
+   * NOT state — nothing subscribes to it, it is a function handle parked on the
+   * store so module-level code can reach the one owner. React callers use
+   * `useWorkflowSave()`.
+   */
+  queueSave: ((changes: WorkflowPendingChanges) => void) | null
+
+  /**
+   * The draft as the SERVER has it, projected to authored content (plan 22 §2
+   * R2). The save owner refuses to send a request whose projection equals this,
+   * which is what makes opening, panning, clicking and measuring free.
+   *
+   * Written in exactly two places: `applyFetchedWorkflow` (load + realtime
+   * rehydrate) and the save response handler. Lives on the store rather than in
+   * the provider because the first of those is a plain function outside React —
+   * the same reason {@link queueSave} is parked here.
+   */
+  saveBaseline: WorkflowSaveBaseline
+  /** Replace part of {@link saveBaseline}; untouched halves are preserved. */
+  setSaveBaseline: (patch: Partial<WorkflowSaveBaseline>) => void
+
+  /**
+   * `graph.viewport` exactly as it was LOADED — the authored starting view, and
+   * the only viewport the builder is ever allowed to write back (plan 22 §5 D1).
+   *
+   * The save payload replaces the whole `graph` object, so dropping the key
+   * would erase the authored framing from the row on the next save. Passing the
+   * loaded value through verbatim is what makes the field immutable from the
+   * builder rather than merely un-saved. Where *this* user is scrolled lives in
+   * `localStorage` (`utils/viewport-storage.ts`).
+   */
+  authoredViewport: { x: number; y: number; zoom: number } | null
+
   setError: (error: string | null) => void
   clearError: () => void
 
@@ -298,10 +339,14 @@ export const useWorkflowStore = create<WorkflowStore>()(
         }
       }
 
+      // NOT `isDirty: true`. A server response is not an edit (plan 22 §1.4) —
+      // and `setWorkflow` is exactly what the save response handler calls to
+      // refresh the CAS token, so the old side effect re-dirtied the store the
+      // instant a save succeeded and fed a stale `true` to the Kopilot dirty
+      // gate (§9.3f) and the unload confirm dialog.
       const updates: any = {
         workflow,
         workflowId: newWorkflowId,
-        isDirty: true,
       }
 
       // Update workflowAppId if present in the workflow response
@@ -340,6 +385,16 @@ export const useWorkflowStore = create<WorkflowStore>()(
     markClean: () => {
       set({ isDirty: false })
     },
+
+    // Registered by `WorkflowSaveProvider`; see the field's doc.
+    queueSave: null,
+
+    saveBaseline: EMPTY_SAVE_BASELINE,
+    setSaveBaseline: (patch) => {
+      set((state) => ({ saveBaseline: { ...state.saveBaseline, ...patch } }))
+    },
+
+    authoredViewport: null,
 
     setError: (error) => {
       set({ error })

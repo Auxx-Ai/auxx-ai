@@ -77,7 +77,6 @@ export const resourceTriggerNodeDataSchema = z.object({
   // Flattened config properties
   title: z.string().min(1),
   desc: z.string().optional(),
-  description: z.string().optional(),
   variables: z.array(z.any()).optional(),
 
   // Trigger filter — condition groups, AND'd at the top level
@@ -128,7 +127,6 @@ export function createResourceTriggerDefaultData(
   return {
     title: `Record ${operationConfig?.label || operation}`,
     desc: `Triggered when a record is ${operation}`,
-    description: `Triggered when a record is ${operation}`,
     icon: getResourceTriggerIcon(resourceType, operation),
     variables: [],
     isValid: true,
@@ -164,14 +162,6 @@ export const validateResourceTriggerConfig = (data: ResourceTriggerData): NodeVa
     errors.push({
       field: 'title',
       message: 'Title is too long (max 100 characters)',
-      type: 'warning',
-    })
-  }
-
-  if (data.description && data.description.length > 500) {
-    errors.push({
-      field: 'description',
-      message: 'Description is too long (max 500 characters)',
       type: 'warning',
     })
   }

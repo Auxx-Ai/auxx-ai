@@ -35,7 +35,6 @@ import {
   useReadOnly,
   useSelectionInteractions,
   useWorkflowRunNodeSync,
-  useWorkflowSave,
 } from '~/components/workflow/hooks'
 import { FLOW_NODE_TYPES } from '~/components/workflow/nodes'
 import { useCanvasStore } from '~/components/workflow/store/canvas-store'
@@ -48,6 +47,8 @@ import { EmptyTriggerButton } from '~/components/workflow/ui/empty-trigger-butto
 import { GettingStartedOverlay } from '~/components/workflow/ui/getting-started-overlay'
 import HelpLine from '~/components/workflow/ui/helpline'
 import { createCenterOnNodeHandler } from '~/components/workflow/utils'
+import { mergeInteractionState } from '~/components/workflow/utils/interaction-state'
+import { writeStoredViewport } from '~/components/workflow/utils/viewport-storage'
 import { WorkflowPerfSwitch } from '../debug/perf-switch'
 import { useContextMenu } from '../hooks/use-context-menu'
 import { CanvasNodeInfo } from '../ui/canvas-node-info'
@@ -99,6 +100,10 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
     // Which of the read-only sources is active decides which badge shows.
     const kopilotEditing = useWorkflowStore((state) => state.kopilotEditing)
 
+    // Keyed the same way `use-workflow-init` reads it back: the route param,
+    // i.e. the WorkflowApp id the canvas was opened with.
+    const workflowAppId = useWorkflowStore((state) => state.workflowAppId)
+
     // Determine final read-only state
     const readOnly = propReadOnly || isReadOnly
 
@@ -108,9 +113,6 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
 
     // Use only FLOW_NODE_TYPES - StandardNode handles dynamic lookup
     const nodeTypes = useMemo(() => FLOW_NODE_TYPES, [])
-
-    // Get initial data from editor provider
-    const { debouncedSave } = useWorkflowSave()
 
     // Edge status updater - monitors node status changes and updates edge colors
     useEdgeStatusUpdater()
@@ -186,9 +188,25 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
         edges?: FlowEdge[]
         viewport?: Viewport
       }) => {
-        // Update nodes if provided
+        // AUTHORED CONTENT COMES FROM THE SERVER, INTERACTION STATE STAYS LOCAL
+        // (plan 23 §5, last trap). This used to be a wholesale
+        // `setNodes(payload.nodes)`, which misbehaved in both directions: the
+        // fetched document's persisted `selected` could jump the selection to a
+        // node the user is not looking at and open its panel, and once the write
+        // seam strips selection the incoming nodes carry none — so every agent
+        // edit would silently deselect whatever the user had selected.
         if (payload.nodes) {
-          setNodes(payload.nodes)
+          const incoming = payload.nodes
+          setNodes((prevNodes) => mergeInteractionState(incoming, prevNodes))
+
+          // The one case where the panel cannot simply be left alone: the agent
+          // deleted the node it frames. `selection:changed` never fires for a
+          // node that no longer exists, so nothing else would close it.
+          const panel = usePanelStore.getState()
+          const base = panel.frames[0]
+          if (base?.kind === 'node' && !incoming.some((node) => node.id === base.nodeId)) {
+            panel.clearBase()
+          }
         }
 
         // Update edges if provided
@@ -249,19 +267,24 @@ const WorkflowCanvasInner = React.memo<WorkflowCanvasProps>(
       [reactFlowInstance]
     )
 
-    // Handle viewport changes with debouncing to prevent re-renders during drag
+    // Handle viewport changes with debouncing to prevent re-renders during drag.
+    //
+    // THE CAMERA IS A BROWSER PREFERENCE, NOT PART OF THE DOCUMENT (plan 22 §5
+    // D1, decided). This used to call `debouncedSave()`, which is why panning
+    // queued a draft write — and why an idle second tab could 409 an editing
+    // one. `graph.viewport` now means the AUTHORED starting view and nothing
+    // else; where this browser happens to be scrolled goes to `localStorage`.
     const debouncedSetViewport = useCallback(
-      (viewport: any) => {
+      (viewport: Viewport) => {
         if (viewportTimeoutRef.current) {
           clearTimeout(viewportTimeoutRef.current)
         }
         viewportTimeoutRef.current = setTimeout(() => {
           setViewport(viewport)
-          // Trigger save after viewport change
-          debouncedSave()
+          if (workflowAppId) writeStoredViewport(workflowAppId, viewport)
         }, 300) // Debounce viewport updates by 300ms
       },
-      [setViewport, debouncedSave]
+      [setViewport, workflowAppId]
     )
 
     useOnViewportChange({ onChange: debouncedSetViewport })

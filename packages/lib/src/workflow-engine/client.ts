@@ -70,6 +70,19 @@ export * from './utils/terminal-nodes'
 // NOTE: Operator definitions moved to @auxx/lib/conditions
 // Import OPERATOR_DEFINITIONS, Operator, etc. from '@auxx/lib/conditions' or '@auxx/lib/conditions/client'
 
+// The ONE definition of "did anyone actually change this workflow?". The server
+// hashes this projection (`hashGraphSemantics`); the browser compares
+// `stableStringify` of it against a baseline to decide whether a save is worth
+// sending (plans/kopilot/workflow/22 R2). Both sides MUST use the same
+// projection, so it is exported from the pure module — `graph-hash.ts` itself
+// pulls `node:crypto` and can never be reachable from this barrel.
+export {
+  EPHEMERAL_EDGE_DATA_KEYS,
+  EPHEMERAL_EDGE_KEYS,
+  EPHEMERAL_NODE_DATA_KEYS,
+  EPHEMERAL_NODE_KEYS,
+  projectGraphSemantics,
+} from '../workflows/graph-projection'
 // ── Node catalog (Phase 1 of the node-catalog migration) ─────────────────────
 // The server-safe node contract: manifest types, the registry, the migration
 // tracker, and the pure variable-inference helpers split out of apps/web
@@ -110,17 +123,36 @@ export {
   scopeOutputsToHandle,
   validateDefaultValues,
 } from './catalog/error-handling'
+// The ONE definition of what a stored graph document holds and what is rebuilt
+// at the read boundary (plan 23 §1). PURE and client-safe: no crypto, no db, no
+// org cache, no React Flow — the canvas, the engine and `graph-edit` used to
+// each hold their own opinion about what a loop-back edge is.
+export {
+  type DehydrateGraphOptions,
+  dehydrateGraph,
+  type GraphDocument,
+  type GraphEdgeDocument,
+  type GraphNodeDocument,
+  type HydrateGraphOptions,
+  hydrateGraph,
+} from './catalog/graph-hydration'
 export {
   buildDownstreamMap,
   buildUpstreamHandleMap,
   buildUpstreamMap,
   computeLoopAncestry,
   DEFAULT_SOURCE_HANDLE,
+  DEFAULT_TARGET_HANDLE,
   type EdgeMeta,
   type GraphLoopContext,
   type NodeMeta,
   topologicalSort,
 } from './catalog/graph-vars'
+// The options EVERY seam passes. Exported so callers outside this package
+// (apps/api's share + public routes, apps/web's builder) cannot end up hydrating
+// under a different policy than the engine does — see the module for why the
+// read-time defaults layer is currently off.
+export { DEHYDRATION_OPTIONS, HYDRATION_OPTIONS } from './catalog/hydration-policy'
 export {
   type BaseNodeData as CatalogBaseNodeData,
   type BranchType,

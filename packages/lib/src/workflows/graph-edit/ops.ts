@@ -276,9 +276,17 @@ async function runGraphMutation(
   // "Update X blocked"), and telling the model a harmless idempotent write
   // failed is the loop this whole plan exists to kill.
   //
-  // `hashWorkflowGraph(cleanGraphForSave(…))` is exactly what the next load
-  // will hash (`read.ts` hashes the stored graph, and the stored graph is
-  // always the cleaned one), so the comparison is exact, not approximate.
+  // `hashWorkflowGraph(cleanGraphForSave(…))` is exactly what a persist of this
+  // graph would write, and `ctx.canonicalGraphHash` is the same function over
+  // the graph as LOADED — so the comparison is exact, not approximate.
+  //
+  // It compares against `canonicalGraphHash` rather than the CAS token
+  // (`ctx.graphHash`) because the two answer different questions: the CAS token
+  // hashes the RAW column, and a row still in the pre-canonicalization fat
+  // shape (plan 23 §6 phase 1) differs from its own dehydration by keys no
+  // reader can observe. Comparing against the raw hash would report every such
+  // no-op as a change — which is exactly the repeated-`update_node` loop #1701
+  // fixed.
   //
   // Guarded on the non-graph fields: `set_workflow_details` and
   // `apply_template` pass envVars/variables/icon through this same seam and
@@ -287,8 +295,7 @@ async function runGraphMutation(
     plan.envVars === undefined && plan.variables === undefined && plan.icon === undefined
   if (
     touchesOnlyGraph &&
-    ctx.graphHash !== undefined &&
-    hashWorkflowGraph(cleanGraphForSave(graph)) === ctx.graphHash
+    hashWorkflowGraph(cleanGraphForSave(graph, ctx.lookup)) === ctx.canonicalGraphHash
   ) {
     const unchangedNode = plan.touchedNodeId
       ? graph.nodes.find((n) => n.id === plan.touchedNodeId)
@@ -318,6 +325,7 @@ async function runGraphMutation(
 
   const persisted = await persistDraft(db, scope, {
     graph,
+    manifests: ctx.lookup,
     ...(ctx.graphHash !== undefined ? { expectedGraphHash: ctx.graphHash } : {}),
     fallbackTriggerType:
       plan.fallbackTriggerType !== undefined ? plan.fallbackTriggerType : ctx.triggerType,
@@ -394,7 +402,7 @@ async function runGraphMutation(
 /** Top-level prose keys the bare-ref rewriter must never touch — a title set
  * to another node's exact title is a NAME, not a reference. `{{…}}` spans
  * inside them still normalize (they re-enter via the span walk below). */
-const PROSE_CONFIG_KEYS = ['title', 'desc', 'description'] as const
+const PROSE_CONFIG_KEYS = ['title', 'desc'] as const
 
 /** friendly refs → resource refs → prompt: the §3 normalization chain, in order. */
 async function normalizeConfig(

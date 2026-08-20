@@ -179,7 +179,6 @@ export const waitManifest: NodeManifest<WaitNodeData> = {
   color: '#3B82F6', // UTILITY category color
   defaultData: () => ({
     title: 'Wait',
-    description: '',
     waitType: WaitType.DURATION,
     durationAmount: 5,
     isDurationConstant: true,

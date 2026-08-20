@@ -22,7 +22,6 @@ export interface EndNodeData extends BaseNodeData {
  */
 export const endNodeDataSchema = baseNodeDataSchema.extend({
   title: z.string().default('End'),
-  description: z.string().optional(),
   message: z.string().optional(),
   status: z.enum(['success', 'error']).optional(),
 })
@@ -91,7 +90,6 @@ export const endManifest: NodeManifest<EndNodeData> = {
   color: '#10b981', // ACTION category color
   defaultData: () => ({
     title: 'Output',
-    description: '',
     message: '',
     status: 'success',
   }),

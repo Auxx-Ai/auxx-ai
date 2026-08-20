@@ -140,7 +140,6 @@ const sourceRowSchema = z.discriminatedUnion('kind', [
 export const knowledgeRetrievalNodeDataSchema = baseNodeDataSchema.extend({
   title: z.string().min(1),
   desc: z.string().optional(),
-  description: z.string().optional(),
 
   // Query input
   query: z.string().optional(),

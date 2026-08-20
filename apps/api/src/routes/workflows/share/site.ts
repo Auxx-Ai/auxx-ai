@@ -4,6 +4,7 @@
  * Site info route for shared workflows
  */
 
+import { hydrateGraph } from '@auxx/lib/workflow-engine/client'
 import { getSharedWorkflowByToken } from '@auxx/services/workflow-share'
 import { Hono } from 'hono'
 
@@ -70,7 +71,12 @@ siteRoute.get('/', async (c) => {
         id: workflow.id,
         name: workflow.name,
         description: workflow.description,
-        graph: workflow.graph,
+        // Hydrated — the share site renders this graph as a preview, so it needs
+        // `node.type` (React Flow falls back to a typeless default node without
+        // it: grey boxes, no handles) and the derived edge fields. `@auxx/services`
+        // is tier 2 and cannot import `@auxx/lib`, so this seam hydrates at the
+        // app layer. See plan 23 §4.2.
+        graph: workflow.graph ? hydrateGraph(workflow.graph as never) : workflow.graph,
         icon: workflow.icon,
       },
     },

@@ -76,7 +76,6 @@ export const messageReceivedNodeDataSchema = z.object({
   // Flattened config properties
   title: z.string().min(1),
   desc: z.string().optional(),
-  description: z.string().optional(),
   variables: z.array(z.any()).optional(),
   channelIds: z.array(z.string()).optional(),
   machineMail: z.enum(['exclude', 'include']).optional(),

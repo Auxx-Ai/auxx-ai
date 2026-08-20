@@ -48,7 +48,12 @@ import { deleteRedisData, getRedisData, setRedisData } from '@auxx/redis'
 import { err, type Result } from 'neverthrow'
 import { type AuxxError, ConflictError, NotFoundError } from '../../errors'
 import { hashGraphSemantics } from '../graph-hash'
-import { type PersistDraftOutcome, persistDraft, publishDraftUpdatedSignal } from './persist'
+import {
+  cleanGraphForSave,
+  type PersistDraftOutcome,
+  persistDraft,
+  publishDraftUpdatedSignal,
+} from './persist'
 import { type GraphEditScope, loadDraftContext } from './read'
 import type { DraftGraph } from './types'
 
@@ -366,7 +371,16 @@ export async function revertWorkflowTurn(
   // field existed, or a draft row with no graph at all. Unknown must not turn
   // a legitimate Undo into a hard refusal; the pre-existing guards (turn id,
   // TTL, the manual-save clear, the CAS below) still apply.
-  const liveSemanticHash = loaded.value.graph ? hashGraphSemantics(loaded.value.graph) : undefined
+  // CANONICALIZED BEFORE HASHING, on purpose (plan 23 §3.2). The stamp was
+  // taken over the CLEANED graph `persistDraft` wrote, while `loadDraftContext`
+  // now returns a HYDRATED one — the semantic projection does not ignore
+  // everything hydration adds (`extent`, `data.id`, and the read-time defaults
+  // layer are all content-shaped), so comparing the two directly would report
+  // "the canvas moved on" for every Undo. Running the write seam's own cleanup
+  // first puts both sides in the same shape.
+  const liveSemanticHash = loaded.value.graph
+    ? hashGraphSemantics(cleanGraphForSave(loaded.value.graph, loaded.value.lookup))
+    : undefined
   if (
     snapshot.postTurnGraphSemanticHash !== undefined &&
     liveSemanticHash !== undefined &&
@@ -384,6 +398,7 @@ export async function revertWorkflowTurn(
 
   const persisted = await persistDraft(db, scope, {
     graph: snapshot.graph,
+    manifests: loaded.value.lookup,
     fallbackTriggerType: snapshot.triggerType,
     name: snapshot.name,
     description: snapshot.description,

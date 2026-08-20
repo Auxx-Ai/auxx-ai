@@ -69,7 +69,6 @@ export const crudNodeDataSchema = z.object({
   selected: z.boolean().default(false),
   title: z.string().min(1),
   desc: z.string().optional(),
-  description: z.string().optional(),
   resourceType: z.string().min(1),
   mode: z.enum(['create', 'update', 'delete']),
   resourceId: z.string().optional(),
@@ -134,15 +133,6 @@ export const validateCrudNodeConfig = (data: CrudNodeData): NodeValidationResult
     errors.push({
       field: 'title',
       message: 'Title is too long (max 100 characters)',
-      type: 'warning',
-    })
-  }
-
-  // Validate description length if provided
-  if (data.description && data.description.length > 500) {
-    errors.push({
-      field: 'description',
-      message: 'Description is too long (max 500 characters)',
       type: 'warning',
     })
   }

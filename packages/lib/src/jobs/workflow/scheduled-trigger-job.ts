@@ -2,6 +2,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
+import { hydrateCachedGraph } from '../../cache/providers/workflow-apps-provider'
 import { createScopedLogger } from '../../logger'
 import { RedisWorkflowExecutionReporter } from '../../workflow-engine'
 import { WorkflowNodeType } from '../../workflow-engine/core/types'
@@ -145,8 +146,11 @@ export async function executeScheduledTrigger(ctx: JobContext<ScheduledTriggerJo
       }
     }
 
-    // Verify the scheduled trigger node still exists and is enabled in the published workflow
-    const publishedGraph = workflowApp.publishedWorkflow.graph as any
+    // Verify the scheduled trigger node still exists and is enabled in the
+    // published workflow. Read through the cache's hydration boundary (plan 23
+    // §4.2): the cached blob is the CANONICAL stored document, and the lookup
+    // below matches on `node.data.type` with no fallback.
+    const publishedGraph = hydrateCachedGraph(workflowApp.publishedWorkflow.graph) as any
 
     // Debug logging to understand node structure
     const targetNode = publishedGraph?.nodes?.find((node: any) => node.id === nodeId)

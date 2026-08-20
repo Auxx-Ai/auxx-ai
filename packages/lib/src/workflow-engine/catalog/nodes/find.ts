@@ -60,7 +60,6 @@ export const findNodeDataSchema = z.object({
   // Config properties
   title: z.string().min(1),
   desc: z.string().optional(),
-  description: z.string().optional(),
 
   // Find configuration
   resourceType: z.string(), // Dynamic resource selection - validated as TableId at runtime
@@ -142,15 +141,6 @@ export const validateFindNodeConfig = (data: FindNodeData): NodeValidationResult
     errors.push({
       field: 'title',
       message: 'Title is too long (max 100 characters)',
-      type: 'warning',
-    })
-  }
-
-  // Validate description length if provided
-  if (data.description && data.description.length > 500) {
-    errors.push({
-      field: 'description',
-      message: 'Description is too long (max 500 characters)',
       type: 'warning',
     })
   }

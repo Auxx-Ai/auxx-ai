@@ -173,3 +173,52 @@ describe('buildUpstreamMap is the projection', () => {
     expect(buildUpstreamMap([], []).size).toBe(0)
   })
 })
+
+describe('loop-node detection reads the authored type', () => {
+  /**
+   * A canvas-authored node: React Flow's renderer slot is `'standard'` and the
+   * engine type lives in `data.type`. This is the shape 380 of the 1250 stored
+   * dev nodes have, and it is what made the containment arm of
+   * `getForwardEdges` unreachable when it read `node.type` alone.
+   */
+  const canvasNode = (id: string, type: string, parentId?: string): NodeMeta => ({
+    id,
+    type: 'standard',
+    data: { type },
+    ...(parentId === undefined ? {} : { parentId }),
+  })
+
+  it('filters a child→loop cycle even when the edge is not flagged', () => {
+    const nodes = [
+      canvasNode('L', 'loop'),
+      canvasNode('c', 'crud', 'L'),
+      canvasNode('after', 'crud'),
+    ]
+    // No `isLoopBackEdge` on the c->L edge: containment is the only signal.
+    const edges = [edge('L', 'c', 'loop-start'), edge('c', 'L'), edge('L', 'after', 'loop-done')]
+
+    const upstream = buildUpstreamMap(edges, nodes)
+
+    // Without the fix `c` reaches itself through L and the cycle survives.
+    expect([...(upstream.get('c') ?? [])].sort()).toEqual(['L'])
+    expect([...(upstream.get('after') ?? [])].sort()).toEqual(['L'])
+  })
+
+  it('honours data.loopId as the containment signal too', () => {
+    const nodes: NodeMeta[] = [
+      canvasNode('L', 'loop'),
+      { id: 'c', type: 'standard', data: { type: 'crud', loopId: 'L' } },
+    ]
+    const edges = [edge('L', 'c', 'loop-start'), edge('c', 'L')]
+
+    expect([...(buildUpstreamMap(edges, nodes).get('c') ?? [])]).toEqual(['L'])
+  })
+
+  it('still keeps a plain edge into a non-loop node', () => {
+    const nodes = [canvasNode('a', 'crud'), canvasNode('b', 'crud', 'a')]
+    const edges = [edge('a', 'b'), edge('b', 'a')]
+
+    // `a` is not a loop, so this is a hand-authored cycle and must stay COMPLETE.
+    expect([...(buildUpstreamMap(edges, nodes).get('a') ?? [])].sort()).toEqual(['a', 'b'])
+  })
+})

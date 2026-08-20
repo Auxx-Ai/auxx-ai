@@ -83,12 +83,8 @@ export const LoopNode: FC<NodeProps<LoopNodeData>> = memo((props) => {
   // Get available blocks for inside the loop - use LOOP nodeType to get all flow nodes
   const { availableNextBlocks } = useAvailableBlocks(NodeType.LOOP, false, 'source')
 
-  // Monitor node dimensions for proper selection bounds
-  // const nodeRef = useNodeDimensions(id, [data])
-
   return (
     <div
-      // ref={nodeRef}
       className={cn(
         'workflow-node relative group/node',
         'border-[1px] rounded-2xl',

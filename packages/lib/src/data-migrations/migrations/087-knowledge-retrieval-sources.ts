@@ -7,6 +7,16 @@ import { asc, eq, gt } from 'drizzle-orm'
 import type { DataMigrationDef } from '../types'
 
 const logger = createScopedLogger('migration-087')
+/**
+ * READ-MODIFY-WRITE, AND IT MUST STAY RAW.
+ *
+ * This migration reads `Workflow.graph` straight from the column and writes it
+ * back. It must NEVER be routed through `hydrateGraph` — hydration adds the
+ * derived fields back (`node.type`, `edge.data.sourceType`, `zIndex`, filled
+ * handles, ...), so a hydrate-then-write here would re-fatten every row the
+ * canonicalization is removing them from. See
+ * `plans/kopilot/workflow/23-graph-document-canonicalization.md` §4.2.
+ */
 
 /** Rows scanned per page (draft + every published version are separate rows). */
 const BATCH_SIZE = 200

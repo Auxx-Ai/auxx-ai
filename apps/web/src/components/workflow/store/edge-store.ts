@@ -134,8 +134,10 @@ export const useEdgeStore = create<EdgeStore>()(
           label: `Connect nodes`,
         })
 
-        // Mark workflow as dirty
-        useWorkflowStore.getState().markDirty()
+        // The graph is what changed — queue THAT key. A bare `markDirty()`
+        // used to leave the save owner with an empty pending set and only a
+        // global boolean to go on (plan 22 §1.4).
+        useWorkflowStore.getState().queueSave?.({ graph: true })
       }
 
       // Emit event
@@ -173,8 +175,10 @@ export const useEdgeStore = create<EdgeStore>()(
           label: `Update connection`,
         })
 
-        // Mark workflow as dirty
-        useWorkflowStore.getState().markDirty()
+        // The graph is what changed — queue THAT key. A bare `markDirty()`
+        // used to leave the save owner with an empty pending set and only a
+        // global boolean to go on (plan 22 §1.4).
+        useWorkflowStore.getState().queueSave?.({ graph: true })
       }
 
       // Emit event
@@ -206,8 +210,10 @@ export const useEdgeStore = create<EdgeStore>()(
           label: `Delete connection`,
         })
 
-        // Mark workflow as dirty
-        useWorkflowStore.getState().markDirty()
+        // The graph is what changed — queue THAT key. A bare `markDirty()`
+        // used to leave the save owner with an empty pending set and only a
+        // global boolean to go on (plan 22 §1.4).
+        useWorkflowStore.getState().queueSave?.({ graph: true })
       }
 
       // Emit event

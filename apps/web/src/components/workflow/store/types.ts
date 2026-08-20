@@ -192,3 +192,23 @@ export interface WorkflowPreferences {
   autoSaveInterval: number
   connectionMode: 'loose' | 'strict'
 }
+
+/**
+ * The set of draft changes a save can carry.
+ *
+ * Lives here rather than beside the save owner so
+ * {@link import('./workflow-store').useWorkflowStore}'s registered `queueSave`
+ * can be typed without importing a React provider into a zustand store.
+ */
+export interface WorkflowPendingChanges {
+  graph?: boolean
+  name?: string
+  description?: string
+  icon?: { iconId: string; color: string }
+  webEnabled?: boolean
+  apiEnabled?: boolean
+  accessMode?: 'public' | 'organization'
+  config?: Record<string, unknown>
+  rateLimit?: Record<string, unknown>
+  envVars?: boolean
+}

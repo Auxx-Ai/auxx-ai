@@ -110,7 +110,6 @@ export interface BaseNodeData extends NodeRuntimeState, NodeLoopContext {
   type: string
   title: string
   desc?: string
-  description?: string // Alias for desc
 
   // Visual properties
   icon?: string
@@ -148,7 +147,6 @@ export const baseNodeDataSchema = z.object({
   type: z.string(),
   title: z.string(),
   desc: z.string().optional(),
-  description: z.string().optional(), // Alias for desc
 
   // Visual properties
   icon: z.string().optional(),

@@ -714,7 +714,7 @@ export const useVarStore = create<VarStoreState>()(
               state.systemVariables
             )
           })
-          useWorkflowStore.getState().markDirty()
+          useWorkflowStore.getState().queueSave?.({ envVars: true })
         },
 
         updateEnvironmentVariable: (id: string, updates: Partial<EnvVar>) => {
@@ -751,7 +751,7 @@ export const useVarStore = create<VarStoreState>()(
               state.systemVariables
             )
           })
-          useWorkflowStore.getState().markDirty()
+          useWorkflowStore.getState().queueSave?.({ envVars: true })
         },
 
         deleteEnvironmentVariable: (id: string) => {
@@ -786,7 +786,7 @@ export const useVarStore = create<VarStoreState>()(
               state.systemVariables
             )
           })
-          useWorkflowStore.getState().markDirty()
+          useWorkflowStore.getState().queueSave?.({ envVars: true })
         },
 
         setResources: (resources: Resource[]) => {

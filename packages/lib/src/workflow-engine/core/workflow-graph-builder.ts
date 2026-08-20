@@ -2,6 +2,8 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { ERROR_LIKE_HANDLES, errorHandlingBranches } from '../catalog/error-handling'
+import { type GraphDocument, hydrateGraph } from '../catalog/graph-hydration'
+import { HYDRATION_OPTIONS } from '../catalog/hydration-policy'
 import { getManifest } from '../catalog/registry'
 import type { NodeProcessorRegistry } from './node-processor-registry'
 import type { ForkPointInfo, JoinPointInfo, Workflow, WorkflowEdge, WorkflowNode } from './types'
@@ -101,11 +103,24 @@ interface CycleDetectionResult {
 }
 
 /**
+ * A graph and the transformed workflow document it was derived from.
+ *
+ * These two travel together on purpose. The builder used to stash the document
+ * in a `private static` slot for the engine to pick up afterwards — one slot per
+ * process, written only on the cache-miss path — so a graph-cache hit handed the
+ * run whatever document the process had transformed last, possibly another
+ * tenant's. Returning the pair makes that state unrepresentable.
+ */
+export interface BuiltWorkflowGraph {
+  graph: WorkflowGraph
+  workflow: Workflow
+}
+
+/**
  * Builder class for creating workflow graph structures
  */
 export class WorkflowGraphBuilder {
   private static nodeRegistry: NodeProcessorRegistry
-  private static lastTransformedWorkflow: Workflow | null = null
   // Trigger types are a subset of node types, so widen for `.has(node.type)`.
   private static readonly ENTRY_NODE_TYPES: ReadonlySet<WorkflowNodeType> =
     new Set<WorkflowNodeType>(Object.values(WorkflowTriggerType))
@@ -122,10 +137,33 @@ export class WorkflowGraphBuilder {
   /**
    * Build an optimized graph structure from workflow data
    * Handles all transformation, filtering, and optimization
+   *
+   * Callers that also need the transformed workflow document must use
+   * {@link build}, which returns both as one pair.
    */
   static buildGraph(workflow: any): WorkflowGraph {
-    // Extract graph structure from database format
-    const rawGraph = workflow.graph || { nodes: [], edges: [] }
+    return WorkflowGraphBuilder.build(workflow).graph
+  }
+
+  /**
+   * Build the optimized graph AND the transformed workflow document together.
+   *
+   * The engine caches the returned pair, so a cache hit can never combine one
+   * workflow's graph with another workflow's node list.
+   */
+  static build(workflow: any): BuiltWorkflowGraph {
+    // THE mandatory read boundary (plan 23 §4.2): every engine execution path
+    // reaches the stored document through here, so hydrating once means the
+    // whole engine inherits the derivations instead of each processor
+    // re-deriving its own. Idempotent, so a caller that already hydrated (the
+    // resume path's `loadWorkflow`) pays a copy and nothing else.
+    const rawGraph = hydrateGraph(
+      (workflow.graph || { nodes: [], edges: [] }) as GraphDocument,
+      HYDRATION_OPTIONS
+    ) as {
+      nodes?: any[]
+      edges?: any[]
+    }
 
     // Step 1: Filter executable nodes (remove UI-only nodes)
     const executableNodes = WorkflowGraphBuilder.filterExecutableNodes(rawGraph.nodes || [])
@@ -139,8 +177,9 @@ export class WorkflowGraphBuilder {
     // Step 3: Transform nodes to engine format
     const transformedNodes = WorkflowGraphBuilder.transformNodes(activeNodes, workflow.id)
 
-    // Store transformed workflow for reference
-    WorkflowGraphBuilder.lastTransformedWorkflow = {
+    // The transformed document this graph is derived from. Returned alongside
+    // the graph — never parked on the class, see `BuiltWorkflowGraph`.
+    const transformedWorkflow: Workflow = {
       ...workflow,
       nodes: transformedNodes,
       graph: { edges: processedEdges },
@@ -169,10 +208,7 @@ export class WorkflowGraphBuilder {
     const terminalNodes: string[] = []
 
     for (const node of transformedNodes) {
-      const graphNode = WorkflowGraphBuilder.buildGraphNode(
-        node,
-        WorkflowGraphBuilder.lastTransformedWorkflow!
-      )
+      const graphNode = WorkflowGraphBuilder.buildGraphNode(node, transformedWorkflow)
       nodes.set(node.nodeId, graphNode)
       nodeTypeMap.set(node.nodeId, node.type)
 
@@ -238,20 +274,23 @@ export class WorkflowGraphBuilder {
     const forkToJoinMap = WorkflowGraphHelper.mapForksToJoins(forkPoints, joinPoints, nodes, edges)
 
     return {
-      workflowId: workflow.id,
-      nodes,
-      edgesBySourceHandle,
-      edgesByTarget,
-      nodeRoutes,
-      entryNodes,
-      terminalNodes,
-      loopNodes,
-      forkPoints,
-      joinPoints,
-      forkToJoinMap,
-      orphanForks,
-      hasCycles: cycleDetection.hasCycles,
-      cycleEdges: cycleDetection.cycleEdges,
+      graph: {
+        workflowId: workflow.id,
+        nodes,
+        edgesBySourceHandle,
+        edgesByTarget,
+        nodeRoutes,
+        entryNodes,
+        terminalNodes,
+        loopNodes,
+        forkPoints,
+        joinPoints,
+        forkToJoinMap,
+        orphanForks,
+        hasCycles: cycleDetection.hasCycles,
+        cycleEdges: cycleDetection.cycleEdges,
+      },
+      workflow: transformedWorkflow,
     }
   }
 
@@ -395,7 +434,14 @@ export class WorkflowGraphBuilder {
       nodeId: node.id,
       type: WorkflowGraphBuilder.extractNodeType(node),
       name: WorkflowGraphBuilder.extractNodeName(node),
-      description: node.data?.description,
+      description: node.data?.desc,
+      // Containment is a TOP-LEVEL key on the stored node — the canvas
+      // (`node-factory.ts`) and `graph-edit` (`ops.ts`) both write it there, and
+      // nothing has ever written `data.parentId`. Deliberately NOT folded into
+      // `data`: `parentId` has no `_` prefix, so inside `data` it would leak to
+      // app blocks as an input field, enter Kopilot's writable config (which
+      // deletes what it does not re-apply) and slip past `hashGraphSemantics`.
+      parentId: node.parentId,
       data: WorkflowGraphBuilder.cleanNodeData(node.data),
       connections: {}, // Empty - using edges only
       metadata: { position: node.position, ...node.data?.metadata },
@@ -412,8 +458,17 @@ export class WorkflowGraphBuilder {
     return (node.data?.type || node.type) as WorkflowNodeType
   }
 
+  /**
+   * The engine-facing display name.
+   *
+   * The fallback reads the AUTHORED type (`data.type`), never the React Flow
+   * one: after hydration `node.type` is always `'standard'`/`'note'`, so
+   * spelling it `node.type` would name every unnamed node `standard-<id4>`.
+   * Same `data.type || node.type` rule every other reader here uses.
+   */
   private static extractNodeName(node: any): string {
-    return node.data?.title || node.data?.name || `${node.type}-${node.id.slice(-4)}`
+    const type = node.data?.type || node.type
+    return node.data?.title || node.data?.name || `${type}-${node.id.slice(-4)}`
   }
 
   private static cleanNodeData(data: any): any {
@@ -422,13 +477,6 @@ export class WorkflowGraphBuilder {
     // Remove UI-specific fields
     const { position, metadata, title, name, type, disabled, ...cleanData } = data
     return cleanData
-  }
-
-  /**
-   * Get transformed workflow
-   */
-  static getTransformedWorkflow(): Workflow | null {
-    return WorkflowGraphBuilder.lastTransformedWorkflow
   }
 
   /**
@@ -455,9 +503,7 @@ export class WorkflowGraphBuilder {
     const loopContext = WorkflowGraphBuilder.getLoopContext(node, workflow)
 
     // Get children for container nodes
-    const children = workflow.nodes
-      .filter((n) => n.data.parentId === node.nodeId)
-      .map((n) => n.nodeId)
+    const children = workflow.nodes.filter((n) => n.parentId === node.nodeId).map((n) => n.nodeId)
 
     return {
       id: node.nodeId,
@@ -467,7 +513,7 @@ export class WorkflowGraphBuilder {
       outputHandles,
       isInLoop: loopContext.isInLoop,
       loopId: loopContext.loopId,
-      parentId: node.data.parentId,
+      parentId: node.parentId,
       children,
     }
   }
@@ -619,12 +665,12 @@ export class WorkflowGraphBuilder {
     node: WorkflowNode,
     workflow: Workflow
   ): { isInLoop: boolean; loopId?: string } {
-    if (!node.data.parentId) {
+    if (!node.parentId) {
       return { isInLoop: false }
     }
 
     // Check if parent is a loop node
-    const parent = workflow.nodes.find((n) => n.nodeId === node.data.parentId)
+    const parent = workflow.nodes.find((n) => n.nodeId === node.parentId)
     if (parent?.type === 'loop') {
       return { isInLoop: true, loopId: parent.nodeId }
     }
@@ -647,9 +693,7 @@ export class WorkflowGraphBuilder {
     edges: WorkflowEdge[]
   ): LoopNodeInfo {
     // Use transformed nodes instead of raw workflow.graph.nodes
-    const childNodeIds = nodes
-      .filter((n) => n.data.parentId === loopNode.nodeId)
-      .map((n) => n.nodeId)
+    const childNodeIds = nodes.filter((n) => n.parentId === loopNode.nodeId).map((n) => n.nodeId)
 
     // Check if any edge points back to the loop
     const hasLoopBack = edges.some(

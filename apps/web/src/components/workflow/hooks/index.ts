@@ -26,7 +26,6 @@ export {
 } from './use-node-addition'
 export { useNodeConnections } from './use-node-connections'
 export { useNodeCrud, useNodeData } from './use-node-data-update'
-export { useNodeDimensions } from './use-node-dimensions'
 export { useNodesInteractions } from './use-node-interactions'
 export { useLoopProgress, useNodeStatus } from './use-node-status'
 export { useNodeTitle } from './use-node-title'

@@ -17,6 +17,7 @@ import {
   type ExecutionTreeNode,
   treeToExecutions,
 } from '../utils/execution-tree-builder'
+import { initializeWorkflow } from '../utils/workflow-initializer'
 import { useCanvasStore } from './canvas-store'
 import { usePanelStore } from './panel-store'
 export interface ExecutionEvent {
@@ -230,9 +231,19 @@ export const useRunStore = create<RunState & RunActions>()(
           }
           state.nodeExecutions = newNodeExecutions
 
-          // Compute execution tree from stored graph
+          // Compute execution tree from stored graph.
+          //
+          // `WorkflowRun.graph` is a verbatim copy of the DRAFT DOCUMENT, so it
+          // is a stored graph and must be hydrated like any other
+          // (`plans/kopilot/workflow/23-graph-document-canonicalization.md`
+          // §4.2). It survives un-hydrated today only because the tree builders
+          // happen to read authored fields only — while `tracing-tab.tsx`
+          // transparently falls back to the *hydrated* live canvas for the same
+          // `nodes` variable, mixing two shapes behind one name. Hydrating here
+          // makes both branches of that fallback the same shape.
           if (run.graph) {
-            const graphData = run.graph as { nodes: FlowNode[]; edges: FlowEdge[] }
+            const stored = run.graph as { nodes?: FlowNode[]; edges?: FlowEdge[] }
+            const graphData = initializeWorkflow(stored.nodes ?? [], stored.edges ?? [])
 
             // Store graph snapshot for refreshing displayExecutions
             state.graphSnapshot = graphData

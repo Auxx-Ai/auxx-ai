@@ -6,8 +6,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { useWorkflowStore, type WorkflowMetadata } from '../store'
+import { useTestInputStore } from '../store/test-input-store'
 import { useVarStore } from '../store/use-var-store'
 import type { EnvVar, FetchWorkflowResponse, FlowEdge, FlowNode } from '../types'
+import { projectEnvVars, projectGraph } from '../utils/save-baseline'
+import { readStoredViewport } from '../utils/viewport-storage'
 import { initializeWorkflow } from '../utils/workflow-initializer'
 
 /**
@@ -30,6 +33,14 @@ export type FetchedWorkflow = Omit<FetchWorkflowResponse, 'graph'> & {
  * server draft that IS the canvas's new truth. Does not apply the viewport;
  * callers decide (initial load seeds it, the realtime rehydrate keeps the
  * user's current view).
+ *
+ * Also one of the two places the save owner's **content baseline** is set (plan
+ * 22 §2 R2 — the other is the save response). Everything after this point that
+ * projects to the same string is not a change and must not produce a request:
+ * the selection replay, the panel that mounts with it, the measurement
+ * writeback, the pan that follows `centerOnNode`. The baseline is taken from
+ * the STORED document, before `initializeWorkflow` adds its derivations —
+ * `projectGraph` dehydrates first so the two shapes are comparable.
  */
 export function applyFetchedWorkflow(workflow: FetchedWorkflow): {
   nodes: FlowNode[]
@@ -70,6 +81,22 @@ export function applyFetchedWorkflow(workflow: FetchedWorkflow): {
       })),
     })
   }
+  // The content baseline, taken from what the SERVER holds. Env vars are read
+  // back out of the stores rather than off the response so the string is built
+  // exactly the way the save payload builds it.
+  useWorkflowStore.setState({
+    saveBaseline: {
+      graph: projectGraph(workflow.graph),
+      envText: projectEnvVars(
+        Array.from(useVarStore.getState().environmentVariables.values()),
+        useTestInputStore.getState().getVariablesForSave(workflow.id)
+      ),
+    },
+    // The authored starting view, pinned for the lifetime of the editor — the
+    // save payload passes it through verbatim and never the live camera.
+    authoredViewport: workflow.graph?.viewport ?? null,
+  })
+
   if (workflow.graph) {
     const { nodes: graphNodes, edges: graphEdges, viewport: graphViewport } = workflow.graph
     const { nodes, edges } = initializeWorkflow(graphNodes || [], graphEdges || [])
@@ -165,7 +192,12 @@ export const useWorkflowInit = (options?: UseWorkflowInitOptions): UseWorkflowIn
       // StandardNode has a fallback to use AppWorkflowNode for unregistered app node types.
       setNodes(applied.nodes)
       setEdges(applied.edges)
-      setViewport(applied.viewport)
+      // Viewport read order (plan 22 §5 D1): this browser's remembered camera →
+      // the authored `graph.viewport` → `fitView` (what the canvas does with a
+      // `null`). `applyFetchedWorkflow` returns the authored value and lets the
+      // caller decide, so the choice lives here rather than in the mapping.
+      const storageKey = workflow.workflowAppId || workflowId
+      setViewport(readStoredViewport(storageKey) ?? applied.viewport)
       // Variable syncing now happens automatically via VarStoreSyncProvider
       // The ReactFlow subscription will handle node variable updates
     } catch (err) {

@@ -105,7 +105,6 @@ export interface DatasetNodeData extends BaseNodeData {
 export const datasetNodeDataSchema = baseNodeDataSchema.extend({
   title: z.string().min(1),
   desc: z.string().optional(),
-  description: z.string().optional(),
 
   // Dataset selection
   datasetId: z.string().optional(),

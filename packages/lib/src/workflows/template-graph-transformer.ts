@@ -212,11 +212,16 @@ export class TemplateGraphTransformer {
         const categoryIds = (node.data.categories ?? []).map((c: any) => c.id)
         const outEdges = graph.edges.filter((e) => e.source === node.id)
         for (const edge of outEdges) {
-          if (
-            edge.sourceHandle &&
-            !categoryIds.includes(edge.sourceHandle) &&
-            edge.sourceHandle !== 'source'
-          ) {
+          // An ABSENT handle is the broken case, not the safe one. In category
+          // mode the handle IS the route, so an edge without one names no
+          // category and the branch can never be taken — the guard used to skip
+          // exactly that edge (`edge.sourceHandle && ...`), i.e. it failed open
+          // on its own worst input.
+          if (!edge.sourceHandle) {
+            errors.push(`Edge ${edge.id}: no sourceHandle, so it routes to no classifier category`)
+            continue
+          }
+          if (!categoryIds.includes(edge.sourceHandle) && edge.sourceHandle !== 'source') {
             errors.push(
               `Edge ${edge.id}: sourceHandle "${edge.sourceHandle}" not in classifier categories`
             )

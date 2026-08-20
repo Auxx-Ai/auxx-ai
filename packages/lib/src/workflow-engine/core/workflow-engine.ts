@@ -5,6 +5,8 @@ import { NodeTriggerSource } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { runLogPath, stopCurrentRunLog, withRunLog } from '@auxx/logger/run-log'
 import { and, eq } from 'drizzle-orm'
+import { type GraphDocument, hydrateGraph } from '../catalog/graph-hydration'
+import { HYDRATION_OPTIONS } from '../catalog/hydration-policy'
 import type { WorkflowExecutionReporter } from '../execution-reporter'
 import { embeddingResumeVariables } from '../nodes/dataset/embedding-wait'
 import { WorkflowEventType } from '../shared/types'
@@ -62,7 +64,11 @@ import {
   WorkflowPausedException,
 } from './types'
 import { validateWorkflow } from './validation'
-import { type WorkflowGraph, WorkflowGraphBuilder } from './workflow-graph-builder'
+import {
+  type BuiltWorkflowGraph,
+  type WorkflowGraph,
+  WorkflowGraphBuilder,
+} from './workflow-graph-builder'
 import { workflowMetrics } from './workflow-metrics'
 
 const logger = createScopedLogger('workflow-engine')
@@ -76,7 +82,10 @@ export class WorkflowEngine {
   private cancellationManager = new CancellationManager()
   private trackingManager = new ExecutionTrackingManager()
   private persistenceManager = new StatePersistenceManager()
-  private graphCache = new Map<string, WorkflowGraph>()
+  // Cache the graph and the transformed document it was built FROM as one pair.
+  // Caching the graph alone (with the document parked on a process-wide static)
+  // let a cache hit run one workflow's graph against another workflow's nodes.
+  private graphCache = new Map<string, BuiltWorkflowGraph>()
   private currentNodeResults: Record<string, NodeExecutionResult> = {}
   private joinExecutionManager: JoinExecutionManager
   private batchedJoinUpdater: BatchedJoinStateUpdater
@@ -163,13 +172,14 @@ export class WorkflowEngine {
     // Reset execution tracking for new workflow run
     this.resetExecutionTracking()
     // Build graph - handles ALL transformation
-    let graph = this.graphCache.get(workflow.id)
-    if (!graph || options.skipCache) {
-      graph = WorkflowGraphBuilder.buildGraph(workflow)
-      this.graphCache.set(workflow.id, graph)
+    let built = this.graphCache.get(workflow.id)
+    if (!built || options.skipCache) {
+      built = WorkflowGraphBuilder.build(workflow)
+      this.graphCache.set(workflow.id, built)
     }
-    // Get transformed workflow from builder
-    this.currentWorkflow = WorkflowGraphBuilder.getTransformedWorkflow()!
+    // The transformed workflow always comes from the SAME pair as the graph
+    const graph = built.graph
+    this.currentWorkflow = built.workflow
     this.currentGraph = graph
     logger.info('Starting workflow execution', {
       workflowId: workflow.id,
@@ -380,7 +390,7 @@ export class WorkflowEngine {
     let iterationCount = 0
     const maxIterations = 1000 // Prevent infinite loops
     // Use provided graph or get from cache
-    const workflowGraph = graph || this.graphCache.get(workflow.id)
+    const workflowGraph = graph || this.graphCache.get(workflow.id)?.graph
     if (!workflowGraph) {
       throw new Error('Workflow graph not found')
     }
@@ -415,7 +425,7 @@ export class WorkflowEngine {
       }
       contextManager.setCurrentNode(currentNode.nodeId)
       // Check if this is a join node waiting for branches
-      const graph = this.graphCache.get(workflow.id)
+      const graph = this.graphCache.get(workflow.id)?.graph
       const joinInfo = graph?.joinPoints.get(currentNode.nodeId)
       // Skip join handling for entry nodes (triggers) - they should never be treated as join points
       // even if they have multiple incoming edges (e.g., form-input data connections)
@@ -540,7 +550,7 @@ export class WorkflowEngine {
           nodeId: currentNode.nodeId,
           outputHandle: result.outputHandle || 'source',
           hasWorkflowGraph: !!workflowGraph,
-          graphCacheHasWorkflow: !!this.graphCache.get(workflow.id),
+          graphCacheHasWorkflow: !!this.graphCache.get(workflow.id)?.graph,
           currentGraphAvailable: !!this.currentGraph,
         })
         break
@@ -554,7 +564,7 @@ export class WorkflowEngine {
           { parallelNodes: nextNodeIds }
         )
         // Get the graph to check for fork/join information
-        const graph = this.graphCache.get(workflow.id)
+        const graph = this.graphCache.get(workflow.id)?.graph
         if (!graph) {
           throw new Error('Workflow graph not found in cache')
         }
@@ -792,7 +802,7 @@ export class WorkflowEngine {
       const result = await this.executeNodeInternal(joinNode, contextManager, options)
       this.currentNodeResults[joinNode.nodeId] = result
       // Continue with the rest of the workflow
-      const graph = this.graphCache.get(workflow.id)
+      const graph = this.graphCache.get(workflow.id)?.graph
       const nextNodeIds = getNextNodeIds(joinNode, result, graph!)
       if (nextNodeIds.length === 1) {
         const nextNode = findNodeById(workflow, nextNodeIds[0])
@@ -838,7 +848,7 @@ export class WorkflowEngine {
     joinState: JoinState,
     contextManager: ExecutionContextManager
   ): Promise<void> {
-    const graph = this.graphCache.get(this.currentWorkflow!.id)
+    const graph = this.graphCache.get(this.currentWorkflow!.id)?.graph
     const joinInfo = graph?.joinPoints.get(joinNode.nodeId)
 
     if (!joinInfo) {
@@ -1408,7 +1418,7 @@ export class WorkflowEngine {
     // Track parallel execution start in metrics
     workflowMetrics.parallelStart(executionId, forkNodeId, branchNodeIds.length)
     // Get the graph for join detection
-    const graph = this.graphCache.get(workflow.id)
+    const graph = this.graphCache.get(workflow.id)?.graph
     if (!graph) {
       throw new Error('Workflow graph not found')
     }
@@ -1559,7 +1569,7 @@ export class WorkflowEngine {
       return // No joins to restore
     }
 
-    const graph = this.graphCache.get(workflow.id)
+    const graph = this.graphCache.get(workflow.id)?.graph
     if (!graph) {
       logger.warn('Graph not found during join tracker restoration', { workflowId: workflow.id })
       return
@@ -1938,7 +1948,7 @@ export class WorkflowEngine {
         parallelContext.setOptions(contextManager.getOptions()!)
       }
       // Execute the parallel branch - pass the graph so it can find next nodes
-      const graph = this.graphCache.get(workflow.id)
+      const graph = this.graphCache.get(workflow.id)?.graph
       const branchResults = await this.executeWorkflowNodes(
         workflow,
         node,
@@ -2090,12 +2100,13 @@ export class WorkflowEngine {
       throw new Error(`Workflow ${state.workflowId} not found`)
     }
     // Rebuild graph if needed
-    let graph = this.graphCache.get(workflow.id)
-    if (!graph) {
-      graph = WorkflowGraphBuilder.buildGraph(workflow)
-      this.graphCache.set(workflow.id, graph)
+    let built = this.graphCache.get(workflow.id)
+    if (!built || options.skipCache) {
+      built = WorkflowGraphBuilder.build(workflow)
+      this.graphCache.set(workflow.id, built)
     }
-    this.currentWorkflow = WorkflowGraphBuilder.getTransformedWorkflow()!
+    const graph = built.graph
+    this.currentWorkflow = built.workflow
     this.currentGraph = graph
 
     // Set workflow context for AI nodes when resuming
@@ -2371,12 +2382,26 @@ export class WorkflowEngine {
     }
   }
   /**
-   * Load workflow from database
+   * Load workflow from database.
+   *
+   * A read boundary (plan 23 §4.2): the resume path re-loads the CURRENT draft
+   * row, not the run's own snapshot, so the document it hands
+   * `restoreJoinTrackers` and `WorkflowGraphBuilder.build` is hydrated here —
+   * `build` would hydrate its own copy anyway, but the raw row reaches other
+   * readers on this path before it gets there.
    */
   private async loadWorkflow(workflowId: string): Promise<any> {
-    return await db.query.Workflow.findFirst({
+    const row = await db.query.Workflow.findFirst({
       where: eq(schema.Workflow.id, workflowId),
     })
+    if (!row) return row
+    return {
+      ...row,
+      graph: hydrateGraph(
+        (row.graph ?? { nodes: [], edges: [] }) as GraphDocument,
+        HYDRATION_OPTIONS
+      ),
+    }
   }
   /**
    * Complete workflow execution and emit completion events
