@@ -40,7 +40,7 @@ import { BasePanel } from '../../shared/base/base-panel'
 import { DefaultValuesEditor } from './components/default-values-editor'
 import { RelationUpdateModeButton } from './components/relation-update-mode-button'
 import { getCrudNodeOutputVariables } from './output-variables'
-import { CrudErrorStrategy, type CrudNodeData } from './types'
+import { type CrudNodeData, ErrorStrategy } from './types'
 import { useCrudValidation } from './use-crud-validation'
 import { ValidationMessage } from './validation-message'
 
@@ -162,11 +162,11 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
   )
 
   const handleErrorStrategyChange = useCallback(
-    (errorStrategy: CrudErrorStrategy) => {
+    (errorStrategy: ErrorStrategy) => {
       const newData = produce(nodeData, (draft) => {
         draft.error_strategy = errorStrategy
         draft.default_values =
-          errorStrategy === CrudErrorStrategy.default ? nodeData.default_values || [] : []
+          errorStrategy === ErrorStrategy.default ? nodeData.default_values || [] : []
       })
       setInputs(newData)
       if (!showValidation) setShowValidation(true)
@@ -484,29 +484,29 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
 
       <Section
         title='Error Handling'
-        collapsible={nodeData.error_strategy === CrudErrorStrategy.default}
-        open={nodeData.error_strategy === CrudErrorStrategy.default}
+        collapsible={nodeData.error_strategy === ErrorStrategy.default}
+        open={nodeData.error_strategy === ErrorStrategy.default}
         className='[&>[data-slot=section]]:pb-0!'
         actions={
           <Select
-            value={nodeData.error_strategy || CrudErrorStrategy.fail}
+            value={nodeData.error_strategy || ErrorStrategy.fail}
             onValueChange={handleErrorStrategyChange}>
             <SelectTrigger size='sm'>
               <SelectValue placeholder='Select strategy' />
             </SelectTrigger>
             <SelectContent>
               <SelectItem
-                value={CrudErrorStrategy.fail}
+                value={ErrorStrategy.fail}
                 description='Stop workflow and route to fail branch'>
                 Fail
               </SelectItem>
               <SelectItem
-                value={CrudErrorStrategy.continue}
+                value={ErrorStrategy.continue}
                 description='Continue workflow with error information'>
                 Continue
               </SelectItem>
               <SelectItem
-                value={CrudErrorStrategy.default}
+                value={ErrorStrategy.default}
                 description='Use default values and continue'>
                 Default Values
               </SelectItem>
@@ -520,7 +520,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
           />
         )}
 
-        {nodeData.error_strategy === CrudErrorStrategy.default && (
+        {nodeData.error_strategy === ErrorStrategy.default && (
           <Field title='Default Values' description='Fallback values to use when operations fail'>
             <DefaultValuesEditor
               defaultValues={nodeData.default_values || []}

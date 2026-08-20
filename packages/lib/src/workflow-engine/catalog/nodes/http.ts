@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { HTTP_NODE_CONSTANTS } from '../../constants'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
+import { ErrorStrategy, errorHandlingBranches } from '../error-handling'
 import type { BaseNodeData } from '../node-base'
 import {
   type NodeBranch,
@@ -101,13 +102,6 @@ export type Authorization = {
   header?: string
   // For connection — bound Credential id, resolved + applied at execute time
   connectionId?: string
-}
-
-/** Error handling strategy (workflow-node only) */
-export enum ErrorStrategy {
-  none = 'none',
-  fail = 'fail',
-  default = 'default',
 }
 
 /** Timeout configuration (seconds in the builder; the engine converts to ms) */
@@ -449,9 +443,19 @@ export const httpManifest: NodeManifest<HttpNodeData> = {
       retry_interval: HTTP_NODE_CONSTANTS.RETRY_CONFIG.RETRY_INTERVAL.default,
     },
     ssl_verify: true,
-    error_strategy: ErrorStrategy.default,
+    // `fail` is the unified default (plan 21 §18.1). It is a no-op at run
+    // time: the old `ErrorStrategy.default` shipped with an empty
+    // `default_value`, and the processor's `default` arm requires
+    // `default_value.length > 0`, so it always fell straight through to the
+    // fail return. What DOES change is `connection.branches` — the `fail`
+    // branch is now visible on a default http node, which is the node telling
+    // the truth about the handle it already emits (§16.4).
+    error_strategy: ErrorStrategy.fail,
     default_value: [],
-    _targetBranches: [{ id: 'source', name: '', type: 'default' }],
+    _targetBranches: [
+      { id: 'source', name: '', type: 'default' },
+      { id: 'fail', name: 'Fail', type: 'fail' },
+    ],
   }),
   configSchema: httpNodeDataSchema as unknown as z.ZodType<HttpNodeData>,
   validate: validateHttpNodeData,
@@ -460,28 +464,29 @@ export const httpManifest: NodeManifest<HttpNodeData> = {
   connection: {
     canRunSingle: true,
     /**
-     * Succeeded results leave via 'source'; a 'fail' branch exists only when
-     * `error_strategy` is 'fail' — the handles the processor emits (#1560) and
-     * `builder-rendered-handles.ts` declares. Mirrors the HTTP arm of the
-     * canvas's `calculateTargetBranches` (workflow-initializer.ts), which stays
-     * the derived-state writer until the remaining branch-deriving types
-     * (text-classifier, crud) migrate and both converge here.
+     * Succeeded results leave via 'source'; the `fail` branch is contributed
+     * by the shared `errorHandlingBranches` helper, the single site that turns
+     * `error_strategy: 'fail'` into a handle for every type that declares
+     * `errorHandling`. crud spreads the identical call — neither re-implements
+     * the rule (plan 21 §15.4).
      */
-    branches: (config): NodeBranch[] => {
-      const branches: NodeBranch[] = [{ id: 'source', name: '', kind: 'default' }]
-      if (config.error_strategy === ErrorStrategy.fail) {
-        branches.push({ id: 'fail', name: 'Fail', kind: 'fail' })
-      }
-      return branches
-    },
+    branches: (config): NodeBranch[] => [
+      { id: 'source', name: '', kind: 'default' },
+      ...errorHandlingBranches(config),
+    ],
+  },
+  errorHandling: {
+    strategies: [ErrorStrategy.fail, ErrorStrategy.continue, ErrorStrategy.default],
+    defaultStrategy: ErrorStrategy.fail,
   },
   agent: {
     authorable: true,
     usage:
       '`url`, `headers` and `params` may contain {{…}} refs; headers/params are newline-separated ' +
       '`key: value` lines. `body.type` picks the encoding and `body.data` holds positional payload ' +
-      "items ({ key, value }). Set `error_strategy` to 'fail' to expose a wirable 'fail' branch " +
-      "handle; successful responses always leave via 'source' with status/headers/body/success outputs.",
+      "items ({ key, value }). `error_strategy` is fail (default — exposes a wirable 'fail' branch " +
+      'handle), continue (succeed with the error as output), or default (apply `default_value` on ' +
+      "failure); successful responses always leave via 'source' with status/headers/body/success outputs.",
     examples: [
       {
         description: 'GET an API with a bearer token from an upstream node',

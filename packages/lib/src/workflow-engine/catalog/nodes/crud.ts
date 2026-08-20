@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { generateCrudNodeVariablesFromFields } from '../../../resources/variable-generators'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
+import { ErrorStrategy, errorHandlingBranches } from '../error-handling'
 import type { BaseNodeData } from '../node-base'
 import type { OutputContext } from '../output-context'
 import { resolveResourceGeneratorInputs } from '../resource-meta'
@@ -17,22 +18,12 @@ import {
 import { extractFieldVariableIds, extractVarIdsFromString } from '../variable-inference'
 
 /**
- * The crud node's catalog manifest — resource-backed like find, plus a
- * `connection.branches` arm (a `fail` handle when `error_strategy` is
- * `'fail'`) mirroring the CRUD case of the canvas's `calculateTargetBranches`
- * (workflow-initializer.ts), which stays the derived-state writer — same
- * coexistence http.ts documents — until the branch consumers converge on the
- * manifests.
+ * The crud node's catalog manifest — resource-backed like find, plus the
+ * shared failure policy (`catalog/error-handling.ts`). The `CrudErrorStrategy`
+ * enum that used to live here was one of two divergent error-strategy sets;
+ * it is now the single `ErrorStrategy` (plan 21 §15.1) and crud's values are
+ * unchanged, since the unified set took crud's names and crud's default.
  */
-
-/**
- * CRUD error strategy enum
- */
-export enum CrudErrorStrategy {
-  fail = 'fail',
-  continue = 'continue',
-  default = 'default',
-}
 
 /**
  * CRUD default value configuration
@@ -59,7 +50,7 @@ export interface CrudNodeData extends BaseNodeData {
   fieldUpdateModeVars?: Record<string, string> // Dynamic mode variable per field
 
   // Error handling configuration
-  error_strategy: CrudErrorStrategy
+  error_strategy: ErrorStrategy
   default_values: CrudDefaultValue[]
 }
 
@@ -81,7 +72,7 @@ export const crudNodeDataSchema = z.object({
   fieldModes: z.record(z.string(), z.boolean()).optional(),
   fieldUpdateModes: z.record(z.string(), relationUpdateModeSchema).optional(),
   fieldUpdateModeVars: z.record(z.string(), z.string()).optional(),
-  error_strategy: z.enum(CrudErrorStrategy).default(CrudErrorStrategy.fail),
+  error_strategy: z.enum(ErrorStrategy).default(ErrorStrategy.fail),
   default_values: z
     .array(
       z.object({
@@ -108,7 +99,7 @@ export function createCrudNodeDefaultData(): Partial<CrudNodeData> {
     resourceType: 'contact',
     mode: 'create',
     data: {},
-    error_strategy: CrudErrorStrategy.fail,
+    error_strategy: ErrorStrategy.fail,
     default_values: [],
   }
 }
@@ -451,7 +442,7 @@ export function getCrudNodeOutputVariables(
     const variables = generateThreadActionVariables(nodeId)
 
     // Add strategy-specific variables if needed
-    if (nodeData.error_strategy === CrudErrorStrategy.default) {
+    if (nodeData.error_strategy === ErrorStrategy.default) {
       variables.push(
         {
           id: `${nodeId}.usedDefaults`,
@@ -512,7 +503,7 @@ export function getCrudNodeOutputVariables(
   }
 
   // Add strategy-specific variables if needed
-  if (nodeData.error_strategy === CrudErrorStrategy.default) {
+  if (nodeData.error_strategy === ErrorStrategy.default) {
     baseVariables.push(
       {
         id: `${nodeId}.usedDefaults`,
@@ -552,19 +543,18 @@ export const crudManifest: NodeManifest<CrudNodeData> = {
   connection: {
     canRunSingle: true,
     /**
-     * Succeeded results leave via 'source'; a 'fail' branch exists only when
-     * `error_strategy` is 'fail'. Mirrors the CRUD arm of the canvas's
-     * `calculateTargetBranches` (workflow-initializer.ts), which stays the
-     * derived-state writer until the branch consumers converge here — the
-     * same coexistence http.ts documents for its arm.
+     * Succeeded results leave via 'source'; the `fail` branch comes from the
+     * shared `errorHandlingBranches` helper — the same call http spreads, so
+     * the rule exists once (plan 21 §15.4).
      */
-    branches: (config): NodeBranch[] => {
-      const branches: NodeBranch[] = [{ id: 'source', name: '', kind: 'default' }]
-      if (config.error_strategy === CrudErrorStrategy.fail) {
-        branches.push({ id: 'fail', name: 'Fail', kind: 'fail' })
-      }
-      return branches
-    },
+    branches: (config): NodeBranch[] => [
+      { id: 'source', name: '', kind: 'default' },
+      ...errorHandlingBranches(config),
+    ],
+  },
+  errorHandling: {
+    strategies: [ErrorStrategy.fail, ErrorStrategy.continue, ErrorStrategy.default],
+    defaultStrategy: ErrorStrategy.fail,
   },
   agent: {
     authorable: true,

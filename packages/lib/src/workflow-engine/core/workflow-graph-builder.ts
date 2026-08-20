@@ -1,6 +1,8 @@
 // packages/lib/src/workflow-engine/core/workflow-graph-builder.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import { errorHandlingBranches } from '../catalog/error-handling'
+import { getManifest } from '../catalog/registry'
 import type { NodeProcessorRegistry } from './node-processor-registry'
 import type { ForkPointInfo, JoinPointInfo, Workflow, WorkflowEdge, WorkflowNode } from './types'
 import { WorkflowNodeType, WorkflowTriggerType } from './types'
@@ -512,24 +514,6 @@ export class WorkflowGraphBuilder {
         // Note: timeout handle could be added if wait nodes support timeout branching
         break
 
-      case 'http':
-      // `crud` declares the same pair everywhere else — its manifest
-      // (`catalog/nodes/crud.ts`), its `node.tsx`, `calculateTargetBranches`,
-      // and a processor that emits `outputHandle: 'fail'` — but had no arm
-      // here, so it fell to `default:` and registered `source` alone. Not a
-      // live routing bug (engine failures route through `findFailureEdge`,
-      // which reads the edges directly), but the derived metadata lied: a crud
-      // node with a wired fail branch reported `hasMultipleOutputs: false` and
-      // its fail edge was invisible to fork/parallel accounting
-      // (plan 21 §7.3).
-      case 'crud':
-        outputHandles.set('source', WorkflowGraphBuilder.createEmptyOutputInfo('source'))
-        // Add fail handle if error strategy is 'fail'
-        if (node.data.error_strategy === 'fail') {
-          outputHandles.set('fail', WorkflowGraphBuilder.createEmptyOutputInfo('fail'))
-        }
-        break
-
       case 'text-classifier': {
         if (node.data.outputMode === 'variable') {
           // Variable mode: single source handle, no branching
@@ -558,6 +542,21 @@ export class WorkflowGraphBuilder {
       default:
         // Standard nodes have "source" output
         outputHandles.set('source', WorkflowGraphBuilder.createEmptyOutputInfo('source'))
+    }
+
+    // Failure policy is a MANIFEST-DECLARED concern, not a per-type case here.
+    // `http` and `crud` each used to own an arm above; crud's was missing
+    // entirely, so it fell to `default:` and registered `source` alone while
+    // its manifest, its `node.tsx`, `calculateTargetBranches` and its
+    // processor all declared a `fail` handle — `hasMultipleOutputs` then lied
+    // and the fail edge was invisible to fork/parallel accounting (plan 21
+    // §7.3). Reading the declaration makes that omission unrepresentable: a
+    // type gets the handle because its manifest says it handles failures, not
+    // because someone remembered to add a `case`.
+    if (getManifest(node.type)?.errorHandling) {
+      for (const branch of errorHandlingBranches(node.data)) {
+        outputHandles.set(branch.id, WorkflowGraphBuilder.createEmptyOutputInfo(branch.id))
+      }
     }
 
     return { inputHandles, outputHandles }

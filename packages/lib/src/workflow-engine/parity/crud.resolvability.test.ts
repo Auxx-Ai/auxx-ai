@@ -206,7 +206,8 @@ vi.mock('../../threads/thread-mutation.service', () => ({
 }))
 
 const { CrudNodeProcessor } = await import('../nodes/action-nodes/crud')
-const { crudManifest, CrudErrorStrategy } = await import('../catalog/nodes/crud')
+const { crudManifest } = await import('../catalog/nodes/crud')
+const { ErrorStrategy } = await import('../catalog/error-handling')
 
 function buildCrudNode(nodeId: string, data: Record<string, unknown>): WorkflowNode {
   return {
@@ -220,7 +221,7 @@ function buildCrudNode(nodeId: string, data: Record<string, unknown>): WorkflowN
       type: WorkflowNodeType.CRUD,
       title: 'CRUD',
       data: {},
-      error_strategy: CrudErrorStrategy.fail,
+      error_strategy: ErrorStrategy.fail,
       default_values: [],
       ...data,
     },
@@ -377,7 +378,7 @@ describe('CRUD node resolvability', () => {
       mode: 'update',
       resourceId: VENDOR_UPDATE_INSTANCE_ID,
       data: { name: 'Initech Supply' },
-      error_strategy: CrudErrorStrategy.default,
+      error_strategy: ErrorStrategy.default,
       default_values: [{ key: 'fallbackNote', type: 'string', value: 'applied fallback' }],
     })
 
@@ -424,7 +425,7 @@ describe('CRUD node resolvability', () => {
       mode: 'update',
       resourceId: VENDOR_UPDATE_INSTANCE_ID,
       data: { name: 'Initech Supply' },
-      error_strategy: CrudErrorStrategy.default,
+      error_strategy: ErrorStrategy.default,
       default_values: [],
     })
 

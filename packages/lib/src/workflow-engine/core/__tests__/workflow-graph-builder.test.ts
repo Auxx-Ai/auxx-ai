@@ -637,3 +637,69 @@ describe('WorkflowGraphBuilder.getNodeHandles — crud declares a fail branch (p
     expect(handlesFor({ type: 'crud' })).toEqual(['source'])
   })
 })
+
+/**
+ * The fail handle is MANIFEST-DRIVEN, not a per-type `case`.
+ *
+ * `getNodeHandles` used to carry `case 'http':` / `case 'crud':` arms whose
+ * only job was this handle, and crud's was missing for a long time — which is
+ * exactly the failure mode a per-type switch invites (plan 21 §7.3). The
+ * handle now comes from the manifest's `errorHandling` declaration, so the
+ * omission is unrepresentable rather than patched.
+ */
+describe('WorkflowGraphBuilder.getNodeHandles — errorHandling is read off the manifest', () => {
+  beforeEach(() => {
+    const registry = new NodeProcessorRegistry()
+    for (const type of [
+      WorkflowNodeType.CRUD,
+      WorkflowNodeType.HTTP,
+      WorkflowNodeType.AI,
+      WorkflowNodeType.FORMAT,
+      WorkflowNodeType.WAIT,
+    ]) {
+      registry.registerProcessor({
+        type,
+        preprocessNode: async () => ({ inputs: {}, metadata: {} }),
+        execute: async (node) => ({
+          nodeId: node.nodeId,
+          status: NodeRunningStatus.Succeeded,
+          output: {},
+          executionTime: 0,
+        }),
+        validate: async () => ({ valid: true, errors: [], warnings: [] }),
+      })
+    }
+    WorkflowGraphBuilder.initialize(registry)
+  })
+
+  function handlesFor(data: Record<string, unknown>): string[] {
+    const graph = WorkflowGraphBuilder.buildGraph({
+      id: 'wf',
+      graph: { nodes: [{ id: 'n1', type: data.type as string, data }], edges: [] },
+    } as never)
+    return [...(graph.nodes.get('n1')?.outputHandles.keys() ?? [])]
+  }
+
+  it('registers the fail handle for every type that declares errorHandling', () => {
+    expect(handlesFor({ type: 'http', error_strategy: 'fail' })).toEqual(['source', 'fail'])
+    expect(handlesFor({ type: 'crud', error_strategy: 'fail' })).toEqual(['source', 'fail'])
+  })
+
+  it("reads http's legacy `none` spelling as continue, so no fail handle appears", () => {
+    expect(handlesFor({ type: 'http', error_strategy: 'none' })).toEqual(['source'])
+  })
+
+  it('gives NO fail handle to a type that does not declare errorHandling', () => {
+    // Neither `ai` nor `format` declares one, so a config that sets
+    // `error_strategy` anyway must not conjure a branch — the declaration is
+    // what grants the handle, not the presence of the field.
+    expect(handlesFor({ type: 'ai', error_strategy: 'fail' })).toEqual(['source'])
+    expect(handlesFor({ type: 'format', error_strategy: 'fail' })).toEqual(['source'])
+  })
+
+  it('leaves a type-specific arm alone when the type has no declaration', () => {
+    // `wait` keeps its own arm in the switch; the post-switch manifest pass is
+    // orthogonal to the branch-shape arms and adds nothing here.
+    expect(handlesFor({ type: 'wait', error_strategy: 'fail' })).toEqual(['source'])
+  })
+})

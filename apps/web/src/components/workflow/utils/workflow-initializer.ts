@@ -1,10 +1,11 @@
 // apps/web/src/components/workflow/utils/workflow-initializer.ts
 
-import type { TargetBranch } from '@auxx/lib/workflow-engine/client'
+import {
+  errorHandlingBranches,
+  getManifest,
+  type TargetBranch,
+} from '@auxx/lib/workflow-engine/client'
 import { getConnectedEdges } from '@xyflow/react'
-import type { CrudNodeData } from '../nodes/core/crud/types'
-import type { HttpNodeData } from '../nodes/core/http/types'
-import { ErrorStrategy } from '../nodes/core/http/types'
 import type { IfElseNodeData } from '../nodes/core/if-else/types'
 import type { LoopNodeData } from '../nodes/core/loop/types'
 import type { TextClassifierNodeData } from '../nodes/core/text-classifier/types'
@@ -18,8 +19,9 @@ import { calculateZIndex } from './edge-utils'
  *
  * Derived state — `_targetBranches` is stripped on every save and rebuilt
  * here on load. The authoritative derivation is each manifest's
- * `connection.branches(config)`; these arms mirror it and should collapse
- * into it (see `catalog/derived-keys.ts`).
+ * `connection.branches(config)`; the remaining arms mirror it and should
+ * collapse into it (see `catalog/derived-keys.ts`). The failure-policy half
+ * already has: it reads the manifest rather than switching on a type.
  */
 export const calculateTargetBranches = (nodeData: FlowNode['data']): TargetBranch[] | undefined => {
   switch (nodeData.type) {
@@ -57,30 +59,26 @@ export const calculateTargetBranches = (nodeData: FlowNode['data']): TargetBranc
       return undefined
     }
 
-    case NodeType.HTTP: {
-      const httpData = nodeData as HttpNodeData
-      const branches: TargetBranch[] = [{ id: 'source', name: '', type: 'default' }]
-      // Add fail branch if error strategy is set to fail
-      if (httpData.error_strategy === ErrorStrategy.fail) {
-        branches.push({ id: 'fail', name: 'Fail', type: 'fail' })
-      }
-      return branches
+    default: {
+      // The HTTP and CRUD arms that used to live here existed ONLY to add the
+      // `fail` branch, and they were two copies of one rule — which is how
+      // crud's graph-builder arm came to be missing while every other surface
+      // declared the handle (plan 21 §7.3). Failure policy is now a
+      // manifest-declared concern: a type contributes a `fail` branch because
+      // its manifest says it handles failures, not because this switch has a
+      // case for it.
+      if (!getManifest(nodeData.type)?.errorHandling) return undefined
+      return [
+        { id: 'source', name: '', type: 'default' },
+        // `NodeBranch.kind` and `TargetBranch.type` are the same union under
+        // two names; this is the only place they meet.
+        ...errorHandlingBranches(nodeData).map((branch) => ({
+          id: branch.id,
+          name: branch.name,
+          type: branch.kind,
+        })),
+      ]
     }
-
-    case NodeType.CRUD: {
-      const crudData = nodeData as CrudNodeData
-      const branches: TargetBranch[] = [{ id: 'source', name: '', type: 'default' }]
-
-      // Add fail branch if error strategy is set to fail
-      if (`${crudData.error_strategy}` === 'fail') {
-        branches.push({ id: 'fail', name: 'Fail', type: 'fail' })
-      }
-
-      return branches
-    }
-
-    default:
-      return undefined
   }
 }
 

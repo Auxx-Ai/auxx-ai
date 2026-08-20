@@ -2,6 +2,7 @@
 
 'use client'
 
+import { normalizeErrorStrategy } from '@auxx/lib/workflow-engine/client'
 import { InputGroup, InputGroupAddon } from '@auxx/ui/components/input-group'
 import {
   NumberInput,
@@ -39,8 +40,10 @@ function isErrorStrategy(value: string): value is ErrorStrategy {
 export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHandlingProps) {
   const { handleEdgeDeleteByDeleteBranch } = useEdgeInteractions()
 
-  // Use direct state for error strategy
-  const errorStrategy = config?.error_strategy
+  // Read through the normalizer: persisted http nodes carry `'none'`, the
+  // legacy spelling of `continue` (plan 21 §15.1), and an unset value runs
+  // under the unified default, `fail`. The alias is never written back.
+  const errorStrategy = normalizeErrorStrategy(config?.error_strategy)
 
   // Handle error strategy change and update target branches
   const setErrorStrategy = (newStrategy: string) => {
@@ -113,18 +116,15 @@ export function ErrorHandling({ nodeId, isReadOnly, config, onChange }: ErrorHan
   return (
     <Section
       title='Error handling'
-      initialOpen={errorStrategy !== ErrorStrategy.none}
-      enabled={errorStrategy !== ErrorStrategy.none}
+      initialOpen={errorStrategy !== ErrorStrategy.continue}
+      enabled={errorStrategy !== ErrorStrategy.continue}
       actions={
-        <Select
-          value={errorStrategy || 'default'}
-          onValueChange={setErrorStrategy}
-          disabled={isReadOnly}>
+        <Select value={errorStrategy} onValueChange={setErrorStrategy} disabled={isReadOnly}>
           <SelectTrigger variant='default' size='sm' className='mb-0'>
             <SelectValue placeholder='Select strategy' />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ErrorStrategy.none}>None</SelectItem>
+            <SelectItem value={ErrorStrategy.continue}>Continue</SelectItem>
             <SelectItem value={ErrorStrategy.default}>Default Values</SelectItem>
             <SelectItem value={ErrorStrategy.fail}>Fail branch</SelectItem>
           </SelectContent>

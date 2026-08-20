@@ -43,6 +43,7 @@ import {
 } from '../../../threads/links.service'
 import { ThreadMutationService, type ThreadUpdates } from '../../../threads/thread-mutation.service'
 import { UnreadService } from '../../../threads/unread-service'
+import { ErrorStrategy, normalizeErrorStrategy } from '../../catalog/error-handling'
 import type {
   CrudNodeData as CatalogCrudNodeData,
   CrudDefaultValue,
@@ -63,9 +64,9 @@ import { parseRelationInput } from './relation-utils'
 /**
  * Engine-side view of the CRUD node's persisted config — a `Pick` off the
  * catalog's `CrudNodeData` (imported directly, not via `client.ts`: engine
- * code never goes through the client barrel). `error_strategy` is now the
- * catalog's `CrudErrorStrategy` enum rather than a bare string union; the
- * string-literal comparisons below project it through a template literal
+ * code never goes through the client barrel). `error_strategy` is the shared
+ * `ErrorStrategy` enum (`catalog/error-handling.ts`); the string-literal
+ * comparisons below project it through a template literal
  * (`` `${config.error_strategy}` ``) where TS would otherwise reject the
  * enum-vs-literal comparison — no runtime behavior changes, since the enum's
  * values are the same strings the literals always were.
@@ -527,7 +528,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     // Validate error strategy
     if (
       config.error_strategy &&
-      !['fail', 'continue', 'default'].includes(`${config.error_strategy}`)
+      !['fail', 'continue', 'default', 'none'].includes(`${config.error_strategy}`)
     ) {
       errors.push('Error strategy must be fail, continue, or default')
     }
@@ -1356,8 +1357,11 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
     contextManager.setNodeVariable(node.nodeId, 'errorDetails', errorDetails)
     contextManager.setNodeVariable(node.nodeId, 'operation', mode)
     contextManager.setNodeVariable(node.nodeId, 'resourceType', resourceType)
-    switch (`${config.error_strategy}`) {
-      case 'continue':
+    // Read through the normalizer: `'none'` is the legacy spelling of
+    // `continue` (plan 21 §15.1) and an absent value runs under the unified
+    // default, `fail` — which is where the `default:` arm below lands anyway.
+    switch (normalizeErrorStrategy(config.error_strategy)) {
+      case ErrorStrategy.continue:
         // Continue workflow with error information
         contextManager.log('WARN', node.name, `${mode} operation failed but continuing`, {
           error: message,
@@ -1381,7 +1385,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
             continuedOnError: true,
           },
         }
-      case 'default':
+      case ErrorStrategy.default:
         // Use default values if configured
         if (config.default_values && config.default_values.length > 0) {
           const defaultResult = await this.processDefaultValues(
@@ -1426,7 +1430,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
         contextManager.setNodeVariable(node.nodeId, 'usedDefaults', false)
         contextManager.setNodeVariable(node.nodeId, 'defaultValues', null)
       // Fall through to fail if no defaults configured
-      case 'fail':
+      case ErrorStrategy.fail:
       default:
         // Fail the workflow and route to fail branch
         return {

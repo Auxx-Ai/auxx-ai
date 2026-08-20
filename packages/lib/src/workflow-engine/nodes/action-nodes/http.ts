@@ -17,11 +17,11 @@
 
 import { z } from 'zod'
 import { applyAuth, resolveConnectionForRuntime } from '../../../connections'
+import { ErrorStrategy, normalizeErrorStrategy } from '../../catalog/error-handling'
 import type {
   Authorization,
   Body,
   DefaultValueItem,
-  ErrorStrategy,
   HttpNodeData,
   Method,
   Timeout,
@@ -77,7 +77,9 @@ type HttpNodeConfig = Pick<
   method: `${Method}`
   body: HttpBodyConfig
   authorization: HttpAuthConfig
-  error_strategy: `${ErrorStrategy}`
+  // `'none'` is http's legacy spelling of `continue` and is still persisted on
+  // older nodes — read through `normalizeErrorStrategy`, never compared raw.
+  error_strategy: `${ErrorStrategy}` | 'none'
 }
 
 // Validation schema
@@ -111,7 +113,7 @@ const httpNodeConfigSchema = z.object({
     })
     .optional()
     .default({ retry_enabled: false, max_retries: 1, retry_interval: 100 }),
-  error_strategy: z.enum(['fail', 'none', 'default']).optional().default('fail'),
+  error_strategy: z.enum(['fail', 'none', 'continue', 'default']).optional().default('fail'),
   default_value: z.array(z.any()).optional().default([]),
 })
 
@@ -415,15 +417,21 @@ export class HttpProcessor extends BaseNodeProcessor {
       // Handle error based on strategy
       const config = node.data as unknown as HttpNodeConfig
 
-      if (config.error_strategy === 'none') {
+      // One vocabulary, read through the normalizer: `'none'` is the legacy
+      // spelling of `continue` that persisted http configs carry (plan 21
+      // §15.1), and an absent value runs under the unified default, `fail`.
+      const strategy = normalizeErrorStrategy(config.error_strategy)
+
+      if (strategy === ErrorStrategy.continue) {
         return {
           status: NodeRunningStatus.Succeeded,
-          // Continue on error: 'none' renders no fail handle in the builder, so
-          // execution proceeds down the success path with the error as output.
+          // Continue on error: `continue` renders no fail handle in the
+          // builder, so execution proceeds down the success path with the
+          // error as output.
           output: { error: errorMessage, status: 0 },
           outputHandle: 'source',
         }
-      } else if (config.error_strategy === 'default' && config.default_value.length > 0) {
+      } else if (strategy === ErrorStrategy.default && config.default_value.length > 0) {
         const defaultValues = await this.processDefaultValues(config.default_value, contextManager)
         this.storeOutputVariables(node.nodeId, defaultValues, contextManager)
 
