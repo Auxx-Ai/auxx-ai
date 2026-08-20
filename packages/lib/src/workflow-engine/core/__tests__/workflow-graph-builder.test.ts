@@ -689,12 +689,24 @@ describe('WorkflowGraphBuilder.getNodeHandles — errorHandling is read off the 
     expect(handlesFor({ type: 'http', error_strategy: 'none' })).toEqual(['source'])
   })
 
+  it('registers it for the step-4 opt-ins too, with no new arm', () => {
+    // `ai` joined in PR B (plan 21 §18.1) and needed no code here — declaring
+    // `errorHandling` on the manifest is the whole change.
+    expect(handlesFor({ type: 'ai', error_strategy: 'fail' })).toEqual(['source', 'fail'])
+  })
+
   it('gives NO fail handle to a type that does not declare errorHandling', () => {
-    // Neither `ai` nor `format` declares one, so a config that sets
-    // `error_strategy` anyway must not conjure a branch — the declaration is
-    // what grants the handle, not the presence of the field.
-    expect(handlesFor({ type: 'ai', error_strategy: 'fail' })).toEqual(['source'])
+    // `format` deliberately stays out (a format failure IS a config bug), so a
+    // config that sets `error_strategy` anyway must not conjure a branch — the
+    // declaration is what grants the handle, not the presence of the field.
     expect(handlesFor({ type: 'format', error_strategy: 'fail' })).toEqual(['source'])
+  })
+
+  it('gives NO fail handle to an opted-in type whose node carries no key', () => {
+    // The behaviour-preservation case: every persisted `ai` row predates the
+    // opt-in and has no `error_strategy`, so it must register exactly the
+    // handles it always did.
+    expect(handlesFor({ type: 'ai' })).toEqual(['source'])
   })
 
   it('leaves a type-specific arm alone when the type has no declaration', () => {

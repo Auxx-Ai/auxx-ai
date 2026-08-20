@@ -423,10 +423,15 @@ export class FormatProcessor extends BaseNodeProcessor {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       contextManager.log('ERROR', node.name, `Format operation failed: ${errorMessage}`)
+      // No `outputHandle` on failure. `format` deliberately does NOT opt into a
+      // failure policy (plan 21 §16.3): a format failure IS a config bug, and
+      // routing around it hides the fix. It used to emit `'error'`, a handle no
+      // manifest declared and no canvas could wire — inert, but it read like a
+      // feature (§14.2). Omitting the handle is the honest form of the same
+      // fatal outcome: `findFailureEdge` skips the lookup and the engine throws.
       return {
         status: NodeRunningStatus.Failed,
         error: errorMessage,
-        outputHandle: 'error',
       }
     }
   }

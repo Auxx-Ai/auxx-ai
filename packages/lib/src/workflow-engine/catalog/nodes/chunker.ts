@@ -3,8 +3,14 @@
 import { z } from 'zod'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
+import { ErrorStrategy, errorHandlingBranches, errorStrategySchema } from '../error-handling'
 import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
-import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import {
+  type NodeBranch,
+  NodeCategory,
+  type NodeManifest,
+  type NodeValidationResult,
+} from '../types'
 import { createNestedVariable } from '../variable-conversion'
 import { extractFieldVariableIds, isVariableMode } from '../variable-inference'
 
@@ -71,6 +77,13 @@ export interface ChunkerNodeData extends BaseNodeData {
 
   /** Track constant/variable mode per field */
   fieldModes?: Record<string, boolean>
+  /**
+   * What happens when this node fails — `fail` (route to the wireable `fail`
+   * branch) or `continue` (succeed on `source` with `success: false` and the
+   * error in the output). Optional: no node persisted before plan 21 step 4
+   * carries the key, and an absent value renders no branch.
+   */
+  error_strategy?: ErrorStrategy
 }
 
 /**
@@ -98,6 +111,9 @@ export const chunkerNodeDataSchema = baseNodeDataSchema.extend({
 
   // Field modes
   fieldModes: z.record(z.string(), z.boolean()).optional(),
+
+  // Failure policy — see `catalog/error-handling.ts`.
+  error_strategy: errorStrategySchema.optional(),
 })
 
 /**
@@ -110,6 +126,17 @@ export const chunkerDefaultData = (): Partial<ChunkerNodeData> => ({
   chunkOverlap: CHUNKER_DEFAULT_CHUNK_OVERLAP,
   delimiter: CHUNKER_DEFAULT_DELIMITER,
   normalizeWhitespace: true,
+  // Written on create for the same reason http/crud write it: `fail` is what
+  // an unset node ALREADY does (`normalizeErrorStrategy(undefined)`), so the
+  // processor emits `outputHandle: 'fail'` on failure either way — persisting
+  // it is the node telling the truth about the handle it emits instead of
+  // recreating the undeclared-handle defect this opt-in exists to remove
+  // (plan 21 §14.4). Existing rows keep no key, and therefore no branch.
+  error_strategy: ErrorStrategy.fail,
+  _targetBranches: [
+    { id: 'source', name: '', type: 'default' },
+    { id: 'fail', name: 'Fail', type: 'fail' },
+  ],
   removeUrlsAndEmails: false,
   fieldModes: {},
 })
@@ -368,6 +395,23 @@ export const chunkerManifest: NodeManifest<ChunkerNodeData> = {
   resolveOutputs: getChunkerOutputVariables,
   connection: {
     canRunSingle: true,
+    /**
+     * Successful runs leave via `source`; the `fail` branch comes from the
+     * shared helper, the single site that turns `error_strategy: 'fail'` into
+     * a handle (plan 21 §15.4).
+     */
+    branches: (config): NodeBranch[] => [
+      { id: 'source', name: '', kind: 'default' },
+      ...errorHandlingBranches(config),
+    ],
+  },
+  /**
+   * Same shape as document-extractor (plan 21 §16.3): one bad input should be
+   * skippable. No `default` — there is no meaningful substitute set of chunks.
+   */
+  errorHandling: {
+    strategies: [ErrorStrategy.fail, ErrorStrategy.continue],
+    defaultStrategy: ErrorStrategy.fail,
   },
   agent: {
     authorable: true,
@@ -377,7 +421,10 @@ export const chunkerManifest: NodeManifest<ChunkerNodeData> = {
       '`content`). `chunkOverlap` must be smaller than `chunkSize`, and the step between ' +
       'chunks (`chunkSize - chunkOverlap`) must stay above 20% of `chunkSize` or the run ' +
       'fails. `delimiter` is stored ESCAPED — write "\\\\n\\\\n", not a real newline. Feed ' +
-      "this node's `chunks` output into a Dataset node.",
+      "this node's `chunks` output into a Dataset node. " +
+      '`error_strategy` is fail (the default — exposes a wirable "fail" branch handle; ' +
+      'leaving it unwired just means the run dies, which is the normal shape) or continue ' +
+      '(succeed on "source" with `success: false` and the error in the output).',
     examples: [
       {
         description: 'Chunk an extracted document with the defaults',

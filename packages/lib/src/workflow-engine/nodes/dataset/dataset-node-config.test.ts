@@ -816,3 +816,100 @@ describe('DocumentExtractorProcessor boolean binding', () => {
     expect(required).toContain('settings_1.images')
   })
 })
+
+/**
+ * The step-4 acceptance criterion (plan 21, PR B): a node of a newly opted-in
+ * type that carries NO stored `error_strategy` — which is every row that
+ * existed before the opt-in — must behave exactly as it did before.
+ *
+ * Before: the processor returned `status: Failed` with `outputHandle: 'error'`,
+ * a handle no manifest declared and no canvas could wire, so `findFailureEdge`
+ * found nothing and `workflow-engine.ts` threw.
+ *
+ * After: the same node resolves to `fail` (the catalog-wide default), emits the
+ * DECLARED `fail` handle — and because it never rendered that handle, no edge
+ * can address it, so `findFailureEdge` still finds nothing and the run still
+ * dies. Same fatal outcome, over a vocabulary an author can now opt into.
+ */
+describe('failure policy — behaviour preservation for the step-4 opt-ins', () => {
+  const failingNode = (type: WorkflowNodeType) =>
+    createNode(type, { title: 'Legacy node' /* no error_strategy key */ })
+
+  it('chunker fails onto the declared `fail` handle', async () => {
+    const processor = new ChunkerProcessor()
+    // No preprocessed inputs — the processor's own guard throws, which is the
+    // failure path without reaching any I/O.
+    const result = await (processor as any).executeNode(
+      failingNode(WorkflowNodeType.CHUNKER),
+      createContext(),
+      undefined
+    )
+    expect(result.status).toBe('failed')
+    expect(result.outputHandle).toBe('fail')
+  })
+
+  it('dataset fails onto the declared `fail` handle', async () => {
+    const processor = new DatasetProcessor()
+    const result = await (processor as any).executeNode(
+      failingNode(WorkflowNodeType.DATASET),
+      createContext(),
+      undefined
+    )
+    expect(result.status).toBe('failed')
+    expect(result.outputHandle).toBe('fail')
+  })
+
+  it('knowledge-retrieval fails onto the declared `fail` handle', async () => {
+    const processor = new KnowledgeRetrievalProcessor()
+    const result = await (processor as any).executeNode(
+      failingNode(WorkflowNodeType.KNOWLEDGE_RETRIEVAL),
+      createContext(),
+      undefined
+    )
+    expect(result.status).toBe('failed')
+    expect(result.outputHandle).toBe('fail')
+  })
+
+  it('document-extractor fails onto the declared `fail` handle', async () => {
+    const processor = new DocumentExtractorProcessor()
+    const context = createContext()
+    vi.spyOn(context, 'getVariable').mockRejectedValue(new Error('context unavailable'))
+    const result = await (processor as any).executeNode(
+      failingNode(WorkflowNodeType.DOCUMENT_EXTRACTOR),
+      context,
+      undefined
+    )
+    expect(result.status).toBe('failed')
+    expect(result.outputHandle).toBe('fail')
+  })
+
+  it('`continue` succeeds on `source` instead, carrying the error in the output', async () => {
+    // The capability the opt-in exists for: "this one document was corrupt,
+    // keep going" (plan 21 §14.3). Only reachable once the author sets the key.
+    const processor = new ChunkerProcessor()
+    const result = await (processor as any).executeNode(
+      createNode(WorkflowNodeType.CHUNKER, { error_strategy: 'continue' }),
+      createContext(),
+      undefined
+    )
+    expect(result.status).toBe('succeeded')
+    expect(result.outputHandle).toBe('source')
+    expect(result.output).toMatchObject({ success: false })
+  })
+
+  it('no processor in the cluster emits the undeclared `error` handle any more', async () => {
+    // The whole point of §14.4 option C: one error vocabulary, not two.
+    for (const [type, processor] of [
+      [WorkflowNodeType.CHUNKER, new ChunkerProcessor()],
+      [WorkflowNodeType.DATASET, new DatasetProcessor()],
+      [WorkflowNodeType.KNOWLEDGE_RETRIEVAL, new KnowledgeRetrievalProcessor()],
+    ] as const) {
+      const result = await (processor as any).executeNode(
+        failingNode(type),
+        createContext(),
+        undefined
+      )
+      expect(result.outputHandle).not.toBe('error')
+    }
+  })
+})

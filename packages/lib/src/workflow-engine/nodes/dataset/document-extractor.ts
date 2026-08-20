@@ -4,6 +4,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
 import { ExtractorFactory } from '../../../datasets/extractors/extractor-factory'
 import { createFileService } from '../../../files/core/file-service'
+import { ErrorStrategy, normalizeErrorStrategy } from '../../catalog/error-handling'
 import {
   type DocumentExtractorNodeData as CatalogDocumentExtractorNodeData,
   DocumentSourceType,
@@ -277,12 +278,14 @@ export class DocumentExtractorProcessor extends BaseNodeProcessor {
         executionTime,
       })
 
-      return {
-        status: extractionResult.success ? NodeRunningStatus.Succeeded : NodeRunningStatus.Failed,
-        output: extractionResult,
-        outputHandle: extractionResult.success ? 'source' : 'error',
-        error: extractionResult.error,
+      if (extractionResult.success) {
+        return {
+          status: NodeRunningStatus.Succeeded,
+          output: extractionResult,
+          outputHandle: 'source',
+        }
       }
+      return this.failureResult(node, extractionResult, extractionResult.error)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Document extraction failed'
 
@@ -301,13 +304,39 @@ export class DocumentExtractorProcessor extends BaseNodeProcessor {
       }
       this.storeOutputVariables(node.nodeId, errorOutput, contextManager)
 
-      return {
-        status: NodeRunningStatus.Failed,
-        error: errorMessage,
-        output: errorOutput,
-        outputHandle: 'error',
-      }
+      return this.failureResult(node, errorOutput, errorMessage)
     }
+  }
+
+  /**
+   * Apply the node's failure policy (`catalog/error-handling.ts`).
+   *
+   * Replaces the `outputHandle: 'error'` this used to emit — a handle no
+   * manifest declared, no `node.tsx` rendered and no edge could ever address,
+   * so the run died anyway (plan 21 §14.2). Behaviour is preserved exactly for
+   * a node with no stored `error_strategy`: it resolves to `fail`, emits the
+   * declared `fail` handle, `findFailureEdge` finds nothing (the node never
+   * rendered the handle, so no edge can exist) and the engine throws — the
+   * same fatal outcome, now over a vocabulary an author can actually wire.
+   *
+   * The `'fail'` literal stays inline in every opted-in processor rather than
+   * moving to a shared helper: the builder↔engine parity reader
+   * (`apps/web/.../parity/engine-write-scrape.ts`) extracts emitted handles by
+   * reading each processor FILE, so a handle emitted from a util would drop out
+   * of the contract it is supposed to be pinned by.
+   */
+  private failureResult(
+    node: WorkflowNode,
+    output: ExtractionOutput,
+    error?: string
+  ): Partial<NodeExecutionResult> {
+    const strategy = normalizeErrorStrategy(
+      (node.data as { error_strategy?: unknown }).error_strategy
+    )
+    if (strategy === ErrorStrategy.continue) {
+      return { status: NodeRunningStatus.Succeeded, output, outputHandle: 'source' }
+    }
+    return { status: NodeRunningStatus.Failed, error, output, outputHandle: 'fail' }
   }
 
   /**

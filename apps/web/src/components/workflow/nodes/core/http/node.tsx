@@ -2,9 +2,12 @@
 
 'use client'
 
-import { hasFailBranch as configHasFailBranch } from '@auxx/lib/workflow-engine/client'
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
+import {
+  hasFailBranch as hasFailBranchFor,
+  NodeFailBranch,
+} from '~/components/workflow/nodes/shared/node-fail-branch'
 import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
 import type { HttpNodeData } from './types'
@@ -13,7 +16,7 @@ export const HttpNode = memo<NodeProps<HttpNodeData>>(({ id, data, selected }) =
   // Calculate total source handles based on error strategy
   // Same predicate the manifest's `connection.branches` uses, so the handle
   // this renders and the branch the catalog declares can never disagree.
-  const hasFailBranch = configHasFailBranch(data)
+  const hasFailBranch = hasFailBranchFor(data)
   const totalSourceHandles = hasFailBranch ? 2 : 1
 
   // Augment data with handle count for collapsed height calculation
@@ -40,25 +43,7 @@ export const HttpNode = memo<NodeProps<HttpNodeData>>(({ id, data, selected }) =
             handleTotal={totalSourceHandles}
           />
         </div>
-        {hasFailBranch && (
-          <div className='relative px-2'>
-            <div className='flex items-center justify-between rounded-md bg-primary-100 p-1 text-xs'>
-              <div className='h-4 rounded-md px-1 font-semibold uppercase bg-bad-100 text-bad-500 whitespace-pre-line'>
-                On Failure
-              </div>
-              <div className='text-primary-500'>Fail Branch</div>
-            </div>
-            <NodeSourceHandle
-              id={id}
-              handleId='fail'
-              type='fail'
-              data={{ ...augmentedData, selected }}
-              handleClassName='!bottom-5'
-              handleIndex={1}
-              handleTotal={totalSourceHandles}
-            />
-          </div>
-        )}
+        {hasFailBranch && <NodeFailBranch id={id} data={augmentedData} selected={selected} />}
       </div>
     </BaseNode>
   )

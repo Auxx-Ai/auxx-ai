@@ -20,7 +20,13 @@ import { DEFAULT_TABS } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { SchemaEditorDialog } from '~/components/schema-editor/ui/schema-editor-dialog'
 import { useModelCapabilities, useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { ErrorDefaultValuesEditor } from '~/components/workflow/nodes/shared/error-default-values-editor'
+import {
+  ErrorHandlingSection,
+  type ErrorStrategyUpdate,
+} from '~/components/workflow/nodes/shared/error-handling-section'
 import { BaseType } from '~/components/workflow/types'
+import Field from '~/components/workflow/ui/field'
 import {
   VarEditor,
   VarEditorField,
@@ -61,6 +67,18 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
 
   // Use CRUD operations for the node data
   const { inputs: nodeData, setInputs: setNodeData } = useNodeCrud<AiNodeData>(nodeId, data)
+
+  /** Failure policy — the shared control, driven by the manifest declaration. */
+  const handleErrorStrategyChange = useCallback(
+    (update: ErrorStrategyUpdate) => setNodeData({ ...nodeData, ...update }),
+    [nodeData, setNodeData]
+  )
+
+  const handleDefaultValuesChange = useCallback(
+    (defaultValues: AiNodeData['default_values']) =>
+      setNodeData({ ...nodeData, default_values: defaultValues }),
+    [nodeData, setNodeData]
+  )
 
   // Capability gating — a feature is unsupported ONLY when the flag is
   // explicitly false (unknown/custom models fail open, same as runtime).
@@ -341,6 +359,26 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
           )}
         </div>
       </Section>
+      {/* `default` is offered here and nowhere else in the step-4 set: the AI
+          node HAS an output shape worth substituting — `text` is a plain
+          string, so "if the classifier times out, use `unknown`" is
+          expressible (plan 21 §16.3). The editor is crud's, reused rather than
+          reinvented; plan 24 owns its redesign. */}
+      <ErrorHandlingSection
+        nodeId={nodeId}
+        nodeType='ai'
+        errorStrategy={nodeData.error_strategy}
+        onChange={handleErrorStrategyChange}>
+        <Field
+          title='Default Values'
+          description='Substitute output values to use when the model call fails'>
+          <ErrorDefaultValuesEditor
+            defaultValues={nodeData.default_values || []}
+            onChange={handleDefaultValuesChange}
+          />
+        </Field>
+      </ErrorHandlingSection>
+
       <OutputVariablesDisplay
         outputVariables={
           aiDefinition.outputVariables?.(nodeData, nodeId, staticOutputVariableContext) || []

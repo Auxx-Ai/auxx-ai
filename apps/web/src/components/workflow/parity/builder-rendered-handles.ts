@@ -31,9 +31,10 @@ import { NodeType } from '~/components/workflow/types/node-types'
  * ── WHAT AN ENTRY MEANS ─────────────────────────────────────────────────────
  * `sources` / `targets` are the LITERAL handle ids the node's component passes
  * to `<NodeSourceHandle>` / `<NodeTargetHandle>` (or raw `<Handle>`), including
- * ones rendered conditionally (crud/http render `fail` only when
- * `error_strategy === 'fail'`; the human node renders `timeout` only when a
- * timeout is configured) — a conditionally-rendered handle is still one the
+ * ones rendered conditionally (the eight types with a manifest `errorHandling`
+ * declaration render `fail` only when `error_strategy === 'fail'`, via the
+ * shared `nodes/shared/node-fail-branch.tsx`; the human node renders `timeout`
+ * only when a timeout is configured) — a conditionally-rendered handle is still one the
  * builder can produce an edge for, which is what the parity question needs.
  * `dynamicSources` documents branch handles whose ids are USER DATA (if-else
  * case ids, text-classifier category ids); they cannot be enumerated here, and
@@ -51,14 +52,17 @@ export interface RenderedHandles {
 }
 
 export const BUILDER_RENDERED_HANDLES: Record<string, RenderedHandles> = {
-  // nodes/core/ai/node.tsx:39 (source), :13 (target)
-  [NodeType.AI]: { sources: ['source'], targets: ['target'] },
+  // nodes/core/ai/node.tsx (source), (fail — rendered when `hasFailBranch`,
+  // i.e. error_strategy === 'fail'), (target). `ai` opted into failure policy
+  // in plan 21 step 4.
+  [NodeType.AI]: { sources: ['source', 'fail'], targets: ['target'] },
 
   // nodes/core/answer/node.tsx:13 (source), :12 (target)
   [NodeType.ANSWER]: { sources: ['source'], targets: ['target'] },
 
-  // nodes/core/chunker/node.tsx:83 (source), :41 (target)
-  [NodeType.CHUNKER]: { sources: ['source'], targets: ['target'] },
+  // nodes/core/chunker/node.tsx (source), (fail — rendered when
+  // `hasFailBranch`), :41 (target)
+  [NodeType.CHUNKER]: { sources: ['source', 'fail'], targets: ['target'] },
 
   // nodes/core/code/node.tsx:20 (source), :14 (target)
   [NodeType.CODE]: { sources: ['source'], targets: ['target'] },
@@ -67,14 +71,16 @@ export const BUILDER_RENDERED_HANDLES: Record<string, RenderedHandles> = {
   // `hasFailBranch`, i.e. error_strategy === 'fail'), :48 (target)
   [NodeType.CRUD]: { sources: ['source', 'fail'], targets: ['target'] },
 
-  // nodes/core/dataset/node.tsx:95 (source), :38 (target)
-  [NodeType.DATASET]: { sources: ['source'], targets: ['target'] },
+  // nodes/core/dataset/node.tsx (source), (fail — rendered when
+  // `hasFailBranch`), :38 (target)
+  [NodeType.DATASET]: { sources: ['source', 'fail'], targets: ['target'] },
 
   // nodes/core/date-time/node.tsx:53 (source), :42 (target)
   [NodeType.DATE_TIME]: { sources: ['source'], targets: ['target'] },
 
-  // nodes/core/document-extractor/node.tsx:60 (source), :34 (target)
-  [NodeType.DOCUMENT_EXTRACTOR]: { sources: ['source'], targets: ['target'] },
+  // nodes/core/document-extractor/node.tsx (source), (fail — rendered when
+  // `hasFailBranch`), :34 (target)
+  [NodeType.DOCUMENT_EXTRACTOR]: { sources: ['source', 'fail'], targets: ['target'] },
 
   // nodes/core/end/node.tsx:30 (source), :17 (target)
   [NodeType.END]: { sources: ['source'], targets: ['target'] },
@@ -114,11 +120,13 @@ export const BUILDER_RENDERED_HANDLES: Record<string, RenderedHandles> = {
   // nodes/core/information-extractor/node.tsx:67 (source), :25 (target)
   [NodeType.INFORMATION_EXTRACTOR]: { sources: ['source'], targets: ['target'] },
 
-  // nodes/core/knowledge-retrieval/node.tsx:87 (source), :39 (target)
-  [NodeType.KNOWLEDGE_RETRIEVAL]: { sources: ['source'], targets: ['target'] },
+  // nodes/core/knowledge-retrieval/node.tsx (source), (fail — rendered when
+  // `hasFailBranch`), :39 (target)
+  [NodeType.KNOWLEDGE_RETRIEVAL]: { sources: ['source', 'fail'], targets: ['target'] },
 
-  // nodes/core/list/node.tsx:107 (source), :76 (target)
-  [NodeType.LIST]: { sources: ['source'], targets: ['target'] },
+  // nodes/core/list/node.tsx (source), (fail — rendered when `hasFailBranch`),
+  // :76 (target)
+  [NodeType.LIST]: { sources: ['source', 'fail'], targets: ['target'] },
 
   // nodes/core/loop/node.tsx:36 (loop-start, into the loop body), :150 (source,
   // after the loop), :146 (target), :54 (loop-back — where the last node in the

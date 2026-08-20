@@ -9,9 +9,15 @@ import {
   normalizeErrorStrategy,
 } from './error-handling'
 import { aiManifest } from './nodes/ai'
+import { answerManifest } from './nodes/answer'
+import { chunkerManifest } from './nodes/chunker'
 import { crudManifest } from './nodes/crud'
+import { datasetManifest } from './nodes/dataset'
+import { documentExtractorManifest } from './nodes/document-extractor'
 import { formatManifest } from './nodes/format'
 import { httpManifest } from './nodes/http'
+import { knowledgeRetrievalManifest } from './nodes/knowledge-retrieval'
+import { listManifest } from './nodes/list'
 import { getManifest, listManifests } from './registry'
 
 /**
@@ -83,12 +89,49 @@ describe('errorHandlingBranches — the one site that turns a policy into a hand
 })
 
 describe('manifest declarations', () => {
-  it('http and crud are the only types that declare errorHandling (step 4 opts in more)', () => {
+  it('names exactly the types that opted in (plan 21 §16.3 + §18.1)', () => {
+    // An exact-set assertion, not a superset: opting a type in is a product
+    // decision, so a new entry here has to be a deliberate edit. `format` stays
+    // out because a format failure IS a config bug and routing around it hides
+    // the fix; `answer`, `information-extractor` and `text-classifier` are
+    // AI-backed but were never decided, so only `ai` itself is in.
     const declaring = listManifests()
       .filter((manifest) => manifest.errorHandling)
       .map((manifest) => manifest.id)
       .sort()
-    expect(declaring).toEqual(['crud', 'http'])
+    expect(declaring).toEqual([
+      'ai',
+      'chunker',
+      'crud',
+      'dataset',
+      'document-extractor',
+      'http',
+      'knowledge-retrieval',
+      'list',
+    ])
+  })
+
+  it.each([
+    ['document-extractor', documentExtractorManifest],
+    ['chunker', chunkerManifest],
+    ['dataset', datasetManifest],
+    ['knowledge-retrieval', knowledgeRetrievalManifest],
+    ['list', listManifest],
+  ])('%s offers fail + continue but never default', (_id, manifest) => {
+    // No `default`: none of these has an output shape worth substituting —
+    // there is no meaningful "default chunks" or default set of retrieved
+    // documents (plan 21 §15.4).
+    expect(manifest.errorHandling).toEqual({
+      strategies: [ErrorStrategy.fail, ErrorStrategy.continue],
+      defaultStrategy: ErrorStrategy.fail,
+    })
+  })
+
+  it('ai offers all three — it has a substitutable output shape', () => {
+    expect(aiManifest.errorHandling).toEqual({
+      strategies: [ErrorStrategy.fail, ErrorStrategy.continue, ErrorStrategy.default],
+      defaultStrategy: ErrorStrategy.fail,
+    })
   })
 
   it.each([
@@ -138,10 +181,10 @@ describe('manifest declarations', () => {
   })
 
   it('a type that does not declare errorHandling exposes no fail branch', () => {
-    // ABSENT means "a failure is fatal", which is the state every type but
-    // http and crud is in today. `format` failing IS a config bug; the ai node
-    // is the strongest step-4 candidate and still opted out here.
-    for (const manifest of [formatManifest, aiManifest]) {
+    // ABSENT means "a failure is fatal". `format` failing IS a config bug, so
+    // it stays out deliberately; `answer` is AI-backed and simply was not part
+    // of the §16.3 decision, so it stays out until it is.
+    for (const manifest of [formatManifest, answerManifest]) {
       expect(manifest.errorHandling).toBeUndefined()
       // Even a config that carries the key gets nothing — the declaration is
       // what grants the branch, not the presence of the field.
@@ -161,5 +204,58 @@ describe('manifest declarations', () => {
   it('is reachable by type id, which is how the graph builder reads it', () => {
     expect(getManifest('crud')?.errorHandling?.defaultStrategy).toBe(ErrorStrategy.fail)
     expect(getManifest('wait')?.errorHandling).toBeUndefined()
+  })
+})
+
+/**
+ * The step-4 acceptance criterion (plan 21, PR B): an EXISTING persisted node
+ * of a newly opted-in type — one with no `error_strategy` key, because no such
+ * row could have one — must keep behaving exactly as it did before the opt-in.
+ * On failure the run dies.
+ *
+ * The canvas half of that proof lives here: without the key the manifest
+ * exposes no `fail` branch, so no `node.tsx` renders the handle and no edge can
+ * ever address it. The engine half (the processor emits `'fail'`, which
+ * `findFailureEdge` cannot match, so `workflow-engine.ts` throws) is pinned per
+ * processor — `dataset/dataset-node-config.test.ts`,
+ * `transform-nodes/__tests__/list-processor.test.ts`,
+ * `action-nodes/__tests__/ai-v2.test.ts`.
+ */
+describe('step-4 opt-ins — behaviour preservation for existing rows', () => {
+  const OPTED_IN: Array<[string, { connection: { branches?: (config: never) => unknown } }]> = [
+    ['document-extractor', documentExtractorManifest],
+    ['chunker', chunkerManifest],
+    ['dataset', datasetManifest],
+    ['knowledge-retrieval', knowledgeRetrievalManifest],
+    ['list', listManifest],
+    ['ai', aiManifest],
+  ]
+
+  it.each(OPTED_IN)('%s exposes source alone for a config with no error_strategy', (_id, m) => {
+    // A legacy row carries no key at all. `hasFailBranch` reads the STORED
+    // value only (never the manifest's `defaultStrategy`), which is what keeps
+    // the branch off graphs that never had one.
+    expect(m.connection.branches?.({ title: 'legacy' } as never)).toEqual([
+      { id: 'source', name: '', kind: 'default' },
+    ])
+    expect(hasFailBranch({ title: 'legacy' })).toBe(false)
+  })
+
+  it.each(OPTED_IN)('%s exposes the fail branch once the key says fail', (_id, m) => {
+    expect(m.connection.branches?.({ error_strategy: 'fail' } as never)).toEqual([
+      { id: 'source', name: '', kind: 'default' },
+      { id: 'fail', name: 'Fail', kind: 'fail' },
+    ])
+  })
+
+  it.each(OPTED_IN)('%s writes error_strategy: fail on newly created nodes', (id, _m) => {
+    // Deliberately DIFFERENT from the legacy-row case above. `fail` is what an
+    // unset node already resolves to, so the processor emits `outputHandle:
+    // 'fail'` either way — persisting it on create is the node telling the
+    // truth about the handle it emits, instead of leaving new nodes in the
+    // undeclared-handle state this whole PR exists to remove (plan 21 §14.4).
+    const manifest = listManifests().find((entry) => entry.id === id)
+    const defaults = manifest?.defaultData() as { error_strategy?: string }
+    expect(defaults.error_strategy).toBe(ErrorStrategy.fail)
   })
 })

@@ -5,9 +5,15 @@ import { z } from 'zod'
 import type { Condition } from '../../../conditions/client'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
+import { ErrorStrategy, errorHandlingBranches, errorStrategySchema } from '../error-handling'
 import type { BaseNodeData } from '../node-base'
 import type { OutputContext } from '../output-context'
-import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import {
+  type NodeBranch,
+  NodeCategory,
+  type NodeManifest,
+  type NodeValidationResult,
+} from '../types'
 import { assignVariableIds, cloneAndRewriteVariableIds } from '../variable-cloning'
 import { extractVarIdsFromString, inferPluckOutputType } from '../variable-inference'
 
@@ -123,6 +129,13 @@ export interface ListNodeData extends BaseNodeData {
   uniqueConfig?: UniqueConfig
   joinConfig?: JoinConfig
   pluckConfig?: PluckConfig
+
+  /**
+   * What happens when the operation fails — `fail` (route to the wireable
+   * `fail` branch) or `continue` (succeed on `source` with a null `result`).
+   * Optional: no node persisted before plan 21 step 4 carries the key.
+   */
+  error_strategy?: ErrorStrategy
 }
 
 /**
@@ -276,6 +289,8 @@ export const listNodeDataSchema = z.object({
   uniqueConfig: uniqueConfigSchema.optional(),
   joinConfig: joinConfigSchema.optional(),
   pluckConfig: pluckConfigSchema.optional(),
+  // Failure policy — see `catalog/error-handling.ts`.
+  error_strategy: errorStrategySchema.optional(),
 })
 
 /** Validation function for list node data */
@@ -688,6 +703,15 @@ export const listManifest: NodeManifest<ListNodeData> = {
       conditions: [],
       logic: 'AND',
     },
+    // Written on create for the same reason http/crud write it: `fail` is what
+    // an unset node ALREADY does, so the processor emits `outputHandle: 'fail'`
+    // on failure either way — persisting it is the node telling the truth about
+    // the handle it emits (plan 21 §14.4). Existing rows keep no key.
+    error_strategy: ErrorStrategy.fail,
+    _targetBranches: [
+      { id: 'source', name: '', type: 'default' },
+      { id: 'fail', name: 'Fail', type: 'fail' },
+    ],
   }),
   configSchema: listNodeDataSchema as unknown as z.ZodType<ListNodeData>,
   validate: validateListNodeData,
@@ -695,6 +719,27 @@ export const listManifest: NodeManifest<ListNodeData> = {
   resolveOutputs: computeListOutputVariables,
   connection: {
     canRunSingle: true,
+    /**
+     * Successful runs leave via `source`; the `fail` branch comes from the
+     * shared helper, the single site that turns `error_strategy: 'fail'` into
+     * a handle (plan 21 §15.4).
+     */
+    branches: (config): NodeBranch[] => [
+      { id: 'source', name: '', kind: 'default' },
+      ...errorHandlingBranches(config),
+    ],
+  },
+  /**
+   * The weakest case in plan 21 §16.3 — a list failure is usually a config bug
+   * and routing around it hides the fix. Opted in anyway because a list
+   * operating on data from a preceding API/retrieval step can fail on the DATA
+   * rather than on the config (a `pluck` over a field an upstream response
+   * omitted), which is the same "keep going" need the RAG cluster has. No
+   * `default`: a substitute list is a config value, not an error recovery.
+   */
+  errorHandling: {
+    strategies: [ErrorStrategy.fail, ErrorStrategy.continue],
+    defaultStrategy: ErrorStrategy.fail,
   },
   agent: {
     authorable: true,
@@ -702,7 +747,10 @@ export const listManifest: NodeManifest<ListNodeData> = {
       'Pick `operation` and fill its matching config (`filter`→filterConfig, `sort`→sortConfig, ' +
       '`slice`→sliceConfig, `unique`→uniqueConfig, `pluck`→pluckConfig; `join` defaults its ' +
       'delimiter and `reverse` needs none). `inputList` is a {{…}} ref to an upstream array. ' +
-      'Field references are a single `resource:field` id or an array for relationship traversal.',
+      'Field references are a single `resource:field` id or an array for relationship traversal. ' +
+      '`error_strategy` is fail (the default — exposes a wirable "fail" branch handle; ' +
+      'leaving it unwired just means the run dies, which is the normal shape) or continue ' +
+      '(succeed on "source" with `success: false` and the error in the output).',
     examples: [
       {
         description: 'Keep only open tickets from an upstream find',

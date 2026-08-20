@@ -3,8 +3,14 @@
 import { z } from 'zod'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
+import { ErrorStrategy, errorHandlingBranches, errorStrategySchema } from '../error-handling'
 import { type BaseNodeData, baseNodeDataSchema } from '../node-base'
-import { NodeCategory, type NodeManifest, type NodeValidationResult } from '../types'
+import {
+  type NodeBranch,
+  NodeCategory,
+  type NodeManifest,
+  type NodeValidationResult,
+} from '../types'
 import { createNestedVariable } from '../variable-conversion'
 import { extractFieldVariableIds, isVariableMode } from '../variable-inference'
 
@@ -69,6 +75,14 @@ export interface DocumentExtractorNodeData extends BaseNodeData {
 
   /** Track constant/variable mode per field */
   fieldModes?: Record<string, boolean>
+
+  /**
+   * What happens when extraction fails — `fail` (route to the wireable `fail`
+   * branch) or `continue` (succeed on `source` with `success: false` and the
+   * error in the output). Optional: no node persisted before plan 21 step 4
+   * carries the key, and an absent value renders no branch.
+   */
+  error_strategy?: ErrorStrategy
 }
 
 /**
@@ -96,6 +110,9 @@ export const documentExtractorNodeDataSchema = baseNodeDataSchema.extend({
 
   // Field modes
   fieldModes: z.record(z.string(), z.boolean()).optional(),
+
+  // Failure policy — see `catalog/error-handling.ts`.
+  error_strategy: errorStrategySchema.optional(),
 })
 
 /**
@@ -108,6 +125,17 @@ export const documentExtractorDefaultData = (): Partial<DocumentExtractorNodeDat
   preserveFormatting: false,
   extractImages: false,
   fieldModes: {},
+  // Written on create for the same reason http/crud write it: `fail` is what
+  // an unset node ALREADY does (`normalizeErrorStrategy(undefined)`), so the
+  // processor emits `outputHandle: 'fail'` on failure either way — persisting
+  // it is the node telling the truth about the handle it emits instead of
+  // recreating the undeclared-handle defect this opt-in exists to remove
+  // (plan 21 §14.4). Existing rows keep no key, and therefore no branch.
+  error_strategy: ErrorStrategy.fail,
+  _targetBranches: [
+    { id: 'source', name: '', type: 'default' },
+    { id: 'fail', name: 'Fail', type: 'fail' },
+  ],
 })
 
 /**
@@ -343,6 +371,24 @@ export const documentExtractorManifest: NodeManifest<DocumentExtractorNodeData> 
   resolveOutputs: getDocumentExtractorOutputVariables,
   connection: {
     canRunSingle: true,
+    /**
+     * Successful extractions leave via `source`; the `fail` branch comes from
+     * the shared helper, the single site that turns `error_strategy: 'fail'`
+     * into a handle (plan 21 §15.4).
+     */
+    branches: (config): NodeBranch[] => [
+      { id: 'source', name: '', kind: 'default' },
+      ...errorHandlingBranches(config),
+    ],
+  },
+  /**
+   * "This one PDF was corrupt, keep going" is the canonical need here (plan 21
+   * §16.3). No `default`: there is no meaningful substitute for the text of a
+   * document that could not be read.
+   */
+  errorHandling: {
+    strategies: [ErrorStrategy.fail, ErrorStrategy.continue],
+    defaultStrategy: ErrorStrategy.fail,
   },
   agent: {
     authorable: true,
@@ -351,7 +397,10 @@ export const documentExtractorManifest: NodeManifest<DocumentExtractorNodeData> 
       '`fileId`, a MediaAsset id — normally an upstream variable such as an attachment) or ' +
       '"url" (needs `url`, which must start with http:// or https://). The `metadata` output ' +
       'differs between the two: a file run exposes `fileSize`, a URL run exposes `sourceUrl` ' +
-      'and `contentLength`. Feed `content` into a Chunker node.',
+      'and `contentLength`. Feed `content` into a Chunker node. ' +
+      '`error_strategy` is fail (the default — exposes a wirable "fail" branch handle; ' +
+      'leaving it unwired just means the run dies, which is the normal shape) or continue ' +
+      '(succeed on "source" with `success: false` and the error in the output).',
     examples: [
       {
         description: 'Extract an uploaded attachment',

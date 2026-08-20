@@ -419,6 +419,38 @@ describe('T5 — an unwired branch is reported', () => {
     expect(issues.map((i) => i.message).join()).not.toContain('ELSE')
   })
 
+  it('stays silent on an unwired `fail` branch, for the ELSE reason', () => {
+    // An unwired fail branch means "let it fail" — the legitimate default
+    // behaviour of every node with no failure policy at all.
+    //
+    // #1766 made http's `defaultData()` write `error_strategy: 'fail'`, so from
+    // that commit every newly created http node rendered a fail branch and
+    // immediately warned about its own defaults. Pure noise, and it fired on
+    // the most-used action node in the palette.
+    const httpId = 'http-aaaaaaaaaaaaaaaaaaaaaaa'
+    const graph: DraftGraph = {
+      nodes: [
+        {
+          id: httpId,
+          type: 'standard',
+          position: { x: 100, y: 200 },
+          width: 244,
+          height: 100,
+          data: {
+            id: httpId,
+            type: 'http',
+            title: 'Call API',
+            method: 'get',
+            url: 'https://example.com',
+            error_strategy: 'fail',
+          },
+        } as GraphNode,
+      ],
+      edges: [],
+    }
+    expect(validateBranchWiring(graph, coreLookup)).toEqual([])
+  })
+
   it('says nothing once every branch is wired', () => {
     const graph: DraftGraph = {
       nodes: [ifElseNode([carrierCase('carrier-fedex', 'fedex')]), carrierNode()],

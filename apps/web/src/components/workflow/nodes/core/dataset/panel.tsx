@@ -8,6 +8,10 @@ import { produce } from 'immer'
 import type React from 'react'
 import { memo, useCallback } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks'
+import {
+  ErrorHandlingSection,
+  type ErrorStrategyUpdate,
+} from '~/components/workflow/nodes/shared/error-handling-section'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import Field from '~/components/workflow/ui/field'
 import {
@@ -58,6 +62,12 @@ const BOOLEAN_FIELD_DEFAULTS: Record<BooleanField, boolean> = {
  */
 const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) => {
   const { inputs: nodeData, setInputs } = useNodeCrud<DatasetNodeData>(nodeId, data)
+
+  /** Failure policy — the shared control, driven by the manifest declaration. */
+  const handleErrorStrategyChange = useCallback(
+    (update: ErrorStrategyUpdate) => setInputs({ ...nodeData, ...update }),
+    [nodeData, setInputs]
+  )
 
   /**
    * Generic handler for string field changes
@@ -421,6 +431,13 @@ const DatasetPanelComponent: React.FC<DatasetPanelProps> = ({ nodeId, data }) =>
           </VarEditorFieldRow>
         </VarEditorField>
       </Section>
+
+      <ErrorHandlingSection
+        nodeId={nodeId}
+        nodeType='dataset'
+        errorStrategy={nodeData.error_strategy}
+        onChange={handleErrorStrategyChange}
+      />
 
       <OutputVariablesDisplay
         outputVariables={getDatasetOutputVariables(nodeData, nodeId)}

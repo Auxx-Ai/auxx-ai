@@ -6,6 +6,10 @@ import { produce } from 'immer'
 import type React from 'react'
 import { memo, useCallback } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks'
+import {
+  ErrorHandlingSection,
+  type ErrorStrategyUpdate,
+} from '~/components/workflow/nodes/shared/error-handling-section'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import {
   VarEditor,
@@ -31,6 +35,12 @@ interface ChunkerPanelProps {
  */
 const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) => {
   const { inputs: nodeData, setInputs } = useNodeCrud<ChunkerNodeData>(nodeId, data)
+
+  /** Failure policy — the shared control, driven by the manifest declaration. */
+  const handleErrorStrategyChange = useCallback(
+    (update: ErrorStrategyUpdate) => setInputs({ ...nodeData, ...update }),
+    [nodeData, setInputs]
+  )
 
   /**
    * Handle content change
@@ -305,6 +315,13 @@ const ChunkerPanelComponent: React.FC<ChunkerPanelProps> = ({ nodeId, data }) =>
           </VarEditorFieldRow>
         </VarEditorField>
       </Section>
+
+      <ErrorHandlingSection
+        nodeId={nodeId}
+        nodeType='chunker'
+        errorStrategy={nodeData.error_strategy}
+        onChange={handleErrorStrategyChange}
+      />
 
       <OutputVariablesDisplay
         outputVariables={getChunkerOutputVariables(nodeData, nodeId)}

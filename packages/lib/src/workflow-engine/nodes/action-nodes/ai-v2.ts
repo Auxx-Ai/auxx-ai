@@ -6,6 +6,11 @@ import { LLMClient } from '../../../ai/clients/base/llm-client'
 import type { Message, MultiModalContent } from '../../../ai/clients/base/types'
 import { buildInstructionReferenceResolver } from '../../../ai/kopilot/prompts/resolve-instruction-references'
 import { collectVariableIds, docToText } from '../../../tiptap'
+import {
+  type ErrorDefaultValue,
+  ErrorStrategy,
+  normalizeErrorStrategy,
+} from '../../catalog/error-handling'
 import type { AiNodeData } from '../../catalog/nodes/ai'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
@@ -64,7 +69,14 @@ export interface AiToolsetEntry {
  */
 type AiNodeConfig = Pick<
   AiNodeData,
-  'title' | 'desc' | 'toolsEnabled' | 'appAccounts' | 'approvalMode' | 'maxIterations'
+  | 'title'
+  | 'desc'
+  | 'toolsEnabled'
+  | 'appAccounts'
+  | 'approvalMode'
+  | 'maxIterations'
+  | 'error_strategy'
+  | 'default_values'
 > & {
   model: AiModelConfig
   prompt_template: PromptTemplate[]
@@ -273,19 +285,139 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
   ): Promise<Partial<NodeExecutionResult>> {
     // `NodeData` carries the builder-only fields; the config is its payload half.
     const config = node.data as unknown as AiNodeConfig
-    if (!config?.toolsEnabled) {
-      const gates = await this.resolveGates(node, config, contextManager)
-      const result = await super.executeNode(
-        this.applyCapabilityGates(node, config, gates),
-        contextManager,
-        preprocessedData
-      )
-      if (gates.warnings.length > 0) {
-        result.output = { ...result.output, _warnings: gates.warnings }
+    try {
+      if (!config?.toolsEnabled) {
+        const gates = await this.resolveGates(node, config, contextManager)
+        const result = await super.executeNode(
+          this.applyCapabilityGates(node, config, gates),
+          contextManager,
+          preprocessedData
+        )
+        if (gates.warnings.length > 0) {
+          result.output = { ...result.output, _warnings: gates.warnings }
+        }
+        return result
       }
-      return result
+      return await this.executeNodeWithTools(node, config, contextManager)
+    } catch (error) {
+      return await this.applyFailurePolicy(node, config, contextManager, error)
     }
-    return this.executeNodeWithTools(node, config, contextManager)
+  }
+
+  /**
+   * Apply the node's failure policy (`catalog/error-handling.ts`).
+   *
+   * The AI node has always signalled failure by THROWING (`base-ai-node.ts`
+   * re-throws, `base-node.ts` wraps it in a `WorkflowNodeError`), which is why
+   * it never appeared in the `outputHandle: 'error'` divergence hunt — plan 21
+   * §7.4's six types are the ones that returned a handle. It is opted in
+   * anyway (§18.1): a model call fails transiently far more often than a
+   * transform does.
+   *
+   * Behaviour is preserved exactly for a node with no stored `error_strategy`:
+   * it resolves to `fail`, so this returns a Failed result on the declared
+   * `fail` handle. That node never rendered the handle, so no edge can address
+   * it, `findFailureEdge` returns undefined and `workflow-engine.ts` throws —
+   * the same fatal run, one frame later.
+   *
+   * Scoped to `AIProcessorV2`, i.e. the `ai` node type. `text-classifier`
+   * shares `BaseAiNodeProcessor` and is deliberately untouched: it was never
+   * decided (§16.3 lists only `ai`), and catching there would change three
+   * types on one undiscussed line.
+   *
+   * The `'fail'` literal stays inline for the same reason as the RAG cluster's:
+   * the builder↔engine parity reader extracts emitted handles per processor
+   * FILE.
+   */
+  private async applyFailurePolicy(
+    node: WorkflowNode,
+    config: AiNodeConfig,
+    contextManager: ExecutionContextManager,
+    error: unknown
+  ): Promise<Partial<NodeExecutionResult>> {
+    const message = error instanceof Error ? error.message : String(error)
+    const strategy = normalizeErrorStrategy(config?.error_strategy)
+    if (strategy === ErrorStrategy.fail) throw error
+
+    if (strategy === ErrorStrategy.default) {
+      const defaults = config?.default_values ?? []
+      if (defaults.length > 0) {
+        const substitutes = await this.resolveDefaultValues(defaults, contextManager)
+        for (const [key, value] of Object.entries(substitutes)) {
+          contextManager.setNodeVariable(node.nodeId, key, value)
+        }
+        contextManager.log('WARN', node.name, 'AI node failed, substituting default values', {
+          error: message,
+          defaultValueCount: defaults.length,
+        })
+        return {
+          status: NodeRunningStatus.Succeeded,
+          output: { ...substitutes, success: false, error: message, usedDefaults: true },
+          outputHandle: 'source',
+        }
+      }
+      // `default` with nothing configured substitutes nothing, so it cannot
+      // succeed — fall through to the fatal arm rather than reporting a success
+      // with an empty output. Same shape as http's and crud's `default` arms.
+      throw error
+    }
+
+    // `continue`: succeed on `source` carrying the error. `text` is published
+    // so `{{<node>.text}}` still resolves downstream instead of dangling.
+    //
+    // ONLY `text`. `content` is written by `storeAIResponse` on the success
+    // path too, but the picker never advertises it — a bulk `setNodeVariables`
+    // hides that from the builder↔engine parity reader, and publishing it from
+    // a literal here made the drift visible as a NEW failure. Fixing that
+    // advertisement is a separate question; this arm must not widen it.
+    contextManager.log('WARN', node.name, 'AI node failed but continuing', { error: message })
+    contextManager.setNodeVariable(node.nodeId, 'text', '')
+    return {
+      status: NodeRunningStatus.Succeeded,
+      output: { text: '', content: '', success: false, error: message },
+      outputHandle: 'source',
+    }
+  }
+
+  /**
+   * Parse `{ key, type, value }` substitutes into the values the `default`
+   * policy publishes, interpolating `{{…}}` refs first.
+   *
+   * A near-copy of crud's `processDefaultValues` — deliberately not shared:
+   * plan 24 owns the defaults editor and the `default_value`/`default_values`
+   * key split, and unifying the runtime half now would have to be unpicked by
+   * that work.
+   */
+  private async resolveDefaultValues(
+    defaultValues: ErrorDefaultValue[],
+    contextManager: ExecutionContextManager
+  ): Promise<Record<string, unknown>> {
+    const interpolated = await Promise.all(
+      defaultValues.map((dv) => this.interpolateVariables(dv.value, contextManager))
+    )
+    const result: Record<string, unknown> = {}
+    defaultValues.forEach((dv, index) => {
+      const value = interpolated[index] ?? ''
+      switch (dv.type) {
+        case 'number':
+          result[dv.key] = parseFloat(value) || 0
+          break
+        case 'boolean':
+          result[dv.key] = value.toLowerCase() === 'true'
+          break
+        case 'object':
+        case 'array':
+          try {
+            result[dv.key] = JSON.parse(value)
+          } catch {
+            result[dv.key] = value
+          }
+          break
+        default:
+          result[dv.key] = value
+      }
+    })
+    return result
   }
 
   /**

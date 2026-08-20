@@ -420,6 +420,98 @@ describe('AIProcessorV2', () => {
     })
   })
 
+  /**
+   * Failure policy (plan 21 step 4 / §18.1). The AI node has always signalled
+   * failure by THROWING, which is why it never appeared in §7.4's
+   * `outputHandle: 'error'` hunt — but a model call fails transiently far more
+   * often than a transform does, so it is opted in with all three strategies.
+   *
+   * The acceptance criterion is behaviour preservation: an `ai` node with no
+   * stored `error_strategy` — every row that predates the opt-in — must keep
+   * killing the run. It does, by RE-THROWING: `fail` is the resolved default,
+   * and the throw is exactly what happened before.
+   */
+  describe('failure policy', () => {
+    const failingBase = (proc: AIProcessorV2) =>
+      vi
+        .spyOn(Object.getPrototypeOf(Object.getPrototypeOf(proc)), 'executeNode')
+        .mockRejectedValue(new Error('model timed out'))
+
+    const node = (data: Record<string, unknown> = {}) =>
+      aiNode({
+        model: { provider: 'openai', name: 'gpt-4' },
+        prompt_template: [pt('user', 'hi')],
+        toolsEnabled: false,
+        ...data,
+      })
+
+    it('re-throws for a node with no stored error_strategy', async () => {
+      const proc = new AIProcessorV2()
+      const spy = failingBase(proc)
+      await expect((proc as any).executeNode(node(), mockContextManager)).rejects.toThrow(
+        'model timed out'
+      )
+      spy.mockRestore()
+    })
+
+    it('re-throws for an explicit `fail` too — the branch is the wiring, not the swallow', async () => {
+      // `fail` does NOT mean "return a Failed result and hope"; the engine's
+      // own `findFailureEdge` routing is what a wired fail branch uses, and an
+      // UNWIRED one must still kill the run.
+      const proc = new AIProcessorV2()
+      const spy = failingBase(proc)
+      await expect(
+        (proc as any).executeNode(node({ error_strategy: 'fail' }), mockContextManager)
+      ).rejects.toThrow('model timed out')
+      spy.mockRestore()
+    })
+
+    it('`continue` succeeds on `source` and keeps `text` addressable', async () => {
+      const proc = new AIProcessorV2()
+      const spy = failingBase(proc)
+      const result = await (proc as any).executeNode(
+        node({ error_strategy: 'continue' }),
+        mockContextManager
+      )
+      expect(result.outputHandle).toBe('source')
+      expect(result.output).toMatchObject({ text: '', success: false, error: 'model timed out' })
+      expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith('node_1', 'text', '')
+      spy.mockRestore()
+    })
+
+    it("`default` substitutes the configured values onto the node's own outputs", async () => {
+      // "If the classifier times out, use `unknown`" (plan 21 §16.3) — the
+      // reason `default` is offered here and nowhere else in the step-4 set.
+      const proc = new AIProcessorV2()
+      const spy = failingBase(proc)
+      const result = await (proc as any).executeNode(
+        node({
+          error_strategy: 'default',
+          default_values: [{ key: 'text', type: 'string', value: 'unknown' }],
+        }),
+        mockContextManager
+      )
+      expect(result.outputHandle).toBe('source')
+      expect(result.output).toMatchObject({ text: 'unknown', usedDefaults: true })
+      expect(mockContextManager.setNodeVariable).toHaveBeenCalledWith('node_1', 'text', 'unknown')
+      spy.mockRestore()
+    })
+
+    it('`default` with nothing configured falls through to fatal', async () => {
+      // Substituting nothing cannot succeed. Same shape as http's and crud's
+      // `default` arms, which both require a non-empty list.
+      const proc = new AIProcessorV2()
+      const spy = failingBase(proc)
+      await expect(
+        (proc as any).executeNode(
+          node({ error_strategy: 'default', default_values: [] }),
+          mockContextManager
+        )
+      ).rejects.toThrow('model timed out')
+      spy.mockRestore()
+    })
+  })
+
   // Integration tests for the tools-enabled path live in plan §6 tests 2–5.
   // They require either a real workflow run harness or mocking the
   // `runWorkflowAiTurn` runner end-to-end; both are out of scope for this
