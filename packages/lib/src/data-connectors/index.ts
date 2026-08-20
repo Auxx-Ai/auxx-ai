@@ -179,6 +179,12 @@ export {
   type ReadinessStream,
 } from './readiness'
 export { type ConnectorSyncEventKind, publishConnectorSync } from './realtime'
+// Connect-a-source discovery (v9) — connectors from published, verified apps the org
+// hasn't installed yet.
+export {
+  listRecommendedAppConnectors,
+  type RecommendedAppConnector,
+} from './recommended-app-connectors'
 export { archiveExternalId, handleConnectorDelete, reconcileOrphans } from './reconciliation'
 export { resolveRelationships } from './relationship-pass'
 // Orchestrator + passes

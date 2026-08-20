@@ -3,7 +3,7 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
+import { Button, type ButtonProps } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import { format } from 'date-fns'
 import { Check, ChevronDown, Code, Download } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -218,7 +219,13 @@ type InlineAppInstallButtonProps = {
    * state (e.g. Kopilot's install card moving on to Connect) without polling.
    */
   onInstalled?: () => void
-}
+  /**
+   * Everything else lands on the `Button`. A dialog footer needs to override the
+   * compact inline sizing and to carry `data-dialog-submit` (what `Dialog` keys
+   * Enter-to-submit off), neither of which this component can decide for itself.
+   * `onClick`/`loading` stay owned here — they ARE the install.
+   */
+} & Omit<ButtonProps, 'onClick' | 'loading' | 'loadingText' | 'children'>
 
 /**
  * Lightweight install button that self-determines install status.
@@ -228,6 +235,10 @@ export function InlineAppInstallButton({
   appSlug,
   children,
   onInstalled,
+  variant = 'outline',
+  size = 'sm',
+  className,
+  ...buttonProps
 }: InlineAppInstallButtonProps) {
   const { appInstallations, refreshInstallations } = useAppsContext()
   const utils = api.useUtils()
@@ -262,9 +273,13 @@ export function InlineAppInstallButton({
   return (
     <>
       <Button
-        variant='outline'
-        size='sm'
-        className='h-6 text-xs'
+        variant={variant}
+        size={size}
+        // Compact by default (this button usually sits inline in a sentence or a
+        // card row); `className` is twMerge'd, so a footer caller passing `h-7`
+        // gets the standard `size='sm'` height back.
+        className={cn('h-6 text-xs', className)}
+        {...buttonProps}
         onClick={(e) => {
           e.stopPropagation()
           if (isDemo) {
