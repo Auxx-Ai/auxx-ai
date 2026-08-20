@@ -4,6 +4,7 @@ import {
   errorHandlingBranches,
   type GraphDocument,
   getManifest,
+  HYDRATION_OPTIONS,
   hydrateGraph,
   type TargetBranch,
 } from '@auxx/lib/workflow-engine/client'
@@ -121,7 +122,9 @@ export const initializeWorkflow = (
   // while the document's is a plain string, so the two structural types are
   // not mutually assignable. The values are identical; only the declarations
   // disagree.
-  const hydrated = hydrateGraph({ nodes, edges } as unknown as GraphDocument)
+  // HYDRATION_OPTIONS: the builder must read under the SAME policy the server
+  // reads under, or the canvas sees manifest defaults the engine never will.
+  const hydrated = hydrateGraph({ nodes, edges } as unknown as GraphDocument, HYDRATION_OPTIONS)
   const hydratedNodes = hydrated.nodes as unknown as FlowNode[]
   const hydratedEdges = hydrated.edges as unknown as FlowEdge[]
 

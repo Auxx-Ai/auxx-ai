@@ -26,12 +26,22 @@ export const WorkflowHistoryProvider: React.FC<WorkflowHistoryProviderProps> = (
 
     // Create a simple store wrapper for history manager. These setters are
     // ONLY reached by history restores (undo/redo/jumpToState) — they bypass
-    // the canvas interaction paths that normally mark the workflow dirty, so
-    // each restore marks dirty itself. Load-bearing for Kopilot edits: the
-    // realtime rehydrate records the edit as a history entry on a CLEAN
-    // canvas, and undoing it must leave a saveable (dirty) canvas rather than
-    // one the autosave/beacon paths silently skip.
-    const markRestoreDirty = () => useWorkflowStore.getState().markDirty()
+    // the canvas interaction paths that normally queue a save, so each restore
+    // queues one itself. Load-bearing for Kopilot edits: the realtime rehydrate
+    // records the edit as a history entry on a CLEAN canvas, and undoing it
+    // must leave a saveable canvas rather than one the save path skips.
+    //
+    // This MUST queue the `graph` key, not just `markDirty()`. Since phase D the
+    // pending set is the complete record of what needs writing, and `runSave`
+    // treats an empty set as "already up to date" — so a bare `markDirty()`
+    // leaves undo unsaved AND makes the explicit Save button report success
+    // without writing anything. The content guard still decides whether the
+    // request actually goes out.
+    const markRestoreDirty = () => {
+      const state = useWorkflowStore.getState()
+      state.markDirty()
+      state.queueSave?.({ graph: true })
+    }
     const workflowStore = {
       setNodes: (nodes: any[]) => {
         const { setNodes } = reactFlowStore.getState()
