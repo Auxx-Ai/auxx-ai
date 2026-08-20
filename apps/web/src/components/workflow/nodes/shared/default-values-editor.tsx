@@ -16,13 +16,13 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Plus } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useCallback, useMemo } from 'react'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
-import { Editor } from '~/components/workflow/ui/prompt-editor'
-
-/** The `BaseType`s whose substitutes are written as JSON rather than plain text. */
-const JSON_TYPES = new Set<BaseType>([BaseType.OBJECT, BaseType.ARRAY])
+import Field from '~/components/workflow/ui/field'
+import { VarEditor, varEditorText } from '~/components/workflow/ui/input-editor/var-editor'
+import { containsVariableReference } from '~/components/workflow/utils/variable-utils'
 
 /**
  * `default_values[].type` for a target's declared `BaseType`.
@@ -48,8 +48,46 @@ function defaultValueTypeFor(type: BaseType): ErrorDefaultValue['type'] {
   }
 }
 
+/**
+ * The `BaseType` whose constant input a row's persisted `type` deserves.
+ *
+ * The INVERSE of {@link defaultValueTypeFor}, and deliberately coarser than
+ * the target's declared type: a substitute is coerced by
+ * `coerceDefaultValue(row.type, …)`, which knows five kinds and nothing else.
+ * Driving the input off the declared type instead would offer a relation
+ * picker for a `RELATION` output whose substitute the runtime will hand
+ * straight through as a string, and would need `fieldOptions.fieldReference`
+ * — a resource binding this editor has no business resolving.
+ *
+ * The row ICON still shows the declared type, so the author can see they are
+ * writing a record id into a Relation while the box stays a text box.
+ */
+function constantInputTypeFor(type: ErrorDefaultValue['type']): BaseType {
+  switch (type) {
+    case 'number':
+      return BaseType.NUMBER
+    case 'boolean':
+      return BaseType.BOOLEAN
+    case 'object':
+      return BaseType.OBJECT
+    case 'array':
+      return BaseType.ARRAY
+    default:
+      return BaseType.STRING
+  }
+}
+
+/**
+ * Every declared output is an admissible source for every substitute, so the
+ * picker is deliberately UNFILTERED (`[ANY]` short-circuits
+ * `isTypeCompatible`). Both processors interpolate `{{…}}` textually and only
+ * then coerce per the row's `type`, so there is no variable a row cannot hold
+ * — a type filter here would forbid what the runtime already accepts.
+ */
+const UNFILTERED: BaseType[] = [BaseType.ANY]
+
 interface DefaultValuesEditorProps {
-  /** Canvas node id — the `{{…}}` picker needs it, and target paths are relative to it. */
+  /** Canvas node id — the variable picker needs it, and target paths are relative to it. */
   nodeId: string
   /** What the node's `resolveOutputs` returned. Targets are derived from this. */
   declaredOutputs: UnifiedVariable[]
@@ -58,6 +96,10 @@ interface DefaultValuesEditorProps {
   values: ErrorDefaultValue[]
   onChange: (values: ErrorDefaultValue[]) => void
   isReadOnly?: boolean
+  /** Overrides the `Field` header copy for a node whose failure reads differently. */
+  description?: string
+  /** Validation messages the panel wants under the rows. */
+  footer?: ReactNode
 }
 
 /**
@@ -83,17 +125,26 @@ interface DefaultValuesEditorProps {
  *   path. It used to write `status_code`, which landed at `body.status_code`
  *   while `{{Http.status}}` stayed hard-coded at 200 (§9.1).
  *
- * **Why the value input is an `Editor` and not a `FieldInputAdapter`.**
- * `docs/ui-design-guide.md` §5 says every input inside a `FieldPanelRow` goes
- * through the adapter, and that rule is right for typed field values. A
- * substitute is not one: it is persisted as a STRING that may carry `{{…}}`
- * refs and is coerced to the target's type at run time
- * (`coerceDefaultValue`). A `NUMBER` adapter cannot hold `{{Trigger.count}}`,
- * so an adapter here would remove a capability the runtime already has — both
- * processors interpolate. The row still uses `FieldPanel`/`FieldPanelRow` for
- * its chrome, and the declared `BaseType` drives the row icon so the author
- * can see what they are writing into. `message-received/panel.tsx` is the
- * precedent for a non-adapter input inside a workflow `FieldPanelRow`.
+ * **It is drawn as crud's Field Data section, because it is the same thing.**
+ * A `Field` whose `actions` slot holds the add control, over a `FieldPanel` of
+ * `FieldPanelRow`s, each holding a `VarEditor` — the identical construction as
+ * `crud/panel.tsx`'s `renderField`. Plan 24 shipped the chrome but left a bare
+ * prompt `Editor` in the row, which reads as a fat textarea beside crud's
+ * typed rows and forced `{{` where every other workflow input opens its picker
+ * on a single `{`.
+ *
+ * `VarEditor` is the right control precisely BECAUSE a substitute is not a
+ * typed field value: its toggle is the constant/variable distinction the
+ * feature already has. Variable mode keeps `{{…}}` refs (a `FieldInputAdapter`
+ * could not hold `{{Trigger.count}}` in a `NUMBER` row); constant mode gives
+ * the per-type input; and `varEditorText` serialises whichever one back to the
+ * string `ErrorDefaultValue.value` has always been.
+ *
+ * The toggle is UNCONTROLLED, seeded per row from the stored value. The mode
+ * is fully recoverable from the value — a substitute either carries a ref or
+ * it does not — so persisting it would add a key to `errorDefaultValueSchema`,
+ * and therefore to the graph document, to record something already written
+ * down.
  */
 export function DefaultValuesEditor({
   nodeId,
@@ -102,6 +153,8 @@ export function DefaultValuesEditor({
   values,
   onChange,
   isReadOnly = false,
+  description = 'Substitute these outputs and carry on when this node fails',
+  footer,
 }: DefaultValuesEditorProps) {
   const targets = useMemo(
     () => defaultValueTargets(declaredOutputs, nodeId, errorHandling),
@@ -136,14 +189,43 @@ export function DefaultValuesEditor({
   )
 
   return (
-    <div className='space-y-2'>
-      {values.length > 0 && (
-        <FieldPanel
-          orientation='responsive'
-          breakpoint='md'
-          resizeId='node-default-values'
-          className='p-0'>
-          {values.map((row) => {
+    <Field
+      title='Default values'
+      description={description}
+      actions={
+        isReadOnly ? undefined : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild disabled={available.length === 0}>
+              <Button variant='ghost' size='xs'>
+                <Plus />
+                Add
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end' className='max-h-72 overflow-y-auto'>
+              {available.map((target) => (
+                <DropdownMenuItem key={target.path} onSelect={() => addRow(target.path)}>
+                  <span className='truncate'>{target.variable.label}</span>
+                  <span className='ms-2 truncate text-xs text-muted-foreground'>{target.path}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )
+      }>
+      <FieldPanel
+        orientation='responsive'
+        breakpoint='md'
+        resizeId='node-default-values'
+        className='p-0'>
+        {values.length === 0 ? (
+          // Not a decorative placeholder: every processor's `default` arm is
+          // guarded on a non-empty list and otherwise falls through to `fail`,
+          // so an empty editor IS the fail policy (§9.2's warning).
+          <div className='px-2 py-1.5 text-sm text-primary-400'>
+            No substitutes — this node will fail instead.
+          </div>
+        ) : (
+          values.map((row) => {
             const target = targetByPath.get(row.key)
             return (
               <FieldPanelRow
@@ -152,7 +234,7 @@ export function DefaultValuesEditor({
                 key={row.key}
                 title={target?.variable.label ?? row.key}
                 description={target?.variable.description}
-                type={target?.variable.type}
+                type={target?.variable.type ?? BaseType.STRING}
                 showIcon
                 onClear={isReadOnly ? undefined : () => removeRow(row.key)}
                 // A key with no declared target can only be a row persisted
@@ -165,44 +247,24 @@ export function DefaultValuesEditor({
                     : `"${row.key}" is not one of this node's outputs. Nothing downstream can read it — remove the row.`
                 }
                 validationType='error'>
-                <Editor
-                  value={row.value}
-                  onChange={(value) => setValue(row.key, value)}
+                <VarEditor
                   nodeId={nodeId}
-                  trigger='{{'
+                  value={row.value}
+                  onChange={(value) => setValue(row.key, varEditorText(value))}
+                  varType={constantInputTypeFor(row.type)}
+                  allowedTypes={UNFILTERED}
+                  defaultIsConstantMode={!containsVariableReference(row.value)}
+                  placeholder='Use { for variables'
+                  placeholderConstant='Substitute value'
                   readOnly={isReadOnly}
-                  compact={!JSON_TYPES.has(target?.variable.type ?? BaseType.STRING)}
-                  minHeight={JSON_TYPES.has(target?.variable.type ?? BaseType.STRING) ? 80 : 32}
-                  placeholder={
-                    JSON_TYPES.has(target?.variable.type ?? BaseType.STRING)
-                      ? 'JSON, or {{variables}}…'
-                      : 'Substitute value, or {{variables}}…'
-                  }
+                  hideClearButton
                 />
               </FieldPanelRow>
             )
-          })}
-        </FieldPanel>
-      )}
-
-      {!isReadOnly && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild disabled={available.length === 0}>
-            <Button variant='ghost' size='sm' className='w-full text-xs'>
-              <Plus />
-              {available.length === 0 ? 'All outputs have defaults' : 'Add default value'}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='start' className='max-h-72 overflow-y-auto'>
-            {available.map((target) => (
-              <DropdownMenuItem key={target.path} onSelect={() => addRow(target.path)}>
-                <span className='truncate'>{target.variable.label}</span>
-                <span className='ms-2 truncate text-xs text-muted-foreground'>{target.path}</span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
+          })
+        )}
+      </FieldPanel>
+      {footer}
+    </Field>
   )
 }

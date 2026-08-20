@@ -235,19 +235,34 @@ describe('manifest declarations', () => {
     })
   })
 
-  it('crud offers fail + default — it writes data others read', () => {
+  it('crud offers fail ALONE — it writes data others read', () => {
+    // Both escape hatches are retired here, for one reason. `continue` skips
+    // the write silently (§6.5); `default` substitutes an `id` or `record`
+    // that names nothing, so the next crud node updates a record that does not
+    // exist. Plan 24 O7 kept `default` on the strength of "pretend it made
+    // this record" (§10.2) and it did not survive contact — the phantom is
+    // §6.5's bug one node later, and worse for looking like it worked.
+    //
+    // No `defaultValueExclude` either: it named the keys a substitute may not
+    // target, and there is no substitute to exclude any more.
     expect(crudManifest.errorHandling).toEqual({
-      strategies: [ErrorStrategy.fail, ErrorStrategy.default],
+      strategies: [ErrorStrategy.fail],
       defaultStrategy: ErrorStrategy.fail,
       failOutputs: ['success', 'error', 'errorDetails', 'operation', 'resourceType'],
       failureOnlyOutputs: ['error', 'errorDetails'],
-      // Same five as `failOutputs`, different reason — `handleCrudError`
-      // writes the status block BEFORE the strategy switch, so substituting
-      // one is either overwritten or a lie (plan 24 §10.2). Do not collapse
-      // the two lists: http's `failOutputs` contains `status`, which is
-      // precisely the substitute its editor exists to set.
-      defaultValueExclude: ['success', 'error', 'errorDetails', 'operation', 'resourceType'],
     })
+  })
+
+  it('ai is the ONE type that keeps default — its substitute is never written back', () => {
+    // The line between crud and ai is not importance, it is whether the
+    // substitute reaches storage. `text` is read by the next node and written
+    // nowhere, so "if the classifier times out, use `unknown`" fabricates
+    // nothing. A crud `id` fabricates a record.
+    expect(aiManifest.errorHandling?.strategies).toEqual([
+      ErrorStrategy.fail,
+      ErrorStrategy.default,
+    ])
+    expect(crudManifest.errorHandling?.strategies).not.toContain(ErrorStrategy.default)
   })
 
   it('http is the ONE type that keeps continue', () => {

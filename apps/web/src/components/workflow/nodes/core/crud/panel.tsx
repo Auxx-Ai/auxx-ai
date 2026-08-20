@@ -4,7 +4,6 @@
 
 import { isMultiRelationship } from '@auxx/lib/field-values/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
-import { getManifest } from '@auxx/lib/workflow-engine/client'
 import {
   getRelatedEntityDefinitionId,
   type RelationshipConfig,
@@ -24,7 +23,6 @@ import { memo, useCallback, useMemo } from 'react'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResource, useResourceFields } from '~/components/resources'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import { DefaultValuesEditor } from '~/components/workflow/nodes/shared/default-values-editor'
 import {
   ErrorHandlingSection,
   type ErrorStrategyUpdate,
@@ -45,7 +43,7 @@ import { useWorkflowResources } from '../../../providers'
 import { BasePanel } from '../../shared/base/base-panel'
 import { RelationUpdateModeButton } from './components/relation-update-mode-button'
 import { getCrudNodeOutputVariables } from './output-variables'
-import { type CrudNodeData, ErrorStrategy } from './types'
+import type { CrudNodeData } from './types'
 import { useCrudValidation } from './use-crud-validation'
 import { ValidationMessage } from './validation-message'
 
@@ -187,23 +185,15 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
       const newData = produce(nodeData, (draft) => {
         draft.error_strategy = update.error_strategy
         draft._targetBranches = update._targetBranches
-        draft.default_values =
-          update.error_strategy === ErrorStrategy.default ? nodeData.default_values || [] : []
+        // Retiring a legacy `default` node is what this write is FOR: `fail`
+        // is the only strategy crud offers now, so any stored substitutes are
+        // dead weight the moment the author picks it.
+        draft.default_values = []
       })
       setInputs(newData)
       if (!showValidation) setShowValidation(true)
     },
     [nodeData, setInputs, showValidation, setShowValidation]
-  )
-
-  const handleDefaultValuesChange = useCallback(
-    (defaultValues: CrudNodeData['default_values']) => {
-      const newData = produce(nodeData, (draft) => {
-        draft.default_values = defaultValues
-      })
-      setInputs(newData)
-    },
-    [nodeData, setInputs]
   )
 
   /** Handle relation update mode change */
@@ -343,6 +333,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
                 placeholder={field.placeholder}
                 allowConstant={true}
                 isConstantMode={getFieldMode(field.key)}
+                readOnly={isReadOnly}
                 hideClearButton
               />
             </div>
@@ -360,6 +351,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
               placeholder={field.placeholder}
               allowConstant={true}
               isConstantMode={getFieldMode(field.key)}
+              readOnly={isReadOnly}
               hideClearButton
             />
           )}
@@ -380,6 +372,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
       handleFieldUpdateModeChange,
       handleFieldUpdateModeVarChange,
       getFieldMode,
+      isReadOnly,
     ]
   )
 
@@ -504,10 +497,12 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         </Section>
       )}
 
-      {/* The selector is the SHARED control (plan 21 §15.4) — this panel used
-          to own an inline <Select> that duplicated http's with different
-          labels. Only the defaults editor is crud-specific, and plan 24 owns
-          its redesign, so it is passed through untouched. */}
+      {/* One declared policy, so this renders as copy rather than a <Select>
+          (`error-handling-section.tsx`) — a write other nodes read has no
+          honest fallback, see `catalog/nodes/crud.ts`'s `errorHandling`. The
+          panel used to own an inline <Select> that duplicated http's with
+          different labels, and a free-text key/type/value substitutes list;
+          both are gone. */}
       <ErrorHandlingSection
         nodeId={nodeId}
         nodeType='crud'
@@ -515,30 +510,25 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         onChange={handleErrorStrategyChange}
         className='[&>[data-slot=section]]:pb-0!'
         footer={
-          showValidation && getFieldErrorMessage('error_strategy') ? (
-            <ValidationMessage
-              type={hasFieldErrorOfType('error_strategy', 'error') ? 'error' : 'warning'}
-              message={getFieldErrorMessage('error_strategy')!}
-            />
-          ) : undefined
-        }>
-        <Field title='Default Values' description='Fallback values to use when operations fail'>
-          <DefaultValuesEditor
-            nodeId={nodeId}
-            declaredOutputs={crudOutputVariables}
-            errorHandling={getManifest('crud')?.errorHandling}
-            values={nodeData.default_values || []}
-            onChange={handleDefaultValuesChange}
-            isReadOnly={isReadOnly}
-          />
-          {showValidation && getFieldErrorMessage('default_values') && (
-            <ValidationMessage
-              type={hasFieldErrorOfType('default_values', 'error') ? 'error' : 'warning'}
-              message={getFieldErrorMessage('default_values')!}
-            />
-          )}
-        </Field>
-      </ErrorHandlingSection>
+          <>
+            {showValidation && getFieldErrorMessage('error_strategy') && (
+              <ValidationMessage
+                type={hasFieldErrorOfType('error_strategy', 'error') ? 'error' : 'warning'}
+                message={getFieldErrorMessage('error_strategy')!}
+              />
+            )}
+            {/* Only a node persisted under the retired `default` strategy can
+                still carry substitutes; `validate` reports them here so the
+                author sees what switching to `fail` discards. */}
+            {showValidation && getFieldErrorMessage('default_values') && (
+              <ValidationMessage
+                type={hasFieldErrorOfType('default_values', 'error') ? 'error' : 'warning'}
+                message={getFieldErrorMessage('default_values')!}
+              />
+            )}
+          </>
+        }
+      />
 
       <OutputVariablesDisplay outputVariables={crudOutputVariables} initialOpen={false} />
     </BasePanel>

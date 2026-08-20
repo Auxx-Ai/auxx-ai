@@ -27,7 +27,6 @@ import {
   type ErrorStrategyUpdate,
 } from '~/components/workflow/nodes/shared/error-handling-section'
 import { BaseType } from '~/components/workflow/types'
-import Field from '~/components/workflow/ui/field'
 import {
   VarEditor,
   VarEditorField,
@@ -372,25 +371,21 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
       {/* `default` is offered here and nowhere else in the step-4 set: the AI
           node HAS an output shape worth substituting — `text` is a plain
           string, so "if the classifier times out, use `unknown`" is
-          expressible (plan 21 §16.3). The editor is crud's, reused rather than
-          reinvented; plan 24 owns its redesign. */}
+          expressible (plan 21 §16.3). */}
       <ErrorHandlingSection
         nodeId={nodeId}
         nodeType='ai'
         errorStrategy={nodeData.error_strategy}
         onChange={handleErrorStrategyChange}>
-        <Field
-          title='Default Values'
-          description='Substitute output values to use when the model call fails'>
-          <DefaultValuesEditor
-            nodeId={nodeId}
-            declaredOutputs={aiOutputVariables}
-            errorHandling={getManifest('ai')?.errorHandling}
-            values={nodeData.default_values || []}
-            onChange={handleDefaultValuesChange}
-            isReadOnly={isReadOnly}
-          />
-        </Field>
+        <DefaultValuesEditor
+          nodeId={nodeId}
+          declaredOutputs={aiOutputVariables}
+          errorHandling={getManifest('ai')?.errorHandling}
+          values={nodeData.default_values || []}
+          onChange={handleDefaultValuesChange}
+          isReadOnly={isReadOnly}
+          description='Substitute output values to use when the model call fails'
+        />
       </ErrorHandlingSection>
 
       <OutputVariablesDisplay outputVariables={aiOutputVariables} initialOpen={false} />

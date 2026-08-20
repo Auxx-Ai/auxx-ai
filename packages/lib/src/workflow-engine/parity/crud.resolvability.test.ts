@@ -370,6 +370,10 @@ describe('CRUD node resolvability', () => {
     expect(await ctx.resolveVariablePath(`${nodeId}.errorDetails`)).toBeNull()
   })
 
+  // LEGACY CONFIG. crud's manifest no longer offers `default` — a substituted
+  // `id` names a record that was never created, and the next node writes to
+  // the phantom. The processor still switches on the stored value, though, so
+  // nodes persisted under it keep running this arm and it stays covered here.
   it('error_strategy "default" — usedDefaults/defaultValues resolve after a forced failure', async () => {
     updateValues.mockRejectedValueOnce(new Error('simulated update failure'))
     const nodeId = 'crud_vendor_update_default'

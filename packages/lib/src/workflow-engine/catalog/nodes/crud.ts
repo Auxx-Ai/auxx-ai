@@ -187,17 +187,18 @@ export const validateCrudNodeConfig = (data: CrudNodeData): NodeValidationResult
     })
   }
 
-  // `default` with nothing configured is a silent no-op: `handleCrudError`'s
-  // `default` arm is guarded on a non-empty list and otherwise falls straight
-  // through to the fail arm, with no log and nothing in the panel (plan 24
-  // §9.2). `panel.tsx` has always rendered a `default_values` error slot;
-  // until now nothing populated it.
+  // LEGACY ROWS ONLY. `default` is no longer offerable on crud (see
+  // `errorHandling` below), but the processor switches on the stored value, so
+  // a node persisted under it still runs that arm. This is the surface that
+  // says so: `default` with nothing configured is a silent no-op —
+  // `handleCrudError`'s `default` arm is guarded on a non-empty list and
+  // otherwise falls straight through to the fail arm, with no log (plan 24
+  // §9.2).
   //
   // `targets: undefined` because a manifest `validate` receives only `data` —
   // crud's declared outputs need an `OutputContext` carrying the resource, so
-  // the KEY check cannot run here. The panel, which has the resource, runs the
-  // full check. Passing an empty target list instead would report every key as
-  // unknown.
+  // the KEY check cannot run here. Passing an empty target list instead would
+  // report every key as unknown.
   errors.push(
     ...validateDefaultValues({
       strategy: normalizeErrorStrategy(data.error_strategy, ErrorStrategy.fail),
@@ -567,10 +568,28 @@ export const crudManifest: NodeManifest<CrudNodeData> = {
     ],
   },
   errorHandling: {
-    // No `continue`: this node WRITES data that downstream nodes read, so a
-    // silently-skipped write is a data-integrity bug, not an inconvenience
-    // (plan 24 §6.5). `default` covers "carry on with a stand-in" honestly.
-    strategies: [ErrorStrategy.fail, ErrorStrategy.default],
+    // `fail` ONLY. crud WRITES data that downstream nodes read, and neither
+    // escape hatch is honest on a node with that property:
+    //
+    // - `continue` skips the write silently, which is a data-integrity bug
+    //   rather than an inconvenience (plan 24 §6.5).
+    // - `default` was kept by plan 24 O7 on the strength of "if the create
+    //   fails, pretend it made this record" (§10.2). Retired after it: a
+    //   substituted `id` or `record` is a PHANTOM, so the next crud node
+    //   updates a record that does not exist or links a relation to nothing.
+    //   That is §6.5's bug one node later, and worse for looking like it
+    //   worked. Its defence was that `success` stays truthful so a downstream
+    //   if-else can catch it — but an author willing to branch would have
+    //   wired the fail branch in the first place.
+    //
+    // `ai` keeps `default` because substituting `text` fabricates nothing
+    // that anything writes. The distinction is "does the substitute get
+    // written back", not "is this node important".
+    //
+    // The processors still honour a PERSISTED `default` (they switch on the
+    // stored value, not on this list) — `ErrorHandlingSection` surfaces such a
+    // node as a legacy strategy rather than pretending it runs under `fail`.
+    strategies: [ErrorStrategy.fail],
     defaultStrategy: ErrorStrategy.fail,
     // The 5-key status block `handleCrudError` writes BEFORE the strategy
     // switch (`nodes/action-nodes/crud.ts`). `record`, `id`, `deleted` and the
@@ -580,16 +599,11 @@ export const crudManifest: NodeManifest<CrudNodeData> = {
     // Written as an explicit `null` on the success path, so under strategy
     // `fail` these two can never be anything else on `source` (§6.1a).
     // `success` deliberately stays on both: it is a real boolean rather than a
-    // null, and it is the discriminator under `default`.
+    // null.
     failureOnlyOutputs: ['error', 'errorDetails'],
-    // The same five, for a different reason — do not collapse the two lists.
-    // `handleCrudError` writes this block BEFORE the strategy switch, so a
-    // configured substitute for one of them is overwritten on the way past,
-    // and a `success: true` substitute on a failed create would state
-    // something untrue that the rest of the graph believes. What a `default`
-    // on crud is FOR is `id` / `record` / the record tree — "if the create
-    // fails, pretend it made this record" (plan 24 §10.2).
-    defaultValueExclude: ['success', 'error', 'errorDetails', 'operation', 'resourceType'],
+    // No `defaultValueExclude`: it named the keys a substitute may not target,
+    // and with `default` retired there is no substitute to exclude. Dead
+    // config on a retired strategy reads as "the strategy is still a thing".
   },
   agent: {
     authorable: true,
@@ -598,9 +612,9 @@ export const crudManifest: NodeManifest<CrudNodeData> = {
       'EntityDefinition id — resolve it, never guess); `thread` is special: it is action-based ' +
       "(status/subject/assignee/tags/…), not field-based, and only supports mode 'update'. " +
       '`mode` is create/update/delete; update and delete require `resourceId`. `data` holds field ' +
-      'values keyed by field name, which may be {{…}} refs. `error_strategy` is fail (default, wires ' +
-      "a 'fail' branch handle), continue (succeed with success:false), or default (apply " +
-      '`default_values` on failure).',
+      "values keyed by field name, which may be {{…}} refs. `error_strategy` is 'fail' and nothing " +
+      "else — it wires a 'fail' branch handle. A write other nodes read has no honest way to " +
+      'pretend it happened, so route the failure instead of swallowing it.',
     examples: [
       {
         description: 'Create a contact from trigger data',
