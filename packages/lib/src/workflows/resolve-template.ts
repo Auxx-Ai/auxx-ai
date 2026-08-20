@@ -1,8 +1,8 @@
 // packages/lib/src/workflows/resolve-template.ts
 
-import { getTemplateById, type WorkflowTemplateDetail } from '@auxx/services/workflow-templates'
 import { type GraphDocument, hydrateGraph } from '../workflow-engine/catalog/graph-hydration'
 import { HYDRATION_OPTIONS } from '../workflow-engine/catalog/hydration-policy'
+import { getTemplateById, type WorkflowTemplateDetail } from '../workflow-templates'
 import { normalizeTemplateGraph } from './normalize-template-graph'
 import { getFileTemplateById, isFileTemplateId } from './templates'
 

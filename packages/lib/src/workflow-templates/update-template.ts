@@ -1,9 +1,10 @@
-// packages/services/src/workflow-templates/update-template.ts
+// packages/lib/src/workflow-templates/update-template.ts
 
 import { database, schema } from '@auxx/database'
+import { fromDatabase } from '@auxx/services/shared/utils'
 import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
+import { canonicalizeTemplateGraph } from './canonicalize'
 import type { UpdateWorkflowTemplateInput, WorkflowTemplateDetail } from './types'
 
 /**
@@ -22,7 +23,7 @@ export async function updateTemplate(input: UpdateWorkflowTemplateInput) {
   if (input.categories !== undefined) updateData.categories = input.categories
   if (input.imgUrl !== undefined) updateData.imgUrl = input.imgUrl
   if (input.icon !== undefined) updateData.icon = input.icon
-  if (input.graph !== undefined) updateData.graph = input.graph
+  if (input.graph !== undefined) updateData.graph = canonicalizeTemplateGraph(input.graph)
   if (input.version !== undefined) updateData.version = input.version
   if (input.status !== undefined) updateData.status = input.status
   if (input.triggerType !== undefined) updateData.triggerType = input.triggerType

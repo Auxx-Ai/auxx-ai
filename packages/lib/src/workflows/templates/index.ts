@@ -3,10 +3,7 @@
 // truth) and merged at read time with admin-created templates from the DB — they
 // are never written to the database. See plans/templates/file-and-admin-templates-plan.md.
 
-import type {
-  WorkflowTemplateDetail,
-  WorkflowTemplateListItem,
-} from '@auxx/services/workflow-templates'
+import type { WorkflowTemplateDetail, WorkflowTemplateListItem } from '../../workflow-templates'
 import { normalizeTemplateGraph } from '../normalize-template-graph'
 import fulfillmentFollowUp from './fulfillment-follow-up.template.json'
 import informationExtractionAutoReply from './information-extraction-auto-reply.template.json'

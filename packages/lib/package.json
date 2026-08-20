@@ -1534,6 +1534,12 @@
       "import": "./dist/workflow-engine/utils/serialization.mjs",
       "default": "./src/workflow-engine/utils/serialization.ts"
     },
+    "./workflow-templates": {
+      "types": "./src/workflow-templates/index.ts",
+      "source": "./src/workflow-templates/index.ts",
+      "import": "./dist/workflow-templates/index.mjs",
+      "default": "./src/workflow-templates/index.ts"
+    },
     "./workflows": {
       "types": "./src/workflows/index.ts",
       "source": "./src/workflows/index.ts",

@@ -1,8 +1,9 @@
-// packages/services/src/workflow-templates/duplicate-template.ts
+// packages/lib/src/workflow-templates/duplicate-template.ts
 
 import { database, schema } from '@auxx/database'
+import { fromDatabase } from '@auxx/services/shared/utils'
 import { ok } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
+import { canonicalizeTemplateGraph } from './canonicalize'
 import { getTemplateById } from './get-template-by-id'
 import type { WorkflowTemplateDetail } from './types'
 
@@ -31,7 +32,7 @@ export async function duplicateTemplate(id: string) {
         description: original.description,
         categories: original.categories,
         imgUrl: original.imgUrl,
-        graph: original.graph,
+        graph: canonicalizeTemplateGraph(original.graph),
         version: 1,
         status: 'private',
         triggerType: original.triggerType,

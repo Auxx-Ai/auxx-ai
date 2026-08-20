@@ -1,6 +1,11 @@
 // apps/web/src/app/admin/workflows/[id]/page.tsx
 'use client'
 
+import {
+  DEHYDRATION_OPTIONS,
+  dehydrateGraph,
+  type GraphDocument,
+} from '@auxx/lib/workflow-engine/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picker'
@@ -221,11 +226,18 @@ export default function WorkflowTemplateEditorPage({
   /**
    * Export the current template as a `*.template.json` file definition that a
    * developer can commit into `packages/lib/src/workflows/templates/`.
+   *
+   * The graph is dehydrated first. The editor renders what `resolveTemplateById`
+   * HYDRATED, so exporting it verbatim commits derived state — `node.type`,
+   * `edge.data.sourceType`/`targetType`, filled handles, `selected`, measured
+   * `width`/`height` — into a bundled file permanently. The save path
+   * canonicalizes server-side (`canonicalizeTemplateGraph`); this is the same
+   * policy for the file door.
    */
   const handleExport = () => {
     let parsedGraph: unknown = {}
     try {
-      parsedGraph = JSON.parse(graphJson)
+      parsedGraph = dehydrateGraph(JSON.parse(graphJson) as GraphDocument, DEHYDRATION_OPTIONS)
     } catch {
       toastError({ title: 'Invalid JSON', description: 'Fix the graph JSON before exporting' })
       return

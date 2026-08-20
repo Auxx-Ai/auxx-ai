@@ -1,4 +1,4 @@
-// packages/services/src/workflow-templates/types.ts
+// packages/lib/src/workflow-templates/types.ts
 
 /**
  * Input for querying workflow templates

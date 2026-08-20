@@ -1,9 +1,9 @@
-// packages/services/src/workflow-templates/get-template-by-id.ts
+// packages/lib/src/workflow-templates/get-template-by-id.ts
 
 import { database, schema } from '@auxx/database'
+import { fromDatabase } from '@auxx/services/shared/utils'
 import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
 import type { WorkflowTemplateDetail } from './types'
 
 /**

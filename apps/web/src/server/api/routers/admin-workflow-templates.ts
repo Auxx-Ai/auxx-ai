@@ -1,14 +1,14 @@
 // apps/web/src/server/api/routers/admin-workflow-templates.ts
 
 import { getAppCache } from '@auxx/lib/cache'
-import { isFileTemplateId, listFileTemplates, normalizeTemplateGraph } from '@auxx/lib/workflows'
 import {
   createTemplate,
   deleteTemplate,
   duplicateTemplate,
   getAllTemplates,
   updateTemplate,
-} from '@auxx/services/workflow-templates'
+} from '@auxx/lib/workflow-templates'
+import { isFileTemplateId, listFileTemplates, normalizeTemplateGraph } from '@auxx/lib/workflows'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
