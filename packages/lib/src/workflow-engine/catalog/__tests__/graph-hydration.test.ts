@@ -31,6 +31,7 @@ import {
   hydrateGraph,
 } from '../graph-hydration'
 import { buildUpstreamMap, type EdgeMeta, type NodeMeta } from '../graph-vars'
+import { DEHYDRATION_OPTIONS } from '../hydration-policy'
 import { getManifest } from '../registry'
 
 // ── fixtures ────────────────────────────────────────────────────────────────
@@ -617,9 +618,20 @@ describe('the loop arm', () => {
   })
 })
 
-// ── the read-time defaults layer (§2.4) ─────────────────────────────────────
+// ── the read-time defaults layer: DELETED ──────────────────────────────────
 
-describe('the read-time defaults layer', () => {
+/**
+ * `23` §2.4's read-time `manifest.defaultData()` projection was built, never
+ * enabled, and is gone — see `hydration-policy.ts` for the two structural
+ * reasons (no single manifest lookup across seams; four non-deterministic
+ * `defaultData()`s) and `26-hydration-defaults-and-handles.md` for the full
+ * evaluation.
+ *
+ * What survives from that block is the part that was never about the layer: a
+ * node's stored data is the whole of its content, and an unresolvable node type
+ * passes through untouched.
+ */
+describe('stored data is the whole of a node’s content', () => {
   const stripped: GraphDocument = {
     nodes: [
       {
@@ -632,81 +644,32 @@ describe('the read-time defaults layer', () => {
     edges: [],
   }
 
-  it('layers `manifest.defaultData()` UNDER stored data on read', () => {
+  it('does not invent config a node never stored', () => {
+    // The layer used to answer `'contact'`/`'created'` here. It no longer does,
+    // and the resource-trigger panel's mount backfill is what fills these in —
+    // save-neutral, because plan 22's content guard sees no semantic change.
     const data = node(hydrateGraph(stripped), 't1').data!
-    expect(data.resourceType).toBe('contact')
-    expect(data.operation).toBe('created')
-    expect(data.filters).toEqual([])
-  })
-
-  it('never overrides an authored value', () => {
-    const authored = structuredClone(stripped)
-    authored.nodes[0]!.data!.resourceType = 'ticket'
-    authored.nodes[0]!.data!.operation = 'updated'
-    const data = node(hydrateGraph(authored), 't1').data!
-    expect(data.resourceType).toBe('ticket')
-    expect(data.operation).toBe('updated')
-  })
-
-  it('does NOT persist a defaulted value — a default is a read-time projection, never a write', () => {
-    // NOTE: this exercises the defaults layer ON, which is the layer's own unit
-    // contract — NOT the shipped configuration. Every seam runs
-    // `skipDefaults: true` (`hydration-policy.ts`), so in production neither
-    // half of this happens. The pairing that actually ships is pinned by
-    // `hydration-policy-pairing.test.ts`; running the two halves under
-    // DIFFERENT policies is what silently amputated node config in #1771.
-    const stored = dehydrateGraph(hydrateGraph(stripped))
-    const data = node(stored, 't1').data!
     expect(data).not.toHaveProperty('resourceType')
     expect(data).not.toHaveProperty('operation')
     expect(data).not.toHaveProperty('filters')
-    // …and the reader still sees them.
-    expect(node(hydrateGraph(stored), 't1').data?.resourceType).toBe('contact')
   })
 
-  it('leaves `entityDefinitionId` alone — resolving it needs the org, not a guess', () => {
-    // The panel backfill this layer retires falls back to
-    // `currentResourceData?.entityDefinitionId || resourceType`. That fallback
-    // is deliberately NOT ported: for a custom entity `resourceType` is a slug
-    // (`entity_vendors`) while `entityDefinitionId` is a CUID, and this module
-    // has no resource list. Guessing would write a bogus
-    // `Workflow.entityDefinitionId` through `deriveTriggerColumns`.
-    expect(node(hydrateGraph(stripped), 't1').data).not.toHaveProperty('entityDefinitionId')
-  })
-
-  it('keeps an authored `entityDefinitionId` through the round trip', () => {
+  it('round-trips an authored value unchanged even when it equals a manifest default', () => {
+    // THE regression that made the layer's inverse unsafe: `resource-trigger`'s
+    // default operation is `'created'`, so a user who CHOSE "created" was
+    // byte-identical to one who never chose, and the strip deleted the key —
+    // dropping `Workflow.triggerType` to a value no dispatcher matches.
     const authored = structuredClone(stripped)
+    authored.nodes[0]!.data!.resourceType = 'contact'
+    authored.nodes[0]!.data!.operation = 'created'
     authored.nodes[0]!.data!.entityDefinitionId = 'clq1abc123'
-    const stored = dehydrateGraph(hydrateGraph(authored))
-    expect(node(stored, 't1').data?.entityDefinitionId).toBe('clq1abc123')
-  })
 
-  it('never layers `title`, `desc` or a derived key out of defaultData()', () => {
-    // `title` is the ADDRESS Kopilot resolves a node by, `desc` is validated as
-    // required by two manifests, and `if-else`'s defaultData() ships
-    // `_targetBranches` whose authority is `connection.branches(config)`.
-    const graph: GraphDocument = {
-      nodes: [
-        {
-          id: 'x',
-          type: 'standard',
-          position: { x: 0, y: 0 },
-          data: { id: 'x', type: 'if-else', title: 'Route' },
-        },
-      ],
-      edges: [],
-    }
-    const data = node(hydrateGraph(graph), 'x').data!
-    expect(data.title).toBe('Route')
-    expect(data).not.toHaveProperty('desc')
-    expect(data).not.toHaveProperty('_targetBranches')
-    expect(data).not.toHaveProperty('description')
-  })
-
-  it('is skippable, for a read-modify-write data migration', () => {
-    expect(node(hydrateGraph(stripped, { skipDefaults: true }), 't1').data).not.toHaveProperty(
-      'resourceType'
-    )
+    const stored = dehydrateGraph(hydrateGraph(authored), DEHYDRATION_OPTIONS)
+    expect(node(stored, 't1').data).toMatchObject({
+      resourceType: 'contact',
+      operation: 'created',
+      entityDefinitionId: 'clq1abc123',
+    })
   })
 
   it('leaves a node type it cannot resolve untouched', () => {
@@ -833,13 +796,14 @@ describe('dehydrateGraph must NOT strip', () => {
     expect(out.edges[0]).not.toHaveProperty('data')
   })
 
-  it('an authored value that happens to EQUAL its manifest default reads back unchanged', () => {
-    // Dehydration does drop it from the column — the exact inverse of the
-    // read-time defaults layer, which is what keeps a stored document canonical.
-    // "No reader can tell" holds ONLY because both halves here run under the
-    // same policy. Under the shipped `skipDefaults: true` neither half runs; a
-    // reader on the other policy very much can tell, which is #1771. See
-    // `hydration-policy-pairing.test.ts`.
+  it('an authored value that happens to EQUAL its manifest default', () => {
+    // The read-time defaults layer used to drop this key on the theory that no
+    // reader could tell. Readers could: "the user chose the default" and "the
+    // user chose nothing" are different facts, and collapsing them is what
+    // amputated a real row in #1771. Authored config is kept, full stop.
+    //
+    // `document-extractor`'s `sourceType` is also the name-collision trap:
+    // `edge.data.sourceType` IS derived, `node.data.sourceType` is authored.
     const graph: GraphDocument = {
       nodes: [
         {
@@ -851,9 +815,8 @@ describe('dehydrateGraph must NOT strip', () => {
       ],
       edges: [],
     }
-    const stored = dehydrateGraph(hydrateGraph(graph))
-    expect(stored.nodes[0]?.data).not.toHaveProperty('sourceType')
-    expect(hydrateGraph(stored).nodes[0]?.data?.sourceType).toBe('file')
+    const stored = dehydrateGraph(hydrateGraph(graph), DEHYDRATION_OPTIONS)
+    expect(stored.nodes[0]?.data?.sourceType).toBe('file')
   })
 
   it('`node.data.position` on form-input — a fractional run-form ORDER key, not a coordinate', () => {

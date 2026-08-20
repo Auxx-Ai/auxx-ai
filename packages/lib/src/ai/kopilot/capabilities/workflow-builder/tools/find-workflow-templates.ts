@@ -55,7 +55,7 @@ export function createFindWorkflowTemplatesTool(getDeps: GetToolDeps): AgentTool
         triggerType: string | null
       }> = []
       try {
-        const { getAllTemplates } = await import('@auxx/services/workflow-templates')
+        const { getAllTemplates } = await import('../../../../../workflow-templates')
         const result = await getAllTemplates({
           ...(search ? { search } : {}),
           status: 'public',

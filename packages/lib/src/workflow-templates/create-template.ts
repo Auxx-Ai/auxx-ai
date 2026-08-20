@@ -1,8 +1,9 @@
-// packages/services/src/workflow-templates/create-template.ts
+// packages/lib/src/workflow-templates/create-template.ts
 
 import { database, schema } from '@auxx/database'
+import { fromDatabase } from '@auxx/services/shared/utils'
 import { ok } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
+import { canonicalizeTemplateGraph } from './canonicalize'
 import type { CreateWorkflowTemplateInput, WorkflowTemplateDetail } from './types'
 
 /**
@@ -21,7 +22,7 @@ export async function createTemplate(input: CreateWorkflowTemplateInput) {
         categories: input.categories,
         imgUrl: input.imgUrl,
         icon: input.icon ?? null,
-        graph: input.graph,
+        graph: canonicalizeTemplateGraph(input.graph),
         version: input.version ?? 1,
         status: input.status ?? 'private',
         triggerType: input.triggerType,

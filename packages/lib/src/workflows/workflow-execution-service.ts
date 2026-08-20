@@ -126,6 +126,12 @@ export async function createWorkflowRun(
     error?: string
     finishedAt?: Date
     elapsedTime?: number
+    /**
+     * What started this run. Defaults from `mode` — `APP_RUN` in production,
+     * `DEBUGGING` in test. Doors that are neither (a webhook hit, a public
+     * share) pass their own so run history can tell them apart.
+     */
+    triggeredFrom?: (typeof WorkflowTriggerSource)[keyof typeof WorkflowTriggerSource]
   }
 ) {
   const { workflow, organizationId, inputs, mode, userId } = params
@@ -176,7 +182,8 @@ export async function createWorkflowRun(
       sequenceNumber,
       type: workflow.triggerType || WorkflowTriggerType.MANUAL,
       triggeredFrom:
-        mode === 'production' ? WorkflowTriggerSource.APP_RUN : WorkflowTriggerSource.DEBUGGING,
+        params.triggeredFrom ??
+        (mode === 'production' ? WorkflowTriggerSource.APP_RUN : WorkflowTriggerSource.DEBUGGING),
       version: workflow.version.toString(),
       graph: workflow.graph || {},
       inputs,
@@ -289,6 +296,8 @@ export class WorkflowExecutionService {
     organizationId: string
     userEmail?: string
     userName?: string
+    /** See {@link createWorkflowRun}. Omit unless this door is neither an app run nor a debug run. */
+    triggeredFrom?: (typeof WorkflowTriggerSource)[keyof typeof WorkflowTriggerSource]
   }): Promise<CreatedWorkflowRun> {
     const { workflowId, inputs, mode, userId, organizationId } = params
 
@@ -312,6 +321,7 @@ export class WorkflowExecutionService {
       inputs,
       mode,
       userId,
+      triggeredFrom: params.triggeredFrom,
     })
   }
 

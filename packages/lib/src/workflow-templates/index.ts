@@ -1,5 +1,6 @@
-// packages/services/src/workflow-templates/index.ts
+// packages/lib/src/workflow-templates/index.ts
 
+export { canonicalizeTemplateGraph } from './canonicalize'
 export { createTemplate } from './create-template'
 export { deleteTemplate } from './delete-template'
 export { duplicateTemplate } from './duplicate-template'

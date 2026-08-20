@@ -30,7 +30,6 @@ import { AuxxError, NotFoundError, UnprocessableEntityError } from '../../errors
 import { deriveTriggerColumns } from '../../workflow-engine/catalog/derive-trigger'
 import { dehydrateGraph, type GraphDocument } from '../../workflow-engine/catalog/graph-hydration'
 import { DEHYDRATION_OPTIONS } from '../../workflow-engine/catalog/hydration-policy'
-import type { ManifestLookup } from '../../workflow-engine/catalog/types'
 import { hashGraphSemantics } from '../graph-hash'
 import type { WorkflowTriggerType, WorkflowUpdateInput } from '../types'
 import type { GraphEditScope } from './read'
@@ -49,17 +48,9 @@ import type { DraftGraph, GraphEdge, GraphNode } from './types'
  * counts as an edit) plus the keys that never held information
  * (`isValid`/`errors`/`data.selected`/`outputVariables`).
  *
- * `lookup` must be the SAME manifest lookup the matching `hydrateGraph` used
- * (`ops.ts` passes `ctx.lookup`): the two calls have to see one vocabulary of
- * node types, or the pair stops being an exact inverse for app-block nodes.
- * It is inert while `DEHYDRATION_OPTIONS` keeps the defaults layer off, and
- * load-bearing the moment it is turned on.
  */
-export function cleanGraphForSave(graph: DraftGraph, lookup?: ManifestLookup): DraftGraph {
-  const stored = dehydrateGraph(graph as unknown as GraphDocument, {
-    ...DEHYDRATION_OPTIONS,
-    ...(lookup ? { manifests: lookup } : {}),
-  })
+export function cleanGraphForSave(graph: DraftGraph): DraftGraph {
+  const stored = dehydrateGraph(graph as unknown as GraphDocument, DEHYDRATION_OPTIONS)
   return {
     nodes: stored.nodes as unknown as GraphNode[],
     edges: stored.edges as unknown as GraphEdge[],
@@ -70,12 +61,6 @@ export function cleanGraphForSave(graph: DraftGraph, lookup?: ManifestLookup): D
 /** What a mutation hands the persist seam. */
 export interface PersistDraftInput {
   graph: DraftGraph
-  /**
-   * Manifest lookup for {@link cleanGraphForSave}. Pass the same one the graph
-   * was hydrated with (`DraftContext.lookup`); omitting it falls back to the
-   * core registry, which answers for the platform types and nothing else.
-   */
-  manifests?: ManifestLookup
   /** Optional WorkflowApp metadata to atomically restore with a failed AI turn. */
   name?: string
   description?: string | null
@@ -124,11 +109,19 @@ export async function persistDraft(
   scope: GraphEditScope,
   input: PersistDraftInput
 ): Promise<Result<PersistDraftOutcome, AuxxError>> {
-  const graph = cleanGraphForSave(input.graph, input.manifests)
+  // Derive the trigger columns from the HYDRATED graph, BEFORE the clean step.
+  //
+  // Order matters and this is the order the two other writers already use
+  // (`create-from-template.ts:105-124`, `workflow-save-provider.tsx:283`).
+  // `deriveTriggerColumns` sets the columns only when a resource trigger has
+  // BOTH `operation` and `entityDefinitionId`, so any future strip that removes
+  // either key from the cleaned document would drop `Workflow.triggerType` to
+  // the generic `'resource-trigger'` — which no dispatcher matches, meaning
+  // every resource-triggered workflow silently stops firing. Deriving first
+  // makes this seam indifferent to what the strip does.
+  const derived = deriveTriggerColumns(input.graph.nodes)
 
-  // Re-derive the trigger columns from the graph being written — the exact
-  // derivation (and fallbacks) the canvas save posts.
-  const derived = deriveTriggerColumns(graph.nodes)
+  const graph = cleanGraphForSave(input.graph)
   const triggerType = derived.triggerType ?? input.fallbackTriggerType ?? undefined
   // `null` is the explicit clear: a graph with no resource trigger must not
   // leave a stale entity id next to the new trigger type.

@@ -1,17 +1,24 @@
 // packages/lib/src/workflow-engine/catalog/__tests__/hydration-policy-pairing.test.ts
 //
 // The pairing rule: `hydrateGraph` and `dehydrateGraph` MUST run under the same
-// `skipDefaults` policy on both sides of the wire.
+// policy on both sides of the wire.
 //
 // This exists because they did not. `workflow-save-provider.tsx` called
-// `dehydrateGraph(...)` with no options, so `skipDefaults` defaulted to OFF and
-// the strip deleted every `node.data` key whose value equalled its manifest
-// default — while every server reader hydrates with `skipDefaults: true` and
+// `dehydrateGraph(...)` with no options, so the read-time defaults layer's
+// inverse ran and deleted every `node.data` key whose value equalled its
+// manifest default — while every server reader hydrated with the layer OFF and
 // never put them back. An HTTP node stored as `{desc, title, type, url}` fails
-// `httpNodeConfigSchema.safeParse` (`method`/`body`/`authorization` have no zod
-// default), and a resource-trigger lost `operation`, which drops
-// `deriveTriggerColumns` to the generic `'resource-trigger'` that no dispatcher
-// matches — i.e. the workflow silently stops firing.
+// `httpNodeConfigSchema.safeParse`, and a resource-trigger lost `operation`,
+// which drops `deriveTriggerColumns` to the generic `'resource-trigger'` that no
+// dispatcher matches — i.e. the workflow silently stops firing.
+//
+// That layer is now deleted (`hydration-policy.ts` has the epitaph), so the
+// specific asymmetry is unrepresentable. The pairing rule outlived it: the
+// policy still carries `stripDefaultHandles`, and a caller that dehydrates
+// under a different policy than the reader hydrates under is still a bug. These
+// tests hold the surviving contract — a canvas round trip loses no authored
+// config, and the trigger columns still derive after one.
+
 import { describe, expect, it } from 'vitest'
 import { deriveTriggerColumns } from '../derive-trigger'
 import { dehydrateGraph, type GraphDocument, hydrateGraph } from '../graph-hydration'
@@ -64,22 +71,55 @@ describe('hydrate/dehydrate policy pairing', () => {
     expect(after).toMatchObject({ triggerType: 'created', entityDefinitionId: 'contact' })
   })
 
-  it('MISMATCHED policies are what caused the loss — pinned so the hazard stays visible', () => {
+  it('an UNPAIRED dehydrate is still a hazard — the handles, now that the defaults are gone', () => {
+    // The surviving half of the rule. `dehydrateGraph`'s own parameter default
+    // preserves handles (so a read-modify-write data migration sees stored
+    // bytes); `DEHYDRATION_OPTIONS` strips them. A writer that skips the shared
+    // policy therefore stores a document a different shape from every other
+    // writer's — harmless for handles specifically, because hydration restores
+    // them either way, but it is the same class of divergence that cost a row
+    // in #1771. Pinned so the asymmetry is visible rather than surprising.
     const { node } = canvasNode('http')
-
-    // Browser dehydrating with defaults ON, server reading with them OFF.
-    const mismatched = dehydrateGraph(
-      hydrateGraph({ nodes: [node], edges: [] } as never),
-      undefined
+    const hydrated = hydrateGraph(
+      {
+        nodes: [node],
+        edges: [{ id: 'e', source: 'http-1', target: 'http-1' }],
+      } as unknown as GraphDocument,
+      HYDRATION_OPTIONS
     )
-    const asServerSeesIt = hydrateGraph(mismatched, HYDRATION_OPTIONS)
-    const data = (asServerSeesIt.nodes[0] as { data: Record<string, unknown> }).data
 
-    expect(data).not.toHaveProperty('method')
-    expect(data).not.toHaveProperty('body')
+    const unpaired = dehydrateGraph(hydrated)
+    const paired = dehydrateGraph(hydrated, DEHYDRATION_OPTIONS)
 
-    // ...and the paired policy keeps them.
-    const paired = hydrateGraph(saveRoundTrip(node), HYDRATION_OPTIONS)
-    expect((paired.nodes[0] as { data: Record<string, unknown> }).data).toHaveProperty('method')
+    expect((unpaired.edges[0] as { sourceHandle?: string }).sourceHandle).toBe('source')
+    expect(paired.edges[0]).not.toHaveProperty('sourceHandle')
+
+    // Either way the config survives — that is what the deleted layer broke.
+    for (const stored of [unpaired, paired]) {
+      expect((stored.nodes[0] as { data: Record<string, unknown> }).data).toHaveProperty('method')
+    }
+  })
+
+  it('a canvas save keeps every non-default handle', () => {
+    // Non-default handles are CONTENT: branch ids, case ids, `loop-start`,
+    // `loop-back`, `fail`. 64 of 130 bundled-template edges carry one.
+    const { node } = canvasNode('if-else')
+    const withBranches = dehydrateGraph(
+      hydrateGraph(
+        {
+          nodes: [node],
+          edges: [
+            { id: 'e1', source: 'if-else-1', target: 'if-else-1', sourceHandle: 'case_abc' },
+            { id: 'e2', source: 'if-else-1', target: 'if-else-1', sourceHandle: 'false' },
+            { id: 'e3', source: 'if-else-1', target: 'if-else-1', targetHandle: 'loop-back' },
+          ],
+        } as unknown as GraphDocument,
+        HYDRATION_OPTIONS
+      ),
+      DEHYDRATION_OPTIONS
+    )
+    const handles = withBranches.edges.map((e) => (e as { sourceHandle?: string }).sourceHandle)
+    expect(handles).toEqual(['case_abc', 'false', undefined])
+    expect((withBranches.edges[2] as { targetHandle?: string }).targetHandle).toBe('loop-back')
   })
 })

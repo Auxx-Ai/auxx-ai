@@ -127,7 +127,7 @@ vi.mock('../../../../../../demo', () => ({
   DemoGuard: { requireNotDemo: vi.fn(async () => {}) },
 }))
 
-vi.mock('@auxx/services/workflow-templates', () => ({
+vi.mock('../../../../../../workflow-templates', () => ({
   getAllTemplates: vi.fn(async () => ok([])),
 }))
 

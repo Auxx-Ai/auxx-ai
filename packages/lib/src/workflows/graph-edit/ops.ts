@@ -293,10 +293,7 @@ async function runGraphMutation(
   // must not be short-circuited by an unchanged *graph*.
   const touchesOnlyGraph =
     plan.envVars === undefined && plan.variables === undefined && plan.icon === undefined
-  if (
-    touchesOnlyGraph &&
-    hashWorkflowGraph(cleanGraphForSave(graph, ctx.lookup)) === ctx.canonicalGraphHash
-  ) {
+  if (touchesOnlyGraph && hashWorkflowGraph(cleanGraphForSave(graph)) === ctx.canonicalGraphHash) {
     const unchangedNode = plan.touchedNodeId
       ? graph.nodes.find((n) => n.id === plan.touchedNodeId)
       : undefined
@@ -325,7 +322,6 @@ async function runGraphMutation(
 
   const persisted = await persistDraft(db, scope, {
     graph,
-    manifests: ctx.lookup,
     ...(ctx.graphHash !== undefined ? { expectedGraphHash: ctx.graphHash } : {}),
     fallbackTriggerType:
       plan.fallbackTriggerType !== undefined ? plan.fallbackTriggerType : ctx.triggerType,
@@ -582,13 +578,14 @@ function buildNodeData(
   config: Record<string, unknown>,
   extras: { title: string; loopId?: string }
 ): Record<string, unknown> {
+  // No `isValid`/`errors`/`selected`: they were `true`/`[]`/`false` on every
+  // stored node, nothing ever updated them, and `dehydrateGraph` strips all
+  // three on the way to the column. Minting them here only meant the agent's
+  // in-memory graph disagreed with the one it was about to write.
   return {
     id: nodeId,
     desc: manifest.description,
-    isValid: true,
-    errors: [],
     disabled: false,
-    selected: false,
     ...(extras.loopId ? { isInLoop: true, loopId: extras.loopId } : {}),
     ...(manifest.defaultData() as Record<string, unknown>),
     ...config,

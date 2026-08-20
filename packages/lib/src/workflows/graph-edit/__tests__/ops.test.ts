@@ -477,11 +477,11 @@ describe('deleteNodes — reconnect bridging', () => {
     expect(result.isOk()).toBe(true)
     const persisted = persistedGraph()
     expect(persisted.edges).toHaveLength(1)
-    expect(persisted.edges[0]).toMatchObject({
-      source: TRIGGER_ID,
-      sourceHandle: 'source',
-      target: endId,
-    })
+    expect(persisted.edges[0]).toMatchObject({ source: TRIGGER_ID, target: endId })
+    // The bridge lands on the DEFAULT source handle, which the stored document
+    // does not spell out — `DEHYDRATION_OPTIONS` strips it and hydration puts it
+    // back. A non-default handle (a branch, a case id) would still be here.
+    expect(persisted.edges[0]).not.toHaveProperty('sourceHandle')
   })
 })
 
@@ -1601,11 +1601,15 @@ describe('app blocks — authoring (§5 B3 checkpoint)', () => {
       resource: 'record',
       operation: 'archive',
     })
-    // A plain downstream edge on the default source handle — app blocks
-    // declare no branches.
-    expect(persistedGraph().edges).toContainEqual(
-      expect.objectContaining({ source: APP_WAIT_ID, sourceHandle: 'source', target: added?.id })
+    // A plain downstream edge on the default source handle — app blocks declare
+    // no branches — so the stored edge carries no `sourceHandle` at all. The
+    // minted edge id still records which handle it was wired on.
+    const appEdge = persistedGraph().edges.find(
+      (e) => e.source === APP_WAIT_ID && e.target === added?.id
     )
+    expect(appEdge).toBeDefined()
+    expect(appEdge).not.toHaveProperty('sourceHandle')
+    expect(appEdge?.id).toContain('-source-')
   })
 
   it('refuses a node whose operation the block does not offer', async () => {

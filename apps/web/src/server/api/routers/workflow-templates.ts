@@ -1,8 +1,8 @@
 // apps/web/src/server/api/routers/workflow-templates.ts
 
 import { getAppCache } from '@auxx/lib/cache'
+import { getAllTemplates } from '@auxx/lib/workflow-templates'
 import { checkEntityReadiness, listFileTemplates, type RequiredEntity } from '@auxx/lib/workflows'
-import { getAllTemplates } from '@auxx/services/workflow-templates'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'

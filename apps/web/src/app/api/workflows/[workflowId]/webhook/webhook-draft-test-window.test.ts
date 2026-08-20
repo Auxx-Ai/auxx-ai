@@ -25,41 +25,39 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * resolved.
  */
 
-const { redis, getRedisClient, findFirst, executeWorkflow, initializeWithDefaults } = vi.hoisted(
-  () => {
-    const store = new Map<string, string | string[]>()
-    const client = {
-      store,
-      /** Flip to model an unreachable Redis (the fail-closed case). */
-      available: true,
-      set: vi.fn(async (key: string, value: string) => {
-        store.set(key, value)
-        return 'OK'
-      }),
-      exists: vi.fn(async (key: string) => (store.has(key) ? 1 : 0)),
-      lpush: vi.fn(async (key: string, ...values: string[]) => {
-        const list = (store.get(key) as string[] | undefined) ?? []
-        list.unshift(...values)
-        store.set(key, list)
-        return list.length
-      }),
-      ltrim: vi.fn(async () => 'OK'),
-      expire: vi.fn(async () => 1),
-    }
-    return {
-      redis: client,
-      // Mirrors the real contract: `required` throws, optional hands back undefined.
-      getRedisClient: vi.fn(async (required = true) => {
-        if (client.available) return client
-        if (required) throw new Error('Redis connection required but failed')
-        return undefined
-      }),
-      findFirst: vi.fn(),
-      executeWorkflow: vi.fn(async () => ({ executionId: 'exec_1', status: 'completed' })),
-      initializeWithDefaults: vi.fn(async () => undefined),
-    }
+const { redis, getRedisClient, findFirst, createRun, executeWorkflowAsync } = vi.hoisted(() => {
+  const store = new Map<string, string | string[]>()
+  const client = {
+    store,
+    /** Flip to model an unreachable Redis (the fail-closed case). */
+    available: true,
+    set: vi.fn(async (key: string, value: string) => {
+      store.set(key, value)
+      return 'OK'
+    }),
+    exists: vi.fn(async (key: string) => (store.has(key) ? 1 : 0)),
+    lpush: vi.fn(async (key: string, ...values: string[]) => {
+      const list = (store.get(key) as string[] | undefined) ?? []
+      list.unshift(...values)
+      store.set(key, list)
+      return list.length
+    }),
+    ltrim: vi.fn(async () => 'OK'),
+    expire: vi.fn(async () => 1),
   }
-)
+  return {
+    redis: client,
+    // Mirrors the real contract: `required` throws, optional hands back undefined.
+    getRedisClient: vi.fn(async (required = true) => {
+      if (client.available) return client
+      if (required) throw new Error('Redis connection required but failed')
+      return undefined
+    }),
+    findFirst: vi.fn(),
+    createRun: vi.fn(async () => ({ id: 'wfr_cuid00000000000000000' })),
+    executeWorkflowAsync: vi.fn(async () => undefined),
+  }
+})
 
 vi.mock('@auxx/redis', () => ({ getRedisClient }))
 vi.mock('@auxx/database', async () =>
@@ -69,16 +67,18 @@ vi.mock('@auxx/database', async () =>
 )
 vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 vi.mock('@auxx/lib/workflow-engine', () => ({
-  WorkflowEngine: class {
-    getNodeRegistry() {
-      return { initializeWithDefaults }
-    }
-    executeWorkflow = executeWorkflow
+  RedisWorkflowExecutionReporter: class {
+    constructor(readonly workflowRunId: string) {}
+  },
+}))
+vi.mock('@auxx/lib/workflows', () => ({
+  WorkflowExecutionService: class {
+    createRun = createRun
+    executeWorkflowAsync = executeWorkflowAsync
   },
 }))
 vi.mock('@auxx/lib/workflow-engine/types', () => ({
   WorkflowNodeType: { WEBHOOK: 'webhook' },
-  WorkflowTriggerType: { WEBHOOK: 'webhook' },
 }))
 vi.mock('~/components/workflow/utils/schema-to-variable', () => ({
   validateAgainstSchema: vi.fn(() => true),
@@ -87,10 +87,13 @@ vi.mock('~/components/workflow/utils/schema-to-variable', () => ({
 const { webhookTestArmKey, webhookTestEventsKey, WEBHOOK_TEST_WINDOW_TTL_SECONDS } = await import(
   '~/server/lib/webhook-test-window'
 )
+const { UsageLimitError } = await import('@auxx/lib/errors')
+const { WorkflowTriggerSource } = await import('@auxx/database/enums')
 const { GET, POST } = await import('./route')
 
 const WF_ID = 'wf_cuid0000000000000000000'
 const ORG_ID = 'org_cuid000000000000000000000'
+const RUN_ID = 'wfr_cuid00000000000000000'
 
 const webhookNode = (method: 'GET' | 'POST', body: string, statusCode: number) => ({
   nodes: [{ id: 'n1', data: { type: 'webhook', method, responseConfig: { body, statusCode } } }],
@@ -152,7 +155,8 @@ beforeEach(() => {
   redis.exists.mockClear()
   redis.lpush.mockClear()
   getRedisClient.mockClear()
-  executeWorkflow.mockClear()
+  createRun.mockClear().mockResolvedValue({ id: RUN_ID })
+  executeWorkflowAsync.mockClear().mockResolvedValue(undefined)
   findFirst.mockReset().mockResolvedValue(workflowApp)
 })
 
@@ -235,27 +239,7 @@ describe('the PUBLISHED path is unaffected — with and without a window', () =>
     const res = await POST(postRequest(false), params)
     expect(res.status).toBe(200)
     await expect(res.text()).resolves.toBe('PUBLISHED-BODY')
-    expect(executeWorkflow).toHaveBeenCalledTimes(1)
-  })
-
-  /**
-   * The payload, not just the call count. `WorkflowGraphBuilder.buildGraph`
-   * reads `workflow.graph || { nodes: [], edges: [] }` and nothing else, so a
-   * payload carrying only top-level `nodes`/`edges` — which is what this route
-   * sent until the fix — builds an EMPTY graph: no entry node, the engine
-   * throws, the run comes back FAILED, and the caller still gets the configured
-   * 200. `executeWorkflow` takes `any`, so only a test can hold this contract.
-   * The builder-side half of it lives in
-   * `workflow-graph-builder.test.ts` → "reads the graph off `workflow.graph`".
-   */
-  it('hands the engine a payload the graph builder can actually read', async () => {
-    await POST(postRequest(false), params)
-
-    const payload = executeWorkflow.mock.calls[0]?.[0] as {
-      graph?: { nodes?: unknown[]; edges?: unknown[] }
-    }
-    expect(payload.graph?.nodes).toHaveLength(1)
-    expect(payload.graph?.edges).toEqual([])
+    expect(executeWorkflowAsync).toHaveBeenCalledTimes(1)
   })
 
   it('behaves identically while a window IS armed', async () => {
@@ -263,7 +247,7 @@ describe('the PUBLISHED path is unaffected — with and without a window', () =>
     const res = await POST(postRequest(false), params)
     expect(res.status).toBe(200)
     await expect(res.text()).resolves.toBe('PUBLISHED-BODY')
-    expect(executeWorkflow).toHaveBeenCalledTimes(1)
+    expect(executeWorkflowAsync).toHaveBeenCalledTimes(1)
   })
 
   it('never consults the arm key when there is no `test` param', async () => {
@@ -301,6 +285,94 @@ describe('an unavailable Redis fails CLOSED', () => {
     redis.available = false
     const res = await POST(postRequest(false), params)
     expect(res.status).toBe(200)
-    expect(executeWorkflow).toHaveBeenCalledTimes(1)
+    expect(executeWorkflowAsync).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * The production path used to hand-build a workflow object and call
+ * `WorkflowEngine.executeWorkflow` directly. That created NO `WorkflowRun` row,
+ * so a webhook execution was invisible: absent from run history, absent from the
+ * `workflowRuns` usage counter, and — because a run id is what a paused node
+ * resumes against — unresumable. Every other headless trigger (scheduled,
+ * resource, message, polling, app) already went through `createRun`; this route
+ * was the one door that did not.
+ */
+describe('a production webhook hit creates a real run', () => {
+  /**
+   * This replaces the old "hands the engine a payload the graph builder can
+   * actually read" assertion. That guarded #1764: the route sent top-level
+   * `nodes`/`edges` with no `graph` key, and `WorkflowGraphBuilder.buildGraph`
+   * reads `workflow.graph` and nothing else, so the engine built an EMPTY graph.
+   * The route no longer builds a payload at all — `createRun` loads the
+   * `Workflow` row itself — so the shape is not expressible any more. The
+   * builder-side half of that contract still lives in
+   * `workflow-graph-builder.test.ts` → "reads the graph off `workflow.graph`".
+   */
+  it('creates it through `createRun`, as a headless production run', async () => {
+    await POST(postRequest(false), params)
+
+    expect(createRun).toHaveBeenCalledTimes(1)
+    expect(createRun.mock.calls[0]?.[0]).toMatchObject({
+      workflowId: workflowApp.publishedWorkflow.id,
+      organizationId: ORG_ID,
+      mode: 'production',
+      // Headless — an external caller is not a user. `createWorkflowRun`
+      // resolves the org system user; a placeholder id here would violate the
+      // `WorkflowRun.createdBy` FK.
+      userId: null,
+      triggeredFrom: WorkflowTriggerSource.WEBHOOK,
+    })
+  })
+
+  it('passes the webhook envelope as the run inputs', async () => {
+    await POST(postRequest(false, { hello: 'world' }), params)
+
+    const { inputs } = createRun.mock.calls[0]?.[0] as { inputs: Record<string, unknown> }
+    expect(inputs).toMatchObject({ method: 'POST', body: { hello: 'world' } })
+    expect(inputs).toHaveProperty('headers')
+    expect(inputs).toHaveProperty('query')
+  })
+
+  it('executes THAT run, with a reporter bound to its id', async () => {
+    await POST(postRequest(false), params)
+
+    const [run, reporter] = executeWorkflowAsync.mock.calls[0] as [
+      { id: string },
+      { workflowRunId: string },
+    ]
+    expect(run.id).toBe(RUN_ID)
+    // No reporter at all was passed before, so a webhook run had no per-node trace.
+    expect(reporter.workflowRunId).toBe(RUN_ID)
+  })
+
+  it('a failed execution still answers the author’s configured response', async () => {
+    // `executeWorkflowAsync` records the failure on the run row before it
+    // rethrows. The sender still gets its contract — a non-2xx would make
+    // senders like Shopify or Stripe retry a request that fails again.
+    executeWorkflowAsync.mockRejectedValue(new Error('node blew up'))
+
+    const res = await POST(postRequest(false), params)
+    expect(res.status).toBe(200)
+    await expect(res.text()).resolves.toBe('PUBLISHED-BODY')
+  })
+
+  it('an org over its plan limit is refused, and nothing executes', async () => {
+    createRun.mockRejectedValue(
+      new UsageLimitError({ metric: 'workflowRuns', current: 100, limit: 100 })
+    )
+
+    const res = await POST(postRequest(false), params)
+    expect(res.status).toBe(403)
+    await expect(res.json()).resolves.toMatchObject({ error: expect.stringContaining('limit') })
+    expect(executeWorkflowAsync).not.toHaveBeenCalled()
+  })
+
+  it('the ?test=true path creates no run and consumes no quota', async () => {
+    arm()
+    const res = await POST(postRequest(true), params)
+    expect(res.status).toBe(201)
+    expect(createRun).not.toHaveBeenCalled()
+    expect(executeWorkflowAsync).not.toHaveBeenCalled()
   })
 })

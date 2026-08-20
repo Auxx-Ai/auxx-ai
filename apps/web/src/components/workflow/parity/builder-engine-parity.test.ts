@@ -16,6 +16,7 @@ import {
   advertisedPath,
   isPathWritten,
   isWriteAdvertised,
+  readDefaultHandleComparisons,
   readEngineContracts,
   readEngineRoutedHandleLiterals,
 } from './engine-write-scrape'
@@ -600,5 +601,52 @@ describe('branch handles — every handle the engine can emit is one the builder
       KNOWN_BROKEN_OUTPUT_HANDLES,
       EXTRACTION_BLIND_SPOTS
     )
+  })
+
+  /**
+   * The census that keeps the default-handle strip safe.
+   *
+   * `DEHYDRATION_OPTIONS` strips `sourceHandle: 'source'` / `targetHandle:
+   * 'target'` on save, so the stored column does not carry them. A strict
+   * `=== 'source'` has no tolerance for that absence — unlike `?? 'source'` —
+   * and only works because every engine path reads the array
+   * `WorkflowGraphBuilder.build()` hydrated and normalised.
+   *
+   * Both sites below read that normalised array. A new comparison anywhere in
+   * the core fails this test on purpose: adding one means saying which array it
+   * reads, and adding it here.
+   *
+   * The runtime half of this contract is
+   * `packages/lib/src/workflow-engine/core/__tests__/loop-handle-stripping.test.ts`,
+   * which fails if the hydration boundary itself is ever removed.
+   */
+  it('compares against a default handle only where the array is already normalised', () => {
+    const ALLOWED: Record<string, { count: number; why: string }> = {
+      'core/workflow-graph-builder.ts': {
+        count: 2,
+        why:
+          "both read `edges`, built at :197-204 with `edge.sourceHandle || 'source'` — " +
+          ':757 is the loop-exit warning, :1106 is the join-point execution-flow filter',
+      },
+    }
+
+    const unexpected: string[] = []
+    for (const [file, count] of readDefaultHandleComparisons()) {
+      const allowed = ALLOWED[file]
+      if (!allowed) {
+        unexpected.push(
+          `${file}: ${count} strict comparison(s) against a default handle. A stored edge may ` +
+            'omit its handle — read the array `WorkflowGraphBuilder.build()` normalised, or use ' +
+            "`?? 'source'`."
+        )
+      } else if (count !== allowed.count) {
+        unexpected.push(
+          `${file}: ${count} strict comparison(s), expected ${allowed.count} (${allowed.why}). ` +
+            'If the new one reads the normalised array, raise the count here and say so.'
+        )
+      }
+    }
+
+    expect(unexpected).toEqual([])
   })
 })

@@ -1,9 +1,9 @@
-// packages/services/src/workflow-templates/delete-template.ts
+// packages/lib/src/workflow-templates/delete-template.ts
 
 import { database, schema } from '@auxx/database'
+import { fromDatabase } from '@auxx/services/shared/utils'
 import { eq } from 'drizzle-orm'
 import { ok } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
 
 /**
  * Delete a workflow template

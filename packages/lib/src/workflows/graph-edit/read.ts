@@ -99,18 +99,13 @@ export interface GraphEditScope {
  * Kopilot read boundary (plan 23 §4.2).
  *
  * {@link hydrateGraph} does the array guards itself, so a malformed row still
- * degrades to an empty document rather than throwing. The org-scoped `lookup`
- * is passed so this seam resolves an installed app block's type the same way
- * the canvas does, rather than seeing only the ~29 platform manifests.
+ * degrades to an empty document rather than throwing.
  *
  * ORDER (plan 23 §3.2): `loadDraftContext` mints `graphHash` from the RAW
  * column, never from this result — see the comment at its call site.
  */
-function toDraftGraph(raw: unknown, lookup: ManifestLookup): DraftGraph {
-  const graph = hydrateGraph((raw ?? {}) as GraphDocument, {
-    ...HYDRATION_OPTIONS,
-    manifests: lookup,
-  })
+function toDraftGraph(raw: unknown): DraftGraph {
+  const graph = hydrateGraph((raw ?? {}) as GraphDocument, HYDRATION_OPTIONS)
   return {
     nodes: graph.nodes as unknown as DraftGraph['nodes'],
     edges: graph.edges as unknown as DraftGraph['edges'],
@@ -143,7 +138,7 @@ export async function loadDraftContext(
   // The CAS token is minted from the RAW column and re-checked against the raw
   // column inside `WorkflowService.update`'s transaction (plan 23 §3.2). It
   // must never be taken from the hydrated `graph` below.
-  const graph = toDraftGraph(rawGraph, lookup)
+  const graph = toDraftGraph(rawGraph)
   return ok({
     workflowAppId,
     organizationId,
@@ -154,10 +149,7 @@ export async function loadDraftContext(
     ...(rawGraph ? { graphHash: hashWorkflowGraph(rawGraph) } : {}),
     // The no-op short-circuit's baseline — see `DraftContext.canonicalGraphHash`.
     canonicalGraphHash: hashWorkflowGraph(
-      dehydrateGraph(graph as unknown as GraphDocument, {
-        ...DEHYDRATION_OPTIONS,
-        manifests: lookup,
-      })
+      dehydrateGraph(graph as unknown as GraphDocument, DEHYDRATION_OPTIONS)
     ),
     triggerType: (draftRow?.triggerType as string | null | undefined) ?? null,
     lookup,

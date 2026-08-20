@@ -57,8 +57,6 @@
  */
 
 import { DEFAULT_SOURCE_HANDLE, DEFAULT_TARGET_HANDLE } from './graph-vars'
-import { getManifest } from './registry'
-import type { ManifestLookup } from './types'
 
 /** `data.type` of the container node whose children carry loop context. */
 const LOOP_TYPE = 'loop'
@@ -116,50 +114,46 @@ export interface GraphDocument {
   [key: string]: unknown
 }
 
-/** Options for {@link hydrateGraph}. */
-export interface HydrateGraphOptions {
-  /**
-   * How a node type resolves to its manifest, for the read-time defaults layer
-   * (§2.4). Defaults to the core registry, which answers for the ~29 platform
-   * types and nothing else.
-   *
-   * Pass `buildManifestLookup(...)` wherever app workflow blocks are visible.
-   * Omitting it does not produce a *wrong* default — an unresolved type simply
-   * gets no defaults layered, exactly as today — but it does mean an app
-   * block's declared defaults are invisible at that seam.
-   */
-  manifests?: ManifestLookup
-  /**
-   * Skip the read-time defaults layer entirely. For callers that must observe
-   * the stored bytes (a data migration doing read-modify-write).
-   */
-  skipDefaults?: boolean
-}
+/**
+ * Options for {@link hydrateGraph}.
+ *
+ * Empty on purpose. This carried a `manifests` lookup and a `skipDefaults`
+ * switch for a read-time `defaultData()` projection that was built, never
+ * enabled, and is now deleted — see `hydration-policy.ts` for why the premise
+ * was false. The interface stays so the signature does not churn if hydration
+ * ever needs a real option.
+ */
+// biome-ignore lint/suspicious/noEmptyInterface: named seam, see the doc above
+export interface HydrateGraphOptions {}
 
 /** Options for {@link dehydrateGraph}. */
 export interface DehydrateGraphOptions {
-  /** Same lookup as {@link HydrateGraphOptions.manifests}, for the defaults layer. */
-  manifests?: ManifestLookup
-  /** Mirror of {@link HydrateGraphOptions.skipDefaults} — keeps the pair symmetric. */
-  skipDefaults?: boolean
   /**
    * Drop `sourceHandle === 'source'` / `targetHandle === 'target'`, since
    * hydration restores them.
    *
-   * **DEFAULT `false`, AND IT MUST STAY FALSE UNTIL ONE ENGINE READER IS
-   * FIXED** (plan 23 §1.1 last row, §3.2 HR-1).
-   * `core/loop-execution-manager.ts:396-398` resolves the next node inside a
-   * loop body with
+   * **The FUNCTION default stays `false`; `DEHYDRATION_OPTIONS` turns it ON.**
+   * That asymmetry is deliberate: a data migration doing read-modify-write must
+   * keep seeing the stored bytes (`data-migrations/migrations/083-*.ts:17` says
+   * so in its own header), so byte-preservation is what you get by omission and
+   * the strip is what you get by opting into the shared policy.
    *
-   * ```ts
-   * const outputHandle = result.outputHandle || 'source'
-   * workflow.graph.edges.filter(e => e.source === node.nodeId && e.sourceHandle === outputHandle)
-   * ```
+   * Plan `23` originally blocked this on `core/loop-execution-manager.ts:398`,
+   * which resolves the next node inside a loop body with a strict
+   * `edge.sourceHandle === outputHandle` and no `?? 'source'` on the edge side.
+   * That comparison is safe, and always was: it filters
+   * `currentWorkflow.graph.edges`, which is `built.workflow.graph.edges`
+   * (`workflow-engine.ts:182`), which is `processedEdges` derived from
+   * `hydrateGraph`'s output at `workflow-graph-builder.ts:160`. Handles are
+   * filled before any routing runs. The independent proof is that
+   * sequence-compiled graphs have never written `sourceHandle` at all and 870
+   * such nodes execute in production.
    *
-   * — a strict comparison against the **raw** edge array, with no `?? 'source'`
-   * on the edge side. An edge that omits `sourceHandle` therefore matches
-   * nothing and the loop body silently ends after one node. 720 stored edges
-   * already omit it, so this is a live shape, not a hypothetical.
+   * Two tests hold that up, and both must keep passing:
+   * `core/__tests__/loop-handle-stripping.test.ts` walks a three-node loop body
+   * whose stored edges carry no handles (it fails if the hydration boundary is
+   * removed), and the parity suite's default-handle census fails if any new
+   * strict comparison appears in the engine core.
    *
    * Non-default handles are CONTENT and are never stripped at any flag
    * setting: if-else `case_id`s, text-classifier category ids, `loop-start`,
@@ -230,29 +224,6 @@ const DERIVED_EDGE_DATA_KEYS = [
 ] as const
 
 /**
- * Keys the read-time defaults layer never touches, whatever a manifest's
- * `defaultData()` returns.
- *
- * - `id` / `type` are identity, derived above.
- * - `title` is the ADDRESS Kopilot resolves nodes by (`formatNodeRef`), and
- *   `desc` is validated as *required* by `text-classifier.ts:229` and
- *   `if-else.ts:187`. Both are authored content (§1.3). Layering a manifest
- *   string under them would mean an edit to a manifest blurb silently
- *   rewriting every stored node's description.
- * - `description` is the vestigial alias §2.2 deletes; never resurrect it.
- * - the {@link DEAD_NODE_DATA_KEYS} are strip-and-do-NOT-re-derive, and
- *   several manifests still mint them in `defaultData()`.
- */
-const DEFAULTS_EXCLUDED_KEYS = new Set<string>([
-  'id',
-  'type',
-  'title',
-  'desc',
-  'description',
-  ...DEAD_NODE_DATA_KEYS,
-])
-
-/**
  * A stored row is not guaranteed to have both arrays: hydration sits at read
  * boundaries the engine and the builder both go through, and §4 is explicit
  * that a missed/malformed reader must degrade, never throw. A graph with no
@@ -277,55 +248,6 @@ function effectiveNodeType(node: GraphNodeDocument): string {
   const dataType = node.data?.type
   if (typeof dataType === 'string' && dataType.length > 0) return dataType
   return typeof node.type === 'string' ? node.type : ''
-}
-
-/** Structural deep equality, enough for JSON graph values. */
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true
-  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false
-  if (Array.isArray(a) !== Array.isArray(b)) return false
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((item, index) => deepEqual(item, b[index]))
-  }
-  const left = a as Record<string, unknown>
-  const right = b as Record<string, unknown>
-  const leftKeys = Object.keys(left)
-  if (leftKeys.length !== Object.keys(right).length) return false
-  return leftKeys.every((key) => key in right && deepEqual(left[key], right[key]))
-}
-
-/**
- * The read-time default projection for one node type: `defaultData()` minus
- * everything {@link DEFAULTS_EXCLUDED_KEYS} and every derived key.
- *
- * `if-else`'s `defaultData()` ships `_targetBranches`; layering that in would
- * persist a stale branch list under a name whose authority is
- * `connection.branches(config)`.
- */
-function readTimeDefaults(
-  type: string,
-  lookup: ManifestLookup,
-  cache: Map<string, Record<string, unknown>>
-): Record<string, unknown> {
-  const cached = cache.get(type)
-  if (cached) return cached
-  let defaults: Record<string, unknown> = {}
-  try {
-    const manifest = lookup(type)
-    const raw = (manifest?.defaultData() ?? {}) as Record<string, unknown>
-    defaults = Object.fromEntries(
-      Object.entries(raw).filter(
-        ([key, value]) =>
-          value !== undefined && !DEFAULTS_EXCLUDED_KEYS.has(key) && !isDerivedKey(key)
-      )
-    )
-  } catch {
-    // A manifest whose defaults throw must never break a read. No defaults is
-    // a degradation; a thrown load boundary is an outage.
-    defaults = {}
-  }
-  cache.set(type, defaults)
-  return defaults
 }
 
 /**
@@ -385,7 +307,6 @@ function calculateZIndex(
  * | `edge.data.isLoopBackEdge` | `targetHandle === 'loop-back'` ∨ source parented in the target loop |
  * | `edge.zIndex` | `calculateZIndex` |
  * | `edge.sourceHandle` / `targetHandle` | the defaults, when absent |
- * | every unset `node.data` config key | `manifest.defaultData()`, layered UNDER stored data |
  *
  * **Hydration is AUTHORITATIVE over that set**: a stale stored value it cannot
  * re-derive is *deleted*, not preserved. That is what makes `dehydrateGraph`
@@ -401,16 +322,13 @@ function calculateZIndex(
  * changing.
  *
  * @param graph a stored (or already-hydrated) graph document
- * @param options manifest lookup for the defaults layer; see {@link HydrateGraphOptions}
+ * @param options see {@link HydrateGraphOptions} — currently empty
  * @returns a new graph — the input is never mutated
  */
 export function hydrateGraph<G extends GraphDocument>(
   graph: G,
   options: HydrateGraphOptions = {}
 ): G {
-  const lookup = options.manifests ?? getManifest
-  const defaultsCache = new Map<string, Record<string, unknown>>()
-
   const normalized = nodesOf(graph).map(normalizeLegacyAppTrigger)
 
   // Which containers are loops — read from `data.type`, the same rule
@@ -433,29 +351,25 @@ export function hydrateGraph<G extends GraphDocument>(
     }
     const type = effectiveNodeType(node)
 
-    // The defaults layer (§2.4): a default is a READ-TIME PROJECTION, never a
-    // write. Layered UNDER stored data, so anything authored always wins. This
-    // is what retires the resource-trigger panel's mount backfill and the app
-    // node's `appId`/`blockId` persist.
-    const layered: Record<string, unknown> =
-      options.skipDefaults === true
-        ? data
-        : { ...readTimeDefaults(type, lookup, defaultsCache), ...data }
+    // Stored data is the whole of a node's content — nothing is layered under
+    // it. Everything below this line is a DERIVATION the canvas and the engine
+    // would otherwise each recompute for themselves.
+    const content: Record<string, unknown> = data
 
-    layered.id = node.id
-    if (type.length > 0) layered.type = type
+    content.id = node.id
+    if (type.length > 0) content.type = type
 
     const loopId =
       node.parentId !== undefined && loopNodeIds.has(node.parentId) ? node.parentId : undefined
     if (loopId !== undefined) {
-      layered.isInLoop = true
-      layered.loopId = loopId
+      content.isInLoop = true
+      content.loopId = loopId
     } else {
-      delete layered.isInLoop
-      delete layered.loopId
+      delete content.isInLoop
+      delete content.loopId
     }
 
-    const hydrated: GraphNodeDocument = { ...node, data: layered }
+    const hydrated: GraphNodeDocument = { ...node, data: content }
     // Only when a type is actually known. A node carrying no type at either
     // level must not acquire one here — inventing `'standard'` would make
     // `dehydrate ∘ hydrate` unstable, since the next dehydration has no
@@ -575,24 +489,12 @@ export function dehydrateGraph<G extends GraphDocument>(
   graph: G,
   options: DehydrateGraphOptions = {}
 ): G {
-  const lookup = options.manifests ?? getManifest
-  const defaultsCache = new Map<string, Record<string, unknown>>()
-
   const nodes = nodesOf(graph).map((node) => {
     const type = effectiveNodeType(node)
     const data = stripLevel({ ...(node.data ?? {}) })
 
     for (const key of DERIVED_NODE_DATA_KEYS) delete data[key]
     for (const key of DEAD_NODE_DATA_KEYS) delete data[key]
-
-    // Exact inverse of hydration's defaults layer: a key whose value IS the
-    // manifest default is not content, and hydration will put it back.
-    if (options.skipDefaults !== true) {
-      const defaults = readTimeDefaults(type, lookup, defaultsCache)
-      for (const [key, value] of Object.entries(defaults)) {
-        if (key in data && deepEqual(data[key], value)) delete data[key]
-      }
-    }
 
     const stored = stripLevel(node) as GraphNodeDocument
     for (const key of EPHEMERAL_OBJECT_KEYS) delete stored[key]

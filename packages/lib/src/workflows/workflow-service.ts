@@ -397,22 +397,22 @@ export class WorkflowService {
           id: nodeId,
           type: 'standard',
           position: { x: 0, y: 0 },
+          // Authored content only — this writes straight to the column, so it
+          // must already be in the shape `dehydrateGraph` would produce.
+          // `selected`, `isValid`, `errors`, `outputVariables` are dead keys the
+          // strip removes, and `description` is the vestigial `desc` alias no
+          // TypeScript interface declares and nothing reads.
           data: {
             id: nodeId,
             type: 'resource-trigger',
-            selected: false,
             resourceType: resource.id,
             entityDefinitionId,
             operation: 'manual',
             title: `${label} Manual`,
             desc: `Triggered manually on a ${label.toLowerCase()}`,
-            description: `Triggered manually on a ${label.toLowerCase()}`,
             icon: 'Play',
             variables: [],
-            isValid: true,
-            errors: [],
             disabled: false,
-            outputVariables: [],
           },
         },
       ],

@@ -193,7 +193,7 @@ vi.mock('@auxx/services/workflows', () => ({
   getWorkflowAppsByTrigger: vi.fn(async () => ({ isErr: () => false, value: [] })),
 }))
 
-vi.mock('@auxx/services/workflow-templates', () => ({
+vi.mock('@auxx/lib/workflow-templates', () => ({
   getAllTemplates: vi.fn(async () => ({ isErr: () => false, value: [] })),
   getTemplateById: vi.fn(async () => ({ isErr: () => false, value: null })),
 }))
