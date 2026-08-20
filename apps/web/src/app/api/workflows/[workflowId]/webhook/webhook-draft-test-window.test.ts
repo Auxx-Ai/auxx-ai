@@ -238,6 +238,26 @@ describe('the PUBLISHED path is unaffected — with and without a window', () =>
     expect(executeWorkflow).toHaveBeenCalledTimes(1)
   })
 
+  /**
+   * The payload, not just the call count. `WorkflowGraphBuilder.buildGraph`
+   * reads `workflow.graph || { nodes: [], edges: [] }` and nothing else, so a
+   * payload carrying only top-level `nodes`/`edges` — which is what this route
+   * sent until the fix — builds an EMPTY graph: no entry node, the engine
+   * throws, the run comes back FAILED, and the caller still gets the configured
+   * 200. `executeWorkflow` takes `any`, so only a test can hold this contract.
+   * The builder-side half of it lives in
+   * `workflow-graph-builder.test.ts` → "reads the graph off `workflow.graph`".
+   */
+  it('hands the engine a payload the graph builder can actually read', async () => {
+    await POST(postRequest(false), params)
+
+    const payload = executeWorkflow.mock.calls[0]?.[0] as {
+      graph?: { nodes?: unknown[]; edges?: unknown[] }
+    }
+    expect(payload.graph?.nodes).toHaveLength(1)
+    expect(payload.graph?.edges).toEqual([])
+  })
+
   it('behaves identically while a window IS armed', async () => {
     arm()
     const res = await POST(postRequest(false), params)

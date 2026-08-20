@@ -212,13 +212,23 @@ async function handleWebhookRequest(
       userId: workflowApp.createdById || undefined,
     }
 
-    // Transform the workflow for the engine
+    // Transform the workflow for the engine.
+    //
+    // `graph` is the load-bearing key: `WorkflowGraphBuilder.buildGraph` reads
+    // `workflow.graph || { nodes: [], edges: [] }` and NOTHING else. Passing
+    // only the top-level `nodes`/`edges` (as this did) built an empty graph, so
+    // `findEntryNode` returned undefined, the engine threw "No entry point found
+    // in workflow", and the caller still got the configured 200 back — every
+    // published webhook workflow was a silent no-op. `executeWorkflow` takes
+    // `any` ("accept raw database format"), so nothing caught it at build time.
+    // The top-level pair stays because `toEngineFormat` sets both.
     const engineWorkflow = {
       id: workflow.id,
       organizationId: workflowApp.organizationId,
       name: workflow.name,
       version: workflow.version,
       triggerType: WorkflowTriggerType.WEBHOOK,
+      graph: { nodes: workflowGraph.nodes, edges: workflowGraph.edges || [] },
       nodes: workflowGraph.nodes,
       edges: workflowGraph.edges || [],
       enabled: true,
