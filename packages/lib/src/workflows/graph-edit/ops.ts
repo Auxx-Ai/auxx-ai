@@ -35,6 +35,7 @@ import { hashWorkflowGraph } from '../graph-hash'
 import { assertMailTriggerNotPersonal } from '../mail-trigger-guard'
 import { calculateContainerSize, getLayoutByDagre, getLayoutForChildNodes } from './layout'
 import { LAYOUT_SPACING, NODE_ADDITION_CONFIG } from './layout-constants'
+import { unwrapBracedBarePaths } from './normalize/bare-path-fields'
 import { resolveConnectionSpec } from './normalize/connection'
 import { checkConnectionBinding } from './normalize/connection-binding'
 import { normalizeFriendlyRefs, type ResourceAliasIndex } from './normalize/friendly-refs'
@@ -68,6 +69,7 @@ import {
   isInputNodePair,
   isTriggerNode,
   nodeType,
+  validateBranchWiring,
   validateGraphStructure,
   validateNodeConfigs,
 } from './validate'
@@ -198,6 +200,7 @@ async function runGraphMutation(
     ...plan.normalizeIssues,
     ...structural,
     ...validateNodeConfigs(graph, ctx.lookup),
+    ...validateBranchWiring(graph, ctx.lookup),
   ]
   let outputsMap: Map<string, UnifiedVariable[]> | undefined
   const refIssues: Issue[] = []
@@ -293,7 +296,9 @@ async function runGraphMutation(
     return ok({
       applied: true,
       unchanged: true,
-      ...(unchangedNode ? { node: buildNodeSummary(graph, unchangedNode, aliases) } : {}),
+      ...(unchangedNode
+        ? { node: buildNodeSummary(graph, unchangedNode, aliases, ctx.lookup) }
+        : {}),
       issues,
       graphSummary: buildGraphSummary(ctx.graph, ctx.lookup, ctx.triggerType),
     })
@@ -373,7 +378,7 @@ async function runGraphMutation(
     : undefined
   return ok({
     applied: true,
-    ...(touched ? { node: buildNodeSummary(graph, touched, aliases) } : {}),
+    ...(touched ? { node: buildNodeSummary(graph, touched, aliases, ctx.lookup) } : {}),
     ...(touched && outputsMap
       ? { outputs: renderFriendlyOutputs(graph, outputsMap.get(touched.id) ?? [], aliases) }
       : {}),
@@ -407,7 +412,11 @@ async function normalizeConfig(
       delete rest[key]
     }
   }
-  const friendly = normalizeFriendlyRefs(rest, { nodes, resourceAliases: aliases })
+  // BEFORE the friendly-ref pass: a `{{…}}`-wrapped bare-path field has to be
+  // unwrapped while it is still one span, or the rewriter maps the inner path
+  // and leaves the braces behind (plan 21 F5).
+  const bare = unwrapBracedBarePaths(type, rest)
+  const friendly = normalizeFriendlyRefs(bare.config, { nodes, resourceAliases: aliases })
   const resource = await normalizeResourceConfig(organizationId, type, friendly.data)
   // An app block's bound credential (plan 17 D2). Issues only — there is no
   // correct id to substitute, and an `error` here blocks the persist, which is
@@ -416,7 +425,7 @@ async function normalizeConfig(
   const binding = await checkConnectionBinding(organizationId, type, resource.config)
   return {
     config: { ...normalizeAiPromptConfig(type, resource.config), ...prose },
-    issues: [...friendly.issues, ...resource.issues, ...binding],
+    issues: [...bare.issues, ...friendly.issues, ...resource.issues, ...binding],
   }
 }
 

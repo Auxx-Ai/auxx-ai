@@ -250,6 +250,16 @@ export const humanConfirmationManifest: NodeManifest<HumanConfirmationNodeData> 
   displayName: 'Human Review',
   description: 'Pause workflow and wait for human approval',
   icon: 'user-check',
+  /** Extra `list_node_types` search words — never displayed (see NodeManifest.synonyms). */
+  synonyms: [
+    'approval',
+    'approve',
+    'human in the loop',
+    'confirmation',
+    'sign off',
+    'review',
+    'wait for a person',
+  ],
   color: '#f59e0b', // CONDITION category color
   defaultData: () => ({
     title: 'Human Review',

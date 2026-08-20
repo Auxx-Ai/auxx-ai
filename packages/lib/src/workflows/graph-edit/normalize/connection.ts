@@ -20,11 +20,9 @@
 import { err, ok, type Result } from 'neverthrow'
 import { type AuxxError, BadRequestError } from '../../../errors'
 import type { ManifestLookup, NodeBranch } from '../../../workflow-engine/catalog/types'
-import { describeNode, resolveNodeRef } from '../refs'
+import { DEFAULT_SOURCE_HANDLE, safeBranches } from '../branches'
+import { closestMatches, describeNode, resolveNodeRef } from '../refs'
 import type { NodeMeta } from '../types'
-
-/** The default source handle for a node with no branch handles. */
-const DEFAULT_SOURCE_HANDLE = 'source'
 
 /** A resolved `after`/`branch` pair, ready to become an edge. */
 export interface ConnectionSpec {
@@ -35,6 +33,27 @@ export interface ConnectionSpec {
 /** `Name (id)` / `id` — the candidate format branch errors use. */
 function describeBranch(branch: NodeBranch): string {
   return branch.name ? `"${branch.name}" (${branch.id})` : `"${branch.id}"`
+}
+
+/**
+ * "Did you mean" for a branch that missed — the same `closestMatches`
+ * tolerance a node ref already gets (`refs.ts`).
+ *
+ * Worth the few lines because a flat rejection is retried verbatim: the logged
+ * turn re-issued `branch: "IF"` unchanged after re-reading the whole workflow,
+ * because nothing in the rejection pointed at the branch that had taken `IF`'s
+ * place (plan 21 §9.2/§10.5). Names AND ids are candidates, since either is a
+ * legal address.
+ */
+function nearestBranches(branchRef: string, branches: NodeBranch[]): NodeBranch[] {
+  const candidates = branches.flatMap((b) => (b.name ? [b.name, b.id] : [b.id]))
+  const near = closestMatches(branchRef, candidates)
+  const matched: NodeBranch[] = []
+  for (const candidate of near) {
+    const branch = branches.find((b) => b.name === candidate || b.id === candidate)
+    if (branch && !matched.includes(branch)) matched.push(branch)
+  }
+  return matched
 }
 
 /**
@@ -59,7 +78,9 @@ export function resolveConnectionSpec(
 
   const nodeType: string | undefined = source.data?.type ?? source.type
   const manifest = nodeType ? lookup(nodeType) : undefined
-  const branches = manifest?.connection.branches?.(source.data) ?? []
+  // `safeBranches`, not a bare call: a degenerate config (an if-else with no
+  // cases) used to throw straight out of this read path (plan 21 §2.5).
+  const branches = safeBranches(manifest, source.data)
 
   const branchRef = params.branch?.trim()
   if (!branchRef) {
@@ -91,10 +112,14 @@ export function resolveConnectionSpec(
     branches.find((b) => b.name.toLowerCase() === needle) ??
     branches.find((b) => b.id.toLowerCase() === needle)
   if (!match) {
+    const near = nearestBranches(branchRef, branches)
     return err(
       new BadRequestError(
-        `No branch "${branchRef}" on node ${describeNode(source)}. Available branches: ` +
-          `${branches.map(describeBranch).join(', ')}.`
+        `No branch "${branchRef}" on node ${describeNode(source)}.` +
+          (near.length > 0 ? ` Did you mean ${near.map(describeBranch).join(' or ')}?` : '') +
+          ` Available branches: ${branches.map(describeBranch).join(', ')}.` +
+          ' Address a branch by its id (the value in parentheses) — every node read and write ' +
+          'returns the node\u2019s current `branches`.'
       )
     )
   }

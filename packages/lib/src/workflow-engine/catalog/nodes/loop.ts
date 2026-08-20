@@ -173,6 +173,8 @@ export const loopManifest: NodeManifest<LoopNodeData> = {
   displayName: 'Loop',
   description: 'Iterate over each item in a list',
   icon: 'repeat',
+  /** Extra `list_node_types` search words — never displayed (see NodeManifest.synonyms). */
+  synonyms: ['for each', 'foreach', 'iterate', 'iteration', 'repeat', 'each', 'map over'],
   color: '#8B5CF6', // Purple
   defaultData: () => ({
     title: 'Loop',

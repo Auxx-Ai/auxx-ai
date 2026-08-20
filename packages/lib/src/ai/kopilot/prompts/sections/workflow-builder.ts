@@ -25,8 +25,13 @@ export function buildWorkflowBuilderPromptSection(): string {
     // Loops.
     "Loops: nodes go inside a loop via `add_node`'s `inside` parameter, not by drawing an edge into the container. Loop item references are NODE-SCOPED ONLY: `{{Loop Title.item}}`, `{{Loop Title.index}}`, `{{Loop Title.count}}` (using the loop node's own title). Never write bare `{{item}}` or `{{index}}` (one global slot — clobbered by nested loops) and never `{{loop.index}}` (builder-only vocabulary the engine does not write).",
 
-    // Branches.
-    'Branches: an `if-else` (and other branching nodes) is wired by branch NAME via the `branch` parameter on `connect_nodes` / `add_node` — e.g. `connect_nodes(from: "Check Priority", branch: "High", to: "Post To Webhook")`. Branch names come from the node\'s outputs/`describe_node_type`; never invent handle ids.',
+    // Branches. The old wording taught branch NAMES and an example
+    // (`branch: "High"`) that only a text-classifier can produce — an if-else
+    // can only ever be named IF/ELSE/CASE n, and those names are derived from
+    // array POSITION, so authoring a second case silently renames the first.
+    // A logged turn wired one branch of a two-way carrier router and reported
+    // the workflow built (plan 21 §3.2/§12).
+    "Branches: a branching node (`if-else`, `text-classifier`, `human`, a `fail` branch on `http`/`crud`, a loop's `loop-start`) is wired via the `branch` parameter on `connect_nodes` / `add_node`. Address a branch by its **id**, which every node read and write returns on the node's `branches` — each entry has `id` (the address), `name` (display only) and `connectedTo` (what is already wired). For an `if-else` the branch id IS the `case_id` you authored, plus the reserved `false` ELSE branch, so you know every address BEFORE the node exists and can create the node and wire its branches in the same batch. Give each case a `case_id` naming what it matches (`carrier-fedex`, `priority-high`); never `true`/`false`, never a duplicate — `false` is the reserved ELSE handle and is refused. Display names are unstable for an if-else (`IF` becomes `CASE 1` the moment a second case is added), so read the id, not the label.",
 
     // Workflow shape.
     'Workflow shape: a FINISHED workflow has exactly one trigger; while building incrementally, having no trigger yet is fine (it reports as a warning, not an error). Graphs read left to right; parallel branches stack vertically.',
@@ -72,7 +77,8 @@ export function buildWorkflowBuilderPromptSection(): string {
     // Worked examples.
     [
       'Worked examples:',
-      '  - add_node(type: "http", title: "Post To Webhook", description: "Notify the fulfillment system about high-priority orders", after: "Check Priority", branch: "High", config: { url: "https://example.com/hook", method: "POST" })',
+      '  - add_node(type: "if-else", title: "Check Carrier", description: "Route the tracking lookup to the right carrier", after: "Manual Trigger", config: { cases: [{ case_id: "carrier-fedex", logical_operator: "and", conditions: [{ variableId: "Carrier.value", comparison_operator: "is", value: "fedex" }] }, { case_id: "carrier-ups", logical_operator: "and", conditions: [{ variableId: "Carrier.value", comparison_operator: "is", value: "ups" }] }] })',
+      '  - add_node(type: "http", title: "Track FedEx", description: "Ask FedEx for the shipment status", after: "Check Carrier", branch: "carrier-fedex", config: { url: "https://example.com/fedex", method: "POST" })',
       '  - update_node(ref: "Send Email", config: { subject: "Order {{Find Order.record.number}} update" })',
       '  - get_node(ref: "AI Agent") → update_node(ref: "AI Agent", expectedConfigHash: "<returned configHash>", patches: [{ op: "set", path: ["model", "completion_params", "temperature"], value: 0.2 }])',
       '  - add_node(type: "crud", title: "Create Task", inside: "For Each Line Item", config: { … "{{For Each Line Item.item.name}}" … })',

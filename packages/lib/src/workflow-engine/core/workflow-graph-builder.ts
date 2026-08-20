@@ -513,6 +513,16 @@ export class WorkflowGraphBuilder {
         break
 
       case 'http':
+      // `crud` declares the same pair everywhere else — its manifest
+      // (`catalog/nodes/crud.ts`), its `node.tsx`, `calculateTargetBranches`,
+      // and a processor that emits `outputHandle: 'fail'` — but had no arm
+      // here, so it fell to `default:` and registered `source` alone. Not a
+      // live routing bug (engine failures route through `findFailureEdge`,
+      // which reads the edges directly), but the derived metadata lied: a crud
+      // node with a wired fail branch reported `hasMultipleOutputs: false` and
+      // its fail edge was invisible to fork/parallel accounting
+      // (plan 21 §7.3).
+      case 'crud':
         outputHandles.set('source', WorkflowGraphBuilder.createEmptyOutputInfo('source'))
         // Add fail handle if error strategy is 'fail'
         if (node.data.error_strategy === 'fail') {

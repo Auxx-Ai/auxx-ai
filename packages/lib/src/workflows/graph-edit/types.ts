@@ -111,6 +111,28 @@ export interface DraftGraph {
 }
 
 /**
+ * One outgoing branch of a branching node, as every node read and write
+ * reports it.
+ *
+ * `id` is the ADDRESS: it is the edge handle, it is what `branch` on
+ * `add_node`/`connect_nodes` resolves to, and for `if-else` it is the
+ * `case_id` the caller itself authored — so a branch can be wired in the same
+ * batch that creates the node, with nothing to read back. `name` is a display
+ * label only, and for `if-else` it is derived from array POSITION, so it
+ * renames itself the moment another case is added (plan 21 §2.2). Address by
+ * `id`; show `name` to a human.
+ */
+export interface NodeBranchSummary {
+  /** Canonical address — pass this as `branch`. */
+  id: string
+  /** Display label. May be empty (e.g. `http`'s plain `source` handle). */
+  name: string
+  kind: 'default' | 'fail'
+  /** Friendly refs already wired on this branch. */
+  connectedTo: string[]
+}
+
+/**
  * One node, rendered for a caller: friendly `ref` (unique title, else id) and
  * `config` with every variable/resource reference in `{{Title.path}}` / slug
  * form — a model reading this never sees a raw node id or per-org CUID it
@@ -129,6 +151,17 @@ export interface NodeSummary {
   position: Point
   /** Node config, friendly-rendered, bookkeeping keys stripped. */
   config: Record<string, unknown>
+  /**
+   * This node's outgoing branches and what is wired to each — OMITTED entirely
+   * for a node with none (never an empty array; see `buildBranchSummaries`).
+   *
+   * Rides `get_node`, `readDraft` and EVERY mutation result, which is the
+   * point: an `update_node` that re-shapes `cases` returns the recomputed list,
+   * so a rename or an orphaned edge is visible in the result of the write that
+   * caused it. Until this existed, no read tool reported a node's branches at
+   * all and the only way to learn them was to guess wrong (plan 21 §3.1/§8.2).
+   */
+  branches?: NodeBranchSummary[]
 }
 
 /** One edge, rendered for a caller with friendly node refs. */

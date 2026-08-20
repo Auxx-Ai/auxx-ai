@@ -7,6 +7,31 @@ import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 import { assertWorkflowAreaAccess } from './workflow-authoring-guard'
 
+/**
+ * The branch counterpart of `outputsNote`, and it exists for the same reason:
+ * the list above is computed from `defaultData()`, so it describes a node the
+ * caller is about to configure differently. The old docblock claimed "every
+ * mutation result reflects the node's actual branches" while nothing did
+ * (plan 21 §3.1); `NodeSummary.branches` made that true, and this is where the
+ * caller is told to use it.
+ */
+function branchesNote(type: string): string {
+  const shared =
+    ' Address a branch by its `id`, not its display name. Every add_node/update_node/get_node ' +
+    "result returns this node's ACTUAL branches with what is wired to each — read them from there."
+  if (type === 'if-else') {
+    return (
+      'Branches depend on configuration: each `cases[]` entry is one branch, addressed by its ' +
+      '`case_id`, plus the reserved `false` ELSE branch for "nothing matched". A `case_id` may ' +
+      'NOT be `false` and must be unique across cases. Because you author `case_id` yourself, ' +
+      'you know a branch address before the node exists — you can create the node and wire its ' +
+      'branches in the same batch.' +
+      shared
+    )
+  }
+  return `Branches depend on configuration — the list above is for the DEFAULT config.${shared}`
+}
+
 /** Agent-facing config schema as JSON Schema — `agentSchema ?? configSchema`. */
 function configJsonSchema(manifest: NodeManifest<unknown>): Record<string, unknown> {
   const source = manifest.agentSchema ?? manifest.configSchema
@@ -101,12 +126,20 @@ export function createDescribeNodeTypeTool(getDeps: GetToolDeps): AgentToolDefin
         }
       }
 
-      // Branch names for the default config — branch handles can be config-
-      // dependent (if-else cases), so this is a starting point; every mutation
-      // result reflects the node's actual branches.
-      let branches: Array<{ name: string; kind: string }> | undefined
+      // Branches for the DEFAULT config — a starting point only, because branch
+      // handles are config-dependent (if-else cases, a classifier's categories,
+      // http/crud's gated `fail`). The node's real branches ride every
+      // add_node/update_node/get_node result via `NodeSummary.branches`.
+      //
+      // The `id` is kept. It used to be stripped, leaving `{name, kind}` — and
+      // the id is the ADDRESS, the thing `branch` resolves to and the thing
+      // `graphSummary.edges[].branch` renders, while the name for an if-else is
+      // derived from array position and renames itself as cases are added
+      // (plan 21 §3.1/§10.2).
+      let branches: Array<{ id: string; name: string; kind: string }> | undefined
       try {
         branches = manifest.connection.branches?.(manifest.defaultData()).map((b) => ({
+          id: b.id,
           name: b.name,
           kind: b.kind,
         }))
@@ -140,6 +173,7 @@ export function createDescribeNodeTypeTool(getDeps: GetToolDeps): AgentToolDefin
           ...(manifest.agent?.examples?.length ? { examples: manifest.agent.examples } : {}),
           outputsNote:
             'Outputs depend on configuration — every add_node/update_node result (and get_node) returns this node’s resolved outputs; wire references from those.',
+          ...(branches && branches.length > 0 ? { branchesNote: branchesNote(manifest.id) } : {}),
         },
       }
     },
