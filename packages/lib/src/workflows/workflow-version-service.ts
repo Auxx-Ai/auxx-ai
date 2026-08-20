@@ -5,6 +5,8 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
 import { BadRequestError, NotFoundError } from '../errors'
+import { type GraphDocument, hydrateGraph } from '../workflow-engine/catalog/graph-hydration'
+import { HYDRATION_OPTIONS } from '../workflow-engine/catalog/hydration-policy'
 import {
   type Workflow as EngineWorkflow,
   type WorkflowNode as EngineWorkflowNode,
@@ -20,9 +22,19 @@ const logger = createScopedLogger('workflow-version-service')
 /**
  * Convert a stored workflow (DB row) into the workflow-engine format used for
  * publish-time validation.
+ *
+ * A read boundary (plan 23 §4.2), and one that cannot be skipped: the node
+ * mapping below reads `node.data?.type` with **no** `node.type` fallback, so a
+ * canonical document whose type only survives at the React Flow level would
+ * publish-validate as a graph of `undefined`-typed nodes. Hydration restores
+ * `data.type` before anything reads it.
  */
 function toEngineFormat(dbWorkflow: any): EngineWorkflow {
-  const nodes: EngineWorkflowNode[] = (dbWorkflow.graph?.nodes || []).map((node: any) => {
+  const graph = hydrateGraph(
+    (dbWorkflow.graph ?? { nodes: [], edges: [] }) as GraphDocument,
+    HYDRATION_OPTIONS
+  )
+  const nodes: EngineWorkflowNode[] = graph.nodes.map((node: any) => {
     let engineType = node.data?.type as WorkflowNodeType
 
     // Normalize app trigger nodes: the UI stores "appId:triggerId" but the
@@ -44,7 +56,7 @@ function toEngineFormat(dbWorkflow: any): EngineWorkflow {
       nodeId: node.id,
       type: engineType,
       name: node.data?.title || node.data?.name || 'Untitled Node',
-      description: node.data?.description || node.data?.desc,
+      description: node.data?.desc,
       data: node.data || {},
       metadata: {
         position: node.position,
@@ -65,7 +77,7 @@ function toEngineFormat(dbWorkflow: any): EngineWorkflow {
     triggerType: dbWorkflow.triggerType,
     entityDefinitionId: dbWorkflow.entityDefinitionId,
     nodes,
-    graph: dbWorkflow.graph,
+    graph: graph as unknown as EngineWorkflow['graph'],
     envVars: dbWorkflow.envVars,
     variables: dbWorkflow.variables,
     createdAt: dbWorkflow.createdAt || new Date(),

@@ -6,6 +6,8 @@ import { and, desc, eq, gt, gte, lt, lte, or } from 'drizzle-orm'
 import { UsageLimitError } from '../errors'
 import { getQueue, Queues } from '../jobs/queues'
 import { SystemUserService } from '../users/system-user-service'
+import { type GraphDocument, hydrateGraph } from '../workflow-engine/catalog/graph-hydration'
+import { HYDRATION_OPTIONS } from '../workflow-engine/catalog/hydration-policy'
 import { calculateTotalTokens } from '../workflow-engine/core/execution-utils'
 import { executeSingleNode } from '../workflow-engine/core/single-node-executor'
 import type {
@@ -479,7 +481,7 @@ export class WorkflowExecutionService {
         nodeId: graphNode.id,
         type: graphNode.type,
         name: graphNode.data?.title || graphNode.data?.name || 'Untitled',
-        description: graphNode.data?.description,
+        description: graphNode.data?.desc,
         data: graphNode.data || {},
         // connections: {},
         metadata: graphNode.data?.metadata || {},
@@ -675,7 +677,14 @@ export class WorkflowExecutionService {
   }
 
   /**
-   * Get workflow run with all details
+   * Get workflow run with all details.
+   *
+   * A read boundary (plan 23 §4.2): both graphs on this row reach the client
+   * unprojected — `WorkflowRun.graph` (the verbatim snapshot taken at
+   * `createRun`) and the joined `Workflow.graph`. The run-history execution
+   * tree is built from the first and the tracing tab silently falls back to
+   * the second, so the two must arrive in the SAME shape or one variable name
+   * carries two documents.
    */
   async getWorkflowRun(runId: string, organizationId: string): Promise<WorkflowRunWithDetails> {
     const run = await this.db.query.WorkflowRun.findFirst({
@@ -697,7 +706,20 @@ export class WorkflowExecutionService {
       throw new Error('Workflow run not found')
     }
 
-    return run
+    return {
+      ...run,
+      graph: run.graph ? hydrateGraph(run.graph as GraphDocument, HYDRATION_OPTIONS) : run.graph,
+      ...(run.workflow
+        ? {
+            workflow: {
+              ...run.workflow,
+              graph: run.workflow.graph
+                ? hydrateGraph(run.workflow.graph as GraphDocument, HYDRATION_OPTIONS)
+                : run.workflow.graph,
+            },
+          }
+        : {}),
+    }
   }
 
   /**

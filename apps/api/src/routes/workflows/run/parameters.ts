@@ -83,11 +83,17 @@ parametersRoute.get('/', async (c) => {
     type: config.inputType,
     required: config.required ?? false,
     hint: config.hint,
+    // `typeOptions.enum` is `{ options, multiple }`, NOT a bare array — #1762
+    // nested it so the multi-select flag had somewhere to live. Mapping the
+    // wrapper threw `TypeError: ...map is not a function` for every workflow
+    // with a Select field, because `?.` guards a nullish `enum`, not a missing
+    // `.map` on it.
     options:
-      config.typeOptions?.enum?.map((opt) => ({
+      config.typeOptions?.enum?.options?.map((opt) => ({
         label: opt.label,
         value: opt.value,
       })) ?? undefined,
+    multiple: config.typeOptions?.enum?.multiple ?? undefined,
     fileOptions: config.typeOptions?.file ?? undefined,
   }))
 

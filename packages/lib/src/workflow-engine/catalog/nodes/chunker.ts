@@ -97,7 +97,6 @@ export interface ChunkerNodeData extends BaseNodeData {
 export const chunkerNodeDataSchema = baseNodeDataSchema.extend({
   title: z.string().min(1),
   desc: z.string().optional(),
-  description: z.string().optional(),
 
   // Input content
   content: z.string().optional(),

@@ -1,6 +1,8 @@
 // packages/lib/src/workflows/resolve-template.ts
 
 import { getTemplateById, type WorkflowTemplateDetail } from '@auxx/services/workflow-templates'
+import { type GraphDocument, hydrateGraph } from '../workflow-engine/catalog/graph-hydration'
+import { HYDRATION_OPTIONS } from '../workflow-engine/catalog/hydration-policy'
 import { normalizeTemplateGraph } from './normalize-template-graph'
 import { getFileTemplateById, isFileTemplateId } from './templates'
 
@@ -19,12 +21,20 @@ export type ResolvedTemplate = WorkflowTemplateDetail & { source: 'file' | 'admi
  * rows are normalized here so legacy `{ role, text }` prompts self-heal on
  * read.
  *
+ * THE single template read boundary (plan 23 §4.2) — both doors hydrate here,
+ * so the install path and the preview see one shape. It matters most for the
+ * bundled files: nothing validates the shape of a template write, and a
+ * super-admin can export a builder-fat graph straight into a
+ * `*.template.json`.
+ *
  * @param id - File template id (`file:<slug>`) or DB row id.
  * @returns The resolved template, or null if not found.
  */
 export async function resolveTemplateById(id: string): Promise<ResolvedTemplate | null> {
   if (isFileTemplateId(id)) {
-    return getFileTemplateById(id) ?? null
+    const template = getFileTemplateById(id)
+    if (!template) return null
+    return { ...template, graph: hydrate(template.graph) }
   }
 
   const result = await getTemplateById(id)
@@ -32,7 +42,13 @@ export async function resolveTemplateById(id: string): Promise<ResolvedTemplate 
 
   return {
     ...result.value,
-    graph: normalizeTemplateGraph(result.value.graph),
+    graph: hydrate(normalizeTemplateGraph(result.value.graph)),
     source: 'admin',
   }
+}
+
+/** Hydrate a template graph, tolerating the `unknown` the column/registry hands over. */
+function hydrate(graph: unknown): WorkflowTemplateDetail['graph'] {
+  if (graph == null || typeof graph !== 'object') return graph as WorkflowTemplateDetail['graph']
+  return hydrateGraph(graph as GraphDocument, HYDRATION_OPTIONS) as WorkflowTemplateDetail['graph']
 }

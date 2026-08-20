@@ -2,17 +2,18 @@
 
 import {
   errorHandlingBranches,
+  type GraphDocument,
   getManifest,
+  hydrateGraph,
   type TargetBranch,
 } from '@auxx/lib/workflow-engine/client'
 import { getConnectedEdges } from '@xyflow/react'
 import type { IfElseNodeData } from '../nodes/core/if-else/types'
 import type { LoopNodeData } from '../nodes/core/loop/types'
 import type { TextClassifierNodeData } from '../nodes/core/text-classifier/types'
-import type { EdgeData, FlowEdge, FlowNode } from '../types'
+import type { FlowEdge, FlowNode } from '../types'
 import { NodeType } from '../types/node-types'
 import { branchNameCorrect } from './branch-name-correct'
-import { calculateZIndex } from './edge-utils'
 
 /**
  * Calculate target branches based on node type and current data.
@@ -83,128 +84,64 @@ export const calculateTargetBranches = (nodeData: FlowNode['data']): TargetBranc
 }
 
 /**
- * Normalize legacy app trigger nodes that have data.type = 'app-trigger'
- * instead of the correct 'appId:triggerId' format.
- */
-function normalizeLegacyNodes(nodes: FlowNode[]): FlowNode[] {
-  return nodes.map((node) => {
-    // `data.type` is declared as NodeType, but persisted legacy workflows can
-    // hold the pre-`appId:triggerId` literal, which is not an enum member — so
-    // widen to string before comparing rather than narrowing the comparison away.
-    const nodeType: string = node.data?.type ?? ''
-    if (nodeType === 'app-trigger' && node.data?.appId && node.data?.triggerId) {
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          // App trigger types are dynamic `appId:triggerId` keys, which the
-          // NodeType enum does not enumerate (same cast as node-factory.ts).
-          type: `${node.data.appId}:${node.data.triggerId}` as NodeType,
-        },
-      }
-    }
-    return node
-  })
-}
-
-/**
- * Main initialization function for workflow nodes and edges
- * Ensures all nodes have proper connection metadata and edges have required data
+ * Stored graph → canvas graph.
+ *
+ * A THIN WRAPPER over the shared hydrator (`@auxx/lib/workflow-engine/client`
+ * `hydrateGraph`) plus the four derivations that are genuinely React-Flow-only.
+ * Everything else this function used to compute — `node.type`, `node.extent`,
+ * `data.id`/`isInLoop`/`loopId`, `edge.data.sourceType`/`targetType`/
+ * `isInLoop`/`loopId`/`isLoopBackEdge`, handle defaults, `edge.zIndex`, and
+ * the legacy `app-trigger` type rewrite — now lives in the hydrator, which the
+ * engine and `graph-edit` call too. Three surfaces used to hold three separate
+ * opinions about what a loop-back edge is
+ * (`plans/kopilot/workflow/23-graph-document-canonicalization.md` §9).
+ *
+ * The hydrator also layers `manifest.defaultData()` UNDER stored data, so a
+ * default is a read-time projection rather than a panel write (23 §2.4). It
+ * resolves types through the CORE registry, which answers for the ~29 platform
+ * types; an app block's declared defaults are simply not layered here, exactly
+ * as before.
+ *
+ * What stays in web, and why:
+ *
+ * | key | why it cannot move |
+ * |---|---|
+ * | `data._connectedSourceHandleIds` | `@xyflow/react`'s `getConnectedEdges` |
+ * | `data._connectedTargetHandleIds` | same |
+ * | `data._targetBranches` | rendered through web's `branchNameCorrect` |
+ * | `data._children` (loop containers) | canvas-only child list |
+ *
+ * All four are `_`-prefixed, so the write seam strips them either way.
  */
 export const initializeWorkflow = (
   nodes: FlowNode[],
   edges: FlowEdge[]
 ): { nodes: FlowNode[]; edges: FlowEdge[] } => {
-  // Normalize legacy nodes before preprocessing
-  const normalizedNodes = normalizeLegacyNodes(nodes)
+  // `FlowNode.extent` is React Flow's `'parent' | CoordinateExtent | null`
+  // while the document's is a plain string, so the two structural types are
+  // not mutually assignable. The values are identical; only the declarations
+  // disagree.
+  const hydrated = hydrateGraph({ nodes, edges } as unknown as GraphDocument)
+  const hydratedNodes = hydrated.nodes as unknown as FlowNode[]
+  const hydratedEdges = hydrated.edges as unknown as FlowEdge[]
 
-  // Preprocess to handle loop nodes and their start nodes
-  const preprocessed = preprocessNodesAndEdges(normalizedNodes, edges)
-
-  // Initialize all node properties including connection metadata
-  const initializedNodes = initialNodes(preprocessed.nodes, preprocessed.edges)
-
-  // Initialize edge data with source/target types and loop context
-  const initializedEdges = initialEdges(preprocessed.edges, initializedNodes)
-
-  return { nodes: initializedNodes, edges: initializedEdges }
+  return {
+    nodes: applyCanvasDerivations(hydratedNodes, hydratedEdges),
+    edges: hydratedEdges,
+  }
 }
 
 /**
- * Preprocess nodes and edges to handle loop nodes and their start nodes
+ * The React-Flow-only half of {@link initializeWorkflow} — the four `_`-keys
+ * the shared hydrator deliberately leaves to web (see its "What this file does
+ * NOT do" block).
+ *
+ * Expects ALREADY-HYDRATED nodes and edges: `_targetBranches` reads
+ * `data.type`, and the handle lists read the edges' resolved handles.
  */
-export const preprocessNodesAndEdges = (
-  nodes: FlowNode[],
-  edges: FlowEdge[]
-): { nodes: FlowNode[]; edges: FlowEdge[] } => {
-  const processedNodes = [...nodes]
-  const processedEdges = [...edges]
-
-  // Process each loop node
-  nodes.forEach((node) => {
-    if (node.data.type === NodeType.LOOP) {
-      const loopData = node.data as LoopNodeData
-
-      // Check if loop has a start_node_id
-      // if (!loopData.start_node_id) {
-      //   // Create a loop start node
-      //   const startNodeId = generateId()
-      //   const startNode: FlowNode = {
-      //     id: startNodeId,
-      //     type: 'loop-start',
-      //     position: { x: node.position.x + 50, y: node.position.y + 100 },
-      //     data: {
-      //       id: startNodeId,
-      //       type: 'loop-start' as any, // Special internal type
-      //       title: 'Loop Start',
-      //       desc: '',
-      //       icon: 'play',
-      //       isValid: true,
-      //       _connectedSourceHandleIds: [],
-      //       _connectedTargetHandleIds: [],
-      //       config: {} as any,
-      //     },
-      //     parentId: node.id,
-      //   }
-
-      //   // Add the start node
-      //   processedNodes.push(startNode)
-
-      //   // Update loop node with start_node_id
-      //   loopData.start_node_id = startNodeId
-
-      //   // Find the first child node of the loop
-      //   const loopChildren = processedNodes.filter((n) => n.parentId === node.id)
-      //   if (loopChildren.length > 0) {
-      //     // Create edge from start node to first child
-      //     const firstChild = loopChildren[0]
-      //     const startEdge: FlowEdge = {
-      //       id: generateID(),
-      //       source: startNodeId,
-      //       target: firstChild.id,
-      //       sourceHandle: 'source',
-      //       targetHandle: 'target',
-      //       data: {
-      //         sourceType: 'loop-start',
-      //         targetType: firstChild.data.type,
-      //         isInLoop: true,
-      //         loopId: node.id,
-      //       },
-      //     }
-      //     processedEdges.push(startEdge)
-      //   }
-      // }
-    }
-  })
-
-  return { nodes: processedNodes, edges: processedEdges }
-}
-
-/**
- * Initialize all node properties including connection metadata
- */
-export const initialNodes = (nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] => {
-  // Build parent-child relationship map
+export const applyCanvasDerivations = (nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] => {
+  // Loop containers list their children for the canvas; the hydrator owns the
+  // reverse direction (`data.isInLoop` / `data.loopId` on the child).
   const childrenMap = nodes.reduce(
     (acc, node) => {
       if (node.parentId) {
@@ -217,40 +154,11 @@ export const initialNodes = (nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] =
     {} as Record<string, Array<{ nodeId: string; nodeType: string }>>
   )
 
-  // Build loop context map
-  const loopParentMap = nodes.reduce(
-    (acc, node) => {
-      if (node.parentId) {
-        const parentNode = nodes.find((n) => n.id === node.parentId)
-        if (parentNode?.data.type === NodeType.LOOP) {
-          acc[node.id] = node.parentId
-        }
-      }
-      return acc
-    },
-    {} as Record<string, string>
-  )
-
   return nodes.map((node) => {
-    // Create a copy to avoid mutation
     const updatedNode = { ...node, data: { ...node.data } }
 
-    // NOTE: defaultData enrichment is intentionally skipped here because app blocks
-    // may not be registered yet. This enrichment now happens in WorkflowEditor
-    // after blocks are loaded. See workflow-editor.tsx WorkflowEditorInner.enrichedNodes
-
-    // Initialize connection metadata for ALL nodes
     const connectedEdges = getConnectedEdges([node], edges)
 
-    // Initialize arrays if they don't exist
-    if (!updatedNode.data._connectedSourceHandleIds) {
-      updatedNode.data._connectedSourceHandleIds = []
-    }
-    if (!updatedNode.data._connectedTargetHandleIds) {
-      updatedNode.data._connectedTargetHandleIds = []
-    }
-
-    // Update connection metadata
     updatedNode.data._connectedSourceHandleIds = connectedEdges
       .filter((edge) => edge.source === node.id)
       .map((edge) => edge.sourceHandle || 'source')
@@ -259,94 +167,17 @@ export const initialNodes = (nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] =
       .filter((edge) => edge.target === node.id)
       .map((edge) => edge.targetHandle || 'target')
 
-    // Initialize loop context
-    if (loopParentMap[node.id]) {
-      updatedNode.data.isInLoop = true
-      updatedNode.data.loopId = loopParentMap[node.id]
-    }
-
-    // Calculate and set _targetBranches for all applicable node types
     const targetBranches = calculateTargetBranches(updatedNode.data)
     if (targetBranches) {
       updatedNode.data._targetBranches = targetBranches
     }
 
-    // Handle node-specific dynamic properties
     if (node.data.type === NodeType.LOOP) {
       const loopData = updatedNode.data as LoopNodeData
-      // Set _children based on parent-child relationships
       loopData._children = childrenMap[node.id] || []
     }
-    updatedNode.type = node.data.type === NodeType.NOTE ? 'note' : 'standard'
+
     return updatedNode
-  })
-}
-
-/**
- * Initialize edge data with source/target types and loop context
- */
-export const initialEdges = (edges: FlowEdge[], nodes: FlowNode[]): FlowEdge[] => {
-  // Create node map for quick lookups
-  const nodesMap = nodes.reduce(
-    (acc, node) => {
-      acc[node.id] = node
-      return acc
-    },
-    {} as Record<string, FlowNode>
-  )
-
-  return edges.map((edge) => {
-    // Create a copy to avoid mutation
-    const edgeData: EdgeData = { ...(edge.data || {}) } as EdgeData
-    const updatedEdge: FlowEdge = { ...edge, data: edgeData }
-
-    // Set source and target types
-    const sourceNode = nodesMap[edge.source]
-    const targetNode = nodesMap[edge.target]
-
-    if (sourceNode && updatedEdge.data) {
-      updatedEdge.data.sourceType = sourceNode.data.type
-    }
-    if (targetNode && updatedEdge.data) {
-      updatedEdge.data.targetType = targetNode.data.type
-    }
-
-    // Set loop context
-    const sourceInLoop = sourceNode?.data.isInLoop
-    const targetInLoop = targetNode?.data.isInLoop
-    const sourceLoopId = sourceNode?.data.loopId
-    const targetLoopId = targetNode?.data.loopId
-
-    // Edge is in a loop if both nodes are in the same loop
-    if (sourceInLoop && targetInLoop && sourceLoopId === targetLoopId && updatedEdge.data) {
-      updatedEdge.data.isInLoop = true
-      updatedEdge.data.loopId = sourceLoopId
-    }
-
-    // Check if this is a loop back edge. Match both the live-draw predicate
-    // (targetHandle === 'loop-back', see edge-store.ts) and the containment
-    // shape (source parented inside the target loop) — an edge wired to the
-    // loop-back handle whose source lacks parentId must still be recognized,
-    // or var-graph.ts stops filtering it and upstream traversal sees a cycle.
-    if (
-      targetNode?.data.type === NodeType.LOOP &&
-      (sourceNode?.parentId === targetNode.id || edge.targetHandle === 'loop-back') &&
-      updatedEdge.data
-    ) {
-      updatedEdge.data.isLoopBackEdge = true
-    }
-
-    // Ensure handles have defaults
-    if (!updatedEdge.sourceHandle) {
-      updatedEdge.sourceHandle = 'source'
-    }
-    if (!updatedEdge.targetHandle) {
-      updatedEdge.targetHandle = 'target'
-    }
-
-    // Calculate and set zIndex for the edge
-    updatedEdge.zIndex = calculateZIndex(updatedEdge, nodes)
-    return updatedEdge
   })
 }
 

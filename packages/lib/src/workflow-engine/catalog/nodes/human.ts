@@ -263,7 +263,6 @@ export const humanConfirmationManifest: NodeManifest<HumanConfirmationNodeData> 
   color: '#f59e0b', // CONDITION category color
   defaultData: () => ({
     title: 'Human Review',
-    description: 'Wait for human approval before proceeding',
     message: '',
     assignees: { actorIds: [] },
     notification_methods: { in_app: true, email: true },

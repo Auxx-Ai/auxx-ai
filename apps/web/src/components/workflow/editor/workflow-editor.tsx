@@ -20,7 +20,7 @@ import {
   useWorkflowShortcuts,
 } from '../hooks'
 import { WorkflowPanelDrawer } from '../panels/workflow-panel-drawer'
-import { VarStoreSyncProvider, WorkflowResourceProvider } from '../providers'
+import { VarStoreSyncProvider, WorkflowResourceProvider, WorkflowSaveProvider } from '../providers'
 import { useTestInputSync } from '../store/test-input-store'
 import { useWebhookTestStore } from '../store/webhook-test-store'
 import { WorkflowHistoryProvider } from '../store/workflow-history-provider'
@@ -219,15 +219,22 @@ export const WorkflowEditor = memo<WorkflowEditorProps>(
             <VarStoreSyncProvider>
               <WorkflowEditorProvider>
                 <WorkflowStoreProvider workflowId={workflowId} initialViewport={viewport}>
-                  <WorkflowHistoryProvider>
-                    <WorkflowEditorInner
-                      initialNodes={nodes || []}
-                      initialEdges={edges || []}
-                      initialViewport={viewport}
-                      readOnly={readOnly}
-                      workflowId={workflowId}
-                    />
-                  </WorkflowHistoryProvider>
+                  {/* The ONE owner of the draft write path (plan 22 §2 R1).
+                      Mounted beside the store provider so the toolbar, the
+                      canvas, every node panel and the keyboard shortcuts all
+                      share one pending set, one debounce timer, one in-flight
+                      mutation and one conflict latch. */}
+                  <WorkflowSaveProvider>
+                    <WorkflowHistoryProvider>
+                      <WorkflowEditorInner
+                        initialNodes={nodes || []}
+                        initialEdges={edges || []}
+                        initialViewport={viewport}
+                        readOnly={readOnly}
+                        workflowId={workflowId}
+                      />
+                    </WorkflowHistoryProvider>
+                  </WorkflowSaveProvider>
                 </WorkflowStoreProvider>
               </WorkflowEditorProvider>
             </VarStoreSyncProvider>

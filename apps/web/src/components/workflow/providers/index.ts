@@ -2,3 +2,9 @@
 
 export { VarStoreSyncProvider } from './var-store-sync-provider'
 export { useWorkflowResources, WorkflowResourceProvider } from './workflow-resource-provider'
+export {
+  type PendingChanges,
+  useWorkflowSaveContext,
+  type WorkflowSaveApi,
+  WorkflowSaveProvider,
+} from './workflow-save-provider'

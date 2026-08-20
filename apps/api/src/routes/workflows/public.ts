@@ -4,6 +4,7 @@
  * Public workflow routes (no authentication required)
  */
 
+import { hydrateGraph } from '@auxx/lib/workflow-engine/client'
 import { getPublicWorkflowApp } from '@auxx/services/workflows'
 import { Hono } from 'hono'
 
@@ -91,7 +92,15 @@ publicWorkflows.get('/public/:id', async (c) => {
       description: workflowApp.description,
       updatedAt: workflowApp.updatedAt,
       version: publishedWorkflow.version,
-      graph: publishedWorkflow.graph,
+      // Hydrated, not raw. This is a DOCUMENTED EXTERNAL RESPONSE BODY (plan 23
+      // §7), and hydration is what keeps it byte-compatible with what callers
+      // see today: once the write seams store canonical documents, the column
+      // no longer carries `node.type`, the derived `edge.data.*` set or the
+      // default handles, and a raw passthrough would silently change the public
+      // shape. `@auxx/services` is tier 2 and cannot import `@auxx/lib`, so the
+      // hydration for this seam lives here at the app layer rather than in
+      // `get-public-workflow-app.ts`.
+      graph: hydrateGraph(publishedWorkflow.graph as never),
       envVars: sanitizeEnvVarsForPublic(publishedWorkflow.envVars as EnvVar[] | null | undefined),
     },
   })

@@ -1,6 +1,9 @@
 // packages/lib/src/workflows/create-from-template.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import { deriveTriggerColumns } from '../workflow-engine/catalog/derive-trigger'
+import { dehydrateGraph, type GraphDocument } from '../workflow-engine/catalog/graph-hydration'
+import { DEHYDRATION_OPTIONS } from '../workflow-engine/catalog/hydration-policy'
 import { TemplateGraphTransformer } from './template-graph-transformer'
 import {
   checkEntityReadiness,
@@ -9,6 +12,8 @@ import {
   resolveEntityRefsInGraph,
 } from './template-resolution'
 import type { WorkflowCreateInput, WorkflowTriggerType } from './types'
+
+const logger = createScopedLogger('workflow-template-install')
 
 /** Minimal shape of a resolved workflow template consumed by the builder. */
 export interface TemplateForCreate {
@@ -73,6 +78,20 @@ export async function buildTemplateWorkflowData(
     )
   }
 
+  // Report classifier edges that route nowhere. Warn rather than throw: a
+  // template with a mis-wired branch still installs to a canvas the user can
+  // fix, and refusing the install would be a new failure mode on a door that
+  // has never had one. All 12 bundled templates are clean today, so a hit here
+  // means an admin-authored DB template.
+  const classifierErrors = transformer.validateClassifierEdges(transformed.graph as any)
+  if (classifierErrors.length > 0) {
+    logger.warn('Template has classifier edges that route to no category', {
+      organizationId,
+      userId,
+      errors: classifierErrors,
+    })
+  }
+
   // Derive the entity scoping from the RESOLVED graph rather than carrying the
   // template's own value across orgs: `resolveEntityRefsInGraph` has just
   // rewritten the graph's entity refs into this org's ids, so anything the
@@ -89,8 +108,21 @@ export async function buildTemplateWorkflowData(
     >[0]
   )
 
+  // THE THIRD WRITE SEAM (plan 23 §3). `TemplateGraphTransformer` rewrites ids
+  // and strips `$comment` from `node.data`, but never touched the top level —
+  // so every install seeded a fresh workflow with derived keys already baked
+  // in (`_targetBranches` in 26 bundled-template nodes, `data.id`,
+  // `node.type`). This is the door, not the transformer: both install paths
+  // (the create-from-template router and graph-edit's `apply_template`) go
+  // through here, and it runs AFTER every rewrite pass so nothing downstream
+  // re-fattens the document.
+  //
+  // Deliberately after `deriveTriggerColumns` above: the derivation reads the
+  // fully-resolved graph, and dehydration is a projection of the SAME content.
+  const graph = dehydrateGraph(transformed.graph as unknown as GraphDocument, DEHYDRATION_OPTIONS)
+
   return {
-    graph: transformed.graph,
+    graph: graph as unknown as TemplateWorkflowData['graph'],
     triggerType: (derived.triggerType ?? transformed.triggerType) as
       | WorkflowTriggerType
       | undefined,

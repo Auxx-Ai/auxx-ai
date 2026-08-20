@@ -63,7 +63,6 @@ export interface AnswerNodeData extends BaseNodeData {
  */
 export const answerNodeDataSchema = baseNodeDataSchema.extend({
   title: z.string().min(1),
-  description: z.string().optional(),
   messageType: z.enum(['new', 'reply', 'replyAll']).default('reply'),
   integrationId: z.string().optional(),
   recordId: z.string().optional(),

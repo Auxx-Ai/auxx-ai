@@ -33,12 +33,25 @@ export interface GraphLoopContext {
 }
 
 /**
+ * A node's engine type.
+ *
+ * `data.type` is the authored one and `node.type` is React Flow's renderer slot
+ * (`'standard'` / `'note'` for every canvas-authored node), which is why every
+ * engine reader is `data.type || node.type`. Reading only the outer one made
+ * the containment arm of `getForwardEdges` unreachable on canvas graphs — see
+ * `plans/kopilot/workflow/23-graph-document-canonicalization.md` §7.
+ */
+function nodeTypeOf(node: NodeMeta): string | undefined {
+  return node.data?.type || node.type
+}
+
+/**
  * Filter out edges that form intentional cycles in loops:
  * - Edges marked as isLoopBackEdge
  * - Edges from a node inside a loop back to its parent loop node
  */
 function getForwardEdges(edges: EdgeMeta[], nodes: NodeMeta[]): EdgeMeta[] {
-  const loopNodeIds = new Set(nodes.filter((n) => n.type === 'loop').map((n) => n.id))
+  const loopNodeIds = new Set(nodes.filter((n) => nodeTypeOf(n) === 'loop').map((n) => n.id))
   return edges.filter((e) => {
     if (e.data?.isLoopBackEdge) return false
     if (loopNodeIds.has(e.target)) {
@@ -61,6 +74,19 @@ function getForwardEdges(edges: EdgeMeta[], nodes: NodeMeta[]): EdgeMeta[] {
  * spellings of one rule — is how the two halves drift apart.
  */
 export const DEFAULT_SOURCE_HANDLE = 'source'
+
+/**
+ * The plain input handle every node exposes, and what an ABSENT `targetHandle`
+ * means. Mirror of {@link DEFAULT_SOURCE_HANDLE} for the other end of an edge —
+ * `hydrateGraph` fills both on read (`edge.targetHandle ?? 'target'`), which is
+ * exactly why `graph-projection.ts` has to treat "absent" and "the default" as
+ * the same document.
+ *
+ * Declared HERE, beside its sibling, for the same reason: `graph-hydration.ts`
+ * and `graph-projection.ts` each held their own copy, which is how the two
+ * halves of one rule drift apart.
+ */
+export const DEFAULT_TARGET_HANDLE = 'target'
 
 /**
  * For each node: which ancestors reach it, and on **which of each ancestor's
@@ -218,7 +244,7 @@ export function computeLoopAncestry(nodes: NodeMeta[]): Map<string, GraphLoopCon
       const parent = nodeMap.get(current.parentId)
       if (!parent) break
 
-      const isLoopNode = parent.data?.type === 'loop'
+      const isLoopNode = nodeTypeOf(parent) === 'loop'
       if (isLoopNode) {
         contexts.push({
           loopNodeId: parent.id,

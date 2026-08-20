@@ -73,14 +73,13 @@ describe('WorkflowGraphBuilder', () => {
         },
       }
 
-      const graph = WorkflowGraphBuilder.buildGraph(workflow)
-      const transformed = WorkflowGraphBuilder.getTransformedWorkflow()
+      const { graph, workflow: transformed } = WorkflowGraphBuilder.build(workflow)
 
       expect(graph.nodes.size).toBe(2)
       expect(graph.nodes.has('node1')).toBe(true)
       expect(graph.nodes.has('node2')).toBe(false)
       expect(graph.nodes.has('node3')).toBe(true)
-      expect(transformed?.nodes.length).toBe(2)
+      expect(transformed.nodes.length).toBe(2)
     })
 
     it('should filter out nodes without processors', () => {
@@ -273,7 +272,10 @@ describe('WorkflowGraphBuilder', () => {
               data: {
                 type: 'manual',
                 title: 'Start',
-                description: 'Test node',
+                // `desc` is THE node description. The vestigial `data.description`
+                // alias was removed from `baseNodeDataSchema` (plan 23 §2.2) — it
+                // had zero readers and hid the real field from Kopilot summaries.
+                desc: 'Test node',
                 customField: 'value',
               },
             },
@@ -282,10 +284,9 @@ describe('WorkflowGraphBuilder', () => {
         },
       }
 
-      const graph = WorkflowGraphBuilder.buildGraph(workflow)
-      const transformed = WorkflowGraphBuilder.getTransformedWorkflow()
+      const { workflow: transformed } = WorkflowGraphBuilder.build(workflow)
 
-      expect(transformed?.nodes[0]).toMatchObject({
+      expect(transformed.nodes[0]).toMatchObject({
         id: 'node1',
         nodeId: 'node1',
         workflowId: 'test-workflow',
@@ -307,10 +308,9 @@ describe('WorkflowGraphBuilder', () => {
         },
       }
 
-      const graph = WorkflowGraphBuilder.buildGraph(workflow)
-      const transformed = WorkflowGraphBuilder.getTransformedWorkflow()
+      const { workflow: transformed } = WorkflowGraphBuilder.build(workflow)
 
-      expect(transformed?.nodes[0]?.name).toBe('manual-ode1')
+      expect(transformed.nodes[0]?.name).toBe('manual-ode1')
     })
 
     it('should preserve node data', () => {
@@ -334,11 +334,10 @@ describe('WorkflowGraphBuilder', () => {
         },
       }
 
-      const graph = WorkflowGraphBuilder.buildGraph(workflow)
-      const transformed = WorkflowGraphBuilder.getTransformedWorkflow()
+      const { workflow: transformed } = WorkflowGraphBuilder.build(workflow)
 
-      expect(transformed?.nodes[0]?.data.variables).toHaveLength(2)
-      expect(transformed?.nodes[0]?.data.variables[0]).toEqual({ name: 'var1', value: 'value1' })
+      expect(transformed.nodes[0]?.data.variables).toHaveLength(2)
+      expect(transformed.nodes[0]?.data.variables[0]).toEqual({ name: 'var1', value: 'value1' })
     })
 
     it('should extract metadata correctly', () => {
@@ -360,10 +359,9 @@ describe('WorkflowGraphBuilder', () => {
         },
       }
 
-      const graph = WorkflowGraphBuilder.buildGraph(workflow)
-      const transformed = WorkflowGraphBuilder.getTransformedWorkflow()
+      const { workflow: transformed } = WorkflowGraphBuilder.build(workflow)
 
-      expect(transformed?.nodes[0]?.metadata).toMatchObject({
+      expect(transformed.nodes[0]?.metadata).toMatchObject({
         position: { x: 100, y: 200 },
         custom: 'value',
       })

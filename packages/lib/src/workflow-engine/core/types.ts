@@ -301,7 +301,6 @@ export interface NodeData {
   type?: string
   title?: string
   desc?: string
-  description?: string
 
   // Visual properties (not part of config)
   icon?: string
@@ -371,6 +370,13 @@ export interface WorkflowNode {
   type: WorkflowNodeType
   name: string
   description?: string
+  /**
+   * Containing node (a loop container), copied from the stored node's TOP-LEVEL
+   * `parentId`. Both authoring paths — the canvas `node-factory.ts` and
+   * `graph-edit`'s `ops.ts` — write it there, never into `data`, so this is the
+   * only place the engine can read containment from.
+   */
+  parentId?: string
   data: NodeData // Node configuration data matching frontend structure
   metadata?: NodeMetadata
 }
@@ -715,6 +721,13 @@ export interface ResumeOptions {
   nodeOutput?: any
   variables?: Record<string, any>
   skipValidation?: boolean
+  /**
+   * Skip the graph cache and rebuild, same meaning as on
+   * {@link WorkflowExecutionOptions}. The resume path used to guard the rebuild
+   * on `if (!graph)` alone, so a resume could not be forced to re-read a
+   * workflow that had been edited since the pause.
+   */
+  skipCache?: boolean
   workflowRunId?: string
   workflowAppId?: string // Required for creating node execution records
   organizationId?: string // Required for creating node execution records

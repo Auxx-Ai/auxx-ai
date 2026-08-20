@@ -261,7 +261,6 @@ const FRAMEWORK_DATA_KEYS = new Set([
   'type',
   'title',
   'desc',
-  'description',
   'label',
   'icon',
   'color',

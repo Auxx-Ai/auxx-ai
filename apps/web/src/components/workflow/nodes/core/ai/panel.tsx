@@ -63,17 +63,20 @@ interface AiPanelProps {
 
 const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
   const { isReadOnly } = useReadOnly()
-
-  // Shared by the defaults editor's target list and the output display below.
-  const aiOutputVariables = useMemo(
-    () => aiDefinition.outputVariables?.(nodeData, nodeId, staticOutputVariableContext) || [],
-    [nodeData, nodeId]
-  )
   const [isOpen, setIsOpen] = useState(false)
   const [schema, setSchema] = useState<Record<string, unknown> | undefined>()
 
   // Use CRUD operations for the node data
   const { inputs: nodeData, setInputs: setNodeData } = useNodeCrud<AiNodeData>(nodeId, data)
+
+  // Shared by the defaults editor's target list and the output display below.
+  // MUST stay below `useNodeCrud` — a `useMemo` dep array is evaluated eagerly,
+  // so declaring this above the `const nodeData` it reads is a TDZ
+  // ReferenceError on every mount of this panel (introduced by #1769).
+  const aiOutputVariables = useMemo(
+    () => aiDefinition.outputVariables?.(nodeData, nodeId, staticOutputVariableContext) || [],
+    [nodeData, nodeId]
+  )
 
   /** Failure policy — the shared control, driven by the manifest declaration. */
   const handleErrorStrategyChange = useCallback(

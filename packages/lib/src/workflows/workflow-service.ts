@@ -11,6 +11,12 @@ import { ConflictError, NotFoundError } from '../errors'
 import { getQueue, Queues } from '../jobs/queues'
 import type { TriggerDerivationNode } from '../workflow-engine/catalog/derive-trigger'
 import { deriveTriggerLinkColumns } from '../workflow-engine/catalog/derive-trigger-server'
+import {
+  dehydrateGraph,
+  type GraphDocument,
+  hydrateGraph,
+} from '../workflow-engine/catalog/graph-hydration'
+import { DEHYDRATION_OPTIONS, HYDRATION_OPTIONS } from '../workflow-engine/catalog/hydration-policy'
 import { WorkflowEngine } from '../workflow-engine/core/workflow-engine'
 import { nextUntitledWorkflowName, pickDefaultWorkflowIcon } from './default-workflow-identity'
 import { hashGraphSemantics, hashWorkflowGraph } from './graph-hash'
@@ -34,9 +40,18 @@ const logger = createScopedLogger('workflow-service')
  * Flatten a workflow app + its editable (draft, falling back to published) version
  * into the shape the web UI consumes. Draft is preferred so the builder edits the
  * in-progress version.
+ *
+ * ORDER IS LOAD-BEARING (plan 23 §3.2): the CAS token is minted from the RAW
+ * stored graph and re-checked against the raw column inside the save
+ * transaction (`update`, below). Hydrate before the mint and the token stops
+ * describing the column — every save 409s, forever. So the hash comes off
+ * `storedGraph` and the response carries `hydrateGraph(storedGraph)`.
  */
 export function toWorkflowAppResponse(workflowApp: WorkflowWithDetails) {
   const workflowData = workflowApp.draftWorkflow || workflowApp.publishedWorkflow
+  const storedGraph = workflowData?.graph
+  // Minted FIRST, from the raw column. Never move this below the hydration.
+  const graphHash = storedGraph ? hashWorkflowGraph(storedGraph) : null
   return {
     id: workflowApp.id,
     name: workflowApp.name,
@@ -45,9 +60,11 @@ export function toWorkflowAppResponse(workflowApp: WorkflowWithDetails) {
     triggerType: workflowData?.triggerType,
     entityDefinitionId: workflowData?.entityDefinitionId,
     version: workflowData?.version || 1,
-    graph: workflowData?.graph,
+    graph: storedGraph
+      ? hydrateGraph(storedGraph as GraphDocument, HYDRATION_OPTIONS)
+      : storedGraph,
     // Seed for the editor's optimistic-concurrency token (see WorkflowUpdateInput.expectedGraphHash)
-    graphHash: workflowData?.graph ? hashWorkflowGraph(workflowData.graph) : null,
+    graphHash,
     variables: workflowData?.variables || [],
     envVars: workflowData?.envVars,
     organizationId: workflowApp.organizationId,
@@ -649,8 +666,20 @@ export class WorkflowService {
       // not become an import-time dependency of every WorkflowService caller.
       if (graph !== undefined && !preserveTurnSnapshot) {
         const previousGraph = existingWorkflowApp.draftWorkflow?.graph
+        // Both sides are DEHYDRATED first (plan 23 §3.2): the stored row may
+        // still be in the pre-canonicalization fat shape while the posted graph
+        // comes off a hydrated canvas, and the semantic projection does not
+        // ignore everything hydration adds (`extent`, `data.id`, the read-time
+        // defaults layer). Comparing the two shapes directly would call every
+        // autosave an authored change and destroy the pending Undo offer.
         const authoredChange =
-          previousGraph == null || hashGraphSemantics(previousGraph) !== hashGraphSemantics(graph)
+          previousGraph == null ||
+          hashGraphSemantics(
+            dehydrateGraph(previousGraph as GraphDocument, DEHYDRATION_OPTIONS)
+          ) !==
+            hashGraphSemantics(
+              dehydrateGraph(graph as unknown as GraphDocument, DEHYDRATION_OPTIONS)
+            )
         if (authoredChange) {
           try {
             const { clearWorkflowTurnSnapshot } = await import('./graph-edit/turn-snapshot')

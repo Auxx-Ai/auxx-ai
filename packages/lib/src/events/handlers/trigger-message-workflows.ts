@@ -2,7 +2,10 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { getCachedWorkflowAppsByTrigger, getOrgCache } from '../../cache'
-import type { CachedPublishedWorkflow } from '../../cache/providers/workflow-apps-provider'
+import {
+  type CachedPublishedWorkflow,
+  hydrateCachedGraph,
+} from '../../cache/providers/workflow-apps-provider'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
 import { WorkflowNodeType, WorkflowTriggerType } from '../../workflow-engine/core/types'
@@ -12,18 +15,31 @@ import type { AuxxEvent, MessageReceivedEvent } from '../types'
 const logger = createScopedLogger('trigger-message-workflows')
 
 /**
+ * The message-received trigger node of a published workflow, as the cache read
+ * boundary hands it over.
+ *
+ * Resolved ONCE per matching workflow and shared by the three scope filters
+ * below, which each used to walk the cached bytes themselves. The org cache is
+ * an undeclared storage location for a workflow graph (plan 23 §4.1) and what
+ * it holds is the CANONICAL document, so a reader of trigger config goes
+ * through the hydrator rather than reading the blob: `data.type` is only
+ * guaranteed present after hydration, and a legacy `app-trigger` type is only
+ * normalized there.
+ */
+function messageTriggerNode(publishedWorkflow: CachedPublishedWorkflow): any | undefined {
+  return hydrateCachedGraph(publishedWorkflow.graph).nodes.find(
+    (node) => (node?.data?.type ?? node?.type) === WorkflowNodeType.MESSAGE_RECEIVED
+  )
+}
+
+/**
  * Read the message-received trigger node's soft machine-mail opt-in off the
  * published workflow graph. Default `'exclude'` — a workflow only receives soft
  * machine mail (OOO, list/notification) when its trigger config explicitly sets
  * `machineMail: 'include'`. Returns `true` when the workflow should be dispatched
  * for soft machine mail.
  */
-function includesSoftMachineMail(publishedWorkflow: CachedPublishedWorkflow): boolean {
-  const nodes = (publishedWorkflow.graph as { nodes?: any[] } | null | undefined)?.nodes
-  if (!Array.isArray(nodes)) return false
-  const triggerNode = nodes.find(
-    (node) => (node?.data?.type ?? node?.type) === WorkflowNodeType.MESSAGE_RECEIVED
-  )
+function includesSoftMachineMail(triggerNode: any | undefined): boolean {
   return triggerNode?.data?.machineMail === 'include'
 }
 
@@ -38,12 +54,7 @@ function includesSoftMachineMail(publishedWorkflow: CachedPublishedWorkflow): bo
  * (`ownEcho`) is not covered by this toggle — it is always skipped.
  * Returns `true` when the workflow should be dispatched for own-address mail.
  */
-function includesOwnAddressMail(publishedWorkflow: CachedPublishedWorkflow): boolean {
-  const nodes = (publishedWorkflow.graph as { nodes?: any[] } | null | undefined)?.nodes
-  if (!Array.isArray(nodes)) return true
-  const triggerNode = nodes.find(
-    (node) => (node?.data?.type ?? node?.type) === WorkflowNodeType.MESSAGE_RECEIVED
-  )
+function includesOwnAddressMail(triggerNode: any | undefined): boolean {
   return (triggerNode?.data?.ownAddress ?? 'include') === 'include'
 }
 
@@ -57,14 +68,9 @@ function includesOwnAddressMail(publishedWorkflow: CachedPublishedWorkflow): boo
  * arrived on `integrationId`.
  */
 function matchesChannelScope(
-  publishedWorkflow: CachedPublishedWorkflow,
+  triggerNode: any | undefined,
   integrationId: string | undefined
 ): boolean {
-  const nodes = (publishedWorkflow.graph as { nodes?: any[] } | null | undefined)?.nodes
-  if (!Array.isArray(nodes)) return true
-  const triggerNode = nodes.find(
-    (node) => (node?.data?.type ?? node?.type) === WorkflowNodeType.MESSAGE_RECEIVED
-  )
   const channelIds = triggerNode?.data?.channelIds
   if (!Array.isArray(channelIds) || channelIds.length === 0) return true
   return !!integrationId && channelIds.includes(integrationId)
@@ -146,7 +152,12 @@ export const triggerMessageWorkflows = async ({ data: event }: { data: AuxxEvent
 
   let matchingWorkflows = matchingApps
     .filter((app) => app.publishedWorkflow)
-    .map((app) => ({ workflowApp: app, publishedWorkflow: app.publishedWorkflow! }))
+    .map((app) => ({
+      workflowApp: app,
+      publishedWorkflow: app.publishedWorkflow!,
+      // One hydration per candidate workflow, reused by all three filters below.
+      triggerNode: messageTriggerNode(app.publishedWorkflow!),
+    }))
 
   // Soft-tier machine mail (OOO, list/notification) is automated but possibly
   // wanted — dispatch only to workflows whose trigger opted in
@@ -154,7 +165,7 @@ export const triggerMessageWorkflows = async ({ data: event }: { data: AuxxEvent
   // machineMail flag → dispatch to all, as normal.
   if (machineMail?.tier === 'soft') {
     matchingWorkflows = matchingWorkflows.filter((workflow) =>
-      includesSoftMachineMail(workflow.publishedWorkflow)
+      includesSoftMachineMail(workflow.triggerNode)
     )
     if (matchingWorkflows.length === 0) {
       logger.info('No MESSAGE_RECEIVED workflows opted into soft-tier machine mail', {
@@ -173,7 +184,7 @@ export const triggerMessageWorkflows = async ({ data: event }: { data: AuxxEvent
   // sets `ownAddress: 'exclude'`.
   if (fromOwnAddress) {
     matchingWorkflows = matchingWorkflows.filter((workflow) => {
-      const includes = includesOwnAddressMail(workflow.publishedWorkflow)
+      const includes = includesOwnAddressMail(workflow.triggerNode)
       if (!includes) {
         logger.info('Skipping MESSAGE_RECEIVED workflow — opted out of own-address mail', {
           messageId,
@@ -190,7 +201,7 @@ export const triggerMessageWorkflows = async ({ data: event }: { data: AuxxEvent
   // machineMail filter above for the same reason — a non-match costs zero
   // queries, `integrationId` already rode in on the event.
   matchingWorkflows = matchingWorkflows.filter((workflow) => {
-    const matches = matchesChannelScope(workflow.publishedWorkflow, integrationId)
+    const matches = matchesChannelScope(workflow.triggerNode, integrationId)
     if (!matches) {
       logger.info('Skipping MESSAGE_RECEIVED workflow — message channel outside trigger scope', {
         messageId,

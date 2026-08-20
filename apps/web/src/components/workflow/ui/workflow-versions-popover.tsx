@@ -19,6 +19,8 @@ import React from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useCanvasStore } from '~/components/workflow/store/canvas-store'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import type { FlowNode } from '~/components/workflow/types'
+import { storedGraphToCanvas } from '~/components/workflow/utils/interaction-state'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { WorkflowVersionItem } from './workflow-version-item'
@@ -223,22 +225,15 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
         const versionData = await apiUtils.workflow.getVersionById.fetch({ workflowId, versionId })
 
         if (versionData?.graph) {
-          const graph = versionData.graph as any
+          const graph = versionData.graph as { nodes?: unknown; edges?: unknown }
 
           // Defer canvas updates to avoid React hook issues
           queueMicrotask(() => {
-            // Clear current canvas and load version data
-            if (graph.nodes && Array.isArray(graph.nodes)) {
-              setNodes(graph.nodes)
-            } else {
-              setNodes([])
-            }
-
-            if (graph.edges && Array.isArray(graph.edges)) {
-              setEdges(graph.edges)
-            } else {
-              setEdges([])
-            }
+            // Hydrate before this becomes the EDITABLE canvas — autosave writes
+            // whatever lands here straight back to the draft.
+            const canvas = storedGraphToCanvas(graph, getNodes() as FlowNode[])
+            setNodes(canvas.nodes)
+            setEdges(canvas.edges)
           })
 
           // Exit read-only mode
@@ -288,22 +283,15 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
       // Load version graph data into canvas
       if (getVersionById.data.graph) {
         try {
-          const graph = getVersionById.data.graph as any
+          const graph = getVersionById.data.graph as { nodes?: unknown; edges?: unknown }
 
           // Defer canvas updates to avoid React hook issues
           queueMicrotask(() => {
-            // Load version nodes and edges
-            if (graph.nodes && Array.isArray(graph.nodes)) {
-              setNodes(graph.nodes)
-            } else {
-              setNodes([])
-            }
-
-            if (graph.edges && Array.isArray(graph.edges)) {
-              setEdges(graph.edges)
-            } else {
-              setEdges([])
-            }
+            // Hydrate: a stored version graph has no `node.type`, so raw it
+            // renders as React Flow's default node — grey boxes, no handles.
+            const canvas = storedGraphToCanvas(graph, getNodes() as FlowNode[])
+            setNodes(canvas.nodes)
+            setEdges(canvas.edges)
 
             // TODO: Load viewport if available
             // if (graph.viewport) {
@@ -319,7 +307,7 @@ const WorkflowVersionsPopover: React.FC<WorkflowVersionsPopoverProps> = ({
         }
       }
     }
-  }, [getVersionById.data, selectedVersion, setEdges, setNodes, setVersionPreviewData])
+  }, [getVersionById.data, getNodes, selectedVersion, setEdges, setNodes, setVersionPreviewData])
 
   // Early return if no workflow ID
   if (!workflowId) {

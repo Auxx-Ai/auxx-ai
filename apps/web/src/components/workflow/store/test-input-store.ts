@@ -61,9 +61,13 @@ export const useTestInputStore = create<TestInputStore>()(
           return { testInputs: newInputs }
         })
 
-        // Mark workflow as dirty when test inputs change
-        const markDirty = useWorkflowStore.getState().markDirty
-        markDirty()
+        // Test inputs travel in the save's `variables` field, alongside the
+        // environment variables — so queue THAT key. A bare `markDirty()` used
+        // to leave the pending set empty, and `buildPayload`'s dirty-fallback
+        // then turned it into a GRAPH write, losing the change that was
+        // actually dirty (plan 22 §1.5, §9.2). That fallback is gone, so this
+        // is now the only thing that persists a trigger-input auto-fill.
+        useWorkflowStore.getState().queueSave?.({ envVars: true })
       },
 
       /**

@@ -18,6 +18,15 @@ import { err, ok, type Result } from 'neverthrow'
 import { type AuxxError, NotFoundError } from '../../errors'
 import { buildManifestLookup } from '../../workflow-engine/catalog/app-manifests'
 import { isDerivedKey, stripDerivedKeys } from '../../workflow-engine/catalog/derived-keys'
+import {
+  dehydrateGraph,
+  type GraphDocument,
+  hydrateGraph,
+} from '../../workflow-engine/catalog/graph-hydration'
+import {
+  DEHYDRATION_OPTIONS,
+  HYDRATION_OPTIONS,
+} from '../../workflow-engine/catalog/hydration-policy'
 import { resolveGraphOutputs } from '../../workflow-engine/catalog/resolve-outputs'
 import type { ManifestLookup } from '../../workflow-engine/catalog/types'
 import type { UnifiedVariable } from '../../workflow-engine/types/unified-variable'
@@ -52,8 +61,21 @@ export interface DraftContext {
   /** The raw draft `Workflow` row (null when the app has no draft yet). */
   draftRow: Record<string, unknown> | null
   graph: DraftGraph
-  /** CAS token — hash of the stored graph; undefined when there is none yet. */
+  /** CAS token — hash of the RAW stored graph; undefined when there is none yet. */
   graphHash?: string
+  /**
+   * Hash of `graph` **dehydrated** — i.e. of exactly the bytes a persist of an
+   * unchanged graph would write.
+   *
+   * Separate from {@link graphHash} because that one must stay a hash of the
+   * raw column (it is the CAS token, re-checked against the column inside the
+   * save transaction). `ops.ts`'s no-op short-circuit asks a different
+   * question — "would writing this change anything?" — and since a stored row
+   * may still be in the pre-canonicalization fat shape, the raw hash is the
+   * wrong baseline for it: a load-then-save of an untouched fat graph is a
+   * genuine byte change (the canonicalization) but not an authored one.
+   */
+  canonicalGraphHash: string
   triggerType?: string | null
   /**
    * Core registry ∪ this org's installed app blocks, built once per operation.
@@ -72,12 +94,26 @@ export interface GraphEditScope {
   organizationId: string
 }
 
-/** Normalize whatever the jsonb column holds into a well-formed graph doc. */
-function toDraftGraph(raw: unknown): DraftGraph {
-  const graph = (raw ?? {}) as Partial<DraftGraph>
+/**
+ * Normalize whatever the jsonb column holds into a well-formed graph doc — the
+ * Kopilot read boundary (plan 23 §4.2).
+ *
+ * {@link hydrateGraph} does the array guards itself, so a malformed row still
+ * degrades to an empty document rather than throwing. The org-scoped `lookup`
+ * is passed so this seam resolves an installed app block's type the same way
+ * the canvas does, rather than seeing only the ~29 platform manifests.
+ *
+ * ORDER (plan 23 §3.2): `loadDraftContext` mints `graphHash` from the RAW
+ * column, never from this result — see the comment at its call site.
+ */
+function toDraftGraph(raw: unknown, lookup: ManifestLookup): DraftGraph {
+  const graph = hydrateGraph((raw ?? {}) as GraphDocument, {
+    ...HYDRATION_OPTIONS,
+    manifests: lookup,
+  })
   return {
-    nodes: Array.isArray(graph.nodes) ? graph.nodes : [],
-    edges: Array.isArray(graph.edges) ? graph.edges : [],
+    nodes: graph.nodes as unknown as DraftGraph['nodes'],
+    edges: graph.edges as unknown as DraftGraph['edges'],
     ...(graph.viewport ? { viewport: graph.viewport } : {}),
   }
 }
@@ -103,16 +139,28 @@ export async function loadDraftContext(
 
   const draftRow = (app.draftWorkflow ?? null) as Record<string, unknown> | null
   const rawGraph = draftRow?.graph
+  const lookup = await buildManifestLookup(organizationId)
+  // The CAS token is minted from the RAW column and re-checked against the raw
+  // column inside `WorkflowService.update`'s transaction (plan 23 §3.2). It
+  // must never be taken from the hydrated `graph` below.
+  const graph = toDraftGraph(rawGraph, lookup)
   return ok({
     workflowAppId,
     organizationId,
     appName: app.name,
     appDescription: app.description,
     draftRow,
-    graph: toDraftGraph(rawGraph),
+    graph,
     ...(rawGraph ? { graphHash: hashWorkflowGraph(rawGraph) } : {}),
+    // The no-op short-circuit's baseline — see `DraftContext.canonicalGraphHash`.
+    canonicalGraphHash: hashWorkflowGraph(
+      dehydrateGraph(graph as unknown as GraphDocument, {
+        ...DEHYDRATION_OPTIONS,
+        manifests: lookup,
+      })
+    ),
     triggerType: (draftRow?.triggerType as string | null | undefined) ?? null,
-    lookup: await buildManifestLookup(organizationId),
+    lookup,
   })
 }
 
@@ -153,6 +201,12 @@ const NON_CONFIG_KEYS = new Set([
   // still carry it, and echoing a list that drifted from the edges in 7 of 8
   // workflows is exactly what made it worth deleting.
   'inputNodes',
+  // Legacy only: a vestigial alias of `desc` that five manifests used to mint
+  // and nothing ever read (`catalog/node-base.ts`). It is gone from the schemas,
+  // so `describe_node_type` no longer offers it — but ~209 stored graphs still
+  // carry it, and echoing an empty `description` beside a real `desc` we already
+  // withhold is exactly backwards.
+  'description',
 ])
 
 /** Hash durable node data only; derived keys are regenerated and stripped on save. */

@@ -859,7 +859,13 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   mcpServers: { prefix: 'org:mcpServers', ttlSeconds: ONE_DAY },
   // Read per CRUD event by trigger dispatch; changes only on admin edits →
   // 5 s local window (dispatch enqueues jobs, so peer staleness is benign).
-  workflowApps: { prefix: 'org:workflow-apps', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
+  //
+  // v2: the cached blob carries the published `Workflow.graph` VERBATIM, and
+  // that document's vocabulary changed — graphs are now stored canonically
+  // (plan 23) with everything derived rebuilt by `hydrateGraph` at read. A
+  // canonical graph read by pre-23 code would see a trigger config missing
+  // every key whose value equals its manifest default. Bump on shape changes.
+  workflowApps: { prefix: 'org:workflow-apps:v2', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
   // Read per interactive field write. Rules have side effects, so the peer
   // staleness window stays tight (1 s ≈ 10× fewer steady-state hash GETs).
   recordRules: { prefix: 'org:record-rules', ttlSeconds: ONE_DAY, localTtlMs: 1_000 },

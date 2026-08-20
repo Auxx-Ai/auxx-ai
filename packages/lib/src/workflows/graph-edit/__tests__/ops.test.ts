@@ -80,6 +80,8 @@ const {
 } = await import('../ops')
 const { buildNodeSummary, readDraft } = await import('../read')
 
+import { type GraphDocument, hydrateGraph } from '../../../workflow-engine/catalog/graph-hydration'
+import { HYDRATION_OPTIONS } from '../../../workflow-engine/catalog/hydration-policy'
 import { hashWorkflowGraph } from '../../graph-hash'
 import type { DraftGraph, GraphEdge, GraphNode } from '../types'
 
@@ -207,6 +209,18 @@ function persistedInput(): Record<string, unknown> {
 
 function persistedGraph(): DraftGraph {
   return persistedInput().graph as DraftGraph
+}
+
+/**
+ * What the NEXT load of a persisted graph looks like — the stored document put
+ * back through the read boundary (`loadDraftContext` → `hydrateGraph`).
+ *
+ * The write seam stores authored content only, so every derived key
+ * (`extent`, `data.id`, `data.isInLoop`/`loopId`, `edge.data.isLoopBackEdge`,
+ * the handle defaults) is asserted HERE rather than on the stored bytes.
+ */
+function reread(graph: DraftGraph): DraftGraph {
+  return hydrateGraph(graph as unknown as GraphDocument, HYDRATION_OPTIONS) as unknown as DraftGraph
 }
 
 beforeEach(() => {
@@ -342,10 +356,17 @@ describe('loop containment (§6)', () => {
 
     const persisted = persistedGraph()
     const child = persisted.nodes.find((n) => n.data?.title === 'Per Order Wait')
+    // `parentId` is the AUTHORED containment and is what persists; `extent`,
+    // `loopId` and `isInLoop` are derived FROM it and are rebuilt at the read
+    // boundary rather than stored (plan 23 §1.1).
     expect(child?.parentId).toBe(LOOP_ID)
-    expect(child?.extent).toBe('parent')
-    expect(child?.data?.loopId).toBe(LOOP_ID)
-    expect(child?.data?.isInLoop).toBe(true)
+    expect(child).not.toHaveProperty('extent')
+    expect(child?.data).not.toHaveProperty('loopId')
+    expect(child?.data).not.toHaveProperty('isInLoop')
+    const loadedChild = reread(persisted).nodes.find((n) => n.data?.title === 'Per Order Wait')
+    expect(loadedChild?.extent).toBe('parent')
+    expect(loadedChild?.data?.loopId).toBe(LOOP_ID)
+    expect(loadedChild?.data?.isInLoop).toBe(true)
     // Parent-relative position within the container padding.
     expect(child?.position.x).toBeGreaterThanOrEqual(20)
     expect(child?.position.y).toBeGreaterThanOrEqual(80)
@@ -380,10 +401,15 @@ describe('loop containment (§6)', () => {
       to: 'For each order',
     })
     expect(result.isOk()).toBe(true)
-    const loopBack = persistedGraph().edges.find((e) => e.targetHandle === 'loop-back')
+    const persisted = persistedGraph()
+    const loopBack = persisted.edges.find((e) => e.targetHandle === 'loop-back')
     expect(loopBack?.source).toBe(childId)
     expect(loopBack?.target).toBe(LOOP_ID)
-    expect(loopBack?.data?.isLoopBackEdge).toBe(true)
+    // `isLoopBackEdge` is derived from the handle (and from containment), so it
+    // is rebuilt on read rather than stored — see plan 23 §1.1.
+    expect(loopBack?.data).toBeUndefined()
+    const reloaded = reread(persisted).edges.find((e) => e.targetHandle === 'loop-back')
+    expect(reloaded?.data?.isLoopBackEdge).toBe(true)
   })
 
   it('deleting a loop deletes its children with it (canvas handleDeleteNode behaviour)', async () => {
@@ -689,7 +715,10 @@ describe('updateNode / disconnectNodes', () => {
     const persisted = persistedGraph()
     const loop = persisted.nodes.find((n) => n.id === LOOP_ID)
     expect(loop?.data?.maxIterations).toBe(5)
-    expect(loop?.data?.id).toBe(LOOP_ID)
+    // `data.id` duplicates `node.id`, so it is derived rather than stored — and
+    // it comes back on read (plan 23 §1.1).
+    expect(loop?.data).not.toHaveProperty('id')
+    expect(reread(persisted).nodes.find((n) => n.id === LOOP_ID)?.data?.id).toBe(LOOP_ID)
     expect(loop?.data?.type).toBe('loop')
   })
 

@@ -178,7 +178,6 @@ export const loopManifest: NodeManifest<LoopNodeData> = {
   color: '#8B5CF6', // Purple
   defaultData: () => ({
     title: 'Loop',
-    description: 'Iterate over each item in a list',
     itemsSource: '',
     // iteratorName is deprecated - always 'item' now
     maxIterations: LOOP_CONSTANTS.DEFAULT_MAX_ITERATIONS,

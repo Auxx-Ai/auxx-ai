@@ -1,6 +1,8 @@
 // packages/lib/src/cache/providers/workflow-apps-provider.ts
 
 import type { Database } from '@auxx/database'
+import { type GraphDocument, hydrateGraph } from '../../workflow-engine/catalog/graph-hydration'
+import { HYDRATION_OPTIONS } from '../../workflow-engine/catalog/hydration-policy'
 import { ArrayAccessor } from '../accessors'
 import type { CacheProvider } from '../org-cache-provider'
 
@@ -55,6 +57,26 @@ export interface CachedPublishedWorkflow {
   envVars: any | null
   variables: any | null
   createdById: string | null
+}
+
+/**
+ * The published graph, rebuilt into its full working shape (plan 23 §4.2).
+ *
+ * The cache is an undeclared FIFTH storage location for a workflow graph, and
+ * the decision (plan 23 §7) is that what it holds stays **canonical** — the
+ * stored document verbatim — with hydration happening HERE, at the read. So a
+ * cached blob is never a third shape, and a graph written by a draining
+ * pre-canonicalization instance still reads correctly (hydration is a no-op on
+ * a fat document).
+ *
+ * Call this instead of touching `publishedWorkflow.graph` directly. Every
+ * reader of a cached graph asks about trigger CONFIG — `machineMail`,
+ * `ownAddress`, `channelIds`, a scheduled trigger's `isEnabled` — off
+ * `node.data`, and `data.type` (the key each of them finds the trigger node by)
+ * is only guaranteed present after hydration.
+ */
+export function hydrateCachedGraph(graph: unknown): GraphDocument {
+  return hydrateGraph((graph ?? { nodes: [], edges: [] }) as GraphDocument, HYDRATION_OPTIONS)
 }
 
 /** Narrow a DB WorkflowApp + publishedWorkflow + draftWorkflow to the serializable cache shape */

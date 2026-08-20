@@ -28,35 +28,54 @@ import type { Database } from '@auxx/database'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { deriveTriggerColumns } from '../../workflow-engine/catalog/derive-trigger'
-import { stripDerivedKeys } from '../../workflow-engine/catalog/derived-keys'
+import { dehydrateGraph, type GraphDocument } from '../../workflow-engine/catalog/graph-hydration'
+import { DEHYDRATION_OPTIONS } from '../../workflow-engine/catalog/hydration-policy'
+import type { ManifestLookup } from '../../workflow-engine/catalog/types'
 import { hashGraphSemantics } from '../graph-hash'
 import type { WorkflowTriggerType, WorkflowUpdateInput } from '../types'
 import type { GraphEditScope } from './read'
 import type { DraftGraph, GraphEdge, GraphNode } from './types'
 
 /**
- * The same cleanup the canvas save applies (`use-workflow-save.ts`
- * `cleanNodes`/`cleanEdges`): `_`-prefixed keys in node and edge data never
- * persist. Agent-authored data must not carry them either — manifest
- * `defaultData` may (if-else ships `_targetBranches`), so cleaning here keeps
- * that invariant regardless of the mutation.
+ * The canonical stored shape (plan 23 §3), and one of the three write seams —
+ * this is now nothing but {@link dehydrateGraph}, the EXACT inverse of the
+ * `hydrateGraph` every read boundary runs.
+ *
+ * It used to be a `stripDerivedKeys` over `node.data`/`edge.data` and nowhere
+ * else, which is why `edge._waitingRun` sits in 16 stored edges including two
+ * published versions: a `_`-prefixed key on the node or edge OBJECT persisted
+ * forever. `dehydrateGraph` owns the `_` rule at every level of the document,
+ * and additionally removes everything hydration re-derives (so a load never
+ * counts as an edit) plus the keys that never held information
+ * (`isValid`/`errors`/`data.selected`/`outputVariables`).
+ *
+ * `lookup` must be the SAME manifest lookup the matching `hydrateGraph` used
+ * (`ops.ts` passes `ctx.lookup`): the two calls have to see one vocabulary of
+ * node types, or the pair stops being an exact inverse for app-block nodes.
+ * It is inert while `DEHYDRATION_OPTIONS` keeps the defaults layer off, and
+ * load-bearing the moment it is turned on.
  */
-export function cleanGraphForSave(graph: DraftGraph): DraftGraph {
-  const nodes: GraphNode[] = graph.nodes.map((node) => ({
-    ...node,
-    data: stripDerivedKeys((node.data ?? {}) as Record<string, unknown>),
-  }))
-  const edges: GraphEdge[] = graph.edges.map((edge) => {
-    if (!edge.data) return edge
-    const data = stripDerivedKeys(edge.data)
-    return { ...edge, data: Object.keys(data).length > 0 ? data : undefined }
+export function cleanGraphForSave(graph: DraftGraph, lookup?: ManifestLookup): DraftGraph {
+  const stored = dehydrateGraph(graph as unknown as GraphDocument, {
+    ...DEHYDRATION_OPTIONS,
+    ...(lookup ? { manifests: lookup } : {}),
   })
-  return { nodes, edges, ...(graph.viewport ? { viewport: graph.viewport } : {}) }
+  return {
+    nodes: stored.nodes as unknown as GraphNode[],
+    edges: stored.edges as unknown as GraphEdge[],
+    ...(stored.viewport ? { viewport: stored.viewport } : {}),
+  }
 }
 
 /** What a mutation hands the persist seam. */
 export interface PersistDraftInput {
   graph: DraftGraph
+  /**
+   * Manifest lookup for {@link cleanGraphForSave}. Pass the same one the graph
+   * was hydrated with (`DraftContext.lookup`); omitting it falls back to the
+   * core registry, which answers for the platform types and nothing else.
+   */
+  manifests?: ManifestLookup
   /** Optional WorkflowApp metadata to atomically restore with a failed AI turn. */
   name?: string
   description?: string | null
@@ -105,7 +124,7 @@ export async function persistDraft(
   scope: GraphEditScope,
   input: PersistDraftInput
 ): Promise<Result<PersistDraftOutcome, AuxxError>> {
-  const graph = cleanGraphForSave(input.graph)
+  const graph = cleanGraphForSave(input.graph, input.manifests)
 
   // Re-derive the trigger columns from the graph being written — the exact
   // derivation (and fallbacks) the canvas save posts.

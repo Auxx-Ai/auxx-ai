@@ -96,7 +96,6 @@ export interface DocumentExtractorNodeData extends BaseNodeData {
 export const documentExtractorNodeDataSchema = baseNodeDataSchema.extend({
   title: z.string().min(1),
   desc: z.string().optional(),
-  description: z.string().optional(),
 
   // Source configuration
   sourceType: z.enum(DocumentSourceType).default(DocumentSourceType.FILE),
