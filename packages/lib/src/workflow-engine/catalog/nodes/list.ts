@@ -738,7 +738,8 @@ export const listManifest: NodeManifest<ListNodeData> = {
    * `default`: a substitute list is a config value, not an error recovery.
    */
   errorHandling: {
-    strategies: [ErrorStrategy.fail, ErrorStrategy.continue],
+    // `fail` only — the outputs are the reason this node exists (§6.5).
+    strategies: [ErrorStrategy.fail],
     defaultStrategy: ErrorStrategy.fail,
   },
   agent: {

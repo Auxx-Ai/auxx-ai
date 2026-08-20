@@ -19,7 +19,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Check, ChevronLeft, ChevronRight, Copy, Search } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { TooltipExplanation } from '~/components/global/tooltip'
+import { Tooltip, TooltipExplanation } from '~/components/global/tooltip'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { useAvailableVariables } from '~/components/workflow/hooks'
 import { useDebounce } from '~/components/workflow/hooks/use-variable-performance'
@@ -774,6 +774,24 @@ const VariableCommandItem: React.FC<VariableCommandItemProps> = ({
               <Badge variant='purple' size='xs'>
                 {displayType}
               </Badge>
+              {/*
+                Path-conditional: this node is reachable from more than one of
+                the producing node's branches, and only some of them write this
+                output. Offered (the union rule), but marked, because it is
+                empty on the runs that took another path.
+
+                Deliberately NOT greyed out and deliberately branch-name-free.
+                Naming the branch would need a branch vocabulary, and a single
+                node type shows three different ones across four surfaces
+                (plan 21 §11) — "conditional" is true whatever they are called.
+              */}
+              {(item as UnifiedVariable).pathConditional && (
+                <Tooltip content='Only written on some of the branches that reach this node — empty on the other runs.'>
+                  <Badge variant='pill' size='xs' className='text-muted-foreground'>
+                    conditional
+                  </Badge>
+                </Tooltip>
+              )}
             </>
           )}
 

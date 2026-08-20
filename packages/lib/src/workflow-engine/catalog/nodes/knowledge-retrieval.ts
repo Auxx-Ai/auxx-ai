@@ -544,7 +544,10 @@ export const knowledgeRetrievalManifest: NodeManifest<KnowledgeRetrievalNodeData
    * result with `success: false` is (plan 21 §16.3). So no `default`.
    */
   errorHandling: {
-    strategies: [ErrorStrategy.fail, ErrorStrategy.continue],
+    // `fail` only. `continue` here means empty context reaches the AI node
+    // downstream, which then answers a customer confidently from nothing — a
+    // failed run is strictly better than a fabricated answer (plan 24 §6.5).
+    strategies: [ErrorStrategy.fail],
     defaultStrategy: ErrorStrategy.fail,
   },
   agent: {

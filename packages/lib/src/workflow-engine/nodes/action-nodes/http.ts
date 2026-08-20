@@ -17,7 +17,12 @@
 
 import { z } from 'zod'
 import { applyAuth, resolveConnectionForRuntime } from '../../../connections'
-import { ErrorStrategy, normalizeErrorStrategy } from '../../catalog/error-handling'
+import {
+  coerceDefaultValue,
+  ErrorStrategy,
+  normalizeErrorStrategy,
+  readDefaultValues,
+} from '../../catalog/error-handling'
 import type {
   Authorization,
   Body,
@@ -72,8 +77,10 @@ type HttpNodeConfig = Pick<
   | 'timeout'
   | 'ssl_verify'
   | 'retry_config'
-  | 'default_value'
+  | 'default_values'
 > & {
+  /** Legacy singular key on stored graphs — read via `readDefaultValues`. */
+  default_value?: DefaultValueConfig[]
   method: `${Method}`
   body: HttpBodyConfig
   authorization: HttpAuthConfig
@@ -114,6 +121,9 @@ const httpNodeConfigSchema = z.object({
     .optional()
     .default({ retry_enabled: false, max_retries: 1, retry_interval: 100 }),
   error_strategy: z.enum(['fail', 'none', 'continue', 'default']).optional().default('fail'),
+  // Both keys parse: the plural is canonical after plan 24 §10.4, the
+  // singular is what stored http graphs still carry until plan 21 §19 runs.
+  default_values: z.array(z.any()).optional().default([]),
   default_value: z.array(z.any()).optional().default([]),
 })
 
@@ -209,7 +219,7 @@ export class HttpProcessor extends BaseNodeProcessor {
         timeout: config.timeout,
         retryConfig: config.retry_config,
         errorStrategy: config.error_strategy,
-        defaultValues: config.default_value || [],
+        defaultValues: readDefaultValues(config),
         variablesUsed: Array.from(usedVariables),
       },
       metadata: {
@@ -423,16 +433,27 @@ export class HttpProcessor extends BaseNodeProcessor {
       const strategy = normalizeErrorStrategy(config.error_strategy)
 
       if (strategy === ErrorStrategy.continue) {
+        // `NodeExecutionResult.output` is NOT the variable namespace — the
+        // engine files it into `nodeResults`/traces, and only
+        // `setNodeVariable` reaches `{{…}}` resolution. Returning the error in
+        // `output` alone (which this arm did until plan 24 PR 2) left
+        // `{{Http.error}}` unresolvable on the one policy whose entire purpose
+        // is to hand you the error.
+        this.storeErrorVariables(node.nodeId, errorMessage, contextManager)
+
         return {
           status: NodeRunningStatus.Succeeded,
           // Continue on error: `continue` renders no fail handle in the
           // builder, so execution proceeds down the success path with the
           // error as output.
-          output: { error: errorMessage, status: 0 },
+          output: { error: errorMessage, status: 0, success: false },
           outputHandle: 'source',
         }
-      } else if (strategy === ErrorStrategy.default && config.default_value.length > 0) {
-        const defaultValues = await this.processDefaultValues(config.default_value, contextManager)
+      } else if (strategy === ErrorStrategy.default && readDefaultValues(config).length > 0) {
+        const defaultValues = await this.processDefaultValues(
+          readDefaultValues(config),
+          contextManager
+        )
         this.storeOutputVariables(node.nodeId, defaultValues, contextManager)
 
         return {
@@ -444,9 +465,17 @@ export class HttpProcessor extends BaseNodeProcessor {
 
       // Default: fail — 'fail' is the handle the builder renders and persists
       // for the Fail Branch, so the engine can route to a wired handler.
+      //
+      // Write the three outputs the manifest declares as `failOutputs` before
+      // returning. Without this the fail branch is unusable: nothing from this
+      // node is readable there, so "notify support with the error" is not
+      // buildable (plan 24 PR 2).
+      this.storeErrorVariables(node.nodeId, errorMessage, contextManager)
+
       return {
         status: NodeRunningStatus.Failed,
         error: errorMessage,
+        output: { error: errorMessage, status: 0, success: false },
         outputHandle: 'fail',
       }
     }
@@ -1007,6 +1036,24 @@ export class HttpProcessor extends BaseNodeProcessor {
   }
 
   /**
+   * The node variables a FAILED request writes, on either door.
+   *
+   * Exactly `catalog/nodes/http.ts`'s `failOutputs` — keep the two in step, or
+   * the picker offers a variable the run never wrote (or hides one it did).
+   * `status: 0` is "no response reached us", which is what a transport failure
+   * means; a non-2xx response is not this path.
+   */
+  private storeErrorVariables(
+    nodeId: string,
+    errorMessage: string,
+    contextManager: ExecutionContextManager
+  ): void {
+    contextManager.setNodeVariable(nodeId, 'status', 0)
+    contextManager.setNodeVariable(nodeId, 'error', errorMessage)
+    contextManager.setNodeVariable(nodeId, 'success', false)
+  }
+
+  /**
    * Store output variables from response
    */
   private storeOutputVariables(
@@ -1034,33 +1081,31 @@ export class HttpProcessor extends BaseNodeProcessor {
     defaultValues: DefaultValueConfig[],
     contextManager: ExecutionContextManager
   ): Promise<any> {
-    const result: any = { status: 200, success: true, body: {} }
+    // Each key is a DECLARED output path, so it lands at the top level and
+    // `storeOutputVariables` publishes it as `{{<node>.<key>}}`.
+    //
+    // This used to write EVERY key under `result.body[key]` while seeding
+    // `result` with a hard-coded `{ status: 200, success: true }` — so the
+    // panel's "Status Code" control set `body.status_code`, a path declared
+    // nowhere, and `{{Http.status}}` stayed 200 no matter what the author
+    // typed (plan 24 §9.1, the worst defect in the feature). The control was
+    // never wrong about its intent; it was wired to a path that did not exist.
+    //
+    // The closed key set is what makes the flat write safe: `status` reaches
+    // `status` because `status` is what the manifest declares, and a key that
+    // is not a declared output is now a validation error rather than a silent
+    // write into the void.
+    const result: Record<string, unknown> = { success: true }
 
     for (const defaultValue of defaultValues) {
       const value = await this.processText(defaultValue.value, contextManager)
-
-      switch (defaultValue.type) {
-        case 'string':
-          result.body[defaultValue.key] = value
-          break
-        case 'number':
-          result.body[defaultValue.key] = parseFloat(value) || 0
-          break
-        case 'boolean':
-          result.body[defaultValue.key] = value.toLowerCase() === 'true'
-          break
-        case 'object':
-        case 'array':
-          try {
-            result.body[defaultValue.key] = JSON.parse(value)
-          } catch {
-            result.body[defaultValue.key] = value
-          }
-          break
-        default:
-          result.body[defaultValue.key] = value
-      }
+      result[defaultValue.key] = coerceDefaultValue(defaultValue.type, value)
     }
+
+    // `status` is what `storeOutputVariables` reads, and a substitute response
+    // with no status is still a response — keep the 200 as a floor rather than
+    // publishing `status: 0`, which reads as "the request never happened".
+    if (result.status === undefined) result.status = 200
 
     return result
   }

@@ -387,7 +387,8 @@ export const documentExtractorManifest: NodeManifest<DocumentExtractorNodeData> 
    * document that could not be read.
    */
   errorHandling: {
-    strategies: [ErrorStrategy.fail, ErrorStrategy.continue],
+    // `fail` only — the outputs are the reason this node exists (§6.5).
+    strategies: [ErrorStrategy.fail],
     defaultStrategy: ErrorStrategy.fail,
   },
   agent: {

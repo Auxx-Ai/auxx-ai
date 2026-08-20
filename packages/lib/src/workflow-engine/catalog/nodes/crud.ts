@@ -5,7 +5,12 @@ import { z } from 'zod'
 import { generateCrudNodeVariablesFromFields } from '../../../resources/variable-generators'
 import { BaseType } from '../../core/types'
 import type { UnifiedVariable } from '../../types/unified-variable'
-import { ErrorStrategy, errorHandlingBranches } from '../error-handling'
+import {
+  ErrorStrategy,
+  errorHandlingBranches,
+  normalizeErrorStrategy,
+  validateDefaultValues,
+} from '../error-handling'
 import type { BaseNodeData } from '../node-base'
 import type { OutputContext } from '../output-context'
 import { resolveResourceGeneratorInputs } from '../resource-meta'
@@ -191,6 +196,25 @@ export const validateCrudNodeConfig = (data: CrudNodeData): NodeValidationResult
       type: 'warning',
     })
   }
+
+  // `default` with nothing configured is a silent no-op: `handleCrudError`'s
+  // `default` arm is guarded on a non-empty list and otherwise falls straight
+  // through to the fail arm, with no log and nothing in the panel (plan 24
+  // §9.2). `panel.tsx` has always rendered a `default_values` error slot;
+  // until now nothing populated it.
+  //
+  // `targets: undefined` because a manifest `validate` receives only `data` —
+  // crud's declared outputs need an `OutputContext` carrying the resource, so
+  // the KEY check cannot run here. The panel, which has the resource, runs the
+  // full check. Passing an empty target list instead would report every key as
+  // unknown.
+  errors.push(
+    ...validateDefaultValues({
+      strategy: normalizeErrorStrategy(data.error_strategy, ErrorStrategy.fail),
+      values: data.default_values,
+      targets: undefined,
+    })
+  )
 
   // Validate per-field update modes (multi-relation, MULTI_SELECT, multi-value scalar)
   if (data.fieldUpdateModes) {
@@ -553,8 +577,29 @@ export const crudManifest: NodeManifest<CrudNodeData> = {
     ],
   },
   errorHandling: {
-    strategies: [ErrorStrategy.fail, ErrorStrategy.continue, ErrorStrategy.default],
+    // No `continue`: this node WRITES data that downstream nodes read, so a
+    // silently-skipped write is a data-integrity bug, not an inconvenience
+    // (plan 24 §6.5). `default` covers "carry on with a stand-in" honestly.
+    strategies: [ErrorStrategy.fail, ErrorStrategy.default],
     defaultStrategy: ErrorStrategy.fail,
+    // The 5-key status block `handleCrudError` writes BEFORE the strategy
+    // switch (`nodes/action-nodes/crud.ts`). `record`, `id`, `deleted` and the
+    // whole `<entityDefId>.*` tree are source-only — the fail arm never writes
+    // them, and the picker offered them anyway until plan 24 §6.1.
+    failOutputs: ['success', 'error', 'errorDetails', 'operation', 'resourceType'],
+    // Written as an explicit `null` on the success path, so under strategy
+    // `fail` these two can never be anything else on `source` (§6.1a).
+    // `success` deliberately stays on both: it is a real boolean rather than a
+    // null, and it is the discriminator under `default`.
+    failureOnlyOutputs: ['error', 'errorDetails'],
+    // The same five, for a different reason — do not collapse the two lists.
+    // `handleCrudError` writes this block BEFORE the strategy switch, so a
+    // configured substitute for one of them is overwritten on the way past,
+    // and a `success: true` substitute on a failed create would state
+    // something untrue that the rest of the graph believes. What a `default`
+    // on crud is FOR is `id` / `record` / the record tree — "if the create
+    // fails, pretend it made this record" (plan 24 §10.2).
+    defaultValueExclude: ['success', 'error', 'errorDetails', 'operation', 'resourceType'],
   },
   agent: {
     authorable: true,

@@ -412,7 +412,8 @@ export const datasetManifest: NodeManifest<DatasetNodeData> = {
    * `fail` or `continue` only.
    */
   errorHandling: {
-    strategies: [ErrorStrategy.fail, ErrorStrategy.continue],
+    // `fail` only — the outputs are the reason this node exists (§6.5).
+    strategies: [ErrorStrategy.fail],
     defaultStrategy: ErrorStrategy.fail,
   },
   agent: {

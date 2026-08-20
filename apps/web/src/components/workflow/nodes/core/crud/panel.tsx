@@ -4,6 +4,7 @@
 
 import { isMultiRelationship } from '@auxx/lib/field-values/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { getManifest } from '@auxx/lib/workflow-engine/client'
 import {
   getRelatedEntityDefinitionId,
   type RelationshipConfig,
@@ -22,7 +23,8 @@ import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResource, useResourceFields } from '~/components/resources'
-import { useNodeCrud } from '~/components/workflow/hooks'
+import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import { DefaultValuesEditor } from '~/components/workflow/nodes/shared/default-values-editor'
 import {
   ErrorHandlingSection,
   type ErrorStrategyUpdate,
@@ -41,7 +43,6 @@ import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variable
 import Section from '~/components/workflow/ui/section'
 import { useWorkflowResources } from '../../../providers'
 import { BasePanel } from '../../shared/base/base-panel'
-import { DefaultValuesEditor } from './components/default-values-editor'
 import { RelationUpdateModeButton } from './components/relation-update-mode-button'
 import { getCrudNodeOutputVariables } from './output-variables'
 import { type CrudNodeData, ErrorStrategy } from './types'
@@ -77,6 +78,22 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
   const { resources } = useWorkflowResources()
 
   const { resource } = useResource(nodeData.resourceType)
+
+  const { isReadOnly } = useReadOnly()
+
+  // One resolution, two consumers: the read-only output display below and the
+  // defaults editor's target list. `panel.tsx` already made this call for the
+  // display while the editor took free-text keys two rows away (plan 24 §9.5)
+  // — the data was always right there.
+  const crudOutputVariables = useMemo(
+    () =>
+      getCrudNodeOutputVariables(nodeData, nodeId, {
+        resource,
+        allResources: resources,
+        resolveVariable: () => undefined,
+      }),
+    [nodeData, nodeId, resource, resources]
+  )
 
   const { creatableFields, updatableFields } = useResourceFields(nodeData.resourceType ?? null)
 
@@ -507,8 +524,12 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         }>
         <Field title='Default Values' description='Fallback values to use when operations fail'>
           <DefaultValuesEditor
-            defaultValues={nodeData.default_values || []}
+            nodeId={nodeId}
+            declaredOutputs={crudOutputVariables}
+            errorHandling={getManifest('crud')?.errorHandling}
+            values={nodeData.default_values || []}
             onChange={handleDefaultValuesChange}
+            isReadOnly={isReadOnly}
           />
           {showValidation && getFieldErrorMessage('default_values') && (
             <ValidationMessage
@@ -519,14 +540,7 @@ const CrudPanelComponent: React.FC<CrudPanelProps> = ({ nodeId, data }) => {
         </Field>
       </ErrorHandlingSection>
 
-      <OutputVariablesDisplay
-        outputVariables={getCrudNodeOutputVariables(nodeData, nodeId, {
-          resource,
-          allResources: resources,
-          resolveVariable: () => undefined,
-        })}
-        initialOpen={false}
-      />
+      <OutputVariablesDisplay outputVariables={crudOutputVariables} initialOpen={false} />
     </BasePanel>
   )
 }

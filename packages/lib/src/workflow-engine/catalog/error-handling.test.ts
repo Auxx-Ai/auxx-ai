@@ -1,12 +1,16 @@
 // packages/lib/src/workflow-engine/catalog/error-handling.test.ts
 
 import { describe, expect, it } from 'vitest'
+import { BaseType } from '../core/types'
+import type { UnifiedVariable } from '../types/unified-variable'
 import {
   DEFAULT_ERROR_STRATEGY,
   ErrorStrategy,
   errorHandlingBranches,
   hasFailBranch,
+  type NodeErrorHandling,
   normalizeErrorStrategy,
+  scopeOutputsToHandle,
 } from './error-handling'
 import { aiManifest } from './nodes/ai'
 import { answerManifest } from './nodes/answer'
@@ -88,6 +92,95 @@ describe('errorHandlingBranches — the one site that turns a policy into a hand
   })
 })
 
+describe('scopeOutputsToHandle', () => {
+  const N = 'node1'
+  const v = (id: string): UnifiedVariable => ({
+    id: `${N}.${id}`,
+    label: id,
+    type: BaseType.STRING,
+    category: 'node',
+  })
+  const DECLARED = [v('record'), v('id'), v('success'), v('error'), v('errorDetails')]
+  const ids = (vars: UnifiedVariable[]) => vars.map((x) => x.id.slice(`${N}.`.length))
+
+  const EH: NodeErrorHandling = {
+    strategies: [ErrorStrategy.fail, ErrorStrategy.default],
+    defaultStrategy: ErrorStrategy.fail,
+    failOutputs: ['success', 'error', 'errorDetails'],
+    failureOnlyOutputs: ['error', 'errorDetails'],
+  }
+  const scope = (handle: string, strategy = 'fail', eh: NodeErrorHandling | undefined = EH) =>
+    ids(scopeOutputsToHandle(eh, { error_strategy: strategy }, N, handle, DECLARED))
+
+  it('keeps only failOutputs on the failure door', () => {
+    expect(scope('fail')).toEqual(['success', 'error', 'errorDetails'])
+  })
+
+  it('treats the legacy `onError` handle as the same door', () => {
+    // `ERROR_LIKE_HANDLES`, not a fourth literal `'fail'`.
+    expect(scope('onError')).toEqual(['success', 'error', 'errorDetails'])
+  })
+
+  it('subtracts failureOnlyOutputs from `source` under strategy fail', () => {
+    expect(scope('source')).toEqual(['record', 'id', 'success'])
+  })
+
+  it('subtracts NOTHING from `source` under continue or default', () => {
+    // The failure lands on this handle under those policies, so the error keys
+    // are the point rather than provably-null noise.
+    expect(scope('source', 'default')).toEqual(ids(DECLARED))
+    expect(scope('source', 'continue')).toEqual(ids(DECLARED))
+  })
+
+  it('falls back to the manifest default when the strategy is unset', () => {
+    expect(ids(scopeOutputsToHandle(EH, {}, N, 'source', DECLARED))).toEqual([
+      'record',
+      'id',
+      'success',
+    ])
+  })
+
+  it('reads the legacy `none` as continue', () => {
+    expect(scope('source', 'none')).toEqual(ids(DECLARED))
+  })
+
+  it('is a no-op without a declaration, or without the lists', () => {
+    // Called directly: `scope`'s default parameter would swallow an explicit
+    // `undefined` and hand back `EH`.
+    expect(
+      ids(scopeOutputsToHandle(undefined, { error_strategy: 'fail' }, N, 'fail', DECLARED))
+    ).toEqual(ids(DECLARED))
+    const bare: NodeErrorHandling = {
+      strategies: [ErrorStrategy.fail],
+      defaultStrategy: ErrorStrategy.fail,
+    }
+    // ABSENT `failOutputs` means "the fail branch carries everything" — the
+    // opt-in discipline. Distinct from an EMPTY array.
+    expect(scope('fail', 'fail', bare)).toEqual(ids(DECLARED))
+    expect(scope('source', 'fail', bare)).toEqual(ids(DECLARED))
+  })
+
+  it('treats an EMPTY failOutputs as "writes nothing", not as absent', () => {
+    const empty: NodeErrorHandling = {
+      strategies: [ErrorStrategy.fail],
+      defaultStrategy: ErrorStrategy.fail,
+      failOutputs: [],
+    }
+    expect(scope('fail', 'fail', empty)).toEqual([])
+  })
+
+  it('matches on the un-prefixed key, leaving nested ids alone', () => {
+    const nested: UnifiedVariable[] = [
+      { id: `${N}.error`, label: 'error', type: BaseType.STRING, category: 'node' },
+      { id: `${N}.record.error`, label: 'error', type: BaseType.STRING, category: 'node' },
+    ]
+    // Only the TOP-LEVEL `error` is failure-exclusive; `record.error` is a
+    // different path that happens to end in the same segment.
+    const kept = scopeOutputsToHandle(EH, { error_strategy: 'fail' }, N, 'source', nested)
+    expect(kept.map((x) => x.id)).toEqual([`${N}.record.error`])
+  })
+})
+
 describe('manifest declarations', () => {
   it('names exactly the types that opted in (plan 21 §16.3 + §18.1)', () => {
     // An exact-set assertion, not a superset: opting a type in is a product
@@ -117,31 +210,82 @@ describe('manifest declarations', () => {
     ['dataset', datasetManifest],
     ['knowledge-retrieval', knowledgeRetrievalManifest],
     ['list', listManifest],
-  ])('%s offers fail + continue but never default', (_id, manifest) => {
+  ])('%s offers fail ALONE', (_id, manifest) => {
     // No `default`: none of these has an output shape worth substituting —
     // there is no meaningful "default chunks" or default set of retrieved
     // documents (plan 21 §15.4).
+    //
+    // No `continue` either, as of plan 24 §6.5: for all five the outputs ARE
+    // the reason the node exists, and `continue` collapses success and failure
+    // onto one handle, so `source` stops meaning "it worked" and no amount of
+    // handle scoping can make the picker honest about it.
     expect(manifest.errorHandling).toEqual({
-      strategies: [ErrorStrategy.fail, ErrorStrategy.continue],
+      strategies: [ErrorStrategy.fail],
       defaultStrategy: ErrorStrategy.fail,
     })
   })
 
-  it('ai offers all three — it has a substitutable output shape', () => {
+  it('ai offers fail + default — it has a substitutable output shape', () => {
+    // `continue` retired (§6.5): the generated text is the point of the node.
+    // `default` stays, because a declared stand-in is the honest way to say
+    // "carry on without it".
     expect(aiManifest.errorHandling).toEqual({
-      strategies: [ErrorStrategy.fail, ErrorStrategy.continue, ErrorStrategy.default],
+      strategies: [ErrorStrategy.fail, ErrorStrategy.default],
       defaultStrategy: ErrorStrategy.fail,
     })
   })
 
-  it.each([
-    ['http', httpManifest],
-    ['crud', crudManifest],
-  ])('%s declares all three strategies and defaults to fail', (_id, manifest) => {
-    expect(manifest.errorHandling).toEqual({
+  it('crud offers fail + default — it writes data others read', () => {
+    expect(crudManifest.errorHandling).toEqual({
+      strategies: [ErrorStrategy.fail, ErrorStrategy.default],
+      defaultStrategy: ErrorStrategy.fail,
+      failOutputs: ['success', 'error', 'errorDetails', 'operation', 'resourceType'],
+      failureOnlyOutputs: ['error', 'errorDetails'],
+      // Same five as `failOutputs`, different reason — `handleCrudError`
+      // writes the status block BEFORE the strategy switch, so substituting
+      // one is either overwritten or a lie (plan 24 §10.2). Do not collapse
+      // the two lists: http's `failOutputs` contains `status`, which is
+      // precisely the substitute its editor exists to set.
+      defaultValueExclude: ['success', 'error', 'errorDetails', 'operation', 'resourceType'],
+    })
+  })
+
+  it('http is the ONE type that keeps continue', () => {
+    // A fire-and-forget outbound call is a real pattern and this node is
+    // usually terminal — nothing downstream depends on what it produces, which
+    // is exactly the §6.5 test for offering `continue` at all.
+    expect(httpManifest.errorHandling).toEqual({
       strategies: [ErrorStrategy.fail, ErrorStrategy.continue, ErrorStrategy.default],
       defaultStrategy: ErrorStrategy.fail,
+      failOutputs: ['status', 'error', 'success'],
+      failureOnlyOutputs: ['error'],
     })
+  })
+
+  it('no type offers continue except http', () => {
+    // The guard on §6.5 drifting back. `continue` stays in the ENUM and in
+    // `normalizeErrorStrategy` — the vocabulary is unified and persisted rows
+    // must keep parsing — but the per-type MENU is where the policy lives.
+    const offering = listManifests()
+      .filter((m) => m.errorHandling?.strategies.includes(ErrorStrategy.continue))
+      .map((m) => m.id)
+    expect(offering).toEqual(['http'])
+  })
+
+  it('every failureOnlyOutputs is a subset of its failOutputs', () => {
+    // The two lists encode a three-way partition (plan 24 §6.1a): `failOutputs`
+    // is `always ∪ fail-only`, so a key that is failure-EXCLUSIVE must also be
+    // one the failure path writes. A `failureOnlyOutputs` entry missing from
+    // `failOutputs` would subtract a variable from `source` that the fail
+    // branch does not offer either — leaving it readable nowhere.
+    for (const manifest of listManifests()) {
+      const eh = manifest.errorHandling
+      if (!eh?.failureOnlyOutputs?.length) continue
+      expect(eh.failOutputs, `${manifest.id} declares failureOnlyOutputs`).toBeDefined()
+      for (const key of eh.failureOnlyOutputs) {
+        expect(eh.failOutputs, `${manifest.id}.${key}`).toContain(key)
+      }
+    }
   })
 
   it.each([

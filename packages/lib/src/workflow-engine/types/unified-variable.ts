@@ -106,4 +106,23 @@ export interface UnifiedVariable {
   // UI hints (optional)
   icon?: string // Icon for UI display
   color?: string // Color for UI display
+
+  /**
+   * This variable is offered by the UNION over the branches a consumer is
+   * reachable on, but is not written on all of them — plan 24 §4.6's
+   * `union − intersection`.
+   *
+   * Set per CONSUMER by the picker's availability pass, never by a manifest's
+   * `resolveOutputs`: whether an output is path-conditional is a property of
+   * the reader's position in the graph, not of the producing node. A join fed
+   * by both a `source` and a `fail` branch legitimately sees the union, but
+   * half those runs took the other path, so the ref resolves on some runs and
+   * interpolates to `''` on the rest.
+   *
+   * The picker's counterpart to `ref-check.ts`'s `severity: 'info'` finding —
+   * the two are asserted to agree in
+   * `parity/branch-scope-parity.test.ts`. Purely advisory: it changes how a
+   * row renders, never whether it is offered.
+   */
+  pathConditional?: boolean
 }
