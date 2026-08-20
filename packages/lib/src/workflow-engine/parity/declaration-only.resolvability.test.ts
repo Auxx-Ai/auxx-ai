@@ -23,8 +23,9 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { ErrorStrategy } from '../catalog/error-handling'
 import type { CrudNodeData } from '../catalog/nodes/crud'
-import { CrudErrorStrategy, crudManifest } from '../catalog/nodes/crud'
+import { crudManifest } from '../catalog/nodes/crud'
 import type { FindNodeData } from '../catalog/nodes/find'
 import { findManifest } from '../catalog/nodes/find'
 import { ALL_RESOURCES, EMPTY_FIELDS_DEF_ID, EMPTY_FIELDS_RESOURCE } from './fixtures'
@@ -69,7 +70,7 @@ describe('declaration-only: empty-fields status variables', () => {
       resourceType: EMPTY_FIELDS_DEF_ID,
       mode: 'create',
       data: {},
-      error_strategy: CrudErrorStrategy.fail,
+      error_strategy: ErrorStrategy.fail,
       default_values: [],
     } as unknown as CrudNodeData
     const ids = crudManifest.resolveOutputs!(data, 'crud_empty', emptyContext).map((v) => v.id)
@@ -93,7 +94,7 @@ describe('declaration-only: empty-fields status variables', () => {
       mode: 'delete',
       resourceId: 'whatever',
       data: {},
-      error_strategy: CrudErrorStrategy.fail,
+      error_strategy: ErrorStrategy.fail,
       default_values: [],
     } as unknown as CrudNodeData
     const ids = crudManifest.resolveOutputs!(data, 'crud_empty_delete', emptyContext).map(

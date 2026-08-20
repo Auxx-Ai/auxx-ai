@@ -93,6 +93,14 @@ export {
   stripDerivedKeys,
 } from './catalog/derived-keys'
 export {
+  DEFAULT_ERROR_STRATEGY,
+  ErrorStrategy,
+  errorHandlingBranches,
+  hasFailBranch,
+  type NodeErrorHandling,
+  normalizeErrorStrategy,
+} from './catalog/error-handling'
+export {
   buildDownstreamMap,
   buildUpstreamMap,
   computeLoopAncestry,
@@ -163,7 +171,6 @@ export {
 } from './catalog/nodes/code'
 export {
   type CrudDefaultValue,
-  CrudErrorStrategy,
   type CrudNodeData as CatalogCrudNodeData,
   createCrudNodeDefaultData,
   crudManifest,
@@ -254,7 +261,6 @@ export {
   BodyPayloadValueType,
   BodyType,
   type DefaultValueItem,
-  ErrorStrategy,
   extractHttpVariableIds,
   getHttpOutputVariables,
   type HttpNodeData as CatalogHttpNodeData,

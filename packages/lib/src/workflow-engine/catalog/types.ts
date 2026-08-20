@@ -2,6 +2,7 @@
 
 import type { z } from 'zod'
 import type { WorkflowTriggerType } from '../core/types'
+import type { NodeErrorHandling } from './error-handling'
 import type { OutputResolver } from './output-context'
 
 /**
@@ -168,6 +169,23 @@ export interface NodeManifest<TConfig = unknown> {
   resolveOutputs?: OutputResolver<TConfig>
 
   connection: NodeConnectionRules<TConfig>
+
+  /**
+   * Failure policy this type opts into — *what happens when this node fails*,
+   * of which exactly one value (`fail`) produces a branch.
+   *
+   * ABSENT ⇒ a failure is fatal, exactly as today. That is the point: "not all
+   * nodes have error handling" becomes an explicit declaration instead of an
+   * accident of which processor happened to return a handle. Six authorable
+   * types emit `outputHandle: 'error'` today with nothing declaring it
+   * anywhere (plan 21 §7.4); they join by declaring this, not by growing a
+   * seventh special case in the graph builder.
+   *
+   * `strategies` is per type because `default` needs an output shape worth
+   * substituting — http has a response body, crud has a record; a chunker has
+   * no meaningful "default chunks" (plan 21 §15.4).
+   */
+  errorHandling?: NodeErrorHandling
   agent?: NodeAgentDocs
 }
 

@@ -2,15 +2,18 @@
 
 'use client'
 
+import { hasFailBranch as configHasFailBranch } from '@auxx/lib/workflow-engine/client'
 import { memo } from 'react'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
 import type { NodeProps } from '~/components/workflow/types'
 import { NodeSourceHandle, NodeTargetHandle } from '~/components/workflow/ui/node-handle'
-import { ErrorStrategy, type HttpNodeData } from './types'
+import type { HttpNodeData } from './types'
 
 export const HttpNode = memo<NodeProps<HttpNodeData>>(({ id, data, selected }) => {
   // Calculate total source handles based on error strategy
-  const hasFailBranch = data.error_strategy === ErrorStrategy.fail
+  // Same predicate the manifest's `connection.branches` uses, so the handle
+  // this renders and the branch the catalog declares can never disagree.
+  const hasFailBranch = configHasFailBranch(data)
   const totalSourceHandles = hasFailBranch ? 2 : 1
 
   // Augment data with handle count for collapsed height calculation

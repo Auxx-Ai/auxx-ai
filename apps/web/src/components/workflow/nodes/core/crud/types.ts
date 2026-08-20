@@ -10,9 +10,11 @@ import type { NodeType } from '~/components/workflow/types/node-types'
 // as BaseNodeData does over its lib counterpart.
 export {
   type CrudDefaultValue,
-  CrudErrorStrategy,
   createCrudNodeDefaultData,
   crudNodeDataSchema,
+  // One failure-policy vocabulary now (plan 21 §15.1) — `CrudErrorStrategy`
+  // and http's old `ErrorStrategy` were two enums for the same concern.
+  ErrorStrategy,
 } from '@auxx/lib/workflow-engine/client'
 
 /**

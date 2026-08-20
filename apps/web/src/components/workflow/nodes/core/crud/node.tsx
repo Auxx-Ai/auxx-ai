@@ -2,12 +2,13 @@
 
 'use client'
 
+import { hasFailBranch as configHasFailBranch } from '@auxx/lib/workflow-engine/client'
 import type React from 'react'
 import { NodeSourceHandle } from '~/components/workflow/ui/node-handle'
 import { NodeTargetHandle } from '~/components/workflow/ui/node-handle/target-handle'
 import { useWorkflowResources } from '../../../providers'
 import { BaseNode } from '../../shared/base/base-node'
-import { CrudErrorStrategy, type CrudNodeData } from './types'
+import type { CrudNodeData } from './types'
 
 interface CrudNodeProps {
   id: string
@@ -24,7 +25,9 @@ export const CrudNode: React.FC<CrudNodeProps> = ({ id, data, selected }) => {
   const resource = getResourceById(resourceType)
 
   // Calculate total source handles based on error strategy
-  const hasFailBranch = error_strategy === CrudErrorStrategy.fail
+  // Same predicate the manifest's `connection.branches` uses, so the handle
+  // this renders and the branch the catalog declares can never disagree.
+  const hasFailBranch = configHasFailBranch({ error_strategy })
   const totalSourceHandles = hasFailBranch ? 2 : 1
 
   // Augment data with handle count for collapsed height calculation
