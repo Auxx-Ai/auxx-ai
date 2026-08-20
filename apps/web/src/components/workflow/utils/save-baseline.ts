@@ -67,9 +67,9 @@ export const EMPTY_SAVE_BASELINE: WorkflowSaveBaseline = { graph: null, envText:
  * must land on the same string when they mean the same workflow.
  */
 export function projectGraph(graph: unknown): ProjectedGraph {
-  // Same policy as the write seam (see workflow-save-provider). A baseline
-  // built under a different `skipDefaults` than the payload would compare two
-  // different documents and either save constantly or never save at all.
+  // Same policy as the write seam (see workflow-save-provider). A baseline built
+  // under a different policy than the payload would compare two different
+  // documents and either save constantly or never save at all.
   const projection = projectGraphSemantics(
     dehydrateGraph((graph ?? {}) as GraphDocument, DEHYDRATION_OPTIONS)
   )

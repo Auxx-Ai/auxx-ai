@@ -129,10 +129,7 @@ export function createResourceTriggerDefaultData(
     desc: `Triggered when a record is ${operation}`,
     icon: getResourceTriggerIcon(resourceType, operation),
     variables: [],
-    isValid: true,
-    errors: [],
     disabled: false,
-    outputVariables: [],
     resourceType,
     operation: operation as 'created' | 'updated' | 'deleted' | 'manual',
     // No filter = fire on every record. The engine reads this key.

@@ -295,12 +295,12 @@ export function WorkflowSaveProvider({ children }: { children: React.ReactNode }
       // `graph` object, so posting the live camera would rewrite the authored
       // starting view on every save, and omitting the key would erase it.
       const authoredViewport = useWorkflowStore.getState().authoredViewport
-      // DEHYDRATION_OPTIONS is NOT optional here. Without it `skipDefaults`
-      // defaults to off, so the strip deletes every `node.data` key whose value
-      // equals its manifest default — while every server reader hydrates with
-      // `skipDefaults: true` and never puts it back. That silently amputates
-      // real config (`http.method`, `resource-trigger.operation`,
-      // `scheduled.config`, `wait.waitType`) on the first canvas save.
+      // DEHYDRATION_OPTIONS is NOT optional here — it is the shared policy every
+      // reader is paired with, and passing nothing means storing a differently
+      // shaped document from every other writer. It used to be worse than a
+      // shape difference: the option it carried deleted real config
+      // (`http.method`, `resource-trigger.operation`) on the first canvas save
+      // (#1770 → #1771). That layer is deleted; the pairing discipline is not.
       const stored = dehydrateGraph(
         {
           nodes: cleanNodes,

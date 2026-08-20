@@ -103,6 +103,14 @@ export interface NodeLoopContext {
 /**
  * Base data structure for all workflow nodes.
  * apps/web extends this with `type: NodeType` (its enum narrowing).
+ *
+ * `isValid`, `errors`, `outputVariables` and `selected` used to live here. All
+ * four were dead: `isValid`/`errors` were hardcoded `true`/`[]` by both writers
+ * and updated by nothing (138 of 138 stored nodes), `outputVariables` is
+ * answered by the manifest's `resolveOutputs`, and `data.selected` had zero
+ * readers repo-wide — React Flow owns selection at `node.selected`.
+ * `dehydrateGraph` strips all four, so declaring them here only invited a
+ * writer to keep minting them.
  */
 export interface BaseNodeData extends NodeRuntimeState, NodeLoopContext {
   // Core properties
@@ -115,13 +123,7 @@ export interface BaseNodeData extends NodeRuntimeState, NodeLoopContext {
   icon?: string
   color?: string
 
-  // Validation state
-  isValid?: boolean
-  errors?: string[]
   disabled?: boolean
-
-  // Output tracking
-  outputVariables?: string[]
 
   // Credential connection
   credentialId?: string | null
@@ -129,9 +131,6 @@ export interface BaseNodeData extends NodeRuntimeState, NodeLoopContext {
   // Error handling
   errorStrategy?: ErrorHandleType
   retryConfig?: WorkflowRetryConfig
-
-  // Selection state (from NodeHandleProps)
-  selected: boolean
 
   // Additional properties for React Flow compatibility
   [key: string]: any
@@ -152,13 +151,7 @@ export const baseNodeDataSchema = z.object({
   icon: z.string().optional(),
   color: z.string().optional(),
 
-  // Validation state
-  isValid: z.boolean().optional(),
-  errors: z.array(z.string()).optional(),
   disabled: z.boolean().optional(),
-
-  // Output tracking
-  outputVariables: z.array(z.string()).optional(),
 
   // Error handling
   errorStrategy: z.enum(ErrorHandleType).optional(),
@@ -169,9 +162,6 @@ export const baseNodeDataSchema = z.object({
       backoffMultiplier: z.number().optional(),
     })
     .optional(),
-
-  // Selection state
-  selected: z.boolean().default(false),
 
   collapsed: z.boolean().optional(),
 

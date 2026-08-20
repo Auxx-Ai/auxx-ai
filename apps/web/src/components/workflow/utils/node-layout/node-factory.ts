@@ -66,19 +66,27 @@ export class NodeFactory {
       })
     }
 
-    // Create flattened node data structure
+    // Create flattened node data structure.
+    //
+    // `isValid: true` / `errors: []` / `selected: false` used to be stamped here
+    // too. Nothing ever read them and nothing ever updated them — they were
+    // `true`/`[]`/`false` on 138 of 138 stored nodes — so they were bytes in the
+    // column that carried no information. `dehydrateGraph` strips all three.
+    //
+    // `id`, `isInLoop` and `loopId` stay because this builds a node for the LIVE
+    // React Flow store, which is the hydrated working shape; hydration writes
+    // exactly these on the next load, and dehydration removes them on save.
     const nodeData = {
       // Core properties
       id: nodeId,
       desc: definition.description,
-      isValid: true,
-      errors: [],
       disabled: false,
       isInLoop,
       loopId,
+      // Derived (`_`-prefixed, never persisted) but LIVE: the handle components
+      // read them to decide whether a handle renders as connected.
       _connectedSourceHandleIds: [],
       _connectedTargetHandleIds: [],
-      selected: false,
       // Spread all merged data
       ...mergedData,
       // type must come after spread so defaultData.type can't overwrite the definition ID

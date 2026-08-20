@@ -379,7 +379,7 @@ export async function revertWorkflowTurn(
   // "the canvas moved on" for every Undo. Running the write seam's own cleanup
   // first puts both sides in the same shape.
   const liveSemanticHash = loaded.value.graph
-    ? hashGraphSemantics(cleanGraphForSave(loaded.value.graph, loaded.value.lookup))
+    ? hashGraphSemantics(cleanGraphForSave(loaded.value.graph))
     : undefined
   if (
     snapshot.postTurnGraphSemanticHash !== undefined &&
@@ -398,7 +398,6 @@ export async function revertWorkflowTurn(
 
   const persisted = await persistDraft(db, scope, {
     graph: snapshot.graph,
-    manifests: loaded.value.lookup,
     fallbackTriggerType: snapshot.triggerType,
     name: snapshot.name,
     description: snapshot.description,

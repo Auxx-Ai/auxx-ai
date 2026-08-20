@@ -1003,6 +1003,38 @@ export function isPathWritten(path: string, writes: string[]): boolean {
  * normal result-routing and prove nothing either way, so only string-literal
  * comparisons are collected.
  */
+/**
+ * Every strict comparison in the engine core against a DEFAULT handle literal —
+ * `sourceHandle === 'source'` or `targetHandle === 'target'`.
+ *
+ * These are the comparisons that break when a stored edge omits its handle,
+ * because `===` against a literal has no tolerance for absence the way
+ * `edge.sourceHandle ?? 'source'` does. `DEHYDRATION_OPTIONS` now strips default
+ * handles on save, so the column will increasingly NOT carry them, and the only
+ * reason these still work is that every engine path reaches the document
+ * through `WorkflowGraphBuilder.build()`, which hydrates the handles back in
+ * (pinned by `core/__tests__/loop-handle-stripping.test.ts`).
+ *
+ * A NEW comparison is therefore only safe if it reads the normalised array. The
+ * parity suite holds a per-file census so adding one has to come here and say
+ * which array it reads.
+ *
+ * Grouped by file, since line numbers drift with every edit and a count is the
+ * part that carries the signal.
+ */
+export function readDefaultHandleComparisons(): Map<string, number> {
+  const coreDir = join(ENGINE_ROOT, 'core')
+  const census = new Map<string, number>()
+  for (const path of listSources(coreDir)) {
+    const source = stripComments(readFileSync(path, 'utf8'))
+    const hits = [
+      ...source.matchAll(/\b(?:sourceHandle|targetHandle)\s*===\s*'(?:source|target)'/g),
+    ].length
+    if (hits > 0) census.set(path.replace(`${ENGINE_ROOT}/`, ''), hits)
+  }
+  return census
+}
+
 export function readEngineRoutedHandleLiterals(): Array<{ handle: string; file: string }> {
   const coreDir = join(ENGINE_ROOT, 'core')
   const lookups: Array<{ handle: string; file: string }> = []
