@@ -147,6 +147,12 @@ const NON_CONFIG_KEYS = new Set([
   'height',
   'variables',
   'outputVariables',
+  // Legacy only: the manual trigger's mirrored connected-input id list. No
+  // writer produces it any more (`catalog/nodes/manual.ts`) and it is gone from
+  // the schema, so `describe_node_type` no longer offers it — but stored rows
+  // still carry it, and echoing a list that drifted from the edges in 7 of 8
+  // workflows is exactly what made it worth deleting.
+  'inputNodes',
 ])
 
 /** Hash durable node data only; derived keys are regenerated and stripped on save. */
