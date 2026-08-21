@@ -19,7 +19,7 @@ import {
   relationFieldWriteMode,
 } from '../../import'
 import type { FieldWriteModes, ImportMappingProperty, ImportPlan } from '../../import/types'
-import { getRealtimeService, publishRecordsInvalidated } from '../../realtime'
+import { getRealtimeService, publishRecordsInvalidated, publishRunCompleted } from '../../realtime'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { getFieldOutputKey } from '../../resources/registry/field-types'
 import type { JobContext } from '../types'
@@ -411,6 +411,25 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
     // Final frame, unthrottled: the last batch's progress publish may have been
     // swallowed by the throttle, and it is the one carrying the tail of the rows.
     await invalidateRecords(true)
+
+    // §7b run-completion edge — the importer's first completion signal (until
+    // now its only realtime footprint was the throttled invalidate above). Per-
+    // def changed counts from what execution already tracks: the import's own
+    // def gets created+updated, relation auto-create targets get their created
+    // counts (minted BEFORE `executePlan`, so never double-counted in the
+    // statistics). Keys may be slug-keyed here; `publishRunCompleted`
+    // canonicalizes and merges. Fire-and-forget — never fails the import.
+    const defCounts: Record<string, number> = {
+      [entityDefinitionId]: result.statistics.created + result.statistics.updated,
+    }
+    for (const [defId, count] of Object.entries(relationCreates.byEntityDefinition)) {
+      defCounts[defId] = (defCounts[defId] ?? 0) + count
+    }
+    await publishRunCompleted(getRealtimeService(), organizationId, {
+      source: 'import',
+      ref: jobId,
+      defCounts,
+    }).catch(() => {})
 
     // B2: persist the captured manifest on the ImportJob row and publish ONE pointer
     // event — the same row-transport the connector path uses (no inline cap, no silent
