@@ -119,7 +119,14 @@ export async function createIngestContext(
     db,
     logger: createScopedLogger(`ingest:${organizationId.slice(0, 8)}`),
     systemUserId,
-    crudHandler: new UnifiedCrudHandler(organizationId, systemUserId, db, opts.socketId),
+    // Steady-state ingest is `automation` (plan 03 §3.3): inline lane, so
+    // fan-out is identical to before — the session exists for attribution.
+    // During initial mail backfill this becomes a `sync` session keyed off the
+    // channel's `backfillCutoffAt` state (plan 03 Phase 7, D-8) — not in this
+    // slice.
+    crudHandler: new UnifiedCrudHandler(organizationId, systemUserId, db, opts.socketId, {
+      session: { origin: { kind: 'automation', actor: systemUserId }, depth: 0 },
+    }),
     reconciler: new MessageReconcilerService(organizationId, threadManager, db),
     threadManager,
     selectiveCache: opts.selectiveCache ?? new SelectiveModeCache(),

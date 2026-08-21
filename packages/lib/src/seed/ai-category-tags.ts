@@ -44,7 +44,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { UnifiedCrudHandler } from '../resources/crud'
+import { seedSession, UnifiedCrudHandler } from '../resources/crud'
 import { type RecordId, toRecordId } from '../resources/resource-id'
 
 const logger = createScopedLogger('ai-category-tags')
@@ -344,35 +344,31 @@ async function adoptLegacySystemStarter(
   if (flagRow?.valueBoolean !== true) return 'left-alone'
 
   const recordId = toRecordId(tagDefId, instanceId)
-  const seedOpts = { skipEvents: true }
+  // Both handlers run under a seed session: the silent lane suppresses events
+  // exactly as the per-call `skipEvents: true` used to.
+  const session = seedSession('ai category tag seeding')
 
   // 1. Unfreeze. Needs the same bypass the create path uses, because `is_system_tag` is
   //    `creatable: false` and `dropUnauthorizedSystemFlag` drops unauthorized writes.
   const unfreeze = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
     bypassFieldGuards: new Set(['is_system_tag']),
+    session,
   })
-  // NB `update` is (recordId, values, MODES, options) — options is the FOURTH
-  // arg, unlike `create`. Passing seedOpts third silently lands in the
-  // array-field mode map.
-  await unfreeze.update(recordId, { is_system_tag: false }, undefined, seedOpts)
+  await unfreeze.update(recordId, { is_system_tag: false })
 
   // 2. Now an ordinary tag, so `rejectIfSystemTag` lets the description through. The only
   //    bypass here is the one `tag_template_key` structurally requires.
   const handler = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
     bypassFieldGuards: new Set(['tag_template_key']),
+    session,
   })
-  await handler.update(
-    recordId,
-    {
-      tag_description: seed.description,
-      tag_parent: parentRecordId,
-      tag_scope: THREAD_SCOPE,
-      tag_ai_classify: true,
-      tag_template_key: seed.templateKey,
-    },
-    undefined,
-    seedOpts
-  )
+  await handler.update(recordId, {
+    tag_description: seed.description,
+    tag_parent: parentRecordId,
+    tag_scope: THREAD_SCOPE,
+    tag_ai_classify: true,
+    tag_template_key: seed.templateKey,
+  })
 
   logger.info('Adopted legacy system tag as an AI category starter', {
     organizationId,
@@ -510,12 +506,12 @@ export async function seedAiCategoryTags(
     // with the bypass. Scoped to this handler: it documents the privilege boundary, and writing
     // `is_system_tag: false` explicitly (rather than leaning on the default) is what makes
     // "these are ORDINARY tags" a fact in the data rather than an omission.
+    // The seed session's silent lane suppresses events — no active users to notify during
+    // a seed, and each invalidation costs seconds on Lambda when Redis is slow.
     const handler = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
       bypassFieldGuards: new Set(['is_system_tag', 'tag_template_key']),
+      session: seedSession('ai category tag seeding'),
     })
-    // No active users to notify during a seed, and each invalidation costs seconds on Lambda
-    // when Redis is slow.
-    const seedOpts = { skipEvents: true }
 
     const existingParentId = existingByTitle.get(AI_CATEGORY_PARENT_TAG.title)
 
@@ -524,21 +520,17 @@ export async function seedAiCategoryTags(
       parentRecordId = toRecordId(tagDef.id, existingParentId)
       skipped.push(AI_CATEGORY_PARENT_TAG.title)
     } else {
-      const parent = await handler.create(
-        TAG_DEF,
-        {
-          title: AI_CATEGORY_PARENT_TAG.title,
-          tag_description: AI_CATEGORY_PARENT_TAG.description,
-          tag_emoji: AI_CATEGORY_PARENT_TAG.emoji,
-          tag_color: AI_CATEGORY_PARENT_TAG.color,
-          tag_scope: THREAD_SCOPE,
-          // The container is not a label the classifier may apply.
-          tag_ai_classify: false,
-          tag_template_key: AI_CATEGORY_PARENT_TAG.templateKey,
-          is_system_tag: false,
-        },
-        seedOpts
-      )
+      const parent = await handler.create(TAG_DEF, {
+        title: AI_CATEGORY_PARENT_TAG.title,
+        tag_description: AI_CATEGORY_PARENT_TAG.description,
+        tag_emoji: AI_CATEGORY_PARENT_TAG.emoji,
+        tag_color: AI_CATEGORY_PARENT_TAG.color,
+        tag_scope: THREAD_SCOPE,
+        // The container is not a label the classifier may apply.
+        tag_ai_classify: false,
+        tag_template_key: AI_CATEGORY_PARENT_TAG.templateKey,
+        is_system_tag: false,
+      })
       parentRecordId = parent.recordId
       created.push(AI_CATEGORY_PARENT_TAG.title)
     }
@@ -562,21 +554,17 @@ export async function seedAiCategoryTags(
         continue
       }
 
-      await handler.create(
-        TAG_DEF,
-        {
-          title: tag.title,
-          tag_description: tag.description,
-          tag_emoji: tag.emoji,
-          tag_color: tag.color,
-          tag_parent: parentRecordId,
-          tag_scope: THREAD_SCOPE,
-          tag_ai_classify: true,
-          tag_template_key: tag.templateKey,
-          is_system_tag: false,
-        },
-        seedOpts
-      )
+      await handler.create(TAG_DEF, {
+        title: tag.title,
+        tag_description: tag.description,
+        tag_emoji: tag.emoji,
+        tag_color: tag.color,
+        tag_parent: parentRecordId,
+        tag_scope: THREAD_SCOPE,
+        tag_ai_classify: true,
+        tag_template_key: tag.templateKey,
+        is_system_tag: false,
+      })
       created.push(tag.title)
     }
 

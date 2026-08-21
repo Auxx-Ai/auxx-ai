@@ -26,32 +26,44 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+type StubSession = { origin: { kind: string; reason?: string }; depth: number }
+
 const h = vi.hoisted(() => ({
   creates: [] as { entityType: string; values: Record<string, unknown> }[],
   constructorOptions: [] as unknown[],
   createImpl: null as null | ((values: Record<string, unknown>) => void),
-  /** Every `update` in call order, each tagged with the bypass set its handler carried. */
+  /**
+   * Every `update` in call order, each tagged with the bypass set AND the write
+   * session its handler carried — suppression now rides the session, not a
+   * per-call flag.
+   */
   updates: [] as {
     recordId: string
     values: Record<string, unknown>
     bypass: string[]
+    session?: { origin: { kind: string; reason?: string }; depth: number }
     modes?: Record<string, 'set' | 'add' | 'remove'>
     options?: Record<string, unknown>
   }[],
 }))
 
 vi.mock('../resources/crud', () => ({
+  // Mirrors the real helper: a seed session's lane is 'silent', which is what
+  // replaced the per-call `skipEvents: true`.
+  seedSession: (reason: string) => ({ origin: { kind: 'seed', reason }, depth: 0 }),
   UnifiedCrudHandler: class {
     private bypass: string[]
+    private session?: StubSession
     constructor(
       _orgId: string,
       _userId: string,
       _db: unknown,
       _socketId: unknown,
-      options?: { bypassFieldGuards?: Set<string> }
+      options?: { bypassFieldGuards?: Set<string>; session?: StubSession }
     ) {
       h.constructorOptions.push(options)
       this.bypass = [...(options?.bypassFieldGuards ?? [])]
+      this.session = options?.session
     }
     async create(entityType: string, values: Record<string, unknown>) {
       h.creates.push({ entityType, values })
@@ -71,7 +83,14 @@ vi.mock('../resources/crud', () => ({
       modes?: Record<string, 'set' | 'add' | 'remove'>,
       options?: Record<string, unknown>
     ) {
-      h.updates.push({ recordId, values, bypass: this.bypass, modes, options })
+      h.updates.push({
+        recordId,
+        values,
+        bypass: this.bypass,
+        session: this.session,
+        modes,
+        options,
+      })
       return { instance: { id: recordId }, recordId, values }
     }
   },
@@ -395,8 +414,17 @@ describe('seedAiCategoryTags', () => {
     const { db } = makeDb(queue())
     return seedAiCategoryTags(db, ORG, 'user_1').then(() => {
       expect(h.constructorOptions).toHaveLength(1)
-      const options = h.constructorOptions[0] as { bypassFieldGuards: Set<string> }
+      const options = h.constructorOptions[0] as {
+        bypassFieldGuards: Set<string>
+        session?: StubSession
+      }
       expect([...options.bypassFieldGuards].sort()).toEqual(['is_system_tag', 'tag_template_key'])
+      // The handler is constructed under a seed session — the silent lane that
+      // replaced the per-call `skipEvents: true`.
+      expect(options.session).toEqual({
+        origin: { kind: 'seed', reason: 'ai category tag seeding' },
+        depth: 0,
+      })
     })
   })
 
@@ -550,10 +578,15 @@ describe('seedAiCategoryTags — adopting legacy system starters', () => {
     expect(retune.values.tag_description).toBe(
       AI_CATEGORY_CORE_TAGS.find((t) => t.title === 'Sales')?.description
     )
-    // Options ride in the FOURTH arg; third is the array-mode map and must stay empty.
+    // Suppression rides the handler's seed session now — no per-call flags at
+    // all: the array-mode map stays empty and no options object is passed.
     for (const call of [unfreeze, retune]) {
       expect(call.modes).toBeUndefined()
-      expect(call.options).toEqual({ skipEvents: true })
+      expect(call.options).toBeUndefined()
+      expect(call.session).toEqual({
+        origin: { kind: 'seed', reason: 'ai category tag seeding' },
+        depth: 0,
+      })
     }
   })
 

@@ -584,7 +584,11 @@ export class CrmDomain {
 
     // Seed for each target organization
     for (const org of this.organizations) {
-      const handler = new UnifiedCrudHandler(org.id, org.ownerId, db)
+      // Seed session: silent lane — same suppression the per-call
+      // `skipEvents: true` used to provide, declared once at construction.
+      const handler = new UnifiedCrudHandler(org.id, org.ownerId, db, undefined, {
+        session: { origin: { kind: 'seed', reason: 'demo CRM seed data' }, depth: 0 },
+      })
 
       // Companies first (contacts reference company domains via email).
       const companiesByDomain = await this.seedCompanies(handler)
@@ -640,7 +644,7 @@ export class CrmDomain {
       company_headquarters: c.headquarters,
     }))
 
-    const { created, errors } = await handler.bulkCreate('company', values, { skipEvents: true })
+    const { created, errors } = await handler.bulkCreate('company', values)
 
     if (errors.length > 0) {
       console.log(`⚠️  ${errors.length} company creation errors:`)
@@ -743,9 +747,7 @@ export class CrmDomain {
     }
 
     if (newContactValues.length > 0) {
-      const { created, errors } = await handler.bulkCreate('contact', newContactValues, {
-        skipEvents: true,
-      })
+      const { created, errors } = await handler.bulkCreate('contact', newContactValues)
 
       if (errors.length > 0) {
         console.log(`⚠️  ${errors.length} contact creation errors:`)
@@ -894,14 +896,9 @@ export class CrmDomain {
       const companyId = companiesByDomain.get(domain)
       if (!companyId) continue
 
-      // Signature is update(recordId, values, modes?, options?) — the options
-      // object must go in the 4th slot or skipEvents is silently dropped.
-      await handler.update(
-        `${contactDefId}:${row.entityId}` as never,
-        { contact_employer: `${companyDefId}:${companyId}` },
-        undefined,
-        { skipEvents: true }
-      )
+      await handler.update(`${contactDefId}:${row.entityId}` as never, {
+        contact_employer: `${companyDefId}:${companyId}`,
+      })
       linkedEmployers++
 
       if (!firstContactByCompany.has(companyId)) {
@@ -911,12 +908,9 @@ export class CrmDomain {
 
     let primaryContactsSet = 0
     for (const [companyId, contactId] of firstContactByCompany) {
-      await handler.update(
-        `${companyDefId}:${companyId}` as never,
-        { company_primary_contact: `${contactDefId}:${contactId}` },
-        undefined,
-        { skipEvents: true }
-      )
+      await handler.update(`${companyDefId}:${companyId}` as never, {
+        company_primary_contact: `${contactDefId}:${contactId}`,
+      })
       primaryContactsSet++
     }
 
