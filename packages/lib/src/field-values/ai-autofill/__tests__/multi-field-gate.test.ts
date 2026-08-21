@@ -45,8 +45,11 @@ describe('buildJsonSchema — multi-value defense in depth', () => {
   })
 
   it('still builds the scalar schema for single-value fields', async () => {
+    // EMAIL is nullable as of v2.1: a fabricated address is indistinguishable
+    // from a real one, so the schema admits `null` and the prompt tells the
+    // model to decline rather than invent.
     expect(buildJsonSchema(field({}))).toMatchObject({
-      schema: { properties: { value: { type: 'string' } } },
+      schema: { properties: { value: { type: ['string', 'null'] } } },
     })
   })
 })

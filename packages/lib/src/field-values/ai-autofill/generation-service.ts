@@ -11,10 +11,12 @@ import { isAiField } from '../../custom-fields/ai'
 import { extractFieldIdsFromString, formulaToString } from '../../custom-fields/formula-converters'
 import { BadRequestError } from '../../errors'
 import { createFieldValueContext, getField } from '../field-value-helpers'
+import { getOrgCurrencyCode } from '../org-currency'
 import { computeInputHash } from './input-hash'
 import { buildJsonSchema } from './json-schema-builder'
 import { buildPrompt } from './prompt-builder'
 import { resolveReferences } from './reference-resolver'
+import { type AiFieldContext, normalizeGeneratedValue } from './type-specs'
 
 const logger = createScopedLogger('ai-autofill:generation-service')
 
@@ -84,31 +86,38 @@ export async function generateFieldValue(params: {
   // 3. Resolve refs (sibling + 1-hop relationships in one batchGetValues call)
   const resolved = await resolveReferences(ctx, { recordId, fieldKeys })
 
-  // 4. Build final prompts
+  // 4. Resolve the org rung of the CURRENCY denomination chain (field → org →
+  //    USD) so the prompt can name the denomination the model must convert to.
+  //    Org-cache-backed, and only for the one type that reads it.
+  const fieldContext: AiFieldContext =
+    field.type === 'CURRENCY' ? { orgCurrencyCode: await getOrgCurrencyCode(orgId) } : {}
+
+  // 5. Build final prompts
   const { resolvedPrompt, systemPrompt, truncated } = buildPrompt({
     promptJson,
     resolved,
     field,
+    context: fieldContext,
   })
   if (truncated) {
     logger.warn('AI autofill prompt truncated at 32k chars', { fieldId, recordId })
   }
 
-  // 5. Build output schema from field.type + options
-  const jsonSchema = buildJsonSchema(field)
+  // 6. Build output schema from field.type + options
+  const jsonSchema = buildJsonSchema(field, fieldContext)
 
-  // 6. Compute input hash for stale-detection BEFORE the LLM call so the
+  // 7. Compute input hash for stale-detection BEFORE the LLM call so the
   //    hash is deterministic on success regardless of LLM output.
   const inputHash = computeInputHash({ promptJson, resolved })
 
-  // 7. Resolve default LLM for this org
+  // 8. Resolve default LLM for this org
   const systemModels = new SystemModelService(database, orgId)
   const def = await systemModels.getDefault(ModelType.LLM)
   if (!def) {
     throw new BadRequestError('No default LLM configured for this organization')
   }
 
-  // 8. Invoke. LLMOrchestrator handles quota enforcement + AiUsage tracking.
+  // 9. Invoke. LLMOrchestrator handles quota enforcement + AiUsage tracking.
   const orchestrator = new LLMOrchestrator(new UsageTrackingService(database), database)
   const response = await orchestrator.invoke({
     model: def.model,
@@ -125,12 +134,18 @@ export async function generateFieldValue(params: {
     context: { source: 'autofill', fieldId, recordId },
   })
 
-  // 9. Unwrap the `{ value: ... }` envelope produced by buildJsonSchema.
+  // 10. Unwrap the `{ value: ... }` envelope produced by buildJsonSchema, then
+  //     run the type's normalize step so the commit path sees exactly what
+  //     `validateSingleValue` accepts. A nullable decline arrives here as
+  //     `null` and stays `null` — `setValueWithBuiltIn` clears the value.
   const structured = response.structured_output
   if (!structured || !('value' in structured)) {
     throw new BadRequestError('AI response did not match the expected structured output shape')
   }
-  const value = (structured as { value: unknown }).value
+  const value = await normalizeGeneratedValue((structured as { value: unknown }).value, field, {
+    ...fieldContext,
+    organizationId: orgId,
+  })
 
   return {
     value,

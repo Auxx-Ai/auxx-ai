@@ -3,7 +3,7 @@
 'use client'
 
 import type { FieldType } from '@auxx/database/types'
-import type { RichReferencePrompt, SelectOption } from '@auxx/types/custom-field'
+import type { AiOptions, RichReferencePrompt, SelectOption } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
 import { AlertTriangle, Play, Sparkles } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -14,10 +14,12 @@ interface AiPreviewPanelProps {
   /** The field type currently selected in the dialog. */
   type: FieldType
   /**
-   * Native options for the selected type — only SELECT/MULTI_SELECT supply any
-   * (the enum list the preview grounds its json-schema on).
+   * Native options for the selected type — only SELECT/MULTI_SELECT/TAGS supply
+   * any (the enum list the preview grounds its json-schema on). TAGS also
+   * carries the in-dialog `ai` block, because `allowNewOptions` decides whether
+   * the preview's schema is an enum or free-text.
    */
-  options?: { options: SelectOption[] }
+  options?: { options: SelectOption[]; ai?: AiOptions }
   /** TipTap prompt JSON the user is editing. */
   prompt: RichReferencePrompt
   /** Field name (used in the LLM system prompt). */

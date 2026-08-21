@@ -21,6 +21,8 @@ export interface AiSectionState {
   enabled: boolean
   prompt: RichReferencePrompt
   triggerOn: AiTriggerOn
+  /** TAGS only — may the model mint tag options that do not exist yet? */
+  allowNewOptions: boolean
 }
 
 /**
@@ -33,6 +35,7 @@ export function parseAiOptions(options?: unknown): AiSectionState {
     enabled: ai?.enabled ?? false,
     prompt: ai?.prompt ?? emptyPromptDoc(),
     triggerOn: ai?.triggerOn ?? 'manual',
+    allowNewOptions: ai?.allowNewOptions ?? false,
   }
 }
 
@@ -47,6 +50,9 @@ export function formatAiOptions(state: AiSectionState): AiOptions | undefined {
     enabled: true,
     prompt: state.prompt,
     triggerOn: state.triggerOn,
+    // Omitted rather than stored as `false` — absent means "pick from my
+    // taxonomy", which is the default for every non-TAGS type too.
+    ...(state.allowNewOptions ? { allowNewOptions: true } : {}),
   }
 }
 
@@ -62,7 +68,7 @@ interface AiOptionsSectionProps {
   aiSiblingFieldIds?: string[]
   /** Selected field type — forwarded to the preview panel for json-schema generation. */
   fieldType: FieldType
-  /** Native options for the selected type (only SELECT/MULTI_SELECT supply any). */
+  /** Native options for the selected type (only SELECT/MULTI_SELECT/TAGS supply any). */
   fieldOptions?: { options: SelectOption[] }
   /** Field display name, threaded into the preview's system prompt. */
   fieldName?: string
@@ -128,9 +134,25 @@ export function AiOptionsSection({
         </RadioGroup>
       </div>
 
+      {fieldType === 'TAGS' && (
+        <ToggleCard
+          title='Let AI create new tags'
+          description="Off, the model picks from this field's existing tags. On, it may add tags that don't exist yet."
+          checked={state.allowNewOptions}
+          onCheckedChange={(allowNewOptions) => onChange({ ...state, allowNewOptions })}
+        />
+      )}
+
       <AiPreviewPanel
         type={fieldType}
-        options={fieldOptions}
+        options={
+          // The preview builds its schema from these options, so an open TAGS
+          // field has to carry `allowNewOptions` through or the dry run would
+          // enumerate the existing tags the live generation is free to grow.
+          fieldType === 'TAGS' && fieldOptions
+            ? { ...fieldOptions, ai: formatAiOptions(state) }
+            : fieldOptions
+        }
         prompt={state.prompt}
         name={fieldName}
         entityDefinitionId={entityDefinitionId}

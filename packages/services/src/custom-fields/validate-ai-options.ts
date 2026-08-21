@@ -26,8 +26,9 @@ export interface ValidateAiOptionsInput {
   /** `options.ai` parsed from the incoming create/update payload. `undefined`
    *  when the caller did not set an AI block — no validation runs. */
   ai: AiOptions | undefined
-  /** SINGLE_SELECT / MULTI_SELECT option set at save time. Empty or missing
-   *  on an AI-enabled select rejects. */
+  /** SINGLE_SELECT / MULTI_SELECT / TAGS option set at save time. Empty or
+   *  missing on an AI-enabled select rejects — except an open TAGS field
+   *  (`ai.allowNewOptions`), which is allowed to start from nothing. */
   selectOptions?: SelectOption[]
   /** Field id being updated, so we don't flag self-references against the
    *  updated field's own AI state. `undefined` on create. */
@@ -40,7 +41,8 @@ export interface ValidateAiOptionsInput {
  * Rules (per toggle-04 plan):
  *   1. `enabled=true` is only allowed on AI-eligible field types.
  *   2. Prompt must contain non-empty text or at least one field reference.
- *   3. SINGLE_SELECT / MULTI_SELECT require a non-empty options list.
+ *   3. SINGLE_SELECT / MULTI_SELECT / constrained TAGS require a non-empty
+ *      options list.
  *   4. Prompt may not reference any other AI-enabled field in the org
  *      (no AI→AI chains — decision T4.2).
  *
@@ -65,10 +67,15 @@ export async function validateAiOptions(
     return err({ code: 'VALIDATION_ERROR', message: 'AI prompt cannot be empty' })
   }
 
-  if (
-    (type === 'SINGLE_SELECT' || type === 'MULTI_SELECT') &&
-    (!selectOptions || selectOptions.length === 0)
-  ) {
+  // An enum-backed schema over an empty option list is unsatisfiable, so the
+  // generation would fail at the provider with an opaque error. Open TAGS is
+  // exempt: it has no enum, and inventing the first tags is the whole point.
+  const needsOptions =
+    type === 'SINGLE_SELECT' ||
+    type === 'MULTI_SELECT' ||
+    (type === 'TAGS' && ai.allowNewOptions !== true)
+
+  if (needsOptions && (!selectOptions || selectOptions.length === 0)) {
     return err({
       code: 'VALIDATION_ERROR',
       message: 'AI-enabled select fields require at least one option',

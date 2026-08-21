@@ -3,6 +3,7 @@
 import type { CustomFieldEntity } from '@auxx/database/types'
 import { type FormulaNode, formulaToString } from '../../custom-fields/formula-converters'
 import type { ResolvedReference } from './reference-resolver'
+import { type AiFieldContext, getAiTypeSpec } from './type-specs'
 
 /** 32k char cap on the assembled user prompt (decision T4.5). */
 const MAX_USER_PROMPT_CHARS = 32_000
@@ -27,8 +28,10 @@ export function buildPrompt(params: {
   promptJson: FormulaNode
   resolved: Map<string, ResolvedReference>
   field: CustomFieldEntity
+  /** Values the shape hint cannot derive from the field alone (org currency). */
+  context?: AiFieldContext
 }): BuiltPrompt {
-  const { promptJson, resolved, field } = params
+  const { promptJson, resolved, field, context } = params
 
   const template = formulaToString(promptJson)
 
@@ -43,7 +46,7 @@ export function buildPrompt(params: {
 
   return {
     resolvedPrompt: text,
-    systemPrompt: buildSystemPrompt(field),
+    systemPrompt: buildSystemPrompt(field, context),
     truncated,
   }
 }
@@ -57,39 +60,24 @@ function truncateToCap(input: string, max: number): { text: string; truncated: b
 /**
  * Static system prompt tailored to the field's native type. Tells the model
  * how to format the value so the `json_schema` envelope parses cleanly.
+ *
+ * The shape line and the refusal line both come from the field type's entry in
+ * `AI_TYPE_SPECS`, so the natural-language contract cannot drift from the
+ * machine contract the provider enforces.
  */
-function buildSystemPrompt(field: CustomFieldEntity): string {
-  const typeHint = describeExpectedShape(field)
+function buildSystemPrompt(field: CustomFieldEntity, context?: AiFieldContext): string {
+  const spec = getAiTypeSpec(field.type)
   return [
     'You generate values for fields on business records.',
     'Read the user instructions carefully, honour any referenced field values,',
     'and return ONLY the JSON envelope requested by the response schema.',
     `Field name: "${field.name}"`,
-    typeHint,
-    'If you cannot produce a confident answer, return the most reasonable value',
-    'that fits the schema rather than refusing.',
+    spec?.shapeHint(field, context) ?? '',
+    // A nullable type's schema admits `null`, so "return the most reasonable
+    // value rather than refusing" would push the model into fabricating one —
+    // the exact failure the null branch exists to prevent.
+    spec?.nullable
+      ? 'If the instructions do not contain the information, return null. Never invent a value.'
+      : 'If you cannot produce a confident answer, return the most reasonable value\nthat fits the schema rather than refusing.',
   ].join('\n')
-}
-
-function describeExpectedShape(field: CustomFieldEntity): string {
-  switch (field.type) {
-    case 'TEXT':
-      return 'Produce concise plain text. No markdown, no quotation marks around the whole value.'
-    case 'NUMBER':
-      return 'Produce a numeric value. No units, no thousands separators.'
-    case 'CHECKBOX':
-      return 'Produce a boolean: true or false.'
-    case 'DATE':
-      return 'Produce an ISO calendar date in YYYY-MM-DD form.'
-    case 'URL':
-      return 'Produce a fully-qualified URL including the https:// scheme.'
-    case 'EMAIL':
-      return 'Produce a single RFC-5322 email address.'
-    case 'SINGLE_SELECT':
-      return 'Choose exactly one option id from the enumerated set in the schema.'
-    case 'MULTI_SELECT':
-      return 'Choose zero or more option ids from the enumerated set in the schema.'
-    default:
-      return ''
-  }
 }

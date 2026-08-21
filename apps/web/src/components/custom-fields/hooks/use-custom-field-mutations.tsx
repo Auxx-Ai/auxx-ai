@@ -341,10 +341,33 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       if (variables.sortOrder !== undefined) optimisticUpdates.sortOrder = variables.sortOrder
       if (variables.active !== undefined) optimisticUpdates.active = variables.active
       if (variables.options !== undefined) {
-        // Handle options - can be SelectOption[], file config, etc.
-        optimisticUpdates.options = Array.isArray(variables.options)
+        // MERGE, never replace. `updateCustomField` spreads the patch over the
+        // field's stored options, so a partial patch keeps every key it doesn't
+        // mention — `{ ai }` from the field form (TAGS and the other non-SELECT
+        // AI-eligible types send exactly that), a bare `SelectOption[]` from the
+        // tag picker. Replacing here made the untouched keys vanish from the UI
+        // the moment the mutation fired, and `confirmFieldUpdate` below promotes
+        // this object into `serverFieldMap`, so the gap outlived the refetch and
+        // only a reload brought the options back.
+        const current = (store.fieldMap[key]?.options ?? {}) as Record<string, unknown>
+        const incoming = Array.isArray(variables.options)
           ? { options: variables.options }
-          : variables.options
+          : (variables.options as Record<string, unknown>)
+        const merged: Record<string, unknown> = { ...current, ...incoming }
+
+        // Mirror the server's `ai` rule exactly (see update-field.ts): only an
+        // object-shaped patch addresses the AI block, and there it is
+        // authoritative — absent or disabled both clear it. An array patch is
+        // options-only and leaves `ai` alone.
+        if (!Array.isArray(variables.options)) {
+          if (incoming.ai) {
+            merged.ai = incoming.ai
+          } else {
+            delete merged.ai
+          }
+        }
+
+        optimisticUpdates.options = merged as ResourceField['options']
       }
 
       store.setFieldOptimistic(key, optimisticUpdates)

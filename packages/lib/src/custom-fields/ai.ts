@@ -11,10 +11,11 @@ import { toFieldType } from '../field-values/stored-field-type'
 /**
  * Whether a field type is in the AI-generatable whitelist.
  *
- * v1 eligible: TEXT, NUMBER, CHECKBOX, DATE, URL, EMAIL, SINGLE_SELECT,
- * MULTI_SELECT. Source of truth is `AI_ELIGIBLE_FIELD_TYPES` in
- * `@auxx/types/custom-field`; the `canAiGenerate` flag on `fieldTypeOptions`
- * must stay in sync for the UI gating path.
+ * Source of truth is `AI_ELIGIBLE_FIELD_TYPES` in `@auxx/types/custom-field`,
+ * coupled by an exact-set-equality test to the per-type contract table
+ * `AI_TYPE_SPECS` in `field-values/ai-autofill/type-specs.ts`. This is the
+ * gate the create/edit dialog renders on and the one services validates saves
+ * against — there is no third list.
  */
 export function isAiEligible(type: FieldType): boolean {
   return isAiEligibleFieldType(type)
