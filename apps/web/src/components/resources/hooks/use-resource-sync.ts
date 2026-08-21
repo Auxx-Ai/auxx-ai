@@ -5,10 +5,13 @@
 import type {
   FieldValuesUpdatedEvent,
   RecordArchivedEvent,
+  RecordChangedEntry,
   RecordCreatedEvent,
   RecordDeletedEvent,
+  RecordsChangedEvent,
   RecordsInvalidatedEvent,
   RecordUpdatedEvent,
+  RunCompletedEvent,
 } from '@auxx/lib/realtime'
 import { getInstanceId, isRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import type { FieldReference, FieldValueKey } from '@auxx/types/field'
@@ -92,6 +95,38 @@ function cachedValueRequests(
     if (!key.startsWith(prefix)) continue
     const { recordId, fieldRef, entityInstanceId } = parseFieldValueKey(key as FieldValueKey)
     if (!recordIds.has(entityInstanceId)) continue
+    requests.push({ recordId, fieldRef })
+  }
+  return requests
+}
+
+/**
+ * The (record, field) pairs the value store holds for the LISTED entries only —
+ * the targeted counterpart of `cachedValueRequests`. An entry with `fieldIds`
+ * restricts the match to those field-ref keys (the segment after the second
+ * colon of a `FieldValueKey`); without it, every cached field of that record
+ * qualifies. Records/fields not already cached are never fetched.
+ */
+function cachedValueRequestsForEntries(
+  entityDefinitionId: string,
+  entries: RecordChangedEntry[]
+): Array<{ recordId: RecordId; fieldRef: FieldReference }> {
+  // `null` = all cached fields of the record; a set = only those field refs.
+  const wantedByInstance = new Map<string, Set<string> | null>()
+  for (const entry of entries) {
+    wantedByInstance.set(entry.recordId, entry.fieldIds ? new Set(entry.fieldIds) : null)
+  }
+  const prefix = `${entityDefinitionId}:`
+  const requests: Array<{ recordId: RecordId; fieldRef: FieldReference }> = []
+  for (const key of Object.keys(useFieldValueStore.getState().values)) {
+    if (!key.startsWith(prefix)) continue
+    const { recordId, fieldRef, entityInstanceId } = parseFieldValueKey(key as FieldValueKey)
+    const wanted = wantedByInstance.get(entityInstanceId)
+    if (wanted === undefined) continue
+    if (wanted !== null) {
+      const fieldRefKey = key.slice(prefix.length + entityInstanceId.length + 1)
+      if (!wanted.has(fieldRefKey)) continue
+    }
     requests.push({ recordId, fieldRef })
   }
   return requests
@@ -250,6 +285,80 @@ export function useResourceSync() {
     [runCatchUp]
   )
 
+  // List-only counterpart of `scheduleCatchUp`, same coalesce window. The
+  // tier-2 `records:changed` frame names its changed records, so lanes 2–3 run
+  // TARGETED (listed ids only, in the handler) — only lane 1 (row membership:
+  // creates/archives the id-list query must re-derive) still needs the coarse
+  // per-def invalidate, coalesced so a chunked burst costs one pass.
+  const listInvalidateDefsRef = useRef<Set<string>>(new Set())
+  const listInvalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const scheduleListInvalidate = useCallback(
+    (entityDefinitionId: string) => {
+      listInvalidateDefsRef.current.add(entityDefinitionId)
+      if (listInvalidateTimerRef.current) return
+      listInvalidateTimerRef.current = setTimeout(() => {
+        listInvalidateTimerRef.current = null
+        const defIds = [...listInvalidateDefsRef.current]
+        listInvalidateDefsRef.current.clear()
+        for (const defId of defIds) {
+          invalidateLists(defId)
+          utils.record.listFiltered.invalidate({ entityDefinitionId: defId })
+        }
+      }, CATCH_UP_COALESCE_MS)
+    },
+    [invalidateLists, utils]
+  )
+
+  // Tier-2 batched delta (plan events/03 §7b): the frame lists WHICH records
+  // changed (ids only — D-18), so instead of the full per-def catch-up we run
+  // the same three lanes scoped to the payload: coalesced list invalidate,
+  // `getByIds` for listed ids already in the record store, and a value refetch
+  // for listed (record, field) pairs already in the value store. Nothing that
+  // is not cached/displayed is fetched — an un-materialized def costs only the
+  // (cheap) list invalidate of an unloaded query.
+  const handleRecordsChanged = useCallback(
+    (raw: unknown) => {
+      const data = raw as RecordsChangedEvent['data']
+      const { entityDefinitionId, entries } = data
+      if (entries.length === 0) return
+
+      scheduleListInvalidate(entityDefinitionId)
+
+      // Lane 2 — record meta, listed ids we already hold only. Each frame is
+      // capped at 100 entries by the publisher, matching `getByIds`' input cap.
+      const held = getRecordStoreState().records[entityDefinitionId]
+      const cachedIds = entries.map((e) => e.recordId).filter((id) => held?.has(id))
+      if (cachedIds.length > 0) {
+        utils.record.getByIds
+          .fetch(
+            { items: cachedIds.map((id) => toRecordId(entityDefinitionId, id)) },
+            { staleTime: 0 }
+          )
+          .then((result) => {
+            for (const item of Object.values(result ?? {})) {
+              updateRecord(entityDefinitionId, item.id, {
+                displayName: item.displayName,
+                secondaryInfo: item.secondaryInfo,
+                avatarUrl: item.avatarUrl,
+                // Same reason as `runCatchUp`: the row-effective rung may have
+                // moved with the write, and only `_access` carries it.
+                _access: item._access,
+              })
+            }
+          })
+          .catch(() => {
+            /* best-effort; the next frame or subscribe catch-up retries */
+          })
+      }
+
+      // Lane 3 — cell values, listed (record, field) pairs already cached.
+      const requests = cachedValueRequestsForEntries(entityDefinitionId, entries)
+      if (requests.length > 0) fieldValueFetchQueue.refetch(requests)
+    },
+    [scheduleListInvalidate, updateRecord, utils]
+  )
+
   // Merge fieldValues:updated into the store. An entry with `value` present
   // goes through `setValues` (which preserves the pending-optimistic skip).
   // An entry with `aiStatus` present writes the AI marker — `null` clears it.
@@ -376,6 +485,8 @@ export function useResourceSync() {
           return handleRecordDeleted(payload)
         case 'record:archived':
           return handleRecordArchived(payload)
+        case 'records:changed':
+          return handleRecordsChanged(payload)
         case 'records:invalidated':
           return handleRecordsInvalidated(payload)
       }
@@ -386,6 +497,7 @@ export function useResourceSync() {
       handleRecordUpdated,
       handleRecordDeleted,
       handleRecordArchived,
+      handleRecordsChanged,
       handleRecordsInvalidated,
     ]
   )
@@ -402,24 +514,41 @@ export function useResourceSync() {
     [scheduleCatchUp]
   )
 
+  // A bulk run (connector sync / import execution) finished. `defCounts` keys
+  // are canonical def ids, so they address the same catch-up the def channels
+  // use. For now this is only the authoritative refetch trigger — a
+  // "Import finished: N records" toast/badge layers on here later.
+  const handleRunCompleted = useCallback(
+    (raw: unknown) => {
+      const data = raw as RunCompletedEvent['data']
+      for (const entityDefinitionId of Object.keys(data.defCounts)) {
+        scheduleCatchUp(entityDefinitionId)
+      }
+    },
+    [scheduleCatchUp]
+  )
+
   useEffect(
     () => () => {
       if (catchUpTimerRef.current) clearTimeout(catchUpTimerRef.current)
+      if (listInvalidateTimerRef.current) clearTimeout(listInvalidateTimerRef.current)
     },
     []
   )
 
-  // Org-channel dispatcher — def-catalog changes only.
+  // Org-channel dispatcher — def-catalog changes + run-completion edges.
   const onOrgEvent = useCallback(
-    (event: string) => {
+    (event: string, payload: unknown) => {
       switch (event) {
         case 'resource:created':
         case 'resource:updated':
         case 'resource:deleted':
           return handleResourceDefChanged()
+        case 'run:completed':
+          return handleRunCompleted(payload)
       }
     },
-    [handleResourceDefChanged]
+    [handleResourceDefChanged, handleRunCompleted]
   )
 
   useRecordChannels(entityDefinitionIds, {

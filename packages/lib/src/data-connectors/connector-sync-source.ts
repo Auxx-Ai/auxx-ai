@@ -386,6 +386,35 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       runId: this.deps.run.id,
     })
 
+    // §7b run-completion edge on the org channel, aligned with the importer's.
+    // Runs once per run (last stream, past the B1 latch), AFTER the finalize
+    // writes, so the client's catch-up sees post-reconcile state. Per-def
+    // changed counts are NOT cheaply available here — the run counters are
+    // aggregate across streams and a stream can map several defs — so each
+    // touched def ships count 0 ("changed, count unknown" per the event doc)
+    // rather than adding new bookkeeping. Defs: every mapped def plus whatever
+    // finalize itself touched (relationship resolution, orphan archival).
+    try {
+      const defCounts: Record<string, number> = {}
+      for (const mapping of allMappings) defCounts[mapping.entityDefinitionId] ??= 0
+      for (const defId of syncCtx.touchedDefs) defCounts[defId] ??= 0
+      if (Object.keys(defCounts).length > 0) {
+        // Lazy-import the realtime barrel — same cycle-avoidance as
+        // `emitRecordsInvalidated`.
+        const { getRealtimeService, publishRunCompleted } = await import('../realtime')
+        await publishRunCompleted(getRealtimeService(), this.deps.organizationId, {
+          source: 'connector',
+          ref: this.deps.run.id,
+          defCounts,
+        })
+      }
+    } catch (err) {
+      logger.error('failed to publish run:completed', {
+        runId: this.deps.run.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+
     // v9 inventory→part bridge: post-sink (the sink writes with skipEvents, so no
     // per-record hook fired) compare synced quantities to the watermark and deduct
     // linked parts. Best-effort — a bridge failure must never fail the sync run.

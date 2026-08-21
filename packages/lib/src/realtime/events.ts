@@ -55,10 +55,12 @@ export type ResourceSyncEvent =
   | RecordUpdatedEvent
   | RecordDeletedEvent
   | RecordArchivedEvent
+  | RecordsChangedEvent
   | RecordsInvalidatedEvent
   | ResourceDefChangedEvent
   | DataConnectorSyncEvent
   | DataExportJobEvent
+  | RunCompletedEvent
 
 /** Field values changed (from mutations, triggers, cost recalc, etc.) */
 export interface FieldValuesUpdatedEvent {
@@ -131,6 +133,42 @@ export interface RecordArchivedEvent {
   data: {
     recordId: RecordId
     entityDefinitionId: string
+  }
+}
+
+/**
+ * One changed record in a `records:changed` frame.
+ *
+ * `recordId` is the BARE EntityInstance id — the def rides the frame, and a
+ * composite embed could disagree with the publisher's canonicalized
+ * `entityDefinitionId` when the producer holds a slug-keyed def id.
+ * `fieldIds` (optional) names the changed fields using the same field-ref keys
+ * that appear in a `FieldValueKey`'s field segment; absent means "any field of
+ * this record may have changed".
+ */
+export interface RecordChangedEntry {
+  recordId: string
+  fieldIds?: string[]
+}
+
+/**
+ * Tier-2 batched delta frame for bulk-shaped writes (plan events/03 §7b) —
+ * the middle ground between the per-record `record:*` firehose (403s Pusher at
+ * backfill scale) and the coarse `records:invalidated` full catch-up.
+ *
+ * IDS ONLY, never values (D-18 conservative default): a client patches only
+ * rows it currently displays by refetching just the listed ids through the
+ * normal permission-scoped queries — one batched roundtrip instead of a full
+ * list refetch, and no data pushed to sockets that may lack record-level
+ * access. Chunked at ≤100 entries per frame by `publishRecordsChanged`; rides
+ * the same per-def record channel as the rest of the record family.
+ */
+export interface RecordsChangedEvent {
+  event: 'records:changed'
+  data: {
+    entityDefinitionId: string
+    entries: RecordChangedEntry[]
+    chunk?: { index: number; total: number }
   }
 }
 
@@ -228,6 +266,32 @@ export interface DataExportJobEvent {
     total?: number
     /** Output file name (finished frames). */
     fileName?: string
+  }
+}
+
+/**
+ * A bulk record run finished (plan events/03 §7b) — the "bulk operation is
+ * done" edge the record lane lacked. Mail has `inbox:syncCompleted`; the
+ * connector has `dataConnector:sync` `run-finished`; the importer previously
+ * had NO completion signal at all — its only realtime footprint was the
+ * throttled `records:invalidated`.
+ *
+ * Extends the `dataConnector:sync` family (source + ref + counts) rather than
+ * inventing a parallel vocabulary, and rides the same org presence channel via
+ * `publishRunCompleted`. `ref` is the run's id in its source's keyspace
+ * (`DataConnectorRun.id` for connectors, `ImportJob.id` for imports).
+ * `defCounts` maps CANONICAL entity-definition id → changed-record count for
+ * that def; a count of 0 means "this def was touched but the producer tracks
+ * no cheap per-def count" — treat it as "changed, count unknown", not "no
+ * changes". The client triggers the authoritative per-def catch-up; a
+ * "Import finished: N records" toast/badge can layer on later.
+ */
+export interface RunCompletedEvent {
+  event: 'run:completed'
+  data: {
+    source: 'connector' | 'import'
+    ref: string
+    defCounts: Record<string, number>
   }
 }
 

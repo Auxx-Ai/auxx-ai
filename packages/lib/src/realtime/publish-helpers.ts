@@ -14,6 +14,8 @@ import type {
   MailSyncEvent,
   MessageMeta,
   ParticipantMeta,
+  RecordChangedEntry,
+  RunCompletedEvent,
   ThreadCreatedEvent,
   ThreadMeta,
   WorkflowDraftUpdatedEvent,
@@ -130,6 +132,106 @@ export async function publishRecordsInvalidated(
       )
     )
   )
+}
+
+/** Tier-2 delta frames carry ids only, so ~100 entries stays well under 10KB. */
+const RECORDS_CHANGED_CHUNK_SIZE = 100
+
+/**
+ * Canonicalize an entity-definition id for a record room key, INSIDE the
+ * publisher (the #1784 lesson): producers hold this id in two keyspaces —
+ * `ImportMapping.entityDefinitionId` can be the bare entityType slug (`part`)
+ * while every browser subscribes with the org's EntityDefinition CUID — and a
+ * slug-addressed frame is delivered to nobody. Doing it here means no future
+ * producer can reintroduce that bug.
+ *
+ * Lazy import — cache invalidation lazily imports realtime, so the realtime
+ * module must not statically import the cache barrel back (same pattern as
+ * `resolveThreadGrantAudience`). Falls back to the raw id on any failure so a
+ * cache hiccup degrades to a possibly-undelivered frame, never a throw.
+ */
+async function canonicalRoomDefId(organizationId: string, entityDefinitionId: string) {
+  try {
+    const { canonicalizeEntityDefinitionId } = await import('../cache')
+    return await canonicalizeEntityDefinitionId(organizationId, entityDefinitionId)
+  } catch {
+    return entityDefinitionId
+  }
+}
+
+/**
+ * Publish `records:changed` — the tier-2 batched delta frame (plan events/03
+ * §7b) — on the def's record channel (`rooms.orgRecords`). IDS ONLY, never
+ * values (D-18): the client refetches just the rows it displays through the
+ * normal permission-scoped queries.
+ *
+ * The def id is canonicalized INSIDE the publisher (see `canonicalRoomDefId`)
+ * and entries are chunked at ≤100 per frame, mirroring
+ * `publishFieldValueUpdates`' per-bucket chunking.
+ *
+ * Fire-and-forget: errors are swallowed so a Pusher hiccup never blocks the
+ * bulk write that produced the delta.
+ */
+export async function publishRecordsChanged(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: { entityDefinitionId: string; entries: RecordChangedEntry[] },
+  options?: { excludeSocketId?: string }
+) {
+  if (args.entries.length === 0) return
+
+  const entityDefinitionId = await canonicalRoomDefId(organizationId, args.entityDefinitionId)
+  const roomKey = rooms.orgRecords(organizationId, entityDefinitionId)
+
+  if (args.entries.length <= RECORDS_CHANGED_CHUNK_SIZE) {
+    await realtimeService
+      .publish(roomKey, 'records:changed', { entityDefinitionId, entries: args.entries }, options)
+      .catch(() => {})
+    return
+  }
+
+  const totalChunks = Math.ceil(args.entries.length / RECORDS_CHANGED_CHUNK_SIZE)
+  const promises: Promise<boolean>[] = []
+  for (let i = 0; i < totalChunks; i++) {
+    const entries = args.entries.slice(
+      i * RECORDS_CHANGED_CHUNK_SIZE,
+      (i + 1) * RECORDS_CHANGED_CHUNK_SIZE
+    )
+    promises.push(
+      realtimeService.publish(
+        roomKey,
+        'records:changed',
+        { entityDefinitionId, entries, chunk: { index: i, total: totalChunks } },
+        options
+      )
+    )
+  }
+  await Promise.allSettled(promises)
+}
+
+/**
+ * Publish `run:completed` on the org channel — the "bulk record run finished"
+ * edge (see `RunCompletedEvent`). Same room family and fire-and-forget
+ * contract as `publishDataConnectorSync`: runs finish in the worker (no
+ * originating browser socket), so every open tab should light up.
+ *
+ * `defCounts` keys are canonicalized INSIDE the publisher (see
+ * `canonicalRoomDefId`); counts for keys that collapse onto the same
+ * canonical id are summed.
+ */
+export async function publishRunCompleted(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  data: RunCompletedEvent['data']
+) {
+  const defCounts: Record<string, number> = {}
+  for (const [defId, count] of Object.entries(data.defCounts)) {
+    const canonical = await canonicalRoomDefId(organizationId, defId)
+    defCounts[canonical] = (defCounts[canonical] ?? 0) + count
+  }
+  await realtimeService
+    .publish(rooms.orgPresence(organizationId), 'run:completed', { ...data, defCounts })
+    .catch(() => {})
 }
 
 /**
