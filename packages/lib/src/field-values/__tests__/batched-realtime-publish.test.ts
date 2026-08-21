@@ -168,7 +168,24 @@ function makeFakeDb() {
       ),
     select: () => chain,
     from: () => chain,
-    orderBy: () => Promise.resolve([]),
+    // One pre-existing stored row (payload matches nothing this suite
+    // writes): keeps every `set` here a REAL change and every clear a REAL
+    // delete under the D-6/B-14 set-idempotency guard — with zero rows a
+    // clear is now a silent no-op and publishes no frame at all
+    // (set-idempotency.test.ts covers those no-op paths).
+    orderBy: () =>
+      Promise.resolve([
+        {
+          id: 'fv-seed',
+          entityId: 'inst-1',
+          fieldId: 'seed',
+          organizationId: 'org-1',
+          valueText: '__seed__',
+          sortKey: 'a0',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ]),
     update: () => chain,
     set: () => chain,
   })
