@@ -27,10 +27,16 @@ export const DEFAULT_NUMBER_OPTIONS: NumberFieldOptions = {
   suffix: '',
 }
 
-/** Default options for CURRENCY fields */
+/**
+ * Default options for CURRENCY fields.
+ *
+ * `decimals` is deliberately ABSENT: undefined means "derive from the currency
+ * code", which is 0 for JPY and 3 for KWD, not 2. `currencyCode` is the
+ * last-resort rung only — a real field leaves it unset and inherits
+ * `organization.currency` (see `field-values/org-currency.ts`).
+ */
 export const DEFAULT_CURRENCY_OPTIONS: CurrencyFieldOptions = {
   currencyCode: 'USD',
-  decimals: 2,
   useGrouping: true,
   currencyDisplay: 'symbol',
 }

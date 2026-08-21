@@ -28,7 +28,12 @@ import {
   isResourceFieldId,
   parseResourceFieldId,
 } from '@auxx/types/field'
-import type { ActorFieldValue } from '@auxx/types/field-value'
+import {
+  type ActorFieldValue,
+  type FieldValueMeta,
+  mergeMeta,
+  readEnvelope,
+} from '@auxx/types/field-value'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -42,6 +47,7 @@ import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { formatToDisplayValue } from './formatter'
+import { getOrgCurrencyCode, withOrgCurrency } from './org-currency'
 import { MAX_MULTI_VALUES, primaryValue } from './primary-value'
 import type { InverseFieldInfo } from './relationship-sync'
 import { isSearchTextIndexedFieldType, updateSearchText } from './search-text'
@@ -356,14 +362,22 @@ export function rowToTypedValue(row: FieldValueRow, fieldType: FieldType): Typed
   switch (valueType) {
     case 'text':
       return { ...base, type: 'text', value: row.valueText ?? '' }
-    case 'number':
+    case 'number': {
+      // CURRENCY is NUMBER's shape exactly: an integer minor-unit amount in
+      // `valueNumber`. The denomination is the field's, resolved at the render
+      // site from `options.currencyCode` — a value never carries its own.
       return { ...base, type: 'number', value: row.valueNumber ?? 0 }
+    }
     case 'boolean':
       return { ...base, type: 'boolean', value: row.valueBoolean ?? false }
     case 'date':
       return { ...base, type: 'date', value: row.valueDate ?? '' }
     case 'json':
-      return { ...base, type: 'json', value: (row.valueJson as Record<string, unknown>) ?? {} }
+      return {
+        ...base,
+        type: 'json',
+        value: (readEnvelope(row.valueJson).v as Record<string, unknown>) ?? {},
+      }
     case 'option':
       return { ...base, type: 'option', optionId: row.optionId ?? '' }
     case 'relationship':
@@ -679,11 +693,49 @@ export async function validateSingleValue(
       return { type: 'text', value: result.data || '' }
     }
 
-    case 'NUMBER':
-    case 'CURRENCY': {
+    case 'NUMBER': {
       const result = ctx.validator.validateNumber(value)
       if (!result.success) throwValidationError(result)
       return { type: 'number', value: result.data ?? 0 }
+    }
+
+    /**
+     * CURRENCY does NOT fall through to NUMBER: it is the only field type whose
+     * stored number has a declared UNIT, so it is the only one that can assert
+     * a decidable integrality check on the way in.
+     *
+     * 🛑 Never converts units. Given `600` it cannot know whether that is $6.00
+     * or $600 — the undecidable guess that produced 100×-wrong stored data. A
+     * provider reporting decimal major units converts in its own projection.
+     *
+     * Any currency code on the input is IGNORED. The denomination is the
+     * field's; see `FieldOptions.currencyCode`.
+     */
+    case 'CURRENCY': {
+      let amount: unknown = value
+
+      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+        const obj = value as Record<string, unknown>
+        if (!('type' in obj)) amount = obj.amount ?? obj.value
+      }
+
+      const result = ctx.validator.validateNumber(amount)
+      if (!result.success) throwValidationError(result)
+      const num = result.data ?? 0
+
+      // A fractional value in a minor-units field is ALWAYS wrong — cents, yen
+      // and thousandths of a dinar are integers for every ISO currency. This is
+      // decidable, unlike dollars-vs-cents on a whole number, and it is the
+      // single check that would have caught the connector passthrough bug at
+      // the first sync instead of months later.
+      if (!Number.isInteger(num)) {
+        throw new BadRequestError(
+          `CURRENCY values are integer minor units (cents for USD), but received ${num}. ` +
+            'A provider reporting decimal major units must scale in its own projection.'
+        )
+      }
+
+      return { type: 'number', value: num }
     }
 
     case 'CHECKBOX': {
@@ -1144,8 +1196,19 @@ export async function maybeUpdateDisplayValue(
       // maps over arrays, and writing that array into the display column
       // would corrupt `displayName`/`secondaryDisplayValue`.
       const primaryTyped = primaryValue(typedValue)
+      // `withOrgCurrency` layers the org rung under a CURRENCY field that never
+      // picked its own code, so the persisted display value follows
+      // `organization.currency`. A no-op for every other field type.
+      const options =
+        field.type === 'CURRENCY'
+          ? withOrgCurrency(
+              field.options as never,
+              'CURRENCY',
+              await getOrgCurrencyCode(ctx.organizationId, ctx.db)
+            )
+          : (field.options as never)
       displayValue = primaryTyped
-        ? (formatToDisplayValue(primaryTyped, toFieldType(field.type), field.options as any) as
+        ? (formatToDisplayValue(primaryTyped, toFieldType(field.type), options as any) as
             | string
             | null)
         : null

@@ -116,7 +116,15 @@ export interface TextFieldValue extends BaseFieldValue {
   value: string
 }
 
-/** Numeric value for NUMBER, CURRENCY fields */
+/**
+ * Numeric value for NUMBER, CURRENCY fields.
+ *
+ * A CURRENCY row carries NO per-value ISO code. The denomination is the
+ * FIELD's (`options.currencyCode`), asserted once and inherited by every value.
+ * `value` is an integer count of minor units in that denomination, which is
+ * what makes `valueNumber` sortable, filterable and summable — a per-row code
+ * would silently mix exponents inside one SUM.
+ */
 export interface NumberFieldValue extends BaseFieldValue {
   type: 'number'
   value: number
@@ -206,6 +214,8 @@ export interface TextFieldValueInput {
 export interface NumberFieldValueInput {
   type: 'number'
   value: number
+  /** ISO 4217 code — CURRENCY only. Omit to inherit. */
+  currency?: string
 }
 
 /** Boolean value input */
@@ -512,4 +522,111 @@ export function createTypedValueInput(
     default:
       return null
   }
+}
+
+// =============================================================================
+// valueJson ENVELOPE
+// =============================================================================
+
+/**
+ * Metadata section of the `valueJson` envelope. ONE OWNER PER TOP-LEVEL KEY —
+ * a writer read-modify-writes only its own key and preserves the rest, and a
+ * reader treats an unknown key as opaque and carries it through any round-trip
+ * that rewrites the row.
+ *
+ * Keys hold SMALL SCALAR FACTS only; `meta` rides the hot read projection. A
+ * key whose value is a document belongs in its own column or table.
+ *
+ * Reserved-key registry — adding a key means adding a line here:
+ * | `ai`       | `field-values/ai-commit.ts`         | AI-eligible types |
+ * | `src`      | reserved, not built (connector cells)                   |
+ * | `unit`     | reserved by convention (NUMBER)                         |
+ */
+export interface FieldValueMeta {
+  /** AI autofill provenance: model, tokens, inputHash, … */
+  ai?: unknown
+  [key: string]: unknown
+}
+
+/**
+ * The shape of `FieldValue.valueJson`.
+ *
+ * `v` carries the field's OWN value and is present only for json-typed fields
+ * (FILE / NAME / ADDRESS_STRUCT / JSON). A scalar field's value lives in its
+ * own typed column and never appears here — a CURRENCY row keeps its integer
+ * minor-unit amount in `valueNumber`, and reaches the envelope only if it
+ * carries AI provenance.
+ *
+ * Wrapping (rather than a reserved key beside the value) is what keeps the two
+ * owners apart: `FieldType.JSON` stores arbitrary user data, so no reserved key
+ * exists that a user could not legitimately write.
+ */
+export interface FieldValueEnvelope {
+  v?: unknown
+  meta?: FieldValueMeta
+}
+
+/**
+ * Read a stored `valueJson` as an envelope.
+ *
+ * Tolerates a pre-envelope row: a json-typed row whose object IS the value, and
+ * a scalar row whose object is the legacy root-level AI bag. The `'v' in obj`
+ * probe is ambiguous for exactly one type — `FieldType.JSON`, where a user could
+ * legitimately store a top-level `v` — which is why the fallback is temporary
+ * and deleted the release after the migration runs.
+ */
+export function readEnvelope(json: unknown): FieldValueEnvelope {
+  if (json === null || json === undefined || typeof json !== 'object' || Array.isArray(json)) {
+    return {}
+  }
+  const obj = json as Record<string, unknown>
+  if ('v' in obj || 'meta' in obj) {
+    return {
+      v: obj.v,
+      meta: (obj.meta as FieldValueMeta | undefined) ?? undefined,
+    }
+  }
+  // Legacy row, pre-envelope: the object is the value itself.
+  return { v: obj }
+}
+
+/** Read just the metadata section of a stored `valueJson`. */
+export function readMeta(json: unknown): FieldValueMeta {
+  return readEnvelope(json).meta ?? {}
+}
+
+/**
+ * Build a `valueJson` payload, omitting the column entirely when there is
+ * neither a value nor any metadata to store — a currency row that never
+ * asserted a code stays `valueJson IS NULL`, keeping it out of the read
+ * projection.
+ */
+export function writeEnvelope(v: unknown, meta?: FieldValueMeta): FieldValueEnvelope | null {
+  const hasMeta = meta !== undefined && Object.keys(meta).length > 0
+  const hasValue = v !== undefined
+  if (!hasMeta && !hasValue) return null
+  const out: FieldValueEnvelope = {}
+  if (hasValue) out.v = v
+  if (hasMeta) out.meta = meta
+  return out
+}
+
+/**
+ * Merge one metadata key into an existing stored `valueJson`, preserving the
+ * value and every key this writer does not own. This is the ONLY sanctioned way
+ * to write metadata — never `valueJson = { … }` wholesale.
+ */
+export function mergeMeta(
+  existing: unknown,
+  key: string,
+  value: unknown
+): FieldValueEnvelope | null {
+  const env = readEnvelope(existing)
+  const meta = { ...(env.meta ?? {}) }
+  if (value === undefined) {
+    delete meta[key]
+  } else {
+    meta[key] = value
+  }
+  return writeEnvelope(env.v, meta)
 }

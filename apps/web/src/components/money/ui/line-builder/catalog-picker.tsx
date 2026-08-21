@@ -24,6 +24,7 @@ import {
 } from '@auxx/ui/components/command'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
+import { formatCurrency } from '@auxx/utils/currency'
 import { Boxes, Package, Plus, Settings2 } from 'lucide-react'
 import Link from 'next/link'
 import { type ReactNode, useMemo, useState } from 'react'
@@ -32,12 +33,10 @@ import type { CatalogItem } from '~/components/money/hooks/use-catalog-items'
 import { useUser } from '~/hooks/use-user'
 import { resolveCatalogGroup, resolvedCatalogGroupTotal } from './catalog-group-resolver'
 
-/** `price` is integer cents (FieldType.CURRENCY storage convention). */
+/** `price` is integer MINOR UNITS (FieldType.CURRENCY storage convention). */
 function formatPrice(price: number | null, currencyCode: string): string {
   if (price === null) return 'No price'
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(
-    price / 100
-  )
+  return formatCurrency(price, { currencyCode })
 }
 
 function titleCase(value: string): string {

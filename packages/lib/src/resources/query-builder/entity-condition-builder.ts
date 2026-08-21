@@ -152,7 +152,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     const outerTableId = context.outerTable.id
 
     const valueSubquery = sql`(
-      SELECT "FieldValue".${sql.raw(`"${valueColumn}"`)}
+      SELECT ${this.typedValueRef('FieldValue', valueColumn)}
       FROM "FieldValue"
       WHERE "FieldValue"."entityId" = ${outerTableId}
         AND "FieldValue"."fieldId" = ${fieldIdForSql}
@@ -588,7 +588,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     rawValue: unknown,
     columnName: string
   ): SQL<unknown> | undefined {
-    const valueCol = sql.raw(`related."${columnName}"`)
+    const valueCol = this.typedValueRef('related', columnName)
 
     // Handle optionId fields (MULTI_SELECT, TAGS)
     if (columnName === 'optionId') {
@@ -797,6 +797,19 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
    * as a SEPARATE FieldValue row with optionId. The EXISTS subquery will
    * match ANY row that satisfies the condition.
    */
+  /**
+   * A qualified SQL reference to a row's typed value column.
+   *
+   * `valueJson` is an ENVELOPE (`{ v, meta }`), so a json-typed comparison must
+   * target `->'v'` — the value — never the envelope. Comparing the envelope
+   * silently matches nothing, and the failure is typecheck-clean.
+   */
+  private typedValueRef(tableAlias: string, columnName: string): SQL<unknown> {
+    return columnName === 'valueJson'
+      ? sql.raw(`"${tableAlias}"."valueJson"->'v'`)
+      : sql.raw(`"${tableAlias}"."${columnName}"`)
+  }
+
   private getTypedColumnName(dbFieldType: string): string {
     const valueType = getValueType(dbFieldType)
     switch (valueType) {
@@ -924,7 +937,7 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
     dbFieldType: string
   ): SQL<unknown> | undefined {
     const columnName = this.getTypedColumnName(dbFieldType)
-    const valueCol = sql.raw(`"FieldValue"."${columnName}"`)
+    const valueCol = this.typedValueRef('FieldValue', columnName)
 
     // Strip entityDefinitionId: prefix from RecordId values for RELATIONSHIP fields
     if (columnName === 'relatedEntityId') {

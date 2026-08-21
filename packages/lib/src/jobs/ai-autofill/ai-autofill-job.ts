@@ -3,6 +3,7 @@
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getExistingFieldValue } from '@auxx/services/field-values'
+import { readMeta } from '@auxx/types/field-value'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId } from '@auxx/types/resource'
 import type { GenerationResult } from '../../field-values/ai-autofill/generation-service'
@@ -75,7 +76,7 @@ export async function aiAutofillJob(ctx: JobContext<AiAutofillJobData>) {
     return { dropped: 'no-row' as const }
   }
 
-  const currentMeta = (existing.value.valueJson ?? {}) as { jobId?: string }
+  const currentMeta = (readMeta(existing.value.valueJson).ai ?? {}) as { jobId?: string }
   if (existing.value.aiStatus !== 'generating' || currentMeta.jobId !== jobId) {
     logger.info('Dropping AI autofill — override detected', {
       jobId,

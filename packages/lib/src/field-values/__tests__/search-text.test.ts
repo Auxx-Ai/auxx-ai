@@ -89,13 +89,21 @@ describe('searchTextExpressionSql', () => {
   const expression = searchTextExpressionSql('ei')
 
   it('reads valueJson only through the two closed-shape key allowlists', () => {
-    const jsonReads = expression.match(/fv\."valueJson"->>'(\w+)'/g) ?? []
+    // `valueJson` is the `{ v, meta }` envelope — every value read goes through
+    // `->'v'`. Reading the root would return NULL, silently and typecheck-clean.
+    const jsonReads = expression.match(/fv\."valueJson"->'v'->>'(\w+)'/g) ?? []
     const keys = jsonReads.map((m) => m.replace(/.*->>'(\w+)'/, '$1'))
 
     expect(keys.length).toBeGreaterThan(0)
     expect(new Set(keys)).toEqual(new Set(['firstName', 'lastName', ...SEARCH_TEXT_ADDRESS_KEYS]))
     // No blanket serialization of the document.
     expect(expression).not.toMatch(/fv\."valueJson"(::text|#>>|\s*::\s*text)/)
+  })
+
+  it('never reads a value at the envelope root', () => {
+    // A root read is the pre-envelope shape: it yields NULL for every row the
+    // migration wrapped, and nothing type-checks it.
+    expect(expression).not.toMatch(/fv\."valueJson"->>'/)
   })
 
   it('never reads geo coordinates out of a structured address', () => {

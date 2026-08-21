@@ -207,6 +207,22 @@ export function useDehydratedSettings(): Record<string, any> {
 }
 
 /**
+ * Non-throwing variant of {@link useDehydratedSettings}.
+ *
+ * Returns `null` outside a `DehydratedStateProvider` instead of throwing, for
+ * the handful of leaf renderers (table cells, hover cards) that are also
+ * mounted in tests and isolated previews where no provider exists. Callers
+ * supply their own default.
+ */
+export function useDehydratedSettingsOptional(): Record<string, any> | null {
+  const ctx = useContext(DehydratedStateContext)
+  if (!ctx) return null
+  const { organizationId, organizations } = ctx.state
+  if (!organizationId) return null
+  return organizations.find((o) => o.id === organizationId)?.settings ?? null
+}
+
+/**
  * Hook to access the current organization's dehydrated subscription.
  * Returns null when there's no subscription row (fresh org) or no current org.
  */

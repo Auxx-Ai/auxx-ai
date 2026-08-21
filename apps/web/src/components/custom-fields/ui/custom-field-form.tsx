@@ -503,11 +503,14 @@ export function CustomFieldForm({
         form.setValue('isUnique', false)
       }
       // Reset displayOptions and close panel when type changes.
-      // CURRENCY seeds with USD/2-decimal defaults so the field saves with a
-      // currencyCode even if the user never opens the Display Options panel.
+      // CURRENCY seeds with a currencyCode so the field saves with one even if
+      // the user never opens the Display Options panel. `decimals` is
+      // deliberately NOT seeded: leaving it unset derives the fraction digits
+      // from the code, so a field later switched to JPY renders 0 decimals
+      // instead of keeping a baked-in 2.
       setDisplayOptions(
         selectedType === FieldType.CURRENCY
-          ? { currencyCode: 'USD', decimals: 2, useGrouping: true, currencyDisplay: 'symbol' }
+          ? { currencyCode: 'USD', useGrouping: true, currencyDisplay: 'symbol' }
           : {}
       )
       setShowDisplayOptions(selectedType === FieldType.CURRENCY)

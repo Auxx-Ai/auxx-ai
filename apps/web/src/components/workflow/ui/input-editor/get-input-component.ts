@@ -195,7 +195,9 @@ export function getSpecificPropsForType(
       const currency = fieldOptions?.currency
       return {
         currencyCode: currency?.currencyCode ?? 'USD',
-        decimals: currency?.decimals ?? 2,
+        // Left undefined on purpose — the input derives fraction digits from
+        // the code, which is right for JPY (0) and KWD (3) as well as USD (2).
+        decimals: currency?.decimals,
         currencyDisplay: currency?.currencyDisplay ?? 'symbol',
         useGrouping: currency?.useGrouping ?? true,
       }

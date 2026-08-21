@@ -3,7 +3,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
-import { isMultiRelationship } from '@auxx/lib/field-values/client'
+import { isMultiRelationship, resolveCurrencyCode } from '@auxx/lib/field-values/client'
 import { toRecordId } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
 import {
@@ -29,6 +29,7 @@ import {
   PhoneInput,
   StringInput,
 } from '~/components/workflow/nodes/shared/node-inputs'
+import { useOrgCurrency } from '~/hooks/use-org-currency'
 import { useAccess } from '~/providers/capabilities-provider'
 import { MultiValueFieldInput } from './multi-value-input-field'
 import { NameFieldInput, type NameValue } from './name-field-input'
@@ -172,6 +173,10 @@ export function FieldInputAdapter({
   // Read at the top because the RELATIONSHIP case below is inside a `switch` —
   // a hook may not be called from there.
   const { canEditEntity } = useAccess()
+
+  // Same reason: the CURRENCY case is inside the same `switch`. A field that
+  // never picked its own code inherits the org's (field → org → USD).
+  const orgCurrency = useOrgCurrency()
 
   /**
    * Adapter for NodeInputProps onChange
@@ -544,8 +549,9 @@ export function FieldInputAdapter({
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
           <CurrencyInput
             {...nodeInputProps}
-            currencyCode={fieldOptions?.currencyCode ?? 'USD'}
-            decimals={fieldOptions?.decimals ?? 2}
+            currencyCode={resolveCurrencyCode(fieldOptions?.currencyCode, orgCurrency)}
+            // Undefined derives the fraction digits from the code (JPY 0, KWD 3).
+            decimals={fieldOptions?.decimals}
             currencyDisplay={
               fieldOptions?.currencyDisplay === 'compact'
                 ? 'symbol'

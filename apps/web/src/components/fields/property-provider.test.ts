@@ -76,3 +76,53 @@ describe('isOrderSensitive', () => {
     expect(isOrderSensitive({ options: { multi: 'yes' } })).toBe(false)
   })
 })
+
+/**
+ * Regression guard for the currency write storm.
+ *
+ * `input-currency` calls `setValue` on EVERY blur, edited or not, and the table's
+ * inline editor force-blurs on outside click. That is harmless only while the
+ * comparator can tell "same value" from "different value". It could not, for one
+ * turn of this branch: `toRawValue` returned `{ code?, amount }` while the input
+ * committed a bare number, so both sides fell through to the `String(...)`
+ * branch and `"20000" !== "[object Object]"` was true forever. Every currency
+ * field committed on every blur, and the store re-extracted the object right
+ * back, so it never converged.
+ *
+ * The shape is symmetric again, and `normalizeByFieldType` collapses the
+ * asymmetric types generically — ACTOR is the one that is still asymmetric by
+ * design, so it is pinned here too.
+ */
+describe('hasValueChanged — read/write-asymmetric field types', () => {
+  it('CURRENCY: the same minor-unit amount is not a change', () => {
+    expect(hasValueChanged(20_000, 20_000, false, 'CURRENCY')).toBe(false)
+  })
+
+  it('CURRENCY: a legacy { amount } object compares equal to the bare number', () => {
+    expect(hasValueChanged(20_000, { amount: 20_000 }, false, 'CURRENCY')).toBe(false)
+    expect(hasValueChanged({ amount: 20_000 }, 20_000, false, 'CURRENCY')).toBe(false)
+  })
+
+  it('CURRENCY: a genuinely different amount still reports changed', () => {
+    expect(hasValueChanged(20_001, 20_000, false, 'CURRENCY')).toBe(true)
+    expect(hasValueChanged(null, 20_000, false, 'CURRENCY')).toBe(true)
+  })
+
+  it('ACTOR: the rich read object compares equal to the committed ActorId', () => {
+    const server = { actorType: 'user', id: 'abc', actorId: 'user:abc' }
+    expect(hasValueChanged('user:abc', server, false, 'ACTOR')).toBe(false)
+    expect(hasValueChanged('user:xyz', server, false, 'ACTOR')).toBe(true)
+  })
+
+  it('ACTOR: derives the ActorId when the read object carries none', () => {
+    expect(hasValueChanged('group:g1', { actorType: 'group', id: 'g1' }, false, 'ACTOR')).toBe(
+      false
+    )
+  })
+
+  it('NAME: symmetric already — the plain-object branch answers it', () => {
+    const name = { firstName: 'Ada', lastName: 'Lovelace' }
+    expect(hasValueChanged({ ...name }, name, false, 'NAME')).toBe(false)
+    expect(hasValueChanged({ ...name, lastName: 'Byron' }, name, false, 'NAME')).toBe(true)
+  })
+})

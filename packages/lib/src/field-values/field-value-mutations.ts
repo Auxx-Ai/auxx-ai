@@ -19,6 +19,7 @@ import {
 } from '@auxx/types'
 import { isSelfReferentialRelationship, type RelationshipConfig } from '@auxx/types/custom-field'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
+import { mergeMeta, readEnvelope, writeEnvelope } from '@auxx/types/field-value'
 import type { RecordId } from '@auxx/types/resource'
 import { isSystemAttribute } from '@auxx/types/system-attribute'
 import { generateId } from '@auxx/utils'
@@ -1350,14 +1351,16 @@ function serializeRowMatch(
   const raw = (row as unknown as Record<string, unknown>)[column]
   if (raw === null || raw === undefined) return null
   if (column === 'valueJson') {
+    // `valueJson` is the `{ v, meta }` envelope — identity is the VALUE half.
+    const inner = readEnvelope(raw).v
+    if (inner === null || inner === undefined) return null
     if (fieldType === FieldTypeEnum.FILE) {
-      const ref = (raw as { ref?: unknown }).ref
+      const ref = (inner as { ref?: unknown }).ref
       if (typeof ref === 'string') return ref
     }
-    return JSON.stringify(raw)
+    return JSON.stringify(inner)
   }
   if (column === 'valueBoolean') return String(raw)
-  if (column === 'valueNumber') return String(raw)
   return String(raw)
 }
 
@@ -1367,7 +1370,6 @@ function serializeRowMatch(
  */
 function matchKey(m: TypedColumnMatch, fieldType?: FieldType): string {
   if (m.column === 'valueBoolean') return String(m.value)
-  if (m.column === 'valueNumber') return String(m.value)
   if (m.column === 'valueJson' && fieldType === FieldTypeEnum.FILE) {
     try {
       const parsed = JSON.parse(m.value) as { ref?: unknown }
@@ -1683,7 +1685,7 @@ export async function removeValues(
           const refs = matches
             .map((m) => {
               // `column === 'valueJson'` (checked above) guarantees `m.value`
-              // is the stringified JSON envelope for every match here.
+              // is the stringified JSON value for every match here.
               try {
                 const parsed = JSON.parse(m.value as string) as { ref?: unknown }
                 return typeof parsed.ref === 'string' ? parsed.ref : null
@@ -1692,7 +1694,9 @@ export async function removeValues(
               }
             })
             .filter((ref): ref is string => ref !== null)
-          return refs.length > 0 ? inArray(sql`${schema.FieldValue.valueJson}->>'ref'`, refs) : null
+          return refs.length > 0
+            ? inArray(sql`${schema.FieldValue.valueJson}->'v'->>'ref'`, refs)
+            : null
         })()
       : buildMatchInClause(column, matches.map((m) => m.value) as any)
 
@@ -3282,6 +3286,8 @@ function buildInsertData(
     case 'text':
       return { valueText: value.value }
     case 'number':
+      // CURRENCY stores its amount in valueNumber exactly like NUMBER — the
+      // denomination is the field's, so nothing rides the envelope.
       return { valueNumber: value.value }
     case 'boolean':
       return { valueBoolean: value.value }
@@ -3290,7 +3296,7 @@ function buildInsertData(
         valueDate: value.value instanceof Date ? value.value.toISOString() : value.value,
       }
     case 'json':
-      return { valueJson: value.value }
+      return { valueJson: writeEnvelope(value.value) }
     case 'option':
       return { optionId: value.optionId }
     case 'relationship': {
@@ -3341,6 +3347,8 @@ function buildUpdateData(value: TypedFieldValueInput): {
     case 'text':
       return { valueText: value.value }
     case 'number':
+      // CURRENCY stores its amount in valueNumber exactly like NUMBER — the
+      // denomination is the field's, so nothing rides the envelope.
       return { valueNumber: value.value }
     case 'boolean':
       return { valueBoolean: value.value }
@@ -3349,7 +3357,7 @@ function buildUpdateData(value: TypedFieldValueInput): {
         valueDate: value.value instanceof Date ? value.value.toISOString() : value.value,
       }
     case 'json':
-      return { valueJson: value.value }
+      return { valueJson: writeEnvelope(value.value) }
     case 'option':
       return { optionId: value.optionId }
     case 'relationship': {
@@ -3419,7 +3427,7 @@ export function buildFieldValueRow(params: {
         valueDate: value.value instanceof Date ? value.value.toISOString() : value.value,
       }
     case 'json':
-      return { ...base, valueJson: value.value }
+      return { ...base, valueJson: writeEnvelope(value.value) }
     case 'option':
       return { ...base, optionId: value.optionId }
     case 'relationship': {

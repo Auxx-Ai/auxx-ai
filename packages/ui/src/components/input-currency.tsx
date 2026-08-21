@@ -2,6 +2,7 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
+import { minorUnitExponent } from '@auxx/utils/currency'
 import * as React from 'react'
 import { clampValue, decrementValue, incrementValue } from './input-number-utils'
 
@@ -15,43 +16,44 @@ import { clampValue, decrementValue, incrementValue } from './input-number-utils
 export type CurrencyDisplayType = 'symbol' | 'code' | 'name'
 
 /**
- * Decimal places type for currency display
- */
-export type DecimalPlacesType = 'two-places' | 'no-decimal'
-
-/**
  * Context value provided by CurrencyInput to all child components
  */
 interface CurrencyInputContextValue {
-  /** Current value in cents (integer) */
+  /** Current value in MINOR UNITS (integer) */
   value: number | undefined
   /** Whether the input is disabled */
   disabled?: boolean
   /** Whether the input is read-only */
   readOnly?: boolean
-  /** Minimum allowed value in cents */
+  /** Minimum allowed value in minor units */
   min?: number
-  /** Maximum allowed value in cents */
+  /** Maximum allowed value in minor units */
   max?: number
   /** ISO 4217 currency code */
   currencyCode: string
   /** How to display the currency */
   currencyDisplay: CurrencyDisplayType
-  /** Decimal places for display */
-  decimalPlaces: DecimalPlacesType
+  /**
+   * Minor-unit exponent derived from `currencyCode` — 2 for USD, 0 for JPY,
+   * 3 for KWD. Also the number of fraction digits shown, unless `decimals`
+   * overrides it.
+   */
+  exponent: number
+  /** Fraction digits to render (defaults to `exponent`). */
+  decimals: number
   /** Locale for formatting */
   locale: string
-  /** Increment the value (by 100 cents = $1 by default) */
+  /** Increment the value by one major unit */
   increment: () => void
-  /** Decrement the value (by 100 cents = $1 by default) */
+  /** Decrement the value by one major unit */
   decrement: () => void
-  /** Set a new value (in cents) with validation and clamping */
+  /** Set a new value (in minor units) with validation and clamping */
   setValue: (value: number | undefined) => void
   /** Get the currency symbol */
   getCurrencySymbol: () => string
-  /** Format cents to display string */
-  formatValue: (cents: number) => string
-  /** Parse display string to cents */
+  /** Format minor units to display string */
+  formatValue: (minorUnits: number) => string
+  /** Parse display string to minor units */
   parseValue: (display: string) => number | null
 }
 
@@ -59,22 +61,29 @@ interface CurrencyInputContextValue {
  * Props for the CurrencyInput root component (context provider)
  */
 export interface CurrencyInputProps extends React.PropsWithChildren {
-  /** Controlled value in cents */
-  value?: number
-  /** Default value for uncontrolled mode (in cents) */
+  /** Controlled value: INTEGER MINOR UNITS, denominated in `currencyCode`. */
+  value?: number | null
+  /** Default value for uncontrolled mode (minor units) */
   defaultValue?: number
-  /** Callback when value changes (value is in cents) */
+  /**
+   * Callback when the amount changes. Always a BARE NUMBER of minor units — the
+   * FIELD defines the currency and a value never asserts one of its own.
+   */
   onValueChange?: (value: number | undefined) => void
-  /** Minimum allowed value in cents */
+  /** Minimum allowed value in minor units */
   min?: number
-  /** Maximum allowed value in cents */
+  /** Maximum allowed value in minor units */
   max?: number
   /** ISO 4217 currency code (default: 'USD') */
   currencyCode?: string
   /** How to display the currency (default: 'symbol') */
   currencyDisplay?: CurrencyDisplayType
-  /** Decimal places (default: 'two-places') */
-  decimalPlaces?: DecimalPlacesType
+  /**
+   * Fraction digits to render. Defaults to the code's minor-unit exponent —
+   * 2 for USD, 0 for JPY, 3 for KWD — so leaving it unset is correct for every
+   * currency. Pass a number only to deliberately override that.
+   */
+  decimals?: number
   /** Locale for formatting (default: 'en-US') */
   locale?: string
   /** Whether the input is disabled */
@@ -127,6 +136,11 @@ function useCurrencyInput() {
  * </CurrencyInput>
  * ```
  */
+function toMinorUnits(value: number | null | undefined): number | undefined {
+  if (value === null || value === undefined) return undefined
+  return Number.isFinite(value) ? value : undefined
+}
+
 function CurrencyInput({
   value: controlledValue,
   defaultValue,
@@ -135,23 +149,31 @@ function CurrencyInput({
   max,
   currencyCode = 'USD',
   currencyDisplay = 'symbol',
-  decimalPlaces = 'two-places',
+  decimals: decimalsProp,
   locale = 'en-US',
   disabled = false,
   readOnly = false,
   children,
 }: CurrencyInputProps) {
   // Determine if component is controlled
-  const isControlled = controlledValue !== undefined
+  const isControlled = controlledValue !== undefined && controlledValue !== null
 
   // Internal state for uncontrolled mode
-  const [uncontrolledValue, setUncontrolledValue] = React.useState<number | undefined>(defaultValue)
+  const [uncontrolledValue, setUncontrolledValue] = React.useState<number | undefined>(
+    toMinorUnits(defaultValue)
+  )
 
   // Use controlled value if provided, otherwise use internal state
-  const value = isControlled ? controlledValue : uncontrolledValue
+  const value = isControlled ? toMinorUnits(controlledValue) : uncontrolledValue
 
-  // Step is 100 cents ($1.00)
-  const step = 100
+  /**
+   * Scale comes from the CODE, never a hardcoded 100. USD 2, JPY 0, KWD 3.
+   */
+  const exponent = React.useMemo(() => minorUnitExponent(currencyCode), [currencyCode])
+  const decimals = decimalsProp ?? exponent
+
+  // One step is one MAJOR unit: $1.00 = 100 cents, ¥1 = 1 yen.
+  const step = 10 ** exponent
 
   /**
    * Get currency symbol using Intl
@@ -175,30 +197,33 @@ function CurrencyInput({
    * Format cents to display string (without currency symbol)
    */
   const formatValue = React.useCallback(
-    (cents: number): string => {
-      const dollars = cents / 100
-      if (decimalPlaces === 'no-decimal') {
-        return Math.round(dollars).toString()
-      }
-      return dollars.toFixed(2)
+    (minorUnits: number): string => {
+      const major = minorUnits / 10 ** exponent
+      return major.toFixed(decimals)
     },
-    [decimalPlaces]
+    [exponent, decimals]
   )
 
   /**
    * Parse display string to cents
    */
-  const parseValue = React.useCallback((display: string): number | null => {
-    // Remove currency symbols, commas, spaces
-    const cleaned = display.replace(/[$€£¥₹₩,\s]/g, '').trim()
-    if (!cleaned) return null
+  const parseValue = React.useCallback(
+    (display: string): number | null => {
+      // Strip anything that is not part of a number. Deliberately not a fixed
+      // symbol list — that only covered five currencies and mangled the rest.
+      const cleaned = display
+        .replace(/[^0-9.,-]/g, '')
+        .replace(/,/g, '')
+        .trim()
+      if (!cleaned) return null
 
-    const parsed = parseFloat(cleaned)
-    if (Number.isNaN(parsed)) return null
+      const parsed = Number.parseFloat(cleaned)
+      if (Number.isNaN(parsed)) return null
 
-    // Convert to cents
-    return Math.round(parsed * 100)
-  }, [])
+      return Math.round(parsed * 10 ** exponent)
+    },
+    [exponent]
+  )
 
   /**
    * Set value with validation and clamping
@@ -243,7 +268,8 @@ function CurrencyInput({
       max,
       currencyCode,
       currencyDisplay,
-      decimalPlaces,
+      exponent,
+      decimals,
       locale,
       increment,
       decrement,
@@ -260,7 +286,8 @@ function CurrencyInput({
       max,
       currencyCode,
       currencyDisplay,
-      decimalPlaces,
+      exponent,
+      decimals,
       locale,
       increment,
       decrement,
@@ -302,7 +329,7 @@ const CurrencyInputField = React.forwardRef<HTMLInputElement, CurrencyInputField
       readOnly,
       min,
       max,
-      decimalPlaces,
+      decimals,
       increment,
       decrement,
       setValue,
@@ -425,7 +452,7 @@ const CurrencyInputField = React.forwardRef<HTMLInputElement, CurrencyInputField
           onBlur={handleBlur}
           disabled={disabled}
           readOnly={readOnly}
-          step={decimalPlaces === 'no-decimal' ? '1' : '0.01'}
+          step={decimals === 0 ? '1' : (10 ** -decimals).toFixed(decimals)}
           className={cn(
             // Base styling
             'flex-1 rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:outline-none focus:ring-0 focus:outline-none dark:bg-transparent',

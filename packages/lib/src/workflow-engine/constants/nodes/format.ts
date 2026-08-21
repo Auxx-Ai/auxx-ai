@@ -361,7 +361,7 @@ export const OPERATION_EXAMPLES: Record<FormatOperation, string> = {
   [FormatOperation.REPLACE]: '"hello world" → "hello earth"',
   [FormatOperation.REPLACE_REGEX]: '"abc 123" → "abc ***" (\\d+)',
   [FormatOperation.REMOVE]: '"hello world" → "hello "',
-  [FormatOperation.CURRENCY]: '1234.5 → $1,234.50',
+  [FormatOperation.CURRENCY]: '123450 → $1,234.50 (minor units in)',
   [FormatOperation.PERCENTAGE]: '0.156 → 16%',
   [FormatOperation.FIXED_DECIMALS]: '3.14159 → 3.14',
   [FormatOperation.ORDINAL]: '3 → 3rd',

@@ -154,6 +154,7 @@ function HeaderCellOptionsDropdown<TData>({
   setPinnedColumn,
   effectiveFieldType,
   terminalDefaultFormatting,
+  fieldCurrencyCode,
   aiMenuEnabled,
   aiField,
   aiFieldRef,
@@ -181,6 +182,8 @@ function HeaderCellOptionsDropdown<TData>({
   effectiveFieldType: FieldType | undefined
   /** The terminal field's `options`, used as the formatting dialog's defaults. */
   terminalDefaultFormatting: FieldOptions | undefined
+  /** The FIELD's ISO code for a CURRENCY column — shown read-only, never overridden. */
+  fieldCurrencyCode: string | undefined
   aiMenuEnabled: boolean
   aiField: { id: FieldId; fieldType: FieldType } | null
   aiFieldRef: FieldReference | null
@@ -440,6 +443,7 @@ function HeaderCellOptionsDropdown<TData>({
           fieldType={effectiveFieldType as FormattableFieldType}
           currentFormatting={columnFormatting[column.id]}
           defaultFormatting={columnDef.defaultFormatting ?? terminalDefaultFormatting}
+          fieldCurrencyCode={fieldCurrencyCode}
           onSave={(formatting) => setColumnFormatting(column.id, formatting)}
         />
       )}
@@ -521,6 +525,16 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
 
   // Effective fieldType: from columnDef or terminal field for paths
   const effectiveFieldType = columnDef.fieldType ?? terminalFieldMeta?.fieldType
+
+  // A CURRENCY column shows its FIELD's denomination read-only — the column has
+  // no override, because changing the code rescales the money rather than
+  // relabelling it.
+  const fieldCurrencyCode = useMemo(() => {
+    const source = isPathColumn
+      ? terminalFieldMeta?.defaultFormatting
+      : (directField?.options as { currencyCode?: string } | null | undefined)
+    return (source as { currencyCode?: string } | null | undefined)?.currencyCode
+  }, [isPathColumn, terminalFieldMeta, directField?.options])
 
   // ─── AI MENU GATE ─────────────────────────────────────────────────────────
   // Hide the AI submenu unless this is a direct, AI-enabled custom field.
@@ -636,6 +650,7 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
             setPinnedColumn={setPinnedColumn}
             effectiveFieldType={effectiveFieldType}
             terminalDefaultFormatting={terminalFieldMeta?.defaultFormatting}
+            fieldCurrencyCode={fieldCurrencyCode}
             aiMenuEnabled={aiMenuEnabled}
             aiField={aiField}
             aiFieldRef={aiFieldRef}

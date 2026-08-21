@@ -68,6 +68,14 @@ export interface FieldOptions {
   // ─────────────────────────────────────────────────────────────
   // CURRENCY (flat — `decimals` and `useGrouping` are shared with NUMBER)
   // ─────────────────────────────────────────────────────────────
+  /**
+   * ISO 4217 code this field is denominated in. Asserted ONCE, on the field —
+   * there is deliberately no per-value override. `valueNumber` holds minor
+   * units in this denomination, so it is what SQL sorts, filters and sums; a
+   * per-row code would mix exponents inside a single SUM with no error. A
+   * genuinely multi-currency model pairs an amount field with its own currency
+   * field and an FX-converted base-currency field.
+   */
   currencyCode?: string
   currencyDisplay?: 'symbol' | 'code' | 'name' | 'compact'
 

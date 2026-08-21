@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { getExistingFieldValue } from '@auxx/services/field-values'
 import type { FieldId } from '@auxx/types/field'
 import { buildFieldValueKey } from '@auxx/types/field'
+import { readMeta } from '@auxx/types/field-value'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils/generateId'
 import { isAiField } from '../custom-fields/ai'
@@ -61,7 +62,10 @@ export async function shortCircuitAiGenerate(
   })
 
   if (existing.isOk() && existing.value?.aiStatus === 'generating') {
-    const meta = (existing.value.valueJson ?? {}) as { jobId?: string; requestedAt?: string }
+    const meta = (readMeta(existing.value.valueJson).ai ?? {}) as {
+      jobId?: string
+      requestedAt?: string
+    }
     const requestedAtMs = meta.requestedAt ? Date.parse(meta.requestedAt) : 0
     const isStale = !requestedAtMs || Date.now() - requestedAtMs > STALE_GENERATING_MS
     if (!isStale && meta.jobId) {

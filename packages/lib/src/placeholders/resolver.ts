@@ -5,11 +5,11 @@ import type { FieldType } from '@auxx/database/types'
 import type { TypedFieldValue } from '@auxx/types'
 import { type FieldReference, fieldRefToKey } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
-import { formatCurrency } from '@auxx/utils/currency'
 import { getOrgCache, getUserCache } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
 import { FieldValueService } from '../field-values/field-value-service'
 import { formatToDisplayValue } from '../field-values/formatter'
+import { getOrgCurrencyCode, withOrgCurrency } from '../field-values/org-currency'
 import { decodeFallback, renderFallbackPayload } from './fallback-codec'
 import { decodePlaceholderFormat, getPlaceholderFormatOptions } from './format-codec'
 import {
@@ -298,6 +298,23 @@ export async function resolveFieldTokens(
     }
   }
 
+  // The org rung for CURRENCY, applied in one pass over the finished map.
+  // Doing it HERE is what keeps the HTML adapter and the structural document
+  // resolver identical — both consume this map, so a field that never picked
+  // its own code renders in `organization.currency` in an email and in a PDF
+  // alike. Skipped entirely when no currency token resolved.
+  const currencyIds = [...result].filter(([, r]) => r?.fieldType === 'CURRENCY').map(([id]) => id)
+  if (currencyIds.length > 0) {
+    const orgCurrencyCode = await getOrgCurrencyCode(ctx.organizationId, ctx.db)
+    for (const id of currencyIds) {
+      const resolved = result.get(id)!
+      result.set(id, {
+        ...resolved,
+        fieldOptions: withOrgCurrency(resolved.fieldOptions, 'CURRENCY', orgCurrencyCode),
+      })
+    }
+  }
+
   return result
 }
 
@@ -325,11 +342,7 @@ function formatDateOnly(d: Date): string {
  * `CURRENCY` total renders `$250.00` rather than the raw `25000`, dates render
  * `Jan 15, 2024`, options render their label, etc.
  *
- * Two deliberate deviations from `formatToDisplayValue`:
- * - `CURRENCY` is stored as integer **cents** by the money engine (`totals.ts`
- *   — `DisplayCurrency` renders `value / 100`), whereas the shared
- *   `currencyConverter` assumes dollars (`value * 100`). We format cents
- *   directly via `@auxx/utils/currency`'s `formatCurrency`.
+ * One deliberate deviation from `formatToDisplayValue`:
  * - `RELATIONSHIP` / `ACTOR` resolve to a human display name (the shared
  *   converter returns the raw id/object for frontend hydration, which is
  *   useless in an email).
@@ -353,17 +366,6 @@ function formatSingleForText(
   // Human-readable name for links/people — never the raw id.
   if (v.type === 'relationship') return v.displayName ?? v.recordId
   if (v.type === 'actor') return v.displayName ?? ''
-
-  // Money is integer cents (money-engine convention); the shared converter
-  // would multiply by 100 and be off by 100×.
-  if (fieldType === 'CURRENCY' && v.type === 'number') {
-    return formatCurrency(v.value, {
-      currencyCode: options?.currencyCode,
-      decimals: options?.decimals,
-      useGrouping: options?.useGrouping,
-      currencyDisplay: options?.currencyDisplay,
-    })
-  }
 
   const display = formatToDisplayValue(v, fieldType, options)
   return display === null || display === undefined ? '' : String(display)

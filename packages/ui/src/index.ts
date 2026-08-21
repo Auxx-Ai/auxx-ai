@@ -183,7 +183,6 @@ export {
   CurrencyInputField,
   type CurrencyInputFieldProps,
   type CurrencyInputProps,
-  type DecimalPlacesType,
   useCurrencyInput,
 } from './components/input-currency'
 export {

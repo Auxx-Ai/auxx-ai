@@ -1,5 +1,6 @@
 // packages/lib/src/workflow-engine/nodes/transform-nodes/format-processor.ts
 
+import { minorUnitExponent } from '@auxx/utils/currency'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type { NodeExecutionResult, ValidationResult, WorkflowNode } from '../../core/types'
 import { NodeRunningStatus, WorkflowNodeType } from '../../core/types'
@@ -266,7 +267,11 @@ export class FormatProcessor extends BaseNodeProcessor {
               'USD',
               ctx
             )
-            result = new Intl.NumberFormat(locale, { style: 'currency', currency }).format(num)
+            // The input is integer MINOR UNITS, the platform-wide CURRENCY
+            // convention — this node applied no scaling at all and rendered
+            // stored values 10^exponent high.
+            const major = num / 10 ** minorUnitExponent(currency)
+            result = new Intl.NumberFormat(locale, { style: 'currency', currency }).format(major)
           }
           break
         }

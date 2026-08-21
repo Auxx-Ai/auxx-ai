@@ -1,7 +1,11 @@
 // apps/web/src/components/fields/inputs/currency-input-field.tsx
 'use client'
 
-import type { CurrencyFieldOptions } from '@auxx/lib/field-values/client'
+import {
+  type CurrencyFieldOptions,
+  readCurrency,
+  resolveCurrencyCode,
+} from '@auxx/lib/field-values/client'
 import {
   CurrencyInputField as BaseCurrencyInputField,
   CurrencyInput,
@@ -9,6 +13,7 @@ import {
 import { InputGroup } from '@auxx/ui/components/input-group'
 import { cn } from '@auxx/ui/lib/utils'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useOrgCurrency } from '~/hooks/use-org-currency'
 import { useFieldNavigationOptional } from '../field-navigation-context'
 import { usePropertyContext } from '../property-provider'
 
@@ -26,10 +31,17 @@ import { usePropertyContext } from '../property-provider'
  * Note: The UI component's blur handler calls onBlur BEFORE parsing the value
  * and calling onValueChange. So we use a ref flag to trigger save in onValueChange
  * instead of in onBlur directly.
+ *
+ * VALUE SHAPE. Read and write are both a BARE NUMBER of minor units — the
+ * denomination is the field's (`options.currencyCode`), asserted once and
+ * inherited by every value. Symmetry here is load-bearing: an asymmetric shape
+ * makes `hasValueChanged` compare a number against an object, which reports a
+ * change on every blur and commits a field nobody edited.
  */
 export function CurrencyInputField() {
   const { value, trackChange, commitValue, close, isSaving, field } = usePropertyContext()
   const nav = useFieldNavigationOptional()
+  const orgCurrency = useOrgCurrency()
 
   // Capture keys while open (arrows used for increment/decrement)
   useEffect(() => {
@@ -40,23 +52,24 @@ export function CurrencyInputField() {
   // Track if we should save on the next value change (set true on blur)
   const shouldSaveRef = useRef(false)
 
-  const options: Required<CurrencyFieldOptions> = useMemo(() => {
+  const options = useMemo(() => {
     const opts = field.options as CurrencyFieldOptions | undefined
     return {
-      currencyCode: opts?.currencyCode ?? 'USD',
-      decimals: opts?.decimals ?? 2,
-      useGrouping: opts?.useGrouping ?? true,
+      currencyCode: resolveCurrencyCode(opts?.currencyCode, orgCurrency),
+      // Undefined means "derive from the code" — right for JPY (0) and KWD (3),
+      // not just USD. Only an explicit field setting overrides it.
+      decimals: opts?.decimals,
       currencyDisplay: opts?.currencyDisplay ?? 'symbol',
     }
-  }, [field.options])
+  }, [field.options, orgCurrency])
 
   /**
-   * Handle value change from CurrencyInput (value is in cents)
-   * This is called AFTER the UI component parses the value on blur
+   * Handle value change from CurrencyInput.
+   * This is called AFTER the UI component parses the value on blur.
    */
   const handleValueChange = useCallback(
-    (cents: number | undefined) => {
-      const newValue = cents ?? null
+    (next: number | undefined) => {
+      const newValue = next ?? null
       trackChange(newValue)
 
       // If blur triggered this change, save now (fire-and-forget)
@@ -97,14 +110,13 @@ export function CurrencyInputField() {
 
   return (
     <CurrencyInput
-      value={value ?? undefined}
+      value={readCurrency(value)}
       onValueChange={handleValueChange}
       currencyCode={options.currencyCode}
       currencyDisplay={options.currencyDisplay === 'compact' ? 'symbol' : options.currencyDisplay}
-      decimalPlaces={options.decimals === 0 ? 'no-decimal' : 'two-places'}
+      decimals={options.decimals}
       disabled={isSaving}>
       <InputGroup className={cn('h-[27px] ring-0! border-0', isSaving ? 'opacity-70' : '')}>
-        {/* <InputGroup> */}
         <BaseCurrencyInputField
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
@@ -113,7 +125,6 @@ export function CurrencyInputField() {
           className='text-left pl-0!'
         />
       </InputGroup>
-      {/* </InputGroup> */}
     </CurrencyInput>
   )
 }

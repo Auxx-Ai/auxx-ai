@@ -5,8 +5,7 @@ import type {
   TypedFieldValue,
   TypedFieldValueInput,
 } from '@auxx/types/field-value'
-import { formatCurrency } from '@auxx/utils/currency'
-import { DEFAULT_CURRENCY_OPTIONS, DEFAULT_NUMBER_OPTIONS } from '../../custom-fields/defaults'
+import { DEFAULT_NUMBER_OPTIONS } from '../../custom-fields/defaults'
 import type { FieldOptions, FieldValueConverter } from './index'
 
 /**
@@ -137,47 +136,4 @@ function formatBytesInternal(bytes: number, decimals: number = 0): string {
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   const value = bytes / k ** i
   return `${value.toFixed(decimals)} ${sizes[i]}`
-}
-
-/**
- * Converter for CURRENCY field type.
- * Same storage as NUMBER but with currency-specific display options.
- * Uses formatCurrency() from @auxx/utils/currency for consistent formatting.
- */
-export const currencyConverter: FieldValueConverter = {
-  // Use same input conversion as number
-  toTypedInput: numberConverter.toTypedInput,
-
-  // Use same raw value extraction as number
-  toRawValue: numberConverter.toRawValue,
-
-  /**
-   * Convert TypedFieldValue to display string with currency formatting.
-   * Uses the centralized formatCurrency utility for consistent output.
-   */
-  toDisplayValue(value: TypedFieldValue, options?: FieldOptions): string {
-    if (!value) {
-      return ''
-    }
-
-    const typed = value as NumberFieldValue
-    const num = typed.value
-
-    if (num === null || num === undefined || Number.isNaN(num)) {
-      return ''
-    }
-
-    // Merge defaults with provided options (flat keys on field.options)
-    const opts = {
-      currencyCode: options?.currencyCode ?? DEFAULT_CURRENCY_OPTIONS.currencyCode,
-      decimals: options?.decimals ?? DEFAULT_CURRENCY_OPTIONS.decimals,
-      useGrouping: options?.useGrouping ?? DEFAULT_CURRENCY_OPTIONS.useGrouping,
-      currencyDisplay: options?.currencyDisplay ?? DEFAULT_CURRENCY_OPTIONS.currencyDisplay,
-    }
-
-    // formatCurrency expects cents, so convert dollars to cents
-    const cents = Math.round(num * 100)
-
-    return formatCurrency(cents, opts)
-  },
 }

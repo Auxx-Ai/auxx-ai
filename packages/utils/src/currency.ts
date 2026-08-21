@@ -4,7 +4,7 @@
 export interface CurrencyDisplayOptions {
   /** ISO 4217 currency code (default 'USD') */
   currencyCode?: string
-  /** Number of decimal places to render (default 2) */
+  /** Number of decimal places to render (default: the code's minor-unit exponent) */
   decimals?: number
   /** Whether to use thousand separators (default true) */
   useGrouping?: boolean
@@ -16,26 +16,56 @@ export interface CurrencyDisplayOptions {
   currencyDisplay?: 'symbol' | 'code' | 'name' | 'compact'
 }
 
+const exponentCache = new Map<string, number>()
+
 /**
- * Format cents to currency display string
- * @param cents - Value in cents (integer)
+ * ISO 4217 minor-unit exponent for a currency code — the power of ten between a
+ * minor unit and the major unit. USD/EUR → 2 (cents), JPY/CLP → 0 (the minor
+ * unit IS the yen/peso), KWD/BHD → 3 (thousandths of a dinar).
+ *
+ * Derived from `Intl`, never stored: a persisted copy is a second source of
+ * truth that can disagree with the formatter sitting next to it. Falls back to
+ * 2 for an unrecognised code, matching the platform's historical assumption.
+ */
+export function minorUnitExponent(currencyCode: string | null | undefined): number {
+  const code = (currencyCode || 'USD').toUpperCase()
+  const cached = exponentCache.get(code)
+  if (cached !== undefined) return cached
+
+  let exponent = 2
+  try {
+    exponent =
+      new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).resolvedOptions()
+        .maximumFractionDigits ?? 2
+  } catch {
+    exponent = 2
+  }
+  exponentCache.set(code, exponent)
+  return exponent
+}
+
+/**
+ * Format an INTEGER COUNT OF MINOR UNITS as a currency string.
+ *
+ * `minorUnits` is cents for USD/EUR, whole yen for JPY, thousandths of a dinar
+ * for KWD — never a decimal major-unit amount. $32.29 is `3229`, never `32.29`.
+ * The scale comes from `currencyCode` via {@link minorUnitExponent}.
+ *
+ * @param minorUnits - Value in minor units (integer)
  * @param options - Currency display options
  * @returns Formatted currency string
  */
 export function formatCurrency(
-  cents: number | null | undefined,
+  minorUnits: number | null | undefined,
   options: CurrencyDisplayOptions = {}
 ): string {
-  if (cents === null || cents === undefined) return '-'
+  if (minorUnits === null || minorUnits === undefined) return '-'
 
-  const {
-    currencyCode = 'USD',
-    decimals = 2,
-    useGrouping = true,
-    currencyDisplay = 'symbol',
-  } = options
+  const { currencyCode = 'USD', useGrouping = true, currencyDisplay = 'symbol' } = options
 
-  const dollars = cents / 100
+  const exponent = minorUnitExponent(currencyCode)
+  const decimals = options.decimals ?? exponent
+  const major = minorUnits / 10 ** exponent
   const isCompact = currencyDisplay === 'compact'
 
   const formatOptions: Intl.NumberFormatOptions = isCompact
@@ -46,8 +76,8 @@ export function formatCurrency(
         compactDisplay: 'short',
         // Intl rejects 'compact' for currencyDisplay; symbol is the natural pick
         currencyDisplay: 'symbol',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
       }
     : {
         style: 'currency',
@@ -59,27 +89,27 @@ export function formatCurrency(
       }
 
   try {
-    return new Intl.NumberFormat('en-US', formatOptions).format(dollars)
+    return new Intl.NumberFormat('en-US', formatOptions).format(major)
   } catch {
     return isCompact
-      ? `${currencyCode} ${dollars.toFixed(0)}`
-      : `${currencyCode} ${dollars.toFixed(decimals)}`
+      ? `${currencyCode} ${major.toFixed(0)}`
+      : `${currencyCode} ${major.toFixed(decimals)}`
   }
 }
 
 /**
  * Compact currency for space-constrained surfaces (chart axes, badges), from
- * cents: 36000 → "$360", 1200000 → "$12K", 230000000 → "$2.3M". Unlike
- * `formatCurrency`'s `'compact'` display mode (which keeps two decimals, e.g.
- * `$12.00K`), this clamps to at most one fraction digit and drops cents.
+ * minor units: 36000 → "$360", 1200000 → "$12K", 230000000 → "$2.3M". Unlike
+ * `formatCurrency`'s `'compact'` display mode (which keeps the code's full
+ * decimals, e.g. `$12.00K`), this clamps to at most one fraction digit.
  */
 export function formatCurrencyCompact(
-  cents: number | null | undefined,
+  minorUnits: number | null | undefined,
   options: Pick<CurrencyDisplayOptions, 'currencyCode'> = {}
 ): string {
-  if (cents === null || cents === undefined) return '-'
+  if (minorUnits === null || minorUnits === undefined) return '-'
   const { currencyCode = 'USD' } = options
-  const dollars = cents / 100
+  const major = minorUnits / 10 ** minorUnitExponent(currencyCode)
   try {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -88,60 +118,59 @@ export function formatCurrencyCompact(
       compactDisplay: 'short',
       minimumFractionDigits: 0,
       maximumFractionDigits: 1,
-    }).format(dollars)
+    }).format(major)
   } catch {
-    return `${currencyCode} ${dollars.toFixed(0)}`
+    return `${currencyCode} ${major.toFixed(0)}`
   }
 }
 
 /**
- * Parse display value to cents
- * @param value - Display value (string or number)
- * @returns Value in cents (integer)
+ * Parse a MAJOR-unit amount (what a human types, or what a provider returns as
+ * a decimal string like Shopify's `"49.99"`) into integer minor units.
+ *
+ * Deliberately explicit about the input unit. Its predecessor `parseToCents`
+ * guessed — `Number.isInteger(v) && Math.abs(v) > 100 ? v : v * 100` — which is
+ * the undecidable dollars-vs-cents guess that produced 100×-wrong stored data.
+ * If you do not know the unit of your input, you cannot call this.
+ *
+ * @example parseMajorToMinor('19.99', 'USD') // 1999
+ * @example parseMajorToMinor('1000', 'JPY')  // 1000  (exponent 0)
  */
-export function parseToCents(value: string | number): number | null {
+export function parseMajorToMinor(
+  value: string | number | null | undefined,
+  currencyCode = 'USD'
+): number | null {
+  if (value === null || value === undefined) return null
+
+  let major: number
   if (typeof value === 'number') {
-    // If already a number, check if it looks like cents or dollars
-    if (Number.isInteger(value) && Math.abs(value) > 100) {
-      // Likely already in cents
-      return value
-    }
-    // Convert dollars to cents
-    return Math.round(value * 100)
-  }
-
-  if (typeof value === 'string') {
-    // Remove currency symbols, commas, spaces
-    const cleaned = value.replace(/[$€£¥₹₩,\s]/g, '').trim()
+    major = value
+  } else {
+    const cleaned = value
+      .replace(/[^0-9.,-]/g, '')
+      .replace(/,/g, '')
+      .trim()
     if (!cleaned) return null
-
-    const parsed = parseFloat(cleaned)
-    if (Number.isNaN(parsed)) return null
-
-    // Convert to cents
-    return Math.round(parsed * 100)
+    major = Number.parseFloat(cleaned)
   }
 
-  return null
+  if (Number.isNaN(major)) return null
+  return Math.round(major * 10 ** minorUnitExponent(currencyCode))
 }
 
 /**
- * Convert cents to dollars for input display
- * @param cents - Value in cents
- * @returns Value in dollars (decimal)
+ * Render integer minor units as a plain major-unit decimal string — no symbol,
+ * no grouping. For text inputs and copy-to-clipboard, where a formatted string
+ * would not round-trip.
+ *
+ * @example minorToMajorString(1999, 'USD') // '19.99'
+ * @example minorToMajorString(1000, 'JPY') // '1000'
  */
-export function centsToDollars(cents: number | null | undefined): string {
-  if (cents === null || cents === undefined) return ''
-  return (cents / 100).toFixed(2)
-}
-
-/**
- * Convert price string to cents
- * @param priceString - Price as a string
- * @returns Value in cents (integer) or null
- * @example "19.99" -> 1999
- */
-export const convertToCents = (priceString: string | null): number | null => {
-  if (priceString === null) return null
-  return Math.round(parseFloat(priceString) * 100)
+export function minorToMajorString(
+  minorUnits: number | null | undefined,
+  currencyCode = 'USD'
+): string {
+  if (minorUnits === null || minorUnits === undefined) return ''
+  const exponent = minorUnitExponent(currencyCode)
+  return (minorUnits / 10 ** exponent).toFixed(exponent)
 }

@@ -7,10 +7,22 @@ import { conditionGroupSchema } from './schema'
 // COLUMN FORMATTING SCHEMAS
 // ============================================================================
 
-/** Currency formatting schema */
+/**
+ * Currency formatting schema — DRAWING only.
+ *
+ * 🛑 No `currencyCode`. A column override that changes the code does not relabel
+ * the money, it RESCALES it: `formatCurrency` derives the divisor from the code,
+ * so a USD field holding 20000 ($200.00) rendered through a JPY override reads
+ * ¥20,000 (100× high) and through KWD reads KWD 20.000 (1000× low). The three
+ * keys below round or restyle a number whose magnitude is fixed; the code sits
+ * on a different axis and belongs to the field, which one answer covers for
+ * table, CSV, PDF, placeholders, totals and the editor at once.
+ *
+ * Zod strips undeclared keys, so a stored config carrying a legacy
+ * `currencyCode` still parses and sheds it on the next write.
+ */
 export const currencyFormattingSchema = z.object({
   type: z.literal('currency'),
-  currencyCode: z.string().optional(),
   decimals: z.number().int().min(0).max(10).optional(),
   useGrouping: z.boolean().optional(),
   currencyDisplay: z.enum(['symbol', 'code', 'name', 'compact']).optional(),

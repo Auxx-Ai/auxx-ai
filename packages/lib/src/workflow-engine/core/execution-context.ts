@@ -29,6 +29,7 @@ import {
 } from '../../field-values/field-value-helpers'
 import { batchGetValues } from '../../field-values/field-value-queries'
 import { formatToDisplayValue, formatToRawValue } from '../../field-values/formatter'
+import { getOrgCurrencyCode, withOrgCurrency } from '../../field-values/org-currency'
 import { primaryValue } from '../../field-values/primary-value'
 import { getFieldOutputKey, type ResourceField } from '../../resources/registry/field-types'
 import { fetchResourceWithRelationships } from '../../resources/resource-fetcher'
@@ -156,6 +157,8 @@ export class ExecutionContextManager implements ContextManager {
   // Record field cache: stores TypedFieldValues per record, keyed by RecordId
   // Unified cache for field value access — replaces per-field lazy loading for custom entities
   private recordFieldCache: Map<string, RecordFieldEntry> = new Map()
+  /** Memoized org currency for the run — see {@link getOrgCurrencyCode}. */
+  private orgCurrencyCodePromise?: Promise<string>
 
   constructor(
     workflowId: string,
@@ -977,6 +980,17 @@ export class ExecutionContextManager implements ContextManager {
    * @param refs - ResourceReference array (from findMany output)
    * @param fieldRefs - FieldReference array (direct fields or relationship paths)
    */
+  /**
+   * The org's currency code, memoized for the life of the run.
+   *
+   * A workflow run is a single point in time — re-reading the setting mid-run
+   * would let one execution format two currency fields under different codes.
+   */
+  private async getOrgCurrencyCode(): Promise<string> {
+    this.orgCurrencyCodePromise ??= getOrgCurrencyCode(this.context.organizationId)
+    return this.orgCurrencyCodePromise
+  }
+
   async prefetchFields(refs: ResourceReference[], fieldRefs: FieldReference[]): Promise<void> {
     if (refs.length === 0 || fieldRefs.length === 0) return
 
@@ -1001,6 +1015,18 @@ export class ExecutionContextManager implements ContextManager {
       })),
     })
 
+    // The org rung for CURRENCY, layered in as values enter the cache — one
+    // site covers every downstream read (display values, friendly values,
+    // materialized objects). A field that never picked a code follows
+    // `organization.currency`; one that did is untouched.
+    //
+    // Only read the setting when this batch ACTUALLY contains a currency field:
+    // most workflow prefetches touch none, and an unconditional read would put
+    // an org-cache hit on every one of them.
+    const orgCurrencyCode = result.values.some((v) => v.fieldType === 'CURRENCY')
+      ? await this.getOrgCurrencyCode()
+      : undefined
+
     // Store results in cache
     for (const entry of result.values) {
       const key = fieldRefToKey(entry.fieldRef)
@@ -1017,7 +1043,7 @@ export class ExecutionContextManager implements ContextManager {
       record.fields.set(key, {
         typed: entry.value,
         fieldType: entry.fieldType,
-        fieldOptions: entry.fieldOptions,
+        fieldOptions: withOrgCurrency(entry.fieldOptions, entry.fieldType, orgCurrencyCode),
       })
     }
   }
@@ -1068,7 +1094,10 @@ export class ExecutionContextManager implements ContextManager {
     const cached: CachedFieldValue = {
       typed: entry.value,
       fieldType: entry.fieldType,
-      fieldOptions: entry.fieldOptions,
+      fieldOptions:
+        entry.fieldType === 'CURRENCY'
+          ? withOrgCurrency(entry.fieldOptions, entry.fieldType, await this.getOrgCurrencyCode())
+          : entry.fieldOptions,
     }
     cacheEntry.fields.set(key, cached)
     return cached
@@ -1143,7 +1172,8 @@ export class ExecutionContextManager implements ContextManager {
         )
 
         // For field types where rawValue is an object (ACTOR, NAME), use the display
-        // string so String() calls in join/pluck produce readable output
+        // string so String() calls in join/pluck produce readable output.
+        // CURRENCY needs no special case: its raw value is a bare number.
         const fieldValue =
           rawValue !== null && typeof rawValue === 'object' && !Array.isArray(rawValue)
             ? displayStr
@@ -2135,6 +2165,12 @@ function stringifyDisplayValue(displayValue: unknown): string {
  * Get a friendly value from a cached field value.
  * For field types where formatToRawValue returns an object (ACTOR, NAME),
  * returns the display string instead so String() calls produce readable output.
+ *
+ * CURRENCY needs no special case: its raw value is the bare minor-unit number,
+ * which is what `if-else` must see. A workflow variable feeds numeric
+ * comparison — `evaluate-operator` coerces both sides with `Number()`, so an
+ * object there would stringify to `"$250.00"` -> `NaN` and a branch on
+ * `total > 1000` would silently stop firing.
  */
 function cachedToFriendlyValue(cached: CachedFieldValue): unknown {
   const raw = formatToRawValue(cached.typed, cached.fieldType)

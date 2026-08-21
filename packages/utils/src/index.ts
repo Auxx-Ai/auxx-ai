@@ -39,11 +39,11 @@ export { csvCell, toCsv } from './csv'
 // Currency utilities
 export {
   type CurrencyDisplayOptions,
-  centsToDollars,
-  convertToCents,
   formatCurrency,
   formatCurrencyCompact,
-  parseToCents,
+  minorToMajorString,
+  minorUnitExponent,
+  parseMajorToMinor,
 } from './currency'
 // Date utilities
 export {

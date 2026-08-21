@@ -600,9 +600,10 @@ async function categorizeFields(
 // =============================================================================
 
 /**
- * Explicit FieldValue projection. `valueJson` is heavy jsonb (file/currency/
- * address payloads, AI metadata) — it is only shipped when `valueJsonWhen`
- * matches; other rows get NULL. Pass `true` to always include it.
+ * Explicit FieldValue projection. `valueJson` is the `{ v, meta }` envelope —
+ * heavy jsonb (file/address payloads) plus small metadata facts — and is only
+ * shipped when `valueJsonWhen` matches; other rows get NULL. Pass `true` to
+ * always include it.
  */
 function fieldValueColumns(valueJsonWhen: SQL | true) {
   return {
@@ -642,16 +643,15 @@ async function fetchFieldValueResults(
   fieldTypeMap: Map<string, FieldType>,
   fieldOptionsMap: Map<string, FieldOptions | undefined>
 ): Promise<TypedFieldValueResult[]> {
-  // Only json-typed fields store their value in valueJson; AI metadata
-  // piggy-backs on valueJson for ANY type when aiStatus is set. Unknown types
-  // keep valueJson for safety.
-  const jsonFieldIds = fieldIds.filter((fieldId) => {
-    const fieldType = fieldTypeMap.get(fieldId)
-    return !fieldType || getValueType(fieldType) === 'json'
-  })
-  const valueJsonWhen = jsonFieldIds.length
-    ? or(isNotNull(schema.FieldValue.aiStatus), inArray(schema.FieldValue.fieldId, jsonFieldIds))!
-    : isNotNull(schema.FieldValue.aiStatus)
+  // `valueJson` is the `{ v, meta }` envelope: the value for json-typed fields,
+  // and metadata (AI provenance, a CURRENCY row's ISO code) for any type. Ship
+  // it exactly when a row has one.
+  //
+  // This is NARROWER than the fieldId-membership predicate it replaces — that
+  // form selected every row of a json-typed field, payload or not — while also
+  // covering the case membership missed: a scalar row carrying `meta` but no
+  // `aiStatus`, which is every currency value that asserts its own code.
+  const valueJsonWhen = isNotNull(schema.FieldValue.valueJson)
 
   const rows = await ctx.db
     .select(fieldValueColumns(valueJsonWhen))
