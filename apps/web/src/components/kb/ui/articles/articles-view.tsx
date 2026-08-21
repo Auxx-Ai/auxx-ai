@@ -27,6 +27,7 @@ import {
   type DynamicResourceViewHandle,
 } from '~/components/dynamic-table/dynamic-resource-view'
 import type { ExtendedColumnDef } from '~/components/dynamic-table/types'
+import { optionLabel } from '~/components/dynamic-table/utils/cell-coercion'
 import { resolveColumnField } from '~/components/dynamic-table/utils/column-id'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { EmptyState } from '~/components/global/empty-state'
@@ -323,6 +324,25 @@ export function ArticlesView() {
             fieldType: field.fieldType,
             recordId,
             primaryDisplay: display,
+          }
+        }
+
+        // Select-ish: option ids are minted per field and no label is
+        // denormalized onto the stored value, so copy must emit the LABEL —
+        // see the same branch in records-view.
+        if (
+          field.fieldType === 'SINGLE_SELECT' ||
+          field.fieldType === 'MULTI_SELECT' ||
+          field.fieldType === 'TAGS'
+        ) {
+          const opts = field.options?.options
+          const optionIds = (Array.isArray(raw) ? raw : [raw])
+            .map((v) => converter.toRawValue(v) as string | null)
+            .filter((v): v is string => Boolean(v))
+          return {
+            display: optionIds.map((id) => optionLabel(id, opts)).join(', '),
+            raw: field.fieldType === 'SINGLE_SELECT' ? (optionIds[0] ?? null) : optionIds,
+            fieldType: field.fieldType,
           }
         }
 

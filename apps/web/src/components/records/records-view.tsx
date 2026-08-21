@@ -38,6 +38,7 @@ import {
   type DynamicResourceViewHandle,
 } from '~/components/dynamic-table/dynamic-resource-view'
 import { useTableViewRealtime } from '~/components/dynamic-table/hooks/use-table-view-realtime'
+import { optionLabel } from '~/components/dynamic-table/utils/cell-coercion'
 import { resolveColumnField } from '~/components/dynamic-table/utils/column-id'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { EmptyState } from '~/components/global/empty-state'
@@ -604,6 +605,25 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
             raw: actorId,
             fieldType,
             primaryDisplay: display,
+          }
+        }
+
+        // Select-ish: the stored typed value carries only `optionId`, and ids are
+        // minted PER FIELD — two tag columns both offering "Red" hold different
+        // ids, and no label is denormalized onto the value. Copy therefore emits
+        // the LABEL, which is the only thing a paste into another select column
+        // (or into Excel) can match on.
+        if (fieldType === 'SINGLE_SELECT' || fieldType === 'MULTI_SELECT' || fieldType === 'TAGS') {
+          const opts = field.options?.options
+          const optionIds = (Array.isArray(raw) ? raw : [raw])
+            .map((v) => converter.toRawValue(v) as string | null)
+            .filter((v): v is string => Boolean(v))
+          return {
+            display: optionIds.map((id) => optionLabel(id, opts)).join(', '),
+            // Scalar raw for SINGLE_SELECT, array for the multi types — that's
+            // the shape `coerceForPaste`'s lossless same-field path expects.
+            raw: fieldType === 'SINGLE_SELECT' ? (optionIds[0] ?? null) : optionIds,
+            fieldType,
           }
         }
 

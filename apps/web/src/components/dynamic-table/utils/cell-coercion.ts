@@ -341,3 +341,20 @@ function findOptionId(
   if (!match) return null
   return match.id ?? match.value
 }
+
+/**
+ * Resolve a stored option id to its human label using the field's own option set.
+ *
+ * Stored select values carry only `optionId`, and ids are minted PER FIELD — two
+ * tag columns both offering "Red" hold different ids. Copy must therefore emit the
+ * label, or a paste into the other column has nothing to match on. Falls back to
+ * the id itself for free-form tag fields, which have no option set.
+ */
+export function optionLabel(
+  optionId: string,
+  options: Array<{ id?: string; value: string; label: string }> | undefined
+): string {
+  if (!options || options.length === 0) return optionId
+  const option = options.find((o) => o.id === optionId || o.value === optionId)
+  return option?.label ?? optionId
+}
