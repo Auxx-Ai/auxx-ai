@@ -164,6 +164,92 @@ export function useResourceSync() {
   const removeRecord = useRecordStore((s) => s.removeRecord)
   const invalidateLists = useRecordStore((s) => s.invalidateLists)
 
+  // ─── CATCH-UP ON (RE)SUBSCRIBE ──────────────────────────────────────────
+  //
+  // Pusher replays nothing to a channel you were not on, and a record channel
+  // cannot bind until `resource.list` resolves (its key needs the def id). So
+  // anything published between mount and that handshake — and between a
+  // dropped connection and its resubscribe — is simply never delivered.
+  //
+  // The SUBSCRIBE lane is scoped by `hasMaterializedState`: only defs this client
+  // had already loaded when the channel bound can hold stale data, which on a cold
+  // page load is nothing at all (the list query needs the same catalog the
+  // channel key does) and after that is just what is on screen. So it is one
+  // def, not the 20–40 the client subscribes to.
+  //
+  // `records:invalidated` reuses the same three lanes without that guard — see
+  // `handleRecordsInvalidated`. It is unconditional because a def with no
+  // materialized state costs nothing here: lane 1 invalidates an unloaded query
+  // and lanes 2–3 short-circuit on an empty id list.
+  //
+  // Both lanes below overwrite in place instead of dropping. Dropping is not
+  // an option for values: the subscriber hooks dedupe per key for the lifetime
+  // of the mount, so an invalidated cell would never be re-requested.
+  const catchUpDefsRef = useRef<Set<string>>(new Set())
+  const catchUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const runCatchUp = useCallback(
+    (entityDefinitionIds: string[]) => {
+      for (const entityDefinitionId of entityDefinitionIds) {
+        // 1. Row membership — creates/deletes/archives/bulk invalidations. The
+        //    tRPC data stays cached while it refetches, so rows do not blank.
+        invalidateLists(entityDefinitionId)
+        utils.record.listFiltered.invalidate({ entityDefinitionId })
+
+        const ids = cachedRecordIdsForDef(entityDefinitionId, CATCH_UP_RECORD_CAP)
+        if (ids.length === 0) continue
+
+        // 2. Record meta — a missed `record:updated` (display name, avatar).
+        //    `updateRecord` patches rows we already hold and ignores the rest.
+        utils.record.getByIds
+          .fetch({ items: ids.map((id) => toRecordId(entityDefinitionId, id)) }, { staleTime: 0 })
+          .then((data) => {
+            for (const item of Object.values(data ?? {})) {
+              updateRecord(entityDefinitionId, item.id, {
+                displayName: item.displayName,
+                secondaryInfo: item.secondaryInfo,
+                avatarUrl: item.avatarUrl,
+                // A missed grant/revoke changes the row-effective rung, not the
+                // row (plan v3/03 §5.2) — so the catch-up must carry `_access`
+                // or a member whose share was revoked keeps the edit affordance
+                // until the row is evicted.
+                _access: item._access,
+              })
+            }
+          })
+          .catch(() => {
+            /* best-effort; the next subscribe or refresh retries */
+          })
+
+        // 3. Cell values — a missed `fieldValues:updated`. Refreshes exactly
+        //    the cells already in the store, in one batched request.
+        const requests = cachedValueRequests(entityDefinitionId, new Set(ids))
+        if (requests.length > 0) fieldValueFetchQueue.refetch(requests)
+      }
+    },
+    [invalidateLists, updateRecord, utils]
+  )
+
+  /**
+   * Coalesce a def into the next catch-up pass. Two callers: a record channel
+   * (re)binding, and a `records:invalidated` frame from a bulk write — both
+   * mean "this def may hold stale rows AND stale cells", which is all three
+   * lanes, not just the list.
+   */
+  const scheduleCatchUp = useCallback(
+    (entityDefinitionId: string) => {
+      catchUpDefsRef.current.add(entityDefinitionId)
+      if (catchUpTimerRef.current) return
+      catchUpTimerRef.current = setTimeout(() => {
+        catchUpTimerRef.current = null
+        const defIds = [...catchUpDefsRef.current]
+        catchUpDefsRef.current.clear()
+        runCatchUp(defIds)
+      }, CATCH_UP_COALESCE_MS)
+    },
+    [runCatchUp]
+  )
+
   // Merge fieldValues:updated into the store. An entry with `value` present
   // goes through `setValues` (which preserves the pending-optimistic skip).
   // An entry with `aiStatus` present writes the AI marker — `null` clears it.
@@ -244,17 +330,23 @@ export function useResourceSync() {
     [invalidateLists, utils]
   )
 
-  // Coarse refresh from a bulk write (data-connector slice). Per-record realtime
-  // is suppressed for those writes, so a single invalidate per def per slice
-  // re-pulls the visible list (records + field values) without the firehose.
-  // Same body as handleRecordArchived — invalidate lists + listFiltered.
+  // Coarse refresh from a bulk write (data-connector slice, import execution).
+  // Per-record realtime is suppressed for those writes, so this one frame per
+  // def per slice is the only signal the client gets.
+  //
+  // It runs the FULL catch-up, not just the list invalidate. `listFiltered`
+  // returns ids only, and `use-record-list` fetches a record solely when the id
+  // is absent from the store — so a list-only refresh surfaces rows a bulk write
+  // CREATED and shows nothing for the rows it UPDATED. An import whose strategy
+  // is `update` matches existing records by definition, which is exactly the case
+  // a list invalidate cannot see. Lanes 2 and 3 refresh the cached record meta
+  // and the cached cells, which is where an update actually lands.
   const handleRecordsInvalidated = useCallback(
     (raw: unknown) => {
       const data = raw as RecordsInvalidatedEvent['data']
-      invalidateLists(data.entityDefinitionId)
-      utils.record.listFiltered.invalidate({ entityDefinitionId: data.entityDefinitionId })
+      scheduleCatchUp(data.entityDefinitionId)
     },
-    [invalidateLists, utils]
+    [scheduleCatchUp]
   )
 
   // A resource (entity DEFINITION) was created / renamed / removed elsewhere —
@@ -298,67 +390,6 @@ export function useResourceSync() {
     ]
   )
 
-  // ─── CATCH-UP ON (RE)SUBSCRIBE ──────────────────────────────────────────
-  //
-  // Pusher replays nothing to a channel you were not on, and a record channel
-  // cannot bind until `resource.list` resolves (its key needs the def id). So
-  // anything published between mount and that handshake — and between a
-  // dropped connection and its resubscribe — is simply never delivered.
-  //
-  // The catch-up is scoped by `hasMaterializedState`: only defs this client had
-  // already loaded when the channel bound can hold stale data, which on a cold
-  // page load is nothing at all (the list query needs the same catalog the
-  // channel key does) and after that is just what is on screen. So it is one
-  // def, not the 20–40 the client subscribes to.
-  //
-  // Both lanes below overwrite in place instead of dropping. Dropping is not
-  // an option for values: the subscriber hooks dedupe per key for the lifetime
-  // of the mount, so an invalidated cell would never be re-requested.
-  const catchUpDefsRef = useRef<Set<string>>(new Set())
-  const catchUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const runCatchUp = useCallback(
-    (entityDefinitionIds: string[]) => {
-      for (const entityDefinitionId of entityDefinitionIds) {
-        // 1. Row membership — creates/deletes/archives/bulk invalidations. The
-        //    tRPC data stays cached while it refetches, so rows do not blank.
-        invalidateLists(entityDefinitionId)
-        utils.record.listFiltered.invalidate({ entityDefinitionId })
-
-        const ids = cachedRecordIdsForDef(entityDefinitionId, CATCH_UP_RECORD_CAP)
-        if (ids.length === 0) continue
-
-        // 2. Record meta — a missed `record:updated` (display name, avatar).
-        //    `updateRecord` patches rows we already hold and ignores the rest.
-        utils.record.getByIds
-          .fetch({ items: ids.map((id) => toRecordId(entityDefinitionId, id)) }, { staleTime: 0 })
-          .then((data) => {
-            for (const item of Object.values(data ?? {})) {
-              updateRecord(entityDefinitionId, item.id, {
-                displayName: item.displayName,
-                secondaryInfo: item.secondaryInfo,
-                avatarUrl: item.avatarUrl,
-                // A missed grant/revoke changes the row-effective rung, not the
-                // row (plan v3/03 §5.2) — so the catch-up must carry `_access`
-                // or a member whose share was revoked keeps the edit affordance
-                // until the row is evicted.
-                _access: item._access,
-              })
-            }
-          })
-          .catch(() => {
-            /* best-effort; the next subscribe or refresh retries */
-          })
-
-        // 3. Cell values — a missed `fieldValues:updated`. Refreshes exactly
-        //    the cells already in the store, in one batched request.
-        const requests = cachedValueRequests(entityDefinitionId, new Set(ids))
-        if (requests.length > 0) fieldValueFetchQueue.refetch(requests)
-      }
-    },
-    [invalidateLists, updateRecord, utils]
-  )
-
   // The decision of WHETHER a def needs catching up is made here, at subscribe
   // time — not when the coalesced pass runs. Otherwise a list that resolves
   // during the coalesce window (the normal cold-load ordering) would look like
@@ -366,16 +397,9 @@ export function useResourceSync() {
   const handleDefSubscribed = useCallback(
     (entityDefinitionId: string) => {
       if (!hasMaterializedState(entityDefinitionId)) return
-      catchUpDefsRef.current.add(entityDefinitionId)
-      if (catchUpTimerRef.current) return
-      catchUpTimerRef.current = setTimeout(() => {
-        catchUpTimerRef.current = null
-        const defIds = [...catchUpDefsRef.current]
-        catchUpDefsRef.current.clear()
-        runCatchUp(defIds)
-      }, CATCH_UP_COALESCE_MS)
+      scheduleCatchUp(entityDefinitionId)
     },
-    [runCatchUp]
+    [scheduleCatchUp]
   )
 
   useEffect(

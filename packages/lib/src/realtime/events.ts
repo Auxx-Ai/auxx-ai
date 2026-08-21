@@ -135,12 +135,16 @@ export interface RecordArchivedEvent {
 }
 
 /**
- * Coarse "refresh this entity def" signal. Emitted ONCE per touched def per
- * bulk-write slice (data-connector sync) in place of the thousands of per-record
- * `record:created` / `fieldValues:updated` events those writes suppress. The
- * client invalidates the def's visible list + `listFiltered` query — a single
- * refetch that re-pulls records + field values — instead of the per-record
- * firehose that 403s Pusher at backfill scale.
+ * Coarse "refresh this entity def" signal. Emitted per touched def per bulk-write
+ * slice — data-connector sync, and import execution (throttled) — in place of the
+ * thousands of per-record `record:created` / `fieldValues:updated` events those
+ * writes suppress via `skipEvents`, which would 403 Pusher at backfill scale.
+ *
+ * The client runs its full three-lane catch-up for the def: invalidate the list +
+ * `listFiltered`, refresh cached record meta, refetch cached cell values. All three
+ * are required — `listFiltered` returns ids only and the record fetcher skips ids
+ * already in the store, so a list-only refresh reveals CREATED rows and misses
+ * UPDATED ones entirely.
  */
 export interface RecordsInvalidatedEvent {
   event: 'records:invalidated'
