@@ -3,7 +3,9 @@
 // it resolves the persisted manifest, transition-matches each captured field write
 // against the org's enabled rules, and fires the engine with `source: 'sync'` — giving
 // record rules visibility into bulk writes the connector sink / import job suppressed
-// via `skipEvents`. Lifecycle (`created`/`deleted`) firings dispatch here too.
+// via `skipEvents`. Lifecycle (`created`/`deleted`) firings dispatch here too. After
+// the rules fire, the Phase 4 sync finalize pass (`./sync-finalize.ts`) runs on the
+// same once-only claim — see that module for the doors it executes.
 //
 // Keep top-level imports to types/logger only; lazy-import everything else (the
 // record-rules ↔ data-connectors ↔ cache boundaries break vi.mock otherwise).
@@ -74,12 +76,11 @@ export const handleSyncRecordRules = async ({ data: event }: { data: AuxxEvent }
       })
     }
 
-    const { getCachedRecordRules } = await import('../../cache')
-    const rules = (await getCachedRecordRules(organizationId)).filter((r) => r.enabled)
-    if (rules.length === 0) return
-
-    // Claim AFTER the cheap bail-outs, BEFORE any firing. At-most-once by design: a
-    // crash mid-fire loses the remainder rather than double-notifying on retry.
+    // Claim AFTER the manifest bail-out, BEFORE any firing. At-most-once by design: a
+    // crash mid-fire loses the remainder rather than double-notifying on retry. The
+    // claim now sits BEFORE the zero-rules check — the Phase 4 finalize pass below
+    // rides the same latch and must run exactly once per run even when every rule was
+    // disabled between write and consume.
     if (!(await claimManifest(data))) {
       logger.info('sync-change manifest already consumed — skipping duplicate delivery', {
         organizationId,
@@ -90,41 +91,60 @@ export const handleSyncRecordRules = async ({ data: event }: { data: AuxxEvent }
       return
     }
 
-    // Index rules per def for the three firing kinds.
-    const fieldRulesByDef = new Map<string, CachedRecordRule[]>()
-    const createdRulesByDef = new Map<string, CachedRecordRule[]>()
-    const deletedRulesByDef = new Map<string, CachedRecordRule[]>()
-    for (const rule of rules) {
-      if (rule.fieldId !== null) {
-        push(fieldRulesByDef, rule.entityDefinitionId, rule)
-      } else if (rule.on === 'created') {
-        push(createdRulesByDef, rule.entityDefinitionId, rule)
-      } else if (rule.on === 'deleted') {
-        push(deletedRulesByDef, rule.entityDefinitionId, rule)
+    const { getCachedRecordRules } = await import('../../cache')
+    const rules = (await getCachedRecordRules(organizationId)).filter((r) => r.enabled)
+    if (rules.length > 0) {
+      // Index rules per def for the three firing kinds.
+      const fieldRulesByDef = new Map<string, CachedRecordRule[]>()
+      const createdRulesByDef = new Map<string, CachedRecordRule[]>()
+      const deletedRulesByDef = new Map<string, CachedRecordRule[]>()
+      for (const rule of rules) {
+        if (rule.fieldId !== null) {
+          push(fieldRulesByDef, rule.entityDefinitionId, rule)
+        } else if (rule.on === 'created') {
+          push(createdRulesByDef, rule.entityDefinitionId, rule)
+        } else if (rule.on === 'deleted') {
+          push(deletedRulesByDef, rule.entityDefinitionId, rule)
+        }
       }
+
+      let fired = 0
+      fired += await fireFieldChanges(organizationId, manifest, fieldRulesByDef)
+      fired += await fireLifecycle(
+        organizationId,
+        manifest.createdRecordIds,
+        createdRulesByDef,
+        false,
+        manifest.createdValues
+      )
+      fired += await fireLifecycle(
+        organizationId,
+        manifest.archivedRecordIds,
+        deletedRulesByDef,
+        true
+      )
+
+      logger.info('sync:records:changed processed', {
+        organizationId,
+        source: data.source,
+        runId: data.runId,
+        fired,
+      })
     }
 
-    let fired = 0
-    fired += await fireFieldChanges(organizationId, manifest, fieldRulesByDef)
-    fired += await fireLifecycle(
-      organizationId,
-      manifest.createdRecordIds,
-      createdRulesByDef,
-      false,
-      manifest.createdValues
-    )
-    fired += await fireLifecycle(
-      organizationId,
-      manifest.archivedRecordIds,
-      deletedRulesByDef,
-      true
-    )
-
-    logger.info('sync:records:changed processed', {
+    // Phase 4 (plan events/03 §8, D-12): the sync finalize pass — activity bump,
+    // collapsed timeline, lane-gated dispatch, tier-2 frames. INSIDE the claimed
+    // branch, AFTER rules fire; `runSyncFinalize` catches its own errors (rules
+    // already fired — a finalize crash must not re-throw into a retry that can
+    // never re-claim).
+    const { runSyncFinalize } = await import('./sync-finalize')
+    const { database } = await import('@auxx/database')
+    await runSyncFinalize(database, {
       organizationId,
       source: data.source,
-      runId: data.runId,
-      fired,
+      ref: (data.source === 'connector' ? data.runId : data.importRef) as string,
+      dataConnectorId: data.dataConnectorId,
+      manifest,
     })
   } catch (error) {
     logger.error('Sync record-rule dispatch failed', {
