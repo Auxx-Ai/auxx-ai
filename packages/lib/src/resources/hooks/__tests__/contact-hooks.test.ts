@@ -6,11 +6,11 @@ import { BadRequestError, UniqueValueConflictError } from '../../../errors'
 import { CONTACT_HOOKS } from '../contact-hooks'
 import type { SystemHookContext } from '../types'
 
-vi.mock('@auxx/services/custom-fields', () => ({
+vi.mock('../../../custom-fields', () => ({
   checkUniqueValue: vi.fn(),
 }))
 
-const { checkUniqueValue } = await import('@auxx/services/custom-fields')
+const { checkUniqueValue } = await import('../../../custom-fields')
 const checkUniqueValueMock = vi.mocked(checkUniqueValue)
 
 const FIELD_ID = 'field-email-1'

@@ -1,18 +1,16 @@
 // packages/lib/src/entity-definitions/entity-definition-service.ts
 
-import {
-  createEntityDefinition,
-  getEntityDefinition,
-  getEntityDefinitionBySlug,
-  listEntityDefinitions,
-  updateEntityDefinition,
-} from '@auxx/services/entity-definitions'
 import type { Result } from 'neverthrow'
 import { ForbiddenError } from '../errors'
 import { DisplayFieldService, type DisplayFieldType } from '../field-values'
+import { createEntityDefinition } from './create-entity-definition'
 import { deleteEntityDefinitionDeep } from './delete-entity-definition'
+import { getEntityDefinition } from './get-entity-definition'
+import { getEntityDefinitionBySlug } from './get-entity-definition-by-slug'
+import { listEntityDefinitions } from './list-entity-definitions'
 import { notifyEntityDefChanged } from './notify'
 import type { CreateEntityDefinitionInput, UpdateEntityDefinitionInput } from './types'
+import { updateEntityDefinition } from './update-entity-definition'
 
 /**
  * Helper to unwrap neverthrow Result and throw on error

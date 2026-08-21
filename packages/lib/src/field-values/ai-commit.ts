@@ -1,10 +1,5 @@
 // packages/lib/src/field-values/ai-commit.ts
 
-import {
-  getExistingFieldValue,
-  insertFieldValue,
-  updateAiMarker,
-} from '@auxx/services/field-values'
 import type { FieldId } from '@auxx/types/field'
 import { buildFieldValueKey } from '@auxx/types/field'
 import { mergeMeta, readMeta } from '@auxx/types/field-value'
@@ -14,6 +9,9 @@ import { getRealtimeService } from '../realtime'
 import { publishFieldValueUpdates } from '../realtime/publish-helpers'
 import type { AiValueMetadata } from './ai-autofill/generation-service'
 import type { FieldValueContext } from './field-value-helpers'
+import { getExistingFieldValue } from './get-existing-value'
+import { insertFieldValue } from './insert-value'
+import { updateAiMarker } from './update-ai-marker'
 
 /** Persistent AI generation state. `null` = not AI-generated (implicit clear). */
 export type AiWriteState = 'generating' | 'result' | 'error'

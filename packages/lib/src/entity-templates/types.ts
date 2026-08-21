@@ -1,7 +1,7 @@
 // packages/lib/src/entity-templates/types.ts
 
 import type { CreateEntityDefinitionInput } from '@auxx/lib/entity-definitions/types'
-import type { CreateCustomFieldInput } from '@auxx/services/custom-fields'
+import type { CreateCustomFieldInput } from '../custom-fields'
 
 /**
  * Template-specific metadata that wraps around the entity/field creation inputs.

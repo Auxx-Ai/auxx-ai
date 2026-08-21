@@ -339,6 +339,9 @@ importers:
       '@auxx/services':
         specifier: workspace:*
         version: link:../../packages/services
+      '@auxx/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@auxx/utils':
         specifier: workspace:*
         version: link:../../packages/utils
@@ -10635,6 +10638,7 @@ packages:
   eslint@9.39.3:
     resolution: {integrity: sha512-VmQ+sifHUbI/IcSopBCF/HO3YiHQx/AVd3UVyYL6weuwW+HvON9VYn5l6Zl1WZzPWXPNZrSQpxwkkZ/VuvJZzg==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'

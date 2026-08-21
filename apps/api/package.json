@@ -22,6 +22,7 @@
     "@auxx/redis": "workspace:*",
     "@auxx/sdk": "workspace:*",
     "@auxx/services": "workspace:*",
+    "@auxx/types": "workspace:*",
     "@auxx/utils": "workspace:*",
     "@aws-sdk/client-s3": "catalog:",
     "@aws-sdk/s3-request-presigner": "catalog:",

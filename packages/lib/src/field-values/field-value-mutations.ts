@@ -5,13 +5,6 @@ import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import {
-  batchInsertFieldValues,
-  deleteFieldValues,
-  getExistingFieldValue,
-  insertFieldValue,
-  updateFieldValue,
-} from '@auxx/services'
-import {
   isArrayReturnFieldType,
   isMultiValueFieldType,
   type TypedFieldValue,
@@ -61,6 +54,7 @@ import { getModelType, isRecordId, parseRecordId, toRecordId } from '../resource
 import { applyAiMarker } from './ai-commit'
 import { shortCircuitAiGenerate } from './ai-enqueue'
 import { batchGetExistingFieldValues } from './batch-existing-values'
+import { deleteFieldValues } from './delete-values'
 import {
   type CachedField,
   canonicalizeRelationshipRecordId,
@@ -77,6 +71,8 @@ import {
 } from './field-value-helpers'
 import { getValue } from './field-value-queries'
 import { formatToTypedInput } from './formatter'
+import { getExistingFieldValue } from './get-existing-value'
+import { batchInsertFieldValues, insertFieldValue } from './insert-value'
 import { MAX_MULTI_VALUES } from './primary-value'
 import {
   type BulkRelationshipUpdate,
@@ -113,6 +109,7 @@ import type {
   SetValueWithBuiltInInput,
   SetValueWithTypeInput,
 } from './types'
+import { updateFieldValue } from './update-value'
 
 const logger = createScopedLogger('field-value-mutations')
 

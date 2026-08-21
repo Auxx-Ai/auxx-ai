@@ -14,9 +14,9 @@
 import { type Database, schema } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { createCustomField } from '@auxx/services/custom-fields'
 import { and, eq } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../cache'
+import { createCustomField } from '../custom-fields'
 import { ensureInventoryDeductionRule } from './inventory-bridge-rule'
 import { INVENTORY_BRIDGE_EDGE_ATTR } from './inventory-bridge-rule-consts'
 

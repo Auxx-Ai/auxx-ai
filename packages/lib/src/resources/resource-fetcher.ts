@@ -2,12 +2,12 @@
 
 import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { getEntityInstance } from '@auxx/services/entity-instances'
 import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { toFieldId } from '@auxx/types/field'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, type SQL } from 'drizzle-orm'
 import { getCachedResourceFields } from '../cache'
+import { getEntityInstance } from '../entity-instances'
 import { extractFieldValueScalar } from '../field-values/field-value-scalar'
 import {
   RESOURCE_FIELD_REGISTRY,

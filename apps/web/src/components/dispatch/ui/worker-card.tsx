@@ -1,11 +1,8 @@
 // apps/web/src/components/dispatch/ui/worker-card.tsx
 'use client'
 
-import {
-  getColorSwatch,
-  getOptionColor,
-  type SelectOptionColor,
-} from '@auxx/lib/custom-fields/client'
+import { getColorSwatch, getOptionColor } from '@auxx/lib/custom-fields/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import {

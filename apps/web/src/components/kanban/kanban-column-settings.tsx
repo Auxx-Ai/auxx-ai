@@ -1,7 +1,7 @@
 // apps/web/src/components/kanban/kanban-column-settings.tsx
 'use client'
 
-import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
+import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/types/custom-field'
 import type { ResourceFieldId } from '@auxx/types/field'
 import {
   DropdownMenu,

@@ -1,7 +1,12 @@
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { CustomFieldEntity as CustomField, FieldType } from '@auxx/database/types'
 import {
+  type ActorOptions,
+  type AiOptions,
   aiOptionsSchema,
+  type CalcOptions,
+  type DisplayOptions,
+  type FileOptions,
   fileOptionsSchema,
   type ModelType,
   ModelTypeMeta,
@@ -14,6 +19,21 @@ import { z } from 'zod'
 
 // Re-export types needed by other lib modules
 export { ModelTypes, type ModelType }
+
+/**
+ * The `options` payload a create/update accepts, in one place.
+ *
+ * Create and update each used to spell this union out, and they had drifted:
+ * update omitted `{ actor }` even though `updateCustomField` merges actor options,
+ * so the tRPC router's `fieldOptionsUnionSchema` input did not typecheck against it.
+ */
+export type CustomFieldOptionsInput =
+  | SelectOption[]
+  | { file: FileOptions }
+  | { actor: ActorOptions }
+  | { calc: CalcOptions }
+  | { options: SelectOption[]; ai?: AiOptions }
+  | (DisplayOptions & { ai?: AiOptions })
 
 /** Field types eligible for use as the primary display field */
 export const PRIMARY_DISPLAY_ELIGIBLE_TYPES: FieldType[] = [

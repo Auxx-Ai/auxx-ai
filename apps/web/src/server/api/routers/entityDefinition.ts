@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/entityDefinition.ts
 
 import { schema } from '@auxx/database'
-import { EntityDefinitionService } from '@auxx/lib/entity-definitions'
+import { checkSlugExists, EntityDefinitionService } from '@auxx/lib/entity-definitions'
 import {
   createEntityDefinitionSchema,
   updateEntityDefinitionSchema,
@@ -14,7 +14,6 @@ import {
 } from '@auxx/lib/entity-templates'
 import { ForbiddenError } from '@auxx/lib/errors'
 import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
-import { checkSlugExists } from '@auxx/services/entity-definitions'
 import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '../audit-context'

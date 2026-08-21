@@ -1,12 +1,12 @@
 // packages/lib/src/field-values/display-field-service.ts
 
 import { type Database, database, schema } from '@auxx/database'
-import { batchUpdateDisplayValues, clearDisplayValues } from '@auxx/services/entity-instances'
 import type { TypedFieldValue } from '@auxx/types'
 import { toResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { getCachedResource } from '../cache'
+import { batchUpdateDisplayValues, clearDisplayValues } from '../entity-instances'
 import type { ResourceField } from '../resources/registry/field-types'
 import type { CustomResource } from '../resources/registry/types'
 import { getInstanceId, toRecordIds } from '../resources/resource-id'

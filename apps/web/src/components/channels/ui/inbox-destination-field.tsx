@@ -1,8 +1,8 @@
 // apps/web/src/components/channels/ui/inbox-destination-field.tsx
 'use client'
 
-import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import type { Lens } from '@auxx/lib/permissions/visibility/client'
+import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/types/custom-field'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { Lock, UsersIcon } from 'lucide-react'

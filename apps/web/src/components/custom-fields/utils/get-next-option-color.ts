@@ -1,7 +1,6 @@
 // apps/web/src/components/custom-fields/utils/get-next-option-color.ts
-import { OPTION_COLORS, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
-
-/**
+import { OPTION_COLORS } from '@auxx/lib/custom-fields/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field' /**
  * Get the next auto-assigned color for a new option/column.
  * Cycles through OPTION_COLORS in order, skipping colors already in use.
  * Wraps around if all colors are used.

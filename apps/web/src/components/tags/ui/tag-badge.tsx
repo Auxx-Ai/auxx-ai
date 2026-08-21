@@ -1,8 +1,9 @@
 // apps/web/src/components/tags/ui/tag-badge.tsx
 'use client'
 
-import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
+import { getOptionColor } from '@auxx/lib/custom-fields/client'
 import type { RecordId } from '@auxx/lib/resources/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { X } from 'lucide-react'

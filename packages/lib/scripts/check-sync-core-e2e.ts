@@ -47,7 +47,7 @@ loadEnv({ path: path.resolve(here, '../../../.env') })
 const { database: db, schema } = await import('@auxx/database')
 const { and, count, eq, isNotNull } = await import('drizzle-orm')
 const { generateId } = await import('@auxx/utils')
-const { createEntityDefinition } = await import('@auxx/services/entity-definitions')
+const { createEntityDefinition } = await import('@auxx/lib/entity-definitions')
 
 const { SLICE_BUDGET, sweepStaleConnectorRuns } = await import(
   '../src/data-connectors/slice-orchestrator'

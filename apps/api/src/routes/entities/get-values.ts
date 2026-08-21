@@ -9,7 +9,8 @@
  * returns every field the installation owns on the record's entity.
  */
 
-import { FieldValueService, type RecordId, resolveCalcForRecord } from '@auxx/lib/field-values'
+import { FieldValueService, resolveCalcForRecord } from '@auxx/lib/field-values'
+import type { RecordId } from '@auxx/types/resource'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { verifyCallbackAuth } from '../../lib/callback-auth'

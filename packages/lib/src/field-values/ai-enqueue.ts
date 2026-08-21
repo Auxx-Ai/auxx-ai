@@ -2,7 +2,6 @@
 
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { getExistingFieldValue } from '@auxx/services/field-values'
 import type { FieldId } from '@auxx/types/field'
 import { buildFieldValueKey } from '@auxx/types/field'
 import { readMeta } from '@auxx/types/field-value'
@@ -17,6 +16,7 @@ import { createUsageGuard } from '../usage/create-usage-guard'
 import { upsertGeneratingMarker } from './ai-commit'
 import type { FieldValueContext } from './field-value-helpers'
 import { getField } from './field-value-helpers'
+import { getExistingFieldValue } from './get-existing-value'
 import type { SetValueResult } from './types'
 
 const logger = createScopedLogger('ai-enqueue')

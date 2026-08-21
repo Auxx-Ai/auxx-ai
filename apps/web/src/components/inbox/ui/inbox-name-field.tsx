@@ -1,7 +1,8 @@
 // apps/web/src/components/inbox/ui/inbox-name-field.tsx
 'use client'
 
-import { getColorSwatch, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
+import { getColorSwatch } from '@auxx/lib/custom-fields/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { Input } from '@auxx/ui/components/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'

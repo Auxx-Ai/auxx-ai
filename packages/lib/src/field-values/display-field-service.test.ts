@@ -26,8 +26,12 @@ vi.mock('../cache', () => ({
   getCachedAgentsByUserIds: vi.fn(),
 }))
 
-vi.mock('@auxx/services/entity-instances', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@auxx/services/entity-instances')>()),
+// Wholesale, for the same reason as the cache barrel above: since the module
+// moved into lib, the real `../entity-instances` barrel re-exports `activity`,
+// whose graph reaches back into the cache — walking it inside an
+// `importOriginal` factory loads display-field-service with the REAL
+// `batchUpdateDisplayValues` before the mock exists.
+vi.mock('../entity-instances', () => ({
   batchUpdateDisplayValues: vi.fn(),
   clearDisplayValues: vi.fn(),
 }))
@@ -38,8 +42,8 @@ vi.mock('./search-text', async (importOriginal) => ({
   updateSearchTextForEntityDefinition: vi.fn(),
 }))
 
-import { batchUpdateDisplayValues } from '@auxx/services/entity-instances'
 import { getCachedResource } from '../cache'
+import { batchUpdateDisplayValues } from '../entity-instances'
 import { DisplayFieldService } from './display-field-service'
 import { FieldValueService } from './field-value-service'
 

@@ -1,11 +1,8 @@
 // apps/web/src/components/agents/procedures/nodes/procedure-step-badge.tsx
 'use client'
 
-import {
-  getColorBadgeClasses,
-  getColorSelectedBorderClasses,
-  type SelectOptionColor,
-} from '@auxx/lib/custom-fields/client'
+import { getColorBadgeClasses, getColorSelectedBorderClasses } from '@auxx/lib/custom-fields/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { cn } from '@auxx/ui/lib/utils'
 import { Code2, CornerDownRight, Hand, Settings2, Square, Workflow } from 'lucide-react'
 import type { ReactNode } from 'react'

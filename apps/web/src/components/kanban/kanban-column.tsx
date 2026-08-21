@@ -1,7 +1,8 @@
 // apps/web/src/components/kanban/kanban-column.tsx
 'use client'
 
-import { getColorSwatch, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
+import { getColorSwatch } from '@auxx/lib/custom-fields/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

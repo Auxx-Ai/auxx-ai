@@ -3,11 +3,8 @@
 'use client'
 
 import { weekStartToIndex } from '@auxx/lib/availability/client'
-import {
-  getOptionColor,
-  type OptionColor,
-  type SelectOptionColor,
-} from '@auxx/lib/custom-fields/client'
+import { getOptionColor, type OptionColor } from '@auxx/lib/custom-fields/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import {
   addMonths,
   addWeeks,

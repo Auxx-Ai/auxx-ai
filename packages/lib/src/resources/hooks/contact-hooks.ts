@@ -1,8 +1,8 @@
 // packages/lib/src/resources/hooks/contact-hooks.ts
 
-import { checkUniqueValue } from '@auxx/services/custom-fields'
 import { ModelTypes } from '@auxx/types/custom-field'
 import { formatEmail, isValidEmail } from '@auxx/utils/email'
+import { checkUniqueValue } from '../../custom-fields'
 import { BadRequestError, UniqueValueConflictError } from '../../errors'
 import type { SystemHook, SystemHookRegistry } from './types'
 

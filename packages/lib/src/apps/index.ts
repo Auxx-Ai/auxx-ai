@@ -45,6 +45,11 @@ export { getInstallationDeployment } from './installations/get-installation-depl
 export { type InstallAppOutput, installApp } from './installations/install-app'
 export { resolveActiveInstallationId } from './installations/resolve-active-installation'
 export { rollForwardInstallations } from './installations/roll-forward-installations'
+export {
+  type UninstallAppInput,
+  type UninstallAppOutput,
+  uninstallApp,
+} from './installations/uninstall-app'
 export type {
   ConsoleLog,
   LambdaExecutionError,

@@ -14,7 +14,7 @@
 
 import type { CustomFieldEntity } from '@auxx/database/types'
 import { getCachedCustomFields } from '@auxx/lib/cache'
-import type { TypedFieldValue } from '@auxx/lib/field-values'
+import type { TypedFieldValue } from '@auxx/types'
 
 /** Parse a `<entityDefinitionId>:<entityInstanceId>` RecordId. */
 export function parseRecordId(

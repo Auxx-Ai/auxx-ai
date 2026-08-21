@@ -2,16 +2,14 @@
 
 import { type Database, database } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
-import type { CustomFieldOptionsInput } from '@auxx/services/custom-fields'
-import {
-  createCustomField,
-  deleteCustomField,
-  getRelationshipPair,
-  type RelationshipOptions,
-  updateCustomField,
-} from '@auxx/services/custom-fields'
+import type { RelationshipOptions } from '@auxx/types/custom-field'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { onCacheEvent } from '../cache/invalidate'
+import { createCustomField } from './create-field'
+import { deleteCustomField } from './delete-field'
+import { getRelationshipPair } from './get-relationship-pair'
+import type { CustomFieldOptionsInput } from './types'
+import { updateCustomField } from './update-field'
 
 /**
  * Only the database-backed service errors carry a `cause`; the not-found,
@@ -175,6 +173,3 @@ export class CustomFieldService {
     return field.type === 'RELATIONSHIP'
   }
 }
-
-// Re-export for convenience
-export { normalizeFieldValue } from '@auxx/services/custom-fields'

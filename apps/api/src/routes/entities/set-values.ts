@@ -23,7 +23,8 @@
  */
 
 import { getOrgCache } from '@auxx/lib/cache'
-import { FieldValueService, type RecordId } from '@auxx/lib/field-values'
+import { FieldValueService } from '@auxx/lib/field-values'
+import type { RecordId } from '@auxx/types/resource'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { verifyCallbackAuth } from '../../lib/callback-auth'

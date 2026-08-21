@@ -1,32 +1,6 @@
 // packages/lib/src/custom-fields/client.ts
 'use client'
 
-// Re-export types from @auxx/types for client components
-export {
-  // AI
-  type AiOptions,
-  type AiTriggerOn,
-  aiOptionsSchema,
-  aiTriggerOnSchema,
-  aiTriggerOnValues,
-  DEFAULT_SELECT_OPTION_COLOR,
-  type FileOptions,
-  // Union
-  fieldOptionsUnionSchema,
-  // File
-  fileOptionsSchema,
-  type RichReferencePrompt,
-  richReferencePromptSchema,
-  // Color constants
-  SELECT_OPTION_COLORS,
-  type SelectOption,
-  type SelectOptionColor,
-  // Select Option
-  selectOptionSchema,
-  type TargetTimeInStatus,
-  // Target Time
-  targetTimeInStatusSchema,
-} from '@auxx/types/custom-field'
 export { getAiPrompt, isAiEligible, isAiField } from './ai'
 export { getCalcOptions, getEffectiveFieldType } from './calc'
 
