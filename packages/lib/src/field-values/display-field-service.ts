@@ -3,6 +3,7 @@
 import { type Database, database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { toResourceFieldId } from '@auxx/types/field'
+import { type FileRef, getFileRefDownloadUrl } from '@auxx/types/file-ref'
 import type { RecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { getCachedResource } from '../cache'
@@ -131,6 +132,12 @@ export class DisplayFieldService {
       // 6. Compute display values using properly typed field
       const updates = new Map<string, string | null>()
 
+      // A Set, not an array: one image used as the avatar on many instances is
+      // ONE thumbnail. `resolveAvatarThumbnails` fans out per entry, and each entry
+      // costs two queries inside `ensureThumbnail`, so duplicates were paying that
+      // repeatedly to reach the same already-generated file.
+      const assetIdsToThumbnail = new Set<string>()
+
       // For RELATIONSHIP fields, batch-resolve related displayNames
       if (field.fieldType === 'RELATIONSHIP') {
         const recordIdsByInstance = new Map<string, RecordId>()
@@ -167,7 +174,6 @@ export class DisplayFieldService {
             ? await getOrgCurrencyCode(this.organizationId, this.db)
             : undefined
 
-        const assetIdsToThumbnail: string[] = []
         for (const instanceId of instanceIds) {
           const typedValue = valuesByEntity.get(instanceId) ?? null
           const displayValue = this.computeDisplayValue(
@@ -178,22 +184,23 @@ export class DisplayFieldService {
           )
           updates.set(instanceId, displayValue)
 
-          // Collect asset IDs that need avatar thumbnails during batch recalc
-          if (displayFieldType === 'avatar' && displayValue === null && typedValue) {
+          // Collect asset IDs that need avatar thumbnails during batch recalc.
+          // Keyed on the value being a FILE ref, NOT on `displayValue === null`:
+          // that sentinel disappeared when the interim became a real download URL,
+          // and keying on it would silently stop queueing every thumbnail.
+          if (displayFieldType === 'avatar' && typedValue) {
             const single = Array.isArray(typedValue) ? typedValue[0] : typedValue
             if (single?.type === 'json') {
               const json = single.value as Record<string, unknown>
-              if (typeof json?.ref === 'string') {
+              // `!json.url` keeps the set identical to what the old
+              // `displayValue === null` test collected: a value carrying an explicit
+              // url already has its avatar and needs no thumbnail.
+              if (typeof json?.ref === 'string' && typeof json?.url !== 'string') {
                 const assetId = (json.ref as string).match(/^asset:(.+)$/)?.[1]
-                if (assetId) assetIdsToThumbnail.push(assetId)
+                if (assetId) assetIdsToThumbnail.add(assetId)
               }
             }
           }
-        }
-
-        // Queue avatar thumbnails for FILE field refs (fire-and-forget)
-        if (assetIdsToThumbnail.length > 0) {
-          void this.queueAvatarThumbnails(assetIdsToThumbnail)
         }
       }
 
@@ -206,6 +213,14 @@ export class DisplayFieldService {
 
       if (result.isOk()) updated += result.value.updated
       processed += instanceIds.length
+
+      // 8. Resolve avatar thumbnails for FILE refs (fire-and-forget) — AFTER the
+      // batch write. The resolve pass upgrades `avatarUrl` to the CDN URL when the
+      // thumbnail already exists, so firing it before `batchUpdateDisplayValues`
+      // let the interim download URL overwrite the CDN URL it had just adopted.
+      if (assetIdsToThumbnail.size > 0) {
+        void this.resolveAvatarThumbnails([...assetIdsToThumbnail])
+      }
 
       if (instances.length < BATCH_SIZE) break
     }
@@ -273,8 +288,12 @@ export class DisplayFieldService {
   ): string | null {
     if (!typedValue) return null
 
-    // For avatar fields, extract URL directly or return null for FILE refs
-    // (FILE ref thumbnails are queued separately in the batch recalc loop)
+    // For avatar fields, extract the URL directly, or resolve a FILE ref to the
+    // app's own download URL. That URL always resolves, so it — not `null` — is the
+    // right interim while the CDN thumbnail is generated (and the right permanent
+    // answer if it never is). Returning `null` here blanked the avatar back to the
+    // record's fallback icon for the whole window, which on the `ready` short-circuit
+    // was forever. The recalc loop still queues the thumbnail as an upgrade.
     if (displayFieldType === 'avatar') {
       const single = Array.isArray(typedValue) ? typedValue[0] : typedValue
       if (!single) return null
@@ -285,9 +304,10 @@ export class DisplayFieldService {
       if (single.type === 'json') {
         const json = single.value as Record<string, unknown>
         if (typeof json?.url === 'string') return json.url
-        // FILE field: { ref: "asset:abc123" } — return null as interim
-        // The batch recalc loop handles thumbnail queuing
-        if (typeof json?.ref === 'string' && /^asset:.+/.test(json.ref as string)) return null
+        // FILE field: { ref: "asset:abc123" }
+        if (typeof json?.ref === 'string' && /^asset:.+/.test(json.ref as string)) {
+          return getFileRefDownloadUrl(json.ref as FileRef)
+        }
       }
       return null
     }
@@ -315,25 +335,58 @@ export class DisplayFieldService {
   }
 
   /**
-   * Queue avatar thumbnails for a batch of asset IDs.
-   * Fire-and-forget — the thumbnail job callback updates EntityInstance.avatarUrl.
+   * Ensure avatar thumbnails for a batch of asset IDs, adopting any that already
+   * exist as the referencing instances' `avatarUrl`.
+   *
+   * Queueing alone is not enough: `ensureThumbnail` answers `ready` WITHOUT
+   * queuing a job whenever the `avatar-128` preset already exists, and the job is
+   * the only other writer of `avatarUrl` — so a recalc that merely queued
+   * permanently downgraded every already-resolved CDN avatar to the interim
+   * download URL the batch write had just persisted. `ready`/`generated` answers
+   * have a URL in hand, so this pass writes it (and tells listening clients),
+   * exactly like the single-save path in `field-value-helpers`.
    */
-  private async queueAvatarThumbnails(assetIds: string[]): Promise<void> {
+  private async resolveAvatarThumbnails(assetIds: string[]): Promise<void> {
     try {
       const { ensureThumbnailPresets } = await import('../files/core/thumbnail-batch')
-      await Promise.all(
-        assetIds.map((assetId) =>
-          ensureThumbnailPresets({
-            organizationId: this.organizationId,
-            userId: 'system',
-            source: { type: 'asset', assetId },
-            presets: ['avatar-128'],
-            defaultOptions: { queue: true, visibility: 'PUBLIC' },
-          })
+      const { applyAvatarThumbnailUrl, publishAvatarResolved } = await import('./avatar-thumbnail')
+
+      for (const assetId of assetIds) {
+        const [result] = await ensureThumbnailPresets({
+          organizationId: this.organizationId,
+          userId: 'system',
+          source: { type: 'asset', assetId },
+          presets: ['avatar-128'],
+          defaultOptions: { queue: true, visibility: 'PUBLIC' },
+        })
+
+        // Queued: the job owns the write once it has generated the file.
+        if (!result || result.status === 'queued' || !result.storageLocationId) continue
+
+        const [location] = await this.db
+          .select({ externalUrl: schema.StorageLocation.externalUrl })
+          .from(schema.StorageLocation)
+          .where(eq(schema.StorageLocation.id, result.storageLocationId))
+          .limit(1)
+        const cdnUrl = location?.externalUrl
+        if (!cdnUrl) continue
+
+        const resolved = await applyAvatarThumbnailUrl(
+          this.db,
+          this.organizationId,
+          assetId,
+          cdnUrl
         )
-      )
+        if (resolved) {
+          await publishAvatarResolved({
+            organizationId: this.organizationId,
+            cdnUrl: resolved.cdnUrl,
+            instances: resolved.instances,
+          })
+        }
+      }
     } catch (error) {
-      console.warn('[avatar] Failed to queue batch avatar thumbnails', {
+      console.warn('[avatar] Failed to resolve batch avatar thumbnails', {
         count: assetIds.length,
         error,
       })

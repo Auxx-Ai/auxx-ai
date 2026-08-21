@@ -5,6 +5,7 @@ import { getEntityConfig } from '@auxx/lib/files/types'
 import type { StateCreator } from 'zustand'
 import { validateFile } from '../../utils'
 import { directUpload } from '../../utils/direct-upload'
+import { isFileInFlight } from '../file-status'
 import type { CreateSessionOptions, UploadStore } from '../types'
 
 /**
@@ -54,7 +55,18 @@ export interface OrchestrationSlice {
       allowedMimeTypes?: string[]
       sessionId?: string // Optional sessionId to use
     }
-  ) => Promise<{ addedFileIds: string[]; validationErrors: string[] }>
+  ) => Promise<{
+    addedFileIds: string[]
+    validationErrors: string[]
+    /**
+     * Names of files silently deduped because a byte-identical upload is already
+     * in flight in this session. Not validation failures — nothing is wrong, the
+     * work is simply already happening — but callers need to tell "nothing added
+     * because nothing was needed" apart from "nothing added because everything
+     * was rejected" before treating an empty `addedFileIds` as an error.
+     */
+    skippedDuplicates: string[]
+  }>
   startUpload: () => Promise<BatchUploadResult>
   startUploadForSession: (sessionId: string) => Promise<BatchUploadResult>
   cancelUpload: () => void
@@ -254,6 +266,7 @@ export const createEnhancedOrchestrationSlice: StateCreator<
     const state = get()
     const errors: string[] = []
     const validFileIds: string[] = []
+    const skippedDuplicates: string[] = []
 
     // Get existing pending files for this uploader
     const existingPendingIds = state.pendingFileIds?.[uploaderId] || []
@@ -261,7 +274,21 @@ export const createEnhancedOrchestrationSlice: StateCreator<
 
     // Use provided sessionId or check if session exists for this uploader
     const sessionId = options?.sessionId || state.uploaderSessions?.[uploaderId]
-    const sessionFileCount = sessionId ? state.sessions[sessionId]?.fileIds.length || 0 : 0
+
+    // Only files still in flight consume a slot. A session is reused for the whole
+    // life of its uploader and nothing ever empties `fileIds`, so counting every
+    // entry charged each completed upload against `maxFiles` forever: a single-file
+    // field (`maxFiles: 1`) accepted exactly one pick per page load and rejected
+    // every later one with "Maximum 1 files allowed". Completed files have already
+    // been absorbed into the caller's own value list — which is what the caller
+    // derives `maxFiles` from — so counting them here double-charges the same file.
+    // Failed and cancelled files occupy nothing.
+    const sessionFileCount = sessionId
+      ? (state.sessions[sessionId]?.fileIds ?? []).filter((id) => {
+          const f = state.files[id]
+          return f !== undefined && isFileInFlight(f.status)
+        }).length
+      : 0
 
     const totalExisting = existingCount + sessionFileCount
 
@@ -316,6 +343,12 @@ export const createEnhancedOrchestrationSlice: StateCreator<
       const fileId = get().addFiles([file], sessionId)[0]
       if (fileId) {
         validFileIds.push(fileId)
+      } else {
+        // `addFiles` adds nothing only for its in-session duplicate dedupe (see
+        // file-slice) — the identical file is already uploading here. Report it
+        // separately from validation errors so callers don't turn a healthy
+        // in-flight upload into an "Upload failed" toast.
+        skippedDuplicates.push(file.name)
       }
     }
 
@@ -350,7 +383,7 @@ export const createEnhancedOrchestrationSlice: StateCreator<
       }
     }
 
-    return { addedFileIds: validFileIds, validationErrors: errors }
+    return { addedFileIds: validFileIds, validationErrors: errors, skippedDuplicates }
   },
 
   /**

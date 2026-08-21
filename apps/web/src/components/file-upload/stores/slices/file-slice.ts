@@ -4,6 +4,7 @@ import type { EntityType, UploadProgress } from '@auxx/lib/files/types'
 import { getEntityConfig } from '@auxx/lib/files/types'
 import { generateId } from '@auxx/utils/generateId'
 import type { StateCreator } from 'zustand'
+import { isFileInFlight } from '../file-status'
 import type { FileState, UploadStore } from '../types'
 
 export interface FileSlice {
@@ -43,10 +44,28 @@ export const createFileSlice: StateCreator<
       const entityType: EntityType = session?.entityType || 'FILE'
 
       for (const file of files) {
-        // Dedupe by name+size+type
-        const exists = Object.values(state.files).some(
-          (f) => f.name === file.name && f.size === file.size && f.type === file.type
-        )
+        // Dedupe an identical file that is still in flight IN THIS SESSION.
+        //
+        // Deliberately narrow on both axes. It used to scan `state.files` globally —
+        // every file added anywhere on the page — which would silently drop the same
+        // image uploaded to a second record or a second field. And it compared
+        // `f.type` to `file.type`: `FileState.type` is the literal `'file'` (see its
+        // declaration) while `File.type` is a MIME string, so the guard never once
+        // fired. Widening the scope while fixing the comparison would have turned
+        // dead code straight into dropped uploads, so the scope narrows with it.
+        // Terminal entries (completed, failed, cancelled) are skipped too:
+        // re-picking the same image to replace a value — or after cancelling the
+        // first attempt — is a legitimate upload, not a duplicate.
+        const exists = (session?.fileIds ?? []).some((id) => {
+          const f = state.files[id]
+          return (
+            f !== undefined &&
+            isFileInFlight(f.status) &&
+            f.name === file.name &&
+            f.size === file.size &&
+            f.mimeType === file.type
+          )
+        })
         if (exists) continue
 
         const id = generateId()

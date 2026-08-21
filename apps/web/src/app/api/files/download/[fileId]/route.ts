@@ -105,6 +105,46 @@ async function resolveFile(
   return { content, name: file.name, mimeType: file.mimeType, size: file.size }
 }
 
+/** Media the browser paints in place rather than saving to disk. */
+const INLINE_MIME_PREFIXES = ['image/', 'video/', 'audio/']
+
+/**
+ * Whether to answer with `Content-Disposition: inline`.
+ *
+ * This route is the ONLY URL the app has for a FILE field's content — every
+ * `<img src>` that shows an attached photo points here (`file-picker`,
+ * `display-file`, `line-photo-popover`, and the stable avatar URL a just-saved
+ * FILE field resolves to). It used to hard-code `inline: false`, so each of those
+ * requests answered `Content-Disposition: attachment`, which no browser paints
+ * into an `<img>`: the request succeeded, logged, and returned bytes, and the
+ * image silently rendered as nothing. For an avatar that meant `AvatarImage`
+ * failing and Radix showing `AvatarFallback` — the record's own icon — which
+ * reads exactly like the upload never happened.
+ *
+ * `video/` and `audio/` join images because the range-request branch in
+ * `createFileDownloadResponse` only means anything to a `<video>`/`<audio>`
+ * element, and those never load from an attachment either.
+ *
+ * Everything else (PDFs, archives, documents) keeps saving to disk, and
+ * `?download=1` forces that for any type. `<a download>` already overrides
+ * disposition for same-origin links, so the existing download buttons are
+ * unaffected either way.
+ *
+ * `image/svg+xml` is the one image type deliberately EXCLUDED. An SVG is an XML
+ * document that can carry `<script>`, and FILE custom fields accept any mime by
+ * default — served inline, an uploaded SVG navigated to directly would execute
+ * with the viewer's session on the app origin (`nosniff` is no help when the
+ * declared type IS svg; `ArticleProcessor` documents the same hazard).
+ * Attachment disposition is what prevented that before this route learned
+ * inline, so SVGs keep it — an inline SVG preview is not worth a stored XSS.
+ */
+function shouldRenderInline(mimeType: string | null, request: NextRequest): boolean {
+  if (request.nextUrl.searchParams.get('download') === '1') return false
+  if (!mimeType) return false
+  if (mimeType === 'image/svg+xml') return false
+  return INLINE_MIME_PREFIXES.some((prefix) => mimeType.startsWith(prefix))
+}
+
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { fileId } = await params
@@ -134,7 +174,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       },
       {
         range: range || undefined,
-        inline: false,
+        inline: shouldRenderInline(resolved.mimeType, request),
       }
     )
 
@@ -148,7 +188,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-export async function HEAD(_request: NextRequest, { params }: RouteParams) {
+export async function HEAD(request: NextRequest, { params }: RouteParams) {
   try {
     const { fileId } = await params
 
@@ -164,13 +204,25 @@ export async function HEAD(_request: NextRequest, { params }: RouteParams) {
       return new Response('File not found', { status: 404 })
     }
 
-    return new Response(null, {
-      status: 200,
-      headers: {
-        'Content-Type': resolved.mimeType || 'application/octet-stream',
-        'Content-Length': resolved.size?.toString() || '0',
-        'Content-Disposition': `attachment; filename="${resolved.name}"`,
+    // Same header construction as GET, body omitted. HEAD used to hand-roll its
+    // own headers — hard-coded `attachment`, no `?download=1`, no Accept-Ranges,
+    // no Cache-Control — so a client preflighting with HEAD (a video player
+    // probing range support, a link-preview service checking disposition) was
+    // told the resource is a non-rangeable attachment that the subsequent GET
+    // then serves inline. Per RFC 9110 the two methods must agree.
+    const downloadResponse = createFileDownloadResponse(
+      resolved.content,
+      {
+        name: resolved.name,
+        mimeType: resolved.mimeType,
+        size: resolved.size,
       },
+      { inline: shouldRenderInline(resolved.mimeType, request) }
+    )
+
+    return new Response(null, {
+      status: downloadResponse.status,
+      headers: downloadResponse.headers,
     })
   } catch (error) {
     logger.error('Error checking file:', error)

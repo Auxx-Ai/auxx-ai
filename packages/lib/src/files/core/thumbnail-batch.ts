@@ -25,9 +25,22 @@ export interface EnsureThumbnailPresetsParams {
 /**
  * Enqueue a set of thumbnails. Returns an array of results in preset order.
  */
-export async function ensureThumbnailPresets(
-  params: EnsureThumbnailPresetsParams
-): Promise<Array<{ preset: PresetKey; status: 'queued' | 'ready' | 'generated'; jobId?: string }>> {
+export async function ensureThumbnailPresets(params: EnsureThumbnailPresetsParams): Promise<
+  Array<{
+    preset: PresetKey
+    status: 'queued' | 'ready' | 'generated'
+    jobId?: string
+    /**
+     * Present for `ready`/`generated`. Callers that need the public URL of a
+     * thumbnail that already existed have no job to wait on and no other way to
+     * find it — dropping this is what let an already-thumbnailed avatar strand
+     * on `EntityInstance.avatarUrl = null` forever.
+     */
+    assetId?: string
+    assetVersionId?: string
+    storageLocationId?: string
+  }>
+> {
   const { organizationId, userId, source, presets, defaultOptions, perPreset } = params
   const service = new ThumbnailService(organizationId, userId)
 
@@ -43,7 +56,13 @@ export async function ensureThumbnailPresets(
       if (res.status === 'queued') {
         return { preset, status: 'queued' as const, jobId: res.jobId }
       }
-      return { preset, status: res.status }
+      return {
+        preset,
+        status: res.status,
+        assetId: res.assetId,
+        assetVersionId: res.assetVersionId,
+        storageLocationId: res.storageLocationId,
+      }
     })
   )
 

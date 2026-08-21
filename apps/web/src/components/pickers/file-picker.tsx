@@ -13,6 +13,7 @@ import {
   CommandPlaceholder,
   CommandSeparator,
 } from '@auxx/ui/components/command'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Camera, Download, EyeOff, File, FolderOpen, Pencil, Trash2, Upload } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { UploadingFile } from '~/components/fields/inputs/hooks/use-field-file-upload'
@@ -171,9 +172,16 @@ function FileItemRow({
 }: FileItemRowProps) {
   const isUploading = status === 'uploading' || status === 'processing'
   const isImage = !!mimeType?.startsWith('image/') && !!downloadUrl
+  // A ref whose details have not resolved yet. Normally zero-length now that a
+  // finished upload seeds the store from the local File, but a ref arriving from
+  // elsewhere (realtime, another tab) can still land here — show a skeleton rather
+  // than a placeholder word.
+  const isUnresolved = !name
 
   const icon = isImage ? (
     <img src={downloadUrl} alt='' className='size-6 shrink-0 rounded object-cover' loading='lazy' />
+  ) : isUnresolved ? (
+    <Skeleton className='size-4 shrink-0 rounded' />
   ) : (
     <File className='size-4 shrink-0 text-muted-foreground' />
   )
@@ -186,7 +194,11 @@ function FileItemRow({
       <div className='flex min-w-0 flex-1 items-center gap-2'>
         {icon}
         <div className='flex min-w-0 flex-col'>
-          <span className='truncate text-sm'>{name}</span>
+          {isUnresolved ? (
+            <Skeleton className='h-4 w-28 rounded' />
+          ) : (
+            <span className='truncate text-sm'>{name}</span>
+          )}
           {caption && <span className='truncate text-xs text-muted-foreground'>{caption}</span>}
         </div>
         {internal && (

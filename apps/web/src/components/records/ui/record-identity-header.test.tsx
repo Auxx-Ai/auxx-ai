@@ -55,6 +55,8 @@ const h = vi.hoisted(() => ({
    * is derived from. An explicit `null` is "fetched, and genuinely empty".
    */
   values: {} as Record<string, unknown>,
+  /** Whether the field-value fetch is still in flight (drives the skeleton state). */
+  isValueLoading: false,
 }))
 
 // ── data layer ───────────────────────────────────────────────────────────────
@@ -80,7 +82,7 @@ vi.mock('~/components/resources', () => ({
 vi.mock('~/components/resources/hooks/use-field-values', () => ({
   useFieldValue: (_recordId: string, fieldRef: unknown) => ({
     value: fieldRef ? h.values[String(fieldRef)] : undefined,
-    isLoading: false,
+    isLoading: h.isValueLoading,
   }),
 }))
 
@@ -167,6 +169,7 @@ beforeEach(() => {
   h.primaryDisplayFieldId = null
   h.secondaryDisplayFieldId = null
   h.isRecordLoading = false
+  h.isValueLoading = false
   h.values = {}
   h.record = { id: ROW, displayName: null, secondaryDisplayValue: null, createdAt: new Date() }
 })
@@ -409,5 +412,164 @@ describe('RecordIdentityHeader — which editor the field type calls for', () =>
     const firstName = screen.getByLabelText('First Name')
     expect(screen.getByLabelText('Last Name')).toBeInTheDocument()
     expect(container.contains(firstName)).toBe(false)
+  })
+})
+
+// ── layout stability (CLS) ───────────────────────────────────────────────────
+//
+// The header used to step 56 → 72 → 76px as a record loaded, because its five
+// render exits disagreed on box height: the skeletons bypassed the shared box
+// entirely, and the shared box's 28px floor did not bind at the primary line's
+// `text-lg` (a 28px line box plus `DisplayWrapper`'s `py-[2px]` renders 32px).
+//
+// Each line now declares ONE height and every exit renders into it, marked with
+// `data-header-slot`. The assertions below are deliberately per-STATE rather
+// than per-pixel: jsdom computes no layout, so what can be pinned is that every
+// state of a slot emits exactly one box carrying that slot's height class.
+
+/** The settled height of each line — primary is 32px, secondary 28px. */
+const SLOT_HEIGHT = { primary: 'min-h-[32px]', secondary: 'min-h-[28px]' } as const
+
+/** The single box a line renders into, whatever state it is in. */
+function slotBox(container: HTMLElement, slot: keyof typeof SLOT_HEIGHT): Element {
+  const found = [...container.querySelectorAll(`[data-header-slot="${slot}"]`)]
+  expect(found).toHaveLength(1)
+  return found[0]!
+}
+
+function expectSlotHeight(container: HTMLElement, slot: keyof typeof SLOT_HEIGHT) {
+  expect(slotBox(container, slot).className).toContain(SLOT_HEIGHT[slot])
+}
+
+describe('RecordIdentityHeader — every render state of a line is the same height', () => {
+  // The states the primary line passes through on a cold drawer open, in order,
+  // plus the two it can settle into. Before the fix, (a) measured 24px, (b)/(c)
+  // 28px and (d)/(e) 32px.
+  it.each([
+    [
+      'a. skeleton, no configured field and no row value yet',
+      () => {
+        h.isRecordLoading = true
+      },
+    ],
+    [
+      'b. skeleton, configured field whose value is still in flight',
+      () => {
+        givenPrimary(makeField())
+        h.isValueLoading = true
+      },
+    ],
+    [
+      'c. row fallback, shown while the field value is unhydrated',
+      () => {
+        givenPrimary(makeField())
+        h.record = { ...h.record, displayName: 'Ada Lovelace' }
+      },
+    ],
+    [
+      'd. hydrated value',
+      () => {
+        givenPrimary(makeField(), textValue('Acme Corp'))
+      },
+    ],
+    [
+      'e. hydrated and empty, showing the Untitled placeholder',
+      () => {
+        givenPrimary(makeField(), null)
+      },
+    ],
+    [
+      'f. nothing configured and nothing to show — the line is still reserved',
+      () => {
+        h.record = { ...h.record, displayName: null }
+      },
+    ],
+  ])('primary line: %s', (_name, arrange) => {
+    arrange()
+
+    const { container } = render(<RecordIdentityHeader recordId={RECORD_ID} />)
+
+    expectSlotHeight(container, 'primary')
+  })
+
+  it('primary line: read-only renders the same box as the editable one', () => {
+    givenPrimary(makeField(), textValue('Acme Corp'))
+
+    const { container } = render(<RecordIdentityHeader recordId={RECORD_ID} readOnly />)
+
+    expectSlotHeight(container, 'primary')
+  })
+
+  // The one swap a user sees mid-interaction rather than mid-load.
+  it('primary line: opening the inline editor does not change the box', async () => {
+    givenPrimary(makeField(), textValue('Acme Corp'))
+
+    const { container } = render(<RecordIdentityHeader recordId={RECORD_ID} />)
+
+    const before = slotBox(container, 'primary').className
+    await userEvent.click(screen.getByText('Acme Corp'))
+    expect(screen.getByRole('textbox')).toBeInTheDocument()
+
+    // Still exactly one box, still the same height class — and the editor's own
+    // container matches it rather than falling back to the 28px floor.
+    expect(slotBox(container, 'primary').className).toBe(before)
+    expect(
+      container.querySelectorAll(`.${CSS.escape(SLOT_HEIGHT.primary)}`).length
+    ).toBeGreaterThan(1)
+  })
+
+  // The secondary line is `text-xs`, where the old 28px floor happened to bind —
+  // its regression was the two `return null` exits, which collapsed the line to
+  // zero and moved the primary line with it.
+  it.each([
+    [
+      'a. skeleton while the record row loads',
+      () => {
+        h.isRecordLoading = true
+      },
+    ],
+    [
+      'b. hydrated and empty, falling back to Created…',
+      () => {
+        const secondary = makeField({ id: SECONDARY_ID, key: 'company', label: 'Company' })
+        h.fields = [secondary]
+        h.secondaryDisplayFieldId = SECONDARY_ID
+        h.values[SECONDARY_ID] = null
+      },
+    ],
+    [
+      'c. hydrated and empty with no Created… to fall back to',
+      () => {
+        const secondary = makeField({ id: SECONDARY_ID, key: 'company', label: 'Company' })
+        h.fields = [secondary]
+        h.secondaryDisplayFieldId = SECONDARY_ID
+        h.values[SECONDARY_ID] = null
+        h.record = { ...h.record, createdAt: null }
+      },
+    ],
+    [
+      'd. no configured field and nothing to show at all',
+      () => {
+        h.record = { ...h.record, secondaryDisplayValue: null, createdAt: null }
+      },
+    ],
+  ])('secondary line: %s', (_name, arrange) => {
+    arrange()
+
+    const { container } = render(<RecordIdentityHeader recordId={RECORD_ID} />)
+
+    expectSlotHeight(container, 'secondary')
+  })
+
+  // The two lines are deliberately NOT the same height — the whole bug was one
+  // shared floor that could only be right for one of them.
+  it('the two lines declare different heights, and neither borrows the other', () => {
+    givenPrimary(makeField(), textValue('Acme Corp'))
+
+    const { container } = render(<RecordIdentityHeader recordId={RECORD_ID} />)
+
+    expect(SLOT_HEIGHT.primary).not.toBe(SLOT_HEIGHT.secondary)
+    expect(slotBox(container, 'primary').className).not.toContain(SLOT_HEIGHT.secondary)
+    expect(slotBox(container, 'secondary').className).not.toContain(SLOT_HEIGHT.primary)
   })
 })

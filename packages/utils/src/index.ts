@@ -128,6 +128,7 @@ export {
   encodeBase64WithLineBreaks,
   encodeQuotedPrintable,
   encodeRFC2231Filename,
+  encodeRFC5987ValueChars,
   ensureCRLF,
   foldMimeHeader,
   generateMimeBoundary,

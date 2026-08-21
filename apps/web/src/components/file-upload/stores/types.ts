@@ -231,7 +231,13 @@ export interface UploadActions {
       /** Session to attach the files to; falls back to the uploader's session. */
       sessionId?: string
     }
-  ) => Promise<{ addedFileIds: string[]; validationErrors: string[] }>
+  ) => Promise<{
+    addedFileIds: string[]
+    validationErrors: string[]
+    /** Files silently deduped because an identical upload is already in flight —
+     *  not failures; see the orchestration slice. */
+    skippedDuplicates: string[]
+  }>
   startUpload: () => Promise<BatchUploadResult>
   startUploadForSession: (sessionId: string) => Promise<BatchUploadResult>
   createSessionWithGuard: (uploaderId: string, options: CreateSessionOptions) => Promise<string>

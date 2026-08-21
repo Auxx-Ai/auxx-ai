@@ -2,8 +2,13 @@
 
 import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
+import {
+  type AvatarResolution,
+  applyAvatarThumbnailUrl,
+  publishAvatarResolved,
+} from '../../field-values/avatar-thumbnail'
 import { MediaAssetService } from '../../files/core/media-asset-service'
 import {
   getMimeTypeForFormat,
@@ -19,8 +24,6 @@ import type {
 } from '../../files/core/thumbnail-types'
 import { createStorageManager } from '../../files/storage/storage-manager'
 import { createScopedLogger } from '../../logger'
-import { getRealtimeService, rooms } from '../../realtime'
-import { toRecordId } from '../../resources/resource-id'
 import type { JobContext } from '../types'
 
 /**
@@ -265,7 +268,7 @@ export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
     // Post-commit: push the resolved avatar CDN URL to any listening clients.
     if (avatarResolved) {
       await publishAvatarResolved({
-        orgId,
+        organizationId: orgId,
         cdnUrl: avatarResolved.cdnUrl,
         instances: avatarResolved.instances,
       })
@@ -418,24 +421,18 @@ async function updateKBLogoIfApplicable(params: {
 }
 
 /**
- * Affected instances + the resolved CDN URL from an avatar-128 thumbnail run,
- * carried out of the transaction so the realtime publish happens post-commit.
- */
-interface AvatarResolution {
-  cdnUrl: string
-  instances: Array<{ entityInstanceId: string; entityDefinitionId: string }>
-}
-
-/**
  * Updates EntityInstance.avatarUrl when an avatar-128 preset thumbnail is generated.
- * Follows the KB logo callback pattern: looks up which EntityInstances reference
- * the source asset via their avatar field, then sets avatarUrl to the public CDN URL.
  *
- * Returns the affected (instanceId, entityDefinitionId) pairs + cdnUrl so the
- * caller can publish `record:updated` realtime events AFTER the transaction
- * commits — publishing inside the tx risks firing before the DB state is
- * durable, and if the tx rolls back we would have announced a state that
- * was never saved.
+ * The lookup, the write and the realtime publish all live in
+ * `field-values/avatar-thumbnail` because this job is NOT the only path that
+ * resolves an avatar: `ThumbnailService.ensureThumbnail` answers `ready` without
+ * queuing anything when the preset already exists, and the save path has to do the
+ * same write itself in that case. Keeping one implementation is what stops the two
+ * from drifting.
+ *
+ * Returns the affected pairs + cdnUrl so the caller can publish AFTER the
+ * transaction commits — publishing inside it risks firing before the DB state is
+ * durable, and a rollback would have announced state that was never saved.
  */
 async function updateEntityAvatarIfApplicable(params: {
   tx: any
@@ -453,91 +450,5 @@ async function updateEntityAvatarIfApplicable(params: {
   const assetId = sourceVersion.assetId
   if (!assetId) return null
 
-  // Build the ref string that FILE field values store
-  const refValue = `asset:${assetId}`
-
-  // Find EntityInstances whose avatar field value references this asset.
-  // Join path: FieldValue → CustomField → EntityDefinition (avatarFieldId) → EntityInstance
-  const instances = await tx
-    .select({
-      entityInstanceId: schema.FieldValue.entityId,
-      entityDefinitionId: schema.EntityDefinition.id,
-    })
-    .from(schema.FieldValue)
-    .innerJoin(schema.CustomField, eq(schema.FieldValue.fieldId, schema.CustomField.id))
-    .innerJoin(
-      schema.EntityDefinition,
-      and(
-        eq(schema.CustomField.entityDefinitionId, schema.EntityDefinition.id),
-        eq(schema.EntityDefinition.avatarFieldId, schema.CustomField.id)
-      )
-    )
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, orgId),
-        sql`${schema.FieldValue.valueJson}->'v'->>'ref' = ${refValue}`
-      )
-    )
-
-  if (instances.length === 0) return null
-
-  // Update all matching EntityInstances with the CDN URL
-  const instanceIds = instances.map((i: { entityInstanceId: string }) => i.entityInstanceId)
-  await tx
-    .update(schema.EntityInstance)
-    .set({ avatarUrl: cdnUrl })
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, orgId),
-        inArray(schema.EntityInstance.id, instanceIds)
-      )
-    )
-
-  logger.info('Updated entity avatar URLs from thumbnail', {
-    preset,
-    assetId,
-    instanceCount: instanceIds.length,
-  })
-
-  return { cdnUrl, instances }
-}
-
-/**
- * Publish `record:updated` for each EntityInstance whose avatarUrl was
- * resolved by the thumbnail job. Runs after the transaction commits so
- * clients never see an event for state that might still roll back.
- */
-async function publishAvatarResolved(params: {
-  orgId: string
-  cdnUrl: string
-  instances: Array<{ entityInstanceId: string; entityDefinitionId: string }>
-}): Promise<void> {
-  const { orgId, cdnUrl, instances } = params
-  try {
-    const realtime = getRealtimeService()
-    const updatedAt = new Date().toISOString()
-    await Promise.all(
-      instances.map(({ entityInstanceId, entityDefinitionId }) =>
-        realtime
-          .publish(
-            rooms.orgRecords(orgId, entityDefinitionId),
-            'record:updated',
-            {
-              entityDefinitionId,
-              record: {
-                id: entityInstanceId,
-                recordId: toRecordId(entityDefinitionId, entityInstanceId),
-                avatarUrl: cdnUrl,
-                updatedAt,
-              },
-            },
-            {}
-          )
-          .catch(() => {})
-      )
-    )
-  } catch {
-    // non-critical — thumbnail succeeded; the DB state is correct and a
-    // page refresh will surface it even if the push dropped.
-  }
+  return applyAvatarThumbnailUrl(tx, orgId, assetId, cdnUrl)
 }
