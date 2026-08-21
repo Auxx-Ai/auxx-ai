@@ -48,12 +48,14 @@ vi.mock('../../../events/publisher', () => ({
 }))
 
 import { archiveEntity, type MutationContext } from '../unified-handler-mutations'
+import { interactiveSession } from '../write-origin'
 
 function ctx(): MutationContext {
   return {
     db: {} as never,
     organizationId: 'org_1',
     userId: 'user_1',
+    session: interactiveSession('user_1'),
     fieldValueService: {} as never,
     resolveEntityDefinition: async () => ({
       id: 'def_1',

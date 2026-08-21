@@ -43,6 +43,7 @@ import type { FieldOptions } from '../custom-fields/field-options'
 import { BadRequestError } from '../errors'
 import type { CapabilityView } from '../permissions/capabilities/capability-view'
 import { getRealtimeService, rooms } from '../realtime'
+import type { WriteSession } from '../resources/crud/write-origin'
 import type { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
@@ -112,6 +113,15 @@ export interface FieldValueContext {
    * back would force a cast at every non-request caller.
    */
   capabilities?: CapabilityView
+  /**
+   * The write session this context's mutations run under (plan 03 §4b S4),
+   * threaded from `FieldValueService`'s constructor (which
+   * `UnifiedCrudHandler` feeds its own session). CARRIED ONLY in this slice —
+   * no behavior gate in `field-value-mutations.ts` reads it yet; the
+   * post-hook gate (S5) and batch-lane replay (S7) consume it in later
+   * phases.
+   */
+  session?: WriteSession
 }
 
 // =============================================================================
@@ -123,6 +133,8 @@ export interface CreateFieldValueContextOptions {
   bypassFieldGuards?: ReadonlySet<SystemAttribute>
   skipPreHooks?: boolean
   capabilities?: CapabilityView
+  /** See {@link FieldValueContext.session} — carried for later phases. */
+  session?: WriteSession
 }
 
 const EMPTY_BYPASS: ReadonlySet<SystemAttribute> = new Set()
@@ -148,6 +160,7 @@ export function createFieldValueContext(
     bypassFieldGuards: options.bypassFieldGuards ?? EMPTY_BYPASS,
     skipPreHooks: options.skipPreHooks,
     capabilities: options.capabilities,
+    session: options.session,
   }
 }
 

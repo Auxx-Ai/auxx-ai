@@ -23,8 +23,6 @@ export interface CrudContext {
   userId: string
   /** Optional transaction for batching */
   tx?: Transaction
-  /** Skip event publishing (e.g., bulk imports) */
-  skipEvents?: boolean
 }
 
 /** Result of a CRUD operation - success case */

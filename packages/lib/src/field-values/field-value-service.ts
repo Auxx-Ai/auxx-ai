@@ -6,6 +6,7 @@ import type { RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getCachedResourceFields } from '../cache'
 import type { CapabilityView } from '../permissions/capabilities/capability-view'
+import type { WriteSession } from '../resources/crud/write-origin'
 import {
   type CachedField,
   createFieldValueContext,
@@ -68,6 +69,13 @@ export interface FieldValueServiceOptions {
    * path instead of being dropped.
    */
   capabilities?: CapabilityView
+  /**
+   * The write session this service's mutations run under (plan 03 §4b S4).
+   * Threaded onto {@link FieldValueContext.session} — carried for later
+   * phases, no behavior gate reads it in this slice. `UnifiedCrudHandler`
+   * passes its own session here.
+   */
+  session?: WriteSession
 }
 
 export class FieldValueService {
@@ -89,6 +97,7 @@ export class FieldValueService {
     this.ctx = createFieldValueContext(organizationId, userId, db, socketId, {
       bypassFieldGuards: options.bypassFieldGuards,
       capabilities: options.capabilities,
+      session: options.session,
     })
   }
 
