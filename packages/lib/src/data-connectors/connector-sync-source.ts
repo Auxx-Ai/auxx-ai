@@ -39,6 +39,7 @@ import {
   decrementConnectorBackfillLatch,
   finalizeConnector,
   foldRunManifest,
+  getRunManifest,
   markRunManifestDegraded,
   newRunCounters,
   parkConnectorSampleIfLastStream,
@@ -387,15 +388,24 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     // §7b run-completion edge on the org channel, aligned with the importer's.
     // Runs once per run (last stream, past the B1 latch), AFTER the finalize
     // writes, so the client's catch-up sees post-reconcile state. Per-def
-    // changed counts are NOT cheaply available here — the run counters are
-    // aggregate across streams and a stream can map several defs — so each
-    // touched def ships count 0 ("changed, count unknown" per the event doc)
-    // rather than adding new bookkeeping. Defs: every mapped def plus whatever
-    // finalize itself touched (relationship resolution, orphan archival).
+    // changed counts come from the just-folded run manifest (one row read —
+    // `persistManifest` ran above), which holds the distinct changed/created/
+    // archived records per def. The manifest is subscription-gated, so a def
+    // with no enabled rules still ships count 0 ("changed, count unknown" per
+    // the event doc) — real counts for every def arrive with the Phase 3
+    // session collector. Defs: every mapped def plus whatever finalize itself
+    // touched (relationship resolution, orphan archival).
     try {
       const defCounts: Record<string, number> = {}
       for (const mapping of allMappings) defCounts[mapping.entityDefinitionId] ??= 0
       for (const defId of syncCtx.touchedDefs) defCounts[defId] ??= 0
+      const runManifest = await getRunManifest(this.deps.db, this.deps.run.id)
+      if (runManifest) {
+        const { manifestDefCounts } = await import('../events/handlers/sync-finalize')
+        for (const [defId, count] of Object.entries(manifestDefCounts(runManifest))) {
+          defCounts[defId] = count
+        }
+      }
       if (Object.keys(defCounts).length > 0) {
         // Lazy-import the realtime barrel — same cycle-avoidance as
         // `emitRecordsInvalidated`.

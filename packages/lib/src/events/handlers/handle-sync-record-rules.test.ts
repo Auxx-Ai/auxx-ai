@@ -27,6 +27,9 @@ const h = vi.hoisted(() => ({
     (rules: CachedRecordRule[], ctx: RecordRuleBatchContext) => Promise<void>
   >(async () => {}),
   fetchResourceSnapshots: vi.fn(async () => new Map()),
+  runSyncFinalize: vi.fn<(db: unknown, input: Record<string, unknown>) => Promise<void>>(
+    async () => {}
+  ),
 }))
 
 vi.mock('@auxx/database', () => ({ database: {} }))
@@ -46,6 +49,7 @@ vi.mock('../../record-rules/engine', () => ({ fireRecordRulesBatch: h.fireRecord
 vi.mock('../../record-rules/snapshot-fetcher', () => ({
   fetchResourceSnapshots: h.fetchResourceSnapshots,
 }))
+vi.mock('./sync-finalize', () => ({ runSyncFinalize: h.runSyncFinalize }))
 
 import { handleSyncRecordRules } from './handle-sync-record-rules'
 
@@ -260,6 +264,87 @@ describe('handleSyncRecordRules', () => {
     await handleSyncRecordRules(connectorEvent() as never)
     expect(h.claimRunManifestConsumed).toHaveBeenCalledWith({}, 'run_1')
     expect(h.fireRecordRulesBatch).toHaveBeenCalledTimes(1)
+  })
+
+  // ── Phase 4 finalize integration (plan events/03 §8) ─────────────────────────
+
+  it('runs the finalize pass after rules fire, on the claimed manifest', async () => {
+    const m = manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+    h.getRunManifest.mockResolvedValue(m)
+    h.getCachedRecordRules.mockResolvedValue([rule({ on: 'changed' })])
+    await handleSyncRecordRules(connectorEvent() as never)
+
+    expect(h.runSyncFinalize).toHaveBeenCalledTimes(1)
+    expect(h.runSyncFinalize.mock.calls[0]?.[1]).toMatchObject({
+      organizationId: 'org_1',
+      source: 'connector',
+      ref: 'run_1',
+      manifest: m,
+    })
+    // Claim before rules, rules before finalize.
+    const claimOrder = h.claimRunManifestConsumed.mock.invocationCallOrder[0]!
+    const fireOrder = h.fireRecordRulesBatch.mock.invocationCallOrder[0]!
+    const finalizeOrder = h.runSyncFinalize.mock.invocationCallOrder[0]!
+    expect(claimOrder).toBeLessThan(fireOrder)
+    expect(fireOrder).toBeLessThan(finalizeOrder)
+  })
+
+  // The at-most-once contract covers finalize too: it inserts timeline rows, so a
+  // redelivered event that loses the claim must skip it along with the rules.
+  it('skips finalize on duplicate delivery (claim already taken)', async () => {
+    h.getRunManifest.mockResolvedValue(
+      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+    )
+    h.getCachedRecordRules.mockResolvedValue([rule({ on: 'changed' })])
+    h.claimRunManifestConsumed.mockResolvedValue(false)
+    await handleSyncRecordRules(connectorEvent() as never)
+    expect(h.runSyncFinalize).not.toHaveBeenCalled()
+  })
+
+  it('skips finalize when the manifest is unresolvable', async () => {
+    h.getRunManifest.mockResolvedValue(null)
+    h.getCachedRecordRules.mockResolvedValue([rule()])
+    await handleSyncRecordRules(connectorEvent() as never)
+    expect(h.runSyncFinalize).not.toHaveBeenCalled()
+    expect(h.claimRunManifestConsumed).not.toHaveBeenCalled()
+  })
+
+  // The claim moved ahead of the zero-rules bail: finalize must run exactly once per
+  // run even when every rule was disabled between write and consume.
+  it('still claims and finalizes when no rules are enabled', async () => {
+    h.getRunManifest.mockResolvedValue(
+      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+    )
+    h.getCachedRecordRules.mockResolvedValue([])
+    await handleSyncRecordRules(connectorEvent() as never)
+    expect(h.claimRunManifestConsumed).toHaveBeenCalledTimes(1)
+    expect(h.fireRecordRulesBatch).not.toHaveBeenCalled()
+    expect(h.runSyncFinalize).toHaveBeenCalledTimes(1)
+  })
+
+  it('handler still succeeds when finalize rejects (rules already fired)', async () => {
+    h.getRunManifest.mockResolvedValue(
+      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+    )
+    h.getCachedRecordRules.mockResolvedValue([rule({ on: 'changed' })])
+    h.runSyncFinalize.mockRejectedValueOnce(new Error('finalize boom'))
+    await expect(handleSyncRecordRules(connectorEvent() as never)).resolves.toBeUndefined()
+    expect(h.fireRecordRulesBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('import source: finalize gets the importRef as its run ref', async () => {
+    h.getCachedRecordRules.mockResolvedValue([rule()])
+    h.getImportManifest.mockResolvedValue(
+      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+    )
+    const evt = {
+      data: {
+        type: 'sync:records:changed',
+        data: { source: 'import', organizationId: 'org_1', importRef: 'job_1' },
+      },
+    }
+    await handleSyncRecordRules(evt as never)
+    expect(h.runSyncFinalize.mock.calls[0]?.[1]).toMatchObject({ source: 'import', ref: 'job_1' })
   })
 
   // F6: a record created this run folds to an entry WITHOUT `o` — a `set` rule
