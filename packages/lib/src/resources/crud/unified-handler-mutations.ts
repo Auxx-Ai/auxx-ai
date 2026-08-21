@@ -31,6 +31,7 @@ import { EntityMergeService } from '../merge'
 import type { ResourceField } from '../registry/field-types'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
 import type { ResolvedEntityDefinition } from './types'
+import { sessionLane, type WriteSession } from './write-origin'
 
 const logger = createScopedLogger('unified-handler-mutations')
 
@@ -50,6 +51,11 @@ export interface CrudOptions {
    * so record rules still see the writes and fire with `source: 'sync'`. Seed writers
    * are the ONLY documented exemption (they stay silent forever). "Silent skipEvents"
    * therefore means seed-only — anything else is a bug.
+   *
+   * @deprecated Construct the handler with a `session` instead
+   * (`UnifiedCrudHandlerOptions.session`, plan 03 §4b S1); this alias maps to
+   * silent-lane behavior and will be removed once every §3 writer declares its
+   * origin. `skipEvents: true` still wins over the session-derived lane.
    */
   skipEvents?: boolean
   /**
@@ -74,6 +80,12 @@ export interface MutationContext {
   userId: string
   /** Pusher socket ID of the originating client — used for self-event exclusion in realtime sync. */
   socketId?: string
+  /**
+   * The write session this mutation runs under (plan 03 §4b S3). The
+   * per-write event fan-out (`publishEvents`) is derived from its lane via
+   * {@link derivePublishEvents} — the deprecated `skipEvents` alias still wins.
+   */
+  session: WriteSession
   fieldValueService: FieldValueService
   resolveEntityDefinition: (entityDefinitionId: string) => Promise<ResolvedEntityDefinition>
   getFields: (entityDefinitionId: string) => Promise<CustomFieldEntity[]>
@@ -120,6 +132,19 @@ function unwrapResult<T>(result: Result<T, { message: string; cause?: unknown }>
     throw new Error(result.error.message, { cause: result.error.cause })
   }
   return result.value
+}
+
+/**
+ * The S3 conversion seam (plan 03 §4b): ONE derived boolean per mutation call
+ * gates the whole per-write fan-out (bus event, realtime frames, dedup
+ * enqueue, event-data capture). The deprecated `skipEvents: true` alias still
+ * wins — behavior preserving; otherwise the session's lane decides:
+ * interactive/api/automation → publish, sync/seed → silent (exactly today's
+ * `skipEvents` semantics until the Phase 4 batch lane lands).
+ */
+function derivePublishEvents(ctx: MutationContext, options: CrudOptions): boolean {
+  if (options.skipEvents === true) return false
+  return sessionLane(ctx.session) === 'inline'
 }
 
 /**
@@ -338,6 +363,8 @@ export async function createEntity(
   values: Record<string, unknown>,
   options: CrudOptions = {}
 ): Promise<CreateEntityResult> {
+  // S3: one derived boolean per call gates the whole per-write fan-out below.
+  const publishEvents = derivePublishEvents(ctx, options)
   const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
 
   // Apply configured defaults for any creatable field the caller omitted.
@@ -384,11 +411,10 @@ export async function createEntity(
   // Build RecordId for field value operations
   const recordId = toRecordId(entityDef.id, instance.id)
 
-  // Set field values using RecordId. Bulk writes (skipEvents) also suppress the
-  // field-value realtime + triggers end-to-end via publishEvents:false.
-  await ctx.setFieldValues(recordId, processedValues, undefined, {
-    publishEvents: !options.skipEvents,
-  })
+  // Set field values using RecordId. Silent-lane writes (sync/seed sessions,
+  // or the deprecated skipEvents alias) also suppress the field-value
+  // realtime + triggers end-to-end via publishEvents:false.
+  await ctx.setFieldValues(recordId, processedValues, undefined, { publishEvents })
 
   // Re-read the instance so displayName / secondaryDisplayValue / avatarUrl
   // reflect what setFieldValues' maybeUpdateDisplayValue just wrote. The
@@ -401,8 +427,8 @@ export async function createEntity(
   })
   const freshInstance = freshResult.isOk() ? freshResult.value : instance
 
-  // Publish event (unless skipped for bulk imports)
-  if (!options.skipEvents) {
+  // Publish event (unless suppressed by the silent lane)
+  if (publishEvents) {
     const fields = await ctx.getFields(entityDef.id)
     const eventData = extractEventData(entityDef.entityType, fields, processedValues)
     const relatedRecordId = findRelatedRecordId(entityDef.entityType, eventData)
@@ -421,7 +447,7 @@ export async function createEntity(
   }
 
   // Publish record:created realtime event
-  if (!options.skipEvents) {
+  if (publishEvents) {
     getRealtimeService()
       .publish(
         rooms.orgRecords(ctx.organizationId, entityDef.id),
@@ -474,6 +500,8 @@ export async function updateEntity(
   modes?: Record<string, 'set' | 'add' | 'remove'>,
   options: CrudOptions = {}
 ) {
+  // S3: one derived boolean per call gates the whole per-write fan-out below.
+  const publishEvents = derivePublishEvents(ctx, options)
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
   // Single fetch to verify existence
@@ -498,10 +526,8 @@ export async function updateEntity(
 
   // Set field values using resolved RecordId. Per-field modes default to
   // 'set' when missing — today's behavior for every caller that omits modes.
-  // Bulk writes (skipEvents) suppress the field-value realtime + triggers too.
-  await ctx.setFieldValues(resolvedRecordId, processedValues, modes, {
-    publishEvents: !options.skipEvents,
-  })
+  // Silent-lane writes suppress the field-value realtime + triggers too.
+  await ctx.setFieldValues(resolvedRecordId, processedValues, modes, { publishEvents })
 
   // Re-read so displayName / secondaryDisplayValue / avatarUrl / updatedAt
   // reflect what setFieldValues just wrote. The `instance` captured at the
@@ -512,8 +538,8 @@ export async function updateEntity(
   })
   const freshInstance = freshResult.isOk() ? freshResult.value : instance
 
-  // Publish event (unless skipped for bulk imports)
-  if (!options.skipEvents) {
+  // Publish event (unless suppressed by the silent lane)
+  if (publishEvents) {
     const fields = await ctx.getFields(entityDef.id)
     const eventData = extractEventData(entityDef.entityType, fields, processedValues)
     const relatedRecordId = findRelatedRecordId(entityDef.entityType, eventData)
@@ -534,7 +560,7 @@ export async function updateEntity(
   // Publish record:updated realtime event so other tabs can refresh the row's
   // denormalized metadata (displayName, etc). Field-value changes ride on
   // fieldValues:updated; this event is only for the record-level columns.
-  if (!options.skipEvents) {
+  if (publishEvents) {
     getRealtimeService()
       .publish(
         rooms.orgRecords(ctx.organizationId, entityDef.id),
@@ -575,6 +601,8 @@ export async function archiveEntity(
   recordId: RecordId,
   options: CrudOptions = {}
 ) {
+  // S3: one derived boolean per call gates the whole per-write fan-out below.
+  const publishEvents = derivePublishEvents(ctx, options)
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
   const instanceResult = await getEntityInstance({
@@ -594,7 +622,7 @@ export async function archiveEntity(
 
   unwrapResult(updateResult)
 
-  if (!options.skipEvents) {
+  if (publishEvents) {
     publishEvent({
       recordId,
       entityType: entityDef.entityType,
@@ -608,7 +636,7 @@ export async function archiveEntity(
   }
 
   // Publish record:archived realtime event
-  if (!options.skipEvents) {
+  if (publishEvents) {
     getRealtimeService()
       .publish(
         rooms.orgRecords(ctx.organizationId, entityDef.id),
@@ -619,9 +647,9 @@ export async function archiveEntity(
       .catch(() => {})
   }
 
-  // Duplicate-suggestion cleanup — deliberately OUTSIDE the `skipEvents` guard.
-  // Pair cleanup is data hygiene, not an event: a `skipEvents` bulk archive must
-  // still clean up after itself. Only `open` rows go; `dismissed` carries the
+  // Duplicate-suggestion cleanup — deliberately OUTSIDE the `publishEvents`
+  // guard. Pair cleanup is data hygiene, not an event: a silent-lane bulk
+  // archive must still clean up after itself. Only `open` rows go; `dismissed` carries the
   // band that governs reopen and `merged` is the audit trail.
   // (`bulkArchiveEntities` delegates here per record, so it is covered too.)
   try {
@@ -649,6 +677,8 @@ export async function restoreEntity(
   recordId: RecordId,
   options: CrudOptions = {}
 ) {
+  // S3: one derived boolean per call gates the whole per-write fan-out below.
+  const publishEvents = derivePublishEvents(ctx, options)
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
   const instanceResult = await getEntityInstance({
@@ -668,7 +698,7 @@ export async function restoreEntity(
 
   unwrapResult(updateResult)
 
-  if (!options.skipEvents) {
+  if (publishEvents) {
     publishEvent({
       recordId,
       entityType: entityDef.entityType,
@@ -697,6 +727,8 @@ export async function deleteEntity(
   recordId: RecordId,
   options: CrudOptions = {}
 ): Promise<void> {
+  // S3: one derived boolean per call gates the whole per-write fan-out below.
+  const publishEvents = derivePublishEvents(ctx, options)
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
   const instanceResult = await getEntityInstance({
@@ -721,7 +753,7 @@ export async function deleteEntity(
       ? getEntityPostDeleteHooks(entityDef.apiSlug)
       : []
   let eventData: Record<string, unknown> = { hardDelete: true }
-  if (!options.skipEvents || preDeleteHooks.length > 0 || postDeleteHooks.length > 0) {
+  if (publishEvents || preDeleteHooks.length > 0 || postDeleteHooks.length > 0) {
     const fields = await ctx.getFields(entityDef.id)
     const captured = await captureEventData(ctx.fieldValueService, recordId, fields)
     eventData = { hardDelete: true, ...captured }
@@ -777,7 +809,7 @@ export async function deleteEntity(
     }
   }
 
-  if (!options.skipEvents) {
+  if (publishEvents) {
     publishEvent({
       recordId,
       entityType: entityDef.entityType,

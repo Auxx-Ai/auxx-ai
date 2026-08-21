@@ -57,3 +57,13 @@ export {
   setCustomFields,
   trackChanges,
 } from './utils'
+
+// Write session (plan 03 §4/§4b — Phase 3 slice a)
+export {
+  interactiveSession,
+  seedSession,
+  sessionLane,
+  type WriteOrigin,
+  type WriteSession,
+} from './write-origin'
+export { getAmbientWriteSession, runWithWriteSession } from './write-session-als'
