@@ -61,6 +61,7 @@ import { migration093BackfillSocialWebhookRouteKey } from './migrations/093-back
 import { migration094StripeAccountCutover } from './migrations/094-stripe-account-cutover'
 import { migration095DropIfElseCaseLegacyId } from './migrations/095-drop-if-else-case-legacy-id'
 import { migration096CurrencyMinorUnits } from './migrations/096-currency-minor-units'
+import { migration097PartSkuUnique } from './migrations/097-part-sku-unique'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -148,6 +149,7 @@ function buildRegistry(): DataMigrationDef[] {
     migration094StripeAccountCutover,
     migration095DropIfElseCaseLegacyId,
     migration096CurrencyMinorUnits,
+    migration097PartSkuUnique,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))
