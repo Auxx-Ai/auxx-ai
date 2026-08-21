@@ -22,6 +22,7 @@ import {
   nextKeyAfter,
   nKeysAfter,
 } from '@auxx/utils/fractional-indexing'
+import { stableStringify } from '@auxx/utils/json'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { getCachedFieldMap, getCachedResource } from '../cache'
 import {
@@ -2052,6 +2053,182 @@ export async function removeValuesBulk(
 }
 
 // =============================================================================
+// SET-PATH IDEMPOTENCY GUARD (docs/skip-events-history.md §8 D3; plan 03 D-6/B-14)
+// =============================================================================
+
+/** Existing row plus the AI marker column `FieldValueRow` doesn't declare. */
+type ExistingSetRow = FieldValueRow & { aiStatus?: string | null }
+
+/**
+ * Load the existing FieldValue rows for one (record, field), ordered by
+ * sortKey — the same shape/order `getValue` reads, but raw rows and with NO
+ * mail-lens gate (the guard must see what is actually stored, never a
+ * viewer-shaped answer). Returns `null` when the load fails for any reason:
+ * a false "unchanged" would silently drop a real write, so "couldn't look"
+ * always means "assume changed" and the normal write path runs.
+ */
+async function loadExistingRowsForSet(
+  ctx: FieldValueContext,
+  entityInstanceId: string,
+  fieldId: string
+): Promise<ExistingSetRow[] | null> {
+  try {
+    const rows = await ctx.db
+      .select()
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.entityId, entityInstanceId),
+          eq(schema.FieldValue.fieldId, fieldId),
+          eq(schema.FieldValue.organizationId, ctx.organizationId)
+        )
+      )
+      .orderBy(asc(schema.FieldValue.sortKey))
+    return rows as unknown as ExistingSetRow[]
+  } catch (error) {
+    logger.warn('Set idempotency guard: existing-row load failed; writing normally', {
+      fieldId,
+      entityId: entityInstanceId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
+}
+
+/**
+ * TOTAL, conservative payload equality between one stored row and the row the
+ * write would insert (`buildFieldValueRow` output). Every value column is
+ * compared; any uncertainty (unparseable date, non-finite number, JSON that
+ * fails to serialize) answers "changed", so the worst a wrong answer can cost
+ * is the old DELETE+INSERT behavior.
+ */
+function existingRowMatchesInsert(
+  existing: ExistingSetRow,
+  insert: typeof schema.FieldValue.$inferInsert
+): boolean {
+  // Text-like columns: null-safe strict equality, no normalization.
+  if ((existing.valueText ?? null) !== (insert.valueText ?? null)) return false
+  if ((existing.optionId ?? null) !== (insert.optionId ?? null)) return false
+  if ((existing.relatedEntityId ?? null) !== (insert.relatedEntityId ?? null)) return false
+  if ((existing.relatedEntityDefinitionId ?? null) !== (insert.relatedEntityDefinitionId ?? null)) {
+    return false
+  }
+  if ((existing.actorId ?? null) !== (insert.actorId ?? null)) return false
+  if ((existing.valueBoolean ?? null) !== (insert.valueBoolean ?? null)) return false
+
+  // Numbers: compare numerically; anything non-finite is "changed".
+  const existingNum = existing.valueNumber ?? null
+  const insertNum = insert.valueNumber ?? null
+  if ((existingNum === null) !== (insertNum === null)) return false
+  if (existingNum !== null && insertNum !== null) {
+    const a = Number(existingNum)
+    const b = Number(insertNum)
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a !== b) return false
+  }
+
+  // Dates: `valueDate` is a `mode: 'string'` timestamp, so the stored pg text
+  // form and a fresh `toISOString()` differ textually for the same instant —
+  // compare by parsed instant, and treat unparseable as "changed".
+  const existingDate = existing.valueDate ?? null
+  const insertDate = insert.valueDate ?? null
+  if ((existingDate === null) !== (insertDate === null)) return false
+  if (existingDate !== null && insertDate !== null) {
+    const a = Date.parse(existingDate)
+    const b = Date.parse(insertDate)
+    if (Number.isNaN(a) || Number.isNaN(b) || a !== b) return false
+  }
+
+  // JSON: jsonb does not preserve object key order, so compare both envelope
+  // halves via `stableStringify` (the repo's canonical jsonb comparison).
+  // `meta` must match too — the DELETE+INSERT this guard replaces would drop
+  // stored metadata the incoming write doesn't re-assert, so an envelope
+  // carrying extra meta is a REAL change, not a no-op.
+  const existingJson = existing.valueJson ?? null
+  const insertJson = (insert.valueJson as unknown) ?? null
+  if ((existingJson === null) !== (insertJson === null)) return false
+  if (existingJson !== null && insertJson !== null) {
+    try {
+      const a = readEnvelope(existingJson)
+      const b = readEnvelope(insertJson)
+      if (stableStringify(a.v ?? null) !== stableStringify(b.v ?? null)) return false
+      if (stableStringify(a.meta ?? null) !== stableStringify(b.meta ?? null)) return false
+    } catch {
+      return false
+    }
+  }
+
+  return true
+}
+
+/**
+ * D-6 idempotency guard core: decide whether a forward `set` write is a pure
+ * re-assertion of what is already stored — same row count, same sortKey
+ * order (stored rows in sortKey order must equal the incoming values in
+ * array order), same discriminated payload per row — and return the stored
+ * rows as `TypedFieldValue`s when it is, `null` when anything differs or
+ * cannot be verified.
+ *
+ * Callers must NOT invoke this for `aiGeneration` (stage-2 AI commit)
+ * writes: those must always write so the rows gain `aiStatus='result'` +
+ * metadata even when the value is identical.
+ */
+async function findUnchangedSetResult(
+  ctx: FieldValueContext,
+  args: {
+    existingRows: ExistingSetRow[]
+    fieldType: FieldType
+    entityDefinitionId: string
+    entityInstanceId: string
+    fieldId: string
+    value: TypedFieldValueInput | TypedFieldValueInput[]
+  }
+): Promise<TypedFieldValue[] | null> {
+  try {
+    const { existingRows, fieldType } = args
+
+    // Canonicalize relationship recordIds exactly as setValueWithType will,
+    // so an alias-form id ('contact:<inst>') compares against the stored
+    // definition CUID instead of falsely reading as changed.
+    const value =
+      fieldType === 'RELATIONSHIP'
+        ? await canonicalizeRelationshipValue(ctx, args.value)
+        : args.value
+    if (value === null) return null
+
+    const values = Array.isArray(value) ? value : [value]
+    if (values.length !== existingRows.length) return null
+
+    for (let i = 0; i < values.length; i++) {
+      const row = existingRows[i]!
+      // A manual set clears any persisted AI marker via its DELETE+INSERT
+      // cycle, so an existing marker makes even an identical value a REAL
+      // write (the marker must go away).
+      if (row.aiStatus != null) return null
+      const insert = buildFieldValueRow({
+        organizationId: ctx.organizationId,
+        entityId: args.entityInstanceId,
+        entityDefinitionId: args.entityDefinitionId,
+        fieldId: args.fieldId,
+        value: values[i]!,
+        // Payload-only comparison target; the row's own key keeps
+        // `buildFieldValueRow` honest without comparing sortKeys themselves.
+        sortKey: row.sortKey,
+      })
+      if (!existingRowMatchesInsert(row, insert)) return null
+    }
+
+    return existingRows.map((row) => rowToTypedValue(row, fieldType))
+  } catch (error) {
+    logger.warn('Set idempotency guard: comparison failed; writing normally', {
+      fieldId: args.fieldId,
+      entityId: args.entityInstanceId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
+}
+
+// =============================================================================
 // HIGH-LEVEL MUTATIONS
 // =============================================================================
 
@@ -2171,6 +2348,37 @@ export async function setValueWithBuiltIn(
   }
   const typedValue = hookOutcome.value
 
+  // 3.55. Idempotency guard (docs/skip-events-history.md §8 D3): load the
+  // stored rows once, BEFORE the destructive DELETE+INSERT. Used by both the
+  // null/clear branch below (B-14: delete-of-absent is a no-op) and the
+  // forward set branch (D-6: identical write → no write, no hooks, no
+  // events). AI stage-2 commits (`aiGeneration`) bypass the guard entirely —
+  // re-asserting an identical value must still write so the rows gain
+  // `aiStatus='result'` + metadata. `null` = guard disabled for this write
+  // (bypass, or the load failed) — the normal path runs unconditionally.
+  const guardRows = params.aiGeneration
+    ? null
+    : await loadExistingRowsForSet(ctx, entityInstanceId, fieldId)
+
+  // D-6: a confirmed re-assertion returns the stored rows untouched — no
+  // DELETE+INSERT, no oldValue pre-fetch, no display recompute, no
+  // post-hooks, no field triggers, no realtime entry. Any uncertainty in
+  // the comparison answers `null` and the normal write path below runs
+  // unchanged.
+  if (guardRows !== null && typedValue !== null) {
+    const unchanged = await findUnchangedSetResult(ctx, {
+      existingRows: guardRows,
+      fieldType: field.type as FieldType,
+      entityDefinitionId,
+      entityInstanceId,
+      fieldId,
+      value: typedValue,
+    })
+    if (unchanged !== null) {
+      return { state: 'complete', performedAt: new Date().toISOString(), values: unchanged }
+    }
+  }
+
   // 3.6. Capture oldValue BEFORE the null-delete branch — both set and clear
   // paths need it to fire post-hooks identically. Gated on
   // `hasEntityFieldChangeHooks`/`hasFieldTypeChangeHooks` so writes nobody
@@ -2226,6 +2434,14 @@ export async function setValueWithBuiltIn(
 
   // Handle null values (deletion)
   if (typedValue === null) {
+    // B-14: delete-of-absent is a no-op. A clear against a field with no
+    // stored rows (e.g. ingest writing `last_name: null` for single-word
+    // names) must not delete, publish, or fire the post-hook chain — there
+    // is nothing to change. Skipped when the guard is bypassed/disabled
+    // (`guardRows === null`), falling through to the old behavior.
+    if (guardRows !== null && guardRows.length === 0) {
+      return { state: 'complete', performedAt: new Date().toISOString(), values: [] }
+    }
     await deleteValue(ctx, { recordId, fieldId })
     await maybeUpdateDisplayValue(ctx, recordId, field, null)
     if (publishEvents) {
@@ -2263,6 +2479,9 @@ export async function setValueWithBuiltIn(
   // 4. Uniqueness is enforced inside setValueWithType (step 6) — one gate
   // site, running just before the destructive delete, so hook-transformed
   // values are what get checked and a conflict leaves existing rows intact.
+
+  // 5. Idempotency was already decided at step 3.55 — reaching here means
+  // the write is a real change (or the guard was bypassed/disabled).
 
   // 6. Set the value
   const result = await setValueWithType(ctx, {
