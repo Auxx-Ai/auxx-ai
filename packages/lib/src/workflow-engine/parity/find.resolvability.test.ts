@@ -22,7 +22,7 @@
  * - `../../cache` — `findCachedResource`/`getCachedResource`/
  *   `getCachedResources`/`getCachedResourceFields`, all backed by the same
  *   `ALL_RESOURCES` fixture (mirrors `find-output-keying.test.ts`'s pattern).
- * - `@auxx/services/entity-instances` — `getEntityInstance`, the actual DB
+ * - `../../entity-instances` — `getEntityInstance`, the actual DB
  *   read `fetchResourceById` sits behind. Backed by `VENDOR_INSTANCES`/
  *   `REGION_INSTANCES`.
  * - `../../field-values/field-value-queries` — `batchGetValues`, the actual
@@ -127,7 +127,7 @@ vi.mock('../../permissions/visibility/automation-visibility', () => ({
   })),
 }))
 
-vi.mock('@auxx/services/entity-instances', async () => {
+vi.mock('../../entity-instances', async () => {
   const { ok, err } = await import('neverthrow')
   return {
     getEntityInstance: vi.fn(

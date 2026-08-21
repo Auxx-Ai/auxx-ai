@@ -8,7 +8,6 @@ import {
   ResourceGranteeType,
   ResourcePermission,
 } from '@auxx/database/enums'
-import { createEntityInstance } from '@auxx/services/entity-instances'
 import type {
   AddMembersInput,
   AddMembersResult,
@@ -19,6 +18,7 @@ import type {
 import { generateNKeysBetween } from '@auxx/utils'
 import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { getCachedEntityDefId, getCachedGroups, getOrgCache, onCacheEvent } from '../cache'
+import { createEntityInstance } from '../entity-instances'
 import { NotFoundError } from '../errors'
 import { hasGroupPermission, requireGroupPermission } from './permissions'
 

@@ -2,7 +2,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
+import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/types/custom-field'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'

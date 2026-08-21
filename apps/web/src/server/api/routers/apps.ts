@@ -10,6 +10,7 @@ import {
   getAvailableApps,
   installApp,
   saveAppConnection,
+  uninstallApp,
 } from '@auxx/lib/apps'
 import { getCachedAppBySlug, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
 import { mintClientCredentialToken } from '@auxx/lib/connections'
@@ -34,7 +35,6 @@ import {
   listAppsQuerySchema,
   listDeploymentsQuerySchema,
   listInstalledAppsQuerySchema,
-  uninstallApp,
   uninstallAppRequestSchema,
 } from '@auxx/services/apps'
 import { TRPCError } from '@trpc/server'

@@ -4,17 +4,17 @@ import type { Database, schema } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import {
-  createEntityInstance,
-  deleteEntityInstance,
-  getEntityInstance,
-  updateEntityInstance,
-} from '@auxx/services/entity-instances'
 import type { Result } from 'neverthrow'
 import { findCachedResource } from '../../cache'
 import { CommentService } from '../../comments'
 import { enqueueDuplicateScan } from '../../dedup/enqueue-scan'
 import { deleteOpenPairsForRecord } from '../../dedup/pairs'
+import {
+  createEntityInstance,
+  deleteEntityInstance,
+  getEntityInstance,
+  updateEntityInstance,
+} from '../../entity-instances'
 import { UnprocessableEntityError } from '../../errors'
 import { publisher } from '../../events/publisher'
 import type { Events } from '../../events/types'

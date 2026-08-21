@@ -2,10 +2,10 @@
 
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { getExistingFieldValue } from '@auxx/services/field-values'
 import { readMeta } from '@auxx/types/field-value'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId } from '@auxx/types/resource'
+import { getExistingFieldValue } from '../../field-values'
 import type { GenerationResult } from '../../field-values/ai-autofill/generation-service'
 import { generateFieldValue } from '../../field-values/ai-autofill/generation-service'
 import { writeAiError } from '../../field-values/ai-commit'

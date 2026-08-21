@@ -1,12 +1,9 @@
 // apps/web/src/components/tags/ui/tag-picker/tag-picker-content.tsx
 'use client'
 
-import {
-  DEFAULT_SELECT_OPTION_COLOR,
-  getOptionColor,
-  type SelectOptionColor,
-} from '@auxx/lib/custom-fields/client'
+import { getOptionColor } from '@auxx/lib/custom-fields/client'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/types/custom-field'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Command,

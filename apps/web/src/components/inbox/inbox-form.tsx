@@ -2,10 +2,10 @@
 'use client'
 
 import { FieldType, ResourceGranteeType, type SharingGranteeType } from '@auxx/database/enums'
-import { SELECT_OPTION_COLORS, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { type Lens, type LensChoice, normalizeLens } from '@auxx/lib/permissions/visibility/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { type ActorId, toActorId } from '@auxx/types/actor'
+import { SELECT_OPTION_COLORS, type SelectOptionColor } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'

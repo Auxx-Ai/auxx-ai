@@ -2,10 +2,10 @@
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { createCustomField } from '@auxx/services/custom-fields'
-import { checkSlugExists, createEntityDefinition } from '@auxx/services/entity-definitions'
 import { eq } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
+import { createCustomField } from '../custom-fields'
+import { checkSlugExists, createEntityDefinition } from '../entity-definitions'
 import { getTemplatesByIds } from './template-registry'
 import type { EntityTemplate, EntityTemplateField } from './types'
 import { isSymbolicRef, parseSymbolicRef } from './types'

@@ -33,7 +33,7 @@ vi.mock('../../../dedup/enqueue-scan', async (importOriginal) => ({
   enqueueDuplicateScan: h.enqueueDuplicateScan,
 }))
 
-vi.mock('@auxx/services/entity-instances', () => ({
+vi.mock('../../../entity-instances', () => ({
   getEntityInstance: vi.fn(async () => ok({ id: 'inst_1', archivedAt: null })),
   updateEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
   createEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),

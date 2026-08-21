@@ -2,11 +2,11 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { createEntityInstance } from '@auxx/services/entity-instances'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { getCachedCustomFields, requireCachedEntityDefId } from '../../cache'
+import { createEntityInstance } from '../../entity-instances'
 import { FieldValueService } from '../../field-values'
 import type { MeetingPlatformValue, RecordingResult, ResolvedParticipant } from './types'
 

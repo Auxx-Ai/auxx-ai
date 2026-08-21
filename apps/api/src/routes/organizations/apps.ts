@@ -1,7 +1,12 @@
 // apps/api/src/routes/organizations/apps.ts
 
 import { database } from '@auxx/database'
-import { getAppWithInstallationStatus, getAvailableApps, installApp } from '@auxx/lib/apps'
+import {
+  getAppWithInstallationStatus,
+  getAvailableApps,
+  installApp,
+  uninstallApp,
+} from '@auxx/lib/apps'
 import { getCachedAppBySlug, resolveAppSlug } from '@auxx/lib/cache'
 import { DemoGuard } from '@auxx/lib/demo'
 import { getInstalledApps } from '@auxx/services/app-installations'
@@ -11,7 +16,6 @@ import {
   listAppEventLogs,
   listAppsQuerySchema,
   listInstalledAppsQuerySchema,
-  uninstallApp,
   uninstallAppRequestSchema,
 } from '@auxx/services/apps'
 import { Hono } from 'hono'

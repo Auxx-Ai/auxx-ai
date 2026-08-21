@@ -1,7 +1,8 @@
 // apps/web/src/components/tags/ui/tag-picker/tag-list-row.tsx
 'use client'
 
-import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
+import { getOptionColor } from '@auxx/lib/custom-fields/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { CommandGroup, CommandNavigableItem } from '@auxx/ui/components/command'
 import { cn } from '@auxx/ui/lib/utils'

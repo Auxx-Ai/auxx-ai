@@ -2,10 +2,13 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import type { SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
 import { toRecordId } from '@auxx/lib/resources/client'
-import type { SelectOption as RawSelectOption, RelationshipConfig } from '@auxx/types/custom-field'
+import type {
+  SelectOption as RawSelectOption,
+  RelationshipConfig,
+  SelectOptionColor,
+} from '@auxx/types/custom-field'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'

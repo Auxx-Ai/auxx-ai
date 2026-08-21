@@ -1,8 +1,8 @@
 // apps/web/src/components/custom-fields/ui/options-editor.tsx
 'use client'
 
-import type { SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
 import { generateId } from '@auxx/utils/generateId'
 import { GripVertical, PlusCircle, Trash2 } from 'lucide-react'

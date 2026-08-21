@@ -1,10 +1,7 @@
 // apps/web/src/components/dispatch/ui/board/utils.ts
 
-import {
-  getOptionColor,
-  type OptionColor,
-  type SelectOptionColor,
-} from '@auxx/lib/custom-fields/client'
+import { getOptionColor, type OptionColor } from '@auxx/lib/custom-fields/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import type { BackgroundEvent, EventColorClasses } from '@auxx/ui/components/event-calendar'
 import {
   addDays,

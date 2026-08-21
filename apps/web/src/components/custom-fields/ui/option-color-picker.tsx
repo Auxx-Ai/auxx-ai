@@ -1,11 +1,8 @@
 // apps/web/src/components/custom-fields/ui/option-color-picker.tsx
 'use client'
 
-import {
-  DEFAULT_SELECT_OPTION_COLOR,
-  OPTION_COLORS,
-  type SelectOptionColor,
-} from '@auxx/lib/custom-fields/client'
+import { OPTION_COLORS } from '@auxx/lib/custom-fields/client'
+import { DEFAULT_SELECT_OPTION_COLOR, type SelectOptionColor } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,

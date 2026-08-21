@@ -1,7 +1,8 @@
 // components/global/sidebar/sidebar-item.tsx
 'use client'
 
-import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
+import { getOptionColor } from '@auxx/lib/custom-fields/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { SidebarMenuButton, SidebarMenuSubButton } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
 import Link from 'next/link'

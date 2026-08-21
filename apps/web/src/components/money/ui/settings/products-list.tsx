@@ -2,7 +2,8 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
+import { getOptionColor } from '@auxx/lib/custom-fields/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'

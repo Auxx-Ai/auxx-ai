@@ -1,11 +1,11 @@
 // packages/lib/src/entity-definitions/delete-entity-definition.ts
 
 import { type Database, database, schema, type Transaction } from '@auxx/database'
-import { clearDisplayValues } from '@auxx/services/entity-instances'
 import type { CalcOptions, RelationshipConfig } from '@auxx/types/custom-field'
 import { getInverseFieldId } from '@auxx/types/custom-field'
 import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { clearDisplayValues } from '../entity-instances'
 import { ForbiddenError, NotFoundError } from '../errors'
 
 /**

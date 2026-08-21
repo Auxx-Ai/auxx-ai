@@ -7,15 +7,15 @@
 import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@auxx/services/entity-definitions', () => ({
+vi.mock('../entity-definitions', () => ({
   createEntityDefinition: vi.fn(),
   checkSlugExists: vi.fn(),
 }))
-vi.mock('@auxx/services/custom-fields', () => ({ createCustomField: vi.fn() }))
+vi.mock('../custom-fields', () => ({ createCustomField: vi.fn() }))
 vi.mock('../cache/invalidate', () => ({ onCacheEvent: vi.fn() }))
 
-import { createCustomField } from '@auxx/services/custom-fields'
-import { checkSlugExists, createEntityDefinition } from '@auxx/services/entity-definitions'
+import { createCustomField } from '../custom-fields'
+import { checkSlugExists, createEntityDefinition } from '../entity-definitions'
 import { installTemplates } from './template-installer'
 import type { EntityTemplate } from './types'
 

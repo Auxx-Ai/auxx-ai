@@ -1,8 +1,9 @@
 // apps/web/src/components/tags/ui/tags-list.tsx
 'use client'
 
-import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
+import { getOptionColor } from '@auxx/lib/custom-fields/client'
 import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
 import {

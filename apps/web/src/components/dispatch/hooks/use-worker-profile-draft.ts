@@ -1,7 +1,7 @@
 // apps/web/src/components/dispatch/hooks/use-worker-profile-draft.ts
 'use client'
 
-import type { SelectOptionColor } from '@auxx/lib/custom-fields/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { toastError } from '@auxx/ui/components/toast'
 import type { AddressStruct } from '~/components/fields/inputs/address-struct-input-field'
 import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'

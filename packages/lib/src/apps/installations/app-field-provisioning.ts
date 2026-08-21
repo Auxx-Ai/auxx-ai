@@ -14,14 +14,11 @@ import {
 } from '@auxx/database'
 import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import {
-  type CreateCustomFieldInput,
-  createCustomField,
-  type SelectOption,
-} from '@auxx/services/custom-fields'
+import type { SelectOption } from '@auxx/types/custom-field'
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../../cache'
 import { onCacheEvent } from '../../cache/invalidate'
+import { type CreateCustomFieldInput, createCustomField } from '../../custom-fields'
 
 const logger = createScopedLogger('app-fields')
 

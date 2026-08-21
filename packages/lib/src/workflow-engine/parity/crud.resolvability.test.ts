@@ -19,7 +19,7 @@
  *   actual create/update/archive DB writes are not what this suite is about
  *   — the OUTPUT KEYING and its resolvability is.
  * - `../../cache` — same fixture-backed resource lookups as the find suite.
- * - `@auxx/services/entity-instances` — `getEntityInstance`, backing the
+ * - `../../entity-instances` — `getEntityInstance`, backing the
  *   post-write lazy-load ladder for create/update's field paths.
  * - `../../field-values/field-value-queries` — `batchGetValues`.
  * - `../../threads/thread-mutation.service` — `ThreadMutationService`, for
@@ -155,7 +155,7 @@ vi.mock('../../cache', () => ({
   requireCachedEntityDefId: vi.fn(async (_orgId: string, entityType: string) => entityType),
 }))
 
-vi.mock('@auxx/services/entity-instances', async () => {
+vi.mock('../../entity-instances', async () => {
   const { ok, err } = await import('neverthrow')
   return {
     getEntityInstance: vi.fn(async ({ id }: { id: string; organizationId: string }) => {

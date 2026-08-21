@@ -1,7 +1,5 @@
 // packages/lib/src/field-values/index.ts
 
-export type { TypedFieldValue } from '@auxx/types'
-export type { RecordId } from '@auxx/types/resource'
 // CALC expression evaluator - re-exported from @auxx/utils
 export {
   type CalcFunction,
@@ -36,6 +34,7 @@ export {
   selectConverter,
   textConverter,
 } from './converters'
+export { deleteFieldValueById, deleteFieldValues } from './delete-values'
 export {
   cascadeDependentDisplayNames,
   type DisplayFieldDep,
@@ -117,6 +116,9 @@ export {
   type SelectFieldOptions,
   type TextFieldOptions,
 } from './formatter'
+export { getExistingFieldValue } from './get-existing-value'
+export { getFieldWithDefinition } from './get-field-with-definition'
+export { batchInsertFieldValues, insertFieldValue } from './insert-value'
 // Read-side value normalization for lookupByField
 export { normalizeForLookup } from './normalize-for-lookup'
 // Multi-value scalar helpers (first-is-primary convention)
@@ -202,6 +204,22 @@ export {
   updateSearchTextForEntityDefinition,
   updateSearchTextForInstances,
 } from './search-text'
+// Low-level FieldValue row service types (moved from @auxx/services)
+export type {
+  DeleteFieldValuesInput,
+  EntityNotFoundError,
+  ExistingFieldValueRow,
+  FieldNotFoundError,
+  FieldValueError,
+  FieldValueNotFoundError,
+  FieldWithDefinition,
+  GetExistingValueInput,
+  GetFieldWithDefinitionInput,
+  InsertFieldValueInput,
+  ServiceFieldValueRow,
+  UpdateDisplayNameInput,
+  UpdateFieldValueInput,
+} from './service-types'
 // Typed column match (shared between write-path dedup and read-path lookup)
 export { type TypedColumnMatch, typedColumnMatch } from './typed-column-match'
 // Service types
@@ -236,5 +254,8 @@ export type {
   SetValueWithTypeInput,
   TypedFieldValueResult,
 } from './types'
+export { type UpdateAiMarkerInput, updateAiMarker } from './update-ai-marker'
+export { updateEntityDisplayName } from './update-display-name'
+export { updateFieldValue } from './update-value'
 // writeKey (id | systemAttribute) → CustomField.id resolution
 export { buildWriteKeyToFieldIdMap } from './write-key-map'

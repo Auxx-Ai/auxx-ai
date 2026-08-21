@@ -26,7 +26,7 @@
 // Usage: CONNECTOR_ID=… ORG_ID=… APP_SLUG=shopify [APPLY=1] npx tsx scripts/remap-connector-new-catalog-fields.ts
 
 import { database as db, schema } from '@auxx/database'
-import { createCustomField } from '@auxx/services/custom-fields'
+import { createCustomField } from '@auxx/lib/custom-fields'
 import { toAppFieldRef } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
 import { eq } from 'drizzle-orm'

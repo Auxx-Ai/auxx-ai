@@ -13,7 +13,7 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('../cache', () => ({ getCachedEntityDefId: h.getCachedEntityDefId }))
-vi.mock('@auxx/services/custom-fields', () => ({ createCustomField: h.createField }))
+vi.mock('../custom-fields', () => ({ createCustomField: h.createField }))
 vi.mock('./inventory-bridge-rule', () => ({ ensureInventoryDeductionRule: h.ensureRule }))
 
 import {

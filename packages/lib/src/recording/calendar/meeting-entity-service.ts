@@ -2,10 +2,10 @@
 
 import type { CalendarEventEntity } from '@auxx/database'
 import { database as db } from '@auxx/database'
-import { createEntityInstance } from '@auxx/services/entity-instances'
 import { toRecordId } from '@auxx/types/resource'
 import { err, ok } from 'neverthrow'
 import { getCachedCustomFields, requireCachedEntityDefId } from '../../cache'
+import { createEntityInstance } from '../../entity-instances'
 import { FieldValueService } from '../../field-values'
 import { linkCalendarEventToMeeting } from './calendar-event-service'
 import type { RecordingResult, ResolvedParticipant } from './types'
