@@ -63,7 +63,7 @@ export class OrganizationDomain {
    */
   async insertDirectly(db: any): Promise<void> {
     const { schema } = await import('@auxx/database')
-    const { UnifiedCrudHandler } = await import('@auxx/lib/resources')
+    const { UnifiedCrudHandler, seedSession } = await import('@auxx/lib/resources')
     const users = [...this.context.auth.testUsers, ...this.context.auth.randomUsers]
 
     if (users.length === 0) {
@@ -73,7 +73,15 @@ export class OrganizationDomain {
     // Seed for each target organization
     for (const org of this.organizations) {
       // Generate and insert Signatures via UnifiedCrudHandler
-      await this.seedSignatures(db, schema, org.id, org.ownerId, users, UnifiedCrudHandler)
+      await this.seedSignatures(
+        db,
+        schema,
+        org.id,
+        org.ownerId,
+        users,
+        UnifiedCrudHandler,
+        seedSession
+      )
 
       // Generate and insert Snippet Folders first, then Snippets (so snippets can reference folders)
       const folderIds = await this.seedSnippetFolders(db, schema, org.id, users)
@@ -89,6 +97,7 @@ export class OrganizationDomain {
    * @param ownerId - Organization owner user ID
    * @param users - Array of user records
    * @param UnifiedCrudHandler - The handler class
+   * @param seedSession - The seed-session constructor from `@auxx/lib/resources`
    */
   private async seedSignatures(
     db: any,
@@ -96,17 +105,15 @@ export class OrganizationDomain {
     organizationId: string,
     ownerId: string,
     users: Array<{ id: string; email: string }>,
-    UnifiedCrudHandler: any
+    UnifiedCrudHandler: any,
+    seedSession: (reason: string) => unknown
   ): Promise<void> {
     console.log('✍️  Generating signatures via UnifiedCrudHandler...')
 
     // Seed session: silent lane — same suppression the per-call
     // `skipEvents: true` used to provide, declared once at construction.
     const handler = new UnifiedCrudHandler(organizationId, ownerId, db, undefined, {
-      session: {
-        origin: { kind: 'seed', reason: 'org bootstrap - no live users to notify' },
-        depth: 0,
-      },
+      session: seedSession('org bootstrap - no live users to notify'),
     })
 
     // Skip if signatures already exist (additive mode)

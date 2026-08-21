@@ -580,14 +580,14 @@ export class CrmDomain {
    */
   async insertDirectly(db: any): Promise<void> {
     const { schema } = await import('@auxx/database')
-    const { UnifiedCrudHandler } = await import('@auxx/lib/resources')
+    const { UnifiedCrudHandler, seedSession } = await import('@auxx/lib/resources')
 
     // Seed for each target organization
     for (const org of this.organizations) {
       // Seed session: silent lane — same suppression the per-call
       // `skipEvents: true` used to provide, declared once at construction.
       const handler = new UnifiedCrudHandler(org.id, org.ownerId, db, undefined, {
-        session: { origin: { kind: 'seed', reason: 'demo CRM seed data' }, depth: 0 },
+        session: seedSession('demo CRM seed data'),
       })
 
       // Companies first (contacts reference company domains via email).

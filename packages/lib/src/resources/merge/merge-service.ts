@@ -648,9 +648,12 @@ export class EntityMergeService {
 
   /** Archive source instances after merge */
   private async archiveSourceInstances(tx: Transaction, sourceIds: string[]): Promise<void> {
+    const now = new Date()
     await tx
       .update(schema.EntityInstance)
-      .set({ archivedAt: new Date() })
+      // D-7 explicit content stamp: archive is a content change and
+      // `updatedAt` no longer auto-bumps (`$onUpdate` removed).
+      .set({ archivedAt: now, updatedAt: now })
       .where(
         and(
           inArray(schema.EntityInstance.id, sourceIds),
