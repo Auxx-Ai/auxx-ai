@@ -214,7 +214,16 @@ function DialogContent({
           // full-width card instead of centering it; otherwise keep the gutter.
           mobileFullHeight ? 'pb-6 max-sm:pb-0' : 'pb-6 max-sm:items-center'
         )}
-        onWheel={(e) => e.stopPropagation()}>
+        onWheel={(e) => e.stopPropagation()}
+        // React synthetic events propagate through the REACT tree, not the DOM
+        // tree, so a keystroke inside this portal still bubbles to whatever
+        // rendered <Dialog> — e.g. a dnd-kit KeyboardSensor `onKeyDown` on a
+        // table header cell, which swallows Space/Enter and then starts a
+        // keyboard drag while the user is typing in a dialog field. A modal
+        // owns its keys; nothing outside it should see them. Radix's own Escape
+        // handling is a native `document` listener in DismissableLayer, so
+        // dismissal is unaffected. Mirrors the `onWheel` stop above.
+        onKeyDown={(e) => e.stopPropagation()}>
         <DialogPrimitive.Content
           className={cn(
             dialogVariants({ variant, size, position, className }),

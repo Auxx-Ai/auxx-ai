@@ -68,6 +68,7 @@ export function DragDropRow<TData>({
     attributes,
     listeners,
     setNodeRef: setDragRef,
+    setActivatorNodeRef,
     isDragging,
   } = useDraggable({
     id: `row-${row.id}`,
@@ -89,12 +90,22 @@ export function DragDropRow<TData>({
     disabled: !dragDropConfig.enabled || !canAcceptDrop,
   })
 
+  // The row div is drag source, drop target AND keyboard activator. The
+  // activator ref is what makes dnd-kit's KeyboardSensor check
+  // `event.target === activator` before starting a drag; with a null activator
+  // that guard short-circuits and every keydown that reaches `listeners`
+  // starts a row drag — including keystrokes from a dialog or popover opened
+  // inside a cell, which stay REACT children of this row even though Radix
+  // portals them to <body>. Keyboard drag still works when the row itself is
+  // focused (`attributes` puts tabIndex=0 on it); a Space pressed while a CELL
+  // has focus no longer drags the row, which is the correct behavior anyway.
   const combinedRef = useCallback(
     (node: HTMLDivElement | null) => {
       setDragRef(node)
       setDropRef(node)
+      setActivatorNodeRef(node)
     },
-    [setDragRef, setDropRef]
+    [setDragRef, setDropRef, setActivatorNodeRef]
   )
 
   const handleRowClick = useCallback(

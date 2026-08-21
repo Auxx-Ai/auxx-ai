@@ -24,7 +24,15 @@ export function HeaderCellWrapper<TData>({ header }: HeaderCellWrapperProps<TDat
   const { disableColumnDnd } = useTableConfig()
 
   // Drag and drop functionality (disabled for checkbox column / widget tables)
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: header.column.id,
     disabled: isCheckboxColumn || disableColumnDnd,
   })
@@ -43,6 +51,16 @@ export function HeaderCellWrapper<TData>({ header }: HeaderCellWrapperProps<TDat
       }}
       className={cn('relative shrink-0', isDragging && 'opacity-30 z-50')}>
       <div
+        // The activator node. dnd-kit's KeyboardSensor only starts a drag when
+        // `event.target` IS this element (core.cjs `KeyboardSensor.activators`);
+        // without the ref that guard short-circuits on a null activator and ANY
+        // keydown reaching `listeners.onKeyDown` starts a column drag. Header
+        // cells render dialogs (CustomFieldDialog) whose portal content is still
+        // a REACT child of this div, so typing Space in a dialog field was being
+        // preventDefault'd into a keyboard drag. Keyboard drag still works: the
+        // `attributes` spread puts tabIndex=0 here, so focusing the header and
+        // pressing Space targets this node directly.
+        ref={setActivatorNodeRef}
         // `contain: inline-size` isolates this wrapper's inline-axis sizing
         // from descendant min-content. Without it, unbreakable content like a
         // SmartBreadcrumb path (whitespace-nowrap segments) would inflate the
