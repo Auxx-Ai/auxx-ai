@@ -4,11 +4,10 @@
 // the metric field's `FieldType` + `FieldOptions` so a dashboard renders numbers
 // exactly like the records table and field displays do — no bespoke formatter.
 //
-// The one wrinkle: CURRENCY is stored as CENTS across the app (see
-// `fields/displays/display-currency.tsx` + the table's `renderCurrencyValue`),
-// and `@auxx/utils`' `formatCurrency` expects cents — so currency routes through
-// `formatCurrency`, NOT `formatToDisplayValue` (whose currency converter assumes
-// dollars and would render 100× high). NUMBER/DATE reuse their converters.
+// CURRENCY is stored as integer MINOR UNITS across the app, and every reader
+// now agrees on that — so currency routes through the shared converter like
+// NUMBER/DATE. `formatCurrencyCompact` stays for axis ticks: that is a
+// precision-for-room trade, not a unit workaround.
 //
 // Field-less ops (count family) and dimensionless percent ops have no field to
 // inherit from, so they fall back to plain `Intl` number / `%`.
@@ -22,7 +21,6 @@ import {
 } from '@auxx/lib/field-values/client'
 import {
   type CurrencyDisplayOptions,
-  formatCurrency,
   formatCurrencyCompact,
   formatNumberCompact,
 } from '@auxx/utils'
@@ -49,7 +47,7 @@ const PERCENT_OPS: ReadonlySet<MetricOp> = new Set<MetricOp>(['percentEmpty', 'p
  * - `percent*` ops → `NN.N%` (value is already 0–100, not multiplied).
  * - `count*` ops → grouped integer.
  * - `sum`/`avg`/`min`/`max` → inherit the metric field's display:
- *   CURRENCY via `formatCurrency` (cents), NUMBER/DATE via their converters,
+ *   CURRENCY/NUMBER/DATE via their shared converters,
  *   all honoring the field's `FieldOptions`.
  * - No field metadata (e.g. a one-hop `FieldPath` metric, or before the field
  *   resolves) → plain grouped number.
@@ -71,8 +69,7 @@ export function formatMetricValue(value: number, op: MetricOp, meta?: MetricFiel
   const { fieldType, options } = meta ?? {}
 
   if (fieldType === 'CURRENCY') {
-    // Stored as cents — formatCurrency expects cents.
-    return formatCurrency(value, options as CurrencyDisplayOptions | undefined)
+    return String(converters.CURRENCY.toDisplayValue({ type: 'number', value }, options) ?? '')
   }
   if (fieldType === 'NUMBER') {
     return String(converters.NUMBER.toDisplayValue({ type: 'number', value }, options) ?? '')
@@ -106,7 +103,7 @@ export function formatMetricValueCompact(
   const { fieldType, options } = meta ?? {}
 
   if (fieldType === 'CURRENCY') {
-    // Stored as cents — formatCurrencyCompact expects cents.
+    // Minor units in, short string out — see the note at the top of the file.
     return formatCurrencyCompact(value, options as CurrencyDisplayOptions | undefined)
   }
   if (fieldType === 'DATE' || fieldType === 'DATETIME') {

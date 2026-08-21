@@ -67,9 +67,15 @@ export interface FieldValueConverter {
 import { actorConverter } from './actor'
 import { booleanConverter } from './boolean'
 import { calcConverter } from './calc'
+import {
+  currencyConverter,
+  normalizeCurrencyCode,
+  readCurrency,
+  resolveCurrencyCode,
+} from './currency'
 import { dateConverter } from './date'
 import { type FileValue, fileConverter, jsonConverter, nameConverter } from './json'
-import { currencyConverter, numberConverter } from './number'
+import { numberConverter } from './number'
 import { phoneConverter } from './phone'
 import { relationshipConverter } from './relationship'
 import { selectConverter } from './select'
@@ -143,5 +149,8 @@ export {
   phoneConverter,
   calcConverter,
   actorConverter,
+  normalizeCurrencyCode,
+  readCurrency,
+  resolveCurrencyCode,
 }
 export type { FileValue }

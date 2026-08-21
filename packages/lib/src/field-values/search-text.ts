@@ -215,9 +215,9 @@ function fieldValueTextSql(): string {
             fv."optionId")
           WHEN cf."type" = 'RELATIONSHIP' THEN rel."displayName"
           WHEN cf."type" = 'NAME'
-            THEN CONCAT_WS(' ', ${jsonKeyList('fv."valueJson"', SEARCH_TEXT_NAME_KEYS)})
+            THEN CONCAT_WS(' ', ${jsonKeyList(`fv."valueJson"->'v'`, SEARCH_TEXT_NAME_KEYS)})
           WHEN cf."type" = 'ADDRESS_STRUCT'
-            THEN CONCAT_WS(' ', ${jsonKeyList('fv."valueJson"', SEARCH_TEXT_ADDRESS_KEYS)})
+            THEN CONCAT_WS(' ', ${jsonKeyList(`fv."valueJson"->'v'`, SEARCH_TEXT_ADDRESS_KEYS)})
         END`
 }
 

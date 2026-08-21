@@ -68,28 +68,38 @@ function numberDisplayOptionsToColumn(opts: NumberFieldOptions): NumberColumnFor
 }
 
 /**
- * Convert CurrencyColumnFormatting to CurrencyFieldOptions
+ * Convert CurrencyColumnFormatting to CurrencyFieldOptions.
+ *
+ * 🛑 `decimals` stays possibly-undefined on BOTH sides. Undefined means "derive
+ * from the currency code" — 0 for JPY, 3 for KWD — and a `?? 2` here would
+ * freeze every JPY column at `¥1,234.00` the first time anyone opened this
+ * dialog, while making the editor's own "Match the currency" option unreachable.
+ *
+ * No `currencyCode`: the denomination is the field's. See
+ * `currencyFormattingSchema`.
  */
 function columnToCurrencyDisplayOptions(
   formatting: CurrencyColumnFormatting | null,
-  defaults?: Partial<CurrencyColumnFormatting>
+  defaults?: Partial<CurrencyColumnFormatting>,
+  fieldCurrencyCode?: string
 ): CurrencyFieldOptions {
   return {
-    currencyCode: formatting?.currencyCode ?? defaults?.currencyCode ?? 'USD',
-    decimals: formatting?.decimals ?? defaults?.decimals ?? 2,
+    currencyCode: fieldCurrencyCode,
+    decimals: formatting?.decimals ?? defaults?.decimals,
     useGrouping: formatting?.useGrouping ?? defaults?.useGrouping ?? true,
     currencyDisplay: formatting?.currencyDisplay ?? defaults?.currencyDisplay ?? 'symbol',
   }
 }
 
 /**
- * Convert CurrencyFieldOptions to CurrencyColumnFormatting
+ * Convert CurrencyFieldOptions to CurrencyColumnFormatting.
+ *
+ * Drops `currencyCode` — the column never overrides the field's denomination.
  */
 function currencyDisplayOptionsToColumn(opts: CurrencyFieldOptions): CurrencyColumnFormatting {
   return {
     type: 'currency',
-    currencyCode: opts.currencyCode ?? 'USD',
-    decimals: opts.decimals ?? 2,
+    decimals: opts.decimals,
     useGrouping: opts.useGrouping ?? true,
     currencyDisplay: opts.currencyDisplay ?? 'symbol',
   }
@@ -174,6 +184,8 @@ interface EditColumnFormattingDialogProps {
   fieldType: FormattableFieldType
   currentFormatting: ColumnFormatting | undefined
   defaultFormatting?: Partial<ColumnFormatting>
+  /** The FIELD's currency code, shown read-only — a column cannot override it. */
+  fieldCurrencyCode?: string
   onSave: (formatting: ColumnFormatting | null) => void
 }
 
@@ -188,6 +200,7 @@ export function EditColumnFormattingDialog({
   fieldType,
   currentFormatting,
   defaultFormatting,
+  fieldCurrencyCode,
   onSave,
 }: EditColumnFormattingDialogProps) {
   const [formatting, setFormatting] = useState<ColumnFormatting | null>(null)
@@ -224,9 +237,11 @@ export function EditColumnFormattingDialog({
 
         {fieldType === 'CURRENCY' && (
           <CurrencyFormattingEditor
+            scope='column'
             options={columnToCurrencyDisplayOptions(
               formatting as CurrencyColumnFormatting | null,
-              defaultFormatting as Partial<CurrencyColumnFormatting>
+              defaultFormatting as Partial<CurrencyColumnFormatting>,
+              fieldCurrencyCode
             )}
             onChange={(opts) => setFormatting(currencyDisplayOptionsToColumn(opts))}
           />

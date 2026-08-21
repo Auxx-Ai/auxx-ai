@@ -30,6 +30,8 @@ export function typedColumnMatch(value: TypedFieldValueInput): TypedColumnMatch 
     case 'text':
       return { column: 'valueText', value: value.value }
     case 'number':
+      // CURRENCY shares this column: the amount alone IS the key, because the
+      // denomination is the field's and every value on the field inherits it.
       return { column: 'valueNumber', value: value.value }
     case 'boolean':
       return { column: 'valueBoolean', value: value.value }

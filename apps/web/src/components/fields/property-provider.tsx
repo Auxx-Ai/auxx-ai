@@ -2,8 +2,9 @@
 
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
-import { formatToRawValue } from '@auxx/lib/field-values/client'
+import { formatToRawValue, readCurrency } from '@auxx/lib/field-values/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { toActorId } from '@auxx/types/actor'
 import {
   createContext,
   type ReactNode,
@@ -159,6 +160,51 @@ function normalizeForComparison(val: any): any {
 }
 
 /**
+ * Collapse a field value to ONE canonical shape per field type, so the two
+ * sides of a comparison are the same KIND before they are compared.
+ *
+ * Some converters are deliberately asymmetric: `toRawValue` returns a rich
+ * object (what a renderer needs) while the input commits the narrow scalar the
+ * write path wants. CURRENCY reads `{ code?, amount }` and writes a bare number;
+ * ACTOR reads `{ actorType, id, actorId }` and writes an `ActorId` string.
+ * Without this collapse the comparator falls through to `String(...)` and
+ * "20000" !== "[object Object]" reports a change on EVERY blur, so an untouched
+ * field commits forever and never converges.
+ *
+ * NAME needs nothing here — it reads and writes the same `{firstName,lastName}`
+ * object, so the plain-object branch already answers correctly.
+ */
+function normalizeByFieldType(val: any, fieldType?: FieldType | string): any {
+  if (val === null || val === undefined) return val
+  if (!fieldType) return val
+
+  if (Array.isArray(val)) return val.map((entry) => normalizeByFieldType(entry, fieldType))
+
+  switch (fieldType) {
+    // Read `{ code?, amount }` vs write bare minor units.
+    case FieldTypeEnum.CURRENCY:
+      return readCurrency(val) ?? val
+
+    // Read `{ actorType, id, actorId }` vs write an `ActorId` string.
+    case FieldTypeEnum.ACTOR: {
+      if (typeof val === 'string') return val.trim()
+      if (typeof val === 'object') {
+        const obj = val as Record<string, unknown>
+        if (typeof obj.actorId === 'string') return obj.actorId
+        const actorType = (obj.actorType ?? obj.type) as string | undefined
+        if (actorType && typeof obj.id === 'string') {
+          return toActorId(actorType as Parameters<typeof toActorId>[0], obj.id)
+        }
+      }
+      return val
+    }
+
+    default:
+      return val
+  }
+}
+
+/**
  * Check if a value has changed compared to another value
  * Handles arrays, objects, and primitives
  * Treats empty strings and null/undefined as equivalent (no change)
@@ -166,11 +212,18 @@ function normalizeForComparison(val: any): any {
  * @param orderSensitive - When true, arrays that differ only in ORDER count as
  *   changed. Required for `options.multi` scalar fields (EMAIL/URL/PHONE), where
  *   position is data: index 0 IS the primary value. See {@link isOrderSensitive}.
+ * @param fieldType - Collapses read/write-asymmetric types (CURRENCY, ACTOR) to
+ *   one canonical shape on both sides first. See {@link normalizeByFieldType}.
  */
-export function hasValueChanged(newValue: any, originalVal: any, orderSensitive = false): boolean {
+export function hasValueChanged(
+  newValue: any,
+  originalVal: any,
+  orderSensitive = false,
+  fieldType?: FieldType | string
+): boolean {
   // Normalize both values - empty strings are treated as null
-  const normalizedNew = normalizeForComparison(newValue)
-  const normalizedOrig = normalizeForComparison(originalVal)
+  const normalizedNew = normalizeForComparison(normalizeByFieldType(newValue, fieldType))
+  const normalizedOrig = normalizeForComparison(normalizeByFieldType(originalVal, fieldType))
 
   // If both are null/empty, no change
   if (normalizedNew === null && normalizedOrig === null) return false
@@ -297,7 +350,7 @@ export function PropertyProvider({
   const commitValue = useCallback(
     (newValue: any) => {
       // Check if value actually changed
-      if (!hasValueChanged(newValue, serverValue, orderSensitive)) {
+      if (!hasValueChanged(newValue, serverValue, orderSensitive, field.fieldType)) {
         setIsDirty(false)
         return
       }
@@ -385,7 +438,7 @@ export function PropertyProvider({
    * Commit current dirty value and close popover.
    */
   const commitAndClose = useCallback(() => {
-    if (isDirty && hasValueChanged(currentValue, serverValue, orderSensitive)) {
+    if (isDirty && hasValueChanged(currentValue, serverValue, orderSensitive, field.fieldType)) {
       commitValue(currentValue)
     }
     setIsOpen(false)
@@ -403,7 +456,7 @@ export function PropertyProvider({
         return
       }
 
-      if (!hasValueChanged(newValue, serverValue, orderSensitive)) {
+      if (!hasValueChanged(newValue, serverValue, orderSensitive, field.fieldType)) {
         setIsDirty(false)
         setIsOpen(false)
         isOutsideClick.current = false
@@ -445,7 +498,10 @@ export function PropertyProvider({
         !Array.isArray(newValue) &&
         Object.keys(newValue).length === 0
 
-      if (!isEmptyObject && !hasValueChanged(newValue, serverValue, orderSensitive)) {
+      if (
+        !isEmptyObject &&
+        !hasValueChanged(newValue, serverValue, orderSensitive, field.fieldType)
+      ) {
         setIsDirty(false)
         return undefined
       }
@@ -497,7 +553,7 @@ export function PropertyProvider({
    * Close the popover (cancels if dirty via Esc key)
    */
   const close = useCallback(() => {
-    if (isDirty && hasValueChanged(currentValue, serverValue, orderSensitive)) {
+    if (isDirty && hasValueChanged(currentValue, serverValue, orderSensitive, field.fieldType)) {
       // Esc key was pressed while dirty - cancel instead of save
       setCurrentValue(serverValue)
       setIsDirty(false)

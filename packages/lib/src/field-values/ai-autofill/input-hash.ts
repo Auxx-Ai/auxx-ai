@@ -7,7 +7,7 @@ import type { ResolvedReference } from './reference-resolver'
 /**
  * Compute a stable content hash over the resolved prompt inputs. Used for
  * stale detection: the cell overlay re-hashes on render and compares to
- * `valueJson.inputHash`; mismatch + `aiStatus='result'` means the source
+ * `valueJson.meta.ai.inputHash`; mismatch + `aiStatus='result'` means the source
  * inputs changed since the last generation.
  *
  * Hash inputs:

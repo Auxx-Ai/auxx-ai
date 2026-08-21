@@ -422,7 +422,8 @@ export const SETTINGS_CATALOG = {
     access: 'org',
     fieldType: 'TEXT',
     defaultValue: 'USD',
-    description: 'Organization-wide currency code — consumed by CURRENCY display + totals docs',
+    description:
+      'Organization-wide currency code — consumed by the money cluster, documents and Stripe rails (NOT the CURRENCY field layer, which reads options.currencyCode)',
   },
   'organization.weekStart': {
     scope: 'GENERAL',

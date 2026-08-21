@@ -18,6 +18,7 @@ import {
 import { batchGetRelatedDisplayNames } from './field-value-helpers'
 import { FieldValueService } from './field-value-service'
 import { formatToDisplayValue } from './formatter'
+import { getOrgCurrencyCode, withOrgCurrency } from './org-currency'
 import { primaryValue } from './primary-value'
 import { updateSearchTextForEntityDefinition } from './search-text'
 
@@ -159,10 +160,22 @@ export class DisplayFieldService {
           }
         }
       } else {
+        // The org rung for CURRENCY — resolved ONCE for the batch, never per
+        // value inside the loop. A no-op for every other field type.
+        const orgCurrencyCode =
+          field.fieldType === 'CURRENCY'
+            ? await getOrgCurrencyCode(this.organizationId, this.db)
+            : undefined
+
         const assetIdsToThumbnail: string[] = []
         for (const instanceId of instanceIds) {
           const typedValue = valuesByEntity.get(instanceId) ?? null
-          const displayValue = this.computeDisplayValue(typedValue, field, displayFieldType)
+          const displayValue = this.computeDisplayValue(
+            typedValue,
+            field,
+            displayFieldType,
+            orgCurrencyCode
+          )
           updates.set(instanceId, displayValue)
 
           // Collect asset IDs that need avatar thumbnails during batch recalc
@@ -255,7 +268,8 @@ export class DisplayFieldService {
   private computeDisplayValue(
     typedValue: TypedFieldValue | TypedFieldValue[] | null,
     field: ResourceField,
-    displayFieldType: DisplayFieldType
+    displayFieldType: DisplayFieldType,
+    orgCurrencyCode?: string
   ): string | null {
     if (!typedValue) return null
 
@@ -288,8 +302,14 @@ export class DisplayFieldService {
     const single = primaryValue(typedValue)
     if (!single) return null
 
-    // Use centralized formatter with properly typed options
-    const displayValue = formatToDisplayValue(single, fieldType, field.options)
+    // Use centralized formatter with properly typed options. `withOrgCurrency`
+    // layers the org rung under a CURRENCY field that never picked a code, so a
+    // persisted display value follows `organization.currency`.
+    const displayValue = formatToDisplayValue(
+      single,
+      fieldType,
+      withOrgCurrency(field.options as never, fieldType, orgCurrencyCode)
+    )
 
     return typeof displayValue === 'string' ? displayValue : null
   }

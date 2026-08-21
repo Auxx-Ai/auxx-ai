@@ -1,6 +1,9 @@
 // apps/web/src/components/custom-fields/ui/formatting-editors/index.ts
 
 import type { FieldOptions } from '@auxx/lib/field-values/client'
+import { type DisplayOptions, displayOptionsSchema } from '@auxx/types/custom-field'
+
+export type { DisplayOptions }
 
 export { BooleanFormattingEditor } from './boolean-formatting-editor'
 export { CurrencyFormattingEditor } from './currency-formatting-editor'
@@ -13,50 +16,21 @@ export { TimeFormattingEditor } from './time-formatting-editor'
 export { UrlFormattingEditor } from './url-formatting-editor'
 
 /**
- * Display options type for internal state.
- * Flat structure containing all display-related options.
+ * Keys that are display options (flat on `field.options`).
+ *
+ * 🛑 DERIVED from the canonical `displayOptionsSchema`, never hand-listed. This
+ * used to be a web-local copy of both the type and the key array, and it
+ * silently ate every option the canonical schema gained but the copy did not —
+ * a filter that runs on BOTH save and load, so the key vanished before tRPC and
+ * the switch read back off. Adding a key in `@auxx/types/custom-field` is now
+ * the whole change.
+ *
+ * `ai` is excluded on purpose: it is a nested block that `custom-field-form`
+ * assembles and strips itself, not a flat display option.
  */
-export interface DisplayOptions {
-  // NUMBER / CURRENCY options
-  decimals?: number
-  useGrouping?: boolean
-  displayAs?: 'number' | 'percentage' | 'compact' | 'bytes'
-  prefix?: string
-  suffix?: string
-  // CURRENCY options
-  currencyCode?: string
-  currencyDisplay?: 'symbol' | 'code' | 'name' | 'compact'
-  // DATE/DATETIME/TIME options
-  format?: 'short' | 'medium' | 'long' | 'relative' | 'iso' | 'time-only'
-  timeFormat?: '12h' | '24h'
-  // CHECKBOX options
-  trueLabel?: string
-  falseLabel?: string
-  // PHONE options
-  phoneFormat?: 'raw' | 'national' | 'international'
-  // URL options
-  urlDisplay?: 'link' | 'image'
-  // TEXT options
-  multiline?: boolean
-}
-
-/** Keys that are display options (flat on field.options) */
-const DISPLAY_OPTION_KEYS: (keyof DisplayOptions)[] = [
-  'decimals',
-  'useGrouping',
-  'displayAs',
-  'prefix',
-  'suffix',
-  'currencyCode',
-  'currencyDisplay',
-  'format',
-  'timeFormat',
-  'trueLabel',
-  'falseLabel',
-  'phoneFormat',
-  'urlDisplay',
-  'multiline',
-]
+const DISPLAY_OPTION_KEYS = (
+  Object.keys(displayOptionsSchema.shape) as (keyof DisplayOptions)[]
+).filter((key) => key !== 'ai')
 
 /**
  * Parse stored field options into display options state.

@@ -4,6 +4,7 @@
 
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { memo } from 'react'
+import { useOrgCurrency } from '~/hooks/use-org-currency'
 import { useTableConfig } from '../context/table-config-context'
 import { useColumnFormatting } from '../stores/store-selectors'
 import type { ColumnFormatting } from '../types'
@@ -30,6 +31,12 @@ export interface CellConfig {
    * are themselves inside a hover card (e.g. `RecordHoverCardField`).
    */
   disableNestedHoverCard?: boolean
+  /**
+   * The org's ISO code — the middle rung of a CURRENCY field's chain
+   * (field → org → USD). Injected by `FormattedCell`, which can call a hook;
+   * the renderers are plain functions and cannot.
+   */
+  orgCurrencyCode?: string
 }
 
 /**
@@ -66,6 +73,10 @@ export const FormattedCell = memo(function FormattedCell({
 }: FormattedCellProps) {
   const type = fieldType ?? 'TEXT'
 
+  // Unconditional — a CURRENCY field that never picked its own code renders in
+  // the org's. Cheap: a read off already-hydrated state.
+  const orgCurrencyCode = useOrgCurrency()
+
   // Get formatting from store if available, explicit formatting takes precedence
   let formatting: ColumnFormatting | undefined = explicitFormatting
 
@@ -82,5 +93,5 @@ export const FormattedCell = memo(function FormattedCell({
     }
   }
 
-  return <>{renderCellValue(value, type, formatting, config)}</>
+  return <>{renderCellValue(value, type, formatting, { ...config, orgCurrencyCode })}</>
 })

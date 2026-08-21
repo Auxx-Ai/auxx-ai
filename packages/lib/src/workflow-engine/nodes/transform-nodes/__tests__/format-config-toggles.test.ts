@@ -117,8 +117,12 @@ describe('FormatProcessor — moded config fields', () => {
   })
 
   describe('currencyConfig.currencyCode', () => {
-    it('honours a constant code', async () => {
-      const node = createMockNode('currency', '1234.5', {
+    it('honours a constant code, treating the input as MINOR UNITS', async () => {
+      // The input is an integer count of minor units — the platform-wide
+      // CURRENCY convention. This op used to apply no scaling at all, so a
+      // stored value rendered 10^exponent high while every other reader
+      // divided.
+      const node = createMockNode('currency', '123450', {
         currencyConfig: { locale: 'en-US', currencyCode: 'USD' },
       })
       const result = await processor.execute(node, createMockContext())
@@ -126,8 +130,18 @@ describe('FormatProcessor — moded config fields', () => {
       expect(result.output?.result).toContain('$')
     })
 
+    it('takes the scale from the code, not a hardcoded 100', async () => {
+      // JPY has exponent 0: 1000 minor units is ¥1,000, not ¥10.00.
+      const node = createMockNode('currency', '1000', {
+        currencyConfig: { locale: 'en-US', currencyCode: 'JPY' },
+      })
+      const result = await processor.execute(node, createMockContext())
+      expect(result.output?.result).toContain('1,000')
+      expect(result.output?.result).not.toContain('10.00')
+    })
+
     it('resolves a bound variable', async () => {
-      const node = createMockNode('currency', '1234.5', {
+      const node = createMockNode('currency', '123450', {
         currencyConfig: { locale: 'en-US', currencyCode: 'shopify_get_order.order.currency' },
         fieldModes: { currencyCode: false },
       })

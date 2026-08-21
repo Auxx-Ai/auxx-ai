@@ -689,10 +689,10 @@ function QuickActionCurrencyField({
   const shouldUpdateRef = useRef(false)
 
   const handleValueChange = useCallback(
-    (cents: number | undefined) => {
+    (next: number | undefined) => {
       if (shouldUpdateRef.current) {
         shouldUpdateRef.current = false
-        onChange(cents ?? undefined)
+        onChange(next)
       }
     },
     [onChange]
@@ -716,7 +716,7 @@ function QuickActionCurrencyField({
         value={value}
         onValueChange={handleValueChange}
         currencyCode={currencyCode}
-        decimalPlaces={decimalPlaces === 0 ? 'no-decimal' : 'two-places'}
+        decimals={decimalPlaces}
         disabled={disabled}>
         <InputGroup className='h-6 text-xs'>
           <CurrencyInputField

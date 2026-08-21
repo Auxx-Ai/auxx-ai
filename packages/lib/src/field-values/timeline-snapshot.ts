@@ -27,7 +27,8 @@ import {
   truncateForSnapshot,
 } from '../timeline/field-change-snapshot'
 import { booleanConverter } from './converters/boolean'
-import { currencyConverter, numberConverter } from './converters/number'
+import { currencyConverter } from './converters/currency'
+import { numberConverter } from './converters/number'
 import { phoneConverter } from './converters/phone'
 import type { CachedField } from './types'
 
@@ -490,6 +491,10 @@ function buildSnapshotSingle(
     case 'CURRENCY': {
       if (value.type !== 'number') return null
       const formatted = currencyConverter.toDisplayValue(value, field.options ?? undefined)
+      // Freeze the FIELD's code into the snapshot. A snapshot renders long after
+      // the field may have been switched to another currency, and it must keep
+      // reading as the money it was — this is the one place a code is copied
+      // next to an amount, because the row it describes no longer exists.
       const currency = (field.options as { currencyCode?: string } | null)?.currencyCode
       return {
         fieldType: 'CURRENCY',

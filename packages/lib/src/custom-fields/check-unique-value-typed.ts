@@ -89,8 +89,10 @@ export async function checkUniqueValueTyped(
       )
       break
     case 'json':
-      // JSON fields are not typically unique, but support it anyway
-      valueCondition = sql`${schema.FieldValue.valueJson}::text = ${JSON.stringify(value.value)}`
+      // JSON fields are not typically unique, but support it anyway.
+      // `valueJson` is an envelope — compare `->'v'` (the value), and compare it
+      // as jsonb rather than ::text so key order does not decide equality.
+      valueCondition = sql`${schema.FieldValue.valueJson}->'v' = ${JSON.stringify(value.value)}::jsonb`
       break
   }
 

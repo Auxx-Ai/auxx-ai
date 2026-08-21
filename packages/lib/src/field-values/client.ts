@@ -18,6 +18,9 @@ export {
 // Converters (for direct access if needed)
 export { converters, type FileValue } from './converters'
 
+// Currency value narrowing — shared by every render/edit surface
+export { normalizeCurrencyCode, readCurrency, resolveCurrencyCode } from './converters/currency'
+
 // Re-export relationship type guards from converter (centralized location)
 export {
   isRelationshipFieldValue,

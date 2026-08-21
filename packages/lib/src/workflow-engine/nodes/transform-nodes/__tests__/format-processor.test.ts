@@ -256,8 +256,8 @@ describe('FormatProcessor', () => {
   // --- Number Formatting ---
 
   describe('Number Formatting', () => {
-    it('currency USD', async () => {
-      const node = createMockNode('currency', '1234.5', {
+    it('currency USD — input is integer MINOR UNITS', async () => {
+      const node = createMockNode('currency', '123450', {
         currencyConfig: { locale: 'en-US', currencyCode: 'USD' },
       })
       const result = await processor.execute(node, createMockContext())

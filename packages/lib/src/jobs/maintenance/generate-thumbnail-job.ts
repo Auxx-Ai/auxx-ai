@@ -475,7 +475,7 @@ async function updateEntityAvatarIfApplicable(params: {
     .where(
       and(
         eq(schema.FieldValue.organizationId, orgId),
-        sql`${schema.FieldValue.valueJson}->>'ref' = ${refValue}`
+        sql`${schema.FieldValue.valueJson}->'v'->>'ref' = ${refValue}`
       )
     )
 

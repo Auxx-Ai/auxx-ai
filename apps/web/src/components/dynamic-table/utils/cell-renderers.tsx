@@ -14,6 +14,8 @@ import {
   type NumberFieldOptions,
   type PhoneFieldOptions,
   type RecordId,
+  readCurrency,
+  resolveCurrencyCode,
 } from '@auxx/lib/field-values/client'
 import { type ActorId, isActorId, toActorId } from '@auxx/types/actor'
 import type { TypedFieldValue } from '@auxx/types/field-value'
@@ -336,18 +338,23 @@ export function renderCurrencyValue(
 ): React.ReactNode {
   if (value == null || value === '') return <EmptyCell />
 
-  const cents = typeof value === 'number' ? value : parseInt(value as string, 10)
-  if (Number.isNaN(cents)) return <EmptyCell />
+  // Minor units, as a number or a numeric string. `readCurrency` returns null
+  // rather than NaN for anything unreadable, so a bad cell renders empty.
+  const amount = readCurrency(value)
+  if (amount === null) return <EmptyCell />
 
   const fieldOptions = config?.options as CurrencyFieldOptions | undefined
   const options: CurrencyDisplayOptions = {
-    currencyCode: formatting?.currencyCode ?? fieldOptions?.currencyCode ?? 'USD',
-    decimals: formatting?.decimals ?? fieldOptions?.decimals ?? 2,
+    // field → org → USD. There is deliberately no COLUMN override: across
+    // exponents it would rescale the money, not relabel it.
+    currencyCode: resolveCurrencyCode(fieldOptions?.currencyCode, config?.orgCurrencyCode),
+    // Undefined derives fraction digits from the code (JPY 0, KWD 3).
+    decimals: formatting?.decimals ?? fieldOptions?.decimals,
     useGrouping: formatting?.useGrouping ?? fieldOptions?.useGrouping ?? true,
     currencyDisplay: formatting?.currencyDisplay ?? fieldOptions?.currencyDisplay ?? 'symbol',
   }
 
-  const formatted = formatCurrency(cents, options)
+  const formatted = formatCurrency(amount, options)
   return (
     <ExpandableCell mode='horizontal'>
       <span className='font-mono'>{formatted}</span>

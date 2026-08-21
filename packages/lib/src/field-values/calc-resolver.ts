@@ -8,6 +8,7 @@ import { getCalcOptions, getEffectiveFieldType } from '../custom-fields/calc'
 import { type FieldValueContext, getField } from './field-value-helpers'
 import { batchGetValues } from './field-value-queries'
 import { formatToDisplayValue, formatToTypedInput } from './formatter'
+import { getOrgCurrencyCode, withOrgCurrency } from './org-currency'
 
 /** Hard cap on CALC → CALC recursion depth. */
 const MAX_CALC_DEPTH = 5
@@ -105,8 +106,18 @@ export async function resolveCalcForRecord(
   // through the converters means future converter changes (e.g. a new
   // currency format option) flow into CALC display automatically.
   const typed = formatToTypedInput(computed, resultFieldType)
+  // A CALC whose result type is CURRENCY inherits the org's denomination just
+  // like a stored CURRENCY field does.
+  const options =
+    resultFieldType === 'CURRENCY'
+      ? withOrgCurrency(
+          field.options as never,
+          'CURRENCY',
+          await getOrgCurrencyCode(ctx.organizationId, ctx.db)
+        )
+      : ((field.options ?? undefined) as never)
   const formatted = typed
-    ? formatToDisplayValue(typed as never, resultFieldType, (field.options ?? undefined) as never)
+    ? formatToDisplayValue(typed as never, resultFieldType, options as never)
     : null
   const display =
     formatted === null || formatted === undefined

@@ -37,6 +37,10 @@ interface CurrencyPickerProps {
   selected?: string
   onChange: (selected: string) => void
   className?: string
+  /** Disable the trigger (e.g. while the field is saving). */
+  disabled?: boolean
+  /** Trigger text when nothing is selected. Default 'Select currency...'. */
+  placeholder?: string
   align?: 'start' | 'center' | 'end'
   side?: 'top' | 'right' | 'bottom' | 'left'
   sideOffset?: number
@@ -52,6 +56,8 @@ export function CurrencyPicker({
   selected,
   onChange,
   className,
+  disabled = false,
+  placeholder = 'Select currency...',
   align = 'start',
   children,
   ...props
@@ -103,7 +109,11 @@ export function CurrencyPicker({
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         {children || (
-          <Button variant='input' size='default' className='w-full justify-between'>
+          <Button
+            variant='input'
+            size='default'
+            disabled={disabled}
+            className={cn('w-full justify-between', className)}>
             {selectedCurrency ? (
               <div className='flex items-center gap-2 truncate'>
                 <span className='truncate'>{selectedCurrency.label}</span>
@@ -112,7 +122,7 @@ export function CurrencyPicker({
                 </Badge>
               </div>
             ) : (
-              <span className='text-muted-foreground'>Select currency...</span>
+              <span className='text-muted-foreground'>{placeholder}</span>
             )}
             <ChevronDown className='size-4 shrink-0 opacity-50' />
           </Button>

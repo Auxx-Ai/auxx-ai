@@ -7,6 +7,7 @@ import {
 } from '@auxx/services/field-values'
 import type { FieldId } from '@auxx/types/field'
 import { buildFieldValueKey } from '@auxx/types/field'
+import { mergeMeta, readMeta } from '@auxx/types/field-value'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
 import { getRealtimeService } from '../realtime'
@@ -20,13 +21,18 @@ export type AiWriteState = 'generating' | 'result' | 'error'
 /**
  * Merge an AI marker onto a partial insert/update row builder. Used inside
  * `buildFieldValueRow` when `SetValueWithTypeInput.aiGeneration` is present.
+ *
+ * MERGES into `meta.ai` rather than replacing `valueJson`. The replacing form
+ * was safe only because no AI-eligible field type wrote its own value to
+ * `valueJson` — a coincidence of the type roster, not an invariant, and one
+ * line away from silently deleting user values.
  */
 export function applyAiMarker<T extends Record<string, unknown>>(
   row: T,
   meta: AiValueMetadata,
   state: AiWriteState = 'result'
 ): T & { aiStatus: AiWriteState; valueJson: unknown } {
-  return { ...row, aiStatus: state, valueJson: meta as unknown }
+  return { ...row, aiStatus: state, valueJson: mergeMeta(row.valueJson, 'ai', meta) }
 }
 
 /**
@@ -38,7 +44,7 @@ export function readAiMetadata(row: {
   valueJson?: unknown
 }): AiValueMetadata | null {
   if (!row.aiStatus) return null
-  return (row.valueJson ?? null) as AiValueMetadata | null
+  return (readMeta(row.valueJson).ai ?? null) as AiValueMetadata | null
 }
 
 /**
@@ -63,7 +69,7 @@ export async function writeAiError(
   if (existing.isErr() || !existing.value) return
 
   const failedAt = new Date().toISOString()
-  const prev = (existing.value.valueJson ?? {}) as Record<string, unknown>
+  const prev = (readMeta(existing.value.valueJson).ai ?? {}) as Record<string, unknown>
 
   // Drop metadata that belonged to the prior successful generation, keep
   // any unrelated keys future v2 types may add to valueJson.
@@ -77,13 +83,13 @@ export async function writeAiError(
     ...rest
   } = prev
 
-  const nextValueJson = { ...rest, errorMessage: params.errorMessage, failedAt }
+  const nextAi = { ...rest, errorMessage: params.errorMessage, failedAt }
 
   await updateAiMarker({
     id: existing.value.id,
     organizationId: ctx.organizationId,
     aiStatus: 'error',
-    valueJson: nextValueJson,
+    valueJson: mergeMeta(existing.value.valueJson, 'ai', nextAi),
   })
 
   const key = buildFieldValueKey(params.recordId, params.fieldId as FieldId)
@@ -123,7 +129,7 @@ export async function upsertGeneratingMarker(
     organizationId: ctx.organizationId,
   })
 
-  const valueJson: AiValueMetadata = {
+  const ai: AiValueMetadata = {
     jobId: params.jobId,
     requestedAt: params.requestedAt,
   }
@@ -133,7 +139,8 @@ export async function upsertGeneratingMarker(
       id: existing.value.id,
       organizationId: ctx.organizationId,
       aiStatus: 'generating',
-      valueJson,
+      // Merge: this row may already carry a value in `v` or another owner's meta key.
+      valueJson: mergeMeta(existing.value.valueJson, 'ai', ai),
     })
     return
   }
@@ -144,6 +151,6 @@ export async function upsertGeneratingMarker(
     organizationId: ctx.organizationId,
     sortKey: generateKeyBetween(null, null),
     aiStatus: 'generating',
-    valueJson,
+    valueJson: mergeMeta(null, 'ai', ai),
   })
 }
