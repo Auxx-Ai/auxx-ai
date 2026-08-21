@@ -29,7 +29,7 @@ export default function PrivacyPolicyPage() {
 
                 <div className='prose prose-gray dark:prose-invert max-w-none space-y-8'>
                   <section>
-                    <p className='text-sm text-gray-500'>Last updated: April 26, 2026</p>
+                    <p className='text-sm text-gray-500'>Last updated: August 20, 2026</p>
                     <p className='mt-4'>
                       This Privacy Policy describes how {config.shortName} ("we," "us," or "our")
                       collects, uses, and shares your personal information when you use our website,
@@ -195,10 +195,11 @@ export default function PrivacyPolicyPage() {
 
                     <h3 className='text-xl font-semibold mt-4'>Use of AI in the Service</h3>
                     <p>
-                      The Service uses large language models (currently provided by OpenAI and
-                      Anthropic) to draft replies, classify tickets, and surface suggested actions
-                      to your support agents. By default, AI-drafted replies appear as drafts that a
-                      human reviews and sends from the {config.shortName} inbox.
+                      The Service uses large language models (provided by OpenAI and Anthropic by
+                      default, or by another provider your workspace configures with its own API
+                      key) to draft replies, classify tickets, and surface suggested actions to your
+                      support agents. By default, AI-drafted replies appear as drafts that a human
+                      reviews and sends from the {config.shortName} inbox.
                     </p>
                     <p className='mt-2'>
                       The Service also offers a <strong>workflow builder</strong> that lets the
@@ -293,10 +294,23 @@ export default function PrivacyPolicyPage() {
 
                     <h3 className='text-xl font-semibold mt-4'>Data Sharing</h3>
                     <p>
-                      Google user data is not sold to third parties. We share the minimum data
-                      necessary with AI service providers (such as OpenAI and Anthropic) solely for
-                      the purpose of generating customer support responses. No other third parties
-                      receive your Google user data unless required by law.
+                      Google user data is not sold to third parties. To generate customer support
+                      responses and to build search indexes within your workspace, we transmit the
+                      minimum necessary data to the AI providers we use: OpenAI, Anthropic and
+                      Voyage AI. Each of these providers is contractually bound not to use data
+                      submitted through their APIs to train their models. We do not route data
+                      through any AI aggregator, gateway or model hub, and we do not operate any
+                      self-hosted model. No other third parties receive your Google user data unless
+                      required by law.
+                    </p>
+                    <p className='mt-2'>
+                      A workspace may instead configure its own key for a different AI provider, in
+                      which case data is sent to that provider at the workspace operator's
+                      direction. Where a workspace has a Google account connected,{' '}
+                      {config.shortName} permits only providers whose API terms forbid training on
+                      submitted data to be selected or configured; providers whose terms permit
+                      training on submitted data cannot be used by that workspace at all, including
+                      through a customer-supplied key.
                     </p>
 
                     <h3 className='text-xl font-semibold mt-4'>
@@ -314,7 +328,10 @@ export default function PrivacyPolicyPage() {
                       </a>
                       , including the Limited Use requirements. We only use Google user data to
                       provide and improve the user-facing features that are visible and prominent in
-                      our application's user interface.
+                      our application's user interface. Google user data is never used to create,
+                      train, or improve any generalized or foundational artificial intelligence or
+                      machine learning model, whether our own or a third party's. This applies to
+                      raw, aggregated, anonymized, and derived data alike.
                     </p>
 
                     <h3 className='text-xl font-semibold mt-4'>Revoking Access</h3>
@@ -460,7 +477,8 @@ export default function PrivacyPolicyPage() {
                       </li>
                       <li>
                         <strong>AI providers:</strong> OpenAI (US), Anthropic (US) — generating
-                        AI-drafted ticket replies.
+                        AI-drafted ticket replies; Voyage AI (US) — text embeddings for in-workspace
+                        search. None of these providers train their models on data we submit.
                       </li>
                       <li>
                         <strong>Email delivery:</strong> Mailgun / Amazon SES (US) — transactional
