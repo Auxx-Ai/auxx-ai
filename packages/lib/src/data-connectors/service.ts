@@ -928,6 +928,78 @@ export async function setItemRelationState(
     .where(eq(schema.DataConnectorItem.id, itemId))
 }
 
+/**
+ * Current single-valued relationship targets for a set of `(entityInstanceId, fieldId)`
+ * pairs — the two-pass's idempotency input (v10 relationship-pass-idempotency, Phase 1).
+ *
+ * Returns an entry ONLY for a field holding EXACTLY ONE row with a non-null
+ * `relatedEntityId`. A belongs_to cell holding 2+ rows is a genuine collapse target —
+ * `set` semantics would legitimately reduce it to one — so it must NOT be reported as
+ * "already correct". Zero rows and a null target are likewise absent, so the caller
+ * writes. Absence from the map always means "write"; presence means "compare".
+ *
+ * Compares on `relatedEntityId` (the instance uuid) alone: the pass resolves its target
+ * through `findItemByDef`, so the def is already pinned by construction.
+ *
+ * @returns `${entityInstanceId}::${fieldId}` → `relatedEntityId`
+ */
+export async function readRelationshipTargets(
+  db: Database,
+  organizationId: string,
+  pairs: Array<{ entityInstanceId: string; fieldId: string }>
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  if (pairs.length === 0) return out
+
+  // Only the exact pairs are of interest, but the query filters on the two id sets
+  // independently (the cross product is a superset) and narrows in JS below.
+  const wanted = new Set(pairs.map((p) => `${p.entityInstanceId}::${p.fieldId}`))
+  const entityIds = [...new Set(pairs.map((p) => p.entityInstanceId))]
+  const fieldIds = [...new Set(pairs.map((p) => p.fieldId))]
+
+  // `${entityInstanceId}::${fieldId}` → the single target, or null once a second row
+  // (or a null target) disqualifies the group.
+  const byPair = new Map<string, string | null>()
+
+  const CHUNK = 500
+  for (let i = 0; i < entityIds.length; i += CHUNK) {
+    const entityChunk = entityIds.slice(i, i + CHUNK)
+    for (let j = 0; j < fieldIds.length; j += CHUNK) {
+      const fieldChunk = fieldIds.slice(j, j + CHUNK)
+      const rows = await db
+        .select({
+          entityId: schema.FieldValue.entityId,
+          fieldId: schema.FieldValue.fieldId,
+          relatedEntityId: schema.FieldValue.relatedEntityId,
+        })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, organizationId),
+            inArray(schema.FieldValue.entityId, entityChunk),
+            inArray(schema.FieldValue.fieldId, fieldChunk)
+          )
+        )
+
+      for (const row of rows) {
+        const key = `${row.entityId}::${row.fieldId}`
+        if (!wanted.has(key)) continue
+        if (byPair.has(key)) {
+          // A second row for this cell — multi-valued, so `set` would collapse it.
+          byPair.set(key, null)
+          continue
+        }
+        byPair.set(key, row.relatedEntityId)
+      }
+    }
+  }
+
+  for (const [key, target] of byPair) {
+    if (target !== null) out.set(key, target)
+  }
+  return out
+}
+
 /** Mark an item archived (set archivedAt). */
 export async function markItemArchived(
   db: Database,
