@@ -30,7 +30,7 @@ export const SYSTEM_ELIGIBLE_PROVIDERS = new Set(['anthropic', 'openai'])
  * `google` belongs here only on the PAID Gemini tier; the free AI Studio tier trains on
  * prompts. Re-check before adding a provider — this list is a compliance assertion.
  */
-export const LIMITED_USE_SAFE_PROVIDERS = new Set(['openai', 'anthropic', 'google', 'groq'])
+export const LIMITED_USE_SAFE_PROVIDERS = new Set(['openai', 'anthropic', 'google'])
 
 /**
  * Whether a provider is blocked for an org, given the org's already-resolved gate state.

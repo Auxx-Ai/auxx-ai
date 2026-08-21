@@ -94,6 +94,7 @@ describe('assertProviderAllowed', () => {
   })
 
   it.each([
+    'groq',
     'deepseek',
     'qwen',
     'kimi',
@@ -106,6 +107,7 @@ describe('assertProviderAllowed', () => {
   })
 
   it.each([
+    'groq',
     'deepseek',
     'qwen',
     'kimi',
