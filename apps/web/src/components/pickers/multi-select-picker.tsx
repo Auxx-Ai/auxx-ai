@@ -2,7 +2,7 @@
 'use client'
 
 import { getColorSwatch } from '@auxx/lib/custom-fields/client'
-import type { SelectOption } from '@auxx/types/custom-field'
+import type { SelectOption, SelectOptionColor } from '@auxx/types/custom-field'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -18,18 +18,10 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
-import {
-  Check,
-  LayoutGrid,
-  Loader2,
-  Plus,
-  Settings,
-  Tags,
-  TextCursorInput,
-  Trash2,
-  X,
-} from 'lucide-react'
+import { Check, LayoutGrid, Loader2, Plus, Settings, Tags, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { OptionColorPicker } from '~/components/custom-fields/ui/option-color-picker'
+import { getNextOptionColor } from '~/components/custom-fields/utils/get-next-option-color'
 import { RecordIcon } from '~/components/resources/ui/record-icon'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -221,6 +213,7 @@ export function MultiSelectPicker({
   const [isManageMode, setIsManageMode] = useState(false)
   const [editingOptionId, setEditingOptionId] = useState<string | null>(null)
   const [editInputValue, setEditInputValue] = useState('')
+  const [editColor, setEditColor] = useState<SelectOptionColor | undefined>(undefined)
 
   const [confirm, ConfirmDialog] = useConfirm()
 
@@ -344,7 +337,15 @@ export function MultiSelectPicker({
 
     // Use label as value when useValueAsLabel is true, otherwise generate UUID
     const newValue = useValueAsLabel ? newLabel : generateId()
-    const newOption: SelectOption = { label: newLabel, value: newValue }
+    // Auto-assign a colour the same way the field form does, so an option typed on a
+    // record isn't left colourless (and therefore dot-less) next to authored ones.
+    const newOption: SelectOption = {
+      label: newLabel,
+      value: newValue,
+      color: getNextOptionColor(
+        localOptions.map((o) => o.color).filter(Boolean) as SelectOptionColor[]
+      ),
+    }
 
     // Update options and auto-select the new option. In single-select mode,
     // replace the selection (mirror `handleSelect`) so a pre-existing value
@@ -424,6 +425,7 @@ export function MultiSelectPicker({
       if (opt) {
         setEditingOptionId(optValue)
         setEditInputValue(opt.label)
+        setEditColor(opt.color)
       }
     },
     [localOptions]
@@ -435,10 +437,17 @@ export function MultiSelectPicker({
   const cancelEdit = useCallback(() => {
     setEditingOptionId(null)
     setEditInputValue('')
+    setEditColor(undefined)
   }, [])
 
   /**
-   * Save the edited option label
+   * Save the edited option's label and colour.
+   *
+   * Writes ONLY `label` and `color`. `value` is the key every `FieldValue` of this
+   * option stores, and `updateCustomField` diffs the option list and cascades a delete
+   * to the values of any key that disappears — so rewriting `value` on a rename would
+   * destroy every record's value. An option's identity is minted at create time and
+   * never changes.
    */
   const saveEdit = useCallback(() => {
     if (!editingOptionId || !editInputValue.trim()) {
@@ -458,14 +467,14 @@ export function MultiSelectPicker({
       return
     }
 
-    // Update only the label, keep other properties
+    // Update only the label and colour, keep every other property (`value` above all)
     const newOptions = localOptions.map((opt) =>
-      opt.value === editingOptionId ? { ...opt, label: newLabel } : opt
+      opt.value === editingOptionId ? { ...opt, label: newLabel, color: editColor } : opt
     )
 
     updateOptions(newOptions)
     cancelEdit()
-  }, [editingOptionId, editInputValue, localOptions, updateOptions, cancelEdit])
+  }, [editingOptionId, editInputValue, editColor, localOptions, updateOptions, cancelEdit])
 
   /**
    * Handle key events in edit input
@@ -624,8 +633,15 @@ export function MultiSelectPicker({
       <Command shouldFilter={false} className={cn('rounded-lg', className)}>
         {/* Search/Edit Input Area */}
         {editingOptionId ? (
-          <div className='flex items-center border-b border-border/50 ps-3 pe-1'>
-            <TextCursorInput className='mr-2 size-4 shrink-0 opacity-50' />
+          <div className='flex items-center border-b border-border/50 ps-1.5 pe-1'>
+            {/* The colour dropdown portals, and React portal events bubble to the REACT
+                parent — which here is cmdk's <Command>, whose root `onKeyDown` moves the
+                command selection on arrows and fires the highlighted item on Enter. Swallow
+                keydowns at this wrapper so the colour menu's own keys stay inside it.
+                Radix closes on Escape via a native document listener, so that still works. */}
+            <div className='me-1 shrink-0' onKeyDown={(e) => e.stopPropagation()}>
+              <OptionColorPicker value={editColor} onChange={setEditColor} disabled={disabled} />
+            </div>
             <input
               ref={editInputRef}
               className='flex h-8 w-full rounded-md bg-transparent py-1 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50'
