@@ -13,8 +13,10 @@ import { getOrgCache } from '@auxx/lib/cache'
 import {
   gateConnectionVariables,
   mintClientCredentialToken,
+  NO_OWN_CLIENT_GATE,
+  providerOAuthCallbackUrl,
   refreshCredentialTokens,
-  resolveOwnClientRequirement,
+  resolveOwnClientGateForOrg,
   runPostConnectHook,
   saveConnection,
 } from '@auxx/lib/connections'
@@ -168,6 +170,7 @@ export const connectionsRouter = createTRPCRouter({
    * OAuth route + `save` resolve a providerKey as the id).
    */
   listProviders: protectedProcedure.query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
     // The approval gate (§3.1) is DB-derived: a platform client is "present" only if its
     // env was set at seed time (column non-blank), and `platformClientApproved` carries
     // the verification flag. Join the catalog (icons/labels) with the platform
@@ -181,23 +184,32 @@ export const connectionsRouter = createTRPCRouter({
         platformClientApproved: true,
       },
     })
+    // Org-aware: `byoOAuthClient` can offer BYO on top of a verified platform client.
+    // Resolved per row but the feature read behind it is one cached org lookup, not N.
     const gateByKey = new Map(
-      defRows.map((d) => [
-        d.providerKey as string,
-        resolveOwnClientRequirement({
-          oauth2ClientId: d.oauth2ClientId,
-          oauth2ClientSecret: d.oauth2ClientSecret,
-          platformClientApproved: d.platformClientApproved,
-        }),
-      ])
+      await Promise.all(
+        defRows.map(
+          async (d) =>
+            [
+              d.providerKey as string,
+              await resolveOwnClientGateForOrg(organizationId, {
+                oauth2ClientId: d.oauth2ClientId,
+                oauth2ClientSecret: d.oauth2ClientSecret,
+                platformClientApproved: d.platformClientApproved,
+              }),
+            ] as const
+        )
+      )
     )
     return getAllProviders().map((p) => {
       // The BYO-client gate is an authorization-code concept (platform redirect app +
       // approval). Secret/client-credentials defs have no platform OAuth client, so the
       // gate would wrongly read as `no-platform-client` — only consult it for oauth2-code.
-      const gate = p.connectionType === 'oauth2-code' ? gateByKey.get(p.providerKey) : undefined
-      const requiresOwnClient = gate?.requiresOwnClient ?? false
-      const ownClientOptional = gate?.ownClientOptional ?? false
+      const gate =
+        p.connectionType === 'oauth2-code'
+          ? (gateByKey.get(p.providerKey) ?? NO_OWN_CLIENT_GATE)
+          : NO_OWN_CLIENT_GATE
+      const { requiresOwnClient, ownClientOptional } = gate
       return {
         providerKey: p.providerKey,
         label: p.label,
@@ -225,7 +237,12 @@ export const connectionsRouter = createTRPCRouter({
         // providers (no DB gate) and secret defs.
         requiresOwnClient,
         ownClientOptional,
-        ownClientReason: gate?.reason ?? null,
+        ownClientReason: gate.reason,
+        // Server-built so a BYO user can register it in their own OAuth app.
+        oauthCallbackUrl:
+          p.connectionType === 'oauth2-code'
+            ? providerOAuthCallbackUrl({ providerKey: p.providerKey })
+            : null,
       }
     })
   }),

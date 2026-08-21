@@ -500,11 +500,18 @@ export interface CachedInstalledApp {
     description: string | null
     connectionType: string
     global: boolean
+    /**
+     * RAW connect-form variables, exactly as the definition declares them. NOT shaped by
+     * `gateConnectionVariables` — the own-client gate is org-dependent (`byoOAuthClient`)
+     * and is applied at READ time in `apps.listInstalled`, never baked here. Shaping at
+     * compute would strip the BYO descriptors irrecoverably and go stale on a feature
+     * grant, since `plan.changed` does not invalidate `installedApps`.
+     */
     connectionVariables: ConnectionVariable[]
-    /** OAuth own-client gate (§3.1): whether BYO client id/secret is required or offered. */
-    requiresOwnClient: boolean
-    ownClientOptional: boolean
-    ownClientReason: 'no-platform-client' | 'pending-approval' | null
+    /** Own-client gate INPUTS (§3.1). The gate itself is resolved per-org at read time. */
+    oauth2ClientId: string | null
+    oauth2ClientSecret: string | null
+    platformClientApproved: boolean
   }[]
 
   /**
@@ -855,7 +862,12 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // v5: + methods[] (multi-connection-per-app). See plans/connections/multi-connection-per-app.md.
   // v6: workflowBlocks carry `ops[]` (toolMap → catalog.tools join) so the server
   //     can resolve what an app block produces. See plans/kopilot/workflow/17-*.md §4 A2.
-  installedApps: { prefix: 'org:installed-apps:v6', ttlSeconds: 900 },
+  // v7: `methods[]` dropped the baked own-client gate for the RAW variables + the three
+  // gate inputs (gating moved to read time in `apps.listInstalled`). A v6 blob carries no
+  // `oauth2ClientId`/`platformClientApproved`, so the read-time gate would read it as
+  // "no platform client" and demand BYO credentials for EVERY installed app until the TTL
+  // expired. The bump is what makes this deploy safe.
+  installedApps: { prefix: 'org:installed-apps:v7', ttlSeconds: 900 },
   mcpServers: { prefix: 'org:mcpServers', ttlSeconds: ONE_DAY },
   // Read per CRUD event by trigger dispatch; changes only on admin edits →
   // 5 s local window (dispatch enqueues jobs, so peer staleness is benign).

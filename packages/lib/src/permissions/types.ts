@@ -56,6 +56,13 @@ export enum FeatureKey {
    * account. Absent MUST be read as `false` — see `plans/google-limited-use-provider-gate.md`.
    */
   unrestrictedAiProviders = 'unrestrictedAiProviders',
+  /**
+   * Offer the "use your own OAuth client" option on OAuth2 connect surfaces even when
+   * the platform client is verified. Not a purchasable feature: `false` on every plan
+   * tier, granted per-org. Absent MUST read as `false` — see
+   * `plans/allow-platform-and-byo-oauth-client.md`.
+   */
+  byoOAuthClient = 'byoOAuthClient',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -240,6 +247,17 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     description:
       'Allow AI providers whose terms permit training on submitted data. Off for every plan; enable only for organizations with no connected Google account.',
     group: 'AI',
+  },
+  {
+    key: FeatureKey.byoOAuthClient,
+    type: 'boolean',
+    // Ops control, not a plan feature. OFF everywhere by default; granted per-org so a
+    // customer can point a channel at their own Google/Microsoft OAuth app. Kept off by
+    // default so an OAuth reviewer driving the product only ever sees the platform flow.
+    label: 'Own OAuth Client',
+    description:
+      'Let this organization connect OAuth channels with its own OAuth client id/secret instead of the platform client. Off for every plan; enable per organization.',
+    group: 'Integrations',
   },
 
   // ── Static limits ──

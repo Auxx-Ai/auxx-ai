@@ -5,15 +5,18 @@ import type { OAuth2Features } from '@auxx/database'
 import { database as db } from '@auxx/database'
 import { resolveAppConnectionForRuntime } from '@auxx/lib/apps'
 import { resolveAppSlug } from '@auxx/lib/cache'
-import { resolveOAuth2Client, resolveOwnClientRequirement } from '@auxx/lib/connections'
+import {
+  appOAuthCallbackUrl,
+  resolveOAuth2Client,
+  resolveOwnClientGateForOrg,
+  stripUnentitledOwnClientVars,
+} from '@auxx/lib/connections'
 import { AuxxError } from '@auxx/lib/errors'
 import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
 import crypto from 'crypto'
-
-const OAUTH_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
 
 import { headers } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
@@ -187,8 +190,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // Own-client gate (§3.1), org-aware: only a genuinely absent platform client forces BYO
+    // id/secret. A platform client pending verification is optional-BYO — the platform
+    // kickoff proceeds and the provider (e.g. Google) applies its own unverified-app
+    // gating. A verified platform client offers BYO only to orgs holding `byoOAuthClient`.
+    const ownClient = await resolveOwnClientGateForOrg(organizationId, connDef)
+
     // Extract connection variables from query params (allowlisted by definitions)
-    const connectionVariables: Record<string, string> = {}
+    const rawVariables: Record<string, string> = {}
     const connectionVarDefs = connDef.connectionVariables ?? []
     for (const varDef of connectionVarDefs) {
       const value = searchParams.get(`var_${varDef.key}`) ?? storedVariables[varDef.key]
@@ -198,13 +207,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           { status: 400 }
         )
       }
-      if (value) connectionVariables[varDef.key] = value
+      if (value) rawVariables[varDef.key] = value
     }
 
-    // Own-client gate (§3.1): only a genuinely absent platform client forces BYO id/secret.
-    // A platform client pending verification is optional-BYO — the platform kickoff proceeds
-    // and the provider (e.g. Google) applies its own unverified-app gating.
-    const ownClient = resolveOwnClientRequirement(connDef)
+    // The connect dialog hides the BYO fields when the gate offers no BYO path, but this
+    // route takes them off the query string — drop caller-supplied client credentials so an
+    // org cannot opt itself into another OAuth client by appending `var_clientId`. Already
+    // stored values survive, so revoking the feature never repoints a live connection.
+    const connectionVariables = stripUnentitledOwnClientVars(
+      rawVariables,
+      ownClient,
+      storedVariables
+    )
+
     if (
       ownClient.requiresOwnClient &&
       !(connectionVariables.clientId && connectionVariables.clientSecret)
@@ -246,16 +261,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })
     )
 
-    // Resolve callback base URL (per-connection override or global default)
-    const callbackBase = features.callbackBaseUrl || OAUTH_REDIRECT_BASE
-
     const scopes = connDef.oauth2Scopes || []
     const googleParams = getGoogleOfflineParams(resolved.authorizeUrl)
 
     // Build OAuth authorization URL
     const authUrl = new URL(resolved.authorizeUrl)
     authUrl.searchParams.set('client_id', resolvedClientId)
-    authUrl.searchParams.set('redirect_uri', `${callbackBase}/api/apps/${slug}/oauth2/callback`)
+    // Same builder the connect dialog shows to a BYO user — they register exactly one URI.
+    authUrl.searchParams.set('redirect_uri', appOAuthCallbackUrl(slug, features.callbackBaseUrl))
     const scopeSeparator = features.scopeSeparator || ' '
     authUrl.searchParams.set('scope', scopes.join(scopeSeparator))
     authUrl.searchParams.set('state', state)

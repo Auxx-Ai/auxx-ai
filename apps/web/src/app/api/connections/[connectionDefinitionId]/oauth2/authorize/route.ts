@@ -5,9 +5,11 @@ import type { OAuth2Features } from '@auxx/database'
 import { database as db } from '@auxx/database'
 import { supportsPersonalChannelConnection } from '@auxx/lib/channels'
 import {
+  providerOAuthCallbackUrl,
   resolveConnectionForRuntime,
   resolveOAuth2Client,
-  resolveOwnClientRequirement,
+  resolveOwnClientGateForOrg,
+  stripUnentitledOwnClientVars,
 } from '@auxx/lib/connections'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
@@ -16,8 +18,6 @@ import crypto from 'crypto'
 import { headers } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
-
-const OAUTH_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
 
 const logger = createScopedLogger('connection-oauth-authorize')
 
@@ -139,8 +139,17 @@ export async function GET(
       }
     }
 
+    // Approval gate (§3.1), org-aware: only a genuinely absent platform client
+    // (`requiresOwnClient`, reason `no-platform-client`) forces BYO id/secret — enforce
+    // that server-side, never trusting the dialog. A platform client pending verification
+    // yields `requiresOwnClient: false` (BYO is optional), so the platform kickoff
+    // proceeds here and Google shows its own unverified-app gating; BYO vars, when
+    // supplied, still win in `resolveOAuth2Client`. A verified platform client offers BYO
+    // only to orgs holding `byoOAuthClient`.
+    const ownClient = await resolveOwnClientGateForOrg(organizationId, connDef)
+
     // Extract connection variables from query params (allowlisted by the definition)
-    const connectionVariables: Record<string, string> = {}
+    const rawVariables: Record<string, string> = {}
     for (const varDef of connDef.connectionVariables ?? []) {
       const value = searchParams.get(`var_${varDef.key}`) ?? storedVariables[varDef.key]
       if (!value && varDef.required !== false) {
@@ -149,16 +158,18 @@ export async function GET(
           { status: 400 }
         )
       }
-      if (value) connectionVariables[varDef.key] = value
+      if (value) rawVariables[varDef.key] = value
     }
 
-    // Approval gate (§3.1): only a genuinely absent platform client (`requiresOwnClient`,
-    // reason `no-platform-client`) forces BYO id/secret — enforce that server-side, never
-    // trusting the dialog. A platform client pending verification yields
-    // `requiresOwnClient: false` (BYO is optional), so the platform kickoff proceeds here
-    // and Google shows its own unverified-app gating; BYO vars, when supplied, still win in
-    // `resolveOAuth2Client`.
-    const ownClient = resolveOwnClientRequirement(connDef)
+    // The dialog hides the BYO fields when the gate offers no BYO path, but this route
+    // takes them off the query string — drop caller-supplied client credentials so an org
+    // cannot opt itself into another OAuth client by appending `var_clientId`.
+    const connectionVariables = stripUnentitledOwnClientVars(
+      rawVariables,
+      ownClient,
+      storedVariables
+    )
+
     if (
       ownClient.requiresOwnClient &&
       !(connectionVariables.clientId && connectionVariables.clientSecret)
@@ -200,15 +211,16 @@ export async function GET(
       })
     )
 
-    const callbackBase = features.callbackBaseUrl || OAUTH_REDIRECT_BASE
     const scopes = [...new Set([...(connDef.oauth2Scopes || []), ...scopeAdd])]
+
+    // Pinned to the definition's providerKey, never `defParam`: the lookup above accepts
+    // an id OR a providerKey, so echoing the raw param would make the redirect URI depend
+    // on which spelling the caller used. A BYO user registers exactly one URI.
+    const redirectUri = providerOAuthCallbackUrl(connDef, features.callbackBaseUrl)
 
     const authUrl = new URL(resolved.authorizeUrl)
     authUrl.searchParams.set('client_id', clientId)
-    authUrl.searchParams.set(
-      'redirect_uri',
-      `${callbackBase}/api/connections/${defParam}/oauth2/callback`
-    )
+    authUrl.searchParams.set('redirect_uri', redirectUri)
     authUrl.searchParams.set('scope', scopes.join(features.scopeSeparator || ' '))
     authUrl.searchParams.set('state', state)
     authUrl.searchParams.set('response_type', 'code')

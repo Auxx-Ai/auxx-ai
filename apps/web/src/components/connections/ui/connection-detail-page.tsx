@@ -11,6 +11,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, ChevronRight, KeyRound, Plug } from 'lucide-react'
 import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
 import { FieldPanel } from '~/components/global/forms/field-panel'
+import { OwnClientCallbackNotice } from './own-client-callback-notice'
 
 /** One connect method an item exposes (the detail page renders + collects input for it). */
 export interface DetailMethod {
@@ -23,9 +24,14 @@ export interface DetailMethod {
   connectionVariables?: ConnectionVariable[] | null
   /** OAuth approval gate (§3.1): this connection must bring its own client id/secret. */
   requiresOwnClient?: boolean
-  /** Platform client works but is pending verification — BYO offered as an optional alternative. */
+  /**
+   * BYO is offered as an optional alternative to the platform client — either because the
+   * platform app is pending verification, or because the org holds `byoOAuthClient`.
+   */
   ownClientOptional?: boolean
-  ownClientReason?: 'no-platform-client' | 'pending-approval' | null
+  ownClientReason?: 'no-platform-client' | 'pending-approval' | 'byo-entitled' | null
+  /** Server-built OAuth redirect URI, shown so a BYO user can register it. */
+  oauthCallbackUrl?: string | null
 }
 
 /** Copy for the mandatory BYO-client banner (§3.1) — shown only when `requiresOwnClient`. */
@@ -34,6 +40,9 @@ const OWN_CLIENT_COPY: Record<NonNullable<DetailMethod['ownClientReason']>, stri
     'Our platform app for this provider is pending verification — connect with your own OAuth app for now.',
   'no-platform-client':
     'No platform OAuth app is configured for this provider — connect with your own OAuth app.',
+  // Never reached as a banner: `byo-entitled` is always optional, and the banner renders
+  // only for `requiresOwnClient`. Present so the record stays exhaustive.
+  'byo-entitled': 'Connect with the platform OAuth app, or supply your own.',
 }
 
 interface ConnectionDetailPageProps {
@@ -187,16 +196,19 @@ export function ConnectionDetailPage({
         </div>
       )}
       {chosen?.requiresOwnClient && chosen.ownClientReason && (
-        <div className='rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400'>
-          {OWN_CLIENT_COPY[chosen.ownClientReason]}
+        <div className='flex flex-col gap-2'>
+          <div className='rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400'>
+            {OWN_CLIENT_COPY[chosen.ownClientReason]}
+          </div>
+          <OwnClientCallbackNotice callbackUrl={chosen.oauthCallbackUrl} />
         </div>
       )}
       {chosen && methodOffersOwnClient(chosen) && (
         <div className='flex flex-col gap-2'>
           <div className='rounded-md border px-3 py-2 text-xs text-muted-foreground'>
-            This app's platform OAuth client is pending provider verification — you can continue
-            with it (you may see an "unverified app" warning during sign-in), or use your own OAuth
-            client.
+            {chosen.ownClientReason === 'pending-approval'
+              ? `This app's platform OAuth client is pending provider verification — you can continue with it (you may see an "unverified app" warning during sign-in), or use your own OAuth client.`
+              : 'Connect with our platform OAuth app, or use your own OAuth client.'}
           </div>
           {onByoOpenChange && (
             <Button
@@ -210,6 +222,7 @@ export function ConnectionDetailPage({
               Use your own OAuth client (advanced)
             </Button>
           )}
+          {byoOpen && <OwnClientCallbackNotice callbackUrl={chosen.oauthCallbackUrl} />}
         </div>
       )}
       {chosen && methodNeedsFields(chosen) && (

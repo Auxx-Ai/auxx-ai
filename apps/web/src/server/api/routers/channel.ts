@@ -36,7 +36,11 @@ import {
   type UpdateChatWidgetInput,
   updateChatWidget,
 } from '@auxx/lib/chat-widget/config'
-import { findPendingSelectionForUser, resolveOwnClientRequirement } from '@auxx/lib/connections'
+import {
+  findPendingSelectionForUser,
+  providerOAuthCallbackUrl,
+  resolveOwnClientGateForOrg,
+} from '@auxx/lib/connections'
 import { getUserOrganizationId } from '@auxx/lib/email'
 import { SyncMessages } from '@auxx/lib/messages'
 import {
@@ -159,7 +163,10 @@ export const channelRouter = createTRPCRouter({
         })
       }
 
-      const gate = resolveOwnClientRequirement(def)
+      // Org-aware (§3.1): the def's verification state decides first, and the
+      // `byoOAuthClient` feature adds the BYO option on top of an already-verified
+      // platform client. Orgs without the feature see the one-click platform flow only.
+      const gate = await resolveOwnClientGateForOrg(organizationId, def)
       return {
         providerKey,
         connectionDefinitionId: def.id,
@@ -167,6 +174,9 @@ export const channelRouter = createTRPCRouter({
         requiresOwnClient: gate.requiresOwnClient,
         ownClientOptional: gate.ownClientOptional,
         ownClientReason: gate.reason,
+        // Shown to a BYO user so they can register it in their own OAuth app. Built here,
+        // not in the browser: `WEBAPP_URL` collapses to localhost in a client bundle.
+        oauthCallbackUrl: providerOAuthCallbackUrl({ providerKey }),
         supportsPersonalConnection: supportsPersonal,
       }
     }),

@@ -17,6 +17,7 @@ import {
   type ConnectFlowDefinition,
   useConnectFlow,
 } from '~/components/apps/hooks/use-connect-flow'
+import { OwnClientCallbackNotice } from '~/components/connections/ui/own-client-callback-notice'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { TemplateGalleryDialog } from '~/components/templates/ui'
@@ -194,10 +195,13 @@ export function ChannelGalleryDialog({
   }
 
   // `requiresOwnClient` → BYO mandatory (no platform client). `ownClientOptional` →
-  // platform login works but the app is pending Google verification, so BYO is offered
-  // as an alternative the user can opt into via the advanced section.
+  // platform login works and BYO is offered as an alternative the user can opt into via
+  // the advanced section, either because the app is pending provider verification
+  // (`pending-approval`) or because the org holds `byoOAuthClient` (`byo-entitled`).
   const needsOwnClient = !!prep.data?.requiresOwnClient
   const ownClientOptional = !!prep.data?.ownClientOptional
+  const ownClientReason = prep.data?.ownClientReason ?? null
+  const oauthCallbackUrl = prep.data?.oauthCallbackUrl ?? null
   // BYO fields are active (must be filled to connect) when mandatory, or opted-in.
   const byoActive = needsOwnClient || (ownClientOptional && useOwnClient)
   const ownClientReady = !byoActive || (!!clientId.trim() && !!clientSecret.trim())
@@ -316,6 +320,7 @@ export function ChannelGalleryDialog({
           <p className='text-xs text-muted-foreground'>
             No platform app is configured — enter your own OAuth client credentials.
           </p>
+          <OwnClientCallbackNotice callbackUrl={oauthCallbackUrl} />
           {renderClientCredFields()}
         </>
       )
@@ -324,9 +329,9 @@ export function ChannelGalleryDialog({
       return (
         <div className='flex flex-col gap-2'>
           <p className='text-xs text-muted-foreground'>
-            This app's platform OAuth client is pending provider verification — during sign-in you
-            may see an "unverified app" warning (and access can be limited to test accounts). You
-            can continue with it, or use your own OAuth client below.
+            {ownClientReason === 'pending-approval'
+              ? `This app's platform OAuth client is pending provider verification — during sign-in you may see an "unverified app" warning (and access can be limited to test accounts). You can continue with it, or use your own OAuth client below.`
+              : 'Connect with our platform OAuth app, or use your own OAuth client below.'}
           </p>
           <Button
             type='button'
@@ -337,7 +342,12 @@ export function ChannelGalleryDialog({
             {useOwnClient ? <ChevronDown /> : <ChevronRight />}
             Use your own OAuth client (advanced)
           </Button>
-          {useOwnClient && renderClientCredFields()}
+          {useOwnClient && (
+            <>
+              <OwnClientCallbackNotice callbackUrl={oauthCallbackUrl} />
+              {renderClientCredFields()}
+            </>
+          )}
         </div>
       )
     }

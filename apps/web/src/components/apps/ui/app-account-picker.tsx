@@ -84,11 +84,17 @@ export function AppAccountPicker({
       },
       title: installation.app.title,
       connectionDefinitions: installation.connectionDefinitions ?? {},
+      // Gate fields must ride along — `useConnectFlow` resolves the dialog's method from
+      // `target.methods`, and without them the BYO disclosure cannot render here.
       methods: (installation.methods ?? []).map((m) => ({
         id: m.id,
         connectionType: m.connectionType,
         description: m.description ?? undefined,
         connectionVariables: m.connectionVariables,
+        requiresOwnClient: m.requiresOwnClient,
+        ownClientOptional: m.ownClientOptional,
+        ownClientReason: m.ownClientReason,
+        oauthCallbackUrl: m.oauthCallbackUrl,
       })),
     }
   }, [installation, appId])
