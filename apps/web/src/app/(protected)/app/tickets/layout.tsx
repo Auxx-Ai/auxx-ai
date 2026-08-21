@@ -6,6 +6,8 @@ import { Settings } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { EntityRouteLayout } from '~/components/records'
 
+const BASE_PATH = '/app/tickets'
+
 /**
  * Shared layout for tickets section with conditional rendering
  * - For tabbed pages (list, dashboard, settings): renders EntityRouteLayout with
@@ -17,16 +19,14 @@ import { EntityRouteLayout } from '~/components/records'
 export default function TicketsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
 
-  // Check if we're on a ticket detail page, create page, or import page
-  // These pages have their own MainPage wrapper or don't need the tabbed header
-  const isDetailOrSpecialPage =
-    /\/tickets\/[^/]+$/.test(pathname) &&
-    !pathname.endsWith('/tickets') &&
-    !pathname.includes('/dashboard') &&
-    !pathname.includes('/settings')
+  // Only the tabbed routes (list, dashboard, settings and their sub-pages) get the
+  // shared shell. Everything else — detail, create, import — owns its own MainPage.
+  const isTabbedPage =
+    pathname === BASE_PATH ||
+    pathname.startsWith(`${BASE_PATH}/dashboard`) ||
+    pathname.startsWith(`${BASE_PATH}/settings`)
 
-  // For detail/create/import pages, just render children (they have their own layout)
-  if (isDetailOrSpecialPage) {
+  if (!isTabbedPage) {
     return <>{children}</>
   }
 
@@ -34,9 +34,9 @@ export default function TicketsLayout({ children }: { children: React.ReactNode 
   return (
     <EntityRouteLayout
       slug='tickets'
-      basePath='/app/tickets'
+      basePath={BASE_PATH}
       extraTabs={[
-        { value: 'settings', label: 'Settings', icon: <Settings />, href: '/app/tickets/settings' },
+        { value: 'settings', label: 'Settings', icon: <Settings />, href: `${BASE_PATH}/settings` },
       ]}>
       {children}
     </EntityRouteLayout>
