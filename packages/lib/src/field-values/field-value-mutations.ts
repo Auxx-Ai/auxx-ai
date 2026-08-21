@@ -68,6 +68,7 @@ import {
   preBatchValidateRelationships,
   resolveFieldIds,
   rowToTypedValue,
+  stampEntityInstanceUpdatedAt,
   validateAndConvertValue,
 } from './field-value-helpers'
 import { getValue } from './field-value-queries'
@@ -2292,11 +2293,11 @@ export async function setValueWithBuiltIn(
           updatedAt: performedAt,
           ...typedInput,
         } as TypedFieldValue
-        return { state: 'complete', performedAt, values: [syntheticValue] }
+        return { state: 'complete', performedAt, values: [syntheticValue], changed: true }
       }
     }
 
-    return { state: 'complete', performedAt, values: [] }
+    return { state: 'complete', performedAt, values: [], changed: true }
   }
 
   // 2. Normalize systemAttribute / ResourceFieldId forms to a real FieldId —
@@ -2344,7 +2345,7 @@ export async function setValueWithBuiltIn(
     entityType,
   })
   if (hookOutcome.kind === 'drop') {
-    return { state: 'complete', performedAt: new Date().toISOString(), values: [] }
+    return { state: 'complete', performedAt: new Date().toISOString(), values: [], changed: false }
   }
   const typedValue = hookOutcome.value
 
@@ -2375,7 +2376,12 @@ export async function setValueWithBuiltIn(
       value: typedValue,
     })
     if (unchanged !== null) {
-      return { state: 'complete', performedAt: new Date().toISOString(), values: unchanged }
+      return {
+        state: 'complete',
+        performedAt: new Date().toISOString(),
+        values: unchanged,
+        changed: false,
+      }
     }
   }
 
@@ -2440,7 +2446,12 @@ export async function setValueWithBuiltIn(
     // is nothing to change. Skipped when the guard is bypassed/disabled
     // (`guardRows === null`), falling through to the old behavior.
     if (guardRows !== null && guardRows.length === 0) {
-      return { state: 'complete', performedAt: new Date().toISOString(), values: [] }
+      return {
+        state: 'complete',
+        performedAt: new Date().toISOString(),
+        values: [],
+        changed: false,
+      }
     }
     await deleteValue(ctx, { recordId, fieldId })
     await maybeUpdateDisplayValue(ctx, recordId, field, null)
@@ -2473,7 +2484,7 @@ export async function setValueWithBuiltIn(
       }
     }
     await firePostHook(null)
-    return { state: 'complete', performedAt: new Date().toISOString(), values: [] }
+    return { state: 'complete', performedAt: new Date().toISOString(), values: [], changed: true }
   }
 
   // 4. Uniqueness is enforced inside setValueWithType (step 6) — one gate
@@ -2548,6 +2559,7 @@ export async function setValueWithBuiltIn(
     state: 'complete',
     performedAt: new Date().toISOString(),
     values: result,
+    changed: true,
   }
 }
 
@@ -2598,9 +2610,12 @@ export async function setValuesForEntity(
   // simply stays empty and the flush below is a no-op.
   const collected: FieldValueUpdateEntry[] = []
 
-  // Handle built-in fields
+  // Handle built-in fields. Built-in writes carry no idempotency guard, so
+  // `changed` reflects "a handler performed a write" — same semantics the old
+  // `$onUpdate` bump had for this lane.
   for (const v of builtIns) {
     const handler = getBuiltInFieldHandler(v.fieldId, modelType)
+    const wrote = !!handler
     if (handler) {
       await handler(ctx.db, entityInstanceId, v.value, ctx.organizationId)
     }
@@ -2625,6 +2640,7 @@ export async function setValuesForEntity(
           state: 'complete',
           performedAt,
           values: [syntheticValue],
+          changed: wrote,
         })
         continue
       }
@@ -2635,6 +2651,7 @@ export async function setValuesForEntity(
       state: 'complete',
       performedAt: new Date().toISOString(),
       values: [],
+      changed: wrote,
     })
   }
 
@@ -2692,6 +2709,7 @@ export async function setValuesForEntity(
           state: 'failed',
           performedAt: new Date().toISOString(),
           values: [],
+          changed: false,
         })
       }
     }
@@ -2704,6 +2722,18 @@ export async function setValuesForEntity(
     publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, collected, {
       excludeSocketId: ctx.socketId,
     }).catch(() => {})
+  }
+
+  // D-7: one explicit `EntityInstance.updatedAt` stamp per record write when
+  // at least one field performed a REAL change. This is THE chokepoint for
+  // handler-mediated writes — create/update/updateValues and the handler's
+  // multi-field `setFieldValues` all funnel their `set` entries here, and it
+  // sits below the handler so direct service callers stamp too. Idempotent
+  // re-assertions (D-6 guard), delete-of-absent (B-14), pre-hook drops, and
+  // failed fields all report `changed: false` and never stamp — a pure no-op
+  // write must not re-dirty the dedup watermark.
+  if (results.some((r) => r.changed)) {
+    await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
   }
 
   return results

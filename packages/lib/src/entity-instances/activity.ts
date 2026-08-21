@@ -71,6 +71,9 @@ export async function touchEntityActivity(
   const db = tx ?? database
 
   try {
+    // Deliberately does NOT stamp `updatedAt` (D-7): activity is bookkeeping,
+    // not record content — the old `$onUpdate` auto-bump here re-dirtied
+    // records into dedup rescans.
     await db
       .update(schema.EntityInstance)
       .set({ lastActivityAt: at })
@@ -131,6 +134,8 @@ export async function touchEntityInteraction(
   const db = tx ?? database
 
   try {
+    // Like the activity touch, interaction stamps are bookkeeping and
+    // intentionally leave `updatedAt` alone (D-7).
     await db
       .update(schema.EntityInstance)
       .set({ firstInteractionAt: sentAt, firstInteractionMessageId: messageId })

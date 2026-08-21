@@ -1090,6 +1090,35 @@ async function publishRecordColumnUpdate(
 }
 
 /**
+ * D-7 explicit content stamp: bump `EntityInstance.updatedAt` for a record
+ * whose field values just performed at least one REAL change. `updatedAt`
+ * carries no `$onUpdate` anymore — this is the single stamp site for
+ * handler-mediated field writes, called once per record write from
+ * `setValuesForEntity`. Best-effort like the other denormalized touches:
+ * a failed stamp must never fail the write (dedup's
+ * `GREATEST(ei.updatedAt, max(fv.updatedAt))` watermark still catches up
+ * via `FieldValue.updatedAt`).
+ */
+export async function stampEntityInstanceUpdatedAt(
+  ctx: Pick<FieldValueContext, 'db' | 'organizationId'>,
+  entityInstanceId: string
+): Promise<void> {
+  try {
+    await ctx.db
+      .update(schema.EntityInstance)
+      .set({ updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.EntityInstance.id, entityInstanceId),
+          eq(schema.EntityInstance.organizationId, ctx.organizationId)
+        )
+      )
+  } catch {
+    // Best-effort freshness marker — never break the calling write path.
+  }
+}
+
+/**
  * Update EntityInstance display columns if field is a display field.
  * Handles primary (displayName), secondary (secondaryDisplayValue), and avatar (avatarUrl).
  */
@@ -1119,9 +1148,11 @@ export async function maybeUpdateDisplayValue(
   if (!column && entityDef.primaryDisplayFieldId) {
     const result = await resolveNameFieldDisplayValue(ctx, recordId, entityDef, field, value)
     if (result !== undefined) {
+      // D-7: a display-source field changed, so this is record content — stamp
+      // `updatedAt` in the same statement as the denormalized column.
       await ctx.db
         .update(schema.EntityInstance)
-        .set({ displayName: result })
+        .set({ displayName: result, updatedAt: new Date() })
         .where(
           and(
             eq(schema.EntityInstance.id, entityInstanceId),
@@ -1247,10 +1278,12 @@ export async function maybeUpdateDisplayValue(
     }
   }
 
-  // Update the appropriate column
+  // Update the appropriate column. D-7: this runs only on the real-change path
+  // (the D-6 idempotency guard short-circuits identical sets before display
+  // recompute), so the display write doubles as a content stamp on `updatedAt`.
   await ctx.db
     .update(schema.EntityInstance)
-    .set({ [column]: displayValue })
+    .set({ [column]: displayValue, updatedAt: new Date() })
     .where(
       and(
         eq(schema.EntityInstance.id, entityInstanceId),

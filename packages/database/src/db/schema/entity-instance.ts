@@ -22,10 +22,19 @@ export const EntityInstance = pgTable(
       .notNull()
       .$defaultFn(() => createId()),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
-    updatedAt: timestamp({ precision: 3 })
-      .defaultNow()
-      .notNull()
-      .$onUpdate(() => new Date()),
+    /**
+     * "Record CONTENT changed" — stamped EXPLICITLY by the write paths (D-7,
+     * plans/events/03-write-context-and-batch-lane-plan.md §1). Deliberately
+     * NO `$onUpdate`: the old auto-bump moved on every physical row write,
+     * so bookkeeping writes (`lastActivityAt`, interaction stamps, scan
+     * watermarks, connector ownership stamps, metadata counters) re-dirtied
+     * records into dedup rescan loops. Now: `defaultNow()` stamps creates;
+     * archive/restore stamps in `update-entity-instance.ts`; a field-value
+     * write that performs at least one REAL change stamps once via
+     * `setValuesForEntity` (idempotent no-ops don't); bookkeeping writes
+     * simply don't stamp.
+     */
+    updatedAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     archivedAt: timestamp({ precision: 3, withTimezone: true }),
 
     /** Reference to the entity definition this is an instance of */
@@ -100,11 +109,11 @@ export const EntityInstance = pgTable(
     /**
      * Set by the duplicate scanner every time it blocks + scores this record.
      * The dirty predicate is deliberately NOT `lastActivityAt` (which the
-     * suggestion scanner uses): `skipEvents` / userId-less writes — connector
-     * syncs, CSV imports — leave BOTH `updatedAt` and `lastActivityAt`
-     * untouched, so the scan compares this against
-     * `GREATEST(ei."updatedAt", max(fv."updatedAt"))`. `FieldValue.updatedAt` is
-     * the only timestamp that always moves.
+     * suggestion scanner uses): the scan compares this against
+     * `GREATEST(ei."updatedAt", max(fv."updatedAt"))`. Since D-7, `updatedAt`
+     * is stamped explicitly on content changes (including handler-mediated
+     * field writes), but raw writers that bypass the handler still only move
+     * `FieldValue.updatedAt` — the `GREATEST` arm stays load-bearing for those.
      */
     lastDuplicateScanAt: timestamp({ precision: 3 }),
 
@@ -183,7 +192,10 @@ export const EntityInstance = pgTable(
     // for dedup is `GREATEST(ei."updatedAt", max(fv."updatedAt")) >
     // "lastDuplicateScanAt"`. EVERY scan door runs this query (the mutation
     // seam, the sync-manifest consumer, and the 6h sweep all share one
-    // watermark-driven handler), not just the sweep.
+    // watermark-driven handler), not just the sweep. Since D-7 removed
+    // `$onUpdate`, bookkeeping writes (watermark stamps, `lastSuggestionScanAt`,
+    // activity/interaction touches) no longer bump `updatedAt`, so they can no
+    // longer re-dirty a record against its own fresh watermark.
     index('EntityInstance_org_def_dup_scan_idx')
       .on(
         table.organizationId,
