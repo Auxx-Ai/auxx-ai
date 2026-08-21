@@ -5,7 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { getPublishingClient } from '@auxx/redis'
 import { toRecordId } from '@auxx/types/resource'
 import { eq } from 'drizzle-orm'
-import { getCachedResource } from '../../cache'
+import { canonicalizeEntityDefinitionId, getCachedResource } from '../../cache'
 import {
   createEventPublisher,
   executePlan,
@@ -15,11 +15,20 @@ import {
   markJobFailed,
 } from '../../import'
 import type { FieldWriteModes, ImportMappingProperty, ImportPlan } from '../../import/types'
+import { getRealtimeService, publishRecordsInvalidated } from '../../realtime'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { getFieldOutputKey } from '../../resources/registry/field-types'
 import type { JobContext } from '../types'
 
 const logger = createScopedLogger('execute-plan-job')
+
+/**
+ * Minimum gap between the coarse `records:invalidated` frames published while
+ * rows land. Progress fires once per 50-row batch, so an unthrottled publish
+ * would put hundreds of frames on the def channel for a large file — the same
+ * firehose the `skipEvents` guard exists to avoid.
+ */
+const INVALIDATE_THROTTLE_MS = 2_000
 
 /** Job payload for executing an import plan */
 export interface ExecutePlanJobProps {
@@ -140,6 +149,35 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
     // stub (zero cost) when the org has no enabled rules on this def.
     const { loadManifestCollector } = await import('../../record-rules/sync-manifest-collector')
     const manifest = await loadManifestCollector(organizationId)
+
+    // The import writes with `skipEvents: true`, so no `record:created` /
+    // `record:updated` / `fieldValues:updated` frame ever reaches an open grid.
+    // Publish the same coarse signal the connector sync path uses instead — one
+    // `records:invalidated` per def, which the client turns into a single list
+    // refetch. Without it the grid stays stale until a manual reload.
+    //
+    // Only this import's def is touched: relation lookups resolve against
+    // existing records and auto-create is not implemented (`resolve-relation-lookups`),
+    // so no other def receives writes.
+    //
+    // The room key MUST be canonicalized. `ImportMapping.entityDefinitionId` holds
+    // either keyspace — for a def-backed system type it is the bare entityType slug
+    // (`part`), while the client subscribes with `Resource.entityDefinitionId`, which
+    // is always the org's EntityDefinition CUID. `crudHandler` hides the difference
+    // because it resolves the def and publishes with `entityDef.id`; publishing the
+    // raw mapping value here addressed `…-records-part` while every browser sat on
+    // `…-records-<cuid>`, so the frame was delivered to nobody.
+    const roomDefId = await canonicalizeEntityDefinitionId(organizationId, entityDefinitionId)
+
+    let lastInvalidateAt = 0
+    const invalidateRecords = async (force = false) => {
+      const now = Date.now()
+      if (!force && now - lastInvalidateAt < INVALIDATE_THROTTLE_MS) return
+      lastInvalidateAt = now
+      await publishRecordsInvalidated(getRealtimeService(), organizationId, {
+        entityDefinitionIds: [roomDefId],
+      }).catch(() => {})
+    }
 
     const createRecord = async (data: {
       standardFields: Record<string, unknown>
@@ -285,11 +323,18 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
           succeeded: progress.succeeded,
           failed: progress.failed,
         })
+
+        // Keep every open grid live while the import runs, not just at the end.
+        await invalidateRecords()
       },
     })
 
     // Mark job as completed
     await markJobCompleted(db, jobId, result.statistics)
+
+    // Final frame, unthrottled: the last batch's progress publish may have been
+    // swallowed by the throttle, and it is the one carrying the tail of the rows.
+    await invalidateRecords(true)
 
     // B2: persist the captured manifest on the ImportJob row and publish ONE pointer
     // event — the same row-transport the connector path uses (no inline cap, no silent
