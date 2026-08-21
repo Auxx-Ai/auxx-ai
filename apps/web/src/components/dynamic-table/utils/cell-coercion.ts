@@ -2,6 +2,12 @@
 'use client'
 
 import {
+  buildOptionIndex,
+  type FieldOptionItem,
+  findOptionKey,
+  resolveOptionId,
+} from '@auxx/lib/custom-fields/client'
+import {
   getRelatedEntityDefinitionId,
   isRecordId,
   parseRecordId,
@@ -161,14 +167,16 @@ export function coerceForPaste(
     case 'SINGLE_SELECT': {
       const options = targetField.options?.options ?? []
       // Prefer the raw option id (lossless path for select→select with same id space).
+      // Tolerant read rule: a row written before its option gained an explicit `id`
+      // still holds the `value`, so both keyspaces have to match.
       if (source.fieldType === 'SINGLE_SELECT' && typeof source.raw === 'string') {
-        if (options.some((o) => (o.id ?? o.value) === source.raw)) {
+        if (resolveOptionId(source.raw, options).status === 'known') {
           return { ok: true, value: source.raw }
         }
       }
       const query = display
       if (!query) return { ok: true, value: null }
-      const optionId = findOptionId(query, options)
+      const optionId = findOptionKey(query, options)
       if (!optionId) return { ok: false, reason: 'no-matching-option' }
       return { ok: true, value: optionId }
     }
@@ -182,7 +190,9 @@ export function coerceForPaste(
         Array.isArray(source.raw)
       ) {
         const ids = source.raw.filter((v): v is string => typeof v === 'string')
-        if (ids.every((id) => options.some((o) => (o.id ?? o.value) === id))) {
+        // One index for the whole array, matching either keyspace (id or value).
+        const index = buildOptionIndex(options)
+        if (ids.every((id) => resolveOptionId(id, index).status === 'known')) {
           return { ok: true, value: ids }
         }
         // else fall through to label-lookup
@@ -195,7 +205,7 @@ export function coerceForPaste(
       if (parts.length === 0) return { ok: true, value: [] }
       const optionIds: string[] = []
       for (const p of parts) {
-        const id = findOptionId(p, options)
+        const id = findOptionKey(p, options)
         if (!id) return { ok: false, reason: 'no-matching-option' }
         optionIds.push(id)
       }
@@ -322,39 +332,22 @@ function parseDateIso(v: unknown): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString()
 }
 
-function findOptionId(
-  query: string,
-  options: Array<{ id?: string; value: string; label: string }>
-): string | null {
-  if (!query || options.length === 0) return null
-  const q = query.trim()
-  const qLower = q.toLowerCase()
-  // Exact match on id or value (case-sensitive), label (case-insensitive).
-  const match = options.find(
-    (o) =>
-      o.id === q ||
-      o.value === q ||
-      o.label === q ||
-      o.label.toLowerCase() === qLower ||
-      o.value.toLowerCase() === qLower
-  )
-  if (!match) return null
-  return match.id ?? match.value
-}
-
 /**
  * Resolve a stored option id to its human label using the field's own option set.
  *
  * Stored select values carry only `optionId`, and ids are minted PER FIELD — two
  * tag columns both offering "Red" hold different ids. Copy must therefore emit the
- * label, or a paste into the other column has nothing to match on. Falls back to
- * the id itself for free-form tag fields, which have no option set.
+ * label, or a paste into the other column has nothing to match on.
+ *
+ * An unresolvable id falls back to the raw stored value rather than being dropped:
+ * the clipboard is plain text with no chip to mute, so the caller owns presentation
+ * (plan D2) and the user at least sees what the cell actually holds.
+ *
+ * @param optionId - The stored option key
+ * @param options - The field's current option list, if it has one
+ * @returns The option's label, or the raw stored id when nothing matches
  */
-export function optionLabel(
-  optionId: string,
-  options: Array<{ id?: string; value: string; label: string }> | undefined
-): string {
-  if (!options || options.length === 0) return optionId
-  const option = options.find((o) => o.id === optionId || o.value === optionId)
-  return option?.label ?? optionId
+export function optionLabel(optionId: string, options: FieldOptionItem[] | undefined): string {
+  const resolved = resolveOptionId(optionId, options ?? [])
+  return resolved.status === 'known' ? resolved.label : resolved.raw
 }

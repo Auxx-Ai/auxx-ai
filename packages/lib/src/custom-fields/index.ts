@@ -17,8 +17,8 @@ export {
   type UniqueViolation,
 } from './check-unique-value'
 export { type CheckUniqueValueTypedInput, checkUniqueValueTyped } from './check-unique-value-typed'
+export { countOptionUsage } from './count-option-usage'
 export { type CreateCustomFieldInput, createCustomField } from './create-field'
-export { CustomFieldService } from './custom-field-service'
 // Export default display options (for converters and seeder)
 export {
   DEFAULT_BOOLEAN_OPTIONS,
@@ -41,6 +41,8 @@ export type {
   EntityNotFoundError,
   FieldValueValidationError,
 } from './errors'
+// Result -> throw bridge for the routers (preserves the `cause` shape)
+export { toCreateFieldError, toFieldError } from './field-error'
 // Export field options types (for converters and seeder)
 export type {
   BooleanFieldOptions,
@@ -64,6 +66,7 @@ export {
 } from './formula-converters'
 // Relationship helper
 export { type GetRelationshipPairInput, getRelationshipPair } from './get-relationship-pair'
+export { notifyCustomFieldChanged } from './notify'
 export { isProtectedField } from './ownership'
 // Note: getCustomFields and getFieldsByIds removed — use org cache via @auxx/lib/cache
 export {

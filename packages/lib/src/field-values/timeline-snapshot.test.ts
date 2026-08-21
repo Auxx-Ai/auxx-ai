@@ -89,3 +89,83 @@ describe('resolveFieldChangeSnapshotPair — multi-value EMAIL field', () => {
     expect((newDisplay as Array<{ text: string }>)[0]?.text).toBe('user0@example.com')
   })
 })
+
+/**
+ * Option fields (SINGLE_SELECT / MULTI_SELECT / TAGS) resolve through the shared
+ * `resolveOptionId`, which matches BOTH keyspaces (`id` and `value`). D5: because
+ * a snapshot is a write-time freeze with no chip to mute, an unresolvable id must
+ * keep falling back to the denormalized `value.label`, then the raw id.
+ */
+
+const tagsField = {
+  id: 'field-tags',
+  type: 'TAGS',
+  options: {
+    options: [
+      { value: 'V1StGXR8_Z5jdHi6Bmy', label: 'Enterprise', color: 'blue' },
+      { id: 'opt-app-1', value: 'legacy-value', label: 'Provisioned', color: 'red' },
+      { value: 'no-color', label: 'Plain' },
+    ],
+  },
+} as unknown as CachedField
+
+const option = (id: string, optionId: string, rest: Record<string, unknown> = {}) =>
+  ({ id, type: 'option', optionId, ...rest }) as TypedFieldValue
+
+describe('resolveFieldChangeSnapshotPair — option fields', () => {
+  it('resolves an option keyed by `value` and freezes its label + color', async () => {
+    const { newDisplay } = await resolveFieldChangeSnapshotPair(ctx, tagsField, null, [
+      option('v1', 'V1StGXR8_Z5jdHi6Bmy'),
+    ])
+
+    expect(newDisplay).toEqual([
+      { fieldType: 'TAGS', optionId: 'V1StGXR8_Z5jdHi6Bmy', label: 'Enterprise', color: 'blue' },
+    ])
+  })
+
+  it('resolves an option keyed by its explicit `id` (app/connector-provisioned)', async () => {
+    const { newDisplay } = await resolveFieldChangeSnapshotPair(ctx, tagsField, null, [
+      option('v1', 'opt-app-1'),
+    ])
+
+    expect(newDisplay).toEqual([
+      { fieldType: 'TAGS', optionId: 'opt-app-1', label: 'Provisioned', color: 'red' },
+    ])
+  })
+
+  it('a stored `value` on an id-keyed option still resolves (tolerant read)', async () => {
+    const { newDisplay } = await resolveFieldChangeSnapshotPair(ctx, tagsField, null, [
+      option('v1', 'legacy-value'),
+    ])
+
+    expect(newDisplay).toEqual([
+      { fieldType: 'TAGS', optionId: 'legacy-value', label: 'Provisioned', color: 'red' },
+    ])
+  })
+
+  it('an unknown id falls back to the denormalized label, then to the raw id (D5)', async () => {
+    const withLabel = await resolveFieldChangeSnapshotPair(ctx, tagsField, null, [
+      option('v1', 'gone-forever', { label: 'Deleted Tag', color: 'green' }),
+    ])
+    expect(withLabel.newDisplay).toEqual([
+      { fieldType: 'TAGS', optionId: 'gone-forever', label: 'Deleted Tag', color: 'green' },
+    ])
+
+    const bare = await resolveFieldChangeSnapshotPair(ctx, tagsField, null, [
+      option('v1', 'gone-forever'),
+    ])
+    expect(bare.newDisplay).toEqual([
+      { fieldType: 'TAGS', optionId: 'gone-forever', label: 'gone-forever' },
+    ])
+  })
+
+  it('a matched option without a color falls back to the denormalized color', async () => {
+    const { newDisplay } = await resolveFieldChangeSnapshotPair(ctx, tagsField, null, [
+      option('v1', 'no-color', { color: 'purple' }),
+    ])
+
+    expect(newDisplay).toEqual([
+      { fieldType: 'TAGS', optionId: 'no-color', label: 'Plain', color: 'purple' },
+    ])
+  })
+})

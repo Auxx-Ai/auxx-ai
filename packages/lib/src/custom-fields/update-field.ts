@@ -3,6 +3,7 @@
 import { database, schema } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
+import { createScopedLogger } from '@auxx/logger'
 import { fromDatabase } from '@auxx/services/shared/utils'
 import {
   type ActorOptions,
@@ -16,14 +17,24 @@ import {
   type SelectOption,
   supportsDisplayOptions,
 } from '@auxx/types/custom-field'
-import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import { and, eq } from 'drizzle-orm'
+import {
+  buildFieldValueKey,
+  type FieldId,
+  parseResourceFieldId,
+  type ResourceFieldId,
+} from '@auxx/types/field'
+import { toRecordId } from '@auxx/types/resource'
+import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { updateSearchTextForInstances } from '../field-values/search-text'
+import { buildOptionIndex, type FieldOptionItem } from '../resources/registry/option-helpers'
 import { checkExistingDuplicates } from './check-unique-value'
 import type { CustomFieldNotFoundError } from './errors'
 import { isProtectedField } from './ownership'
 import type { CustomFieldOptionsInput } from './types'
 import { validateAiOptions } from './validate-ai-options'
+
+const logger = createScopedLogger('custom-fields')
 
 function pickAiOptions(options: unknown): AiOptions | undefined {
   if (!options || typeof options !== 'object' || Array.isArray(options)) return undefined
@@ -39,6 +50,177 @@ function pickSelectOptions(options: unknown): SelectOption[] | undefined {
     if (Array.isArray(inner)) return inner as SelectOption[]
   }
   return undefined
+}
+
+/**
+ * Field types whose stored value is an option key in `FieldValue.optionId`.
+ *
+ * Takes a plain `string`: the stored `CustomField.type` column widens to a
+ * slightly different union than `FieldType` (it still carries the retired
+ * `PHONE` member), so narrowing here would reject the value this function is
+ * always called with.
+ */
+function isOptionBackedType(fieldType: string): boolean {
+  return (
+    fieldType === FieldTypeEnum.SINGLE_SELECT ||
+    fieldType === FieldTypeEnum.MULTI_SELECT ||
+    fieldType === FieldTypeEnum.TAGS
+  )
+}
+
+interface OptionCascadeArgs {
+  organizationId: string
+  fieldId: string
+  /** The field's own def, used to address the per-def realtime record channel. */
+  entityDefinitionId: string | null
+  /** The option list as it was BEFORE the patch. */
+  before: FieldOptionItem[]
+  /** The option list the patch carried. */
+  after: FieldOptionItem[]
+}
+
+/**
+ * Cascade an option-list edit onto the values that reference it.
+ *
+ * Three arms, one pass:
+ * - **removed** — a key that left the list genuinely means "deleted" (option
+ *   identity is minted once and never rewritten), so its `FieldValue` rows go
+ *   with it. Without this every delete leaves values pointing at an id that no
+ *   longer resolves.
+ * - **relabeled** — `search-text.ts` indexes the RESOLVED LABEL, so renaming an
+ *   option leaves every carrying record findable by the old name and not by the
+ *   new one until the corpus is rebuilt. Same seam, same helper, no extra query.
+ * - both arms feed one `searchText` rebuild and one realtime publish.
+ *
+ * The diff matches BOTH keyspaces via {@link buildOptionIndex}: a row written
+ * before an option gained an explicit `id` still holds its `value`, so diffing
+ * on `.value` alone would delete live values.
+ *
+ * Best-effort by design. The `CustomField` row is already committed by the time
+ * this runs, and a retry would compute an EMPTY removed set (stored now equals
+ * the patch), so throwing would both misreport a successful update as failed
+ * and permanently forfeit the cascade. A failure here degrades to today's
+ * behaviour — orphaned values — and is logged.
+ */
+async function cascadeOptionChanges(args: OptionCascadeArgs): Promise<void> {
+  const { organizationId, fieldId, entityDefinitionId } = args
+
+  const beforeIndex = buildOptionIndex(args.before)
+  const afterIndex = buildOptionIndex(args.after)
+
+  const removedKeys: string[] = []
+  const relabeledKeys: string[] = []
+  for (const [key, option] of beforeIndex) {
+    const next = afterIndex.get(key)
+    if (!next) {
+      removedKeys.push(key)
+    } else if ((next.label ?? '') !== (option.label ?? '')) {
+      relabeledKeys.push(key)
+    }
+  }
+
+  if (removedKeys.length === 0 && relabeledKeys.length === 0) return
+
+  try {
+    const affected = new Set<string>()
+
+    // Both statements ride the existing partial index
+    // `FieldValue_lookup_option_idx` on
+    // (organizationId, fieldId, optionId) WHERE optionId IS NOT NULL.
+    if (removedKeys.length > 0) {
+      const deleted = await database
+        .delete(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, organizationId),
+            eq(schema.FieldValue.fieldId, fieldId),
+            inArray(schema.FieldValue.optionId, removedKeys)
+          )
+        )
+        .returning({ entityId: schema.FieldValue.entityId })
+      for (const row of deleted) affected.add(row.entityId)
+    }
+
+    if (relabeledKeys.length > 0) {
+      const touched = await database
+        .selectDistinct({ entityId: schema.FieldValue.entityId })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, organizationId),
+            eq(schema.FieldValue.fieldId, fieldId),
+            inArray(schema.FieldValue.optionId, relabeledKeys)
+          )
+        )
+      for (const row of touched) affected.add(row.entityId)
+    }
+
+    if (affected.size === 0) return
+    const entityIds = [...affected]
+
+    await updateSearchTextForInstances(database, organizationId, entityIds)
+
+    // The record channel is keyed by def; without one there is nowhere to
+    // publish. The rows are already correct either way.
+    if (!entityDefinitionId) return
+
+    // Re-read what SURVIVED so the publish can carry the new value. A
+    // value-less entry is silently dropped by the realtime layer, and a
+    // list-level invalidate does not cover UPDATED rows — so peers would keep
+    // rendering the deleted option until a manual refetch.
+    const remaining = await database
+      .select({
+        id: schema.FieldValue.id,
+        entityId: schema.FieldValue.entityId,
+        optionId: schema.FieldValue.optionId,
+        sortKey: schema.FieldValue.sortKey,
+      })
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.organizationId, organizationId),
+          eq(schema.FieldValue.fieldId, fieldId),
+          inArray(schema.FieldValue.entityId, entityIds)
+        )
+      )
+      .orderBy(schema.FieldValue.sortKey)
+
+    const byEntity = new Map<string, Array<Record<string, unknown>>>()
+    for (const row of remaining) {
+      const bucket = byEntity.get(row.entityId) ?? []
+      bucket.push({
+        id: row.id,
+        entityId: row.entityId,
+        fieldId,
+        sortKey: row.sortKey,
+        type: 'option',
+        optionId: row.optionId ?? '',
+      })
+      byEntity.set(row.entityId, bucket)
+    }
+
+    // All three option-backed types are array-return
+    // (`ARRAY_RETURN_FIELD_TYPES` includes SINGLE_SELECT), so the entry always
+    // carries an array — EMPTY when the cascade removed the record's only
+    // value, which is exactly what lets peers clear the cell.
+    const entries = entityIds.map((entityId) => ({
+      key: buildFieldValueKey(toRecordId(entityDefinitionId, entityId), fieldId as FieldId),
+      value: byEntity.get(entityId) ?? [],
+    }))
+
+    // Lazy-import the realtime barrel: the load-time cycle
+    // (realtime → publish-helpers → cache) breaks vi.mock.
+    const { getRealtimeService, publishFieldValueUpdates } = await import('../realtime')
+    await publishFieldValueUpdates(getRealtimeService(), organizationId, entries)
+  } catch (error) {
+    logger.error('Option cascade failed after custom field update', {
+      error,
+      fieldId,
+      organizationId,
+      removed: removedKeys.length,
+      relabeled: relabeledKeys.length,
+    })
+  }
 }
 
 /**
@@ -206,9 +388,14 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
   const aiWasEnabled = currentAi?.enabled === true
   const aiWillBeEnabled = effectiveAi?.enabled === true
 
-  const nextSelectOptions =
-    (options !== undefined ? pickSelectOptions(options) : undefined) ??
-    (currentField.options as { options?: SelectOption[] } | null | undefined)?.options
+  // The option list the PATCH carried, kept separate from `nextSelectOptions`'
+  // stored fallback: only a patch that actually addressed options may drive the
+  // cascade below.
+  const patchedSelectOptions = options !== undefined ? pickSelectOptions(options) : undefined
+  const storedSelectOptions = (
+    currentField.options as { options?: SelectOption[] } | null | undefined
+  )?.options
+  const nextSelectOptions = patchedSelectOptions ?? storedSelectOptions
 
   if (touchesAi) {
     const aiValidation = await validateAiOptions({
@@ -257,9 +444,8 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
       fieldType === FieldTypeEnum.MULTI_SELECT ||
       fieldType === FieldTypeEnum.TAGS
     ) {
-      const selectOpts = options !== undefined ? pickSelectOptions(options) : undefined
-      if (selectOpts) {
-        fieldOptions.options = selectOpts
+      if (patchedSelectOptions) {
+        fieldOptions.options = patchedSelectOptions
       }
     }
 
@@ -426,6 +612,20 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
         ),
       'clear-ai-status-on-toggle-off'
     )
+  }
+
+  // Options diff. `before` MUST come from the row selected at the top of this
+  // function — never from `getCachedCustomFields`: the org cache is invalidated
+  // AFTER the write, so a cached before-list computes the wrong removed set and
+  // deletes live values.
+  if (patchedSelectOptions && isOptionBackedType(fieldType)) {
+    await cascadeOptionChanges({
+      organizationId,
+      fieldId: id,
+      entityDefinitionId: currentField.entityDefinitionId,
+      before: (storedSelectOptions ?? []) as FieldOptionItem[],
+      after: patchedSelectOptions as FieldOptionItem[],
+    })
   }
 
   return ok(updateResult.value[0] as CustomFieldEntity)

@@ -5,6 +5,7 @@ import type {
   TypedFieldValue,
   TypedFieldValueInput,
 } from '@auxx/types/field-value'
+import { findOptionKey } from '../../resources/registry/option-helpers'
 import type { ConverterOptions, FieldValueConverter, SelectFieldOptions } from './index'
 
 /**
@@ -43,7 +44,9 @@ export const selectConverter: FieldValueConverter = {
     // Handle string value (could be option ID, value, or label)
     if (typeof value === 'string') {
       const stringValue = value.trim()
-      const optionId = findOptionId(stringValue, options?.selectOptions)
+      const optionId = findOptionKey(stringValue, options?.selectOptions ?? [])
+      // Deliberate write-path fallback: an unmatched string is stored as its own
+      // optionId. See plans/custom-fields/orphaned-option-values.md ("Out of scope").
       return { type: 'option', optionId: optionId ?? stringValue }
     }
 
@@ -57,7 +60,7 @@ export const selectConverter: FieldValueConverter = {
         return { type: 'option', optionId: obj.id }
       }
       if ('value' in obj && typeof obj.value === 'string') {
-        const optionId = findOptionId(obj.value, options?.selectOptions)
+        const optionId = findOptionKey(obj.value, options?.selectOptions ?? [])
         return { type: 'option', optionId: optionId ?? obj.value }
       }
     }
@@ -120,30 +123,6 @@ export const selectConverter: FieldValueConverter = {
     // Fall back to option ID
     return applyTruncation(typed.optionId ?? '', displayOptions)
   },
-}
-
-/**
- * Find option ID from a value, label, or id.
- * Options can have stable IDs, or we fall back to the value.
- */
-function findOptionId(
-  value: string,
-  options?: { id?: string; value: string; label: string }[]
-): string | null {
-  if (!options || options.length === 0) {
-    return null
-  }
-
-  const option = options.find(
-    (opt) => opt.value === value || opt.label === value || opt.id === value
-  )
-
-  if (option) {
-    // Prefer stable ID if available, otherwise use value
-    return option.id ?? option.value
-  }
-
-  return null
 }
 
 /**

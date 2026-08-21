@@ -18,6 +18,7 @@ const FIELD = {
     options: [
       { value: 'opt_ent', label: 'Enterprise' },
       { value: 'opt_smb', label: 'Small Business' },
+      { id: 'opt_app_1', value: 'nonprofit', label: 'Nonprofit' },
     ],
   },
 } as unknown as CustomFieldEntity
@@ -49,7 +50,13 @@ describe('mintOrMatchTagOptions — matching', () => {
   })
 
   it('never mints in dry-run mode — an unmatched label passes through verbatim', async () => {
-    expect(await match(['Enterprise', 'Nonprofit'])).toEqual(['opt_ent', 'Nonprofit'])
+    expect(await match(['Enterprise', 'Startup'])).toEqual(['opt_ent', 'Startup'])
+  })
+
+  it('matches on the LABEL but stores `id ?? value` — the write rule', async () => {
+    // `optionKey` prefers an explicit `id`, so an app/connector-provisioned
+    // option resolves to its id even though the folded label is what matched.
+    expect(await match(['nonprofit'])).toEqual(['opt_app_1'])
   })
 
   it('preserves the order the model produced', async () => {

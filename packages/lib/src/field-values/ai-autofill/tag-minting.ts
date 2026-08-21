@@ -7,32 +7,32 @@ import { generateId } from '@auxx/utils/generateId'
 import { and, eq } from 'drizzle-orm'
 import { onCacheEvent } from '../../cache/invalidate'
 import type { FieldOptions } from '../../custom-fields/field-options'
+import {
+  type FieldOptionItem,
+  optionKey,
+  optionMatchKey,
+} from '../../resources/registry/option-helpers'
 
 const logger = createScopedLogger('ai-autofill:tag-minting')
 
-type SelectOptionRow = NonNullable<FieldOptions['options']>[number]
-
 /**
- * Fold a tag label onto its match key. Case- and whitespace-insensitive, so
- * `Enterprise`, `enterprise` and ` Enterprise ` all collapse onto one option.
+ * Index existing options by folded LABEL, first writer winning on a collision.
+ *
+ * Deliberately NOT `buildOptionIndex`: that one is the READ keyspace
+ * (`id` / `value`), and matching an LLM-produced label against a stored key
+ * would collapse a tag onto an unrelated option. The two indexes coexist —
+ * this one decides mint-vs-match, `buildOptionIndex` resolves what got stored.
+ *
+ * @param options - The field's current option list
+ * @returns Folded label → the key a `FieldValue` would store ({@link optionKey})
  */
-function matchKey(label: string): string {
-  return label.trim().replace(/\s+/g, ' ').toLowerCase()
-}
-
-/** The id a FieldValue stores for an option row: `id` when present, else `value`. */
-function optionId(option: SelectOptionRow): string | undefined {
-  return option.id ?? option.value
-}
-
-/** Index existing options by match key, first writer winning on a collision. */
-function indexByMatchKey(options: SelectOptionRow[]): Map<string, string> {
+function indexByMatchKey(options: FieldOptionItem[]): Map<string, string> {
   const index = new Map<string, string>()
   for (const option of options) {
-    const id = optionId(option)
+    const id = optionKey(option)
     const label = option.label ?? option.value
     if (!id || !label) continue
-    const key = matchKey(label)
+    const key = optionMatchKey(label)
     if (!index.has(key)) index.set(key, id)
   }
   return index
@@ -46,7 +46,7 @@ function cleanLabels(labels: unknown[]): string[] {
     if (typeof raw !== 'string') continue
     const label = raw.trim().replace(/\s+/g, ' ')
     if (label === '') continue
-    const key = matchKey(label)
+    const key = optionMatchKey(label)
     if (seen.has(key)) continue
     seen.add(key)
     out.push(label)
@@ -89,7 +89,7 @@ export async function mintOrMatchTagOptions(params: {
   // definition has no business editing the field it is previewing.
   if (dryRun) {
     const index = indexByMatchKey(((field.options ?? {}) as FieldOptions).options ?? [])
-    return wanted.map((label) => index.get(matchKey(label)) ?? label)
+    return wanted.map((label) => index.get(optionMatchKey(label)) ?? label)
   }
 
   const { ids, minted } = await database.transaction(async (tx) => {
@@ -108,18 +108,18 @@ export async function mintOrMatchTagOptions(params: {
     const current = ((row?.options ?? {}) as FieldOptions).options ?? []
     const index = indexByMatchKey(current)
 
-    const appended: SelectOptionRow[] = []
+    const appended: FieldOptionItem[] = []
     const resolved: string[] = []
     for (const label of wanted) {
-      const key = matchKey(label)
+      const key = optionMatchKey(label)
       const existing = index.get(key)
       if (existing) {
         resolved.push(existing)
         continue
       }
       // Same shape the human tag picker mints: `{ label, value: generateId() }`
-      // with no separate `id`, so `optionId` resolves through `value`.
-      const option: SelectOptionRow = { value: generateId(), label }
+      // with no separate `id`, so `optionKey` resolves through `value`.
+      const option: FieldOptionItem = { value: generateId(), label }
       appended.push(option)
       index.set(key, option.value)
       resolved.push(option.value)

@@ -1,8 +1,18 @@
 // ~/server/api/routers/customField.ts
 
 import { FieldType } from '@auxx/database/enums'
-import { getAllCachedCustomFields } from '@auxx/lib/cache'
-import { CustomFieldService, type FormulaNode } from '@auxx/lib/custom-fields'
+import { getAllCachedCustomFields, getCachedCustomFields } from '@auxx/lib/cache'
+import {
+  countOptionUsage,
+  createCustomField,
+  deleteCustomField,
+  type FormulaNode,
+  getRelationshipPair,
+  notifyCustomFieldChanged,
+  toCreateFieldError,
+  toFieldError,
+  updateCustomField,
+} from '@auxx/lib/custom-fields'
 import { previewFieldValue } from '@auxx/lib/field-values'
 import {
   fieldOptionsUnionSchema,
@@ -22,12 +32,7 @@ export const customFieldRouter = createTRPCRouter({
   getByEntityDefinition: protectedProcedure
     .input(z.object({ entityDefinitionId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const service = new CustomFieldService(
-        ctx.session.organizationId,
-        ctx.session.user.id,
-        ctx.db
-      )
-      return await service.getAllFields(input.entityDefinitionId)
+      return await getCachedCustomFields(ctx.session.organizationId, input.entityDefinitionId)
     }),
 
   /**
@@ -42,12 +47,10 @@ export const customFieldRouter = createTRPCRouter({
         .optional()
     )
     .query(async ({ ctx, input }) => {
-      const service = new CustomFieldService(
+      return await getCachedCustomFields(
         ctx.session.organizationId,
-        ctx.session.user.id,
-        ctx.db
+        input?.entityDefinitionId ?? 'contact'
       )
-      return await service.getAllFields(input?.entityDefinitionId ?? 'contact')
     }),
 
   /**
@@ -79,9 +82,13 @@ export const customFieldRouter = createTRPCRouter({
       // Def administration (§9.1): managing a def's fields requires `Full`/`admin`
       // on that def (OWNER/ADMIN or an explicit `admin` type-grant).
       ctx.capabilities.assertAdministerDef(input.entityDefinitionId)
-      const { organizationId, userId } = ctx.session
-      const service = new CustomFieldService(organizationId, userId, ctx.db)
-      const created = await service.createField(input)
+      const { organizationId } = ctx.session
+      const result = await createCustomField({ ...input, organizationId })
+      // The frontend reads `cause.code` off this error to tell a duplicate name
+      // apart from a validation failure — keep the shape.
+      if (result.isErr()) throw toCreateFieldError(result.error)
+      const created = result.value
+      await notifyCustomFieldChanged(organizationId, input.entityDefinitionId, 'created')
       await recordAuditFromCtx(ctx, {
         category: 'settings',
         action: 'customField.created',
@@ -125,12 +132,13 @@ export const customFieldRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       // Def administration (§9.1): the def is encoded in the resourceFieldId
       // (`{def}:{field}`); require `Full`/`admin` on it.
-      ctx.capabilities.assertAdministerDef(
-        parseResourceFieldId(input.resourceFieldId).entityDefinitionId
-      )
-      const { organizationId, userId } = ctx.session
-      const service = new CustomFieldService(organizationId, userId, ctx.db)
-      const updated = await service.updateField(input)
+      const { entityDefinitionId } = parseResourceFieldId(input.resourceFieldId)
+      ctx.capabilities.assertAdministerDef(entityDefinitionId)
+      const { organizationId } = ctx.session
+      const result = await updateCustomField({ ...input, organizationId })
+      if (result.isErr()) throw toFieldError(result.error)
+      const updated = result.value
+      await notifyCustomFieldChanged(organizationId, entityDefinitionId, 'updated')
       await recordAuditFromCtx(ctx, {
         category: 'settings',
         action: 'customField.updated',
@@ -141,18 +149,46 @@ export const customFieldRouter = createTRPCRouter({
     }),
 
   /**
+   * How many live records carry each option of a select/tag field.
+   *
+   * Feeds the "used on N records" warning both option editors show before a
+   * delete, so it is deliberately UNSCOPED by record access — an admin about to
+   * destroy an option must see the true blast radius, not their own slice.
+   */
+  countOptionUsage: capabilityProcedure
+    .input(z.object({ resourceFieldId: resourceFieldIdSchema }))
+    .query(async ({ ctx, input }) => {
+      // Same gate as `update`: managing a def's fields requires `Full`/`admin`
+      // on the def encoded in the resourceFieldId.
+      ctx.capabilities.assertAdministerDef(
+        parseResourceFieldId(input.resourceFieldId).entityDefinitionId
+      )
+      const result = await countOptionUsage(
+        ctx.db,
+        ctx.session.organizationId,
+        input.resourceFieldId
+      )
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
    * Delete a custom field
    */
   delete: capabilityProcedure
     .input(z.object({ resourceFieldId: resourceFieldIdSchema }))
     .mutation(async ({ ctx, input }) => {
       // Def administration (§9.1): require `Full`/`admin` on the field's def.
-      ctx.capabilities.assertAdministerDef(
-        parseResourceFieldId(input.resourceFieldId).entityDefinitionId
-      )
-      const { organizationId, userId } = ctx.session
-      const service = new CustomFieldService(organizationId, userId, ctx.db)
-      const deleted = await service.deleteField(input.resourceFieldId)
+      const { entityDefinitionId } = parseResourceFieldId(input.resourceFieldId)
+      ctx.capabilities.assertAdministerDef(entityDefinitionId)
+      const { organizationId } = ctx.session
+      const result = await deleteCustomField({
+        resourceFieldId: input.resourceFieldId,
+        organizationId,
+      })
+      if (result.isErr()) throw toFieldError(result.error)
+      const deleted = result.value
+      await notifyCustomFieldChanged(organizationId, entityDefinitionId, 'deleted')
       await recordAuditFromCtx(ctx, {
         category: 'settings',
         action: 'customField.deleted',
@@ -168,9 +204,13 @@ export const customFieldRouter = createTRPCRouter({
   getRelationshipPair: protectedProcedure
     .input(z.object({ resourceFieldId: resourceFieldIdSchema }))
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      const service = new CustomFieldService(organizationId, userId, ctx.db)
-      return await service.getRelationshipPair(input.resourceFieldId)
+      const { organizationId } = ctx.session
+      const result = await getRelationshipPair({
+        resourceFieldId: input.resourceFieldId,
+        organizationId,
+      })
+      if (result.isErr()) throw toFieldError(result.error)
+      return result.value
     }),
 
   /**
