@@ -189,25 +189,52 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
   // Validate options.ai (if the caller is touching it). Uses the caller's
   // new options when present, else falls back to what's already stored —
   // so re-saving a field without touching AI doesn't re-validate it.
+  //
+  // 🛑 A bare `SelectOption[]` is an options-ONLY patch. The record-side tag
+  // picker sends exactly that on every create / rename / recolor / reorder /
+  // delete, and it says nothing about AI. Reading it as "the caller omitted
+  // `ai`, so clear it" silently destroyed the field's entire AI config the
+  // first time anyone typed a new tag on a record — and cleared the `aiStatus`
+  // marker on every one of its values on the way out. Only an object-shaped
+  // patch addresses `ai`; there it stays authoritative (absent or
+  // `enabled: false` both strip the marker).
+  const touchesAi = options !== undefined && !Array.isArray(options)
   const incomingAi = pickAiOptions(options)
   const currentAi = (currentField.options as { ai?: AiOptions } | null | undefined)?.ai
-  const effectiveAi = options !== undefined ? incomingAi : currentAi
+  const effectiveAi = touchesAi ? incomingAi : currentAi
   const aiWasEnabled = currentAi?.enabled === true
   const aiWillBeEnabled = effectiveAi?.enabled === true
 
-  if (options !== undefined) {
-    const selectOpts =
-      pickSelectOptions(options) ??
-      (currentField.options as { options?: SelectOption[] } | null | undefined)?.options
+  const nextSelectOptions =
+    (options !== undefined ? pickSelectOptions(options) : undefined) ??
+    (currentField.options as { options?: SelectOption[] } | null | undefined)?.options
+
+  if (touchesAi) {
     const aiValidation = await validateAiOptions({
       organizationId,
       type: fieldType,
       ai: incomingAi,
-      selectOptions: selectOpts,
+      selectOptions: nextSelectOptions,
       selfFieldId: id,
     })
     if (aiValidation.isErr()) {
       return aiValidation
+    }
+  } else if (options !== undefined && aiWillBeEnabled) {
+    // An options-only patch can still strand the AI config it preserves: an
+    // enum-backed schema over an empty option list is unsatisfiable. Only the
+    // count rule is re-checked here — the prompt was already validated when it
+    // was written, and re-running the AI-sibling scan would let an unrelated
+    // pre-existing conflict block someone from simply typing a tag.
+    const constrained =
+      fieldType === FieldTypeEnum.SINGLE_SELECT ||
+      fieldType === FieldTypeEnum.MULTI_SELECT ||
+      (fieldType === FieldTypeEnum.TAGS && effectiveAi?.allowNewOptions !== true)
+    if (constrained && (!nextSelectOptions || nextSelectOptions.length === 0)) {
+      return err({
+        code: 'VALIDATION_ERROR' as const,
+        message: 'AI-enabled select fields require at least one option',
+      })
     }
   }
 
@@ -292,10 +319,11 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
       Object.assign(fieldOptions, mergeDisplayOptions(fieldType, options, {}))
     }
 
-    // Handle options.ai: when caller provides options, incomingAi is the
-    // source of truth (undefined or enabled=false both strip the marker).
-    // When caller doesn't touch options at all, preserve whatever was stored.
-    if (options !== undefined) {
+    // Handle options.ai: when the caller sends an object-shaped patch,
+    // incomingAi is the source of truth (undefined or enabled=false both strip
+    // the marker). An options-only array patch and a call that doesn't touch
+    // options at all both preserve whatever was stored — see `touchesAi`.
+    if (touchesAi) {
       if (incomingAi) {
         fieldOptions.ai = incomingAi
       } else {

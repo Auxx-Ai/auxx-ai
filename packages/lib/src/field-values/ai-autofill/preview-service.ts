@@ -11,9 +11,11 @@ import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
 import { extractFieldIdsFromString, formulaToString } from '../../custom-fields/formula-converters'
 import { BadRequestError } from '../../errors'
 import { createFieldValueContext } from '../field-value-helpers'
+import { getOrgCurrencyCode } from '../org-currency'
 import { buildJsonSchema } from './json-schema-builder'
 import { buildPrompt } from './prompt-builder'
 import { resolveReferences } from './reference-resolver'
+import { type AiFieldContext, normalizeGeneratedValue } from './type-specs'
 
 const logger = createScopedLogger('ai-autofill:preview-service')
 
@@ -78,27 +80,33 @@ export async function previewFieldValue(params: {
   const fieldKeys = extractFieldIdsFromString(promptStr)
   const resolved = await resolveReferences(ctx, { recordId: sampleRecordId, fieldKeys })
 
-  // 2. Build final prompts
+  // 2. Same org rung the worker resolves, so the preview's prompt names the
+  //    same denomination the committed generation will.
+  const fieldContext: AiFieldContext =
+    type === 'CURRENCY' ? { orgCurrencyCode: await getOrgCurrencyCode(orgId) } : {}
+
+  // 3. Build final prompts
   const { resolvedPrompt, systemPrompt, truncated } = buildPrompt({
     promptJson,
     resolved,
     field: syntheticField,
+    context: fieldContext,
   })
   if (truncated) {
     logger.warn('AI preview prompt truncated at 32k chars', { sampleRecordId })
   }
 
-  // 3. Build output schema from type + options
-  const jsonSchema = buildJsonSchema(syntheticField)
+  // 4. Build output schema from type + options
+  const jsonSchema = buildJsonSchema(syntheticField, fieldContext)
 
-  // 4. Resolve default LLM for this org
+  // 5. Resolve default LLM for this org
   const systemModels = new SystemModelService(database, orgId)
   const def = await systemModels.getDefault(ModelType.LLM)
   if (!def) {
     throw new BadRequestError('No default LLM configured for this organization')
   }
 
-  // 5. Invoke the orchestrator. Quota + AiUsage logging handled inside.
+  // 6. Invoke the orchestrator. Quota + AiUsage logging handled inside.
   const orchestrator = new LLMOrchestrator(new UsageTrackingService(database), database)
   const response = await orchestrator.invoke({
     model: def.model,
@@ -119,9 +127,22 @@ export async function previewFieldValue(params: {
     throw new BadRequestError('AI response did not match the expected structured output shape')
   }
 
+  // 7. Same normalize step the worker runs — but `dryRun`, so a normalizer
+  //    that would write outside `FieldValue` (open TAGS minting) stays inert:
+  //    previewing an unsaved field definition must not grow its taxonomy.
+  const value = await normalizeGeneratedValue(
+    (structured as { value: unknown }).value,
+    syntheticField,
+    {
+      ...fieldContext,
+      organizationId: orgId,
+      dryRun: true,
+    }
+  )
+
   return {
     resolvedPrompt,
-    value: (structured as { value: unknown }).value,
+    value,
     truncated,
     tokens: response.usage
       ? {

@@ -531,7 +531,16 @@ export function CustomFieldForm({
       entityDefinitionId: effectiveEntityDefId,
     }
 
-    // Add type-specific options using format helpers
+    // Add type-specific options using format helpers.
+    //
+    // 🛑 TAGS is deliberately NOT here, even though it is a select type. This
+    // form renders no OptionsEditor for it (tags are grown from the record
+    // picker, not configured here), so `selectOptions` is only the snapshot
+    // taken when the dialog opened. Writing that back would clobber every tag
+    // added since — including ones `mintOrMatchTagOptions` appended under a row
+    // lock precisely to avoid a lost update. TAGS falls through to the `{ ai }`
+    // patch below, and the server preserves the stored option list because the
+    // patch never mentions it.
     if (values.type === FieldType.SINGLE_SELECT || values.type === FieldType.MULTI_SELECT) {
       const aiBlock = isAiEligible(values.type) ? formatAiOptions(aiState) : undefined
       submitObj.options = aiBlock ? { options: selectOptions, ai: aiBlock } : selectOptions
@@ -570,10 +579,11 @@ export function CustomFieldForm({
       submitObj.options = { ...submitObj.options, ...formattedDisplayOptions }
     }
 
-    // Merge AI options for AI-eligible non-SELECT types. SELECT types fold
-    // the ai block into `{ options, ai }` above since they also carry a
-    // choice list. When enabled=false, formatAiOptions returns undefined
-    // so we naturally skip / drop the key on toggle-off.
+    // Merge AI options for the remaining AI-eligible types. SINGLE_SELECT and
+    // MULTI_SELECT fold the ai block into `{ options, ai }` above since they
+    // also carry an editable choice list; TAGS lands here on purpose (see the
+    // note above). When enabled=false, formatAiOptions returns undefined so we
+    // naturally skip / drop the key on toggle-off.
     if (
       isAiEligible(values.type) &&
       values.type !== FieldType.SINGLE_SELECT &&
@@ -1055,7 +1065,8 @@ export function CustomFieldForm({
                 fieldType={selectedType}
                 fieldOptions={
                   selectedType === FieldType.SINGLE_SELECT ||
-                  selectedType === FieldType.MULTI_SELECT
+                  selectedType === FieldType.MULTI_SELECT ||
+                  selectedType === FieldType.TAGS
                     ? { options: selectOptions }
                     : undefined
                 }

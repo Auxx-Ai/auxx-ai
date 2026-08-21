@@ -157,25 +157,48 @@ export const aiOptionsSchema = z.object({
   enabled: z.boolean(),
   prompt: richReferencePromptSchema,
   triggerOn: aiTriggerOnSchema.default('manual'),
+  /**
+   * TAGS only. When true the model may invent tag labels and the commit path
+   * mints the ones that do not already exist; when absent/false it must pick
+   * from the field's existing options. Default OFF — "pick from my taxonomy"
+   * and "invent tags" are different features, and a curated tag set is exactly
+   * what you do not want an LLM growing behind your back.
+   */
+  allowNewOptions: z.boolean().optional(),
 })
 
 export type AiOptions = z.infer<typeof aiOptionsSchema>
 
 /**
- * Field types that accept an `options.ai` block. Must be kept in sync with
- * the `canAiGenerate` flag on `fieldTypeOptions` in
- * `packages/lib/src/custom-fields/types.ts` — both represent the same
- * whitelist, split only because services cannot import from lib.
+ * Field types that accept an `options.ai` block.
+ *
+ * 🛑 Exactly one other place knows this list: `AI_TYPE_SPECS` in
+ * `packages/lib/src/field-values/ai-autofill/type-specs.ts`, which holds the
+ * per-type schema / prompt / normalize contract. The two are joined by an
+ * exact-set-equality test, so they cannot drift.
+ *
+ * The split exists because `@auxx/services` gates field saves on this set and
+ * cannot import from `@auxx/lib`, while the specs need lib-only machinery
+ * (org currency resolution, tag minting). A plain name set is all services
+ * needs, so a plain name set is all that lives here.
  */
 export const AI_ELIGIBLE_FIELD_TYPES = new Set<string>([
   FieldTypeEnum.TEXT,
+  FieldTypeEnum.RICH_TEXT,
   FieldTypeEnum.NUMBER,
+  FieldTypeEnum.CURRENCY,
   FieldTypeEnum.CHECKBOX,
   FieldTypeEnum.DATE,
+  FieldTypeEnum.DATETIME,
+  FieldTypeEnum.TIME,
   FieldTypeEnum.URL,
   FieldTypeEnum.EMAIL,
+  FieldTypeEnum.PHONE_INTL,
+  FieldTypeEnum.NAME,
+  FieldTypeEnum.ADDRESS_STRUCT,
   FieldTypeEnum.SINGLE_SELECT,
   FieldTypeEnum.MULTI_SELECT,
+  FieldTypeEnum.TAGS,
 ])
 
 /** Whether a field type can carry an `options.ai` block. */

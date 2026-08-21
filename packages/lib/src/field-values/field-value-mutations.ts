@@ -2235,12 +2235,22 @@ export async function setValueWithBuiltIn(
       // Routed through buildPublishEntry like the set branch below — this
       // publishes `[]` (not `null`) for array-return fields, matching
       // setBulkValues' "cleared" signal (see helper doc).
-      const entry = buildPublishEntry({
-        publishRecordId,
-        fieldId: fieldId as FieldId,
-        field,
-        values: [],
-      })
+      //
+      // `aiStatus: null` is load-bearing, not decoration. `deleteValue` drops
+      // the row and with it the persisted marker, but the client only clears
+      // its AI state when the entry CARRIES an `aiStatus` (`use-resource-sync`
+      // skips `undefined`). Without it, a nullable generation that declines
+      // leaves the cell spinning on `generating` until a reload.
+      const entry: FieldValueUpdateEntry = {
+        ...buildPublishEntry({
+          publishRecordId,
+          fieldId: fieldId as FieldId,
+          field,
+          values: [],
+        }),
+        aiStatus: null,
+        aiMetadata: null,
+      }
       if (collectRealtime) {
         collectRealtime.push(entry)
       } else {

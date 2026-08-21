@@ -4,19 +4,46 @@ import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { CustomFieldEntity } from '@auxx/database/types'
 import type { FieldOptions } from '../../custom-fields/field-options'
 import { BadRequestError } from '../../errors'
+import {
+  type AiFieldContext,
+  allowsNewTagOptions,
+  getAiTypeSpec,
+  type JsonSchema,
+  selectOptionIds,
+} from './type-specs'
+
+export type { JsonSchema } from './type-specs'
 
 /**
- * Permissive JSON-schema shape — the LLM orchestrator passes this through
- * to the provider verbatim, so we only need enough typing to construct it.
+ * Widen a value schema to admit `null`, the strict-mode form of "the model may
+ * decline". `strict: true` forbids omitting `value`, so a nullable union is the
+ * only way a provider-enforced schema can express "no confident answer" — and
+ * without it the model is structurally unable to do anything but fabricate.
  */
-export type JsonSchema = Record<string, unknown>
+function applyNullable(valueSchema: JsonSchema): JsonSchema {
+  const next: JsonSchema = { ...valueSchema }
+
+  const type = next.type
+  if (typeof type === 'string') {
+    next.type = [type, 'null']
+  } else if (Array.isArray(type) && !type.includes('null')) {
+    next.type = [...type, 'null']
+  }
+
+  // An `enum` is exhaustive under strict mode, so `null` has to join it too.
+  if (Array.isArray(next.enum) && !next.enum.includes(null)) {
+    next.enum = [...next.enum, null]
+  }
+
+  return next
+}
 
 /**
  * Wrap a value schema in the `{ value: <schema> }` envelope the orchestrator's
  * `structuredOutput` path expects. Parsing the LLM's response then yields
  * `{ value: <generated value> }`, which `generation-service` unwraps.
  */
-function wrap(valueSchema: JsonSchema, description?: string): JsonSchema {
+function wrap(valueSchema: JsonSchema, opts?: { nullable?: boolean }): JsonSchema {
   return {
     name: 'ai_autofill_result',
     strict: true,
@@ -25,20 +52,21 @@ function wrap(valueSchema: JsonSchema, description?: string): JsonSchema {
       additionalProperties: false,
       required: ['value'],
       properties: {
-        value: description ? { ...valueSchema, description } : valueSchema,
+        value: opts?.nullable ? applyNullable(valueSchema) : valueSchema,
       },
     },
   }
 }
 
 /**
- * Build the `response_format.json_schema` for a field's native type.
- * The envelope is `{ value: T }` — the generation service reads `parsed.value`.
+ * Build the `response_format.json_schema` for a field's native type, from the
+ * type's entry in `AI_TYPE_SPECS`. The envelope is `{ value: T }` — the
+ * generation service reads `parsed.value`.
  *
  * Throws `BadRequestError` for non-AI-eligible types (caller should have
  * gated via `isAiEligible` before reaching here).
  */
-export function buildJsonSchema(field: CustomFieldEntity): JsonSchema {
+export function buildJsonSchema(field: CustomFieldEntity, ctx?: AiFieldContext): JsonSchema {
   const options = (field.options ?? {}) as FieldOptions
 
   // Multi-value scalar fields are gated off autofill entirely (`isAiField`):
@@ -48,51 +76,31 @@ export function buildJsonSchema(field: CustomFieldEntity): JsonSchema {
     throw new BadRequestError('AI generation is not supported for multi-value fields')
   }
 
-  switch (field.type) {
-    case FieldTypeEnum.TEXT:
-    case FieldTypeEnum.URL:
-    case FieldTypeEnum.EMAIL:
-      return wrap({ type: 'string' })
-
-    case FieldTypeEnum.NUMBER:
-      return wrap({ type: 'number' })
-
-    case FieldTypeEnum.CHECKBOX:
-      return wrap({ type: 'boolean' })
-
-    case FieldTypeEnum.DATE:
-      return wrap({ type: 'string', format: 'date' })
-
-    case FieldTypeEnum.SINGLE_SELECT: {
-      const ids = selectOptionIds(options)
-      if (ids.length === 0) {
-        throw new BadRequestError('SINGLE_SELECT field has no options to choose from')
-      }
-      return wrap({ type: 'string', enum: ids })
-    }
-
-    case FieldTypeEnum.MULTI_SELECT: {
-      const ids = selectOptionIds(options)
-      if (ids.length === 0) {
-        throw new BadRequestError('MULTI_SELECT field has no options to choose from')
-      }
-      return wrap({
-        type: 'array',
-        items: { type: 'string', enum: ids },
-      })
-    }
-
-    default:
-      throw new BadRequestError(`AI generation is not supported for field type ${field.type}`)
+  const spec = getAiTypeSpec(field.type)
+  if (!spec) {
+    throw new BadRequestError(`AI generation is not supported for field type ${field.type}`)
   }
+
+  assertEnumerable(field, options)
+
+  return wrap(spec.schema(field, ctx), { nullable: spec.nullable })
 }
 
 /**
- * Pull option ids out of a SELECT field's options. Falls back to `value`
- * when an option was defined without a stable `id` (older data shapes).
+ * Reject enum-backed types whose option list is empty before the schema is
+ * built — a `{ enum: [] }` is a schema no output can satisfy, so the provider
+ * error would surface as an opaque generation failure instead of a clear
+ * "this field has no options" message.
+ *
+ * An open TAGS field (`ai.allowNewOptions`) has no enum, so it is exempt.
  */
-function selectOptionIds(options: FieldOptions): string[] {
-  const opts = options.options
-  if (!Array.isArray(opts)) return []
-  return opts.map((o) => o.id ?? o.value).filter((id): id is string => Boolean(id))
+function assertEnumerable(field: CustomFieldEntity, options: FieldOptions): void {
+  const needsOptions =
+    field.type === FieldTypeEnum.SINGLE_SELECT ||
+    field.type === FieldTypeEnum.MULTI_SELECT ||
+    (field.type === FieldTypeEnum.TAGS && !allowsNewTagOptions(field))
+
+  if (needsOptions && selectOptionIds(options).length === 0) {
+    throw new BadRequestError(`${field.type} field has no options to choose from`)
+  }
 }
