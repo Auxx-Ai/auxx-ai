@@ -59,4 +59,16 @@ describe('mergePending', () => {
     const out = mergePending([clear('customer')], [set('customer', 'm', 'c2')], new Set())
     expect(out).toEqual([set('customer', 'm', 'c2')])
   })
+
+  // REGRESSION GUARD (v10 relationship-pass-idempotency): a non-clear edge is
+  // re-queued on EVERY run even when it is already linked and unchanged. That looks
+  // like the obvious place to stop the churn — it is not. `linkedRelations` records
+  // WHICH field carries an edge, never WHAT it points at, so suppressing here would
+  // reintroduce the stale-target bug the merge comment warns about (a target that
+  // moves upstream would never be re-resolved). Suppression belongs in the
+  // relationship pass, which compares against the stored `FieldValue`.
+  it("re-queues an already-linked, unchanged set edge — suppression is the PASS's job", () => {
+    const out = mergePending([], [set('customer', 'm', 'c1')], new Set(['customer']))
+    expect(out).toEqual([set('customer', 'm', 'c1')])
+  })
 })
