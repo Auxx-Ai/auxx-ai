@@ -65,11 +65,20 @@ export function getImportableFields(
     fields.push(...identifierFields)
   }
 
-  // 2. Add creatable scalar fields (excluding hidden system fields)
+  // 2. Add creatable scalar fields (excluding hidden system fields).
+  //
+  // Keys already emitted by the identifier pass are skipped: an identifier is
+  // usually creatable too (SKU, Ticket #, Email), so without this the same key
+  // is pushed twice — once as `group: 'identifier'` and once as
+  // `'system'`/`'custom'` — and the picker lists it under both headings. The
+  // identifier entry wins because it carries `isIdentifier`, which is what the
+  // picker groups on and what the identifier selector reads.
+  const emittedKeys = new Set(fields.map((f) => f.key))
   const scalarFields = resource.fields
     .filter(
       (field) => field.capabilities.creatable && !field.capabilities.hidden && !field.relationship
     )
+    .filter((field) => !emittedKeys.has(getFieldOutputKey(field)))
     .map((field) => {
       const isCustomField = !field.isSystem
       return {

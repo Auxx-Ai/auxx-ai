@@ -923,6 +923,28 @@ export class ResourceRegistryService {
             ...dbField.capabilities,
             hidden: staticField.capabilities.hidden,
           },
+          // Whether a field can MATCH an existing record on import is a product
+          // fact, not a per-org one — so the static registry may promote it.
+          //
+          // `mapCustomFieldsToResourceFields` derives `isIdentifier` from
+          // `CustomField.isUnique` alone, which fuses two different things: an
+          // enforced-unique WRITE CONSTRAINT and an import LOOKUP KEY. A field can
+          // be a fine match key without the constraint being switched on, and the
+          // seeder drifted — orgs created before 2026-04-08 carry
+          // `part_sku.isUnique = false` while their SKUs are de-facto unique. In
+          // those orgs the import wizard offered no usable identifier at all, so
+          // re-importing a parts file duplicated every row instead of updating it.
+          //
+          // Coalesced, never overridden: the registry can PROMOTE a field to an
+          // identifier, but a DB row that is genuinely unique keeps its identifier
+          // status even when the registry is silent. Uniqueness still implies a
+          // valid match key; this only stops the absence of it from denying one.
+          //
+          // Deliberately NOT applied to `isUnique`/`capabilities.unique`:
+          // enforcement reads the raw CustomField rows (`validateUniqueFields` →
+          // `getCachedCustomFields`), so promoting here cannot make an existing
+          // write start throwing on data that already has duplicates.
+          isIdentifier: staticField.isIdentifier ?? dbField.isIdentifier,
           // Merge relationship config — DB object exists but inverseResourceFieldId may be null
           // when the seeder linker couldn't resolve it. Fall back to static definition.
           relationship: baseRelationship

@@ -40,11 +40,17 @@ export function getIdentifiableFields(resource: Resource): ImportableField[] {
         id: isCustomField ? field.id : undefined,
         label: outputKey === 'id' ? 'Record ID' : field.label,
         type: field.type,
-        required: false,
+        // `required` and `options` ride along because a field can be BOTH an
+        // identifier and an ordinary mapping target (a required SKU, a select).
+        // `getImportableFields` now emits one entry per key and keeps this one,
+        // so anything omitted here is lost rather than picked up by the scalar
+        // pass — as `required: false` and a missing option list used to be.
+        required: field.capabilities.required ?? false,
         isRelation: !!field.relationship,
         isIdentifier: true,
         multi: !field.relationship && field.options?.multi === true,
         group: 'identifier' as const,
+        options: field.options?.options,
       }
     })
 }
