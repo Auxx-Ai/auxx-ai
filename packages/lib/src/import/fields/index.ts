@@ -20,4 +20,11 @@ export {
   getRequiredFields,
   type ImportableField,
 } from './get-importable-fields'
+export {
+  getIdentifierEligibility,
+  type IdentifierEligibility,
+  type IdentifierTier,
+  sortByIdentifierPreference,
+  TIER_2_IDENTIFIER_NOTE,
+} from './identifier-eligibility'
 export { getValidResolutionTypes, suggestResolutionType } from './suggest-resolution-type'

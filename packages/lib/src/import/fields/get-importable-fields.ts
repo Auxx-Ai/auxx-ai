@@ -8,6 +8,7 @@ import {
 import { getFieldOutputKey } from '../../resources/registry/field-types'
 import type { Resource } from '../../resources/registry/types'
 import { getIdentifiableFields } from './get-identifiable-fields'
+import { getIdentifierEligibility, type IdentifierTier } from './identifier-eligibility'
 
 /** Field group type for organizing fields in the UI */
 export type FieldGroup = 'identifier' | 'system' | 'custom' | 'relationship'
@@ -34,6 +35,20 @@ export interface ImportableField {
     }
   }
   options?: SelectOption[]
+  /**
+   * Present ⇔ this field may be flagged as an identifier as (part of) the import match key.
+   * `1` = Recommended, `2` = Available. Absent = never offer the toggle.
+   *
+   * Independent of `group`. `group: 'identifier'` is the picker HEADING and
+   * carries tier-1 fields only, promoting every eligible tier-2 string into
+   * that heading would file most of a resource's fields under "Identifier".
+   * A tier-2 field keeps its natural group and still carries this tier.
+   */
+  identifierTier?: IdentifierTier
+  /** `true` for RELATION fields: usable only inside a COMPOSITE key, never alone. */
+  identifierCompositeOnly?: boolean
+  /** Inline caveat the picker renders next to a tier-2 field. */
+  identifierNote?: string
 }
 
 /** Options for getImportableFields */
@@ -59,10 +74,25 @@ export function getImportableFields(
   const { includeIdentifiers = false, includeRelationships = true } = options
   const fields: ImportableField[] = []
 
-  // 1. Add identifier fields if requested
+  // 1. Add identifier fields if requested.
+  //
+  // Only TIER 1 goes into the `identifier` GROUP. `getIdentifiableFields` now
+  // grades rather than restricts, so it also returns every eligible non-unique
+  // string, url, number…, filing all of those under the picker's "Identifier"
+  // heading would move most of a resource's fields out of System/Custom. Tier-2
+  // fields stay in their natural group and carry `identifierTier: 2` instead,
+  // which is what the identity toggle actually reads.
+  //
+  // Composite-only (RELATION) entries are excluded from the group too. They
+  // stay in the `relationship` group, which does NOT dedupe against this pass,
+  // so promoting one here would list it under two headings, the exact duplicate
+  // #1788 removed for scalars.
   if (includeIdentifiers) {
-    const identifierFields = getIdentifiableFields(resource)
-    fields.push(...identifierFields)
+    fields.push(
+      ...getIdentifiableFields(resource).filter(
+        (f) => f.identifierTier === 1 && !f.identifierCompositeOnly
+      )
+    )
   }
 
   // 2. Add creatable scalar fields (excluding hidden system fields).
@@ -81,6 +111,7 @@ export function getImportableFields(
     .filter((field) => !emittedKeys.has(getFieldOutputKey(field)))
     .map((field) => {
       const isCustomField = !field.isSystem
+      const eligibility = getIdentifierEligibility(field)
       return {
         key: getFieldOutputKey(field),
         id: isCustomField ? field.id : undefined,
@@ -92,6 +123,9 @@ export function getImportableFields(
         multi: field.options?.multi === true,
         group: (isCustomField ? 'custom' : 'system') as FieldGroup,
         options: field.options?.options,
+        identifierTier: eligibility?.tier,
+        identifierCompositeOnly: eligibility?.compositeOnly,
+        identifierNote: eligibility?.note,
       }
     })
   fields.push(...scalarFields)
@@ -104,6 +138,7 @@ export function getImportableFields(
       )
       .map((field) => {
         const isCustomField = !field.isSystem
+        const eligibility = getIdentifierEligibility(field)
         return {
           key: getFieldOutputKey(field),
           id: isCustomField ? field.id : undefined,
@@ -113,6 +148,9 @@ export function getImportableFields(
           isRelation: true,
           isIdentifier: false,
           group: 'relationship' as FieldGroup,
+          identifierTier: eligibility?.tier,
+          identifierCompositeOnly: eligibility?.compositeOnly,
+          identifierNote: eligibility?.note,
           relationConfig: {
             relatedEntityDefinitionId:
               getRelatedEntityDefinitionId(field.relationship as RelationshipConfig) ?? '',

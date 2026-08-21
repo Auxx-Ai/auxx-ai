@@ -663,8 +663,24 @@ export const importStrategyStatus = pgEnum('ImportStrategyStatus', [
   'completed',
 ])
 
-// Strategy type (what to do with a row)
-export const importStrategyType = pgEnum('ImportStrategyType', ['create', 'update', 'skip'])
+/**
+ * Strategy type, what an import plan does with one row.
+ *
+ * `skip` and `unmatched` are NOT the same state and must never share a badge.
+ * `skip` means *"this row has an error"*; `unmatched` means *"this row is fine,
+ * but update-only mode found no record to update"*. Conflating them hides a
+ * whole class of unimported rows behind a normal-looking preview.
+ *
+ * Neither is executed. Both exist so every analyzed row lands in exactly one
+ * bucket and `sum(strategyCounts) === rawData.size` holds, the invariant the
+ * old silent `continue` in `generate-plan.ts` violated by dropping rows.
+ */
+export const importStrategyType = pgEnum('ImportStrategyType', [
+  'create',
+  'update',
+  'skip',
+  'unmatched',
+])
 
 // Resolution status for a value
 export const importResolutionStatus = pgEnum('ImportResolutionStatus', [

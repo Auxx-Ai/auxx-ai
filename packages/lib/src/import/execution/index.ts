@@ -17,7 +17,16 @@ export {
   type ExecuteStrategyContext,
   executeStrategy,
   type StrategyExecutionResult,
+  stripBlankValues,
+  type UpdatePolicy,
 } from './execute-strategy'
+export {
+  isBlankValue,
+  keysWithStrategy,
+  loadNonBlankFieldKeys,
+  type MergeStrategyByKey,
+  parseMergeStrategies,
+} from './merge-strategy'
 export {
   claimImportManifestConsumed,
   getImportManifest,

@@ -4,6 +4,7 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { and, count, desc, eq } from 'drizzle-orm'
 import type { ColumnFieldConfig, OverrideValue, ResolvedValue } from '../types'
+import type { RelationCreateRequest } from '../types/resolution'
 
 /** Resolution status types */
 export type ResolutionStatus = 'pending' | 'valid' | 'error' | 'warning' | 'create'
@@ -23,6 +24,13 @@ export interface UniqueValueWithResolution {
   errorMessage: string | null
   isOverridden: boolean
   overrideValues: OverrideValue[] | null
+  /**
+   * Present when `originalStatus === 'create'` for a RELATION column, what
+   * will be minted if the import runs. Lets the value-review step render
+   * "will be created" with the target and the field it lands on, instead of an
+   * empty resolved value.
+   */
+  relationCreate?: RelationCreateRequest
 }
 
 /** Return type including field config */
@@ -40,10 +48,21 @@ function extractResolvedValue(resolvedValues: unknown): string | null {
     return null
   }
   const first = resolvedValues[0]
-  if (typeof first === 'object' && first !== null && 'value' in first) {
+  if (typeof first !== 'object' || first === null) return null
+  // A pending relation create has a null `value` by design (nothing is minted
+  // until execution); its display string is the cell that will become the
+  // record's name.
+  const create = (first as ResolvedValue).relationCreate
+  if (create) return create.value
+  if ('value' in first) {
     return typeof first.value === 'string' ? first.value : String(first.value ?? '')
   }
   return null
+}
+
+/** Pull the pending relation-create request off a resolution's first value. */
+function extractRelationCreate(resolvedValues: ResolvedValue[]): RelationCreateRequest | undefined {
+  return resolvedValues[0]?.relationCreate
 }
 
 /**
@@ -250,6 +269,7 @@ export async function getUniqueValuesWithResolution(
         errorMessage: resolution?.errorMessage ?? null,
         isOverridden,
         overrideValues,
+        relationCreate: extractRelationCreate(resolution?.resolvedValues ?? []),
       }
     }),
   }

@@ -2,6 +2,10 @@
 
 import { parseAppFieldRef, type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { OPERATOR_DEFINITIONS, type Operator } from '../../conditions/operator-definitions'
+import {
+  getIdentifierEligibility,
+  sortByIdentifierPreference,
+} from '../../import/fields/identifier-eligibility'
 import type { ExecutionContextManager } from '../../workflow-engine/core/execution-context'
 import { getOperatorsForType } from '../../workflow-engine/operators/type-operator-map'
 import { createResourceReference } from '../../workflow-engine/types/resource-reference'
@@ -227,21 +231,52 @@ export function setEntityVariables(
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Get all fields that can be used to identify/match existing records.
- * Includes system fields with isIdentifier and custom fields with isUnique.
+ * Every field that may identify/match an existing record, in picker order
+ * (tier 1 first, Record ID last within tier 1).
+ *
+ * Delegates to `getIdentifierEligibility`, the ONE authority. This used to
+ * be `resource.fields.filter(f => f.isIdentifier)`, a parallel implementation of
+ * the same rule that the import picker also implemented separately. Retiering
+ * one without the other made the picker offer a field the planner's auto-select
+ * would never choose, and vice versa, with no error anywhere.
+ *
+ * The result now includes tier-2 (eligible but not enforced-unique) fields.
+ * Use {@link getDefaultIdentifierField} when you need something safe to pick
+ * WITHOUT a user saying so, it is tier-1 only.
  */
 export function getIdentifierFields(resource: { fields: ResourceField[] }): ResourceField[] {
-  return resource.fields.filter((f) => f.isIdentifier)
+  const eligible = resource.fields.flatMap((field) => {
+    const eligibility = getIdentifierEligibility(field)
+    return eligibility ? [{ field, eligibility }] : []
+  })
+
+  return sortByIdentifierPreference(eligible, ({ field, eligibility }) => ({
+    key: getFieldOutputKey(field),
+    tier: eligibility.tier,
+  })).map(({ field }) => field)
 }
 
 /**
- * Get the default identifier field for a resource.
- * Returns the first identifier field, or undefined if none.
+ * The identifier field to use when the user has not chosen one.
+ *
+ * **Tier 1 only, and never a composite-only RELATION.** Tier 2 exists so a
+ * human can knowingly key an import on a non-unique column; auto-selecting one
+ * would silently make an arbitrary free-text field the match key for every
+ * import that never touched the identity toggle, which is worse than not matching.
+ * Returns `undefined` when the resource has no tier-1 identifier.
+ *
+ * Record ID sorts last inside tier 1 on purpose: the seeder excludes `id`, so
+ * it lands in `unmatchedStaticFields` and used to sort FIRST, which is why the
+ * auto-pick was always `id` and no row had ever classified as `update`. A real
+ * identifier (`sku`, `email`) must beat it.
  */
 export function getDefaultIdentifierField(resource: {
   fields: ResourceField[]
 }): ResourceField | undefined {
-  return getIdentifierFields(resource)[0]
+  return getIdentifierFields(resource).find((field) => {
+    const eligibility = getIdentifierEligibility(field)
+    return eligibility?.tier === 1 && !eligibility.compositeOnly
+  })
 }
 
 // ─────────────────────────────────────────────────────────────

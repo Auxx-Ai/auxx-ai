@@ -46,7 +46,11 @@ export {
 export { listAll } from './crud/unified-handler-queries'
 // Field-value lookup core (extracted from UnifiedCrudHandler.lookupByField)
 export type { LookupEntitiesByFieldValueParams } from './lookup'
-export { buildLookupCondition, lookupEntitiesByFieldValue } from './lookup'
+export {
+  AmbiguousLookupError,
+  buildLookupCondition,
+  lookupEntitiesByFieldValue,
+} from './lookup'
 export type { MergeEntitiesInput, MergeEntitiesResult } from './merge'
 // Merge service (server-side)
 export { EntityMergeService } from './merge'

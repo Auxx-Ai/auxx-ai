@@ -6,12 +6,41 @@ import { LLMOrchestrator } from '../../ai/orchestrator/llm-orchestrator'
 import type { LLMInvocationRequest } from '../../ai/orchestrator/types'
 import { ModelType } from '../../ai/providers/types'
 import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
+import { getCachedResource } from '../../cache'
 import { getCachedDefaultModel } from '../../cache/org-cache-helpers'
+import { buildRelationColumnPolicy } from '../resolution/relation-policy'
 import type { AIColumnMappingInput, AIColumnMappingResult } from '../types/ai-mapping'
+import type { RelationLinkMode, RelationOnNoMatch } from '../types/resolution'
 import type { ImportableField } from './get-importable-fields'
 import { suggestResolutionType } from './suggest-resolution-type'
 
 const logger = createScopedLogger('ai-auto-map-columns')
+
+/**
+ * The relation policy auto-map settled on for a column.
+ *
+ * Auto-map is the ONLY producer of a relation mapping with no match field,
+ * the picker's drill-down cannot commit without one, and that state is what
+ * made every auto-mapped relation column report "No match found" for every
+ * value (03 §2.1). Emitting an explicit policy here removes the dependency on
+ * the resolver's fallback entirely.
+ *
+ * The persistence layer must carry these through; see
+ * `batchUpdateMappingsFromAutoMap`, which today writes only `{ options }` into
+ * `resolutionConfig` and drops `relationConfig` on the floor.
+ */
+export interface AutoMappedRelationPolicy {
+  /** Target field to match on, always set for a relation column */
+  matchField?: string
+  /** Relation target definition, for `resolutionConfig.relationConfig` */
+  relatedEntityDefinitionId?: string
+  relationshipType?: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
+  onNoMatch?: RelationOnNoMatch
+  linkMode?: RelationLinkMode
+}
+
+/** AI mapping result carrying the relation policy auto-map chose */
+export type AIColumnMappingResultWithPolicy = AIColumnMappingResult & AutoMappedRelationPolicy
 
 /** Default fallback model if user has no default configured */
 const FALLBACK_PROVIDER = 'openai'
@@ -80,7 +109,7 @@ export async function aiAutoMapColumns(
   organizationId: string,
   userId: string,
   input: AIColumnMappingInput
-): Promise<AIColumnMappingResult[]> {
+): Promise<AIColumnMappingResultWithPolicy[]> {
   // Get user's default LLM model
   const defaultModel = await getCachedDefaultModel(organizationId, ModelType.LLM)
 
@@ -162,14 +191,68 @@ export async function aiAutoMapColumns(
   // Add resolution types based on matched fields
   const fieldsMap = new Map(input.targetFields.map((f) => [f.key, f]))
 
-  return aiMappings.map((mapping) => {
-    const field = mapping.matchedFieldKey ? fieldsMap.get(mapping.matchedFieldKey) : null
-    return {
-      ...mapping,
-      columnName: input.columns[mapping.columnIndex]?.name ?? '',
-      resolutionType: field ? suggestResolutionType(field as ImportableField) : 'text:value',
-    }
-  })
+  return Promise.all(
+    aiMappings.map(async (mapping) => {
+      const field = (
+        mapping.matchedFieldKey ? fieldsMap.get(mapping.matchedFieldKey) : null
+      ) as ImportableField | null
+      const columnName = input.columns[mapping.columnIndex]?.name ?? ''
+
+      if (!field) {
+        return { ...mapping, columnName, resolutionType: 'text:value' }
+      }
+
+      const policy = await resolveRelationPolicy(organizationId, field)
+      return {
+        ...mapping,
+        ...policy,
+        columnName,
+        resolutionType: suggestResolutionType(field, {
+          matchField: policy.matchField,
+          onNoMatch: policy.onNoMatch,
+        }),
+      }
+    })
+  )
+}
+
+/**
+ * Resolve the relation policy for an auto-mapped column: the target's display
+ * field as the match field, plus the no-match and link-mode defaults.
+ *
+ * Returns an empty object for non-relation fields and for a target the org
+ * cache cannot resolve, in the latter case the resolver's own display-field
+ * fallback still applies, so the column degrades to today's behaviour rather
+ * than to a broken one.
+ *
+ * @param organizationId - Organization ID
+ * @param field - The matched importable field
+ */
+async function resolveRelationPolicy(
+  organizationId: string,
+  field: ImportableField
+): Promise<AutoMappedRelationPolicy> {
+  if (!field.isRelation || !field.relationConfig?.relatedEntityDefinitionId) return {}
+
+  const { relatedEntityDefinitionId, relationshipType } = field.relationConfig
+  const targetResource = await getCachedResource(organizationId, relatedEntityDefinitionId)
+  if (!targetResource) {
+    logger.warn('Relation target not resolvable during auto-map', {
+      organizationId,
+      fieldKey: field.key,
+      relatedEntityDefinitionId,
+    })
+    return { relatedEntityDefinitionId, relationshipType }
+  }
+
+  const policy = buildRelationColumnPolicy(targetResource, relationshipType)
+  return {
+    matchField: policy.matchField,
+    relatedEntityDefinitionId,
+    relationshipType,
+    onNoMatch: policy.onNoMatch,
+    linkMode: policy.linkMode,
+  }
 }
 
 /**

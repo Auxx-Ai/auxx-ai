@@ -239,7 +239,7 @@ export class UnifiedCrudHandler {
     // against and they short-circuit to arm 1 — the same answer
     // `canViewEntity`'s mail-infra pass-through already gives them.
     //
-    // ⚠ Arm 1 here is "the record lane has no per-row policy for this table",
+    // Arm 1 here is "the record lane has no per-row policy for this table",
     // NOT "the caller may read every row". For `thread` / `message` that
     // distinction is the whole bug: their policy is the mail lens, which lives
     // in `mail-query/` and cannot be expressed as a record-grant predicate. The
@@ -247,7 +247,7 @@ export class UnifiedCrudHandler {
     // see `listFiltered` above and `assertNotMailLensTable` in
     // `unified-handler-queries.ts`.
     //
-    // 🔴 `article` is the THIRD such case (plan v3/06 §2.1) and its per-row
+    // `article` is the THIRD such case (plan v3/06 §2.1) and its per-row
     // policy — its KB's instance grants — IS expressible as SQL. But the
     // predicate is qualified to `"Article"`, so it is only valid on the
     // system-table query lane. **This method serves the `EntityInstance` lane**
@@ -289,7 +289,7 @@ export class UnifiedCrudHandler {
    * under the table id — the underlying read is org-cache-only (and zero-I/O for
    * the two grant targets), but a list that also counts asks twice.
    *
-   * ⚠ Kept textually parallel with `RecordPickerService.systemTableScope`: the
+   * Kept textually parallel with `RecordPickerService.systemTableScope`: the
    * picker is a second entry point into the SAME lane, not a second policy. Both
    * are one-line delegations to `systemTableVisibilityScope` so they cannot
    * drift.
@@ -565,6 +565,11 @@ export class UnifiedCrudHandler {
       candidates: params.candidates,
       limit: params.limit,
       scopeWhere: lookupScope.where,
+      // A generic "find me candidates" call, its callers render or pick.
+      // Erroring on two matches would turn an ordinary duplicate into a failed
+      // request. The CSV importer, which must never pick arbitrarily, passes
+      // `'error'` at its own call site instead.
+      onAmbiguous: 'first',
     })
     if (result.isErr()) throw result.error
     return result.value
@@ -844,7 +849,7 @@ export class UnifiedCrudHandler {
   }): Promise<ListFilteredResult> {
     const { entityDefinitionId, sorting = [], limit = 100, cursor } = params
 
-    // 🔴 Step 0.1 — the mail-content tables are refused BEFORE anything else on
+    // Step 0.1 — the mail-content tables are refused BEFORE anything else on
     // this path. `recordScope` answers `{ arm: 'all' }` for every system table
     // and `querySystemResourceIdsPaged` scopes on `organizationId` alone, so a
     // `thread` list here returned every thread id in the org — and a `total`

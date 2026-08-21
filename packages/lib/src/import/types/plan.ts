@@ -10,8 +10,18 @@ export type ImportPlanStatus =
 /** Strategy status */
 export type StrategyStatus = 'planning_queued' | 'planning' | 'planned' | 'executing' | 'completed'
 
-/** Strategy type */
-export type StrategyType = 'create' | 'update' | 'skip'
+/**
+ * Per-row strategy.
+ *
+ * `skip` and `unmatched` are NOT the same state and must never share a
+ * badge. `skip` means *"this row has an error"*; `unmatched` means *"this row
+ * is fine, but update-only mode found no record to update"*. Conflating them
+ * hides a whole class of unimported rows behind a normal-looking preview.
+ *
+ * Neither is executed, both exist so every analyzed row lands in exactly one
+ * strategy bucket and `sum(strategyCounts) === rawData.size` holds.
+ */
+export type StrategyType = 'create' | 'update' | 'skip' | 'unmatched'
 
 /** Import plan record */
 export interface ImportPlan {
@@ -67,7 +77,10 @@ export interface PlanEstimates {
   totalRows: number
   toCreate: number
   toUpdate: number
+  /** Rows skipped because they carry an ERROR. */
   toSkip: number
+  /** Rows skipped because update-only mode found no matching record. */
+  toUnmatched: number
   withErrors: number
 }
 

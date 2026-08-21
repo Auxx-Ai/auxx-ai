@@ -10,7 +10,9 @@ vi.mock('../../../cache', () => ({
 }))
 
 const { getCachedResource } = await import('../../../cache')
-const { resolveRelationLookups } = await import('../resolve-relation-lookups')
+const { resolveRelationLookups, updateResolutionsWithLookupResults } = await import(
+  '../resolve-relation-lookups'
+)
 
 const getCachedResourceMock = vi.mocked(getCachedResource)
 
@@ -119,5 +121,35 @@ describe('resolveRelationLookups', () => {
     const { db, execute } = buildFakeDb([])
     await resolveRelationLookups(db, 'org-1', [lookup('x@y.com', 'email')])
     expect(execute).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('updateResolutionsWithLookupResults, chunking', () => {
+  /** N matched results for one column, the shape the resolver emits. */
+  const matched = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      hash: `h-${i}`,
+      jobPropertyId: 'jp-1',
+      recordId: `rec-${i}`,
+      outcome: 'matched' as const,
+    }))
+
+  it('issues ONE statement per 500 values instead of one per value', async () => {
+    const { db, execute } = buildFakeDb([])
+    await updateResolutionsWithLookupResults(db, matched(1201))
+    // 1201 values used to mean 1201 sequential UPDATEs.
+    expect(execute).toHaveBeenCalledTimes(3)
+  })
+
+  it('issues a single statement for a chunk-sized batch', async () => {
+    const { db, execute } = buildFakeDb([])
+    await updateResolutionsWithLookupResults(db, matched(500))
+    expect(execute).toHaveBeenCalledTimes(1)
+  })
+
+  it('touches the database at all only when there is something to write', async () => {
+    const { db, execute } = buildFakeDb([])
+    await updateResolutionsWithLookupResults(db, [])
+    expect(execute).not.toHaveBeenCalled()
   })
 })

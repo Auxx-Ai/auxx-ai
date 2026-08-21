@@ -211,6 +211,9 @@ export async function blockRecord(
           // one slot for the record itself, one to see past the cap.
           limit: cap + 2,
           excludeArchived: true,
+          // Blocking WANTS every candidate, several records sharing a value is
+          // the entire point of a duplicate scan, not an error condition.
+          onAmbiguous: 'first',
         })
         if (result.isErr()) {
           // The core errors only when every candidate was unusable — here that

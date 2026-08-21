@@ -207,6 +207,27 @@ export const FieldValue = pgTable(
         table.valueText.asc().nullsLast()
       )
       .where(sql`"valueText" IS NOT NULL`),
+    // Case-insensitive sibling of the index above. The importer's identifier
+    // lookup opts into `caseInsensitiveText`, which makes
+    // `lookup-entities-by-field-value.ts` compare `lower("valueText") = $1`.
+    // A btree on the bare column cannot serve that predicate as an index
+    // condition, so without this the planner range-scans the
+    // `(organizationId, fieldId)` prefix and applies `lower()` as a filter —
+    // reading every stored value of that field in the org, once per row of the
+    // CSV.
+    //
+    // The expression must stay byte-identical (modulo table qualification,
+    // which Postgres ignores when matching) to the one the lookup emits. A
+    // `lower(trim(...))` or a differing collation silently stops matching and
+    // the scan comes back.
+    index('FieldValue_lookup_lower_text_idx')
+      .using(
+        'btree',
+        table.organizationId.asc().nullsLast(),
+        table.fieldId.asc().nullsLast(),
+        sql`lower("valueText")`
+      )
+      .where(sql`"valueText" IS NOT NULL`),
     index('FieldValue_lookup_number_idx')
       .using(
         'btree',
@@ -258,7 +279,7 @@ export const FieldValue = pgTable(
     // contacts that all had phone numbers. With this index, `FieldValue`-first
     // answers the same query in **0.30 ms** over 200k rows.
     //
-    // ⚠️ **This is the one index here whose write cost is worth watching.** The
+    // **This is the one index here whose write cost is worth watching.** The
     // five `FieldValue_lookup_*_idx` above are plain btrees; a GIN trigram index
     // is not comparable, and this one covers EVERY `valueText` row, not just the
     // identifier-bearing ones — on the dev DB that is 1 957 identifier values

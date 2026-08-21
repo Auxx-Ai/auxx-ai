@@ -514,16 +514,15 @@ export interface DataConnectorDefinition {
 
 // ── Policy types — identity / merge / link (02) ───────────────────────────────
 
-/** How an identity-match value is canonicalized before comparison. */
-export type IdentityNormalize = 'email' | 'phone' | 'domain' | 'none'
+// Lifted to `../write-policy` once the CSV importer became the second consumer
+// of the same three questions (which columns identify a record, what happens to
+// an existing value, how a reference becomes a link). Re-exported here so every
+// connector call site keeps importing from `data-connectors/types`; a web-local
+// or import-local duplicate of a policy vocabulary is exactly how
+// `DISPLAY_OPTION_KEYS` silently ate option keys for months.
+import type { FieldMergeStrategy, IdentityNormalize, IdentityRole } from '../write-policy'
 
-/** Per-field write behavior (02 §3). Keyed by target field key. */
-export type FieldMergeStrategy =
-  | 'overwrite'
-  | 'fill_blank'
-  | 'connector_owned_only'
-  | 'manual_review'
-  | 'ignore'
+export type { FieldMergeStrategy, IdentityNormalize, IdentityRole }
 
 /**
  * One binding entry, stored as an element of the `fieldMappings` ARRAY on a
@@ -561,9 +560,7 @@ export interface FieldMapping {
    *     type at toggle time (email/phone/domain), else 'none'.
    * Absent = the field is projected only.
    */
-  identityRole?:
-    | { kind: 'externalId'; order?: number }
-    | { kind: 'match'; normalize?: IdentityNormalize }
+  identityRole?: IdentityRole
   /** Per-field write behavior (folded in from the old parallel map). Absent ⇒ 'overwrite'. */
   mergeStrategy?: FieldMergeStrategy
   /**

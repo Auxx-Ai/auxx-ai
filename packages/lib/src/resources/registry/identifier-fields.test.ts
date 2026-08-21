@@ -1,8 +1,11 @@
 // packages/lib/src/resources/registry/identifier-fields.test.ts
 
 import { describe, expect, it } from 'vitest'
+import { getIdentifiableFields } from '../../import/fields/get-identifiable-fields'
 import { RESOURCE_FIELD_REGISTRY } from './field-registry'
-import type { ResourceField } from './field-types'
+import { getFieldOutputKey, type ResourceField } from './field-types'
+import { getDefaultIdentifierField } from './field-utils'
+import type { Resource } from './types'
 
 /**
  * Registry invariants behind `mergeSystemAndCustomFields`' `isIdentifier` rung.
@@ -51,5 +54,77 @@ describe('registry identifier declarations', () => {
       .map(({ resource, key }) => `${resource}.${key}`)
 
     expect(offenders).toEqual([])
+  })
+})
+
+/**
+ * The picker and the planner's auto-select must answer the same question.
+ *
+ * `getIdentifiableFields` (import picker) and `getIdentifierFields` /
+ * `getDefaultIdentifierField` (planner) used to be PARALLEL implementations of
+ * `f.isIdentifier`. Grading eligibility in one of them would have left the other
+ * on the old rule, so the picker could offer a field the auto-select would never
+ * choose, silently, with no error anywhere. They now share
+ * `getIdentifierEligibility`; this pins that they still agree, per resource.
+ */
+describe('picker / auto-select agreement across the registry', () => {
+  const resources = Object.entries(RESOURCE_FIELD_REGISTRY).map(([id, fields]) => ({
+    id,
+    fields: Object.values(fields ?? {}) as ResourceField[],
+  }))
+
+  it('every registry resource has at least one field to test', () => {
+    expect(resources.length).toBeGreaterThan(0)
+  })
+
+  it("getDefaultIdentifierField's answer is always in the picker's tier-1 set", () => {
+    const offenders: string[] = []
+
+    for (const resource of resources) {
+      const chosen = getDefaultIdentifierField(resource)
+      if (!chosen) continue
+
+      const tierOne = new Set(
+        getIdentifiableFields(resource as unknown as Resource)
+          .filter((f) => f.identifierTier === 1 && !f.identifierCompositeOnly)
+          .map((f) => f.key)
+      )
+
+      if (!tierOne.has(getFieldOutputKey(chosen))) {
+        offenders.push(`${resource.id}: picked ${chosen.key}, tier-1 = [${[...tierOne]}]`)
+      }
+    }
+
+    expect(offenders).toEqual([])
+  })
+
+  it('prefers a real identifier over Record ID wherever one exists', () => {
+    // The seeder excludes `id`, so it lands in `unmatchedStaticFields` and
+    // sorts FIRST, which is why the auto-pick used to be `id` for every
+    // resource and why no row had ever classified as `update`.
+    const offenders: string[] = []
+
+    for (const resource of resources) {
+      const tierOneKeys = getIdentifiableFields(resource as unknown as Resource)
+        .filter((f) => f.identifierTier === 1 && !f.identifierCompositeOnly)
+        .map((f) => f.key)
+
+      const hasRealIdentifier = tierOneKeys.some((key) => key !== 'id')
+      if (!hasRealIdentifier) continue
+
+      if (
+        getFieldOutputKey(getDefaultIdentifierField(resource) ?? ({} as ResourceField)) === 'id'
+      ) {
+        offenders.push(`${resource.id}: still picks Record ID over [${tierOneKeys}]`)
+      }
+    }
+
+    expect(offenders).toEqual([])
+  })
+
+  it('part picks sku, not Record ID', () => {
+    const part = resources.find((r) => r.id === 'part')
+    expect(part).toBeDefined()
+    expect(getDefaultIdentifierField(part!)?.key).toBe('sku')
   })
 })

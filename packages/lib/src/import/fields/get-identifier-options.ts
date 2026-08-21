@@ -28,6 +28,14 @@ const COMMON_UNIQUE_FIELDS = new Set([
  * Get fields that can be used as identifiers for duplicate detection.
  * Prioritizes fields like email, externalId, etc.
  *
+ * **NOT the identifier authority, and not wired to anything.** This grades on
+ * a hardcoded name list (`COMMON_UNIQUE_FIELDS`) rather than on the field's
+ * declared uniqueness, and has zero callers. The authority for "may this field
+ * be an import match key, and how strongly is it recommended" is
+ * `getIdentifierEligibility` in `./identifier-eligibility`, which
+ * `getIdentifiableFields` and `registry/field-utils` both delegate to. Route new
+ * work there; do not grow a third rule here.
+ *
  * @param resource - Resource definition
  * @returns Array of identifier options
  */

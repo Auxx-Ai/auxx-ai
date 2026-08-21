@@ -15,6 +15,7 @@ import type {
   UniqueValueSummary,
 } from '../types'
 import { EditingInput } from './editing-input'
+import { RelationCreateBadge } from './relation-create-badge'
 
 interface ValueRowProps {
   value: UniqueValueSummary
@@ -170,6 +171,13 @@ export function ValueRow({ value, jobId, columnIndex, fieldConfig }: ValueRowPro
             />
           )}
         </div>
+
+        {/* Pending relation create, the render the `'create'` status never had */}
+        {value.relationCreate && !isSkipped && !hasCustomOverride && (
+          <div className='shrink-0 me-2'>
+            <RelationCreateBadge request={value.relationCreate} />
+          </div>
+        )}
 
         {/* Action buttons */}
         {/* <div className="flex items-center opacity-0 group-hover:opacity-100 pe-1 transition-opacity overflow-hidden [[data-first]_&]:rounded-tr-2xl [[data-last]_&]:rounded-br-2xl"> */}

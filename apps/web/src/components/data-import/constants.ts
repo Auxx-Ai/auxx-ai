@@ -3,6 +3,9 @@
 import { GitBranch, Play, Search, Upload } from 'lucide-react'
 import type { ImportStep } from './types'
 
+/** File extensions the import wizard accepts. */
+export const ACCEPTED_FILE_EXTENSIONS = ['.csv']
+
 /** Maximum file size: 20MB */
 export const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
 

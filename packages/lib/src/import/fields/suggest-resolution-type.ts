@@ -1,18 +1,41 @@
 // packages/lib/src/import/fields/suggest-resolution-type.ts
 
-import type { ResolutionType } from '../types/resolution'
+import { deriveRelationResolutionType } from '../resolution/relation-policy'
+import type { RelationOnNoMatch, ResolutionType } from '../types/resolution'
 import type { ImportableField } from './get-importable-fields'
+
+/** The relation policy a caller has already settled on for this column */
+export interface SuggestResolutionTypeOptions {
+  /**
+   * The target field the column matches on. Auto-map MUST pass this. A
+   * relation mapping with no match field is a state only auto-map can produce,
+   * and it is the state that made every auto-mapped relation column
+   * unresolvable (03 §2.1), the picker's drill-down cannot commit without one.
+   */
+  matchField?: string | null
+  /** The column's no-match policy; drives `relation:create` vs `relation:match` */
+  onNoMatch?: RelationOnNoMatch
+}
 
 /**
  * Suggest the best resolution type for a field based on its type and name.
  *
  * @param field - The importable field
+ * @param options - Relation policy already settled for this column, if any
  * @returns Suggested resolution type
  */
-export function suggestResolutionType(field: ImportableField): ResolutionType {
-  // Check for relation fields
+export function suggestResolutionType(
+  field: ImportableField,
+  options: SuggestResolutionTypeOptions = {}
+): ResolutionType {
+  // Check for relation fields. The type is DERIVED from the policy, hardcoding
+  // `relation:match` here (and in the wizard's `handleMappingChange`) is what
+  // made `relation:create` unreachable from the UI at all.
   if (field.isRelation) {
-    return 'relation:match'
+    return deriveRelationResolutionType({
+      matchField: options.matchField ?? relationMatchFieldFor(field),
+      onNoMatch: options.onNoMatch,
+    })
   }
 
   // Check for enum/select fields
@@ -90,6 +113,22 @@ export function suggestResolutionType(field: ImportableField): ResolutionType {
       return 'text:value'
     }
   }
+}
+
+/**
+ * The match field an importable relation field already knows about, if any.
+ *
+ * `getImportableFields` may populate `relationConfig.targetResource.displayField`
+ * when the target resource was resolvable at build time. It usually is NOT
+ * populated today, which is exactly why auto-map has to resolve the target and
+ * call `buildRelationColumnPolicy`, see the module note on
+ * {@link SuggestResolutionTypeOptions.matchField}.
+ *
+ * @param field - The importable relation field
+ * @returns The known match field key, or undefined
+ */
+export function relationMatchFieldFor(field: ImportableField): string | undefined {
+  return field.relationConfig?.targetResource?.displayField ?? undefined
 }
 
 /**

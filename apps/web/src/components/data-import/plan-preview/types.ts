@@ -1,6 +1,6 @@
 // apps/web/src/components/data-import/plan-preview/types.ts
 
-import type { StrategyType } from '@auxx/lib/import'
+import type { StrategyType } from '@auxx/lib/import/client'
 
 /**
  * Row data for plan preview table.
@@ -28,12 +28,20 @@ export interface PlanPreviewRow {
 }
 
 /**
- * Strategy counts for footer display
+ * Strategy counts for footer display.
+ *
+ * Keyed by the full {@link StrategyType} union so a new outcome cannot be
+ * counted into nothing. `unmatched` is a separate bucket from `skip`, a row
+ * with no error that update-only mode had nothing to update.
  */
-export interface StrategyCounts {
-  create: number
-  update: number
-  skip: number
+export type StrategyCounts = Record<StrategyType, number>
+
+/** Every bucket at zero, the reduce seed, and the shape of "nothing planned". */
+export const EMPTY_STRATEGY_COUNTS: StrategyCounts = {
+  create: 0,
+  update: 0,
+  skip: 0,
+  unmatched: 0,
 }
 
 /**

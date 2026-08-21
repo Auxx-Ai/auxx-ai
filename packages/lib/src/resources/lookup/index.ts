@@ -7,6 +7,7 @@ export type {
   LookupMatch,
 } from './lookup-entities-by-field-value'
 export {
+  AmbiguousLookupError,
   buildLookupCondition,
   lookupEntitiesByFieldValue,
   parseExternalIdentity,

@@ -1,0 +1,1 @@
+ALTER TABLE "ImportMapping" DROP COLUMN "identifierFieldKey";

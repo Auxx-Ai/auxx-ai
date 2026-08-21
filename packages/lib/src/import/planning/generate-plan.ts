@@ -4,14 +4,17 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
-import { getCachedResource } from '../../cache'
+import { findCachedResource } from '../../cache'
+import { UnprocessableEntityError } from '../../errors'
 import type { ResourceField } from '../../resources'
 import { getDefaultIdentifierField, getIdentifierFields } from '../../resources/registry'
-import type { ImportMappingProperty } from '../types/mapping'
+import { getFieldOutputKey } from '../../resources/registry/field-types'
+import type { ImportMappingProperty, ImportStrategyMode } from '../types/mapping'
 import type { ImportPlan, ImportPlanStrategy, PlanEstimates, StrategyType } from '../types/plan'
 import type { ValueResolution } from '../types/resolution'
 import { type AnalyzeRowContext, analyzeRow } from './analyze-row'
 import { type AssignRowInput, batchAssignRows } from './assign-row-to-strategy'
+import { createBatchedFindExistingRecord } from './batch-identifier-lookup'
 import { calculateEstimatesFromCounts } from './calculate-estimates'
 import { createPlan } from './create-plan'
 import { createDefaultStrategies } from './create-strategy'
@@ -39,7 +42,14 @@ export interface GeneratePlanOptions {
   rawData: Map<number, Record<number, string>>
   mappings: ImportMappingProperty[]
   resolutions: Map<string, ValueResolution>
-  identifierFieldKey?: string
+  /**
+   * Ordered match key from `ImportMapping.identifierFieldKeys`. Empty/absent
+   * falls back to the resource's default identifier (unless the mode is
+   * `create`). More than one key is a COMPOSITE key, ANDed.
+   */
+  identifierFieldKeys?: string[]
+  /** Job-level strategy mode. Defaults to `create-or-update`. */
+  mode?: ImportStrategyMode
   /** Called for each analyzed row (for real-time SSE streaming) */
   onRowAnalyzed?: (row: AnalyzedRow) => Promise<void> | void
   /** Progress callback: (phase, processed, total) */
@@ -75,7 +85,8 @@ export async function generatePlan(options: GeneratePlanOptions): Promise<Genera
     rawData,
     mappings,
     resolutions,
-    identifierFieldKey,
+    identifierFieldKeys,
+    mode = 'create-or-update',
     onRowAnalyzed,
     onProgress,
   } = options
@@ -83,17 +94,16 @@ export async function generatePlan(options: GeneratePlanOptions): Promise<Genera
   // Create plan record
   const plan = await createPlan(db, jobId)
 
-  // Create default strategies
-  const strategies = await createDefaultStrategies(db, plan.id, identifierFieldKey)
-
-  // Build strategy lookup
-  const strategyByType = new Map<StrategyType, ImportPlanStrategy>()
-  for (const strategy of strategies) {
-    strategyByType.set(strategy.strategy, strategy)
-  }
-
-  // Get resource definition and identifier field from org cache
-  const resource = await getCachedResource(organizationId, entityDefinitionId)
+  // Get resource definition and identifier field from org cache.
+  //
+  // `findCachedResource`, never `getCachedResource`. `ImportMapping.entityDefinitionId`
+  // holds EITHER keyspace: for a def-backed system type it is the bare entityType slug
+  // (`part`), for a pure custom entity the EntityDefinition CUID. `getCachedResource`
+  // matches on `Resource.id` alone — always the CUID — so a `part` import found NO
+  // resource, resolved NO identifier fields, and every single row was classified
+  // `create` behind a wizard reporting "Create or update". A full duplicate set, no
+  // error, no warning. The tolerant lookup is what the routers have always used.
+  const resource = await findCachedResource(organizationId, entityDefinitionId)
 
   logger.info('Planning: Resource lookup', {
     entityDefinitionId,
@@ -102,47 +112,119 @@ export async function generatePlan(options: GeneratePlanOptions): Promise<Genera
     fieldCount: resource?.fields.length,
   })
 
-  // Find the identifier field for existing record lookup
-  let identifierField: ResourceField | undefined
-  if (identifierFieldKey && resource) {
-    identifierField = resource.fields.find((f) => f.key === identifierFieldKey)
-    logger.info('Planning: Using explicit identifier field', {
-      identifierFieldKey,
-      fieldFound: !!identifierField,
-      fieldType: identifierField?.type,
-    })
-  } else if (resource) {
-    // Auto-select default identifier if not specified
-    const identifiers = getIdentifierFields(resource)
-    identifierField = getDefaultIdentifierField(resource)
-    logger.info('Planning: Using default identifier field', {
-      availableIdentifiers: identifiers.map((f) => ({ key: f.key, type: f.type })),
-      selectedField: identifierField?.key,
-      selectedType: identifierField?.type,
-    })
+  // ── Resolve the identifier BEFORE creating strategies ───────────────────
+  // Strategies used to be created from the RAW option while `analyzeRow` was
+  // handed an auto-selected fallback, so the strategy table could lack `update`
+  // while the analyzer happily returned it, and the row then hit the
+  // `continue` below and vanished from the plan entirely: not created, not
+  // updated, not counted, no error. The two must be derived from the same
+  // resolved keys, in this order. Do not move `createDefaultStrategies` back up.
+  let identifierFields: ResourceField[] = []
+  if (resource && mode !== 'create') {
+    if (identifierFieldKeys && identifierFieldKeys.length > 0) {
+      // Order matters (it is the composite key's order), map over the KEYS,
+      // not over `resource.fields`.
+      // `getFieldOutputKey`, never the bare `f.key`. On an entity-definition
+      // field `key` is the DISPLAY NAME (`SKU`) and the stable identifier lives
+      // in `systemAttribute` (`part_sku`) — which is what the mapping stores in
+      // `targetFieldKey` and `identifierFieldKeys`. Matching on `f.key` resolved
+      // NOTHING for every def-backed resource, so the match key came back empty
+      // and every row was classified `create`. `execute-plan-job` has always
+      // keyed its field lookup this way; planning was the outlier.
+      identifierFields = identifierFieldKeys
+        .map((key) => resource.fields.find((f) => getFieldOutputKey(f) === key))
+        .filter((f): f is ResourceField => !!f)
+      logger.info('Planning: Using explicit identifier fields', {
+        requested: identifierFieldKeys,
+        resolved: identifierFields.map(getFieldOutputKey),
+      })
+    } else {
+      // Auto-select default identifier if not specified
+      const identifiers = getIdentifierFields(resource)
+      const fallback = getDefaultIdentifierField(resource)
+      identifierFields = fallback ? [fallback] : []
+      logger.info('Planning: Using default identifier field', {
+        availableIdentifiers: identifiers.map((f) => ({ key: f.key, type: f.type })),
+        selectedField: fallback?.key,
+        selectedType: fallback?.type,
+      })
+    }
   }
+
+  // A LONE relationship column cannot be the match key. `RELATION` is
+  // eligible only as part of a composite key (`(part, supplier)`); on its own it
+  // rarely identifies a record, and the identifier lookup would quietly match
+  // nothing, producing a full set of duplicates behind a wizard that says
+  // update is on. The wizard prevents creating this state, but unflagging the
+  // last scalar key can still strand it, so the invariant is enforced here,
+  // where every path passes through. Loud, and actionable.
+  if (identifierFields.length === 1 && identifierFields[0]?.relationship) {
+    throw new UnprocessableEntityError(
+      `"${identifierFields[0].label}" is a relationship column and cannot identify a record on its own. Flag another column as part of the match key, or unflag this one.`
+    )
+  }
+
+  // Output keys throughout: `analyzeRow` compares these against
+  // `mapping.targetFieldKey`, and `findExistingRecord` is handed a record keyed
+  // the same way. All three must agree on ONE convention.
+  const resolvedIdentifierKeys = identifierFields.map(getFieldOutputKey)
 
   // Log the final identifier choice
   logger.info('Planning: Final identifier configuration', {
     hasResource: !!resource,
-    hasIdentifierField: !!identifierField,
-    identifierKey: identifierField?.key,
-    identifierDbColumn: identifierField?.dbColumn,
-    identifierType: identifierField?.type,
+    mode,
+    identifierKeys: resolvedIdentifierKeys,
+    identifierDbColumns: identifierFields.map((f) => f.dbColumn),
   })
 
-  // Create findExistingRecord function if we have resource and identifier field
+  // Create strategies from the RESOLVED keys, see the ordering note above.
+  const strategies = await createDefaultStrategies(db, plan.id, resolvedIdentifierKeys, mode)
+
+  // Build strategy lookup
+  const strategyByType = new Map<StrategyType, ImportPlanStrategy>()
+  for (const strategy of strategies) {
+    strategyByType.set(strategy.strategy, strategy)
+  }
+
+  // Create findExistingRecord function if we have resource and identifier fields
   const findExistingRecord =
-    resource && identifierField
-      ? createFindExistingRecord({ db, organizationId, resource, identifierField })
+    resource && identifierFields.length > 0
+      ? createFindExistingRecord({ db, organizationId, resource, identifierFields })
       : undefined
 
-  // Analyze context
+  // ── Resolve every identifier lookup BEFORE the row loop ─────────────────
+  // `analyzeRow` awaits one lookup per identifier VALUE, and the loop below is
+  // sequential, so a 5,000-row file used to issue 5,000 fully serialized
+  // queries. Every row is already in memory here, so the distinct values can be
+  // resolved in `ceil(distinct / 1000)` queries and answered from a map.
+  //
+  // The returned resolver has the SAME signature and the SAME result contract,
+  // and falls back to `findExistingRecord` for anything it could not index
+  // (composite keys, system tables, an un-indexable column, a value it never
+  // saw). It can therefore only ever be faster, never different.
+  const batchedLookup =
+    resource && findExistingRecord
+      ? await createBatchedFindExistingRecord({
+          db,
+          organizationId,
+          resource,
+          identifierFields,
+          rawData,
+          mappings,
+          resolutions,
+          fallback: findExistingRecord,
+        })
+      : undefined
+
+  // Analyze context. One `seenIdentifiers` Map for the whole plan, it is what
+  // makes an in-file duplicate identifier a row error on the later row.
   const analyzeCtx: AnalyzeRowContext = {
     mappings,
     resolutions,
-    identifierFieldKey: identifierField?.key,
-    findExistingRecord,
+    identifierFieldKeys: resolvedIdentifierKeys,
+    mode,
+    findExistingRecord: batchedLookup?.find ?? findExistingRecord,
+    seenIdentifiers: new Map<string, number>(),
   }
 
   // Track strategy counts
@@ -150,6 +232,7 @@ export async function generatePlan(options: GeneratePlanOptions): Promise<Genera
     create: 0,
     update: 0,
     skip: 0,
+    unmatched: 0,
   }
 
   // Collect row assignments for batch insert
@@ -165,7 +248,15 @@ export async function generatePlan(options: GeneratePlanOptions): Promise<Genera
     // Get the appropriate strategy
     const strategy = strategyByType.get(analysis.strategy)
     if (!strategy) {
-      continue
+      // RAISE, never `continue`. A silent skip here is what turned a planning
+      // bug into data loss: the row was not created, not updated, not counted in
+      // `strategyCounts`, produced no error and no `ImportPlanRow`, the plan
+      // simply showed fewer rows than the file had. Reaching this means the
+      // strategy table and the analyzer disagree, which is a planner bug, and
+      // failing the whole plan is strictly better than losing rows from it.
+      throw new UnprocessableEntityError(
+        `Import plan ${plan.id}: row ${rowIndex + 1} was classified "${analysis.strategy}" but no such strategy exists on the plan (have: ${[...strategyByType.keys()].join(', ')})`
+      )
     }
 
     // Track counts

@@ -8,20 +8,52 @@ import { getCachedResource } from '../../cache'
 import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
 import type { CustomResource, Resource, SystemResource } from '../../resources/registry/types'
 import { BaseType } from '../../resources/types'
+import type {
+  RelationCreateRequest,
+  RelationLinkMode,
+  RelationOnNoMatch,
+  ResolvedValue,
+} from '../types/resolution'
+import { buildImportAuthority, type ImportAuthorityOptions } from './import-authority'
+import {
+  RELATION_MATCH_ARRAY_TYPES,
+  RELATION_MATCH_ENUM_TYPES,
+  RELATION_MATCH_NUMERIC_TYPES,
+  RELATION_MATCH_TEXT_TYPES,
+} from './relation-match-types'
+import { canCreateOnNoMatch, resolveDisplayFieldKey } from './relation-policy'
+import { updateResolutionsByHash } from './write-resolution-rows'
 
 const logger = createScopedLogger('resolve-relation-lookups')
 
+/**
+ * The `BaseType` set this resolver can actually match on, re-exported from the
+ * module that owns it so the wizard's match-field picker filters against the
+ * resolver's own answer instead of restating it (03 §5.4).
+ *
+ * Never merge this with the identifier type gate, that one is policy, this
+ * one is a hard technical limit of `queryCustomEntity`'s typed-column lanes.
+ */
+export {
+  isRelationMatchableType,
+  RELATION_MATCH_ARRAY_TYPES,
+  RELATION_MATCH_ENUM_TYPES,
+  RELATION_MATCH_NUMERIC_TYPES,
+  RELATION_MATCH_TEXT_TYPES,
+  RELATION_MATCHABLE_BASE_TYPES,
+} from './relation-match-types'
+
 /** Field types that support text matching */
-const TEXT_FIELD_TYPES = [BaseType.STRING, BaseType.EMAIL, BaseType.URL, BaseType.PHONE]
+const TEXT_FIELD_TYPES: readonly BaseType[] = RELATION_MATCH_TEXT_TYPES
 
 /** Field types that support numeric matching */
-const NUMERIC_FIELD_TYPES = [BaseType.NUMBER]
+const NUMERIC_FIELD_TYPES: readonly BaseType[] = RELATION_MATCH_NUMERIC_TYPES
 
 /** Field types that use option matching */
-const ENUM_FIELD_TYPES = [BaseType.ENUM]
+const ENUM_FIELD_TYPES: readonly BaseType[] = RELATION_MATCH_ENUM_TYPES
 
 /** Field types that support array contains matching */
-const ARRAY_FIELD_TYPES = [BaseType.TAGS, BaseType.ARRAY]
+const ARRAY_FIELD_TYPES: readonly BaseType[] = RELATION_MATCH_ARRAY_TYPES
 
 /** Pending relation lookup extracted from resolution */
 export interface PendingRelationLookup {
@@ -35,19 +67,45 @@ export interface PendingRelationLookup {
   matchField: string
   /** Value to search for */
   searchValue: string
-  /** Whether to create if not found */
-  createIfNotFound?: boolean
+  /**
+   * What to do when nothing matches. Absent ⇒ `'fail'`, the behaviour every
+   * relation column had before the policy existed.
+   */
+  onNoMatch?: RelationOnNoMatch
+  /** Replace-or-append policy for a multi-valued relation on the update path */
+  linkMode?: RelationLinkMode
   /** Whether this is a direct ID lookup */
   isDirectId?: boolean
 }
+
+/** How one pending lookup came out */
+export type RelationLookupOutcome = 'matched' | 'create' | 'blank' | 'error'
 
 /** Result of a relation lookup */
 export interface RelationLookupResult {
   hash: string
   jobPropertyId: string
   recordId: string | null
+  /** `'matched'` when `recordId` is set; see {@link RelationLookupOutcome} */
+  outcome: RelationLookupOutcome
+  /**
+   * Present only on `outcome: 'create'`, what `materializeRelationCreates`
+   * must mint at execution time. Nothing is written here: a plan the user
+   * abandons at the preview must leave no records behind.
+   */
+  create?: RelationCreateRequest
   error?: string
 }
+
+/**
+ * Options for {@link resolveRelationLookups}.
+ *
+ * The relation TARGET's import gate is asked separately from the import's own,
+ * see {@link ImportAuthorityOptions}. Fail-closed: with neither `userId` nor
+ * `canImportTarget`, every `'create'` becomes a row error naming the missing
+ * check.
+ */
+export type ResolveRelationLookupsOptions = ImportAuthorityOptions
 
 /**
  * Resolve pending relation lookups by batch querying the database.
@@ -56,7 +114,8 @@ export interface RelationLookupResult {
 export async function resolveRelationLookups(
   db: Database,
   organizationId: string,
-  pendingLookups: PendingRelationLookup[]
+  pendingLookups: PendingRelationLookup[],
+  options: ResolveRelationLookupsOptions = {}
 ): Promise<RelationLookupResult[]> {
   if (pendingLookups.length === 0) {
     return []
@@ -68,6 +127,7 @@ export async function resolveRelationLookups(
   })
 
   const results: RelationLookupResult[] = []
+  const canImportTarget = buildImportAuthority(organizationId, options)
 
   // Group by entity definition for batch queries
   const byEntity = new Map<string, PendingRelationLookup[]>()
@@ -83,7 +143,8 @@ export async function resolveRelationLookups(
       db,
       organizationId,
       entityDefinitionId,
-      lookups
+      lookups,
+      canImportTarget
     )
     results.push(...tableResults)
   }
@@ -91,6 +152,8 @@ export async function resolveRelationLookups(
   logger.info('Relation lookups complete', {
     total: pendingLookups.length,
     resolved: results.filter((r) => r.recordId).length,
+    toCreate: results.filter((r) => r.outcome === 'create').length,
+    blanked: results.filter((r) => r.outcome === 'blank').length,
     errors: results.filter((r) => r.error).length,
   })
 
@@ -104,7 +167,8 @@ async function resolveLookupsForTable(
   db: Database,
   organizationId: string,
   targetTable: string,
-  lookups: PendingRelationLookup[]
+  lookups: PendingRelationLookup[],
+  canImportTarget: (entityDefinitionId: string) => Promise<boolean>
 ): Promise<RelationLookupResult[]> {
   // Get resource definition from org cache
   const resource = await getCachedResource(organizationId, targetTable)
@@ -114,15 +178,16 @@ async function resolveLookupsForTable(
       hash: l.hash,
       jobPropertyId: l.jobPropertyId,
       recordId: null,
+      outcome: 'error' as const,
       error: `Resource not found: ${targetTable}`,
     }))
   }
 
-  // Determine default match field from resource display config
-  const defaultMatchField =
-    resource.type === 'system'
-      ? (resource.display.primaryDisplayField?.id ?? 'id')
-      : (resource.display.primaryDisplayField?.name ?? 'id')
+  // Defect E. The default match field is resolved to the display field's
+  // KEY through the resource's own fields, `primaryDisplayField.name` is the
+  // human LABEL (`Company Name`, `Title`), and trusting it made every
+  // auto-mapped relation column report "No match found" for every value.
+  const defaultMatchField = resolveDisplayFieldKey(resource)
 
   // Group lookups by match field (most will use the same field)
   const byMatchField = new Map<string, PendingRelationLookup[]>()
@@ -162,39 +227,98 @@ async function resolveLookupsForTable(
       }
     }
 
+    // Whether auto-create is even legal for this (resource, matchField)
+    // pair is asked ONCE per group, not per value: it is a property of the
+    // column, and the authority read behind it is a cache hit either way.
+    const createAllowedForField = canCreateOnNoMatch(resource, matchField)
+    let createAuthorized: boolean | null = null
+
     // Map results
     for (let i = 0; i < fieldLookups.length; i++) {
       const lookup = fieldLookups[i]!
       const matched = recordMap.get(searchValues[i]!)
 
+      // Ambiguity is a row error unconditionally and is checked BEFORE any
+      // policy branch. It is deliberately not configurable: guessing which
+      // `Acme` was meant is the one wrong link nobody can detect afterwards.
       if (matched && matched.size > 1) {
         results.push({
           hash: lookup.hash,
           jobPropertyId: lookup.jobPropertyId,
           recordId: null,
+          outcome: 'error',
           error: `Ambiguous match for "${lookup.searchValue}": ${matched.size} records share this value`,
         })
-      } else if (matched && matched.size === 1) {
+        continue
+      }
+
+      if (matched && matched.size === 1) {
         results.push({
           hash: lookup.hash,
           jobPropertyId: lookup.jobPropertyId,
           recordId: [...matched][0]!,
+          outcome: 'matched',
         })
-      } else if (lookup.createIfNotFound) {
-        results.push({
-          hash: lookup.hash,
-          jobPropertyId: lookup.jobPropertyId,
-          recordId: null,
-          error: 'Auto-create not yet implemented',
-        })
-      } else {
-        results.push({
-          hash: lookup.hash,
-          jobPropertyId: lookup.jobPropertyId,
-          recordId: null,
-          error: `No match found for "${lookup.searchValue}"`,
-        })
+        continue
       }
+
+      const policy: RelationOnNoMatch = lookup.onNoMatch ?? 'fail'
+
+      if (policy === 'blank') {
+        results.push({
+          hash: lookup.hash,
+          jobPropertyId: lookup.jobPropertyId,
+          recordId: null,
+          outcome: 'blank',
+        })
+        continue
+      }
+
+      if (policy === 'create') {
+        if (!createAllowedForField) {
+          results.push({
+            hash: lookup.hash,
+            jobPropertyId: lookup.jobPropertyId,
+            recordId: null,
+            outcome: 'error',
+            error: `No match found for "${lookup.searchValue}", it cannot be created because "${matchField}" is not ${resource.label}'s display field`,
+          })
+          continue
+        }
+        createAuthorized ??= await canImportTarget(resource.entityDefinitionId)
+        if (!createAuthorized) {
+          results.push({
+            hash: lookup.hash,
+            jobPropertyId: lookup.jobPropertyId,
+            recordId: null,
+            outcome: 'error',
+            error: `No match found for "${lookup.searchValue}", you don't have permission to create ${resource.label} records`,
+          })
+          continue
+        }
+        results.push({
+          hash: lookup.hash,
+          jobPropertyId: lookup.jobPropertyId,
+          recordId: null,
+          outcome: 'create',
+          create: {
+            entityDefinitionId: resource.entityDefinitionId,
+            matchField,
+            // The RAW cell, never the lowercased search key, the search key
+            // exists to match, not to become a record's name.
+            value: lookup.searchValue,
+          },
+        })
+        continue
+      }
+
+      results.push({
+        hash: lookup.hash,
+        jobPropertyId: lookup.jobPropertyId,
+        recordId: null,
+        outcome: 'error',
+        error: `No match found for "${lookup.searchValue}"`,
+      })
     }
   }
 
@@ -406,33 +530,77 @@ async function queryCustomEntity(
 }
 
 /**
- * Update ImportValueResolution records with lookup results
+ * Translate one lookup outcome into the row shape `ImportValueResolution`
+ * stores. Split out so the four outcomes are readable side by side and so the
+ * `isValid` flag can never disagree with `status` again.
+ */
+function toResolutionRow(result: RelationLookupResult): {
+  status: 'valid' | 'error' | 'create'
+  resolvedValues: ResolvedValue[]
+  isValid: boolean
+} {
+  switch (result.outcome) {
+    case 'matched':
+      return {
+        status: 'valid',
+        resolvedValues: [{ type: 'value', value: result.recordId }],
+        isValid: true,
+      }
+    case 'create':
+      // Nothing is minted yet, `materializeRelationCreates` does that at
+      // execution time and rewrites this entry to a real record id. `value`
+      // stays null so an unmaterialized run imports the row with NO link
+      // rather than with the raw cell text masquerading as one.
+      return {
+        status: 'create',
+        resolvedValues: [{ type: 'create', value: null, relationCreate: result.create }],
+        isValid: true,
+      }
+    case 'blank':
+      return {
+        status: 'valid',
+        resolvedValues: [{ type: 'value', value: null }],
+        isValid: true,
+      }
+    default:
+      return {
+        status: 'error',
+        resolvedValues: [{ type: 'error', error: result.error ?? 'Relation lookup failed' }],
+        isValid: false,
+      }
+  }
+}
+
+/**
+ * Update ImportValueResolution records with lookup results.
+ *
+ * `resolvedValues` is `jsonb().notNull()`. An earlier implementation set it to
+ * SQL NULL on every non-match, which Postgres rejects, so a single unmatched
+ * relation cell blew up the whole plan-generation job instead of marking one
+ * value. Every branch now writes a real array.
+ *
+ * One statement per 500 values, not one per value: a 3k-supplier file used to
+ * issue 3k sequential UPDATEs before planning even started.
+ *
+ * @param db - Database instance
+ * @param results - One entry per distinct value per relation column
  */
 export async function updateResolutionsWithLookupResults(
   db: Database,
   results: RelationLookupResult[]
 ): Promise<void> {
-  if (results.length === 0) return
-
-  for (const result of results) {
-    const newStatus = result.recordId ? 'valid' : 'error'
-    const resolvedValue = result.recordId
-      ? JSON.stringify([{ type: 'value', value: result.recordId }])
-      : null
-
-    await db
-      .update(schema.ImportValueResolution)
-      .set({
-        status: newStatus,
-        resolvedValues: resolvedValue,
+  await updateResolutionsByHash(
+    db,
+    results.map((result) => {
+      const row = toResolutionRow(result)
+      return {
+        importJobPropertyId: result.jobPropertyId,
+        hashedValue: result.hash,
+        status: row.status,
+        resolvedValues: row.resolvedValues,
+        isValid: row.isValid,
         errorMessage: result.error ?? null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.ImportValueResolution.importJobPropertyId, result.jobPropertyId),
-          eq(schema.ImportValueResolution.hashedValue, result.hash)
-        )
-      )
-  }
+      }
+    })
+  )
 }

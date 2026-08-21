@@ -1,11 +1,13 @@
 // packages/lib/src/import/mapping/run-auto-map.ts
 
 import type { Database } from '@auxx/database'
+import { getCachedResource } from '../../cache'
 import type { Resource } from '../../resources/registry/types'
 import { type ColumnHeaderWithSamples, orchestrateAutoMap } from '../fields/auto-map-orchestrator'
 import { getImportableFields } from '../fields/get-importable-fields'
+import { buildRelationColumnPolicy } from '../resolution/relation-policy'
 import { getMappablePropertiesWithSamples } from './get-mappable-properties'
-import { batchUpdateMappingsFromAutoMap } from './save-mapping-property'
+import { batchUpdateMappingsFromAutoMap, type RelationConfig } from './save-mapping-property'
 
 /** Auto-map strategy type */
 export type AutoMapStrategy = 'ai' | 'fallback' | 'auto'
@@ -81,20 +83,78 @@ export async function runAutoMap(
     }
   )
 
-  // 5. Enrich mappings with customFieldId and options from field definitions
-  const mappingsWithFieldData = mappingResult.mappings.map((m) => {
-    const field = fields.find((f) => f.key === m.matchedFieldKey)
-    return {
-      ...m,
-      customFieldId: field?.id ?? null,
-      options: field?.options,
-    }
-  })
+  // 5. Enrich mappings with customFieldId, options and, for relation columns,
+  //    the full resolution POLICY.
+  //
+  // Defect E, the half that lives outside the resolver. Auto-map used to
+  // persist a relation column with no `relationConfig` and no `matchField`, so
+  // the resolver fell back to `primaryDisplayField.name`, a human LABEL
+  // (`Company Name`) where a field KEY (`name`) was required, and every value
+  // reported "No match found". Where the relation is `required` (both of
+  // `vendor_part`'s are) the whole row failed. Clicking "Auto-map Columns" was
+  // the only action needed to reach it.
+  //
+  // Resolving the policy HERE covers both arms: the AI mapper and the pure
+  // string-matching fallback, neither of which can reach the org cache itself.
+  const mappingsWithFieldData = await Promise.all(
+    mappingResult.mappings.map(async (m) => {
+      const field = fields.find((f) => f.key === m.matchedFieldKey)
 
-  // 6. Save auto-mapped results to database
+      let relationConfig: RelationConfig | undefined
+      let resolutionType = m.resolutionType
+      if (field?.isRelation && field.relationConfig) {
+        const targetResource = await getCachedResource(
+          organizationId,
+          field.relationConfig.relatedEntityDefinitionId
+        )
+        if (targetResource) {
+          // Anything the AI arm already settled on is passed through as an
+          // OVERRIDE rather than recomputed, `buildRelationColumnPolicy` stays
+          // the single authority, and the AI's choice of match field survives.
+          // The fallback string-matching arm supplies none of these, so it gets
+          // the derived defaults.
+          const policy = buildRelationColumnPolicy(
+            targetResource,
+            field.relationConfig.relationshipType,
+            { matchField: m.matchField, onNoMatch: m.onNoMatch, linkMode: m.linkMode }
+          )
+          relationConfig = {
+            relatedEntityDefinitionId: field.relationConfig.relatedEntityDefinitionId,
+            relationshipType: field.relationConfig.relationshipType,
+            matchField: policy.matchField,
+            onNoMatch: policy.onNoMatch,
+            linkMode: policy.linkMode,
+          }
+          // The policy decides the resolution type, `relation:match` was
+          // hardcoded for every relation regardless of the on-no-match choice.
+          resolutionType = policy.resolutionType
+        }
+      }
+
+      return {
+        ...m,
+        resolutionType,
+        customFieldId: field?.id ?? null,
+        options: field?.options,
+        relationConfig,
+      }
+    })
+  )
+
+  // 6. Save auto-mapped results to database.
+  //
+  // `fields` is already in picker order, the tier-1 identifier group first with
+  // Record ID last inside it, so the first entry auto-map actually mapped is
+  // the right column to default the identity flag onto. Composite-only (relation)
+  // identifiers are excluded: a relation is never the LONE match key.
+  const preferredIdentifierFieldKeys = fields
+    .filter((f) => f.identifierTier === 1 && !f.identifierCompositeOnly)
+    .map((f) => f.key)
+
   await batchUpdateMappingsFromAutoMap(db, {
     mappingId: importMappingId,
     mappings: mappingsWithFieldData,
+    preferredIdentifierFieldKeys,
   })
 
   // 7. Return result for API response
