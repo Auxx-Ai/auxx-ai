@@ -23,6 +23,7 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { RuntimeConnectionData } from '../connections/resolve-connection-for-runtime'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
+import type { WriteSession } from '../resources/crud/write-origin'
 import type { SliceResult, SyncRunCounters, SyncSliceCtx, SyncSource } from '../sync-core/contracts'
 import { runAsyncExportSlice } from './async-export'
 import { flattenConnectionMeta } from './connection-meta'
@@ -145,9 +146,6 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
   /** Per-record upstream last-modified path (`incremental.watermarkField`) → the
    *  `upstreamUpdatedAt` version stamp the sink's out-of-order guard reads (§9 Q7). */
   private readonly updatedAtPath?: string
-  /** Cache the cache-warmed crud handlers across this instance's calls. */
-  private crud?: UnifiedCrudHandler
-  private ownedCrud?: UnifiedCrudHandler
   private readonly warmedDefs = new Set<string>()
   /** Bound connection's plaintext metadata (`connectionAppFields` source), loaded once. */
   private connectionMeta?: Record<string, unknown> | null
@@ -234,8 +232,8 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
    * Refresh the grid for the slice just written: mark each touched def's query
    * emit ONE coarse `records:invalidated` per def.
    *
-   * Per-record realtime is suppressed for connector writes (the sink passes
-   * `skipEvents`), so this coarse event is what tells an open grid to refetch
+   * Per-record realtime is suppressed for connector writes (the sink's silent
+   * `sync` write session), so this coarse event is what tells an open grid to refetch
    * instead of the per-record firehose that 403s Pusher at backfill scale. The
    * grid's refetch pages straight from SQL, so it always sees the fresh rows.
    */
@@ -415,7 +413,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       })
     }
 
-    // v9 inventory→part bridge: post-sink (the sink writes with skipEvents, so no
+    // v9 inventory→part bridge: post-sink (the sink writes on the silent sync lane, so no
     // per-record hook fired) compare synced quantities to the watermark and deduct
     // linked parts. Best-effort — a bridge failure must never fail the sync run.
     // Lazy import: the pass pulls the cache/settings/crud barrels, which break the
@@ -443,39 +441,65 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     signal?: AbortSignal
   ): Promise<SyncCtx> {
     const userId = this.deps.connector.createdById ?? 'system'
-    if (!this.crud)
-      this.crud = new UnifiedCrudHandler(this.deps.organizationId, userId, this.deps.db)
-    if (!this.ownedCrud) {
-      this.ownedCrud = new UnifiedCrudHandler(
-        this.deps.organizationId,
-        userId,
-        this.deps.db,
-        undefined,
-        {
-          bypassFieldGuards: OWNED_BYPASS,
-        }
-      )
+    // B2: build a subscription-aware manifest collector (zero-cost no-op stub when the
+    // org has no enabled record rules). Lazy-imported — crosses into record-rules.
+    const { loadManifestCollector } = await import('../record-rules/sync-manifest-collector')
+    const manifest = await loadManifestCollector(this.deps.organizationId)
+    // Plan 03 §3.4/§4b S1: sink writes run under a `sync` session — its silent
+    // lane is what `skipEvents: true` used to declare per call. Handlers are
+    // built per ctx (cheap, no I/O) so the session's collector is THIS ctx's
+    // collector; def-cache warmth lives in the org cache and is unaffected.
+    const session: WriteSession = {
+      origin: {
+        kind: 'sync',
+        source: 'connector',
+        ref: this.deps.run.id,
+        collector: manifest,
+      },
+      depth: 0,
     }
+    const crud = new UnifiedCrudHandler(this.deps.organizationId, userId, this.deps.db, undefined, {
+      session,
+    })
+    const ownedCrud = new UnifiedCrudHandler(
+      this.deps.organizationId,
+      userId,
+      this.deps.db,
+      undefined,
+      {
+        bypassFieldGuards: OWNED_BYPASS,
+        session,
+      }
+    )
+    // The relationship pass keeps firing per-write events (deliberate — see
+    // relationship-pass.ts), so it gets an inline-lane `automation` handler.
+    // Phase 4 folds these writes into the sync collector's finalize replay.
+    const relationshipCrud = new UnifiedCrudHandler(
+      this.deps.organizationId,
+      userId,
+      this.deps.db,
+      undefined,
+      {
+        session: { origin: { kind: 'automation', actor: userId }, depth: 0 },
+      }
+    )
     for (const m of mappings) {
       if (this.warmedDefs.has(m.entityDefinitionId)) continue
-      await this.crud.warmCache(m.entityDefinitionId)
-      await this.ownedCrud.warmCache(m.entityDefinitionId)
+      await crud.warmCache(m.entityDefinitionId)
+      await ownedCrud.warmCache(m.entityDefinitionId)
       this.warmedDefs.add(m.entityDefinitionId)
     }
     if (this.connectionMeta === undefined) {
       this.connectionMeta = await this.loadConnectionMeta()
     }
-    // B2: build a subscription-aware manifest collector (zero-cost no-op stub when the
-    // org has no enabled record rules). Lazy-imported — crosses into record-rules.
-    const { loadManifestCollector } = await import('../record-rules/sync-manifest-collector')
-    const manifest = await loadManifestCollector(this.deps.organizationId)
     return {
       db: this.deps.db,
       orgId: this.deps.organizationId,
       connector: this.deps.connector,
       runId: this.deps.run.id,
-      crud: this.crud,
-      ownedCrud: this.ownedCrud,
+      crud,
+      ownedCrud,
+      relationshipCrud,
       counters,
       failureTally: newRecordFailureTally(),
       signal,

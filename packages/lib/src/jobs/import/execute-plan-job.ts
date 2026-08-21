@@ -21,6 +21,8 @@ import {
 import type { FieldWriteModes, ImportMappingProperty, ImportPlan } from '../../import/types'
 import { getRealtimeService, publishRecordsInvalidated, publishRunCompleted } from '../../realtime'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
+import type { WriteSession } from '../../resources/crud/write-origin'
+import { runWithWriteSession } from '../../resources/crud/write-session-als'
 import { getFieldOutputKey } from '../../resources/registry/field-types'
 import type { JobContext } from '../types'
 
@@ -30,7 +32,7 @@ const logger = createScopedLogger('execute-plan-job')
  * Minimum gap between the coarse `records:invalidated` frames published while
  * rows land. Progress fires once per 50-row batch, so an unthrottled publish
  * would put hundreds of frames on the def channel for a large file — the same
- * firehose the `skipEvents` guard exists to avoid.
+ * firehose the silent `sync` write session exists to avoid.
  */
 const INVALIDATE_THROTTLE_MS = 2_000
 
@@ -109,8 +111,24 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
       updatedAt: p.updatedAt,
     }))
 
+    // B2: the import writes on the silent `sync` lane (below), so build a manifest
+    // collector to capture subscribed field/lifecycle changes for record rules. No-op
+    // stub (zero cost) when the org has no enabled rules on this def.
+    const { loadManifestCollector } = await import('../../record-rules/sync-manifest-collector')
+    const manifest = await loadManifestCollector(organizationId)
+
+    // Plan 03 §3.4/§4b S1: one `sync` session for the whole import — its silent
+    // lane is what `skipEvents: true` used to declare per call. The plan
+    // execution below also runs inside `runWithWriteSession(session, …)` so
+    // handlers constructed downstream (the relation-target writer) inherit it
+    // ambiently.
+    const session: WriteSession = {
+      origin: { kind: 'sync', source: 'import', ref: jobId, collector: manifest },
+      depth: 0,
+    }
+
     // Create CRUD handler and pre-warm caches
-    const crudHandler = new UnifiedCrudHandler(organizationId, userId, db)
+    const crudHandler = new UnifiedCrudHandler(organizationId, userId, db, undefined, { session })
     const entityDefinitionId = importJob.importMapping.entityDefinitionId
 
     // Pre-warm caches once for entire import (avoids N queries for N records)
@@ -166,37 +184,36 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
       .filter((m) => !!m.targetFieldKey && identifierFieldKeys.includes(m.targetFieldKey))
       .map((m) => m.customFieldId ?? m.targetFieldKey!)
 
-    // B2: the import writes with `skipEvents: true` (below), so build a manifest
-    // collector to capture subscribed field/lifecycle changes for record rules. No-op
-    // stub (zero cost) when the org has no enabled rules on this def.
-    const { loadManifestCollector } = await import('../../record-rules/sync-manifest-collector')
-    const manifest = await loadManifestCollector(organizationId)
-
     // Relation auto-create (`onNoMatch: 'create'`) is a TWO-PHASE design:
     // planning only records the intent, so abandoning the wizard at the preview
     // leaves no orphan records behind. This is phase two, mint the targets and
     // rewrite their resolutions to real record ids, BEFORE the resolutions are
     // read below. Distinct values are deduped, so 500 rows naming "Acme" (or
     // "ACME") produce exactly one company.
-    const relationCreates = await materializeRelationCreates(db, {
-      organizationId,
-      jobId,
-      userId,
-      createRecord: createRelationTargetWriter({
+    // Wrapped in the session so the writer's lazily constructed handler inherits
+    // it ambiently (S1 resolution) — that inheritance is what keeps auto-created
+    // targets on the silent lane now that the writer passes no `skipEvents`.
+    const relationCreates = await runWithWriteSession(session, () =>
+      materializeRelationCreates(db, {
         organizationId,
+        jobId,
         userId,
-        db,
-        // Auto-created targets reach record rules the same way imported rows do.
-        onCreated: (targetDefId, instanceId, data) => {
-          if (!manifest.enabled) return
-          // Subscriptions are per-def, and the TARGET def (company) is not this
-          // import's def (part), look it up rather than reusing the outer one.
-          if (manifest.subscriptionsFor(targetDefId)?.lifecycle.created) {
-            manifest.recordCreated(toRecordId(targetDefId, instanceId), data)
-          }
-        },
-      }),
-    })
+        createRecord: createRelationTargetWriter({
+          organizationId,
+          userId,
+          db,
+          // Auto-created targets reach record rules the same way imported rows do.
+          onCreated: (targetDefId, instanceId, data) => {
+            if (!manifest.enabled) return
+            // Subscriptions are per-def, and the TARGET def (company) is not this
+            // import's def (part), look it up rather than reusing the outer one.
+            if (manifest.subscriptionsFor(targetDefId)?.lifecycle.created) {
+              manifest.recordCreated(toRecordId(targetDefId, instanceId), data)
+            }
+          },
+        }),
+      })
+    )
     if (relationCreates.created > 0 || relationCreates.failures.length > 0) {
       logger.info('Materialized relation auto-creates', {
         jobId,
@@ -211,7 +228,7 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
     const resolutions = await getAllJobResolutions(db, jobId)
     logger.debug('Loaded resolutions', { jobId, count: resolutions.size })
 
-    // The import writes with `skipEvents: true`, so no `record:created` /
+    // The import writes on the silent `sync` lane, so no `record:created` /
     // `record:updated` / `fieldValues:updated` frame ever reaches an open grid.
     // Publish the same coarse signal the connector sync path uses instead — one
     // `records:invalidated` per def, which the client turns into a single list
@@ -268,10 +285,9 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
         ...data.customFields,
       }
 
-      // Use UnifiedCrudHandler with skipEvents
-      const created = await crudHandler.create(entityDefinitionId, mergedData, {
-        skipEvents: true,
-      })
+      // Event suppression comes from the handler's silent `sync` session
+      // (plan 03 §3.4), not a per-call flag.
+      const created = await crudHandler.create(entityDefinitionId, mergedData)
 
       // B2: capture lifecycle-created + `set`-transition field writes for record rules.
       if (manifest.enabled) {
@@ -349,12 +365,11 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
         }
       }
 
-      // Use UnifiedCrudHandler with skipEvents. `data.modes` routes multi-value
-      // scalar fields through the 'add' bucket (append + server-side dedup);
-      // unlisted fields fall through to 'set' as before.
-      const instance = await crudHandler.update(recordId, mergedData, data.modes, {
-        skipEvents: true,
-      })
+      // Event suppression comes from the handler's silent `sync` session
+      // (plan 03 §3.4). `data.modes` routes multi-value scalar fields through
+      // the 'add' bucket (append + server-side dedup); unlisted fields fall
+      // through to 'set' as before.
+      const instance = await crudHandler.update(recordId, mergedData, data.modes)
       if (captured) manifest.recordChange(recordId, captured)
 
       logger.debug('Updated record', { recordId, entityDefinitionId })
@@ -370,40 +385,44 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
       createdAt: plan.createdAt,
     }
 
-    const result = await executePlan({
-      db,
-      organizationId,
-      userId,
-      jobId,
-      plan: planData,
-      entityDefinitionId: importJob.importMapping.entityDefinitionId,
-      mappings,
-      resolutions,
-      fieldModes,
-      identifierKeys,
-      createRecord,
-      updateRecord,
-      onRowWarning: async (rowIndex, message) => {
-        await publishEvent({ type: 'row:warning', rowIndex, message })
-      },
-      onProgress: async (progress) => {
-        const percentage = Math.round((progress.processed / progress.total) * 100)
-        await job.updateProgress(percentage)
+    // Ambient session for the whole plan execution (plan 03 §4b S1): any handler
+    // constructed downstream without an explicit session inherits this one.
+    const result = await runWithWriteSession(session, () =>
+      executePlan({
+        db,
+        organizationId,
+        userId,
+        jobId,
+        plan: planData,
+        entityDefinitionId: importJob.importMapping.entityDefinitionId,
+        mappings,
+        resolutions,
+        fieldModes,
+        identifierKeys,
+        createRecord,
+        updateRecord,
+        onRowWarning: async (rowIndex, message) => {
+          await publishEvent({ type: 'row:warning', rowIndex, message })
+        },
+        onProgress: async (progress) => {
+          const percentage = Math.round((progress.processed / progress.total) * 100)
+          await job.updateProgress(percentage)
 
-        await publishEvent({
-          type: 'execution:progress',
-          strategyId: progress.strategyId,
-          strategy: progress.strategy,
-          processed: progress.processed,
-          total: progress.total,
-          succeeded: progress.succeeded,
-          failed: progress.failed,
-        })
+          await publishEvent({
+            type: 'execution:progress',
+            strategyId: progress.strategyId,
+            strategy: progress.strategy,
+            processed: progress.processed,
+            total: progress.total,
+            succeeded: progress.succeeded,
+            failed: progress.failed,
+          })
 
-        // Keep every open grid live while the import runs, not just at the end.
-        await invalidateRecords()
-      },
-    })
+          // Keep every open grid live while the import runs, not just at the end.
+          await invalidateRecords()
+        },
+      })
+    )
 
     // Mark job as completed
     await markJobCompleted(db, jobId, result.statistics)

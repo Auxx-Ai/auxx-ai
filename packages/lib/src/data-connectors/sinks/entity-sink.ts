@@ -1050,17 +1050,13 @@ export const entitySink: EntitySink = {
               })
             : null
           // Shallow copy per attempt: a conflict retry mutates `writeSet`.
-          await handler.update(recordId, { ...writeSet }, undefined, {
-            skipEvents: true,
-          })
+          // Event suppression comes from the handler's silent `sync` session
+          // (plan 03 §3.4), not a per-call flag.
+          await handler.update(recordId, { ...writeSet })
           ctx.counters.updated += 1
           if (captured) ctx.manifest.recordChange(recordId, captured)
         } else {
-          const created = await handler.create(
-            mapping.entityDefinitionId,
-            { ...writeSet },
-            { skipEvents: true }
-          )
+          const created = await handler.create(mapping.entityDefinitionId, { ...writeSet })
           instanceId = created.instance.id
           justCreated = true
           ctx.counters.created += 1
@@ -1198,9 +1194,7 @@ export const entitySink: EntitySink = {
       }
       const recordId = toRecordId(item.entityDefinitionId, item.entityInstanceId)
       try {
-        await ctx.ownedCrud.archive(recordId, {
-          skipEvents: true,
-        })
+        await ctx.ownedCrud.archive(recordId)
         ctx.touchedDefs.add(item.entityDefinitionId)
         ctx.counters.archived += 1
         // B2: lifecycle-deleted capture for synced archives (soft-archive; the record

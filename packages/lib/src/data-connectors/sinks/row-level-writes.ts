@@ -331,11 +331,12 @@ export async function executeRowLevelWrites(
     // Append at the end via the multi-value primitive (never a whole-field set):
     // `add` dedupes, runs hooks and honors the value cap.
     try {
+      // Event suppression comes from the handler's silent `sync` session
+      // (plan 03 §3.4), not a per-call flag.
       await handler.update(
         recordId,
         { [action.write.writeKey]: [action.flatValue] },
-        { [action.write.writeKey]: 'add' },
-        { skipEvents: true }
+        { [action.write.writeKey]: 'add' }
       )
     } catch (error) {
       if (error instanceof UniqueValueConflictError) {
