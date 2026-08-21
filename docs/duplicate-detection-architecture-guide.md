@@ -583,11 +583,13 @@ Surname rarity is memoized per definition scan, keyed on the *scanned* record's 
 
 ### 7.3 The watermark stamp
 
-⚠️ **`stampWatermark` MUST be raw SQL touching exactly one column.** `EntityInstance.updatedAt`
-carries `$onUpdate`, so a Drizzle `.update().set({ lastDuplicateScanAt })` bumps `updatedAt` **in the
-same statement**, instantly re-dirtying the record against its own fresh watermark — and the scanner
-re-scans it forever. Pinned by integration test. (Note this is the *same* mechanism §9 relies on for
-restore self-healing, with the opposite consequence.)
+`stampWatermark` is raw SQL touching exactly one column. Historically this was load-bearing:
+`EntityInstance.updatedAt` carried `$onUpdate`, so a Drizzle `.update().set({ lastDuplicateScanAt })`
+bumped `updatedAt` **in the same statement**, instantly re-dirtying the record against its own fresh
+watermark — and the scanner re-scanned it forever. Since D-7 removed `$onUpdate` (content changes now
+stamp `updatedAt` explicitly), bookkeeping writes like the watermark stamp no longer move `updatedAt`
+and cannot re-dirty the record; the raw single-column statement remains fine and is still pinned by
+integration test, but it is no longer the only safe shape.
 
 ⚠️ **Stamp the OBSERVED watermark, not `now()`.** The dirty select returns
 `GREATEST(ei."updatedAt", max(fv."updatedAt"))` and that value is written back, bound as **text** so
@@ -720,9 +722,10 @@ argument rests on a path users cannot reach: `api.record.restore` has exactly on
 whole app, and it is the tag list. Meanwhile the cost — `open` rows accumulating forever behind a
 join that exists purely to hide them — is real.
 
-**No restore hook is needed.** `EntityInstance.updatedAt` carries `$onUpdate`, so restoring
-re-dirties the record against `lastDuplicateScanAt` and the next watermark scan recreates any pair
-that still qualifies. Self-healing.
+**No restore hook is needed.** Archive/restore is a content change, so the restore write stamps
+`updatedAt` explicitly (D-7 — `$onUpdate` is gone, content stamps are explicit), which re-dirties the
+record against `lastDuplicateScanAt` and the next watermark scan recreates any pair that still
+qualifies. Self-healing.
 
 ### 9.4 Merge
 
@@ -961,9 +964,10 @@ Two durable guards came out of it:
    duplicate twice.
 2. **Deletion is how an `open` pair goes away.** `dismissed` and `merged` are the only persisted
    terminal states. Never invent a `closed` status, and never stamp a synthetic `dismissed`.
-3. **The watermark stamp must be raw SQL touching exactly one column**, and must write the OBSERVED
-   watermark rather than `now()`. `$onUpdate` on `EntityInstance.updatedAt` otherwise loops the
-   scanner forever.
+3. **The watermark stamp must write the OBSERVED watermark rather than `now()`.** It stays a raw
+   single-column SQL statement; since D-7 removed `$onUpdate` from `EntityInstance.updatedAt`
+   (content stamps are explicit), a bookkeeping write can no longer re-dirty the record against its
+   own fresh watermark, so the raw-SQL shape is hygiene rather than loop prevention.
 4. **The `sync:records:changed` consumer must never claim the manifest** — the claim is the
    record-rules consumer's once-only latch and a second claimant starves it. Rely on the per-run
    jobId plus idempotent upserts.

@@ -132,7 +132,9 @@ async function applyMappingEditSafety(
         if (it.entityInstanceId) {
           await tx
             .update(schema.EntityInstance)
-            .set({ archivedAt: now })
+            // D-7 explicit content stamp: archive is a content change and
+            // `updatedAt` no longer auto-bumps (`$onUpdate` removed).
+            .set({ archivedAt: now, updatedAt: now })
             .where(eq(schema.EntityInstance.id, it.entityInstanceId))
         }
       }
@@ -1881,9 +1883,12 @@ export async function removeMapping(
         // Archive the owned instances bound through this mapping before the cascade
         // strips their `DataConnectorItem` rows (which would set-null the back-link).
         // Single bulk update over a subselect of the bound instance ids.
+        const now = new Date()
         await tx
           .update(schema.EntityInstance)
-          .set({ archivedAt: new Date() })
+          // D-7 explicit content stamp: archive is a content change and
+          // `updatedAt` no longer auto-bumps (`$onUpdate` removed).
+          .set({ archivedAt: now, updatedAt: now })
           .where(
             inArray(
               schema.EntityInstance.id,

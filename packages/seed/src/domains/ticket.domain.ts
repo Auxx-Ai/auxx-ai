@@ -83,12 +83,12 @@ export class TicketDomain {
    */
   async insertDirectly(db: any): Promise<void> {
     const { schema } = await import('@auxx/database')
-    const { UnifiedCrudHandler } = await import('@auxx/lib/resources')
+    const { UnifiedCrudHandler, seedSession } = await import('@auxx/lib/resources')
     const organizationId = this.services.organizations[0]!.id
     const userId = this.services.organizations[0]!.ownerId
 
     // Seed tickets via UnifiedCrudHandler
-    await this.seedTickets(db, schema, organizationId, userId, UnifiedCrudHandler)
+    await this.seedTickets(db, schema, organizationId, userId, UnifiedCrudHandler, seedSession)
   }
 
   /**
@@ -98,20 +98,22 @@ export class TicketDomain {
    * @param organizationId - Organization ID to associate tickets with
    * @param userId - User ID for the handler
    * @param UnifiedCrudHandler - The handler class
+   * @param seedSession - The seed-session constructor from `@auxx/lib/resources`
    */
   private async seedTickets(
     db: any,
     schema: any,
     organizationId: string,
     userId: string,
-    UnifiedCrudHandler: any
+    UnifiedCrudHandler: any,
+    seedSession: (reason: string) => unknown
   ): Promise<void> {
     console.log('🎫 Generating tickets via UnifiedCrudHandler...')
 
     // Seed session: silent lane — same suppression the per-call
     // `skipEvents: true` used to provide, declared once at construction.
     const handler = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
-      session: { origin: { kind: 'seed', reason: 'demo ticket seed data' }, depth: 0 },
+      session: seedSession('demo ticket seed data'),
     })
 
     // Get existing contact EntityInstances for linking (need both definitionId and instanceId for RecordId format)

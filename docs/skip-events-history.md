@@ -146,6 +146,16 @@ This half matters as much as the first, and is routinely forgotten:
 - **`managedByConnectorId`** is not a CRUD concern, the connector sink stamps it
   itself after the write (`sinks/entity-sink.ts:562-600`).
 
+> **Correction (2026-08-21, D-7 / #1805):** the `EntityInstance.updatedAt` bullet above
+> describes the pre-D-7 world. `$onUpdate` has been **removed** from
+> `EntityInstance.updatedAt`; nothing auto-bumps it anymore. Content changes (including
+> archive/restore and handler-mediated field writes) now stamp `updatedAt` explicitly,
+> while bookkeeping writes (watermark stamps, `lastSuggestionScanAt`,
+> activity/interaction touches) deliberately do not. Raw writers that bypass the handler
+> still only move `FieldValue.updatedAt`, so the dedup scanner's
+> `GREATEST(ei."updatedAt", max(fv."updatedAt"))` arm remains load-bearing — see the
+> schema comment at `entity-instance.ts` (`lastDuplicateScanAt`).
+
 ---
 
 ## 4. The contract

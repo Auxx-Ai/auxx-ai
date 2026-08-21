@@ -889,10 +889,12 @@ function toDirtyRecords(result: unknown): DirtyRecord[] {
 /**
  * Stamp `lastDuplicateScanAt` with the watermark this scan OBSERVED.
  *
- * ⚠️ Raw SQL on purpose. `EntityInstance.updatedAt` carries `$onUpdate`, so a
- * Drizzle `.update()` would bump `updatedAt` in the same statement — instantly
- * re-dirtying the record against its own fresh watermark and looping the scanner
- * forever. This statement touches exactly one column.
+ * Raw single-column SQL. Historically this was load-bearing: `updatedAt` carried
+ * `$onUpdate`, so a Drizzle `.update()` would bump it in the same statement and
+ * re-dirty the record against its own fresh watermark, looping the scanner. D-7
+ * removed `$onUpdate` (content stamps are explicit now), so a Drizzle update
+ * would no longer loop — but touching exactly one column remains the right shape
+ * for a bookkeeping write.
  */
 async function stampWatermark(organizationId: string, record: DirtyRecord): Promise<void> {
   await database.execute(sql`

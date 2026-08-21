@@ -26,14 +26,20 @@ export type {
   UpdateRecordOptions,
 } from './crud'
 // CRUD service and handlers
+// Write-origin sessions (plan 03 §4) — exposed here so packages/seed can build
+// seed sessions via the constructors instead of inline literals.
 export {
   fromDbResult,
   hasChanges,
+  interactiveSession,
   isNotFound,
   parseTags,
+  seedSession,
   setCustomFields,
   trackChanges,
   UnifiedCrudHandler,
+  type WriteOrigin,
+  type WriteSession,
 } from './crud'
 // The per-row record write gate (plan v3/03 §5.3)
 export type { StampedRow } from './crud/record-row-access'
