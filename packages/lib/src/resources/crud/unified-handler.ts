@@ -1241,6 +1241,13 @@ export class UnifiedCrudHandler {
    * @param modes - Optional per-field write mode. Fields not listed default
    *   to `'set'`. `'add'` / `'remove'` route to the multi-value primitives;
    *   they throw `BadRequestError` on single-value fields.
+   *
+   * D-7 note: the explicit `EntityInstance.updatedAt` content stamp for the
+   * `set` lane lives inside `setValuesForEntity` (one stamp per record write,
+   * only when at least one field reported `changed`). The `add`/`remove`
+   * lanes don't stamp — dedup's `GREATEST(ei.updatedAt, max(fv.updatedAt))`
+   * watermark covers additions via `FieldValue.updatedAt`, matching the
+   * pre-D-7 behavior for those paths.
    */
   private async setFieldValues(
     recordId: RecordId,

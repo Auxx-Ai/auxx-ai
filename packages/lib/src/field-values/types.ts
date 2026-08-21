@@ -212,6 +212,14 @@ export interface SetValueResult {
    * normally identify cells via `(recordId, fieldId)`, so this is optional.
    */
   jobId?: string
+  /**
+   * `true` when the write performed a REAL change (rows written or deleted).
+   * `false`/absent for no-ops: the D-6 idempotency guard (identical set),
+   * B-14 delete-of-absent, pre-hook drops, and AI stage-1 short-circuits.
+   * Surfaced additively for the D-7 `EntityInstance.updatedAt` stamp — a
+   * record write stamps once iff at least one field actually changed.
+   */
+  changed?: boolean
 }
 
 /**
@@ -222,6 +230,8 @@ export interface SetValuesResult {
   state: SetValueState
   performedAt: string
   values: TypedFieldValue[]
+  /** See {@link SetValueResult.changed} — real change vs idempotent no-op. */
+  changed?: boolean
 }
 
 /**

@@ -19,6 +19,11 @@ export interface BatchUpdateDisplayValuesInput {
 /**
  * Batch update display values for multiple EntityInstances.
  * Thin DB operation - business logic lives in lib package.
+ *
+ * Deliberately does NOT stamp `updatedAt` (D-7): callers are definition-level
+ * display-field reconfigurations (`display-field-service.ts`) recomputing a
+ * derived column across every instance — the records' own content didn't
+ * change, and stamping would re-dirty the whole definition into a dedup rescan.
  */
 export async function batchUpdateDisplayValues(input: BatchUpdateDisplayValuesInput) {
   const { organizationId, updates, column } = input
@@ -71,6 +76,8 @@ export interface ClearDisplayValuesInput {
 /**
  * Clear display values for all instances of an entity definition.
  * Used when display field is set to null.
+ *
+ * No `updatedAt` stamp — same D-7 rationale as `batchUpdateDisplayValues`.
  */
 export async function clearDisplayValues(input: ClearDisplayValuesInput) {
   const { entityDefinitionId, organizationId, column } = input

@@ -24,6 +24,8 @@ export async function updateEntityInstance(params: UpdateEntityInstanceParams) {
 
   const now = new Date()
   const updateData: Record<string, unknown> = {
+    // D-7 explicit content stamp: archive/restore is a record content change,
+    // and `updatedAt` no longer auto-bumps (`$onUpdate` removed).
     updatedAt: now,
   }
   if ('archivedAt' in data) {

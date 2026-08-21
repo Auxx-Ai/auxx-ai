@@ -69,6 +69,9 @@ export async function applyAvatarThumbnailUrl(
   if (instances.length === 0) return null
 
   const instanceIds = instances.map((i: { entityInstanceId: string }) => i.entityInstanceId)
+  // No `updatedAt` stamp (D-7): this background job upgrades an interim
+  // download URL to the CDN thumbnail — a derived artifact of a field write
+  // that already stamped the record. Not a content change.
   await db
     .update(schema.EntityInstance)
     .set({ avatarUrl: cdnUrl })
