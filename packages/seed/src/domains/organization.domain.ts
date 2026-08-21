@@ -100,7 +100,14 @@ export class OrganizationDomain {
   ): Promise<void> {
     console.log('✍️  Generating signatures via UnifiedCrudHandler...')
 
-    const handler = new UnifiedCrudHandler(organizationId, ownerId, db)
+    // Seed session: silent lane — same suppression the per-call
+    // `skipEvents: true` used to provide, declared once at construction.
+    const handler = new UnifiedCrudHandler(organizationId, ownerId, db, undefined, {
+      session: {
+        origin: { kind: 'seed', reason: 'org bootstrap - no live users to notify' },
+        depth: 0,
+      },
+    })
 
     // Skip if signatures already exist (additive mode)
     const existing = await handler.list('signature', { limit: 1 })
@@ -126,14 +133,10 @@ export class OrganizationDomain {
           // nothing and silently produced field-less instances. `is_default` and
           // `visibility` are gone entirely — plan 36 replaced visibility with
           // `ResourceAccess` rows and made "default" a per-user `UserSetting`.
-          const result = await handler.create(
-            'signature',
-            {
-              signature_name: name,
-              signature_body: this.generateSignatureContent(user.email, isPrimary),
-            },
-            { skipEvents: true }
-          )
+          const result = await handler.create('signature', {
+            signature_name: name,
+            signature_body: this.generateSignatureContent(user.email, isPrimary),
+          })
           // `signature` is `baselineAtCreate: true`, so a seeded signature with
           // no owner row is invisible to EVERYONE but the org OWNER. The handler
           // acts as `ownerId`, so that is the `createdById` this row grants.

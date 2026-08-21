@@ -108,7 +108,11 @@ export class TicketDomain {
   ): Promise<void> {
     console.log('🎫 Generating tickets via UnifiedCrudHandler...')
 
-    const handler = new UnifiedCrudHandler(organizationId, userId, db)
+    // Seed session: silent lane — same suppression the per-call
+    // `skipEvents: true` used to provide, declared once at construction.
+    const handler = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
+      session: { origin: { kind: 'seed', reason: 'demo ticket seed data' }, depth: 0 },
+    })
 
     // Get existing contact EntityInstances for linking (need both definitionId and instanceId for RecordId format)
     const contacts = await db
@@ -158,9 +162,7 @@ export class TicketDomain {
     }
 
     if (ticketValues.length > 0) {
-      const { created, errors } = await handler.bulkCreate('ticket', ticketValues, {
-        skipEvents: true,
-      })
+      const { created, errors } = await handler.bulkCreate('ticket', ticketValues)
 
       if (errors.length > 0) {
         console.log(`⚠️  ${errors.length} ticket creation errors:`)

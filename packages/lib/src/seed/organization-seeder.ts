@@ -15,7 +15,7 @@ import { KBService } from '../kb'
 import { seedSuggestedMailFilters } from '../mail-filters'
 import { ensureSystemProfiles } from '../permissions/profiles'
 import { seedSuggestedRecordRules } from '../record-rules'
-import { UnifiedCrudHandler } from '../resources/crud'
+import { seedSession, UnifiedCrudHandler } from '../resources/crud'
 import { seedClientNotificationSequences } from '../sequences'
 import { seedDocumentBusinessFromProfile } from '../settings'
 import { buildSystemSnippetTemplates } from '../snippets'
@@ -438,13 +438,13 @@ export class OrganizationSeeder {
     // pre-hook drops any write of this flag unless the caller is in the
     // bypass set. Keeping the bypass scoped to this block (rather than the
     // whole seed run) documents the privilege boundary.
+    // The seed session's silent lane skips snapshot invalidation and events —
+    // no active users to notify, and each invalidation attempt costs 5s on
+    // Lambda when Redis is slow/unavailable.
     const handler = new UnifiedCrudHandler(organizationId, this.userId, this.db, undefined, {
       bypassFieldGuards: new Set(['is_system_tag']),
+      session: seedSession('org seeding - tag bootstrap'),
     })
-
-    // Skip snapshot invalidation and events during seeding — no active users to notify,
-    // and each invalidation attempt costs 5s on Lambda when Redis is slow/unavailable
-    const seedOpts = { skipEvents: true }
 
     // Priority and segment. No parent, so these can go in parallel — there is no
     // inverse (`tag_children`) sync to race on sortKey.
@@ -461,7 +461,7 @@ export class OrganizationSeeder {
     ]
 
     await Promise.all(
-      independentTags.map((tag) => handler.create('tag', { ...tag, is_system_tag: true }, seedOpts))
+      independentTags.map((tag) => handler.create('tag', { ...tag, is_system_tag: true }))
     )
 
     // The core mail categories, under their own parent. Ordinary (editable,
