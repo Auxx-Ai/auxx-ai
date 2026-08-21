@@ -38,7 +38,22 @@ export function parseVisualRef(s: string | null | undefined): VisualRef | null {
     const [iconId, color] = s.slice(5).split(':')
     return { type: 'icon', iconId: iconId ?? '', color: color || undefined }
   }
-  if (s.startsWith('http://') || s.startsWith('https://')) return { type: 'url', value: s }
+  // Anything an <img src> can render directly is a url ref. `blob:` covers the
+  // optimistic preview an in-flight avatar upload writes to the record store,
+  // `data:` the inline form of base64, and a leading `/` the same-origin
+  // `/api/files/download/<ref>` URL a just-saved FILE field resolves to. Missing
+  // any of these fell through to the `lucide` branch below, where an unknown
+  // icon id makes EntityIcon render `null` — the whole avatar frame disappeared
+  // mid-upload instead of showing the picked image.
+  if (
+    s.startsWith('http://') ||
+    s.startsWith('https://') ||
+    s.startsWith('blob:') ||
+    s.startsWith('data:') ||
+    s.startsWith('/')
+  ) {
+    return { type: 'url', value: s }
+  }
   if (EMOJI_RE.test(s)) return { type: 'emoji', value: s }
   return { type: 'lucide', value: s }
 }
