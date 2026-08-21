@@ -9,7 +9,7 @@ import { formatBytes } from '@auxx/utils/file'
 import { AlertCircle, Columns, Rows3, Trash2 } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { FileSelectDropZone } from '~/components/file-select/file-select-drop-zone'
-import { MAX_FILE_SIZE_BYTES } from '../constants'
+import { ACCEPTED_FILE_EXTENSIONS, MAX_FILE_SIZE_BYTES } from '../constants'
 import { useChunkedUpload } from '../hooks/use-chunked-upload'
 import type { ParsedCSVData } from '../types'
 import { type ParseCSVError, parseCSV } from '../utils/parse-csv'
@@ -39,6 +39,14 @@ export function StepUpload({ entityDefinitionId, onComplete }: StepUploadProps) 
   const handleFilesSelected = useCallback(async (files: File[]) => {
     const file = files[0]
     if (!file) return
+
+    // Validate file type — `accept` only filters the OS picker, never a drop
+    const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+    if (!ACCEPTED_FILE_EXTENSIONS.includes(extension)) {
+      setParseError(`Only ${ACCEPTED_FILE_EXTENSIONS.join(', ')} files can be imported.`)
+      setParsedData(null)
+      return
+    }
 
     // Validate file size
     if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -95,7 +103,7 @@ export function StepUpload({ entityDefinitionId, onComplete }: StepUploadProps) 
           dragActive={dragActive}
           onDragActiveChange={setDragActive}
           maxFiles={1}
-          fileExtensions={['.csv']}
+          fileExtensions={ACCEPTED_FILE_EXTENSIONS}
           placeholder='Drop a CSV file here or click to select'
           showFilePicker={false}
           className='flex-1'

@@ -88,6 +88,7 @@ export function useImportWizard({ jobId, currentStep, mapColumnsData }: UseImpor
         toCreate: plan?.estimates?.toCreate ?? 0,
         toUpdate: plan?.estimates?.toUpdate ?? 0,
         toSkip: plan?.estimates?.toSkip ?? 0,
+        toUnmatched: plan?.estimates?.toUnmatched ?? 0,
       },
     }
   }, [job, mappedColumns, plan, mapColumnsData])

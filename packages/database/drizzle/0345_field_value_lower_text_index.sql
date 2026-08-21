@@ -1,0 +1,1 @@
+CREATE INDEX "FieldValue_lookup_lower_text_idx" ON "FieldValue" USING btree ("organizationId","fieldId",lower("valueText")) WHERE "valueText" IS NOT NULL;

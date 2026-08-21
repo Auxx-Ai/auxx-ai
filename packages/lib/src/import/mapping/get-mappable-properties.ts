@@ -2,19 +2,38 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
+import type { MappablePropertyWithSamples } from '../types/mapping'
+import { parseResolutionConfig } from './resolution-config'
 
-/** Mappable property with sample values and mapping info */
-export interface MappablePropertyWithSamples {
-  id: string
-  columnIndex: number
-  visibleName: string
-  sampleValues: string[]
-  targetType: string
-  targetFieldKey: string | null
-  customFieldId: string | null
-  resolutionType: string
-  matchField: string | null
+export type { MappablePropertyWithSamples }
+
+/**
+ * Per-column distinct/total counts for a job, in ONE grouped aggregate.
+ *
+ * Backed by `ImportJobRawData_valueHash_idx`
+ * `(importJobId, columnIndex, valueHash)`, the counts come off the index, and
+ * one grouped query beats N per-column round trips at mapping time.
+ *
+ * @param db - Database instance
+ * @param jobId - Import job ID
+ * @returns Map of columnIndex → { distinct, total }
+ */
+async function getColumnValueCounts(
+  db: Database,
+  jobId: string
+): Promise<Map<number, { distinct: number; total: number }>> {
+  const rows = await db
+    .select({
+      columnIndex: schema.ImportJobRawData.columnIndex,
+      distinct: sql<number>`count(distinct ${schema.ImportJobRawData.valueHash})::int`,
+      total: sql<number>`count(*)::int`,
+    })
+    .from(schema.ImportJobRawData)
+    .where(eq(schema.ImportJobRawData.importJobId, jobId))
+    .groupBy(schema.ImportJobRawData.columnIndex)
+
+  return new Map(rows.map((r) => [r.columnIndex, { distinct: r.distinct, total: r.total }]))
 }
 
 /**
@@ -44,6 +63,8 @@ export async function getMappablePropertiesWithSamples(
   // Create a map for quick lookup by column index
   const mappingByIndex = new Map(mappingProperties.map((mp) => [mp.sourceColumnIndex, mp]))
 
+  const valueCounts = await getColumnValueCounts(db, jobId)
+
   // Combine column headers with saved mappings and sample values
   const propertiesWithMappings = await Promise.all(
     properties.map(async (prop) => {
@@ -61,19 +82,8 @@ export async function getMappablePropertiesWithSamples(
 
       // Get saved mapping for this column
       const savedMapping = mappingByIndex.get(prop.columnIndex)
-
-      // Parse resolution config for matchField
-      let matchField: string | null = null
-      if (savedMapping?.resolutionConfig) {
-        try {
-          const config = JSON.parse(savedMapping.resolutionConfig) as {
-            relationConfig?: { matchField?: string }
-          }
-          matchField = config.relationConfig?.matchField ?? null
-        } catch {
-          // Invalid JSON, ignore
-        }
-      }
+      const config = parseResolutionConfig(savedMapping?.resolutionConfig)
+      const counts = valueCounts.get(prop.columnIndex)
 
       return {
         id: prop.id,
@@ -84,7 +94,16 @@ export async function getMappablePropertiesWithSamples(
         targetFieldKey: savedMapping?.targetFieldKey ?? null,
         customFieldId: savedMapping?.customFieldId ?? null,
         resolutionType: savedMapping?.resolutionType ?? 'text:value',
-        matchField,
+        matchField: config.relationConfig?.matchField ?? null,
+        identityRole: config.identityRole ?? null,
+        mergeStrategy: config.mergeStrategy ?? null,
+        // Same parsed `config`, same row. The router used to re-query
+        // `ImportMappingProperty` with this exact `where` and re-parse the same
+        // JSON purely to recover these two.
+        onNoMatch: config.relationConfig?.onNoMatch ?? null,
+        linkMode: config.relationConfig?.linkMode ?? null,
+        distinctValueCount: counts?.distinct ?? 0,
+        totalValueCount: counts?.total ?? 0,
       }
     })
   )

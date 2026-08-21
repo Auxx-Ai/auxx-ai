@@ -5,14 +5,18 @@ import { createScopedLogger } from '@auxx/logger'
 import { getPublishingClient } from '@auxx/redis'
 import { toRecordId } from '@auxx/types/resource'
 import { eq } from 'drizzle-orm'
-import { canonicalizeEntityDefinitionId, getCachedResource } from '../../cache'
+import { canonicalizeEntityDefinitionId, findCachedResource } from '../../cache'
 import {
   createEventPublisher,
+  createRelationTargetWriter,
   executePlan,
   getAllJobResolutions,
   markJobCompleted,
   markJobExecuting,
   markJobFailed,
+  materializeRelationCreates,
+  parseResolutionConfig,
+  relationFieldWriteMode,
 } from '../../import'
 import type { FieldWriteModes, ImportMappingProperty, ImportPlan } from '../../import/types'
 import { getRealtimeService, publishRecordsInvalidated } from '../../realtime'
@@ -105,10 +109,6 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
       updatedAt: p.updatedAt,
     }))
 
-    // Load resolutions from DB
-    const resolutions = await getAllJobResolutions(db, jobId)
-    logger.debug('Loaded resolutions', { jobId, count: resolutions.size })
-
     // Create CRUD handler and pre-warm caches
     const crudHandler = new UnifiedCrudHandler(organizationId, userId, db)
     const entityDefinitionId = importJob.importMapping.entityDefinitionId
@@ -121,7 +121,11 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
     // matched rows APPEND new values instead of whole-field-setting (which
     // would wipe the record's alias list). Keys mirror how buildRecordData
     // keys the data: customFieldId for custom fields, targetFieldKey otherwise.
-    const resource = await getCachedResource(organizationId, entityDefinitionId)
+    // Tolerant lookup for the same reason `generatePlan` uses one: this id may be
+    // an entityType slug, and `getCachedResource` only ever matches the CUID. A miss
+    // here empties `fieldModes`, so multi-value scalars whole-field-set instead of
+    // appending and `has_many` relations silently drop every unmentioned link.
+    const resource = await findCachedResource(organizationId, entityDefinitionId)
     const fieldModes: FieldWriteModes = {}
     for (const mapping of mappings) {
       if (!mapping.targetFieldKey || mapping.targetType === 'skip') continue
@@ -130,19 +134,37 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
           ? f.id === mapping.customFieldId
           : getFieldOutputKey(f) === mapping.targetFieldKey
       )
-      if (field && !field.relationship && field.options?.multi === true) {
+      if (!field) continue
+      if (!field.relationship && field.options?.multi === true) {
         fieldModes[mapping.customFieldId ?? mapping.targetFieldKey] = 'add'
+        continue
+      }
+      // Relations get the same treatment via their own `linkMode`. Without this
+      // arm a `has_many` relation on an UPDATE row falls through to `'set'` and
+      // silently DROPS every link the file did not mention, a CSV column
+      // carrying one supplier is not a statement that the part has only that
+      // supplier. Defaults to `'add'`; `'set'` is the explicit opt-in.
+      if (field.relationship) {
+        const linkMode = parseResolutionConfig(mapping.resolutionConfig).relationConfig?.linkMode
+        const mode = relationFieldWriteMode(field.relationship.relationshipType, linkMode)
+        if (mode) fieldModes[mapping.customFieldId ?? mapping.targetFieldKey] = mode
       }
     }
 
-    // Data keys of the identifier mapping — a uniqueness conflict here on a
-    // `create` row degrades to update-by-append (in-file duplicate emails).
-    const identifierFieldKey = importJob.importMapping.identifierFieldKey
-    const identifierKeys = identifierFieldKey
-      ? mappings
-          .filter((m) => m.targetFieldKey === identifierFieldKey)
-          .map((m) => m.customFieldId ?? m.targetFieldKey!)
-      : []
+    // Data keys of the identifier mapping, a uniqueness conflict on one of
+    // these during a `create` degrades the row to update-by-append on the record
+    // that owns the value (in-file duplicate identifiers, planning misses).
+    // Keys mirror how `buildRecordData` keys the payload: `customFieldId` for
+    // custom fields, `targetFieldKey` otherwise.
+    //
+    // This list being empty is what kept the degrade-to-update arm dead: the
+    // fallback arm then STRIPS the identifier and retries, and
+    // `UnifiedCrudHandler.create` validates no required fields, so a duplicate
+    // SKU imported as a part with no SKU at all.
+    const identifierFieldKeys = importJob.importMapping.identifierFieldKeys ?? []
+    const identifierKeys = mappings
+      .filter((m) => !!m.targetFieldKey && identifierFieldKeys.includes(m.targetFieldKey))
+      .map((m) => m.customFieldId ?? m.targetFieldKey!)
 
     // B2: the import writes with `skipEvents: true` (below), so build a manifest
     // collector to capture subscribed field/lifecycle changes for record rules. No-op
@@ -150,15 +172,56 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
     const { loadManifestCollector } = await import('../../record-rules/sync-manifest-collector')
     const manifest = await loadManifestCollector(organizationId)
 
+    // Relation auto-create (`onNoMatch: 'create'`) is a TWO-PHASE design:
+    // planning only records the intent, so abandoning the wizard at the preview
+    // leaves no orphan records behind. This is phase two, mint the targets and
+    // rewrite their resolutions to real record ids, BEFORE the resolutions are
+    // read below. Distinct values are deduped, so 500 rows naming "Acme" (or
+    // "ACME") produce exactly one company.
+    const relationCreates = await materializeRelationCreates(db, {
+      organizationId,
+      jobId,
+      userId,
+      createRecord: createRelationTargetWriter({
+        organizationId,
+        userId,
+        db,
+        // Auto-created targets reach record rules the same way imported rows do.
+        onCreated: (targetDefId, instanceId, data) => {
+          if (!manifest.enabled) return
+          // Subscriptions are per-def, and the TARGET def (company) is not this
+          // import's def (part), look it up rather than reusing the outer one.
+          if (manifest.subscriptionsFor(targetDefId)?.lifecycle.created) {
+            manifest.recordCreated(toRecordId(targetDefId, instanceId), data)
+          }
+        },
+      }),
+    })
+    if (relationCreates.created > 0 || relationCreates.failures.length > 0) {
+      logger.info('Materialized relation auto-creates', {
+        jobId,
+        created: relationCreates.created,
+        byEntityDefinition: relationCreates.byEntityDefinition,
+        failures: relationCreates.failures.length,
+      })
+    }
+
+    // Load resolutions AFTER materialization, the rewritten rows are the ones
+    // execution must read.
+    const resolutions = await getAllJobResolutions(db, jobId)
+    logger.debug('Loaded resolutions', { jobId, count: resolutions.size })
+
     // The import writes with `skipEvents: true`, so no `record:created` /
     // `record:updated` / `fieldValues:updated` frame ever reaches an open grid.
     // Publish the same coarse signal the connector sync path uses instead — one
     // `records:invalidated` per def, which the client turns into a single list
     // refetch. Without it the grid stays stale until a manual reload.
     //
-    // Only this import's def is touched: relation lookups resolve against
-    // existing records and auto-create is not implemented (`resolve-relation-lookups`),
-    // so no other def receives writes.
+    // This import's def is NOT the only one touched any more. Relation
+    // auto-create (`onNoMatch: 'create'`) mints records on the TARGET def, a
+    // parts import naming new suppliers writes `company` rows, so every def
+    // that received a write has to be invalidated, or an open companies grid
+    // stays stale until a manual reload.
     //
     // The room key MUST be canonicalized. `ImportMapping.entityDefinitionId` holds
     // either keyspace — for a def-backed system type it is the bare entityType slug
@@ -169,13 +232,26 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
     // `…-records-<cuid>`, so the frame was delivered to nobody.
     const roomDefId = await canonicalizeEntityDefinitionId(organizationId, entityDefinitionId)
 
+    // Canonicalize the auto-create targets the same way, and de-duplicate: a
+    // target may well BE this import's def.
+    const touchedDefIds = [
+      ...new Set([
+        roomDefId,
+        ...(await Promise.all(
+          Object.keys(relationCreates.byEntityDefinition).map((defId) =>
+            canonicalizeEntityDefinitionId(organizationId, defId)
+          )
+        )),
+      ]),
+    ]
+
     let lastInvalidateAt = 0
     const invalidateRecords = async (force = false) => {
       const now = Date.now()
       if (!force && now - lastInvalidateAt < INVALIDATE_THROTTLE_MS) return
       lastInvalidateAt = now
       await publishRecordsInvalidated(getRealtimeService(), organizationId, {
-        entityDefinitionIds: [roomDefId],
+        entityDefinitionIds: touchedDefIds,
       }).catch(() => {})
     }
 

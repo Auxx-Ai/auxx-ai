@@ -177,13 +177,19 @@ function getStepDescription(stepId: ImportStep, status: StepStatus, data: StepDa
     }
 
     case 'confirm': {
-      const { toCreate, toUpdate, toSkip } = data.confirm
-      const total = toCreate + toUpdate + toSkip
+      const { toCreate, toUpdate, toSkip, toUnmatched } = data.confirm
+      const total = toCreate + toUpdate + toSkip + toUnmatched
       if (status === 'complete') {
         return `${total} records processed`
       }
       if (status === 'active' && total > 0) {
-        return `${toCreate} create, ${toUpdate} update, ${toSkip} skip`
+        // `unmatched` is named separately from `skip`. Rows that update-only
+        // mode had nothing to update are not errors, and folding them into the
+        // skip count is how a wholly unimported file reads as normal here.
+        const parts = [`${toCreate} create`, `${toUpdate} update`]
+        if (toUnmatched > 0) parts.push(`${toUnmatched} unmatched`)
+        if (toSkip > 0) parts.push(`${toSkip} skip`)
+        return parts.join(', ')
       }
       return 'Review and start import'
     }

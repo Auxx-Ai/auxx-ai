@@ -1,0 +1,1 @@
+ALTER TABLE "ImportMapping" ADD COLUMN "identifierFieldKeys" text[];

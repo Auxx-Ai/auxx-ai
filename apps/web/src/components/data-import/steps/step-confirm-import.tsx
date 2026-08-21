@@ -115,8 +115,18 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
 
   // Show completion
   if (job?.status === 'completed') {
+    // `unmatched` is read here for the same reason the plan summary reads it:
+    // `executeImportPlan` counts "update-only mode found no record" separately
+    // from "this row has an error", and dropping it on the way to the card is
+    // how a run that imported nothing reports 0/0/0 and looks fine.
     const stats = job.statistics as
-      | { created?: number; updated?: number; skipped?: number; warnings?: number }
+      | {
+          created?: number
+          updated?: number
+          skipped?: number
+          unmatched?: number
+          warnings?: number
+        }
       | undefined
     return (
       <ImportCompleteCard
@@ -125,6 +135,7 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
           created: stats?.created ?? 0,
           updated: stats?.updated ?? 0,
           skipped: stats?.skipped ?? 0,
+          unmatched: stats?.unmatched ?? 0,
           warnings: stats?.warnings ?? 0,
         }}
         onComplete={onComplete}
@@ -136,7 +147,7 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
   return (
     <div className='flex flex-col flex-1 min-h-0 min-w-0'>
       {/* Plan Summary - fixed at top */}
-      {plan && <ImportPlanSummary plan={plan} />}
+      {plan && <ImportPlanSummary plan={plan} jobId={jobId} />}
 
       {/* Preview Table - scrolls independently with sticky header */}
       <div className='flex-1 min-h-0 min-w-0'>

@@ -2,7 +2,12 @@
 
 'use client'
 
-import type { ImportableField } from '@auxx/lib/import'
+import {
+  getIdentifierEligibility,
+  type ImportableField,
+  isRelationMatchableType,
+  sortByIdentifierPreference,
+} from '@auxx/lib/import/client'
 import type { BaseType } from '@auxx/lib/workflow-engine'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -89,15 +94,34 @@ export function FieldPicker({
     }
   }, [search, identifierFields, scalarFields, relationFields])
 
-  // Matchable fields for relationship (exclude relations from target)
+  /**
+   * Match fields the RESOLVER can actually query.
+   *
+   * This used to be every filterable non-relation field, which is a superset
+   * of what `queryCustomEntity` supports: `part.createdAt` / `part.updatedAt`
+   * are DATETIME and filterable, so the picker offered **Created** and
+   * **Updated** as match fields and choosing one silently matched nothing,
+   * forever. Same for BOOLEAN and DATE.
+   *
+   * The gate is IMPORTED, never restated here. A local copy of the type list
+   * is exactly how this and the default-match-field bug (Defect E) were born:
+   * two statements of one fact, drifting.
+   *
+   * `isRecommended` is likewise derived rather than hardcoded. The old
+   * `['id','email','externalId','name']` list marked **Record ID** recommended
+   * on `part` and left **SKU** unmarked, on precisely the flow where SKU is the
+   * only sane answer, and Record ID is the one that can never match a CSV.
+   */
   const matchableFields = useMemo(() => {
-    return targetFields
-      .filter((f) => !f.relationship)
+    const eligible = targetFields
+      .filter((f) => !f.relationship && isRelationMatchableType(f.type))
       .map((f) => ({
         key: f.key,
         label: f.label,
         type: f.type,
+        tier: getIdentifierEligibility(f)?.tier ?? 2,
       }))
+    return sortByIdentifierPreference(eligible, (f) => ({ key: f.key, tier: f.tier }))
   }, [targetFields])
 
   // Navigation handlers
@@ -285,7 +309,7 @@ export function FieldPicker({
               ) : (
                 matchableFields.map((field) => {
                   const isSelected = matchField === field.key
-                  const isRecommended = ['id', 'email', 'externalId', 'name'].includes(field.key)
+                  const isRecommended = field.tier === 1
                   return (
                     <CommandItem
                       key={field.key}

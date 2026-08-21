@@ -344,9 +344,26 @@ Some providers (Shopify Bulk Operations, Salesforce Bulk API 2.0) don't paginate
 - **Owned** — provision and own a definition (custom fields default to `FieldType.TEXT`, `isUpdatable:false` so users can't hand-edit synced fields). Row provenance set; orphan archive allowed (via reconciliation, owned+snapshot+upsert only).
 - **Contributing** — write into an existing def (system `contact`/`company`/`ticket` or any custom def). Per-**field** ownership; never archives the instance (other owners share it). Editable shared fields are protected per-record by the `fill_blank` merge strategy. "Detach" is an explicit settings action — there's no separate freeze mechanism; it's all field capabilities.
 
-**Identity strategies** (first-class union, bootstrap-only — `DataConnectorItem` is steady state): `connectorExternalId` | `matchField` | `composite` | `manualReview`. `matchField`/`composite` carry `connectorFieldKey` (subtree-relative source path) → `targetFieldId`.
+**Identity** is a **per-field ROLE**, not a per-mapping strategy. `FieldMapping.identityRole` is one discriminated union, which structurally enforces "at most one role per field":
+
+```ts
+identityRole?: { kind: 'externalId'; order?: number } | { kind: 'match'; normalize?: IdentityNormalize }
+```
+
+- `externalId`, this field is (part of) the upstream stable id used for re-identification and link anchoring. `order` sequences a first-non-null fallback CHAIN (`id → email`); absent ⇒ the synthetic `${parentExternalId}:${index}` is the last resort. Replaced the old silent `subtreeExternalId` guess, now explicit and editable.
+- `match`, a SECONDARY identity key. The external id stays primary (the `DataConnectorItem` binding); on first contact the sink looks for an existing entity whose value of this target field equals the source value and adopts it. `normalize` is derived from the target field type at toggle time.
+
+Identity stays **bootstrap-only** `DataConnectorItem` is steady state.
+
+An earlier revision of this section described a per-mapping union `connectorExternalId | matchField | composite | manualReview` carrying `connectorFieldKey → targetFieldId`. **That union never existed in code** (`grep -rn "connectorExternalId"` returns nothing) and was superseded by the per-field `identityRole` above. Corrected 2026-08-21.
+
+**Composite (AND) identity.** More than one field carrying `{ kind: 'match' }` *is* the composite key. The primitive lives on the shared lookup core, `lookupEntitiesByFieldValue`, its `candidates` list is OR / first-wins by default, and `matchAll` opts into AND. AND intersects the per-candidate record sets **before** the by-`recordId` dedupe, which is only meaningful for OR.
+
+**Ambiguity policy is a parameter, never a shared default.** `onAmbiguous: 'first' | 'error'`. The sink takes `'first'`, it has to, or a sync would fail on data the user can only fix by merging, and files a `DuplicateSuggestion`. The **CSV importer takes `'error'`**: an import is interactive, the user is present and the file is in front of them, so a hard row error surfaced in the preview beats an arbitrary pick. A shared default here would silently make one of the two wrong.
 
 **Merge strategies** (`FieldMergeStrategy`, first-class per-field): `overwrite` | `fill_blank` | `connector_owned_only` | `manual_review` | `ignore`. Conservative defaults on shared CRM data; these govern only how the *connector* writes — user read-only is the `isUpdatable` field capability.
+
+**These policy types are now SHARED with the CSV importer.** `IdentityNormalize`, `FieldMergeStrategy` and `IdentityRole` live in `packages/lib/src/write-policy/` and are re-exported from `data-connectors/types.ts`, so every connector call site is unchanged. The importer validates a **subset** of the merge union, `IMPORT_MERGE_STRATEGIES = ['overwrite', 'fill_blank', 'ignore']`, because `connector_owned_only` and `manual_review` have no import meaning (an import has no ownership ledger and no drift queue). `FieldMapping` itself is **not** shared: it carries `expression`, `sourceFields`, `provision` and `connectionMetaKey`, all connector-specific.
 
 **Orphan behavior** (`OrphanBehavior`): reconciliation stamps `archivedAt` on owned+snapshot+upsert items absent from the run. Real deletes come only from explicit delete signals (`handleConnectorDelete` / a `deleted` tombstone record / a webhook delete action); `archiveExternalId` is the single-item archive primitive.
 

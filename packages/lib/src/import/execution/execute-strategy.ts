@@ -15,6 +15,12 @@ import {
   type ExecuteBatchContext,
   executeBatch,
 } from './execute-batch'
+import {
+  isBlankValue,
+  keysWithStrategy,
+  loadNonBlankFieldKeys,
+  parseMergeStrategies,
+} from './merge-strategy'
 
 /** Batch size for execution */
 const BATCH_SIZE = 50
@@ -52,33 +58,119 @@ export interface StrategyExecutionResult {
   strategy: StrategyType
   executed: number
   failed: number
+  /**
+   * Update rows whose payload was EMPTY once the blank-is-absence and
+   * merge-strategy rules had been applied. Nothing was written and
+   * `updateRecord` was never called, so they are neither `executed` nor
+   * `failed`, `planned === executed + failed + noops`.
+   */
+  noops: number
   /** Rows that imported with at least one execution warning */
   warnings: number
   durationMs: number
 }
 
-/** True for null / empty-string / empty-array resolved values. */
-function isBlankValue(value: unknown): boolean {
-  if (value === null || value === undefined) return true
-  if (typeof value === 'string') return value.trim() === ''
-  if (Array.isArray(value)) return value.length === 0
-  return false
+/** Row warning recorded on an update row that turned out to write nothing. */
+const NO_OP_WARNING = 'No changes, every mapped value was blank or withheld by its merge strategy'
+
+/** Per-column policy applied to an UPDATE row's payload. */
+export interface UpdatePolicy {
+  /** `mergeStrategy: 'ignore'`, the column is create-path only. */
+  ignoreKeys: ReadonlySet<string>
+  /**
+   * `mergeStrategy: 'overwrite'`, the blank-is-absence rule is DISABLED for
+   * these keys, so a blank cell DOES clear the stored value. This is the only
+   * way to empty a field by import; without it absence-by-default becomes "you
+   * can't clear anything".
+   */
+  overwriteKeys: ReadonlySet<string>
+  /**
+   * `mergeStrategy: 'fill_blank'` keys whose TARGET already holds a value on
+   * this record, withheld so a human's value is not clobbered.
+   */
+  filledKeys: ReadonlySet<string>
+}
+
+/** One row's terminal outcome, as written back to `ImportPlanRow`. */
+interface PlanRowUpdate {
+  id: string
+  status: 'completed' | 'failed'
+  /** Bare instance id, or null to leave whatever is already stored. */
+  resultRecordId: string | null
+  /** Failure message, or null to leave whatever is already stored. */
+  errorMessage: string | null
+  /** Execution warning to APPEND, or null when the row produced none. */
+  warningMessage: string | null
 }
 
 /**
- * On UPDATE rows, a blank cell on a multi-value field is a NO-WRITE — the key
- * is removed entirely. Without this a blank email cell in a re-import CLEARS
- * the stored alias list (mode `'add'` with `null` would still be a write, and
- * historic `'set'` behavior wiped the field outright).
+ * Write a batch of row outcomes in ONE statement.
+ *
+ * The per-row form issued one UPDATE per imported row, serially, inside the
+ * 50-row loop: 5,000 rows meant 5,000 round trips on top of the CRUD writes.
+ *
+ * Two semantics from the per-row form are preserved exactly, and both are the
+ * reason this is a `FROM (VALUES ...)` join rather than a plain multi-row write:
+ *
+ * - `COALESCE(v.col, r.col)` reproduces Drizzle's undefined-skipping. A row that
+ *   succeeded carries no `errorMessage` and a `skip` row carries no
+ *   `resultRecordId`; neither column may be stomped to NULL just because this
+ *   outcome has nothing to say about it.
+ * - `warningMessage` is APPENDED, never replaced. A row can already carry a
+ *   PLANNING warning (dropped split elements), and execution warnings join it
+ *   with '; '.
  */
-export function stripBlankMultiValues(
+async function flushPlanRowUpdates(db: Database, updates: PlanRowUpdate[]): Promise<void> {
+  if (updates.length === 0) return
+
+  const now = new Date()
+  const tuples = updates.map(
+    (u) =>
+      sql`(${u.id}::text, ${u.status}::"ImportPlanRowStatus", ${u.resultRecordId}::text, ${u.errorMessage}::text, ${u.warningMessage}::text)`
+  )
+
+  // The table is named literally, not interpolated as a Drizzle table object:
+  // under vitest the schema proxy does not round-trip as a `Table` chunk and
+  // the name silently compiles to a bind parameter instead.
+  await db.execute(sql`
+    UPDATE "ImportPlanRow" AS r
+    SET status = v.status,
+        "resultRecordId" = COALESCE(v."resultRecordId", r."resultRecordId"),
+        "errorMessage" = COALESCE(v."errorMessage", r."errorMessage"),
+        "warningMessage" = CASE
+          WHEN v."warningMessage" IS NULL THEN r."warningMessage"
+          WHEN r."warningMessage" IS NULL THEN v."warningMessage"
+          ELSE r."warningMessage" || '; ' || v."warningMessage"
+        END,
+        "executedAt" = ${now},
+        "updatedAt" = ${now}
+    FROM (VALUES ${sql.join(tuples, sql`, `)})
+      AS v(id, status, "resultRecordId", "errorMessage", "warningMessage")
+    WHERE r.id = v.id
+  `)
+}
+
+/**
+ * Apply the UPDATE-path write policy to one row's payload.
+ *
+ * **A blank cell is an ABSENCE on update, not a value.** A blank scalar cell
+ * used to write `''` over whatever was stored, so a supplier list that leaves
+ * `Lead Time` empty on half its rows blanked out lead times someone entered by
+ * hand. Most re-imports are partial files, so that is the common case, not the
+ * edge one. Create is unaffected, a blank on create is just an unset field.
+ *
+ * Two different questions compose here: `fill_blank` asks whether the TARGET
+ * is empty, the blank rule asks whether the SOURCE is.
+ */
+export function stripBlankValues(
   fields: Record<string, unknown>,
-  modes: FieldWriteModes | undefined
+  policy: UpdatePolicy
 ): Record<string, unknown> {
-  if (!modes) return fields
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(fields)) {
-    if (modes[key] === 'add' && isBlankValue(value)) continue
+    if (policy.ignoreKeys.has(key)) continue
+    if (policy.filledKeys.has(key)) continue
+    if (isBlankValue(value) && !policy.overwriteKeys.has(key)) continue
     result[key] = value
   }
   return result
@@ -136,6 +228,15 @@ export async function executeStrategy(
   let executed = 0
   let failed = 0
   let warned = 0
+  let noops = 0
+
+  // Per-column merge policy. Read once per strategy, it is mapping metadata,
+  // not row data.
+  const isUpdate = strategy.strategy === 'update'
+  const mergeByKey = parseMergeStrategies(mappings)
+  const ignoreKeys = new Set(keysWithStrategy(mergeByKey, 'ignore'))
+  const overwriteKeys = new Set(keysWithStrategy(mergeByKey, 'overwrite'))
+  const fillBlankKeys = keysWithStrategy(mergeByKey, 'fill_blank')
 
   // Process in batches
   for (let batchStart = 0; batchStart < planRows.length; batchStart += BATCH_SIZE) {
@@ -145,23 +246,74 @@ export async function executeStrategy(
     // Fetch raw data for batch
     const rawData = await getBatchRowData(db, jobId, rowIndices)
 
+    // `fill_blank` needs the CURRENT values, read once per batch, never per
+    // row. Only the update path can have a target to protect.
+    const nonBlankByInstance =
+      isUpdate && fillBlankKeys.length > 0
+        ? await loadNonBlankFieldKeys(
+            db,
+            ctx.organizationId,
+            ctx.entityDefinitionId,
+            batchRows
+              .map((r) => r.existingRecordId)
+              .filter((id): id is string => typeof id === 'string' && id.length > 0),
+            fillBlankKeys
+          )
+        : new Map<string, Set<string>>()
+
     // Build batch records
-    const batchRecords: BatchRecord[] = batchRows.map((row) => {
+    const batchRecords: BatchRecord[] = []
+    const noOpRows: typeof batchRows = []
+
+    for (const row of batchRows) {
       const rowData = rawData.get(row.rowIndex) || {}
       let { standardFields, customFields } = buildRecordData(rowData, mappings, resolutions)
 
-      if (strategy.strategy === 'update') {
-        standardFields = stripBlankMultiValues(standardFields, fieldModes)
-        customFields = stripBlankMultiValues(customFields, fieldModes)
+      if (isUpdate) {
+        const policy = {
+          ignoreKeys,
+          overwriteKeys,
+          filledKeys: nonBlankByInstance.get(row.existingRecordId ?? '') ?? new Set<string>(),
+        }
+        standardFields = stripBlankValues(standardFields, policy)
+        customFields = stripBlankValues(customFields, policy)
+
+        // Nothing survived the policy ⇒ this row writes nothing. Calling
+        // `updateRecord` anyway would produce an empty write, a manifest entry
+        // and a `toUpdate` count for a row that changed nothing.
+        if (Object.keys(standardFields).length === 0 && Object.keys(customFields).length === 0) {
+          noOpRows.push(row)
+          continue
+        }
       }
 
-      return {
+      batchRecords.push({
         rowIndex: row.rowIndex,
         planRowId: row.id,
         existingRecordId: row.existingRecordId ?? undefined,
         data: { standardFields, customFields, modes: fieldModes },
-      }
-    })
+      })
+    }
+
+    // Close out the no-ops: completed, unwritten, warned, and not counted as
+    // executed. They still reach a terminal ImportPlanRow status so the plan
+    // stays fully accounted for.
+    await flushPlanRowUpdates(
+      db,
+      noOpRows.map((row) => ({
+        id: row.id,
+        status: 'completed' as const,
+        resultRecordId: null,
+        errorMessage: null,
+        warningMessage: NO_OP_WARNING,
+      }))
+    )
+
+    for (const row of noOpRows) {
+      noops++
+      warned++
+      await onRowWarning?.(row.rowIndex, NO_OP_WARNING)
+    }
 
     // Execute batch
     const batchCtx: ExecuteBatchContext = {
@@ -176,31 +328,27 @@ export async function executeStrategy(
 
     const result = await executeBatch(batchRecords, batchCtx)
 
-    // Update plan row statuses
+    // Update plan row statuses, one statement for the whole batch.
+    const rowUpdates: PlanRowUpdate[] = []
     for (const rowResult of result.results) {
       const planRow = batchRows.find((r) => r.rowIndex === rowResult.rowIndex)
-      if (planRow) {
-        await db
-          .update(schema.ImportPlanRow)
-          .set({
-            status: rowResult.success ? 'completed' : 'failed',
-            // The column has always held the bare instance id.
-            // `rowResult.recordId` is the branded `<defId>:<instanceId>` form,
-            // so read `instanceId` to keep the persisted value unchanged.
-            resultRecordId: rowResult.instanceId,
-            errorMessage: rowResult.error,
-            // Append execution warnings after any planning warning already on the row.
-            ...(rowResult.warning
-              ? {
-                  warningMessage: sql`CASE WHEN ${schema.ImportPlanRow.warningMessage} IS NULL THEN ${rowResult.warning} ELSE ${schema.ImportPlanRow.warningMessage} || '; ' || ${rowResult.warning} END`,
-                }
-              : {}),
-            executedAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.ImportPlanRow.id, planRow.id))
-      }
+      if (!planRow) continue
+      rowUpdates.push({
+        id: planRow.id,
+        status: rowResult.success ? 'completed' : 'failed',
+        // The column has always held the bare instance id.
+        // `rowResult.recordId` is the branded `<defId>:<instanceId>` form,
+        // so read `instanceId` to keep the persisted value unchanged.
+        resultRecordId: rowResult.instanceId ?? null,
+        errorMessage: rowResult.error ?? null,
+        // Append execution warnings after any planning warning already on the row.
+        warningMessage: rowResult.warning ?? null,
+      })
+    }
 
+    await flushPlanRowUpdates(db, rowUpdates)
+
+    for (const rowResult of result.results) {
       if (rowResult.warning) {
         warned++
         await onRowWarning?.(rowResult.rowIndex, rowResult.warning)
@@ -215,7 +363,7 @@ export async function executeStrategy(
       phase: 'executing',
       strategyId: strategy.id,
       strategy: strategy.strategy,
-      processed: executed + failed,
+      processed: executed + failed + noops,
       total: totalRows,
       succeeded: executed,
       failed,
@@ -242,6 +390,7 @@ export async function executeStrategy(
     strategy: strategy.strategy,
     executed,
     failed,
+    noops,
     warnings: warned,
     durationMs: Date.now() - startTime,
   }

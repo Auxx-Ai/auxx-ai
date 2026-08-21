@@ -10,7 +10,9 @@ vi.mock('../../../cache', () => ({
 }))
 
 const { getCachedFieldMap } = await import('../../../cache')
-const { lookupEntitiesByFieldValue } = await import('../lookup-entities-by-field-value')
+const { AmbiguousLookupError, buildLookupCondition, lookupEntitiesByFieldValue } = await import(
+  '../lookup-entities-by-field-value'
+)
 
 const getCachedFieldMapMock = vi.mocked(getCachedFieldMap)
 
@@ -66,6 +68,11 @@ const baseParams = {
   organizationId: 'org-1',
   entityDefinitionId: 'def-contact',
   limit: 5,
+  // `onAmbiguous` is REQUIRED and has no default, the two real consumers
+  // disagree on purpose. Most cases here are single-match, so they take the
+  // connector-side policy; the dedicated `onAmbiguous` describe block overrides
+  // it to `'error'`.
+  onAmbiguous: 'first' as const,
 }
 
 beforeEach(() => {
@@ -210,6 +217,7 @@ describe('lookupEntitiesByFieldValue', () => {
     const result = await lookupEntitiesByFieldValue(db, {
       ...baseParams,
       limit: 2,
+      onAmbiguous: 'first',
       candidates: [{ systemAttribute: 'primary_email', value: 'a@x.com' }],
     })
     const { items, hasMore } = result._unsafeUnwrap()
@@ -242,5 +250,234 @@ describe('lookupEntitiesByFieldValue', () => {
       candidates: [{ systemAttribute: 'primary_email', value: 'a@x.com' }],
     })
     expect(result.isOk()).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// Case-insensitive TEXT comparison (opt-in, the CSV importer)
+// ─────────────────────────────────────────────────────────────────────────
+
+const TEXT_FIELD = { id: 'field-sku-1', type: 'TEXT', systemAttribute: 'part_sku' } as never
+
+/** Collect every literal SQL fragment out of a built `SQL` object. */
+function sqlText(node: unknown): string {
+  if (node === null || node === undefined) return ''
+  if (typeof node === 'string') return node
+  if (Array.isArray(node)) return node.map(sqlText).join('')
+  if (typeof node === 'object') {
+    const obj = node as Record<string, unknown>
+    if (Array.isArray(obj.queryChunks)) return obj.queryChunks.map(sqlText).join('')
+    if (Array.isArray(obj.value)) return obj.value.map(sqlText).join('')
+    return ''
+  }
+  return ''
+}
+
+describe('buildLookupCondition, caseInsensitiveText', () => {
+  it('is case-SENSITIVE by default (no existing caller moves)', () => {
+    const cond = buildLookupCondition(TEXT_FIELD, 'M400L')
+    expect(sqlText(cond)).not.toContain('lower(')
+  })
+
+  // Direction matters and is pinned on purpose: BOTH sides are lowered, so a
+  // `m400l` cell finds a stored `M400L` AND an `M400L` cell finds a stored
+  // `m400l`. A one-sided lower() would only work in one direction and would
+  // drift silently.
+  it('lowers BOTH the column and the value when opted in', () => {
+    const cond = buildLookupCondition(TEXT_FIELD, 'M400L', { caseInsensitiveText: true })
+    expect(sqlText(cond)).toContain('lower(')
+    // The bound parameter carries the LOWER-CASED cell, so the comparison is
+    // lower(col) = lower(val) in both directions, not a one-sided lower().
+    const dumped = JSON.stringify(cond, (_k, v) => (v instanceof Map ? [...v] : v))
+    expect(dumped).toContain('"m400l"')
+    expect(dumped).not.toContain('"M400L"')
+  })
+
+  // NEVER `ilike`: it reads the right operand as a PATTERN, and `_`/`%` are
+  // ordinary characters in a SKU. This comparison decides create-vs-update.
+  it('never emits ilike', () => {
+    const cond = buildLookupCondition(TEXT_FIELD, 'A_100%', { caseInsensitiveText: true })
+    expect(sqlText(cond).toLowerCase()).not.toContain('ilike')
+  })
+
+  it('leaves non-text columns alone (numbers have no case)', () => {
+    const numberField = { id: 'f-n', type: 'NUMBER', systemAttribute: 'qty' } as never
+    const cond = buildLookupCondition(numberField, '42', { caseInsensitiveText: true })
+    expect(sqlText(cond)).not.toContain('lower(')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// matchAll (AND), the composite natural key
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Fake db for the AND lane: one `select().from().where().orderBy().limit()`. */
+function buildAndDb(
+  rows: Array<{
+    entityId: string
+    displayName: string | null
+    secondaryDisplayValue: string | null
+    avatarUrl: string | null
+  }>
+) {
+  const state = { selectCalls: 0, distinctCalls: 0 }
+  const db = {
+    select: () => {
+      state.selectCalls++
+      const chain: Record<string, unknown> = {}
+      chain.from = () => chain
+      chain.innerJoin = () => chain
+      chain.where = () => chain
+      chain.orderBy = () => chain
+      chain.limit = () => Promise.resolve(rows)
+      return chain
+    },
+    selectDistinctOn: () => {
+      state.distinctCalls++
+      const chain: Record<string, unknown> = {}
+      chain.from = () => chain
+      chain.innerJoin = () => chain
+      chain.where = () => chain
+      chain.orderBy = () => chain
+      chain.limit = () => Promise.resolve([])
+      return chain
+    },
+  }
+  return { db: db as never, state }
+}
+
+describe('lookupEntitiesByFieldValue, matchAll (AND)', () => {
+  beforeEach(() => {
+    getCachedFieldMapMock.mockResolvedValue(
+      new Map([
+        ['field-email-1', EMAIL_FIELD],
+        ['field-sku-1', TEXT_FIELD],
+      ])
+    )
+  })
+
+  it('intersects in ONE query rather than unioning per-candidate results', async () => {
+    const { db, state } = buildAndDb([
+      { entityId: 'inst-1', displayName: null, secondaryDisplayValue: null, avatarUrl: null },
+    ])
+    const result = await lookupEntitiesByFieldValue(db, {
+      ...baseParams,
+      matchAll: true,
+      candidates: [
+        { fieldId: 'field-sku-1' as never, value: 'M400L' },
+        { fieldId: 'field-email-1' as never, value: 'a@x.com' },
+      ],
+    })
+    const { items } = result._unsafeUnwrap()
+    expect(items).toHaveLength(1)
+    expect(items[0]!.recordId).toBe('def-contact:inst-1')
+    // ONE query for the whole tuple; the per-candidate FieldValue lane is never used.
+    expect(state.selectCalls).toBe(1)
+    expect(state.distinctCalls).toBe(0)
+  })
+
+  // The OR path SKIPS an unusable candidate. Doing that under AND would drop
+  // a conjunct and silently WIDEN the match, `(sku AND email)` would degrade
+  // to `sku` alone and update the wrong record.
+  it('returns EMPTY when any candidate is uncoercible, never skips it', async () => {
+    const { db, state } = buildAndDb([
+      { entityId: 'inst-1', displayName: null, secondaryDisplayValue: null, avatarUrl: null },
+    ])
+    const result = await lookupEntitiesByFieldValue(db, {
+      ...baseParams,
+      matchAll: true,
+      candidates: [
+        { fieldId: 'field-sku-1' as never, value: 'M400L' },
+        { fieldId: 'field-email-1' as never, value: 'not-an-email' },
+      ],
+    })
+    expect(result._unsafeUnwrap()).toEqual({ items: [], hasMore: false })
+    expect(state.selectCalls).toBe(0)
+  })
+
+  it('returns EMPTY when any candidate names a field that does not exist', async () => {
+    const { db, state } = buildAndDb([
+      { entityId: 'inst-1', displayName: null, secondaryDisplayValue: null, avatarUrl: null },
+    ])
+    const result = await lookupEntitiesByFieldValue(db, {
+      ...baseParams,
+      matchAll: true,
+      candidates: [
+        { fieldId: 'field-sku-1' as never, value: 'M400L' },
+        { systemAttribute: 'no_such_field', value: 'x' },
+      ],
+    })
+    expect(result._unsafeUnwrap().items).toEqual([])
+    expect(state.selectCalls).toBe(0)
+  })
+
+  it('sets hasMore when the intersection exceeds the limit', async () => {
+    const { db } = buildAndDb(
+      Array.from({ length: 3 }, (_, i) => ({
+        entityId: `inst-${i}`,
+        displayName: null,
+        secondaryDisplayValue: null,
+        avatarUrl: null,
+      }))
+    )
+    const result = await lookupEntitiesByFieldValue(db, {
+      ...baseParams,
+      limit: 2,
+      onAmbiguous: 'first',
+      matchAll: true,
+      candidates: [
+        { fieldId: 'field-sku-1' as never, value: 'M400L' },
+        { fieldId: 'field-email-1' as never, value: 'a@x.com' },
+      ],
+    })
+    const { items, hasMore } = result._unsafeUnwrap()
+    expect(items).toHaveLength(2)
+    expect(hasMore).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// onAmbiguous
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('lookupEntitiesByFieldValue, onAmbiguous', () => {
+  const twoRows = [
+    { entityId: 'inst-1', displayName: null, secondaryDisplayValue: null, avatarUrl: null },
+    { entityId: 'inst-2', displayName: null, secondaryDisplayValue: null, avatarUrl: null },
+  ]
+
+  it("absent ⇒ 'first': two matches come back as a list (today's behaviour)", async () => {
+    const { db } = buildFakeDb(twoRows)
+    const result = await lookupEntitiesByFieldValue(db, {
+      ...baseParams,
+      candidates: [{ systemAttribute: 'primary_email', value: 'dup@x.com' }],
+    })
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().items).toHaveLength(2)
+  })
+
+  it("'error' errs with the match COUNT rather than picking one", async () => {
+    const { db } = buildFakeDb(twoRows)
+    const result = await lookupEntitiesByFieldValue(db, {
+      ...baseParams,
+      limit: 2,
+      onAmbiguous: 'error',
+      candidates: [{ systemAttribute: 'primary_email', value: 'dup@x.com' }],
+    })
+    expect(result.isErr()).toBe(true)
+    const error = result._unsafeUnwrapErr()
+    expect(error).toBeInstanceOf(AmbiguousLookupError)
+    expect((error as InstanceType<typeof AmbiguousLookupError>).matchCount).toBe(2)
+  })
+
+  it("'error' is silent on a single match", async () => {
+    const { db } = buildFakeDb([twoRows[0]!])
+    const result = await lookupEntitiesByFieldValue(db, {
+      ...baseParams,
+      onAmbiguous: 'error',
+      candidates: [{ systemAttribute: 'primary_email', value: 'one@x.com' }],
+    })
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().items).toHaveLength(1)
   })
 })

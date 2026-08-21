@@ -6,19 +6,42 @@ import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import type { FieldId } from '@auxx/types/field'
 import { createTypedValueInput } from '@auxx/types/field-value'
-import { type AnyColumn, and, asc, eq, isNull, type SQL } from 'drizzle-orm'
+import { type AnyColumn, and, asc, eq, isNull, type SQL, sql } from 'drizzle-orm'
 // `Result` stays on the signature (house style, and it leaves room for a real
-// structural failure later) even though every path now returns `ok` — an
-// unresolvable candidate is an empty result, not an error. See the docblock.
-import { ok, type Result } from 'neverthrow'
+// structural failure later) even though every OK path returns `ok`, an
+// unresolvable candidate is an empty result, not an error. The one `err` is the
+// opt-in ambiguity policy below. See the docblock.
+import { err, ok, type Result } from 'neverthrow'
 import { getCachedFieldMap } from '../../cache'
+import { ConflictError } from '../../errors'
 import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
 import { typedColumnMatch } from '../../field-values/typed-column-match'
+import type { OnAmbiguous } from '../../write-policy'
 import { type RecordId, toRecordId } from '../resource-id'
 
 const logger = createScopedLogger('lookup-entities-by-field-value')
 
 type CustomFieldEntity = typeof schema.CustomField.$inferSelect
+
+/**
+ * More than one distinct record matched, and the caller asked for
+ * `onAmbiguous: 'error'`.
+ *
+ * Carries the count so the caller can name it in a user-facing row error
+ * instead of picking an arbitrary record, the CSV importer's whole reason for
+ * asking. `matchCount` is bounded by the `limit` the caller passed, so
+ * `hasMore` distinguishes "exactly N" from "at least N".
+ */
+export class AmbiguousLookupError extends ConflictError {
+  readonly matchCount: number
+  readonly hasMore: boolean
+
+  constructor(matchCount: number, hasMore = false) {
+    super(`Matches ${matchCount}${hasMore ? ' or more' : ''} existing records`)
+    this.matchCount = matchCount
+    this.hasMore = hasMore
+  }
+}
 
 /**
  * Candidate for a field-value lookup — one field reference + value to try. Two
@@ -81,6 +104,55 @@ export interface LookupEntitiesByFieldValueParams {
    * "active records only" callers opt in.
    */
   excludeArchived?: boolean
+  /**
+   * Compare `valueText`-backed candidates case-INSENSITIVELY
+   * (`lower(col) = lower(val)`). Default `false`, no existing caller moves.
+   *
+   * The CSV importer opts in so its identifier path agrees with its own
+   * relation path, which has always been case-insensitive: today `m400l` links
+   * to a stored `M400L` through a relation column and does *not* match it as an
+   * identifier, inside one file. `normalizeForLookup` and `checkUniqueValueTyped`
+   * stay case-SENSITIVE and stay in agreement with each other.
+   *
+   * `lower(col) = lower(val)`, never `ilike`: ILIKE reads its right operand
+   * as a PATTERN and a raw CSV cell is not one (`_` matches any character, `%`
+   * any sequence, both ordinary in SKUs and email local parts).
+   */
+  caseInsensitiveText?: boolean
+  /**
+   * AND the candidates instead of OR-ing them: only records matching EVERY
+   * candidate are returned. Default `false` (OR / first-wins, today's
+   * behaviour). This is the composite natural key, `(part, supplier)`, that
+   * neither the importer nor the connector sink could express.
+   *
+   * Two rules follow from the mode and are enforced below:
+   *  - the per-candidate record sets are intersected IN SQL, before any dedupe
+   *    or limit. The OR path dedupes hits across candidates by recordId, which
+   *    is only meaningful for OR; intersecting after a per-candidate `limit`
+   *    would drop members of the intersection.
+   *  - an unresolvable / uncoercible candidate makes the WHOLE lookup return
+   *    empty. Skipping it (what OR does) would silently WIDEN an AND match.
+   */
+  matchAll?: boolean
+  /**
+   * What to do when more than one distinct record matches.
+   *
+   * **REQUIRED, and deliberately has no default.** The two consumers of this
+   * function disagree on purpose, so a shared default would silently make one of
+   * them wrong, and the one it would break is the importer, by reintroducing
+   * "update an arbitrary record", which is the exact defect the update-strategy
+   * work exists to kill. Every call site states its own policy.
+   *
+   * - `'first'`, return the matches in priority order and let the caller pick.
+   *   The connector sink means this: a sync must not fail on data the user can
+   *   only fix by merging, so it takes the first and files a
+   *   `DuplicateSuggestion`.
+   * - `'error'`, return {@link AmbiguousLookupError} naming the count. The CSV
+   *   importer means this: an import is interactive, the user is present and the
+   *   file is in front of them, so updating an arbitrary one of two records that
+   *   share a SKU is a wrong write, not a missed one.
+   */
+  onAmbiguous: OnAmbiguous
 }
 
 /**
@@ -104,7 +176,11 @@ export function parseExternalIdentity(raw: unknown): { source: string; externalI
  * through `createTypedValueInput` as NaN and would silently match zero
  * rows — gate explicitly instead).
  */
-export function buildLookupCondition(field: CustomFieldEntity, rawValue: unknown): SQL | null {
+export function buildLookupCondition(
+  field: CustomFieldEntity,
+  rawValue: unknown,
+  options?: { caseInsensitiveText?: boolean }
+): SQL | null {
   const normalized = normalizeForLookup(field.type as FieldType, rawValue)
   if (normalized === null || normalized === undefined) return null
 
@@ -119,7 +195,53 @@ export function buildLookupCondition(field: CustomFieldEntity, rawValue: unknown
   }
 
   const { column, value } = typedColumnMatch(typedInput)
-  return eq(schema.FieldValue[column] as AnyColumn, value as string | number | boolean)
+  const col = schema.FieldValue[column] as AnyColumn
+
+  // Case-insensitive comparison is opt-in and reaches only the TEXT-backed
+  // column, `valueText` is exactly the set of string-shaped types (TEXT,
+  // RICH_TEXT, ADDRESS, EMAIL, URL, PHONE_INTL); numbers, dates, options and
+  // relations are keyed by id or by value and have no case.
+  //
+  // `lower(col) = lower(val)`, NEVER `ilike(col, val)`. ILIKE treats its
+  // right operand as a PATTERN: `_` matches any single character and `%` any
+  // sequence, both ordinary in SKUs and email local parts. This comparison
+  // decides create-vs-update on the import path, so a false match is a WRONG
+  // WRITE onto someone else's record, not a missed one.
+  if (options?.caseInsensitiveText && column === 'valueText' && typeof value === 'string') {
+    return eq(sql`lower(${col})`, value.toLowerCase())
+  }
+
+  return eq(col, value as string | number | boolean)
+}
+
+/**
+ * Correlated `EXISTS` on FieldValue for one AND-mode candidate. Lives in the
+ * outer query's WHERE clause, where Drizzle renders Column chunks fully
+ * qualified, a correlated subquery in a SELECT *projection* would lose its
+ * table qualifier and silently bind to the inner table instead.
+ */
+function fieldValueExists(organizationId: string, fieldId: string, condition: SQL): SQL {
+  return sql`exists (select 1 from ${schema.FieldValue} where ${and(
+    eq(schema.FieldValue.entityId, schema.EntityInstance.id),
+    eq(schema.FieldValue.organizationId, organizationId),
+    eq(schema.FieldValue.fieldId, fieldId),
+    condition
+  )})`
+}
+
+/** Correlated `EXISTS` on RecordIdentity for one AND-mode `external_id` candidate. */
+function recordIdentityExists(
+  organizationId: string,
+  entityDefinitionId: string,
+  parsed: { source: string; externalId: string }
+): SQL {
+  return sql`exists (select 1 from ${schema.RecordIdentity} where ${and(
+    eq(schema.RecordIdentity.entityInstanceId, schema.EntityInstance.id),
+    eq(schema.RecordIdentity.organizationId, organizationId),
+    eq(schema.RecordIdentity.entityDefinitionId, entityDefinitionId),
+    eq(schema.RecordIdentity.source, parsed.source),
+    eq(schema.RecordIdentity.externalId, parsed.externalId)
+  )})`
 }
 
 /**
@@ -154,6 +276,15 @@ export function buildLookupCondition(field: CustomFieldEntity, rawValue: unknown
  *
  * Does not filter on `capabilities.hidden`: the extension is a system
  * integration and is allowed to address hidden fields (externalId).
+ *
+ * `matchAll: true` flips the candidate list from OR to AND, the composite
+ * natural key. The intersection happens in SQL (correlated `EXISTS` per
+ * candidate) rather than over the OR loop's results, and an unusable candidate
+ * empties the whole lookup instead of being skipped. See the param docs.
+ *
+ * `onAmbiguous: 'error'` turns "more than one distinct record matched" into an
+ * {@link AmbiguousLookupError} carrying the count, for callers that must not
+ * pick arbitrarily. Absent ⇒ `'first'`.
  */
 export async function lookupEntitiesByFieldValue(
   db: Database,
@@ -187,6 +318,100 @@ export async function lookupEntitiesByFieldValue(
       if (f.systemAttribute === candidate.systemAttribute) return f
     }
     return null
+  }
+
+  // ── AND mode ────────────────────────────────────────────────────────────
+  // Intersect the per-candidate record sets IN SQL, before any dedupe or limit.
+  // Doing it after would be wrong twice over: the OR loop's dedupe-by-recordId
+  // is a UNION operator, and a per-candidate `limit` can drop a record that IS
+  // in the intersection.
+  if (params.matchAll) {
+    const existsConditions: SQL[] = []
+
+    for (const candidate of candidates) {
+      if ('systemAttribute' in candidate && candidate.systemAttribute === 'external_id') {
+        const parsed = parseExternalIdentity(candidate.value)
+        // An unusable candidate makes the whole AND return EMPTY. Skipping it
+        // (what the OR loop does) would drop a conjunct and silently WIDEN the
+        // match, an `(sku AND supplier)` key would degrade to `sku` alone.
+        if (!parsed) {
+          logger.warn('lookupEntitiesByFieldValue: AND candidate unusable, empty result', {
+            entityDef: entityDefinitionId,
+            reason: 'unparseable external_id',
+          })
+          return ok({ items: [], hasMore: false })
+        }
+        existsConditions.push(recordIdentityExists(organizationId, entityDefinitionId, parsed))
+        continue
+      }
+
+      const field = resolveField(candidate)
+      if (!field) {
+        logger.warn('lookupEntitiesByFieldValue: AND candidate unusable, empty result', {
+          entityDef: entityDefinitionId,
+          reason: 'field not found',
+        })
+        return ok({ items: [], hasMore: false })
+      }
+      const condition = buildLookupCondition(field, candidate.value, {
+        caseInsensitiveText: params.caseInsensitiveText,
+      })
+      if (condition === null) {
+        logger.warn('lookupEntitiesByFieldValue: AND candidate unusable, empty result', {
+          entityDef: entityDefinitionId,
+          reason: 'uncoercible value',
+        })
+        return ok({ items: [], hasMore: false })
+      }
+      existsConditions.push(fieldValueExists(organizationId, field.id, condition))
+    }
+
+    if (existsConditions.length === 0) return ok({ items: [], hasMore: false })
+
+    // `organizationId` + `entityDefinitionId` are the tenancy/def scope the OR
+    // path gets implicitly from `FieldValue.fieldId` (a field belongs to one
+    // def in one org). Anchoring on EntityInstance means stating them.
+    const rows = await db
+      .select({
+        entityId: schema.EntityInstance.id,
+        displayName: schema.EntityInstance.displayName,
+        secondaryDisplayValue: schema.EntityInstance.secondaryDisplayValue,
+        avatarUrl: schema.EntityInstance.avatarUrl,
+      })
+      .from(schema.EntityInstance)
+      .where(
+        and(
+          eq(schema.EntityInstance.organizationId, organizationId),
+          eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
+          archivedFilter,
+          params.scopeWhere,
+          ...existsConditions
+        )
+      )
+      .orderBy(asc(schema.EntityInstance.id))
+      .limit(limit + 1)
+
+    // Attribution goes to the FIRST candidate: with AND every candidate matched,
+    // so "which one hit" has no answer, the tuple did.
+    const first = candidates[0]!
+    for (const row of rows) {
+      if (items.length >= limit) {
+        hasMore = true
+        break
+      }
+      items.push({
+        recordId: toRecordId(entityDefinitionId, row.entityId),
+        matchedBy:
+          'fieldId' in first
+            ? { fieldId: first.fieldId, value: first.value }
+            : { systemAttribute: first.systemAttribute, value: first.value },
+        displayName: row.displayName,
+        secondaryDisplayValue: row.secondaryDisplayValue,
+        avatarUrl: row.avatarUrl,
+      })
+    }
+
+    return finish(items, hasMore, params.onAmbiguous)
   }
 
   for (const candidate of candidates) {
@@ -251,7 +476,9 @@ export async function lookupEntitiesByFieldValue(
       continue
     }
 
-    const condition = buildLookupCondition(field, candidate.value)
+    const condition = buildLookupCondition(field, candidate.value, {
+      caseInsensitiveText: params.caseInsensitiveText,
+    })
     if (condition === null) {
       skipped.push({ candidate, reason: 'uncoercible value' })
       continue
@@ -324,5 +551,20 @@ export async function lookupEntitiesByFieldValue(
     else logger.warn('lookupEntitiesByFieldValue: no candidate was usable', payload)
   }
 
+  return finish(items, hasMore, params.onAmbiguous)
+}
+
+/**
+ * Apply the ambiguity policy to a finished result set. Shared by the OR and AND
+ * paths so the two can never disagree about what "more than one match" means.
+ */
+function finish(
+  items: LookupMatch[],
+  hasMore: boolean,
+  onAmbiguous: OnAmbiguous | undefined
+): Result<LookupByFieldResult, Error> {
+  if (onAmbiguous === 'error' && items.length > 1) {
+    return err(new AmbiguousLookupError(items.length, hasMore))
+  }
   return ok({ items, hasMore })
 }

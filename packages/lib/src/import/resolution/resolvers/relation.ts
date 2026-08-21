@@ -1,6 +1,11 @@
 // packages/lib/src/import/resolution/resolvers/relation.ts
 
-import type { ResolutionConfig, ResolvedValue } from '../../types/resolution'
+import type {
+  RelationLinkMode,
+  RelationOnNoMatch,
+  ResolutionConfig,
+  ResolvedValue,
+} from '../../types/resolution'
 
 /**
  * Relation resolver context - passed when resolving relation values
@@ -46,6 +51,10 @@ export function resolveRelationMatch(
       targetTable: relatedEntityDefinitionId,
       matchField: config.relationConfig?.matchField,
       searchValue: trimmed,
+      // `relation:match` carries whatever policy the column persisted. Absent
+      // ⇒ `'fail'`, which is what this resolution type has always meant.
+      __onNoMatch: config.relationConfig?.onNoMatch ?? 'fail',
+      __linkMode: config.relationConfig?.linkMode,
     },
   }
 }
@@ -78,6 +87,11 @@ export function resolveRelationCreate(
       targetTable: relatedEntityDefinitionId,
       matchField: config.relationConfig?.matchField,
       searchValue: trimmed,
+      // An explicit `'blank'`/`'fail'` on a `relation:create` column still
+      // wins, the resolution type is DERIVED from the policy, so the policy
+      // is the authority when the two disagree (a stale row, a hand edit).
+      __onNoMatch: config.relationConfig?.onNoMatch ?? 'create',
+      __linkMode: config.relationConfig?.linkMode,
     },
   }
 }
@@ -121,6 +135,18 @@ export interface PendingRelationLookupValue {
   targetTable: string
   searchValue: string
   matchField?: string
+  /**
+   * Per-column no-match policy, carried on the marker so the batch resolver
+   * never has to re-read the mapping row it is resolving values for.
+   */
+  __onNoMatch?: RelationOnNoMatch
+  /** Per-column replace-or-append policy for multi-valued relations. */
+  __linkMode?: RelationLinkMode
+  /**
+   * @deprecated Superseded by `__onNoMatch: 'create'`. Still read so markers
+   * written before the policy existed keep resolving the way they were meant
+   * to instead of silently downgrading to `'fail'`.
+   */
   __createIfNotFound?: boolean
   __isDirectId?: boolean
 }

@@ -2,6 +2,11 @@
 
 export { type AnalyzeRowContext, analyzeRow } from './analyze-row'
 export { type AssignRowInput, assignRowToStrategy, batchAssignRows } from './assign-row-to-strategy'
+export {
+  type BatchedIdentifierLookup,
+  type BatchIdentifierLookupOptions,
+  createBatchedFindExistingRecord,
+} from './batch-identifier-lookup'
 export { calculateEstimates, calculateEstimatesFromCounts } from './calculate-estimates'
 export { createPlan } from './create-plan'
 export {
@@ -11,7 +16,12 @@ export {
 } from './create-strategy'
 export {
   createFindExistingRecord,
+  type FindExistingRecord,
   type FindExistingRecordOptions,
+  type FindExistingRecordResult,
+  hasSystemTable,
+  type IdentifierValues,
+  stripRecordIdPrefix,
 } from './find-existing-record'
 export {
   type AnalyzedRow,

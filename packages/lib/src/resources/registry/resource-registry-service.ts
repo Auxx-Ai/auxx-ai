@@ -17,6 +17,7 @@ import { resolveEntityDefTypeId } from './entity-def-resolver'
 import { getEntityInstanceFields } from './entity-instance-fields'
 import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_REGISTRY, type TableId } from './field-registry'
 import type { ResourceField } from './field-types'
+import { getDefaultIdentifierField, getIdentifierFields } from './field-utils'
 import { isTrailingMetadataField } from './trailing-fields'
 import type {
   CustomResource,
@@ -766,20 +767,28 @@ export class ResourceRegistryService {
 
   /**
    * Get all fields that can be used to identify/match existing records.
-   * Includes system fields with isIdentifier and custom fields with isUnique.
+   *
+   * Delegates. This used to be `resource.fields.filter(f => f.isIdentifier)`
+   *a FOURTH copy of one rule, alongside `field-utils`' pair and the import
+   * picker's `getIdentifiableFields`. Two sources of one fact drift; four is a
+   * guarantee. `getIdentifierEligibility` is the single authority now, and the
+   * two functions below are the only readers of it outside the picker.
    */
   getIdentifierFields(resource: Resource): ResourceField[] {
-    // All fields marked as identifiers (system identifiers + unique custom fields)
-    return resource.fields.filter((f) => f.isIdentifier)
+    return getIdentifierFields(resource)
   }
 
   /**
-   * Get the default identifier field for a resource.
-   * Returns the first identifier field, or undefined if none.
+   * Get the default identifier field for a resource, the one the import
+   * planner auto-selects when the user chose none.
+   *
+   * NOT simply `identifiers[0]` any more. It is tier-1 only and never a
+   * composite-only RELATION: auto-selecting a tier-2 free-text field as the
+   * match key for every untouched import would silently start updating records
+   * on a column nobody vouched for.
    */
   getDefaultIdentifierField(resource: Resource): ResourceField | undefined {
-    const identifiers = this.getIdentifierFields(resource)
-    return identifiers[0]
+    return getDefaultIdentifierField(resource)
   }
 
   /**

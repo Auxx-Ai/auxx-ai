@@ -39,11 +39,42 @@ export const ImportMapping = pgTable(
     // Source file type (currently only 'csv')
     sourceType: text().notNull().default('csv'),
 
-    // Default strategy for duplicate handling
-    defaultStrategy: text().notNull().default('create'), // 'create' | 'update' | 'skip'
+    /**
+     * What an import does with a row once the identifier has (or has not)
+     * matched an existing record. Plain `text()` with no enum constraint,
+     * the union lives in `@auxx/lib/import/types/mapping`.
+     *
+     *   'create'          , always create; the identifier is ignored entirely
+     *   'update'          , update matched rows; unmatched rows are reported
+     *                        as UNMATCHED (distinct from a row error)
+     *   'create-or-update', update matched, create unmatched (upsert)
+     *
+     * Defaults to 'create'; the wizard flips it to 'create-or-update' once an
+     * identifier column is chosen. The old 'skip' member was retired, `skip`
+     * remains a per-ROW strategy, never a job-level mode.
+     */
+    defaultStrategy: text().notNull().default('create'),
 
-    // Field used for duplicate detection (e.g., 'email', 'externalId')
-    identifierFieldKey: text(),
+    /**
+     * Ordered field keys forming the match key used for duplicate detection.
+     *
+     * One key is the ordinary case (`sku`, `email`). More than one is a
+     * COMPOSITE key, ANDed, `['part', 'supplier']` is what makes a supplier
+     * price list re-importable, since `vendor_part` has no single unique field
+     * by design (a vendor SKU is unique within a supplier, not org-wide).
+     *
+     * Derived from the per-column `identityRole: { kind: 'match' }` markers on
+     * `ImportMappingProperty.resolutionConfig`, that is the source of truth a
+     * user edits; this column is the planner's read shape. It MUST be
+     * rewritten whenever a column is unmapped or retargeted: a stale key whose
+     * field has no mapped column makes `analyzeRow` find no identifier value,
+     * and the import silently reverts to create-only behind a wizard that says
+     * update is on.
+     *
+     * Replaces the singular `identifierFieldKey`, which had no writer anywhere
+     * in the codebase and was NULL on every row in every org.
+     */
+    identifierFieldKeys: text().array(),
 
     // Creator
     createdById: text().references((): AnyPgColumn => User.id, {

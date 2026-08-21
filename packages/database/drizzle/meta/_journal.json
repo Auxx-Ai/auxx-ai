@@ -2395,6 +2395,34 @@
       "when": 1787102553031,
       "tag": "0341_user_avatar_asset_on_delete_set_null",
       "breakpoints": true
+    },
+    {
+      "idx": 342,
+      "version": "7",
+      "when": 1787296114584,
+      "tag": "0342_drop_import_identifier_field_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 343,
+      "version": "7",
+      "when": 1787296127239,
+      "tag": "0343_import_identifier_field_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 344,
+      "version": "7",
+      "when": 1787298072862,
+      "tag": "0344_import_strategy_unmatched",
+      "breakpoints": true
+    },
+    {
+      "idx": 345,
+      "version": "7",
+      "when": 1787331585285,
+      "tag": "0345_field_value_lower_text_index",
+      "breakpoints": true
     }
   ]
 }

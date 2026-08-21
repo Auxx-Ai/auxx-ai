@@ -2,7 +2,12 @@
 
 'use client'
 
-import { suggestResolutionType } from '@auxx/lib/import/client'
+import {
+  buildRelationColumnPolicy,
+  type ImportableField,
+  type ImportStrategyMode,
+  suggestResolutionType,
+} from '@auxx/lib/import/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Empty,
@@ -12,10 +17,14 @@ import {
   EmptyTitle,
 } from '@auxx/ui/components/empty'
 import { toastError } from '@auxx/ui/components/toast'
-import { Loader2, Wand2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { AlertTriangle, Loader2, Wand2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useResources } from '~/components/resources'
 import { api } from '~/trpc/react'
+import { isMappingIncomplete } from '../column-mapping/column-mapping-row'
 import { ColumnMappingTable } from '../column-mapping/column-mapping-table'
+import type { ColumnPolicyPatch } from '../column-mapping/column-policy-popover'
+import { ImportModeSelector } from '../column-mapping/import-mode-selector'
 import { SampleValuesPanel } from '../column-mapping/sample-values-panel'
 import type { ColumnMappingUI } from '../types'
 
@@ -26,14 +35,37 @@ interface StepMapColumnsProps {
   onMappingChange?: (mappedCount: number, totalColumns: number) => void
 }
 
+/** Everything `saveColumnMapping` needs beyond the job + column index. */
+interface ColumnSavePayload {
+  targetFieldKey: string | null
+  customFieldId: string | null
+  resolutionType: string
+  matchField?: string
+  relationConfig?: {
+    relatedEntityDefinitionId: string
+    relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
+    matchField?: string
+    onNoMatch?: 'create' | 'blank' | 'fail'
+    linkMode?: 'add' | 'set'
+  }
+  options?: Array<{ value: string; label: string }>
+}
+
 /**
  * Step 2: Column mapping.
  * Two-panel layout: mapping table on left, sample values preview on right.
  * Sample values panel updates on row hover.
+ *
+ * The identity toggle is a per-COLUMN write with per-JOB consequences: it moves
+ * `identifierFieldKeys` and can flip `defaultStrategy`. Every write here
+ * therefore invalidates BOTH the column read and the job read, updating one
+ * optimistically and leaving the other alone is how the mode selector and the
+ * preview go stale while looking authoritative.
  */
 export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapColumnsProps) {
   const [mappings, setMappings] = useState<ColumnMappingUI[]>([])
   const [selectedColumn, setSelectedColumn] = useState<number | null>(null)
+  const [savingColumns, setSavingColumns] = useState<ReadonlySet<number>>(new Set())
 
   // Show selected column or first column by default
   const activeColumn = selectedColumn ?? (mappings.length > 0 ? 0 : null)
@@ -46,9 +78,23 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
   )
   const { data: mappableProperties } = api.dataImport.getMappableProperties.useQuery({ jobId })
 
-  const saveMapping = api.dataImport.saveColumnMapping.useMutation()
-  const autoMap = api.dataImport.autoMapColumns.useMutation()
+  const saveColumnMapping = api.dataImport.saveColumnMapping.useMutation()
+  const autoMapColumns = api.dataImport.autoMapColumns.useMutation()
+  const setImportStrategy = api.dataImport.setImportStrategy.useMutation()
   const utils = api.useUtils()
+  const { getResourceById } = useResources()
+
+  /**
+   * Read back from the server, never computed here. `saveMappingProperty`
+   * flips the mode to `create-or-update` the first time an identifier column is
+   * flagged and back to `create` when the last one is cleared; a second local
+   * derivation of that rule would be a second thing to keep in sync.
+   */
+  const mode: ImportStrategyMode = job?.importMapping?.defaultStrategy ?? 'create'
+  const identifierFieldKeys = useMemo(
+    () => job?.importMapping?.identifierFieldKeys ?? [],
+    [job?.importMapping?.identifierFieldKeys]
+  )
 
   // Initialize mappings from mappable properties (includes saved mapping data from server)
   useEffect(() => {
@@ -67,6 +113,12 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
         customFieldId: prop.customFieldId ?? null,
         resolutionType: prop.resolutionType ?? 'text:value',
         matchField: prop.matchField ?? null,
+        identityRole: prop.identityRole ?? null,
+        mergeStrategy: prop.mergeStrategy ?? null,
+        onNoMatch: prop.onNoMatch ?? null,
+        linkMode: prop.linkMode ?? null,
+        distinctValueCount: prop.distinctValueCount ?? 0,
+        totalValueCount: prop.totalValueCount ?? 0,
         createdAt: new Date(),
         updatedAt: new Date(),
         isMapped: !!prop.targetFieldKey,
@@ -84,10 +136,109 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
     }
   }, [mappings, onMappingChange])
 
+  /** Mark a column busy so its write controls cannot be double-fired. */
+  const markSaving = useCallback((columnIndex: number, saving: boolean) => {
+    setSavingColumns((prev) => {
+      const next = new Set(prev)
+      if (saving) next.add(columnIndex)
+      else next.delete(columnIndex)
+      return next
+    })
+  }, [])
+
+  /**
+   * Both reads move together, always.
+   *
+   * `identifierFieldKeys` and `defaultStrategy` live on the JOB while the identity
+   * flag lives on the COLUMN, so a column write can silently change what the
+   * mode selector and the plan preview should be showing.
+   */
+  const refreshMappingState = useCallback(async () => {
+    await Promise.all([
+      utils.dataImport.getMappableProperties.invalidate({ jobId }),
+      utils.dataImport.getJob.invalidate({ jobId }),
+    ])
+  }, [jobId, utils.dataImport])
+
+  /**
+   * Build the full `saveColumnMapping` payload for a column.
+   *
+   * The whole `relationConfig` is resent every time, because
+   * `saveMappingProperty` REBUILDS that object from its input rather than
+   * merging it, omitting `onNoMatch` on a merge-strategy save would silently
+   * revert the no-match policy.
+   *
+   * The relation resolution type comes from `buildRelationColumnPolicy`, the
+   * same function the resolver uses. The old code hardcoded
+   * `isRelation && matchField ? 'relation:match' : suggest(...)`, which made
+   * `relation:create` unreachable from the wizard no matter what the policy said.
+   */
+  const buildPayload = useCallback(
+    (
+      mapping: Pick<ColumnMappingUI, 'matchField' | 'onNoMatch' | 'linkMode'>,
+      field: ImportableField | undefined,
+      overrides: {
+        targetFieldKey?: string | null
+        matchField?: string
+        onNoMatch?: 'create' | 'blank' | 'fail'
+        linkMode?: 'add' | 'set'
+      } = {}
+    ): ColumnSavePayload => {
+      const targetFieldKey =
+        overrides.targetFieldKey !== undefined ? overrides.targetFieldKey : null
+
+      if (!field || !targetFieldKey) {
+        return {
+          targetFieldKey: null,
+          customFieldId: null,
+          resolutionType: 'text:value',
+        }
+      }
+
+      if (field.isRelation && field.relationConfig) {
+        const targetResource = getResourceById(field.relationConfig.relatedEntityDefinitionId)
+        const chosen = {
+          matchField: overrides.matchField ?? mapping.matchField ?? undefined,
+          onNoMatch: overrides.onNoMatch ?? mapping.onNoMatch ?? undefined,
+          linkMode: overrides.linkMode ?? mapping.linkMode ?? undefined,
+        }
+
+        // Without the target resource cached we cannot resolve the display field,
+        // so persist what was chosen and let the server's own defaults apply.
+        const policy = targetResource
+          ? buildRelationColumnPolicy(targetResource, field.relationConfig.relationshipType, chosen)
+          : null
+
+        return {
+          targetFieldKey,
+          customFieldId: field.id ?? null,
+          resolutionType: policy?.resolutionType ?? 'relation:match',
+          matchField: policy?.matchField ?? chosen.matchField,
+          relationConfig: {
+            relatedEntityDefinitionId: field.relationConfig.relatedEntityDefinitionId,
+            relationshipType: field.relationConfig.relationshipType,
+            matchField: policy?.matchField ?? chosen.matchField,
+            onNoMatch: policy?.onNoMatch ?? chosen.onNoMatch,
+            linkMode: policy?.linkMode ?? chosen.linkMode,
+          },
+          options: field.options,
+        }
+      }
+
+      return {
+        targetFieldKey,
+        customFieldId: field.id ?? null,
+        resolutionType: suggestResolutionType(field),
+        options: field.options,
+      }
+    },
+    [getResourceById]
+  )
+
   const handleMappingChange = async (
     columnIndex: number,
     fieldKey: string | null,
-    resolutionType: string,
+    _resolutionType: string,
     matchField?: string
   ) => {
     // Find if another column is using this fieldKey (for replacement)
@@ -96,20 +247,23 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
       : null
 
     // Get the target field to check if it's a relation
-    const targetField = fieldKey ? fields?.find((f) => f.key === fieldKey) : null
+    const targetField = fieldKey ? fields?.find((f) => f.key === fieldKey) : undefined
 
-    // Determine resolution type based on the selected field
-    // For relations with matchField, use 'relation:match'
-    // Otherwise, use suggestResolutionType to get the appropriate type for the field
-    const finalResolutionType = targetField
-      ? targetField.isRelation && matchField
-        ? 'relation:match'
-        : suggestResolutionType(targetField)
-      : 'text:value'
+    // Retargeting drops the column's identity and policy server-side, they
+    // are statements about a field this column no longer feeds. Build from the
+    // NEW target only, never from what the column used to carry.
+    const payload = buildPayload(
+      { matchField: null, onNoMatch: null, linkMode: null },
+      targetField,
+      {
+        targetFieldKey: fieldKey,
+        matchField,
+      }
+    )
 
     // Update local state - clear old mapping if replacing, then set new mapping
-    setMappings((prev) => {
-      const updated = prev.map((m): ColumnMappingUI => {
+    setMappings((prev) =>
+      prev.map((m): ColumnMappingUI => {
         // Clear the old column that had this field
         if (existingMapping && m.sourceColumnIndex === existingMapping.sourceColumnIndex) {
           return {
@@ -117,6 +271,10 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
             targetFieldKey: null,
             targetType: 'skip',
             matchField: null,
+            identityRole: null,
+            mergeStrategy: null,
+            onNoMatch: null,
+            linkMode: null,
             isMapped: false,
           }
         }
@@ -126,22 +284,25 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
             ...m,
             targetFieldKey: fieldKey,
             targetType: fieldKey ? 'particle' : 'skip',
-            resolutionType: finalResolutionType,
-            matchField: matchField ?? null,
+            resolutionType: payload.resolutionType,
+            matchField: payload.relationConfig?.matchField ?? null,
+            identityRole: null,
+            mergeStrategy: null,
+            onNoMatch: payload.relationConfig?.onNoMatch ?? null,
+            linkMode: payload.relationConfig?.linkMode ?? null,
             isMapped: !!fieldKey,
           }
         }
         return m
       })
+    )
 
-      return updated
-    })
-
+    markSaving(columnIndex, true)
     try {
       // Save to server - clear old mapping first if replacing (the server
       // rejects two columns mapped to one field, so the clear must land first)
       if (existingMapping) {
-        await saveMapping.mutateAsync({
+        await saveColumnMapping.mutateAsync({
           jobId,
           columnIndex: existingMapping.sourceColumnIndex,
           targetFieldKey: null,
@@ -150,35 +311,124 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
         })
       }
 
-      // Save the new mapping
-      await saveMapping.mutateAsync({
-        jobId,
-        columnIndex,
-        targetFieldKey: fieldKey,
-        customFieldId: targetField?.id ?? null,
-        resolutionType: finalResolutionType,
-        matchField,
-        relationConfig: targetField?.relationConfig,
-        options: targetField?.options,
-      })
+      await saveColumnMapping.mutateAsync({ jobId, columnIndex, ...payload })
     } catch (error) {
       toastError({
         title: 'Could not save mapping',
         description: error instanceof Error ? error.message : 'Unknown error',
       })
-      // Resync local state with what the server actually holds
-      await utils.dataImport.getMappableProperties.invalidate({ jobId })
+    } finally {
+      markSaving(columnIndex, false)
+      // Resync BOTH reads with what the server actually holds.
+      await refreshMappingState()
+    }
+  }
+
+  /**
+   * Flag / unflag this column as (part of) the match key.
+   *
+   * Tri-state on the wire: `{ kind: 'match' }` sets it, `null` clears it,
+   * omitting it leaves it alone. Nothing here omits it, this control exists
+   * precisely to move it.
+   */
+  const handleToggleIdentifier = async (columnIndex: number, next: boolean) => {
+    const mapping = mappings.find((m) => m.sourceColumnIndex === columnIndex)
+    if (!mapping?.targetFieldKey) return
+    const field = fields?.find((f) => f.key === mapping.targetFieldKey)
+
+    setMappings((prev) =>
+      prev.map((m) =>
+        m.sourceColumnIndex === columnIndex
+          ? { ...m, identityRole: next ? { kind: 'match' as const } : null }
+          : m
+      )
+    )
+
+    markSaving(columnIndex, true)
+    try {
+      await saveColumnMapping.mutateAsync({
+        jobId,
+        columnIndex,
+        ...buildPayload(mapping, field, { targetFieldKey: mapping.targetFieldKey }),
+        identityRole: next ? { kind: 'match' } : null,
+      })
+    } catch (error) {
+      toastError({
+        title: 'Could not update the match key',
+        description: error instanceof Error ? error.message : 'Unknown error',
+      })
+    } finally {
+      markSaving(columnIndex, false)
+      await refreshMappingState()
+    }
+  }
+
+  /** Persist a per-column policy change (merge strategy / relation policy). */
+  const handlePolicyChange = async (columnIndex: number, patch: ColumnPolicyPatch) => {
+    const mapping = mappings.find((m) => m.sourceColumnIndex === columnIndex)
+    if (!mapping?.targetFieldKey) return
+    const field = fields?.find((f) => f.key === mapping.targetFieldKey)
+
+    setMappings((prev) =>
+      prev.map((m) =>
+        m.sourceColumnIndex === columnIndex
+          ? {
+              ...m,
+              mergeStrategy: patch.mergeStrategy ?? m.mergeStrategy,
+              onNoMatch: patch.onNoMatch ?? m.onNoMatch,
+              linkMode: patch.linkMode ?? m.linkMode,
+            }
+          : m
+      )
+    )
+
+    markSaving(columnIndex, true)
+    try {
+      await saveColumnMapping.mutateAsync({
+        jobId,
+        columnIndex,
+        ...buildPayload(mapping, field, {
+          targetFieldKey: mapping.targetFieldKey,
+          onNoMatch: patch.onNoMatch,
+          linkMode: patch.linkMode,
+        }),
+        // Omitted when unchanged, the tri-state leaves the stored value alone.
+        mergeStrategy: patch.mergeStrategy,
+      })
+    } catch (error) {
+      toastError({
+        title: 'Could not save the column policy',
+        description: error instanceof Error ? error.message : 'Unknown error',
+      })
+    } finally {
+      markSaving(columnIndex, false)
+      await refreshMappingState()
+    }
+  }
+
+  const handleModeChange = async (nextMode: ImportStrategyMode) => {
+    try {
+      await setImportStrategy.mutateAsync({ jobId, mode: nextMode })
+    } catch (error) {
+      toastError({
+        title: 'Could not change the import mode',
+        description: error instanceof Error ? error.message : 'Unknown error',
+      })
+    } finally {
+      await utils.dataImport.getJob.invalidate({ jobId })
     }
   }
 
   const handleAutoMap = async () => {
-    const result = await autoMap.mutateAsync({ jobId })
+    try {
+      const result = await autoMapColumns.mutateAsync({ jobId })
 
-    // Update local state with auto-mapped results
-    setMappings((prev) => {
-      const updated = prev.map((m): ColumnMappingUI => {
-        const autoMapped = result.mappings.find((r) => r.columnIndex === m.sourceColumnIndex)
-        if (autoMapped) {
+      // Immediate feedback; the invalidation below replaces this with the
+      // server's own view, including the identity flags auto-map just set.
+      setMappings((prev) =>
+        prev.map((m): ColumnMappingUI => {
+          const autoMapped = result.mappings.find((r) => r.columnIndex === m.sourceColumnIndex)
+          if (!autoMapped) return m
           return {
             ...m,
             targetFieldKey: autoMapped.targetFieldKey,
@@ -187,21 +437,40 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
             isMapped: !!autoMapped.targetFieldKey,
             suggestedField: autoMapped.targetFieldKey,
           }
-        }
-        return m
+        })
+      )
+    } catch (error) {
+      toastError({
+        title: 'Auto-mapping failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
       })
-
-      return updated
-    })
-
-    // Log if AI was used (could show UI indicator in the future)
-    if (result.usedAI) {
-      console.log('AI-powered mapping applied')
+    } finally {
+      await refreshMappingState()
     }
   }
 
   const mappedCount = mappings.filter((m) => m.isMapped).length
-  const canContinue = mappedCount > 0
+
+  /**
+   * An incomplete mapping blocks Continue.
+   *
+   * A relation column with no match field is unresolvable, every value reports
+   * "No match found" and, where the relation is required, every row fails. The
+   * server now always persists an explicit match field, so this should be
+   * unreachable; it stays because a state the engine rejects must not be a state
+   * the UI calls finished.
+   */
+  const incompleteMappings = useMemo(
+    () =>
+      mappings.filter((m) =>
+        isMappingIncomplete(
+          m,
+          fields?.find((f) => f.key === m.targetFieldKey)
+        )
+      ),
+    [mappings, fields]
+  )
+  const canContinue = mappedCount > 0 && incompleteMappings.length === 0
 
   if (jobLoading || fieldsLoading) {
     return (
@@ -221,20 +490,32 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
 
   return (
     <div className=''>
-      {/* Header with auto-map */}
+      {/* Header with mode selector and auto-map */}
       <div className='flex sm:items-center justify-between sticky top-0 px-4 border-b bg-muted/80 backdrop-blur py-3 sm:py-0 sm:h-12 z-10 flex-col sm:flex-row space-y-2 sm:space-y-0'>
-        <div className='flex  items-center gap-2'>
+        <div className='flex items-center gap-2'>
           <h3 className='font-medium'>Column Mappings</h3>
           <p className='text-sm text-muted-foreground'>
             {mappedCount} of {mappings.length} columns mapped
           </p>
+          {incompleteMappings.length > 0 && (
+            <span className='flex items-center gap-1 text-sm text-amber-600 dark:text-amber-500'>
+              <AlertTriangle className='size-3.5' />
+              {incompleteMappings.length} need a match field
+            </span>
+          )}
         </div>
         <div className='flex items-center gap-2 flex-row'>
+          <ImportModeSelector
+            mode={mode}
+            identifierFieldKeys={identifierFieldKeys}
+            disabled={setImportStrategy.isPending}
+            onChange={handleModeChange}
+          />
           <Button
             variant='outline'
             size='sm'
             onClick={handleAutoMap}
-            loading={autoMap.isPending}
+            loading={autoMapColumns.isPending}
             loadingText='Auto-mapping...'>
             <Wand2 />
             Auto-map Columns
@@ -253,8 +534,12 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
             mappings={mappings}
             availableFields={fields ?? []}
             activeColumn={activeColumn}
+            mode={mode}
+            savingColumns={savingColumns}
             onSelectColumn={setSelectedColumn}
             onChange={handleMappingChange}
+            onToggleIdentifier={handleToggleIdentifier}
+            onPolicyChange={handlePolicyChange}
           />
         </div>
 

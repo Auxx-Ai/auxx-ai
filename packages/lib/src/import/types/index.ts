@@ -32,6 +32,8 @@ export type {
   ImportJobProperty,
   ImportMapping,
   ImportMappingProperty,
+  ImportStrategyMode,
+  MappablePropertyWithSamples,
 } from './mapping'
 export type {
   ImportPlan,
@@ -48,6 +50,9 @@ export type {
 export type {
   ColumnFieldConfig,
   OverrideValue,
+  RelationCreateRequest,
+  RelationLinkMode,
+  RelationOnNoMatch,
   ResolutionConfig,
   ResolutionResult,
   ResolutionType,

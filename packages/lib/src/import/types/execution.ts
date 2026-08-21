@@ -36,7 +36,20 @@ export interface ExecutionResult {
   statistics: {
     created: number
     updated: number
+    /** Rows skipped because they carry an ERROR. */
     skipped: number
+    /**
+     * Rows skipped because update-only mode found no matching record.
+     * Deliberately NOT folded into `skipped`, "no match" is not an error,
+     * and one number for both hides unimported rows behind a normal state.
+     */
+    unmatched?: number
+    /**
+     * Update rows whose payload was EMPTY after the blank-is-absence and
+     * merge-strategy rules. Nothing was written, so they are not counted in
+     * `updated`; they are not failures either.
+     */
+    noOps?: number
     failed: number
     /** Rows that imported with at least one warning */
     warnings: number

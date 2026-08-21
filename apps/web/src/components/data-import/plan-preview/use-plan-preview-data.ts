@@ -4,7 +4,7 @@
 
 import { useCallback, useState } from 'react'
 import { api } from '~/trpc/react'
-import type { PlanPreviewRow, StrategyCounts } from './types'
+import { EMPTY_STRATEGY_COUNTS, type PlanPreviewRow, type StrategyCounts } from './types'
 
 interface UsePlanPreviewDataOptions {
   jobId: string
@@ -75,7 +75,7 @@ export function usePlanPreviewData(options: UsePlanPreviewDataOptions): UsePlanP
       acc[row.strategy]++
       return acc
     },
-    { create: 0, update: 0, skip: 0 }
+    { ...EMPTY_STRATEGY_COUNTS }
   )
 
   return {

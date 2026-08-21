@@ -71,6 +71,10 @@ findByValue.post('/find-by-value', async (c) => {
     entityDefinitionId: defId,
     candidates: [{ fieldId: field.id, value: candidateValue } as LookupCandidate],
     limit: 1,
+    // This route answers "is there an entity with this value" for the browser
+    // extension, which shows the hit. Historical behaviour is first-wins; a
+    // duplicate must not turn the lookup into an error.
+    onAmbiguous: 'first',
   })
   if (result.isErr()) return c.json({ entity: null })
 

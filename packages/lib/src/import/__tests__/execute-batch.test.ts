@@ -8,7 +8,7 @@ import {
   type ExecuteBatchContext,
   executeBatch,
 } from '../execution/execute-batch'
-import { stripBlankMultiValues } from '../execution/execute-strategy'
+import { stripBlankValues, type UpdatePolicy } from '../execution/execute-strategy'
 
 function ctx(overrides: Partial<ExecuteBatchContext>): ExecuteBatchContext {
   return {
@@ -185,22 +185,52 @@ describe('executeBatch — uniqueness conflict recovery', () => {
   })
 })
 
-describe('stripBlankMultiValues — blank cell on update is a NO-WRITE for multi fields', () => {
-  const modes = { primary_email: 'add' } as const
+describe('stripBlankValues, a blank cell is an ABSENCE on update, for EVERY field', () => {
+  const plain: UpdatePolicy = {
+    ignoreKeys: new Set<string>(),
+    overwriteKeys: new Set<string>(),
+    filledKeys: new Set<string>(),
+  }
 
-  it('removes null / empty-string / empty-array values on add-mode keys', () => {
-    expect(stripBlankMultiValues({ primary_email: null, first_name: 'Ada' }, modes)).toEqual({
+  it('removes null / empty-string / empty-array values on any key', () => {
+    expect(stripBlankValues({ primary_email: null, first_name: 'Ada' }, plain)).toEqual({
       first_name: 'Ada',
     })
-    expect(stripBlankMultiValues({ primary_email: '' }, modes)).toEqual({})
-    expect(stripBlankMultiValues({ primary_email: [] }, modes)).toEqual({})
+    expect(stripBlankValues({ primary_email: '' }, plain)).toEqual({})
+    expect(stripBlankValues({ primary_email: [] }, plain)).toEqual({})
   })
 
-  it('keeps real values on add-mode keys and blanks on set-mode keys', () => {
-    expect(stripBlankMultiValues({ primary_email: ['a@x.com'] }, modes)).toEqual({
+  it('keeps real values', () => {
+    expect(stripBlankValues({ primary_email: ['a@x.com'] }, plain)).toEqual({
       primary_email: ['a@x.com'],
     })
-    // single-value fields keep today's semantics (null clears)
-    expect(stripBlankMultiValues({ first_name: null }, modes)).toEqual({ first_name: null })
+  })
+
+  // The generalisation. This used to depend on `modes[key] === 'add'`, so a
+  // blank scalar cell wrote '' over the stored value, the classic partial-file
+  // data-loss bug.
+  it('removes a blank on a SCALAR key too (no write mode involved)', () => {
+    expect(stripBlankValues({ first_name: null, last_name: '' }, plain)).toEqual({})
+  })
+
+  it('mergeStrategy overwrite re-enables clearing, the only way to empty a field', () => {
+    const policy: UpdatePolicy = { ...plain, overwriteKeys: new Set(['first_name']) }
+    expect(stripBlankValues({ first_name: '', last_name: '' }, policy)).toEqual({
+      first_name: '',
+    })
+  })
+
+  it('mergeStrategy ignore drops the column entirely on the update path', () => {
+    const policy: UpdatePolicy = { ...plain, ignoreKeys: new Set(['source']) }
+    expect(stripBlankValues({ source: 'csv', first_name: 'Ada' }, policy)).toEqual({
+      first_name: 'Ada',
+    })
+  })
+
+  it('fill_blank withholds the write when the TARGET already has a value', () => {
+    const policy: UpdatePolicy = { ...plain, filledKeys: new Set(['notes']) }
+    expect(stripBlankValues({ notes: 'from csv', first_name: 'Ada' }, policy)).toEqual({
+      first_name: 'Ada',
+    })
   })
 })

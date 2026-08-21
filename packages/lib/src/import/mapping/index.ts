@@ -1,6 +1,11 @@
 // packages/lib/src/import/mapping/index.ts
 
 export {
+  deriveIdentifierFieldKeys,
+  type MappingIdentityState,
+  syncMappingIdentity,
+} from './derive-identifier-keys'
+export {
   getColumnSamples,
   getMappablePropertiesWithSamples,
   type MappablePropertyWithSamples,
@@ -10,6 +15,12 @@ export {
   getMappedColumnsWithStats,
   type MappedColumnWithStats,
 } from './get-mapped-columns'
+export {
+  isMatchRole,
+  parseResolutionConfig,
+  sanitizeIdentityRole,
+  serializeResolutionConfig,
+} from './resolution-config'
 export {
   type AutoMapStrategy,
   type RunAutoMapInput,
@@ -25,4 +36,14 @@ export {
   type SaveMappingInput,
   saveMappingProperty,
 } from './save-mapping-property'
-export { type UpdateMappingTitleInput, updateMappingTitle } from './update-mapping'
+export {
+  IMPORT_STRATEGY_MODES,
+  isImportStrategyMode,
+  toImportStrategyMode,
+} from './strategy-mode'
+export {
+  type UpdateImportStrategyInput,
+  type UpdateMappingTitleInput,
+  updateImportStrategy,
+  updateMappingTitle,
+} from './update-mapping'

@@ -1,5 +1,13 @@
 // apps/web/src/components/data-import/types.ts
 
+import type {
+  IdentityRole,
+  ImportMergeStrategy,
+  RelationCreateRequest,
+  RelationLinkMode,
+  RelationOnNoMatch,
+  StrategyType,
+} from '@auxx/lib/import/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import type { ReactNode } from 'react'
 
@@ -50,6 +58,28 @@ export interface ColumnMappingUI {
   resolutionType: string
   /** For relationship fields - the field on the target resource to match by */
   matchField?: string | null
+  /**
+   * The identity flag on this column. `{ kind: 'match' }` ⇒ it is (part of) the job's
+   * match key. Per-COLUMN, but it moves `ImportMapping.identifierFieldKeys` and
+   * `defaultStrategy`, which are per-JOB, so a write here always has to be
+   * reconciled against the job read.
+   */
+  identityRole: IdentityRole | null
+  /** Per-column write policy on the update path. Absent ⇒ `overwrite`. */
+  mergeStrategy: ImportMergeStrategy | null
+  /** Relation policy: what happens when the cell names a record that is absent. */
+  onNoMatch: RelationOnNoMatch | null
+  /** Relation policy: replace or append on the update path (multi-valued only). */
+  linkMode: RelationLinkMode | null
+  /**
+   * Distinct raw values in THIS column of THIS file. `distinctValueCount <
+   * totalValueCount` on a identifier column is the failure field-level `isUnique`
+   * cannot see, values duplicated inside the upload create two records no
+   * later import can ever match again.
+   */
+  distinctValueCount: number
+  /** Total cells stored for this column (blank cells included). */
+  totalValueCount: number
   createdAt: Date
   updatedAt: Date
   isMapped: boolean
@@ -81,6 +111,12 @@ export interface UniqueValueSummary {
   errorMessage: string | null
   isOverridden: boolean
   overrideValues: OverrideValue[] | null
+  /**
+   * Present when `originalStatus === 'create'` on a RELATION column, what will
+   * be minted if the import runs. Nothing is written until execution, so this
+   * is the only description the review step has of a pending create.
+   */
+  relationCreate?: RelationCreateRequest
 }
 
 /** Field configuration for value editing */
@@ -95,8 +131,9 @@ export interface ColumnFieldConfig {
   }
 }
 
-// Re-export ImportableField from the lib package
-export type { FieldGroup, ImportableField } from '@auxx/lib/import'
+// Re-export ImportableField from the lib package's CLIENT barrel, the server
+// barrel pulls in Drizzle and bullmq, which the wizard must never reach.
+export type { FieldGroup, ImportableField } from '@auxx/lib/import/client'
 
 /** Upload progress state */
 export interface UploadProgress {
@@ -141,12 +178,22 @@ export interface SSEResolutionProgress {
   errorsFound: number
 }
 
-/** Plan estimates */
+/**
+ * Plan estimates.
+ *
+ * `toSkip` and `toUnmatched` are NOT the same outcome. `toSkip` counts rows
+ * carrying an ERROR; `toUnmatched` counts rows that are perfectly fine but that
+ * update-only mode found no record to update. Neither is imported, and folding
+ * them into one number hides the second entirely.
+ */
 export interface PlanEstimates {
   totalRows: number
   toCreate: number
   toUpdate: number
+  /** Rows skipped because they carry an error. */
   toSkip: number
+  /** Rows skipped because update-only mode found no matching record. */
+  toUnmatched: number
   withErrors: number
 }
 
@@ -163,7 +210,7 @@ export interface StepData {
   upload: { rowCount: number | null; fileName: string | null }
   'map-columns': { mappedCount: number; totalColumns: number }
   'review-values': { errorCount: number; warningCount: number }
-  confirm: { toCreate: number; toUpdate: number; toSkip: number }
+  confirm: { toCreate: number; toUpdate: number; toSkip: number; toUnmatched: number }
 }
 
 /** Mapped column info */
@@ -180,8 +227,8 @@ export interface MappedColumn {
 export interface PlanPreviewRow {
   /** Row index from original CSV (0-based) */
   rowIndex: number
-  /** Determined strategy for this row */
-  strategy: 'create' | 'update' | 'skip'
+  /** Determined strategy for this row, four outcomes, not three. */
+  strategy: StrategyType
   /** ID of existing record (for update strategy) */
   existingRecordId?: string
   /** Resolved field values for display */

@@ -15,8 +15,11 @@ import {
   getPlanPreviewRows,
   getPlanWarnings,
   getPlanWithEstimates,
+  getRelationCreateCounts,
   getResolutionProgress,
   getUniqueValuesWithResolution,
+  IMPORT_MERGE_STRATEGIES,
+  IMPORT_STRATEGY_MODES,
   incrementReceivedChunks,
   listJobsByOrg,
   markJobExecuting,
@@ -24,6 +27,8 @@ import {
   runAutoMap,
   saveMappingProperty,
   storeRawDataChunk,
+  toImportStrategyMode,
+  updateImportStrategy,
   updateMappingTitle,
   updateValueResolution,
 } from '@auxx/lib/import'
@@ -64,6 +69,32 @@ async function requireImportJob(
   capabilities.assertImportEntity(job.importMapping.entityDefinitionId)
   return job
 }
+
+/**
+ * The identity flag, as the wizard may send it.
+ *
+ * The connector union carries `normalize?: IdentityNormalize`; this one does
+ * NOT, deliberately. The importer already has two normalization authorities that
+ * must agree, `normalizeForLookup` (automatic, type-driven) and
+ * `checkUniqueValueTyped` (bare `eq`), and a user-settable third is the only
+ * one a human can desync by hand. Lib strips it again defensively
+ * (`sanitizeIdentityRole`); this schema is what stops it arriving at all.
+ */
+const identityRoleSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('externalId'), order: z.number().int().optional() }),
+  z.object({ kind: z.literal('match') }),
+])
+
+/**
+ * Built from `IMPORT_MERGE_STRATEGIES` rather than a hand-written literal
+ * list, so the router's accepted set and the importer's supported set cannot
+ * drift. `connector_owned_only` and `manual_review` are connector-only and must
+ * never reach an `ImportMappingProperty`.
+ */
+const mergeStrategySchema = z.enum(IMPORT_MERGE_STRATEGIES)
+
+/** The three job-level import modes, sourced from the same const the lib uses. */
+const importStrategyModeSchema = z.enum(IMPORT_STRATEGY_MODES)
 
 /**
  * Data import tRPC router.
@@ -119,12 +150,27 @@ export const dataImportRouter = createTRPCRouter({
 
   /**
    * Get import job details.
+   *
+   * `importMapping.defaultStrategy` and `.identifierFieldKeys` are normalized
+   * on the way out, the columns are plain `text()` / nullable `text[]`, so the
+   * wizard would otherwise have to defend against a legacy `'skip'` mode and a
+   * NULL key array on every render. These two are what the mode selector and the
+   * identity toggles read.
    */
   getJob: capabilityProcedure
     .input(z.object({ jobId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      return requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
+      const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
+
+      return {
+        ...job,
+        importMapping: {
+          ...job.importMapping,
+          defaultStrategy: toImportStrategyMode(job.importMapping.defaultStrategy),
+          identifierFieldKeys: job.importMapping.identifierFieldKeys ?? [],
+        },
+      }
     }),
 
   /**
@@ -231,6 +277,13 @@ export const dataImportRouter = createTRPCRouter({
 
   /**
    * Get mappable properties (column headers) for a job with saved mapping data.
+   *
+   * The per-column RELATION POLICY (`onNoMatch` / `linkMode`) rides this read
+   * rather than a second query key. `saveMappingProperty` rebuilds
+   * `resolutionConfig.relationConfig` from its input, so the wizard has to
+   * resend the whole config on every write, which means it has to know the
+   * stored policy on load — and `getMappablePropertiesWithSamples` already
+   * reads and parses the very row it lives on.
    */
   getMappableProperties: capabilityProcedure
     .input(z.object({ jobId: z.string() }))
@@ -255,10 +308,20 @@ export const dataImportRouter = createTRPCRouter({
         customFieldId: z.string().nullable().optional(),
         resolutionType: z.string(),
         matchField: z.string().optional(),
+        /**
+         * `matchField` / `onNoMatch` / `linkMode` are per-column POLICY and
+         * ride the same call as the target, so a policy change is one mutation.
+         * `saveMappingProperty` REBUILDS this object from the input rather than
+         * merging it, so the wizard always resends the whole thing, dropping a
+         * key here silently reverts that half of the policy.
+         */
         relationConfig: z
           .object({
             relatedEntityDefinitionId: z.string(),
             relationshipType: z.enum(['belongs_to', 'has_one', 'has_many', 'many_to_many']),
+            matchField: z.string().optional(),
+            onNoMatch: z.enum(['create', 'blank', 'fail']).optional(),
+            linkMode: z.enum(['add', 'set']).optional(),
           })
           .optional(),
         options: z
@@ -269,6 +332,15 @@ export const dataImportRouter = createTRPCRouter({
             })
           )
           .optional(),
+        /**
+         * Tri-state: omit to leave the stored flag alone, `null` to clear it, a
+         * value to set it. Unmapping or retargeting the column clears it
+         * regardless, a match key whose field has no mapped column silently
+         * reverts the import to create-only.
+         */
+        identityRole: identityRoleSchema.nullish(),
+        /** Same tri-state. Per-column write policy on the update path. */
+        mergeStrategy: mergeStrategySchema.nullish(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -286,9 +358,39 @@ export const dataImportRouter = createTRPCRouter({
         matchField: input.matchField,
         relationConfig: input.relationConfig,
         options: input.options,
+        identityRole: input.identityRole,
+        mergeStrategy: input.mergeStrategy,
       })
 
+      // No mapping row is read back here. The identity toggles and the mode
+      // selector do move as a side effect of this per-COLUMN write (the match
+      // key is per-JOB), but every caller invalidates `getJob` alongside
+      // `getMappableProperties` after the write, so a returned copy would be
+      // queried and then thrown away unread.
       return { success: true }
+    }),
+
+  /**
+   * Set the job-level import mode.
+   *
+   * The mode ALSO moves on its own, but only when the identifier set crosses
+   * between empty and non-empty (`syncMappingIdentity`). A choice made here is
+   * never stomped by a later edit to an unrelated column, see that function's
+   * docblock for the transition rule.
+   */
+  setImportStrategy: capabilityProcedure
+    .input(z.object({ jobId: z.string(), mode: importStrategyModeSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+
+      const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
+
+      await updateImportStrategy(ctx.db, {
+        mappingId: job.importMappingId,
+        mode: input.mode,
+      })
+
+      return { success: true, defaultStrategy: input.mode }
     }),
 
   /**
@@ -319,7 +421,7 @@ export const dataImportRouter = createTRPCRouter({
       }
 
       // Run auto-mapping via lib function
-      return runAutoMap(ctx.db, resource, {
+      const result = await runAutoMap(ctx.db, resource, {
         jobId: input.jobId,
         importMappingId: job.importMappingId,
         entityDefinitionId: job.importMapping.entityDefinitionId,
@@ -327,6 +429,11 @@ export const dataImportRouter = createTRPCRouter({
         userId,
         strategy: input.strategy,
       })
+
+      // Auto-map retargets every column, so it also clears stale identity flags
+      // and defaults one back ON — but the wizard re-renders those from the
+      // `getJob` invalidation it already runs, not from this payload.
+      return result
     }),
 
   /**
@@ -488,6 +595,24 @@ export const dataImportRouter = createTRPCRouter({
     }),
 
   /**
+   * How many records `onNoMatch: 'create'` will mint, per relation column.
+   *
+   * This is what makes defaulting a relation column to *Create* safe: the
+   * preview says *"8 companies will be created"* before anything is written.
+   * Nothing is minted until execution, so this is a pure read of the pending
+   * `relationCreate` markers on the resolutions.
+   */
+  getRelationCreateCounts: capabilityProcedure
+    .input(z.object({ jobId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+
+      await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
+
+      return getRelationCreateCounts(ctx.db, input.jobId)
+    }),
+
+  /**
    * Get plan errors.
    */
   getPlanErrors: capabilityProcedure
@@ -535,7 +660,10 @@ export const dataImportRouter = createTRPCRouter({
     .input(
       z.object({
         jobId: z.string(),
-        strategy: z.enum(['create', 'update', 'skip']).optional(),
+        // Four row strategies, not three. `skip` is "this row has an error";
+        // `unmatched` is "update-only mode found no record", a filter that
+        // cannot name the second hides a whole class of unimported rows.
+        strategy: z.enum(['create', 'update', 'skip', 'unmatched']).optional(),
         limit: z.number().default(50),
         offset: z.number().default(0),
       })

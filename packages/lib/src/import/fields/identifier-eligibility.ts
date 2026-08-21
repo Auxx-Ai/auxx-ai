@@ -1,0 +1,146 @@
+// packages/lib/src/import/fields/identifier-eligibility.ts
+
+import { getFieldOutputKey, type ResourceField } from '../../resources/registry/field-types'
+import { BaseType } from '../../resources/types'
+
+/**
+ * How strongly a field is recommended as an import match key.
+ *
+ * - `1`, **Recommended.** The field is enforced unique, or the registry
+ *   declares it an identifier. Re-importing a file keyed on one of these is
+ *   safe by construction.
+ * - `2`, **Available.** An eligible field that carries no uniqueness
+ *   guarantee. Offered anyway, with {@link IdentifierEligibility.note} rendered
+ *   inline, because restricting the picker to unique fields fails OPEN: a user
+ *   who cannot pick a match key imports create-only and gets exactly the
+ *   duplicates the restriction was meant to prevent. `(part, supplier)` on
+ *   `vendor_part` is two non-unique relations and is the correct identity.
+ */
+export type IdentifierTier = 1 | 2
+
+/** Why a field is offered as a match key, and with what caveat. */
+export interface IdentifierEligibility {
+  tier: IdentifierTier
+  /**
+   * `true` for `RELATION` fields: eligible only as part of a COMPOSITE key,
+   * never as the lone identifier. A single relation column rarely identifies a
+   * record and always reads as a mistake when it does. The UI enforces this;
+   * nothing downstream depends on it.
+   */
+  compositeOnly: boolean
+  /** Inline caveat for the picker. Present on tier 2 only. */
+  note?: string
+}
+
+/**
+ * The IDENTIFIER type gate. Policy, not a technical limit.
+ *
+ * The identifier lookup is fully type-generic, `buildLookupCondition` routes
+ * every type through `normalizeForLookup` → `createTypedValueInput`, so
+ * `CURRENCY` and `DATE` *would* match if they were offered. They are excluded
+ * because they are terrible identities, not because they cannot work.
+ *
+ * Do NOT merge this with the RELATION match-field gate in `queryCustomEntity`.
+ * That one is a real technical limit (its hand-rolled type switch supports only
+ * STRING/EMAIL/URL/PHONE, NUMBER, ENUM and TAGS/ARRAY). Two different questions;
+ * a merged constant would either offer relation match fields that can never
+ * match, or refuse identifier types that work fine.
+ */
+const ELIGIBLE_IDENTIFIER_TYPES: ReadonlySet<string> = new Set<string>([
+  BaseType.STRING,
+  BaseType.EMAIL,
+  BaseType.URL,
+  BaseType.PHONE,
+  BaseType.NUMBER,
+  BaseType.RELATION,
+])
+
+/**
+ * Output keys that are identifiers by nature even when the registry forgets to
+ * say so. `id` is the record's primary key; `externalId` is the upstream one.
+ */
+const INTRINSIC_IDENTIFIER_KEYS: ReadonlySet<string> = new Set(['id', 'externalId'])
+
+/** The note rendered beside a tier-2 field in the picker. */
+export const TIER_2_IDENTIFIER_NOTE = 'Not enforced unique'
+
+/** True when the field is derived from other fields and cannot be set directly. */
+function isComputed(field: ResourceField): boolean {
+  return field.capabilities.computed === true || (field.sourceFields?.length ?? 0) > 0
+}
+
+/**
+ * The single authority on whether a field may be an import match key, and how
+ * strongly it is recommended.
+ *
+ * Everything that answers "can this be an identifier?" goes through here,
+ * `getIdentifiableFields` (the picker), `getImportableFields` (the identity toggle's
+ * eligibility metadata) and `registry/field-utils`' `getIdentifierFields` /
+ * `getDefaultIdentifierField` (the planner's auto-select). Those last two used
+ * to be a parallel `f.isIdentifier` filter, so retiering one silently disagreed
+ * with the other.
+ *
+ * @param field - Registry/merged field definition
+ * @returns Eligibility, or `null` when the field may never be a match key
+ */
+export function getIdentifierEligibility(field: ResourceField): IdentifierEligibility | null {
+  // Hidden fields are invisible in every other user-facing surface; never offer
+  // one here either.
+  if (field.capabilities.hidden) return null
+
+  // The lookup filters on the field, so it has to be filterable. This is the one
+  // pre-existing rule the tiering keeps unchanged.
+  if (!field.capabilities.filterable) return null
+
+  // A computed field has no stored value of its own to match against.
+  if (isComputed(field)) return null
+
+  // A multi-value cell holds a LIST. "Which of these three emails identifies the
+  // record" has no answer, and `TAGS` is the same question with nicer syntax.
+  if (field.options?.multi === true) return null
+
+  if (!ELIGIBLE_IDENTIFIER_TYPES.has(field.type)) return null
+
+  const compositeOnly = field.type === BaseType.RELATION
+
+  const outputKey = getFieldOutputKey(field)
+  const isRecommended =
+    field.capabilities.unique === true ||
+    field.isUnique === true ||
+    field.isIdentifier === true ||
+    INTRINSIC_IDENTIFIER_KEYS.has(outputKey)
+
+  return isRecommended
+    ? { tier: 1, compositeOnly }
+    : { tier: 2, compositeOnly, note: TIER_2_IDENTIFIER_NOTE }
+}
+
+/**
+ * Picker order for eligible identifier fields: tier 1 first, then everything
+ * else in declaration order.
+ *
+ * Record ID sorts LAST inside tier 1, and that is load-bearing. The seeder
+ * excludes `id`, so `mergeSystemAndCustomFields` lands the static field in
+ * `unmatchedStaticFields`, which sorts FIRST, which is why the planner's
+ * auto-select has always resolved to `id` and why no row has ever classified as
+ * `update` (no CSV carries cuids). A real identifier, `sku`, `email`, must
+ * beat it.
+ *
+ * @param fields - Eligible fields, each paired with its eligibility
+ * @returns The same entries, ordered for display and for auto-select
+ */
+export function sortByIdentifierPreference<T>(
+  fields: T[],
+  select: (item: T) => { key: string; tier: IdentifierTier }
+): T[] {
+  return fields
+    .map((entry, index) => ({ entry, index, ...select(entry) }))
+    .sort((a, b) => {
+      if (a.tier !== b.tier) return a.tier - b.tier
+      const aIsRecordId = a.key === 'id'
+      const bIsRecordId = b.key === 'id'
+      if (aIsRecordId !== bIsRecordId) return aIsRecordId ? 1 : -1
+      return a.index - b.index
+    })
+    .map(({ entry }) => entry)
+}

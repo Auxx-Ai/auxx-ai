@@ -4,6 +4,7 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { and, eq, isNotNull } from 'drizzle-orm'
 import type { ImportPlanStatus, PlanEstimates } from '../types/plan'
+import { calculateEstimatesFromCounts } from './calculate-estimates'
 
 /** Plan with estimates */
 export interface PlanWithEstimates {
@@ -47,44 +48,37 @@ export async function getPlanWithEstimates(
     return null
   }
 
-  // Calculate estimates from strategies
-  // For now, if no row assignments exist, default all to create
-  let toCreate = 0
-  let toUpdate = 0
-  let toSkip = 0
-  let withErrors = 0
-
+  // The strategy -> bucket mapping lives in `calculateEstimatesFromCounts`,
+  // the same one the planner uses. A local switch here was a third copy of it,
+  // and adding the `unmatched` bucket had to be done in all three at once.
+  //
+  // `withErrors` IS the `skip` count on this path: a row lands in `skip`
+  // BECAUSE it has an error, and a stored plan keeps no separate error tally.
+  const strategyCounts: Record<string, number> = {}
   for (const strategy of plan.strategies) {
-    const count = getPlannedCount(strategy.statistics)
-    switch (strategy.strategy) {
-      case 'create':
-        toCreate = count
-        break
-      case 'update':
-        toUpdate = count
-        break
-      case 'skip':
-        toSkip = count
-        withErrors = count
-        break
-    }
+    strategyCounts[strategy.strategy] = getPlannedCount(strategy.statistics)
   }
 
-  // If no rows assigned to strategies yet, default all to create
-  if (toCreate + toUpdate + toSkip === 0) {
-    toCreate = rowCount
-  }
+  const estimates = calculateEstimatesFromCounts(strategyCounts, strategyCounts['skip'] ?? 0)
+
+  // Two things the shared helper cannot know, kept as an explicit override:
+  //
+  // 1. `totalRows` is the FILE's row count, not the number of rows assigned so
+  //    far. The helper sums its four buckets, which is right for a finished
+  //    plan but would make the preview's total count upward while planning is
+  //    still running.
+  // 2. Nothing assigned yet (every bucket zero) shows the file as an all-create
+  //    import rather than an empty one.
+  const assignedRows = estimates.totalRows
 
   return {
     id: plan.id,
     jobId,
     status: plan.status as ImportPlanStatus,
     estimates: {
+      ...estimates,
       totalRows: rowCount,
-      toCreate,
-      toUpdate,
-      toSkip,
-      withErrors,
+      toCreate: assignedRows === 0 ? rowCount : estimates.toCreate,
     },
   }
 }
