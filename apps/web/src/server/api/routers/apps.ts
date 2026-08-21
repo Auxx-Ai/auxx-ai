@@ -13,7 +13,13 @@ import {
   uninstallApp,
 } from '@auxx/lib/apps'
 import { getCachedAppBySlug, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
-import { mintClientCredentialToken } from '@auxx/lib/connections'
+import {
+  appOAuthCallbackUrl,
+  gateConnectionVariables,
+  mintClientCredentialToken,
+  NO_OWN_CLIENT_GATE,
+  resolveOwnClientGateForOrg,
+} from '@auxx/lib/connections'
 import { resolveConnectorConfigOptions } from '@auxx/lib/data-connectors'
 import {
   FeatureKey,
@@ -116,14 +122,51 @@ export const appsRouter = createTRPCRouter({
         ? installedApps.filter((a) => a.installationType === input.type)
         : installedApps
 
-      // Rehydrate dates for SuperJSON compatibility
-      const installations = filtered.map((app) => ({
-        ...app,
-        installedAt: new Date(app.installedAt),
-        currentDeployment: app.currentDeployment
-          ? { ...app.currentDeployment, createdAt: new Date(app.currentDeployment.createdAt) }
-          : null,
-      }))
+      // Resolve the own-client gate HERE, not in the cache provider: it depends on the
+      // org's `byoOAuthClient` feature, and the cached blob is deliberately gate-free (see
+      // `CachedInstalledApp['methods']`). Applying it at read means a feature grant takes
+      // effect on the next call with no `installedApps` invalidation to get wrong.
+      const installations = await Promise.all(
+        filtered.map(async (app) => ({
+          ...app,
+          installedAt: new Date(app.installedAt),
+          currentDeployment: app.currentDeployment
+            ? { ...app.currentDeployment, createdAt: new Date(app.currentDeployment.createdAt) }
+            : null,
+          methods: await Promise.all(
+            (app.methods ?? []).map(async (m) => {
+              const gate =
+                m.connectionType === 'oauth2-code'
+                  ? await resolveOwnClientGateForOrg(organizationId, {
+                      oauth2ClientId: m.oauth2ClientId,
+                      oauth2ClientSecret: m.oauth2ClientSecret,
+                      platformClientApproved: m.platformClientApproved,
+                    })
+                  : NO_OWN_CLIENT_GATE
+              return {
+                id: m.id,
+                key: m.key,
+                label: m.label,
+                description: m.description,
+                connectionType: m.connectionType,
+                global: m.global,
+                connectionVariables: gateConnectionVariables(
+                  m.connectionType,
+                  m.connectionVariables,
+                  gate
+                ),
+                requiresOwnClient: gate.requiresOwnClient,
+                ownClientOptional: gate.ownClientOptional,
+                ownClientReason: gate.reason,
+                // Shown to a BYO user so they can register it in their own OAuth app.
+                // Server-built: `WEBAPP_URL` collapses to localhost in a browser bundle.
+                oauthCallbackUrl:
+                  m.connectionType === 'oauth2-code' ? appOAuthCallbackUrl(app.app.slug) : null,
+              }
+            })
+          ),
+        }))
+      )
 
       return { installations }
     }),

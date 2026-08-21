@@ -140,6 +140,12 @@ const STATIC_LIMITS = {
  * purchasable. Do not promote it to a paid tier, and do not read it through a helper that
  * treats a missing key as permitted: the read site inverts the usual default so that
  * absent means restricted. See `plans/google-limited-use-provider-gate.md`.
+ *
+ * `byoOAuthClient` is the same shape: an ops control, `false` on every tier, granted
+ * per-org. It offers the "use your own OAuth client" path on OAuth2 connect surfaces
+ * even once the platform client is verified. Default-off rather than default-on so an
+ * OAuth reviewer driving the product — in whatever org they happen to create — only ever
+ * sees the platform flow. See `plans/allow-platform-and-byo-oauth-client.md`.
  */
 const BOOLEAN_GATES = {
   demo: {
@@ -181,6 +187,9 @@ const BOOLEAN_GATES = {
     // Google Workspace Limited Use gate. OFF on every tier by design — see the note
     // above `BOOLEAN_GATES`. Flip per-org only for an org with no Google connection.
     unrestrictedAiProviders: false,
+    // Own-OAuth-client offer. OFF on every tier by design — see the note above
+    // `BOOLEAN_GATES`. Granted per-org for customers who bring their own OAuth app.
+    byoOAuthClient: false,
   },
   free: {
     knowledgeBase: true,
@@ -207,6 +216,9 @@ const BOOLEAN_GATES = {
     sequences: false,
     granularPermissions: false,
     unrestrictedAiProviders: false,
+    // Own-OAuth-client offer. OFF on every tier by design — see the note above
+    // `BOOLEAN_GATES`. Granted per-org for customers who bring their own OAuth app.
+    byoOAuthClient: false,
   },
   starter: {
     knowledgeBase: true,
@@ -234,6 +246,9 @@ const BOOLEAN_GATES = {
     sequences: true,
     granularPermissions: false,
     unrestrictedAiProviders: false,
+    // Own-OAuth-client offer. OFF on every tier by design — see the note above
+    // `BOOLEAN_GATES`. Granted per-org for customers who bring their own OAuth app.
+    byoOAuthClient: false,
   },
   growth: {
     knowledgeBase: true,
@@ -260,6 +275,9 @@ const BOOLEAN_GATES = {
     sequences: true,
     granularPermissions: true,
     unrestrictedAiProviders: false,
+    // Own-OAuth-client offer. OFF on every tier by design — see the note above
+    // `BOOLEAN_GATES`. Granted per-org for customers who bring their own OAuth app.
+    byoOAuthClient: false,
   },
   enterprise: {
     knowledgeBase: true,
@@ -286,6 +304,9 @@ const BOOLEAN_GATES = {
     sequences: true,
     granularPermissions: true,
     unrestrictedAiProviders: false,
+    // Own-OAuth-client offer. OFF on every tier by design — see the note above
+    // `BOOLEAN_GATES`. Granted per-org for customers who bring their own OAuth app.
+    byoOAuthClient: false,
   },
 } as const
 

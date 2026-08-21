@@ -97,6 +97,7 @@ function AppConnections({ app, returnTo, scope, onConnectionCreated }: Props) {
       requiresOwnClient: m.requiresOwnClient,
       ownClientOptional: m.ownClientOptional,
       ownClientReason: m.ownClientReason,
+      oauthCallbackUrl: m.oauthCallbackUrl,
     })),
   }
   const personalMethods = methods.filter((m) => !m.global)

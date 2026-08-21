@@ -1,6 +1,5 @@
 // packages/lib/src/cache/providers/installed-apps-provider.ts
 
-import { gateConnectionVariables, resolveOwnClientRequirement } from '@auxx/credentials/connections'
 import type { CatalogBlock, CatalogTool } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
@@ -218,31 +217,24 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
               createdAt: inst.currentDeployment.createdAt.toISOString(),
             }
           : null,
-        methods: (methodsByAppId.get(inst.app.id) ?? []).map((def) => {
-          // Own-client gate (§3.1): reused verbatim from the platform-provider path so the
-          // connect dialog renders the same platform-primary + optional-BYO UI for apps.
-          const gate = resolveOwnClientRequirement({
-            oauth2ClientId: def.oauth2ClientId,
-            oauth2ClientSecret: def.oauth2ClientSecret,
-            platformClientApproved: def.platformClientApproved,
-          })
-          return {
-            id: def.id,
-            key: def.key,
-            label: def.label,
-            description: def.description,
-            connectionType: def.connectionType,
-            global: def.global ?? false,
-            connectionVariables: gateConnectionVariables(
-              def.connectionType,
-              def.connectionVariables ?? [],
-              gate
-            ),
-            requiresOwnClient: gate.requiresOwnClient,
-            ownClientOptional: gate.ownClientOptional,
-            ownClientReason: gate.reason,
-          }
-        }),
+        // The own-client gate is deliberately NOT resolved here. It depends on the org's
+        // `byoOAuthClient` feature, and a cache-compute path must not read the org cache;
+        // baking an org-dependent gate would also go stale, because `plan.changed`
+        // invalidates `features` but not `installedApps`. So the blob carries the RAW
+        // variables plus the three gate inputs, and `apps.listInstalled` gates on the way
+        // out — the same read-time shape the limited-use provider gate uses.
+        methods: (methodsByAppId.get(inst.app.id) ?? []).map((def) => ({
+          id: def.id,
+          key: def.key,
+          label: def.label,
+          description: def.description,
+          connectionType: def.connectionType,
+          global: def.global ?? false,
+          connectionVariables: def.connectionVariables ?? [],
+          oauth2ClientId: def.oauth2ClientId,
+          oauth2ClientSecret: def.oauth2ClientSecret,
+          platformClientApproved: def.platformClientApproved,
+        })),
         connectionDefinitions: (() => {
           const defs = connDefsByAppId.get(inst.app.id) ?? {}
           const toCached = (def: (typeof connectionDefs)[0] | undefined) =>

@@ -2,13 +2,16 @@
 
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { database as db } from '@auxx/database'
-import { resolveOAuth2Client, runPostConnectHook, saveConnection } from '@auxx/lib/connections'
+import {
+  providerOAuthCallbackUrl,
+  resolveOAuth2Client,
+  runPostConnectHook,
+  saveConnection,
+} from '@auxx/lib/connections'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
 import { type NextRequest, NextResponse } from 'next/server'
-
-const OAUTH_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
 
 const logger = createScopedLogger('connection-oauth-callback')
 
@@ -172,7 +175,6 @@ export async function GET(
     }
 
     const features = (connDef.oauth2Features as Record<string, any>) ?? {}
-    const callbackBase = features.callbackBaseUrl || OAUTH_REDIRECT_BASE
     const connectionVariables: Record<string, string> = metadata.connectionVariables ?? {}
     const resolved = interpolateConnectionFields(connDef, connectionVariables)
     // Client id/secret follow the §3.2 precedence — must match the client that minted
@@ -184,7 +186,8 @@ export async function GET(
       code,
       client_id: clientId,
       client_secret: clientSecret,
-      redirect_uri: `${callbackBase}/api/connections/${defParam}/oauth2/callback`,
+      // Must byte-match the authorize redirect_uri — same builder, pinned to providerKey.
+      redirect_uri: providerOAuthCallbackUrl(connDef, features.callbackBaseUrl),
       grant_type: 'authorization_code',
     }
 

@@ -39,7 +39,8 @@ type Method = {
   requiresOwnClient?: boolean
   /** Platform client works but is pending verification — BYO offered as an optional alternative. */
   ownClientOptional?: boolean
-  ownClientReason?: 'no-platform-client' | 'pending-approval' | null
+  ownClientReason?: 'no-platform-client' | 'pending-approval' | 'byo-entitled' | null
+  oauthCallbackUrl?: string | null
 }
 
 /** A gallery row — either an installed app or a platform provider — carrying its source. */
@@ -212,6 +213,7 @@ export function CredentialTemplateDialog({
         requiresOwnClient: p.requiresOwnClient,
         ownClientOptional: p.ownClientOptional,
         ownClientReason: p.ownClientReason,
+        oauthCallbackUrl: p.oauthCallbackUrl,
       },
     ]
   }

@@ -1,6 +1,6 @@
 // packages/lib/src/apps/get-app-details.ts
 
-import { gateConnectionVariables, resolveOwnClientRequirement } from '@auxx/credentials/connections'
+import { gateConnectionVariables } from '@auxx/credentials/connections'
 import type { CatalogPayload, Database } from '@auxx/database'
 import {
   type ConnectionDefinitionSummary,
@@ -9,6 +9,8 @@ import {
   listAppConnectionDefinitions,
 } from '@auxx/services/app-connections'
 import { getCachedAppBySlug } from '../cache/app-cache-helpers'
+import { appOAuthCallbackUrl } from '../connections/oauth-callback-url'
+import { resolveOwnClientGateForOrg } from '../connections/own-client-gate'
 
 /**
  * Input parameters for getAppWithInstallationStatus
@@ -51,9 +53,11 @@ export interface AppCapabilitySummary {
 export interface OwnClientGate {
   /** BYO client id/secret are mandatory (def has no platform client). */
   requiresOwnClient: boolean
-  /** Platform client pending verification — BYO offered as an optional alternative. */
+  /** BYO offered as an optional alternative — pending verification, or `byoOAuthClient`. */
   ownClientOptional: boolean
-  ownClientReason: 'no-platform-client' | 'pending-approval' | null
+  ownClientReason: 'no-platform-client' | 'pending-approval' | 'byo-entitled' | null
+  /** OAuth redirect URI a BYO user must register in their own provider app. */
+  oauthCallbackUrl: string | null
 }
 
 export type GatedConnectionMethod = ConnectionMethod & OwnClientGate
@@ -215,25 +219,34 @@ export async function getAppWithInstallationStatus(
     requiresOwnClient: false,
     ownClientOptional: false,
     ownClientReason: null,
+    oauthCallbackUrl: null,
   }
-  const gateFor = (row: (typeof gateRows)[number] | undefined, connectionType: string) => {
+  // Org-aware (§3.1): the def's verification state decides first, and `byoOAuthClient`
+  // adds the BYO option on top of an already-verified platform client.
+  const gateFor = async (
+    row: (typeof gateRows)[number] | undefined,
+    connectionType: string
+  ): Promise<OwnClientGate> => {
     if (!row || connectionType !== 'oauth2-code') return NO_GATE
-    const gate = resolveOwnClientRequirement(row)
+    const gate = await resolveOwnClientGateForOrg(organizationId, row)
     return {
       requiresOwnClient: gate.requiresOwnClient,
       ownClientOptional: gate.ownClientOptional,
       ownClientReason: gate.reason,
+      oauthCallbackUrl: appOAuthCallbackUrl(cachedApp.slug),
     }
   }
 
-  const methods: GatedConnectionMethod[] = rawMethods.map((m) => {
-    const gate = gateFor(gateRowById.get(m.id), m.connectionType)
-    return {
-      ...m,
-      ...gate,
-      connectionVariables: gateConnectionVariables(m.connectionType, m.connectionVariables, gate),
-    }
-  })
+  const methods: GatedConnectionMethod[] = await Promise.all(
+    rawMethods.map(async (m) => {
+      const gate = await gateFor(gateRowById.get(m.id), m.connectionType)
+      return {
+        ...m,
+        ...gate,
+        connectionVariables: gateConnectionVariables(m.connectionType, m.connectionVariables, gate),
+      }
+    })
+  )
 
   if (installation) {
     const [userConnDef, orgConnDef] = await Promise.all([
@@ -250,7 +263,7 @@ export async function getAppWithInstallationStatus(
       )
     if (userConnDef.isOk() && userConnDef.value) {
       const def = userConnDef.value
-      const gate = gateForScope(false, def.connectionType)
+      const gate = await gateForScope(false, def.connectionType)
       connectionDefinitions.user = {
         ...def,
         ...gate,
@@ -263,7 +276,7 @@ export async function getAppWithInstallationStatus(
     }
     if (orgConnDef.isOk() && orgConnDef.value) {
       const def = orgConnDef.value
-      const gate = gateForScope(true, def.connectionType)
+      const gate = await gateForScope(true, def.connectionType)
       connectionDefinitions.organization = {
         ...def,
         ...gate,

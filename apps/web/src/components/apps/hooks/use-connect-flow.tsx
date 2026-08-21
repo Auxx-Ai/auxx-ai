@@ -45,7 +45,9 @@ export interface ConnectFlowDefinition {
   /** OAuth own-client gate (§3.1) — threaded into the connect dialog's banner + fields. */
   requiresOwnClient?: boolean
   ownClientOptional?: boolean
-  ownClientReason?: 'no-platform-client' | 'pending-approval' | null
+  ownClientReason?: 'no-platform-client' | 'pending-approval' | 'byo-entitled' | null
+  /** Server-built OAuth redirect URI, surfaced for bring-your-own-client users. */
+  oauthCallbackUrl?: string | null
 }
 
 export interface ConnectTarget {
@@ -507,6 +509,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       requiresOwnClient: activeDef.requiresOwnClient,
       ownClientOptional: activeDef.ownClientOptional,
       ownClientReason: activeDef.ownClientReason,
+      oauthCallbackUrl: activeDef.oauthCallbackUrl,
     }
   }, [args, activeDef])
 

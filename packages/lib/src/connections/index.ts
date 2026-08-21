@@ -41,6 +41,19 @@ export {
   resolveHostedProvisionHandler,
 } from './hosted-provision'
 export {
+  appOAuthCallbackUrl,
+  oauthCallbackBase,
+  providerOAuthCallbackUrl,
+} from './oauth-callback-url'
+export {
+  NO_OWN_CLIENT_GATE,
+  type OwnClientGate,
+  type OwnClientGateDefinition,
+  type OwnClientReason,
+  resolveOwnClientGateForOrg,
+  stripUnentitledOwnClientVars,
+} from './own-client-gate'
+export {
   clearPendingSelection,
   deleteSupersededPendingCredentials,
   findPendingSelectionForUser,

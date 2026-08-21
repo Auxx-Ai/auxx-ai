@@ -4,12 +4,10 @@ import { WEBAPP_URL } from '@auxx/config/urls'
 import { database as db } from '@auxx/database'
 import { saveAppConnection } from '@auxx/lib/apps'
 import { resolveAppSlug } from '@auxx/lib/cache'
-import { resolveOAuth2Client } from '@auxx/lib/connections'
+import { appOAuthCallbackUrl, resolveOAuth2Client } from '@auxx/lib/connections'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
-
-const OAUTH_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
 
 import { type NextRequest, NextResponse } from 'next/server'
 
@@ -206,9 +204,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       throw new Error('Connection definition not found')
     }
 
-    // Resolve callback base URL (must match what was sent in the authorize request)
     const features = (connDef.oauth2Features as Record<string, any>) ?? {}
-    const callbackBase = features.callbackBaseUrl || OAUTH_REDIRECT_BASE
 
     // Interpolate connection fields with stored variables
     const connectionVariables: Record<string, string> = metadata.connectionVariables ?? {}
@@ -225,7 +221,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       code,
       client_id: oauthClientId,
       client_secret: oauthClientSecret,
-      redirect_uri: `${callbackBase}/api/apps/${slug}/oauth2/callback`,
+      // Must byte-match the authorize redirect_uri — same builder, same inputs.
+      redirect_uri: appOAuthCallbackUrl(slug, features.callbackBaseUrl),
       grant_type: 'authorization_code',
     }
 

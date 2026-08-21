@@ -50,11 +50,18 @@ export function appTarget(inst: AppInstallation): ConnectFlowArgs['target'] {
     },
     title: inst.app.title,
     connectionDefinitions: inst.connectionDefinitions ?? {},
+    // The gate fields must ride along: `useConnectFlow` resolves the dialog's method from
+    // `target.methods`, and dropping them here made the same app render its BYO client
+    // fields inline through this surface while the app detail tab showed the disclosure.
     methods: (inst.methods ?? []).map((m) => ({
       id: m.id,
       connectionType: m.connectionType,
       description: m.description ?? undefined,
       connectionVariables: m.connectionVariables,
+      requiresOwnClient: m.requiresOwnClient,
+      ownClientOptional: m.ownClientOptional,
+      ownClientReason: m.ownClientReason,
+      oauthCallbackUrl: m.oauthCallbackUrl,
     })),
   }
 }
