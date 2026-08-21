@@ -13,7 +13,7 @@ import type {
   Operator,
 } from '../../conditions'
 import { operatorRequiresValue } from '../../conditions'
-import { type FieldOptionItem, labelToValue } from '../registry/option-helpers'
+import { buildOptionIndex, type FieldOptionItem, labelToValue } from '../registry/option-helpers'
 import { BaseType } from '../types'
 
 const logger = createScopedLogger('base-condition-builder')
@@ -316,11 +316,15 @@ export abstract class BaseConditionBuilder<TContext> {
       // reject every valid multi-hop filter.
       const fieldOptions = isRelationshipPath ? undefined : this.getFieldOptions(fieldKey, context)
       if (fieldOptions && fieldOptions.length > 0 && condition.value) {
-        const validValues = fieldOptions.map((opt) => opt.value)
-        const validLabels = fieldOptions.map((opt) => opt.label)
+        // Both keyspaces: app- and connector-provisioned option sets carry an
+        // explicit `id`, and that is what a stored filter holds — matching only
+        // `value` rejects a perfectly valid filter on such a field. Labels stay
+        // accepted because the UI writes them for value-as-label option sets.
+        const validKeys = buildOptionIndex(fieldOptions)
+        const validLabels = new Set(fieldOptions.map((opt) => opt.label))
         const values = Array.isArray(condition.value) ? condition.value : [condition.value]
         for (const val of values) {
-          if (typeof val === 'string' && !validValues.includes(val) && !validLabels.includes(val)) {
+          if (typeof val === 'string' && !validKeys.has(val) && !validLabels.has(val)) {
             errors.push(`Invalid value '${val}' for field '${displayRef}'`)
           }
         }

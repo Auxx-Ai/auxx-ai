@@ -11,7 +11,11 @@ import {
   viewConfigSchema,
   viewContextTypeSchema,
 } from '@auxx/lib/conditions'
-import { CustomFieldService } from '@auxx/lib/custom-fields'
+import {
+  createCustomField,
+  notifyCustomFieldChanged,
+  toCreateFieldError,
+} from '@auxx/lib/custom-fields'
 import { ForbiddenError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import type { CapabilitySet } from '@auxx/lib/permissions'
@@ -314,16 +318,19 @@ export const tableViewRouter = createTRPCRouter({
 
       let finalConfig = input.config
 
-      // Handle new kanban field creation (stays in router - uses CustomFieldService)
+      // Handle new kanban field creation (stays in router)
       if (input.newField && 'viewType' in input.config && input.config.viewType === 'kanban') {
-        const fieldService = new CustomFieldService(organizationId, userId, ctx.db)
-        const createdField = await fieldService.createField({
+        const fieldResult = await createCustomField({
+          organizationId,
           name: input.newField.name,
           type: 'SINGLE_SELECT',
           entityDefinitionId: input.newField.entityDefinitionId,
           options: [],
           isCustom: true,
         })
+        if (fieldResult.isErr()) throw toCreateFieldError(fieldResult.error)
+        const createdField = fieldResult.value
+        await notifyCustomFieldChanged(organizationId, input.newField.entityDefinitionId, 'created')
 
         finalConfig = {
           ...input.config,

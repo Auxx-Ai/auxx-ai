@@ -23,6 +23,13 @@ vi.mock('@auxx/database', () => ({
         where: () => ({ limit: () => Promise.resolve(mocks.currentRow ? [mocks.currentRow] : []) }),
       }),
     }),
+    // The option cascade runs after the field write whenever the patch carries
+    // options. Without these two the cascade throws into its best-effort catch,
+    // which passes the tests but silently exercises nothing.
+    delete: () => ({
+      where: () => ({ returning: () => Promise.resolve([]) }),
+    }),
+    selectDistinct: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
     // The update terminal must be awaitable directly AND chainable with
     // `.returning()`: `updateCustomField` awaits `.where(...)` on its own for
     // the aiStatus clear, but calls `.where(...).returning()` for the field row.
@@ -46,6 +53,7 @@ vi.mock('@auxx/database', () => ({
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
   eq: (col: unknown, val: unknown) => ({ col, val }),
+  inArray: (col: unknown, vals: unknown) => ({ col, vals }),
 }))
 
 import { updateCustomField } from '../update-field'

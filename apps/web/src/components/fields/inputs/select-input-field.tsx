@@ -210,6 +210,7 @@ export function SelectInputField() {
       options={options}
       value={localSelected}
       onChange={handleChange}
+      resourceFieldId={toResourceFieldId(entityDefinitionId, field.id)}
       onSelectSingle={config.closeOnSelect ? handleSelectSingle : undefined}
       onOptionsChange={config.canManage ? handleOptionsChange : undefined}
       onCaptureChange={handleCaptureChange}

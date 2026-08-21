@@ -17,6 +17,7 @@ import {
   type OrgMemberInfo,
 } from '../cache'
 import { getEffectiveFieldType } from '../custom-fields/calc'
+import { type FieldOptionItem, resolveOptionId } from '../resources/registry/option-helpers'
 import type { Resource as CachedResource } from '../resources/registry/types'
 import {
   TIMELINE_SNAPSHOT_ARRAY_LIMIT,
@@ -522,15 +523,13 @@ function buildSnapshotSingle(
     case 'TAGS': {
       if (value.type !== 'option') return null
       const optionId = value.optionId
-      const fieldOptions = (
-        field.options as {
-          options?: Array<{ id?: string; value: string; label: string; color?: string }>
-        } | null
-      )?.options
-      const match = fieldOptions?.find((o) => (o.id ?? o.value) === optionId)
-      const labelRaw = match?.label ?? value.label ?? optionId
+      const fieldOptions = (field.options as { options?: FieldOptionItem[] } | null)?.options ?? []
+      const resolved = resolveOptionId(optionId, fieldOptions)
+      // A snapshot is written once and rendered forever, with no chip to mute —
+      // so an unresolvable id keeps the denormalized label, then the raw id.
+      const labelRaw = resolved.status === 'known' ? resolved.label : (value.label ?? resolved.raw)
       const [label] = truncateForSnapshot(labelRaw, TIMELINE_SNAPSHOT_LABEL_LIMIT)
-      const color = match?.color ?? value.color
+      const color = (resolved.status === 'known' ? resolved.color : undefined) ?? value.color
       return { fieldType, optionId, label, ...(color ? { color } : {}) }
     }
 

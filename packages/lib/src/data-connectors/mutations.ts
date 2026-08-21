@@ -1321,7 +1321,9 @@ export async function deleteConnector(
     // appInstallationId / systemAttribute), so the services delete them cleanly. Lazy-import
     // to keep this module's pure-helper exports loadable without the teardown chains.
     const { EntityDefinitionService } = await import('../entity-definitions')
-    const { CustomFieldService } = await import('../custom-fields')
+    const { deleteCustomField, notifyCustomFieldChanged, toFieldError } = await import(
+      '../custom-fields'
+    )
 
     // Owned defs first: `delete()` runs the deep teardown (columns, records, items,
     // mappings, AND the inverse relationship fields planted on shared defs) and busts the
@@ -1403,13 +1405,15 @@ export async function deleteConnector(
           eq(schema.CustomField.dataConnectorId, id)
         )
       )
-    if (strayFields.length > 0) {
-      const fieldService = new CustomFieldService(organizationId, userId, db)
-      for (const stray of strayFields) {
-        if (!stray.entityDefinitionId) continue
-        if (keptSharedDefIds.has(stray.entityDefinitionId)) continue
-        await fieldService.deleteField(toResourceFieldId(stray.entityDefinitionId, stray.id))
-      }
+    for (const stray of strayFields) {
+      if (!stray.entityDefinitionId) continue
+      if (keptSharedDefIds.has(stray.entityDefinitionId)) continue
+      const deleted = await deleteCustomField({
+        resourceFieldId: toResourceFieldId(stray.entityDefinitionId, stray.id),
+        organizationId,
+      })
+      if (deleted.isErr()) throw toFieldError(deleted.error)
+      await notifyCustomFieldChanged(organizationId, stray.entityDefinitionId, 'deleted')
     }
   }
 

@@ -11,6 +11,7 @@ import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@
 import { and, eq, or } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { clearDisplayValues } from '../entity-instances/batch-update-display-values'
+import { updateSearchTextForEntityDefinition } from '../field-values/search-text'
 import type { AccessDeniedError, CustomFieldNotFoundError } from './errors'
 import { isProtectedField } from './ownership'
 
@@ -190,6 +191,13 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
   // cached displayName/secondaryDisplayValue/avatarUrl on EntityInstance remains stale.
   for (const { entityDefinitionId, column } of affectedDefs) {
     await clearDisplayValues({ entityDefinitionId, organizationId, column })
+  }
+
+  // The transaction dropped every FieldValue row of the field, but `searchText`
+  // is a denormalized corpus — without this rebuild a deleted field's values
+  // stay searchable forever.
+  if (field.entityDefinitionId) {
+    await updateSearchTextForEntityDefinition(database, organizationId, field.entityDefinitionId)
   }
 
   return ok(deleteResult.value)

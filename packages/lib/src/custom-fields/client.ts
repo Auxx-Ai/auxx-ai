@@ -1,6 +1,23 @@
 // packages/lib/src/custom-fields/client.ts
 'use client'
 
+/**
+ * Shared option resolution, re-exported for web. These are pure (no server imports)
+ * and are the ONLY sanctioned way to turn a stored `optionId` into a label.
+ *
+ * Lib server code must import them from `../resources/registry/option-helpers`
+ * directly — this module carries `'use client'`, which breaks server importers.
+ */
+export {
+  buildOptionIndex,
+  type FieldOptionItem,
+  findOptionKey,
+  optionKey,
+  optionMatchKey,
+  type ResolvedOption,
+  resolveOptionId,
+  resolveOptionIds,
+} from '../resources/registry/option-helpers'
 export { getAiPrompt, isAiEligible, isAiField } from './ai'
 export { getCalcOptions, getEffectiveFieldType } from './calc'
 

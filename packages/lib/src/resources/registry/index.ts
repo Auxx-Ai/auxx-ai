@@ -172,12 +172,19 @@ export type {
 export { getFieldOutputKey } from './field-types'
 // Re-export option helpers
 export {
+  buildOptionIndex,
   type FieldOptionItem,
+  findOptionKey,
   getFieldOptions,
   getOptionLabel,
   hasOptions,
   isValidOptionValue,
   labelToValue,
+  optionKey,
+  optionMatchKey,
+  type ResolvedOption,
+  resolveOptionId,
+  resolveOptionIds,
 } from './option-helpers'
 // Re-export the tier-A output-shape helper (§10b step 4)
 export { toOutputShape } from './output-shape'

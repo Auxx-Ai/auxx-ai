@@ -659,7 +659,15 @@ export function CustomFieldForm({
     switch (selectedType) {
       case FieldType.SINGLE_SELECT:
       case FieldType.MULTI_SELECT:
-        return <OptionsEditor options={selectOptions} onChange={setSelectOptions} />
+        return (
+          <OptionsEditor
+            options={selectOptions}
+            onChange={setSelectOptions}
+            // Only an existing field has values to cascade onto; a field being created
+            // has none, so the remove confirm stays out of the way.
+            resourceFieldId={isEditing ? resourceFieldId : undefined}
+          />
+        )
       case FieldType.ADDRESS_STRUCT:
         return (
           <>

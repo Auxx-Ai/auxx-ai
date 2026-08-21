@@ -1,6 +1,7 @@
 // apps/web/src/components/ui/tags-view.tsx
 'use client'
 
+import { resolveOptionIds } from '@auxx/lib/custom-fields/client'
 import type { SelectOption, SelectOptionColor } from '@auxx/types/custom-field'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { useMemo } from 'react'
@@ -27,10 +28,18 @@ interface TagItem extends ItemsListItem {
   id: string
   label: string
   color?: SelectOptionColor
+  /**
+   * The stored id matched no option in the field's current set. `label` then holds
+   * the raw stored value, which is shown muted rather than as a normal tag (D2).
+   */
+  unknown?: boolean
 }
 
 /**
- * Resolves tag IDs/values to TagItem array
+ * Resolves tag IDs/values to TagItem array.
+ *
+ * Matching is delegated to the shared resolver, so both option keyspaces (`id` and
+ * `value`) resolve here exactly as they do on every other read path.
  */
 export function resolveTagItems(
   value: string | string[] | null | undefined,
@@ -43,15 +52,11 @@ export function resolveTagItems(
     selectedIds = value.split(',').filter(Boolean)
   }
 
-  return selectedIds
-    .map((id, index) => {
-      const option = options.find((opt) => opt.value === id)
-      if (option) return { id: `${id}-${index}`, label: option.label, color: option.color }
-      // If not a UUID, show as-is (legacy data)
-      if (!id.includes('-') || id.length < 36) return { id: `${id}-${index}`, label: id }
-      return null
-    })
-    .filter((item): item is TagItem => item !== null)
+  return resolveOptionIds(selectedIds, options).map((resolved, index) =>
+    resolved.status === 'known'
+      ? { id: `${resolved.optionId}-${index}`, label: resolved.label, color: resolved.color }
+      : { id: `${resolved.optionId}-${index}`, label: resolved.raw, unknown: true }
+  )
 }
 
 /**
@@ -62,6 +67,31 @@ export function resolveTagLabels(
   options: SelectOption[]
 ): string[] {
   return resolveTagItems(value, options).map((item) => item.label)
+}
+
+/**
+ * Renders one resolved tag. Unknown ids get the muted `gray` badge plus a `title`,
+ * so an orphaned value reads as "not in this field's option set" instead of as a
+ * real tag that happens to be grey.
+ */
+function TagBadge({ tag, variant }: { tag: TagItem; variant: Variant }) {
+  if (tag.unknown) {
+    return (
+      <Badge
+        variant='gray'
+        shape='tag'
+        className='italic opacity-70'
+        title={`${tag.label} — not in this field's option set`}>
+        {tag.label}
+      </Badge>
+    )
+  }
+
+  return (
+    <Badge variant={tag.color ?? variant} shape='tag'>
+      {tag.label}
+    </Badge>
+  )
 }
 
 /**
@@ -77,9 +107,7 @@ export function TagsView({ value, options, variant = 'pill', className }: TagsVi
       // `TagItem`s, but a primitive still renders as its own label rather than crashing.
       renderItem={(tag) =>
         typeof tag === 'object' ? (
-          <Badge variant={tag.color ?? variant} shape='tag'>
-            {tag.label}
-          </Badge>
+          <TagBadge tag={tag} variant={variant} />
         ) : (
           <Badge variant={variant} shape='tag'>
             {tag}
@@ -100,11 +128,7 @@ export function TagsCellView({ value, options, variant = 'pill', className }: Ta
   return (
     <ItemsCellView
       items={tags}
-      renderItem={(tag) => (
-        <Badge variant={tag.color ?? variant} shape='tag'>
-          {tag.label}
-        </Badge>
-      )}
+      renderItem={(tag) => <TagBadge tag={tag} variant={variant} />}
       className={className}
     />
   )

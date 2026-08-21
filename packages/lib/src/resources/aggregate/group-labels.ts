@@ -7,7 +7,7 @@
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedAgents, getCachedGroups, getCachedMembers } from '../../cache'
-import { getFieldOptions } from '../registry/option-helpers'
+import { getFieldOptions, resolveOptionIds } from '../registry/option-helpers'
 import { formatBucketLabel } from './date-buckets'
 import type { ResolvedGroupBy } from './types'
 
@@ -42,13 +42,12 @@ export async function resolveGroupLabels(params: {
   const { fieldType, field } = groupBy.field
 
   if (fieldType === 'SINGLE_SELECT' || fieldType === 'MULTI_SELECT' || fieldType === 'TAGS') {
-    const options = getFieldOptions(field)
-    const byId = new Map<string, string>()
-    for (const opt of options) {
-      if (opt.id) byId.set(String(opt.id), opt.label ?? String(opt.value))
-      if (opt.value !== undefined) byId.set(String(opt.value), opt.label ?? String(opt.value))
+    // Tolerant of both option keyspaces (`id` and `value`) — a stored key can be
+    // either. An unresolved key labels as itself; the key stays raw either way.
+    const resolved = resolveOptionIds(realKeys, getFieldOptions(field))
+    for (const item of resolved) {
+      labels.set(item.optionId, item.status === 'known' ? item.label : item.raw)
     }
-    for (const key of realKeys) labels.set(key, byId.get(key) ?? key)
     return labels
   }
 
