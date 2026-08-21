@@ -15,6 +15,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
+import type { WriteSession } from '../resources/crud/write-origin'
 import { flattenConnectionMeta } from './connection-meta'
 import { prepareConnectorFetch } from './connector-runtime'
 import { ConnectorRateLimitError } from './connectors'
@@ -229,9 +230,26 @@ async function buildWebhookCtx(
   counters: RunCounters
 ): Promise<SyncCtx> {
   const userId = connector.createdById ?? 'system'
-  const crud = new UnifiedCrudHandler(organizationId, userId, db)
+  // B2: subscription-aware manifest collector for the steered run's writes.
+  const { loadManifestCollector } = await import('../record-rules/sync-manifest-collector')
+  const manifest = await loadManifestCollector(organizationId)
+  // Plan 03 §3.4/§4b S1: sink writes run under a `sync` session — its silent
+  // lane is what `skipEvents: true` used to declare per call. `ref` is the
+  // steered run's REAL run id: that is the row this ctx's collector folds onto.
+  const session: WriteSession = {
+    origin: { kind: 'sync', source: 'connector', ref: runId, collector: manifest },
+    depth: 0,
+  }
+  const crud = new UnifiedCrudHandler(organizationId, userId, db, undefined, { session })
   const ownedCrud = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
     bypassFieldGuards: new Set<never>(),
+    session,
+  })
+  // The relationship pass keeps firing per-write events (deliberate — see
+  // relationship-pass.ts), so it gets an inline-lane `automation` handler.
+  // Phase 4 folds these writes into the sync collector's finalize replay.
+  const relationshipCrud = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
+    session: { origin: { kind: 'automation', actor: userId }, depth: 0 },
   })
   const defs = new Set(streams.flatMap((s) => s.mappings.map((m) => m.entityDefinitionId)))
   for (const defId of defs) {
@@ -252,9 +270,6 @@ async function buildWebhookCtx(
       })
     }
   }
-  // B2: subscription-aware manifest collector for the steered run's writes.
-  const { loadManifestCollector } = await import('../record-rules/sync-manifest-collector')
-  const manifest = await loadManifestCollector(organizationId)
   return {
     db,
     orgId: organizationId,
@@ -262,6 +277,7 @@ async function buildWebhookCtx(
     runId,
     crud,
     ownedCrud,
+    relationshipCrud,
     counters,
     failureTally: newRecordFailureTally(),
     manifest,

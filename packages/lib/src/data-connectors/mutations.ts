@@ -1300,6 +1300,10 @@ export async function deleteConnector(
       // realtime (`record:archived` / `record:deleted`) events. Lazy-imported so the
       // pure-helper exports of this module stay loadable without the crud chain.
       const { UnifiedCrudHandler } = await import('../resources/crud/unified-handler')
+      // Deliberately NOT a `sync` session yet (plan 03 B-11): declaring teardown
+      // sync would silence its per-record fan-out, and the finalize compensation
+      // (batched replay) has to land first — until then a large disconnect keeps
+      // today's full fan-out rather than losing it.
       const crud = new UnifiedCrudHandler(organizationId, userId, db)
       const recordIds = created.map((r) => toRecordId(r.defId, r.id))
       if (behavior === 'archive') {

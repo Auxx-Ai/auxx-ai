@@ -13,8 +13,12 @@
 // `entity:field:updated` fan-out (timeline entry, activity touch, record rules) for
 // each. The fix suppresses the WRITE, not the event: one bulk pre-read of the current
 // targets, and an edge that already points where it should is left alone. A genuine
-// edge change still fires everything it fires today — deliberately NOT `skipEvents`,
-// which would take record rules and field triggers down with it.
+// edge change still fires everything it fires today — deliberately NOT silent,
+// which would take record rules and field triggers down with it. Since `ctx.crud`
+// now runs under the run's silent `sync` session (plan 03 §3.4), this pass writes
+// through `ctx.relationshipCrud`, an inline-lane `automation`-session handler, so
+// events keep firing; Phase 4 folds these writes into the sync collector's
+// finalize replay instead.
 
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '../resources/resource-id'
@@ -55,7 +59,7 @@ export async function resolveRelationships(ctx: SyncCtx): Promise<void> {
       // is one we previously set.
       if (rel.targetExternalId === null) {
         try {
-          await ctx.crud.update(parentRecordId, { [rel.fieldKey]: null }, undefined, {})
+          await ctx.relationshipCrud.update(parentRecordId, { [rel.fieldKey]: null }, undefined, {})
           ctx.touchedDefs.add(item.entityDefinitionId)
           if (linked.delete(rel.fieldKey)) linkedChanged = true
         } catch (error) {
@@ -111,7 +115,12 @@ export async function resolveRelationships(ctx: SyncCtx): Promise<void> {
         // Write the RELATIONSHIP value by addressing the parent's relationship
         // field (by its systemAttribute/key) with the target RecordId. The
         // FieldValueService converter accepts a RecordId; the inverse syncs.
-        await ctx.crud.update(parentRecordId, { [rel.fieldKey]: targetRecordId }, undefined, {})
+        await ctx.relationshipCrud.update(
+          parentRecordId,
+          { [rel.fieldKey]: targetRecordId },
+          undefined,
+          {}
+        )
         ctx.touchedDefs.add(item.entityDefinitionId)
         if (!linked.has(rel.fieldKey)) {
           linked.add(rel.fieldKey)

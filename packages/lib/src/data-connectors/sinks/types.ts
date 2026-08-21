@@ -47,6 +47,14 @@ export interface SyncCtx {
   crud: UnifiedCrudHandler
   /** Owned-mode handler with field-guard bypass (writes read-only connector fields). */
   ownedCrud: UnifiedCrudHandler
+  /**
+   * Inline-lane handler for the relationship pass ONLY (plan 03 §3.4). `crud`/
+   * `ownedCrud` run under the run's silent `sync` session; a genuine edge change
+   * must keep firing `entity:field:updated`, the activity touch, and record
+   * rules, so the pass writes through this `automation`-session handler instead.
+   * Phase 4 folds these writes into the sync collector's finalize replay.
+   */
+  relationshipCrud: UnifiedCrudHandler
   /** Mutable run counters. */
   counters: RunCounters
   /**
@@ -64,8 +72,8 @@ export interface SyncCtx {
   signal?: AbortSignal
   /**
    * Sync-change manifest collector (B2). Accumulates subscribed field writes +
-   * lifecycle ids as the sink writes (which suppress per-write events via
-   * `skipEvents`), so record rules can react at finalize. The no-op stub when the org
+   * lifecycle ids as the sink writes (which suppress per-write events via the
+   * silent `sync` write session), so record rules can react at finalize. The no-op stub when the org
    * has no enabled rules — capture sites gate on `manifest.enabled`.
    */
   manifest: ManifestCollector

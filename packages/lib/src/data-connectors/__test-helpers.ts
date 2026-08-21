@@ -60,6 +60,7 @@ export function makeSyncCtx(over: Partial<SyncCtx> = {}): SyncCtx {
     runId: 'run1',
     crud: {} as SyncCtx['crud'],
     ownedCrud: {} as SyncCtx['ownedCrud'],
+    relationshipCrud: {} as SyncCtx['relationshipCrud'],
     counters: zeroRunCounters(),
     failureTally: newRecordFailureTally(),
     manifest: noopManifestCollector(),

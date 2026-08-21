@@ -16,7 +16,7 @@ const logger = createScopedLogger('materialize-relation-creates')
  * Writes a record into the relation TARGET's definition.
  *
  * Supply the job's own manifest-aware writer, not a fresh one. The importer
- * writes with `skipEvents: true` and captures record-rule changes through a
+ * writes on the silent `sync` lane and captures record-rule changes through a
  * manifest collector (`execute-plan-job.ts`); a writer that bypasses that
  * contract creates records no rule ever sees and no open grid ever refetches.
  * {@link createRelationTargetWriter} builds a conforming one.
@@ -239,12 +239,15 @@ export interface RelationTargetWriterOptions {
 
 /**
  * Build a {@link RelationTargetWriter} that writes through the same CRUD path
- * and the same `skipEvents: true` contract the importer uses for its own rows.
+ * and the same silent-lane contract the importer uses for its own rows: the
+ * handler is constructed with no explicit session, so it inherits the job's
+ * ambient `sync` session (plan 03 §4b S1 — `execute-plan-job.ts` wraps the
+ * calls in `runWithWriteSession`).
  *
- * `skipEvents` is not an optimisation here, it is what keeps a 500-row import
- * from putting 500 `record:created` frames on the def channel. The coarse
- * `records:invalidated` frame the job already publishes covers the target def
- * too, provided the caller includes it (see the report notes).
+ * The silent lane is not an optimisation here, it is what keeps a 500-row
+ * import from putting 500 `record:created` frames on the def channel. The
+ * coarse `records:invalidated` frame the job already publishes covers the
+ * target def too, provided the caller includes it (see the report notes).
  *
  * @param options - Org, actor, and an optional manifest hook
  */
@@ -253,12 +256,12 @@ export function createRelationTargetWriter(
 ): RelationTargetWriter {
   const { organizationId, userId, db, onCreated } = options
   // Lazy: `UnifiedCrudHandler` drags the whole resources graph in, and most
-  // imports have nothing to create.
+  // imports have nothing to create. Constructed on first call — inside the
+  // job's `runWithWriteSession` wrap — so the ambient sync session binds.
   let handlerPromise: Promise<{
     create: (
       defId: string,
-      values: Record<string, unknown>,
-      opts: { skipEvents: boolean }
+      values: Record<string, unknown>
     ) => Promise<{ instance: { id: string } }>
   }> | null = null
 
@@ -267,7 +270,7 @@ export function createRelationTargetWriter(
       (m) => new m.UnifiedCrudHandler(organizationId, userId, db)
     )
     const handler = await handlerPromise
-    const created = await handler.create(entityDefinitionId, data, { skipEvents: true })
+    const created = await handler.create(entityDefinitionId, data)
     onCreated?.(entityDefinitionId, created.instance.id, data)
     return { id: created.instance.id }
   }

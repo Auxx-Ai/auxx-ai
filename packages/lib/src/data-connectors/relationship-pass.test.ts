@@ -73,11 +73,15 @@ function item(pending: PendingRelation[], linked: string[] = []): DataConnectorI
   } as unknown as DataConnectorItemRow
 }
 
-/** A ctx whose `crud.update` is the spy every case asserts on. */
+/**
+ * A ctx whose `relationshipCrud.update` is the spy every case asserts on — the
+ * pass writes through the inline-lane handler (events on), never `ctx.crud`
+ * (silent sync session).
+ */
 function ctx(): SyncCtx {
   return makeSyncCtx({
     orgId: ORG,
-    crud: { update: h.update } as unknown as SyncCtx['crud'],
+    relationshipCrud: { update: h.update } as unknown as SyncCtx['relationshipCrud'],
   })
 }
 
