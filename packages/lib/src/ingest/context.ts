@@ -119,7 +119,7 @@ export async function createIngestContext(
     db,
     logger: createScopedLogger(`ingest:${organizationId.slice(0, 8)}`),
     systemUserId,
-    crudHandler: new UnifiedCrudHandler(organizationId, systemUserId),
+    crudHandler: new UnifiedCrudHandler(organizationId, systemUserId, db, opts.socketId),
     reconciler: new MessageReconcilerService(organizationId, threadManager, db),
     threadManager,
     selectiveCache: opts.selectiveCache ?? new SelectiveModeCache(),
