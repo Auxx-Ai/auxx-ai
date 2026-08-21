@@ -31,4 +31,8 @@ export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/process
 export { ProgressPublisher } from './upload/progress-publisher'
 // Upload/session orchestration (no image processing)
 export { FileUploadSession, SessionManager } from './upload/session-index'
-export { createFileDownloadResponse, parseRangeHeader } from './utils'
+export {
+  createFileDownloadResponse,
+  encodeContentDisposition,
+  parseRangeHeader,
+} from './utils'

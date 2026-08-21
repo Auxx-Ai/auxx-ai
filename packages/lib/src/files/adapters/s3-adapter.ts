@@ -2,6 +2,7 @@
 
 import { Readable } from 'node:stream'
 import { configService } from '@auxx/credentials'
+import { encodeRFC5987ValueChars } from '@auxx/utils'
 import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
@@ -308,7 +309,9 @@ export class S3Adapter extends BaseStorageAdapter {
   ): string {
     const fileName = keyOrFilename.split('/').pop() || 'file'
     const quoted = fileName.replace(/"/g, '')
-    const encoded = encodeURIComponent(fileName)
+    // RFC 5987 ext-value encoding — bare encodeURIComponent leaves !'()* unencoded,
+    // and ' is the ext-value delimiter itself.
+    const encoded = encodeRFC5987ValueChars(fileName)
 
     // Include both filename and filename* for UTF-8 compliance
     return `${disposition}; filename="${quoted}"; filename*=UTF-8''${encoded}`

@@ -155,11 +155,16 @@ export function VisualIcon({
   }
 
   if (ref.type === 'url' || ref.type === 'base64') {
-    const fitClass = fit === 'cover' ? 'object-cover' : 'object-contain'
+    // 'cover' means the photo IS the frame content: `data-fit=cover` exempts it
+    // from entityIconVariants' descendant img sizing (which pins imgs to ICON
+    // size so contain-fit logos float centered — at xl that rendered an avatar
+    // photo 20px inside its 40px frame), and `size-full` makes it fill the box.
+    const isCover = fit === 'cover'
+    const fitClass = isCover ? 'object-cover size-full' : 'object-contain'
     if (imageFallback) {
       return (
         <Avatar className={cn(frame, 'overflow-hidden')} {...props}>
-          <AvatarImage src={ref.value} className={fitClass} />
+          <AvatarImage src={ref.value} data-fit={fit} className={fitClass} />
           <AvatarFallback className='size-full'>
             <EntityIcon
               iconId={fallbackIconId ?? ''}
@@ -173,8 +178,8 @@ export function VisualIcon({
       )
     }
     return (
-      <div className={frame} style={style} {...props}>
-        <img src={ref.value} alt='' className={fitClass} draggable={false} />
+      <div className={cn(frame, isCover && 'overflow-hidden')} style={style} {...props}>
+        <img src={ref.value} alt='' data-fit={fit} className={fitClass} draggable={false} />
       </div>
     )
   }

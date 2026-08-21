@@ -34,6 +34,7 @@ import {
   mergeMeta,
   readEnvelope,
 } from '@auxx/types/field-value'
+import { type FileRef, getFileRefDownloadUrl } from '@auxx/types/file-ref'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -1167,13 +1168,31 @@ export async function maybeUpdateDisplayValue(
           if (typeof json?.url === 'string') {
             displayValue = json.url
           } else if (typeof json?.ref === 'string') {
-            // FILE field: { ref: "asset:abc123" } — queue avatar thumbnail
-            const assetId = (json.ref as string).match(/^asset:(.+)$/)?.[1]
+            // FILE field: { ref: "asset:abc123" }.
+            const ref = json.ref as string
+            const assetId = ref.match(/^asset:(.+)$/)?.[1]
             if (assetId) {
-              // Set null interim — thumbnail callback will set the CDN URL
-              displayValue = null
-              // Fire-and-forget: queue thumbnail generation in background
-              void queueAvatarThumbnail(ctx.organizationId, ctx.userId, assetId)
+              // Interim is the app's own download URL, NOT null. The thumbnail is
+              // an optimization — a smaller, CDN-served image — and treating it as
+              // the only source of truth meant every window where it had not landed
+              // (or never would, see `resolveAvatarThumbnailCdnUrl`) blanked the
+              // avatar back to the record's fallback icon. This URL always
+              // resolves, and it is exactly what the client already writes
+              // optimistically, so the server agrees with it instead of
+              // overwriting it with nothing.
+              //
+              // AWAITED, then written once below. If the thumbnail already exists
+              // (`ready` — the steady state for any re-pick of an existing image)
+              // the CDN URL goes straight into the column and the gated interim is
+              // never persisted; only a genuinely queued generation leaves the
+              // interim standing for `generate-thumbnail-job` to upgrade.
+              displayValue = getFileRefDownloadUrl(ref as FileRef)
+              const cdnUrl = await resolveAvatarThumbnailCdnUrl(
+                ctx.organizationId,
+                ctx.userId,
+                assetId
+              )
+              if (cdnUrl) displayValue = cdnUrl
             }
           }
         } else if (singleValue.type === 'text') {
@@ -1280,26 +1299,59 @@ function encodeAvatarRef(field: CachedField, rawText: string): string {
 // =============================================================================
 
 /**
- * Queue avatar thumbnail generation for a FILE field asset.
- * Fire-and-forget — the thumbnail job callback will update EntityInstance.avatarUrl.
+ * Resolve the CDN thumbnail URL for a FILE-field avatar asset, or `null` when
+ * one has to be generated first.
+ *
+ * `ensureThumbnail` answers `status: 'ready'` and queues nothing whenever the
+ * asset version already carries the `avatar-128` preset — the steady state for
+ * every re-pick of an already-thumbnailed asset (browsing to an existing file,
+ * clearing and re-setting the same image, putting one image on a second record).
+ * So the save path must adopt that URL itself; only `queued` defers the
+ * `avatarUrl` write to `generate-thumbnail-job`, which resolves every
+ * referencing instance once the file exists.
+ *
+ * Deliberately AWAITED by the caller, which then writes the returned URL through
+ * its own single `avatarUrl` update — this used to be a fire-and-forget task that
+ * did its own org-wide ref lookup and `EntityInstance` write on the global pool,
+ * which lost the upgrade two separate ways: inside `addValues`' transaction it
+ * could not see the uncommitted FieldValue row (zero matches, and `ready` queues
+ * no retry, so the CDN URL was silently never written), and it started BEFORE
+ * the caller's interim write with no ordering between the two connections, so a
+ * fast answer could be clobbered by the interim it was upgrading. Resolving
+ * first costs the avatar save three indexed reads and buys one write of the
+ * final URL.
  */
-async function queueAvatarThumbnail(
+async function resolveAvatarThumbnailCdnUrl(
   organizationId: string,
   userId: string | undefined,
   assetId: string
-): Promise<void> {
+): Promise<string | null> {
   try {
     const { ensureThumbnailPresets } = await import('../files/core/thumbnail-batch')
-    await ensureThumbnailPresets({
+    const [result] = await ensureThumbnailPresets({
       organizationId,
       userId: userId ?? 'system',
       source: { type: 'asset', assetId },
       presets: ['avatar-128'],
       defaultOptions: { queue: true, visibility: 'PUBLIC' },
     })
+
+    // Queued: the job owns the write once it has generated the file.
+    if (!result || result.status === 'queued' || !result.storageLocationId) return null
+
+    const { database, schema } = await import('@auxx/database')
+    const { eq } = await import('drizzle-orm')
+    const [location] = await database
+      .select({ externalUrl: schema.StorageLocation.externalUrl })
+      .from(schema.StorageLocation)
+      .where(eq(schema.StorageLocation.id, result.storageLocationId))
+      .limit(1)
+
+    return location?.externalUrl ?? null
   } catch (error) {
-    // Non-critical — avatar will show fallback icon until retry
-    console.warn('[avatar] Failed to queue avatar thumbnail', { assetId, error })
+    // Non-critical — the interim download URL keeps rendering the image either way.
+    console.warn('[avatar] Failed to resolve avatar thumbnail', { assetId, error })
+    return null
   }
 }
 

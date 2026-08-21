@@ -25,6 +25,21 @@ export function foldMimeHeader(header: string, maxLength: number = 998): string 
 }
 
 /**
+ * Percent-encode a string for an RFC 5987 `ext-value` (the `filename*` parameter).
+ *
+ * `encodeURIComponent` alone is not enough: it leaves `!`, `'`, `(`, `)` and `*`
+ * bare, none of which are attr-char — and `'` is the ext-value delimiter itself,
+ * so a name like `it's report (v2).pdf` produced a header strict parsers truncate
+ * at the stray quote or reject, falling back to the underscore-mangled ASCII name.
+ */
+export function encodeRFC5987ValueChars(value: string): string {
+  return encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`
+  )
+}
+
+/**
  * RFC 2231 compliant filename encoding for MIME headers
  * Handles non-ASCII characters in attachment filenames
  */
@@ -36,7 +51,7 @@ export function encodeRFC2231Filename(filename: string): string {
 
   // Encode using RFC 2231 for non-ASCII
   const asciiSafe = filename.replace(/[^\x20-\x7E]/g, '_')
-  return `filename="${asciiSafe}"; filename*=utf-8''${encodeURIComponent(filename)}`
+  return `filename="${asciiSafe}"; filename*=utf-8''${encodeRFC5987ValueChars(filename)}`
 }
 
 /**

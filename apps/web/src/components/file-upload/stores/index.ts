@@ -11,6 +11,8 @@ export {
   calculateQueueStats as getQueueStats,
   validateFile,
 } from '../utils'
+// Shared status predicate
+export { isFileInFlight } from './file-status'
 // Selectors
 export * from './selectors'
 export type { FileSlice } from './slices/file-slice'

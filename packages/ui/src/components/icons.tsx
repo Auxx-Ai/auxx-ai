@@ -159,11 +159,16 @@ export const entityIconVariants = cva('flex items-center justify-center shrink-0
       bare: 'text-current',
     },
     size: {
-      xs: 'size-4 [&_svg]:size-2.5! [&_img]:size-2.5! [&_>span]:text-[10px]',
-      sm: 'size-5 [&_svg]:size-3.5! [&_img]:size-3.5! [&_>span]:text-[14px]',
-      default: 'size-6 [&_svg]:size-4! [&_img]:size-4! [&_>span]:text-[16px]',
-      lg: 'size-8 [&_svg]:size-4 [&_img]:size-4 [&_>span]:text-[16px]',
-      xl: 'size-10 [&_svg]:size-5 [&_img]:size-5 [&_>span]:text-[20px]',
+      // The `img` rules size a mark FLOATING in the frame (brand/url logos, fit
+      // 'contain'). A cover-fit photo must fill the frame instead — VisualIcon
+      // stamps those `data-fit=cover`, which the :not() exempts; fighting this
+      // with specificity from the outside is not winnable because the small
+      // sizes are `!important`.
+      xs: 'size-4 [&_svg]:size-2.5! [&_img:not([data-fit=cover])]:size-2.5! [&_>span]:text-[10px]',
+      sm: 'size-5 [&_svg]:size-3.5! [&_img:not([data-fit=cover])]:size-3.5! [&_>span]:text-[14px]',
+      default: 'size-6 [&_svg]:size-4! [&_img:not([data-fit=cover])]:size-4! [&_>span]:text-[16px]',
+      lg: 'size-8 [&_svg]:size-4 [&_img:not([data-fit=cover])]:size-4 [&_>span]:text-[16px]',
+      xl: 'size-10 [&_svg]:size-5 [&_img:not([data-fit=cover])]:size-5 [&_>span]:text-[20px]',
     },
   },
   defaultVariants: {

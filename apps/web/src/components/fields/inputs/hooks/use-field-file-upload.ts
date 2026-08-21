@@ -13,16 +13,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { FileOptions } from '~/components/custom-fields/ui/file-options-editor'
 import type { FileState } from '~/components/file-upload/stores'
-import { useUploadStore } from '~/components/file-upload/stores'
+import { isFileInFlight, useUploadStore } from '~/components/file-upload/stores'
 import type { FileItem } from '~/components/files/files-store'
 import { convertHeicFiles } from '~/components/files/utils/convert-heic'
 import { useFileRefs } from '~/components/resources/hooks/use-file-refs'
-import {
-  buildFieldValueKey,
-  useFieldValueStore,
-} from '~/components/resources/store/field-value-store'
+import { useFieldValueStore } from '~/components/resources/store/field-value-store'
+import { getFileRefStoreState } from '~/components/resources/store/file-ref-store'
 import { useRecordStore } from '~/components/resources/store/record-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
+import { buildCanonicalFieldValueKey } from '~/components/resources/utils/canonicalize-field-ref'
 import { api } from '~/trpc/react'
 import { vanillaApi } from '~/trpc/vanilla'
 
@@ -84,7 +83,10 @@ function initGlobalSubscription() {
       if (files.length === 0) continue
       if (session.uploading) continue
 
-      const allDone = files.every((f) => f.status === 'completed' || f.status === 'failed')
+      // "Done" is any terminal state, cancelled included — one cancelled file in a
+      // multi-pick must not hold the whole session's completion (and the saved
+      // values of its siblings) hostage forever.
+      const allDone = files.every((f) => !isFileInFlight(f.status))
       if (!allDone) continue
       if (session.metadata?.__fieldNotifiedComplete) continue
 
@@ -185,7 +187,7 @@ function scheduleBlobRevoke(blobUrl: string, delayMs = 10_000): void {
 interface ApplyContext {
   recordId: string
   fieldRef: string
-  storeKey: ReturnType<typeof buildFieldValueKey>
+  storeKey: ReturnType<typeof buildCanonicalFieldValueKey>['key']
   allowMultiple: boolean
 }
 
@@ -231,7 +233,8 @@ async function handleUploadCompletion(
   const pendingAvatar = pendingAvatarByKey.get(uploaderId)
 
   if (successFiles.length === 0) {
-    // Upload failed entirely — rollback any optimistic avatar write and clean up.
+    // Upload failed (or was cancelled) entirely — rollback any optimistic avatar
+    // write and clean up.
     if (pendingAvatar) {
       useRecordStore
         .getState()
@@ -243,6 +246,7 @@ async function handleUploadCompletion(
       if (pendingAvatar.blobUrl) scheduleBlobRevoke(pendingAvatar.blobUrl, 0)
       pendingAvatarByKey.delete(uploaderId)
     }
+    useUploadStore.getState().removeFiles(files.map((f) => f.id))
     completionHandlers.delete(uploaderId)
     return
   }
@@ -250,11 +254,31 @@ async function handleUploadCompletion(
   try {
     const filesToApply = handler.allowMultiple ? successFiles : [successFiles[0]!]
     const refs = filesToApply.map((f) => `asset:${f.serverFileId!}`)
+
+    // Seed the ref store with what we ALREADY know, before the value write.
+    //
+    // `resolveFileRefs` would tell us name/mimeType/size — all three of which we
+    // have had in hand since the picker closed. Waiting for it opened a window
+    // where the ref existed but its detail did not, and every surface handled that
+    // window differently: the picker dropped the row, then showed a literal
+    // "Unknown file", then the image; the field row rendered skeletons. Seeding
+    // closes the window to zero, so a file goes from uploading to fully rendered in
+    // one transition, with its actions, and never round-trips for data it owns.
+    getFileRefStoreState().completeBatch(
+      filesToApply.map((f, i) => ({
+        ref: refs[i]!,
+        name: f.name,
+        mimeType: f.mimeType ?? null,
+        size: f.size ?? null,
+      })),
+      refs
+    )
+
     await applyPendingFileRefs(
       {
         recordId: handler.recordId,
         fieldRef: handler.fieldRef,
-        storeKey: handler.storeKey as ReturnType<typeof buildFieldValueKey>,
+        storeKey: handler.storeKey as ReturnType<typeof buildCanonicalFieldValueKey>['key'],
         allowMultiple: handler.allowMultiple,
       },
       refs
@@ -290,6 +314,14 @@ async function handleUploadCompletion(
       description: error instanceof Error ? error.message : 'Unknown error',
     })
   } finally {
+    // Release this pick's settled files from the session. A session lives for
+    // the whole life of its uploader and nothing else empties `fileIds`, so
+    // leaving them meant the NEXT pick's completion collected this pick's
+    // completed files too — and a single-file field applies `successFiles[0]`,
+    // re-saving the OLD ref instead of the newly picked one. The field values
+    // (and the ref-store details backing the badges) are already written by this
+    // point, so nothing still renders from these entries.
+    useUploadStore.getState().removeFiles(files.map((f) => f.id))
     pendingAvatarByKey.delete(uploaderId)
     completionHandlers.delete(uploaderId)
   }
@@ -408,12 +440,18 @@ export function useFieldFileUpload({
   // Deterministic uploaderId — same across mount/unmount cycles
   const uploaderId = `field-upload:${recordId}:${fieldRef}`
 
-  // Pre-compute store key.
-  // `fieldRef` arrives as a plain string (a bare FieldId or an already-scoped
-  // ResourceFieldId); `buildFieldValueKey` re-discriminates it at runtime via
-  // `normalizeFieldRef`, so the brand is only a compile-time marker here.
-  const storeKey = useMemo(
-    () => buildFieldValueKey(recordId as RecordId, fieldRef as FieldReference),
+  // Pre-compute the store key — through the CANONICAL builder, the same one
+  // `useFieldValue` subscribes with.
+  //
+  // `buildFieldValueKey` normalizes the field ref but nothing else. It leaves an
+  // alias definition prefix (`parts:…` rather than the def CUID) and a static-key
+  // or systemAttribute field half exactly as given, so an upload writing through
+  // it landed on a slot no subscriber reads: the drawer header updated (it reads
+  // `avatarUrl` from the record store) while the FILE field row below kept showing
+  // the previous photo until a reload. `buildCanonicalFieldValueKey` rewrites both
+  // halves — that is precisely the disagreement it exists to prevent.
+  const { key: storeKey } = useMemo(
+    () => buildCanonicalFieldValueKey(recordId as RecordId, fieldRef as FieldReference),
     [recordId, fieldRef]
   )
 
@@ -422,13 +460,25 @@ export function useFieldFileUpload({
     initGlobalSubscription()
   }, [])
 
-  // Clean up completion handler on unmount (only if not actively uploading)
+  // Clean up completion handler on unmount — but NEVER while work is outstanding.
+  // Closing the popover mid-upload must leave the handler registered so the field
+  // value still lands, and so reopening reattaches to the same session and shows the
+  // progress already in flight. `session.uploading` alone is too narrow a test: it
+  // only flips inside `startUploadForSession`, so a pick that has been added but not
+  // yet started reads as idle, and unmounting in that window dropped the handler and
+  // silently lost the upload. Ask the files instead of the flag.
   useEffect(() => {
     return () => {
       const state = useUploadStore.getState()
       const sessionId = state.uploaderSessions?.[uploaderId]
       const session = sessionId ? state.sessions[sessionId] : null
-      if (!session?.uploading) {
+      const hasOutstandingWork =
+        session?.uploading ||
+        (session?.fileIds ?? []).some((id) => {
+          const f = state.files[id]
+          return f !== undefined && isFileInFlight(f.status)
+        })
+      if (!hasOutstandingWork) {
         completionHandlers.delete(uploaderId)
       }
     }
@@ -474,28 +524,36 @@ export function useFieldFileUpload({
   // Build display files by joining fileRefs with details
   const displayFiles = useMemo(() => {
     if (fileRefs.length === 0) return []
-    // Nothing resolved yet — render nothing rather than a row of "Unknown file"
-    // placeholders (matches the old `!fileDetails` guard).
-    if (isResolvingRefs && fileDetails.length === 0) return []
 
+    // NOTE: no early return while resolving. Bailing out here blanked the list for
+    // the whole `resolveFileRefs` round-trip, so a file that had just finished
+    // uploading vanished and then reappeared — the "takes time to show the badge"
+    // gap. A ref we hold is a file that exists; render its row immediately and let
+    // the name fill in. The `isResolvingRefs` arm of the filter below already keeps
+    // unresolved rows alive, which is exactly this case.
     const detailMap = new Map(fileDetails.map((d) => [d.ref, d]))
     return (
       fileRefs
+        // Drop refs that resolved to nothing (deleted file, another org), but keep
+        // ones still resolving so a freshly uploaded file doesn't blink out.
+        .filter((fr) => detailMap.has(fr.ref) || isResolvingRefs)
         .map((fr) => {
           const detail = detailMap.get(fr.ref)
           return {
             id: fr.fieldValueId,
             ref: fr.ref as FileRef,
-            name: detail?.name ?? 'Unknown file',
+            // Empty, NOT 'Unknown file'. That sentinel doubled as the drop test
+            // above, so it had to be a real string — and every renderer happily
+            // printed it at the user during the resolve window. The filter is now
+            // an explicit map lookup, freeing the name to say "not known yet" and
+            // letting renderers show a skeleton instead of a scary label.
+            name: detail?.name ?? '',
             mimeType: detail?.mimeType ?? null,
             size: detail?.size ?? null,
             caption: fr.caption,
             internal: fr.internal,
           }
         })
-        // Drop refs that resolved to nothing (deleted file), but keep the ones
-        // still in flight so a freshly uploaded file doesn't blink out.
-        .filter((f) => f.name !== 'Unknown file' || isResolvingRefs)
     )
   }, [fileRefs, fileDetails, isResolvingRefs])
 
@@ -524,7 +582,7 @@ export function useFieldFileUpload({
     const parts: string[] = []
     for (const id of session.fileIds) {
       const f = state.files[id]
-      if (!f || f.status === 'failed') continue
+      if (!f) continue
       // Keep completed files in fingerprint until absorbed
       if (f.status === 'completed') {
         if (f.serverFileId && !absorbedAssetIds.has(f.serverFileId)) {
@@ -532,6 +590,8 @@ export function useFieldFileUpload({
         }
         continue
       }
+      // failed, cancelled and deleting files own no row
+      if (!isFileInFlight(f.status)) continue
       parts.push(`${f.id}:${f.status}:${f.progress ?? 0}`)
     }
     return parts.join('|')
@@ -549,12 +609,11 @@ export function useFieldFileUpload({
       .map((id) => state.files[id])
       .filter((f): f is FileState => f !== undefined)
       .filter((f) => {
-        if (f.status === 'failed') return false
         // Keep completed files visible until displayFiles absorbs them
         if (f.status === 'completed') {
           return f.serverFileId ? !absorbedAssetIds.has(f.serverFileId) : false
         }
-        return true
+        return isFileInFlight(f.status)
       })
       .map(
         (f): UploadingFile => ({
@@ -663,31 +722,71 @@ export function useFieldFileUpload({
           // constraint above (see `convert-heic.ts`).
           const files = isImagesOnly ? await convertHeicFiles(rawFiles) : rawFiles
 
-          // Optimistic avatar preview: show the locally-selected image instantly
-          // via a blob URL. `handleUploadCompletion` swaps to a stable download
-          // URL on server success, or rolls back on failure.
-          if (isAvatarField(recordId, fieldRef) && files[0]) {
-            const blobUrl = URL.createObjectURL(files[0])
-            const { priorAvatarUrl } = optimisticallyWriteAvatar(recordId, blobUrl)
-            pendingAvatarByKey.set(uploaderId, {
-              recordId,
-              priorAvatarUrl,
-              blobUrl,
-            })
-          }
-
           try {
             const storeNow = useUploadStore.getState()
             const addResult = await storeNow.addFilesWithValidation(files, uploaderId, {
               maxFiles: effectiveSlots,
             })
+
+            // A pick that only re-selected files already uploading in this session
+            // is a no-op, not a failure — the in-flight upload's own completion
+            // lands the value. Erroring here rolled back the optimistic avatar and
+            // toasted "Upload failed" over a perfectly healthy upload.
+            if (addResult.addedFileIds.length === 0 && addResult.validationErrors.length === 0) {
+              return
+            }
+
+            // A rejected pick adds nothing, so `startUploadForSession` would be a
+            // silent no-op: nothing throws and the completion sweep never fires.
+            // Fail the pick here instead — same shape as the `catch` below, and the
+            // same contract `useFileUpload` already honours.
+            if (addResult.addedFileIds.length === 0) {
+              throw new Error(
+                addResult.validationErrors[0] ?? 'The selected file could not be added.'
+              )
+            }
+
+            // Some added, some rejected — the upload proceeds, but say what was dropped.
             if (addResult.validationErrors.length > 0) {
-              console.error('[useFieldFileUpload] validation errors:', addResult.validationErrors)
+              toastError({
+                title: 'Some files were skipped',
+                description: addResult.validationErrors.join('; '),
+              })
+            }
+
+            // Re-arm the completion sweep. `__fieldNotifiedComplete` is a one-shot
+            // latch set when a previous pick's completion fired, and the session
+            // lives for the whole life of its uploader — without this reset the
+            // sweep skipped the session forever, so every pick after the first
+            // uploaded fine but never saved its value.
+            useUploadStore.setState((s) => {
+              const sess = s.sessions[sessionId]
+              if (sess?.metadata) sess.metadata.__fieldNotifiedComplete = false
+            })
+
+            // Optimistic avatar preview: show the locally-selected image instantly
+            // via a blob URL. `handleUploadCompletion` swaps to a stable download
+            // URL on server success, or rolls back on failure. Deliberately AFTER
+            // the add — a pick that adds nothing (all duplicates, all rejected)
+            // must not overwrite the pending-avatar state a still-uploading pick
+            // registered under this uploaderId.
+            if (isAvatarField(recordId, fieldRef) && files[0]) {
+              const blobUrl = URL.createObjectURL(files[0])
+              const { priorAvatarUrl } = optimisticallyWriteAvatar(recordId, blobUrl)
+              pendingAvatarByKey.set(uploaderId, {
+                recordId,
+                priorAvatarUrl,
+                blobUrl,
+              })
             }
 
             await storeNow.startUploadForSession(sessionId)
           } catch (err) {
             console.error('[useFieldFileUpload] upload error:', err)
+            toastError({
+              title: 'Upload failed',
+              description: err instanceof Error ? err.message : 'Unknown error',
+            })
             // Upload failed to start — rollback optimistic avatar.
             const pending = pendingAvatarByKey.get(uploaderId)
             if (pending) {

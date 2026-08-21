@@ -173,7 +173,11 @@ export {
 } from './upload/validators'
 
 // Selected utilities re-exported for convenience
-export { createFileDownloadResponse, parseRangeHeader } from './utils'
+export {
+  createFileDownloadResponse,
+  encodeContentDisposition,
+  parseRangeHeader,
+} from './utils'
 
 // ============= FILE TYPE CONSTANTS =============
 

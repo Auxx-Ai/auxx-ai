@@ -42,13 +42,30 @@ const HEADER_NON_EDITABLE_FIELD_TYPES = new Set<string>([
   FieldType.RICH_TEXT,
 ])
 
+/** The two lines of the header. Each declares its own settled box height. */
+type HeaderSlot = 'primary' | 'secondary'
+
 /**
- * The box every non-editing state renders into. Shared so the four states
- * (row fallback, hydrated value, empty placeholder, read-only) occupy the exact
- * same height and inset as each other AND as the inline editor — swapping
- * between them must never move the heading.
+ * The height a line reserves, in EVERY state.
+ *
+ * These are not round numbers, they are what the *settled* states actually
+ * measure. `DisplayWrapper`'s value slot pads `py-[2px]`, so a hydrated value
+ * — and the inline editor, which mirrors that padding — comes out at
+ * `lineHeight + 4`. At the secondary's `text-xs` that is 20px and a 28px floor
+ * binds; at the primary's `text-lg` the 28px line box renders **32px**, which
+ * OVERSHOOTS a 28px floor. A single shared floor therefore let the primary line
+ * settle 4px taller than its own static states, and a bare skeleton was shorter
+ * still — that disagreement is what stepped the header 56 → 72 → 76px as a
+ * record loaded. Declaring the real settled height per slot makes the floor
+ * bind at both font sizes.
  */
-const STATIC_VALUE_BOX = 'truncate min-w-0 px-1 min-h-[28px] flex items-center'
+const SLOT_MIN_HEIGHT: Record<HeaderSlot, string> = {
+  primary: 'min-h-[32px]',
+  secondary: 'min-h-[28px]',
+}
+
+/** Inset and truncation shared by every state's box; the height comes from the slot. */
+const VALUE_BOX_BASE = 'truncate min-w-0 px-1 flex items-center'
 
 /**
  * A stronger hover tint than a field row gets, scoped to this header.
@@ -64,6 +81,32 @@ const HEADER_HOVER_TINT = cn(
   '[&:hover_[data-slot=field-display-hover]]:!bg-primary-100',
   'dark:[&:hover_[data-slot=field-display-hover]]:!bg-foreground/12'
 )
+
+/**
+ * The box EVERY render state of a line goes into: skeleton, row fallback,
+ * hydrated value, empty placeholder, empty-fallback text, read-only, absent
+ * value, and the inline editor (which reuses `SLOT_MIN_HEIGHT` directly, since
+ * it needs a different base). They all occupy the identical height and inset,
+ * so nothing moves as the record hydrates or as the editor opens and closes.
+ *
+ * `data-header-slot` is the marker the height invariant is asserted on — every
+ * state must emit exactly one per line.
+ */
+function ValueBox({
+  slot,
+  className,
+  children,
+}: {
+  slot: HeaderSlot
+  className?: string
+  children?: ReactNode
+}) {
+  return (
+    <div data-header-slot={slot} className={cn(VALUE_BOX_BASE, SLOT_MIN_HEIGHT[slot], className)}>
+      {children}
+    </div>
+  )
+}
 
 /** Fold the header's own denylist into the field's existing read-only answer. */
 function applyHeaderEditability(field: PanelField | null): PanelField | null {
@@ -205,7 +248,7 @@ export function RecordIdentityHeader({
 }
 
 interface HeaderValueProps {
-  slot: 'primary' | 'secondary'
+  slot: HeaderSlot
   recordId: RecordId
   /** Null when the resource configures no display field for this slot. */
   field: PanelField | null
@@ -252,10 +295,22 @@ function HeaderValue({
   unregisterClose,
 }: HeaderValueProps) {
   if (!field) {
-    if (isRecordLoading && !fallback) return <Skeleton className={skeletonClassName} />
-    const text = fallback || placeholder
-    if (!text) return null
-    return <div className={cn('truncate min-w-0', className)}>{text}</div>
+    if (isRecordLoading && !fallback) {
+      return (
+        <ValueBox slot={slot}>
+          <Skeleton className={skeletonClassName} />
+        </ValueBox>
+      )
+    }
+    // An unconfigured slot with nothing to say still reserves its line. A line
+    // that collapses to nothing is the same layout shift as one that grows, and
+    // this is the state a record sits in for the whole window before the row
+    // lands.
+    return (
+      <ValueBox slot={slot} className={className}>
+        {fallback || placeholder}
+      </ValueBox>
+    )
   }
 
   return (
@@ -270,6 +325,7 @@ function HeaderValue({
       registerClose={registerClose}
       unregisterClose={unregisterClose}>
       <HeaderValueInner
+        slot={slot}
         fallback={fallback}
         useFallback={useFallback}
         emptyFallback={emptyFallback}
@@ -327,6 +383,7 @@ function HeaderMultiValue({
  * skeleton, empty, value) and mounts the editor the field type calls for.
  */
 function HeaderValueInner({
+  slot,
   fallback,
   useFallback,
   emptyFallback,
@@ -335,6 +392,7 @@ function HeaderValueInner({
   editorClassName,
   skeletonClassName,
 }: {
+  slot: HeaderSlot
   fallback: string | null
   useFallback: boolean
   emptyFallback: string | null
@@ -365,17 +423,35 @@ function HeaderValueInner({
   // so the header never flashes a placeholder on open. Not interactive in this
   // window — opening an editor over an unfetched value risks committing a blank.
   if (useFallback && fallback) {
-    return <div className={cn(STATIC_VALUE_BOX, className)}>{fallback}</div>
+    return (
+      <ValueBox slot={slot} className={className}>
+        {fallback}
+      </ValueBox>
+    )
   }
 
-  if (isLoading) return <Skeleton className={skeletonClassName} />
+  // The skeleton goes in the same box as everything else and keeps only its
+  // WIDTH from `skeletonClassName` — restating a height on it is how it ended up
+  // shorter than every state that replaces it.
+  if (isLoading) {
+    return (
+      <ValueBox slot={slot}>
+        <Skeleton className={skeletonClassName} />
+      </ValueBox>
+    )
+  }
 
   const isEmpty = isValueEmpty(value, field.fieldType)
 
-  // Hydrated and empty, with nothing worth offering as an edit target.
+  // Hydrated and empty, with nothing worth offering as an edit target. Still an
+  // occupied line: the secondary slot passes `placeholder=''`, so it lands here
+  // whenever its value is blank, and collapsing would move the row.
   if (isEmpty && !placeholder) {
-    if (!emptyFallback) return null
-    return <div className={cn(STATIC_VALUE_BOX, className)}>{emptyFallback}</div>
+    return (
+      <ValueBox slot={slot} className={className}>
+        {emptyFallback}
+      </ValueBox>
+    )
   }
 
   // Multi-value fields (options.multi) compress to primary + `+N` in the
@@ -389,7 +465,10 @@ function HeaderValueInner({
   const content = isEmpty ? (
     <div
       className={cn(
-        'rounded-md px-1 min-h-[28px] flex items-center text-neutral-300 dark:text-foreground/40',
+        'rounded-md px-1 flex items-center text-neutral-300 dark:text-foreground/40',
+        // Same slot height as a real value, so the placeholder's hover tint is
+        // the same size as the one a hydrated value paints.
+        SLOT_MIN_HEIGHT[slot],
         // Mirrors `EmptyField` in the panel: the placeholder IS the edit target,
         // so it has to advertise itself on hover the way a real value does.
         'group-hover/property-row:bg-neutral-200 group-hover/property-row:dark:bg-foreground/12'
@@ -403,7 +482,11 @@ function HeaderValueInner({
   )
 
   if (field.readOnly) {
-    return <div className={cn(STATIC_VALUE_BOX, className)}>{content}</div>
+    return (
+      <ValueBox slot={slot} className={className}>
+        {content}
+      </ValueBox>
+    )
   }
 
   const editMode = getEditModeForFieldType(field.fieldType, field.options)
@@ -414,14 +497,18 @@ function HeaderValueInner({
     <div
       className={cn(
         'group/property-row flex min-w-0 flex-1 cursor-pointer',
+        SLOT_MIN_HEIGHT[slot],
         HEADER_HOVER_TINT,
         className
       )}
       onClick={handleClick}
       onPointerDown={handlePointerDown}
+      data-header-slot={slot}
       data-slot='record-header-value'>
       {editMode === 'inline' ? (
-        <InlineHeaderEditor editorClassName={editorClassName}>{content}</InlineHeaderEditor>
+        <InlineHeaderEditor slot={slot} editorClassName={editorClassName}>
+          {content}
+        </InlineHeaderEditor>
       ) : (
         <FieldInput>{content}</FieldInput>
       )}
@@ -442,9 +529,11 @@ function HeaderValueInner({
  * heading that should fill its column.
  */
 function InlineHeaderEditor({
+  slot,
   children,
   editorClassName,
 }: {
+  slot: HeaderSlot
   children: ReactNode
   editorClassName?: string
 }) {
@@ -492,9 +581,10 @@ function InlineHeaderEditor({
     <div
       ref={containerRef}
       className={cn(
-        // Same box as `STATIC_VALUE_BOX`, so opening the editor swaps the
-        // content without moving it.
-        'flex w-full min-w-0 items-center min-h-[28px] rounded-md bg-background',
+        // Same box height as every other state of this slot, so opening the
+        // editor swaps the content without moving it.
+        'flex w-full min-w-0 items-center rounded-md bg-background',
+        SLOT_MIN_HEIGHT[slot],
         // `ring-1` marks the field as being edited. A ring paints outside the
         // border box, so it adds no height of its own.
         'ring-1 ring-blue-500',
@@ -504,10 +594,10 @@ function InlineHeaderEditor({
         // so normalize both here.
         //
         // `py-[2px]` is not arbitrary: it mirrors `DisplayWrapper`'s value slot
-        // exactly. That padding is what makes the display box `lineHeight + 4`,
-        // which OVERSHOOTS `min-h-[28px]` at heading sizes (text-lg's 28px line
-        // box renders 32px tall). Matching it is what keeps both boxes equal at
-        // every font size, instead of only at the sizes where the floor binds.
+        // exactly. That padding is what makes the display box `lineHeight + 4`
+        // — 32px at the primary's text-lg, which is why `SLOT_MIN_HEIGHT.primary`
+        // is 32 and not 28. Matching it is what keeps both boxes equal at every
+        // font size, instead of only at the sizes where the floor binds.
         '[&_textarea]:!px-1 [&_textarea]:!py-[2px] [&_input]:!px-1 [&_input]:!py-[2px]',
         // NUMBER/CURRENCY render an InputGroup that pins its own height
         // (`h-[27px]`, over a `h-8` default). Let the padded control size it
