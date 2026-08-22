@@ -9,6 +9,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   queryQueue: [] as unknown[][],
+  /** One entry per `.innerJoin(table, on)` call: `{ table, on, where }` (where filled on execution). */
+  joins: [] as Array<{ table: unknown; on: unknown; where: unknown }>,
   setValueWithType: vi.fn(async (_ctx: unknown, _params: unknown) => [] as unknown[]),
   createFieldValueContext: vi.fn((organizationId: string) => ({ organizationId })),
   getRealtimeService: vi.fn(() => ({})),
@@ -27,6 +29,16 @@ vi.mock('@auxx/database', () => ({
     select: () => ({
       from: () => ({
         where: () => Promise.resolve(nextRows()),
+        innerJoin: (table: unknown, on: unknown) => {
+          const join = { table, on, where: undefined as unknown }
+          h.joins.push(join)
+          return {
+            where: (clause: unknown) => {
+              join.where = clause
+              return Promise.resolve(nextRows())
+            },
+          }
+        },
       }),
     }),
   },
@@ -37,6 +49,12 @@ vi.mock('@auxx/database', () => ({
       relatedEntityId: 'relatedEntityId',
       organizationId: 'organizationId',
       valueNumber: 'valueNumber',
+      valueBoolean: 'valueBoolean',
+    },
+    EntityInstance: {
+      id: 'ei.id',
+      organizationId: 'ei.organizationId',
+      archivedAt: 'ei.archivedAt',
     },
   },
 }))
@@ -64,6 +82,7 @@ vi.mock('../realtime', () => ({
   publishFieldValueUpdates: h.publishFieldValueUpdates,
 }))
 
+import { schema } from '@auxx/database'
 import type { EntityFieldChangeEvent } from '../field-hooks/types'
 import {
   computeMarkupPrice,
@@ -79,6 +98,22 @@ const ALL_CATALOG_FIELDS = {
   catalog_item_cost: { id: 'f_cost', type: 'CURRENCY' },
   catalog_item_markup: { id: 'f_markup', type: 'NUMBER' },
   catalog_item_default_unit_price: { id: 'f_price', type: 'CURRENCY' },
+  catalog_item_active: { id: 'f_active', type: 'CHECKBOX' },
+}
+
+/** Queue entries for `isCatalogItemSyncable` (the single-item hook guard): instance row, then active FieldValue row. */
+const SYNCABLE_GUARD_ROWS: unknown[][] = [
+  [{ archivedAt: null }], // EntityInstance exists, not archived
+  [], // no stored catalog_item_active row — absence means active
+]
+
+/** Recursively search a mocked drizzle SQL clause for a mock column-name string. */
+function clauseContains(value: unknown, needle: string, seen = new Set<object>()): boolean {
+  if (typeof value === 'string') return value === needle
+  if (value == null || typeof value !== 'object') return false
+  if (seen.has(value)) return false
+  seen.add(value)
+  return Object.values(value).some((inner) => clauseContains(inner, needle, seen))
 }
 
 function buildEvent(overrides: Record<string, unknown>): EntityFieldChangeEvent {
@@ -101,6 +136,7 @@ function buildEvent(overrides: Record<string, unknown>): EntityFieldChangeEvent 
 beforeEach(() => {
   vi.clearAllMocks()
   h.queryQueue = []
+  h.joins = []
   h.bySystemAttributes.mockResolvedValue(ALL_CATALOG_FIELDS)
   h.bySystemAttribute.mockResolvedValue({ id: 'f_partcost', type: 'CURRENCY' })
 })
@@ -230,6 +266,71 @@ describe('syncCatalogItemPricing', () => {
     expect(h.setValueWithType).not.toHaveBeenCalled()
     expect(h.publishFieldValueUpdates).not.toHaveBeenCalled()
   })
+
+  it('drives off an EntityInstance join that filters archived items in SQL', async () => {
+    h.queryQueue = [[]] // joined driving query — an archived item never comes back
+    await syncCatalogItemPricing('org_1', ['part1'])
+
+    expect(h.joins).toHaveLength(1)
+    const join = h.joins[0]
+    expect(join?.table).toBe(schema.EntityInstance)
+    expect(clauseContains(join?.where, 'ei.archivedAt')).toBe(true)
+    expect(h.setValueWithType).not.toHaveBeenCalled()
+  })
+
+  it('skips an explicitly-inactive item but still syncs its active sibling', async () => {
+    h.queryQueue = [
+      [
+        { catalogInstanceId: 'cat1', partInstanceId: 'part1' }, // inactive
+        { catalogInstanceId: 'cat2', partInstanceId: 'part1' },
+      ],
+      [{ entityId: 'part1', valueNumber: 500 }],
+      [
+        { entityId: 'cat1', fieldId: 'f_cost', valueNumber: 300 },
+        { entityId: 'cat1', fieldId: 'f_active', valueBoolean: false },
+        { entityId: 'cat2', fieldId: 'f_cost', valueNumber: 300 },
+      ],
+    ]
+
+    await syncCatalogItemPricing('org_1', ['part1'])
+
+    expect(h.setValueWithType).toHaveBeenCalledTimes(1)
+    const write = h.setValueWithType.mock.calls[0]?.[1] as { recordId: string; value: unknown }
+    expect(write.recordId).toBe('catalog_item_def:cat2')
+    expect(write.value).toEqual({ type: 'number', value: 500 })
+  })
+
+  it('syncs an item with NO stored active row (absence means active, never "explicitly true")', async () => {
+    h.queryQueue = [
+      [{ catalogInstanceId: 'cat1', partInstanceId: 'part1' }],
+      [{ entityId: 'part1', valueNumber: 500 }],
+      [{ entityId: 'cat1', fieldId: 'f_cost', valueNumber: 300 }], // no f_active row at all
+    ]
+
+    await syncCatalogItemPricing('org_1', ['part1'])
+
+    expect(h.setValueWithType).toHaveBeenCalledTimes(1)
+    const write = h.setValueWithType.mock.calls[0]?.[1] as { recordId: string; value: unknown }
+    expect(write.recordId).toBe('catalog_item_def:cat1')
+    expect(write.value).toEqual({ type: 'number', value: 500 })
+  })
+
+  it('syncs an item whose active row is explicitly true, same as before', async () => {
+    h.queryQueue = [
+      [{ catalogInstanceId: 'cat1', partInstanceId: 'part1' }],
+      [{ entityId: 'part1', valueNumber: 500 }],
+      [
+        { entityId: 'cat1', fieldId: 'f_cost', valueNumber: 300 },
+        { entityId: 'cat1', fieldId: 'f_active', valueBoolean: true },
+      ],
+    ]
+
+    await syncCatalogItemPricing('org_1', ['part1'])
+
+    expect(h.setValueWithType).toHaveBeenCalledTimes(1)
+    const write = h.setValueWithType.mock.calls[0]?.[1] as { value: unknown }
+    expect(write.value).toEqual({ type: 'number', value: 500 })
+  })
 })
 
 // ─── Interactive triggers (§3) ────────────────────────────────────────
@@ -243,8 +344,51 @@ describe('syncCatalogCostOnPartChange', () => {
     expect(h.bySystemAttributes).not.toHaveBeenCalled()
   })
 
+  it('archived catalog item: no-op (no reads past the guard, no writes)', async () => {
+    h.queryQueue = [
+      [{ archivedAt: new Date('2026-08-01') }], // EntityInstance guard: archived
+    ]
+    const event = buildEvent({
+      newValue: [{ type: 'relationship', recordId: 'part:part1' }],
+    })
+    await syncCatalogCostOnPartChange(event)
+    expect(h.setValueWithType).not.toHaveBeenCalled()
+    expect(h.queryQueue).toHaveLength(0) // archived check consumed; nothing else queried
+  })
+
+  it('explicitly-inactive catalog item: no-op', async () => {
+    h.queryQueue = [
+      [{ archivedAt: null }], // not archived
+      [{ valueBoolean: false }], // catalog_item_active stored false
+    ]
+    const event = buildEvent({
+      newValue: [{ type: 'relationship', recordId: 'part:part1' }],
+    })
+    await syncCatalogCostOnPartChange(event)
+    expect(h.setValueWithType).not.toHaveBeenCalled()
+  })
+
+  it('no stored active row: still syncs (absence means active)', async () => {
+    h.queryQueue = [
+      ...SYNCABLE_GUARD_ROWS, // active row absent — guard passes
+      [], // current cost (none yet)
+      [{ valueNumber: 500 }], // the linked part's current part_cost
+      [], // current markup (none)
+    ]
+    const event = buildEvent({
+      newValue: [{ type: 'relationship', recordId: 'part:part1' }],
+    })
+    await syncCatalogCostOnPartChange(event)
+
+    expect(h.setValueWithType).toHaveBeenCalledTimes(1)
+    const write = h.setValueWithType.mock.calls[0]?.[1] as { fieldId: string; value: unknown }
+    expect(write.fieldId).toBe('f_cost')
+    expect(write.value).toEqual({ type: 'number', value: 500 })
+  })
+
   it('part set: writes cost, and recomputes price when markup is already set', async () => {
     h.queryQueue = [
+      ...SYNCABLE_GUARD_ROWS,
       [], // current cost on the catalog item (none yet)
       [{ valueNumber: 500 }], // the linked part's current part_cost
       [{ valueNumber: 50 }], // current markup on the catalog item
@@ -262,7 +406,7 @@ describe('syncCatalogCostOnPartChange', () => {
   })
 
   it('part cleared: clears cost, keeps markup untouched', async () => {
-    h.queryQueue = [[{ valueNumber: 500 }]] // existing cost present
+    h.queryQueue = [...SYNCABLE_GUARD_ROWS, [{ valueNumber: 500 }]] // existing cost present
     const event = buildEvent({ newValue: null })
     await syncCatalogCostOnPartChange(event)
 
@@ -273,7 +417,7 @@ describe('syncCatalogCostOnPartChange', () => {
   })
 
   it('part cleared with no existing cost: no-op', async () => {
-    h.queryQueue = [[]] // no current cost
+    h.queryQueue = [...SYNCABLE_GUARD_ROWS, []] // no current cost
     const event = buildEvent({ newValue: null })
     await syncCatalogCostOnPartChange(event)
     expect(h.setValueWithType).not.toHaveBeenCalled()
