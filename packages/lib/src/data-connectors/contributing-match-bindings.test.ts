@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { buildContributingMatchBindings, type ContributingTargetField } from './app-catalog'
 
 const DEF = 'def_contact'
+const DEF_PART = 'def_part'
 
 /** A contact def carrying a system email field (systemAttribute differs from the key). */
 const CONTACT_FIELDS: ContributingTargetField[] = [
@@ -19,6 +20,23 @@ const ORDER_FIELDS = [
     sourcePath: 'customer.email',
     type: 'EMAIL',
     name: 'Customer Email',
+  },
+]
+
+/** A part def carrying an sku field, matched by normalized name. */
+const PART_FIELDS: ContributingTargetField[] = [
+  { id: 'fld_sku', name: 'SKU', systemAttribute: 'part_sku', type: 'TEXT' },
+  { id: 'fld_option', name: 'Option value', systemAttribute: null, type: 'TEXT' },
+]
+
+/** The Shopify `product` stream's variant subtree (subset) — 02 §1.4's worked example. */
+const PRODUCT_VARIANT_FIELDS = [
+  { fieldKey: 'variants.sku', sourcePath: 'variants[].sku', type: 'TEXT', name: 'SKU' },
+  {
+    fieldKey: 'variants.option_value',
+    sourcePath: 'variants[].options[].value',
+    type: 'TEXT',
+    name: 'Option value',
   },
 ]
 
@@ -56,9 +74,40 @@ describe('buildContributingMatchBindings', () => {
     ).toEqual([])
   })
 
-  it('skips array roots (no single deterministic source path)', () => {
+  // A named array root relativizes deterministically ('variants[].sku' under
+  // 'variants[]' is 'sku') — the same rule the owned partitioner syncs on. Only a
+  // NESTED array (a `[]` surviving in the subtree-relative path) is unresolvable
+  // per record, because `mapRecord.getByPath` only matches indexed `[digit]` segments.
+  // See plans/products/06-contributing-array-root-binding.md and 02 §1.4.
+
+  it('binds a match key under a named array root (variants[] + sku)', () => {
+    const [binding, ...rest] = buildContributingMatchBindings(
+      DEF_PART,
+      'variants[]',
+      ['sku'],
+      PRODUCT_VARIANT_FIELDS,
+      PART_FIELDS
+    )
+    expect(rest).toHaveLength(0)
+    expect(binding).toMatchObject({
+      targetFieldRef: toResourceFieldId(DEF_PART, 'fld_sku'),
+      // Stored subtree-relative — 'sku', not 'variants[].sku'.
+      expression: '{sku}',
+      sourceFields: { sku: 'sku' },
+      identityRole: { kind: 'match', normalize: 'none' },
+    })
+  })
+
+  it('skips a key whose subtree-relative path crosses a NESTED array', () => {
+    // 'options[].value' under 'variants[]' keeps a digit-less `[]` — unresolvable.
     expect(
-      buildContributingMatchBindings(DEF, 'line_items[]', ['email'], ORDER_FIELDS, CONTACT_FIELDS)
+      buildContributingMatchBindings(
+        DEF_PART,
+        'variants[]',
+        ['options[].value'],
+        PRODUCT_VARIANT_FIELDS,
+        PART_FIELDS
+      )
     ).toEqual([])
   })
 

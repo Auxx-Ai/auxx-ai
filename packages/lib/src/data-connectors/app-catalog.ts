@@ -8,6 +8,7 @@ import type { CatalogDataConnector } from '@auxx/database'
 import { toAppFieldRef, toResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
 import { inferJsonSchema, STRUCT_FIELD_TYPE_KEYWORD } from '../json-schema'
+import { isBoundaryPrefix, relativeSourcePath } from './source-paths'
 import type { FieldMapping, IdentityNormalize } from './types'
 
 /** A catalog source field's declared type → the JSON-schema scalar type it carries. */
@@ -123,13 +124,15 @@ function isWritableTarget(field: ContributingTargetField): boolean {
  * existing contact by `email`). Pure (caller supplies `defFields`) so it's unit-testable
  * without the org cache. A key binds only when it resolves UNAMBIGUOUSLY on both sides:
  *   - source — a declared stream field whose absolute `sourcePath` is the key under
- *     the mapping's `rootPath` (`customer` + `email` → `customer.email`); the stored
- *     `sourceFields` path is subtree-relative (`email`), matching how `mapRecord`
- *     evaluates a rooted mapping;
+ *     the mapping's `rootPath` (`customer` + `email` → `customer.email`; an array
+ *     root relativizes the same way — `variants[]` + `sku` → `variants[].sku`); the
+ *     stored `sourceFields` path is subtree-relative (`email`, `sku`), matching how
+ *     `mapRecord` evaluates a rooted mapping;
  *   - target — a field on the contributing def keyed by that match key (its
  *     `systemAttribute`, name, or normalized name).
- * Unresolved or array-rooted keys are dropped (the row stays a `needs-mapping` draft).
- * See multi-stream-setup-plan §5.2.
+ * Unresolved keys, and keys whose subtree-relative path crosses a NESTED array
+ * (a digit-less `[]` that `mapRecord.getByPath` cannot resolve), are dropped
+ * (the row stays a `needs-mapping` draft). See multi-stream-setup-plan §5.2.
  */
 export function buildContributingMatchBindings(
   entityDefinitionId: string,
@@ -139,21 +142,20 @@ export function buildContributingMatchBindings(
   defFields: ContributingTargetField[]
 ): FieldMapping[] {
   if (matchFieldKeys.length === 0) return []
-  // Identity match lives on a nested object (e.g. `customer`); array roots have no
-  // single deterministic source path for a key, so skip auto-binding them.
-  if (rootPath.includes('[]')) return []
 
   const fieldByKey = buildTargetFieldIndex(defFields)
-  const prefix = rootPath ? `${rootPath}.` : ''
   const bindings: FieldMapping[] = []
   for (const key of matchFieldKeys) {
+    // The key IS the subtree-relative path; one crossing a further array
+    // (`options[].value`) keeps a `[]` no per-record path can resolve — skip it.
+    if (key.includes('[]')) continue
     const target = fieldByKey.get(key) ?? fieldByKey.get(normalizeFieldKey(key))
     if (!target) continue
-    const absolutePath = `${prefix}${key}`
+    const absolutePath = rootPath ? `${rootPath}.${key}` : key
     const sourceField = sourceFields.find((f) => f.sourcePath === absolutePath)
     if (!sourceField) continue
     bindings.push(
-      bindSourceToTarget(entityDefinitionId, prefix, sourceField, target, {
+      bindSourceToTarget(entityDefinitionId, rootPath, sourceField, target, {
         kind: 'match',
         normalize: deriveNormalizeFromType(target.type),
       })
@@ -178,7 +180,8 @@ export function buildContributingMatchBindings(
  *     connection-scoped) via `toAppFieldRef`. A `targetAppField` binding whose app
  *     field is `identity: true` auto-stamps `identityRole: { kind: 'externalId' }`
  *     (the `isExternalId` mechanism, extended to contributing).
- * Array-rooted mappings and unresolved bindings are dropped (the row keeps whatever
+ * Unresolved bindings, sources outside the mapping's subtree, and sources whose
+ * subtree-relative path crosses a NESTED array are dropped (the row keeps whatever
  * draft state remains). The external id is never bound via `targetKey`.
  */
 export function buildContributingFieldBindings(
@@ -190,17 +193,20 @@ export function buildContributingFieldBindings(
   defFields: ContributingTargetField[]
 ): FieldMapping[] {
   if (fieldBindings.length === 0) return []
-  // An array root has no single deterministic subtree-relative path, same as match keys.
-  if (rootPath.includes('[]')) return []
 
   const fieldByKey = buildTargetFieldIndex(defFields)
-  const prefix = rootPath ? `${rootPath}.` : ''
   const bindings: FieldMapping[] = []
   for (const { sourceFieldKey, targetKey, targetAppField } of fieldBindings) {
     const sourceField = sourceFields.find((f) => f.fieldKey === sourceFieldKey)
-    // The source field must live under this mapping's subtree (its sourcePath starts
-    // with the rootPath prefix), else its relative path is undefined for this root.
-    if (!sourceField || (prefix && !sourceField.sourcePath.startsWith(prefix))) continue
+    // The source field must live under this mapping's subtree at a PATH BOUNDARY
+    // (`customer` must not claim `customer_notes.body`), and its subtree-relative
+    // path must not cross a further array — `variants[].options[].value` under root
+    // `variants[]` relativizes to `options[].value`, a digit-less `[]` that
+    // `mapRecord.getByPath` cannot resolve. A named array ROOT itself is fine:
+    // `variants[].sku` → `sku`, same as the owned partitioner.
+    if (!sourceField || !isBoundaryPrefix(sourceField.sourcePath, rootPath)) continue
+    const relative = relativeSourcePath(sourceField.sourcePath, rootPath)
+    if (relative === '' || relative.includes('[]')) continue
 
     if (targetAppField) {
       // App fields are CONNECTION-SCOPED — an org with multiple connections of the same
@@ -225,7 +231,7 @@ export function buildContributingFieldBindings(
           entityDefinitionId,
           appSlug,
           targetAppField,
-          prefix,
+          rootPath,
           sourceField,
           isIdentityField ? { kind: 'externalId' } : undefined
         )
@@ -235,7 +241,7 @@ export function buildContributingFieldBindings(
     if (!targetKey) continue
     const target = fieldByKey.get(targetKey) ?? fieldByKey.get(normalizeFieldKey(targetKey))
     if (!target) continue
-    bindings.push(bindSourceToTarget(entityDefinitionId, prefix, sourceField, target))
+    bindings.push(bindSourceToTarget(entityDefinitionId, rootPath, sourceField, target))
   }
   return bindings
 }
@@ -287,10 +293,7 @@ export function buildContributingAutoBindings(
   sourceFields: CatalogDataConnector['streams'][number]['fields'],
   defFields: ContributingTargetField[]
 ): FieldMapping[] {
-  if (rootPath.includes('[]')) return []
-
   const fieldByKey = buildTargetFieldIndex(defFields)
-  const prefix = rootPath ? `${rootPath}.` : ''
 
   // Group candidates by resolved target id so a target claimed by 2+ sources is ambiguous.
   const byTarget = new Map<
@@ -301,11 +304,10 @@ export function buildContributingAutoBindings(
     }[]
   >()
   for (const sourceField of sourceFields) {
-    const path = sourceField.sourcePath
-    if (prefix && !path.startsWith(prefix)) continue
-    const relative = prefix ? path.slice(prefix.length) : path
+    if (!isBoundaryPrefix(sourceField.sourcePath, rootPath)) continue
+    const relative = relativeSourcePath(sourceField.sourcePath, rootPath)
     // Only leaf fields directly on the root object — skip nested + array-element paths.
-    if (relative.includes('.') || relative.includes('[]')) continue
+    if (relative === '' || relative.includes('.') || relative.includes('[]')) continue
     const target = fieldByKey.get(relative) ?? fieldByKey.get(normalizeFieldKey(relative))
     if (!target || !isWritableTarget(target)) continue
     const list = byTarget.get(target.id) ?? []
@@ -317,7 +319,7 @@ export function buildContributingAutoBindings(
   for (const candidates of byTarget.values()) {
     if (candidates.length !== 1) continue // ambiguous → skip
     const { source, target } = candidates[0]!
-    bindings.push(bindSourceToTarget(entityDefinitionId, prefix, source, target))
+    bindings.push(bindSourceToTarget(entityDefinitionId, rootPath, source, target))
   }
   return bindings
 }
@@ -340,18 +342,19 @@ function buildTargetFieldIndex(
 
 /**
  * Construct one `FieldMapping` binding a resolved source field to a resolved target,
- * computing the subtree-relative source path (strip the `rootPath` prefix — `mapRecord`
- * evaluates a rooted mapping against subtree-relative paths). Pass `identityRole` to
- * flag it a secondary-identity match; omit for a plain value binding.
+ * computing the subtree-relative source path via {@link relativeSourcePath} (`mapRecord`
+ * evaluates a rooted mapping against subtree-relative paths — for an array root,
+ * against each extracted element). Pass `identityRole` to flag it a
+ * secondary-identity match; omit for a plain value binding.
  */
 function bindSourceToTarget(
   entityDefinitionId: string,
-  prefix: string,
+  rootPath: string,
   sourceField: CatalogDataConnector['streams'][number]['fields'][number],
   target: ContributingTargetField,
   identityRole?: FieldMapping['identityRole']
 ): FieldMapping {
-  const relativePath = prefix ? sourceField.sourcePath.slice(prefix.length) : sourceField.sourcePath
+  const relativePath = relativeSourcePath(sourceField.sourcePath, rootPath)
   return {
     id: generateId(),
     targetFieldRef: toResourceFieldId(entityDefinitionId, target.id),
@@ -372,11 +375,11 @@ function bindSourceToAppField(
   entityDefinitionId: string,
   appSlug: string,
   appFieldKey: string,
-  prefix: string,
+  rootPath: string,
   sourceField: CatalogDataConnector['streams'][number]['fields'][number],
   identityRole?: FieldMapping['identityRole']
 ): FieldMapping {
-  const relativePath = prefix ? sourceField.sourcePath.slice(prefix.length) : sourceField.sourcePath
+  const relativePath = relativeSourcePath(sourceField.sourcePath, rootPath)
   return {
     id: generateId(),
     targetFieldRef: toAppFieldRef(entityDefinitionId, appSlug, appFieldKey),
