@@ -15,11 +15,14 @@
 //     the large lane withholds dispatch pending the Phase 6 guard (D-3)
 //   - tier-2 `records:changed` delta frames, both lanes (plan §7b)
 //
-// v1 scope note: the changed-set is what the SUBSCRIPTION-GATED manifest
-// captured (`sync-manifest-collector.ts` only records fields/lifecycles some
-// enabled rule watches). Until the Phase 3 session collector captures every
-// write, finalize fidelity is bounded by rule subscriptions — an org with no
-// enabled rules produces no manifest and no finalize. Accepted for v1.
+// Manifest v2 (plan 07 §3): tier-1 membership (`touched` + lifecycle arrays)
+// is UNCONDITIONAL — every sync-session change reaches finalize, rules or no
+// rules. Tier-2 `deltas` stay rule-subscription-gated, so `{o, n}` detail is
+// present only where some enabled rule watches the field. Truncation only ever
+// drops detail, never membership: `detailTruncated` leaves the lane honest
+// (membership is complete, the count is real), `membershipTruncated` forces
+// the large lane. Per-record ids-only degradation (`touched[rid] === 1`)
+// collapses that record's timeline entry and widens its integrity selection.
 //
 // Keep top-level imports to types/logger/pure constants only; lazy-import
 // everything else (the events ↔ data-connectors ↔ cache boundaries break
@@ -54,9 +57,9 @@ export interface SyncFinalizeInput {
   manifest: SyncChangeManifest
 }
 
-/** The manifest's three record sets, deduped, with the created/changed overlap resolved. */
+/** The manifest's three record sets, deduped, with the created/touched overlap resolved. */
 interface ChangedSets {
-  /** Records with captured field changes that were NOT created this run. */
+  /** Touched records (tier-1 membership) that were NOT created this run. */
   updatedIds: RecordId[]
   createdIds: RecordId[]
   archivedIds: RecordId[]
@@ -67,9 +70,9 @@ interface ChangedSets {
 function collectChangedSets(manifest: SyncChangeManifest): ChangedSets {
   const createdSet = new Set<RecordId>(manifest.createdRecordIds)
   const archivedIds = [...new Set<RecordId>(manifest.archivedRecordIds)]
-  // A record created this run also appears in `changes` (creates capture `{n}`
-  // entries) — it collapses to ONE "created" entry, never created + updated.
-  const updatedIds = (Object.keys(manifest.changes) as RecordId[]).filter(
+  // A record created this run also appears in `touched` (creates record their
+  // written keys) — it collapses to ONE "created" entry, never created + updated.
+  const updatedIds = (Object.keys(manifest.touched) as RecordId[]).filter(
     (rid) => !createdSet.has(rid)
   )
   const all = new Set<RecordId>([...updatedIds, ...createdSet, ...archivedIds])
@@ -78,14 +81,16 @@ function collectChangedSets(manifest: SyncChangeManifest): ChangedSets {
 
 /**
  * Lane selection (D-12): decided at finalize from the OBSERVED changed-set
- * count, never declared by the writer. A truncated manifest means the true
- * count is unknown-but-large, so it takes the large lane unconditionally.
+ * count, never declared by the writer. Only MEMBERSHIP truncation forces the
+ * large lane — the true count is then unknown-but-large. `detailTruncated`
+ * alone means tier-2 deltas were capped while membership stayed complete, so
+ * the observed count is honest and the count-based decision stands.
  */
 export function selectSyncLane(
   manifest: SyncChangeManifest,
   changedCount: number
 ): SyncFinalizeLane {
-  if (manifest.truncated) return 'large'
+  if (manifest.membershipTruncated) return 'large'
   return changedCount <= SYNC_SMALL_RUN_THRESHOLD ? 'small' : 'large'
 }
 
@@ -103,7 +108,7 @@ export function manifestDefCounts(manifest: SyncChangeManifest): Record<string, 
     if (!set) byDef.set(entityDefinitionId, (set = new Set()))
     set.add(entityInstanceId)
   }
-  for (const rid of Object.keys(manifest.changes) as RecordId[]) add(rid)
+  for (const rid of Object.keys(manifest.touched) as RecordId[]) add(rid)
   for (const rid of manifest.createdRecordIds) add(rid)
   for (const rid of manifest.archivedRecordIds) add(rid)
   const counts: Record<string, number> = {}
@@ -124,13 +129,18 @@ export async function runSyncFinalize(db: Database, input: SyncFinalizeInput): P
     if (sets.total === 0) return
 
     const lane = selectSyncLane(manifest, sets.total)
-    if (manifest.truncated) {
-      logger.warn('sync finalize: manifest truncated — forcing large lane', {
+    if (manifest.membershipTruncated) {
+      logger.warn('sync finalize: manifest MEMBERSHIP truncated — forcing large lane', {
         organizationId,
         source,
         ref,
         changed: sets.total,
       })
+    } else if (manifest.detailTruncated) {
+      logger.info(
+        'sync finalize: manifest detail truncated — membership complete, lane stays count-based',
+        { organizationId, source, ref, changed: sets.total }
+      )
     }
     logger.info('sync finalize', { organizationId, source, ref, lane, changed: sets.total })
 
@@ -320,23 +330,28 @@ async function touchActivityDoor(
  * everything else is literal columns.
  *
  * Changed records on the SMALL lane get per-field `entity:field:updated`
- * rows (one per changed field) instead of the collapsed `entity:updated`
+ * rows (one per touched field key) instead of the collapsed `entity:updated`
  * entry — a run of ≤ SYNC_SMALL_RUN_THRESHOLD records × a handful of fields
  * keeps the bulk insert trivially bounded. The large lane keeps the
- * collapsed shape (that IS D-4). Created/archived records stay collapsed on
- * both lanes.
+ * collapsed shape (that IS D-4), counting fields from the touched key list.
+ * Created/archived records stay collapsed on both lanes, and so does a
+ * record degraded to ids-only (`touched[rid] === 1` — its keys were shed
+ * under the byte budget, so there is nothing to write per-field rows from).
  *
  * Honest deltas of the per-field rows vs the inline shape
  * (`mapFieldUpdated` in `create-timeline-event.ts`), all limited by what the
- * manifest carries (`ManifestFieldChange` is raw `{o, n}` keyed by
- * outputKey = systemAttribute ?? fieldId):
+ * manifest carries (tier-1 `touched` keys; tier-2 `ManifestFieldChange` raw
+ * `{o, n}` keyed by outputKey = systemAttribute ?? fieldId):
  * - `fieldId` / `relatedEntityId` / `changes[].field` hold the manifest
  *   outputKey — for system fields that is the attribute key, not the
  *   CustomField CUID, and never the display name the inline lane resolves.
  * - `fieldName`, `fieldType`, `entitySlug`, and the resolved
  *   `oldDisplay`/`newDisplay` snapshots are omitted, not fabricated — the
  *   manifest does not capture them. `changes[]` carries the raw
- *   `oldValue`/`newValue` pair instead (`oldValue` only when captured).
+ *   `oldValue`/`newValue` pair ONLY when a tier-2 delta exists for the
+ *   record+key (the existing "oldValue only when captured" contract,
+ *   extended: values as a whole are tier-2); a tier-1-only row still names
+ *   the field, with no value pair.
  * - `eventType` is `entity:field:updated` for every def (the inline lane
  *   maps contact/ticket to their prefixed variants) — consistent with the
  *   collapsed rows already using the `entity:*` family for all defs.
@@ -380,11 +395,18 @@ async function timelineDoor(
     }
 
     /** Small-lane per-field replay — see the honest-delta notes in the doc comment. */
-    const fieldRows = async (rid: RecordId, fieldChanges: Record<string, ManifestFieldChange>) => {
+    const fieldRows = async (
+      rid: RecordId,
+      touchedKeys: string[],
+      deltas: Record<string, ManifestFieldChange>
+    ) => {
       const { entityDefinitionId, entityInstanceId } = parseRecordId(rid)
       const canonical = await ctx.canonicalDefId(entityDefinitionId)
       const recordId = toRecordId(canonical, entityInstanceId)
-      for (const [fieldKey, change] of Object.entries(fieldChanges)) {
+      for (const fieldKey of touchedKeys) {
+        // `{o, n}` detail only when a tier-2 delta was captured for this
+        // record+key; a tier-1-only row names the field, with no value pair.
+        const change = deltas[fieldKey]
         rows.push({
           eventType: EntityInstanceEventType.FIELD_UPDATED,
           startedAt: now,
@@ -397,11 +419,13 @@ async function timelineDoor(
           actorId,
           eventData: { recordId, entityDefinitionId: canonical, fieldId: fieldKey, ...syncMeta },
           changes: [
-            {
-              field: fieldKey,
-              ...('o' in change ? { oldValue: change.o } : {}),
-              newValue: change.n,
-            },
+            change
+              ? {
+                  field: fieldKey,
+                  ...('o' in change ? { oldValue: change.o } : {}),
+                  newValue: change.n,
+                }
+              : { field: fieldKey },
           ],
           organizationId,
           updatedAt: now,
@@ -413,14 +437,19 @@ async function timelineDoor(
       await baseRow(rid, EntityInstanceEventType.CREATED, {})
     }
     for (const rid of sets.updatedIds) {
-      const fieldChanges = manifest.changes[rid] ?? {}
-      const changedFieldIds = Object.keys(fieldChanges)
-      if (lane === 'small' && changedFieldIds.length > 0) {
-        await fieldRows(rid, fieldChanges)
+      const touched = manifest.touched[rid]
+      if (touched === 1 || touched === undefined) {
+        // Ids-only degradation — keys were shed under the byte budget, so the
+        // collapsed entry is all that can honestly be written.
+        await baseRow(rid, EntityInstanceEventType.UPDATED, {})
+        continue
+      }
+      if (lane === 'small' && touched.length > 0) {
+        await fieldRows(rid, touched, manifest.deltas[rid] ?? {})
       } else {
         await baseRow(rid, EntityInstanceEventType.UPDATED, {
-          changedFieldIds,
-          changedFieldCount: changedFieldIds.length,
+          changedFieldIds: touched,
+          changedFieldCount: touched.length,
         })
       }
     }
@@ -539,11 +568,11 @@ async function guardedDispatchDoor(
 
 /**
  * §7b tier-2 `records:changed` frames, grouped per canonical def. Changed
- * records carry their manifest field keys as `fieldIds`; created and archived
- * records ship without `fieldIds` ("any field may have changed") — a client
- * refetch of the id surfaces both a new row and a vanished one. Ids only,
- * never values (D-18); `publishRecordsChanged` chunks and canonicalizes the
- * room key itself.
+ * records carry their touched field keys as `fieldIds`; created, archived,
+ * and ids-only-degraded records ship without `fieldIds` ("any field may have
+ * changed") — a client refetch of the id surfaces both a new row and a
+ * vanished one. Ids only, never values (D-18); `publishRecordsChanged`
+ * chunks and canonicalizes the room key itself.
  */
 async function realtimeDoor(
   organizationId: string,
@@ -569,7 +598,8 @@ async function realtimeDoor(
     }
 
     for (const rid of sets.updatedIds) {
-      await add(rid, Object.keys(manifest.changes[rid] ?? {}))
+      const touched = manifest.touched[rid]
+      await add(rid, touched === 1 || touched === undefined ? undefined : touched)
     }
     for (const rid of sets.createdIds) await add(rid)
     for (const rid of sets.archivedIds) await add(rid)

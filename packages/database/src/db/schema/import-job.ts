@@ -67,18 +67,33 @@ export const ImportJob = pgTable(
     // { created, updated, skipped, failed, durationMs }
     statistics: jsonb(),
 
-    // B2 — sync-change manifest captured by the import's skipEvents writes, persisted
+    // B2 — sync-change manifest captured by the import's silent-lane writes, persisted
     // here so the `sync:records:changed` pointer event stays payload-free (same
-    // transport as DataConnectorRun.manifest — no inline cap, no truncation).
-    // Structural mirror of `SyncChangeManifest` in `@auxx/lib/record-rules` (can't
-    // import across the tier boundary — keep in sync BY HAND, incl. `version: 1`).
-    manifest: jsonb().$type<{
-      version: 1
-      truncated: boolean
-      changes: Record<string, Record<string, { o?: unknown; n: unknown }>>
-      createdRecordIds: string[]
-      archivedRecordIds: string[]
-    }>(),
+    // transport as DataConnectorRun.manifest — no inline cap, no silent truncation).
+    // Structural mirror of `SyncChangeManifest` (v2) and `SyncChangeManifestV1` in
+    // `@auxx/lib/record-rules` (can't import across the tier boundary — keep in sync
+    // BY HAND, incl. literal `version`). Rows written before the v2 deploy hold the
+    // v1 shape — readers upgrade via `upgradeManifestV1` at the read edge.
+    manifest: jsonb().$type<
+      | {
+          version: 2
+          detailTruncated: boolean
+          membershipTruncated: boolean
+          touched: Record<string, string[] | 1>
+          deltas: Record<string, Record<string, { o?: unknown; n: unknown }>>
+          createdRecordIds: string[]
+          archivedRecordIds: string[]
+          createdValues?: Record<string, Record<string, unknown>>
+        }
+      | {
+          version: 1
+          truncated: boolean
+          changes: Record<string, Record<string, { o?: unknown; n: unknown }>>
+          createdRecordIds: string[]
+          archivedRecordIds: string[]
+          createdValues?: Record<string, Record<string, unknown>>
+        }
+    >(),
     // B2 — once-per-import consume claim for the manifest (atomic
     // `… WHERE manifestConsumedAt IS NULL RETURNING` in the event consumer), so a
     // redelivered event can never double-fire rule actions.

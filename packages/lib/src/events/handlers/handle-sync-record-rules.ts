@@ -13,25 +13,48 @@
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import type { RecordSnapshot } from '../../record-rules/resolver'
-import type { SyncChangeManifest } from '../../record-rules/sync-manifest-types'
+import type {
+  SyncChangeManifest,
+  SyncChangeManifestV1,
+} from '../../record-rules/sync-manifest-types'
 import type { CachedRecordRule } from '../../record-rules/types'
 import type { AuxxEvent, SyncRecordsChangedEvent } from '../types'
 
 const logger = createScopedLogger('record-rules-sync')
 
-/** Resolve the manifest a pointer event refers to (connector run row / import job row). */
+/**
+ * The event's manifest pointer: `ref` on new events, falling back to the deprecated
+ * per-source fields for events published before the `{ source, ref }` shape landed
+ * (one-release window — delete the fallback with the deprecated fields).
+ */
+function manifestRef(data: SyncRecordsChangedEvent['data']): string | undefined {
+  return data.ref ?? (data.source === 'connector' ? data.runId : data.importRef)
+}
+
+/**
+ * Resolve the manifest a pointer event refers to (connector run row / import job row).
+ * This is the v1→v2 read edge: run rows written before the v2 deploy hold the v1 shape
+ * and are lifted through `upgradeManifestV1` here, so everything downstream sees v2
+ * only. Delete the shim with `SyncChangeManifestV1` after one release.
+ */
 async function resolveManifest(
   data: SyncRecordsChangedEvent['data']
 ): Promise<SyncChangeManifest | null> {
+  const ref = manifestRef(data)
+  if (!ref) return null
   const { database } = await import('@auxx/database')
+  let stored: SyncChangeManifest | SyncChangeManifestV1 | null
   if (data.source === 'connector') {
-    if (!data.runId) return null
     const { getRunManifest } = await import('../../data-connectors/service')
-    return getRunManifest(database, data.runId)
+    stored = await getRunManifest(database, ref)
+  } else {
+    const { getImportManifest } = await import('../../import')
+    stored = await getImportManifest(database, ref)
   }
-  if (!data.importRef) return null
-  const { getImportManifest } = await import('../../import')
-  return getImportManifest(database, data.importRef)
+  if (!stored) return null
+  if (stored.version === 2) return stored
+  const { upgradeManifestV1 } = await import('../../record-rules/sync-manifest-collector')
+  return upgradeManifestV1(stored)
 }
 
 /**
@@ -41,15 +64,15 @@ async function resolveManifest(
  * handler job. Exactly one claimant proceeds; everyone else no-ops.
  */
 async function claimManifest(data: SyncRecordsChangedEvent['data']): Promise<boolean> {
+  const ref = manifestRef(data)
+  if (!ref) return false
   const { database } = await import('@auxx/database')
   if (data.source === 'connector') {
-    if (!data.runId) return false
     const { claimRunManifestConsumed } = await import('../../data-connectors/service')
-    return claimRunManifestConsumed(database, data.runId)
+    return claimRunManifestConsumed(database, ref)
   }
-  if (!data.importRef) return false
   const { claimImportManifestConsumed } = await import('../../import')
-  return claimImportManifestConsumed(database, data.importRef)
+  return claimImportManifestConsumed(database, ref)
 }
 
 export const handleSyncRecordRules = async ({ data: event }: { data: AuxxEvent }) => {
@@ -62,15 +85,17 @@ export const handleSyncRecordRules = async ({ data: event }: { data: AuxxEvent }
     if (!manifest) {
       logger.warn('sync:records:changed with no resolvable manifest — bailing', {
         source: data.source,
-        runId: data.runId,
-        importRef: data.importRef,
+        ref: manifestRef(data),
       })
       return
     }
-    if (manifest.truncated) {
+    if (manifest.detailTruncated || manifest.membershipTruncated) {
       logger.warn('sync-change manifest truncated — some changes will not fire rules', {
         organizationId,
-        changed: Object.keys(manifest.changes).length,
+        detailTruncated: manifest.detailTruncated,
+        membershipTruncated: manifest.membershipTruncated,
+        touched: Object.keys(manifest.touched).length,
+        withDeltas: Object.keys(manifest.deltas).length,
         created: manifest.createdRecordIds.length,
         archived: manifest.archivedRecordIds.length,
       })
@@ -85,8 +110,7 @@ export const handleSyncRecordRules = async ({ data: event }: { data: AuxxEvent }
       logger.info('sync-change manifest already consumed — skipping duplicate delivery', {
         organizationId,
         source: data.source,
-        runId: data.runId,
-        importRef: data.importRef,
+        ref: manifestRef(data),
       })
       return
     }
@@ -127,7 +151,7 @@ export const handleSyncRecordRules = async ({ data: event }: { data: AuxxEvent }
       logger.info('sync:records:changed processed', {
         organizationId,
         source: data.source,
-        runId: data.runId,
+        ref: manifestRef(data),
         fired,
       })
     }
@@ -142,14 +166,14 @@ export const handleSyncRecordRules = async ({ data: event }: { data: AuxxEvent }
     await runSyncFinalize(database, {
       organizationId,
       source: data.source,
-      ref: (data.source === 'connector' ? data.runId : data.importRef) as string,
+      ref: manifestRef(data) as string,
       dataConnectorId: data.dataConnectorId,
       manifest,
     })
   } catch (error) {
     logger.error('Sync record-rule dispatch failed', {
       organizationId,
-      runId: data.runId,
+      ref: manifestRef(data),
       error: error instanceof Error ? error.message : String(error),
     })
   }
@@ -162,9 +186,11 @@ function push<T>(map: Map<string, T[]>, key: string, value: T): void {
 }
 
 /**
- * Field-transition firings. Per record → per rule on the changed field: match the
- * transition, then choose a snapshot (partial from the manifest when the rule's
- * condition refs all resolve within the record's changed keys, else a bulk fetch).
+ * Field-transition firings off the TIER-2 deltas (v1's `changes`, renamed — identical
+ * behavior; tier-1 `touched` carries no values, so rules never read it). Per record →
+ * per rule on the changed field: match the transition, then choose a snapshot (partial
+ * from the manifest when the rule's condition refs all resolve within the record's
+ * delta keys, else a bulk fetch).
  * Events are grouped per def and handed to `fireRecordRulesBatch` so native system-rule
  * actions get one batched invocation across the run (D11); non-native rules run per
  * record exactly as before.
@@ -174,7 +200,7 @@ async function fireFieldChanges(
   manifest: SyncChangeManifest,
   fieldRulesByDef: Map<string, CachedRecordRule[]>
 ): Promise<number> {
-  const recordIds = Object.keys(manifest.changes) as RecordId[]
+  const recordIds = Object.keys(manifest.deltas) as RecordId[]
   if (recordIds.length === 0 || fieldRulesByDef.size === 0) return 0
 
   const { getCachedResourceFields } = await import('../../cache')
@@ -202,7 +228,7 @@ async function fireFieldChanges(
     fieldId: string
     o: unknown
     n: unknown
-    changeBucket: SyncChangeManifest['changes'][RecordId]
+    changeBucket: SyncChangeManifest['deltas'][RecordId]
     needsSnapshot: boolean
     needsFull: boolean
   }
@@ -213,7 +239,7 @@ async function fireFieldChanges(
     const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
     const rulesForDef = fieldRulesByDef.get(entityDefinitionId)
     if (!rulesForDef) continue
-    const changeBucket = manifest.changes[recordId]
+    const changeBucket = manifest.deltas[recordId]
     if (!changeBucket) continue
     const changedKeys = new Set(Object.keys(changeBucket))
     const keyMap = await keyMapFor(entityDefinitionId)

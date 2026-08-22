@@ -5,7 +5,10 @@ import { schema } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
 // Type-only import — sync-manifest-types has no runtime, so this creates no
 // import ⇄ record-rules load edge.
-import type { SyncChangeManifest } from '../../record-rules/sync-manifest-types'
+import type {
+  SyncChangeManifest,
+  SyncChangeManifestV1,
+} from '../../record-rules/sync-manifest-types'
 import type { ImportStatistics } from '../types/job'
 
 /**
@@ -89,16 +92,20 @@ export async function saveImportManifest(
     .where(eq(schema.ImportJob.id, jobId))
 }
 
-/** B2: read a persisted import manifest (the `sync:records:changed` consumer). */
+/**
+ * B2: read a persisted import manifest (the `sync:records:changed` consumer). Returns
+ * the STORED shape — rows written before the v2 deploy are still v1; callers upgrade
+ * via `upgradeManifestV1` at their read edge.
+ */
 export async function getImportManifest(
   db: Database,
   jobId: string
-): Promise<SyncChangeManifest | null> {
+): Promise<SyncChangeManifest | SyncChangeManifestV1 | null> {
   const row = await db.query.ImportJob.findFirst({
     where: eq(schema.ImportJob.id, jobId),
     columns: { manifest: true },
   })
-  return (row?.manifest as SyncChangeManifest | null) ?? null
+  return (row?.manifest as SyncChangeManifest | SyncChangeManifestV1 | null) ?? null
 }
 
 /**

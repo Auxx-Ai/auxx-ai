@@ -7,18 +7,16 @@
 
 import { describe, expect, it, vi } from 'vitest'
 
-// buildCtx builds a B2 manifest collector (loadManifestCollector → cache/db). Stub it to
-// the no-op so this DB-free isolation test never reaches the org cache.
-vi.mock('../record-rules/sync-manifest-collector', () => ({
-  loadManifestCollector: async () => ({
-    enabled: false,
-    subscriptionsFor: () => undefined,
-    recordChange: () => {},
-    recordCreated: () => {},
-    recordArchived: () => {},
-    toJson: () => null,
-  }),
-}))
+// buildCtx builds a B2 manifest collector (loadManifestCollector → cache/db). Override
+// ONLY the loader to a zero-subscription real collector (pure, DB-free) so this
+// isolation test never reaches the org cache — everything else stays the real module.
+vi.mock('../record-rules/sync-manifest-collector', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../record-rules/sync-manifest-collector')>()
+  return {
+    ...actual,
+    loadManifestCollector: async () => actual.createManifestCollector({}),
+  }
+})
 
 import type { SyncSliceCtx } from '../sync-core/contracts'
 import type { ConnectorSyncSourceDeps, SyncSourceStream } from './connector-sync-source'

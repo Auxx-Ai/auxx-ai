@@ -8,7 +8,7 @@ import { type Database, database as defaultDb, schema, type Transaction } from '
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import type { SyncChangeManifest } from '../record-rules/sync-manifest-types'
+import type { SyncChangeManifest, SyncChangeManifestV1 } from '../record-rules/sync-manifest-types'
 import type { SyncRunErrorSample } from '../sync-core/contracts'
 import { maxLevel } from './edit-impact'
 import type {
@@ -343,7 +343,12 @@ export async function foldRunManifest(
       .from(schema.DataConnectorRun)
       .where(eq(schema.DataConnectorRun.id, runId))
       .for('update')
-    const merged = mergeManifests((row?.manifest as SyncChangeManifest | null) ?? null, fragment)
+    // The stored base may still be a v1 row (written before the v2 deploy) —
+    // `mergeManifests` upgrades it internally and always writes back v2.
+    const merged = mergeManifests(
+      (row?.manifest as SyncChangeManifest | SyncChangeManifestV1 | null) ?? null,
+      fragment
+    )
     await tx
       .update(schema.DataConnectorRun)
       .set({ manifest: merged })
@@ -351,16 +356,20 @@ export async function foldRunManifest(
   })
 }
 
-/** Read the folded manifest from a run row (consumer + publish decision). */
+/**
+ * Read the folded manifest from a run row (consumer + publish decision). Returns the
+ * STORED shape — rows written before the v2 deploy are still v1; callers upgrade via
+ * `upgradeManifestV1` at their read edge (the two `sync:records:changed` consumers do).
+ */
 export async function getRunManifest(
   db: Database,
   runId: string
-): Promise<SyncChangeManifest | null> {
+): Promise<SyncChangeManifest | SyncChangeManifestV1 | null> {
   const row = await db.query.DataConnectorRun.findFirst({
     where: eq(schema.DataConnectorRun.id, runId),
     columns: { manifest: true },
   })
-  return (row?.manifest as SyncChangeManifest | null) ?? null
+  return (row?.manifest as SyncChangeManifest | SyncChangeManifestV1 | null) ?? null
 }
 
 /**
@@ -384,21 +393,26 @@ export async function claimRunManifestConsumed(db: Database, runId: string): Pro
 /**
  * B2 (F8): stamp a run's manifest as truncated after a slice's fold failed, so the
  * consumer + UI see "incomplete" instead of a silently full-looking manifest. Creates
- * a minimal empty-but-truncated manifest when no slice managed to fold at all.
+ * a minimal empty-but-truncated manifest when no slice managed to fold at all. A lost
+ * fold loses MEMBERSHIP, not just detail, so both v2 flags are set (membership
+ * truncation forces the large lane downstream); the legacy `truncated` key is stamped
+ * too so a still-v1 stored row (pre-deploy, one-release window) also reads degraded.
  */
 export async function markRunManifestDegraded(db: Database, runId: string): Promise<void> {
   const T = schema.DataConnectorRun
   const empty = JSON.stringify({
-    version: 1,
-    truncated: true,
-    changes: {},
+    version: 2,
+    detailTruncated: true,
+    membershipTruncated: true,
+    touched: {},
+    deltas: {},
     createdRecordIds: [],
     archivedRecordIds: [],
   })
   await db
     .update(T)
     .set({
-      manifest: sql`jsonb_set(coalesce(${T.manifest}, ${empty}::jsonb), '{truncated}', 'true'::jsonb)`,
+      manifest: sql`jsonb_set(jsonb_set(jsonb_set(coalesce(${T.manifest}, ${empty}::jsonb), '{detailTruncated}', 'true'::jsonb), '{membershipTruncated}', 'true'::jsonb), '{truncated}', 'true'::jsonb)`,
     })
     .where(eq(T.id, runId))
 }
@@ -424,6 +438,8 @@ export async function publishSyncRecordsChanged(
       data: {
         source: 'connector',
         organizationId: args.organizationId,
+        ref: args.runId,
+        // Deprecated duplicates, kept one release for in-flight consumers.
         runId: args.runId,
         dataConnectorId: args.dataConnectorId,
       },

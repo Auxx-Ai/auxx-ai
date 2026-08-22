@@ -12,24 +12,21 @@
 // with nothing subscribed; pass overrides for whatever the case asserts on.
 
 import type { Database } from '@auxx/database'
-import type { ManifestCollector } from '../record-rules/sync-manifest-collector'
+import {
+  createManifestCollector,
+  type ManifestCollector,
+} from '../record-rules/sync-manifest-collector'
 import { newRecordFailureTally } from './record-failure-tally'
 import type { SyncCtx } from './sinks/types'
 
 /**
- * The no-op {@link ManifestCollector} — a structural copy of the `NOOP_COLLECTOR`
- * `createManifestCollector` returns when the org has no enabled record rules
- * (that constant is module-private, so it cannot be imported).
+ * A real, always-on {@link ManifestCollector} with ZERO rule subscriptions — exactly
+ * what production builds for an org with no enabled record rules (plan 07: the
+ * collector is always real; empty subscriptions just mean `subscriptionsFor` answers
+ * undefined for every def, so tier-2 delta capture never fires). Pure and DB-free.
  */
-export function noopManifestCollector(): ManifestCollector {
-  return {
-    enabled: false,
-    subscriptionsFor: () => undefined,
-    recordChange: () => {},
-    recordCreated: () => {},
-    recordArchived: () => {},
-    toJson: () => null,
-  }
+export function emptyManifestCollector(): ManifestCollector {
+  return createManifestCollector({})
 }
 
 /** A zeroed {@link SyncCtx.counters} — mirrors `newRunCounters()` in `./service`. */
@@ -63,7 +60,7 @@ export function makeSyncCtx(over: Partial<SyncCtx> = {}): SyncCtx {
     relationshipCrud: {} as SyncCtx['relationshipCrud'],
     counters: zeroRunCounters(),
     failureTally: newRecordFailureTally(),
-    manifest: noopManifestCollector(),
+    manifest: emptyManifestCollector(),
     touchedDefs: new Set<string>(),
     ...over,
   }

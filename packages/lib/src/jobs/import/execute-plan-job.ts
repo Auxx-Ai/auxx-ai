@@ -112,8 +112,9 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
     }))
 
     // B2: the import writes on the silent `sync` lane (below), so build a manifest
-    // collector to capture subscribed field/lifecycle changes for record rules. No-op
-    // stub (zero cost) when the org has no enabled rules on this def.
+    // collector. Always real (plan 07): tier-1 membership is captured unconditionally
+    // at the engine seams; tier-2 `{o, n}` capture below stays gated on rule
+    // subscriptions via `subscriptionsFor` (zero cost when nothing is subscribed).
     const { loadManifestCollector } = await import('../../record-rules/sync-manifest-collector')
     const manifest = await loadManifestCollector(organizationId)
 
@@ -204,7 +205,6 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
           db,
           // Auto-created targets reach record rules the same way imported rows do.
           onCreated: (targetDefId, instanceId, data) => {
-            if (!manifest.enabled) return
             // Subscriptions are per-def, and the TARGET def (company) is not this
             // import's def (part), look it up rather than reusing the outer one.
             if (manifest.subscriptionsFor(targetDefId)?.lifecycle.created) {
@@ -289,32 +289,32 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
       // (plan 03 §3.4), not a per-call flag.
       const created = await crudHandler.create(entityDefinitionId, mergedData)
 
-      // B2: capture lifecycle-created + `set`-transition field writes for record rules.
-      if (manifest.enabled) {
-        const subs = manifest.subscriptionsFor(entityDefinitionId)
-        if (subs) {
-          const rid = created.recordId
-          const { captureCreateFieldChanges, captureCreatedValues } = await import(
-            '../../record-rules/capture-field-changes'
-          )
-          if (subs.lifecycle.created) {
-            // Thread raw created values for native entity-trigger lifecycle handlers on the
-            // sync door (Phase 9 / Option A) — no DB read, mergedData is in hand.
-            const createdValues = await captureCreatedValues(
-              organizationId,
-              entityDefinitionId,
-              mergedData
-            )
-            manifest.recordCreated(rid, createdValues ?? undefined)
-          }
-          const entries = await captureCreateFieldChanges(
+      // B2: capture lifecycle-created + `set`-transition field writes for record rules
+      // (tier-2 producer capture — stays subscription-gated; tier-1 membership comes
+      // from the engine seams).
+      const subs = manifest.subscriptionsFor(entityDefinitionId)
+      if (subs) {
+        const rid = created.recordId
+        const { captureCreateFieldChanges, captureCreatedValues } = await import(
+          '../../record-rules/capture-field-changes'
+        )
+        if (subs.lifecycle.created) {
+          // Thread raw created values for native entity-trigger lifecycle handlers on the
+          // sync door (Phase 9 / Option A) — no DB read, mergedData is in hand.
+          const createdValues = await captureCreatedValues(
             organizationId,
             entityDefinitionId,
-            mergedData,
-            subs.fieldIds
+            mergedData
           )
-          if (entries) manifest.recordChange(rid, entries)
+          manifest.recordCreated(rid, createdValues ?? undefined)
         }
+        const entries = await captureCreateFieldChanges(
+          organizationId,
+          entityDefinitionId,
+          mergedData,
+          subs.fieldIds
+        )
+        if (entries) manifest.recordChange(rid, entries)
       }
 
       logger.debug('Created record', { id: created.instance.id, entityDefinitionId })
@@ -343,26 +343,25 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
       const recordId = toRecordId(entityDefinitionId, id)
       logger.debug('Calling crudHandler.update', { recordId, entityDefinitionId, id })
 
-      // B2: read old values for subscribed written fields BEFORE the write.
+      // B2: read old values for subscribed written fields BEFORE the write (tier-2
+      // producer capture — stays subscription-gated).
       let captured: Record<
         string,
         import('../../record-rules/sync-manifest-types').ManifestFieldChange
       > | null = null
-      if (manifest.enabled) {
-        const subs = manifest.subscriptionsFor(entityDefinitionId)
-        if (subs?.fieldIds.size) {
-          const { captureUpdateFieldChanges } = await import(
-            '../../record-rules/capture-field-changes'
-          )
-          captured = await captureUpdateFieldChanges(
-            db,
-            organizationId,
-            entityDefinitionId,
-            id,
-            mergedData,
-            subs.fieldIds
-          )
-        }
+      const subs = manifest.subscriptionsFor(entityDefinitionId)
+      if (subs?.fieldIds.size) {
+        const { captureUpdateFieldChanges } = await import(
+          '../../record-rules/capture-field-changes'
+        )
+        captured = await captureUpdateFieldChanges(
+          db,
+          organizationId,
+          entityDefinitionId,
+          id,
+          mergedData,
+          subs.fieldIds
+        )
       }
 
       // Event suppression comes from the handler's silent `sync` session
@@ -464,6 +463,8 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
           data: {
             source: 'import',
             organizationId,
+            ref: jobId,
+            // Deprecated duplicate, kept one release for in-flight consumers.
             importRef: jobId,
           },
         })

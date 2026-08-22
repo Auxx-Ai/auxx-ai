@@ -62,20 +62,35 @@ export const DataConnectorRun = pgTable(
     // live config. Null for legacy single-shot runs. See plans/data-connectors/v3.
     chainSnapshot: jsonb().$type<Record<string, unknown>>(),
     // B2 — sync-change manifest folded across this run's slices. The connector sink
-    // writes with `skipEvents: true` (no per-write fan-out); this captures the
-    // subscribed field writes (`{o,n}`) + created/archived ids so record rules can
-    // react at finalize. Structural mirror of `SyncChangeManifest` in
-    // `@auxx/lib/record-rules` (can't import across the tier boundary — keep the two
-    // in sync BY HAND, including literal types like `version: 1`). Null when the
-    // org has no enabled rules on any touched def (zero-cost path). See
-    // plans/events/b2-sync-change-manifest-plan.md.
-    manifest: jsonb().$type<{
-      version: 1
-      truncated: boolean
-      changes: Record<string, Record<string, { o?: unknown; n: unknown }>>
-      createdRecordIds: string[]
-      archivedRecordIds: string[]
-    }>(),
+    // writes on the silent `sync` lane (no per-write fan-out); this captures tier-1
+    // membership (touched records + field keys, unconditional) and tier-2 rule-
+    // subscribed `{o,n}` deltas + created/archived ids so record rules and the
+    // finalize doors can react at finalize. Structural mirror of `SyncChangeManifest`
+    // (v2) and `SyncChangeManifestV1` in `@auxx/lib/record-rules` (can't import
+    // across the tier boundary — keep in sync BY HAND, including literal `version`).
+    // Rows written before the v2 deploy hold the v1 shape — readers upgrade via
+    // `upgradeManifestV1` at the read edge. Null when nothing was captured. See
+    // plans/events/07-two-tier-sync-capture-plan.md.
+    manifest: jsonb().$type<
+      | {
+          version: 2
+          detailTruncated: boolean
+          membershipTruncated: boolean
+          touched: Record<string, string[] | 1>
+          deltas: Record<string, Record<string, { o?: unknown; n: unknown }>>
+          createdRecordIds: string[]
+          archivedRecordIds: string[]
+          createdValues?: Record<string, Record<string, unknown>>
+        }
+      | {
+          version: 1
+          truncated: boolean
+          changes: Record<string, Record<string, { o?: unknown; n: unknown }>>
+          createdRecordIds: string[]
+          archivedRecordIds: string[]
+          createdValues?: Record<string, Record<string, unknown>>
+        }
+    >(),
     // B2 — once-per-run consume claim for the manifest. The `sync:records:changed`
     // consumer atomically stamps this (`… WHERE manifestConsumedAt IS NULL RETURNING`)
     // before firing any rule action, so a redelivered event or a re-entered finalize
