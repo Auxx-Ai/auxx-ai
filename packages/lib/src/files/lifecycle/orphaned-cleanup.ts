@@ -12,6 +12,24 @@ import type { OrphanedFileCleanupJobData, OrphanedFileCleanupResult } from './ty
 const logger = createScopedLogger('orphaned-file-cleanup')
 
 /**
+ * The bucket an object actually lives in, as recorded on its `StorageLocation`.
+ *
+ * `StorageManager.prepareLocationMetadata` stamps `metadata.bucket` on every S3
+ * location it writes, so this is the only trustworthy source for a sweep — the
+ * provider default is the PRIVATE bucket, and a delete aimed there for a PUBLIC
+ * object 204s on the missing key while the real object leaks.
+ *
+ * Returns `undefined` for rows written outside `StorageManager` (see
+ * `users/user-avatar-service.ts`) or before the bucket was persisted. Guessing
+ * one would be worse than the fallback: `deleteByKey` then warns loudly, and the
+ * adapter throws rather than silently deleting nothing.
+ */
+function bucketOf(metadata: unknown): string | undefined {
+  const bucket = (metadata as { bucket?: unknown } | null | undefined)?.bucket
+  return typeof bucket === 'string' && bucket.length > 0 ? bucket : undefined
+}
+
+/**
  * Job to clean up orphaned files that were uploaded but never attached to entities
  * Runs hourly to delete files where status = 'PENDING' and expiresAt < now
  */
@@ -153,6 +171,7 @@ export async function deletedFileCleanupJob(
         provider: schema.StorageLocation.provider,
         externalId: schema.StorageLocation.externalId,
         organizationId: schema.StorageLocation.organizationId,
+        metadata: schema.StorageLocation.metadata,
       })
       .from(schema.StorageLocation)
       .where(
@@ -175,6 +194,7 @@ export async function deletedFileCleanupJob(
               await storageManager.deleteByKey({
                 provider: loc.provider as any,
                 key: loc.externalId,
+                bucket: bucketOf(loc.metadata),
               })
             } catch (s3Error) {
               logger.warn('Failed to delete S3 object during sweep, continuing', {
