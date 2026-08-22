@@ -160,6 +160,22 @@ export async function grantSequenceCreatorAccess(
 ): Promise<void>
 ```
 
+### `files/` diverges: `ctx: FilesCtx` first, not `db`
+
+`packages/lib/src/files/**` deliberately does **not** use the `db`-first
+positional style above. Db-touching exports take `ctx: FilesCtx`
+(`{ db, organizationId, userId }`) first, because nearly every function there
+needs all three *plus* a bundle of injected collaborators (`FilesDeps`:
+`storage`, `queue`, `cache`, `now`) that `snippets/`/`sequences/`/`dashboards/`
+have no equivalent of — as positionals that is five arguments before the real
+input. Transaction-only functions still take `tx: Transaction` positionally
+first, separate from `ctx`, so a pool cannot typecheck into the slot. A function
+that needs only some collaborators takes a `Pick<FilesDeps, …>` rather than the
+whole bundle, so its signature still states what it cannot do
+(`getAssetDownloadRef` in `files/assets/download.ts` is the worked example).
+This is a scoped exception, not a repo-wide convention change. See
+`packages/lib/src/files/ctx.ts` and `plans/attachments/02-target-module-shape.md` §2.1.
+
 ---
 
 ## 5. File layout
