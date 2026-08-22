@@ -629,6 +629,21 @@ export function ownedParentRootPath(rootPath: string, all: string[]): string | n
   return parents.reduce((longest, p) => (p.length > longest.length ? p : longest))
 }
 
+/**
+ * The STORED form of a manifest mapping's payload-absolute `rootPath`: relativized
+ * against its parent mapping's rootPath (the longest proper boundary-prefix among
+ * `allRootPaths`), unchanged for a root mapping. The seeder stores this form, and every
+ * consumer — `absolutePrefix`, `subtreeUnder`, the sync `mapRecord` subtree descent, and
+ * the install-time binder's `(streamKey, rootPath)` `===` match — expects it. Any
+ * projection of the manifest ({@link projectConnectorOwnedTargets}) MUST relativize
+ * through this same function, or its emitted rootPath silently never matches a stored
+ * row (the bug that left `line_items[].product_id` reference mappings unbound forever).
+ */
+export function storedRootPath(rootPath: string, allRootPaths: string[]): string {
+  const parentRootPath = ownedParentRootPath(rootPath, allRootPaths)
+  return parentRootPath != null ? relativeSourcePath(rootPath, parentRootPath) : rootPath
+}
+
 /** A stream field assigned to an owned mapping, with its subtree-relative source path. */
 export interface OwnedFieldEntry {
   field: CatalogDataConnector['streams'][number]['fields'][number]
@@ -773,13 +788,11 @@ async function seedAppOwnedMappings(
       // `ownedParentRootPath` can nest it: `'' ⊂ line_items[] ⊂ line_items[].product_id`),
       // but every consumer — `absolutePrefix`, `subtreeUnder`, and the sync `mapRecord`
       // subtree descent — treats a child's stored rootPath as relative to its parent.
-      // Relativize against the parent we just resolved; top-level children (parent `''`)
-      // are unchanged. NB: `mappingIdByRootPath` below stays keyed by the ABSOLUTE path,
-      // because parent detection nests on absolute paths.
-      rootPath:
-        parentRootPath != null
-          ? relativeSourcePath(mapping.rootPath, parentRootPath)
-          : mapping.rootPath,
+      // `storedRootPath` recomputes the same parent resolved above, so the stored form
+      // and `projectConnectorOwnedTargets`' emitted form agree by construction.
+      // NB: `mappingIdByRootPath` below stays keyed by the ABSOLUTE path, because
+      // parent detection nests on absolute paths.
+      rootPath: storedRootPath(mapping.rootPath, allRootPaths),
       linkMode,
       targetMode: 'owned' as TargetMode,
       entityDefinitionId,
@@ -912,7 +925,11 @@ export interface ConnectorOwnedTarget {
   apiSlug: string
   /** The stream this owned mapping lives in (matches `DraftStream.streamKey`). */
   streamKey: string
-  /** The owned mapping's rootPath within the stream (matches `DraftMapping.rootPath`). */
+  /**
+   * The owned mapping's STORED rootPath within the stream (matches
+   * `DraftMapping.rootPath`) — parent-relative via {@link storedRootPath}, exactly the
+   * form `seedAppOwnedMappings` writes (`product_id`, not `line_items[].product_id`).
+   */
   rootPath: string
   /** The installable template id (`app:<slug>:<ownedKey>`). */
   templateId: string
@@ -924,18 +941,82 @@ export function projectConnectorOwnedTargets(
 ): ConnectorOwnedTarget[] {
   const targets: ConnectorOwnedTarget[] = []
   for (const stream of catalog.streams) {
+    // Relativize each mapping's manifest (payload-absolute) rootPath the same way the
+    // seeder does — the binder matches `(streamKey, rootPath)` with `===` against the
+    // STORED rows, so emitting the absolute form here left every nested owned mapping
+    // (e.g. `line_items[].product_id`, stored as `product_id`) permanently unbound.
+    const ownedRootPaths = (stream.defaultMappings ?? [])
+      .filter((m) => m.target.mode === 'owned')
+      .map((m) => m.rootPath)
     for (const m of stream.defaultMappings ?? []) {
       if (m.target.mode !== 'owned') continue
       targets.push({
         ownedKey: m.target.entity.key,
         apiSlug: m.target.entity.apiSlug,
         streamKey: stream.key,
-        rootPath: m.rootPath,
+        rootPath: storedRootPath(m.rootPath, ownedRootPaths),
         templateId: `app:${appSlug}:${m.target.entity.key}`,
       })
     }
   }
   return targets
+}
+
+/**
+ * Prefix a manifest `relationshipFieldKey` may carry to name a PRE-EXISTING SYSTEM
+ * relationship field on the parent def by its `systemAttribute` — e.g.
+ * `'system:part_catalog_items'`. Used when parent and child both contribute into system
+ * defs whose edge already exists: nothing is provisioned for it, and the key resolves at
+ * install to the concrete `defId:fieldId` ref the manual editor stores. A bare key (no
+ * prefix) keeps the `@app:` envelope path ({@link appRelationshipFieldKey}).
+ */
+export const SYSTEM_RELATIONSHIP_PREFIX = 'system:'
+
+/**
+ * Resolve a contributing mapping's manifest `relationshipFieldKey` into the stored ref
+ * form. Two author-facing forms:
+ *   - bare app key (`'product'`) → the connection-late-bound `@app:` envelope — the
+ *     edge field is app-provisioned on the parent def at template install;
+ *   - `'system:<systemAttribute>'` → resolved NOW against the (contributing) parent
+ *     def's fields to the concrete `${defId}:${fieldId}` ref — the same form the manual
+ *     editor stores, so the sink's `resolveEdge` and the editor resolve it with zero new
+ *     machinery. Requires a contributing parent (its system def is known at install);
+ *     an owned/absent parent or an unknown attribute warns and drops the edge (the
+ *     mapping still lands, edge-less — the user can drill the edge by hand).
+ */
+export async function resolveContributingRelationshipFieldKey(
+  organizationId: string,
+  bareKey: string | null | undefined,
+  appSlug: string,
+  parentSlug: string,
+  /** The parent def id when the parent is a CONTRIBUTING mapping; null otherwise. */
+  parentDefId: string | null
+): Promise<string | null> {
+  if (!bareKey) return null
+  if (!bareKey.startsWith(SYSTEM_RELATIONSHIP_PREFIX)) {
+    return appRelationshipFieldKey(bareKey, appSlug, parentSlug)
+  }
+  const systemAttribute = bareKey.slice(SYSTEM_RELATIONSHIP_PREFIX.length)
+  if (!parentDefId) {
+    logger.warn('system relationshipFieldKey needs a contributing parent def — dropping edge', {
+      organizationId,
+      appSlug,
+      relationshipFieldKey: bareKey,
+    })
+    return null
+  }
+  const parentFields = await getCachedCustomFields(organizationId, parentDefId)
+  const field = parentFields.find((f) => f.systemAttribute === systemAttribute)
+  if (!field) {
+    logger.warn('system relationshipFieldKey does not resolve on parent def — dropping edge', {
+      organizationId,
+      appSlug,
+      parentDefId,
+      systemAttribute,
+    })
+    return null
+  }
+  return toResourceFieldId(parentDefId, field.id)
 }
 
 /**
@@ -949,8 +1030,17 @@ export function projectConnectorOwnedTargets(
  * setup overview flags it `needs-mapping` and the user authors it against the source
  * tree. A target def the org lacks (no system `contact`) is skipped, never failing
  * creation. See multi-stream-setup-plan §5.
+ *
+ * Parenting: a contributing mapping can hang off an OWNED mapping (the order stream's
+ * embedded `customer`) or a CONTRIBUTING sibling (full contribute mode: `'' → product`
+ * parents `variants[] → part`), derived from the longest boundary-prefix — owned wins
+ * when both sit at the same rootPath. The flat drilled child (a SECOND mapping over the
+ * parent's own subtree, e.g. `variants[] → catalog_item` under `variants[] → part`)
+ * can't be prefix-derived, so the manifest names it explicitly via `parentRootPath`;
+ * its stored rootPath relativizes to `''`, the shape the fan-out already supports.
+ * Exported for unit coverage (mocked db + cache).
  */
-async function materializeAppContributingMappings(
+export async function materializeAppContributingMappings(
   db: Database,
   organizationId: string,
   streamId: string,
@@ -961,7 +1051,22 @@ async function materializeAppContributingMappings(
   ownedMappingIdByRootPath: Record<string, string> = {}
 ): Promise<void> {
   const ownedRootPaths = Object.keys(ownedMappingIdByRootPath)
-  for (const mapping of stream.defaultMappings ?? []) {
+  // ABSOLUTE rootPath → the contributing row created for it, threaded as rows are
+  // written so later siblings can parent onto it. First-wins on a shared rootPath (the
+  // flat child never shadows the mapping it drilled from).
+  const contributingByRootPath: Record<string, { id: string; entityDefinitionId: string }> = {}
+  const contributing = (stream.defaultMappings ?? []).filter(
+    (m) => m.target.mode === 'contributing'
+  )
+  // Parents before children: shorter rootPaths first; among same-rootPath siblings the
+  // explicit `parentRootPath` declarer (the flat child) comes after its parent.
+  const ordered = [...contributing].sort(
+    (a, b) =>
+      a.rootPath.length - b.rootPath.length ||
+      (a.parentRootPath != null ? 1 : 0) - (b.parentRootPath != null ? 1 : 0)
+  )
+
+  for (const mapping of ordered) {
     if (mapping.target.mode !== 'contributing') continue
     const { entityKind, matchFieldKeys, fieldBindings, connectionAppFields } = mapping.target
 
@@ -1023,20 +1128,60 @@ async function materializeAppContributingMappings(
         ? [buildReferenceAnchor()]
         : [...matchBindings, ...valueBindings, ...connMetaBindings]
 
-    // A nested contributing branch (e.g. the order stream's embedded `customer`)
-    // hangs off the owned root it's drilled from. Wiring `parentMappingId` makes
-    // mapRecord emit the parent→child relation at sync; the edge field itself is
-    // created when the owned def is installed via the entity-template flow (v6) — the
-    // sink resolves the link def-keyed by `relationshipFieldKey`.
-    const parentRootPath = ownedParentRootPath(mapping.rootPath, ownedRootPaths)
-    const parentMappingId =
-      parentRootPath != null ? (ownedMappingIdByRootPath[parentRootPath] ?? null) : null
+    // A nested contributing branch hangs off the mapping it's drilled from — an owned
+    // root (the order stream's embedded `customer`) or a contributing sibling (full
+    // contribute mode). Wiring `parentMappingId` makes mapRecord emit the parent→child
+    // relation at sync; the edge field is either app-provisioned at template install
+    // (`@app:` envelope) or a pre-existing system field (`system:` prefix).
+    let parentRootPath: string | null
+    if (mapping.parentRootPath != null) {
+      // Explicit knob (the flat same-rootPath child). Must be a boundary prefix of —
+      // or equal to — this mapping's rootPath, or the stored relativization would
+      // corrupt; a bad declaration falls back to prefix derivation.
+      if (isBoundaryPrefix(mapping.rootPath, mapping.parentRootPath)) {
+        parentRootPath = mapping.parentRootPath
+      } else {
+        logger.warn('parentRootPath is not a boundary prefix of rootPath — deriving instead', {
+          streamId,
+          rootPath: mapping.rootPath,
+          parentRootPath: mapping.parentRootPath,
+        })
+        parentRootPath = ownedParentRootPath(mapping.rootPath, [
+          ...ownedRootPaths,
+          ...Object.keys(contributingByRootPath),
+        ])
+      }
+    } else {
+      parentRootPath = ownedParentRootPath(mapping.rootPath, [
+        ...ownedRootPaths,
+        ...Object.keys(contributingByRootPath),
+      ])
+    }
+    const ownedParentId = parentRootPath != null ? ownedMappingIdByRootPath[parentRootPath] : null
+    const contribParent =
+      parentRootPath != null && ownedParentId == null
+        ? contributingByRootPath[parentRootPath]
+        : undefined
+    const parentMappingId = ownedParentId ?? contribParent?.id ?? null
+    if (parentRootPath != null && mapping.parentRootPath != null && parentMappingId == null) {
+      logger.warn('parentRootPath names no materialized mapping — creating as a root', {
+        streamId,
+        rootPath: mapping.rootPath,
+        parentRootPath,
+      })
+    }
     // The edge field lives on the PARENT def — namespace the relationship key with the
     // parent's slug (cosmetic), falling back to this mapping's own entity for a top-level
-    // contributing reference.
+    // contributing reference. Exclude self so a flat child at the parent's own rootPath
+    // never resolves itself, and match the mode the parent id actually resolved from.
     const parentManifest =
       parentRootPath != null
-        ? (stream.defaultMappings ?? []).find((m) => m.rootPath === parentRootPath)
+        ? (stream.defaultMappings ?? []).find(
+            (m) =>
+              m !== mapping &&
+              m.rootPath === parentRootPath &&
+              (ownedParentId != null ? m.target.mode === 'owned' : m.target.mode === 'contributing')
+          )
         : undefined
     const parentSlug =
       parentManifest?.target.mode === 'owned'
@@ -1045,11 +1190,13 @@ async function materializeAppContributingMappings(
           ? parentManifest.target.entityKind
           : entityKind
 
-    await addMapping(db, organizationId, {
+    const row = await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
       // STORE parent-relative (see `seedAppOwnedMappings`): only when a parent was
       // resolved — top-level contributing branches keep their absolute (== relative)
-      // path. `ownedMappingIdByRootPath` lookups stay keyed ABSOLUTE.
+      // path; a flat child (parent rootPath == own rootPath) stores `''`, the drilled
+      // shape mapRecord fans out. `ownedMappingIdByRootPath` /
+      // `contributingByRootPath` lookups stay keyed ABSOLUTE.
       rootPath:
         parentRootPath != null
           ? relativeSourcePath(mapping.rootPath, parentRootPath)
@@ -1058,14 +1205,17 @@ async function materializeAppContributingMappings(
       targetMode: 'contributing' as TargetMode,
       entityDefinitionId,
       parentMappingId,
-      relationshipFieldKey: appRelationshipFieldKey(
+      relationshipFieldKey: await resolveContributingRelationshipFieldKey(
+        organizationId,
         mapping.relationshipFieldKey,
         appSlug,
-        parentSlug
+        parentSlug,
+        contribParent?.entityDefinitionId ?? null
       ),
       fieldMappings,
       orphanBehavior: 'ignore' as OrphanBehavior,
     })
+    contributingByRootPath[mapping.rootPath] ??= { id: row.id, entityDefinitionId }
   }
 }
 

@@ -384,8 +384,13 @@ export interface ConnectorFieldDecl {
 export interface ConnectorDefaultMapping {
   /** '' = root, else 'customer' / 'line_items[]'. */
   rootPath: string
+  /** Explicit parent mapping's rootPath (payload-absolute) for the flat drilled child
+   *  — a second mapping over the parent's own subtree, which prefix nesting can't
+   *  derive. Must be a boundary prefix of (or equal to) `rootPath`. See SDK mirror. */
+  parentRootPath?: string
   linkMode?: 'upsert' | 'reference'
-  /** Edge on the PARENT def. */
+  /** Edge on the PARENT def. Bare key → `@app:` envelope; `'system:<systemAttribute>'`
+   *  → a pre-existing system relationship field on the (contributing) parent def. */
   relationshipFieldKey?: string
   target:
     | { mode: 'owned'; entity: ConnectorEntityDecl }

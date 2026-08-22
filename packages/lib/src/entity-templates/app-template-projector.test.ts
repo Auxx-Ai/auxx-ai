@@ -154,6 +154,46 @@ describe('projectAppConnectorTemplates', () => {
   })
 })
 
+describe('projectAppConnectorTemplates — system-edge contributing children', () => {
+  // A contributing child whose edge is a PRE-EXISTING system field
+  // (`relationshipFieldKey: 'system:…'`) must neither crash the projection nor emit a
+  // provisioning RELATIONSHIP entry — even when the manifest (wrongly) also declares a
+  // `relationship`. The mapping-side wiring resolves at install (mutations.ts), not here.
+  const CONNECTOR_WITH_SYSTEM_EDGE: CatalogDataConnector = {
+    ...CONNECTOR,
+    streams: [
+      {
+        ...CONNECTOR.streams[0]!,
+        defaultMappings: [
+          ...(CONNECTOR.streams[0]!.defaultMappings ?? []),
+          {
+            rootPath: 'line_items[].variant_id',
+            linkMode: 'reference',
+            relationshipFieldKey: 'system:line_item_part',
+            // Wrongly-declared provisioning decl — the guard must ignore it.
+            relationship: {
+              fieldKey: 'part',
+              name: 'Part',
+              cardinality: 'belongs_to',
+              inverseName: 'Line Items',
+              targetRef: { entityKind: 'part' },
+            },
+            target: { mode: 'contributing', entityKind: 'part' },
+          },
+        ],
+      },
+    ],
+  }
+
+  it('never provisions a RELATIONSHIP field for a system: edge, and does not crash', () => {
+    const templates = projectAppConnectorTemplates('shopify', 'Shopify', CONNECTOR_WITH_SYSTEM_EDGE)
+    const lineItems = templates.find((t) => t.id === 'app:shopify:line_items')
+    // Only the declared `product` edge survives — the system-edge child adds nothing.
+    const rels = lineItems?.fields.filter((f) => f.type === 'RELATIONSHIP') ?? []
+    expect(rels.map((f) => f.templateFieldId)).toEqual(['product'])
+  })
+})
+
 describe('projectAppConnectorTemplates — reference vs real owner dedup', () => {
   // `products` is REFERENCED by the order stream (link-only, no columns) AND OWNED by a
   // dedicated product stream (its real columns). The reference is declared first, so a

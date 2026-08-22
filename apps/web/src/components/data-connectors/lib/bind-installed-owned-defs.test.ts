@@ -62,12 +62,19 @@ const OWNED_TARGETS: OwnedTargetMeta[] = [
     rootPath: '',
     templateId: 'app:shopify:products',
   },
-  // The reference mapping for the same product key, in the orders stream.
+  // The reference mapping for the same product key, in the orders stream. Its rootPath
+  // is the STORED parent-relative form (`product_id`, relativized against its
+  // `line_items[]` parent) — `projectConnectorOwnedTargets` emits exactly this via
+  // `storedRootPath`, matching what `seedAppOwnedMappings` writes. The absolute
+  // manifest form (`line_items[].product_id`) is NEVER stored, so a target carrying it
+  // would silently bind nothing (the production bug: every nested reference mapping
+  // sat with `entityDefinitionId: NULL`). Projector↔seeder consistency is covered in
+  // packages/lib/src/data-connectors/owned-mappings.test.ts.
   {
     ownedKey: 'products',
     apiSlug: 'shopify_products',
     streamKey: 'orders',
-    rootPath: 'line_items[].product_id',
+    rootPath: 'product_id',
     templateId: 'app:shopify:products',
   },
 ]
@@ -124,10 +131,12 @@ describe('bindInstalledOwnedDefs', () => {
         }),
       ]),
       stream('s_orders', 'orders', [
-        // The reference mapping owns no columns.
+        // The reference mapping owns no columns. Stored rootPath is PARENT-RELATIVE
+        // (`product_id`), the form the seeder writes — the binder's `===` match against
+        // the projected target must succeed on exactly this.
         ownedMapping({
           id: 'm_ref',
-          rootPath: 'line_items[].product_id',
+          rootPath: 'product_id',
           linkMode: 'reference',
           fieldMappings: [],
         }),
