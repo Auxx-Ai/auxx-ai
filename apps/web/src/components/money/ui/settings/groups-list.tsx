@@ -120,7 +120,7 @@ export function GroupsList({ selectedId, onSelect, currency, draft, onAddDraft }
         <InputSearch
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder='Search product groups...'
+          placeholder='Search catalog groups...'
         />
         <Button variant='outline' size='sm' onClick={onAddDraft} disabled={!entityDefinitionId}>
           <Plus />
@@ -132,7 +132,7 @@ export function GroupsList({ selectedId, onSelect, currency, draft, onAddDraft }
         <div className='p-4 text-center text-sm text-muted-foreground'>Loading…</div>
       ) : filtered.length === 0 && !draft ? (
         <div className='p-4 text-center text-sm text-muted-foreground'>
-          {search ? 'No matches' : 'No product groups yet — add your first one.'}
+          {search ? 'No matches' : 'No catalog groups yet — add your first one.'}
         </div>
       ) : (
         <div className='flex flex-col gap-0.5'>

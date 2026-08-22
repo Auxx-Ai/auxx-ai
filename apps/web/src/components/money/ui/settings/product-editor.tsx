@@ -96,9 +96,7 @@ export function ProductEditor({
   const item = selectedId ? itemMap.get(selectedId) : undefined
 
   if (!item) {
-    return (
-      <div className='p-4 text-sm text-muted-foreground'>Select a product or service to edit.</div>
-    )
+    return <div className='p-4 text-sm text-muted-foreground'>Select a catalog item to edit.</div>
   }
 
   return <ProductEditorForm key={item.id} item={item} />

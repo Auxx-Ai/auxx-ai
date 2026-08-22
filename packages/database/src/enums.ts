@@ -425,8 +425,8 @@ export const ModelTypeMeta: Record<
     hasDetailPage: false,
   },
   catalog_item: {
-    label: 'Product / Service',
-    plural: 'Products & Services',
+    label: 'Catalog Item',
+    plural: 'Catalog Items',
     icon: 'tags',
     color: 'teal',
     apiSlug: 'catalog-items',
@@ -434,8 +434,8 @@ export const ModelTypeMeta: Record<
     hasDetailPage: false,
   },
   catalog_group: {
-    label: 'Product Group',
-    plural: 'Product Groups',
+    label: 'Catalog Group',
+    plural: 'Catalog Groups',
     icon: 'boxes',
     color: 'teal',
     apiSlug: 'catalog-groups',

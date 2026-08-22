@@ -26,8 +26,8 @@ import { TaxRatesList } from './tax-rates-list'
 type SettingsTab = 'products' | 'groups' | 'tax-rates'
 
 const TABS: { value: SettingsTab; label: string; icon: typeof Package }[] = [
-  { value: 'products', label: 'Products & Services', icon: Package },
-  { value: 'groups', label: 'Product groups', icon: Boxes },
+  { value: 'products', label: 'Catalog items', icon: Package },
+  { value: 'groups', label: 'Catalog groups', icon: Boxes },
   { value: 'tax-rates', label: 'Tax rates', icon: Percent },
 ]
 
@@ -133,12 +133,12 @@ export function ProductsServicesPage() {
 
   // No `/app/dispatch` module home yet (M2 brings it) — the trail stays local
   // to settings rather than linking a route that doesn't exist.
-  const breadcrumbs = [{ title: 'Dispatch Settings' }, { title: 'Products & Services' }]
+  const breadcrumbs = [{ title: 'Dispatch Settings' }, { title: 'Catalog' }]
 
   if (!hasAccess(FeatureKey.dispatch)) {
     return (
       <SettingsPage
-        title='Products & Services'
+        title='Catalog'
         description='Manage the catalog and tax rates used on quotes and invoices.'
         breadcrumbs={breadcrumbs}>
         <EmptyState
@@ -219,7 +219,7 @@ export function ProductsServicesPage() {
 
   return (
     <SettingsPage
-      title='Products & Services'
+      title='Catalog'
       description='Manage the catalog and tax rates used on quotes and invoices.'
       breadcrumbs={breadcrumbs}
       subHeader={
