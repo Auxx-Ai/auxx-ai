@@ -27,6 +27,15 @@
 // today, the mismatch is encoded — never papered over — in `KNOWN_DEVIATIONS`
 // below, each entry carrying the plan reference for the phase that closes it.
 // A deviation that stops deviating fails its test, forcing the entry's removal.
+//
+// A fourth, per-CELL state exists since the sync finalize pass merged
+// (`events/handlers/sync-finalize.ts`): a door observed at THIS seam for most
+// origins can have individual (door, origin) cells whose truth-point is the
+// finalize seam instead — the handler stays silent BY DESIGN and finalize
+// executes the door off the claimed manifest. Those cells live in
+// `VERIFIED_ELSEWHERE_CELLS`, enforced both ways like the deviations: the
+// conformance loop skips them, and a dedicated test asserts the seam is STILL
+// silent (inline firing would double-execute the door against finalize).
 
 import { ok } from 'neverthrow'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
@@ -283,8 +292,12 @@ const DOOR_CONFORMANCE: Record<DoorId, DoorConformance> = {
   },
   realtimeTier2: {
     kind: 'deferred',
-    status: 'unverifiable',
-    where: 'tier-2 batched delta frames do not exist yet — plan 03 §7b / Phase 4 (D-18)',
+    status: 'verified-elsewhere',
+    where:
+      'sync finalize pass (events/handlers/sync-finalize.test.ts) — records:changed frames, ' +
+      'ids+fieldIds per D-18, emitted for BOTH sync lanes (on sync-small as the tier-1 ' +
+      'substitute; see the realtimeTier1 deviation). Interactive/automation bulk-shaped delta ' +
+      'frames are still future (plan 03 §7b)',
   },
   realtimeTier3: {
     kind: 'deferred',
@@ -357,10 +370,11 @@ const DOOR_CONFORMANCE: Record<DoorId, DoorConformance> = {
     kind: 'deferred',
     status: 'verified-elsewhere',
     where:
-      'entity-instances layer (create stamps it; updateEntityInstance bumps on archive/restore; ' +
-      'activity.ts bumpActivity for hooks). NOTE current nuances vs the matrix, not observable ' +
-      'at this seam: sync content writes never bump (B-5, Phase 4 / D-1), and a seed ARCHIVE ' +
-      'does bump today inside updateEntityInstance despite the seed cell being off',
+      'entity-instances layer (create stamps it; updateEntityInstance bumps on archive/restore ' +
+      'EXCEPT under a seed session — it reads the ambient write session and skips the bump, so ' +
+      'the seed cell holds; entity-instances updated-at-stamp tests) plus the sync finalize pass ' +
+      '(D-1 batched bump for both sync lanes — sync-finalize.test.ts). Sync content writes still ' +
+      'skip the inline bump; finalize catches them up at run end',
   },
   updatedAtStamp: {
     kind: 'observed',
@@ -378,14 +392,73 @@ const DOOR_CONFORMANCE: Record<DoorId, DoorConformance> = {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// VERIFIED-ELSEWHERE CELLS — silent at this seam BY DESIGN, executed at finalize
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Individual (door, origin) cells of doors otherwise observed at this seam
+ * whose truth-point is the sync finalize seam (PR #1806): the handler stays
+ * silent by design, and `handle-sync-record-rules` → `runSyncFinalize`
+ * executes the door off the claimed manifest at run end. Enforced BOTH ways
+ * like the deviations: the conformance loop skips these cells, and a dedicated
+ * test asserts the handler seam is STILL silent — inline firing would
+ * double-execute the door against finalize, so a cell that starts firing here
+ * fails its test and forces the entry's removal.
+ */
+const VERIFIED_ELSEWHERE_CELLS: Array<{
+  door: DoorId
+  origin: WriteOriginKind
+  /** Defaults to every op the door observes. */
+  ops?: Op[]
+  expectedFromMatrix: string
+  /** The suite where this cell's conformance actually lives. */
+  where: string
+}> = [
+  {
+    door: 'timelineEntry',
+    origin: 'sync-small',
+    expectedFromMatrix: 'per-record',
+    where:
+      'events/handlers/sync-finalize.test.ts — the D-12 finalize pass bulk-inserts one collapsed ' +
+      'timeline entry per changed/created/archived record (D-4 v1; small-lane per-FIELD fidelity ' +
+      'is a later upgrade, tracked on the perFieldTimeline row)',
+  },
+  {
+    door: 'recordRules',
+    origin: 'sync-small',
+    expectedFromMatrix: 'per-record',
+    where:
+      'events/handlers/handle-sync-record-rules.test.ts — the B2 manifest route fires field + ' +
+      'lifecycle rules per record off the claimed manifest (D-5); the inline bus route stays ' +
+      'silent for sync so rules never run twice',
+  },
+  {
+    door: 'workflowDispatch',
+    origin: 'sync-small',
+    expectedFromMatrix: 'per-record',
+    where:
+      'events/handlers/sync-finalize.test.ts — the finalize dispatch door fires ' +
+      'triggerResourceDispatch per record on the small lane (D-2, fixes B-3); the large lane ' +
+      'withholds pending the Phase 6 guard (D-3)',
+  },
+]
+
+function findVerifiedElsewhere(door: DoorId, origin: WriteOriginKind, op: Op) {
+  return VERIFIED_ELSEWHERE_CELLS.find(
+    (c) => c.door === door && c.origin === origin && (c.ops === undefined || c.ops.includes(op))
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // KNOWN DEVIATIONS — the matrix (desired) vs the implementation (today)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Every place where DOOR_MATRIX and the current handler-level implementation
- * disagree. Each entry is enforced BOTH ways: the conformance loop skips these
- * cells, and a dedicated test asserts the deviation is still real — so fixing
- * the implementation (or editing the cell) forces the entry's removal.
+ * Every place where DOOR_MATRIX and the current implementation — handler seam
+ * AND finalize pass combined — still disagree. Each entry is enforced BOTH
+ * ways: the conformance loop skips these cells, and a dedicated test asserts
+ * the deviation is still real — so fixing the implementation (or editing the
+ * cell) forces the entry's removal.
  */
 const KNOWN_DEVIATIONS: Array<{
   door: DoorId
@@ -397,41 +470,24 @@ const KNOWN_DEVIATIONS: Array<{
   ref: string
 }> = [
   {
-    door: 'timelineEntry',
-    origin: 'sync-small',
-    expectedFromMatrix: 'per-record',
-    observed: 'silent',
-    ref: 'plan 03 §7 B-2 — sync maps to the silent lane until Phase 4 lands the D-12 count-based small-run replay',
-  },
-  {
-    door: 'recordRules',
-    origin: 'sync-small',
-    expectedFromMatrix: 'per-record',
-    observed: 'silent',
-    ref:
-      'plan 03 §7 / D-5 — the inline bus route is silent for sync; rules DO run today via the ' +
-      'B2 sync-manifest route (source: sync), just not per-record. Phase 4 (D-12) splits the lanes',
-  },
-  {
-    door: 'workflowDispatch',
-    origin: 'sync-small',
-    expectedFromMatrix: 'per-record',
-    observed: 'silent',
-    ref: 'plan 03 §7 B-3 / D-2 — workflow triggers dead on incremental sync; Phase 6',
-  },
-  {
     door: 'notifications',
     origin: 'sync-small',
     expectedFromMatrix: 'per-record',
     observed: 'silent',
-    ref: 'plan 03 Phase 4 — the silent lane suppresses notifications for all sync writes today',
+    ref:
+      'plan 03 Phase 4 — the finalize pass (PR #1806) has NO notifications door: the matrix cell ' +
+      'says per-record but nothing implements it at either seam, so sync writes still notify no one',
   },
   {
     door: 'realtimeTier1',
     origin: 'sync-small',
     expectedFromMatrix: 'per-record',
     observed: 'silent',
-    ref: 'plan 03 §7b — the importer/connector realtime gap; Phase 4',
+    ref:
+      'plan 03 §7b — the finalize pass emits tier-2 records:changed frames (ids + fieldIds) for ' +
+      'BOTH sync lanes as a substitute, but the cell asks for tier-1 per-record ' +
+      'record:created|updated|archived frames and nothing emits those for sync; either finalize ' +
+      'grows a small-lane tier-1 replay or the cell is argued down to tier-2',
   },
   {
     door: 'updatedAtStamp',
@@ -440,8 +496,9 @@ const KNOWN_DEVIATIONS: Array<{
     expectedFromMatrix: 'batched',
     observed: 'fires-inline',
     ref:
-      'plan 03 §8 — no finalize pipeline yet, so the archive row write (updateEntityInstance, ' +
-      'which stamps updatedAt per D-7) runs inline for every origin, sync-large included',
+      'plan 03 §8 — the finalize pass deliberately has no updatedAt door (the D-7 write ' +
+      'chokepoint stamps at write time), so the archive row write (updateEntityInstance) still ' +
+      'runs inline for every origin, sync-large included',
   },
 ]
 
@@ -481,6 +538,7 @@ describe('door-matrix conformance at the handler seam', () => {
           const policy = entry.policies[origin]
           for (const op of conf.ops) {
             if (findDeviation(doorId as DoorId, origin, op)) continue // enforced below
+            if (findVerifiedElsewhere(doorId as DoorId, origin, op)) continue // enforced below
             const fired = conf.fired(observations[origin][op])
             if (fired !== expectsInline(policy)) {
               failures.push(
@@ -498,6 +556,46 @@ describe('door-matrix conformance at the handler seam', () => {
     it('api behaves exactly like interactive (the matrix folds them into one column)', () => {
       expect(observations.api).toEqual(observations.interactive)
     })
+  })
+
+  describe('VERIFIED-ELSEWHERE CELLS — silent at this seam, executed at finalize', () => {
+    it('every verified-elsewhere cell points at an observed door, a real origin, and a suite', () => {
+      for (const c of VERIFIED_ELSEWHERE_CELLS) {
+        expect(DOOR_CONFORMANCE[c.door].kind).toBe('observed')
+        expect(WRITE_ORIGIN_KINDS).toContain(c.origin)
+        expect(c.where).toMatch(/\.test\.ts/)
+      }
+    })
+
+    it('a cell is either a deviation or verified-elsewhere, never both', () => {
+      for (const c of VERIFIED_ELSEWHERE_CELLS) {
+        const conf = DOOR_CONFORMANCE[c.door]
+        if (conf.kind !== 'observed') throw new Error('verified-elsewhere on a deferred door')
+        for (const op of c.ops ?? conf.ops) {
+          expect(findDeviation(c.door, c.origin, op), `${c.door}/${c.origin}/${op}`).toBeUndefined()
+        }
+      }
+    })
+
+    for (const c of VERIFIED_ELSEWHERE_CELLS) {
+      it(`${c.door} / ${c.origin}: matrix '${c.expectedFromMatrix}', handler silent — lives in ${c.where.split(' ')[0]}`, () => {
+        const conf = DOOR_CONFORMANCE[c.door]
+        if (conf.kind !== 'observed') throw new Error('verified-elsewhere on a deferred door')
+        const policy = DOOR_MATRIX[c.door].policies[c.origin]
+        // The cell must still say what the entry claims it says…
+        expect(fmtPolicy(policy).startsWith(c.expectedFromMatrix)).toBe(true)
+        // …and the handler seam must STILL be silent: finalize owns this cell,
+        // so an inline fire would double-execute the door. When this fails, the
+        // handler grew an inline path — remove the entry (and the finalize door).
+        for (const op of c.ops ?? conf.ops) {
+          const fired = conf.fired(observations[c.origin][op])
+          expect(
+            fired,
+            `${c.door}/${c.origin}/${op} fired inline — it would double-execute against finalize`
+          ).toBe(false)
+        }
+      })
+    }
   })
 
   describe('KNOWN DEVIATIONS — matrix (desired) vs implementation (today)', () => {

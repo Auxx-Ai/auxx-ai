@@ -70,6 +70,8 @@ vi.mock('@auxx/services/shared/utils', () => ({
   },
 }))
 
+import { seedSession } from '../../resources/crud/write-origin'
+import { runWithWriteSession } from '../../resources/crud/write-session-als'
 import { touchEntityActivity, touchEntityInteraction } from '../activity'
 import { updateEntityInstance } from '../update-entity-instance'
 
@@ -94,6 +96,54 @@ describe('D-7 stamp-or-not decisions', () => {
     expect(payload.archivedAt).toEqual(new Date('2026-08-21T10:00:00Z'))
     // Archive/restore also advances lastActivityAt (staleness scanner).
     expect(payload.lastActivityAt).toBeInstanceOf(Date)
+  })
+
+  it('archive under an ambient SEED session stamps updatedAt but NOT lastActivityAt', async () => {
+    // Door matrix: lastActivityAt × seed = off ("seeded data is not activity"),
+    // while updatedAtStamp × seed stays per-record — the content stamp survives.
+    const result = await runWithWriteSession(seedSession('updated-at-stamp-test'), () =>
+      updateEntityInstance({
+        id: 'inst-1',
+        organizationId: ORG,
+        data: { archivedAt: new Date('2026-08-21T10:00:00Z') },
+      })
+    )
+
+    expect(result.isOk()).toBe(true)
+    expect(h.setPayloads).toHaveLength(1)
+    const payload = h.setPayloads[0]!
+    expect(payload.updatedAt).toBeInstanceOf(Date)
+    expect(payload.archivedAt).toEqual(new Date('2026-08-21T10:00:00Z'))
+    expect('lastActivityAt' in payload).toBe(false)
+  })
+
+  it('restore under an ambient SEED session also skips lastActivityAt', async () => {
+    await runWithWriteSession(seedSession('updated-at-stamp-test'), () =>
+      updateEntityInstance({ id: 'inst-1', organizationId: ORG, data: { archivedAt: null } })
+    )
+
+    expect(h.setPayloads).toHaveLength(1)
+    expect(h.setPayloads[0]!.updatedAt).toBeInstanceOf(Date)
+    expect(h.setPayloads[0]!.archivedAt).toBeNull()
+    expect('lastActivityAt' in h.setPayloads[0]!).toBe(false)
+  })
+
+  it('archive under a non-seed ambient session bumps lastActivityAt like no session', async () => {
+    // Sync's finalize pass also bumps at the end of the run — the double bump
+    // is monotonic and harmless, so every non-seed origin keeps the inline bump.
+    await runWithWriteSession(
+      { origin: { kind: 'automation', actor: 'system_user' }, depth: 0 },
+      () =>
+        updateEntityInstance({
+          id: 'inst-1',
+          organizationId: ORG,
+          data: { archivedAt: new Date('2026-08-21T10:00:00Z') },
+        })
+    )
+
+    expect(h.setPayloads).toHaveLength(1)
+    expect(h.setPayloads[0]!.updatedAt).toBeInstanceOf(Date)
+    expect(h.setPayloads[0]!.lastActivityAt).toBeInstanceOf(Date)
   })
 
   it('restore stamps updatedAt explicitly', async () => {
