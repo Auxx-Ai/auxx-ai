@@ -12,11 +12,12 @@
 // See plans/data-connectors/v9/shopify-inventory-part-bridge-plan.md (Piece B1).
 
 import { type Database, schema } from '@auxx/database'
-import type { FieldType } from '@auxx/database/types'
+import { FieldType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../cache'
 import { createCustomField } from '../custom-fields'
+import { ConflictError } from '../errors'
 import { ensureInventoryDeductionRule } from './inventory-bridge-rule'
 import { INVENTORY_BRIDGE_EDGE_ATTR } from './inventory-bridge-rule-consts'
 
@@ -35,6 +36,13 @@ export interface ProvisionInventoryBridgeInput {
   quantityFieldId: string
   /** App slug for the created field's provenance (optional). */
   appSlug?: string
+  /** Display name for the edge field on the source def. Defaults to 'Part'. */
+  edgeName?: string
+  /**
+   * Display name for the auto-created has_many inverse on `part`. Defaults to
+   * 'Sold as variants' (the Shopify caller's vocabulary) — other sources should pass their own.
+   */
+  inverseName?: string
 }
 
 /**
@@ -67,10 +75,8 @@ export async function provisionInventoryBridge(
       {
         organizationId,
         entityDefinitionId: input.sourceDefId,
-        name: 'Part',
-        // 'RELATIONSHIP' is the FieldType enum value (the enum object is a type-only
-        // export here, so the string literal is the runtime-safe way to pass it).
-        type: 'RELATIONSHIP' as FieldType,
+        name: input.edgeName ?? 'Part',
+        type: FieldType.RELATIONSHIP,
         systemAttribute: INVENTORY_BRIDGE_EDGE_ATTR,
         appSlug: input.appSlug,
         isCreatable: true,
@@ -78,15 +84,16 @@ export async function provisionInventoryBridge(
         relationship: {
           relatedResourceId: partDefId,
           relationshipType: 'belongs_to',
-          inverseName: 'Sold as variants',
+          inverseName: input.inverseName ?? 'Sold as variants',
         },
       },
       db
     )
     if (result.isErr()) {
-      // A name collision (field already present under a different attr) is benign — the
-      // config still needs writing, but we can't resolve an id here, so bail loudly.
-      throw new Error(`inventory bridge edge provisioning failed: ${result.error.message}`)
+      // Most likely a name collision — the def already has a field under this name but a
+      // different systemAttribute, so the idempotency lookup missed it and we cannot resolve
+      // an edge id. That is a provisioning failure the caller must see.
+      throw new ConflictError(`inventory bridge edge provisioning failed: ${result.error.message}`)
     }
     relationshipFieldId = result.value.id
     logger.info('provisioned inventory bridge edge', {
