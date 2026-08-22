@@ -283,8 +283,12 @@ const DOOR_CONFORMANCE: Record<DoorId, DoorConformance> = {
   },
   realtimeTier2: {
     kind: 'deferred',
-    status: 'unverifiable',
-    where: 'tier-2 batched delta frames do not exist yet — plan 03 §7b / Phase 4 (D-18)',
+    status: 'verified-elsewhere',
+    where:
+      'bulkArchive emits tier-2 records:changed for the inline lane (D-17/§7b slice) — ' +
+      'bulk-archive-records-changed.test.ts. This harness drives SINGLE-record ops, which are ' +
+      'not bulk-shaped, so the door has no observation point at this seam. The remaining ' +
+      'producers (bulkUpdate/applyBulk, sync throttled + finalize-round frames) are Phase 4',
   },
   realtimeTier3: {
     kind: 'deferred',

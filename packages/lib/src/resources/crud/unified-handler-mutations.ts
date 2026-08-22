@@ -20,7 +20,12 @@ import { publisher } from '../../events/publisher'
 import type { Events } from '../../events/types'
 import { getEntityPostDeleteHooks, getEntityPreDeleteHooks } from '../../field-hooks/registry'
 import type { FieldValueService } from '../../field-values'
-import { getRealtimeService, rooms } from '../../realtime'
+import {
+  getRealtimeService,
+  publishRecordsChanged,
+  type RecordChangedEntry,
+  rooms,
+} from '../../realtime'
 import {
   captureEventData,
   extractEventData,
@@ -594,12 +599,19 @@ export async function updateEntity(
  *
  * @param ctx - Mutation context
  * @param recordId - RecordId in format "entityDefinitionId:instanceId"
- * @param options - Optional CRUD options (skipEvents)
+ * @param options - Optional CRUD options (skipEvents). The extra
+ *   `suppressRealtimeFrame` flag is INTERNAL to this module: it exists only so
+ *   `bulkArchiveEntities` can swap the per-record tier-1 `record:archived`
+ *   frame for one tier-2 `records:changed` delta frame per def (plan events/03
+ *   §7b / D-17). It suppresses the realtime frame and NOTHING else — the bus
+ *   event, dedup-pair cleanup, and every other per-record door fire exactly as
+ *   on a single archive. Do not add it to `CrudOptions` and do not let it
+ *   spread to other mutations.
  */
 export async function archiveEntity(
   ctx: MutationContext,
   recordId: RecordId,
-  options: CrudOptions = {}
+  options: CrudOptions & { suppressRealtimeFrame?: boolean } = {}
 ) {
   // S3: one derived boolean per call gates the whole per-write fan-out below.
   const publishEvents = derivePublishEvents(ctx, options)
@@ -635,8 +647,9 @@ export async function archiveEntity(
     })
   }
 
-  // Publish record:archived realtime event
-  if (publishEvents) {
+  // Publish record:archived realtime event (skipped when the caller is a bulk
+  // archive — it publishes one tier-2 `records:changed` frame per def instead).
+  if (publishEvents && !options.suppressRealtimeFrame) {
     getRealtimeService()
       .publish(
         rooms.orgRecords(ctx.organizationId, entityDef.id),
@@ -918,18 +931,60 @@ export async function bulkArchiveEntities(
 ): Promise<{ count: number }> {
   if (recordIds.length === 0) return { count: 0 }
 
+  // D-17/§7b: origin decides policy, SIZE decides execution shape. A bulk
+  // archive is bulk-shaped, so its realtime door is tier 2 — one
+  // `records:changed` delta frame per def (ids only per D-18, chunked at 100
+  // by the publisher) instead of N per-record `record:archived` frames. This
+  // is a realtime-SHAPE change ONLY: client-side the per-record frame drives
+  // just a per-def list invalidate (`handleRecordArchived` in
+  // use-resource-sync — no in-place row removal, unlike `record:deleted`),
+  // and the `records:changed` handler runs the same coalesced list invalidate
+  // plus a targeted cached-row catch-up — behavior-equivalent for the UI while
+  // removing the N-frame fan-out. `bulkDeleteEntities` deliberately KEEPS its
+  // per-record `record:deleted` frames: the client removes those rows from
+  // the record store in place, which a delta frame would regress.
+  const publishEvents = derivePublishEvents(ctx, options)
+
   let count = 0
+  // Archived instance ids grouped by (possibly slug-keyed) def id — the
+  // publisher canonicalizes def keys itself.
+  const archivedByDef = new Map<string, RecordChangedEntry[]>()
   for (const recordId of recordIds) {
     try {
       // Delegates per record, so `archiveEntity`'s duplicate-pair cleanup covers
       // the bulk path too — including under `skipEvents`, where it sits outside
-      // the event guard precisely so this loop still cleans up.
+      // the event guard precisely so this loop still cleans up. Every other
+      // per-record door (bus event → timeline/rules/workflows, pair cleanup)
+      // fires exactly as on a single archive; only the tier-1 realtime frame is
+      // suppressed in favor of the tier-2 delta below.
       await archiveEntity(ctx, recordId, {
         skipEvents: options.skipEvents,
+        suppressRealtimeFrame: true,
       })
       count++
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+      const entries = archivedByDef.get(entityDefinitionId) ?? []
+      entries.push({ recordId: entityInstanceId })
+      archivedByDef.set(entityDefinitionId, entries)
     } catch {
       // Skip failures
+    }
+  }
+
+  // Under a silent lane (sync/seed, or the deprecated `skipEvents` alias) the
+  // per-record frames were already suppressed before this change — emit no
+  // tier-2 frame there either: the finalize pass owns sync realtime.
+  if (publishEvents && count > 0) {
+    const realtimeService = getRealtimeService()
+    for (const [entityDefinitionId, entries] of archivedByDef) {
+      // Same self-echo exclusion the per-record frames carried. Fire-and-forget
+      // inside the publisher; a realtime hiccup never fails the archive.
+      await publishRecordsChanged(
+        realtimeService,
+        ctx.organizationId,
+        { entityDefinitionId, entries },
+        { excludeSocketId: ctx.socketId }
+      )
     }
   }
 
