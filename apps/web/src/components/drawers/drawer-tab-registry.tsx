@@ -111,6 +111,10 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   // ─────────────────────────────────────────────────────────────────
   'part:inventory': () =>
     import('./cards/part-inventory-tab').then((m) => ({ default: m.PartInventoryTab })),
+  // Buy-vs-build comparison + the not-costed signal — renders nothing for a
+  // part with a single cost candidate, hiding its whole section.
+  'part:costing': () =>
+    import('./cards/part-costing-card').then((m) => ({ default: m.PartCostingCard })),
 
   // ─────────────────────────────────────────────────────────────────
   // QUOTE OVERVIEW CARDS (shared with the quote detail-view sidebar —
