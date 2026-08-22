@@ -20,6 +20,8 @@ const h = vi.hoisted(() => ({
   published: [] as Array<{ type: string; data: Record<string, unknown> }>,
   senderIdentifier: 'customer@external.com',
   threadRow: {} as Record<string, unknown>,
+  personalInbox: false,
+  threadSetWrites: [] as Array<Record<string, unknown>>,
 }))
 
 vi.mock('../../cache', () => ({
@@ -50,7 +52,7 @@ vi.mock('../../events/publisher', () => ({
 vi.mock('../../permissions/visibility/audience', () => ({
   getFullLensAudienceForInbox: async () => [],
 }))
-vi.mock('../inbox-meta', () => ({ isPersonalInbox: async () => false }))
+vi.mock('../inbox-meta', () => ({ isPersonalInbox: async () => h.personalInbox }))
 vi.mock('../../inbox-record-ids', () => ({ toInboxRecordId: async () => 'inbox:i_1' }))
 
 vi.mock('../filtering/machine-mail', () => ({ detectMachineMail: () => null }))
@@ -92,6 +94,7 @@ vi.mock('drizzle-orm', () => {
   }
 })
 
+import { publishThreadUpdated } from '../../realtime'
 import { storeMessage } from '../store-message'
 
 const ORG = 'org_1'
@@ -128,6 +131,11 @@ function tx() {
         get(_t, prop) {
           if (prop === 'returning') return async () => returningFor(table)
           if (prop === 'then') return (res: (v: unknown[]) => unknown) => Promise.resolve(res([]))
+          if (prop === 'set' && table === 'Thread')
+            return (values: Record<string, unknown>) => {
+              h.threadSetWrites.push(values)
+              return obj
+            }
           return () => obj
         },
       }
@@ -191,6 +199,9 @@ beforeEach(() => {
   h.cachedChannels = []
   h.published = []
   h.senderIdentifier = 'customer@external.com'
+  h.personalInbox = false
+  h.threadSetWrites = []
+  vi.mocked(publishThreadUpdated).mockClear()
   h.threadRow = {
     id: 't_1',
     inboxId: INBOX_ID,
@@ -226,5 +237,67 @@ describe('storeMessage — backfill-cutoff suppression on message:received', () 
     expect(result.isNew).toBe(true)
     expect(h.published).toHaveLength(1)
     expect(h.published[0]).toMatchObject({ type: 'message:received' })
+  })
+})
+
+describe('storeMessage — thread:reopened rides the same historical-mail suppression', () => {
+  // Drive `didReopen`: personal inbox + existing (non-new) ARCHIVED thread +
+  // an incoming message carrying the INBOX label.
+  beforeEach(() => {
+    h.personalInbox = true
+    h.threadRow = {
+      id: 't_1',
+      inboxId: INBOX_ID,
+      status: 'ARCHIVED',
+      assigneeId: null,
+      messageCount: 2,
+      firstMessageAt: new Date('2026-08-01T00:00:00.000Z'),
+      lastMessageAt: BEFORE_CUTOFF,
+      participantCount: 1,
+    }
+  })
+
+  const reopenData = (receivedAt: Date) => messageData(receivedAt, { labelIds: ['INBOX'] })
+
+  it('does NOT publish thread:reopened for a historical (pre-cutoff) message, but still flips the status', async () => {
+    const result = await storeMessage(ctx(CUTOFF), reopenData(BEFORE_CUTOFF))
+
+    expect(result.isNew).toBe(true)
+    // Neither the reopen event nor message:received leaks for suppressed mail.
+    expect(h.published).toHaveLength(0)
+    // Non-publish reopen behavior is unchanged: the ARCHIVED -> OPEN state
+    // write in the transaction and the realtime patch both still happen.
+    expect(h.threadSetWrites).toContainEqual({ status: 'OPEN' })
+    expect(vi.mocked(publishThreadUpdated)).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOT publish thread:reopened during initial sync, but still flips the status', async () => {
+    const initialSyncCtx = ctx(null)
+    initialSyncCtx.isInitialSync = true
+    const result = await storeMessage(initialSyncCtx, reopenData(AFTER_CUTOFF))
+
+    expect(result.isNew).toBe(true)
+    expect(h.published).toHaveLength(0)
+    expect(h.threadSetWrites).toContainEqual({ status: 'OPEN' })
+  })
+
+  it('publishes thread:reopened exactly as before for a post-cutoff message', async () => {
+    const result = await storeMessage(ctx(CUTOFF), reopenData(AFTER_CUTOFF))
+
+    expect(result.isNew).toBe(true)
+    expect(h.published).toHaveLength(2)
+    expect(h.published[0]).toMatchObject({
+      type: 'thread:reopened',
+      data: {
+        threadId: 't_1',
+        organizationId: ORG,
+        actorId: null,
+        source: { kind: 'system' },
+        visitorParticipantId: null,
+      },
+    })
+    expect(h.published[1]).toMatchObject({ type: 'message:received' })
+    expect(h.threadSetWrites).toContainEqual({ status: 'OPEN' })
+    expect(vi.mocked(publishThreadUpdated)).toHaveBeenCalledTimes(1)
   })
 })
