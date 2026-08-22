@@ -68,6 +68,11 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         // The card renders nothing for a part with a single cost candidate
         // (the common case), which hides the whole section.
         { value: 'costing', label: 'Costing' },
+        // Sellable toggle / pricing row — "sellable" is derived from the
+        // backing catalog_item, never stored (plans/products/01-product-family.md
+        // §6.1). Renders nothing for a part with no catalog item — unless it's
+        // a finished good, whose missing price surfaces prominently.
+        { value: 'pricing', label: 'Pricing' },
         // Product-family membership + the finished-good suggestion
         // (plans/products/01-product-family.md phase 3). Renders nothing for a
         // part with no `product` relation (most parts — raw materials), which

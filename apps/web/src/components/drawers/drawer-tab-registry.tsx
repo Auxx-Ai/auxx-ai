@@ -121,6 +121,11 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   // part with a single cost candidate, hiding its whole section.
   'part:costing': () =>
     import('./cards/part-costing-card').then((m) => ({ default: m.PartCostingCard })),
+  // Sellable toggle / pricing row — "sellable" is derived from the backing
+  // catalog_item, never stored (plans/products/01-product-family.md §6.1).
+  // Renders nothing for a part with no catalog item unless it's a finished good.
+  'part:pricing': () =>
+    import('./cards/part-pricing-card').then((m) => ({ default: m.PartPricingCard })),
   // Product-family membership + the finished-good suggestion — renders nothing
   // for a part with no `product` relation, hiding its whole section.
   'part:family': () =>
