@@ -129,7 +129,16 @@ export const SYSTEM_ATTRIBUTES = [
   'part_image',
   'part_sku',
   'category',
-  'part_unit_price',
+  'part_kind',
+  // Cost provenance. `part_cost` keeps its meaning (replacement cost — the
+  // current landed cost from live vendor prices); the two below name the
+  // numbers it chooses BETWEEN, and `part_cost_source` says which one won.
+  // `part_unit_price` was removed here: it exposed 1 of the 4 landed-cost
+  // components, had no reader, and collided with Shopify's variant price —
+  // which lands in an app field instead.
+  'part_purchase_cost',
+  'part_rollup_cost',
+  'part_cost_source',
   'part_cost',
   'hs_code',
   'part_vendor_parts',

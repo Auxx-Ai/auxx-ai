@@ -4,7 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import { StockStatus } from '../enum-values'
+import { CostSource, PartKind, StockStatus } from '../enum-values'
 import type { ResourceField } from '../field-types'
 
 /**
@@ -151,24 +151,81 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     description: 'Category tags for this part',
   },
 
-  unitPrice: {
-    id: toFieldId('unitPrice'),
-    key: 'unitPrice',
-    label: 'Unit Price',
+  // ── Cost provenance ────────────────────────────────────────────────
+  // `part_cost` is one output with two meanings; these three name them, so a
+  // NULL carries information instead of being indistinguishable from a frozen
+  // value. All three are written ONLY by `persistCosts` (bom/cost-calculator.ts)
+  // and locked `computed` so no form, import or connector can become a second
+  // writer. None carries `dbColumn` — `cost`'s is a leftover from the pre-entity
+  // `Part` table, not a pattern to copy.
+
+  purchaseCost: {
+    id: toFieldId('purchaseCost'),
+    key: 'purchaseCost',
+    label: 'Purchase Cost',
     type: BaseType.CURRENCY,
     fieldType: FieldType.CURRENCY,
     isSystem: true,
-    systemAttribute: 'part_unit_price',
-    systemSortOrder: 'a5a',
+    systemAttribute: 'part_purchase_cost',
+    systemSortOrder: 'a5b',
+    showInTable: false, // diagnostic — `part_cost` stays the headline column in the parts list
     nullable: true,
     capabilities: {
       filterable: true,
       sortable: true,
       creatable: false,
       updatable: false,
+      computed: true,
       configurable: false,
     },
-    description: 'Raw supplier price from preferred vendor',
+    description:
+      'Landed cost of the winning vendor part, including shipping, tariff and other costs',
+  },
+
+  rollupCost: {
+    id: toFieldId('rollupCost'),
+    key: 'rollupCost',
+    label: 'Roll-up Cost',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'part_rollup_cost',
+    systemSortOrder: 'a5c',
+    showInTable: false, // diagnostic — `part_cost` stays the headline column in the parts list
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description:
+      'Sum of each subpart cost multiplied by its quantity. Recorded even when a supplier price wins, so buy-vs-build is comparable',
+  },
+
+  costSource: {
+    id: toFieldId('costSource'),
+    key: 'costSource',
+    label: 'Cost Source',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'part_cost_source',
+    systemSortOrder: 'a5d',
+    showInTable: false, // diagnostic — `part_cost` stays the headline column in the parts list
+    nullable: true,
+    options: { options: CostSource.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description: 'Which number Cost took: the supplier price, the bill of materials, or neither',
   },
 
   cost: {
@@ -189,7 +246,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Calculated from vendor parts and BOM',
+    description: 'Replacement cost — current landed cost from live vendor prices',
   },
 
   hsCode: {
@@ -212,6 +269,34 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     },
     placeholder: 'Enter HS code',
     description: 'Harmonized System code for customs',
+  },
+
+  // Ships the FIELD only. `readPartKind` / `shouldExplodeOnSale` and the
+  // `adjustSubparts` change that consume it belong to Gap C and land with their
+  // consumer; an absent value reads NULL and every reader must treat NULL as
+  // `component`, preserving today's explode-on-sale behaviour for every
+  // unclassified part. No backfill.
+  partKind: {
+    id: toFieldId('partKind'),
+    key: 'partKind',
+    label: 'Part Kind',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'part_kind',
+    systemSortOrder: 'a4a',
+    nullable: true,
+    options: { options: PartKind.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Select part kind',
+    description:
+      'How this part is classified for build and sell purposes. Unset reads as a component',
   },
 
   createdAt: {

@@ -350,6 +350,44 @@ export const StockStatus = {
   ] satisfies FieldOptionItem[],
 } as const
 
+/**
+ * Cost Source Enum
+ * Entity-system field options for `part_cost_source` — which of the two stored
+ * numbers `part_cost` actually took.
+ *
+ * `none` is the point of the field: before it existed, "this part has no cost"
+ * was unrepresentable, so a part that lost its last supplier kept a frozen value
+ * that looked identical to a fresh one.
+ */
+export const CostSource = {
+  VENDOR: 'vendor',
+  BOM: 'bom',
+  NONE: 'none',
+
+  values: [
+    { value: 'vendor', label: 'Supplier', color: 'blue' },
+    { value: 'bom', label: 'Bill of Materials', color: 'teal' },
+    { value: 'none', label: 'Not costed', color: 'amber' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Part Kind Enum
+ * Entity-system field options for `part_kind` — how a part is classified for
+ * build/sell purposes. Human-set, not computed: NULL reads as `component`.
+ */
+export const PartKind = {
+  COMPONENT: 'component',
+  SUBASSEMBLY: 'subassembly',
+  FINISHED_GOOD: 'finished_good',
+
+  values: [
+    { value: 'component', label: 'Component', color: 'gray' },
+    { value: 'subassembly', label: 'Subassembly', color: 'blue' },
+    { value: 'finished_good', label: 'Finished Good', color: 'green' },
+  ] satisfies FieldOptionItem[],
+} as const
+
 export const VectorDbTypeEnum = {
   POSTGRESQL: 'POSTGRESQL',
   CHROMA: 'CHROMA',
