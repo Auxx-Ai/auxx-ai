@@ -68,7 +68,7 @@ function ctx(session: WriteSession = interactiveSession('user_1', 'sock_1')): Mu
       apiSlug: 'contacts',
     }),
     getFields: async () => [],
-    runPreHooks: async (_o, _d, values) => values,
+    runPreHooks: async (_o: unknown, _d: unknown, values: unknown) => values,
     validateUniqueFields: async () => {},
     setFieldValues: async () => {},
   } as never
@@ -88,7 +88,7 @@ describe('bulkArchiveEntities — tier-2 records:changed (D-17/§7b)', () => {
     expect(publishedFrames()).not.toContain('record:archived')
 
     expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)
-    const [, organizationId, args, options] = h.publishRecordsChanged.mock.calls[0] as [
+    const [, organizationId, args, options] = h.publishRecordsChanged.mock.calls[0] as unknown as [
       unknown,
       string,
       { entityDefinitionId: string; entries: Array<{ recordId: string }> },
