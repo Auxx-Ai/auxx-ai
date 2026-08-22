@@ -265,6 +265,23 @@ export function makeDb(options: MakeDbOptions = {}): FakeDb {
         )
       },
 
+      // Drizzle exposes `selectDistinct` as a peer of `select`, not a chain
+      // method, so a call site that uses it (`deleteAssetVersion` walking
+      // `derivedFromVersionId`) would otherwise hit `undefined is not a
+      // function`. It shares `select`'s queue: the stub does not interpret SQL,
+      // so DISTINCT is not a distinction it could model anyway.
+      selectDistinct: (...args: unknown[]) => {
+        journal.record('db', 'selectDistinct', { projection: args[0] })
+        let from = 'unknown'
+        return makeChain(
+          () => selectQueue.shift() ?? [],
+          (method, arg) => {
+            if (method === 'from') from = name(arg)
+            if (method === 'where') fake.wheres.push({ table: from, predicate: arg })
+          }
+        )
+      },
+
       insert: (table: unknown) => {
         let lastInsertValues: unknown[] = []
         const chain = makeChain(() => insertQueue.shift() ?? lastInsertValues)

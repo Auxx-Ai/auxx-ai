@@ -45,7 +45,7 @@ export interface GetAssetDownloadRefOptions {
 }
 
 /** A version row with its `StorageLocation` joined in, which is the only shape this read uses. */
-type VersionWithLocation = MediaAssetVersionEntity & {
+export type VersionWithLocation = MediaAssetVersionEntity & {
   storageLocation: StorageLocationEntity | null
 }
 
@@ -165,29 +165,59 @@ export async function getAssetDownloadRef(
     async () => {
       const asset = await loadAsset(ctx, assetId)
       const version = await resolveVersion(ctx, asset, opts.versionId)
-
-      const location = version.storageLocation
-      if (!version.storageLocationId || !location) {
-        throw new NotFoundError(`No storage location found for asset ${asset.id}`)
-      }
-
-      // Durable public URL: no signature, so no expiry to outlive.
-      if (!asset.isPrivate && location.externalUrl) {
-        return { type: 'url', url: location.externalUrl } satisfies DownloadRef
-      }
-
-      return deps.storage.presignDownload({
-        provider: location.provider,
-        bucket: requireBucket(location, asset.id),
-        key: location.externalId,
-        credentialId: location.credentialId ?? undefined,
-        ttlSec: opts.ttlSec,
-        disposition: opts.disposition,
-        filename: asset.name ?? undefined,
-        mimeType: asset.mimeType ?? undefined,
-      })
+      return resolveAssetDownloadRef(deps, asset, version, opts)
     },
     'Failed to resolve asset download ref',
     { assetId, versionId: opts.versionId, organizationId: ctx.organizationId }
   )
+}
+
+/**
+ * The database-free tail of {@link getAssetDownloadRef}: asset + version in,
+ * {@link DownloadRef} out.
+ *
+ * Exported so a **batch** caller can keep its fixed number of round-trips. The
+ * legacy service resolved many asset ids at once (`getDownloadUrls`, one query
+ * for the assets and at most two for their versions) through a private
+ * `downloadUrlFor(entity, version)` helper; without a seam like this, collapsing
+ * that path onto `getAssetDownloadRef` would mean re-reading the asset and its
+ * version once per id — turning three queries into 3N. The URL policy stays in
+ * one place either way, which is the point of the collapse.
+ *
+ * Throws rather than returning `Result`: it is a helper, and its only callers
+ * are already inside a {@link guard}.
+ *
+ * @param deps Storage only — see {@link DownloadDeps}.
+ * @param asset The asset the caller has already loaded, org-scoped.
+ * @param version That asset's version, with `storageLocation` joined in.
+ * @param opts Presign knobs. Ignored for the durable public-URL branch.
+ * @throws NotFoundError when the version has no usable storage location.
+ * @throws AuxxError when the storage location cannot name its bucket.
+ */
+export async function resolveAssetDownloadRef(
+  deps: DownloadDeps,
+  asset: MediaAssetEntity,
+  version: VersionWithLocation,
+  opts: Pick<GetAssetDownloadRefOptions, 'disposition' | 'ttlSec'> = {}
+): Promise<DownloadRef> {
+  const location = version.storageLocation
+  if (!version.storageLocationId || !location) {
+    throw new NotFoundError(`No storage location found for asset ${asset.id}`)
+  }
+
+  // Durable public URL: no signature, so no expiry to outlive.
+  if (!asset.isPrivate && location.externalUrl) {
+    return { type: 'url', url: location.externalUrl } satisfies DownloadRef
+  }
+
+  return deps.storage.presignDownload({
+    provider: location.provider,
+    bucket: requireBucket(location, asset.id),
+    key: location.externalId,
+    credentialId: location.credentialId ?? undefined,
+    ttlSec: opts.ttlSec,
+    disposition: opts.disposition,
+    filename: asset.name ?? undefined,
+    mimeType: asset.mimeType ?? undefined,
+  })
 }
