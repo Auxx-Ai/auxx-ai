@@ -2,7 +2,6 @@
 
 import { database as db } from '@auxx/database'
 import {
-  cleanupService,
   createStorageManager,
   ensureProcessorsInitialized,
   ProcessorRegistry,
@@ -13,6 +12,8 @@ import {
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { isAuxxError } from '~/server/api/trpc'
+import { authorizeUploadSession } from '../authorize-upload-session'
 
 const logger = createScopedLogger('api-upload-complete')
 
@@ -37,6 +38,39 @@ interface RouteParams {
 }
 
 /**
+ * Derived thumbnails to enqueue once the upload transaction has COMMITTED.
+ *
+ * These used to be enqueued by the entity processors, under a comment claiming
+ * they ran after the commit. They did not — a processor runs inside the
+ * transaction opened below, and the enqueue resolves its source asset on the
+ * global `db`, a different connection that still sees the PRE-transaction
+ * `currentVersionId`. A first upload therefore threw `Asset not found` and a
+ * re-upload silently kept serving the previous image
+ * (`docs/files-upload-architecture-guide.md` §10.3).
+ */
+const POST_COMMIT_THUMBNAIL_PRESETS = {
+  USER_PROFILE: ['avatar-32', 'avatar-64', 'avatar-128', 'avatar-256'],
+  KNOWLEDGE_BASE: ['kb-logo-sm', 'kb-logo-lg'],
+} as const
+
+type ThumbnailPreset =
+  (typeof POST_COMMIT_THUMBNAIL_PRESETS)[keyof typeof POST_COMMIT_THUMBNAIL_PRESETS][number]
+
+/** `updateUser` writes `User.image` when the preset lands — avatar-64 only. */
+const AVATAR_USER_IMAGE_PRESET: ThumbnailPreset = 'avatar-64'
+
+/** The tiny avatar the SSE payload prefers when it is already generated. */
+const AVATAR_PREVIEW_PRESET: ThumbnailPreset = 'avatar-32'
+
+function postCommitPresetsFor(entityType: string): readonly ThumbnailPreset[] {
+  const table = POST_COMMIT_THUMBNAIL_PRESETS as Record<
+    string,
+    readonly ThumbnailPreset[] | undefined
+  >
+  return table[entityType] ?? []
+}
+
+/**
  * Complete presigned upload and trigger processing
  * Implements three-phase approach: S3 operations -> DB transaction -> post-commit actions
  */
@@ -44,10 +78,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const { sessionId } = await params
 
   try {
-    const completion = CompletionSchema.parse(await request.json())
-    const session = await SessionManager.getSession(sessionId)
+    // Authenticate FIRST: the session nanoid used to be the only credential on
+    // this endpoint, so anyone holding one could complete someone else's upload
+    // (`docs/files-upload-architecture-guide.md` §11.4). This also re-evaluates
+    // authorization at completion time, which session-create alone never does.
+    const authorized = await authorizeUploadSession(sessionId)
+    if (authorized instanceof Response) return authorized
+    const { session } = authorized
 
-    if (!session) return UploadErrorHandler.sessionNotFound(sessionId)
+    const completion = CompletionSchema.parse(await request.json())
+
     if (!['created', 'uploading'].includes(session.status)) {
       return UploadErrorHandler.validationError('Invalid session status for completion', {
         currentStatus: session.status,
@@ -76,6 +116,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           uploadId: completion.uploadId,
           parts: completion.parts,
           credentialId: session.credentialId,
+          bucket: session.bucket,
         })
       } catch (err) {
         await SessionManager.updateSession(sessionId, { status: 'failed' })
@@ -191,6 +232,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           provider: session.provider,
           key: session.storageKey,
           credentialId: session.credentialId,
+          // Without this a PUBLIC upload's compensation deletes a nonexistent
+          // key from the PRIVATE bucket, S3 answers 204, and the real object
+          // leaks with no error and no log (guide §10.4).
+          bucket: session.bucket,
         })
       } catch (cleanupErr) {
         logger.warn('Immediate S3 cleanup failed; scheduling for background cleanup', {
@@ -198,10 +243,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           cleanupErr: String(cleanupErr),
         })
 
-        // Schedule cleanup via background service
-        await cleanupService.scheduleCleanup({
+        // Durable retry on the maintenance queue. Lazy — this is the cold path.
+        const { enqueueOrphanedStorageObjectCleanup } = await import('@auxx/lib/jobs')
+        await enqueueOrphanedStorageObjectCleanup({
           provider: session.provider,
-          storageKey: session.storageKey,
+          key: session.storageKey,
+          bucket: session.bucket,
           credentialId: session.credentialId,
           reason: `DB transaction failed: ${String(err)}`,
           organizationId: session.organizationId,
@@ -237,46 +284,54 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // 3.3 Compute download URL for SSE
+    // 3.3 Enqueue derived thumbnails. This is the ONLY place they are enqueued,
+    // and it sits after `db.transaction` has returned so the enqueue's own
+    // connection resolves the version this upload just created.
+    const thumbnails = new Map<ThumbnailPreset, { status: string; assetId?: string }>()
+    const presets = postCommitPresetsFor(session.entityType)
+    if (result.assetId && presets.length > 0) {
+      const { enqueueEnsureThumbnail } = await import('@auxx/lib/files/server')
+      for (const preset of presets) {
+        try {
+          const enq = await enqueueEnsureThumbnail({
+            organizationId: session.organizationId,
+            userId: session.userId,
+            source: { type: 'asset', assetId: result.assetId },
+            opts: {
+              preset,
+              visibility: 'PUBLIC',
+              queue: true,
+              ...(preset === AVATAR_USER_IMAGE_PRESET ? { updateUser: true } : {}),
+            },
+          })
+          thumbnails.set(preset, enq as { status: string; assetId?: string })
+        } catch (thumbErr) {
+          // A derived image must never fail an upload whose bytes and rows are
+          // already durable.
+          logger.error('Failed to enqueue thumbnail preset', {
+            sessionId,
+            assetId: result.assetId,
+            preset,
+            error: String(thumbErr),
+          })
+        }
+      }
+    }
+
+    // 3.4 Compute download URL for SSE
     let downloadUrl: string | null = null
     try {
-      if (session.entityType === 'USER_PROFILE' && result.assetId) {
-        // For user avatars, try to get the tiny thumbnail URL first
+      if (result.assetId) {
         const { MediaAssetService } = await import('@auxx/lib/files/server')
         const assetService = new MediaAssetService(session.organizationId, session.userId)
 
-        // Try to generate and get tiny avatar thumbnail URL
-        const asset = await assetService.getWithRelations(result.assetId)
-        if (asset?.currentVersion?.storageLocation) {
-          // Ensure thumbnail is generated (won't reprocess if already exists)
-          const { enqueueEnsureThumbnail } = await import('@auxx/lib/files/server')
-          try {
-            const enq = await enqueueEnsureThumbnail({
-              organizationId: session.organizationId,
-              userId: session.userId,
-              source: { type: 'asset', assetId: result.assetId },
-              opts: { preset: 'avatar-32', visibility: 'PUBLIC', queue: true },
-            })
-            if ((enq as any).status === 'ready' && (enq as any).assetId) {
-              downloadUrl = await assetService.getDownloadUrl((enq as any).assetId)
-            } else {
-              downloadUrl = await assetService.getDownloadUrl(result.assetId)
-            }
-          } catch (thumbErr) {
-            // If thumbnail generation fails, just use main asset
-            logger.warn('Failed to ensure thumbnail, using main asset', {
-              sessionId,
-              assetId: result.assetId,
-              error: String(thumbErr),
-            })
-            downloadUrl = await assetService.getDownloadUrl(result.assetId)
-          }
-        }
-      } else if (result.assetId) {
-        // For other entity types, get the main asset URL
-        const { MediaAssetService } = await import('@auxx/lib/files/server')
-        const assetService = new MediaAssetService(session.organizationId, session.userId)
-        downloadUrl = await assetService.getDownloadUrl(result.assetId)
+        // Prefer the tiny avatar when 3.3 found it already generated; otherwise
+        // the original, which is what the client previews until the job lands.
+        const preview = thumbnails.get(AVATAR_PREVIEW_PRESET)
+        downloadUrl =
+          preview?.status === 'ready' && preview.assetId
+            ? await assetService.getDownloadUrl(preview.assetId)
+            : await assetService.getDownloadUrl(result.assetId)
       }
     } catch (urlErr) {
       logger.warn('Failed to get download URL for SSE', {
@@ -286,7 +341,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       })
     }
 
-    // 3.4 Publish progress events with URL for client preview
+    // 3.5 Publish progress events with URL for client preview
     await ProgressPublisher.publishCompleted(sessionId, {
       fileId: result.fileId,
       assetId: result.assetId,
@@ -305,7 +360,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       },
     })
 
-    // 3.5 Kick off background jobs (if needed)
+    // 3.6 Kick off background jobs (if needed)
     // await BackgroundJobManager.scheduleProcessing(result.fileId)
 
     return NextResponse.json({
@@ -319,6 +374,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       url: downloadUrl || undefined,
     })
   } catch (error) {
-    return UploadErrorHandler.handleUploadError(error, sessionId, 'upload-completion')
+    // `handleUploadError` also marks the session failed and publishes the SSE
+    // failure, so it still runs — but it classifies status by substring match.
+    // This is a raw App Router handler with no `auxxErrorMiddleware`, so an
+    // AuxxError (e.g. `ProcessorRegistry.getForEntityType`'s `BadRequestError`)
+    // would otherwise land as a generic 500 instead of its own status.
+    const response = await UploadErrorHandler.handleUploadError(
+      error,
+      sessionId,
+      'upload-completion'
+    )
+    if (isAuxxError(error) && response.status !== error.statusCode) {
+      return new Response(response.body, {
+        status: error.statusCode,
+        headers: response.headers,
+      })
+    }
+    return response
   }
 }

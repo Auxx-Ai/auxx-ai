@@ -3,6 +3,7 @@
 import { createStorageManager, SessionManager, UploadErrorHandler } from '@auxx/lib/files/server'
 import { type NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { authorizeUploadSession } from '../authorize-upload-session'
 
 const PartRequestSchema = z.object({
   partNumber: z.number().int().positive(),
@@ -20,6 +21,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { sessionId } = await params
 
+    // Authenticate FIRST: this endpoint used to mint presigned `UploadPart` URLs
+    // for arbitrary part numbers to anyone holding the session nanoid
+    // (`docs/files-upload-architecture-guide.md` §11.4).
+    const authorized = await authorizeUploadSession(sessionId)
+    if (authorized instanceof Response) return authorized
+    const { session } = authorized
+
     let body, partRequest
     try {
       body = await request.json()
@@ -31,11 +39,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const { partNumber, size } = partRequest
-
-    const session = await SessionManager.getSession(sessionId)
-    if (!session) {
-      return UploadErrorHandler.sessionNotFound(sessionId)
-    }
 
     if (!session.isMultipart || !session.uploadId) {
       return UploadErrorHandler.validationError('Not a multipart upload session', {
@@ -56,9 +59,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         uploadId: session.uploadId,
         partNumber,
         size,
-        // NOTE: `StorageManager.generatePartUploadUrl` takes no `ttlSec` and does not
-        // forward one to the adapter, so part URLs use the S3 adapter's 3600s default
-        // rather than `session.ttlSec`.
+        // The multipart upload was initiated in `session.bucket`; presigning a
+        // part against any other bucket fails with `NoSuchUpload` (guide §11.5).
+        bucket: session.bucket,
+        // NOTE (still true): `StorageManager.generatePartUploadUrl` takes no
+        // `ttlSec` and forwards none, so part URLs use `S3Adapter.presignPart`'s
+        // 3600s default rather than `session.ttlSec`.
         credentialId: session.credentialId,
       })
 
