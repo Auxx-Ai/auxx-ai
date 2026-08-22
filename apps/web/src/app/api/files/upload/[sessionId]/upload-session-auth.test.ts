@@ -14,11 +14,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * caller cannot use the 404-vs-403 split to probe for live session ids.
  */
 
-const { getSession, getUploadSession, touchSession, updateSession } = vi.hoisted(() => ({
+const { getSession, getUploadSession, touchUploadSession, patchUploadSession } = vi.hoisted(() => ({
   getSession: vi.fn(),
   getUploadSession: vi.fn(),
-  touchSession: vi.fn(),
-  updateSession: vi.fn(),
+  touchUploadSession: vi.fn(),
+  patchUploadSession: vi.fn(),
 }))
 
 vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
@@ -29,7 +29,10 @@ vi.mock('@auxx/database', () => ({ database: { transaction: vi.fn() }, schema: {
 // The `@auxx/lib/files/server` barrel drags in the AWS SDK and the processor
 // registry; none of it is reachable before the gate, which is the point.
 vi.mock('@auxx/lib/files/server', () => ({
-  SessionManager: { getSession: getUploadSession, touchSession, updateSession },
+  uploadSessionRedis: vi.fn(async () => ({})),
+  getUploadSession,
+  touchUploadSession,
+  patchUploadSession,
   createStorageManager: vi.fn(),
   ensureProcessorsInitialized: vi.fn(),
   ProcessorRegistry: { getForEntityType: vi.fn() },

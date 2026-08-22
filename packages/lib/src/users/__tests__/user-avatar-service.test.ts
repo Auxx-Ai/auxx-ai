@@ -82,17 +82,16 @@ vi.mock('../../files/upload/processors/entity-processors', () => {
   }
 })
 
-vi.mock('../../files/upload/session-manager', () => ({
-  SessionManager: {
-    createSessionFromConfig: vi.fn().mockResolvedValue({
-      id: 'test-session-id',
-      organizationId: 'test-org',
-      userId: 'test-user',
-      bucket: 'auxx-private-local',
-      visibility: 'PRIVATE',
-    }),
-    deleteSession: vi.fn(),
-  },
+vi.mock('../../files/upload/session', () => ({
+  uploadSessionRedis: vi.fn(async () => ({})),
+  createUploadSession: vi.fn().mockResolvedValue({
+    id: 'test-session-id',
+    organizationId: 'test-org',
+    userId: 'test-user',
+    bucket: 'auxx-private-local',
+    visibility: 'PRIVATE',
+  }),
+  deleteUploadSession: vi.fn(),
 }))
 
 describe('UserAvatarService', () => {

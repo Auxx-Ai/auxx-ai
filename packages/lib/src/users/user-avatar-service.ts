@@ -5,7 +5,11 @@ import { eq } from 'drizzle-orm'
 import { S3Adapter } from '../files/adapters/s3-adapter'
 import type { UploadInitConfig } from '../files/upload/init-types'
 import { UserProfileProcessor } from '../files/upload/processors/entity-processors'
-import { SessionManager } from '../files/upload/session-manager'
+import {
+  createUploadSession,
+  deleteUploadSession,
+  uploadSessionRedis,
+} from '../files/upload/session'
 import { createScopedLogger } from '../logger'
 
 const logger = createScopedLogger('user-avatar-service')
@@ -61,7 +65,8 @@ export class UserAvatarService {
       const { config } = await processor.processConfig(init)
 
       // 3. Create upload session
-      const uploadSession = await SessionManager.createSessionFromConfig(config)
+      const redis = await uploadSessionRedis()
+      const uploadSession = await createUploadSession(redis, config, () => new Date())
 
       // 4. Upload to S3 directly (bypass presigned URL since we have the content)
       const s3Adapter = new S3Adapter()
@@ -107,7 +112,7 @@ export class UserAvatarService {
       const result = await processor.process(uploadSession, storageLocation.id)
 
       // Clean up session
-      await SessionManager.deleteSession(uploadSession.id)
+      await deleteUploadSession(redis, uploadSession.id)
 
       logger.info('Successfully created avatar asset from OAuth image', {
         userId,

@@ -1,12 +1,12 @@
 // apps/web/src/app/api/files/upload/[sessionId]/authorize-upload-session.ts
 
-import { SessionManager } from '@auxx/lib/files/server'
+import { getUploadSession, uploadSessionRedis } from '@auxx/lib/files/server'
 import { headers } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
 
-/** The Redis-backed upload session, as `SessionManager` hands it back. */
-type UploadSession = NonNullable<Awaited<ReturnType<typeof SessionManager.getSession>>>
+/** The Redis-backed upload session, as `getUploadSession` hands it back. */
+type UploadSession = NonNullable<Awaited<ReturnType<typeof getUploadSession>>>
 
 export interface AuthorizedUploadSession {
   session: UploadSession
@@ -52,7 +52,7 @@ export async function authorizeUploadSession(
     return deny(401, 'UNAUTHORIZED', 'authentication', 'User session required')
   }
 
-  const session = await SessionManager.getSession(sessionId)
+  const session = await getUploadSession(await uploadSessionRedis(), sessionId)
   if (!session) {
     return deny(404, 'SESSION_NOT_FOUND', 'validation', 'Upload session not found or expired')
   }

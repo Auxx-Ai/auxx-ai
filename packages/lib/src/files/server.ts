@@ -22,7 +22,14 @@ export { createStorageManager, StorageManager } from './storage/storage-manager'
 export { UploadErrorHandler } from './upload/error-handling'
 export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
 // Upload/session orchestration (no image processing)
-export { SessionManager } from './upload/session-index'
+export {
+  createUploadSession,
+  deleteUploadSession,
+  getUploadSession,
+  patchUploadSession,
+  touchUploadSession,
+  uploadSessionRedis,
+} from './upload/session'
 export {
   createFileDownloadResponse,
   encodeContentDisposition,

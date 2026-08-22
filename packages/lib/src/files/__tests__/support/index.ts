@@ -29,6 +29,8 @@ export type { TestOrg, TestUser } from './fixtures'
 export { anAsset, anOrg, aStorageLocation, aUser, TEST_BUCKETS, TEST_IDS } from './fixtures'
 export type { FakeQueuePort, MakeQueuePortOptions, QueueCall } from './queue'
 export { makeQueuePort } from './queue'
+export type { FakeRedis, MakeRedisOptions, RedisCommand } from './redis'
+export { makeRedis } from './redis'
 export type {
   FakeStoragePort,
   MakeStoragePortOptions,

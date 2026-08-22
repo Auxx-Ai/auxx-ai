@@ -1,6 +1,11 @@
 // apps/web/src/app/api/files/upload/[sessionId]/parts/route.ts
 
-import { createStorageManager, SessionManager, UploadErrorHandler } from '@auxx/lib/files/server'
+import {
+  createStorageManager,
+  touchUploadSession,
+  UploadErrorHandler,
+  uploadSessionRedis,
+} from '@auxx/lib/files/server'
 import { type NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { authorizeUploadSession } from '../authorize-upload-session'
@@ -48,7 +53,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Touch session to extend TTL during active upload
-    await SessionManager.touchSession(sessionId)
+    await touchUploadSession(await uploadSessionRedis(), sessionId, () => new Date())
 
     const storageManager = createStorageManager(session.organizationId)
 

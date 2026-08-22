@@ -1,7 +1,7 @@
 // packages/lib/src/files/upload/error-handling.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { SessionManager } from './session-manager'
+import { patchUploadSession, uploadSessionRedis } from './session'
 
 type JsonInit = Omit<ResponseInit, 'headers'> & { headers?: HeadersInit }
 
@@ -73,7 +73,8 @@ export class UploadErrorHandler {
     // Temp sessions start with 'temp-' and don't exist in Redis yet
     if (!sessionId.startsWith('temp-')) {
       try {
-        await SessionManager.updateSession(sessionId, { status: 'failed' })
+        const redis = await uploadSessionRedis()
+        await patchUploadSession(redis, sessionId, { status: 'failed' }, () => new Date())
       } catch (updateError) {
         logger.warn('Failed to update session status', { sessionId, error: updateError })
       }

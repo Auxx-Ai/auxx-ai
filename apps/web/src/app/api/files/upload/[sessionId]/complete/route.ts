@@ -5,8 +5,9 @@ import {
   createStorageManager,
   ensureProcessorsInitialized,
   ProcessorRegistry,
-  SessionManager,
+  patchUploadSession,
   UploadErrorHandler,
+  uploadSessionRedis,
 } from '@auxx/lib/files/server'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
@@ -15,6 +16,9 @@ import { isAuxxError } from '~/server/api/trpc'
 import { authorizeUploadSession } from '../authorize-upload-session'
 
 const logger = createScopedLogger('api-upload-complete')
+
+/** The clock `patchUploadSession` floors a nearly-dead session's TTL against. */
+const now = () => new Date()
 
 const CompletionSchema = z.object({
   storageKey: z.string().optional(), // ✅ Make optional since server knows the truth
@@ -94,6 +98,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       })
     }
 
+    const redis = await uploadSessionRedis()
     const storageManager = createStorageManager(session.organizationId)
 
     // ============= PHASE 1: S3 OPERATIONS (OUTSIDE TRANSACTION) =============
@@ -118,7 +123,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         })
       } catch (err) {
         logger.error('Multipart completion failed', { sessionId, error: String(err) })
-        await SessionManager.updateSession(sessionId, { status: 'failed' })
+        await patchUploadSession(redis, sessionId, { status: 'failed' }, now)
         return NextResponse.json({ error: 'Failed to complete multipart upload' }, { status: 500 })
       }
     }
@@ -134,7 +139,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       })
     } catch (err) {
       logger.error('File verification failed', { sessionId, error: String(err) })
-      await SessionManager.updateSession(sessionId, { status: 'failed' })
+      await patchUploadSession(redis, sessionId, { status: 'failed' }, now)
       return NextResponse.json({ error: 'Upload verification failed' }, { status: 404 })
     }
 
@@ -148,15 +153,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       })
     } catch (err) {
       logger.error('Upload validation failed', { sessionId, error: String(err) })
-      await SessionManager.updateSession(sessionId, { status: 'failed' })
+      await patchUploadSession(redis, sessionId, { status: 'failed' }, now)
       return NextResponse.json({ error: 'Upload validation failed' }, { status: 400 })
     }
 
     // 1.4 Update session with canonical values (best-effort, outside transaction)
-    await SessionManager.updateSession(sessionId, {
-      expectedSize: headResult.size,
-      mimeType: headResult.mimeType || session.mimeType,
-    })
+    await patchUploadSession(
+      redis,
+      sessionId,
+      { expectedSize: headResult.size, mimeType: headResult.mimeType || session.mimeType },
+      now
+    )
 
     // ============= PHASE 2: SINGLE DB TRANSACTION =============
 
@@ -248,17 +255,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         })
       }
 
-      await SessionManager.updateSession(sessionId, { status: 'failed' })
+      await patchUploadSession(redis, sessionId, { status: 'failed' }, now)
       return NextResponse.json({ error: 'File processing failed' }, { status: 500 })
     }
 
     // ============= PHASE 3: POST-COMMIT ACTIONS =============
 
     // 3.1 Update session status
-    await SessionManager.updateSession(sessionId, {
-      status: 'completed',
-      storageLocationId,
-    })
+    await patchUploadSession(redis, sessionId, { status: 'completed', storageLocationId }, now)
 
     // 3.2 Invalidate caches so next page load fetches fresh data
     if (session.entityType === 'USER_PROFILE') {

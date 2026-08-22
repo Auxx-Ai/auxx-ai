@@ -52,7 +52,9 @@ vi.mock('@auxx/lib/files/server', () => ({
   }),
   ensureProcessorsInitialized: vi.fn(),
   ProcessorRegistry: { getForEntityType },
-  SessionManager: { createSessionFromConfig: vi.fn(), updateSession: vi.fn() },
+  uploadSessionRedis: vi.fn(async () => ({})),
+  createUploadSession: vi.fn(),
+  patchUploadSession: vi.fn(),
   UploadErrorHandler: {
     handleUploadError: vi.fn(async () => new Response('{}', { status: 500 })),
     validationError: vi.fn(() => new Response('{}', { status: 400 })),

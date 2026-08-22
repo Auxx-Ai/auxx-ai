@@ -2,10 +2,12 @@
 
 import {
   createStorageManager,
+  createUploadSession,
   ensureProcessorsInitialized,
   ProcessorRegistry,
-  SessionManager,
+  patchUploadSession,
   UploadErrorHandler,
+  uploadSessionRedis,
 } from '@auxx/lib/files/server'
 import type { EntityType, UploadInitConfig } from '@auxx/lib/files/types'
 import { ENTITY_TYPES } from '@auxx/lib/files/types'
@@ -17,6 +19,9 @@ import { auth } from '~/auth/server'
 import { isAuxxError } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-presigned-upload-sessions')
+
+/** The clock the upload session's timestamps and TTL floor are computed against. */
+const now = () => new Date()
 
 /**
  * Stable error codes for the `{ error, message }` body this route returns, keyed
@@ -150,7 +155,8 @@ export async function POST(request: NextRequest) {
     const { config, warnings } = await processor.processConfig(init)
 
     // Step 3: Create session from config and generate presigned URL with policy enforcement
-    const uploadSession = await SessionManager.createSessionFromConfig(config)
+    const redis = await uploadSessionRedis()
+    const uploadSession = await createUploadSession(redis, config, now)
     const storageManager = createStorageManager(session.user.defaultOrganizationId)
 
     if (config.uploadPlan.strategy === 'single') {
@@ -162,11 +168,12 @@ export async function POST(request: NextRequest) {
 
       const uploadMethod = presigned.method || 'PUT'
 
-      await SessionManager.updateSession(uploadSession.id, {
-        presignedUrl: presigned.url,
-        presignedFields: presigned.fields,
-        uploadMethod,
-      })
+      await patchUploadSession(
+        redis,
+        uploadSession.id,
+        { presignedUrl: presigned.url, presignedFields: presigned.fields, uploadMethod },
+        now
+      )
 
       return NextResponse.json({
         sessionId: uploadSession.id,
@@ -187,10 +194,12 @@ export async function POST(request: NextRequest) {
 
       // `partPresignEndpoint` is not part of the persisted session — the client
       // reads it off the response body below, so persisting it was a no-op.
-      await SessionManager.updateSession(uploadSession.id, {
-        uploadId: multipart.uploadId,
-        uploadMethod: 'PUT',
-      })
+      await patchUploadSession(
+        redis,
+        uploadSession.id,
+        { uploadId: multipart.uploadId, uploadMethod: 'PUT' },
+        now
+      )
 
       return NextResponse.json({
         sessionId: uploadSession.id,

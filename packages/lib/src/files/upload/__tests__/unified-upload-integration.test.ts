@@ -1,12 +1,19 @@
 // packages/lib/src/files/upload/__tests__/unified-upload-integration.test.ts
 
 import { beforeEach, describe, expect, it, type MockedFunction, vi } from 'vitest'
+import { makeClock, makeRedis } from '../../__tests__/support'
 import { StorageManager } from '../../storage/storage-manager'
 import type { UploadInitConfig, UploadPreparedConfig } from '../init-types'
 import { ArticleProcessor } from '../processors/entity-processors'
 import { FileProcessor } from '../processors/file-processor'
 import { ProcessorRegistry } from '../processors/processor-registry'
-import { SessionManager } from '../session-manager'
+import {
+  createUploadSession,
+  deleteUploadSession,
+  getUploadSession,
+  patchUploadSession,
+  uploadSessionRedis,
+} from '../session'
 
 const { ticketSelectRowsRef, createSelectBuilder, selectMock } = vi.hoisted(() => {
   // Maintains the mocked entity rows returned from the Drizzle select builder
@@ -182,7 +189,19 @@ vi.mock('nanoid', () => ({
 }))
 
 describe('Unified Upload Integration Tests', () => {
+  // The session functions take `redis` as a parameter, so this is a plain
+  // object rather than anything `vi.mock` has to intercept. The module mock
+  // below survives only for `uploadSessionRedis`, which is what production uses
+  // to RESOLVE a client.
+  let clock = makeClock()
+  let fake = makeRedis({ now: clock.now })
+  let redis = fake.redis
+
   beforeEach(() => {
+    clock = makeClock()
+    fake = makeRedis({ now: clock.now })
+    redis = fake.redis
+
     ProcessorRegistry.clear()
     vi.clearAllMocks()
 
@@ -244,7 +263,7 @@ describe('Unified Upload Integration Tests', () => {
       expect(warnings).toHaveLength(0)
 
       // Step 3: Create session from config
-      const session = await SessionManager.createSessionFromConfig(config)
+      const session = await createUploadSession(redis, config, clock.now)
 
       expect(session).toMatchObject({
         id: 'test-session-id-123',
@@ -285,7 +304,7 @@ describe('Unified Upload Integration Tests', () => {
 
       expect(config.uploadPlan.strategy).toBe('multipart')
 
-      const session = await SessionManager.createSessionFromConfig(config)
+      const session = await createUploadSession(redis, config, clock.now)
       expect(session.isMultipart).toBe(true)
     })
   })
@@ -413,54 +432,30 @@ describe('Unified Upload Integration Tests', () => {
       const { config } = await processor.processConfig(init)
 
       // Create session
-      const session = await SessionManager.createSessionFromConfig(config)
+      const session = await createUploadSession(redis, config, clock.now)
       expect(session.status).toBe('created')
 
       // Retrieve session
-      const retrievedSession = await SessionManager.getSession(session.id)
+      const retrievedSession = await getUploadSession(redis, session.id)
       expect(retrievedSession).toBeTruthy()
       expect(retrievedSession!.id).toBe(session.id)
 
       // Update session status
-      await SessionManager.updateSession(session.id, { status: 'processing' })
+      await patchUploadSession(redis, session.id, { status: 'processing' }, clock.now)
 
-      const updatedSession = await SessionManager.getSession(session.id)
+      const updatedSession = await getUploadSession(redis, session.id)
       expect(updatedSession!.status).toBe('processing')
 
       // Delete session
-      await SessionManager.deleteSession(session.id)
+      await deleteUploadSession(redis, session.id)
 
-      const deletedSession = await SessionManager.getSession(session.id)
+      const deletedSession = await getUploadSession(redis, session.id)
       expect(deletedSession).toBeNull()
     })
 
-    it('should handle session completion', async () => {
-      const processor = ProcessorRegistry.getForEntityType('FILE', 'org123')
-
-      const init: UploadInitConfig = {
-        organizationId: 'org123',
-        userId: 'user123',
-        fileName: 'completion-test.pdf',
-        mimeType: 'application/pdf',
-        expectedSize: 1024 * 1024,
-        entityType: 'FILE',
-      }
-
-      const { config } = await processor.processConfig(init)
-      const session = await SessionManager.createSessionFromConfig(config)
-
-      // Complete upload
-      await SessionManager.completeUpload(session.id, {
-        storageKey: session.storageKey,
-        size: 1024 * 1024,
-        mimeType: session.mimeType,
-        etag: 'test-etag-123',
-      })
-
-      const completedSession = await SessionManager.getSession(session.id)
-      expect(completedSession!.status).toBe('processing')
-      expect(completedSession!.storageLocationId).toBe(session.storageKey)
-    })
+    // NOTE: `SessionManager.completeUpload` had zero production callers and
+    // stored a storage KEY in `storageLocationId`. PR 4b deleted the method, and
+    // the test that asserted that bug as if it were behaviour went with it.
   })
 
   describe('Error Scenarios', () => {
@@ -493,7 +488,7 @@ describe('Unified Upload Integration Tests', () => {
     })
 
     it('should handle session not found', async () => {
-      const session = await SessionManager.getSession('nonexistent-session')
+      const session = await getUploadSession(redis, 'nonexistent-session')
       expect(session).toBeNull()
     })
 
@@ -504,21 +499,9 @@ describe('Unified Upload Integration Tests', () => {
         new Error('Redis connection failed')
       )
 
-      const processor = ProcessorRegistry.getForEntityType('FILE', 'org123')
-      const init: UploadInitConfig = {
-        organizationId: 'org123',
-        userId: 'user123',
-        fileName: 'test.pdf',
-        mimeType: 'application/pdf',
-        expectedSize: 1024 * 1024,
-        entityType: 'FILE',
-      }
-
-      const { config } = await processor.processConfig(init)
-
-      await expect(SessionManager.createSessionFromConfig(config)).rejects.toThrow(
-        'Redis connection failed'
-      )
+      // Resolving the client is the only place the session module reaches for
+      // Redis; everything else is handed one as a parameter.
+      await expect(uploadSessionRedis()).rejects.toThrow('Redis connection failed')
     })
   })
 
@@ -537,7 +520,7 @@ describe('Unified Upload Integration Tests', () => {
         }
 
         const { config } = await processor.processConfig(init)
-        return SessionManager.createSessionFromConfig(config)
+        return createUploadSession(redis, config, clock.now)
       }
 
       // Create 10 sessions concurrently
@@ -562,7 +545,7 @@ describe('Unified Upload Integration Tests', () => {
       }
 
       const { config } = await processor.processConfig(init)
-      const session = await SessionManager.createSessionFromConfig(config)
+      const session = await createUploadSession(redis, config, clock.now)
 
       const duration = Date.now() - start
 
