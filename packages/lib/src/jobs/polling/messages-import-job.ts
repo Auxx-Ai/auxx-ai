@@ -14,6 +14,7 @@ import {
   PROVIDER_IMPORT_BATCH_SIZE,
 } from '../../providers/channel-provider.interface'
 import type { ImapFolderCheckpoint, ImapImportBatchJobData } from '../../providers/imap/types'
+import { isImapWalkComplete } from '../../providers/imap/utils/walk-complete'
 import { ProviderRegistryService } from '../../providers/provider-registry-service'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
@@ -36,9 +37,16 @@ const BASE_THROTTLE_BACKOFF_MS = 30_000
  * Guarded to a no-op unless the row has a cutoff stamp and no completion stamp
  * yet, so ordinary polling cycles (every later IDLE transition) never rewrite
  * it. Provider-agnostic on purpose — only rows a provider has actually stamped
- * `backfillCutoffAt` on (Outlook always; Gmail on its polling path) ever match.
+ * `backfillCutoffAt` on (Outlook always; Gmail on its polling path; IMAP at
+ * connect / fail-closed initialize) ever match.
+ *
+ * Exported for the IMAP completion points (`maybeTransitionImapToIdle` below
+ * and the zero-message walk in `message-list-fetch-job.ts`).
  */
-async function stampInitialBackfillCompleted(integrationId: string, now: Date): Promise<void> {
+export async function stampInitialBackfillCompleted(
+  integrationId: string,
+  now: Date
+): Promise<void> {
   await db
     .update(schema.Integration)
     .set({
@@ -52,6 +60,30 @@ async function stampInitialBackfillCompleted(integrationId: string, now: Date): 
         sql`NOT jsonb_exists(COALESCE(${schema.Integration.metadata}, '{}'::jsonb), 'initialBackfillCompletedAt')`
       )
     )
+}
+
+/**
+ * IMAP-aware wrapper for the completion stamp. The cache-drain path can hit
+ * IDLE while an IMAP folder walk is still mid-flight — an IMAP first walk
+ * carries its work in `imapImportBatchJob` payloads, not the Redis cache, so
+ * `claimImportBatch` returning empty proves nothing about the walk. Stamping
+ * `initialBackfillCompletedAt` at that moment would reopen `message:received`
+ * for the remainder of the historical walk. For every other provider the
+ * cache IS the backfill, so drain-to-IDLE remains the completion point.
+ */
+async function stampBackfillCompletedIfWalkDone(
+  integrationId: string,
+  provider: string,
+  now: Date
+): Promise<void> {
+  if (provider === 'imap') {
+    const labels = await db
+      .select({ syncCheckpoint: schema.Label.syncCheckpoint })
+      .from(schema.Label)
+      .where(and(eq(schema.Label.integrationId, integrationId), eq(schema.Label.enabled, true)))
+    if (!isImapWalkComplete(labels)) return
+  }
+  await stampInitialBackfillCompleted(integrationId, now)
 }
 
 export interface MessagesImportJobData {
@@ -107,7 +139,7 @@ export const messagesImportJob = async (ctx: JobContext<MessagesImportJobData>) 
           updatedAt: now,
         })
         .where(eq(schema.Integration.id, integrationId))
-      await stampInitialBackfillCompleted(integrationId, now)
+      await stampBackfillCompletedIfWalkDone(integrationId, provider, now)
 
       logger.info('No IDs remaining in import cache, transitioning to IDLE', { integrationId })
       return
@@ -167,7 +199,7 @@ export const messagesImportJob = async (ctx: JobContext<MessagesImportJobData>) 
           updatedAt: now,
         })
         .where(eq(schema.Integration.id, integrationId))
-      await stampInitialBackfillCompleted(integrationId, now)
+      await stampBackfillCompletedIfWalkDone(integrationId, provider, now)
 
       logger.info('All IDs imported, transitioning to IDLE', { integrationId })
     }
@@ -274,7 +306,14 @@ export const imapImportBatchJob = async (ctx: JobContext<ImapImportBatchJobData>
       throw new Error('IMAP provider does not support importMessages')
     }
 
-    const result = await providerInstance.importMessages(externalIds)
+    // The folder walk is a backfill: import inside the realtime sync batch
+    // (`ctx.inSyncBatch`) so N historical messages emit one
+    // `inbox:syncCompleted` per touched inbox instead of N socket frames.
+    // Steady-state IMAP mail routes through `messagesImportJob` (Redis cache)
+    // and keeps `importMessages`' per-message realtime.
+    const result = providerInstance.importMessagesInSyncBatch
+      ? await providerInstance.importMessagesInSyncBatch(externalIds)
+      : await providerInstance.importMessages(externalIds)
 
     logger.info('IMAP import batch completed', {
       integrationId,
@@ -472,13 +511,7 @@ async function maybeTransitionImapToIdle(integrationId: string, now: Date): Prom
     .from(schema.Label)
     .where(and(eq(schema.Label.integrationId, integrationId), eq(schema.Label.enabled, true)))
 
-  const hasActiveCheckpoints = labels.some((l) => {
-    if (!l.syncCheckpoint) return false
-    const cp: ImapFolderCheckpoint = JSON.parse(l.syncCheckpoint)
-    return cp.phase !== 'done'
-  })
-
-  if (!hasActiveCheckpoints) {
+  if (isImapWalkComplete(labels)) {
     // Check if there's still incremental work in the Redis cache
     const remaining = await getImportCacheSize(integrationId)
 
@@ -500,6 +533,11 @@ async function maybeTransitionImapToIdle(integrationId: string, now: Date): Prom
         updatedAt: now,
       })
       .where(eq(schema.Integration.id, integrationId))
+
+    // The walk end is IMAP's backfill completion point — close the
+    // `message:received` suppression window opened at connect (no-op unless
+    // the row has a cutoff and no completion stamp yet).
+    await stampInitialBackfillCompleted(integrationId, now)
 
     logger.info('All IMAP folders synced, transitioning to IDLE', { integrationId })
   }
