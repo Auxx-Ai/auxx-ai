@@ -18,6 +18,11 @@ overbuilt, dead, or wrong.
 > tables), `ui-design-guide.md`.
 > **Where this guide and the code disagree, the code is the truth.** Sections 10–12 are findings,
 > not descriptions: they say what is broken, not what exists.
+>
+> **Refactor in progress.** The storage layer (§5) has been rewritten across #1823, #1825, #1827 and
+> #1829, and PR 3d is in flight — presigning and multipart move out of `StorageManager` next, so §5
+> will shift again. The `core/` services, the processor hierarchy (§3) and the front end (§6) are
+> **not** started and are described as-built. Struck-through findings carry the PR that closed them.
 
 ---
 
@@ -109,7 +114,7 @@ most important thing about this subsystem.
 
 | Table | What it is | Written by |
 | --- | --- | --- |
-| `StorageLocation` | The bytes. Provider + bucket + key + etag + size + mime. **Org-scoped, never soft-deleted by the upload path.** | `StorageManager.createStorageLocation` → `StorageLocationService.create` |
+| `StorageLocation` | The bytes. Provider + bucket + key + etag + size + mime. **Org-scoped, never soft-deleted by the upload path.** | `createStorageLocation(tx, ctx, input)` in `storage/locations.ts` |
 | `MediaAsset` | A logical, versioned media object: `kind` (`USER_AVATAR`, `EMAIL_ATTACHMENT`, `INLINE_IMAGE`, `THUMBNAIL`, `DOCUMENT`, `TEMP_UPLOAD`), `purpose`, `isPrivate`, `currentVersionId`, `expiresAt`. | `MediaAssetService.createWithVersion` / `updateContent` |
 | `MediaAssetVersion` | One version of an asset → one `StorageLocation`. Thumbnails are **separate `MediaAsset`s** whose versions carry `derivedFromVersionId` + `preset`. | same |
 | `FolderFile` + `FileVersion` | The user-facing *file library* (folder tree, rename, move, versions). `FileVersion.fileId` FKs to **`FolderFile`**. | `FileService.createWithVersion` |
@@ -242,16 +247,31 @@ No client connects to it (§12.1).
 
 ## 5. The Storage Layer
 
+> **Being refactored.** Phase 3 of `plans/attachments/` has landed #1823, #1825, #1827 and #1829.
+> `StorageManager` is now a shrinking facade over `db`-first functions; the shape below is current
+> as of #1829. PR 3d (`storage/presign.ts` + `storage/objects.ts`) is still in flight, so the
+> facade's remaining method list will shrink again.
+
 ```
-StorageManager (2,512 lines, org-scoped)
-  ├── presign / multipart / head / delete-by-key      → adapter
-  ├── uploadFile / uploadContent / getContent / stream → adapter
-  ├── StorageLocation CRUD                            → StorageLocationService (global singleton)
-  ├── credential + bucket resolution                  → @auxx/credentials
-  ├── enforcePolicy(config)
-  ├── folders / search / webhooks / health / usage    → adapter
-  └── getAdapter(provider) → S3Adapter | (Drive, Dropbox, OneDrive, Box stubs)
+storage/  (functions — collaborators arrive as parameters, never constructed)
+  ├── buckets.ts          bucketForVisibility / publicCdnUrl / buildExternalUrl / assertBucket   (pure, sync)
+  ├── auth.ts             resolveProviderAuth                                    → @auxx/credentials
+  ├── providers.ts        the adapter registry + isProviderAvailable / getStorageAdapter
+  ├── ports.ts            StoragePort (the side-effecting seam) + createS3StoragePort
+  ├── locations.ts        createStorageLocation(tx, ctx, …) / deleteStorageLocation(tx, ctx, …)
+  ├── location-queries.ts getStorageLocation(ctx, …) / findStorageLocationByExternalId(ctx, …)
+  └── adapters/           S3Adapter + the StorageAdapter interface  (classes, sanctioned by the lib guide)
+
+StorageManager (1,479 lines and falling, org-scoped) — @deprecated facade, deleted in the phase-10 sweep
+  ├── presign / multipart / head / delete-by-key      → adapter        (moves to presign.ts / objects.ts in 3d)
+  ├── uploadContent / getContent / stream             → adapter
+  ├── StorageLocation CRUD                            → delegates to locations.ts / location-queries.ts
+  └── enforcePolicy(config)                                            (becomes pure enforceUploadPolicy in 3d)
 ```
+
+Gone since this section was written: the 29 zero-caller methods (#1825), the folder / search /
+webhook surface that existed only for the Drive / Dropbox / OneDrive / Box stubs (#1825), and six
+of the nine `StorageCapabilities` flags, which were declared and set but read nowhere (#1827).
 
 `enforcePolicy` (storage-manager.ts:1338) checks four things against the **client-declared**
 `expectedSize` and `mimeType` before presigning: key prefix, TTL ceiling, content-length range,
@@ -260,9 +280,16 @@ conditions, so S3 enforces them for real. For **multipart** they are advisory on
 enforcement is `headByKey` + `validateCompletedUpload` after the bytes are already paid for and
 stored.
 
-`StorageLocationService` is a **module-level singleton with no organization scope**
-(`export const storageLocationService = new StorageLocationService()`). `StorageManager` is
-org-scoped and passes `organizationId` into every call, so the scoping is by convention.
+~~`StorageLocationService` is a **module-level singleton with no organization scope**.~~ **FIXED
+(#1829).** The 1,086-line class is deleted. Only four of its methods had a caller; nine had none.
+Scope is no longer by convention — `getStorageLocation`, `findStorageLocationByExternalId` and
+`deleteStorageLocation` all filter on `ctx.organizationId` in SQL.
+
+One consequence to know: `StorageLocation.organizationId` is **nullable** (declared "for backfill
+compatibility"), and the new reads use `eq(...)`, so a row carrying a NULL organization is invisible
+to `getStorageLocation` and immune to `deleteStorageLocation`. Every construction site that reaches
+these paths supplies a real organization, and `StorageManager` now throws rather than running an
+unscoped query when it has none.
 
 ---
 
@@ -613,13 +640,26 @@ goes into the past. The next `updateSession` — which `complete` calls in Phase
 `remainingTtl = 0`, and ioredis surfaces `ERR invalid expire time in 'setex' command`. The upload
 completes to a 500 after the bytes are already in S3.
 
-### 11.7 Type-safety leaks in `DatasetAssetProcessor` — OPEN (refactor phase 4)
+### 11.7 ~~Type-safety leaks in `DatasetAssetProcessor`~~ — FIXED (#1827)
 
 `entityType = 'dataset'`, `fileVisibility = 'private'`, `preferredProvider = 'local'` — all
-lowercase, while `BaseAssetProcessor.processConfig` does `this.fileVisibility as 'PUBLIC' |
-'PRIVATE'` and `getBucketForVisibility` compares against `'PUBLIC'`. It lands in the private bucket
-by accident, not by intent. (`'local'` is not a `ProviderId` at all; `preferredProvider` is read
-nowhere — §12.3.)
+lowercase, while `BaseAssetProcessor.processConfig` did `this.fileVisibility as 'PUBLIC' |
+'PRIVATE'` and `getBucketForVisibility` compared against `'PUBLIC'`.
+
+**This survey under-called it.** The original note says it "lands in the private bucket by accident,
+not by intent" — it did not. `bucketForVisibility` matched *neither* branch, so the upload was
+presigned into the **PUBLIC** bucket. Worse, the same field feeds
+`BaseAssetProcessor.isAssetPrivate()`, a `=== 'PRIVATE'` comparison whose result is written to
+`isPrivate` on the created asset — so every dataset document was **recorded as non-private as well
+as stored publicly**. It was a data bug, not just a routing one.
+
+Fixed by typing the field as the named `StorageVisibility` union (`storage/buckets.ts`) instead of
+`string`, which turns both into compile errors; the enabling `as 'PUBLIC' | 'PRIVATE'` cast is gone.
+`dataset.ts` was the only wrong declaration — the other nine were already uppercase.
+
+**Not fixed:** `preferredProvider = 'local'` is still not a `ProviderId`, and is still read nowhere
+(§12.3). Existing dataset rows written before #1827 keep whatever `isPrivate` and bucket they were
+given — the fix stops new ones and says nothing about a backfill.
 
 ### 11.8 Empty and commented-out `validateEntityAccess` — OPEN (refactor phase 4)
 
@@ -690,8 +730,11 @@ Still open, found here but out of Tier-1 scope:
   PUBLIC entity type. It also inserts `StorageLocation` directly, bypassing
   `StorageManager`, so its rows carry no `metadata.bucket` and cannot be deleted by
   key. Needs its own investigation.
-- **`StorageLocationService.create()`/`bulkCreate()`** are a second write door that
-  bypasses bucket normalisation.
+- ~~**`StorageLocationService.create()`/`bulkCreate()`** are a second write door that
+  bypasses bucket normalisation.~~ **CLOSED (#1829)** — the class is deleted and
+  `createStorageLocation` in `storage/locations.ts` is now the only write door.
+  `user-avatar-service.ts` (above) remains a genuine third door: it inserts
+  `StorageLocation` directly.
 - **There is still no storage warning tier.** `storageGbSoft` is now read as a warn
   threshold, but the branch only increments a counter behind a `TODO` — no email,
   notification or banner, and no dedup marker for a daily job.
@@ -751,21 +794,30 @@ referenced by the worker). Same name, opposite reality.
 
 ### 12.4 God objects
 
-| File | Lines |
-| --- | --- |
-| `storage/storage-manager.ts` | 2,512 |
-| `core/file-service.ts` | 1,982 |
-| `core/folder-service.ts` | 1,945 |
-| `core/media-asset-service.ts` | 1,540 |
-| `core/filesystem-service.ts` | 1,427 |
-| `core/attachment-service.ts` | 1,386 |
-| `storage/storage-location-service.ts` | 1,016 |
-| `components/file-upload/stores/slices/orchestration-slice.ts` | 1,035 |
+Line counts as of #1829. Only `storage/` has been through the refactor so far; the `core/` services
+are phase 5 and are untouched.
 
-`StorageManager` alone owns presigning, multipart, adapter loading, credential resolution, bucket
+| File | Lines | |
+| --- | --- | --- |
+| `core/file-service.ts` | 1,982 | phase 5 |
+| `core/folder-service.ts` | 1,945 | phase 5 |
+| `core/media-asset-service.ts` | 1,591 | phase 5 |
+| `storage/storage-manager.ts` | **1,479** | was 2,512 — facade, falling; 3d in flight |
+| `core/filesystem-service.ts` | 1,427 | phase 5 |
+| `core/attachment-service.ts` | 1,386 | phase 5 |
+| `components/file-upload/stores/slices/orchestration-slice.ts` | 1,054 | phase 8 |
+| ~~`storage/storage-location-service.ts`~~ | ~~1,016~~ | **deleted (#1829)** |
+
+What replaced the deleted surface is small and testable without mocks: `storage/buckets.ts` (140),
+`storage/locations.ts` (259), `storage/location-queries.ts` (120), `storage/providers.ts` (114),
+`storage/auth.ts` (97), on top of `storage/ports.ts` (329) from #1820.
+
+`StorageManager` used to own presigning, multipart, adapter loading, credential resolution, bucket
 routing, `StorageLocation` persistence, folder listing, provider search, webhook processing, health
-checks and usage statistics. Three of those (folders, search, webhooks) exist only for the
-Drive/Dropbox/OneDrive/Box adapters that are stubs.
+checks and usage statistics. The last five are **gone** (#1825) — folders, search and webhooks
+existed only for the Drive/Dropbox/OneDrive/Box stubs. Adapter loading moved to `storage/providers.ts`,
+credential resolution to `storage/auth.ts`, bucket routing to `storage/buckets.ts` and persistence to
+`storage/locations.ts` + `location-queries.ts`. Presigning and multipart are what 3d takes.
 
 ### 12.5 Module-shape violations vs `docs/lib-module-guide.md`
 
@@ -773,10 +825,21 @@ The guide says: exported `async function`s with `db` first, no service classes,
 `Promise<Result<T, Error>>`, `AuxxError` subclasses, reads and writes in separate files, explicit
 named exports.
 
-`packages/lib/src/files/**` is the opposite on every axis: deep class hierarchies with constructor
+`packages/lib/src/files/**` was the opposite on every axis: deep class hierarchies with constructor
 state, bare `Error`, `throw`-based control flow, `export *` in `processors/index.ts`, and
 `any`-typed `tx` parameters throughout. It predates the guide, but it is also the largest module in
 `lib`, so it is what people copy.
+
+**Partly addressed.** `files/ctx.ts` (#1820) defines the contract, and everything under
+`files/storage/**` plus `assets/download.ts` now follows it: `db` arrives on a `ctx: FilesCtx`,
+transaction-only functions take `tx: Transaction` positionally first so a pool cannot typecheck into
+the slot, and results are `neverthrow` `Result` with `AuxxError` subclasses. **New code in `files/`
+copies those files, not the `core/` services**, which are still class-shaped until phase 5.
+
+The test-shape payoff is the thing to notice: the doubles in `files/__tests__/support/` mean the
+storage tests use **zero `vi.mock`** — see `storage/__tests__/locations.test.ts` and
+`location-queries.test.ts`. Compare `core/__tests__/thumbnail-service.test.ts`, which still hand-rolls
+~120 lines of Drizzle builder chains before its first assertion.
 
 ### 12.6 `files/types` is a second, undeclared client entry point
 
