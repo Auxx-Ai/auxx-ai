@@ -413,13 +413,21 @@ async function loadCurrentPartValues(orgId: string): Promise<CurrentPartValues> 
 
 /**
  * Write calculated costs and unit prices back to each part's FieldValues.
- * Only writes parts whose values actually changed.
+ * Only touches parts whose values actually changed.
+ *
+ * **Authoritative, not additive.** A `null` in either map is a real answer — "this part
+ * has no calculated value" — and clears the stored FieldValue, rather than meaning "leave
+ * whatever is there". Without that, a part losing its last vendor (or its last subpart)
+ * keeps a frozen number that is visually indistinguishable from a fresh one; the caller
+ * must therefore map every part IN SCOPE, using `null` where there is no value, not only
+ * the parts that happen to have one.
+ *
  * Returns IDs of parts whose values changed.
  */
 async function persistCosts(
   orgId: string,
-  landedCosts: Map<string, number>,
-  unitPrices: Map<string, number>,
+  landedCosts: Map<string, number | null>,
+  unitPrices: Map<string, number | null>,
   previous: CurrentPartValues
 ): Promise<string[]> {
   const cache = getOrgCache()
@@ -482,24 +490,27 @@ async function persistCosts(
         const recordId = toRecordId(partDefId, entry.partId) as RecordId
         const writes: Promise<unknown>[] = []
 
-        if (entry.costChanged && entry.cost != null) {
+        // `value: null` IS the clear — `setValueWithType` deletes the field's rows and
+        // returns early. Same writer for set and clear, matching `catalog-pricing.ts`'s
+        // `writeCatalogNumberValues`; a raw `deleteValue` would skip `maybeUpdateDisplayValue`.
+        if (entry.costChanged) {
           writes.push(
             setValueWithType(ctx, {
               recordId,
               fieldId: costField.id,
               fieldType: toFieldType(costField.type),
-              value: { type: 'number', value: entry.cost },
+              value: entry.cost == null ? null : { type: 'number', value: entry.cost },
             })
           )
         }
 
-        if (entry.unitPriceChanged && unitPriceField && entry.unitPrice != null) {
+        if (entry.unitPriceChanged && unitPriceField) {
           writes.push(
             setValueWithType(ctx, {
               recordId,
               fieldId: unitPriceField.id,
               fieldType: toFieldType(unitPriceField.type),
-              value: { type: 'number', value: entry.unitPrice },
+              value: entry.unitPrice == null ? null : { type: 'number', value: entry.unitPrice },
             })
           )
         }
@@ -528,16 +539,20 @@ async function persistCosts(
       if (!changedPartIds.includes(entry.partId)) continue
       const recordId = toRecordId(partDefId, entry.partId) as RecordId
 
-      if (entry.costChanged && entry.cost != null) {
+      // A cleared cell publishes as `value: null`, NOT as an omitted entry: on
+      // `FieldValueUpdateEntry` an absent `value` means "don't touch the store"
+      // (realtime/events.ts), so skipping the entry would leave every open client
+      // rendering the stale number until a reload.
+      if (entry.costChanged) {
         entries.push({
           key: buildFieldValueKey(recordId, costField.id as FieldId),
-          value: { type: 'number', value: entry.cost },
+          value: entry.cost == null ? null : { type: 'number', value: entry.cost },
         })
       }
-      if (entry.unitPriceChanged && unitPriceField && entry.unitPrice != null) {
+      if (entry.unitPriceChanged && unitPriceField) {
         entries.push({
           key: buildFieldValueKey(recordId, unitPriceField.id as FieldId),
-          value: { type: 'number', value: entry.unitPrice },
+          value: entry.unitPrice == null ? null : { type: 'number', value: entry.unitPrice },
         })
       }
     }
@@ -603,14 +618,14 @@ export async function recalculateAffectedParts(
   // Calculate costs for all parts (memoized, so cheap)
   const allCosts = calculateAllCosts(landedCostMap, subpartGraph)
 
-  // Only persist values for the dirty set
-  const dirtyCosts = new Map<string, number>()
-  const dirtyUnitPrices = new Map<string, number>()
+  // Persist values for the dirty set — every member of it, `null` included. The dirty set
+  // IS the scope, so a part that no longer resolves to a cost or a vendor price maps to
+  // `null` and gets cleared, instead of dropping out of the map and keeping a frozen value.
+  const dirtyCosts = new Map<string, number | null>()
+  const dirtyUnitPrices = new Map<string, number | null>()
   for (const partId of dirtySet) {
-    const cost = allCosts.get(partId)
-    if (cost != null) dirtyCosts.set(partId, cost)
-    const up = unitPriceMap.get(partId)
-    if (up != null) dirtyUnitPrices.set(partId, up)
+    dirtyCosts.set(partId, allCosts.get(partId) ?? null)
+    dirtyUnitPrices.set(partId, unitPriceMap.get(partId) ?? null)
   }
 
   const previous = await loadCurrentPartValues(orgId)
