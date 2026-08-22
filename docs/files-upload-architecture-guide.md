@@ -424,7 +424,7 @@ registry factory — but it is a landmine the moment anyone caches a processor.
 that has is latency the Postgres connection is held open for, on the hottest write path in the
 subsystem. Its result is only a string built from config; it has no reason to be there.
 
-### 10.3 BullMQ jobs enqueued inside the transaction — and they read stale data
+### 10.3 ~~BullMQ jobs enqueued inside the transaction — and they read stale data~~ — FIXED (#1818)
 
 `UserProfileProcessor.executeProcess` has this comment:
 
@@ -452,7 +452,7 @@ Consequences, both real:
 Beyond staleness: enqueueing a job inside an open transaction means a worker can pick it up before
 `COMMIT`, and the job survives a `ROLLBACK`. Jobs must be enqueued post-commit, from the route.
 
-### 10.4 The compensation path does not compensate
+### 10.4 ~~The compensation path does not compensate~~ — FIXED (#1816, #1818)
 
 On `db.transaction` failure the route tries `deleteByKey` and, if that throws,
 `cleanupService.scheduleCleanup` — which logs `"Would store cleanup task"` and returns.
@@ -484,9 +484,16 @@ a transaction.
 
 ## 11. Correctness Findings
 
+> **Status as of 2026-08-21 — Tier 1 is complete.** 11.1–11.6 are FIXED on `main`
+> (#1816, #1817, #1818), each with a regression test that was confirmed red first.
+> 11.7–11.10 remain open and are folded into the refactor phases rather than
+> patched — see `plans/attachments/`. Findings are kept here rather than deleted
+> because the *reasoning* is the durable part; this section is rewritten to
+> as-built when the refactor lands.
+
 Ordered by impact. Each was verified against the code and, where noted, the dev database.
 
-### 11.1 The storage quota is always zero — the `storageGbHard` plan limit never fires
+### 11.1 ~~The storage quota is always zero~~ — FIXED (#1816, #1818)
 
 `files/lifecycle/quota-cleanup.ts:23`:
 
@@ -515,12 +522,12 @@ document is a `MediaAsset` and would be invisible even after fixing the join. Th
 
 This is a billing-surface bug, not a cosmetic one.
 
-### 11.2 Orphaned S3 objects leak silently on transaction failure
+### 11.2 ~~Orphaned S3 objects leak silently on transaction failure~~ — FIXED (#1816, #1817, #1818)
 
 §10.4. `scheduleCleanup` persists nothing, and `deleteByKey` targets the wrong bucket for every
 PUBLIC upload. Both halves of the compensation are non-functional for the public bucket.
 
-### 11.3 `visit_qc_item` uploads produce the wrong record and hand the client a fake asset id
+### 11.3 ~~`visit_qc_item` uploads produce the wrong record~~ — FIXED (#1816, #1818)
 
 `ENTITY_TYPES.VISIT_QC_ITEM = 'visit_qc_item'` (note: the only lowercase value in the enum) has
 **no processor registered** in `processors/index.ts`, so `ProcessorRegistry.getForEntityType` falls
@@ -547,7 +554,7 @@ Dev database corroborates: `Attachment` has rows for `MESSAGE`, `CUSTOM_FIELD`, 
 (Separately: `FIELD_VALUE` appears in `Attachment.entityType` but is not in `ENTITY_TYPES` — a
 fourth writer outside the processor registry.)
 
-### 11.4 `complete`, `parts` and `events` have no authentication
+### 11.4 ~~`complete`, `parts` and `events` have no authentication~~ — FIXED (#1818)
 
 None of the three call `auth.api.getSession`. The session nanoid is the only credential. The
 `complete` route then performs DB writes attributed to `session.userId` and `session.organizationId`
@@ -564,7 +571,7 @@ never bound to the caller, and it means:
 
 Fix: re-authenticate on all three and assert `session.userId === caller.id` (and org match).
 
-### 11.5 Multipart parts and completion always target the private bucket
+### 11.5 ~~Multipart parts and completion always target the private bucket~~ — FIXED (#1816, #1818)
 
 `StorageManager.generatePartUploadUrl`, `completeMultipartUploadOnly` and `deleteByKey` do not
 accept or forward a `bucket`. `S3Adapter.presignPart` / `completeMultipart` fall back to
@@ -576,7 +583,7 @@ one — `NoSuchUpload`. Latent today only because every PUBLIC entity type caps 
 threshold (avatar 5 MB, KB/widget/article-cover 10 MB vs a 25–50 MB threshold). Raise any of those
 caps and it breaks.
 
-### 11.6 `SETEX` with a zero TTL on long multipart uploads
+### 11.6 ~~`SETEX` with a zero TTL on long multipart uploads~~ — FIXED (#1816)
 
 `SessionManager.touchSession` resets the Redis TTL to `DEFAULT_TTL` (600 s) but **does not update
 `session.expiresAt`**. `SessionManager.updateSession` computes:
@@ -591,7 +598,7 @@ goes into the past. The next `updateSession` — which `complete` calls in Phase
 `remainingTtl = 0`, and ioredis surfaces `ERR invalid expire time in 'setex' command`. The upload
 completes to a 500 after the bytes are already in S3.
 
-### 11.7 Type-safety leaks in `DatasetAssetProcessor`
+### 11.7 Type-safety leaks in `DatasetAssetProcessor` — OPEN (refactor phase 4)
 
 `entityType = 'dataset'`, `fileVisibility = 'private'`, `preferredProvider = 'local'` — all
 lowercase, while `BaseAssetProcessor.processConfig` does `this.fileVisibility as 'PUBLIC' |
@@ -599,7 +606,7 @@ lowercase, while `BaseAssetProcessor.processConfig` does `this.fileVisibility as
 by accident, not by intent. (`'local'` is not a `ProviderId` at all; `preferredProvider` is read
 nowhere — §12.3.)
 
-### 11.8 Empty and commented-out `validateEntityAccess`
+### 11.8 Empty and commented-out `validateEntityAccess` — OPEN (refactor phase 4)
 
 - `WorkflowRunProcessor.validateEntityAccess` — entire body commented out. Combined with `*/*` and
   50 MB, any authenticated org member can upload anything against any `entityId`.
@@ -611,7 +618,7 @@ nowhere — §12.3.)
 Note these are *entity* checks, not the L2 permission gate — the host surfaces carry that. But the
 processor is the layer that claims to do it.
 
-### 11.9 Errors are classified by substring matching
+### 11.9 Errors are classified by substring matching — PARTLY FIXED (#1818 maps AuxxError at the routes; the substring classifier survives until phase 4)
 
 `packages/lib/src/files/**` throws bare `new Error(...)` everywhere — including in
 `processConfig`, where a mime rejection is a 400/415, not a 500. `UploadErrorHandler.categorizeError`
@@ -623,7 +630,7 @@ the mapping is mechanical. It also forces `sessions/route.ts` to invent a fake s
 (`temp-${Date.now()}`) just to satisfy the handler's signature, and to special-case the permission
 error by hand so the 403 survives.
 
-### 11.10 Smaller items
+### 11.10 Smaller items — OPEN
 
 - `deriveStorageKey` uses `Date.now()` with no random suffix. Two files with the same name for the
   same entity in the same millisecond collide, and the second silently overwrites the first.
@@ -636,6 +643,43 @@ error by hand so the 403 survives.
   them back, so this is currently invisible — worth confirming before relying on object metadata.
 - The `complete` route hard-codes a `USER_PROFILE` branch (dehydration, agent cache bust, avatar-32
   thumbnail) that belongs behind a processor hook.
+
+---
+
+### 11.11 Found while fixing the above (not in the original survey)
+
+Each was invisible to the survey because it sat behind another bug, and each is
+fixed on `main`:
+
+- **`sum()`/`count()` over `bigint` return strings** from node-postgres, so even a
+  corrected quota query yielded a string `totalUsed` and the gate would have
+  string-concatenated rather than added.
+- **`touchSession` extended by a 600s constant, not the session's own `ttlSec`**, so
+  a `FileProcessor` session with a 1-hour TTL touched five minutes in was cut from
+  55 minutes of remaining life to 10.
+- **`StorageManager.deleteFile` called `buildLocationRef` before `getAdapter`**, so on
+  a cold adapter cache legacy rows resolved no bucket at all — harmless while the
+  adapter silently defaulted, fatal once it throws.
+- **The over-quota branch compared rounded `percentUsed >= 100`**, so 99.6% of the cap
+  read as 100 and would have enforced against an org that is under.
+- **`use-file-select.ts` fell through to the client temp id** once `assetId` became
+  correctly undefined for `FILE` uploads.
+- **`file-download-permission.test.ts` had never run its happy paths** — the `request()`
+  stub lacked `nextUrl`, so all four 500'd, and the mocked response builder returned
+  only `Content-Type`, so its header assertions tested the literal.
+
+Still open, found here but out of Tier-1 scope:
+
+- **`users/user-avatar-service.ts` calls `putObject` with neither `bucket` nor
+  `visibility`**, so it falls back to `S3_PRIVATE_BUCKET` — and `USER_PROFILE` is a
+  PUBLIC entity type. It also inserts `StorageLocation` directly, bypassing
+  `StorageManager`, so its rows carry no `metadata.bucket` and cannot be deleted by
+  key. Needs its own investigation.
+- **`StorageLocationService.create()`/`bulkCreate()`** are a second write door that
+  bypasses bucket normalisation.
+- **There is still no storage warning tier.** `storageGbSoft` is now read as a warn
+  threshold, but the branch only increments a counter behind a `TODO` — no email,
+  notification or banner, and no dedup marker for a daily job.
 
 ---
 
