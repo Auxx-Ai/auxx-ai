@@ -20,6 +20,7 @@ import { PART_FIELDS } from './resources/part-fields'
 import { PARTICIPANT_FIELDS } from './resources/participant-fields'
 import { PAYMENT_FIELDS } from './resources/payment-fields'
 import { PERSONAL_INBOX_FIELDS } from './resources/personal-inbox-fields'
+import { PRODUCT_FIELDS } from './resources/product-fields'
 import { QUOTE_FIELDS } from './resources/quote-fields'
 import { SERVICE_REQUEST_FIELDS } from './resources/service-request-fields'
 import { SIGNATURE_FIELDS } from './resources/signature-fields'
@@ -128,6 +129,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   catalog_group: CATALOG_GROUP_FIELDS,
   invoice: INVOICE_FIELDS,
   payment: PAYMENT_FIELDS,
+  product: PRODUCT_FIELDS,
 }
 
 /**

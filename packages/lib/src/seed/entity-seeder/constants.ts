@@ -212,6 +212,15 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'emerald',
     isVisible: false, // Ledger mirror records, rendered only by the invoice drawer
   },
+  {
+    entityType: 'product',
+    apiSlug: 'products',
+    singular: 'Product',
+    plural: 'Products',
+    icon: 'package-2', // `package` is taken by `part`
+    color: 'teal',
+    isVisible: true,
+  },
 ]
 
 /**
@@ -311,6 +320,11 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   payment: {
     primaryDisplayField: 'amount',
     secondaryDisplayField: undefined,
+  },
+  product: {
+    primaryDisplayField: 'title',
+    secondaryDisplayField: 'vendor',
+    avatarField: 'image',
   },
 }
 

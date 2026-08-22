@@ -155,6 +155,7 @@ export const ENTITY_DEFINITION_TYPES = [
   'catalog_group',
   'invoice',
   'payment',
+  'product',
 ] as const
 
 /** Type for system entity types stored in EntityDefinition */

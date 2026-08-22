@@ -388,6 +388,23 @@ export const PartKind = {
   ] satisfies FieldOptionItem[],
 } as const
 
+/**
+ * Product Status Enum
+ * Entity-system field options for `product_status` — the lifecycle of a
+ * product family (plans/products/01-product-family.md §1).
+ */
+export const ProductStatus = {
+  DRAFT: 'draft',
+  ACTIVE: 'active',
+  ARCHIVED: 'archived',
+
+  values: [
+    { value: 'draft', label: 'Draft', color: 'gray' },
+    { value: 'active', label: 'Active', color: 'green' },
+    { value: 'archived', label: 'Archived', color: 'amber' },
+  ] satisfies FieldOptionItem[],
+} as const
+
 export const VectorDbTypeEnum = {
   POSTGRESQL: 'POSTGRESQL',
   CHROMA: 'CHROMA',
