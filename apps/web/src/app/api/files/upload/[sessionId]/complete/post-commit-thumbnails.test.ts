@@ -21,7 +21,6 @@ const {
   getUploadSession,
   updateSession,
   enqueueEnsureThumbnail,
-  publishCompleted,
   getDownloadUrl,
   getWithRelations,
   invalidateUser,
@@ -37,7 +36,6 @@ const {
   getUploadSession: vi.fn(),
   updateSession: vi.fn(),
   enqueueEnsureThumbnail: vi.fn(),
-  publishCompleted: vi.fn(),
   getDownloadUrl: vi.fn(async () => 'https://cdn.example/avatar.png'),
   getWithRelations: vi.fn(async () => ({ currentVersion: { storageLocation: { id: 'stl_1' } } })),
   invalidateUser: vi.fn(),
@@ -77,7 +75,6 @@ vi.mock('@auxx/lib/files/server', () => ({
   ProcessorRegistry: {
     getForEntityType: () => ({ validateCompletedUpload, process: processorProcess }),
   },
-  ProgressPublisher: { publishFailed: vi.fn(), publishCompleted },
   UploadErrorHandler: {
     handleUploadError: vi.fn(async () => new Response('{}', { status: 500 })),
     validationError: vi.fn(() => new Response('{}', { status: 400 })),

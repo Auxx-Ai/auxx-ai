@@ -1,4 +1,4 @@
-// packages/lib/src/files/shared-types/uploads.ts
+// packages/lib/src/files/types/uploads.ts
 
 /**
  * Shared upload types for file upload progress and results

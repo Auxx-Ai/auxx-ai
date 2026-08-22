@@ -1,3 +1,5 @@
+// packages/lib/src/files/upload/util.ts
+
 /**
  * Utility functions for the unified processor system
  * Pure functions with no side effects for configuration processing

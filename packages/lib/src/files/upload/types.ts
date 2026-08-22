@@ -1,4 +1,4 @@
-// packages/lib/src/files/file-upload/types.ts
+// packages/lib/src/files/upload/types.ts
 
 import type { FileEntity as File } from '@auxx/database/types'
 import type { EntityType } from '../types'

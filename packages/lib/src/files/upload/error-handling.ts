@@ -1,7 +1,6 @@
 // packages/lib/src/files/upload/error-handling.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { ProgressPublisher } from './progress-publisher'
 import { SessionManager } from './session-manager'
 
 type JsonInit = Omit<ResponseInit, 'headers'> & { headers?: HeadersInit }
@@ -78,15 +77,6 @@ export class UploadErrorHandler {
       } catch (updateError) {
         logger.warn('Failed to update session status', { sessionId, error: updateError })
       }
-    }
-
-    // Only publish failure notification for real sessions that clients are monitoring
-    if (!sessionId.startsWith('temp-')) {
-      await ProgressPublisher.publishFailed(sessionId, uploadError.userMessage, {
-        errorType: uploadError.type,
-        retryable: uploadError.retryable,
-        operation,
-      })
     }
 
     // Return appropriate HTTP response

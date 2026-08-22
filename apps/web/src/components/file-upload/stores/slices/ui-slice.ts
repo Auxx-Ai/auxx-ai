@@ -19,11 +19,6 @@ export interface UISlice {
   updateConfig: (config: Partial<UploadConfig>) => void
   reset: () => void
   cleanup: () => void
-
-  // SSE Integration methods
-  updateFromSSEEvent: (event: any) => void
-  syncQueueWithSSE: (sessionId: string) => void
-  handleSSEError: (error: any, sessionId?: string) => void
   // REMOVED: paused, setPaused, pauseUpload, resumeUpload (offline functionality)
 }
 
@@ -136,105 +131,18 @@ export const createUISlice: StateCreator<
       state.uploading = false
       state.errors = []
 
-      // Keep config but reset error deduplication and SSE connections
+      // Keep config but reset error deduplication
       state.recentErrorHashes = {}
-
-      // Properly cleanup SSE connections
-      Object.values(state.sseConnections).forEach((connection) => {
-        connection.manager?.disconnect() // ✅ Use manager, not eventSource
-        connection.cleanup?.()
-      })
-      state.sseConnections = {}
     })
   },
 
   cleanup: () => {
     set((state) => {
-      // Close all SSE connections
-      Object.values(state.sseConnections).forEach((connection) => {
-        connection.manager?.disconnect() // ✅ Use manager, not eventSource
-        connection.cleanup?.()
-      })
-      state.sseConnections = {}
-
       // Sessions are now runtime-only, no expiration cleanup needed
 
       // Clear old errors (older than 1 hour)
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
       state.errors = state.errors.filter((error) => error.timestamp > oneHourAgo)
-    })
-  },
-
-  // SSE Integration methods
-  updateFromSSEEvent: (event: any) => {
-    set((state) => {
-      switch (event.type) {
-        case 'upload-started':
-          state.uploading = true
-          break
-
-        case 'upload-completed':
-        case 'all_uploads_completed':
-          state.uploading = false
-          break
-
-        case 'error':
-          // Add SSE errors to error list
-          if (event.data.error) {
-            const newError: UploadError = {
-              id: generateId('sse_error'),
-              message: event.data.error,
-              timestamp: new Date(),
-              fileId: event.data.fileId,
-              sessionId: event.data.sessionId,
-              type: 'upload',
-              recoverable: event.data.retryable || false,
-            }
-            state.errors.push(newError)
-          }
-          break
-
-        case 'connection-lost':
-          // Handle SSE connection issues
-          state.errors.push({
-            id: generateId('connection_error'),
-            message: 'Connection to server lost. Attempting to reconnect...',
-            timestamp: new Date(),
-            type: 'connection',
-            recoverable: true,
-          })
-          break
-      }
-    })
-  },
-
-  syncQueueWithSSE: (sessionId: string) => {
-    set((state) => {
-      // Reset upload states to sync with server
-      const session = state.sessions[sessionId]
-      if (session) {
-        // Clear any upload-related UI states when syncing
-        state.uploading = false
-
-        // Clear connection-related errors since we're reconnecting
-        state.errors = state.errors.filter((error) => error.type !== 'connection')
-      }
-    })
-  },
-
-  handleSSEError: (error: any, sessionId?: string) => {
-    set((state) => {
-      const newError: UploadError = {
-        id: generateId('sse_error'),
-        message: error.message || 'SSE connection error',
-        timestamp: new Date(),
-        sessionId,
-        recoverable: true,
-      }
-      state.errors.push(newError)
-
-      // Reset upload states on SSE errors
-      state.uploading = false
     })
   },
 })

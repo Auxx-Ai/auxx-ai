@@ -1,4 +1,4 @@
-// packages/lib/src/files/shared-types/events.ts
+// packages/lib/src/files/types/events.ts
 
 /**
  * Shared event types for file upload SSE communication

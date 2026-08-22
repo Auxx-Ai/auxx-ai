@@ -1,8 +1,8 @@
-// packages/lib/src/files/session/index.ts
+// packages/lib/src/files/upload/session-index.ts
 
 /**
  * File upload session management module
- * Exports session classes, types, and utilities
+ * Exports session types and the Redis-backed session manager.
  */
 
 // Shared types (exported from shared-types via session-types)
@@ -20,5 +20,3 @@ export type {
 
 // Session manager
 export { SessionManager } from './session-manager'
-// Session class
-export { FileUploadSession } from './upload-session-service'

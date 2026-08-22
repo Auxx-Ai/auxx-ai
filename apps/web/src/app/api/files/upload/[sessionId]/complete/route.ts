@@ -5,7 +5,6 @@ import {
   createStorageManager,
   ensureProcessorsInitialized,
   ProcessorRegistry,
-  ProgressPublisher,
   SessionManager,
   UploadErrorHandler,
 } from '@auxx/lib/files/server'
@@ -59,7 +58,7 @@ type ThumbnailPreset =
 /** `updateUser` writes `User.image` when the preset lands — avatar-64 only. */
 const AVATAR_USER_IMAGE_PRESET: ThumbnailPreset = 'avatar-64'
 
-/** The tiny avatar the SSE payload prefers when it is already generated. */
+/** The tiny avatar the response payload prefers when it is already generated. */
 const AVATAR_PREVIEW_PRESET: ThumbnailPreset = 'avatar-32'
 
 function postCommitPresetsFor(entityType: string): readonly ThumbnailPreset[] {
@@ -102,7 +101,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // 1.1 Complete multipart upload if applicable
     if (session.isMultipart) {
       if (!completion.uploadId || !completion.parts) {
-        await ProgressPublisher.publishFailed(sessionId, 'Invalid multipart completion data')
         return NextResponse.json(
           { error: 'Missing uploadId or parts for multipart upload' },
           { status: 400 }
@@ -119,11 +117,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           bucket: session.bucket,
         })
       } catch (err) {
+        logger.error('Multipart completion failed', { sessionId, error: String(err) })
         await SessionManager.updateSession(sessionId, { status: 'failed' })
-        await ProgressPublisher.publishFailed(
-          sessionId,
-          `Multipart completion failed: ${String(err)}`
-        )
         return NextResponse.json({ error: 'Failed to complete multipart upload' }, { status: 500 })
       }
     }
@@ -138,8 +133,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         bucket: session.bucket,
       })
     } catch (err) {
+      logger.error('File verification failed', { sessionId, error: String(err) })
       await SessionManager.updateSession(sessionId, { status: 'failed' })
-      await ProgressPublisher.publishFailed(sessionId, `File verification failed: ${String(err)}`)
       return NextResponse.json({ error: 'Upload verification failed' }, { status: 404 })
     }
 
@@ -152,8 +147,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         mimeType: headResult.mimeType,
       })
     } catch (err) {
+      logger.error('Upload validation failed', { sessionId, error: String(err) })
       await SessionManager.updateSession(sessionId, { status: 'failed' })
-      await ProgressPublisher.publishFailed(sessionId, `Upload validation failed: ${String(err)}`)
       return NextResponse.json({ error: 'Upload validation failed' }, { status: 400 })
     }
 
@@ -254,7 +249,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
 
       await SessionManager.updateSession(sessionId, { status: 'failed' })
-      await ProgressPublisher.publishFailed(sessionId, `DB transaction failed: ${String(err)}`)
       return NextResponse.json({ error: 'File processing failed' }, { status: 500 })
     }
 
@@ -316,7 +310,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // 3.4 Compute download URL for SSE
+    // 3.4 Compute the download URL returned to the client for preview
     let downloadUrl: string | null = null
     try {
       if (result.assetId) {
@@ -332,33 +326,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             : await assetService.getDownloadUrl(result.assetId)
       }
     } catch (urlErr) {
-      logger.warn('Failed to get download URL for SSE', {
+      logger.warn('Failed to get download URL', {
         sessionId,
         assetId: result.assetId,
         error: String(urlErr),
       })
     }
 
-    // 3.5 Publish progress events with URL for client preview
-    await ProgressPublisher.publishCompleted(sessionId, {
-      fileId: result.fileId,
-      assetId: result.assetId,
-      attachmentId: result.attachmentId,
-      documentId: result.documentId,
-      // Include structured result for upload store compatibility
-      result: {
-        uploadResults: [
-          {
-            fileId: sessionId,
-            fileName: session.fileName,
-            url: downloadUrl || undefined,
-            checksum: headResult.etagOrRev,
-          },
-        ],
-      },
-    })
-
-    // 3.6 Kick off background jobs (if needed)
+    // 3.5 Kick off background jobs (if needed)
     // await BackgroundJobManager.scheduleProcessing(result.fileId)
 
     return NextResponse.json({
@@ -372,8 +347,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       url: downloadUrl || undefined,
     })
   } catch (error) {
-    // `handleUploadError` also marks the session failed and publishes the SSE
-    // failure, so it still runs — but it classifies status by substring match.
+    // `handleUploadError` also marks the session failed, so it still runs —
+    // but it classifies status by substring match.
     // This is a raw App Router handler with no `auxxErrorMiddleware`, so an
     // AuxxError (e.g. `ProcessorRegistry.getForEntityType`'s `BadRequestError`)
     // would otherwise land as a generic 500 instead of its own status.

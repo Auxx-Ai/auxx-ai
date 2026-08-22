@@ -1,4 +1,4 @@
-// packages/lib/src/files/shared-types/index.ts
+// packages/lib/src/files/types/index.ts
 
 /**
  * Shared types barrel export for file upload system
