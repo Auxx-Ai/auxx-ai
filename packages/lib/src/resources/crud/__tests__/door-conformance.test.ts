@@ -284,7 +284,9 @@ const DOOR_CONFORMANCE: Record<DoorId, DoorConformance> = {
     where:
       'field-value service (fieldValues:updated / entity:field:updated ride setValuesForEntity, ' +
       'gated by the same publishEvents boolean) — field-values tests; the sync-small per-record ' +
-      'cell is currently silent there too (B-2, Phase 4)',
+      'cell is executed at the sync finalize seam (per-field entity:field:updated replay off the ' +
+      'claimed manifest — events/handlers/sync-finalize.test.ts); sync-large stays folded into ' +
+      'the collapsed entry per D-4',
   },
   realtimeTier1: {
     kind: 'observed',
@@ -423,9 +425,9 @@ const VERIFIED_ELSEWHERE_CELLS: Array<{
     origin: 'sync-small',
     expectedFromMatrix: 'per-record',
     where:
-      'events/handlers/sync-finalize.test.ts — the D-12 finalize pass bulk-inserts one collapsed ' +
-      'timeline entry per changed/created/archived record (D-4 v1; small-lane per-FIELD fidelity ' +
-      'is a later upgrade, tracked on the perFieldTimeline row)',
+      'events/handlers/sync-finalize.test.ts — the D-12 finalize pass bulk-inserts per-field ' +
+      'entity:field:updated rows for changed records plus collapsed created/archived entries ' +
+      '(small-lane per-FIELD fidelity shipped; the large lane keeps the collapsed shape per D-4)',
   },
   {
     door: 'recordRules',
