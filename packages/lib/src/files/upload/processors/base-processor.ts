@@ -5,6 +5,7 @@ import { AttachmentService } from '../../core/attachment-service'
 import { FileService } from '../../core/file-service'
 import { MediaAssetService } from '../../core/media-asset-service'
 import { bucketForVisibility, type StorageVisibility } from '../../storage/buckets'
+import { validateCompletedUpload } from '../config'
 import type {
   ProcessorConfigResult,
   UploadInitConfig,
@@ -130,24 +131,25 @@ export abstract class BaseProcessor implements FileProcessor {
   }
 
   /**
-   * NEW: Post-upload validation hook
-   * Validates the completed upload against session expectations
+   * Post-upload validation: does the object S3 actually holds match what this
+   * session promised, and is it allowed at all?
+   *
+   * Both questions are answered by the pure {@link validateCompletedUpload} in
+   * `upload/config.ts`, which judges the session's own persisted `policy` with
+   * the same `enforceUploadPolicy` that judged the request. `BaseAssetProcessor`
+   * used to override this with a second, hand-written copy of the size and MIME
+   * rules; there is one implementation now, called once before the upload and
+   * once after it.
+   *
+   * This is not a redundant check. See the header of `storage/presign.ts`: a
+   * multipart upload carries no policy document, so nothing bounds its total
+   * size or true content type until the `headObject` that feeds this.
    */
   async validateCompletedUpload(
     session: PresignedUploadSession,
     head: { size: number; mimeType?: string }
   ): Promise<void> {
-    // Exact size check if we have a client-declared expectation
-    if (typeof session.expectedSize === 'number' && head.size !== session.expectedSize) {
-      throw new Error(`Size mismatch: expected ${session.expectedSize}, got ${head.size}`)
-    }
-
-    // Lenient MIME check if provider returns Content-Type
-    if (session.mimeType && head.mimeType) {
-      const a = (head.mimeType.split(';')[0] ?? '').toLowerCase()
-      const b = (session.mimeType.split(';')[0] ?? '').toLowerCase()
-      if (a !== b) throw new Error(`MIME mismatch: expected ${b}, got ${a}`)
-    }
+    validateCompletedUpload(session, head)
   }
 
   // ============= Protected Helper Methods =============
