@@ -53,6 +53,20 @@ export function QcPhotoStrip({
         onAddPhoto(result.metadata.assetId)
       } else if (result?.error) {
         toastError({ title: 'Error uploading photo', description: result.error })
+      } else {
+        // A "successful" upload carrying no `MediaAsset` id has nothing to attach. This used to
+        // fall between the two branches above and be a silent no-op, which is exactly how the
+        // missing `visit_qc_item` processor hid — the bytes landed, the strip stayed empty and
+        // nothing was ever reported (docs/files-upload-architecture-guide.md §11.3).
+        console.error('[qc-photo-strip] upload produced no MediaAsset id', {
+          itemId,
+          serverIdKind: result?.metadata?.serverIdKind,
+          result,
+        })
+        toastError({
+          title: 'Error uploading photo',
+          description: 'The photo uploaded but no image record came back, so it was not attached.',
+        })
       }
     },
     onError: (error) => toastError({ title: 'Error uploading photo', description: error }),

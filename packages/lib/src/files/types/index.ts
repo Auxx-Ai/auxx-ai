@@ -83,12 +83,14 @@ export type {
   QueueConfig,
   QueuedFile,
   QueueStats,
+  ServerIdKind,
   StageStatus,
   UploadCallbacks,
   UploadFile,
   UploadMetrics,
   UploadProgress,
   UploadResult,
+  UploadResultMetadata,
   UploadStatus,
 } from './uploads'
 
