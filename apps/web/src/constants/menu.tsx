@@ -31,6 +31,7 @@ import {
   ShieldCheck,
   Sparkles,
   Tag,
+  Tags,
   Trash2,
   Truck,
   UserCog,
@@ -182,6 +183,19 @@ export const SIDEBAR_MENU: SidebarProps[] = [
         icon: <Receipt />,
       },
     ],
+  },
+  {
+    // The sellable catalog's first-class entry (plans/products/01-product-family.md
+    // §6). Deliberate: `catalog_item`/`catalog_group` stay `isVisible: false`, so
+    // the entity sidebar never auto-links them — this entry is the promotion.
+    // Gates match the page's own (`useRequireCapability(settingsManage)` +
+    // `FeatureKey.dispatch` in catalog-page.tsx).
+    id: 'catalog',
+    label: 'Catalog',
+    slug: 'catalog',
+    icon: <Tags />,
+    featureKey: 'dispatch',
+    permissionKey: 'settings.manage',
   },
 
   {

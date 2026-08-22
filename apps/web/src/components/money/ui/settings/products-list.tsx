@@ -110,7 +110,7 @@ export function ProductsList({
         <InputSearch
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder='Search products & services...'
+          placeholder='Search catalog items...'
         />
         <Button variant='outline' size='sm' onClick={onAddDraft} disabled={!entityDefinitionId}>
           <Plus />
@@ -122,7 +122,7 @@ export function ProductsList({
         <div className='p-4 text-center text-sm text-muted-foreground'>Loading…</div>
       ) : filtered.length === 0 && !draft ? (
         <div className='p-4 text-center text-sm text-muted-foreground'>
-          {search ? 'No matches' : 'No products or services yet — add your first item.'}
+          {search ? 'No matches' : 'No catalog items yet — add your first item.'}
         </div>
       ) : (
         <div className='flex flex-col gap-0.5'>

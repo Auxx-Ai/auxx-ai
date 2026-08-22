@@ -110,7 +110,7 @@ export function GroupEditor({
   const group = selectedId ? groupMap.get(selectedId) : undefined
 
   if (!group) {
-    return <div className='p-4 text-sm text-muted-foreground'>Select a product group to edit.</div>
+    return <div className='p-4 text-sm text-muted-foreground'>Select a catalog group to edit.</div>
   }
 
   return <GroupEditorForm key={group.id} group={group} currency={currency} />
@@ -904,7 +904,7 @@ function AddItemPopover({
           <CommandInput
             value={query}
             onValueChange={setQuery}
-            placeholder='Search products & services…'
+            placeholder='Search catalog items…'
           />
           <CommandList>
             {!hasAnyMatch && <CommandEmpty>No active items</CommandEmpty>}

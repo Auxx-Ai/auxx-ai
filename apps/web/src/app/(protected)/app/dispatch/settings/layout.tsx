@@ -75,7 +75,7 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
     items: [
       {
         id: 'dispatch-money-products',
-        label: 'Products & Services',
+        label: 'Catalog',
         slug: 'products',
         icon: <Tags />,
       },

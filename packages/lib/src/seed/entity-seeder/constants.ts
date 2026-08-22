@@ -161,8 +161,8 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
   {
     entityType: 'catalog_item',
     apiSlug: 'catalog-items',
-    singular: 'Product / Service',
-    plural: 'Products & Services',
+    singular: 'Catalog Item',
+    plural: 'Catalog Items',
     icon: 'tags',
     color: 'teal',
     isVisible: false, // Internal entity, managed from dispatch settings (vendor_part recipe)
@@ -170,8 +170,8 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
   {
     entityType: 'catalog_group',
     apiSlug: 'catalog-groups',
-    singular: 'Product Group',
-    plural: 'Product Groups',
+    singular: 'Catalog Group',
+    plural: 'Catalog Groups',
     icon: 'boxes',
     color: 'teal',
     isVisible: false, // Internal entity, managed from dispatch settings (catalog_item recipe)
