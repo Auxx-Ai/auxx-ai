@@ -47,6 +47,12 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
     import('../drawers/tabs/part-inventory-tab').then((m) => ({ default: m.PartInventoryTab })),
 
   // ─────────────────────────────────────────────────────────────────
+  // PRODUCT TABS
+  // ─────────────────────────────────────────────────────────────────
+  'product:parts': () =>
+    import('../drawers/tabs/product-parts-tab').then((m) => ({ default: m.ProductPartsTab })),
+
+  // ─────────────────────────────────────────────────────────────────
   // QUOTE TABS
   // ─────────────────────────────────────────────────────────────────
   'quote:line-items': () =>

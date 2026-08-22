@@ -84,6 +84,7 @@ export type DetailViewEntityType =
   | 'company'
   | 'ticket'
   | 'part'
+  | 'product'
   | 'entity'
   | 'quote'
   | 'work_order'

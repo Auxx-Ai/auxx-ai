@@ -99,6 +99,22 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     defaultSidebarTab: 'overview',
   },
 
+  product: {
+    entityType: 'product',
+    // The family page (plans/products/01-product-family.md phase 3): the
+    // variants list leads — a product IS its title/image plus a set of parts.
+    // The generic Details field panel lives in the sidebar overview like every
+    // other detail page; no sidebarCards needed.
+    mainTabs: [
+      { value: 'parts', label: 'Variants', icon: 'package', recordResource: 'part' },
+      { value: 'timeline', label: 'Timeline', icon: 'clock' },
+      { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
+    ],
+    sidebarTabs: DEFAULT_SIDEBAR_TABS,
+    defaultTab: 'parts',
+    defaultSidebarTab: 'overview',
+  },
+
   quote: {
     entityType: 'quote',
     // Flipped to sections (dispatch M2 build spec §G — "flips to sections via
