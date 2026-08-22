@@ -65,7 +65,9 @@ const h = vi.hoisted(() => {
     state,
     // Door observation points
     publishLater: vi.fn(() => {}), // bus event (timeline / rules / workflows / notifications proxy)
-    publish: vi.fn(async () => {}), // realtime tier-1 record frames
+    // realtime tier-1 record frames — arg-typed so `mock.calls[n][1]` is legal
+    // for tsc (an untyped vi.fn() types calls as an empty tuple, TS2493).
+    publish: vi.fn<(room: unknown, event: string, data?: unknown) => Promise<void>>(async () => {}),
     enqueueDuplicateScan: vi.fn(async () => 'job_1'), // dedup scan door
     deleteOpenPairsForRecord: vi.fn(async () => ok(0)), // pair cleanup (outside the guard)
     preHook: vi.fn(async (hookCtx: { values: Record<string, unknown> }) => hookCtx.values),
@@ -296,8 +298,10 @@ const DOOR_CONFORMANCE: Record<DoorId, DoorConformance> = {
     where:
       'sync finalize pass (events/handlers/sync-finalize.test.ts) — records:changed frames, ' +
       'ids+fieldIds per D-18, emitted for BOTH sync lanes (on sync-small as the tier-1 ' +
-      'substitute; see the realtimeTier1 deviation). Interactive/automation bulk-shaped delta ' +
-      'frames are still future (plan 03 §7b)',
+      'substitute; see the realtimeTier1 deviation). Interactive bulk archives emit the same ' +
+      'frame (bulk-archive-records-changed.test.ts, D-17); other bulk-shaped producers are ' +
+      'still future (plan 03 §7b). This harness drives single-record ops, which correctly ' +
+      'stay tier-1 — no observation point at this seam',
   },
   realtimeTier3: {
     kind: 'deferred',
