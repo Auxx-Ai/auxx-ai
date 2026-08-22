@@ -69,7 +69,6 @@ export type {
   StorageLocationRef,
   StorageQuotaError,
   StorageUnsupportedError,
-  WebhookEvent,
 } from './adapters/base-adapter'
 // Storage Adapters
 export { BaseStorageAdapter } from './adapters/base-adapter'
@@ -83,14 +82,7 @@ export type {
 } from './storage/storage-location-service'
 // Storage Location Service - Database operations for storage locations
 export { StorageLocationService, storageLocationService } from './storage/storage-location-service'
-export type {
-  StorageCopyParams,
-  StorageDownloadParams,
-  StorageHealthCheck,
-  StorageMigrationParams,
-  StorageUploadParams,
-  StorageUsageStats,
-} from './storage/storage-manager'
+export type { StorageDownloadParams } from './storage/storage-manager'
 // Storage Manager - Unified storage operations
 export { createStorageManager, StorageManager } from './storage/storage-manager'
 

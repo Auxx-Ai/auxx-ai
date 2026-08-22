@@ -33,7 +33,6 @@ import {
   StorageFileNotFoundError,
   type StorageLocationRef,
   StorageQuotaError,
-  type WebhookEvent,
 } from './base-adapter'
 
 // ============= Configuration Interfaces =============
@@ -737,36 +736,6 @@ export class S3Adapter extends BaseStorageAdapter {
     }
   }
 
-  // ============= Folder Management =============
-
-  /**
-   * Create S3 "folder" (prefix) - Not supported for S3 adapter
-   */
-  async createFolder(params: {
-    name: string
-    parentFolderId?: string
-    auth: ProviderAuth
-  }): Promise<{ id: string; name: string }> {
-    // Always throws: S3 has folders: false in capabilities
-    return this.unsupportedCapability('folders')
-  }
-
-  /**
-   * List S3 objects with prefix - Not supported for S3 adapter
-   */
-  async listFolder(params: {
-    folderId?: string
-    auth: ProviderAuth
-    limit?: number
-    cursor?: string
-  }): Promise<{
-    files: FileMetadata[]
-    nextCursor?: string
-  }> {
-    // Always throws: S3 has folders: false in capabilities
-    return this.unsupportedCapability('folders')
-  }
-
   // ============= Versioning =============
 
   /**
@@ -837,26 +806,6 @@ export class S3Adapter extends BaseStorageAdapter {
       // Re-throw other errors (network, etc.)
       throw error
     }
-  }
-
-  // ============= Webhook Support =============
-
-  /**
-   * Validate S3 event notification webhook
-   */
-  async validateWebhook(payload: unknown, signature?: string): Promise<boolean> {
-    // TODO: Implement S3 event notification validation
-    // Validate SNS signature if using SNS notifications
-    throw new Error('Not implemented')
-  }
-
-  /**
-   * Process S3 event notification
-   */
-  async processWebhook(payload: unknown): Promise<WebhookEvent[]> {
-    // TODO: Implement S3 event processing
-    // Parse S3 event notification format
-    throw new Error('Not implemented')
   }
 
   // ============= Helper Methods =============
