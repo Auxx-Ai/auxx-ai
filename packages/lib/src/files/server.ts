@@ -17,14 +17,7 @@ export type {
   UpdateAttachmentRequest,
   UpdateFileRequest,
 } from './core/types'
-export type {
-  StorageCopyParams,
-  StorageDownloadParams,
-  StorageHealthCheck,
-  StorageMigrationParams,
-  StorageUploadParams,
-  StorageUsageStats,
-} from './storage/storage-manager'
+export type { StorageDownloadParams } from './storage/storage-manager'
 export { createStorageManager, StorageManager } from './storage/storage-manager'
 export { UploadErrorHandler } from './upload/error-handling'
 export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'

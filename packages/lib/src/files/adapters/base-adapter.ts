@@ -121,25 +121,6 @@ export interface FileRevision {
   etagOrRev?: string
 }
 
-/**
- * Webhook event information
- * Standardized webhook events across providers
- */
-export interface WebhookEvent {
-  type:
-    | 'file.created'
-    | 'file.updated'
-    | 'file.deleted'
-    | 'folder.created'
-    | 'folder.updated'
-    | 'folder.deleted'
-  fileId: string
-  fileName?: string
-  folderId?: string
-  userId?: string
-  timestamp: Date
-}
-
 // ============= Storage Adapter Interface =============
 
 /**
@@ -304,30 +285,6 @@ export interface StorageAdapter {
    */
   deleteFile?(loc: StorageLocationRef, auth?: ProviderAuth): Promise<void>
 
-  // ============= Folder Management (External Providers) =============
-
-  /**
-   * Create a new folder in external storage
-   */
-  createFolder?(params: {
-    name: string
-    parentFolderId?: string
-    auth: ProviderAuth
-  }): Promise<{ id: string; name: string }>
-
-  /**
-   * List contents of a folder
-   */
-  listFolder?(params: {
-    folderId?: string
-    auth: ProviderAuth
-    limit?: number
-    cursor?: string
-  }): Promise<{
-    files: FileMetadata[]
-    nextCursor?: string
-  }>
-
   // ============= Versioning (Providers with Version Support) =============
 
   /**
@@ -370,30 +327,6 @@ export interface StorageAdapter {
    * Validate authentication credentials
    */
   validateAuth?(auth: ProviderAuth): Promise<boolean>
-
-  // ============= Webhook Support (Real-time Sync) =============
-
-  /**
-   * Validate webhook payload and signature
-   */
-  validateWebhook?(payload: unknown, signature?: string): Promise<boolean>
-
-  /**
-   * Process webhook payload and return standardized events
-   */
-  processWebhook?(payload: unknown): Promise<WebhookEvent[]>
-
-  // ============= Search Functionality =============
-
-  /**
-   * Search files within a provider
-   */
-  search?(params: {
-    query: string
-    folderId?: string
-    auth: ProviderAuth
-    limit?: number
-  }): Promise<FileMetadata[]>
 }
 
 // ============= Base Adapter Class =============
@@ -446,15 +379,6 @@ export abstract class BaseStorageAdapter implements StorageAdapter {
     if (!capabilities[capability]) {
       throw new Error(`${this.name} does not support ${capability}`)
     }
-  }
-
-  /**
-   * Assert that this adapter does NOT support a capability, for stub method bodies.
-   * Always throws; the return type lets TypeScript see the method never falls through.
-   */
-  protected unsupportedCapability(capability: keyof StorageCapabilities): never {
-    this.requireCapability(capability)
-    throw new Error(`${this.name} does not support ${capability}`)
   }
 }
 
