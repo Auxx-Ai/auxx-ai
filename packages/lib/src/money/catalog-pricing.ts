@@ -16,7 +16,7 @@ import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValue } from '@auxx/types'
 import { buildFieldValueKey, type FieldId, type FieldValueKey } from '@auxx/types/field'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import type { EntityFieldChangeHandler } from '../field-hooks/types'
 import { createFieldValueContext } from '../field-values/field-value-helpers'
@@ -57,12 +57,15 @@ interface CatalogPricingFields {
   cost: { id: string; type: FieldType }
   markup: { id: string; type: FieldType } | null
   price: { id: string; type: FieldType } | null
+  /** Read-only guard field (`catalog_item_active`) — never written by this module. */
+  active: { id: string } | null
 }
 
 /**
- * Resolve the four catalog-item pricing fields via the org cache. Returns `null`
+ * Resolve the catalog-item pricing fields via the org cache. Returns `null`
  * (after logging) when the org hasn't run migration 044 yet — `part`/`cost` are the
- * load-bearing pair; `markup`/`price` are optional so the sync still runs cost-only.
+ * load-bearing pair; `markup`/`price` are optional so the sync still runs cost-only,
+ * and `active` is optional so orgs without the field simply skip the inactive guard.
  */
 async function resolveCatalogPricingFields(
   organizationId: string
@@ -74,6 +77,7 @@ async function resolveCatalogPricingFields(
       'catalog_item_cost',
       'catalog_item_markup',
       'catalog_item_default_unit_price',
+      'catalog_item_active',
     ] as const)
 
   if (!cf.catalog_item_part || !cf.catalog_item_cost) {
@@ -98,7 +102,51 @@ async function resolveCatalogPricingFields(
           type: cf.catalog_item_default_unit_price.type as FieldType,
         }
       : null,
+    active: cf.catalog_item_active ? { id: cf.catalog_item_active.id } : null,
   }
+}
+
+/**
+ * Archived/inactive guard for the single-item hook path (`syncCatalogCostOnPartChange`).
+ * The batch engine applies the same two skips inline in its own queries.
+ *
+ * `catalog_item_active` defaults true and older items may have NO stored FieldValue row
+ * at all — absence means ACTIVE, so the check is "not explicitly false", never
+ * "explicitly true". A just-reactivated item may carry a stale cost until the next
+ * part-cost change re-syncs it (acceptable — the drawer shows part cost live).
+ */
+async function isCatalogItemSyncable(
+  organizationId: string,
+  entityInstanceId: string,
+  activeFieldId: string | null
+): Promise<boolean> {
+  const instanceRows = await database
+    .select({ archivedAt: schema.EntityInstance.archivedAt })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.id, entityInstanceId),
+        eq(schema.EntityInstance.organizationId, organizationId)
+      )
+    )
+  const instance = instanceRows[0]
+  if (!instance || instance.archivedAt != null) return false
+
+  if (activeFieldId) {
+    const activeRows = await database
+      .select({ valueBoolean: schema.FieldValue.valueBoolean })
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.entityId, entityInstanceId),
+          eq(schema.FieldValue.fieldId, activeFieldId),
+          eq(schema.FieldValue.organizationId, organizationId)
+        )
+      )
+    if (activeRows[0]?.valueBoolean === false) return false
+  }
+
+  return true
 }
 
 interface CatalogFieldWrite {
@@ -231,18 +279,29 @@ export async function syncCatalogItemPricing(
   const fields = await resolveCatalogPricingFields(organizationId)
   if (!fields) return
 
-  // ── Step 2: ONE query — catalog items currently linked to a changed part ──
+  // ── Step 2: ONE query — non-archived catalog items currently linked to a changed part ──
+  // The EntityInstance join drops archived items in SQL; explicitly-inactive items are
+  // dropped in the write loop below (their `catalog_item_active` value rides along with
+  // the step-3b read, because absence of the row must still count as active).
   const linkRows = await database
     .select({
       catalogInstanceId: schema.FieldValue.entityId,
       partInstanceId: schema.FieldValue.relatedEntityId,
     })
     .from(schema.FieldValue)
+    .innerJoin(
+      schema.EntityInstance,
+      and(
+        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
+        eq(schema.EntityInstance.organizationId, schema.FieldValue.organizationId)
+      )
+    )
     .where(
       and(
         eq(schema.FieldValue.fieldId, fields.part.id),
         eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.relatedEntityId, changedPartIds)
+        inArray(schema.FieldValue.relatedEntityId, changedPartIds),
+        isNull(schema.EntityInstance.archivedAt)
       )
     )
 
@@ -274,15 +333,18 @@ export async function syncCatalogItemPricing(
     }
   }
 
-  // ── Step 3b: each affected item's current cost/markup/price ──
+  // ── Step 3b: each affected item's current cost/markup/price + active flag ──
   const catalogIds = linkRows.map((row) => row.catalogInstanceId)
-  const currentFieldIds = [fields.cost.id, fields.markup?.id, fields.price?.id].filter(
-    (id): id is string => id != null
-  )
+  const currentFieldIds = [
+    fields.cost.id,
+    fields.markup?.id,
+    fields.price?.id,
+    fields.active?.id,
+  ].filter((id): id is string => id != null)
 
   const current = new Map<
     string,
-    { cost: number | null; markup: number | null; price: number | null }
+    { cost: number | null; markup: number | null; price: number | null; active: boolean | null }
   >()
   if (currentFieldIds.length > 0) {
     const rows = await database
@@ -290,6 +352,7 @@ export async function syncCatalogItemPricing(
         entityId: schema.FieldValue.entityId,
         fieldId: schema.FieldValue.fieldId,
         valueNumber: schema.FieldValue.valueNumber,
+        valueBoolean: schema.FieldValue.valueBoolean,
       })
       .from(schema.FieldValue)
       .where(
@@ -300,10 +363,16 @@ export async function syncCatalogItemPricing(
         )
       )
     for (const row of rows) {
-      const entry = current.get(row.entityId) ?? { cost: null, markup: null, price: null }
+      const entry = current.get(row.entityId) ?? {
+        cost: null,
+        markup: null,
+        price: null,
+        active: null,
+      }
       if (row.fieldId === fields.cost.id) entry.cost = row.valueNumber
       else if (fields.markup && row.fieldId === fields.markup.id) entry.markup = row.valueNumber
       else if (fields.price && row.fieldId === fields.price.id) entry.price = row.valueNumber
+      else if (fields.active && row.fieldId === fields.active.id) entry.active = row.valueBoolean
       current.set(row.entityId, entry)
     }
   }
@@ -320,7 +389,19 @@ export async function syncCatalogItemPricing(
     // longer has one, which is the same defect one level down.
     const newCost = partCosts.get(partInstanceId) ?? null
 
-    const existing = current.get(catalogInstanceId) ?? { cost: null, markup: null, price: null }
+    const existing = current.get(catalogInstanceId) ?? {
+      cost: null,
+      markup: null,
+      price: null,
+      active: null,
+    }
+
+    // `catalog_item_active` defaults true and older items may have NO stored FieldValue
+    // row — absence means ACTIVE, so only an explicit `false` skips. A just-reactivated
+    // item may carry a stale cost until the next part-cost change re-syncs it
+    // (acceptable — the drawer shows part cost live).
+    if (existing.active === false) continue
+
     const recordId = toRecordId(catalogDefId, catalogInstanceId) as RecordId
 
     if (existing.cost !== newCost) {
@@ -374,6 +455,13 @@ export const syncCatalogCostOnPartChange: EntityFieldChangeHandler = async (even
   const { organizationId, recordId } = event
   const fields = await resolveCatalogPricingFields(organizationId)
   if (!fields) return
+
+  // Archived or explicitly-inactive items must not receive pricing writes (same guard
+  // as the batch engine's driving query).
+  const { entityInstanceId } = parseRecordId(recordId)
+  if (!(await isCatalogItemSyncable(organizationId, entityInstanceId, fields.active?.id ?? null))) {
+    return
+  }
 
   const partInstanceId = relationshipEntityInstanceId(event.newValue)
   const currentCost = await readCurrentNumber(organizationId, recordId, fields.cost.id)
