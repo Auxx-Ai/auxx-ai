@@ -55,6 +55,14 @@ export interface ToolActionContext {
  * Entity ref kinds for fence-resolvable id fields in tool outputs.
  * Maps to system semantics on EntityDefinition (entityType / standardType).
  * See plans/kopilot/apps/refs.md §3.
+ *
+ * Admission rule: an entity a user thinks about and could open — business
+ * records, not join rows or ledger lines. So no `line_item`, `subpart`,
+ * `stock_movement` or `build`. `order` joins when the native order entity
+ * ships (plans/products/03-order-entity.md) — adding it earlier would let an
+ * app declare a field that silently provisions nothing, since the provisioner
+ * warns-and-skips on a kind no org resolves. `quote` / `work_order` /
+ * `payment` would qualify under the rule but wait for a consumer.
  */
 export type EntityRefKind =
   | 'contact'
@@ -67,6 +75,8 @@ export type EntityRefKind =
   | 'thread'
   | 'invoice'
   | 'catalog_item'
+  | 'part'
+  | 'product'
 
 /**
  * Per-tool configuration. See plans/kopilot/apps/README.md §4.2.
