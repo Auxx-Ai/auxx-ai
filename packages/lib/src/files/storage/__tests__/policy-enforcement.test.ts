@@ -112,7 +112,11 @@ vi.mock('../../adapters/s3-adapter', () => ({
     }
 
     presignUpload = mockPresignUpload
-    startMultipartUpload = mockStartMultipartUpload
+    // The adapter method is `startMultipart`. Until PR 3d `StorageManager` called
+    // `(adapter as any).startMultipartUpload` — a name S3Adapter has never had —
+    // and this double happily grew the wrong name to match, so the test passed
+    // while every real multipart upload threw. The `as any` was what hid it.
+    startMultipart = mockStartMultipartUpload
     putObject = mockPutObject
   },
 }))
@@ -464,7 +468,7 @@ describe('StorageManager – enforcePolicy via generatePresignedUploadUrl', () =
       await expect(manager.generatePresignedUploadUrl(config)).resolves.toBeDefined()
     })
 
-    it('passes visibility and bucket through to the adapter', async () => {
+    it('passes the explicit bucket through to the adapter, and only the bucket', async () => {
       const config = buildConfig({
         visibility: 'PUBLIC',
         bucket: 'my-public-bucket',
@@ -472,12 +476,13 @@ describe('StorageManager – enforcePolicy via generatePresignedUploadUrl', () =
 
       await expect(manager.generatePresignedUploadUrl(config)).resolves.toBeDefined()
 
-      expect(mockPresignUpload).toHaveBeenCalledWith(
-        expect.objectContaining({
-          visibility: 'PUBLIC',
-          bucket: 'my-public-bucket',
-        })
-      )
+      const [params] = mockPresignUpload.mock.calls[0]!
+      expect(params).toEqual(expect.objectContaining({ bucket: 'my-public-bucket' }))
+      // `visibility` is deliberately NOT forwarded since PR 3d. The adapter would
+      // re-derive a bucket from it, which is a second resolution for one object
+      // that can disagree with the first — the shape of #1816/#1817/#1818.
+      // `UploadPreparedConfig.bucket` is required, so there is nothing to guess.
+      expect(params).not.toHaveProperty('visibility')
     })
 
     it('passes orgId and uploader metadata to the adapter', async () => {
@@ -501,7 +506,11 @@ describe('StorageManager – enforcePolicy via generatePresignedUploadUrl', () =
           id: 'loc_123',
           provider: 'S3',
           externalId: 'thumbs/avatar.webp',
-          externalUrl: 'https://test-public-bucket.s3.amazonaws.com/thumbs/avatar.webp',
+          // Rendered by `storage/buckets.ts` since PR 3d, not by
+          // `adapter.buildExternalUrl` — one URL builder for the port, the
+          // adapter and this facade. `configService.get` is a bare `vi.fn()`
+          // here, so `S3_REGION` is undefined and the module default applies.
+          externalUrl: 'https://test-public-bucket.s3.us-west-1.amazonaws.com/thumbs/avatar.webp',
           externalRev: 'etag-123',
           credentialId: null,
           size: BigInt(4),
@@ -525,19 +534,28 @@ describe('StorageManager – enforcePolicy via generatePresignedUploadUrl', () =
         })
       ).resolves.toBeDefined()
 
-      expect(mockPutObject).toHaveBeenCalledWith(
+      // The bucket is resolved ONCE, by the facade, and the same value reaches
+      // the object write, the external URL and the persisted row. `visibility`
+      // no longer travels to the adapter for it to re-derive.
+      const [putParams] = mockPutObject.mock.calls[0]!
+      expect(putParams).toEqual(
         expect.objectContaining({
           key: 'thumbs/avatar.webp',
-          visibility: 'PUBLIC',
+          bucket: 'test-public-bucket',
         })
       )
+      expect(putParams).not.toHaveProperty('visibility')
 
       expect(createStorageLocation).toHaveBeenCalledWith(
         // tx, then ctx — the scope comes from the manager, never from the input.
         expect.anything(),
         expect.objectContaining({ organizationId: 'org123' }),
         expect.objectContaining({
-          externalUrl: 'https://test-public-bucket.s3.amazonaws.com/thumbs/avatar.webp',
+          // Rendered by `storage/buckets.ts` since PR 3d, not by
+          // `adapter.buildExternalUrl` — one URL builder for the port, the
+          // adapter and this facade. `configService.get` is a bare `vi.fn()`
+          // here, so `S3_REGION` is undefined and the module default applies.
+          externalUrl: 'https://test-public-bucket.s3.us-west-1.amazonaws.com/thumbs/avatar.webp',
           // The bucket is now a required top-level field, not something a reader
           // has to dig out of `metadata` — that is the #1816/#1817/#1818 fix.
           bucket: 'test-public-bucket',

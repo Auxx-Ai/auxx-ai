@@ -56,6 +56,7 @@ const EXPIRES = new Date('2026-01-01T01:00:00.000Z')
  */
 const DEFAULTS: { [K in keyof StoragePort]: () => Awaited<ReturnType<StoragePort[K]>> } = {
   presignUpload: () => ({ url: 'https://s3.test/upload', method: 'PUT', expiresAt: EXPIRES }),
+  startMultipart: () => ({ uploadId: 'upload-1', expiresAt: EXPIRES }),
   presignPart: () => ({ url: 'https://s3.test/part', method: 'PUT', expiresAt: EXPIRES }),
   completeMultipart: () => ({ etag: 'etag-complete', size: 1024 }),
   head: () => ({ name: 'file.bin', size: 1024, mimeType: 'application/octet-stream' }),
@@ -95,6 +96,10 @@ export function makeStoragePort(options: MakeStoragePortOptions = {}): FakeStora
     presignUpload: async (p) => {
       record('presignUpload', p)
       return options.impl?.presignUpload?.(p) ?? resultFor('presignUpload')
+    },
+    startMultipart: async (p) => {
+      record('startMultipart', p)
+      return options.impl?.startMultipart?.(p) ?? resultFor('startMultipart')
     },
     presignPart: async (p) => {
       record('presignPart', p)

@@ -3,6 +3,8 @@
 import type { Transaction } from '@auxx/database'
 import type { StorageLocationEntity as StorageLocation } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
+import type { Result } from 'neverthrow'
+import type { AuxxError } from '../../errors'
 import type {
   DownloadRef,
   MultipartUpload,
@@ -22,8 +24,12 @@ import type { FilesCtx } from '../ctx'
 import type { UploadPreparedConfig } from '../upload/init-types'
 import { resolveProviderAuth } from './auth'
 import { bucketForVisibility, buildExternalUrl, type StorageVisibility } from './buckets'
+import { storageErrorCause } from './errors'
 import { getStorageLocation } from './location-queries'
 import { createStorageLocation, deleteStorageLocation } from './locations'
+import { deleteObject, headObject, putObject } from './objects'
+import { createS3StoragePort, type StoragePort } from './ports'
+import { completeMultipart, presignPart, presignUpload, startMultipartUpload } from './presign'
 import { getCachedStorageAdapter, getStorageAdapter, isProviderAvailable } from './providers'
 
 const logger = createScopedLogger('storage-manager')
@@ -54,7 +60,7 @@ export interface StorageContentUploadParams {
   metadata?: Record<string, string>
   credentialId?: string
   organizationId?: string
-  visibility?: 'PUBLIC' | 'PRIVATE' // Route to correct bucket
+  visibility?: StorageVisibility // Route to correct bucket
   bucket?: string // Explicit bucket override
 }
 
@@ -80,77 +86,82 @@ export interface StorageDownloadParams {
 }
 
 /**
- * Enhanced StorageManager - Unified Multi-Provider Storage Orchestrator
+ * The legacy storage facade — kept alive for its remaining call sites, not for
+ * new work.
  *
- * The StorageManager provides a single, consistent interface for managing files across
- * multiple storage providers (S3, Google Drive, Dropbox, etc.). It handles provider
- * abstraction, authentication, error handling, and advanced features like multipart
- * uploads and webhooks.
+ * @deprecated Use the `files/storage/*` functions directly. Deleted in the
+ * Phase-10 consumer sweep (`plans/attachments/10-rollout-checklist.md`).
  *
- * ## Key Features
- * - **Multi-Provider Support**: S3, Google Drive, Dropbox, OneDrive, Box, and URL providers
- * - **Dynamic Adapter Loading**: Lazy-loaded adapters with caching for optimal performance
- * - **Authentication Management**: Seamless credential handling across all providers
- * - **Advanced Upload Features**: Presigned URLs, multipart uploads, progress tracking
- * - **Monitoring & Analytics**: Health checks, usage statistics, webhook processing
- * - **Database Integration**: Full StorageLocation lifecycle management
+ * ## What is left in here, and why
  *
- * ## Architecture
- * ```
- * StorageManager (Orchestration Layer)
- *     ↓
- * Dynamic Adapter Loading & Caching
- *     ↓
- * Provider-Specific Adapters (S3, GDrive, etc.)
- *     ↓
- * External Storage APIs
- * ```
+ * Two kinds of method, and the difference is the whole map of this file:
  *
- * ## Usage Examples
+ * 1. **Delegates.** `generatePresignedUploadUrl`, `startMultipartUploadFromConfig`,
+ *    `generatePartUploadUrl`, `completeMultipartUploadOnly`, `headByKey`,
+ *    `deleteByKey` and the object half of `uploadContent` are now one call into
+ *    `storage/presign.ts` or `storage/objects.ts` through a {@link StoragePort},
+ *    plus {@link StorageManager.run} to turn the `Result` back into a throw. The
+ *    behaviour lives in those modules; this class only adapts the calling
+ *    convention.
  *
- * ### Basic File Upload
- * ```typescript
- * const manager = new StorageManager('org_123')
+ * 2. **Composites this PR did not move.** `getDownloadRef`, `getContent`,
+ *    `streamFileContent` and `deleteFile` are addressed by `storageLocationId`,
+ *    so each one reads a database row *and* touches storage. Splitting them
+ *    needs a `FilesCtx` at every call site (24 of them) and a decision about
+ *    what the row's `metadata` is allowed to carry into the adapter — the row
+ *    can hold `region` and `endpoint`, which the bucket/key-only port does not
+ *    accept. That is Phase 4/5 work, and `assets/download.ts` is the shape it
+ *    takes; doing it here would be a behaviour change smuggled into an
+ *    extraction PR.
  *
- * const result = await manager.uploadFile({
- *   provider: 'S3',
- *   key: 'documents/report.pdf',
- *   content: fileBuffer,
- *   mimeType: 'application/pdf',
- *   credentialId: 'aws_cred_123'
- * })
- * ```
+ * ## One organization, one provider
  *
- * ### Large File Upload with Progress
- * ```typescript
- * const result = await manager.uploadLargeFile(
- *   {
- *     provider: 'S3',
- *     key: 'videos/large-video.mp4',
- *     content: videoStream,
- *     partSize: 50 * 1024 * 1024 // 50MB parts
- *   },
- *   (progress) => console.log(`Progress: ${progress.percentage}%`)
- * )
- * ```
- *
- * ### Provider Health Monitoring
- * ```typescript
- * const healthChecks = await manager.performHealthCheck()
- * healthChecks.forEach(check => {
- *   console.log(`${check.provider}: ${check.healthy ? 'OK' : 'FAILED'}`)
- * })
- * ```
+ * {@link StorageManager.port} is an S3 port. Every method still takes a
+ * `provider`, and {@link StorageManager.validateStorageParams} rejects anything
+ * without an adapter — which today is everything except `'S3'`. When a second
+ * adapter lands, the port must be selected per call rather than per instance.
  *
  * @see {@link StorageAdapter} for provider-specific implementations
  * @see `files/storage/locations.ts` / `location-queries.ts` for `StorageLocation` persistence
- * @since 1.0.0
  */
 export class StorageManager {
   protected readonly organizationId?: string
 
   constructor(organizationId?: string) {
     this.organizationId = organizationId
+  }
+
+  /**
+   * The {@link StoragePort} every delegate runs through.
+   *
+   * Built once per manager. `createS3StoragePort` is cheap — it closes over the
+   * shared, cached adapter from `storage/providers.ts` rather than constructing
+   * one — but building it per call would still allocate a fresh closure set on
+   * the hottest paths in the upload flow.
+   */
+  private cachedPort?: StoragePort
+
+  private get port(): StoragePort {
+    this.cachedPort ??= createS3StoragePort(this.organizationId)
+    return this.cachedPort
+  }
+
+  /**
+   * Turn a `Result`-returning storage function back into the throw the legacy
+   * callers of this class expect.
+   *
+   * `handleStorageError` restores the original adapter error class where there
+   * is one (`storage/errors.ts` hangs it off `cause`), so a caller that used to
+   * catch `StorageFileNotFoundError` still catches `StorageFileNotFoundError`.
+   */
+  private async run<T>(
+    operation: Promise<Result<T, AuxxError>>,
+    name: string,
+    provider: ProviderId
+  ): Promise<T> {
+    const result = await operation
+    if (result.isErr()) this.handleStorageError(result.error, name, provider)
+    return result.value
   }
 
   /**
@@ -208,11 +219,21 @@ export class StorageManager {
   // ============= Core Storage Operations =============
 
   /**
-   * Upload content directly to storage from server
+   * Upload content directly to storage from server, and record it.
    *
-   * This method handles server-side uploads where content is already
-   * available in memory or as a stream. Unlike presigned URLs, this
-   * uploads content directly through the server.
+   * **This is a composite, not an object write.** It puts the bytes *and*
+   * creates the `StorageLocation` row, which is why it stayed on the facade when
+   * PR 3d moved `putObject` out: the object half is `storage/objects.ts`, the
+   * row half is `storage/locations.ts`, and gluing them together needs a
+   * transaction and a `FilesCtx` that its 13 call sites do not have yet. Phase 6
+   * owns that seam; until then this method is the glue.
+   *
+   * The bucket is now resolved **once**, here, and used for all three of the
+   * object write, the external URL and the persisted row. It used to be resolved
+   * three times independently — `S3Adapter.putObject` re-derived it from
+   * `visibility`, `withResolvedS3Bucket` derived it again for the URL, and
+   * `prepareLocationMetadata` a third time for the row — so the object could
+   * land in one bucket while the row claimed another.
    *
    * @param params - Upload parameters including content and metadata
    * @returns Promise resolving to the created StorageLocation record
@@ -228,38 +249,29 @@ export class StorageManager {
    *   content: thumbnailBuffer,
    *   mimeType: 'image/jpeg',
    *   size: thumbnailBuffer.length,
-   *   metadata: { preset: 'medium', originalId: 'file123' }
+   *   visibility: 'PRIVATE',
    * })
    * ```
    */
   async uploadContent(params: StorageContentUploadParams): Promise<StorageLocation> {
-    // Validate parameters
     this.validateStorageParams(params)
 
-    // Get adapter for the provider
-    const adapter = await getStorageAdapter(params.provider)
+    const bucket =
+      params.provider === 'S3'
+        ? await this.resolveS3BucketForLocation({
+            bucket: params.bucket,
+            metadata: params.metadata ?? {},
+            credentialId: params.credentialId,
+            visibility: params.visibility,
+          })
+        : params.bucket
 
-    // Check if adapter supports direct uploads
-    if (!adapter.putObject) {
-      throw new StorageAdapterError(
-        `Provider ${params.provider} does not support direct server uploads`,
-        params.provider,
-        'uploadContent'
-      )
-    }
-
-    // Get authentication if credential ID provided
-    let auth: ProviderAuth | undefined
-    auth = await resolveProviderAuth({
-      provider: params.provider,
-      organizationId: this.organizationId,
-      credentialId: params.credentialId,
-    })
-
-    try {
-      // Upload content using adapter
-      const result = await adapter.putObject({
+    const result = await this.run(
+      putObject(this.port, {
+        provider: params.provider,
+        bucket: bucket ?? '',
         key: params.key,
+        credentialId: params.credentialId,
         content: params.content,
         mimeType: params.mimeType,
         size: params.size,
@@ -267,27 +279,21 @@ export class StorageManager {
           ...params.metadata,
           organizationId: params.organizationId! || this.organizationId!,
         },
-        visibility: params.visibility, // Route to correct bucket
-        bucket: params.bucket, // Explicit bucket override
-        auth,
+      }),
+      'uploadContent',
+      params.provider
+    )
+
+    try {
+      // Synchronous, and off the same bucket the bytes just went to.
+      const externalUrl = buildExternalUrl({
+        provider: params.provider,
+        key: params.key,
+        bucket,
+        visibility: params.visibility,
       })
 
-      // Build external URL using adapter if it supports it
-      const externalUrlAuth =
-        params.provider === 'S3'
-          ? this.withResolvedS3Bucket({
-              auth,
-              bucket: params.bucket,
-              visibility: params.visibility,
-            })
-          : auth
-
-      const externalUrl = adapter.buildExternalUrl
-        ? adapter.buildExternalUrl(params.key, externalUrlAuth)
-        : params.key
-
-      // Create storage location record
-      const storageLocation = await this.createStorageLocation({
+      return await this.createStorageLocation({
         provider: params.provider,
         externalId: params.key,
         externalUrl,
@@ -300,11 +306,9 @@ export class StorageManager {
           etag: result.etag,
           versionId: result.versionId,
         },
-        bucket: params.bucket,
+        bucket,
         visibility: params.visibility,
       })
-
-      return storageLocation
     } catch (error) {
       this.handleStorageError(error, 'uploadContent', params.provider)
     }
@@ -323,18 +327,6 @@ export class StorageManager {
    *
    * @throws {StorageFileNotFoundError} When storage location doesn't exist
    * @throws {StorageAdapterError} When provider doesn't support download URLs
-   *
-   * @example
-   * ```typescript
-   * // Get a 1-hour download URL
-   * const downloadRef = await manager.getDownloadRef({
-   *   locationId: 'loc_abc123',
-   *   ttlSec: 3600
-   * })
-   *
-   * // Use URL for client download
-   * window.open(downloadUrl)
-   * ```
    *
    * @see {@link getContent} for direct content retrieval
    * @see {@link streamFileContent} for streaming access
@@ -413,14 +405,6 @@ export class StorageManager {
    * @throws {StorageFileNotFoundError} When storage location doesn't exist
    * @throws {StorageAdapterError} When provider doesn't support content retrieval
    *
-   * @example
-   * ```typescript
-   * // Download file content for processing
-   * const content = await manager.getContent('loc_abc123')
-   * const text = content.toString('utf-8')
-   * console.log(`File contains: ${text.substring(0, 100)}...`)
-   * ```
-   *
    * @see {@link streamFileContent} for streaming large files
    * @see {@link getDownloadRef} for client-side downloads
    */
@@ -484,7 +468,7 @@ export class StorageManager {
         // For now, return full stream - range support would require
         // adapter-specific implementation for HTTP Range headers
         if (range) {
-          console.warn('Range support not yet implemented - returning full stream')
+          logger.warn('Range support not yet implemented - returning full stream', { locationId })
         }
 
         return stream
@@ -587,14 +571,6 @@ export class StorageManager {
    * @param opts.bucket - The bucket the object lives in. Wins over `visibility`.
    * @param opts.visibility - Picks a configured bucket when `bucket` is absent.
    * @param opts.region - Overrides `S3_REGION` for the virtual-hosted-style URL.
-   *
-   * @example
-   * ```typescript
-   * const externalUrl = storageManager.buildExternalUrl('S3', 'org-123/file.pdf', {
-   *   bucket: session.bucket,
-   *   visibility: session.visibility,
-   * })
-   * ```
    */
   buildExternalUrl(
     provider: ProviderId,
@@ -643,7 +619,7 @@ export class StorageManager {
       mimeType?: string
       metadata?: Record<string, any>
       bucket?: string
-      visibility?: 'PUBLIC' | 'PRIVATE'
+      visibility?: StorageVisibility
     },
     opts?: { tx?: any }
   ): Promise<StorageLocation> {
@@ -657,7 +633,7 @@ export class StorageManager {
         )
       }
 
-      const metadata = (await this.prepareLocationMetadata(params)) ?? {}
+      const metadata = await this.prepareLocationMetadata(params)
       // `prepareLocationMetadata` is where the bucket gets resolved, and
       // `CreateStorageLocationInput.bucket` is required, so it has to be read
       // back out rather than left buried in the blob. An unresolved bucket
@@ -713,11 +689,9 @@ export class StorageManager {
     credentialId?: string
     metadata?: Record<string, any>
     bucket?: string
-    visibility?: 'PUBLIC' | 'PRIVATE'
-  }): Promise<Record<string, any> | undefined> {
-    const metadata: Record<string, any> = {
-      ...(params.metadata ?? {}),
-    }
+    visibility?: StorageVisibility
+  }): Promise<Record<string, any>> {
+    const metadata: Record<string, any> = { ...(params.metadata ?? {}) }
 
     if (params.provider === 'S3') {
       const bucket = await this.resolveS3BucketForLocation({
@@ -741,7 +715,7 @@ export class StorageManager {
       }
     }
 
-    return Object.keys(metadata).length > 0 ? metadata : undefined
+    return metadata
   }
 
   /**
@@ -772,13 +746,56 @@ export class StorageManager {
   }
 
   /**
+   * The bucket for a key-addressed call whose caller supplied none.
+   *
+   * The single legacy shim behind `headByKey`, `deleteByKey`,
+   * `generatePartUploadUrl` and `completeMultipartUploadOnly`. Those four have
+   * an optional `bucket` that the functional layer does not: every parameter
+   * type in `storage/ports.ts` requires one, on the reasoning in that file's
+   * header. Rather than reintroduce the optional downstream, the facade resolves
+   * it here — loudly, so the warn names the call site that should be passing the
+   * upload session's `bucket`.
+   *
+   * Auth failures are swallowed on purpose: this is only computing a *fallback*,
+   * and the port resolves auth again for the real call, where the same failure
+   * surfaces properly.
+   */
+  private async legacyFallbackBucket(
+    params: { provider: ProviderId; key: string; credentialId?: string },
+    operation: string
+  ): Promise<string | undefined> {
+    const adapter = await getStorageAdapter(params.provider)
+
+    let auth: ProviderAuth | undefined
+    try {
+      auth = await resolveProviderAuth({
+        provider: params.provider,
+        organizationId: this.organizationId,
+        credentialId: params.credentialId,
+      })
+    } catch (error) {
+      logger.warn('Failed to resolve provider auth while picking a fallback bucket', {
+        provider: params.provider,
+        operation,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+
+    return this.resolveFallbackBucket(adapter, auth, {
+      provider: params.provider,
+      key: params.key,
+      operation,
+    })
+  }
+
+  /**
    * Determine S3 bucket for storage metadata
    */
   private async resolveS3BucketForLocation(params: {
     bucket?: string
     metadata: Record<string, any>
     credentialId?: string
-    visibility?: 'PUBLIC' | 'PRIVATE'
+    visibility?: StorageVisibility
   }): Promise<string | undefined> {
     let bucket =
       params.bucket ||
@@ -813,7 +830,7 @@ export class StorageManager {
       }
     }
 
-    // Platform bucket resolution now happens via getProviderAuth → adapter.resolvePlatformAuth(),
+    // Platform bucket resolution now happens via resolveProviderAuth → adapter.resolvePlatformAuth(),
     // which returns auth.bucket from configService. No separate configService fallback needed.
 
     return bucket || undefined
@@ -824,7 +841,7 @@ export class StorageManager {
    */
   private resolveS3BucketFromAuth(
     auth?: ProviderAuth,
-    visibility?: 'PUBLIC' | 'PRIVATE'
+    visibility?: StorageVisibility
   ): string | undefined {
     if (!auth) {
       return undefined
@@ -856,193 +873,38 @@ export class StorageManager {
     )
   }
 
-  /**
-   * Ensure S3 URL generation uses the bucket that matches the requested visibility.
-   */
-  private withResolvedS3Bucket(params: {
-    auth?: ProviderAuth
-    bucket?: string
-    visibility?: 'PUBLIC' | 'PRIVATE'
-  }): ProviderAuth | undefined {
-    let bucket = params.bucket
-
-    if (!bucket && params.visibility) {
-      bucket = bucketForVisibility(params.visibility) || undefined
-    }
-
-    if (!bucket) {
-      bucket = this.resolveS3BucketFromAuth(params.auth, params.visibility)
-    }
-
-    if (!bucket) {
-      return params.auth
-    }
-
-    return {
-      ...(params.auth ?? {}),
-      bucket,
-    }
-  }
-
-  // ============= File Operations =============
-
   // ============= Presigned URLs =============
 
   /**
-   * Centralized policy enforcement for upload operations
-   */
-  private enforcePolicy(config: UploadPreparedConfig) {
-    if (!config.storageKey.startsWith(config.policy.keyPrefix)) {
-      throw new StorageAdapterError(
-        `Key must start with '${config.policy.keyPrefix}'`,
-        config.provider,
-        'presign'
-      )
-    }
-
-    if (config.ttlSec > config.policy.maxTtl) {
-      throw new StorageAdapterError(
-        `TTL exceeds ${config.policy.maxTtl}s`,
-        config.provider,
-        'presign'
-      )
-    }
-
-    const [min, max] = config.policy.contentLengthRange
-    if (config.expectedSize < min || config.expectedSize > max) {
-      throw new StorageAdapterError(
-        `Size ${config.expectedSize} outside [${min}, ${max}]`,
-        config.provider,
-        'presign'
-      )
-    }
-
-    // MIME: support exact and wildcard families (image/*)
-    const allowed = config.policy.allowedMimeTypes.some((allowed) => {
-      if (allowed === '*/*') return true
-      if (allowed.endsWith('/*')) return config.mimeType.startsWith(allowed.slice(0, -2))
-      return config.mimeType === allowed
-    })
-
-    if (!allowed) {
-      throw new StorageAdapterError(
-        `MIME '${config.mimeType}' not allowed`,
-        config.provider,
-        'presign'
-      )
-    }
-  }
-
-  /**
-   * Generate presigned upload URL with policy enforcement (New Unified API)
+   * Generate a presigned upload URL, with the upload policy enforced.
    *
-   * This method enforces upload policies defined by processors and provides
-   * centralized security validation. This is the new API that replaces the
-   * basic generatePresignedUploadUrl for all upload flows.
+   * Delegates to `storage/presign.ts`, which is where the policy check lives
+   * since PR 3d — {@link StoragePort.presignUpload} signs whatever it is handed,
+   * so this is the only door that must be used.
    */
   async generatePresignedUploadUrl(
     config: UploadPreparedConfig & { metadata?: Record<string, string> }
   ): Promise<PresignedUpload> {
-    // Validate storage parameters
     this.validateStorageParams({ provider: config.provider })
-
-    this.enforcePolicy(config) // ✅ Add policy enforcement
-
-    // Get adapter for the provider
-    const adapter = await getStorageAdapter(config.provider)
-
-    // Check if adapter supports presigned uploads
-    const capabilities = adapter.getCapabilities()
-    if (!capabilities.presignUpload) {
-      throw new StorageAdapterError(
-        `Provider ${config.provider} does not support presigned uploads`,
-        config.provider,
-        'generatePresignedUploadUrl'
-      )
-    }
-
-    // Get authentication if credential ID provided
-    let auth: ProviderAuth | undefined
-    auth = await resolveProviderAuth({
-      provider: config.provider,
-      organizationId: this.organizationId,
-      credentialId: config.credentialId,
-    })
-
-    try {
-      // Use adapter to generate presigned upload URL
-      return await (adapter as any).presignUpload({
-        key: config.storageKey,
-        mimeType: config.mimeType,
-        size: config.expectedSize,
-        ttlSec: config.ttlSec,
-        metadata: {
-          orgId: config.organizationId,
-          uploader: config.userId,
-          entityType: config.entityType,
-          entityId: config.entityId ?? '',
-          ...config.metadata,
-        },
-        visibility: config.visibility, // Route to correct bucket
-        bucket: config.bucket, // Explicit bucket override
-        auth,
-      })
-    } catch (error) {
-      this.handleStorageError(error, 'generatePresignedUploadUrl', config.provider)
-    }
+    return this.run(presignUpload(this.port, config), 'generatePresignedUploadUrl', config.provider)
   }
 
   /**
-   * Start multipart upload with policy enforcement
+   * Start a multipart upload, with the upload policy enforced.
+   *
+   * The policy is *advisory* from here on — nothing constrains the total size or
+   * the real content type of a multipart upload until the `headByKey` that
+   * follows completion. `storage/presign.ts` documents the asymmetry in full.
    */
   async startMultipartUploadFromConfig(
     config: UploadPreparedConfig & { metadata?: Record<string, string> }
   ): Promise<MultipartUpload> {
-    // Validate storage parameters
     this.validateStorageParams({ provider: config.provider })
-
-    this.enforcePolicy(config) // ✅ Add policy enforcement
-
-    // Get adapter for the provider
-    const adapter = await getStorageAdapter(config.provider)
-
-    // Check if adapter supports multipart uploads
-    const capabilities = adapter.getCapabilities()
-    if (!capabilities.multipart) {
-      throw new StorageAdapterError(
-        `Provider ${config.provider} does not support multipart uploads`,
-        config.provider,
-        'startMultipartUploadFromConfig'
-      )
-    }
-
-    // Get authentication if credential ID provided
-    let auth: ProviderAuth | undefined
-    auth = await resolveProviderAuth({
-      provider: config.provider,
-      organizationId: this.organizationId,
-      credentialId: config.credentialId,
-    })
-
-    try {
-      // Use adapter to start multipart upload
-      return await (adapter as any).startMultipartUpload({
-        key: config.storageKey,
-        mimeType: config.mimeType,
-        metadata: {
-          orgId: config.organizationId,
-          uploader: config.userId,
-          entityType: config.entityType,
-          entityId: config.entityId ?? '',
-          ...config.metadata,
-        },
-        visibility: config.visibility, // Route to correct bucket
-        bucket: config.bucket, // Explicit bucket override
-        auth,
-      })
-    } catch (error) {
-      this.handleStorageError(error, 'startMultipartUploadFromConfig', config.provider)
-    }
+    return this.run(
+      startMultipartUpload(this.port, config),
+      'startMultipartUploadFromConfig',
+      config.provider
+    )
   }
 
   // ============= S3-Only Operations (No Persistence) =============
@@ -1053,7 +915,8 @@ export class StorageManager {
    *
    * @param params.bucket - The bucket the multipart upload was initiated in
    *   (the upload session's `bucket`). Completing against a different bucket
-   *   fails with `NoSuchUpload`.
+   *   fails with `NoSuchUpload`. Omitting it falls back — loudly — to the
+   *   provider default, which is almost always wrong for a PUBLIC upload.
    */
   async completeMultipartUploadOnly(params: {
     provider: ProviderId
@@ -1063,48 +926,22 @@ export class StorageManager {
     credentialId?: string
     bucket?: string
   }): Promise<{ etag: string; size?: number }> {
-    // Validate parameters
     this.validateStorageParams(params)
-
-    // Get adapter for the provider
-    const adapter = await getStorageAdapter(params.provider)
-
-    // Get authentication if credential ID provided
-    let auth: ProviderAuth | undefined
-    auth = await resolveProviderAuth({
-      provider: params.provider,
-      organizationId: this.organizationId,
-      credentialId: params.credentialId,
-    })
-
     const bucket =
-      params.bucket ??
-      this.resolveFallbackBucket(adapter, auth, {
-        provider: params.provider,
-        key: params.key,
-        operation: 'completeMultipartUploadOnly',
-      })
+      params.bucket ?? (await this.legacyFallbackBucket(params, 'completeMultipartUploadOnly'))
 
-    try {
-      // Use adapter to complete multipart upload without creating DB record
-      if ((adapter as any).completeMultipart) {
-        return await (adapter as any).completeMultipart({
-          key: params.key,
-          uploadId: params.uploadId,
-          parts: params.parts,
-          bucket,
-          auth,
-        })
-      } else {
-        throw new StorageAdapterError(
-          `Provider ${params.provider} does not support multipart upload completion`,
-          params.provider,
-          'completeMultipartUploadOnly'
-        )
-      }
-    } catch (error) {
-      this.handleStorageError(error, 'completeMultipartUploadOnly', params.provider)
-    }
+    return this.run(
+      completeMultipart(this.port, {
+        provider: params.provider,
+        bucket: bucket ?? '',
+        key: params.key,
+        credentialId: params.credentialId,
+        uploadId: params.uploadId,
+        parts: params.parts,
+      }),
+      'completeMultipartUploadOnly',
+      params.provider
+    )
   }
 
   /**
@@ -1120,68 +957,25 @@ export class StorageManager {
     credentialId?: string
     bucket?: string
   }): Promise<void> {
-    // Validate parameters
     this.validateStorageParams(params)
+    const bucket = params.bucket ?? (await this.legacyFallbackBucket(params, 'deleteByKey'))
 
-    // Get adapter for the provider
-    const adapter = await getStorageAdapter(params.provider)
-
-    // Get authentication if credential ID provided
-    let auth: ProviderAuth | undefined
-    try {
-      auth = await resolveProviderAuth({
+    await this.run(
+      deleteObject(this.port, {
         provider: params.provider,
-        organizationId: this.organizationId,
-        credentialId: params.credentialId,
-      })
-    } catch (error) {
-      // Log but don't fail - some adapters might work without explicit credentials
-      logger.warn(
-        'Failed to get provider authentication for deleteByKey, continuing without auth',
-        {
-          provider: params.provider,
-          error: error instanceof Error ? error.message : String(error),
-        }
-      )
-    }
-
-    const bucket =
-      params.bucket ??
-      this.resolveFallbackBucket(adapter, auth, {
-        provider: params.provider,
+        bucket: bucket ?? '',
         key: params.key,
-        operation: 'deleteByKey',
-      })
-
-    try {
-      // Build location reference for adapter. The bucket travels on metadata —
-      // adapters no longer resolve a default, so a missing bucket throws rather
-      // than silently deleting nothing.
-      const locationRef: StorageLocationRef = {
-        provider: params.provider,
-        externalId: params.key,
         credentialId: params.credentialId,
-        metadata: bucket ? { bucket, key: params.key } : undefined,
-      }
-
-      if (adapter.deleteFile) {
-        await adapter.deleteFile(locationRef, auth)
-      } else {
-        throw new StorageAdapterError(
-          `Provider ${params.provider} does not support file deletion`,
-          params.provider,
-          'deleteByKey'
-        )
-      }
-    } catch (error) {
-      this.handleStorageError(error, 'deleteByKey', params.provider)
-    }
+      }),
+      'deleteByKey',
+      params.provider
+    )
   }
 
-  // ============= Multipart Uploads (Legacy) =============
+  // ============= Multipart Uploads =============
 
   /**
-   * Generate presigned URL for upload part
+   * Generate presigned URL for uploading one part.
    *
    * @param params.bucket - The bucket the multipart upload was initiated in
    *   (the upload session's `bucket`). Presigning a part against a different
@@ -1196,66 +990,24 @@ export class StorageManager {
     credentialId?: string
     bucket?: string
   }): Promise<PresignedUpload> {
-    // Validate parameters
     this.validateStorageParams(params)
-
-    // Get adapter for the provider
-    const adapter = await getStorageAdapter(params.provider)
-
-    // Check if adapter supports multipart uploads
-    const capabilities = adapter.getCapabilities()
-    if (!capabilities.presignUpload) {
-      throw new StorageAdapterError(
-        `Provider ${params.provider} does not support part upload URLs`,
-        params.provider,
-        'generatePartUploadUrl'
-      )
-    }
-
-    // Get authentication if credential ID provided
-    let auth: ProviderAuth | undefined
-    auth = await resolveProviderAuth({
-      provider: params.provider,
-      organizationId: this.organizationId,
-      credentialId: params.credentialId,
-    })
-
     const bucket =
-      params.bucket ??
-      this.resolveFallbackBucket(adapter, auth, {
+      params.bucket ?? (await this.legacyFallbackBucket(params, 'generatePartUploadUrl'))
+
+    return this.run(
+      presignPart(this.port, {
         provider: params.provider,
+        bucket: bucket ?? '',
         key: params.key,
-        operation: 'generatePartUploadUrl',
-      })
-
-    try {
-      // Use adapter to generate part upload URL
-      if ((adapter as any).presignPart) {
-        return await (adapter as any).presignPart({
-          key: params.key,
-          uploadId: params.uploadId,
-          partNumber: params.partNumber,
-          size: params.size,
-          bucket,
-          auth,
-        })
-      } else {
-        throw new StorageAdapterError(
-          `Provider ${params.provider} does not support part upload URLs`,
-          params.provider,
-          'generatePartUploadUrl'
-        )
-      }
-    } catch (error) {
-      this.handleStorageError(error, 'generatePartUploadUrl', params.provider)
-    }
+        credentialId: params.credentialId,
+        uploadId: params.uploadId,
+        partNumber: params.partNumber,
+        size: params.size,
+      }),
+      'generatePartUploadUrl',
+      params.provider
+    )
   }
-
-  // ============= Provider Operations =============
-
-  // ============= Webhook Processing =============
-
-  // ============= Monitoring & Health =============
 
   // ============= Utility Methods =============
 
@@ -1340,33 +1092,17 @@ export class StorageManager {
   /**
    * Get file metadata by provider key without downloading (HEAD request)
    *
-   * Use this method for direct storage verification when you have provider/key
-   * but no storage location record. For files with existing location records,
-   * use getFileMetadata() instead for full metadata.
+   * Use this when you have provider/key but no `StorageLocation` row — upload
+   * verification, integrity checking. It is also the **only** real size and
+   * content-type check a multipart upload ever gets: see `storage/presign.ts`.
    *
-   * This is essential for upload verification and integrity checking before
-   * creating storage location records.
-   *
-   * @param params - Parameters for the head request
-   *   bucket (optional) provides an explicit S3 bucket, bypassing environment resolution
+   * @param params.bucket - The bucket the object lives in. Omitting it falls
+   *   back — loudly — to the provider default.
    * @returns Promise resolving to basic file metadata (size, mimeType, etagOrRev)
    *
    * @throws {StorageFileNotFoundError} When file doesn't exist
    * @throws {StorageAuthError} When authentication is invalid
    * @throws {StorageAdapterError} When operation fails
-   *
-   * @example
-   * ```typescript
-   * const metadata = await manager.headByKey({
-   *   provider: 'S3',
-   *   key: 'org-123/file.pdf',
-   *   credentialId: 's3_cred_id'
-   * })
-   *
-   * console.log(`File size: ${metadata.size} bytes`)
-   * console.log(`MIME type: ${metadata.mimeType}`)
-   * console.log(`ETag: ${metadata.etagOrRev}`)
-   * ```
    */
   async headByKey(params: {
     provider: ProviderId
@@ -1374,67 +1110,24 @@ export class StorageManager {
     credentialId?: string
     bucket?: string
   }): Promise<{ size: number; mimeType: string; etagOrRev: string }> {
-    // Validate parameters
     this.validateStorageParams(params)
+    const bucket = params.bucket ?? (await this.legacyFallbackBucket(params, 'headByKey'))
 
-    // Get adapter for the provider
-    const adapter = await getStorageAdapter(params.provider)
-
-    // Always try to get authentication (credential manager handles system credential fallback)
-    let auth: ProviderAuth | undefined
-    try {
-      auth = await resolveProviderAuth({
+    const metadata = await this.run(
+      headObject(this.port, {
         provider: params.provider,
-        organizationId: this.organizationId,
+        bucket: bucket ?? '',
+        key: params.key,
         credentialId: params.credentialId,
-      })
-    } catch (error) {
-      // Log but don't fail - adapter might work without explicit credentials
-      logger.warn('Failed to get provider authentication for headByKey, continuing without auth', {
-        provider: params.provider,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
+      }),
+      'headByKey',
+      params.provider
+    )
 
-    try {
-      // Use adapter's getMeta method (equivalent to HEAD operation)
-      if ((adapter as any).getMeta) {
-        // ✅ CRITICAL FIX: Construct StorageLocationRef with the key as externalId
-        // The adapter (especially S3) will handle bucket resolution internally
-        // Never try to parse bucket from the key - always use configured bucket
-        const locationRef = {
-          provider: params.provider,
-          externalId: params.key, // This is the storage key, NOT bucket/key format
-          credentialId: params.credentialId,
-          metadata: params.bucket
-            ? {
-                bucket: params.bucket,
-                key: params.key,
-              }
-            : undefined,
-        }
-
-        const metadata = await (adapter as any).getMeta(locationRef, auth)
-
-        return {
-          size: metadata.size || 0,
-          mimeType: metadata.mimeType || 'application/octet-stream',
-          etagOrRev:
-            metadata.etagOrRev ||
-            metadata.etag ||
-            metadata.revision ||
-            metadata.lastModified?.toISOString() ||
-            '',
-        }
-      } else {
-        throw new StorageAdapterError(
-          `Provider ${params.provider} does not support metadata retrieval`,
-          params.provider,
-          'headByKey'
-        )
-      }
-    } catch (error) {
-      this.handleStorageError(error, 'headByKey', params.provider)
+    return {
+      size: metadata.size || 0,
+      mimeType: metadata.mimeType || 'application/octet-stream',
+      etagOrRev: metadata.etagOrRev || metadata.updatedAt?.toISOString() || '',
     }
   }
 
@@ -1445,6 +1138,12 @@ export class StorageManager {
    * error handling across all storage operations. Preserves existing storage
    * errors and wraps unknown errors in StorageAdapterError.
    *
+   * The `cause` unwrap is what keeps this facade's throw shape unchanged now
+   * that the delegates return `Result<T, AuxxError>`: `storage/errors.ts` maps
+   * an adapter error onto an `AuxxError` subclass and hangs the original off
+   * `cause`, so a caller that used to catch `StorageFileNotFoundError` still
+   * does.
+   *
    * @param error - The original error that occurred
    * @param operation - The operation that was being performed
    * @param provider - The provider where the error occurred
@@ -1453,6 +1152,10 @@ export class StorageManager {
    * @internal
    */
   private handleStorageError(error: any, operation: string, provider: ProviderId): never {
+    // An adapter error that `storageGuard` mapped on its way out. Restore it.
+    const adapterError = storageErrorCause(error)
+    if (adapterError) throw adapterError
+
     // If it's already a storage error, re-throw it
     if (
       error instanceof StorageAdapterError ||
@@ -1471,9 +1174,6 @@ export class StorageManager {
     )
   }
 }
-
-// Export singleton instance (with no specific organization)
-// export const storageManager = new StorageManager()
 
 // Factory function to create service instances for specific organizations
 export const createStorageManager = (organizationId?: string) => new StorageManager(organizationId)
