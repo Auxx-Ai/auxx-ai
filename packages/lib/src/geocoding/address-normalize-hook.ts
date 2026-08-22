@@ -23,11 +23,23 @@ import { createFieldValueContext } from '../field-values/field-value-helpers'
 import { buildPublishEntry, setValueWithBuiltIn } from '../field-values/field-value-mutations'
 import { getValue } from '../field-values/field-value-queries'
 import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
+import { quietSession } from '../resources/crud/write-origin'
 import { parseRecordId, toRecordId } from '../resources/resource-id'
 import { geocodeStructured } from './geocoder'
 import type { GeocodeStructuredResult } from './types'
 
 const logger = createScopedLogger('geocoding')
+
+/**
+ * C4 (plan 04 §3): the normalized address is written back onto the same field
+ * that triggered this hook, so the doors stay shut for two reasons — re-entrancy
+ * (this one WOULD recurse, unlike the phone-geo hook) and the fact that a
+ * normalization is not a user edit. The hook publishes its own realtime frame
+ * afterwards.
+ */
+const QUIET_NORMALIZED_ADDRESS = quietSession(
+  'a normalized address is not a user edit, and writing back onto the triggering field would re-enter this hook — this hook publishes its own realtime frame instead'
+)
 
 /** Struct's locality confidence threshold for the `'single'` merge mode (decision #11). */
 const RELEVANCE_THRESHOLD = 0.8
@@ -154,7 +166,7 @@ export const normalizeAddressOnChange: EntityFieldChangeHandler = async (event) 
 
   // Idempotence/recursion guard: skip when this write already carries a stamped geocode AND its
   // address components are unchanged from the pre-write value — a no-op resave (or, defensively,
-  // this hook's own write-back re-firing, though `publishEvents: false` on that write already
+  // this hook's own write-back re-firing, though `QUIET_NORMALIZED_ADDRESS` on that write already
   // prevents that structurally). Compares directly against `event.oldValue`/`newValue`, already
   // on the event — no extra struct key/storage needed.
   if (hasStampedGeocode(newStruct)) {
@@ -180,7 +192,7 @@ export const normalizeAddressOnChange: EntityFieldChangeHandler = async (event) 
 
 /**
  * The normalize core: geocode the struct, merge per the `_source` policy, quietly write the
- * result back (stale-write guarded, `publishEvents: false`, hand-rolled realtime frame), and
+ * result back (stale-write guarded, declared quiet, hand-rolled realtime frame), and
  * notify normalized-address listeners. The inline hook fire-and-forgets this; the finalize
  * integrity passes (`events/handlers/finalize-integrity-passes.ts`) await it under bounded
  * concurrency — there is no geocode job, so the batch pass IS the batching (plan events/03
@@ -266,7 +278,7 @@ function mergeAddress(
 }
 
 /**
- * Write the normalized struct back QUIETLY: `setValueWithBuiltIn` with `publishEvents: false`
+ * Write the normalized struct back QUIETLY: `setValueWithBuiltIn` under `QUIET_NORMALIZED_ADDRESS`
  * skips the field-change post-hook chain (so this can never re-fire itself), field triggers, and
  * the inline realtime publish — no timeline entry, no hook re-fire, no event storm. A skip-events
  * write does not bump `EntityInstance.updatedAt`; acceptable here (normalization is not a user
@@ -294,12 +306,15 @@ async function writeBack(
   )
   if (!current || componentHash(current) !== componentHash(original)) return false
 
-  const result = await setValueWithBuiltIn(ctx, {
-    recordId: event.recordId,
-    fieldId: event.field.id,
-    value: merged,
-    publishEvents: false,
-  })
+  // C4 (plan 04 §3) — see `QUIET_NORMALIZED_ADDRESS` for the reason.
+  const result = await setValueWithBuiltIn(
+    { ...ctx, session: QUIET_NORMALIZED_ADDRESS },
+    {
+      recordId: event.recordId,
+      fieldId: event.field.id,
+      value: merged,
+    }
+  )
 
   if (result.values.length === 0) return false
 

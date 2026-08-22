@@ -135,3 +135,61 @@ export function sessionLane(session: WriteSession): 'inline' | 'silent' | 'buffe
       return 'silent'
   }
 }
+
+/**
+ * True when a session DECLARES its silence — `quiet` (C4/C5) or `absorbed`
+ * (C3), the two modes of plan 04 §3 that exist to carry a reason rather than
+ * new behavior.
+ *
+ * This is deliberately narrower than `sessionLane(...) === 'silent'`: a sync or
+ * seed ORIGIN is also silent, but it has never gated the field-value layer and
+ * turning that on here would be a behavior change across every sync write. The
+ * two declared modes are new in plan 04, so nothing sets them yet and honoring
+ * them is inert until a leaf opts in (plan 04 Phase B).
+ */
+export function isDeclaredSilent(session?: WriteSession): boolean {
+  const kind = session?.mode?.kind
+  return kind === 'quiet' || kind === 'absorbed'
+}
+
+/**
+ * Declare a write QUIET (plan 04 §3 C4/C5): its doors stay shut on purpose and
+ * `reason` is the decision, in prose, at the site that made it.
+ *
+ * Replaces a bare `publishEvents: false` plus a comment. Same lane, same
+ * suppression — the difference is that the intent is typed, greppable, and
+ * checkable by the door-conformance harness instead of living in a comment
+ * nobody can enforce.
+ *
+ * @param reason Why this write is deliberately silent. Required, non-empty.
+ * @param base The session to inherit origin and depth from, when there is one.
+ */
+export function quietSession(reason: string, base?: WriteSession): WriteSession {
+  if (!reason.trim()) throw new Error('quietSession requires a non-empty reason')
+  return {
+    origin: base?.origin ?? { kind: 'automation', actor: 'system' },
+    depth: base?.depth ?? 0,
+    mode: { kind: 'quiet', reason },
+  }
+}
+
+/**
+ * Declare a write ABSORBED (plan 04 §3 C3): its doors stay shut at the leaf
+ * because an aggregator one frame up announces the whole operation, and `by`
+ * names that aggregator.
+ *
+ * Naming it is the point. B-16 — merge suppressing every door while claiming an
+ * aggregator that does not exist — is exactly the defect a named announcer makes
+ * checkable.
+ *
+ * @param by The aggregator that announces on this write's behalf. Non-empty.
+ * @param base The session to inherit origin and depth from, when there is one.
+ */
+export function absorbedSession(by: string, base?: WriteSession): WriteSession {
+  if (!by.trim()) throw new Error('absorbedSession requires a named aggregator')
+  return {
+    origin: base?.origin ?? { kind: 'automation', actor: 'system' },
+    depth: base?.depth ?? 0,
+    mode: { kind: 'absorbed', by },
+  }
+}

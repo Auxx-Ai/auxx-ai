@@ -2,7 +2,7 @@
 //
 // Visit → field mirror (01 §3, 07 §B.3) — the `meeting-entity-service.ts` recipe:
 // `getCachedCustomFields` (via `bySystemAttributes`) keyed by systemAttribute →
-// `FieldValueService.setValuesForEntity` with `publishEvents: false`. The dispatch service
+// `FieldValueService.setValuesForEntity` under `QUIET_VISIT_MIRROR`. The dispatch service
 // is the only writer of visits; after every mutation it mirrors onto the work order record
 // so table views/filters/dashboards/record rules/Kopilot keep working on plain fields.
 
@@ -13,6 +13,21 @@ import { toRecordId } from '@auxx/types/resource'
 import { and, asc, eq, gte, isNotNull, ne } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { FieldValueService } from '../field-values/field-value-service'
+import { quietSession } from '../resources/crud/write-origin'
+
+/**
+ * C5 (plan 04 §3): a system mirror of read-only fields onto the work order.
+ * The TIMELINE half of this is settled and correct — this is not a user edit.
+ * The REALTIME half is not: B-19 / O-4 record that the dispatch lane publishes
+ * `dispatch:visit-changed` on the org presence room, which every visit surface
+ * consumes but no work-order grid or drawer does, so a grid showing the mirrored
+ * columns never hears. O-4 decided this SHOULD publish a record-lane frame;
+ * that is plan 04 Phase E, not Phase B, and doing it turns this site from C5
+ * into C4.
+ */
+const QUIET_VISIT_MIRROR = quietSession(
+  'system mirror of read-only visit fields onto the work order — not a user edit, so no timeline entry. The missing record-lane realtime frame is B-19, decided in O-4 and pending Phase E'
+)
 
 type WorkOrderVisitRow = typeof schema.WorkOrderVisit.$inferSelect
 
@@ -67,7 +82,7 @@ async function resolveMirrorSourceVisit(
  * `startTime → work_order_scheduled_start`, `endTime → work_order_scheduled_end`,
  * `assigneeWorkerId → work_order_assignee` as a `worker:{workerId}` actor id — uniformly for
  * both individuals and teams (45-teams.md §1.E/§1.H, §5.6); `useActor` resolves an individual to
- * its user's identity/color, a team to its name + member avatar stack. `publishEvents: false` —
+ * its user's identity/color, a team to its name + member avatar stack. Declared quiet —
  * this is a system mirror of read-only fields (`work-order-fields.ts` marks them
  * `creatable:false/updatable:false`), not a user edit worth a timeline entry.
  */
@@ -85,7 +100,9 @@ export async function mirrorVisitOntoWorkOrder(
       'work_order_job_type',
     ] as const)
 
-  const fieldValueService = new FieldValueService(organizationId, userId)
+  const fieldValueService = new FieldValueService(organizationId, userId, undefined, undefined, {
+    session: QUIET_VISIT_MIRROR,
+  })
 
   let isRecurring = false
   if (cf.work_order_job_type) {
@@ -123,6 +140,5 @@ export async function mirrorVisitOntoWorkOrder(
   await fieldValueService.setValuesForEntity({
     recordId: toRecordId('work_order', workOrderId),
     values,
-    publishEvents: false,
   })
 }

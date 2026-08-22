@@ -23,11 +23,24 @@ import { buildPublishEntry, setValueWithBuiltIn } from '../field-values/field-va
 import { getValues } from '../field-values/field-value-queries'
 import type { CachedField } from '../field-values/types'
 import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
+import { quietSession } from '../resources/crud/write-origin'
 import { parseRecordId, toRecordId } from '../resources/resource-id'
 import { lookupPhoneGeo } from './lookup'
 import type { PhoneGeo } from './types'
 
 const logger = createScopedLogger('phone-geo')
+
+/**
+ * C4 (plan 04 §3): this hook writes back a value it just derived. Recursion is
+ * structurally impossible anyway — it keys on PHONE_INTL and only ever writes
+ * TEXT fields — but the reason the doors stay shut is not re-entrancy, it is
+ * that a derivation is not a user edit and should not read as one in the
+ * activity feed. The hook publishes its own realtime frame afterwards, so an
+ * open contact drawer still updates.
+ */
+const QUIET_DERIVED_GEO = quietSession(
+  'a derived geo value is not a user edit — no timeline entry, no field triggers, no post-hook chain; this hook publishes its own realtime frame instead'
+)
 
 /** Target systemAttribute → the {@link PhoneGeo} key that feeds it. */
 const GEO_TARGETS = [
@@ -89,7 +102,7 @@ export const derivePhoneGeoOnChange: EntityFieldChangeHandler = async (event) =>
 
 /**
  * The derivation core: resolve the entity's geo target fields, fill only the BLANK ones from
- * `geo`, write quietly (`publishEvents: false`), and publish one hand-rolled realtime frame.
+ * `geo`, write quietly (declared via `QUIET_DERIVED_GEO`), and publish one hand-rolled realtime frame.
  * The inline hook wraps this in its own try/catch; the finalize integrity passes
  * (`events/handlers/finalize-integrity-passes.ts`) call it directly with a synthesized event —
  * only `organizationId`, `entityDefinitionId`, `userId`, `recordId`, and
@@ -139,16 +152,18 @@ export async function fillBlankGeoFields(
   const entries = []
 
   for (const write of writes) {
-    // Quiet write: `publishEvents: false` skips the post-hook chain, field triggers, the timeline
-    // entry and the inline realtime publish. Recursion is structurally impossible anyway (this
-    // hook keys on PHONE_INTL and only ever writes TEXT fields), but a derivation is not a user
-    // edit and should not read as one in the activity feed.
-    const result = await setValueWithBuiltIn(ctx, {
-      recordId: event.recordId,
-      fieldId: write.fieldId,
-      value: write.value,
-      publishEvents: false,
-    })
+    // C4 (plan 04 §3): the reason is declared on the session, not asserted in a
+    // comment beside a bare boolean. Same suppression as before — post-hook
+    // chain, field triggers, timeline entry and inline realtime publish all stay
+    // shut; this hook publishes its own frame below.
+    const result = await setValueWithBuiltIn(
+      { ...ctx, session: QUIET_DERIVED_GEO },
+      {
+        recordId: event.recordId,
+        fieldId: write.fieldId,
+        value: write.value,
+      }
+    )
     if (result.values.length === 0) continue
 
     let field: CachedField | undefined

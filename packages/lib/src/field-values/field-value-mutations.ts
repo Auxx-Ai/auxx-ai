@@ -57,6 +57,11 @@ import {
   recordTxWriteChange,
   type TxWriteScope,
 } from '../resources/crud/tx-write-scope'
+// Leaf path, not the crud barrel: `write-origin` is pure types plus pure
+// functions, and routing it through `resources/crud/index.ts` would pull the
+// handler into this module's static graph (see `tx-write-flush.ts`'s header on
+// the org-cache cycle).
+import { absorbedSession, isDeclaredSilent } from '../resources/crud/write-origin'
 import { getModelType, isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { applyAiMarker } from './ai-commit'
 import { shortCircuitAiGenerate } from './ai-enqueue'
@@ -2296,7 +2301,12 @@ export async function setValueWithBuiltIn(
   // suppresses buffering too, or the aggregator's own publish would be doubled.
   // Otherwise a buffered write session diverts the fan-out into its scope, to be
   // replayed once the transaction commits.
-  const requestedPublish = params.publishEvents ?? true
+  // Plan 04 Phase B: when the session DECLARES its silence (`quiet`/`absorbed`),
+  // that declaration is the default — it replaces the bare `publishEvents:
+  // false` the C4/C5 leaves used to pass with a comment. Narrower than
+  // `sessionLane`: a sync/seed ORIGIN is silent too, but it has never gated this
+  // layer and honoring it here would change behavior for every sync write.
+  const requestedPublish = params.publishEvents ?? !isDeclaredSilent(ctx.session)
   const bufferedScope = requestedPublish ? getAmbientTxWriteScope(ctx.session) : undefined
   const publishEvents = requestedPublish && bufferedScope === undefined
   // T-1: a record being CREATED in this same scope absorbs its own field writes
@@ -2630,7 +2640,15 @@ export async function setValuesForEntity(
   ctx: FieldValueContext,
   params: SetValuesForEntityInput
 ): Promise<SetValuesResult[]> {
-  const { recordId, values, publishEvents = true, skipInverseSync = false } = params
+  const {
+    recordId,
+    values,
+    // See `setValueWithBuiltIn` — a declared-silent session is the default here
+    // too, so a C4/C5 leaf declares its reason once instead of passing a bare
+    // boolean at every call.
+    publishEvents = !isDeclaredSilent(ctx.session),
+    skipInverseSync = false,
+  } = params
 
   // Parse RecordId to get both parts and derive modelType
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
@@ -2936,14 +2954,24 @@ export async function setBulkValues(
       )
     : null
 
-  // Set values for all entities in parallel
-  // Skip inverse sync here - we'll do bulk sync at the end
+  // Set values for all entities in parallel.
+  //
+  // C3 (plan 04 §3): the per-record doors stay shut because THIS function
+  // announces the whole operation below — one batched trigger dispatch, one
+  // `publishFieldValueUpdates` carrying every entry, and per-record field-change
+  // events sharing one `bulkOperationId` so the timeline can cite them as a
+  // single bulk action. 300 records x 3 fields becomes 1 frame and 1 grouped
+  // action instead of 900 loose events.
+  //
+  // Naming the aggregator is the point of declaring this rather than passing a
+  // bare `publishEvents: false`: B-16 is a site that suppressed every door while
+  // claiming an aggregator that did not exist, and only a named one is checkable.
+  const absorbedCtx = { ...ctx, session: absorbedSession('setBulkValues', ctx.session) }
   const results = await Promise.allSettled(
     recordIds.map((recordId) =>
-      setValuesForEntity(ctx, {
+      setValuesForEntity(absorbedCtx, {
         recordId,
         values: validValues,
-        publishEvents: false, // Don't spam events for bulk operations
         skipInverseSync: true, // Bulk sync handled separately below
       })
     )

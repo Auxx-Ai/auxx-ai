@@ -101,8 +101,16 @@ describe('derivePhoneGeoOnChange', () => {
   it('writes quietly so the derivation never lands in the activity feed', async () => {
     await derivePhoneGeoOnChange(buildEvent('+13102030000'))
 
-    for (const [, params] of mockedSetValue.mock.calls) {
-      expect(params.publishEvents).toBe(false)
+    // Plan 04 Phase B: the suppression is DECLARED on the session — a quiet
+    // mode carrying its reason — rather than asserted by a bare
+    // `publishEvents: false` beside a comment. Assert the declaration, and that
+    // it actually carries a reason: an empty one would be the boolean again.
+    expect(mockedSetValue.mock.calls.length).toBeGreaterThan(0)
+    for (const [ctx, params] of mockedSetValue.mock.calls) {
+      expect(ctx.session?.mode?.kind).toBe('quiet')
+      expect(ctx.session?.mode?.reason ?? '').not.toHaveLength(0)
+      // The bare boolean is gone, not merely redundant.
+      expect(params).not.toHaveProperty('publishEvents')
     }
     // …but still pushes realtime itself, so an open drawer updates without a reload.
     expect(mockedPublish).toHaveBeenCalledTimes(1)

@@ -13,6 +13,19 @@ import { MediaAssetService } from '../files/core/media-asset-service'
 import { createStorageManager } from '../files/storage/storage-manager'
 import { getQueue, Queues } from '../jobs/queues'
 import { UnifiedCrudHandler } from '../resources/crud'
+import { quietSession } from '../resources/crud/write-origin'
+
+/**
+ * C5 (plan 04 §3): a machine-owned pointer to the rendered asset, written once
+ * when a NEW asset is minted (unchanged on cache hit or reuse). Not a user edit,
+ * so it stays off the timeline. Whether it should publish a realtime frame is
+ * open and deliberately unbundled from O-4/O-5 — see O-7 on why four samples do
+ * not establish a shared "system-owned field write" concept.
+ */
+const QUIET_PDF_POINTER = quietSession(
+  'machine-owned pointer to a freshly rendered PDF asset — not a user edit, so no timeline entry (realtime is open, plan 04 O-7)'
+)
+
 import type { DocumentPdfPayload } from './payload'
 import { getDocumentType, type RegisteredDocumentType } from './registry'
 import { renderDocumentPdf } from './render'
@@ -170,11 +183,12 @@ export async function ensureDocumentPdf(params: {
 
   // ─── Step 4: write the pointer (new asset only — unchanged on cache hit/reuse) ──
   if (!existingAssetId && pointerField) {
-    const fieldValueService = new FieldValueService(organizationId, actorId)
+    const fieldValueService = new FieldValueService(organizationId, actorId, undefined, undefined, {
+      session: QUIET_PDF_POINTER,
+    })
     await fieldValueService.setValuesForEntity({
       recordId,
       values: [{ fieldId: pointerField.id, value: assetId }],
-      publishEvents: false,
     })
   }
 
