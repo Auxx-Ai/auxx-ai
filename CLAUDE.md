@@ -282,6 +282,39 @@ gated on inbox write alone (not `automationRules.manage`), treats
 `senderAuthenticated IS NULL` as *not* authenticated, and must never be recorded
 as `contact:unsubscribed`; dismissal is a status write, never a delete.
 
+## Files, Uploads & Storage
+
+**Before touching the upload routes, the processor registry, `StorageManager`,
+the adapters, `MediaAsset`/`FolderFile`/`Attachment`/`StorageLocation`, the
+thumbnail or cleanup jobs, or the front-end uploader, read
+`docs/files-upload-architecture-guide.md`.** It documents the three-round-trip
+presigned browser flow, the `EntityType` → processor dispatch, the five tables a
+file actually occupies, the two parallel upload doors that bypass the main path,
+and the read paths. §10–§12 are a critique, with each finding tagged FIXED or
+OPEN.
+
+Short version: a file is **`StorageLocation` (the bytes) + `MediaAsset`+version
+or `FolderFile`+version + optionally an `Attachment`** — which combination you
+get is decided by the `EntityType` the client sends, and picking the wrong one
+silently produces the wrong record; **`bucket` is never optional** anywhere in
+the storage layer, because S3 answers **204** for deleting a key that is not in
+the bucket you named, so a wrong bucket leaks objects with no error (this caused
+three separate production bugs); `MediaAsset` and `FolderFile` are different
+tables and the legacy **`File` table is empty and unused** — joining it is a
+silent no-op that once made the storage quota read zero forever; and post-commit
+work (thumbnails, cache busts) must be enqueued **after** `COMMIT`, never from
+inside a processor, because the enqueue resolves its source on a different
+connection and cannot see uncommitted rows.
+
+**New code in `packages/lib/src/files/**` uses the functional contract in
+`packages/lib/src/files/ctx.ts`** — `ctx: FilesCtx` first for db-touching
+functions, `tx: Transaction` positional-first for transaction-only ones, a
+narrowed `Pick<FilesDeps, …>` for collaborators, and never a service class.
+`assets/download.ts` and `storage/locations.ts` are the worked examples; the
+test doubles in `files/__tests__/support/` mean a new test needs **zero
+`vi.mock`**. The refactor converting the remaining service classes is planned in
+`plans/attachments/` (untracked).
+
 ## Duplicate Detection
 
 **Before touching the dedup engine, the duplicate scan job, `DuplicateSuggestion`
