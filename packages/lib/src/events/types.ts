@@ -934,8 +934,13 @@ export type SyncRecordsChangedEvent = AuxxEventGeneric<
   {
     source: 'connector' | 'import'
     organizationId: string
+    /** Manifest pointer: DataConnectorRun id (connector) or ImportJob id (import). */
+    ref?: string
+    /** @deprecated Use `ref` with `source: 'connector'`. Removed after one release. */
     runId?: string
+    /** @deprecated Derivable from the run row via `ref`. Removed after one release. */
     dataConnectorId?: string
+    /** @deprecated Use `ref` with `source: 'import'`. Removed after one release. */
     importRef?: string
   }
 >

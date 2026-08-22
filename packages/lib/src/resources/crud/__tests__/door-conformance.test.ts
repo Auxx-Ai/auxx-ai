@@ -125,7 +125,7 @@ vi.mock('../../hooks', async (importOriginal) => ({
   getCommonHooks: () => ({}),
 }))
 
-import type { ManifestCollector } from '../../../record-rules/sync-manifest-collector'
+import { createManifestCollector } from '../../../record-rules/sync-manifest-collector'
 import type { RecordId } from '../../resource-id'
 import { UnifiedCrudHandler } from '../unified-handler'
 import type { CrudOptions } from '../unified-handler-mutations'
@@ -199,7 +199,10 @@ async function runScenario(
 // SCENARIOS — one real handler per write-origin kind (plus the alias lanes)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const syncCollector = {} as ManifestCollector
+// A REAL collector: the tier-1 lifecycle seams (plan 07 §4) call
+// `recordCreated`/`recordArchived` on it during the sync scenario, so an
+// empty `{} as ManifestCollector` stub would crash the handler under test.
+const syncCollector = createManifestCollector({})
 const syncSession = (): WriteSession => ({
   origin: { kind: 'sync', source: 'import', ref: 'run_conformance', collector: syncCollector },
   depth: 0,

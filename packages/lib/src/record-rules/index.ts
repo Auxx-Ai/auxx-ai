@@ -57,11 +57,17 @@ export {
 export {
   createManifestCollector,
   loadManifestCollector,
+  MAX_DELTA_RECORDS,
+  MAX_TOUCHED_RECORDS,
   type ManifestCollector,
+  type ManifestCollectorCaps,
+  TOUCHED_KEYS_BYTE_BUDGET,
+  upgradeManifestV1,
 } from './sync-manifest-collector'
 export type {
   ManifestFieldChange,
   SyncChangeManifest,
+  SyncChangeManifestV1,
   SyncRecordsChangedEvent,
 } from './sync-manifest-types'
 export {

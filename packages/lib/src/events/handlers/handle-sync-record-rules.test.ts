@@ -70,13 +70,24 @@ function rule(overrides: Partial<CachedRecordRule> = {}): CachedRecordRule {
 
 function manifest(over: Partial<SyncChangeManifest> = {}): SyncChangeManifest {
   return {
-    version: 1,
-    truncated: false,
-    changes: {},
+    version: 2,
+    detailTruncated: false,
+    membershipTruncated: false,
+    touched: {},
+    deltas: {},
     createdRecordIds: [],
     archivedRecordIds: [],
     ...over,
   } as SyncChangeManifest
+}
+
+/** Tier-2 deltas plus the tier-1 `touched` entries a real collector derives from them. */
+function fromDeltas(
+  deltas: Record<string, Record<string, { o?: unknown; n: unknown }>>
+): Partial<SyncChangeManifest> {
+  const touched: Record<string, string[]> = {}
+  for (const [rid, bucket] of Object.entries(deltas)) touched[rid] = Object.keys(bucket)
+  return { touched, deltas } as never
 }
 
 function connectorEvent(): { data: any } {
@@ -123,7 +134,7 @@ describe('handleSyncRecordRules', () => {
 
   it('fires a matched field transition with source: sync and {o,n}', async () => {
     h.getRunManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } }))
     )
     h.getCachedRecordRules.mockResolvedValue([rule({ on: 'changed' })])
     await handleSyncRecordRules(connectorEvent() as never)
@@ -143,7 +154,7 @@ describe('handleSyncRecordRules', () => {
 
   it('does not fire when the transition does not match', async () => {
     h.getRunManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'a' } } } as never })
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'a' } } }))
     )
     h.getCachedRecordRules.mockResolvedValue([rule({ on: 'changed' })])
     await handleSyncRecordRules(connectorEvent() as never)
@@ -152,7 +163,7 @@ describe('handleSyncRecordRules', () => {
 
   it('conditionless rule fires with no snapshot fetch', async () => {
     h.getRunManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } }))
     )
     h.getCachedRecordRules.mockResolvedValue([rule({ condition: [] })])
     await handleSyncRecordRules(connectorEvent() as never)
@@ -162,7 +173,7 @@ describe('handleSyncRecordRules', () => {
 
   it('partial-snapshot fast path: condition refs all within changed keys → no fetch', async () => {
     h.getRunManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } }))
     )
     h.getCachedRecordRules.mockResolvedValue([
       rule({
@@ -186,7 +197,7 @@ describe('handleSyncRecordRules', () => {
 
   it('bulk-fetch fallback: condition references an unchanged field → fetch once', async () => {
     h.getRunManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } }))
     )
     h.fetchResourceSnapshots.mockResolvedValue(
       new Map([['def_1:i1', { id: 'i1', entityDefinitionId: 'def_1', fieldValues: {} }]]) as never
@@ -229,7 +240,7 @@ describe('handleSyncRecordRules', () => {
   it('import source: reads the manifest off the ImportJob row via importRef', async () => {
     h.getCachedRecordRules.mockResolvedValue([rule()])
     h.getImportManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } }))
     )
     const evt = {
       data: {
@@ -248,7 +259,7 @@ describe('handleSyncRecordRules', () => {
   // finalize or redelivered handler job) and must no-op without firing anything.
   it('does not fire when the consume claim is already taken', async () => {
     h.getRunManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } }))
     )
     h.getCachedRecordRules.mockResolvedValue([rule({ on: 'changed' })])
     h.claimRunManifestConsumed.mockResolvedValue(false)
@@ -258,7 +269,7 @@ describe('handleSyncRecordRules', () => {
 
   it('claims before firing on the happy path', async () => {
     h.getRunManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } }))
     )
     h.getCachedRecordRules.mockResolvedValue([rule({ on: 'changed' })])
     await handleSyncRecordRules(connectorEvent() as never)
@@ -269,7 +280,7 @@ describe('handleSyncRecordRules', () => {
   // ── Phase 4 finalize integration (plan events/03 §8) ─────────────────────────
 
   it('runs the finalize pass after rules fire, on the claimed manifest', async () => {
-    const m = manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+    const m = manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } }))
     h.getRunManifest.mockResolvedValue(m)
     h.getCachedRecordRules.mockResolvedValue([rule({ on: 'changed' })])
     await handleSyncRecordRules(connectorEvent() as never)
@@ -293,7 +304,7 @@ describe('handleSyncRecordRules', () => {
   // redelivered event that loses the claim must skip it along with the rules.
   it('skips finalize on duplicate delivery (claim already taken)', async () => {
     h.getRunManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } }))
     )
     h.getCachedRecordRules.mockResolvedValue([rule({ on: 'changed' })])
     h.claimRunManifestConsumed.mockResolvedValue(false)
@@ -313,7 +324,7 @@ describe('handleSyncRecordRules', () => {
   // run even when every rule was disabled between write and consume.
   it('still claims and finalizes when no rules are enabled', async () => {
     h.getRunManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } }))
     )
     h.getCachedRecordRules.mockResolvedValue([])
     await handleSyncRecordRules(connectorEvent() as never)
@@ -324,7 +335,7 @@ describe('handleSyncRecordRules', () => {
 
   it('handler still succeeds when finalize rejects (rules already fired)', async () => {
     h.getRunManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } }))
     )
     h.getCachedRecordRules.mockResolvedValue([rule({ on: 'changed' })])
     h.runSyncFinalize.mockRejectedValueOnce(new Error('finalize boom'))
@@ -335,7 +346,7 @@ describe('handleSyncRecordRules', () => {
   it('import source: finalize gets the importRef as its run ref', async () => {
     h.getCachedRecordRules.mockResolvedValue([rule()])
     h.getImportManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } } as never })
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } }))
     )
     const evt = {
       data: {
@@ -351,11 +362,53 @@ describe('handleSyncRecordRules', () => {
   // (empty → value) must fire off that shape.
   it('fires a set rule for a created-this-run entry (no o)', async () => {
     h.getRunManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:i1': { fld_status: { n: 'b' } } } as never })
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { n: 'b' } } }))
     )
     h.getCachedRecordRules.mockResolvedValue([rule({ on: 'set' })])
     await handleSyncRecordRules(connectorEvent() as never)
     expect(h.fireRecordRulesBatch).toHaveBeenCalledTimes(1)
     expect(firstEvent()).toMatchObject({ oldValue: undefined, newValue: 'b' })
+  })
+
+  // ── v1 → v2 read edge (one-release shim) ────────────────────────────────────
+
+  it('upgrades a stored v1 manifest at the read edge — rules fire and finalize sees v2', async () => {
+    h.getRunManifest.mockResolvedValue({
+      version: 1,
+      truncated: false,
+      changes: { 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } },
+      createdRecordIds: [],
+      archivedRecordIds: [],
+    } as never)
+    h.getCachedRecordRules.mockResolvedValue([rule({ on: 'changed' })])
+    await handleSyncRecordRules(connectorEvent() as never)
+
+    expect(h.fireRecordRulesBatch).toHaveBeenCalledTimes(1)
+    expect(firstEvent()).toMatchObject({ oldValue: 'a', newValue: 'b' })
+    // Finalize receives the UPGRADED v2 shape — touched derived from `changes`.
+    const passed = h.runSyncFinalize.mock.calls[0]?.[1]?.manifest as SyncChangeManifest
+    expect(passed.version).toBe(2)
+    expect(passed.touched).toEqual({ 'def_1:i1': ['fld_status'] })
+    expect(passed.deltas).toEqual({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } })
+    expect(passed.membershipTruncated).toBe(false)
+  })
+
+  // ── { source, ref } pointer shape ───────────────────────────────────────────
+
+  it('prefers `ref` and resolves without the deprecated per-source fields', async () => {
+    h.getRunManifest.mockResolvedValue(
+      manifest(fromDeltas({ 'def_1:i1': { fld_status: { o: 'a', n: 'b' } } }))
+    )
+    h.getCachedRecordRules.mockResolvedValue([rule({ on: 'changed' })])
+    const evt = {
+      data: {
+        type: 'sync:records:changed',
+        data: { source: 'connector', organizationId: 'org_1', ref: 'run_9' },
+      },
+    }
+    await handleSyncRecordRules(evt as never)
+    expect(h.getRunManifest).toHaveBeenCalledWith({}, 'run_9')
+    expect(h.claimRunManifestConsumed).toHaveBeenCalledWith({}, 'run_9')
+    expect(h.runSyncFinalize.mock.calls[0]?.[1]).toMatchObject({ ref: 'run_9' })
   })
 })

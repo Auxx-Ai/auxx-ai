@@ -58,9 +58,11 @@ import { handleSyncRecordRules } from './handle-sync-record-rules'
 
 function manifest(over: Partial<SyncChangeManifest> = {}): SyncChangeManifest {
   return {
-    version: 1,
-    truncated: false,
-    changes: {},
+    version: 2,
+    detailTruncated: false,
+    membershipTruncated: false,
+    touched: {},
+    deltas: {},
     createdRecordIds: [],
     archivedRecordIds: [],
     ...over,
@@ -90,11 +92,12 @@ beforeEach(() => {
 })
 
 describe('handleSyncDuplicateScan', () => {
-  it('enqueues exactly one scan carrying the created + changed ids', async () => {
+  it('enqueues exactly one scan carrying the created + touched ids', async () => {
     h.getRunManifest.mockResolvedValue(
       manifest({
         createdRecordIds: ['def_1:a', 'def_1:b'] as never,
-        changes: { 'def_1:c': { f1: { o: 1, n: 2 } } } as never,
+        touched: { 'def_1:c': ['f1'] } as never,
+        deltas: { 'def_1:c': { f1: { o: 1, n: 2 } } } as never,
       })
     )
 
@@ -133,7 +136,10 @@ describe('handleSyncDuplicateScan', () => {
     // The real failure mode this guards: both consumers run off ONE event, and
     // whichever claims first starves the other. Rules MUST win the claim.
     h.getRunManifest.mockResolvedValue(
-      manifest({ changes: { 'def_1:c': { f1: { o: 1, n: 2 } } } as never })
+      manifest({
+        touched: { 'def_1:c': ['f1'] } as never,
+        deltas: { 'def_1:c': { f1: { o: 1, n: 2 } } } as never,
+      })
     )
     h.getCachedRecordRules.mockResolvedValue([
       {
@@ -190,5 +196,43 @@ describe('handleSyncDuplicateScan', () => {
   it('ignores events of other types', async () => {
     await handleSyncDuplicateScan({ data: { type: 'entity:created', data: {} } } as never)
     expect(h.getRunManifest).not.toHaveBeenCalled()
+  })
+
+  // The H-1 regression: tier-1 membership alone (zero rule subscriptions — empty
+  // deltas) must still enqueue the scan.
+  it('enqueues off touched membership alone, with no deltas captured', async () => {
+    h.getRunManifest.mockResolvedValue(
+      manifest({ touched: { 'def_1:t1': ['f1'], 'def_1:t2': 1 } as never })
+    )
+    await handleSyncDuplicateScan(connectorEvent())
+    const arg = firstEnqueue()
+    // Ids-only degraded records (`1`) are membership too — the scan needs no keys.
+    expect(arg.recordIds.sort()).toEqual(['def_1:t1', 'def_1:t2'])
+  })
+
+  it('prefers the `ref` pointer for resolution and the scope key', async () => {
+    h.getRunManifest.mockResolvedValue(manifest({ createdRecordIds: ['def_1:a'] as never }))
+    await handleSyncDuplicateScan({
+      data: {
+        type: 'sync:records:changed',
+        data: { source: 'connector', organizationId: 'org_1', ref: 'run_9' },
+      },
+    } as never)
+    expect(h.getRunManifest).toHaveBeenCalledWith(expect.anything(), 'run_9')
+    expect(firstEnqueue().scopeKey).toBe('run_9')
+  })
+
+  // One-release v1 shim: a stored v1 manifest is upgraded at the read edge.
+  it('upgrades a stored v1 manifest and enqueues its changed + created ids', async () => {
+    h.getRunManifest.mockResolvedValue({
+      version: 1,
+      truncated: false,
+      changes: { 'def_1:c': { f1: { o: 1, n: 2 } } },
+      createdRecordIds: ['def_1:a'],
+      archivedRecordIds: [],
+    } as never)
+    await handleSyncDuplicateScan(connectorEvent())
+    const arg = firstEnqueue()
+    expect(arg.recordIds.sort()).toEqual(['def_1:a', 'def_1:c'])
   })
 })

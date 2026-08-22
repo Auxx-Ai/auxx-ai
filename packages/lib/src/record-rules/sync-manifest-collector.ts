@@ -1,26 +1,55 @@
 // packages/lib/src/record-rules/sync-manifest-collector.ts
-// Run/slice-scoped accumulator for a sync-change manifest. Bulk writers (connector
-// sink, import job) that write with `skipEvents: true` feed this so record rules can
-// still react to their writes (B2 plan D4). Subscription-aware: an org with no enabled
-// rules on the touched defs gets a zero-cost no-op stub — nothing is captured, no query
-// is issued at the write sites. See plans/events/b2-sync-change-manifest-plan.md.
+// Run/slice-scoped accumulator for a sync-change manifest (v2, plan 07 §3). Two tiers:
+// tier-1 membership (touched records + lifecycle) is captured UNCONDITIONALLY for every
+// sync session — the collector is always real, there is no no-op stub anymore. Tier-2
+// deltas stay gated on rule subscriptions via `subscriptionsFor` (empty subscriptions ⇒
+// undefined for every def ⇒ producers never capture values, at zero cost).
+// See plans/events/07-two-tier-sync-capture-plan.md.
 
 import { createScopedLogger } from '@auxx/logger'
-import type { RecordId } from '@auxx/types/resource'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import type { DefSubscriptions, SyncRuleSubscriptions } from './subscriptions'
-import type { ManifestFieldChange, SyncChangeManifest } from './sync-manifest-types'
+import type {
+  ManifestFieldChange,
+  SyncChangeManifest,
+  SyncChangeManifestV1,
+} from './sync-manifest-types'
 
 const logger = createScopedLogger('sync-manifest')
 
 /**
- * Run-level caps (D4). Enforced both per-collector (a single slice) AND across the fold
- * in `mergeManifests` — otherwise, since the deviation made collectors per-slice, an
- * N-slice run could accumulate N × these into one run row with no `truncated` flag and
- * blow the consumer's queue-blocking budget. Beyond these the manifest is flagged
- * `truncated` and stops growing.
+ * ONE membership cap across `touched ∪ created ∪ archived` (by entity instance id).
+ * Only overflowing THIS sets `membershipTruncated` — which forces the large lane and
+ * the tier-3 fallback downstream. Enforced per-collector AND across `mergeManifests`.
  */
-const MAX_CHANGED_RECORDS = 5000
-const MAX_LIFECYCLE_RECORDS = 10000
+export const MAX_TOUCHED_RECORDS = 50_000
+
+/**
+ * Approximate byte budget for stored touched keys (sum of key lengths). Past it, NEW
+ * touched entries degrade to the ids-only marker `1` instead of a key list; existing
+ * entries keep their keys. Ids-only membership still drives activity, dispatch tally,
+ * dedup, and tier-2 frames — only the key-needing doors degrade per record.
+ */
+export const TOUCHED_KEYS_BYTE_BUDGET = 2_000_000
+
+/**
+ * Tier-2 cap: distinct records carrying deltas (v1's changed-records cap, renamed).
+ * Overflow sets `detailTruncated` ONLY — membership for the record is still recorded.
+ */
+export const MAX_DELTA_RECORDS = 5_000
+
+/** Collector caps — constructor-injectable so tests can exercise overflow cheaply. */
+export interface ManifestCollectorCaps {
+  maxTouchedRecords: number
+  touchedKeysByteBudget: number
+  maxDeltaRecords: number
+}
+
+const DEFAULT_CAPS: ManifestCollectorCaps = {
+  maxTouchedRecords: MAX_TOUCHED_RECORDS,
+  touchedKeysByteBudget: TOUCHED_KEYS_BYTE_BUDGET,
+  maxDeltaRecords: MAX_DELTA_RECORDS,
+}
 
 /**
  * Union one outputKey's change entries: the FIRST fragment's `o`-state wins (value AND
@@ -44,214 +73,338 @@ function mergeFieldChange(
 }
 
 /**
- * Accumulates field changes + lifecycle ids for the subscribed defs of one run/slice.
- * All mutators are no-ops when `enabled` is false (no subscriptions) — producers still
- * call them unconditionally; the gating lives here.
+ * Accumulates tier-1 membership + tier-2 deltas for one run/slice. Always real — every
+ * mutator captures. Tier-2 gating lives at the producers via `subscriptionsFor`.
+ *
+ * All mutators are cheap: Map/Set pushes only, no queries.
  */
 export interface ManifestCollector {
-  /** False ⇒ the org has no enabled rules on any def — every mutator is a no-op. */
-  readonly enabled: boolean
+  /**
+   * Always true — the collector is always real now (plan 07). Kept as a literal so
+   * producer fast-path checks (`ctx.manifest?.enabled && ...`) stay truthful; delete
+   * with the next producer sweep.
+   */
+  readonly enabled: true
   /** Subscription buckets for a def, or undefined when nothing is subscribed for it. */
   subscriptionsFor(entityDefinitionId: string): DefSubscriptions | undefined
-  /** Merge field writes for a record. First `o` wins, last `n` wins per outputKey. */
+  /**
+   * Tier 1: record that a write actually changed `recordId`, with the changed field
+   * output keys. Merges keys per record (set union). Membership + keys are deduped on
+   * the entity INSTANCE id, not the RecordId string — the same instance captured under
+   * a slug-keyed and a CUID-keyed RecordId folds to one entry (first-seen form wins).
+   */
+  recordTouched(recordId: RecordId, keys: string[]): void
+  /**
+   * Tier 2: merge `{o, n}` field deltas for a record. First `o` wins, last `n` wins per
+   * outputKey. A delta implies touched — membership + keys are recorded even when the
+   * delta cap has overflowed.
+   */
   recordChange(recordId: RecordId, entries: Record<string, ManifestFieldChange>): void
   /**
-   * Record a created id (only captured when the def has lifecycle `created` rules).
-   * `values` (raw, systemAttribute-keyed) is stashed for native entity-trigger handlers on
-   * the sync door — only when the created id is actually accepted (not truncated).
+   * Record a created id — UNCONDITIONAL membership (no lifecycle-rule gating). `values`
+   * (raw, systemAttribute-keyed) is stashed for native entity-trigger handlers on the
+   * sync door — only when the created id is actually accepted (not capped out).
    */
   recordCreated(recordId: RecordId, values?: Record<string, unknown>): void
-  /** Record an archived id (only captured when the def has lifecycle `deleted` rules). */
+  /** Record an archived id — UNCONDITIONAL membership (no lifecycle-rule gating). */
   recordArchived(recordId: RecordId): void
-  /** Serialize; null when nothing was captured. */
+  /** Serialize; null when literally nothing was captured. */
   toJson(): SyncChangeManifest | null
 }
 
-class RealCollector implements ManifestCollector {
-  readonly enabled = true
-  private readonly changes = new Map<RecordId, Map<string, ManifestFieldChange>>()
-  private readonly created = new Set<RecordId>()
-  private readonly createdValues = new Map<RecordId, Record<string, unknown>>()
-  private readonly archived = new Set<RecordId>()
-  private truncated = false
+/** Internal touched entry: first-seen RecordId form + keys (or the ids-only marker). */
+interface TouchedEntry {
+  rid: RecordId
+  keys: Set<string> | 1
+}
 
-  constructor(private readonly subs: SyncRuleSubscriptions) {}
+/**
+ * The accumulation core, shared by the collector and `mergeManifests` so in-slice and
+ * cross-slice folding can never diverge. All state is keyed by entity INSTANCE id
+ * (parseRecordId) to defeat the dual-keyspace trap (slug-keyed import RecordIds vs
+ * CUID-keyed engine RecordIds for the same record — plan 04 §11.2).
+ */
+class ManifestAccumulator {
+  /** instanceId → touched entry. */
+  private readonly touched = new Map<string, TouchedEntry>()
+  /** instanceId → delta bucket. */
+  private readonly deltas = new Map<
+    string,
+    { rid: RecordId; fields: Map<string, ManifestFieldChange> }
+  >()
+  /** instanceId → first-seen RecordId form. */
+  private readonly created = new Map<string, RecordId>()
+  private readonly archived = new Map<string, RecordId>()
+  /** instanceId → raw create values (emitted under the created RecordId form). */
+  private readonly createdValues = new Map<string, Record<string, unknown>>()
+  /** Membership union (touched ∪ created ∪ archived) by instanceId — the ONE cap. */
+  private readonly membership = new Set<string>()
+  private keysBytes = 0
+  private detailTruncated = false
+  private membershipTruncated = false
 
-  subscriptionsFor(entityDefinitionId: string): DefSubscriptions | undefined {
-    return this.subs[entityDefinitionId]
+  constructor(private readonly caps: ManifestCollectorCaps) {}
+
+  /** True when `instanceId` is (or just became) a member; false when capped out. */
+  private admitMember(instanceId: string): boolean {
+    if (this.membership.has(instanceId)) return true
+    if (this.membership.size >= this.caps.maxTouchedRecords) {
+      if (!this.membershipTruncated) {
+        this.membershipTruncated = true
+        logger.warn('Sync-change manifest MEMBERSHIP truncated — cap hit', {
+          cap: this.caps.maxTouchedRecords,
+        })
+      }
+      return false
+    }
+    this.membership.add(instanceId)
+    return true
+  }
+
+  recordTouched(recordId: RecordId, keys: string[]): void {
+    const instanceId = parseRecordId(recordId).entityInstanceId
+    if (!this.admitMember(instanceId)) return
+    let entry = this.touched.get(instanceId)
+    if (!entry) {
+      entry = {
+        rid: recordId,
+        keys: this.keysBytes >= this.caps.touchedKeysByteBudget ? 1 : new Set(),
+      }
+      this.touched.set(instanceId, entry)
+    }
+    if (entry.keys === 1) return
+    for (const key of keys) {
+      if (!entry.keys.has(key)) {
+        entry.keys.add(key)
+        this.keysBytes += key.length
+      }
+    }
+  }
+
+  /** Fold in an ids-only touched entry (`1` wins downward — once ids-only, stays so). */
+  degradeTouched(recordId: RecordId): void {
+    const instanceId = parseRecordId(recordId).entityInstanceId
+    if (!this.admitMember(instanceId)) return
+    const entry = this.touched.get(instanceId)
+    if (!entry) {
+      this.touched.set(instanceId, { rid: recordId, keys: 1 })
+      return
+    }
+    if (entry.keys !== 1) {
+      for (const key of entry.keys) this.keysBytes -= key.length
+      entry.keys = 1
+    }
   }
 
   recordChange(recordId: RecordId, entries: Record<string, ManifestFieldChange>): void {
     const keys = Object.keys(entries)
     if (keys.length === 0) return
 
-    let bucket = this.changes.get(recordId)
+    // A delta implies touched — membership first, unconditionally.
+    this.recordTouched(recordId, keys)
+
+    const instanceId = parseRecordId(recordId).entityInstanceId
+    let bucket = this.deltas.get(instanceId)
     if (!bucket) {
       // Cap only applies to NEW records — updating an already-captured record is free.
-      if (this.changes.size >= MAX_CHANGED_RECORDS) {
-        this.markTruncated('changed records')
+      if (this.deltas.size >= this.caps.maxDeltaRecords) {
+        if (!this.detailTruncated) {
+          this.detailTruncated = true
+          logger.warn('Sync-change manifest DETAIL truncated — delta cap hit', {
+            cap: this.caps.maxDeltaRecords,
+          })
+        }
         return
       }
-      bucket = new Map()
-      this.changes.set(recordId, bucket)
+      bucket = { rid: recordId, fields: new Map() }
+      this.deltas.set(instanceId, bucket)
     }
-
     for (const key of keys) {
-      bucket.set(key, mergeFieldChange(bucket.get(key), entries[key]!))
+      bucket.fields.set(key, mergeFieldChange(bucket.fields.get(key), entries[key]!))
     }
   }
 
   recordCreated(recordId: RecordId, values?: Record<string, unknown>): void {
-    // Stash values only when the id is actually accepted (kept in lockstep with the cap so a
-    // truncated create never strands orphan values the consumer can't tie to a created id).
-    if (this.addLifecycle(this.created, recordId) && values) {
-      this.createdValues.set(recordId, values)
-    }
+    const instanceId = parseRecordId(recordId).entityInstanceId
+    if (this.created.has(instanceId)) return
+    if (!this.admitMember(instanceId)) return
+    this.created.set(instanceId, recordId)
+    // Stash values only when the id is actually accepted (kept in lockstep with the cap
+    // so a capped create never strands orphan values the consumer can't tie to an id).
+    if (values) this.createdValues.set(instanceId, values)
   }
 
   recordArchived(recordId: RecordId): void {
-    this.addLifecycle(this.archived, recordId)
+    const instanceId = parseRecordId(recordId).entityInstanceId
+    if (this.archived.has(instanceId)) return
+    if (!this.admitMember(instanceId)) return
+    this.archived.set(instanceId, recordId)
   }
 
-  /** Returns true when the id was newly added (false when a duplicate or capped out). */
-  private addLifecycle(set: Set<RecordId>, recordId: RecordId): boolean {
-    if (set.has(recordId)) return false
-    if (this.created.size + this.archived.size >= MAX_LIFECYCLE_RECORDS) {
-      this.markTruncated('lifecycle records')
-      return false
+  /** Fold a v2 manifest in (earlier fragments first — first `o` wins, last `n` wins). */
+  ingest(m: SyncChangeManifest): void {
+    for (const [rid, keys] of Object.entries(m.touched) as [RecordId, string[] | 1][]) {
+      if (keys === 1) this.degradeTouched(rid)
+      else this.recordTouched(rid, keys)
     }
-    set.add(recordId)
-    return true
-  }
-
-  private markTruncated(what: string): void {
-    if (!this.truncated) {
-      this.truncated = true
-      logger.warn('Sync-change manifest truncated — cap hit', {
-        what,
-        changed: this.changes.size,
-        lifecycle: this.created.size + this.archived.size,
-      })
+    for (const [rid, fields] of Object.entries(m.deltas) as [
+      RecordId,
+      Record<string, ManifestFieldChange>,
+    ][]) {
+      this.recordChange(rid, fields)
     }
+    for (const rid of m.createdRecordIds) this.recordCreated(rid, m.createdValues?.[rid])
+    for (const rid of m.archivedRecordIds) this.recordArchived(rid)
+    this.detailTruncated = this.detailTruncated || m.detailTruncated
+    this.membershipTruncated = this.membershipTruncated || m.membershipTruncated
   }
 
   toJson(): SyncChangeManifest | null {
-    if (this.changes.size === 0 && this.created.size === 0 && this.archived.size === 0) {
+    if (
+      this.touched.size === 0 &&
+      this.deltas.size === 0 &&
+      this.created.size === 0 &&
+      this.archived.size === 0 &&
+      !this.detailTruncated &&
+      !this.membershipTruncated
+    ) {
       return null
     }
-    const changes: SyncChangeManifest['changes'] = {}
-    for (const [recordId, bucket] of this.changes) {
-      changes[recordId] = Object.fromEntries(bucket)
+    const touched: SyncChangeManifest['touched'] = {}
+    for (const entry of this.touched.values()) {
+      touched[entry.rid] = entry.keys === 1 ? 1 : [...entry.keys]
+    }
+    const deltas: SyncChangeManifest['deltas'] = {}
+    for (const bucket of this.deltas.values()) {
+      deltas[bucket.rid] = Object.fromEntries(bucket.fields)
+    }
+    let createdValues: SyncChangeManifest['createdValues']
+    for (const [instanceId, values] of this.createdValues) {
+      const rid = this.created.get(instanceId)
+      if (!rid) continue
+      if (!createdValues) createdValues = {}
+      createdValues[rid] = values
     }
     return {
-      version: 1,
-      truncated: this.truncated,
-      changes,
-      createdRecordIds: [...this.created],
-      archivedRecordIds: [...this.archived],
-      ...(this.createdValues.size > 0
-        ? { createdValues: Object.fromEntries(this.createdValues) }
-        : {}),
+      version: 2,
+      detailTruncated: this.detailTruncated,
+      membershipTruncated: this.membershipTruncated,
+      touched,
+      deltas,
+      createdRecordIds: [...this.created.values()],
+      archivedRecordIds: [...this.archived.values()],
+      ...(createdValues ? { createdValues } : {}),
     }
   }
 }
 
-/** Shared no-op used whenever nothing is subscribed. All mutators do nothing. */
-const NOOP_COLLECTOR: ManifestCollector = {
-  enabled: false,
-  subscriptionsFor: () => undefined,
-  recordChange: () => {},
-  recordCreated: () => {},
-  recordArchived: () => {},
-  toJson: () => null,
+class RealCollector implements ManifestCollector {
+  readonly enabled = true as const
+  private readonly acc: ManifestAccumulator
+
+  constructor(
+    private readonly subs: SyncRuleSubscriptions,
+    caps: ManifestCollectorCaps
+  ) {
+    this.acc = new ManifestAccumulator(caps)
+  }
+
+  subscriptionsFor(entityDefinitionId: string): DefSubscriptions | undefined {
+    return this.subs[entityDefinitionId]
+  }
+
+  recordTouched(recordId: RecordId, keys: string[]): void {
+    this.acc.recordTouched(recordId, keys)
+  }
+
+  recordChange(recordId: RecordId, entries: Record<string, ManifestFieldChange>): void {
+    this.acc.recordChange(recordId, entries)
+  }
+
+  recordCreated(recordId: RecordId, values?: Record<string, unknown>): void {
+    this.acc.recordCreated(recordId, values)
+  }
+
+  recordArchived(recordId: RecordId): void {
+    this.acc.recordArchived(recordId)
+  }
+
+  toJson(): SyncChangeManifest | null {
+    return this.acc.toJson()
+  }
+}
+
+/**
+ * Derive a v2 manifest from a v1 run row written before the v2 deploy: `touched` from
+ * each `changes` bucket's key list, `deltas` = `changes` verbatim, `detailTruncated` =
+ * `truncated`, `membershipTruncated` = false (v1 never tracked membership overflow),
+ * lifecycle arrays copied. Pure. Delete with `SyncChangeManifestV1` after one release.
+ */
+export function upgradeManifestV1(m: SyncChangeManifestV1): SyncChangeManifest {
+  const touched: SyncChangeManifest['touched'] = {}
+  for (const [rid, fields] of Object.entries(m.changes)) {
+    touched[rid as RecordId] = Object.keys(fields)
+  }
+  return {
+    version: 2,
+    detailTruncated: m.truncated,
+    membershipTruncated: false,
+    touched,
+    deltas: m.changes,
+    createdRecordIds: [...m.createdRecordIds],
+    archivedRecordIds: [...m.archivedRecordIds],
+    ...(m.createdValues ? { createdValues: m.createdValues } : {}),
+  }
+}
+
+function asV2(m: SyncChangeManifest | SyncChangeManifestV1): SyncChangeManifest {
+  return m.version === 2 ? m : upgradeManifestV1(m)
 }
 
 /**
  * Merge a later manifest fragment into a base, for folding per-slice manifests into one
- * run row (B2 §3b — the sliced sync-core writes slices as separate jobs). Union changes
- * per RecordId → outputKey with FIRST `o` wins / LAST `n` wins (base is earlier, `add`
- * later), union lifecycle id sets, OR the truncated flags. Enforces the run-level caps
- * (a NEW record/lifecycle id past the cap is dropped and sets `truncated`; updating an
- * already-present record is always free). `base` is invariably ≤ cap (a single slice's
- * `toJson` or a prior merge), so copying it first can never itself overflow. Pure —
- * testable.
+ * run row (the sliced sync-core writes slices as separate jobs). Runs both fragments
+ * through the same accumulator the collector uses, so the two merge semantics can never
+ * diverge: touched key-sets union (the ids-only marker `1` wins downward), deltas fold
+ * with FIRST `o` wins / LAST `n` wins (base is earlier, `add` later), lifecycle ids
+ * union, truncation flags OR. Everything is deduped on the entity instance id, and the
+ * same caps apply across the fold (an N-slice run cannot accumulate N × cap into one
+ * row). Accepts v1 fragments and upgrades them first. Pure — testable.
+ *
+ * @param caps Test-only override of the run-level caps.
  */
 export function mergeManifests(
-  base: SyncChangeManifest | null | undefined,
-  add: SyncChangeManifest | null | undefined
+  base: SyncChangeManifest | SyncChangeManifestV1 | null | undefined,
+  add: SyncChangeManifest | SyncChangeManifestV1 | null | undefined,
+  caps?: Partial<ManifestCollectorCaps>
 ): SyncChangeManifest | null {
-  if (!base) return add ?? null
-  if (!add) return base
-
-  let truncated = base.truncated || add.truncated
-
-  const changes: SyncChangeManifest['changes'] = {}
-  for (const [rid, fields] of Object.entries(base.changes)) {
-    changes[rid as keyof typeof changes] = { ...fields }
-  }
-  for (const [rid, fields] of Object.entries(add.changes)) {
-    let bucket = changes[rid as keyof typeof changes]
-    if (!bucket) {
-      if (Object.keys(changes).length >= MAX_CHANGED_RECORDS) {
-        truncated = true
-        continue
-      }
-      bucket = changes[rid as keyof typeof changes] = {}
-    }
-    for (const [key, entry] of Object.entries(fields)) {
-      bucket[key] = mergeFieldChange(bucket[key], entry)
-    }
-  }
-
-  const created = new Set(base.createdRecordIds)
-  const archived = new Set(base.archivedRecordIds)
-  for (const rid of add.createdRecordIds) {
-    if (created.has(rid)) continue
-    if (created.size + archived.size >= MAX_LIFECYCLE_RECORDS) {
-      truncated = true
-      break
-    }
-    created.add(rid)
-  }
-  for (const rid of add.archivedRecordIds) {
-    if (archived.has(rid)) continue
-    if (created.size + archived.size >= MAX_LIFECYCLE_RECORDS) {
-      truncated = true
-      break
-    }
-    archived.add(rid)
-  }
-
-  // Union created values (base wins on the rare duplicate), keeping only ids that survived
-  // the lifecycle cap above so values never outlive their created id.
-  let createdValues: Record<RecordId, Record<string, unknown>> | undefined
-  const mergedCreatedValues = { ...add.createdValues, ...base.createdValues }
-  for (const [rid, vals] of Object.entries(mergedCreatedValues)) {
-    if (!created.has(rid as RecordId)) continue
-    if (!createdValues) createdValues = {}
-    createdValues[rid as RecordId] = vals
-  }
-
-  return {
-    version: 1,
-    truncated,
-    changes,
-    createdRecordIds: [...created],
-    archivedRecordIds: [...archived],
-    ...(createdValues ? { createdValues } : {}),
-  }
-}
-
-/** Build a collector from a pre-computed subscription index (pure — testable). */
-export function createManifestCollector(subs: SyncRuleSubscriptions): ManifestCollector {
-  if (Object.keys(subs).length === 0) return NOOP_COLLECTOR
-  return new RealCollector(subs)
+  if (!base) return add ? asV2(add) : null
+  if (!add) return asV2(base)
+  const acc = new ManifestAccumulator({ ...DEFAULT_CAPS, ...caps })
+  acc.ingest(asV2(base))
+  acc.ingest(asV2(add))
+  return acc.toJson()
 }
 
 /**
- * Load the org's rule subscriptions from the cache and build a collector. Returns the
- * zero-cost no-op stub when the org has no enabled rules. Lazy-imports the cache +
- * subscriptions helpers to stay clear of the record-rules ↔ cache import cycle.
+ * Build a collector from a pre-computed subscription index (pure — testable). Always
+ * returns a real collector: tier-1 membership is unconditional; empty subscriptions
+ * only mean `subscriptionsFor` answers undefined for every def, so tier-2 delta
+ * capture never happens, at zero cost.
+ *
+ * @param caps Test-only override of the capture caps.
+ */
+export function createManifestCollector(
+  subs: SyncRuleSubscriptions,
+  caps?: Partial<ManifestCollectorCaps>
+): ManifestCollector {
+  return new RealCollector(subs, { ...DEFAULT_CAPS, ...caps })
+}
+
+/**
+ * Load the org's rule subscriptions from the cache and build a collector. Always real
+ * (see `createManifestCollector`). Lazy-imports the cache + subscriptions helpers to
+ * stay clear of the record-rules ↔ cache import cycle.
  */
 export async function loadManifestCollector(organizationId: string): Promise<ManifestCollector> {
   const { getCachedRecordRules } = await import('../cache')

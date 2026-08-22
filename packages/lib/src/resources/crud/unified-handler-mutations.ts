@@ -18,6 +18,10 @@ import {
 import { UnprocessableEntityError } from '../../errors'
 import { getEntityPostDeleteHooks, getEntityPreDeleteHooks } from '../../field-hooks/registry'
 import type { FieldValueService } from '../../field-values'
+// Leaf path on purpose (not the field-values barrel): the one shared narrowing
+// helper for tier-1 sync capture, so this file's lifecycle seams and the field
+// seams apply the identical sync-origin policy (plan 07 §4).
+import { syncCollectorOf } from '../../field-values/field-value-mutations'
 import {
   getRealtimeService,
   publishRecordsChanged,
@@ -348,6 +352,12 @@ export async function createEntity(
   // Build RecordId for field value operations
   const recordId = toRecordId(entityDef.id, instance.id)
 
+  // Tier-1 sync capture (plan 07 §4): unconditional lifecycle membership for
+  // sync sessions. NO values — `createdValues` stays producer-side in PR 1.
+  // Producers that also call recordCreated are fine: the collector dedupes on
+  // the entity instance id.
+  syncCollectorOf(ctx.session)?.recordCreated(recordId)
+
   // Buffered lane: register the create BEFORE its own field writes run. The
   // ordering is load-bearing — a record in the scope's `created` set absorbs its
   // own field changes (T-1), so the field-value layer can see it is already
@@ -592,6 +602,10 @@ export async function archiveEntity(
 
   unwrapResult(updateResult)
 
+  // Tier-1 sync capture (plan 07 §4): unconditional lifecycle membership for
+  // sync sessions (`bulkArchiveEntities` delegates here, so it is covered too).
+  syncCollectorOf(ctx.session)?.recordArchived(recordId)
+
   if (publishEvents) {
     publishRecordLifecycleEvent({
       recordId,
@@ -770,6 +784,11 @@ export async function deleteEntity(
   })
 
   unwrapResult(deleteResult)
+
+  // Tier-1 sync capture (plan 07 §4): a hard delete is membership too — the
+  // manifest has one archived set for both (`bulkDeleteEntities` delegates
+  // here, so it is covered too).
+  syncCollectorOf(ctx.session)?.recordArchived(recordId)
 
   // Post-delete hooks: deletes never fire field-change post-hooks, so this is where
   // projections that depend on the deleted record refresh (log-and-swallow, matching

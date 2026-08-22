@@ -71,10 +71,11 @@ export interface SyncCtx {
    */
   signal?: AbortSignal
   /**
-   * Sync-change manifest collector (B2). Accumulates subscribed field writes +
-   * lifecycle ids as the sink writes (which suppress per-write events via the
-   * silent `sync` write session), so record rules can react at finalize. The no-op stub when the org
-   * has no enabled rules — capture sites gate on `manifest.enabled`.
+   * Sync-change manifest collector (B2, always real since plan 07). Accumulates
+   * rule-subscribed tier-2 field deltas + lifecycle ids as the sink writes (which
+   * suppress per-write events via the silent `sync` write session); tier-1 touched
+   * membership is captured at the engine seams. Tier-2 capture sites gate on
+   * `subscriptionsFor`, not a collector flag.
    */
   manifest: ManifestCollector
   /** Entity definition ids touched this run — invalidated once at the end. */

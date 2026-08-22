@@ -137,11 +137,29 @@ const FIELDS_BY_DEF: Record<string, Array<Record<string, unknown>>> = {
   def_ticket: [{ id: 'fld_subj', systemAttribute: 'ticket_subject', type: 'TEXT' }],
 }
 
-function manifest(changes: Record<string, Record<string, { o?: unknown; n: unknown }>>) {
+/** A fully rule-subscribed v2 manifest: touched keys derived from the delta buckets. */
+function manifest(deltas: Record<string, Record<string, { o?: unknown; n: unknown }>>) {
+  const touched: Record<string, string[]> = {}
+  for (const [rid, bucket] of Object.entries(deltas)) touched[rid] = Object.keys(bucket)
   return {
-    version: 1,
-    truncated: false,
-    changes,
+    version: 2,
+    detailTruncated: false,
+    membershipTruncated: false,
+    touched,
+    deltas,
+    createdRecordIds: [],
+    archivedRecordIds: [],
+  } as unknown as SyncChangeManifest
+}
+
+/** A tier-1-only v2 manifest: touched membership (keys or the ids-only `1`), no deltas. */
+function tier1Manifest(touched: Record<string, string[] | 1>) {
+  return {
+    version: 2,
+    detailTruncated: false,
+    membershipTruncated: false,
+    touched,
+    deltas: {},
     createdRecordIds: [],
     archivedRecordIds: [],
   } as unknown as SyncChangeManifest
@@ -335,6 +353,37 @@ describe('no matching work', () => {
     h.findCachedResource.mockResolvedValue(null)
     await run(manifest({ 'mystery:m1': { fld_addr: { n: { street1: 'x' } } } }))
     expect(h.runNormalize).not.toHaveBeenCalled()
+  })
+})
+
+// Plan 07: pass selection reads TIER-1 touched keys — a zero-rules run (empty deltas)
+// still selects, and an ids-only degraded record widens to "any pass may apply".
+describe('tier-1 selection (plan 07)', () => {
+  it('selects passes from touched keys even when no delta was captured', async () => {
+    await run(tier1Manifest({ 'contact:c1': ['fld_addr'] }))
+    expect(h.runNormalize).toHaveBeenCalledTimes(1)
+    const [event] = h.runNormalize.mock.calls[0]! as unknown as [Record<string, unknown>]
+    // No delta → the synthetic event's oldValue falls back to null.
+    expect(event.oldValue).toBeNull()
+    expect(event).toMatchObject({ recordId: 'def_contact:c1' })
+  })
+
+  it('treats an ids-only record (`1`) as "any pass may apply" — every wanted-type field targets', async () => {
+    h.lookupPhoneGeo.mockReturnValue({ city: 'LA' })
+    await run(tier1Manifest({ 'contact:c9': 1 }))
+    // The contact def carries one ADDRESS_STRUCT and one PHONE_INTL — both pass.
+    expect(h.runNormalize).toHaveBeenCalledTimes(1)
+    expect(h.fillBlankGeoFields).toHaveBeenCalledTimes(1)
+  })
+
+  it('an ids-only line item enters the totals arm with a line-total rewrite', async () => {
+    h.resolveLineParentDocument.mockResolvedValue({
+      documentType: 'invoice',
+      documentInstanceId: 'inv9',
+    })
+    await run(tier1Manifest({ 'line_item:li9': 1 }))
+    expect(h.recomputeLineTotal).toHaveBeenCalledTimes(1)
+    expect(h.recomputeTotals).toHaveBeenCalledTimes(1)
   })
 })
 

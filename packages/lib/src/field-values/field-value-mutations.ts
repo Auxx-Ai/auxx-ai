@@ -51,6 +51,9 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../realtime'
+// Type-only: the collector rides the sync origin (`write-origin.ts`); importing
+// the value module here would be harmless today but the type is all we need.
+import type { ManifestCollector } from '../record-rules/sync-manifest-collector'
 import {
   getAmbientTxWriteScope,
   isTxWriteCreated,
@@ -61,7 +64,12 @@ import {
 // functions, and routing it through `resources/crud/index.ts` would pull the
 // handler into this module's static graph (see `tx-write-flush.ts`'s header on
 // the org-cache cycle).
-import { absorbedSession, isDeclaredSilent } from '../resources/crud/write-origin'
+import {
+  absorbedSession,
+  isDeclaredSilent,
+  type WriteSession,
+} from '../resources/crud/write-origin'
+import { getAmbientWriteSession } from '../resources/crud/write-session-als'
 import { getModelType, isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { applyAiMarker } from './ai-commit'
 import { shortCircuitAiGenerate } from './ai-enqueue'
@@ -126,6 +134,25 @@ import type {
 import { updateFieldValue } from './update-value'
 
 const logger = createScopedLogger('field-value-mutations')
+
+// =============================================================================
+// TIER-1 SYNC CAPTURE (plan 07 §4 — capture at the chokepoint, not the producers)
+// =============================================================================
+
+/**
+ * The effective write session's manifest collector when — and only when — its
+ * origin is `sync`. Every tier-1 capture seam narrows through here (this file's
+ * field seams and the lifecycle seams in `unified-handler-mutations.ts`), so
+ * the policy lives in one place: interactive/api/automation stay on the inline
+ * lane, seed stays silent forever, and only sync-session writes (connector /
+ * import / mail / retro) feed the sync-change manifest. The ctx-carried session
+ * wins over the ambient ALS one — the same S1 resolution order
+ * `getAmbientTxWriteScope` follows.
+ */
+export function syncCollectorOf(session?: WriteSession): ManifestCollector | null {
+  const effective = session ?? getAmbientWriteSession()
+  return effective?.origin.kind === 'sync' ? effective.origin.collector : null
+}
 
 // =============================================================================
 // REALTIME PUBLISH SHAPING
@@ -1628,6 +1655,10 @@ export async function addValues(
       .values(insertRows)
       .returning()) as unknown as FieldValueRow[]
 
+    // Tier-1 sync capture (plan 07 §4): at least one value actually landed —
+    // the all-duplicates path returned above and records nothing.
+    syncCollectorOf(ctx.session)?.recordTouched(recordId, [field.systemAttribute ?? fieldId])
+
     const allRows = [...existingRows, ...inserted]
     const allTyped = allRows.map((r) => rowToTypedValue(r, fieldType))
 
@@ -1740,7 +1771,10 @@ export async function removeValues(
 
   if (valueMatchClause === null) return
 
-  await ctx.db
+  // RETURNING (same single statement, no extra query) makes "did any row
+  // actually go" observable for the tier-1 sync capture below; the result was
+  // previously discarded.
+  const deleted = await ctx.db
     .delete(schema.FieldValue)
     .where(
       and(
@@ -1750,6 +1784,13 @@ export async function removeValues(
         valueMatchClause
       )
     )
+    .returning({ id: schema.FieldValue.id })
+
+  // Tier-1 sync capture (plan 07 §4): only when at least one row was removed —
+  // a remove matching nothing is a no-op and records nothing.
+  if (deleted.length > 0) {
+    syncCollectorOf(ctx.session)?.recordTouched(recordId, [field.systemAttribute ?? fieldId])
+  }
 
   // Publish the remaining array — empty is a valid "cleared" signal.
   const remaining = await getValue(ctx, { recordId, fieldId })
@@ -1951,6 +1992,18 @@ export async function addValuesBulk(
     }
   })
 
+  // Tier-1 sync capture (plan 07 §4): per record that actually received rows —
+  // fully-deduped records contribute no `insertedTypedByEntity` entry.
+  const bulkAddCollector = syncCollectorOf(ctx.session)
+  if (bulkAddCollector && insertedTypedByEntity.size > 0) {
+    const key = field.systemAttribute ?? fieldId
+    const ridByInstance = new Map(parsed.map((p, i) => [p.entityInstanceId, recordIds[i]!]))
+    for (const entityId of insertedTypedByEntity.keys()) {
+      const rid = ridByInstance.get(entityId)
+      if (rid) bulkAddCollector.recordTouched(rid, [key])
+    }
+  }
+
   // Field-change post-hooks for entities that actually received inserts.
   // Old display = pre-write rows; new display = pre-write rows + inserts.
   // Bulk renderer surfaces this as an "added" diff.
@@ -2065,6 +2118,17 @@ export async function removeValuesBulk(
       id: schema.FieldValue.id,
       entityId: schema.FieldValue.entityId,
     })) as Array<{ id: string; entityId: string }>
+
+  // Tier-1 sync capture (plan 07 §4): per record that actually lost rows.
+  const bulkRemoveCollector = syncCollectorOf(ctx.session)
+  if (bulkRemoveCollector && deleted.length > 0) {
+    const key = field.systemAttribute ?? fieldId
+    const ridByInstance = new Map(parsed.map((p, i) => [p.entityInstanceId, recordIds[i]!]))
+    for (const entityId of new Set(deleted.map((row) => row.entityId))) {
+      const rid = ridByInstance.get(entityId)
+      if (rid) bulkRemoveCollector.recordTouched(rid, [key])
+    }
+  }
 
   if (willDispatchFieldChange && deleted.length > 0) {
     const deletedIdsByEntity = new Map<string, Set<string>>()
@@ -2330,6 +2394,11 @@ export async function setValueWithBuiltIn(
     }
     await handler(ctx.db, entityInstanceId, value, ctx.organizationId)
 
+    // Tier-1 sync capture (plan 07 §4). Built-in writes carry no idempotency
+    // guard, so a sync-session re-assertion still counts as touched — that
+    // asymmetry is accepted for PR 1 (no cheap no-op detection exists here).
+    syncCollectorOf(ctx.session)?.recordTouched(recordId, [rawFieldId])
+
     // Create synthetic TypedFieldValue for frontend store
     const builtInFieldType = getBuiltInFieldType(rawFieldId, modelType)
     const performedAt = new Date().toISOString()
@@ -2538,6 +2607,11 @@ export async function setValueWithBuiltIn(
         }).catch(() => {})
       }
     }
+    // Tier-1 sync capture (plan 07 §4): a REAL clear — the B-14
+    // delete-of-absent no-op returned above and records nothing. Deliberately
+    // not tied to `publishEvents`/`firePostHook`: sync sessions run the silent
+    // lane, and capture must not be skipped with the fan-out.
+    syncCollectorOf(ctx.session)?.recordTouched(recordId, [field.systemAttribute ?? fieldId])
     await firePostHook(null)
     return { state: 'complete', performedAt: new Date().toISOString(), values: [], changed: true }
   }
@@ -2558,6 +2632,12 @@ export async function setValueWithBuiltIn(
     skipInverseSync,
     aiGeneration: params.aiGeneration,
   })
+
+  // Tier-1 sync capture (plan 07 §4): the step-3.55 guard already decided this
+  // is a REAL write — an identical re-assertion returned at 3.55 and records
+  // nothing (membership honesty, §4 property 1). Runs on the silent lane too:
+  // sync sessions skip `firePostHook`, capture must not be skipped with it.
+  syncCollectorOf(ctx.session)?.recordTouched(recordId, [field.systemAttribute ?? fieldId])
 
   // 7. Fire field-change post-hooks. For multi-value fields (MULTI_SELECT,
   // TAGS, RELATIONSHIP, FILE, or scalar types with options.multi=true) we

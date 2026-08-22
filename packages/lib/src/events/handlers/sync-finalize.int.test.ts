@@ -14,14 +14,14 @@
 // none of them. This file drives `runSyncFinalize` against real rows and asserts the
 // database afterwards.
 //
-// THE SUBSCRIPTION SIDESTEP. In production the manifest is built by
-// `record-rules/sync-manifest-collector.ts`, which is gated on ENABLED RECORD RULES: an
-// org with no rules gets `NOOP_COLLECTOR`, `toJson()` returns null, no
-// `sync:records:changed` is ever published and finalize never runs (the v1 bound
-// documented in `sync-finalize.ts`, item H-1 in the plan). That gate is a property of the
-// PRODUCER, not of finalize — so these tests hand `runSyncFinalize` a manifest directly
-// and exercise the consumer on its own terms. `sync-manifest-collector` keeps its own
-// unit coverage for the gating itself.
+// MANIFEST SHAPE. These tests hand `runSyncFinalize` a manifest directly and exercise
+// the consumer on its own terms; `sync-manifest-collector` keeps its own unit coverage
+// for capture. Since plan 07 the collector is ALWAYS real: tier-1 membership
+// (`touched` + lifecycle) is unconditional, tier-2 `deltas` stay rule-subscription-
+// gated. The `fromDeltas` fixtures model a fully rule-subscribed run; the
+// tier-1-only suite at the bottom models the zero-rules run this harness previously
+// could not express (the H-1 regression), and the v1 suite drives a pre-deploy
+// manifest through `upgradeManifestV1`.
 //
 // WHAT IS MOCKED, and why each one is a true external:
 //   - `../../cache`      — Redis-backed org cache. Re-implemented here against the test
@@ -214,13 +214,28 @@ async function instances(f: Fixture, count: number, lastActivityAt?: Date): Prom
 
 function manifest(over: Partial<SyncChangeManifest> = {}): SyncChangeManifest {
   return {
-    version: 1,
-    truncated: false,
-    changes: {},
+    version: 2,
+    detailTruncated: false,
+    membershipTruncated: false,
+    touched: {},
+    deltas: {},
     createdRecordIds: [],
     archivedRecordIds: [],
     ...over,
   } as SyncChangeManifest
+}
+
+/**
+ * Tier-2 deltas plus the tier-1 `touched` entries a real collector derives from them
+ * (`recordChange` implies `recordTouched` with the same keys) — the "every touched
+ * field also has a delta" fixture shape, i.e. a fully rule-subscribed run.
+ */
+function fromDeltas(
+  deltas: Record<string, Record<string, { o?: unknown; n: unknown }>>
+): Partial<SyncChangeManifest> {
+  const touched: Record<string, string[]> = {}
+  for (const [rid, bucket] of Object.entries(deltas)) touched[rid] = Object.keys(bucket)
+  return { touched, deltas } as never
 }
 
 /** Import manifests key RecordIds by SLUG — the keyspace finalize must canonicalize. */
@@ -266,15 +281,15 @@ describe('timeline door (D-4)', () => {
       db(),
       importInput(
         f,
-        manifest({
-          changes: {
+        manifest(
+          fromDeltas({
             [slugRid(f, a!)]: {
               first_name: { o: 'Bob', n: 'Robert' },
               email: { o: null, n: 'r@example.com' },
             },
             [slugRid(f, b!)]: { first_name: { n: 'Ada' } },
-          },
-        })
+          })
+        )
       )
     )
 
@@ -314,10 +329,10 @@ describe('timeline door (D-4)', () => {
     const f = await seed()
     const ids = await instances(f, SYNC_SMALL_RUN_THRESHOLD + 1)
 
-    const changes: Record<string, Record<string, { n: unknown }>> = {}
-    for (const id of ids) changes[slugRid(f, id)] = { first_name: { n: 'x' }, email: { n: 'y' } }
+    const deltas: Record<string, Record<string, { n: unknown }>> = {}
+    for (const id of ids) deltas[slugRid(f, id)] = { first_name: { n: 'x' }, email: { n: 'y' } }
 
-    await runSyncFinalize(db(), importInput(f, manifest({ changes } as never)))
+    await runSyncFinalize(db(), importInput(f, manifest(fromDeltas(deltas as never))))
 
     const rows = await timelineFor(f)
     // 101 records × 2 changed fields — collapsed, so 101 rows and not 202.
@@ -360,7 +375,7 @@ describe('timeline door (D-4)', () => {
         f,
         manifest({
           createdRecordIds: [slugRid(f, id!)],
-          changes: { [slugRid(f, id!)]: { first_name: { n: 'Ada' } } },
+          ...fromDeltas({ [slugRid(f, id!)]: { first_name: { n: 'Ada' } } }),
         })
       )
     )
@@ -400,7 +415,7 @@ describe('lastActivityAt door (D-1)', () => {
       importInput(
         f,
         manifest({
-          changes: { [slugRid(f, changed!)]: { first_name: { n: 'Ada' } } },
+          ...fromDeltas({ [slugRid(f, changed!)]: { first_name: { n: 'Ada' } } }),
           createdRecordIds: [slugRid(f, created!)],
           archivedRecordIds: [slugRid(f, archived!)],
         })
@@ -419,7 +434,7 @@ describe('lastActivityAt door (D-1)', () => {
 
     await runSyncFinalize(
       db(),
-      importInput(f, manifest({ changes: { [slugRid(f, id!)]: { first_name: { n: 'Ada' } } } }))
+      importInput(f, manifest(fromDeltas({ [slugRid(f, id!)]: { first_name: { n: 'Ada' } } })))
     )
 
     expect((await instanceRow(f, id!)).lastActivityAt?.getTime()).toBe(future.getTime())
@@ -432,7 +447,7 @@ describe('lastActivityAt door (D-1)', () => {
 
     await runSyncFinalize(
       db(),
-      importInput(f, manifest({ changes: { [slugRid(f, id!)]: { first_name: { n: 'Ada' } } } }))
+      importInput(f, manifest(fromDeltas({ [slugRid(f, id!)]: { first_name: { n: 'Ada' } } })))
     )
 
     expect((await instanceRow(f, id!)).updatedAt.getTime()).toBe(before.getTime())
@@ -447,9 +462,9 @@ describe('lane selection (D-12)', () => {
   it('takes the small lane at exactly the threshold and the large lane one over', async () => {
     const atThreshold = await seed()
     const ids = await instances(atThreshold, SYNC_SMALL_RUN_THRESHOLD)
-    const changes: Record<string, Record<string, { n: unknown }>> = {}
-    for (const id of ids) changes[slugRid(atThreshold, id)] = { first_name: { n: 'x' } }
-    await runSyncFinalize(db(), importInput(atThreshold, manifest({ changes } as never)))
+    const deltas: Record<string, Record<string, { n: unknown }>> = {}
+    for (const id of ids) deltas[slugRid(atThreshold, id)] = { first_name: { n: 'x' } }
+    await runSyncFinalize(db(), importInput(atThreshold, manifest(fromDeltas(deltas as never))))
 
     const smallRows = await timelineFor(atThreshold)
     expect(smallRows.every((r) => r.eventType === 'entity:field:updated')).toBe(true)
@@ -460,9 +475,9 @@ describe('lane selection (D-12)', () => {
 
     const over = await seed()
     const overIds = await instances(over, SYNC_SMALL_RUN_THRESHOLD + 1)
-    const overChanges: Record<string, Record<string, { n: unknown }>> = {}
-    for (const id of overIds) overChanges[slugRid(over, id)] = { first_name: { n: 'x' } }
-    await runSyncFinalize(db(), importInput(over, manifest({ changes: overChanges } as never)))
+    const overDeltas: Record<string, Record<string, { n: unknown }>> = {}
+    for (const id of overIds) overDeltas[slugRid(over, id)] = { first_name: { n: 'x' } }
+    await runSyncFinalize(db(), importInput(over, manifest(fromDeltas(overDeltas as never))))
 
     const largeRows = await timelineFor(over)
     expect(largeRows.every((r) => r.eventType === 'entity:updated')).toBe(true)
@@ -470,7 +485,7 @@ describe('lane selection (D-12)', () => {
     expect(h.triggerResourceDispatch).not.toHaveBeenCalled()
   })
 
-  it('a truncated manifest forces the large lane regardless of how few it captured', async () => {
+  it('a MEMBERSHIP-truncated manifest forces the large lane regardless of how few it captured', async () => {
     const f = await seed()
     const [id] = await instances(f, 1)
 
@@ -479,8 +494,8 @@ describe('lane selection (D-12)', () => {
       importInput(
         f,
         manifest({
-          truncated: true,
-          changes: { [slugRid(f, id!)]: { first_name: { n: 'Ada' } } },
+          membershipTruncated: true,
+          ...fromDeltas({ [slugRid(f, id!)]: { first_name: { n: 'Ada' } } }),
         })
       )
     )
@@ -488,6 +503,26 @@ describe('lane selection (D-12)', () => {
     const rows = await timelineFor(f)
     expect(rows[0]!.eventType).toBe('entity:updated')
     expect(h.triggerResourceDispatch).not.toHaveBeenCalled()
+  })
+
+  it('detail truncation alone keeps the honest count-based lane (small at a small count)', async () => {
+    const f = await seed()
+    const [id] = await instances(f, 1)
+
+    await runSyncFinalize(
+      db(),
+      importInput(
+        f,
+        manifest({
+          detailTruncated: true,
+          ...fromDeltas({ [slugRid(f, id!)]: { first_name: { n: 'Ada' } } }),
+        })
+      )
+    )
+
+    const rows = await timelineFor(f)
+    expect(rows[0]!.eventType).toBe('entity:field:updated')
+    expect(h.triggerResourceDispatch).toHaveBeenCalledTimes(1)
   })
 
   it('an empty manifest is a complete no-op — no rows, no frames, no dispatch', async () => {
@@ -515,10 +550,13 @@ describe('guarded dispatch (D-3 / D-13 / D-19)', () => {
   /** Force the large lane with `count` changed records, all matching `targets`. */
   async function largeRun(f: Fixture, count: number, targets: unknown[]) {
     const ids = await instances(f, count)
-    const changes: Record<string, Record<string, { n: unknown }>> = {}
-    for (const id of ids) changes[slugRid(f, id)] = { first_name: { n: 'x' } }
+    const deltas: Record<string, Record<string, { n: unknown }>> = {}
+    for (const id of ids) deltas[slugRid(f, id)] = { first_name: { n: 'x' } }
     h.matchResourceWorkflowTargets.mockResolvedValue({ match: {}, targets })
-    await runSyncFinalize(db(), importInput(f, manifest({ truncated: true, changes } as never)))
+    await runSyncFinalize(
+      db(),
+      importInput(f, manifest({ membershipTruncated: true, ...fromDeltas(deltas as never) }))
+    )
     return ids
   }
 
@@ -596,9 +634,9 @@ describe('guarded dispatch (D-3 / D-13 / D-19)', () => {
     // auto; 25 updated → at the threshold → held.
     const ids = await instances(f, WORKFLOW_AUTO_DISPATCH_THRESHOLD * 2 - 1)
     const createdIds = ids.slice(0, WORKFLOW_AUTO_DISPATCH_THRESHOLD - 1)
-    const changes: Record<string, Record<string, { n: unknown }>> = {}
+    const deltas: Record<string, Record<string, { n: unknown }>> = {}
     for (const id of ids.slice(WORKFLOW_AUTO_DISPATCH_THRESHOLD - 1)) {
-      changes[slugRid(f, id)] = { first_name: { n: 'x' } }
+      deltas[slugRid(f, id)] = { first_name: { n: 'x' } }
     }
 
     // `entity:created` matches wf_auto; `entity:updated` matches wf_held.
@@ -614,8 +652,8 @@ describe('guarded dispatch (D-3 / D-13 / D-19)', () => {
       importInput(
         f,
         manifest({
-          truncated: true,
-          changes,
+          membershipTruncated: true,
+          ...fromDeltas(deltas as never),
           createdRecordIds: createdIds.map((id) => slugRid(f, id)),
         } as never)
       )
@@ -689,7 +727,9 @@ describe('tier-2 frames (§7b)', () => {
       importInput(
         f,
         manifest({
-          changes: { [slugRid(f, changed!)]: { first_name: { n: 'Ada' }, email: { n: 'a@b.c' } } },
+          ...fromDeltas({
+            [slugRid(f, changed!)]: { first_name: { n: 'Ada' }, email: { n: 'a@b.c' } },
+          }),
           createdRecordIds: [slugRid(f, created!)],
           archivedRecordIds: [slugRid(f, archived!)],
         })
@@ -722,9 +762,7 @@ describe('never throws (finalize door contract)', () => {
         db(),
         importInput(
           f,
-          manifest({
-            changes: { [toRecordId('ghost_def', 'ghost_instance')]: { x: { n: 1 } } },
-          })
+          manifest(fromDeltas({ [toRecordId('ghost_def', 'ghost_instance')]: { x: { n: 1 } } }))
         )
       )
     ).resolves.toBeUndefined()
@@ -743,12 +781,127 @@ describe('never throws (finalize door contract)', () => {
     await expect(
       runSyncFinalize(
         db(),
-        importInput(f, manifest({ changes: { [slugRid(f, id!)]: { first_name: { n: 'Ada' } } } }))
+        importInput(f, manifest(fromDeltas({ [slugRid(f, id!)]: { first_name: { n: 'Ada' } } })))
       )
     ).resolves.toBeUndefined()
 
     // Realtime is the LAST door — the timeline and activity doors already committed.
     expect(await timelineFor(f)).toHaveLength(1)
     expect((await instanceRow(f, id!)).lastActivityAt).not.toBeNull()
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Plan 07 — the H-1 zero-rules regression: tier-1 membership alone drives finalize
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('tier-1-only manifest (zero rule subscriptions)', () => {
+  it('drives every door with touched keys + lifecycle and EMPTY deltas', async () => {
+    const f = await seed()
+    const [changed, created] = await instances(f, 2)
+
+    // Exactly what a real collector with zero subscriptions emits: touched keys
+    // and lifecycle ids, no `{o, n}` values anywhere.
+    await runSyncFinalize(
+      db(),
+      importInput(
+        f,
+        manifest({
+          touched: {
+            [slugRid(f, changed!)]: ['first_name', 'email'],
+            [slugRid(f, created!)]: ['first_name'],
+          } as never,
+          createdRecordIds: [slugRid(f, created!)],
+        })
+      )
+    )
+
+    // Timeline: per-field rows for the changed record WITHOUT value pairs (the
+    // field name is tier-1 truth; values are tier-2 and were never captured),
+    // plus the collapsed created row.
+    const rows = await timelineFor(f)
+    const changedRows = rows.filter((r) => r.entityId === changed)
+    expect(changedRows).toHaveLength(2)
+    expect(new Set(changedRows.map((r) => r.relatedEntityId))).toEqual(
+      new Set(['first_name', 'email'])
+    )
+    for (const row of changedRows) {
+      expect(row.eventType).toBe('entity:field:updated')
+      expect(row.changes).toHaveLength(1)
+      expect(Object.keys((row.changes as Array<Record<string, unknown>>)[0]!)).toEqual(['field'])
+    }
+    expect(rows.find((r) => r.entityId === created)!.eventType).toBe('entity:created')
+
+    // Activity bumped for both.
+    expect((await instanceRow(f, changed!)).lastActivityAt).not.toBeNull()
+    expect((await instanceRow(f, created!)).lastActivityAt).not.toBeNull()
+
+    // Small-lane dispatch fired per record.
+    expect(h.triggerResourceDispatch).toHaveBeenCalledTimes(2)
+    const types = h.triggerResourceDispatch.mock.calls.map(([a]) => a.data.type).sort()
+    expect(types).toEqual(['entity:created', 'entity:updated'])
+
+    // Tier-2 frames carry the touched keys as fieldIds.
+    expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)
+    const [, , frameArgs] = h.publishRecordsChanged.mock.calls[0]!
+    const byRecord = Object.fromEntries(
+      frameArgs.entries.map((e) => [e.recordId as string, e.fieldIds])
+    )
+    expect(byRecord[changed!]).toEqual(['first_name', 'email'])
+    expect(byRecord[created!]).toBeUndefined()
+  })
+
+  it('collapses an ids-only degraded record (`touched[rid] === 1`) honestly', async () => {
+    const f = await seed()
+    const [id] = await instances(f, 1)
+
+    await runSyncFinalize(
+      db(),
+      importInput(f, manifest({ touched: { [slugRid(f, id!)]: 1 } as never }))
+    )
+
+    const rows = await timelineFor(f)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.eventType).toBe('entity:updated')
+    expect(rows[0]!.eventData).not.toHaveProperty('changedFieldIds')
+
+    const [, , frameArgs] = h.publishRecordsChanged.mock.calls[0]!
+    expect(frameArgs.entries).toEqual([{ recordId: id }])
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// One-release v1 shim — a pre-deploy manifest still works end-to-end through
+// `upgradeManifestV1` (the shape `resolveManifest` hands finalize for a v1 row)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('v1 manifest through the upgrade shim', () => {
+  it('upgrades and drives the doors exactly like a natively-v2 manifest', async () => {
+    const f = await seed()
+    const [changed, created] = await instances(f, 2)
+
+    const { upgradeManifestV1 } = await import('../../record-rules/sync-manifest-collector')
+    const upgraded = upgradeManifestV1({
+      version: 1,
+      truncated: false,
+      changes: {
+        [slugRid(f, changed!)]: { first_name: { o: 'Bob', n: 'Robert' } },
+      } as never,
+      createdRecordIds: [slugRid(f, created!)] as never,
+      archivedRecordIds: [],
+    })
+
+    await runSyncFinalize(db(), importInput(f, upgraded))
+
+    const rows = await timelineFor(f)
+    const changedRow = rows.find((r) => r.entityId === changed)!
+    expect(changedRow.eventType).toBe('entity:field:updated')
+    // The delta survived the upgrade — value detail intact.
+    expect(changedRow.changes).toEqual([
+      { field: 'first_name', oldValue: 'Bob', newValue: 'Robert' },
+    ])
+    expect(rows.find((r) => r.entityId === created)!.eventType).toBe('entity:created')
+    expect((await instanceRow(f, changed!)).lastActivityAt).not.toBeNull()
+    expect(h.triggerResourceDispatch).toHaveBeenCalledTimes(2)
   })
 })

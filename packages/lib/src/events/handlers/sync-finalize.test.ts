@@ -68,13 +68,28 @@ const ORG = 'org_1'
 
 function manifest(over: Partial<SyncChangeManifest> = {}): SyncChangeManifest {
   return {
-    version: 1,
-    truncated: false,
-    changes: {},
+    version: 2,
+    detailTruncated: false,
+    membershipTruncated: false,
+    touched: {},
+    deltas: {},
     createdRecordIds: [],
     archivedRecordIds: [],
     ...over,
   } as SyncChangeManifest
+}
+
+/**
+ * Tier-2 deltas plus the tier-1 `touched` entries a real collector derives from them
+ * (`recordChange` implies `recordTouched` with the same keys) — the common "every
+ * touched field also has a delta" fixture shape.
+ */
+function fromDeltas(
+  deltas: Record<string, Record<string, { o?: unknown; n: unknown }>>
+): Partial<SyncChangeManifest> {
+  const touched: Record<string, string[]> = {}
+  for (const [rid, bucket] of Object.entries(deltas)) touched[rid] = Object.keys(bucket)
+  return { touched, deltas } as never
 }
 
 /** Fake Database with just the surfaces finalize touches. */
@@ -126,16 +141,23 @@ describe('selectSyncLane', () => {
     expect(selectSyncLane(manifest(), SYNC_SMALL_RUN_THRESHOLD + 1)).toBe('large')
   })
 
-  it('a truncated manifest is large unconditionally — the true count is unknown', () => {
-    expect(selectSyncLane(manifest({ truncated: true }), 1)).toBe('large')
+  it('MEMBERSHIP truncation is large unconditionally — the true count is unknown', () => {
+    expect(selectSyncLane(manifest({ membershipTruncated: true }), 1)).toBe('large')
+  })
+
+  it('detail truncation alone keeps the count-based lane — membership is complete', () => {
+    expect(selectSyncLane(manifest({ detailTruncated: true }), 1)).toBe('small')
+    expect(selectSyncLane(manifest({ detailTruncated: true }), SYNC_SMALL_RUN_THRESHOLD + 1)).toBe(
+      'large'
+    )
   })
 })
 
 describe('manifestDefCounts', () => {
-  it('counts distinct records per def across changes, created, and archived', () => {
+  it('counts distinct records per def across touched, created, and archived', () => {
     const counts = manifestDefCounts(
       manifest({
-        changes: { 'def_1:i1': { f: { n: 1 } }, 'def_1:i2': { f: { n: 1 } } } as never,
+        touched: { 'def_1:i1': ['f'], 'def_1:i2': ['f'] } as never,
         // i2 also created — must not double count.
         createdRecordIds: ['def_1:i2', 'part:i3'] as never,
         archivedRecordIds: ['part:i4'] as never,
@@ -148,10 +170,10 @@ describe('manifestDefCounts', () => {
 describe('runSyncFinalize — small lane', () => {
   const smallManifest = () =>
     manifest({
-      changes: {
+      ...fromDeltas({
         'def_1:i1': { fld_a: { o: 1, n: 2 }, fld_b: { n: 'x' } },
         'def_1:i2': { fld_a: { o: null, n: 3 } },
-      } as never,
+      }),
       createdRecordIds: ['def_1:i3', 'part:i4'] as never,
       archivedRecordIds: ['def_1:i5'] as never,
     })
@@ -226,7 +248,7 @@ describe('runSyncFinalize — small lane', () => {
       organizationId: ORG,
       source: 'import',
       ref: 'job_1',
-      manifest: manifest({ changes: { 'def_1:i1': { f: { n: 1 } } } as never }),
+      manifest: manifest(fromDeltas({ 'def_1:i1': { f: { n: 1 } } })),
     })
     expect(insertedRows()[0]).toMatchObject({ actorType: 'system', actorId: 'system' })
   })
@@ -273,13 +295,85 @@ describe('runSyncFinalize — small lane', () => {
   })
 })
 
+// The H-1 regression (plan 07): a collector with ZERO rule subscriptions still
+// produces tier-1 membership, and that alone must drive every finalize door.
+describe('runSyncFinalize — tier-1-only manifest (zero rule subscriptions)', () => {
+  const tier1Manifest = () =>
+    manifest({
+      // Touched keys but EMPTY deltas — nothing was rule-subscribed.
+      touched: { 'def_1:i1': ['fld_a', 'fld_b'], 'def_1:i2': ['fld_a'] } as never,
+      createdRecordIds: ['def_1:i3'] as never,
+      archivedRecordIds: ['def_1:i5'] as never,
+    })
+
+  it('drives every door off membership alone', async () => {
+    await runSyncFinalize(fakeDb(), connectorInput(tier1Manifest()))
+
+    // Activity bumped for touched + created (not archived).
+    const [ids] = h.touchEntityActivity.mock.calls[0]!
+    expect([...ids].sort()).toEqual(['i1', 'i2', 'i3'])
+
+    // Small-lane per-field rows land WITHOUT a value pair — the field name is
+    // tier-1 truth, `{o, n}` is tier-2 and was never captured.
+    const rows = insertedRows()
+    const i1Rows = rows.filter((r) => r.entityId === 'i1')
+    expect(i1Rows).toHaveLength(2)
+    for (const row of i1Rows) {
+      expect(row.eventType).toBe('entity:field:updated')
+      const changes = row.changes as Array<Record<string, unknown>>
+      expect(changes).toHaveLength(1)
+      expect(Object.keys(changes[0]!)).toEqual(['field'])
+    }
+    expect(rows.find((r) => r.entityId === 'i3')!.eventType).toBe('entity:created')
+    expect(rows.find((r) => r.entityId === 'i5')!.eventType).toBe('entity:archived')
+
+    // Integrity passes get the manifest (they select off touched keys).
+    expect(h.runIntegrityPasses).toHaveBeenCalledTimes(1)
+
+    // Dispatch: created + both updated records.
+    expect(h.triggerResourceDispatch).toHaveBeenCalledTimes(3)
+
+    // Tier-2 frames carry the touched keys as fieldIds.
+    const [, , frameArgs] = h.publishRecordsChanged.mock.calls[0]!
+    const byRecord = Object.fromEntries(
+      frameArgs.entries.map((e) => [e.recordId as string, e.fieldIds])
+    )
+    expect(byRecord.i1).toEqual(['fld_a', 'fld_b'])
+    expect(byRecord.i2).toEqual(['fld_a'])
+    expect(byRecord.i3).toBeUndefined()
+  })
+
+  it('an ids-only touched record (`1`) collapses instead of writing per-field rows', async () => {
+    await runSyncFinalize(
+      fakeDb(),
+      connectorInput(
+        manifest({
+          touched: { 'def_1:i1': 1, 'def_1:i2': ['fld_a'] } as never,
+        })
+      )
+    )
+    const rows = insertedRows()
+    const i1Row = rows.find((r) => r.entityId === 'i1')!
+    expect(i1Row.eventType).toBe('entity:updated')
+    // Honest collapse: no fabricated changedFieldIds for a record whose keys were shed.
+    expect(i1Row.eventData).not.toHaveProperty('changedFieldIds')
+    expect(rows.find((r) => r.entityId === 'i2')!.eventType).toBe('entity:field:updated')
+
+    // The frame for the ids-only record ships without fieldIds ("any field").
+    const [, , frameArgs] = h.publishRecordsChanged.mock.calls[0]!
+    const byRecord = Object.fromEntries(frameArgs.entries.map((e) => [e.recordId as string, e]))
+    expect(byRecord.i1).toEqual({ recordId: 'i1' })
+    expect(byRecord.i2).toEqual({ recordId: 'i2', fieldIds: ['fld_a'] })
+  })
+})
+
 describe('runSyncFinalize — large lane', () => {
   const largeManifest = () => {
-    const changes: Record<string, Record<string, { n: unknown }>> = {}
+    const deltas: Record<string, Record<string, { n: unknown }>> = {}
     for (let i = 0; i < SYNC_SMALL_RUN_THRESHOLD + 1; i++) {
-      changes[`def_1:r${i}`] = { fld_a: { n: i } }
+      deltas[`def_1:r${i}`] = { fld_a: { n: i } }
     }
-    return manifest({ changes: changes as never })
+    return manifest(fromDeltas(deltas))
   }
 
   it('routes dispatch through the Phase 6 guard (D-3) but still touches activity, timeline, and frames', async () => {
@@ -308,11 +402,14 @@ describe('runSyncFinalize — large lane', () => {
     expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)
   })
 
-  it('a truncated manifest takes the large lane even at a tiny observed count', async () => {
+  it('a MEMBERSHIP-truncated manifest takes the large lane even at a tiny observed count', async () => {
     await runSyncFinalize(
       fakeDb(),
       connectorInput(
-        manifest({ truncated: true, changes: { 'def_1:i1': { f: { n: 1 } } } as never })
+        manifest({
+          membershipTruncated: true,
+          ...fromDeltas({ 'def_1:i1': { f: { n: 1 } } }),
+        })
       )
     )
     expect(h.triggerResourceDispatch).not.toHaveBeenCalled()
@@ -320,10 +417,24 @@ describe('runSyncFinalize — large lane', () => {
     expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)
   })
 
+  it('a detail-truncated manifest stays on the small lane at a small observed count', async () => {
+    await runSyncFinalize(
+      fakeDb(),
+      connectorInput(
+        manifest({
+          detailTruncated: true,
+          ...fromDeltas({ 'def_1:i1': { f: { n: 1 } } }),
+        })
+      )
+    )
+    expect(h.runGuardedWorkflowDispatch).not.toHaveBeenCalled()
+    expect(h.triggerResourceDispatch).toHaveBeenCalledTimes(1)
+  })
+
   it('the small lane never touches the guard', async () => {
     await runSyncFinalize(
       fakeDb(),
-      connectorInput(manifest({ changes: { 'def_1:i1': { f: { n: 1 } } } as never }))
+      connectorInput(manifest(fromDeltas({ 'def_1:i1': { f: { n: 1 } } })))
     )
     expect(h.runGuardedWorkflowDispatch).not.toHaveBeenCalled()
     expect(h.triggerResourceDispatch).toHaveBeenCalledTimes(1)
@@ -334,7 +445,7 @@ describe('runSyncFinalize — integrity passes door (B-1)', () => {
   it('runs the integrity passes on the small lane, before dispatch', async () => {
     await runSyncFinalize(
       fakeDb(),
-      connectorInput(manifest({ changes: { 'def_1:i1': { f: { n: 1 } } } as never }))
+      connectorInput(manifest(fromDeltas({ 'def_1:i1': { f: { n: 1 } } })))
     )
     expect(h.runIntegrityPasses).toHaveBeenCalledTimes(1)
     const [, input] = h.runIntegrityPasses.mock.calls[0]!
@@ -345,11 +456,11 @@ describe('runSyncFinalize — integrity passes door (B-1)', () => {
   })
 
   it('runs the integrity passes on the large lane too', async () => {
-    const changes: Record<string, Record<string, { n: unknown }>> = {}
+    const deltas: Record<string, Record<string, { n: unknown }>> = {}
     for (let i = 0; i < SYNC_SMALL_RUN_THRESHOLD + 1; i++) {
-      changes[`def_1:r${i}`] = { fld_a: { n: i } }
+      deltas[`def_1:r${i}`] = { fld_a: { n: i } }
     }
-    await runSyncFinalize(fakeDb(), connectorInput(manifest({ changes: changes as never })))
+    await runSyncFinalize(fakeDb(), connectorInput(manifest(fromDeltas(deltas))))
     expect(h.runIntegrityPasses).toHaveBeenCalledTimes(1)
   })
 
@@ -357,7 +468,7 @@ describe('runSyncFinalize — integrity passes door (B-1)', () => {
     h.runIntegrityPasses.mockRejectedValueOnce(new Error('boom'))
     await runSyncFinalize(
       fakeDb(),
-      connectorInput(manifest({ changes: { 'def_1:i1': { f: { n: 1 } } } as never }))
+      connectorInput(manifest(fromDeltas({ 'def_1:i1': { f: { n: 1 } } })))
     )
     expect(h.triggerResourceDispatch).toHaveBeenCalledTimes(1)
     expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)
@@ -370,7 +481,7 @@ describe('runSyncFinalize — failure isolation', () => {
     await expect(
       runSyncFinalize(
         fakeDb(),
-        connectorInput(manifest({ changes: { 'def_1:i1': { f: { n: 1 } } } as never }))
+        connectorInput(manifest(fromDeltas({ 'def_1:i1': { f: { n: 1 } } })))
       )
     ).resolves.toBeUndefined()
     // Timeline failed, but dispatch and realtime still happened.
@@ -383,7 +494,7 @@ describe('runSyncFinalize — failure isolation', () => {
     await expect(
       runSyncFinalize(
         fakeDb(),
-        connectorInput(manifest({ changes: { 'def_1:i1': { f: { n: 1 } } } as never }))
+        connectorInput(manifest(fromDeltas({ 'def_1:i1': { f: { n: 1 } } })))
       )
     ).resolves.toBeUndefined()
     expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)

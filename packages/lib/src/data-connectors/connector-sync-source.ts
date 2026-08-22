@@ -389,18 +389,21 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     // Runs once per run (last stream, past the B1 latch), AFTER the finalize
     // writes, so the client's catch-up sees post-reconcile state. Per-def
     // changed counts come from the just-folded run manifest (one row read —
-    // `persistManifest` ran above), which holds the distinct changed/created/
-    // archived records per def. The manifest is subscription-gated, so a def
-    // with no enabled rules still ships count 0 ("changed, count unknown" per
-    // the event doc) — real counts for every def arrive with the Phase 3
-    // session collector. Defs: every mapped def plus whatever finalize itself
-    // touched (relationship resolution, orphan archival).
+    // `persistManifest` ran above), which holds the distinct touched/created/
+    // archived records per def — tier-1 membership is unconditional (plan 07),
+    // so the counts are real for every def, rules or no rules. Defs: every
+    // mapped def plus whatever finalize itself touched (relationship
+    // resolution, orphan archival). The just-folded row is v2 by construction;
+    // the upgrade shim covers a run row written before the v2 deploy.
     try {
       const defCounts: Record<string, number> = {}
       for (const mapping of allMappings) defCounts[mapping.entityDefinitionId] ??= 0
       for (const defId of syncCtx.touchedDefs) defCounts[defId] ??= 0
-      const runManifest = await getRunManifest(this.deps.db, this.deps.run.id)
-      if (runManifest) {
+      const storedManifest = await getRunManifest(this.deps.db, this.deps.run.id)
+      if (storedManifest) {
+        const { upgradeManifestV1 } = await import('../record-rules/sync-manifest-collector')
+        const runManifest =
+          storedManifest.version === 2 ? storedManifest : upgradeManifestV1(storedManifest)
         const { manifestDefCounts } = await import('../events/handlers/sync-finalize')
         for (const [defId, count] of Object.entries(manifestDefCounts(runManifest))) {
           defCounts[defId] = count

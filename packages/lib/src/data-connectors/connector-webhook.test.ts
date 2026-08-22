@@ -101,17 +101,15 @@ vi.mock('./sink-source-record', () => ({
 vi.mock('./webhook-steer', () => ({
   resolveWebhookSteer: (...a: unknown[]) => resolveWebhookSteer(...a),
 }))
-// buildWebhookCtx builds a B2 manifest collector (cache/db) — stub to the no-op.
-vi.mock('../record-rules/sync-manifest-collector', () => ({
-  loadManifestCollector: async () => ({
-    enabled: false,
-    subscriptionsFor: () => undefined,
-    recordChange: () => {},
-    recordCreated: () => {},
-    recordArchived: () => {},
-    toJson: () => null,
-  }),
-}))
+// buildWebhookCtx builds a B2 manifest collector (cache/db) — override ONLY the loader
+// to a zero-subscription real collector (pure, DB-free); the rest of the module stays real.
+vi.mock('../record-rules/sync-manifest-collector', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../record-rules/sync-manifest-collector')>()
+  return {
+    ...actual,
+    loadManifestCollector: async () => actual.createManifestCollector({}),
+  }
+})
 
 import { runWebhookSteeredRun } from './connector-webhook'
 

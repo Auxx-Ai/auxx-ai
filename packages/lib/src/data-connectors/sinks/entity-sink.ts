@@ -1043,12 +1043,17 @@ export const entitySink: EntitySink = {
           // per-record identity resolution, so there is no slice-level id list to batch
           // against — and the content-hash skip above means only genuinely changed
           // records pay it.
-          const captured = ctx.manifest?.enabled
-            ? await captureSubscribedChanges(ctx, mapping.entityDefinitionId, instanceId, {
-                ...writeSet,
-                ...rowPlan.captureSet,
-              })
-            : null
+          // The collector is always real now (plan 07) — the capture helper gates
+          // itself on `subscriptionsFor`, so no fast-path check is needed.
+          const captured = await captureSubscribedChanges(
+            ctx,
+            mapping.entityDefinitionId,
+            instanceId,
+            {
+              ...writeSet,
+              ...rowPlan.captureSet,
+            }
+          )
           // Shallow copy per attempt: a conflict retry mutates `writeSet`.
           // Event suppression comes from the handler's silent `sync` session
           // (plan 03 §3.4), not a per-call flag.
@@ -1066,30 +1071,30 @@ export const entitySink: EntitySink = {
             `${mapping.row.id}::${instanceId}`,
             record.externalId
           )
-          // B2: lifecycle-created + `set`-transition capture for synced creates.
-          if (ctx.manifest?.enabled) {
+          // B2: lifecycle-created + `set`-transition capture for synced creates
+          // (tier-2 producer capture — stays subscription-gated; tier-1 membership
+          // comes from the engine seams).
+          const subs = ctx.manifest.subscriptionsFor(mapping.entityDefinitionId)
+          if (subs) {
             const recordId = toRecordId(mapping.entityDefinitionId, instanceId)
-            const subs = ctx.manifest.subscriptionsFor(mapping.entityDefinitionId)
-            if (subs) {
-              if (subs.lifecycle.created) {
-                // Thread the raw created values so native entity-trigger lifecycle handlers
-                // (e.g. enrichCompanyOnCreate) can read them on the sync door without a DB
-                // refetch (Phase 9 / Option A). No DB read — writeSet is already in hand.
-                const createdValues = await buildCreatedValues(
-                  ctx,
-                  mapping.entityDefinitionId,
-                  writeSet
-                )
-                ctx.manifest.recordCreated(recordId, createdValues ?? undefined)
-              }
-              const entries = await buildCreateChangeEntries(
+            if (subs.lifecycle.created) {
+              // Thread the raw created values so native entity-trigger lifecycle handlers
+              // (e.g. enrichCompanyOnCreate) can read them on the sync door without a DB
+              // refetch (Phase 9 / Option A). No DB read — writeSet is already in hand.
+              const createdValues = await buildCreatedValues(
                 ctx,
                 mapping.entityDefinitionId,
-                writeSet,
-                subs.fieldIds
+                writeSet
               )
-              if (entries) ctx.manifest.recordChange(recordId, entries)
+              ctx.manifest.recordCreated(recordId, createdValues ?? undefined)
             }
+            const entries = await buildCreateChangeEntries(
+              ctx,
+              mapping.entityDefinitionId,
+              writeSet,
+              subs.fieldIds
+            )
+            if (entries) ctx.manifest.recordChange(recordId, entries)
           }
         }
         break
@@ -1198,11 +1203,11 @@ export const entitySink: EntitySink = {
         ctx.touchedDefs.add(item.entityDefinitionId)
         ctx.counters.archived += 1
         // B2: lifecycle-deleted capture for synced archives (soft-archive; the record
-        // still exists, so the consumer can snapshot last-known values).
-        if (
-          ctx.manifest?.enabled &&
-          ctx.manifest.subscriptionsFor(item.entityDefinitionId)?.lifecycle.deleted
-        ) {
+        // still exists, so the consumer can snapshot last-known values). Tier-2
+        // producer capture — the engine's archive seam records unconditional
+        // membership; this call stays for the one-PR window and is deduped on the
+        // instance id by the collector.
+        if (ctx.manifest.subscriptionsFor(item.entityDefinitionId)?.lifecycle.deleted) {
           ctx.manifest.recordArchived(recordId)
         }
       } catch (error) {
