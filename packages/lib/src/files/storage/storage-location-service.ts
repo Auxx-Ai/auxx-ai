@@ -1,5 +1,7 @@
 // packages/lib/src/files/storage/location-service.ts
-import { type Database, database as db, schema, type Transaction } from '@auxx/database'
+// Namespace import, deliberately — see `db()` below.
+import * as auxxDatabase from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import type {
   CreateStorageLocationInput,
   StorageLocationEntity,
@@ -20,6 +22,35 @@ import {
 
 // NOTE: StorageLocationService focuses only on database operations
 const logger = createScopedLogger('storage-location-service')
+
+/**
+ * The process-wide database client, read on FIRST USE rather than at import.
+ *
+ * This file used to hold `import { database as db }` — a *named* binding, which
+ * Vitest validates when the importing module is LINKED. Any test declaring its
+ * own `vi.mock('@auxx/database', …)` without a `database` key therefore killed
+ * this file, and everything downstream of it, at collection time with
+ * `No "database" export is defined on the "@auxx/database" mock` — before a
+ * single test ran.
+ *
+ * That reached much further than this file: `storage/ports.ts` -> `storage/
+ * storage-manager.ts` -> here, so the Phase-2 read facade in
+ * `core/media-asset-service.ts` could not import `ports.ts` statically and had
+ * to resolve `createS3StoragePort` through a cached dynamic import instead.
+ * Every facade in Phases 3–5 would have repeated that dance.
+ *
+ * A namespace import has no per-export link check, so the property access below
+ * happens when a method actually RUNS — by which point a real app has a real
+ * database, and a test that never calls one never touches it. Same trick, and
+ * the same reasoning, as `defaultDatabase()` in `core/base-service.ts`.
+ *
+ * This whole file is deleted in PR 3c; the accessor goes with it.
+ *
+ * See `plans/testing/database-mock-collection-hazard.md`.
+ */
+function db(): Database {
+  return auxxDatabase.database
+}
 // NOTE: Adapter management is handled by StorageManager
 /**
  * Request to create a new StorageLocation
@@ -301,7 +332,7 @@ export class StorageLocationService {
     // `userId` is `''` because this legacy request shape has no actor to give
     // and the function does not record one. `FilesCtx` requires the field, so
     // the facade has to invent it — one more reason this shim is temporary.
-    const ctx = { db: dbInstance ?? db, organizationId: data.organizationId, userId: '' }
+    const ctx = { db: dbInstance ?? db(), organizationId: data.organizationId, userId: '' }
 
     // Two branches, because the optional `dbInstance` cannot be reconciled with
     // a required `Transaction` any other way:
@@ -320,7 +351,7 @@ export class StorageLocationService {
     //   this method.
     const result = dbInstance
       ? await createStorageLocation(dbInstance as unknown as Transaction, ctx, input)
-      : await db.transaction((tx) => createStorageLocation(tx, { ...ctx, db: tx }, input))
+      : await db().transaction((tx) => createStorageLocation(tx, { ...ctx, db: tx }, input))
 
     if (result.isErr()) {
       logger.error('Failed to create storage location', { error: result.error, data })
@@ -334,7 +365,7 @@ export class StorageLocationService {
    */
   async get(id: string): Promise<StorageLocationEntity | null> {
     try {
-      const [location] = await db
+      const [location] = await db()
         .select()
         .from(schema.StorageLocation)
         .where(and(eq(schema.StorageLocation.id, id), isNull(schema.StorageLocation.deletedAt)))
@@ -350,7 +381,7 @@ export class StorageLocationService {
    */
   async getWithCredentials(id: string): Promise<StorageLocationWithCredentials | null> {
     try {
-      const [result] = await db
+      const [result] = await db()
         .select({
           id: schema.StorageLocation.id,
           provider: schema.StorageLocation.provider,
@@ -394,7 +425,7 @@ export class StorageLocationService {
       if (data.size !== undefined) updateData.size = data.size
       if (data.mimeType !== undefined) updateData.mimeType = data.mimeType
       if (data.metadata !== undefined) updateData.metadata = data.metadata
-      const [location] = await db
+      const [location] = await db()
         .update(schema.StorageLocation)
         .set(updateData)
         .where(eq(schema.StorageLocation.id, id))
@@ -415,7 +446,7 @@ export class StorageLocationService {
   async delete(id: string): Promise<void> {
     logger.info('Deleting storage location', { id })
     try {
-      await db.delete(schema.StorageLocation).where(eq(schema.StorageLocation.id, id))
+      await db().delete(schema.StorageLocation).where(eq(schema.StorageLocation.id, id))
       logger.info('Storage location deleted successfully', { id })
     } catch (error) {
       logger.error('Failed to delete storage location', { id, error })
@@ -462,7 +493,7 @@ export class StorageLocationService {
    */
   async getLocationsByProvider(provider: StorageProvider): Promise<StorageLocationEntity[]> {
     try {
-      return await db
+      return await db()
         .select()
         .from(schema.StorageLocation)
         .where(
@@ -482,7 +513,7 @@ export class StorageLocationService {
    */
   async getLocationsByCredential(credentialId: string): Promise<StorageLocationEntity[]> {
     try {
-      return await db
+      return await db()
         .select()
         .from(schema.StorageLocation)
         .where(
@@ -505,7 +536,7 @@ export class StorageLocationService {
     externalId: string
   ): Promise<StorageLocationEntity[]> {
     try {
-      return await db
+      return await db()
         .select()
         .from(schema.StorageLocation)
         .where(
@@ -541,7 +572,7 @@ export class StorageLocationService {
       for (const [key, value] of Object.entries(metadataQuery)) {
         conditions.push(sql`${schema.StorageLocation.metadata}->>${key} = ${value}`)
       }
-      return await db
+      return await db()
         .select()
         .from(schema.StorageLocation)
         .where(and(...conditions))
@@ -657,7 +688,7 @@ export class StorageLocationService {
       const batch = locations.slice(i, i + batchSize)
       try {
         // Use Drizzle transaction for each batch
-        const batchResults = await db.transaction(async (tx) => {
+        const batchResults = await db().transaction(async (tx) => {
           const results: StorageLocationEntity[] = []
           for (const location of batch) {
             const [result] = await tx
@@ -785,13 +816,13 @@ export class StorageLocationService {
   }> {
     try {
       // Get total count
-      const [totalCountRow] = await db
+      const [totalCountRow] = await db()
         .select({ totalCount: count() })
         .from(schema.StorageLocation)
         .where(isNull(schema.StorageLocation.deletedAt))
       const totalCount = totalCountRow?.totalCount ?? 0
       // Get count by provider
-      const providerCounts = await db
+      const providerCounts = await db()
         .select({
           provider: schema.StorageLocation.provider,
           count: count(),
@@ -800,7 +831,7 @@ export class StorageLocationService {
         .where(isNull(schema.StorageLocation.deletedAt))
         .groupBy(schema.StorageLocation.provider)
       // Get size by provider
-      const providerSizes = await db
+      const providerSizes = await db()
         .select({
           provider: schema.StorageLocation.provider,
           totalSize: sum(schema.StorageLocation.size),
@@ -845,7 +876,7 @@ export class StorageLocationService {
   }> {
     try {
       // Get count and size for the credential
-      const [stats] = await db
+      const [stats] = await db()
         .select({
           locationCount: count(),
           totalSize: sum(schema.StorageLocation.size),
@@ -858,7 +889,7 @@ export class StorageLocationService {
           )
         )
       // Get unique providers for this credential
-      const providerResults = await db
+      const providerResults = await db()
         .selectDistinct({
           provider: schema.StorageLocation.provider,
         })
@@ -936,7 +967,7 @@ export class StorageLocationService {
       // This will need to be updated based on actual database schema relationships
       // For now, we'll find locations older than a certain threshold that haven't been accessed recently
       const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
-      const orphanedLocations = await db
+      const orphanedLocations = await db()
         .select({
           id: schema.StorageLocation.id,
           provider: schema.StorageLocation.provider,
@@ -956,7 +987,7 @@ export class StorageLocationService {
       for (let i = 0; i < orphanedLocations.length; i += batchSize) {
         const batch = orphanedLocations.slice(i, i + batchSize)
         const ids = batch.map((loc) => loc.id)
-        const result = await db
+        const result = await db()
           .delete(schema.StorageLocation)
           .where(inArray(schema.StorageLocation.id, ids))
         // Drizzle doesn't return count directly, so we use the batch size as an approximation

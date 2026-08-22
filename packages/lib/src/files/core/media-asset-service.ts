@@ -27,6 +27,7 @@ import type { PgColumn } from 'drizzle-orm/pg-core'
 import type { DownloadRef } from '../adapters/base-adapter'
 import { type DownloadDeps, getAssetDownloadRef } from '../assets/download'
 import type { FilesCtx } from '../ctx'
+import { createS3StoragePort } from '../storage/ports'
 import { BaseService, type DatabaseClient, defaultDatabase } from './base-service'
 import { purgeMediaAssets } from './media-asset-purge'
 import type { ContentAccessible } from './mixins/content-accessible'
@@ -974,7 +975,7 @@ export class MediaAssetService
    * status instead of a 500.
    */
   async getDownloadRef(id: string): Promise<DownloadRef> {
-    const result = await getAssetDownloadRef(this.filesCtx(), await this.filesDownloadDeps(), id)
+    const result = await getAssetDownloadRef(this.filesCtx(), this.filesDownloadDeps(), id)
     if (result.isErr()) {
       throw result.error
     }
@@ -1066,7 +1067,7 @@ export class MediaAssetService
    */
   async getDownloadUrl(id: string): Promise<string | null> {
     try {
-      const result = await getAssetDownloadRef(this.filesCtx(), await this.filesDownloadDeps(), id)
+      const result = await getAssetDownloadRef(this.filesCtx(), this.filesDownloadDeps(), id)
       if (result.isErr()) return null
       return result.value.type === 'url' ? result.value.url : null
     } catch {
@@ -1256,15 +1257,19 @@ export class MediaAssetService
    * The storage collaborator for the extracted download read, lazily built and
    * cached per service instance.
    *
-   * Imported dynamically for the same reason {@link getStorageManager} is:
-   * `storage/ports.ts` reaches `storage-location-service.ts`, which holds a
-   * module-scope `import { database as db }` named binding, and pulling that
-   * into this file's static import graph re-arms the collection hazard
-   * documented on `base-service.ts`.
+   * Statically imported. It could not be, until PR 3a-prime: `storage/ports.ts`
+   * reaches `storage-location-service.ts`, which held a module-scope
+   * `import { database as db }` named binding, and pulling that into this
+   * file's static import graph re-armed the collection hazard documented on
+   * `base-service.ts`. That file now uses the same namespace accessor
+   * `base-service.ts` does, so the edge is safe and the dynamic import — and
+   * the `async` it forced onto every caller — is gone.
+   *
+   * Still lazy, but only to avoid resolving credentials for a service instance
+   * that never downloads anything.
    */
-  private async filesDownloadDeps(): Promise<DownloadDeps> {
+  private filesDownloadDeps(): DownloadDeps {
     if (!this._filesDownloadDeps) {
-      const { createS3StoragePort } = await import('../storage/ports')
       this._filesDownloadDeps = { storage: createS3StoragePort(this.requireOrganization()) }
     }
     return this._filesDownloadDeps
