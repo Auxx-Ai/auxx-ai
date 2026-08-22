@@ -1,9 +1,10 @@
 // packages/lib/src/files/storage/__tests__/policy-enforcement.test.ts
 
+import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UploadPreparedConfig } from '../../upload/init-types'
+import { createStorageLocation } from '../locations'
 import { clearStorageAdapterCache } from '../providers'
-import { storageLocationService } from '../storage-location-service'
 import { StorageManager } from '../storage-manager'
 
 // Mock credentials module used by StorageManager and S3Adapter
@@ -36,18 +37,25 @@ vi.mock('@auxx/logger', async (importOriginal) => ({
   }),
 }))
 
-// Mock storage-location-service (imported at module level by storage-manager)
-vi.mock('../storage-location-service', () => ({
-  storageLocationService: {
-    get: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    getStats: vi.fn(),
-    getLocationsByProvider: vi.fn(),
-    getLocationsByCredential: vi.fn(),
-    findByExternalId: vi.fn(),
-  },
+// Mock the StorageLocation writes (imported at module level by storage-manager).
+// This file asserts on *what the facade forwards*, not on persistence, so the
+// real INSERT would only be noise against the package-wide `@auxx/database`
+// chainable stub.
+vi.mock('../locations', () => ({
+  createStorageLocation: vi.fn(),
+  deleteStorageLocation: vi.fn(),
+}))
+
+// `StorageManager.createStorageLocation` opens a transaction when the caller
+// supplies none, and the package-wide `@auxx/database` mock's `transaction` is a
+// bare `vi.fn()` that never invokes its callback. Hand the facade a database
+// whose `transaction` actually runs the body; everything else in `base-service`
+// stays real.
+vi.mock('../../core/base-service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../core/base-service')>()),
+  defaultDatabase: () => ({
+    transaction: <T>(cb: (tx: unknown) => T | Promise<T>) => cb({}),
+  }),
 }))
 
 const mockPresignUpload = vi.fn().mockResolvedValue({
@@ -488,20 +496,22 @@ describe('StorageManager – enforcePolicy via generatePresignedUploadUrl', () =
     })
 
     it('routes public uploadContent calls to the public bucket and persists bucket metadata', async () => {
-      vi.mocked(storageLocationService.create).mockResolvedValue({
-        id: 'loc_123',
-        provider: 'S3',
-        externalId: 'thumbs/avatar.webp',
-        externalUrl: 'https://test-public-bucket.s3.amazonaws.com/thumbs/avatar.webp',
-        externalRev: 'etag-123',
-        credentialId: null,
-        size: BigInt(4),
-        mimeType: 'image/webp',
-        metadata: {
-          bucket: 'test-public-bucket',
-          key: 'thumbs/avatar.webp',
-        },
-      } as any)
+      vi.mocked(createStorageLocation).mockResolvedValue(
+        ok({
+          id: 'loc_123',
+          provider: 'S3',
+          externalId: 'thumbs/avatar.webp',
+          externalUrl: 'https://test-public-bucket.s3.amazonaws.com/thumbs/avatar.webp',
+          externalRev: 'etag-123',
+          credentialId: null,
+          size: BigInt(4),
+          mimeType: 'image/webp',
+          metadata: {
+            bucket: 'test-public-bucket',
+            key: 'thumbs/avatar.webp',
+          },
+        } as any)
+      )
 
       await expect(
         manager.uploadContent({
@@ -522,15 +532,20 @@ describe('StorageManager – enforcePolicy via generatePresignedUploadUrl', () =
         })
       )
 
-      expect(storageLocationService.create).toHaveBeenCalledWith(
+      expect(createStorageLocation).toHaveBeenCalledWith(
+        // tx, then ctx — the scope comes from the manager, never from the input.
+        expect.anything(),
+        expect.objectContaining({ organizationId: 'org123' }),
         expect.objectContaining({
           externalUrl: 'https://test-public-bucket.s3.amazonaws.com/thumbs/avatar.webp',
+          // The bucket is now a required top-level field, not something a reader
+          // has to dig out of `metadata` — that is the #1816/#1817/#1818 fix.
+          bucket: 'test-public-bucket',
           metadata: expect.objectContaining({
             bucket: 'test-public-bucket',
             key: 'thumbs/avatar.webp',
           }),
-        }),
-        undefined
+        })
       )
     })
   })

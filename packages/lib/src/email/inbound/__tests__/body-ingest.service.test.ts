@@ -1,11 +1,12 @@
 // packages/lib/src/email/inbound/__tests__/body-ingest.service.test.ts
 
+import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => {
   return {
     uploadContent: vi.fn(),
-    findByExternalId: vi.fn(),
+    findStorageLocationByExternalId: vi.fn(),
   }
 })
 
@@ -15,12 +16,11 @@ vi.mock('../../../files/storage/storage-manager', () => ({
   }),
 }))
 
-vi.mock('../../../files/storage/storage-location-service', () => ({
-  storageLocationService: {
-    findByExternalId: mocks.findByExternalId,
-  },
+vi.mock('../../../files/storage/location-queries', () => ({
+  findStorageLocationByExternalId: mocks.findStorageLocationByExternalId,
 }))
 
+import { AuxxError } from '../../../errors'
 import { InboundBodyIngestService } from '../body-ingest.service'
 
 const baseContext = {
@@ -33,8 +33,8 @@ describe('InboundBodyIngestService', () => {
 
   beforeEach(() => {
     mocks.uploadContent.mockReset()
-    mocks.findByExternalId.mockReset()
-    mocks.findByExternalId.mockResolvedValue([])
+    mocks.findStorageLocationByExternalId.mockReset()
+    mocks.findStorageLocationByExternalId.mockResolvedValue(ok(null))
     service = new InboundBodyIngestService()
   })
 
@@ -104,20 +104,23 @@ describe('InboundBodyIngestService', () => {
   })
 
   it('returns existing StorageLocation when body was already uploaded (idempotency)', async () => {
-    mocks.findByExternalId.mockResolvedValue([{ id: 'sl_existing_42' }])
+    mocks.findStorageLocationByExternalId.mockResolvedValue(ok({ id: 'sl_existing_42' }))
 
     const result = await service.ingestBody({ textHtml: '<p>Duplicate</p>' }, baseContext)
 
     expect(result).toEqual({ htmlBodyStorageLocationId: 'sl_existing_42' })
     expect(mocks.uploadContent).not.toHaveBeenCalled()
-    expect(mocks.findByExternalId).toHaveBeenCalledWith(
+    // The lookup is org-scoped now: the ctx carries the organization the ingest
+    // is acting for, so a key colliding across tenants cannot be reused.
+    expect(mocks.findStorageLocationByExternalId).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: 'org_abc' }),
       'S3',
       'email/inbound/org_abc/ses-msg-123/body.html'
     )
   })
 
-  it('uploads when findByExternalId returns empty array', async () => {
-    mocks.findByExternalId.mockResolvedValue([])
+  it('uploads when the lookup finds no existing location', async () => {
+    mocks.findStorageLocationByExternalId.mockResolvedValue(ok(null))
     mocks.uploadContent.mockResolvedValue({ id: 'sl_new_1' })
 
     const result = await service.ingestBody({ textHtml: '<p>New</p>' }, baseContext)
@@ -126,8 +129,10 @@ describe('InboundBodyIngestService', () => {
     expect(mocks.uploadContent).toHaveBeenCalledOnce()
   })
 
-  it('falls through to upload when findByExternalId throws (fail-open)', async () => {
-    mocks.findByExternalId.mockRejectedValue(new Error('DB connection refused'))
+  it('falls through to upload when the lookup returns err (fail-open)', async () => {
+    mocks.findStorageLocationByExternalId.mockResolvedValue(
+      err(new AuxxError('DB connection refused'))
+    )
     mocks.uploadContent.mockResolvedValue({ id: 'sl_fallback_1' })
 
     const result = await service.ingestBody({ textHtml: '<p>Fallback</p>' }, baseContext)
@@ -136,8 +141,20 @@ describe('InboundBodyIngestService', () => {
     expect(mocks.uploadContent).toHaveBeenCalledOnce()
   })
 
+  it('falls through to upload when the lookup throws outright (fail-open)', async () => {
+    // A `Result`-returning function still has a throwing failure mode below the
+    // guard — a connection that dies mid-call. The message must not be lost to it.
+    mocks.findStorageLocationByExternalId.mockRejectedValue(new Error('socket hang up'))
+    mocks.uploadContent.mockResolvedValue({ id: 'sl_fallback_2' })
+
+    const result = await service.ingestBody({ textHtml: '<p>Fallback</p>' }, baseContext)
+
+    expect(result).toEqual({ htmlBodyStorageLocationId: 'sl_fallback_2' })
+    expect(mocks.uploadContent).toHaveBeenCalledOnce()
+  })
+
   it('propagates upload error even when lookup fails (upload is not optional)', async () => {
-    mocks.findByExternalId.mockRejectedValue(new Error('DB error'))
+    mocks.findStorageLocationByExternalId.mockResolvedValue(err(new AuxxError('DB error')))
     mocks.uploadContent.mockRejectedValue(new Error('S3 unavailable'))
 
     await expect(service.ingestBody({ textHtml: '<p>Fail</p>' }, baseContext)).rejects.toThrow(

@@ -44,17 +44,12 @@ vi.mock('@auxx/logger', async (importOriginal) => ({
   }),
 }))
 
-vi.mock('../storage-location-service', () => ({
-  storageLocationService: {
-    get: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    getStats: vi.fn(),
-    getLocationsByProvider: vi.fn(),
-    getLocationsByCredential: vi.fn(),
-    findByExternalId: vi.fn(),
-  },
+// The StorageLocation writes, mocked because `storage-manager` imports them at
+// module level. Nothing in this file exercises persistence — it is about which
+// bucket reaches the adapter.
+vi.mock('../locations', () => ({
+  createStorageLocation: vi.fn(),
+  deleteStorageLocation: vi.fn(),
 }))
 
 const mockPresignPart = vi.fn().mockResolvedValue({

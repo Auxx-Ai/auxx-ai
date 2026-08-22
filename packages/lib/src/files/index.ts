@@ -72,15 +72,11 @@ export type {
 // Storage Adapters
 export { BaseStorageAdapter } from './adapters/base-adapter'
 export { S3Adapter } from './adapters/s3-adapter'
-export type {
-  BulkStorageOperationOptions,
-  BulkStorageOperationResult,
-  CreateStorageLocationRequest,
-  StorageLocationWithCredentials,
-  UpdateStorageLocationRequest,
-} from './storage/storage-location-service'
-// Storage Location Service - Database operations for storage locations
-export { StorageLocationService, storageLocationService } from './storage/storage-location-service'
+// NOTE: `StorageLocation` persistence is `storage/locations.ts` (writes) and
+// `storage/location-queries.ts` (reads). Neither is re-exported here, matching
+// every other module written to the `files/ctx.ts` contract: they are imported
+// by path from the one or two call sites that need them, so the barrel does not
+// grow a public surface nothing asked for.
 export type { StorageDownloadParams } from './storage/storage-manager'
 // Storage Manager - Unified storage operations
 export { createStorageManager, StorageManager } from './storage/storage-manager'
