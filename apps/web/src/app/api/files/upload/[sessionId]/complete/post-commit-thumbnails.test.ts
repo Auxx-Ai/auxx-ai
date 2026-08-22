@@ -19,7 +19,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   getSession,
   getUploadSession,
-  updateSession,
+  patchUploadSession,
   enqueueEnsureThumbnail,
   getDownloadUrl,
   getWithRelations,
@@ -34,7 +34,7 @@ const {
 } = vi.hoisted(() => ({
   getSession: vi.fn(),
   getUploadSession: vi.fn(),
-  updateSession: vi.fn(),
+  patchUploadSession: vi.fn(),
   enqueueEnsureThumbnail: vi.fn(),
   getDownloadUrl: vi.fn(async () => 'https://cdn.example/avatar.png'),
   getWithRelations: vi.fn(async () => ({ currentVersion: { storageLocation: { id: 'stl_1' } } })),
@@ -63,7 +63,10 @@ vi.mock('@auxx/lib/dehydration', () => ({
 }))
 vi.mock('@auxx/lib/cache', () => ({ onCacheEvent }))
 vi.mock('@auxx/lib/files/server', () => ({
-  SessionManager: { getSession: getUploadSession, updateSession, touchSession: vi.fn() },
+  uploadSessionRedis: vi.fn(async () => ({})),
+  getUploadSession,
+  patchUploadSession,
+  touchUploadSession: vi.fn(),
   createStorageManager: () => ({
     headByKey,
     createStorageLocation,

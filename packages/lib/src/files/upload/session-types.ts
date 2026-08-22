@@ -45,18 +45,6 @@ export interface PresignedUploadSession {
 }
 
 /**
- * Upload completion data provided by client after successful upload
- */
-export interface UploadCompletionData {
-  storageKey: string
-  size: number
-  mimeType: string
-  etag?: string
-  uploadId?: string // For multipart
-  parts?: Array<{ partNumber: number; etag: string }> // For multipart
-}
-
-/**
  * Upload preferences that processors can specify
  */
 export interface UploadPreferences {

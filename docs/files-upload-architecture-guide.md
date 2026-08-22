@@ -190,21 +190,21 @@ still-working default processor — a silent, wrong `FolderFile` instead of a ha
    measures zero (§11.1).
 5. `ensureProcessorsInitialized()` → `ProcessorRegistry.getForEntityType()` →
    `processor.processConfig(init)` → frozen `UploadPreparedConfig`.
-6. `SessionManager.createSessionFromConfig(config)` — writes the whole config as JSON to
-   `upload:session:{nanoid}` in Redis with `SETEX config.ttlSec`. **Redis is mandatory**; there is
-   no fallback.
+6. `createUploadSession(redis, config, now)` (`upload/session.ts`) — writes the whole config as
+   JSON to `upload:session:{nanoid}` in Redis with `SETEX config.ttlSec`. **Redis is mandatory**;
+   there is no fallback.
 7. Single vs multipart, decided by `config.uploadPlan.strategy`:
    - **single** → `generatePresignedUploadUrl` → S3 **presigned POST** with
      `content-length-range 0..expectedSize` and an exact `Content-Type` condition. Response carries
      `presignedUrl` + `presignedFields`.
    - **multipart** → `startMultipartUploadFromConfig` → `uploadId` +
      `partPresignEndpoint: /api/files/upload/{sessionId}/parts`.
-8. `SessionManager.updateSession` writes the presign back onto the session (read-modify-write, no
-   CAS).
+8. `patchUploadSession` writes the presign back onto the session (compare-and-set since PR 4b).
 
 ### 4.2 `POST /api/files/upload/{sessionId}/parts`
 
-Looks up the session, `touchSession`es it (TTL → 600 s), and mints one presigned `UploadPart` URL.
+Looks up the session, `touchUploadSession`s it (TTL → the session's own `ttlSec`), and mints one
+presigned `UploadPart` URL.
 **No authentication.** No `ttlSec` forwarding (parts always get the adapter's 3600 s default). No
 bucket forwarding (§11.5).
 
@@ -689,10 +689,13 @@ error by hand so the 403 survives.
 
 - `deriveStorageKey` uses `Date.now()` with no random suffix. Two files with the same name for the
   same entity in the same millisecond collide, and the second silently overwrites the first.
-- `SessionManager.updateSession` is read-modify-write with no CAS. The `parts` route touches the
-  same key concurrently with `complete`.
-- `SessionManager.completeUpload` stores a **storage key** in the `storageLocationId` field
-  ("Temporary, will be replaced"). Nothing calls it.
+- ~~`SessionManager.updateSession` is read-modify-write with no CAS. The `parts` route touches the
+  same key concurrently with `complete`.~~ **FIXED (PR 4b).** `patchUploadSession` and
+  `touchUploadSession` compare-and-set the whole serialized session through a Lua script and retry
+  on a lost race.
+- ~~`SessionManager.completeUpload` stores a **storage key** in the `storageLocationId` field
+  ("Temporary, will be replaced"). Nothing calls it.~~ **FIXED (PR 4b)** — method and its test
+  deleted.
 - `presignUpload` passes upload metadata as raw S3 POST `Fields` rather than `x-amz-meta-*`, so the
   `sessionId`/`orgId`/`uploader` tags do not land on the object as user metadata. Nothing reads
   them back, so this is currently invisible — worth confirming before relying on object metadata.

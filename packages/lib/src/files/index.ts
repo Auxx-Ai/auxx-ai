@@ -83,8 +83,9 @@ export { createStorageManager, StorageManager } from './storage/storage-manager'
 
 // ============= UPLOAD SYSTEM =============
 
-// Upload Session Management
-export { SessionManager } from './upload/session-index'
+// NOTE: upload sessions are `upload/session.ts`. Not re-exported here — nothing
+// outside `files/` imports them through this barrel, and `files/server.ts` is
+// where the two route surfaces that do need them already look.
 
 // Legacy Upload Types (for backward compatibility)
 export type { FileUploadParams, FileUploadResult } from './upload/types'
