@@ -4,6 +4,10 @@ import { database, schema } from '@auxx/database'
 import { fromDatabase } from '@auxx/services/shared/utils'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+// Leaf-file import on purpose: the crud barrel pulls in UnifiedCrudHandler,
+// which imports this package's barrel — write-session-als itself only touches
+// node:async_hooks, so no runtime cycle this way.
+import { getAmbientWriteSession } from '../resources/crud/write-session-als'
 
 /** Parameters for updating an entity instance */
 export interface UpdateEntityInstanceParams {
@@ -32,7 +36,12 @@ export async function updateEntityInstance(params: UpdateEntityInstanceParams) {
     updateData.archivedAt = data.archivedAt
     // Archive/restore is meaningful activity — advance lastActivityAt so the
     // staleness scanner doesn't flag a freshly-restored entity as stale.
-    updateData.lastActivityAt = now
+    // EXCEPT under a seed write session: seeded data is not activity (door
+    // matrix, lastActivityAt × seed = off). The updatedAt content stamp above
+    // still applies (updatedAtStamp × seed = per-record).
+    if (getAmbientWriteSession()?.origin.kind !== 'seed') {
+      updateData.lastActivityAt = now
+    }
   }
 
   const dbResult = await fromDatabase(
