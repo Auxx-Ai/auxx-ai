@@ -52,6 +52,7 @@ import {
   loadConnector,
   stampResyncPending,
 } from './service'
+import { isBoundaryPrefix, relativeSourcePath } from './source-paths'
 import type {
   ConnectorTemplate,
   ConnectorTemplateFieldMapping,
@@ -612,31 +613,9 @@ export async function restampWebhookBindingsForDeployment(
   }
 }
 
-/**
- * Is `prefix` a path-boundary prefix of `path`? `''` prefixes everything; an exact
- * match counts; otherwise `path` must continue at a boundary (`.` or `[`) so
- * `line_items[]` matches `line_items[].sku` but NOT `line_items_extra[]`.
- */
-function isBoundaryPrefix(path: string, prefix: string): boolean {
-  if (prefix === '') return true
-  if (!path.startsWith(prefix)) return false
-  if (path.length === prefix.length) return true
-  const next = path[prefix.length]
-  return next === '.' || next === '['
-}
-
-/**
- * Strip a `rootPath` prefix off a `path`, leaving it relative to that subtree —
- * `('line_items[].sku', 'line_items[]') → 'sku'`. Used both to relativize a field's
- * sourcePath against its owning mapping AND to relativize a nested child mapping's
- * own (payload-absolute, manifest) rootPath against its parent's rootPath before it
- * is stored (`absolutePrefix`/`subtreeUnder`/`mapRecord` all expect parent-relative).
- * `rootPath` must be a boundary-prefix of `path` (the caller resolves it that way).
- */
-export function relativeSourcePath(sourcePath: string, rootPath: string): string {
-  if (rootPath === '') return sourcePath
-  return sourcePath.slice(rootPath.length).replace(/^\./, '')
-}
+// Path helpers live in `./source-paths` (leaf module — `app-catalog.ts` needs them too,
+// and importing `mutations` back would form a cycle). Re-exported for existing importers.
+export { isBoundaryPrefix, relativeSourcePath } from './source-paths'
 
 /**
  * The parent of `rootPath` among `all` is the mapping whose rootPath is the longest

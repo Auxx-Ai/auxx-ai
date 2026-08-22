@@ -290,13 +290,110 @@ describe('buildContributingFieldBindings', () => {
     expect(bindings).toHaveLength(0)
   })
 
-  it('drops everything for an array-rooted mapping', () => {
+  // A named array root relativizes deterministically ('variants[].sku' → 'sku'), the
+  // same rule the owned partitioner syncs on; only a NESTED array leaves a digit-less
+  // `[]` that `mapRecord.getByPath` cannot resolve, and that is skipped PER FIELD.
+  // Worked example from plans/products/02-shopify-mapping.md §1.4.
+  const partFields: ContributingTargetField[] = [
+    { id: 'f_sku', name: 'SKU', systemAttribute: 'part_sku', type: 'TEXT' },
+    { id: 'f_price', name: 'Price', systemAttribute: null, type: 'CURRENCY' },
+    { id: 'f_inventory', name: 'Inventory', systemAttribute: null, type: 'NUMBER' },
+  ]
+  const variantSourceFields = [
+    { fieldKey: 'variants.sku', sourcePath: 'variants[].sku', type: 'TEXT', name: 'SKU' },
+    { fieldKey: 'variants.price', sourcePath: 'variants[].price', type: 'CURRENCY', name: 'Price' },
+    {
+      fieldKey: 'variants.inventory_quantity',
+      sourcePath: 'variants[].inventory_quantity',
+      type: 'NUMBER',
+      name: 'Inventory quantity',
+    },
+    {
+      fieldKey: 'variants.option_value',
+      sourcePath: 'variants[].options[].value',
+      type: 'TEXT',
+      name: 'Option value',
+    },
+    { fieldKey: 'variants.id', sourcePath: 'variants[].id', type: 'TEXT', name: 'Variant ID' },
+  ]
+
+  it('binds declared fieldBindings under a named array root, subtree-relative (02 §1.4)', () => {
+    const bindings = buildContributingFieldBindings(
+      'def_part',
+      'shopify',
+      'variants[]',
+      [
+        { sourceFieldKey: 'variants.sku', targetKey: 'sku' },
+        { sourceFieldKey: 'variants.price', targetKey: 'price' },
+        { sourceFieldKey: 'variants.inventory_quantity', targetKey: 'inventory' },
+      ],
+      variantSourceFields,
+      partFields
+    )
+    expect(bindings.map((b) => b.targetFieldRef)).toEqual([
+      'def_part:f_sku',
+      'def_part:f_price',
+      'def_part:f_inventory',
+    ])
+    expect(bindings[0]).toMatchObject({
+      expression: '{sku}', // 'variants[].' stripped
+      sourceFields: { sku: 'sku' },
+    })
+    expect(bindings[1]!.expression).toBe('{price}')
+    expect(bindings[2]!.expression).toBe('{inventory_quantity}')
+  })
+
+  it('skips a NESTED array path per field, keeping its array-root siblings', () => {
+    const bindings = buildContributingFieldBindings(
+      'def_part',
+      'shopify',
+      'variants[]',
+      [
+        { sourceFieldKey: 'variants.sku', targetKey: 'sku' },
+        // 'options[].value' keeps a digit-less `[]` after stripping — unresolvable.
+        { sourceFieldKey: 'variants.option_value', targetKey: 'price' },
+      ],
+      variantSourceFields,
+      partFields
+    )
+    expect(bindings).toHaveLength(1)
+    expect(bindings[0]!.targetFieldRef).toBe('def_part:f_sku')
+  })
+
+  it('stamps identityRole externalId for an identity targetAppField under an array root', () => {
+    const bindings = buildContributingFieldBindings(
+      'def_part',
+      'shopify',
+      'variants[]',
+      [{ sourceFieldKey: 'variants.id', targetAppField: 'variantId' }],
+      variantSourceFields,
+      [
+        {
+          id: 'cf_variant_id',
+          name: 'Shopify variant ID',
+          systemAttribute: null,
+          type: 'TEXT',
+          appFieldKey: 'variantId',
+          appSlug: 'shopify',
+          isIdentity: true,
+        },
+      ]
+    )
+    expect(bindings).toHaveLength(1)
+    expect(bindings[0]).toMatchObject({
+      targetFieldRef: 'def_part:@app:shopify:variantId',
+      expression: '{id}',
+      identityRole: { kind: 'externalId' },
+    })
+  })
+
+  it('does NOT claim a source outside the root subtree boundary (customer vs customer_notes)', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
       'shopify',
-      'line_items[]',
-      [{ sourceFieldKey: 'first_name', targetKey: 'first_name' }],
-      sourceFields,
+      'customer',
+      [{ sourceFieldKey: 'note_body', targetKey: 'first_name' }],
+      [{ fieldKey: 'note_body', sourcePath: 'customer_notes.body', type: 'TEXT', name: 'Note' }],
       defFields
     )
     expect(bindings).toHaveLength(0)
@@ -582,7 +679,9 @@ describe('buildContributingAutoBindings (zero-config heuristic)', () => {
     })
   })
 
-  it('drops everything for an array-rooted mapping', () => {
+  it('binds direct leaves under a named array root, still skipping nested-array leaves', () => {
+    // 'line_items[].first_name' relativizes to 'first_name' — deterministic, binds;
+    // 'line_items[].options[].value' keeps a digit-less `[]` — skipped per field.
     const bindings = buildContributingAutoBindings(
       'def_contact',
       'line_items[]',
@@ -593,9 +692,20 @@ describe('buildContributingAutoBindings (zero-config heuristic)', () => {
           type: 'TEXT',
           name: 'First Name',
         },
+        {
+          fieldKey: 'optionValue',
+          sourcePath: 'line_items[].options[].value',
+          type: 'TEXT',
+          name: 'Option value',
+        },
       ],
       contactFields
     )
-    expect(bindings).toHaveLength(0)
+    expect(bindings).toHaveLength(1)
+    expect(bindings[0]).toMatchObject({
+      targetFieldRef: 'def_contact:f_first',
+      expression: '{first_name}',
+      sourceFields: { first_name: 'first_name' },
+    })
   })
 })
