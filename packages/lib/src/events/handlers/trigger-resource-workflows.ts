@@ -164,6 +164,122 @@ export function getEventRecordId(event: AuxxEvent, match: ResourceTriggerMatch):
 export type ResourceFetcher = (recordId: RecordId, organizationId: string) => Promise<any | null>
 
 /**
+ * One published workflow a resource event's trigger matches — everything the
+ * enqueue needs, resolved once at match time so match-only consumers (the
+ * Phase 6 sync dispatch guard's tally) and the enqueue path cannot drift.
+ */
+export interface WorkflowTriggerTarget {
+  workflowAppId: string
+  workflowId: string
+  /** The workflow app's display name — for the tally / approval surfaces. */
+  workflowName?: string
+  triggerType: ResourceTriggerType
+  /**
+   * The id the `executeResourceTrigger` job payload carries: the workflow's
+   * OWN stored id, not the event's — the job keys the trigger's output under
+   * this (`resource-trigger-job.ts`), and the graph declared its
+   * `{{node.<id>.field}}` paths against whatever the row holds. Sending the
+   * canonical id to a slug-keyed workflow would fire it with unresolvable
+   * variables.
+   */
+  jobEntityDefinitionId: string
+}
+
+/** What {@link matchResourceWorkflowTargets} resolved for one event. */
+export interface ResourceWorkflowMatchResult {
+  match: ResourceTriggerMatch
+  targets: WorkflowTriggerTarget[]
+}
+
+/**
+ * Match-only half of the dispatch: resolve which published workflows this
+ * event's trigger matches — no record fetch, no enqueue. The Phase 6 guarded
+ * dispatcher tallies large sync runs through this (plan events/03 §9, D-3);
+ * {@link dispatchResourceWorkflows} composes it with the fetch + enqueue.
+ *
+ * Returns null when the event carries no org or maps to no resource trigger;
+ * an empty `targets` array when the trigger matches no enabled workflow.
+ */
+export async function matchResourceWorkflowTargets(
+  event: AuxxEvent
+): Promise<ResourceWorkflowMatchResult | null> {
+  // A handful of payloads (`integration:connection_failed`) fire before a
+  // session is resolved and carry no org id. None of them map to a resource
+  // trigger, so this is unreachable today — but workflow lookup is org-scoped
+  // and must never run unscoped, and the entity normalization below is
+  // per-org, so the check comes first.
+  const organizationId = event.data.organizationId
+  if (!organizationId) {
+    logger.debug('Event has no organizationId; skipping workflow dispatch', {
+      eventType: event.type,
+    })
+    return null
+  }
+
+  // 1. Map event to workflow trigger criteria — see `resolveResourceTriggerMatch`.
+  const match = await resolveResourceTriggerMatch(event, organizationId)
+  if (!match) {
+    logger.debug('No workflow trigger mapping for event', { eventType: event.type })
+    return null
+  }
+
+  // 2. Query workflows via org cache. Match on EVERY form the column may hold —
+  //    a workflow saved with the bare slug must keep firing (see `matchIds`).
+  const matchingApps = await getCachedWorkflowAppsByTrigger({
+    organizationId,
+    triggerType: match.triggerType,
+    entityDefinitionIds: match.matchIds,
+  })
+
+  const targets: WorkflowTriggerTarget[] = []
+  for (const app of matchingApps) {
+    if (!app.publishedWorkflow) continue
+    targets.push({
+      workflowAppId: app.id,
+      workflowId: app.publishedWorkflow.id,
+      workflowName: app.name,
+      triggerType: match.triggerType,
+      jobEntityDefinitionId: app.publishedWorkflow.entityDefinitionId ?? match.entityDefinitionId,
+    })
+  }
+
+  if (targets.length === 0) {
+    logger.debug('No enabled workflows found', {
+      triggerType: match.triggerType,
+      entityDefinitionId: match.entityDefinitionId,
+    })
+  }
+  return { match, targets }
+}
+
+/**
+ * Enqueue half of the dispatch: one `executeResourceTrigger` job per target.
+ * THE single enqueue seam — the per-event dispatcher, the guard's auto-dispatch
+ * and an approved `bulk-dispatch` resolution all pass through here, so the job
+ * payload cannot fork per producer.
+ */
+export async function enqueueWorkflowTriggerJobs(args: {
+  organizationId: string
+  targets: readonly WorkflowTriggerTarget[]
+  resourceData: unknown
+}): Promise<void> {
+  const workflowDelayQueue = getQueue(Queues.workflowDelayQueue)
+  for (const target of args.targets) {
+    await workflowDelayQueue.add('executeResourceTrigger', {
+      workflowAppId: target.workflowAppId,
+      workflowId: target.workflowId,
+      organizationId: args.organizationId,
+      // The workflow's OWN stored id, not the event's — see
+      // `WorkflowTriggerTarget.jobEntityDefinitionId`.
+      entityDefinitionId: target.jobEntityDefinitionId,
+      resourceData: args.resourceData,
+      triggerType: target.triggerType,
+      triggeredAt: new Date().toISOString(),
+    })
+  }
+}
+
+/**
  * Event handler that triggers workflows when resource events occur.
  * Fetches matching workflows and queues execution jobs.
  */
@@ -179,46 +295,11 @@ export const dispatchResourceWorkflows = async (
   event: AuxxEvent,
   fetchResource: ResourceFetcher
 ) => {
-  // A handful of payloads (`integration:connection_failed`) fire before a
-  // session is resolved and carry no org id. None of them map to a resource
-  // trigger, so this is unreachable today — but workflow lookup is org-scoped
-  // and must never run unscoped, and the entity normalization below is
-  // per-org, so the check comes first.
-  const organizationId = event.data.organizationId
-  if (!organizationId) {
-    logger.debug('Event has no organizationId; skipping workflow dispatch', {
-      eventType: event.type,
-    })
-    return
-  }
-
-  // 1. Map event to workflow trigger criteria — see `resolveResourceTriggerMatch`.
-  const match = await resolveResourceTriggerMatch(event, organizationId)
-  if (!match) {
-    logger.debug('No workflow trigger mapping for event', { eventType: event.type })
-    return
-  }
-  const { triggerType, entityDefinitionId, matchIds } = match
-
-  // 2. Query workflows via org cache. Match on EVERY form the column may hold —
-  //    a workflow saved with the bare slug must keep firing (see `matchIds`).
-  const matchingApps = await getCachedWorkflowAppsByTrigger({
-    organizationId,
-    triggerType,
-    entityDefinitionIds: matchIds,
-  })
-
-  const matchingWorkflows = matchingApps
-    .filter((app) => app.publishedWorkflow)
-    .map((app) => ({
-      workflowApp: app,
-      publishedWorkflow: app.publishedWorkflow!,
-    }))
-
-  if (matchingWorkflows.length === 0) {
-    logger.debug('No enabled workflows found', { triggerType, entityDefinitionId })
-    return
-  }
+  // 1+2. Match — org check, trigger criteria, workflow lookup (match-only half).
+  const matched = await matchResourceWorkflowTargets(event)
+  if (!matched || matched.targets.length === 0) return
+  const { match, targets } = matched
+  const { triggerType, entityDefinitionId } = match
 
   // 3. Fetch complete resource data
   const recordId = getEventRecordId(event, match)
@@ -230,7 +311,7 @@ export const dispatchResourceWorkflows = async (
     return
   }
 
-  const resourceData = await fetchResource(recordId, organizationId)
+  const resourceData = await fetchResource(recordId, event.data.organizationId as string)
   if (!resourceData) {
     logger.warn('Resource not found, skipping workflows', {
       recordId,
@@ -240,28 +321,15 @@ export const dispatchResourceWorkflows = async (
   }
 
   // 4. Enqueue jobs
-  const workflowDelayQueue = getQueue(Queues.workflowDelayQueue)
-
-  for (const workflow of matchingWorkflows) {
-    await workflowDelayQueue.add('executeResourceTrigger', {
-      workflowAppId: workflow.workflowApp.id,
-      workflowId: workflow.publishedWorkflow.id,
-      organizationId: event.data.organizationId,
-      // The workflow's OWN stored id, not the event's — the job keys the
-      // trigger's output under this (`resource-trigger-job.ts`), and the graph
-      // declared its `{{node.<id>.field}}` paths against whatever this row
-      // holds. Sending the canonical id to a slug-keyed workflow would fire it
-      // with unresolvable variables.
-      entityDefinitionId: workflow.publishedWorkflow.entityDefinitionId ?? entityDefinitionId,
-      resourceData,
-      triggerType,
-      triggeredAt: new Date().toISOString(),
-    })
-  }
+  await enqueueWorkflowTriggerJobs({
+    organizationId: event.data.organizationId as string,
+    targets,
+    resourceData,
+  })
 
   logger.info('Queued workflows for resource trigger', {
     eventType: event.type,
-    workflowCount: matchingWorkflows.length,
+    workflowCount: targets.length,
     triggerType,
     entityDefinitionId,
     recordId,

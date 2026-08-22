@@ -7,8 +7,15 @@
 // (`project_use_client_directive_lib_server_import`). Nothing here may import a
 // server-only module — keep it to string unions, literals and pure functions.
 
-/** Which lane an `ApprovalRequest` row belongs to. */
-export const APPROVAL_KINDS = ['workflow', 'access'] as const
+/**
+ * Which lane an `ApprovalRequest` row belongs to.
+ *
+ * - `workflow` — the human-confirmation node inside a run.
+ * - `access` — a member asking for permission.
+ * - `bulk-dispatch` — a large sync run's held workflow dispatches awaiting
+ *   review (plan events/03 §9, D-19): one request per HELD workflow per run.
+ */
+export const APPROVAL_KINDS = ['workflow', 'access', 'bulk-dispatch'] as const
 export type ApprovalKind = (typeof APPROVAL_KINDS)[number]
 
 /**
@@ -193,6 +200,25 @@ export const SPOKEN_RECORD_REFUSALS: readonly RecordAccessRefusalReason[] = [
   'deny_cooldown',
   'plan_gated',
 ]
+
+/**
+ * `ApprovalRequest.metadata` for a `bulk-dispatch` row — the pointer to the run
+ * whose `heldDispatches` entry this request decides (plan events/03 D-19).
+ *
+ * Deliberately metadata, not columns: the target is a run-row jsonb entry, not
+ * a FK-able row, and the `workflowId` column's `onDelete: 'restrict'` would
+ * couple workflow deletion to an unrelated pending sync review. The
+ * authoritative record set lives on the RUN ROW's matching entry — this
+ * metadata only names it.
+ */
+export interface BulkDispatchRequestMetadata {
+  /** Which run table `ref` points into. */
+  source: 'connector' | 'import'
+  /** `DataConnectorRun.id` (connector) or `ImportJob.id` (import). */
+  ref: string
+  /** The held workflow — matches `heldDispatches[].workflowId` on the run row. */
+  workflowId: string
+}
 
 /**
  * `ApprovalRequest.metadata` for an `access` row. Stored as jsonb, so treat every

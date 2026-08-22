@@ -78,6 +78,19 @@ const HANDLERS: Record<ApprovalKind, ApprovalKindHandler> = {
       return applyAccessDecision(ctx)
     },
   },
+  'bulk-dispatch': {
+    kind: 'bulk-dispatch',
+    // NEVER. Approving a held sync run starts up to thousands of workflow runs
+    // and spends their credits — that must not be reachable from an
+    // unauthenticated email link (plan events/03 D-19; same reasoning as
+    // `access`). The token lane is right for a single human-confirmation,
+    // wrong here.
+    allowsTokenResolution: false,
+    async onResolved(ctx: ApprovalResolveContext) {
+      const { applyBulkDispatchDecision } = await import('./bulk-dispatch-mutations')
+      return applyBulkDispatchDecision(ctx)
+    },
+  },
 }
 
 /** The handler for one kind. Unknown kinds refuse rather than defaulting. */

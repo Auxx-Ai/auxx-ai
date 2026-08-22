@@ -44,11 +44,13 @@ const ADDRESS_COMPONENT_KEYS = [
   'country',
 ] as const
 
-type AddressStructLike = Record<string, unknown>
+export type AddressStructLike = Record<string, unknown>
 
 /** Extract the plain struct object out of the event's typed value (scalar JSON field — never
- * array-return — but tolerate an array shape defensively, matching visit-hooks.ts's pattern). */
-function extractStruct(value: unknown): AddressStructLike | null {
+ * array-return — but tolerate an array shape defensively, matching visit-hooks.ts's pattern).
+ * Exported for the finalize integrity passes, which re-read the stored value and need the
+ * exact same unwrapping this hook applies. */
+export function extractStruct(value: unknown): AddressStructLike | null {
   const typed = value as TypedFieldValue | TypedFieldValue[] | null
   const first = Array.isArray(typed) ? typed[0] : typed
   if (!first) return null
@@ -62,9 +64,22 @@ function isBlank(value: unknown): boolean {
   return typeof value !== 'string' || value.trim().length === 0
 }
 
-function isNonEmptyStruct(struct: AddressStructLike | null): struct is AddressStructLike {
+/** True when at least one of the six address components holds text. Exported for the
+ * finalize integrity passes (same bail the hook applies before geocoding). */
+export function isNonEmptyStruct(struct: AddressStructLike | null): struct is AddressStructLike {
   if (!struct) return false
   return ADDRESS_COMPONENT_KEYS.some((key) => !isBlank(struct[key]))
+}
+
+/** True when the struct already carries a completed geocode (numeric lat/lng + `geocodedAt`
+ * stamp). Extracted from the hook's idempotence guard, unchanged; exported so the finalize
+ * integrity passes can skip already-normalized structs on redelivery. */
+export function hasStampedGeocode(struct: AddressStructLike): boolean {
+  return (
+    typeof struct.lat === 'number' &&
+    typeof struct.lng === 'number' &&
+    typeof struct.geocodedAt === 'string'
+  )
 }
 
 /** Sorted-key hash of just the address components — used to detect "nothing actually changed"
@@ -142,11 +157,7 @@ export const normalizeAddressOnChange: EntityFieldChangeHandler = async (event) 
   // this hook's own write-back re-firing, though `publishEvents: false` on that write already
   // prevents that structurally). Compares directly against `event.oldValue`/`newValue`, already
   // on the event — no extra struct key/storage needed.
-  const hasStampedGeo =
-    typeof newStruct.lat === 'number' &&
-    typeof newStruct.lng === 'number' &&
-    typeof newStruct.geocodedAt === 'string'
-  if (hasStampedGeo) {
+  if (hasStampedGeocode(newStruct)) {
     const oldStruct = extractStruct(event.oldValue)
     if (oldStruct && componentHash(oldStruct) === componentHash(newStruct)) {
       // Nothing to geocode, but listeners (visit pins) still get the already-stamped coords —
@@ -167,7 +178,18 @@ export const normalizeAddressOnChange: EntityFieldChangeHandler = async (event) 
   })
 }
 
-async function runNormalize(
+/**
+ * The normalize core: geocode the struct, merge per the `_source` policy, quietly write the
+ * result back (stale-write guarded, `publishEvents: false`, hand-rolled realtime frame), and
+ * notify normalized-address listeners. The inline hook fire-and-forgets this; the finalize
+ * integrity passes (`events/handlers/finalize-integrity-passes.ts`) await it under bounded
+ * concurrency — there is no geocode job, so the batch pass IS the batching (plan events/03
+ * §3.5b). `event` may be a synthesized {@link EntityFieldChangeEvent}: only `organizationId`,
+ * `userId`, `recordId`, and `field` are read here; listeners additionally see
+ * `field.systemAttribute`. `struct` must be the value the caller wants normalized — the
+ * write-back re-reads and bails unless the stored components still match it.
+ */
+export async function runNormalize(
   event: EntityFieldChangeEvent,
   struct: AddressStructLike
 ): Promise<void> {
