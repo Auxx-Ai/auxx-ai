@@ -46,6 +46,11 @@ export default defineConfig(({ mode }) => {
         'src/test/setup.ts',
         'src/test/utils.ts',
         '**/*.config.*',
+        // Shared test doubles/fixtures that live under a `__tests__/` folder.
+        // The second `include` pattern above matches every file in such a
+        // folder, so without this a helper module is collected as a suite and
+        // fails with "No test suite found in file".
+        'src/**/__tests__/support/**',
         // DB-backed integration tests — run via vitest.integration.config.ts
         // (this config mocks @auxx/database, so they can't work here).
         'src/**/*.int.test.*',
