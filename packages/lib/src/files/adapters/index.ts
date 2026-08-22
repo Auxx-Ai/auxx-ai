@@ -2,7 +2,6 @@
 
 export type {
   FileMetadata,
-  FileRevision,
   MultipartUpload,
   PresignedUpload,
   ProviderAuth,

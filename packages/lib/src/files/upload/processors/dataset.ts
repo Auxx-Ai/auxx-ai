@@ -19,7 +19,10 @@ const logger = createScopedLogger('dataset-asset-processor')
  */
 export class DatasetAssetProcessor extends BaseAssetProcessor {
   protected entityType = 'dataset'
-  protected fileVisibility = 'private'
+  // Was lowercase `'private'`, which matched neither branch of the bucket
+  // selector: dataset documents were presigned into the PUBLIC bucket and
+  // `isAssetPrivate()` returned false for every one of them.
+  protected fileVisibility = 'PRIVATE' as const
   protected preferredProvider = 'local' // or 's3' based on config
   protected maxFileSize = 50 * 1024 * 1024 // 50MB
   protected assetKind = 'DOCUMENT' as const

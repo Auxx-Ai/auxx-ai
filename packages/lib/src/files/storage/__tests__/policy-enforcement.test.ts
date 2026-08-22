@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UploadPreparedConfig } from '../../upload/init-types'
+import { clearStorageAdapterCache } from '../providers'
 import { storageLocationService } from '../storage-location-service'
 import { StorageManager } from '../storage-manager'
 
@@ -47,13 +48,6 @@ vi.mock('../storage-location-service', () => ({
     getLocationsByCredential: vi.fn(),
     findByExternalId: vi.fn(),
   },
-}))
-
-// Mock getBucketForVisibility (imported at module level by storage-manager)
-vi.mock('../../upload/util', () => ({
-  getBucketForVisibility: vi.fn((visibility: 'PUBLIC' | 'PRIVATE') =>
-    visibility === 'PUBLIC' ? 'test-public-bucket' : 'test-private-bucket'
-  ),
 }))
 
 const mockPresignUpload = vi.fn().mockResolvedValue({
@@ -147,9 +141,10 @@ describe('StorageManager – enforcePolicy via generatePresignedUploadUrl', () =
   let manager: StorageManager
 
   beforeEach(() => {
-    // Clear the static adapter cache so each test starts fresh.
-    // The cache is a private static Map; we access it via bracket notation.
-    ;(StorageManager as any).adapterCache = new Map()
+    // Clear the adapter cache so each test starts fresh. It is a module-level
+    // map in `storage/providers.ts` since PR 3b, with an exported test seam
+    // instead of a private static reached through `as any`.
+    clearStorageAdapterCache()
 
     manager = new StorageManager('org123')
     vi.clearAllMocks()

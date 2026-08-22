@@ -56,7 +56,6 @@ export { assertPublicHost, fetchAndStoreRemoteImage } from './fetch-remote-image
 
 export type {
   FileMetadata,
-  FileRevision,
   MultipartUpload,
   PresignedUpload,
   ProviderAuth,

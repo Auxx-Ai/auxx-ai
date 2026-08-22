@@ -44,7 +44,10 @@ const {
   onCacheEvent: vi.fn(),
   headByKey: vi.fn(async () => ({ size: 1024, mimeType: 'image/png', etagOrRev: 'etag-b' })),
   createStorageLocation: vi.fn(async () => ({ id: 'stl_cuid00000000000000000000' })),
-  buildExternalUrl: vi.fn(async () => 'https://cdn.example/avatar.png'),
+  // Synchronous, matching the port contract: `buildExternalUrl` runs inside the
+  // route's open transaction, so a promise-returning double would let the code
+  // under test await something production cannot.
+  buildExternalUrl: vi.fn(() => 'https://cdn.example/avatar.png'),
   validateCompletedUpload: vi.fn(),
   processorProcess: vi.fn(),
   dbTransaction: vi.fn(),

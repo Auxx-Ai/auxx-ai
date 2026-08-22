@@ -1,6 +1,5 @@
 // packages/lib/src/files/storage/storage-manager.ts
 
-import { revealSecrets } from '@auxx/credentials/store'
 import type { StorageLocationEntity as StorageLocation } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import type {
@@ -18,7 +17,9 @@ import {
   StorageFileNotFoundError,
 } from '../adapters/base-adapter'
 import type { UploadPreparedConfig } from '../upload/init-types'
-import { getBucketForVisibility } from '../upload/util'
+import { resolveProviderAuth } from './auth'
+import { bucketForVisibility, buildExternalUrl, type StorageVisibility } from './buckets'
+import { getCachedStorageAdapter, getStorageAdapter, isProviderAvailable } from './providers'
 import { storageLocationService } from './storage-location-service'
 
 const logger = createScopedLogger('storage-manager')
@@ -180,7 +181,7 @@ export class StorageManager {
     this.validateStorageParams(params)
 
     // Get adapter for the provider
-    const adapter = await this.getAdapter(params.provider)
+    const adapter = await getStorageAdapter(params.provider)
 
     // Check if adapter supports direct uploads
     if (!adapter.putObject) {
@@ -193,7 +194,11 @@ export class StorageManager {
 
     // Get authentication if credential ID provided
     let auth: ProviderAuth | undefined
-    auth = await this.getProviderAuth(params.provider, params.credentialId)
+    auth = await resolveProviderAuth({
+      provider: params.provider,
+      organizationId: this.organizationId,
+      credentialId: params.credentialId,
+    })
 
     try {
       // Upload content using adapter
@@ -289,11 +294,15 @@ export class StorageManager {
     const locationRef = this.buildLocationRef(storageLocation)
 
     // Get adapter for the provider
-    const adapter = await this.getAdapter(locationRef.provider)
+    const adapter = await getStorageAdapter(locationRef.provider)
 
     // Get authentication if credential ID provided
     let auth: ProviderAuth | undefined
-    auth = await this.getProviderAuth(locationRef.provider, locationRef.credentialId)
+    auth = await resolveProviderAuth({
+      provider: locationRef.provider,
+      organizationId: this.organizationId,
+      credentialId: locationRef.credentialId,
+    })
 
     const metadata = (storageLocation.metadata as Record<string, any>) || {}
     const inferredFileName =
@@ -404,12 +413,16 @@ export class StorageManager {
     const locationRef = this.buildLocationRef(storageLocation)
 
     // Get adapter for the provider
-    const adapter = await this.getAdapter(locationRef.provider)
+    const adapter = await getStorageAdapter(locationRef.provider)
 
     // Get authentication if credential ID provided
     let auth: ProviderAuth | undefined
     if (locationRef.credentialId) {
-      auth = await this.getProviderAuth(locationRef.provider, locationRef.credentialId)
+      auth = await resolveProviderAuth({
+        provider: locationRef.provider,
+        organizationId: this.organizationId,
+        credentialId: locationRef.credentialId,
+      })
     }
 
     try {
@@ -450,7 +463,7 @@ export class StorageManager {
     // Load the adapter FIRST: `buildLocationRef` reads `adapter.resolveBucket()`
     // out of the adapter cache to fill in `metadata.bucket` for rows persisted
     // without one, and the adapter's delete no longer resolves a default itself.
-    const adapter = await this.getAdapter(storageLocation.provider as ProviderId)
+    const adapter = await getStorageAdapter(storageLocation.provider as ProviderId)
 
     // Build location reference
     const locationRef = this.buildLocationRef(storageLocation)
@@ -458,7 +471,11 @@ export class StorageManager {
     // Get authentication if credential ID provided
     let auth: ProviderAuth | undefined
     if (locationRef.credentialId) {
-      auth = await this.getProviderAuth(locationRef.provider, locationRef.credentialId)
+      auth = await resolveProviderAuth({
+        provider: locationRef.provider,
+        organizationId: this.organizationId,
+        credentialId: locationRef.credentialId,
+      })
     }
 
     if (locationRef.provider === 'S3' && !locationRef.metadata?.bucket) {
@@ -494,76 +511,47 @@ export class StorageManager {
   // ============= Storage Location Management =============
 
   /**
-   * Build external URL for a storage location
+   * Build the external (public) URL for an object.
    *
-   * This method provides a public API for building external URLs for storage locations
-   * without exposing internal adapter or auth methods.
+   * **Synchronous since PR 3b, deliberately.** The `apps/web` upload-complete
+   * route calls this *inside* an open `db.transaction`, and the async version
+   * could reach `getProviderAuth()` → `revealSecrets()` — a database read plus a
+   * decrypt — from in there, purely to learn a bucket the caller already had on
+   * the upload session. `storage/buckets.ts` does the whole job over config, so
+   * there is nothing left to await. A caller that needs a credential-derived
+   * `region` resolves it before opening the transaction and passes it in
+   * `opts.region`.
    *
    * @param provider - The storage provider ID
    * @param key - The storage key/path
-   * @param credentialId - Optional credential ID for authentication
-   * @returns Promise resolving to the external URL
+   * @param opts.bucket - The bucket the object lives in. Wins over `visibility`.
+   * @param opts.visibility - Picks a configured bucket when `bucket` is absent.
+   * @param opts.region - Overrides `S3_REGION` for the virtual-hosted-style URL.
    *
    * @example
    * ```typescript
-   * const externalUrl = await storageManager.buildExternalUrl(
-   *   'S3',
-   *   'org-123/file.pdf',
-   *   's3_cred_id'
-   * )
+   * const externalUrl = storageManager.buildExternalUrl('S3', 'org-123/file.pdf', {
+   *   bucket: session.bucket,
+   *   visibility: session.visibility,
+   * })
    * ```
    */
-  async buildExternalUrl(
+  buildExternalUrl(
     provider: ProviderId,
     key: string,
-    credentialId?: string,
     opts?: {
       bucket?: string
-      visibility?: 'PUBLIC' | 'PRIVATE'
+      visibility?: StorageVisibility
+      region?: string
     }
-  ): Promise<string> {
-    // Get adapter for the provider
-    const adapter = await this.getAdapter(provider)
-
-    // Check if adapter supports building external URLs
-    if (!adapter.buildExternalUrl) {
-      // Return the key as a fallback for providers without URL building
-      return key
-    }
-
-    // Get authentication if credential ID provided
-    let auth: ProviderAuth | undefined
-    if (credentialId) {
-      try {
-        auth = await this.getProviderAuth(provider, credentialId)
-      } catch (error) {
-        logger.warn('Failed to get auth for building external URL', {
-          provider,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-
-    try {
-      // Use adapter to build external URL
-      const externalUrlAuth =
-        provider === 'S3'
-          ? this.withResolvedS3Bucket({
-              auth,
-              bucket: opts?.bucket,
-              visibility: opts?.visibility,
-            })
-          : auth
-
-      return adapter.buildExternalUrl(key, externalUrlAuth)
-    } catch (error) {
-      logger.warn('Failed to build external URL, returning key as fallback', {
-        provider,
-        key,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      return key
-    }
+  ): string {
+    return buildExternalUrl({
+      provider,
+      key,
+      bucket: opts?.bucket,
+      visibility: opts?.visibility,
+      region: opts?.region,
+    })
   }
 
   /**
@@ -607,7 +595,7 @@ export class StorageManager {
   ): Promise<StorageLocation> {
     try {
       // Validate provider
-      if (!this.isProviderAvailable(params.provider)) {
+      if (!isProviderAvailable(params.provider)) {
         throw new StorageAdapterError(
           `Provider ${params.provider} is not available`,
           params.provider,
@@ -635,55 +623,6 @@ export class StorageManager {
     } catch (error) {
       this.handleStorageError(error, 'createStorageLocation', params.provider)
     }
-  }
-
-  // ============= Provider Authentication =============
-
-  /**
-   * Get provider authentication for a specific adapter.
-   * 1. Explicit credentialId → user-connected provider (via the credential store)
-   * 2. No credentialId → platform storage (via adapter.resolvePlatformAuth)
-   */
-  private async getProviderAuth(
-    adapterId: ProviderId,
-    credentialId?: string
-  ): Promise<ProviderAuth> {
-    // 1. Explicit credential → user-connected provider (Dropbox, user's own S3, etc.)
-    if (credentialId) {
-      if (!this.organizationId) {
-        throw new StorageAuthError(
-          adapterId,
-          'getProviderAuth',
-          new Error(`credentialId '${credentialId}' provided but organizationId is missing.`)
-        )
-      }
-      const revealed = await revealSecrets(credentialId, this.organizationId)
-      if (revealed.isErr()) {
-        throw new StorageAuthError(
-          adapterId,
-          'getProviderAuth',
-          new Error(`Failed to load credential for ${adapterId}: ${revealed.error.message}.`)
-        )
-      }
-      const { record, secrets } = revealed.value
-      return { ...record.metadata, ...secrets } as ProviderAuth
-    }
-
-    // 2. Platform storage → ask adapter to resolve its own config
-    const adapter = await this.getAdapter(adapterId)
-    const platformAuth = adapter.resolvePlatformAuth?.()
-    if (platformAuth) {
-      return platformAuth
-    }
-
-    // 3. No auth available
-    throw new StorageAuthError(
-      adapterId,
-      'getProviderAuth',
-      new Error(
-        `No credentials available for ${adapterId}. Configure platform storage (e.g. S3_REGION, S3_PRIVATE_BUCKET) or provide a credentialId.`
-      )
-    )
   }
 
   /**
@@ -775,13 +714,17 @@ export class StorageManager {
 
     if (!bucket) {
       if (visibility === 'PUBLIC' || visibility === 'PRIVATE') {
-        bucket = getBucketForVisibility(visibility)
+        bucket = bucketForVisibility(visibility)
       }
     }
 
     if (!bucket) {
       try {
-        const auth = await this.getProviderAuth('S3', params.credentialId)
+        const auth = await resolveProviderAuth({
+          provider: 'S3',
+          organizationId: this.organizationId,
+          credentialId: params.credentialId,
+        })
         bucket = this.resolveS3BucketFromAuth(auth, visibility)
       } catch (error) {
         logger.warn('Failed to resolve bucket from provider auth', {
@@ -845,7 +788,7 @@ export class StorageManager {
     let bucket = params.bucket
 
     if (!bucket && params.visibility) {
-      bucket = getBucketForVisibility(params.visibility) || undefined
+      bucket = bucketForVisibility(params.visibility) || undefined
     }
 
     if (!bucket) {
@@ -860,103 +803,6 @@ export class StorageManager {
       ...(params.auth ?? {}),
       bucket,
     }
-  }
-
-  // ============= Credential Management Integration =============
-
-  // ============= Adapter Management =============
-
-  /**
-   * Check if provider is available
-   */
-  isProviderAvailable(provider: ProviderId): boolean {
-    return this.hasAdapter(provider)
-  }
-
-  // ============= Adapter Registry =============
-
-  /**
-   * Dynamic adapter loading registry with lazy loading and caching
-   *
-   * This registry maps provider IDs to their adapter loading functions.
-   * Adapters are loaded lazily when first requested and then cached for
-   * performance. This allows the system to only load the adapters that
-   * are actually used.
-   *
-   * @example Adding a new provider:
-   * ```typescript
-   * // In the adapters object:
-   * DROPBOX: async () => (await import('../adapters/dropbox-adapter')).DropboxAdapter,
-   * ```
-   *
-   * @internal
-   */
-  private static adapters = {
-    S3: async () => (await import('../adapters/s3-adapter')).default,
-    // GOOGLE_DRIVE: async () => (await import('../adapters/google-drive-adapter')).GoogleDriveAdapter,
-    // DROPBOX: async () => (await import('../adapters/dropbox-adapter')).DropboxAdapter,
-    // ONEDRIVE: async () => (await import('../adapters/onedrive-adapter')).OneDriveAdapter,
-    // BOX: async () => (await import('../adapters/box-adapter')).BoxAdapter,
-    // GENERIC_URL: async () => (await import('../adapters/url-adapter')).UrlAdapter,
-  } as const
-
-  /**
-   * Adapter instance cache
-   */
-  private static adapterCache = new Map<ProviderId, StorageAdapter>()
-
-  /**
-   * Get storage adapter for provider
-   *
-   * Retrieves or loads the adapter for a specific storage provider.
-   * Implements lazy loading and caching to optimize performance.
-   *
-   * @param provider - The provider ID to get adapter for
-   * @returns Promise resolving to the storage adapter instance
-   *
-   * @throws {StorageAdapterError} When adapter is not available or fails to load
-   *
-   * @internal
-   */
-  private async getAdapter(provider: ProviderId): Promise<StorageAdapter> {
-    // Return cached adapter if available
-    if (StorageManager.adapterCache.has(provider)) {
-      return StorageManager.adapterCache.get(provider)!
-    }
-
-    // Load adapter dynamically
-    const adapterLoader = StorageManager.adapters[provider as keyof typeof StorageManager.adapters]
-    if (!adapterLoader) {
-      throw new StorageAdapterError(
-        `No adapter available for provider: ${provider}`,
-        provider,
-        'getAdapter'
-      )
-    }
-
-    try {
-      const AdapterClass = await adapterLoader()
-      const adapter = new AdapterClass()
-
-      // Cache the adapter instance
-      StorageManager.adapterCache.set(provider, adapter)
-
-      return adapter
-    } catch (error) {
-      throw new StorageAdapterError(
-        `Failed to load adapter for provider ${provider}: ${error}`,
-        provider,
-        'getAdapter',
-        error as Error
-      )
-    }
-  }
-
-  /**
-   * Check if adapter is available for a provider
-   */
-  hasAdapter(provider: ProviderId): boolean {
-    return provider in StorageManager.adapters
   }
 
   // ============= File Operations =============
@@ -1024,7 +870,7 @@ export class StorageManager {
     this.enforcePolicy(config) // ✅ Add policy enforcement
 
     // Get adapter for the provider
-    const adapter = await this.getAdapter(config.provider)
+    const adapter = await getStorageAdapter(config.provider)
 
     // Check if adapter supports presigned uploads
     const capabilities = adapter.getCapabilities()
@@ -1038,7 +884,11 @@ export class StorageManager {
 
     // Get authentication if credential ID provided
     let auth: ProviderAuth | undefined
-    auth = await this.getProviderAuth(config.provider, config.credentialId)
+    auth = await resolveProviderAuth({
+      provider: config.provider,
+      organizationId: this.organizationId,
+      credentialId: config.credentialId,
+    })
 
     try {
       // Use adapter to generate presigned upload URL
@@ -1075,7 +925,7 @@ export class StorageManager {
     this.enforcePolicy(config) // ✅ Add policy enforcement
 
     // Get adapter for the provider
-    const adapter = await this.getAdapter(config.provider)
+    const adapter = await getStorageAdapter(config.provider)
 
     // Check if adapter supports multipart uploads
     const capabilities = adapter.getCapabilities()
@@ -1089,7 +939,11 @@ export class StorageManager {
 
     // Get authentication if credential ID provided
     let auth: ProviderAuth | undefined
-    auth = await this.getProviderAuth(config.provider, config.credentialId)
+    auth = await resolveProviderAuth({
+      provider: config.provider,
+      organizationId: this.organizationId,
+      credentialId: config.credentialId,
+    })
 
     try {
       // Use adapter to start multipart upload
@@ -1134,11 +988,15 @@ export class StorageManager {
     this.validateStorageParams(params)
 
     // Get adapter for the provider
-    const adapter = await this.getAdapter(params.provider)
+    const adapter = await getStorageAdapter(params.provider)
 
     // Get authentication if credential ID provided
     let auth: ProviderAuth | undefined
-    auth = await this.getProviderAuth(params.provider, params.credentialId)
+    auth = await resolveProviderAuth({
+      provider: params.provider,
+      organizationId: this.organizationId,
+      credentialId: params.credentialId,
+    })
 
     const bucket =
       params.bucket ??
@@ -1187,12 +1045,16 @@ export class StorageManager {
     this.validateStorageParams(params)
 
     // Get adapter for the provider
-    const adapter = await this.getAdapter(params.provider)
+    const adapter = await getStorageAdapter(params.provider)
 
     // Get authentication if credential ID provided
     let auth: ProviderAuth | undefined
     try {
-      auth = await this.getProviderAuth(params.provider, params.credentialId)
+      auth = await resolveProviderAuth({
+        provider: params.provider,
+        organizationId: this.organizationId,
+        credentialId: params.credentialId,
+      })
     } catch (error) {
       // Log but don't fail - some adapters might work without explicit credentials
       logger.warn(
@@ -1259,7 +1121,7 @@ export class StorageManager {
     this.validateStorageParams(params)
 
     // Get adapter for the provider
-    const adapter = await this.getAdapter(params.provider)
+    const adapter = await getStorageAdapter(params.provider)
 
     // Check if adapter supports multipart uploads
     const capabilities = adapter.getCapabilities()
@@ -1273,7 +1135,11 @@ export class StorageManager {
 
     // Get authentication if credential ID provided
     let auth: ProviderAuth | undefined
-    auth = await this.getProviderAuth(params.provider, params.credentialId)
+    auth = await resolveProviderAuth({
+      provider: params.provider,
+      organizationId: this.organizationId,
+      credentialId: params.credentialId,
+    })
 
     const bucket =
       params.bucket ??
@@ -1331,7 +1197,7 @@ export class StorageManager {
     let metadata = rawMetadata ? { ...rawMetadata } : undefined
 
     if (location.provider === 'S3') {
-      const adapter = StorageManager.adapterCache.get('S3')
+      const adapter = getCachedStorageAdapter('S3')
       const bucketCandidate =
         metadata?.bucket ||
         metadata?.Bucket ||
@@ -1383,7 +1249,7 @@ export class StorageManager {
       )
     }
 
-    if (!this.isProviderAvailable(params.provider)) {
+    if (!isProviderAvailable(params.provider)) {
       throw new StorageAdapterError(
         `Provider ${params.provider} is not available`,
         params.provider,
@@ -1433,12 +1299,16 @@ export class StorageManager {
     this.validateStorageParams(params)
 
     // Get adapter for the provider
-    const adapter = await this.getAdapter(params.provider)
+    const adapter = await getStorageAdapter(params.provider)
 
     // Always try to get authentication (credential manager handles system credential fallback)
     let auth: ProviderAuth | undefined
     try {
-      auth = await this.getProviderAuth(params.provider, params.credentialId)
+      auth = await resolveProviderAuth({
+        provider: params.provider,
+        organizationId: this.organizationId,
+        credentialId: params.credentialId,
+      })
     } catch (error) {
       // Log but don't fail - adapter might work without explicit credentials
       logger.warn('Failed to get provider authentication for headByKey, continuing without auth', {

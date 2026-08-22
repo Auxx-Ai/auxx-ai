@@ -176,15 +176,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         let externalUrl = ''
         try {
           if (session.visibility === 'PUBLIC') {
-            externalUrl = await storageManager.buildExternalUrl(
-              session.provider,
-              session.storageKey,
-              session.credentialId,
-              {
-                bucket: session.bucket,
-                visibility: session.visibility,
-              }
-            )
+            // Synchronous since PR 3b: this runs inside the open transaction,
+            // and the async version could reach the credential store from here
+            // just to learn a bucket the session already carries.
+            externalUrl = storageManager.buildExternalUrl(session.provider, session.storageKey, {
+              bucket: session.bucket,
+              visibility: session.visibility,
+            })
           }
         } catch (urlErr) {
           logger.warn('Failed to build external URL', {

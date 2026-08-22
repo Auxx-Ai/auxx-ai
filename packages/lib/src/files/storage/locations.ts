@@ -62,19 +62,7 @@ import { AuxxError, BadRequestError } from '../../errors'
 import type { ProviderId } from '../adapters/base-adapter'
 import type { FilesCtx } from '../ctx'
 import { guard } from '../guard'
-
-/**
- * Providers a `StorageLocation` may be created for.
- *
- * Mirrors `StorageManager.adapters` — the registry `isProviderAvailable()`
- * consults — which today contains `S3` alone; the other five `StorageProvider`
- * enum members are commented out there and have no adapter. Kept as a local
- * constant rather than reaching into `StorageManager` because that would mean
- * constructing a collaborator to answer a question that is pure data. Phase 3
- * should lift the registry to a module-level const both can read; until then
- * the drift risk is real and is recorded here deliberately.
- */
-const SUPPORTED_PROVIDERS: ReadonlySet<ProviderId> = new Set<ProviderId>(['S3'])
+import { isProviderAvailable } from './providers'
 
 /**
  * Everything needed to persist one `StorageLocation` row.
@@ -140,7 +128,7 @@ function normalizeLocationMetadata(input: CreateStorageLocationInput): Record<st
  * inside a caller's transaction body rolls the transaction back.
  */
 function assertValidInput(input: CreateStorageLocationInput): void {
-  if (!SUPPORTED_PROVIDERS.has(input.provider)) {
+  if (!isProviderAvailable(input.provider)) {
     throw new BadRequestError(`Storage provider ${input.provider} is not available`)
   }
   if (!input.externalId) {
