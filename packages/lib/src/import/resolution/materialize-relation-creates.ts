@@ -15,11 +15,12 @@ const logger = createScopedLogger('materialize-relation-creates')
 /**
  * Writes a record into the relation TARGET's definition.
  *
- * Supply the job's own manifest-aware writer, not a fresh one. The importer
- * writes on the silent `sync` lane and captures record-rule changes through a
- * manifest collector (`execute-plan-job.ts`); a writer that bypasses that
- * contract creates records no rule ever sees and no open grid ever refetches.
- * {@link createRelationTargetWriter} builds a conforming one.
+ * Supply a writer riding the job's ambient `sync` session, not a fresh one.
+ * The importer writes on the silent `sync` lane, and the session's manifest
+ * collector is fed by the engine's capture seams (`execute-plan-job.ts`); a
+ * writer that bypasses that contract creates records no rule ever sees and no
+ * open grid ever refetches. {@link createRelationTargetWriter} builds a
+ * conforming one.
  */
 export type RelationTargetWriter = (
   entityDefinitionId: string,
@@ -230,11 +231,6 @@ export interface RelationTargetWriterOptions {
   organizationId: string
   userId: string
   db?: Database
-  /**
-   * Called after each successful mint. Feed the job's manifest collector here
-   * so auto-created targets reach record rules the same way imported rows do.
-   */
-  onCreated?: (entityDefinitionId: string, recordId: string, data: Record<string, unknown>) => void
 }
 
 /**
@@ -248,13 +244,15 @@ export interface RelationTargetWriterOptions {
  * import from putting 500 `record:created` frames on the def channel. The
  * coarse `records:invalidated` frame the job already publishes covers the
  * target def too, provided the caller includes it (see the report notes).
+ * The inherited session also carries the manifest collector, so the engine's
+ * create seam captures each minted target (per-def subscriptions included).
  *
- * @param options - Org, actor, and an optional manifest hook
+ * @param options - Org and actor
  */
 export function createRelationTargetWriter(
   options: RelationTargetWriterOptions
 ): RelationTargetWriter {
-  const { organizationId, userId, db, onCreated } = options
+  const { organizationId, userId, db } = options
   // Lazy: `UnifiedCrudHandler` drags the whole resources graph in, and most
   // imports have nothing to create. Constructed on first call — inside the
   // job's `runWithWriteSession` wrap — so the ambient sync session binds.
@@ -271,7 +269,6 @@ export function createRelationTargetWriter(
     )
     const handler = await handlerPromise
     const created = await handler.create(entityDefinitionId, data)
-    onCreated?.(entityDefinitionId, created.instance.id, data)
     return { id: created.instance.id }
   }
 }

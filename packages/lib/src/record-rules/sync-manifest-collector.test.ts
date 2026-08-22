@@ -29,11 +29,10 @@ describe('createManifestCollector', () => {
   })
 
   // Plan 07 H-1: the NOOP-when-no-subscriptions gate is gone. Tier-1 membership is
-  // unconditional; zero subscriptions only means tier-2 never captures (producers gate
-  // on `subscriptionsFor`).
+  // unconditional; zero subscriptions only means tier-2 never captures (the engine
+  // seams gate on `subscriptionsFor`).
   it('is always real: zero subscriptions still capture touched + lifecycle, zero deltas', () => {
     const c = createManifestCollector({})
-    expect(c.enabled).toBe(true)
     expect(c.subscriptionsFor('def_1')).toBeUndefined()
     c.recordTouched(RID('def_1:i1'), ['fld_a'])
     c.recordCreated(RID('def_1:i2'))

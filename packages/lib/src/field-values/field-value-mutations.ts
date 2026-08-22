@@ -155,6 +155,120 @@ export function syncCollectorOf(session?: WriteSession): ManifestCollector | nul
 }
 
 // =============================================================================
+// TIER-2 SYNC DELTA CAPTURE (plan 07 §4 PR 2 — deltas at the chokepoint)
+// =============================================================================
+
+/**
+ * Tier-2 gate: do the session's rule subscriptions watch this field? Keyed by the
+ * canonical EntityDefinition id — the CustomField row's own `entityDefinitionId` when it
+ * carries one (rules reference defs by that id), falling back to the recordId-parsed
+ * form for table-backed system resources. Zero subscriptions ⇒ false ⇒ no delta work at
+ * all (the tier-1 recordTouched is the only capture).
+ */
+function isDeltaSubscribed(
+  collector: ManifestCollector | null,
+  field: CachedField,
+  fieldId: string,
+  fallbackEntityDefinitionId: string
+): boolean {
+  if (!collector) return false
+  const defId = field.entityDefinitionId ?? fallbackEntityDefinitionId
+  return collector.subscriptionsFor(defId)?.fieldIds.has(fieldId) === true
+}
+
+/**
+ * Convert stored rows to typed values for the manifest's `o` side; `null` in = `null`
+ * out (pre-state unknown), and any conversion failure also answers `null` — a delta
+ * must never carry a fabricated `o`, and capture must never fail a write.
+ */
+function typedRowsOrNull(
+  rows: FieldValueRow[] | null,
+  fieldType: FieldType
+): TypedFieldValue[] | null {
+  if (rows === null) return null
+  try {
+    return rows.map((row) => rowToTypedValue(row, fieldType))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Tier-2 `{o, n}` delta capture at a field seam (plan 07 §4, PR 2). Runs post-write,
+ * after the seam has established the write REALLY changed something (guard/dedupe
+ * honesty), and only ever pushes to the in-memory collector — no queries.
+ *
+ * Value-space parity with the retired producer helpers (`capture-field-changes.ts`,
+ * deleted in plan 07 PR 2): entries are keyed `systemAttribute ?? fieldId`; `o` is
+ * the pre-write typed values flattened via `flattenTypedFieldValue` (`null` when the
+ * field was empty, array for array-return fields, scalar otherwise); `n` is the same
+ * flattening of the values ACTUALLY written/stored. That `n` is more accurate than the
+ * producer's re-normalization of the raw input (which re-ran `validateAndConvertValue`
+ * and fell back to the raw value on failure) — here the write path's own validated
+ * output is in hand, so `n` is exactly the stored value space by construction.
+ *
+ * The created-this-run contract: when the collector already holds the record in its
+ * created set (the lifecycle seam in `unified-handler-mutations.ts` runs BEFORE the
+ * create's field writes), the entry is `{n}` with NO `o` — `o`-absence is the
+ * manifest's "created this run" marker (`mergeFieldChange` keeps the first `o`-state,
+ * and `set`-rule matching relies on the absence). Emitting `o` (even null) here would
+ * break that fold.
+ *
+ * Unsubscribed fields, and subscribed writes with no honest pre-state in hand
+ * (`oldValues === null`), degrade to tier-1 membership only.
+ */
+function captureSyncFieldWrite(args: {
+  collector: ManifestCollector
+  /** Pre-computed `isDeltaSubscribed` answer for this field. */
+  subscribed: boolean
+  recordId: RecordId
+  field: CachedField
+  fieldId: string
+  /** Pre-write typed values (empty array = field was empty); null = pre-state unknown. */
+  oldValues: TypedFieldValue[] | null
+  /** Post-write typed values; null = the write was a clear. */
+  newValues: TypedFieldValue[] | null
+}): void {
+  const { collector, recordId, field, fieldId } = args
+  const outputKey = field.systemAttribute ?? fieldId
+  if (!args.subscribed) {
+    collector.recordTouched(recordId, [outputKey])
+    return
+  }
+  try {
+    const fieldType = field.type as FieldType
+    const fieldOptions = field.options as
+      | { actor?: { multiple?: boolean }; multi?: boolean }
+      | undefined
+    const isArrayReturn = isArrayReturnFieldType(fieldType, fieldOptions)
+    const n =
+      args.newValues === null
+        ? null
+        : flattenTypedFieldValue(isArrayReturn ? args.newValues : (args.newValues[0] ?? null))
+    if (collector.hasCreated(recordId)) {
+      collector.recordChange(recordId, { [outputKey]: { n } })
+      return
+    }
+    if (args.oldValues === null) {
+      collector.recordTouched(recordId, [outputKey])
+      return
+    }
+    const o =
+      args.oldValues.length === 0
+        ? null
+        : flattenTypedFieldValue(isArrayReturn ? args.oldValues : args.oldValues[0]!)
+    collector.recordChange(recordId, { [outputKey]: { o, n } })
+  } catch (error) {
+    logger.warn('Tier-2 sync delta capture failed; membership recorded instead', {
+      fieldId,
+      recordId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    collector.recordTouched(recordId, [outputKey])
+  }
+}
+
+// =============================================================================
 // REALTIME PUBLISH SHAPING
 // =============================================================================
 
@@ -1655,12 +1769,26 @@ export async function addValues(
       .values(insertRows)
       .returning()) as unknown as FieldValueRow[]
 
-    // Tier-1 sync capture (plan 07 §4): at least one value actually landed —
-    // the all-duplicates path returned above and records nothing.
-    syncCollectorOf(ctx.session)?.recordTouched(recordId, [field.systemAttribute ?? fieldId])
-
     const allRows = [...existingRows, ...inserted]
     const allTyped = allRows.map((r) => rowToTypedValue(r, fieldType))
+
+    // Sync capture (plan 07 §4): at least one value actually landed — the
+    // all-duplicates path returned above and records nothing. Tier-2 when
+    // subscribed: `o` is the pre-op list the dedupe already loaded, `n` the
+    // post-op list (the field's true new value, not just the appended values).
+    const addCollector = syncCollectorOf(ctx.session)
+    if (addCollector) {
+      const subscribed = isDeltaSubscribed(addCollector, field, fieldId, entityDefinitionId)
+      captureSyncFieldWrite({
+        collector: addCollector,
+        subscribed,
+        recordId,
+        field,
+        fieldId,
+        oldValues: subscribed ? typedRowsOrNull(existingRows, fieldType) : null,
+        newValues: allTyped,
+      })
+    }
 
     // Update display value (safe no-op when the field isn't a display source).
     // Pass the FULL post-state, not just the appended survivors — an append
@@ -1718,7 +1846,7 @@ export async function removeValues(
     )
   }
 
-  const { entityInstanceId } = parseRecordId(recordId)
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
   // Convert inputs and collect match tuples.
   const matches: TypedColumnMatch[] = []
@@ -1772,9 +1900,9 @@ export async function removeValues(
   if (valueMatchClause === null) return
 
   // RETURNING (same single statement, no extra query) makes "did any row
-  // actually go" observable for the tier-1 sync capture below; the result was
-  // previously discarded.
-  const deleted = await ctx.db
+  // actually go" observable for the sync capture below — full rows, so the
+  // tier-2 delta can reconstruct the removed values without a pre-read.
+  const deleted = (await ctx.db
     .delete(schema.FieldValue)
     .where(
       and(
@@ -1784,17 +1912,41 @@ export async function removeValues(
         valueMatchClause
       )
     )
-    .returning({ id: schema.FieldValue.id })
-
-  // Tier-1 sync capture (plan 07 §4): only when at least one row was removed —
-  // a remove matching nothing is a no-op and records nothing.
-  if (deleted.length > 0) {
-    syncCollectorOf(ctx.session)?.recordTouched(recordId, [field.systemAttribute ?? fieldId])
-  }
+    .returning()) as unknown as FieldValueRow[]
 
   // Publish the remaining array — empty is a valid "cleared" signal.
   const remaining = await getValue(ctx, { recordId, fieldId })
   const publishValue = remaining === null ? [] : Array.isArray(remaining) ? remaining : [remaining]
+
+  // Sync capture (plan 07 §4): only when at least one row was removed — a
+  // remove matching nothing is a no-op and records nothing. Tier-2 when
+  // subscribed: `o` is the pre-delete list reconstructed from the surviving
+  // values + the RETURNING'd removed rows (sortKey order restored), `n` the
+  // remaining post-op list.
+  if (deleted.length > 0) {
+    const removeCollector = syncCollectorOf(ctx.session)
+    if (removeCollector) {
+      const subscribed = isDeltaSubscribed(removeCollector, field, fieldId, entityDefinitionId)
+      let oldValues: TypedFieldValue[] | null = null
+      if (subscribed) {
+        const removedTyped = typedRowsOrNull(deleted, fieldType)
+        oldValues = removedTyped
+          ? [...publishValue, ...removedTyped].sort((a, b) =>
+              a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0
+            )
+          : null
+      }
+      captureSyncFieldWrite({
+        collector: removeCollector,
+        subscribed,
+        recordId,
+        field,
+        fieldId,
+        oldValues,
+        newValues: publishValue,
+      })
+    }
+  }
 
   // Update display (e.g. clear avatar when last file row removed).
   await maybeUpdateDisplayValue(ctx, recordId, field, remaining ?? null)
@@ -1993,7 +2145,10 @@ export async function addValuesBulk(
   })
 
   // Tier-1 sync capture (plan 07 §4): per record that actually received rows —
-  // fully-deduped records contribute no `insertedTypedByEntity` entry.
+  // fully-deduped records contribute no `insertedTypedByEntity` entry. Tier-1
+  // ONLY, deliberately: no sync producer routes through the bulk variants (the
+  // sink/import per-record writes go via setFieldValues → the single-record
+  // seams), so tier-2 deltas here would be dead code plus an extra pre-read.
   const bulkAddCollector = syncCollectorOf(ctx.session)
   if (bulkAddCollector && insertedTypedByEntity.size > 0) {
     const key = field.systemAttribute ?? fieldId
@@ -2120,6 +2275,7 @@ export async function removeValuesBulk(
     })) as Array<{ id: string; entityId: string }>
 
   // Tier-1 sync capture (plan 07 §4): per record that actually lost rows.
+  // Tier-1 ONLY — same rationale as `addValuesBulk` above.
   const bulkRemoveCollector = syncCollectorOf(ctx.session)
   if (bulkRemoveCollector && deleted.length > 0) {
     const key = field.systemAttribute ?? fieldId
@@ -2482,6 +2638,21 @@ export async function setValueWithBuiltIn(
     ? null
     : await loadExistingRowsForSet(ctx, entityInstanceId, fieldId)
 
+  // Tier-2 sync capture gating (plan 07 §4 PR 2), resolved once per write. The
+  // `o`-source is the guard's OWN row load — the pre-write state was already paid
+  // for. AI stage-2 commits bypass the guard, so when (and only when) a sync
+  // session subscribes to this field, do ONE targeted read of the same shape for
+  // an honest `o` — the cost is rare by construction (sync + subscribed + AI).
+  // A failed guard load stays `null`: no honest pre-state, no delta (membership
+  // only) — never fabricate `o`.
+  const setCollector = syncCollectorOf(ctx.session)
+  const setDeltaSubscribed = isDeltaSubscribed(setCollector, field, fieldId, entityDefinitionId)
+  const syncCaptureRows =
+    guardRows ??
+    (setDeltaSubscribed && params.aiGeneration
+      ? await loadExistingRowsForSet(ctx, entityInstanceId, fieldId)
+      : null)
+
   // D-6: a confirmed re-assertion returns the stored rows untouched — no
   // DELETE+INSERT, no oldValue pre-fetch, no display recompute, no
   // post-hooks, no field triggers, no realtime entry. Any uncertainty in
@@ -2607,11 +2778,24 @@ export async function setValueWithBuiltIn(
         }).catch(() => {})
       }
     }
-    // Tier-1 sync capture (plan 07 §4): a REAL clear — the B-14
-    // delete-of-absent no-op returned above and records nothing. Deliberately
-    // not tied to `publishEvents`/`firePostHook`: sync sessions run the silent
-    // lane, and capture must not be skipped with the fan-out.
-    syncCollectorOf(ctx.session)?.recordTouched(recordId, [field.systemAttribute ?? fieldId])
+    // Sync capture (plan 07 §4): a REAL clear — the B-14 delete-of-absent no-op
+    // returned above and records nothing. Tier-1 membership always; tier-2
+    // `{o, n: null}` when subscribed, `o` from the guard's own row load.
+    // Deliberately not tied to `publishEvents`/`firePostHook`: sync sessions run
+    // the silent lane, and capture must not be skipped with the fan-out.
+    if (setCollector) {
+      captureSyncFieldWrite({
+        collector: setCollector,
+        subscribed: setDeltaSubscribed,
+        recordId,
+        field,
+        fieldId,
+        oldValues: setDeltaSubscribed
+          ? typedRowsOrNull(syncCaptureRows, field.type as FieldType)
+          : null,
+        newValues: null,
+      })
+    }
     await firePostHook(null)
     return { state: 'complete', performedAt: new Date().toISOString(), values: [], changed: true }
   }
@@ -2633,11 +2817,27 @@ export async function setValueWithBuiltIn(
     aiGeneration: params.aiGeneration,
   })
 
-  // Tier-1 sync capture (plan 07 §4): the step-3.55 guard already decided this
-  // is a REAL write — an identical re-assertion returned at 3.55 and records
-  // nothing (membership honesty, §4 property 1). Runs on the silent lane too:
-  // sync sessions skip `firePostHook`, capture must not be skipped with it.
-  syncCollectorOf(ctx.session)?.recordTouched(recordId, [field.systemAttribute ?? fieldId])
+  // Sync capture (plan 07 §4): the step-3.55 guard already decided this is a
+  // REAL write — an identical re-assertion returned at 3.55 and records nothing
+  // (membership honesty, §4 property 1). Tier-1 membership always; tier-2
+  // `{o, n}` when subscribed — `o` from the guard's own row load (or the
+  // targeted AI-commit read), `n` from the rows `setValueWithType` actually
+  // stored, which is exactly the flattened stored value space. Runs on the
+  // silent lane too: sync sessions skip `firePostHook`, capture must not be
+  // skipped with it.
+  if (setCollector) {
+    captureSyncFieldWrite({
+      collector: setCollector,
+      subscribed: setDeltaSubscribed,
+      recordId,
+      field,
+      fieldId,
+      oldValues: setDeltaSubscribed
+        ? typedRowsOrNull(syncCaptureRows, field.type as FieldType)
+        : null,
+      newValues: result,
+    })
+  }
 
   // 7. Fire field-change post-hooks. For multi-value fields (MULTI_SELECT,
   // TAGS, RELATIONSHIP, FILE, or scalar types with options.multi=true) we

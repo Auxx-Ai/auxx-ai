@@ -14,9 +14,11 @@
 //   • `fill_blank`                         → write only when the list is EMPTY.
 // Other rows are never touched and never deleted.
 //
-// Planning (reads + decisions) is split from execution so the caller can feed the
-// PROJECTED resulting array into the sync-change manifest capture BEFORE any write
-// (`{o, n}` must describe the post-write list, not the scalar source value).
+// Manifest capture: the append path routes through the handler's `add` mode, so the
+// engine's sync-capture seams record it (plan 07 PR 2). The in-place own-row UPDATE
+// below writes `FieldValue` directly and BYPASSES those seams — a named coverage hole
+// (plan 07 §4 / plan 03 §3.6, D-16 territory): such a write reaches neither tier-1
+// membership nor tier-2 deltas until the path migrates onto the engine.
 //
 // Field-value helpers are lazy-imported (same rule as the manifest capture in
 // entity-sink) so the sink's mocked unit tests never load that graph.
@@ -91,9 +93,10 @@ export type RowLevelAction =
 export interface RowLevelPlan {
   actions: RowLevelAction[]
   /**
-   * Projected post-write value per writeKey (the full resulting array) — feed this
-   * into the manifest capture so record rules on the field see sane `{o, n}` under
-   * row-level appends/updates. Only fields that will actually write appear.
+   * Projected post-write value per writeKey (the full resulting array). Only fields
+   * that will actually write appear. Currently unconsumed: the append path is
+   * captured by the engine seams, and the in-place update path is a named coverage
+   * hole (see the header) — this projection is what its future capture seam needs.
    */
   captureSet: Record<string, unknown>
 }
@@ -117,9 +120,9 @@ function valuesEqual(a: unknown, b: unknown, fieldType: string): boolean {
 
 /**
  * Plan the row-level writes for one record: read the field's current rows, decide
- * per field between no-op / in-place own-row update / append, run the per-value
- * uniqueness pre-flight, and project the resulting array for manifest capture.
- * Read-only — call BEFORE the record's write so `o` capture stays pre-write.
+ * per field between no-op / in-place own-row update / append, and run the per-value
+ * uniqueness pre-flight. Read-only — call BEFORE the record's write so its reads
+ * see the pre-write rows.
  */
 export async function planRowLevelWrites(
   ctx: SyncCtx,
