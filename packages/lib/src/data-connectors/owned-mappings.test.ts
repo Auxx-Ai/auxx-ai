@@ -14,6 +14,7 @@ import {
   partitionOwnedFields,
   projectConnectorOwnedTargets,
   relativeSourcePath,
+  storedRootPath,
 } from './mutations'
 
 type CatalogField = OwnedFieldEntry['field']
@@ -150,6 +151,19 @@ describe('projectConnectorOwnedTargets', () => {
           },
           // A contributing customer branch — NOT owned, must be skipped.
           { rootPath: 'customer', target: { mode: 'contributing', entityKind: 'contact' } },
+          // The owned line-item child — parent of the product reference below.
+          {
+            rootPath: 'line_items[]',
+            target: {
+              mode: 'owned',
+              entity: {
+                key: 'line_items',
+                apiSlug: 'shopify_line_items',
+                singular: 'L',
+                plural: 'Ls',
+              },
+            },
+          },
           // A `reference` owned mapping pointing at the SAME product key as the products
           // stream — both must surface so onComplete binds both to the one product def.
           {
@@ -168,8 +182,24 @@ describe('projectConnectorOwnedTargets', () => {
   const targets = projectConnectorOwnedTargets('shopify', catalog)
 
   it('emits one entry per owned mapping, skipping contributing branches', () => {
-    expect(targets).toHaveLength(3)
+    expect(targets).toHaveLength(4)
     expect(targets.some((t) => t.streamKey === 'orders' && t.rootPath === 'customer')).toBe(false)
+  })
+
+  it('emits the STORED (parent-relative) rootPath for a nested mapping, matching the seeder', () => {
+    // The seeder stores `line_items[].product_id` relativized against its parent
+    // `line_items[]` as `product_id` — the binder matches `(streamKey, rootPath)` with
+    // `===` against those stored rows, so the projector MUST emit the same form. The
+    // absolute manifest path here would never match anything (the production bug that
+    // left every product/variant reference mapping with `entityDefinitionId: NULL`).
+    const ref = targets.find((t) => t.ownedKey === 'products' && t.streamKey === 'orders')
+    expect(ref?.rootPath).toBe('product_id')
+    // And it agrees with the seeder's own derivation, shared via `storedRootPath`.
+    const ownedRootPaths = ['', 'line_items[]', 'line_items[].product_id']
+    expect(storedRootPath('line_items[].product_id', ownedRootPaths)).toBe('product_id')
+    // Top-level mappings are unchanged (absolute == relative).
+    const line = targets.find((t) => t.ownedKey === 'line_items')
+    expect(line?.rootPath).toBe('line_items[]')
   })
 
   it('stamps the app:<slug>:<ownedKey> templateId + (streamKey, rootPath)', () => {
@@ -186,8 +216,9 @@ describe('projectConnectorOwnedTargets', () => {
   it('surfaces the reference mapping under the same ownedKey as its upsert def', () => {
     const products = targets.filter((t) => t.ownedKey === 'products')
     expect(products).toHaveLength(2)
+    // The reference rootPath is the STORED parent-relative form (`product_id`).
     expect(products.map((t) => `${t.streamKey}:${t.rootPath}`).sort()).toEqual([
-      'orders:line_items[].product_id',
+      'orders:product_id',
       'products:',
     ])
     // Same templateId regardless of which stream/mapping declares it.

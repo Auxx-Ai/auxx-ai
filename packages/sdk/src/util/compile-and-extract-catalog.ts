@@ -231,7 +231,10 @@ export interface CatalogConnectorRelationshipDecl {
 /** A recommended fan-out mapping projected from a data connector's stream. */
 export interface CatalogConnectorDefaultMapping {
   rootPath: string
+  /** Explicit parent mapping's rootPath for the flat drilled child — see root types. */
+  parentRootPath?: string
   linkMode?: 'upsert' | 'reference'
+  /** Bare app key, or `'system:<systemAttribute>'` for a pre-existing system edge. */
   relationshipFieldKey?: string
   relationship?: CatalogConnectorRelationshipDecl
   target:

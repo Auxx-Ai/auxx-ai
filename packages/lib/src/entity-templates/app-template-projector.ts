@@ -10,7 +10,11 @@
 import type { CatalogDataConnector } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import type { SelectOption } from '@auxx/types/custom-field'
-import { ownedParentRootPath, partitionOwnedFields } from '../data-connectors/mutations'
+import {
+  ownedParentRootPath,
+  partitionOwnedFields,
+  SYSTEM_RELATIONSHIP_PREFIX,
+} from '../data-connectors/mutations'
 import type { EntityTemplate, EntityTemplateField } from './types'
 
 type CatalogStream = CatalogDataConnector['streams'][number]
@@ -126,6 +130,10 @@ export function projectAppConnectorTemplates(
     // declares a `relationship` becomes a RELATIONSHIP field on THIS def.
     for (const child of mappings) {
       if (!child.relationship) continue
+      // A `system:`-prefixed relationshipFieldKey names a PRE-EXISTING system edge —
+      // never provision one for it, even when the manifest (wrongly) also declares a
+      // `relationship`. The mapping-side wiring resolves at install (mutations.ts).
+      if (child.relationshipFieldKey?.startsWith(SYSTEM_RELATIONSHIP_PREFIX)) continue
       if (ownedParentRootPath(child.rootPath, ownedRootPaths) !== rootPath) continue
       fields.push({
         templateFieldId: child.relationship.fieldKey,

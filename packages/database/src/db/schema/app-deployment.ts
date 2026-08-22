@@ -271,7 +271,12 @@ export interface CatalogConnectorRelationshipDecl {
 /** A recommended fan-out mapping projected from a data connector's stream. */
 export interface CatalogConnectorDefaultMapping {
   rootPath: string
+  /** Explicit parent mapping's rootPath (payload-absolute) for the flat drilled child
+   *  (a second mapping over the parent's own subtree). Mirrors the SDK type. */
+  parentRootPath?: string
   linkMode?: 'upsert' | 'reference'
+  /** Bare key → `@app:` envelope; `'system:<systemAttribute>'` → pre-existing system
+   *  relationship field on the (contributing) parent def. Mirrors the SDK type. */
   relationshipFieldKey?: string
   /** Provisioning decl for the parent↔child edge — auto-creates the field at materialization. */
   relationship?: CatalogConnectorRelationshipDecl

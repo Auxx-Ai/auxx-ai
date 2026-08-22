@@ -188,13 +188,29 @@ export interface ConnectorRelationshipDecl {
 export interface ConnectorDefaultMapping {
   /** `''` = root record, else a subtree path (`'customer'` / `'line_items[]'`). */
   rootPath: string
+  /**
+   * Explicitly name the PARENT mapping's `rootPath` (payload-absolute, like every
+   * rootPath here) when prefix nesting cannot derive it — the flat drilled child: a
+   * SECOND mapping over the same subtree as its parent. E.g. a `variants[]` mapping
+   * contributes the `part`, and a flat `variants[]` sibling with
+   * `parentRootPath: 'variants[]'` contributes that part's `catalog_item`, the edge
+   * stamped via `relationshipFieldKey` (`'system:part_catalog_items'`). Must be a
+   * boundary prefix of — or equal to — `rootPath`. Omit for ordinary nesting: the
+   * platform derives the parent from the longest boundary-prefix mapping (owned or
+   * contributing).
+   */
+  parentRootPath?: string
   /** Default: `upsert` for embedded data, `reference` for id-only branches. */
   linkMode?: 'upsert' | 'reference'
   /**
    * Runtime pointer the fan-out reads to find the edge field at write time. Keep it
    * equal to `relationship.fieldKey` when `relationship` is declared. A bare key (no
    * `relationship`) resolves against a PRE-EXISTING edge — e.g. a reference FK to a
-   * field the connector doesn't provision.
+   * field the connector doesn't provision. A `'system:<systemAttribute>'` value names
+   * a pre-existing SYSTEM relationship field on the parent def (e.g.
+   * `'system:part_catalog_items'`) — for a contributing child whose contributing
+   * parent's edge already exists as a system field; nothing is provisioned for it, so
+   * never pair it with a `relationship` declaration.
    */
   relationshipFieldKey?: string
   /**
