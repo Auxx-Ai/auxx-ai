@@ -47,10 +47,12 @@ export const approvalStatus = pgEnum('ApprovalStatus', [
   'superseded',
 ])
 // Which lane an `ApprovalRequest` row belongs to (plan 28 §3). `workflow` is the
-// human-confirmation node; `access` is a user asking for permission. The
-// discriminator exists so `ApprovalResponse`, the pending list and the badge stay
-// one shared spine instead of a second table per kind.
-export const approvalKind = pgEnum('ApprovalKind', ['workflow', 'access'])
+// human-confirmation node; `access` is a user asking for permission;
+// `bulk-dispatch` is a large sync run's held workflow dispatches awaiting
+// review (plan events/03 D-19). The discriminator exists so `ApprovalResponse`,
+// the pending list and the badge stay one shared spine instead of a second
+// table per kind.
+export const approvalKind = pgEnum('ApprovalKind', ['workflow', 'access', 'bulk-dispatch'])
 export const articleStatus = pgEnum('ArticleStatus', ['DRAFT', 'PUBLISHED', 'ARCHIVED'])
 export const articleKind = pgEnum('articleKind', ['page', 'category', 'header', 'tab', 'link'])
 export const kbPublishStatus = pgEnum('KBPublishStatus', ['DRAFT', 'PUBLISHED', 'UNLISTED'])

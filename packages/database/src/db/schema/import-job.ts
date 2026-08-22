@@ -83,6 +83,24 @@ export const ImportJob = pgTable(
     // `… WHERE manifestConsumedAt IS NULL RETURNING` in the event consumer), so a
     // redelivered event can never double-fire rule actions.
     manifestConsumedAt: timestamp({ precision: 3 }),
+    // Phase 6 (plan events/03 §9, D-3/D-13/D-19) — the guarded workflow dispatch
+    // tally, written once at finalize on the LARGE lane (same shape and rules as
+    // DataConnectorRun.heldDispatches). Structural mirror of `HeldDispatchEntry`
+    // in `@auxx/lib` events/handlers/sync-dispatch-guard.ts — keep in sync BY HAND.
+    heldDispatches:
+      jsonb().$type<
+        Array<{
+          workflowId: string
+          workflowAppId: string
+          workflowName?: string
+          triggerType: 'created' | 'updated' | 'deleted'
+          entityDefinitionId: string
+          recordIds?: string[]
+          count: number
+          status: 'held' | 'auto' | 'approved' | 'skipped'
+          approvalRequestId?: string
+        }>
+      >(),
 
     // Creator
     createdById: text().references((): AnyPgColumn => User.id, {

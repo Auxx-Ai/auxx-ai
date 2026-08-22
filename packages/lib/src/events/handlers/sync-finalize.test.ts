@@ -27,6 +27,12 @@ const h = vi.hoisted(() => ({
   >(async () => {}),
   getRealtimeService: vi.fn(() => ({ publish: vi.fn() })),
   insertValues: vi.fn<(rows: Array<Record<string, unknown>>) => Promise<void>>(async () => {}),
+  runGuardedWorkflowDispatch: vi.fn<(db: unknown, input: Record<string, unknown>) => Promise<void>>(
+    async () => {}
+  ),
+  runIntegrityPasses: vi.fn<(db: unknown, input: Record<string, unknown>) => Promise<void>>(
+    async () => {}
+  ),
 }))
 
 vi.mock('../../entity-instances/activity', () => ({
@@ -37,6 +43,12 @@ vi.mock('../../cache', () => ({
 }))
 vi.mock('./trigger-resource-dispatch', () => ({
   triggerResourceDispatch: h.triggerResourceDispatch,
+}))
+vi.mock('./sync-dispatch-guard', () => ({
+  runGuardedWorkflowDispatch: h.runGuardedWorkflowDispatch,
+}))
+vi.mock('./finalize-integrity-passes', () => ({
+  runIntegrityPasses: h.runIntegrityPasses,
 }))
 vi.mock('../../realtime', () => ({
   getRealtimeService: h.getRealtimeService,
@@ -241,9 +253,18 @@ describe('runSyncFinalize — large lane', () => {
     return manifest({ changes: changes as never })
   }
 
-  it('withholds workflow dispatch (D-3) but still touches activity, timeline, and frames', async () => {
+  it('routes dispatch through the Phase 6 guard (D-3) but still touches activity, timeline, and frames', async () => {
     await runSyncFinalize(fakeDb(), connectorInput(largeManifest()))
     expect(h.triggerResourceDispatch).not.toHaveBeenCalled()
+    expect(h.runGuardedWorkflowDispatch).toHaveBeenCalledTimes(1)
+    const [, guardInput] = h.runGuardedWorkflowDispatch.mock.calls[0]!
+    expect(guardInput).toMatchObject({
+      organizationId: ORG,
+      source: 'connector',
+      ref: 'run_1',
+      actorUserId: 'user_1',
+    })
+    expect((guardInput.updatedIds as string[]).length).toBe(SYNC_SMALL_RUN_THRESHOLD + 1)
     expect(h.touchEntityActivity).toHaveBeenCalled()
     expect(insertedRows()).toHaveLength(SYNC_SMALL_RUN_THRESHOLD + 1)
     expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)
@@ -257,6 +278,50 @@ describe('runSyncFinalize — large lane', () => {
       )
     )
     expect(h.triggerResourceDispatch).not.toHaveBeenCalled()
+    expect(h.runGuardedWorkflowDispatch).toHaveBeenCalledTimes(1)
+    expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it('the small lane never touches the guard', async () => {
+    await runSyncFinalize(
+      fakeDb(),
+      connectorInput(manifest({ changes: { 'def_1:i1': { f: { n: 1 } } } as never }))
+    )
+    expect(h.runGuardedWorkflowDispatch).not.toHaveBeenCalled()
+    expect(h.triggerResourceDispatch).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('runSyncFinalize — integrity passes door (B-1)', () => {
+  it('runs the integrity passes on the small lane, before dispatch', async () => {
+    await runSyncFinalize(
+      fakeDb(),
+      connectorInput(manifest({ changes: { 'def_1:i1': { f: { n: 1 } } } as never }))
+    )
+    expect(h.runIntegrityPasses).toHaveBeenCalledTimes(1)
+    const [, input] = h.runIntegrityPasses.mock.calls[0]!
+    expect(input).toMatchObject({ organizationId: ORG })
+    expect(h.runIntegrityPasses.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.triggerResourceDispatch.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('runs the integrity passes on the large lane too', async () => {
+    const changes: Record<string, Record<string, { n: unknown }>> = {}
+    for (let i = 0; i < SYNC_SMALL_RUN_THRESHOLD + 1; i++) {
+      changes[`def_1:r${i}`] = { fld_a: { n: i } }
+    }
+    await runSyncFinalize(fakeDb(), connectorInput(manifest({ changes: changes as never })))
+    expect(h.runIntegrityPasses).toHaveBeenCalledTimes(1)
+  })
+
+  it('a rejecting integrity door does not break the remaining doors', async () => {
+    h.runIntegrityPasses.mockRejectedValueOnce(new Error('boom'))
+    await runSyncFinalize(
+      fakeDb(),
+      connectorInput(manifest({ changes: { 'def_1:i1': { f: { n: 1 } } } as never }))
+    )
+    expect(h.triggerResourceDispatch).toHaveBeenCalledTimes(1)
     expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)
   })
 })

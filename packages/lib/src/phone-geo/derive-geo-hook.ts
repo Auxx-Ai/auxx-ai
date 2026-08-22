@@ -42,9 +42,10 @@ const GEO_TARGETS = [
  *
  * Contact `phone` is `options: { multi: true }`, so a multi write arrives as an array ordered by
  * `sortKey` — index 0 is the primary, which is also what outbound SMS/voice dials. A cleared
- * field arrives as `null`.
+ * field arrives as `null`. Exported for the finalize integrity passes, which re-read the stored
+ * value (same `TypedFieldValue`/array shape) and need the exact same unwrapping.
  */
-function extractPrimaryPhone(value: unknown): string | null {
+export function extractPrimaryPhone(value: unknown): string | null {
   const typed = value as TypedFieldValue | TypedFieldValue[] | null
   const first = Array.isArray(typed) ? typed[0] : typed
   if (!first) return null
@@ -86,7 +87,18 @@ export const derivePhoneGeoOnChange: EntityFieldChangeHandler = async (event) =>
   }
 }
 
-async function fillBlankGeoFields(event: EntityFieldChangeEvent, geo: PhoneGeo): Promise<void> {
+/**
+ * The derivation core: resolve the entity's geo target fields, fill only the BLANK ones from
+ * `geo`, write quietly (`publishEvents: false`), and publish one hand-rolled realtime frame.
+ * The inline hook wraps this in its own try/catch; the finalize integrity passes
+ * (`events/handlers/finalize-integrity-passes.ts`) call it directly with a synthesized event —
+ * only `organizationId`, `entityDefinitionId`, `userId`, `recordId`, and
+ * `field.entityDefinitionId` are read. Fill-only-if-blank makes it idempotent by construction.
+ */
+export async function fillBlankGeoFields(
+  event: EntityFieldChangeEvent,
+  geo: PhoneGeo
+): Promise<void> {
   // Resolve targets within THIS entity definition rather than through `resolveFieldIds`, whose
   // systemAttribute map is global across every definition in the org and would happily hand back
   // another entity's `city` field.

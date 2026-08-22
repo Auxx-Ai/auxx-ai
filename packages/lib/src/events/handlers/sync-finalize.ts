@@ -159,19 +159,27 @@ export async function runSyncFinalize(db: Database, input: SyncFinalizeInput): P
       canonicalDefId,
     })
 
+    // B-1: data-integrity passes (totals recompute, address normalize +
+    // geocode, phone geo), BOTH lanes — sync writes are silent at the handler
+    // seam, so the inline integrity hooks never ran for them; this pass is
+    // their compensation (matrix: integrityHooks batched at finalize). Runs
+    // before dispatch so workflow runs and delta frames follow recomputed
+    // data.
+    await integrityDoor(db, organizationId, manifest, { source, ref })
+
     // D-2: workflows/agents fire per-record on a SMALL run (incremental sync
-    // is new activity — fixes B-3). The large lane withholds dispatch pending
-    // the Phase 6 guarded dispatcher (D-3: tally + thresholded hold), and
-    // deliberately computes nothing expensive here.
+    // is new activity — fixes B-3). The large lane routes through the Phase 6
+    // guarded dispatcher instead (D-3): tally always, auto-dispatch below
+    // WORKFLOW_AUTO_DISPATCH_THRESHOLD per workflow, held for approval at or
+    // above (D-13), surfaced through the `bulk-dispatch` approval kind (D-19).
     if (lane === 'small') {
       await dispatchDoor(organizationId, sets, { actorUserId, canonicalDefId })
     } else {
-      logger.info('sync finalize: workflow dispatch withheld on large lane (D-3)', {
-        organizationId,
+      await guardedDispatchDoor(db, organizationId, sets, {
         source,
         ref,
-        changed: sets.total,
-        note: 'pending the Phase 6 guarded dispatcher',
+        actorUserId,
+        canonicalDefId,
       })
     }
 
@@ -245,6 +253,25 @@ async function buildDefCanonicalizer(
       memo.set(defId, pending)
     }
     return pending
+  }
+}
+
+/** B-1: the integrity batch passes — the module guards each pass internally. */
+async function integrityDoor(
+  db: Database,
+  organizationId: string,
+  manifest: SyncChangeManifest,
+  ctx: { source: string; ref: string }
+): Promise<void> {
+  try {
+    const { runIntegrityPasses } = await import('./finalize-integrity-passes')
+    await runIntegrityPasses(db, { organizationId, manifest })
+  } catch (error) {
+    logger.error('sync finalize: integrity passes failed', {
+      organizationId,
+      ...ctx,
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
 }
 
@@ -404,6 +431,44 @@ async function dispatchDoor(
   } catch (error) {
     logger.error('sync finalize: dispatch door failed', {
       organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/**
+ * D-3 (large lane): the Phase 6 guarded workflow dispatcher — tally always,
+ * per-workflow threshold, held dispatches persisted on the run row and
+ * surfaced as `bulk-dispatch` approval requests. `runGuardedWorkflowDispatch`
+ * never throws, but the lazy import itself is guarded like every other door.
+ */
+async function guardedDispatchDoor(
+  db: Database,
+  organizationId: string,
+  sets: ChangedSets,
+  ctx: {
+    source: 'connector' | 'import'
+    ref: string
+    actorUserId: string | null
+    canonicalDefId: (defId: string) => Promise<string>
+  }
+): Promise<void> {
+  try {
+    const { runGuardedWorkflowDispatch } = await import('./sync-dispatch-guard')
+    await runGuardedWorkflowDispatch(db, {
+      organizationId,
+      source: ctx.source,
+      ref: ctx.ref,
+      actorUserId: ctx.actorUserId,
+      createdIds: sets.createdIds,
+      updatedIds: sets.updatedIds,
+      canonicalDefId: ctx.canonicalDefId,
+    })
+  } catch (error) {
+    logger.error('sync finalize: guarded dispatch door failed', {
+      organizationId,
+      source: ctx.source,
+      ref: ctx.ref,
       error: error instanceof Error ? error.message : String(error),
     })
   }

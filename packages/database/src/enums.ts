@@ -43,7 +43,7 @@ export const ApprovalStatusValues = [
   'superseded',
 ] as const
 
-export const ApprovalKindValues = ['workflow', 'access'] as const
+export const ApprovalKindValues = ['workflow', 'access', 'bulk-dispatch'] as const
 
 export const ArticleStatusValues = ['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const
 
@@ -1026,6 +1026,7 @@ export const ApprovalStatus = {
 export const ApprovalKind = {
   workflow: 'workflow',
   access: 'access',
+  'bulk-dispatch': 'bulk-dispatch',
 } as const
 
 export const ArticleStatus = {

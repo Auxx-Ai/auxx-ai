@@ -77,12 +77,18 @@ export {
   getWorkflowApprovalHistory,
   listApprovalsForUser,
 } from './approval-request-queries'
+export {
+  applyBulkDispatchDecision,
+  type CreateBulkDispatchRequestInput,
+  createBulkDispatchRequest,
+} from './bulk-dispatch-mutations'
 export type {
   AccessLens,
   AccessRefusalReason,
   AccessRequestMetadata,
   AccessTargetKind,
   ApprovalKind,
+  BulkDispatchRequestMetadata,
   RecordAccessRefusalReason,
 } from './client'
 export {

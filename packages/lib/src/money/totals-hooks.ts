@@ -31,9 +31,11 @@ function firstTyped(
  * Fields on `line-items` whose write should trigger a recompute (money MQ1 build
  * spec §F.2). The rel triggers (`line_item_quote` / `line_item_work_order`) catch
  * attach/detach side effects — a line just linked to a quote needs its contribution
- * folded into that quote's totals.
+ * folded into that quote's totals. Exported so the finalize integrity passes
+ * (`events/handlers/finalize-integrity-passes.ts`) can match manifest change keys
+ * against the exact same trigger vocabulary as this hook.
  */
-const LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
+export const LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'line_item_qty',
   'line_item_unit_price',
   'line_item_taxable',
@@ -46,17 +48,20 @@ const LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
 ])
 
 /** Subset of {@link LINE_TRIGGER_ATTRS} that also requires rewriting `line_item_line_total`. */
-const LINE_TOTAL_TRIGGER_ATTRS = new Set<SystemAttribute>(['line_item_qty', 'line_item_unit_price'])
+export const LINE_TOTAL_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'line_item_qty',
+  'line_item_unit_price',
+])
 
 /** Fields on `quotes` whose write should trigger a recompute (money MQ1 build spec §F.2). */
-const QUOTE_TRIGGER_ATTRS = new Set<SystemAttribute>([
+export const QUOTE_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'quote_discount_type',
   'quote_discount_value',
   'quote_tax_rate',
 ])
 
 /** Fields on `invoices` whose write should trigger a recompute (money MI1 build spec §G.1). */
-const INVOICE_TRIGGER_ATTRS = new Set<SystemAttribute>([
+export const INVOICE_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'invoice_discount_type',
   'invoice_discount_value',
   'invoice_tax_rate',
@@ -336,59 +341,64 @@ async function recomputeInvoiceTotals(params: {
 }
 
 /**
- * Recompute hook for `line-items` (money MQ1 build spec §F.2, registered under the
- * `line-items` apiSlug in `field-hooks/register-hooks.ts`). Steps:
- *
- * 1. If `qty`/`unitPrice` changed, recompute + write `line_item_line_total`
- *    (`publishEvents` ON — the builder's lineTotal cell updates via realtime).
- * 2. Resolve the line's parent quote and recompute+write its mirrored totals. Skipped when
- *    there's no `line_item_quote` value.
- * 3. Else resolve the line's parent invoice (money MI1 build spec §G.1) — but ONLY when
- *    `line_item_work_order` is empty. A work-order line stamped with `line_item_invoice`
- *    (the gather "invoiced by" pointer, §B.3) must NEVER recompute the invoice from here;
- *    only the invoice's own copies (workOrder empty) do.
- *
- * No recursion: the fields this hook writes (`line_total`, `subtotal`/`tax_total`/
- * `total`) are not in {@link LINE_TRIGGER_ATTRS}, {@link QUOTE_TRIGGER_ATTRS}, or
- * {@link INVOICE_TRIGGER_ATTRS}, so re-entry exits immediately on the systemAttribute filter.
+ * Recompute + write a single line's `line_item_line_total` from its current qty/unitPrice
+ * (`publishEvents` ON — the builder's lineTotal cell updates via realtime). Extracted from
+ * {@link recomputeOnLineChange} step 1 so the finalize integrity passes can run it per
+ * imported/synced line; behavior is identical to the hook's inline version. No-ops when the
+ * org lacks the qty/unitPrice fields.
  */
-export const recomputeOnLineChange: EntityFieldChangeHandler = async (event) => {
-  const attr = event.field.systemAttribute as SystemAttribute | undefined
-  if (!attr || !LINE_TRIGGER_ATTRS.has(attr)) return
-
-  const { organizationId, userId } = event
-  const { entityInstanceId: lineInstanceId } = parseRecordId(event.recordId)
+export async function recomputeLineTotal(params: {
+  organizationId: string
+  userId: string
+  lineInstanceId: string
+}): Promise<void> {
+  const { organizationId, userId, lineInstanceId } = params
   const lineRecordId = toRecordId('line_item', lineInstanceId)
   const handler = new UnifiedCrudHandler(organizationId, userId)
-  const cache = getOrgCache()
 
-  const cf = await cache
+  const cf = await getOrgCache()
     .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'line_item_qty',
-      'line_item_unit_price',
-      'line_item_quote',
-      'line_item_invoice',
-      'line_item_work_order',
-    ] as const)
+    .bySystemAttributes(['line_item_qty', 'line_item_unit_price'] as const)
+  if (!cf.line_item_qty || !cf.line_item_unit_price) return
 
-  if (LINE_TOTAL_TRIGGER_ATTRS.has(attr) && cf.line_item_qty && cf.line_item_unit_price) {
-    const values = await handler.getFieldValues(lineRecordId, [
-      cf.line_item_qty.id,
-      cf.line_item_unit_price.id,
-    ])
-    const qtyTyped = firstTyped(values.get(cf.line_item_qty.id))
-    const unitPriceTyped = firstTyped(values.get(cf.line_item_unit_price.id))
-    const qty = qtyTyped ? (extractValue(qtyTyped) as number) : 0
-    const unitPrice = unitPriceTyped ? (extractValue(unitPriceTyped) as number) : null
+  const values = await handler.getFieldValues(lineRecordId, [
+    cf.line_item_qty.id,
+    cf.line_item_unit_price.id,
+  ])
+  const qtyTyped = firstTyped(values.get(cf.line_item_qty.id))
+  const unitPriceTyped = firstTyped(values.get(cf.line_item_unit_price.id))
+  const qty = qtyTyped ? (extractValue(qtyTyped) as number) : 0
+  const unitPrice = unitPriceTyped ? (extractValue(unitPriceTyped) as number) : null
 
-    const fieldValueService = new FieldValueService(organizationId, userId)
-    await fieldValueService.setValuesForEntity({
-      recordId: lineRecordId,
-      values: [{ fieldId: 'line_item_line_total', value: computeLineTotal(qty, unitPrice) }],
-      publishEvents: true,
-    })
-  }
+  const fieldValueService = new FieldValueService(organizationId, userId)
+  await fieldValueService.setValuesForEntity({
+    recordId: lineRecordId,
+    values: [{ fieldId: 'line_item_line_total', value: computeLineTotal(qty, unitPrice) }],
+    publishEvents: true,
+  })
+}
+
+/**
+ * Resolve which document a line's contribution folds into — the parent quote, else the
+ * parent invoice but ONLY when `line_item_work_order` is empty (§B.3/§G.1: a WO source
+ * line stamped with `line_item_invoice` must never recompute the invoice; only the
+ * invoice's own copies do). Extracted from {@link recomputeOnLineChange} steps 2-3 —
+ * same reads, same precedence — so the finalize integrity passes can collect DISTINCT
+ * parents across a run before recomputing each once. Returns null when the line hangs
+ * off no recomputable document.
+ */
+export async function resolveLineParentDocument(params: {
+  organizationId: string
+  userId: string
+  lineInstanceId: string
+}): Promise<{ documentType: 'quote' | 'invoice'; documentInstanceId: string } | null> {
+  const { organizationId, userId, lineInstanceId } = params
+  const lineRecordId = toRecordId('line_item', lineInstanceId)
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+
+  const cf = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['line_item_quote', 'line_item_invoice', 'line_item_work_order'] as const)
 
   // Resolve the parent quote — work_order lines have no stored totals in MQ1, skip.
   if (cf.line_item_quote) {
@@ -396,13 +406,7 @@ export const recomputeOnLineChange: EntityFieldChangeHandler = async (event) => 
     const quoteTyped = firstTyped(quoteValues.get(cf.line_item_quote.id))
     if (quoteTyped?.type === 'relationship' && quoteTyped.recordId) {
       const { entityInstanceId: quoteInstanceId } = parseRecordId(quoteTyped.recordId)
-      await recomputeTotals({
-        organizationId,
-        userId,
-        documentType: 'quote',
-        documentInstanceId: quoteInstanceId,
-      })
-      return
+      return { documentType: 'quote', documentInstanceId: quoteInstanceId }
     }
   }
 
@@ -418,13 +422,45 @@ export const recomputeOnLineChange: EntityFieldChangeHandler = async (event) => 
     const hasWorkOrder = workOrderTyped?.type === 'relationship' && !!workOrderTyped.recordId
     if (!hasWorkOrder && invoiceTyped?.type === 'relationship' && invoiceTyped.recordId) {
       const { entityInstanceId: invoiceInstanceId } = parseRecordId(invoiceTyped.recordId)
-      await recomputeTotals({
-        organizationId,
-        userId,
-        documentType: 'invoice',
-        documentInstanceId: invoiceInstanceId,
-      })
+      return { documentType: 'invoice', documentInstanceId: invoiceInstanceId }
     }
+  }
+
+  return null
+}
+
+/**
+ * Recompute hook for `line-items` (money MQ1 build spec §F.2, registered under the
+ * `line-items` apiSlug in `field-hooks/register-hooks.ts`). Steps:
+ *
+ * 1. If `qty`/`unitPrice` changed, recompute + write `line_item_line_total`
+ *    ({@link recomputeLineTotal}).
+ * 2. Resolve the line's parent document ({@link resolveLineParentDocument}: quote first,
+ *    else invoice-without-work-order) and recompute+write its mirrored totals.
+ *
+ * No recursion: the fields this hook writes (`line_total`, `subtotal`/`tax_total`/
+ * `total`) are not in {@link LINE_TRIGGER_ATTRS}, {@link QUOTE_TRIGGER_ATTRS}, or
+ * {@link INVOICE_TRIGGER_ATTRS}, so re-entry exits immediately on the systemAttribute filter.
+ */
+export const recomputeOnLineChange: EntityFieldChangeHandler = async (event) => {
+  const attr = event.field.systemAttribute as SystemAttribute | undefined
+  if (!attr || !LINE_TRIGGER_ATTRS.has(attr)) return
+
+  const { organizationId, userId } = event
+  const { entityInstanceId: lineInstanceId } = parseRecordId(event.recordId)
+
+  if (LINE_TOTAL_TRIGGER_ATTRS.has(attr)) {
+    await recomputeLineTotal({ organizationId, userId, lineInstanceId })
+  }
+
+  const parent = await resolveLineParentDocument({ organizationId, userId, lineInstanceId })
+  if (parent) {
+    await recomputeTotals({
+      organizationId,
+      userId,
+      documentType: parent.documentType,
+      documentInstanceId: parent.documentInstanceId,
+    })
   }
 }
 

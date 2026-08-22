@@ -81,6 +81,28 @@ export const DataConnectorRun = pgTable(
     // before firing any rule action, so a redelivered event or a re-entered finalize
     // can never double-fire notifications / workflow enqueues / set-field writes.
     manifestConsumedAt: timestamp({ precision: 3 }),
+    // Phase 6 (plan events/03 §9, D-3/D-13/D-19) — the guarded workflow dispatch
+    // tally, written once at finalize on the LARGE lane. One entry per matched
+    // workflow: 'auto' entries were enqueued (recordIds omitted to keep the row
+    // small); 'held' entries were withheld and carry their `ApprovalRequest` id;
+    // the approval decision flips 'held' to 'approved' | 'skipped'. Structural
+    // mirror of `HeldDispatchEntry` in `@auxx/lib` events/handlers/
+    // sync-dispatch-guard.ts (can't import across the tier boundary — keep the
+    // two in sync BY HAND). Record ids are bounded by the manifest caps (≤5k).
+    heldDispatches:
+      jsonb().$type<
+        Array<{
+          workflowId: string
+          workflowAppId: string
+          workflowName?: string
+          triggerType: 'created' | 'updated' | 'deleted'
+          entityDefinitionId: string
+          recordIds?: string[]
+          count: number
+          status: 'held' | 'auto' | 'approved' | 'skipped'
+          approvalRequestId?: string
+        }>
+      >(),
     cursorBefore: jsonb(),
     cursorAfter: jsonb(),
     startedAt: timestamp({ precision: 3 }).defaultNow().notNull(),
