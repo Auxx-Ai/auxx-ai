@@ -1,6 +1,7 @@
 // packages/lib/src/bom/cost-calculator.ts
 
 import { database, schema } from '@auxx/database'
+import type { CustomFieldEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
@@ -30,7 +31,6 @@ interface VendorPriceRow {
 }
 
 interface VendorCostMaps {
-  unitPriceMap: Map<string, number>
   landedCostMap: Map<string, number>
 }
 
@@ -43,6 +43,74 @@ interface SubpartRow {
 interface OrgPricingData {
   vendorPrices: VendorPriceRow[]
   subparts: SubpartRow[]
+}
+
+/**
+ * Which of the two stored numbers `part_cost` took. Mirrors `CostSource` in
+ * `resources/registry/enum-values.ts` — the option keyspace is the raw `value`
+ * string, because those option rows carry no `id` (see `optionKey`).
+ */
+type CostSourceValue = 'vendor' | 'bom' | 'none'
+
+/**
+ * One part's costs, with provenance.
+ *
+ * `purchaseCost` and `rollupCost` are the two candidate numbers; `cost` is the
+ * one that won and `source` names it. Crucially `rollupCost` is recorded EVEN
+ * WHEN a vendor wins — that is the whole buy-vs-build comparison, and storing
+ * only the winner is what made "is this assembly cheaper to build?" unaskable.
+ */
+interface PartCostResult {
+  cost: number | null
+  purchaseCost: number | null
+  rollupCost: number | null
+  source: CostSourceValue
+  /**
+   * The parts to go price, when this one has no roll-up.
+   *
+   * A blank cost provokes exactly one question — *which component is missing a
+   * price?* — and neither `cost: null` nor `source: 'none'` answers it. This
+   * does.
+   *
+   * **The TRANSITIVE set of unpriced LEAVES, not the direct children.** A leaf
+   * here is a part with neither a vendor price nor a bill of materials of its
+   * own: the thing a human actually has to go add a supplier to. Naming the
+   * intermediate subassembly instead would point at a part that is not itself
+   * fixable — its cost is missing only because something below it is.
+   *
+   * **Descendants only — never the part itself.** An unpriced leaf reports an
+   * empty set; its own `source: 'none'` already says it is the unpriced thing,
+   * and repeating that as its own descendant reads as nonsense in a UI.
+   *
+   * **Populated even when the part IS costed**, if its roll-up is not. A part
+   * bought from a vendor whose bill of materials is incomplete has a `cost` but
+   * a null `rollupCost`; this is what explains the missing buy-vs-build number.
+   *
+   * **Derived, never persisted.** It is unbounded in length and would be a
+   * fifth denormalized value to keep from going stale — the exact failure this
+   * whole plan exists to stop. It rides on the in-memory return value only.
+   *
+   * Empty (and shared) when there is nothing to report.
+   */
+  unpricedDescendantIds: readonly string[]
+}
+
+/** Shared empty set — never mutated, so it is safe to hand out repeatedly. */
+const NO_UNPRICED: readonly string[] = Object.freeze([])
+
+/**
+ * A part with no vendor price and no bill of materials.
+ *
+ * Not `cost: 0`. An unpriced part reporting a confident $0.00 is worse than a
+ * blank: it rolls silently up into every assembly above it and a zero-cost COGS
+ * posting is exactly what the build-event costing rules forbid.
+ */
+const UNCOSTED: PartCostResult = {
+  cost: null,
+  purchaseCost: null,
+  rollupCost: null,
+  source: 'none',
+  unpricedDescendantIds: NO_UNPRICED,
 }
 
 // ─── Data Loading ────────────────────────────────────────────────────
@@ -241,6 +309,30 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
   return { vendorPrices, subparts }
 }
 
+/**
+ * Every non-archived `part` instance in the org.
+ *
+ * This is the persist SCOPE for a full sweep, and it is deliberately not derived
+ * from the vendor/subpart graph. A part with neither a supplier nor a bill of
+ * materials appears nowhere in that graph, so a graph-derived sweep skips it —
+ * which is exactly how a part that lost its last supplier before the write path
+ * became authoritative could keep a frozen number that no recalculation would
+ * ever reach. Scope decides what gets written; values only decide what it says.
+ */
+async function loadAllPartIds(orgId: string, partDefId: string): Promise<string[]> {
+  const rows = await database
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, orgId),
+        eq(schema.EntityInstance.entityDefinitionId, partDefId),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+  return rows.map((row) => row.id)
+}
+
 // ─── Graph Building ──────────────────────────────────────────────────
 
 /**
@@ -257,10 +349,9 @@ function computeLandedCost(row: VendorPriceRow): number | null {
 
 /**
  * Best vendor per part: preferred first, then cheapest landed cost.
- * Returns two maps: raw unit price and computed landed cost.
+ * Returns the winning row's computed landed cost per part.
  */
 function buildVendorCostMaps(vendorPrices: VendorPriceRow[]): VendorCostMaps {
-  const unitPriceMap = new Map<string, number>()
   const landedCostMap = new Map<string, number>()
 
   // Group by partInstanceId
@@ -280,7 +371,6 @@ function buildVendorCostMaps(vendorPrices: VendorPriceRow[]): VendorCostMaps {
     })
     const best = sorted[0]
     if (best?.unitPrice != null) {
-      unitPriceMap.set(partId, best.unitPrice)
       const landed = computeLandedCost(best)
       if (landed != null) {
         landedCostMap.set(partId, landed)
@@ -288,7 +378,7 @@ function buildVendorCostMaps(vendorPrices: VendorPriceRow[]): VendorCostMaps {
     }
   }
 
-  return { unitPriceMap, landedCostMap }
+  return { landedCostMap }
 }
 
 /** Adjacency list: parent → [{ childId, qty }] */
@@ -318,81 +408,214 @@ function buildParentGraph(subparts: SubpartRow[]): Map<string, string[]> {
 // ─── Cost Calculation ────────────────────────────────────────────────
 
 /**
- * Calculate costs for all parts in-memory using memoized DFS.
- * Vendor price takes priority over composite cost.
+ * Calculate costs for all parts in the graph using memoized DFS.
+ *
+ * Three things this does that a plain "vendor price beats BOM" walk does not:
+ *
+ *  1. **The roll-up is always computed**, even when a vendor price wins, so the
+ *     buy price and the build price are both stored and comparable.
+ *  2. **Nulls propagate.** A part with neither a vendor nor children has no
+ *     cost — not a cost of zero. An assembly with any unpriced descendant has
+ *     no cost either: an incomplete bill of materials cannot be priced, and a
+ *     confident $0.00 hides that where a blank surfaces it.
+ *  3. **Cycles are contained.** A back edge contributes 0 to its parent's
+ *     roll-up rather than poisoning every ancestor with a null, because a cycle
+ *     is a data defect in one place, not an unpriced part everywhere above it.
+ *     The cyclic part's own cost is genuinely unknowable and records `none`.
+ *  4. **A null says which parts caused it** — see
+ *     {@link PartCostResult.unpricedDescendantIds}. Blanking a cost without
+ *     naming the components responsible just moves the mystery.
  */
 function calculateAllCosts(
-  vendorPriceMap: Map<string, number>,
+  vendorLandedCosts: Map<string, number>,
   subpartGraph: Map<string, { childId: string; qty: number }[]>
-): Map<string, number> {
-  const costs = new Map<string, number>()
+): Map<string, PartCostResult> {
+  const results = new Map<string, PartCostResult>()
   const inProgress = new Set<string>()
+  /** Parts re-entered during the walk — their own cost is unknowable. */
+  const cyclic = new Set<string>()
+  /**
+   * Per part: the unpriced leaves to fix AT OR BELOW it, which is what its
+   * PARENT needs to union. Distinct from the public `unpricedDescendantIds`,
+   * which is strictly below — an unpriced leaf's closure is itself, but it is
+   * not its own descendant.
+   */
+  const closures = new Map<string, readonly string[]>()
 
-  function calc(partId: string): number {
-    if (costs.has(partId)) return costs.get(partId)!
+  /** What a PARENT should add for this child. See point 3 above. */
+  function contribution(partId: string, result: PartCostResult): number | null {
+    if (cyclic.has(partId)) return 0
+    return result.cost
+  }
+
+  function calc(partId: string): PartCostResult {
+    const memo = results.get(partId)
+    if (memo) return memo
+
     if (inProgress.has(partId)) {
       logger.warn('Circular reference detected in BOM, treating cost as 0', { partId })
-      costs.set(partId, 0)
-      return 0
+      cyclic.add(partId)
+      results.set(partId, UNCOSTED)
+      // Memoized BEFORE the recursion unwinds, which is also what stops the
+      // closure walk from looping. A cycle's unpriced leaves cannot be
+      // enumerated, so it reports none rather than a set that depends on which
+      // node the walk happened to enter from.
+      closures.set(partId, NO_UNPRICED)
+      return UNCOSTED
     }
     inProgress.add(partId)
 
-    // Vendor price takes priority
-    const vendorPrice = vendorPriceMap.get(partId)
-    if (vendorPrice != null) {
-      costs.set(partId, vendorPrice)
-      inProgress.delete(partId)
-      return vendorPrice
+    const purchaseCost = vendorLandedCosts.get(partId) ?? null
+
+    // Every child is visited even once the roll-up is known to be incomplete,
+    // so each one still gets memoized with its own answer rather than being
+    // left for a later top-level pass to rediscover.
+    const children = subpartGraph.get(partId) ?? []
+    let rollupCost: number | null = null
+    const unpriced = new Set<string>()
+    if (children.length > 0) {
+      let sum = 0
+      let complete = true
+      for (const child of children) {
+        const childCost = contribution(child.childId, calc(child.childId))
+        for (const id of closures.get(child.childId) ?? NO_UNPRICED) unpriced.add(id)
+        if (childCost == null) complete = false
+        else sum += childCost * child.qty
+      }
+      rollupCost = complete ? sum : null
     }
 
-    // Sum of (child cost × quantity)
-    const children = subpartGraph.get(partId) ?? []
-    const cost = children.reduce((sum, c) => sum + calc(c.childId) * c.qty, 0)
-    costs.set(partId, cost)
     inProgress.delete(partId)
-    return cost
+
+    // A cycle closed on THIS part while its own subtree was walking. The stub
+    // memoized above is the answer; do not overwrite it with a number derived
+    // from a graph that contradicts itself.
+    if (cyclic.has(partId)) return results.get(partId)!
+
+    const unpricedDescendantIds = unpriced.size > 0 ? [...unpriced] : NO_UNPRICED
+
+    let result: PartCostResult
+    if (purchaseCost != null) {
+      result = {
+        cost: purchaseCost,
+        purchaseCost,
+        rollupCost,
+        source: 'vendor',
+        unpricedDescendantIds,
+      }
+    } else if (rollupCost != null) {
+      result = {
+        cost: rollupCost,
+        purchaseCost: null,
+        rollupCost,
+        source: 'bom',
+        unpricedDescendantIds,
+      }
+    } else {
+      result = { ...UNCOSTED, unpricedDescendantIds }
+    }
+
+    results.set(partId, result)
+    // A costed part is nothing for an ancestor to fix, whatever sits under it.
+    // An uncosted LEAF is the fixable thing and names itself here (but not in
+    // its own `unpricedDescendantIds`). An uncosted assembly forwards what it
+    // found below.
+    closures.set(
+      partId,
+      result.cost != null ? NO_UNPRICED : children.length === 0 ? [partId] : unpricedDescendantIds
+    )
+    return result
   }
 
   // Collect all part IDs that appear anywhere in the graph
   const allPartIds = new Set([
-    ...vendorPriceMap.keys(),
+    ...vendorLandedCosts.keys(),
     ...subpartGraph.keys(),
     ...[...subpartGraph.values()].flatMap((children) => children.map((c) => c.childId)),
   ])
 
   for (const id of allPartIds) calc(id)
 
-  return costs
+  return results
 }
 
 // ─── Persistence ─────────────────────────────────────────────────────
 
 interface CurrentPartValues {
   costs: Map<string, number>
-  unitPrices: Map<string, number>
+  purchaseCosts: Map<string, number>
+  rollupCosts: Map<string, number>
+  sources: Map<string, string>
+}
+
+/** The four `part` fields `persistCosts` owns, resolved from the org cache. */
+interface CostFields {
+  cost: CustomFieldEntity
+  purchaseCost: CustomFieldEntity | null
+  rollupCost: CustomFieldEntity | null
+  costSource: CustomFieldEntity | null
 }
 
 /**
- * Load current cached cost and unit price values for all parts in the org.
+ * Resolve the four cost fields. Only `part_cost` is required — the other three
+ * are absent until migration `100` materializes them for the org, and a
+ * pre-migration org must still get its `part_cost` maintained.
  */
-async function loadCurrentPartValues(orgId: string): Promise<CurrentPartValues> {
-  const cache = getOrgCache()
-  const [costField, unitPriceField] = await Promise.all([
-    cache.from(orgId, 'customFields').bySystemAttribute('part_cost'),
-    cache.from(orgId, 'customFields').bySystemAttribute('part_unit_price'),
-  ])
+async function loadCostFields(orgId: string): Promise<CostFields | null> {
+  const fields = await getOrgCache()
+    .from(orgId, 'customFields')
+    .bySystemAttributes([
+      'part_cost',
+      'part_purchase_cost',
+      'part_rollup_cost',
+      'part_cost_source',
+    ] as const)
 
-  const costs = new Map<string, number>()
-  const unitPrices = new Map<string, number>()
+  if (!fields.part_cost) {
+    logger.warn('part_cost custom field not found, skipping cost persistence')
+    return null
+  }
 
-  const fieldIds = [costField?.id, unitPriceField?.id].filter(Boolean) as string[]
-  if (fieldIds.length === 0) return { costs, unitPrices }
+  return {
+    cost: fields.part_cost,
+    purchaseCost: fields.part_purchase_cost,
+    rollupCost: fields.part_rollup_cost,
+    costSource: fields.part_cost_source,
+  }
+}
+
+/**
+ * Load the currently stored cost values for every part in the org, so the write
+ * path only touches rows whose value actually changed.
+ *
+ * `part_cost_source` is a SINGLE_SELECT and lives in `FieldValue.optionId`, not
+ * in `valueNumber` — the registry's option rows carry no `id`, so the stored key
+ * is the raw option `value` ('vendor' / 'bom' / 'none').
+ */
+async function loadCurrentPartValues(
+  orgId: string,
+  fields: CostFields
+): Promise<CurrentPartValues> {
+  const current: CurrentPartValues = {
+    costs: new Map(),
+    purchaseCosts: new Map(),
+    rollupCosts: new Map(),
+    sources: new Map(),
+  }
+
+  const fieldIds = [
+    fields.cost.id,
+    fields.purchaseCost?.id,
+    fields.rollupCost?.id,
+    fields.costSource?.id,
+  ].filter((id): id is string => Boolean(id))
 
   const rows = await database
     .select({
       entityId: schema.FieldValue.entityId,
       fieldId: schema.FieldValue.fieldId,
       valueNumber: schema.FieldValue.valueNumber,
+      optionId: schema.FieldValue.optionId,
     })
     .from(schema.FieldValue)
     .where(
@@ -400,129 +623,140 @@ async function loadCurrentPartValues(orgId: string): Promise<CurrentPartValues> 
     )
 
   for (const row of rows) {
-    if (row.valueNumber == null) continue
-    if (costField && row.fieldId === costField.id) {
-      costs.set(row.entityId, row.valueNumber)
-    } else if (unitPriceField && row.fieldId === unitPriceField.id) {
-      unitPrices.set(row.entityId, row.valueNumber)
+    if (row.fieldId === fields.cost.id) {
+      if (row.valueNumber != null) current.costs.set(row.entityId, row.valueNumber)
+    } else if (fields.purchaseCost && row.fieldId === fields.purchaseCost.id) {
+      if (row.valueNumber != null) current.purchaseCosts.set(row.entityId, row.valueNumber)
+    } else if (fields.rollupCost && row.fieldId === fields.rollupCost.id) {
+      if (row.valueNumber != null) current.rollupCosts.set(row.entityId, row.valueNumber)
+    } else if (fields.costSource && row.fieldId === fields.costSource.id) {
+      if (row.optionId != null) current.sources.set(row.entityId, row.optionId)
     }
   }
 
-  return { costs, unitPrices }
+  return current
+}
+
+/** What `setValueWithType` and the realtime publish both carry for one field. */
+type CostFieldValue =
+  | { type: 'number'; value: number }
+  | { type: 'option'; optionId: string }
+  | null
+
+/** One field of one part that needs writing, already reduced to its new value. */
+interface PendingWrite {
+  field: CustomFieldEntity
+  value: CostFieldValue
 }
 
 /**
- * Write calculated costs and unit prices back to each part's FieldValues.
+ * The writes one part needs, or an empty list when nothing about it changed.
+ *
+ * Every field is compared against what is stored, so a recalculation that
+ * confirms the existing numbers costs nothing. A `null` is a real answer, not
+ * an absence — `part_cost_source` is the exception and is always one of the
+ * three option values, which is the point of having `none` at all.
+ */
+function diffPart(
+  result: PartCostResult,
+  partId: string,
+  fields: CostFields,
+  previous: CurrentPartValues
+): PendingWrite[] {
+  const writes: PendingWrite[] = []
+
+  const numeric: [CustomFieldEntity | null, number | null, Map<string, number>][] = [
+    [fields.cost, result.cost, previous.costs],
+    [fields.purchaseCost, result.purchaseCost, previous.purchaseCosts],
+    [fields.rollupCost, result.rollupCost, previous.rollupCosts],
+  ]
+
+  for (const [field, next, stored] of numeric) {
+    if (!field) continue
+    const prev = stored.get(partId) ?? null
+    if (next === prev) continue
+    writes.push({ field, value: next == null ? null : { type: 'number', value: next } })
+  }
+
+  if (fields.costSource) {
+    const prev = previous.sources.get(partId) ?? null
+    if (result.source !== prev) {
+      writes.push({ field: fields.costSource, value: { type: 'option', optionId: result.source } })
+    }
+  }
+
+  return writes
+}
+
+/**
+ * Write calculated costs back to each part's FieldValues.
  * Only touches parts whose values actually changed.
  *
- * **Authoritative, not additive.** A `null` in either map is a real answer — "this part
- * has no calculated value" — and clears the stored FieldValue, rather than meaning "leave
- * whatever is there". Without that, a part losing its last vendor (or its last subpart)
- * keeps a frozen number that is visually indistinguishable from a fresh one; the caller
- * must therefore map every part IN SCOPE, using `null` where there is no value, not only
- * the parts that happen to have one.
+ * **Authoritative, not additive.** A `null` in a result is a real answer — "this
+ * part has no calculated value" — and clears the stored FieldValue, rather than
+ * meaning "leave whatever is there". Without that, a part losing its last vendor
+ * (or its last subpart) keeps a frozen number that is visually indistinguishable
+ * from a fresh one; the caller must therefore pass every part IN SCOPE, using
+ * {@link UNCOSTED} where there is no value, not only the parts that have one.
  *
  * Returns IDs of parts whose values changed.
  */
 async function persistCosts(
   orgId: string,
-  landedCosts: Map<string, number | null>,
-  unitPrices: Map<string, number | null>,
+  scoped: Map<string, PartCostResult>,
+  fields: CostFields,
   previous: CurrentPartValues
 ): Promise<string[]> {
-  const cache = getOrgCache()
-  const [costField, unitPriceField] = await Promise.all([
-    cache.from(orgId, 'customFields').bySystemAttribute('part_cost'),
-    cache.from(orgId, 'customFields').bySystemAttribute('part_unit_price'),
-  ])
-
-  if (!costField) {
-    logger.warn('part_cost custom field not found, skipping cost persistence')
-    return []
-  }
-
   const partDefId = await requireCachedEntityDefId(orgId, 'part')
   const ctx = createFieldValueContext(orgId)
 
   logger.info('Persisting costs', {
-    costFieldId: costField.id,
-    unitPriceFieldId: unitPriceField?.id ?? null,
+    costFieldId: fields.cost.id,
+    purchaseCostFieldId: fields.purchaseCost?.id ?? null,
+    rollupCostFieldId: fields.rollupCost?.id ?? null,
+    costSourceFieldId: fields.costSource?.id ?? null,
     partDefId,
-    totalCosts: landedCosts.size,
-    totalUnitPrices: unitPrices.size,
+    scopedParts: scoped.size,
   })
 
-  // Collect parts with changed values (cost or unit price)
-  interface ChangedEntry {
-    partId: string
-    cost: number | null
-    unitPrice: number | null
-    costChanged: boolean
-    unitPriceChanged: boolean
-  }
-
-  const allPartIds = new Set([...landedCosts.keys(), ...unitPrices.keys()])
-  const changedEntries: ChangedEntry[] = []
-
-  for (const partId of allPartIds) {
-    const cost = landedCosts.get(partId) ?? null
-    const unitPrice = unitPrices.get(partId) ?? null
-    const prevCost = previous.costs.get(partId) ?? null
-    const prevUnitPrice = previous.unitPrices.get(partId) ?? null
-    const costChanged = cost !== prevCost
-    const unitPriceChanged = unitPrice !== prevUnitPrice
-
-    if (costChanged || unitPriceChanged) {
-      changedEntries.push({ partId, cost, unitPrice, costChanged, unitPriceChanged })
-    }
+  const changedEntries: { partId: string; writes: PendingWrite[] }[] = []
+  for (const [partId, result] of scoped) {
+    const writes = diffPart(result, partId, fields, previous)
+    if (writes.length > 0) changedEntries.push({ partId, writes })
   }
 
   logger.info('Parts with changed values', { count: changedEntries.length })
 
   // Write all changed values concurrently (bounded to avoid overwhelming the DB)
   const BATCH_SIZE = 20
-  const changedPartIds: string[] = []
+  const changedPartIds = new Set<string>()
 
   for (let i = 0; i < changedEntries.length; i += BATCH_SIZE) {
     const batch = changedEntries.slice(i, i + BATCH_SIZE)
     const results = await Promise.allSettled(
       batch.map(async (entry) => {
         const recordId = toRecordId(partDefId, entry.partId) as RecordId
-        const writes: Promise<unknown>[] = []
 
         // `value: null` IS the clear — `setValueWithType` deletes the field's rows and
         // returns early. Same writer for set and clear, matching `catalog-pricing.ts`'s
         // `writeCatalogNumberValues`; a raw `deleteValue` would skip `maybeUpdateDisplayValue`.
-        if (entry.costChanged) {
-          writes.push(
+        await Promise.all(
+          entry.writes.map((write) =>
             setValueWithType(ctx, {
               recordId,
-              fieldId: costField.id,
-              fieldType: toFieldType(costField.type),
-              value: entry.cost == null ? null : { type: 'number', value: entry.cost },
+              fieldId: write.field.id,
+              fieldType: toFieldType(write.field.type),
+              value: write.value,
             })
           )
-        }
-
-        if (entry.unitPriceChanged && unitPriceField) {
-          writes.push(
-            setValueWithType(ctx, {
-              recordId,
-              fieldId: unitPriceField.id,
-              fieldType: toFieldType(unitPriceField.type),
-              value: entry.unitPrice == null ? null : { type: 'number', value: entry.unitPrice },
-            })
-          )
-        }
-
-        await Promise.all(writes)
+        )
         return entry.partId
       })
     )
 
     for (const result of results) {
       if (result.status === 'fulfilled') {
-        changedPartIds.push(result.value)
+        changedPartIds.add(result.value)
       } else {
         logger.error('Failed to persist values for part', {
           error: result.reason instanceof Error ? result.reason.message : String(result.reason),
@@ -533,53 +767,62 @@ async function persistCosts(
   }
 
   // Publish cascaded changes to all clients
-  if (changedPartIds.length > 0) {
+  if (changedPartIds.size > 0) {
     const entries: FieldValueUpdateEntry[] = []
     for (const entry of changedEntries) {
-      if (!changedPartIds.includes(entry.partId)) continue
+      if (!changedPartIds.has(entry.partId)) continue
       const recordId = toRecordId(partDefId, entry.partId) as RecordId
 
       // A cleared cell publishes as `value: null`, NOT as an omitted entry: on
       // `FieldValueUpdateEntry` an absent `value` means "don't touch the store"
       // (realtime/events.ts), so skipping the entry would leave every open client
       // rendering the stale number until a reload.
-      if (entry.costChanged) {
+      for (const write of entry.writes) {
         entries.push({
-          key: buildFieldValueKey(recordId, costField.id as FieldId),
-          value: entry.cost == null ? null : { type: 'number', value: entry.cost },
-        })
-      }
-      if (entry.unitPriceChanged && unitPriceField) {
-        entries.push({
-          key: buildFieldValueKey(recordId, unitPriceField.id as FieldId),
-          value: entry.unitPrice == null ? null : { type: 'number', value: entry.unitPrice },
+          key: buildFieldValueKey(recordId, write.field.id as FieldId),
+          value: write.value,
         })
       }
     }
     publishFieldValueUpdates(getRealtimeService(), orgId, entries).catch(() => {})
   }
 
-  return changedPartIds
+  return [...changedPartIds]
 }
 
 // ─── Public API ──────────────────────────────────────────────────────
 
 /**
  * Recalculate costs for all parts in an organization.
- * Loads all vendor parts and subparts, builds the graph in memory,
- * and persists any changed cost values.
+ *
+ * The scope is every non-archived `part` in the org, NOT the parts reachable
+ * through the vendor/subpart graph — see {@link loadAllPartIds}. That makes a
+ * full sweep self-sufficient: it repairs a frozen value on a part that has
+ * neither a supplier nor a bill of materials, which a graph-derived sweep can
+ * never even visit.
  */
 export async function recalculateAllPartCosts(orgId: string): Promise<string[]> {
+  const fields = await loadCostFields(orgId)
+  if (!fields) return []
+
+  const partDefId = await requireCachedEntityDefId(orgId, 'part')
   const { vendorPrices, subparts } = await loadOrgPricingData(orgId)
-  const { unitPriceMap, landedCostMap } = buildVendorCostMaps(vendorPrices)
+  const { landedCostMap } = buildVendorCostMaps(vendorPrices)
   const subpartGraph = buildSubpartGraph(subparts)
-  const costs = calculateAllCosts(landedCostMap, subpartGraph)
-  const previous = await loadCurrentPartValues(orgId)
-  const changedIds = await persistCosts(orgId, costs, unitPriceMap, previous)
+  const allResults = calculateAllCosts(landedCostMap, subpartGraph)
+
+  const partIds = await loadAllPartIds(orgId, partDefId)
+  const scoped = new Map<string, PartCostResult>()
+  for (const partId of partIds) {
+    scoped.set(partId, allResults.get(partId) ?? UNCOSTED)
+  }
+
+  const previous = await loadCurrentPartValues(orgId, fields)
+  const changedIds = await persistCosts(orgId, scoped, fields, previous)
 
   logger.info('Recalculated all part costs', {
     orgId,
-    totalParts: costs.size,
+    totalParts: scoped.size,
     changedParts: changedIds.length,
   })
 
@@ -599,8 +842,11 @@ export async function recalculateAffectedParts(
   orgId: string,
   affectedPartIds: string[]
 ): Promise<string[]> {
+  const fields = await loadCostFields(orgId)
+  if (!fields) return []
+
   const { vendorPrices, subparts } = await loadOrgPricingData(orgId)
-  const { unitPriceMap, landedCostMap } = buildVendorCostMaps(vendorPrices)
+  const { landedCostMap } = buildVendorCostMaps(vendorPrices)
   const subpartGraph = buildSubpartGraph(subparts)
   const parentGraph = buildParentGraph(subparts)
 
@@ -616,20 +862,18 @@ export async function recalculateAffectedParts(
   for (const id of affectedPartIds) markDirty(id)
 
   // Calculate costs for all parts (memoized, so cheap)
-  const allCosts = calculateAllCosts(landedCostMap, subpartGraph)
+  const allResults = calculateAllCosts(landedCostMap, subpartGraph)
 
-  // Persist values for the dirty set — every member of it, `null` included. The dirty set
-  // IS the scope, so a part that no longer resolves to a cost or a vendor price maps to
-  // `null` and gets cleared, instead of dropping out of the map and keeping a frozen value.
-  const dirtyCosts = new Map<string, number | null>()
-  const dirtyUnitPrices = new Map<string, number | null>()
+  // The dirty set IS the persist scope, so a part that no longer resolves to a
+  // cost maps to `UNCOSTED` and gets cleared, instead of dropping out of the
+  // map and keeping a frozen value.
+  const scoped = new Map<string, PartCostResult>()
   for (const partId of dirtySet) {
-    dirtyCosts.set(partId, allCosts.get(partId) ?? null)
-    dirtyUnitPrices.set(partId, unitPriceMap.get(partId) ?? null)
+    scoped.set(partId, allResults.get(partId) ?? UNCOSTED)
   }
 
-  const previous = await loadCurrentPartValues(orgId)
-  const changedIds = await persistCosts(orgId, dirtyCosts, dirtyUnitPrices, previous)
+  const previous = await loadCurrentPartValues(orgId, fields)
+  const changedIds = await persistCosts(orgId, scoped, fields, previous)
 
   logger.info('Recalculated affected part costs', {
     orgId,
@@ -665,5 +909,18 @@ async function syncCatalogPricingSafely(orgId: string, changedPartIds: string[])
 
 // ─── Exported helpers for BomService ─────────────────────────────────
 
-export { loadOrgPricingData, buildVendorCostMaps, buildSubpartGraph, buildParentGraph }
-export type { VendorPriceRow, VendorCostMaps, SubpartRow, OrgPricingData }
+export {
+  loadOrgPricingData,
+  buildVendorCostMaps,
+  buildSubpartGraph,
+  buildParentGraph,
+  calculateAllCosts,
+}
+export type {
+  VendorPriceRow,
+  VendorCostMaps,
+  SubpartRow,
+  OrgPricingData,
+  PartCostResult,
+  CostSourceValue,
+}
