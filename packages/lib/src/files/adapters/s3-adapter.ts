@@ -540,7 +540,12 @@ export class S3Adapter extends BaseStorageAdapter {
   }
 
   /**
-   * Generate S3 presigned URL for multipart upload part
+   * Generate S3 presigned URL for multipart upload part.
+   *
+   * `params.bucket` is required and must name the bucket `startMultipart` used.
+   * There is deliberately no `S3_PRIVATE_BUCKET` fallback here: a PUBLIC upload
+   * that initiates in the public bucket and presigns its parts against the
+   * private one fails with `NoSuchUpload`.
    */
   async presignPart(params: {
     key: string
@@ -554,13 +559,10 @@ export class S3Adapter extends BaseStorageAdapter {
     this.requireCapability('presignUpload')
 
     try {
-      const bucket =
-        params.bucket ||
-        (params.auth as any)?.bucket ||
-        configService.get<string>('S3_PRIVATE_BUCKET')
+      const bucket = params.bucket
       if (!bucket) {
         throw new StorageAdapterError(
-          'S3 bucket name is required for part upload. Please provide a bucket via params, credentials, or configure S3_PRIVATE_BUCKET.',
+          'S3 bucket name is required for part upload. Pass the bucket the multipart upload was initiated in (upload session `bucket`) — presigning a part against a different bucket fails with NoSuchUpload.',
           this.id,
           'presignPart'
         )
@@ -590,7 +592,10 @@ export class S3Adapter extends BaseStorageAdapter {
   }
 
   /**
-   * Complete S3 multipart upload
+   * Complete S3 multipart upload.
+   *
+   * `params.bucket` is required and must name the bucket `startMultipart` used.
+   * See {@link presignPart} for why there is no configured-default fallback.
    */
   async completeMultipart(params: {
     key: string
@@ -602,13 +607,10 @@ export class S3Adapter extends BaseStorageAdapter {
     this.requireCapability('presignUpload')
 
     try {
-      const bucket =
-        params.bucket ||
-        (params.auth as any)?.bucket ||
-        configService.get<string>('S3_PRIVATE_BUCKET')
+      const bucket = params.bucket
       if (!bucket) {
         throw new StorageAdapterError(
-          'S3 bucket name is required to complete multipart upload. Please provide a bucket via params, credentials, or configure S3_PRIVATE_BUCKET.',
+          'S3 bucket name is required to complete multipart upload. Pass the bucket the multipart upload was initiated in (upload session `bucket`) — completing against a different bucket fails with NoSuchUpload.',
           this.id,
           'completeMultipart'
         )
@@ -711,11 +713,16 @@ export class S3Adapter extends BaseStorageAdapter {
   }
 
   /**
-   * Delete S3 object
+   * Delete S3 object.
+   *
+   * Unlike the read paths this does NOT fall back to the configured default
+   * bucket. S3 returns 204 when the key does not exist, so deleting from the
+   * wrong bucket succeeds silently while the real object leaks — the exact
+   * failure mode of the upload compensation path for PUBLIC uploads.
    */
   async deleteFile(loc: StorageLocationRef, auth?: ProviderAuth): Promise<void> {
     try {
-      const s3Location = this.parseS3Location(loc, auth)
+      const s3Location = this.resolveDeleteTarget(loc)
       const client = this.createS3Client(auth, s3Location)
 
       const command = new DeleteObjectCommand({
@@ -898,6 +905,34 @@ export class S3Adapter extends BaseStorageAdapter {
       `Invalid S3 location format: ${externalId}. Either provide s3://bucket/key format, bucket/key format, or configure S3_PRIVATE_BUCKET.`,
       this.id,
       'parseLocation'
+    )
+  }
+
+  /**
+   * Resolve the bucket + key for a delete, with no default-bucket fallback.
+   *
+   * The bucket must be explicit: on `loc.metadata.bucket` (what
+   * `StorageManager.deleteByKey` and `buildLocationRef` put there) or encoded in
+   * an `s3://bucket/key` externalId. Anything else is a programming error.
+   */
+  private resolveDeleteTarget(loc: StorageLocationRef): S3Metadata {
+    this.validateLocation(loc)
+
+    const metadata = loc.metadata as Partial<S3Metadata> | undefined
+
+    if (metadata?.bucket) {
+      return { ...metadata, bucket: metadata.bucket, key: metadata.key || loc.externalId }
+    }
+
+    if (loc.externalId.startsWith('s3://')) {
+      const url = new URL(loc.externalId)
+      return { ...metadata, bucket: url.hostname, key: url.pathname.slice(1) }
+    }
+
+    throw new StorageAdapterError(
+      `Cannot delete S3 object '${loc.externalId}': no bucket on the storage location. Pass \`bucket\` to StorageManager.deleteByKey, or persist it in StorageLocation.metadata.bucket. Deleting against a default bucket would 204 on a missing key and leak the real object.`,
+      this.id,
+      'deleteFile'
     )
   }
 

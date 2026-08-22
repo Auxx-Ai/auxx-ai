@@ -201,6 +201,9 @@ describe('Unified Upload Integration Tests', () => {
     // Register processors using canonical EntityType values
     ProcessorRegistry.registerForEntity('FILE', (orgId) => new FileProcessor(orgId))
     ProcessorRegistry.registerForEntity('ARTICLE', (orgId) => new ArticleProcessor(orgId))
+    // `clear()` de-initializes the registry, and `getForEntityType` now refuses to serve an
+    // uninitialized one (§11.3) — this stands in for `ensureProcessorsInitialized()`.
+    ProcessorRegistry.markInitialized()
   })
 
   describe('Complete Upload Flow', () => {
@@ -464,7 +467,7 @@ describe('Unified Upload Integration Tests', () => {
     it('should handle processor registry errors', () => {
       expect(() => {
         ProcessorRegistry.getForEntityType('nonexistent' as any, 'org123')
-      }).toThrow('No processor found for entity type: nonexistent')
+      }).toThrow('No upload processor registered for entity type: nonexistent')
     })
 
     it('should handle validation failures', async () => {

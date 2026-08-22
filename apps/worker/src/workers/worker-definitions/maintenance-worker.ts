@@ -31,6 +31,7 @@ import {
   type OrgSeedJobData,
   oauth2TokenRefreshScannerJob,
   orphanedAppBundleCleanupJob,
+  orphanedStorageObjectJob,
   outlookSubscriptionHealthJob,
   quotaResetJob,
   reconcileRecordIdentitiesJob,
@@ -188,6 +189,12 @@ export const jobMappings = {
 
   // Storage cleanup (on-demand, enqueued by disconnect/delete flows)
   storageCleanupJob,
+
+  // Orphaned storage object compensation (on-demand, enqueued by the upload
+  // completion route when its inline delete throws). Carries the bucket, so a
+  // PUBLIC upload's object is deleted from the public bucket instead of 204ing
+  // against the private one.
+  orphanedStorageObjectJob,
 
   // Mail counts reconcile (on-demand, jobId-deduped; enqueued by stale
   // getCounts reads, interactive mutations, and bulk slow paths)

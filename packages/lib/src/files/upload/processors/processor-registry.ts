@@ -1,6 +1,7 @@
 // packages/lib/src/files/upload/processors/processor-registry.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import { BadRequestError } from '../../../errors'
 import type { EntityType } from '../../types/entities'
 import type { BaseProcessor } from './base-processor'
 
@@ -17,7 +18,6 @@ export type ProcessorFactory = (organizationId: string) => BaseProcessor
  */
 export class ProcessorRegistry {
   private static entityProcessors = new Map<EntityType, ProcessorFactory>()
-  private static defaultProcessorFactory: ProcessorFactory | null = null
   private static initialized = false
 
   /**
@@ -30,14 +30,6 @@ export class ProcessorRegistry {
 
     ProcessorRegistry.entityProcessors.set(entityType, factory)
     logger.info(`Registered processor for entity: ${entityType}`)
-  }
-
-  /**
-   * Set the default processor factory for unknown entity types
-   */
-  static setDefaultProcessor(factory: ProcessorFactory): void {
-    ProcessorRegistry.defaultProcessorFactory = factory
-    logger.info('Set default processor factory')
   }
 
   /**
@@ -55,22 +47,30 @@ export class ProcessorRegistry {
   }
 
   /**
-   * Get a processor instance for the given entity type and organization
+   * Get a processor instance for the given entity type and organization.
+   *
+   * There is deliberately **no default processor**: falling back to `FileProcessor` for an
+   * unregistered entity type silently produced a `FolderFile` (and no `assetId`) for entity
+   * types that need a `MediaAsset` + `Attachment` — see
+   * `docs/files-upload-architecture-guide.md` §11.3. An unregistered type is a programming
+   * error and must fail loudly at the front door.
+   *
+   * @throws {BadRequestError} when the registry is uninitialized or the entity type has no
+   *   registered processor.
    */
   static getForEntityType(entityType: EntityType, organizationId: string): BaseProcessor {
-    // Check if processors are initialized, if not, warn but continue
+    // A silently-uninitialized registry produces the wrong record type, so this is fatal
+    // rather than a warning.
     if (!ProcessorRegistry.initialized) {
-      logger.warn(
-        'Processors not initialized, this may cause issues. Call ensureProcessorsInitialized() first.'
+      throw new BadRequestError(
+        'Upload processors are not initialized. Call ensureProcessorsInitialized() first.'
       )
     }
 
-    const factory =
-      ProcessorRegistry.entityProcessors.get(entityType) ||
-      ProcessorRegistry.defaultProcessorFactory
+    const factory = ProcessorRegistry.entityProcessors.get(entityType)
 
     if (!factory) {
-      throw new Error(`No processor found for entity type: ${entityType}`)
+      throw new BadRequestError(`No upload processor registered for entity type: ${entityType}`)
     }
 
     try {
@@ -116,11 +116,13 @@ export class ProcessorRegistry {
   }
 
   /**
-   * Clear all registered processors
+   * Clear all registered processors. A cleared registry is by definition no longer
+   * initialized, so `getForEntityType` throws until it is populated again.
    */
   static clear(): void {
     const count = ProcessorRegistry.entityProcessors.size
     ProcessorRegistry.entityProcessors.clear()
+    ProcessorRegistry.initialized = false
     logger.info(`Cleared ${count} registered processors`)
   }
 }

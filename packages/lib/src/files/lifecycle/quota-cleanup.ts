@@ -3,7 +3,7 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { and, asc, eq, isNull, lt, sql } from 'drizzle-orm'
+import { and, asc, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm'
 import type { JobContext } from '../../jobs/types'
 import type { StorageQuota } from './types'
 
@@ -17,22 +17,111 @@ const DEFAULT_QUOTAS = {
   enterprise: 500 * 1024 * 1024 * 1024, // 500 GB
 }
 
+/** Aggregate of stored bytes and stored objects for one storage lane. */
+type LaneUsage = { totalSize: number; count: number }
+
+/** `sum()`/`count()` over bigint come back from node-postgres as strings. */
+function toNumber(value: unknown): number {
+  const parsed = Number(value ?? 0)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 /**
- * Calculate storage usage for an organization
+ * Bytes and object count for files living in folders (`FolderFile` → `FileVersion`).
+ *
+ * Deduplicated by `storageLocationId`: two version rows pointing at the same
+ * `StorageLocation` are one object in the bucket. Nothing in the current write
+ * path shares a location between versions, but neither table constrains it, so
+ * the grouping makes the invariant structural rather than assumed.
  */
-export async function calculateStorageUsage(organizationId: string): Promise<StorageQuota> {
-  // Get total file size for the organization
-  const [result] = await db
+async function sumFolderFileUsage(organizationId: string): Promise<LaneUsage> {
+  const locations = db
     .select({
-      totalSize: sql<number>`sum(${schema.FileVersion.size})`,
-      count: sql<number>`count(*)`,
+      locationId: schema.FileVersion.storageLocationId,
+      size: sql<number>`max(${schema.FileVersion.size})`.as('size'),
     })
     .from(schema.FileVersion)
-    .leftJoin(schema.File, eq(schema.FileVersion.fileId, schema.File.id))
-    .where(and(eq(schema.File.organizationId, organizationId), isNull(schema.File.deletedAt)))
+    .innerJoin(schema.FolderFile, eq(schema.FileVersion.fileId, schema.FolderFile.id))
+    .where(
+      and(eq(schema.FolderFile.organizationId, organizationId), isNull(schema.FolderFile.deletedAt))
+    )
+    .groupBy(schema.FileVersion.storageLocationId)
+    .as('folder_file_locations')
 
-  const totalUsed = result?.totalSize || 0
-  const fileCount = result?.count || 0
+  const [row] = await db
+    .select({
+      totalSize: sql<string>`coalesce(sum(${locations.size}), 0)`,
+      count: sql<string>`count(*)`,
+    })
+    .from(locations)
+
+  return { totalSize: toNumber(row?.totalSize), count: toNumber(row?.count) }
+}
+
+/**
+ * Bytes and object count for media assets (`MediaAsset` → `MediaAssetVersion`).
+ *
+ * This is where essentially all real usage lives: avatars, mail attachments,
+ * comment attachments, custom-field files, KB logos and dataset documents are
+ * all `MediaAsset` rows.
+ *
+ * Derived thumbnails are counted deliberately. They are separate
+ * `MediaAssetVersion` rows (linked by `derivedFromVersionId`/`preset`) holding
+ * real objects in the bucket that we really pay for, so excluding them would
+ * under-report the quota. Same `storageLocationId` grouping as above, which is
+ * what keeps a thumbnail and its source from ever being counted twice.
+ */
+async function sumMediaAssetUsage(organizationId: string): Promise<LaneUsage> {
+  const locations = db
+    .select({
+      locationId: schema.MediaAssetVersion.storageLocationId,
+      size: sql<number>`max(${schema.MediaAssetVersion.size})`.as('size'),
+    })
+    .from(schema.MediaAssetVersion)
+    .innerJoin(schema.MediaAsset, eq(schema.MediaAssetVersion.assetId, schema.MediaAsset.id))
+    .where(
+      and(
+        eq(schema.MediaAsset.organizationId, organizationId),
+        isNull(schema.MediaAsset.deletedAt),
+        isNull(schema.MediaAssetVersion.deletedAt),
+        isNotNull(schema.MediaAssetVersion.storageLocationId)
+      )
+    )
+    .groupBy(schema.MediaAssetVersion.storageLocationId)
+    .as('media_asset_locations')
+
+  const [row] = await db
+    .select({
+      totalSize: sql<string>`coalesce(sum(${locations.size}), 0)`,
+      count: sql<string>`count(*)`,
+    })
+    .from(locations)
+
+  return { totalSize: toNumber(row?.totalSize), count: toNumber(row?.count) }
+}
+
+/**
+ * Calculate storage usage for an organization.
+ *
+ * Sums both storage lanes — `FolderFile`/`FileVersion` and
+ * `MediaAsset`/`MediaAssetVersion` — restricted to rows whose owning record is
+ * not soft-deleted. Derived thumbnails count; they are real stored bytes.
+ *
+ * `fileCount` is the number of **distinct stored objects** (`StorageLocation`
+ * rows referenced by a live version), not the number of user-visible files: a
+ * file with N versions plus M generated thumbnails occupies N + M objects.
+ * That is the figure that lines up with `totalUsed`.
+ *
+ * @param organizationId Organization to measure.
+ */
+export async function calculateStorageUsage(organizationId: string): Promise<StorageQuota> {
+  const [folderFiles, mediaAssets] = await Promise.all([
+    sumFolderFileUsage(organizationId),
+    sumMediaAssetUsage(organizationId),
+  ])
+
+  const totalUsed = folderFiles.totalSize + mediaAssets.totalSize
+  const fileCount = folderFiles.count + mediaAssets.count
 
   // Get organization's quota limit (would need to be added to Organization model)
   // For now, using a default

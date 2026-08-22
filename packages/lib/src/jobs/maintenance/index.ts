@@ -30,6 +30,11 @@ export { mailUnsubscribeSweepJob } from './mail-unsubscribe-sweep-job'
 export { cleanupExpiredMediaAssetsJob, getMediaAssetCleanupStats } from './media-asset-cleanup-job'
 export { type MidTrialStats, sendMidTrialEmailsJob } from './mid-trial-job'
 export { oauth2TokenRefreshScannerJob } from './oauth2-token-refresh-scanner-job'
+export {
+  enqueueOrphanedStorageObjectCleanup,
+  type OrphanedStorageObjectJobData,
+  orphanedStorageObjectJob,
+} from './orphaned-storage-object-job'
 export { type QuotaResetStats, quotaResetJob } from './quota-reset-job'
 export {
   type ReconcileRecordIdentitiesStats,

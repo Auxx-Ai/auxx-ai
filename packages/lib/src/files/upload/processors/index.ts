@@ -14,6 +14,7 @@ import {
 } from './entity-processors'
 import { FileProcessor } from './file-processor'
 import { ProcessorRegistry } from './processor-registry'
+import { VisitQcItemProcessor } from './visit-qc-processor'
 
 const logger = createScopedLogger('processors')
 
@@ -26,10 +27,16 @@ export * from './entity-processors'
 export * from './processor-registry'
 // Export all processors and types
 export * from './types'
+export * from './visit-qc-processor'
 export * from './workflow-processor'
 
 /**
- * Initialize and register all default processors using the simplified EntityType approach
+ * Initialize and register all default processors using the simplified EntityType approach.
+ *
+ * Every value of `ENTITY_TYPES` must be registered here — there is no default processor, so an
+ * unregistered type throws at the front door instead of silently producing a `FolderFile`
+ * (`docs/files-upload-architecture-guide.md` §11.3). The
+ * "registers a processor for every ENTITY_TYPES value" test is the guard.
  */
 export function initializeProcessors(): void {
   // Register processors directly by EntityType
@@ -46,9 +53,7 @@ export function initializeProcessors(): void {
     (orgId) => new KnowledgeBaseProcessor(orgId)
   )
   ProcessorRegistry.registerForEntity('CHAT_WIDGET', (orgId) => new ChatWidgetProcessor(orgId))
-
-  // Set default processor for unknown entity types
-  ProcessorRegistry.setDefaultProcessor((orgId) => new FileProcessor(orgId))
+  ProcessorRegistry.registerForEntity('visit_qc_item', (orgId) => new VisitQcItemProcessor(orgId))
 
   // Mark as initialized
   ProcessorRegistry.markInitialized()

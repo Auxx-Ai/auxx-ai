@@ -681,16 +681,29 @@ export class StorageManager {
       throw new StorageFileNotFoundError('UNKNOWN' as ProviderId, locationId)
     }
 
+    // Load the adapter FIRST: `buildLocationRef` reads `adapter.resolveBucket()`
+    // out of the adapter cache to fill in `metadata.bucket` for rows persisted
+    // without one, and the adapter's delete no longer resolves a default itself.
+    const adapter = await this.getAdapter(storageLocation.provider as ProviderId)
+
     // Build location reference
     const locationRef = this.buildLocationRef(storageLocation)
-
-    // Get adapter for the provider
-    const adapter = await this.getAdapter(locationRef.provider)
 
     // Get authentication if credential ID provided
     let auth: ProviderAuth | undefined
     if (locationRef.credentialId) {
       auth = await this.getProviderAuth(locationRef.provider, locationRef.credentialId)
+    }
+
+    if (locationRef.provider === 'S3' && !locationRef.metadata?.bucket) {
+      const fallback = this.resolveFallbackBucket(adapter, auth, {
+        provider: locationRef.provider,
+        key: locationRef.externalId,
+        operation: 'deleteFile',
+      })
+      if (fallback) {
+        locationRef.metadata = { ...locationRef.metadata, bucket: fallback }
+      }
     }
 
     try {
@@ -997,6 +1010,33 @@ export class StorageManager {
     }
 
     return Object.keys(metadata).length > 0 ? metadata : undefined
+  }
+
+  /**
+   * Last-resort bucket resolution for callers that did not supply one.
+   *
+   * Adapters no longer fall back to a configured default (a wrong-bucket delete
+   * 204s and a wrong-bucket part presign fails with `NoSuchUpload`), so the
+   * fallback lives here where it can be logged. Every warn from this method is a
+   * caller that should be passing the upload session's `bucket`.
+   */
+  private resolveFallbackBucket(
+    adapter: StorageAdapter,
+    auth: ProviderAuth | undefined,
+    context: { provider: ProviderId; key: string; operation: string }
+  ): string | undefined {
+    // Providers that are not bucket-addressed have no `resolveBucket`; there is
+    // nothing to warn about for those.
+    if (!adapter.resolveBucket && !(auth as any)?.bucket) return undefined
+
+    const bucket = ((auth as any)?.bucket as string | undefined) || adapter.resolveBucket?.()
+
+    logger.warn('No bucket supplied; falling back to the provider default bucket', {
+      ...context,
+      bucket,
+    })
+
+    return bucket
   }
 
   /**
@@ -1486,6 +1526,10 @@ export class StorageManager {
   /**
    * Complete multipart upload without creating DB record
    * Returns S3 metadata only for use in transactions
+   *
+   * @param params.bucket - The bucket the multipart upload was initiated in
+   *   (the upload session's `bucket`). Completing against a different bucket
+   *   fails with `NoSuchUpload`.
    */
   async completeMultipartUploadOnly(params: {
     provider: ProviderId
@@ -1493,6 +1537,7 @@ export class StorageManager {
     uploadId: string
     parts: Array<{ partNumber: number; etag: string }>
     credentialId?: string
+    bucket?: string
   }): Promise<{ etag: string; size?: number }> {
     // Validate parameters
     this.validateStorageParams(params)
@@ -1504,6 +1549,14 @@ export class StorageManager {
     let auth: ProviderAuth | undefined
     auth = await this.getProviderAuth(params.provider, params.credentialId)
 
+    const bucket =
+      params.bucket ??
+      this.resolveFallbackBucket(adapter, auth, {
+        provider: params.provider,
+        key: params.key,
+        operation: 'completeMultipartUploadOnly',
+      })
+
     try {
       // Use adapter to complete multipart upload without creating DB record
       if ((adapter as any).completeMultipart) {
@@ -1511,6 +1564,7 @@ export class StorageManager {
           key: params.key,
           uploadId: params.uploadId,
           parts: params.parts,
+          bucket,
           auth,
         })
       } else {
@@ -1527,11 +1581,16 @@ export class StorageManager {
 
   /**
    * Delete by key for compensation (cleanup orphaned objects)
+   *
+   * @param params.bucket - The bucket the object actually lives in (the upload
+   *   session's `bucket`). Omitting it on a PUBLIC upload deletes a nonexistent
+   *   key from the private bucket — S3 answers 204 and the real object leaks.
    */
   async deleteByKey(params: {
     provider: ProviderId
     key: string
     credentialId?: string
+    bucket?: string
   }): Promise<void> {
     // Validate parameters
     this.validateStorageParams(params)
@@ -1554,12 +1613,23 @@ export class StorageManager {
       )
     }
 
+    const bucket =
+      params.bucket ??
+      this.resolveFallbackBucket(adapter, auth, {
+        provider: params.provider,
+        key: params.key,
+        operation: 'deleteByKey',
+      })
+
     try {
-      // Build location reference for adapter
-      const locationRef = {
+      // Build location reference for adapter. The bucket travels on metadata —
+      // adapters no longer resolve a default, so a missing bucket throws rather
+      // than silently deleting nothing.
+      const locationRef: StorageLocationRef = {
         provider: params.provider,
         externalId: params.key,
         credentialId: params.credentialId,
+        metadata: bucket ? { bucket, key: params.key } : undefined,
       }
 
       if (adapter.deleteFile) {
@@ -1666,6 +1736,10 @@ export class StorageManager {
 
   /**
    * Generate presigned URL for upload part
+   *
+   * @param params.bucket - The bucket the multipart upload was initiated in
+   *   (the upload session's `bucket`). Presigning a part against a different
+   *   bucket fails with `NoSuchUpload`.
    */
   async generatePartUploadUrl(params: {
     provider: ProviderId
@@ -1674,6 +1748,7 @@ export class StorageManager {
     partNumber: number
     size?: number
     credentialId?: string
+    bucket?: string
   }): Promise<PresignedUpload> {
     // Validate parameters
     this.validateStorageParams(params)
@@ -1695,6 +1770,14 @@ export class StorageManager {
     let auth: ProviderAuth | undefined
     auth = await this.getProviderAuth(params.provider, params.credentialId)
 
+    const bucket =
+      params.bucket ??
+      this.resolveFallbackBucket(adapter, auth, {
+        provider: params.provider,
+        key: params.key,
+        operation: 'generatePartUploadUrl',
+      })
+
     try {
       // Use adapter to generate part upload URL
       if ((adapter as any).presignPart) {
@@ -1703,6 +1786,7 @@ export class StorageManager {
           uploadId: params.uploadId,
           partNumber: params.partNumber,
           size: params.size,
+          bucket,
           auth,
         })
       } else {

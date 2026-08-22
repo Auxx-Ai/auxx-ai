@@ -670,10 +670,15 @@ export const createEnhancedOrchestrationSlice: StateCreator<
             storageKey: string
           }
 
-          // Store server-side session ID for SSE correlation
+          // Store server-side session ID for SSE correlation. This is an UPLOAD SESSION
+          // nanoid, not a server record id — `serverIdKind` says so, so a consumer that
+          // needs a real `MediaAsset` id can tell it apart (see §11.3).
           set((state) => {
             const fs = state.files[file.id]
-            if (fs) fs.serverFileId = presignedConfig.sessionId // helps SSE correlation later
+            if (fs) {
+              fs.serverFileId = presignedConfig.sessionId // helps SSE correlation later
+              fs.metadata = { ...fs.metadata, serverIdKind: 'session' }
+            }
           })
 
           // 2. Upload file directly to storage
@@ -749,15 +754,29 @@ export const createEnhancedOrchestrationSlice: StateCreator<
             console.error('[orchestration] Failed to parse complete response:', e)
           }
 
+          // Which kind of server record the completion actually produced. An attachment/asset
+          // processor returns `assetId` (a `MediaAsset`); `FileProcessor` returns only
+          // `fileId` (a `FolderFile`). Recording the kind is what stops a `FolderFile` id —
+          // or, worse, the upload-session nanoid we parked in `serverFileId` at session-create
+          // time — from being reported downstream as an asset id (§11.3).
+          const serverIdKind: 'asset' | 'file' | 'session' = completionData?.assetId
+            ? 'asset'
+            : completionData?.fileId
+              ? 'file'
+              : 'session'
+          const serverId: string | undefined =
+            completionData?.assetId ?? completionData?.fileId ?? undefined
+
           // Atomic update: set serverFileId, url, and status together
           // This prevents race conditions where onComplete reads state before serverFileId is set
           set((state) => {
             const f = state.files[file.id]
             if (f) {
-              // Store assetId from server as serverFileId
-              if (completionData?.assetId) {
-                f.serverFileId = completionData.assetId
+              // Store the server record id (asset first, file second) as serverFileId
+              if (serverId) {
+                f.serverFileId = serverId
               }
+              f.metadata = { ...f.metadata, serverIdKind }
               // Store URL for previews
               if (completionData?.url) {
                 f.url = completionData.url
