@@ -16,6 +16,7 @@ vi.mock('../cache', () => ({ getCachedEntityDefId: h.getCachedEntityDefId }))
 vi.mock('../custom-fields', () => ({ createCustomField: h.createField }))
 vi.mock('./inventory-bridge-rule', () => ({ ensureInventoryDeductionRule: h.ensureRule }))
 
+import { ConflictError } from '../errors'
 import {
   INVENTORY_BRIDGE_EDGE_ATTR,
   provisionInventoryBridge,
@@ -49,9 +50,14 @@ describe('provisionInventoryBridge', () => {
     expect(fieldInput).toMatchObject({
       organizationId: ORG,
       entityDefinitionId: 'def_variants',
+      name: 'Part',
       type: 'RELATIONSHIP',
       systemAttribute: INVENTORY_BRIDGE_EDGE_ATTR,
-      relationship: { relatedResourceId: 'def_part', relationshipType: 'belongs_to' },
+      relationship: {
+        relatedResourceId: 'def_part',
+        relationshipType: 'belongs_to',
+        inverseName: 'Sold as variants',
+      },
     })
     expect(h.ensureRule).toHaveBeenCalledWith(db, ORG, {
       sourceDefId: 'def_variants',
@@ -74,8 +80,23 @@ describe('provisionInventoryBridge', () => {
     expect(r).toEqual({ relationshipFieldId: 'fld_existing' })
   })
 
-  it('createCustomField error ⇒ throws', async () => {
+  it('custom edge/inverse names override the defaults', async () => {
+    await provisionInventoryBridge(db, ORG, {
+      ...INPUT,
+      edgeName: 'Component',
+      inverseName: 'Sold as listings',
+    })
+
+    const [fieldInput] = h.createField.mock.calls[0]!
+    expect(fieldInput).toMatchObject({
+      name: 'Component',
+      relationship: expect.objectContaining({ inverseName: 'Sold as listings' }),
+    })
+  })
+
+  it('createCustomField error ⇒ throws ConflictError', async () => {
     h.createField.mockResolvedValue({ isErr: () => true, error: { message: 'boom' } })
+    await expect(provisionInventoryBridge(db, ORG, INPUT)).rejects.toThrow(ConflictError)
     await expect(provisionInventoryBridge(db, ORG, INPUT)).rejects.toThrow(/boom/)
     expect(h.ensureRule).not.toHaveBeenCalled()
   })
