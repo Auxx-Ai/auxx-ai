@@ -8,7 +8,6 @@ import type {
   SessionStatus,
   UploadProgress,
 } from '@auxx/lib/files/types'
-import type { UploadSseEvent } from '../types/upload-events'
 
 /**
  * Core store state types
@@ -120,20 +119,8 @@ export interface SessionState {
   updatedAt: Date
   completedAt?: Date
   metadata: Record<string, any>
-  sseConnection?: SSEConnectionState
   // REMOVED: expiresAt, startedAt (offline persistence fields)
   // REMOVED: organizationId, userId (auth handled server-side)
-}
-
-export interface SSEConnectionState {
-  sessionId: string
-  status: 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
-  error?: string
-  lastConnected?: Date
-  reconnectAttempts: number
-  eventSource?: EventSource
-  cleanup?: () => void
-  manager?: any // SSEConnectionManager - use any to avoid circular imports
 }
 
 export interface UploadError {
@@ -144,7 +131,7 @@ export interface UploadError {
   sessionId?: string
   timestamp: Date
   recoverable: boolean
-  /** Coarse category; `syncQueueWithSSE` drops `'connection'` errors on reconnect. */
+  /** Coarse category for the error surface. */
   type?: 'upload' | 'connection' | 'validation'
   /** Extra diagnostic context surfaced with the error. */
   details?: Record<string, unknown>
@@ -177,9 +164,6 @@ export interface UploadState {
   // New: Mapping of uploaderId to sessionId (primary source of truth)
   uploaderSessions: Record<string, string> // uploaderId -> sessionId
 
-  // Connection State
-  sseConnections: Record<string, SSEConnectionState>
-
   // UI State
   dragActive: boolean
   uploading: boolean
@@ -208,14 +192,11 @@ export interface UploadState {
  * Store actions interface - updated for unified architecture
  */
 export interface UploadActions {
-  // Unified Session Actions (includes SSE)
+  // Unified Session Actions
   createSession: (options: CreateSessionOptions) => Promise<string>
   selectSession: (sessionId: string) => void
   closeSession: (sessionId: string) => void
   updateSessionProgress: (sessionId: string, progress: number) => void
-  connectSSE: (sessionId: string) => void
-  disconnectSSE: (sessionId: string) => void
-  handleSSEEvent: (sessionId: string, event: UploadSseEvent) => void
 
   // File Actions
   addFiles: (files: File[], sessionId?: string, entityType?: EntityType) => string[] // Return created IDs
@@ -256,7 +237,6 @@ export interface UploadActions {
     sessionId?: string
   ) => Promise<{ validFiles: File[]; errors: string[] }>
   handleAPIResponse: (response: any, sessionId: string) => void
-  coordinateSSEEvents: (sessionId: string) => void
   calculateOverallProgress: (sessionId: string) => number
   associateFilesWithSession: (fileIds: string[], sessionId: string) => void
   retrySession: (sessionId: string) => Promise<void>

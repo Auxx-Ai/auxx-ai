@@ -83,21 +83,8 @@ export { createStorageManager, StorageManager } from './storage/storage-manager'
 
 // ============= UPLOAD SYSTEM =============
 
-export type {
-  BatchUploadOptions,
-  BatchUploadResult,
-  UploadProgress,
-  UploadProgressCallback,
-  UploadRequest,
-  UploadResult,
-  UploadServiceConfig,
-  UploadStrategy,
-} from './upload/enhanced-types'
-// Upload Progress & Events
-export { FileUploadProgressTracker } from './upload/progress/progress-tracker'
-
 // Upload Session Management
-export { FileUploadSession, SessionManager } from './upload/session-index'
+export { SessionManager } from './upload/session-index'
 
 // Legacy Upload Types (for backward compatibility)
 export type { FileUploadParams, FileUploadResult } from './upload/types'
@@ -146,8 +133,6 @@ export type { EntityType } from './types'
 export { ENTITY_TYPES } from './types'
 export { UploadErrorHandler } from './upload/error-handling'
 export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
-// Additional public exports expected by apps/web
-export { ProgressPublisher } from './upload/progress-publisher'
 // Validators
 export {
   getMimeTypeFromExtension,

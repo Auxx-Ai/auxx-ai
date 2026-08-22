@@ -3,11 +3,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * `complete`, `parts` and `events` called `auth.api.getSession` NOWHERE
+ * `complete` and `parts` called `auth.api.getSession` NOWHERE
  * (`docs/files-upload-architecture-guide.md` §11.4, plan §1.2). The upload
  * session nanoid was the only credential, so anyone holding one could finish
- * someone else's upload, mint presigned `UploadPart` URLs for arbitrary part
- * numbers, or read upload status.
+ * someone else's upload or mint presigned `UploadPart` URLs for arbitrary part
+ * numbers.
  *
  * These assert the three cases `authorizeUploadSession` distinguishes, plus the
  * ORDER: the auth check runs before Redis is touched, so an unauthenticated
@@ -26,8 +26,6 @@ vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 vi.mock('~/auth/server', () => ({ auth: { api: { getSession } } }))
 vi.mock('~/server/api/trpc', () => ({ isAuxxError: () => false }))
 vi.mock('@auxx/database', () => ({ database: { transaction: vi.fn() }, schema: {} }))
-vi.mock('@auxx/redis', () => ({ createDedicatedClient: async () => null }))
-
 // The `@auxx/lib/files/server` barrel drags in the AWS SDK and the processor
 // registry; none of it is reachable before the gate, which is the point.
 vi.mock('@auxx/lib/files/server', () => ({
@@ -35,7 +33,6 @@ vi.mock('@auxx/lib/files/server', () => ({
   createStorageManager: vi.fn(),
   ensureProcessorsInitialized: vi.fn(),
   ProcessorRegistry: { getForEntityType: vi.fn() },
-  ProgressPublisher: { publishFailed: vi.fn(), publishCompleted: vi.fn() },
   UploadErrorHandler: {
     handleUploadError: vi.fn(async () => new Response('{}', { status: 500 })),
     validationError: vi.fn(() => new Response('{}', { status: 400 })),
@@ -49,7 +46,6 @@ vi.mock('@auxx/lib/files/server', () => ({
 
 const { POST: completePost } = await import('./complete/route')
 const { POST: partsPost } = await import('./parts/route')
-const { GET: eventsGet } = await import('./events/route')
 
 const ORG_ID = 'org_cuid000000000000000000000'
 const OTHER_ORG_ID = 'org_cuid111111111111111111111'
@@ -105,9 +101,6 @@ const partsRequest = () =>
     body: JSON.stringify({ partNumber: 1, size: 1024 }),
   }) as any
 
-const eventsRequest = () =>
-  new Request('http://localhost/api/files/upload/x/events', { method: 'GET' }) as any
-
 beforeEach(() => {
   vi.clearAllMocks()
   uploadSessionOwnedBy(USER_ID, ORG_ID)
@@ -116,7 +109,6 @@ beforeEach(() => {
 describe.each([
   ['complete', (req: any) => completePost(req, params), completeRequest],
   ['parts', (req: any) => partsPost(req, params), partsRequest],
-  ['events', (req: any) => eventsGet(req, params), eventsRequest],
 ] as const)('%s — upload session authentication', (_name, call, request) => {
   it('401s with no session cookie, before the Redis session is read', async () => {
     signedInAs(null)

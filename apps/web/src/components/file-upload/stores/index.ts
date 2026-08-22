@@ -24,7 +24,6 @@ export type {
   CreateSessionOptions,
   FileState,
   SessionState,
-  SSEConnectionState,
   UploadActions,
   UploadConfig,
   UploadError,

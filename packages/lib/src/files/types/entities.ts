@@ -1,4 +1,4 @@
-// packages/lib/src/files/shared-types/entities.ts
+// packages/lib/src/files/types/entities.ts
 
 /**
  * Shared entity types for file upload configurations

@@ -1,4 +1,4 @@
-// packages/lib/src/files/file-upload/validators.ts
+// packages/lib/src/files/upload/validators.ts
 
 import { createScopedLogger } from '@auxx/logger'
 import path from 'path'

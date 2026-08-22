@@ -1,4 +1,4 @@
-// packages/lib/src/files/shared-types/common.ts
+// packages/lib/src/files/types/common.ts
 
 /**
  * Shared common types and utilities for file upload system

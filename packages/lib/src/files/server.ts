@@ -21,9 +21,8 @@ export type { StorageDownloadParams } from './storage/storage-manager'
 export { createStorageManager, StorageManager } from './storage/storage-manager'
 export { UploadErrorHandler } from './upload/error-handling'
 export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
-export { ProgressPublisher } from './upload/progress-publisher'
 // Upload/session orchestration (no image processing)
-export { FileUploadSession, SessionManager } from './upload/session-index'
+export { SessionManager } from './upload/session-index'
 export {
   createFileDownloadResponse,
   encodeContentDisposition,

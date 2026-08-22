@@ -80,7 +80,6 @@ export interface OrchestrationSlice {
     sessionId?: string
   ) => Promise<{ validFiles: File[]; errors: string[] }>
   handleAPIResponse: (response: any, sessionId: string) => void
-  coordinateSSEEvents: (sessionId: string) => void
   calculateOverallProgress: (sessionId: string) => number
   associateFilesWithSession: (fileIds: string[], sessionId: string) => void
 
@@ -90,7 +89,6 @@ export interface OrchestrationSlice {
 
   // Utility Methods
   retrySession: (sessionId: string) => Promise<void>
-  cleanupSession: (sessionId: string) => void
 }
 
 export interface InitializeUploadOptions {
@@ -510,35 +508,6 @@ export const createEnhancedOrchestrationSlice: StateCreator<
   },
 
   /**
-   * Coordinates SSE event handling and state updates
-   */
-  coordinateSSEEvents: (sessionId: string) => {
-    // Connect SSE and ensure proper event handling
-    get().connectSSE(sessionId)
-
-    // Update session progress periodically
-    const updateProgress = () => {
-      const progress = get().calculateOverallProgress(sessionId)
-      get().updateSessionProgress(sessionId, progress)
-    }
-
-    // Set up progress monitoring
-    const progressInterval = setInterval(updateProgress, 1000)
-
-    // Store cleanup function
-    set((state) => {
-      const session = state.sessions[sessionId]
-      if (session?.sseConnection) {
-        const existingCleanup = session.sseConnection.cleanup
-        session.sseConnection.cleanup = () => {
-          clearInterval(progressInterval)
-          existingCleanup?.()
-        }
-      }
-    })
-  },
-
-  /**
    * Handles API response and updates state accordingly
    */
   handleAPIResponse: (response: any, sessionId: string) => {
@@ -670,13 +639,13 @@ export const createEnhancedOrchestrationSlice: StateCreator<
             storageKey: string
           }
 
-          // Store server-side session ID for SSE correlation. This is an UPLOAD SESSION
-          // nanoid, not a server record id — `serverIdKind` says so, so a consumer that
-          // needs a real `MediaAsset` id can tell it apart (see §11.3).
+          // Store the server-side session ID. This is an UPLOAD SESSION nanoid, not a
+          // server record id — `serverIdKind` says so, so a consumer that needs a real
+          // `MediaAsset` id can tell it apart (see §11.3).
           set((state) => {
             const fs = state.files[file.id]
             if (fs) {
-              fs.serverFileId = presignedConfig.sessionId // helps SSE correlation later
+              fs.serverFileId = presignedConfig.sessionId
               fs.metadata = { ...fs.metadata, serverIdKind: 'session' }
             }
           })
@@ -953,9 +922,6 @@ export const createEnhancedOrchestrationSlice: StateCreator<
           session.updatedAt = new Date()
         }
       })
-
-      // Disconnect SSE
-      get().disconnectSSE(activeSessionId)
     }
 
     set((state) => {
@@ -990,20 +956,6 @@ export const createEnhancedOrchestrationSlice: StateCreator<
     // Restart upload if this is the active session
     if (sessionId === get().activeSessionId) {
       await get().startUpload()
-    }
-  },
-
-  /**
-   * Clean up session resources
-   */
-  cleanupSession: (sessionId: string) => {
-    // Disconnect SSE
-    get().disconnectSSE(sessionId)
-
-    // Clean up any timers or intervals
-    const session = get().sessions[sessionId]
-    if (session?.sseConnection?.cleanup) {
-      session.sseConnection.cleanup()
     }
   },
 

@@ -1,4 +1,4 @@
-// packages/lib/src/files/shared-types/sessions.ts
+// packages/lib/src/files/types/sessions.ts
 
 /**
  * Shared session types for file upload session management
