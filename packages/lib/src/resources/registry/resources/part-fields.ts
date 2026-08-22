@@ -556,5 +556,39 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     description: 'Catalog (product/service) entries backed by this part',
   },
 
+  // Optional place in a product family (plans/products/01-product-family.md §5).
+  // The only family edge: connectors and humans write the same relation.
+  product: {
+    id: toFieldId('product'),
+    key: 'product',
+    label: 'Product',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'part_product',
+    systemSortOrder: 'a9a',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'product:parts' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'product',
+      relationshipType: 'belongs_to',
+      inverseName: 'Parts',
+      inverseSystemAttribute: 'product_parts',
+    },
+    placeholder: 'Select product',
+    description: 'The product family this part belongs to',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

@@ -140,6 +140,7 @@ export const ModelTypeValues = [
   'catalog_group',
   'invoice',
   'payment',
+  'product',
 ] as const
 
 /**
@@ -181,6 +182,7 @@ export const ModelTypes = {
   CATALOG_GROUP: 'catalog_group',
   INVOICE: 'invoice',
   PAYMENT: 'payment',
+  PRODUCT: 'product',
 } as const
 
 /**
@@ -457,6 +459,15 @@ export const ModelTypeMeta: Record<
     apiSlug: 'payments',
     dbTable: 'EntityInstance',
     hasDetailPage: false,
+  },
+  product: {
+    label: 'Product',
+    plural: 'Products',
+    icon: 'package-2',
+    color: 'teal',
+    apiSlug: 'products',
+    dbTable: 'EntityInstance',
+    hasDetailPage: true,
   },
 }
 
@@ -913,6 +924,7 @@ export const EntityTypeValues = [
   'payment',
   // See the `personal_inbox` note on `ModelTypeValues` above (plan 40 §3).
   'personal_inbox',
+  'product',
   'quote',
   'service_request',
   'signature',
@@ -1711,6 +1723,7 @@ export const EntityType = {
   PART: 'part',
   PAYMENT: 'payment',
   PERSONAL_INBOX: 'personal_inbox',
+  PRODUCT: 'product',
   QUOTE: 'quote',
   SERVICE_REQUEST: 'service_request',
   SIGNATURE: 'signature',

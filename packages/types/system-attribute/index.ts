@@ -145,6 +145,7 @@ export const SYSTEM_ATTRIBUTES = [
   'part_subparts',
   'part_used_in_assemblies',
   'part_catalog_items', // inverse of catalog_item_part
+  'part_product', // belongs_to product; inverse is product_parts
 
   // ─── Vendor Part fields ────────────────────────────────────────
   'vendor_part_part',
@@ -212,6 +213,7 @@ export const SYSTEM_ATTRIBUTES = [
   'company_vendor_parts',
   'company_meetings',
   'company_work_orders',
+  'company_products', // inverse of product_vendor
   'company_enriched_at',
   'company_enrichment_status',
 
@@ -339,6 +341,19 @@ export const SYSTEM_ATTRIBUTES = [
   'catalog_item_cost',
   'catalog_item_markup',
   'catalog_item_line_items', // inverse of line_item_catalog_item
+
+  // ─── Product fields ─────────────────────────────────────────────
+  // The family above `part` (plans/products/01-product-family.md §1).
+  // `tags` reuses the shared open-tag `category` attribute from the part
+  // block, not a new one.
+  'product_title',
+  'product_description',
+  'product_image',
+  'product_vendor', // belongs_to company; inverse is company_products
+  'product_type',
+  'product_handle',
+  'product_status',
+  'product_parts', // inverse of part_product
 
   // ─── Catalog Group fields ───────────────────────────────────────
   'catalog_group_name',
