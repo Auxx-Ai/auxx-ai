@@ -221,6 +221,28 @@ or a logged-in peer could forge deletions/updates into any room they pass ACL on
 `realtime.updateSelf` is the only path for presence meta and emits a
 server-mediated `member-update` (no Pusher client-events anywhere in the system).
 
+### Record-room visibility model (D-18, decided 2026-08-21)
+
+**Definition-level view implies realtime field-value visibility.** Record rooms
+are per-definition (`org-{orgId}-records-{defId}`); the ACL checks org
+membership + `canViewEntity(defId)` and nothing finer, the publish path never
+re-authorizes, and `fieldValues:updated` frames carry raw stored values. So a
+member who can view a definition receives live values for **every** record of
+that definition — including records that record-level `ResourceAccess`
+restrictions or private-instance scoping would block on the read path. This is
+the **stated model, not an oversight** (plan `events/03`, D-18): the mail lane
+needs and has per-lens shaping; the record lane accepts def-level broadcast.
+Revisit (ids-only tier-1, or mail-style shaping) if record-level restrictions
+become a marketed feature. Tier-2 `records:changed` frames carry ids + fieldIds
+only, so nothing new leaks through the batch lane.
+
+Related accepted cosmetic: bulk archives emit tier-2 delta frames (#1812),
+whose entries do not distinguish archived from updated records — so the
+per-record participant-store clearing that `record:archived` frames performed
+does not happen for bulk archives. Clearing on every delta entry would wrongly
+drop cached names for merely-updated records; the participant store is
+read-time patched, so the staleness self-heals on next contact.
+
 ### Echo suppression (the socket-id loop)
 
 The originator of a mutation should not receive its own realtime echo — it already
