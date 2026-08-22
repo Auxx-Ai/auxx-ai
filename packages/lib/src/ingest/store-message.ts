@@ -1029,7 +1029,12 @@ export async function storeMessage(
     // path as every other emitter. Null actor + system provenance — no human
     // reopened this, the inbound mail did. `didReopen` requires a personal
     // email channel, so there is never a chat visitor to fan out to.
-    if (didReopen) {
+    // Gated by the SAME historical-mail suppression as `message:received`
+    // below (`!isInitialSync` + the received-time cutoff): a backfilled
+    // historical message must not announce a reopen to realtime/outbound
+    // webhooks when the message itself is suppressed. The status flip in the
+    // transaction above still happens either way — only the event is gated.
+    if (didReopen && !ctx.isInitialSync && !suppressedByBackfillCutoff) {
       await publisher.publishLater({
         type: 'thread:reopened',
         data: {

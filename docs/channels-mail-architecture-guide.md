@@ -537,8 +537,12 @@ from), the provider sets it on the ingest ctx, and `storeMessage` suppresses the
 inbound mail received before it — regardless of walker — until `messagesImportJob`'s first
 drain-to-IDLE stamps `metadata.initialBackfillCompletedAt`. Overlap mail (received ≥ cutoff)
 fires exactly once via the fresh-insert-only gate, whichever walker wins. Built as a shared
-ingest mechanism (`ctx.backfillCutoffAt`); only Outlook wires it so far — Gmail's polling path
-still has the walker-based hole (separate ticket).
+ingest mechanism (`ctx.backfillCutoffAt`); both Outlook and Gmail wire it. Outlook stamps the
+cutoff before seeding its delta cursor (same epoch); Gmail has no cursor-epoch constraint, so
+the provisioning hook stamps it only when the polling pipeline will actually run
+(`provisioning-hook.ts`) — a webhook-mode Gmail connect never drains the import cache, so
+stamping there would open a suppression window that never closes. Each provider reads the
+stamp into the ingest ctx on init (`google-provider.ts` / `outlook-provider.ts`).
 
 **Self-healing.** `pollingStaleCheckJob` (~15 min) resets channels stuck in an active stage past
 15 min — preserving the Redis import cache so recovery resumes importing rather than re-listing
