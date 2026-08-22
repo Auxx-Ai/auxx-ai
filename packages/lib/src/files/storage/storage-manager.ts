@@ -1,5 +1,6 @@
 // packages/lib/src/files/storage/storage-manager.ts
 
+import type { Transaction } from '@auxx/database'
 import type { StorageLocationEntity as StorageLocation } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import type {
@@ -16,11 +17,14 @@ import {
   StorageAuthError,
   StorageFileNotFoundError,
 } from '../adapters/base-adapter'
+import { defaultDatabase } from '../core/base-service'
+import type { FilesCtx } from '../ctx'
 import type { UploadPreparedConfig } from '../upload/init-types'
 import { resolveProviderAuth } from './auth'
 import { bucketForVisibility, buildExternalUrl, type StorageVisibility } from './buckets'
+import { getStorageLocation } from './location-queries'
+import { createStorageLocation, deleteStorageLocation } from './locations'
 import { getCachedStorageAdapter, getStorageAdapter, isProviderAvailable } from './providers'
-import { storageLocationService } from './storage-location-service'
 
 const logger = createScopedLogger('storage-manager')
 
@@ -139,7 +143,7 @@ export interface StorageDownloadParams {
  * ```
  *
  * @see {@link StorageAdapter} for provider-specific implementations
- * @see {@link StorageLocationService} for database operations
+ * @see `files/storage/locations.ts` / `location-queries.ts` for `StorageLocation` persistence
  * @since 1.0.0
  */
 export class StorageManager {
@@ -147,6 +151,58 @@ export class StorageManager {
 
   constructor(organizationId?: string) {
     this.organizationId = organizationId
+  }
+
+  /**
+   * Build the `FilesCtx` the `storage/locations*` functions take.
+   *
+   * This is the whole seam between the class and the functional layer, and it
+   * is the **only** place this facade reaches the process-wide pool.
+   * `defaultDatabase()` is imported from `core/base-service.ts` rather than
+   * re-derived here on purpose: that accessor already carries the namespace
+   * import and the 20-line explanation of the Vitest link-time hazard (a *named*
+   * `database` binding kills every downstream file at collection for any test
+   * that mocks `@auxx/database` without that key — see PR #1823). Borrowing it
+   * keeps `files/storage/**` free of any module-scope database reach, named or
+   * namespace, which is the Phase-3 exit criterion.
+   *
+   * `organizationId` is optional on this class but required by `FilesCtx`, and
+   * that gap is real rather than cosmetic: the reads below are now org-scoped,
+   * so an unscoped manager would silently match nothing. Every call site that
+   * reaches a location read or delete already passes an org, so this throws
+   * rather than inventing `''`.
+   */
+  private filesCtx(operation: string): FilesCtx {
+    if (!this.organizationId) {
+      throw new StorageAdapterError(
+        `${operation} requires an organization-scoped StorageManager`,
+        'UNKNOWN' as ProviderId,
+        operation
+      )
+    }
+    return { db: defaultDatabase(), organizationId: this.organizationId }
+  }
+
+  /**
+   * Load a `StorageLocation`, or throw the not-found error this class's callers
+   * already expect.
+   *
+   * Three methods repeated this five-line shape verbatim; it is one place now so
+   * the `Result` -> throw conversion happens identically in all of them.
+   * `getStorageLocation` scopes to the organization, so a row belonging to
+   * another tenant reaches here as `null` and surfaces as "not found" — the
+   * caller must not be able to tell the two apart.
+   */
+  private async requireStorageLocation(
+    locationId: string,
+    operation: string
+  ): Promise<StorageLocation> {
+    const result = await getStorageLocation(this.filesCtx(operation), locationId)
+    if (result.isErr()) throw result.error
+    if (!result.value) {
+      throw new StorageFileNotFoundError('UNKNOWN' as ProviderId, locationId)
+    }
+    return result.value
   }
 
   // ============= Core Storage Operations =============
@@ -285,10 +341,7 @@ export class StorageManager {
    */
   async getDownloadRef(params: StorageDownloadParams): Promise<DownloadRef> {
     // Get storage location from database
-    const storageLocation = await storageLocationService.get(params.locationId)
-    if (!storageLocation) {
-      throw new StorageFileNotFoundError('UNKNOWN' as ProviderId, params.locationId)
-    }
+    const storageLocation = await this.requireStorageLocation(params.locationId, 'getDownloadRef')
 
     // Build location reference
     const locationRef = this.buildLocationRef(storageLocation)
@@ -404,10 +457,7 @@ export class StorageManager {
     range?: { start: number; end?: number }
   ): Promise<NodeJS.ReadableStream> {
     // Get storage location from database
-    const storageLocation = await storageLocationService.get(locationId)
-    if (!storageLocation) {
-      throw new StorageFileNotFoundError('UNKNOWN' as ProviderId, locationId)
-    }
+    const storageLocation = await this.requireStorageLocation(locationId, 'streamFileContent')
 
     // Build location reference
     const locationRef = this.buildLocationRef(storageLocation)
@@ -455,10 +505,7 @@ export class StorageManager {
    */
   async deleteFile(locationId: string): Promise<void> {
     // Get storage location from database
-    const storageLocation = await storageLocationService.get(locationId)
-    if (!storageLocation) {
-      throw new StorageFileNotFoundError('UNKNOWN' as ProviderId, locationId)
-    }
+    const storageLocation = await this.requireStorageLocation(locationId, 'deleteFile')
 
     // Load the adapter FIRST: `buildLocationRef` reads `adapter.resolveBucket()`
     // out of the adapter cache to fill in `metadata.bucket` for rows persisted
@@ -494,8 +541,21 @@ export class StorageManager {
       if (adapter.deleteFile) {
         await adapter.deleteFile(locationRef, auth)
 
-        // Remove storage location record from database
-        await storageLocationService.delete(locationId)
+        // Remove storage location record from database.
+        //
+        // The `BEGIN`/`COMMIT` around a single DELETE is not ceremony: it is what
+        // `deleteStorageLocation`'s `tx` slot costs here, and the slot is what
+        // stops a future caller from doing this row-delete on the pool while its
+        // asset rows go down in a transaction. In Postgres a one-statement
+        // transaction is semantically identical to the implicit one the bare
+        // DELETE already ran; the price is two round-trips on a path that has
+        // just paid for an S3 DELETE. Phase 6 folds this into the caller's own
+        // transaction and the wrapper goes away.
+        const ctx = this.filesCtx('deleteFile')
+        const deleted = await defaultDatabase().transaction((tx) =>
+          deleteStorageLocation(tx, { ...ctx, db: tx }, locationId)
+        )
+        if (deleted.isErr()) throw deleted.error
       } else {
         throw new StorageAdapterError(
           `Provider ${locationRef.provider} does not support file deletion`,
@@ -563,20 +623,14 @@ export class StorageManager {
    * in Phase 6 (PR 6a) together with the route call sites that still pass
    * `{ tx }`.
    *
-   * **The delegation is transitive**, not direct: this still calls
-   * `storageLocationService.create`, which is now itself a thin facade over the
-   * new function. That is not a preference — `__tests__/policy-enforcement.test.ts`
-   * replaces the whole `storage-location-service` module with `vi.mock` and
-   * asserts `storageLocationService.create` was called from `uploadContent`, and
-   * `src/test/setup.ts` mocks `@auxx/database` package-wide with
-   * `transaction: vi.fn()`, so a direct call could neither be observed nor even
-   * run there. One implementation, two facades in front of it; the middle hop
-   * goes away with them.
+   * **The delegation is direct since PR 3c.** It used to hop through
+   * `storageLocationService.create`, which was itself a facade over the same
+   * function; that class is gone, so the middle hop went with it.
    *
-   * Everything below the `prepareLocationMetadata` call is now redundant with
-   * the new function's own validation, and is kept only so this method's
-   * throw-shape (`StorageAdapterError` via `handleStorageError`) is unchanged
-   * for its existing callers.
+   * The provider check below is now redundant with the new function's own
+   * validation, and is kept only so this method's throw-shape
+   * (`StorageAdapterError` via `handleStorageError`) is unchanged for its
+   * existing callers.
    */
   async createStorageLocation(
     params: {
@@ -603,23 +657,48 @@ export class StorageManager {
         )
       }
 
-      const metadata = await this.prepareLocationMetadata(params)
+      const metadata = (await this.prepareLocationMetadata(params)) ?? {}
+      // `prepareLocationMetadata` is where the bucket gets resolved, and
+      // `CreateStorageLocationInput.bucket` is required, so it has to be read
+      // back out rather than left buried in the blob. An unresolved bucket
+      // reaches the new function as `''` and is rejected there — which is the
+      // point: bugs #1816/#1817/#1818 were all a row persisted without one.
+      const bucket = typeof metadata.bucket === 'string' ? metadata.bucket : ''
 
-      // Use service method with optional transaction
-      return await storageLocationService.create(
-        {
-          provider: params.provider as any, // Type cast for DB enum
-          externalId: params.externalId,
-          externalUrl: params.externalUrl || '',
-          externalRev: params.externalRev || '',
-          organizationId: this.organizationId,
-          credentialId: params.credentialId,
-          size: params.size,
-          mimeType: params.mimeType,
-          metadata,
-        },
-        opts?.tx
-      )
+      const ctx = this.filesCtx('createStorageLocation')
+      const input = {
+        provider: params.provider,
+        externalId: params.externalId,
+        bucket,
+        externalUrl: params.externalUrl || '',
+        externalRev: params.externalRev || '',
+        credentialId: params.credentialId,
+        size: params.size,
+        mimeType: params.mimeType,
+        metadata,
+      }
+
+      // Two branches, because the optional `opts.tx` cannot be reconciled with a
+      // required `Transaction` any other way:
+      //
+      // - Nothing supplied: open a transaction. Honest, no cast, and
+      //   semantically identical to the single implicit transaction a bare
+      //   INSERT already ran.
+      // - Something supplied: production reaches this from the upload-complete
+      //   route with a real `NodePgTransaction`, but `opts.tx` is typed `any`,
+      //   so the compiler cannot see that. The cast is the receipt for that
+      //   unsoundness and it is the honest answer — the legacy signature IS
+      //   unsound, and no arrangement of this facade makes it sound. Calling
+      //   `.transaction()` on it instead would issue a `SAVEPOINT` on the
+      //   hottest write path in the app. The cast disappears with this method.
+      const result = opts?.tx
+        ? await createStorageLocation(opts.tx as Transaction, ctx, input)
+        : await defaultDatabase().transaction((tx) =>
+            createStorageLocation(tx, { ...ctx, db: tx }, input)
+          )
+
+      if (result.isErr()) throw result.error
+      return result.value
     } catch (error) {
       this.handleStorageError(error, 'createStorageLocation', params.provider)
     }

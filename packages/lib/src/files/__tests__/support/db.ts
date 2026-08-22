@@ -132,6 +132,26 @@ export interface FakeDb {
   inserts: Array<{ table: string; values: unknown }>
   updates: Array<{ table: string; values: unknown }>
   deletes: Array<{ table: string }>
+  /**
+   * The `where(...)` predicate handed to each `select` / `update` / `delete`
+   * chain, in call order.
+   *
+   * The stub still does not *interpret* the clause — it stores the Drizzle `SQL`
+   * object so a test can compare it to one it builds itself with the same
+   * `and`/`eq`/`isNull`. That is how an organization-scope filter gets asserted
+   * without a real database: `expect(db.wheres[0]?.predicate).toEqual(and(...))`.
+   *
+   * **What it cannot tell you:** which *column* each condition names. This
+   * package's `@auxx/database` mock hands out `{}` for every table, so
+   * `schema.Foo.bar` is `undefined` and every column renders identically. The
+   * bound values, the operators and their order are all real; the column names
+   * are not. A test that turns on column identity needs the integration lane.
+   *
+   * Deliberately not journalled — adding a `where` op would break every existing
+   * `journal.ops()` assertion for no gain, since the ordering of a clause
+   * relative to its own statement is not in question.
+   */
+  wheres: Array<{ table: string; predicate: unknown }>
   /** How many `db.transaction(...)` calls were opened, including nested ones. */
   transactions: number
 }
@@ -160,7 +180,10 @@ const CHAIN_METHODS = [
   'as',
 ] as const
 
-function makeChain(resolve: () => unknown[]): Chain {
+function makeChain(
+  resolve: () => unknown[],
+  onCall?: (method: string, arg: unknown) => void
+): Chain {
   const chain = {
     // biome-ignore lint/suspicious/noThenProperty: a Drizzle query builder IS thenable — `await db.select().from(t).where(w)` is the shape every call site uses, so the stub has to be too.
     then: (onFulfilled?: unknown, onRejected?: unknown) =>
@@ -169,7 +192,10 @@ function makeChain(resolve: () => unknown[]): Chain {
         .then(onFulfilled as (v: unknown[]) => unknown, onRejected as (e: unknown) => unknown),
   } as unknown as Chain
   for (const method of CHAIN_METHODS) {
-    chain[method] = () => chain
+    chain[method] = (...args: unknown[]) => {
+      onCall?.(method, args[0])
+      return chain
+    }
   }
   return chain
 }
@@ -201,6 +227,7 @@ export function makeDb(options: MakeDbOptions = {}): FakeDb {
     inserts: [],
     updates: [],
     deletes: [],
+    wheres: [],
     transactions: 0,
   }
 
@@ -226,7 +253,16 @@ export function makeDb(options: MakeDbOptions = {}): FakeDb {
 
       select: (...args: unknown[]) => {
         journal.record('db', 'select', { projection: args[0] })
-        return makeChain(() => selectQueue.shift() ?? [])
+        // The table arrives on `.from(t)`, not on `select()`, so it is captured
+        // as the chain runs and read back when `.where(...)` lands.
+        let from = 'unknown'
+        return makeChain(
+          () => selectQueue.shift() ?? [],
+          (method, arg) => {
+            if (method === 'from') from = name(arg)
+            if (method === 'where') fake.wheres.push({ table: from, predicate: arg })
+          }
+        )
       },
 
       insert: (table: unknown) => {
@@ -243,7 +279,12 @@ export function makeDb(options: MakeDbOptions = {}): FakeDb {
 
       update: (table: unknown) => {
         let lastSetPayload: unknown[] = []
-        const chain = makeChain(() => updateQueue.shift() ?? lastSetPayload)
+        const chain = makeChain(
+          () => updateQueue.shift() ?? lastSetPayload,
+          (method, arg) => {
+            if (method === 'where') fake.wheres.push({ table: name(table), predicate: arg })
+          }
+        )
         chain.set = (values: unknown) => {
           journal.record('db', 'update', { table: name(table) })
           fake.updates.push({ table: name(table), values })
@@ -256,7 +297,12 @@ export function makeDb(options: MakeDbOptions = {}): FakeDb {
       delete: (table: unknown) => {
         journal.record('db', 'delete', { table: name(table) })
         fake.deletes.push({ table: name(table) })
-        return makeChain(() => deleteQueue.shift() ?? [])
+        return makeChain(
+          () => deleteQueue.shift() ?? [],
+          (method, arg) => {
+            if (method === 'where') fake.wheres.push({ table: name(table), predicate: arg })
+          }
+        )
       },
 
       execute: (...args: unknown[]) => {

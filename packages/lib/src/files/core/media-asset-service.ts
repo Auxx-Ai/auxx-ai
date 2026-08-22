@@ -1261,9 +1261,11 @@ export class MediaAssetService
    * reaches `storage-location-service.ts`, which held a module-scope
    * `import { database as db }` named binding, and pulling that into this
    * file's static import graph re-armed the collection hazard documented on
-   * `base-service.ts`. That file now uses the same namespace accessor
-   * `base-service.ts` does, so the edge is safe and the dynamic import — and
-   * the `async` it forced onto every caller — is gone.
+   * `base-service.ts`. #1823 replaced that binding with the same namespace
+   * accessor, and PR 3c deleted the file outright — nothing under
+   * `files/storage/**` reaches the database at module scope any more — so the
+   * edge is safe and the dynamic import, plus the `async` it forced onto every
+   * caller, is gone.
    *
    * Still lazy, but only to avoid resolving credentials for a service instance
    * that never downloads anything.

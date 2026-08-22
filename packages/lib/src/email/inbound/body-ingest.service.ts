@@ -1,7 +1,8 @@
 // packages/lib/src/email/inbound/body-ingest.service.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { storageLocationService } from '../../files/storage/storage-location-service'
+import { defaultDatabase } from '../../files/core/base-service'
+import { findStorageLocationByExternalId } from '../../files/storage/location-queries'
 import { createStorageManager } from '../../files/storage/storage-manager'
 import type { IngestedBodyMeta } from './ingest-types'
 import { buildInboundHtmlBodyKey } from './object-keys'
@@ -46,15 +47,32 @@ export class InboundBodyIngestService {
 
     // Check if body was already uploaded (idempotency for repeated syncs).
     // Fail-open: lookup errors do not prevent upload.
+    //
+    // `findStorageLocationByExternalId` returns a `Result`, so the failure mode
+    // is an `err` rather than a throw — but the `try` stays, because a *thrown*
+    // failure (a connection that dies below the guard) must still fall through
+    // to the upload rather than lose the message.
     try {
-      const existing = await storageLocationService.findByExternalId('S3', key)
-      if (existing.length > 0) {
+      const existing = await findStorageLocationByExternalId(
+        { db: defaultDatabase(), organizationId: context.organizationId },
+        'S3',
+        key
+      )
+      if (existing.isOk() && existing.value) {
         logger.debug('Body already uploaded, returning existing StorageLocation', {
           organizationId: context.organizationId,
           contentScopeId: context.contentScopeId,
-          storageLocationId: existing[0]!.id,
+          storageLocationId: existing.value.id,
         })
-        return { htmlBodyStorageLocationId: existing[0]!.id }
+        return { htmlBodyStorageLocationId: existing.value.id }
+      }
+      if (existing.isErr()) {
+        logger.warn('Idempotency lookup failed, proceeding with upload', {
+          organizationId: context.organizationId,
+          contentScopeId: context.contentScopeId,
+          key,
+          error: existing.error.message,
+        })
       }
     } catch (error) {
       const cause = error instanceof Error ? error : new Error(String(error))

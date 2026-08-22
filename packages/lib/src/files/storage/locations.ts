@@ -7,6 +7,10 @@
  * signature shape in `files/ctx.ts` (`fn(tx, ctx, input)`), and the single
  * place a `StorageLocation` row may be created from.
  *
+ * Reads live in `storage/location-queries.ts` — `docs/lib-module-guide.md` §5,
+ * "a file that both queries and mutates is the first step back toward a service
+ * class".
+ *
  * ## Why `tx` is positional, first, and separate from `ctx`
  *
  * `FilesCtx.db` is `Database | Transaction`. That union is what lets a *read*
@@ -57,6 +61,7 @@
 import type { Transaction } from '@auxx/database'
 import { schema } from '@auxx/database'
 import type { StorageLocationEntity } from '@auxx/database/types'
+import { and, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { AuxxError, BadRequestError } from '../../errors'
 import type { ProviderId } from '../adapters/base-adapter'
@@ -198,5 +203,57 @@ export async function createStorageLocation(
     },
     'Failed to create storage location',
     { provider: input.provider, externalId: input.externalId, bucket: input.bucket }
+  )
+}
+
+/**
+ * Delete one `StorageLocation` row inside a transaction the caller owns.
+ *
+ * Replaces `StorageLocationService.delete`. Two things differ from that method,
+ * both deliberate:
+ *
+ * - **It is organization-scoped.** The singleton deleted by bare id, so a wrong
+ *   id could remove another tenant's row. A row outside `ctx.organizationId` is
+ *   simply not matched; the function still resolves `ok()`, because "already
+ *   gone" and "never yours" are the same non-event to a delete and neither is
+ *   worth failing a caller's transaction over.
+ * - **It rides the caller's transaction.** The row and whatever referenced it
+ *   (an asset version, an attachment) have to disappear together or not at all;
+ *   a `tx` slot is where that gets enforced rather than hoped for.
+ *
+ * The delete stays **hard**, matching the method it replaces:
+ * `StorageLocation.deletedAt` is the *sweep* marker written by
+ * `lifecycle/orphaned-cleanup.ts` for rows whose S3 object still needs removing,
+ * so soft-deleting here would hand the sweeper a row whose object is already
+ * gone.
+ *
+ * The S3 object is **not** this function's problem — it takes no `FilesDeps`,
+ * so the signature says so. The caller deletes the object first and the row
+ * second; doing it the other way round loses the only pointer to the bytes.
+ *
+ * @param tx Positional and first for the reason spelled out on
+ *   {@link createStorageLocation}: a `ctx`-only signature would silently accept
+ *   a pool. This function never calls `tx.transaction(...)`.
+ * @param ctx Scope only. `ctx.db` is ignored — the statement runs on `tx`.
+ * @param id The `StorageLocation.id` to remove.
+ */
+export async function deleteStorageLocation(
+  tx: Transaction,
+  ctx: FilesCtx,
+  id: string
+): Promise<Result<void, AuxxError>> {
+  return guard(
+    async () => {
+      await tx
+        .delete(schema.StorageLocation)
+        .where(
+          and(
+            eq(schema.StorageLocation.id, id),
+            eq(schema.StorageLocation.organizationId, ctx.organizationId)
+          )
+        )
+    },
+    'Failed to delete storage location',
+    { storageLocationId: id }
   )
 }

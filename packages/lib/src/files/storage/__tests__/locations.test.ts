@@ -22,6 +22,7 @@
 
 import type { Database, Transaction } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { and, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import {
   anOrg,
@@ -35,7 +36,11 @@ import {
   TEST_BUCKETS,
   TEST_IDS,
 } from '../../__tests__/support'
-import { type CreateStorageLocationInput, createStorageLocation } from '../locations'
+import {
+  type CreateStorageLocationInput,
+  createStorageLocation,
+  deleteStorageLocation,
+} from '../locations'
 
 const KEY = 'org_test/media-asset/ast_test/photo.png'
 
@@ -232,6 +237,83 @@ describe('createStorageLocation', () => {
   })
 })
 
+describe('deleteStorageLocation', () => {
+  it('scopes the DELETE to ctx.organizationId, not to the id alone', async () => {
+    const db = aDb()
+    const ctx = makeCtx({ db: db.db, organizationId: 'org_actually_acting_for' })
+
+    const result = await deleteStorageLocation(asTx(db.db), ctx, 'loc_target')
+
+    expect(result.isOk()).toBe(true)
+    expect(db.deletes).toEqual([{ table: 'StorageLocation' }])
+    // `StorageLocationService.delete` deleted by bare id, so a wrong id reached
+    // straight into another tenant's rows. The second condition is the fix.
+    expect(db.wheres[0]?.predicate).toEqual(
+      and(
+        eq(schema.StorageLocation.id, 'loc_target'),
+        eq(schema.StorageLocation.organizationId, 'org_actually_acting_for')
+      )
+    )
+  })
+
+  it('hard-deletes rather than stamping deletedAt', async () => {
+    const db = aDb()
+    const ctx = makeCtx({ db: db.db })
+
+    await deleteStorageLocation(asTx(db.db), ctx, TEST_IDS.storageLocationId)
+
+    // `StorageLocation.deletedAt` is the *sweep* marker `lifecycle/
+    // orphaned-cleanup.ts` reads to find rows whose S3 object still needs
+    // removing. Soft-deleting here would hand the sweeper a row whose object
+    // the caller has already deleted.
+    expect(db.journal.ops('db')).toEqual(['delete'])
+    expect(db.updates).toEqual([])
+  })
+
+  it('resolves ok when the row was already gone', async () => {
+    const db = aDb({ delete: [[]] })
+    const ctx = makeCtx({ db: db.db })
+
+    const result = await deleteStorageLocation(asTx(db.db), ctx, 'loc_never_existed')
+
+    // "Already gone" and "never yours" are the same non-event to a delete, and
+    // neither is worth failing the caller's transaction over.
+    expect(result.isOk()).toBe(true)
+  })
+
+  it('performs no storage, queue or cache call — only database statements', async () => {
+    const journal = makeJournal()
+    const db = aDb({ journal })
+    const storage = makeStoragePort({ journal })
+    const queue = makeQueuePort({ journal })
+    const cache = makeCachePort({ journal })
+    const ctx = makeCtx({ db: db.db })
+
+    await deleteStorageLocation(asTx(db.db), ctx, TEST_IDS.storageLocationId)
+
+    // The S3 object is the caller's problem: this function takes no `FilesDeps`,
+    // so there is nothing here to call, and this is the assertion that says so.
+    expect(journal.entries.every((e) => e.channel === 'db')).toBe(true)
+    expect(storage.calls).toEqual([])
+    expect(queue.calls).toEqual([])
+    expect(cache.busts).toEqual([])
+  })
+
+  it('never opens a transaction of its own — the caller owns the boundary', async () => {
+    const journal = makeJournal()
+    const db = aDb({ journal })
+    const ctx = makeCtx({ db: db.db })
+
+    await (db.db as Database).transaction(async (tx) => {
+      const result = await deleteStorageLocation(tx, { ...ctx, db: tx }, 'loc_target')
+      expect(result.isOk()).toBe(true)
+    })
+
+    expect(db.transactions).toBe(1)
+    expect(journal.ops('db')).toEqual(['begin', 'delete', 'commit'])
+  })
+})
+
 describe('the transaction-only signature', () => {
   /**
    * The convention this whole pilot rests on, checked by `tsc` rather than by
@@ -247,6 +329,10 @@ describe('the transaction-only signature', () => {
     type TxSlot = Parameters<typeof createStorageLocation>[0]
     const poolIsRejected: Database extends TxSlot ? false : true = true
 
+    type DeleteTxSlot = Parameters<typeof deleteStorageLocation>[0]
+    const poolIsRejectedByDelete: Database extends DeleteTxSlot ? false : true = true
+
     expect(poolIsRejected).toBe(true)
+    expect(poolIsRejectedByDelete).toBe(true)
   })
 })
