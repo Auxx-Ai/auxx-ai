@@ -172,7 +172,7 @@ export async function listWorkOrderPayments(
  * precedent). Only writes fields that actually changed, to avoid no-op event churn.
  */
 export async function syncInvoicePaymentState(
-  input: SyncInvoicePaymentStateInput & { db?: Database; publishEvents?: boolean }
+  input: SyncInvoicePaymentStateInput & { db?: Database }
 ): Promise<void> {
   const { organizationId, userId, invoiceInstanceId } = input
   const db = input.db ?? database
@@ -231,11 +231,12 @@ export async function syncInvoicePaymentState(
   if (writes.length === 0) return
 
   const fieldValueService = new FieldValueService(organizationId, userId, db)
-  await fieldValueService.setValuesForEntity({
-    recordId: invoiceRecordId,
-    values: writes,
-    publishEvents: input.publishEvents ?? true,
-  })
+  // No `publishEvents` (plan 04 §7.3): the ambient write session decides. On the
+  // four Stripe rails these writes are and stay loud; reached from
+  // `recomputeInvoiceTotals` during a buffered billing composition they are
+  // captured and either absorbed into the invoice's `record:created` (T-1) or
+  // replayed post-commit for a pre-existing invoice (the O-8 cross-invoice case).
+  await fieldValueService.setValuesForEntity({ recordId: invoiceRecordId, values: writes })
 }
 
 /**
@@ -259,7 +260,6 @@ export async function syncTransaction(params: {
   userId: string
   transaction: PaymentTransactionEntity
   db?: Database
-  publishEvents?: boolean
 }): Promise<void> {
   const { organizationId, userId, transaction } = params
   const db = params.db ?? database
@@ -289,7 +289,12 @@ export async function syncTransaction(params: {
           payment_invoice: invoiceRecordId,
           payment_transaction_id: transaction.id,
         },
-        { skipEvents: params.publishEvents === false }
+        // T-1b: a payment mirror is STRUCTURAL to the invoice it mirrors onto.
+        // When that invoice is being created in the same buffered scope (a
+        // deposit settling onto a freshly composed invoice), its single
+        // `record:created` announces the mirror too. Inert otherwise — a
+        // payment against an existing invoice still announces itself.
+        { absorbInto: invoiceRecordId }
       )
 
       await db
@@ -303,13 +308,7 @@ export async function syncTransaction(params: {
     ...new Set(allocations.map((allocation) => allocation.invoiceInstanceId)),
   ]
   for (const invoiceInstanceId of invoiceInstanceIds) {
-    await syncInvoicePaymentState({
-      organizationId,
-      userId,
-      invoiceInstanceId,
-      db,
-      publishEvents: params.publishEvents,
-    })
+    await syncInvoicePaymentState({ organizationId, userId, invoiceInstanceId, db })
   }
 }
 
@@ -341,7 +340,6 @@ export async function applyHeldDepositsToInvoice(params: {
    * this call is then a structural no-op, which is correct: there's nothing to apply yet). */
   invoiceTotal: number
   db?: Database
-  publishEvents?: boolean
 }): Promise<void> {
   const { organizationId, userId, workOrderInstanceId, invoiceInstanceId, invoiceTotal } = params
   const db = params.db ?? database
@@ -403,13 +401,7 @@ export async function applyHeldDepositsToInvoice(params: {
   for (const transaction of depositCharges.filter((charge) =>
     plannedTransactionIds.has(charge.id)
   )) {
-    await syncTransaction({
-      organizationId,
-      userId,
-      transaction,
-      db,
-      publishEvents: params.publishEvents,
-    })
+    await syncTransaction({ organizationId, userId, transaction, db })
   }
 }
 

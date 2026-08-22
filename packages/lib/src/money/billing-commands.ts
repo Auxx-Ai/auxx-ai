@@ -8,6 +8,8 @@ import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
+import { flushTxWriteScope } from '../resources/crud/tx-write-flush'
+import { runInTxWrite, type TxWriteScope } from '../resources/crud/tx-write-scope'
 import { allocateProportionally, resolveFixedInvoiceAmount } from './billing-allocation-math'
 import {
   allocateInvoiceLine,
@@ -46,12 +48,33 @@ function databaseErrorCode(error: unknown): string | undefined {
     : undefined
 }
 
-async function withSerializableRetry<T>(operation: (db: Database) => Promise<T>): Promise<T> {
+/**
+ * Run `operation` in a serializable transaction, retrying the SQLSTATE 40001 /
+ * 40P01 arms, and hand back the transaction write scope its doors were buffered
+ * into (plan 04 §6.4).
+ *
+ * The per-attempt contract (T-5) is what this shape exists for. `runInTxWrite`
+ * mints the scope INSIDE the transaction callback and returns it by value, so:
+ * a retry runs a fresh callback and therefore a fresh, empty buffer; and an
+ * attempt that throws rejects without producing a scope at all, which makes it
+ * structurally impossible to flush writes a rollback undid. Nothing in this file
+ * — or reachable from it — can hold a scope across attempts, because nothing
+ * outside the callback ever has one to hold.
+ */
+async function withSerializableRetry<T>(
+  scopeArgs: { organizationId: string; userId: string },
+  operation: (db: Database) => Promise<T>
+): Promise<{ result: T; scope: TxWriteScope; owned: boolean }> {
   for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt++) {
     try {
-      return await database.transaction((tx) => operation(tx as unknown as Database), {
-        isolationLevel: 'serializable',
-      })
+      return await database.transaction(
+        (tx) =>
+          runInTxWrite(
+            { organizationId: scopeArgs.organizationId, actorUserId: scopeArgs.userId },
+            () => operation(tx as unknown as Database)
+          ),
+        { isolationLevel: 'serializable' }
+      )
     } catch (error) {
       const code = databaseErrorCode(error)
       if ((code !== '40001' && code !== '40P01') || attempt === MAX_SERIALIZABLE_ATTEMPTS) {
@@ -133,7 +156,6 @@ async function finishInvoice(input: {
     documentType: 'invoice',
     documentInstanceId: input.invoiceInstanceId,
     db: input.db,
-    publishEvents: !input.db,
   })
 
   // money 16-deposit-accounting.md §C.2 settle point — every invoice-creation command
@@ -142,8 +164,9 @@ async function finishInvoice(input: {
   // invoice's real `invoice_total` — the value `applyHeldDepositsToInvoice` needs to cap
   // allocation at (moved here from `createInvoiceShell`, which runs before any line is copied
   // and so never had a real total to cap against). Same `db` (the `withSerializableRetry`
-  // transaction every caller wraps this in) and the same `publishEvents: !input.db` threading as
-  // `recomputeTotals` just above. `workOrderInstanceId` is a required, non-nullable input on
+  // transaction every caller wraps this in) as `recomputeTotals` just above; door behavior is
+  // no longer threaded at all — the buffered session decides (plan 04 §7.3, B-18).
+  // `workOrderInstanceId` is a required, non-nullable input on
   // every one of these commands (`WorkOrderBillingCommandInput`) — same guarantee the old
   // shell-embedded call relied on, no extra guard needed.
   const totalsById = await batchReadSystemValues({
@@ -161,7 +184,6 @@ async function finishInvoice(input: {
     invoiceInstanceId: input.invoiceInstanceId,
     invoiceTotal,
     db: input.db,
-    publishEvents: !input.db,
   })
 
   return { recordId: input.invoiceRecordId, instanceId: input.invoiceInstanceId }
@@ -202,12 +224,33 @@ async function sumPriorFixedDiscounts(input: {
   return total
 }
 
-async function projectCommittedInvoice(input: {
+/**
+ * The post-commit settle step every invoice-creation command ends with. Two
+ * halves, in this order (O-9):
+ *
+ * 1. flush the transaction write scope — the invoice's own `record:created`,
+ *    carrying its full initial state, with the copied lines and the payment
+ *    mirror folded in (T-1b) and the composed field writes absorbed (T-1);
+ * 2. re-sync the two billing projections, which run events-ON.
+ *
+ * The order is load-bearing: a projection's `fieldValues:updated` for a
+ * brand-new invoice reaching clients before the `record:created` that says the
+ * record exists is a frame nobody can apply.
+ */
+async function settleInvoiceCommands(input: {
   organizationId: string
   userId: string
   workOrderInstanceId: string
+  scope: TxWriteScope
+  /** False when this command JOINED an outer scope — see {@link runInTxWrite}. */
+  owned: boolean
   result: CreateInvoiceFromWorkOrderResult
 }): Promise<CreateInvoiceFromWorkOrderResult> {
+  // Flush only what we own. A joined scope belongs to the outer composition,
+  // which flushes it once for everyone; draining it here would re-announce that
+  // composition's accumulated creates and, under a retry, replay rolled-back
+  // captures (T-5).
+  if (input.owned) await flushTxWriteScope(input.scope)
   try {
     await syncInvoiceBillingProjection({
       organizationId: input.organizationId,
@@ -230,7 +273,7 @@ async function projectCommittedInvoice(input: {
 export async function createFixedContractInvoice(
   input: CreateFixedContractInvoiceInput
 ): Promise<CreateInvoiceFromWorkOrderResult> {
-  const result = await withSerializableRetry(async (db) => {
+  const { result, scope, owned } = await withSerializableRetry(input, async (db) => {
     const projection = await computeWorkOrderBillingProjection({ ...input, db })
     if (projection.basis !== 'fixed_contract') {
       throw new BadRequestError('This work order does not use fixed-contract billing')
@@ -268,7 +311,7 @@ export async function createFixedContractInvoice(
       remainingValue: remaining.reduce((sum, line) => sum + line.amount, 0),
     })
     const allocations = allocateProportionally(remaining, selectedAmount)
-    const shell = await createInvoiceShell({ ...input, db, publishEvents: false })
+    const shell = await createInvoiceShell({ ...input, db })
     const service = new FieldValueService(input.organizationId, input.userId, db)
     if (shell.discountType === 'amount' && shell.discountValue) {
       const remainingValue = remaining.reduce((sum, line) => sum + line.amount, 0)
@@ -288,7 +331,6 @@ export async function createFixedContractInvoice(
       await service.setValuesForEntity({
         recordId: shell.recordId,
         values: [{ fieldId: 'invoice_discount_value', value: discountValue }],
-        publishEvents: false,
       })
     }
     for (const allocation of allocations) {
@@ -299,7 +341,6 @@ export async function createFixedContractInvoice(
         lineFieldIds: source.fieldIds,
         lineInstanceId: allocation.sourceLineItemId,
         invoiceRecordId: shell.recordId,
-        publishEvents: false,
         extraValues: {
           line_item_qty: 1,
           line_item_unit_price: allocation.amount,
@@ -330,7 +371,7 @@ export async function createFixedContractInvoice(
       invoiceRecordId: shell.recordId,
     })
   })
-  return projectCommittedInvoice({ ...input, result })
+  return settleInvoiceCommands({ ...input, scope, owned, result })
 }
 
 /** Create one allocation-backed invoice for selected visits — `'done'` only by default, or (with
@@ -339,7 +380,7 @@ export async function createVisitInvoice(
   input: CreateVisitInvoiceInput
 ): Promise<CreateInvoiceFromWorkOrderResult> {
   if (input.visitIds.length === 0) throw new BadRequestError('Select at least one visit')
-  const result = await withSerializableRetry(async (db) => {
+  const { result, scope, owned } = await withSerializableRetry(input, async (db) => {
     const projection = await computeWorkOrderBillingProjection({ ...input, db })
     if (projection.basis !== 'per_visit') {
       throw new BadRequestError('This work order does not use per-visit billing')
@@ -364,7 +405,7 @@ export async function createVisitInvoice(
     const source = await getSourceLines({ ...input, db })
     const templates = source.lines.filter((line) => !line.visitId && line.amount > 0)
     const additions = source.lines.filter((line) => line.visitId && line.amount > 0)
-    const shell = await createInvoiceShell({ ...input, db, publishEvents: false })
+    const shell = await createInvoiceShell({ ...input, db })
     const service = new FieldValueService(input.organizationId, input.userId, db)
     for (const visit of visits) {
       await allocateInvoiceVisit({
@@ -383,7 +424,6 @@ export async function createVisitInvoice(
           lineFieldIds: source.fieldIds,
           lineInstanceId: line.id,
           invoiceRecordId: shell.recordId,
-          publishEvents: false,
           extraValues: { line_item_visit_id: visit.id },
         })
         await allocateInvoiceLine({
@@ -406,14 +446,14 @@ export async function createVisitInvoice(
       invoiceRecordId: shell.recordId,
     })
   })
-  return projectCommittedInvoice({ ...input, result })
+  return settleInvoiceCommands({ ...input, scope, owned, result })
 }
 
 /** Create a recurring flat-rate invoice for one occurrence identity. */
 export async function createRecurringCharge(
   input: CreateRecurringChargeInput
 ): Promise<CreateInvoiceFromWorkOrderResult> {
-  const result = await withSerializableRetry(async (db) => {
+  const { result, scope, owned } = await withSerializableRetry(input, async (db) => {
     const projection = await computeWorkOrderBillingProjection({ ...input, db })
     if (projection.basis !== 'recurring_flat') {
       throw new BadRequestError('This work order does not use recurring flat-rate billing')
@@ -431,12 +471,7 @@ export async function createRecurringCharge(
     const templates = source.lines.filter((line) => !line.visitId && line.amount > 0)
     if (templates.length === 0)
       throw new BadRequestError('Add a billing-period line before invoicing')
-    const shell = await createInvoiceShell({
-      ...input,
-      issuedAt: occurrenceDate,
-      db,
-      publishEvents: false,
-    })
+    const shell = await createInvoiceShell({ ...input, issuedAt: occurrenceDate, db })
     await allocateScheduleOccurrence({
       db,
       organizationId: input.organizationId,
@@ -454,7 +489,6 @@ export async function createRecurringCharge(
         lineFieldIds: source.fieldIds,
         lineInstanceId: line.id,
         invoiceRecordId: shell.recordId,
-        publishEvents: false,
       })
       await allocateInvoiceLine({
         db,
@@ -474,14 +508,14 @@ export async function createRecurringCharge(
       invoiceRecordId: shell.recordId,
     })
   })
-  return projectCommittedInvoice({ ...input, result })
+  return settleInvoiceCommands({ ...input, scope, owned, result })
 }
 
 /** Create a separate invoice for additive visit work without consuming base visit pricing. */
 export async function createExtraWorkInvoice(
   input: CreateExtraWorkInvoiceInput
 ): Promise<CreateInvoiceFromWorkOrderResult> {
-  const result = await withSerializableRetry(async (db) => {
+  const { result, scope, owned } = await withSerializableRetry(input, async (db) => {
     const source = await getSourceLines({ ...input, db })
     const selected = source.lines.filter(
       (line) =>
@@ -518,7 +552,7 @@ export async function createExtraWorkInvoice(
     )
     if (eligible.length === 0)
       throw new BadRequestError('No selected extra work is ready to invoice')
-    const shell = await createInvoiceShell({ ...input, db, publishEvents: false })
+    const shell = await createInvoiceShell({ ...input, db })
     const service = new FieldValueService(input.organizationId, input.userId, db)
     for (const visitId of new Set(eligible.map((line) => line.visitId!))) {
       await allocateInvoiceVisit({
@@ -538,7 +572,6 @@ export async function createExtraWorkInvoice(
         lineFieldIds: source.fieldIds,
         lineInstanceId: line.id,
         invoiceRecordId: shell.recordId,
-        publishEvents: false,
         extraValues: { line_item_visit_id: line.visitId },
       })
       await allocateInvoiceLine({
@@ -560,14 +593,14 @@ export async function createExtraWorkInvoice(
       invoiceRecordId: shell.recordId,
     })
   })
-  return projectCommittedInvoice({ ...input, result })
+  return settleInvoiceCommands({ ...input, scope, owned, result })
 }
 
 /** Move unallocated visit additions into the fixed contract so future progress claims include them. */
 export async function addVisitExtrasToContract(
   input: AddVisitExtrasToContractInput
 ): Promise<void> {
-  await withSerializableRetry(async (db) => {
+  const { scope, owned } = await withSerializableRetry(input, async (db) => {
     const projection = await computeWorkOrderBillingProjection({ ...input, db })
     if (projection.basis !== 'fixed_contract') {
       throw new BadRequestError('Only fixed-contract extras can be added to the contract')
@@ -588,9 +621,13 @@ export async function addVisitExtrasToContract(
       await service.setValuesForEntity({
         recordId: toRecordId('line_item', line.id),
         values: [{ fieldId: 'line_item_visit_id', value: null }],
-        publishEvents: false,
       })
     }
   })
+  // The one genuine C2 site in money (plan 04 §2, leaf #7): these lines already
+  // existed and are already on someone's screen, and they are NOT in the scope's
+  // `created` set, so the flush replays their `fieldValues:updated` per line
+  // rather than absorbing them.
+  if (owned) await flushTxWriteScope(scope)
   await syncWorkOrderBillingProjection(input)
 }

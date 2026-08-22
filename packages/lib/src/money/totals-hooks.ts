@@ -77,7 +77,7 @@ export const INVOICE_TRIGGER_ATTRS = new Set<SystemAttribute>([
  * existing quote call sites keep compiling unchanged.
  */
 export async function recomputeTotals(
-  input: RecomputeTotalsInput & { db?: Database; publishEvents?: boolean }
+  input: RecomputeTotalsInput & { db?: Database }
 ): Promise<void> {
   const { organizationId, userId } = input
   const documentType = input.documentType ?? 'quote'
@@ -94,7 +94,6 @@ export async function recomputeTotals(
       userId,
       invoiceInstanceId: documentInstanceId,
       db: input.db,
-      publishEvents: input.publishEvents,
     })
     return
   }
@@ -222,9 +221,8 @@ async function recomputeInvoiceTotals(params: {
   userId: string
   invoiceInstanceId: string
   db?: Database
-  publishEvents?: boolean
 }): Promise<void> {
-  const { organizationId, userId, invoiceInstanceId, db, publishEvents = true } = params
+  const { organizationId, userId, invoiceInstanceId, db } = params
   const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
   const handler = new UnifiedCrudHandler(organizationId, userId, db)
   const cache = getOrgCache()
@@ -328,16 +326,9 @@ async function recomputeInvoiceTotals(params: {
       { fieldId: 'invoice_tax_total', value: totals.taxTotal },
       { fieldId: 'invoice_total', value: totals.total },
     ],
-    publishEvents,
   })
 
-  await syncInvoicePaymentState({
-    organizationId,
-    userId,
-    invoiceInstanceId,
-    db,
-    publishEvents,
-  })
+  await syncInvoicePaymentState({ organizationId, userId, invoiceInstanceId, db })
 }
 
 /**

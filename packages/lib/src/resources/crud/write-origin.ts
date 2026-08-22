@@ -6,6 +6,7 @@
 // replacing the `skipEvents` boolean over time.
 
 import type { ManifestCollector } from '../../record-rules/sync-manifest-collector'
+import type { TxWriteScope } from './tx-write-scope'
 
 /**
  * What a write IS, declared by the writer (plan 03 §4). One of five kinds:
@@ -57,9 +58,26 @@ export type WriteOrigin =
  * guard over time (S9), so there is one cascade guard, not two. For this
  * slice it is carried but not yet enforced.
  */
+/**
+ * HOW a write's doors behave, orthogonal to {@link WriteOrigin} (which says what
+ * the write IS). Plan 04 §6.2 — every suppression names its announcer, so the
+ * door-conformance harness can check that announcer exists.
+ */
+export type WriteMode =
+  /** Default. Doors fire inline, per record, as the write happens. */
+  | { kind: 'fanout' }
+  /** C1/C2 (plan 04 §3). Doors are captured into `scope` and replayed after the tx commits. */
+  | { kind: 'buffered'; scope: TxWriteScope }
+  /** C3. Doors stay shut at the leaf; `by` names the aggregator that announces. */
+  | { kind: 'absorbed'; by: string }
+  /** C4/C5. Doors stay shut on purpose; `reason` is the decision, in prose. */
+  | { kind: 'quiet'; reason: string }
+
 export interface WriteSession {
   origin: WriteOrigin
   depth: number
+  /** Defaults to `{ kind: 'fanout' }` when absent. */
+  mode?: WriteMode
 }
 
 /** Build an interactive session — the default for a handler constructed with a userId. */
@@ -81,11 +99,32 @@ export function seedSession(reason: string): WriteSession {
  *   `skipEvents: true` semantics exactly — sync writers still feed the B2
  *   manifest collector, seed stays silent forever.
  *
+ * - `'buffered'` — the write is inside a transaction that has not committed, so
+ *   its doors are captured into the session's {@link TxWriteScope} and replayed
+ *   once afterwards (plan 04 §6). Differs from `'silent'` only in that a live
+ *   collector keeps what `'silent'` throws away.
+ *
  * The batched replay lane (accumulate against the run ref, finalize pipeline,
  * count-based small-run vs batch selection per D-12) arrives in Phase 4; until
  * then `sync` maps to `'silent'` so behavior is preserved.
+ *
+ * `derivePublishEvents` (`unified-handler-mutations.ts`) is the only production
+ * reader — no call site outside that seam needs to know which lane it is on.
  */
-export function sessionLane(session: WriteSession): 'inline' | 'silent' {
+export function sessionLane(session: WriteSession): 'inline' | 'silent' | 'buffered' {
+  // The mode is orthogonal to the origin: a buffered interactive write and a
+  // buffered automation write are both buffered. `absorbed`/`quiet` resolve to
+  // the same `publishEvents === false` the leaves produce today; they carry the
+  // reason, not new behavior.
+  switch (session.mode?.kind) {
+    case 'buffered':
+      return 'buffered'
+    case 'absorbed':
+    case 'quiet':
+      return 'silent'
+    default:
+      break
+  }
   switch (session.origin.kind) {
     case 'interactive':
     case 'api':

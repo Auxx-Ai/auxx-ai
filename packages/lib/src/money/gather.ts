@@ -12,6 +12,8 @@ import { BadRequestError } from '../errors'
 import type { FileValue } from '../field-values/converters'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
+import { flushTxWriteScope } from '../resources/crud/tx-write-flush'
+import { runInTxWrite } from '../resources/crud/tx-write-scope'
 import { getOrganizationSetting } from '../settings/settings-service'
 import { allocateInvoiceLine, getActiveAllocatedAmounts } from './billing-allocations'
 import {
@@ -208,7 +210,6 @@ export async function createInvoiceShell(input: {
   issuedAt?: string
   extraValues?: Record<string, unknown>
   db?: Database
-  publishEvents?: boolean
 }) {
   const { organizationId, userId, workOrderInstanceId, issuedAt, extraValues, db } = input
   const handler = new UnifiedCrudHandler(organizationId, userId, db)
@@ -301,9 +302,10 @@ export async function createInvoiceShell(input: {
   if (taxName) invoiceValues.invoice_tax_name = taxName
   if (taxRate !== null) invoiceValues.invoice_tax_rate = taxRate
 
-  const createdInvoice = await handler.create('invoice', invoiceValues, {
-    skipEvents: input.publishEvents === false,
-  })
+  // No door options: the ambient write session decides (plan 04 §7.3). Inside a
+  // billing command's buffered scope this create is captured and announced once
+  // post-commit; on the inline path it announces itself as it always did.
+  const createdInvoice = await handler.create('invoice', invoiceValues)
 
   // NOTE: the money 16-deposit-accounting.md §C.2 deposit-settle call used to live here, but
   // `invoice_total` is `creatable: false` — it's written exactly once, by `recomputeTotals`,
@@ -346,17 +348,8 @@ export async function copyLineOntoInvoice(input: {
   lineInstanceId: string
   invoiceRecordId: RecordId
   extraValues?: Record<string, unknown>
-  publishEvents?: boolean
 }): Promise<{ instanceId: string }> {
-  const {
-    handler,
-    lineCf,
-    lineFieldIds,
-    lineInstanceId,
-    invoiceRecordId,
-    extraValues,
-    publishEvents,
-  } = input
+  const { handler, lineCf, lineFieldIds, lineInstanceId, invoiceRecordId, extraValues } = input
   const lineRecordId = toRecordId('line_item', lineInstanceId)
   const values = await handler.getFieldValues(lineRecordId, lineFieldIds)
   const get = (f?: { id: string } | null) => (f ? firstTyped(values.get(f.id)) : undefined)
@@ -401,8 +394,13 @@ export async function copyLineOntoInvoice(input: {
     copyValues.line_item_catalog_item = catalogItemTyped.recordId
   }
 
+  // T-1b: a copied line is STRUCTURAL to the invoice it is being copied onto.
+  // When that invoice is itself being created in the same buffered scope, its
+  // one `record:created` announces the whole composition and this line opens no
+  // door of its own. Inert everywhere else — a line added to an invoice that
+  // already exists is a genuine create and still announces itself.
   const created = await handler.create('line_item', copyValues, {
-    skipEvents: publishEvents === false,
+    absorbInto: invoiceRecordId,
   })
   return { instanceId: created.instance.id }
 }
@@ -418,6 +416,40 @@ export async function copyLineOntoInvoice(input: {
  * @returns `{ recordId, instanceId }` — the client opens `/app/invoices?id=<instanceId>`.
  */
 export async function createInvoiceFromWorkOrder(
+  input: CreateInvoiceFromWorkOrderInput
+): Promise<CreateInvoiceFromWorkOrderResult> {
+  const { organizationId, userId, workOrderInstanceId } = input
+
+  // B-17 (plan 04 §5 / O-2): this flow and the four `billing-commands.ts`
+  // builders compose the SAME invoice and used to announce it two different
+  // ways — ~N+1 creates plus ~6 field updates here, nothing at all there. Both
+  // now compose inside a buffered write scope, so both emit exactly one
+  // `record:created` for the invoice, carrying its full initial state. There is
+  // no transaction here (there never was); the scope is doing the door
+  // buffering, not the atomicity.
+  const { result, scope, owned } = await runInTxWrite(
+    { organizationId, actorUserId: userId },
+    async () => composeInvoiceFromWorkOrder(input)
+  )
+  // Flush only what we own — a joined scope is the outer composition's to drain
+  // (see `runInTxWrite`); draining it here duplicates its creates.
+  if (owned) await flushTxWriteScope(scope)
+
+  // Ordered AFTER the flush (O-9): a projection's `fieldValues:updated` for a
+  // brand-new invoice must not reach clients before the `record:created` that
+  // tells them the record exists.
+  await syncInvoiceBillingProjection({
+    organizationId,
+    userId,
+    invoiceInstanceId: result.instanceId,
+  })
+  await syncWorkOrderBillingProjection({ organizationId, userId, workOrderInstanceId })
+
+  return result
+}
+
+/** The composition half of {@link createInvoiceFromWorkOrder}, run inside the buffered scope. */
+async function composeInvoiceFromWorkOrder(
   input: CreateInvoiceFromWorkOrderInput
 ): Promise<CreateInvoiceFromWorkOrderResult> {
   const { organizationId, userId, workOrderInstanceId, lineInstanceIds } = input
@@ -518,10 +550,9 @@ export async function createInvoiceFromWorkOrder(
     invoiceTotal,
   })
 
-  await syncInvoiceBillingProjection({ organizationId, userId, invoiceInstanceId })
-  await syncWorkOrderBillingProjection({ organizationId, userId, workOrderInstanceId })
-
   // ─── Step 8: return ─────────────────────────────────────────────────────────
+  // The two billing projections are deliberately NOT here — they run
+  // events-on, post-flush, in the caller.
   return { recordId: invoiceRecordId, instanceId: invoiceInstanceId }
 }
 
