@@ -3,11 +3,15 @@
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq, exists, not, sql } from 'drizzle-orm'
-import { createAttachmentService } from '../core/attachment-service'
 import { createFileService } from '../core/file-service'
 import { purgeMediaAssets } from '../core/media-asset-purge'
 import { createMediaAssetService } from '../core/media-asset-service'
 import { ThumbnailService } from '../core/thumbnail-service'
+import type { AttachmentIntegrityReport } from './attachment-maintenance'
+import {
+  validateAttachmentIntegrity as auditAttachmentIntegrity,
+  cleanupOrphanedAttachments as sweepOrphanedAttachments,
+} from './attachment-maintenance'
 
 const logger = createScopedLogger('file-cleanup-utils')
 
@@ -360,46 +364,41 @@ export async function deleteExpiredFiles(
 }
 
 /**
- * Clean up orphaned attachments using AttachmentService
+ * Clean up orphaned attachments.
+ *
+ * Thin `{ deleted, failed, errors }` adapter over
+ * `lifecycle/attachment-maintenance.ts`, which holds the query. Kept in that
+ * legacy shape because it is the shape every other sweep in this file reports.
  */
 export async function cleanupOrphanedAttachments(
   organizationId: string
 ): Promise<{ deleted: number; failed: number; errors: Error[] }> {
   logger.info('Cleaning up orphaned attachments')
 
-  try {
-    const attachmentService = createAttachmentService(organizationId)
-    const deletedCount = await attachmentService.cleanupOrphanedAttachments()
-
-    logger.info(`Cleaned up ${deletedCount} orphaned attachments`)
-
-    return {
-      deleted: deletedCount,
-      failed: 0,
-      errors: [],
-    }
-  } catch (error) {
-    logger.error('Failed to cleanup orphaned attachments:', error)
-    return {
-      deleted: 0,
-      failed: 1,
-      errors: [error as Error],
-    }
+  const result = await sweepOrphanedAttachments({ db: database, organizationId })
+  if (result.isErr()) {
+    logger.error('Failed to cleanup orphaned attachments:', result.error)
+    return { deleted: 0, failed: 1, errors: [result.error] }
   }
+
+  logger.info(`Cleaned up ${result.value} orphaned attachments`)
+  return { deleted: result.value, failed: 0, errors: [] }
 }
 
 /**
- * Validate attachment integrity using AttachmentService
+ * Validate attachment integrity.
+ *
+ * Adapter over `lifecycle/attachment-maintenance.ts`; throws the `AuxxError` the
+ * sweep produced rather than swallowing it, matching the legacy body.
  */
-export async function validateAttachmentIntegrity(organizationId: string): Promise<{
-  validAttachments: number
-  invalidAttachments: number
-  errors: string[]
-}> {
+export async function validateAttachmentIntegrity(
+  organizationId: string
+): Promise<AttachmentIntegrityReport> {
   logger.info('Validating attachment integrity')
 
-  const attachmentService = createAttachmentService(organizationId)
-  return await attachmentService.validateAttachmentIntegrity()
+  const result = await auditAttachmentIntegrity({ db: database, organizationId })
+  if (result.isErr()) throw result.error
+  return result.value
 }
 
 /**

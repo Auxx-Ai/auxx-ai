@@ -123,8 +123,12 @@ export interface CreateAttachmentRequest {
   fileVersionId?: string
   assetId?: string
   assetVersionId?: string
-  // Optional idempotency key to avoid duplicates on retries
-  idempotencyKey?: string
+  /**
+   * Removed in PR 5b. Nothing ever passed it, and the branch it gated
+   * deduplicated on `(organizationId, entityType, entityId, title, fileId,
+   * assetId)` while never comparing the key itself — see `AttachmentService`.
+   */
+  idempotencyKey?: never
 }
 /**
  * Request to update an existing Attachment
