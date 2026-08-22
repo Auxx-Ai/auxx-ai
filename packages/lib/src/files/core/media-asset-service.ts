@@ -1,51 +1,103 @@
 // packages/lib/src/files/core/media-asset-service.ts
 
+/**
+ * @deprecated A thin, deprecated facade over `files/assets/`.
+ *
+ * Every method below now delegates to a function in
+ * `files/assets/asset-queries.ts`, `asset-mutations.ts`,
+ * `version-mutations.ts` or `download.ts`. The class survives only because it
+ * has 41 external construction sites; **PR 5h / Phase 10 move those and delete
+ * this file.** Do not add a method here — add a function to `files/assets/` and
+ * call it directly with a `FilesCtx`.
+ *
+ * What changed for callers of this class, and nothing else did:
+ *
+ * - **Errors are `AuxxError` subclasses**, not bare `Error`. A missing asset or
+ *   version is a `NotFoundError` (404), an invalid kind a `BadRequestError`
+ *   (400), and deleting the current version a `ConflictError` (409), so
+ *   `auxxErrorMiddleware` maps them instead of returning 500 for everything.
+ * - **Organization scope is unconditional.** The old bodies scoped with
+ *   `if (this.organizationId)`, so a service constructed without one queried
+ *   every tenant; the delegated functions take a required `ctx.organizationId`,
+ *   and this facade throws if it has none.
+ * - **`getDownloadRefForVersion` returns the durable public URL** for a public
+ *   asset whose storage location has one, instead of always presigning. Same
+ *   rule `getDownloadRef` has followed since the Phase-2 pilot.
+ *
+ * Deleted outright rather than ported, all verified zero-caller:
+ * `processEmailAttachment`, `generateThumbnail`, `extractMetadata`,
+ * `findLargeAssets`, `findOrphanedAssets`, `findPublicAssets`, `convertKind`,
+ * `validateKindConversion`, `getDownloadInfo`, `copyVersions`, `search`,
+ * `count`, `listByKind`, `findByMimeType`.
+ */
+
+import type { Transaction } from '@auxx/database'
 import { schema } from '@auxx/database'
 import type {
   MediaAssetEntity as MediaAsset,
   MediaAssetVersionEntity as MediaAssetVersion,
   StorageLocationEntity as StorageLocation,
 } from '@auxx/database/types'
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  getTableColumns,
-  gt,
-  gte,
-  ilike,
-  inArray,
-  isNull,
-  lt,
-  lte,
-  or,
-  type SQL,
-  sql,
-} from 'drizzle-orm'
-import type { PgColumn } from 'drizzle-orm/pg-core'
+import { and, desc, eq, inArray, isNull, type SQL } from 'drizzle-orm'
+import type { Result } from 'neverthrow'
+import type { AuxxError } from '../../errors'
 import type { DownloadRef } from '../adapters/base-adapter'
-import { type DownloadDeps, getAssetDownloadRef } from '../assets/download'
+import {
+  convertTempAssetToPermanent,
+  createAsset,
+  createAssetFromFolderFile,
+  createAssetWithVersion,
+  deleteAsset,
+  updateAsset,
+} from '../assets/asset-mutations'
+import type { AssetVersionWithLocation } from '../assets/asset-queries'
+import {
+  findAssetsByKind,
+  findExpiredAssets,
+  getAsset,
+  getAssetCurrentVersion,
+  getAssetVersionByNumber,
+  getAssetVersions,
+  getAssetWithRelations,
+  getLatestAssetVersion,
+  listAssets,
+} from '../assets/asset-queries'
+import type { DownloadDeps, VersionWithLocation } from '../assets/download'
+import { getAssetDownloadRef, resolveAssetDownloadRef } from '../assets/download'
+import type { AssetWriteDeps, ThumbnailCleanupPort } from '../assets/ports'
+import {
+  createAssetVersion,
+  deleteAssetVersion,
+  restoreAssetVersion,
+  updateAssetContent,
+} from '../assets/version-mutations'
 import type { FilesCtx } from '../ctx'
 import { createS3StoragePort } from '../storage/ports'
 import { BaseService, type DatabaseClient, defaultDatabase } from './base-service'
-import { purgeMediaAssets } from './media-asset-purge'
 import type { ContentAccessible } from './mixins/content-accessible'
 import type { Versioned } from './mixins/versioned'
 import type {
-  AssetDownloadInfo,
   AssetKind,
   AssetSearchResult,
   CreateAssetRequest,
   MediaAssetWithRelations,
-  SearchOptions,
   UpdateAssetRequest,
 } from './types'
-import { VALID_ASSET_KINDS } from './types'
+
+/** The version shape the legacy `getDownloadRefForVersion` promised its callers. */
+export type AssetVersionDownloadRef = DownloadRef & {
+  filename: string
+  mimeType?: string
+  size?: number
+  expiresAt?: Date
+  versionNumber: number
+}
+
+/** How long a legacy `getDownloadRefForVersion` result claims to be valid when the ref carries no expiry. */
+const LEGACY_PREVIEW_TTL_MS = 10 * 60 * 1000
 
 /**
- * Enhanced service for managing MediaAsset operations
- * Directly extends BaseService and implements ContentAccessible and Versioned interfaces
+ * @deprecated See the file header. Delegates to `files/assets/`; deleted in Phase 10.
  */
 export class MediaAssetService
   extends BaseService<
@@ -61,28 +113,6 @@ export class MediaAssetService
 
   private _filesDownloadDeps?: DownloadDeps
 
-  private static _columns?: Record<string, PgColumn>
-
-  /**
-   * Column lookup used by the dynamic filter/sort paths.
-   *
-   * Memoized behind a getter rather than a static initializer, for the same
-   * reason `resources/search/record-search-sql.ts` uses a function instead of a
-   * module-level const: a static property initializer runs when the CLASS is
-   * DEFINED, i.e. at module evaluation. Under a test whose `@auxx/database`
-   * mock leaves `schema.MediaAsset` undefined, `getTableColumns` then throws
-   * `Cannot read properties of undefined (reading 'Symbol(drizzle:Columns)')`
-   * during collection — killing every test in the file before one runs, from an
-   * import-graph edge that has nothing to do with what the file is testing.
-   *
-   * The memoization is the point (one `getTableColumns` for the process, not
-   * one per query) — only the timing moved. Do not inline this back.
-   */
-  private static get columns(): Record<string, PgColumn> {
-    MediaAssetService._columns ??= getTableColumns(schema.MediaAsset)
-    return MediaAssetService._columns
-  }
-
   constructor(
     organizationId?: string,
     userId?: string,
@@ -95,84 +125,54 @@ export class MediaAssetService
     return 'asset'
   }
 
-  // ============= Base CRUD Implementation =============
-
   /**
-   * Create a new entity
+   * @deprecated Unused. Creation runs through `assets/asset-mutations.ts`, which
+   * validates the kind and stamps `updatedAt` itself. Present only because
+   * `BaseService` declares this abstract.
    */
+  protected async processCreateData(data: CreateAssetRequest): Promise<CreateAssetRequest> {
+    return data
+  }
+
+  // ============= Base CRUD =============
+
+  /** @deprecated Use `createAsset(ctx, deps, input)`. */
   async create(data: CreateAssetRequest, db?: DatabaseClient): Promise<MediaAsset> {
-    const processedData = await this.processCreateData(data)
-    const dbToUse = db || this.db
-
-    return this.requireRow(
-      await dbToUse.insert(schema.MediaAsset).values(processedData).returning(),
-      'create'
+    return this.unwrap(
+      await createAsset(this.filesCtx(db, data.organizationId), this.writeDeps(), {
+        kind: data.kind,
+        purpose: data.purpose,
+        name: data.name,
+        mimeType: data.mimeType,
+        size: data.size,
+        isPrivate: data.isPrivate,
+        createdById: data.createdById ?? this.userId,
+        expiresAt: data.expiresAt,
+      })
     )
   }
 
-  /**
-   * Get an entity by ID
-   */
+  /** @deprecated Use `getAsset(ctx, assetId)`. */
   async get(id: string, db?: DatabaseClient): Promise<MediaAsset | null> {
-    const dbToUse = db || this.db
-    const filters: SQL[] = [eq(schema.MediaAsset.id, id)]
-
-    if (this.organizationId) {
-      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-    filters.push(isNull(schema.MediaAsset.deletedAt))
-
-    const asset = await dbToUse.query.MediaAsset.findFirst({
-      where: and(...filters),
-    })
-    return asset ?? null
+    return this.unwrap(await getAsset(this.filesCtx(db), id))
   }
 
-  /**
-   * Get an entity with all relations
-   */
+  /** @deprecated Use `getAssetWithRelations(ctx, assetId)`. */
   async getWithRelations(id: string, db?: DatabaseClient): Promise<MediaAssetWithRelations | null> {
-    const dbToUse = db || this.db
-    const filters: SQL[] = [eq(schema.MediaAsset.id, id)]
-
-    if (this.organizationId) {
-      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-    filters.push(isNull(schema.MediaAsset.deletedAt))
-
-    const asset = await dbToUse.query.MediaAsset.findFirst({
-      where: and(...filters),
-      with: this.getRelationIncludes(),
-    })
-    return asset ?? null
+    return this.unwrap(await getAssetWithRelations(this.filesCtx(db), id))
   }
 
-  /**
-   * Update an entity
-   */
+  /** @deprecated Use `updateAsset(ctx, deps, assetId, input)`. */
   async update(id: string, data: UpdateAssetRequest, db?: DatabaseClient): Promise<MediaAsset> {
-    const dbToUse = db || this.db
-    const filters: SQL[] = [eq(schema.MediaAsset.id, id)]
-
-    if (this.organizationId) {
-      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-
-    return this.requireRow(
-      await dbToUse
-        .update(schema.MediaAsset)
-        .set({
-          ...data,
-          updatedAt: new Date(),
-        })
-        .where(and(...filters))
-        .returning(),
-      'update'
-    )
+    return this.unwrap(await updateAsset(this.filesCtx(db), this.writeDeps(), id, data))
   }
 
   /**
-   * List entities with pagination
+   * @deprecated Use `listAssets(ctx, options)`.
+   *
+   * The legacy `filters` bag was an arbitrary `Record<string, unknown>` resolved
+   * through `getTableColumns(schema.MediaAsset)`; only `kind` and `isPrivate`
+   * were ever passed, and only those two survive.
    */
   async list(
     options: {
@@ -180,407 +180,60 @@ export class MediaAssetService
       offset?: number
       sortBy?: string
       sortOrder?: 'asc' | 'desc'
-      filters?: any
+      filters?: { kind?: AssetKind; isPrivate?: boolean }
       includeDeleted?: boolean
     } = {}
   ): Promise<{ items: MediaAsset[]; total: number; hasMore: boolean }> {
-    const filters: SQL[] = []
+    const sortBy =
+      options.sortBy === 'createdAt' ||
+      options.sortBy === 'updatedAt' ||
+      options.sortBy === 'name' ||
+      options.sortBy === 'size'
+        ? options.sortBy
+        : undefined
 
-    if (this.organizationId) {
-      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-
-    if (!options.includeDeleted) {
-      filters.push(isNull(schema.MediaAsset.deletedAt))
-    }
-
-    // Apply additional filters
-    if (options.filters) {
-      for (const [key, value] of Object.entries(options.filters)) {
-        const column = MediaAssetService.columns[key]
-        if (column && value !== undefined && value !== null) {
-          filters.push(eq(column, value))
-        }
-      }
-    }
-
-    const sortColumn =
-      (options.sortBy ? MediaAssetService.columns[options.sortBy] : undefined) ??
-      schema.MediaAsset.createdAt
-    const orderBy = options.sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn)
-
-    const items = await this.db.query.MediaAsset.findMany({
-      where: and(...filters),
-      limit: options.limit || 50,
-      offset: options.offset || 0,
-      orderBy,
-    })
-
-    // For simplicity, not implementing total count - could be added with a separate query
-    return {
-      items,
-      total: items.length,
-      hasMore: items.length === (options.limit || 50),
-    }
+    return this.unwrap(
+      await listAssets(this.filesCtx(), {
+        kind: options.filters?.kind,
+        isPrivate: options.filters?.isPrivate,
+        limit: options.limit,
+        offset: options.offset,
+        sortBy,
+        sortOrder: options.sortOrder,
+        includeDeleted: options.includeDeleted,
+      })
+    )
   }
 
-  /**
-   * Count entities
-   */
-  async count(filters?: any): Promise<number> {
-    const whereFilters: SQL[] = []
+  // ============= Asset-specific operations =============
 
-    if (this.organizationId) {
-      whereFilters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-    whereFilters.push(isNull(schema.MediaAsset.deletedAt))
-
-    if (filters) {
-      for (const [key, value] of Object.entries(filters)) {
-        const column = MediaAssetService.columns[key]
-        if (column && value !== undefined && value !== null) {
-          whereFilters.push(eq(column, value))
-        }
-      }
-    }
-
-    const result = await this.db
-      .select({ count: sql`count(*)` })
-      .from(schema.MediaAsset)
-      .where(and(...whereFilters))
-
-    return Number(result[0]?.count || 0)
-  }
-
-  /**
-   * Process create data with asset-specific validation and defaults
-   */
-  protected async processCreateData(data: CreateAssetRequest): Promise<any> {
-    // Validate required fields
-    if (!data.kind) {
-      throw new Error('Asset kind is required')
-    }
-
-    // Validate asset kind
-    await this.validateAssetKind(data.kind)
-
-    const now = new Date()
-    return {
-      ...data,
-      organizationId: data.organizationId || this.requireOrganization(),
-      createdById: data.createdById || this.getUserId(),
-      isPrivate: data.isPrivate ?? true, // Default to private
-      updatedAt: now, // Set updatedAt to current time for new records
-    }
-  }
-
-  /**
-   * Get relation includes for asset entities
-   */
-  protected getRelationIncludes(): any {
-    return {
-      currentVersion: {
-        with: {
-          storageLocation: true,
-        },
-      },
-      versions: {
-        with: {
-          storageLocation: true,
-        },
-        orderBy: desc(schema.MediaAssetVersion.versionNumber),
-      },
-      attachments: true,
-      createdBy: {
-        columns: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
-    }
-  }
-
-  /**
-   * Get searchable fields for asset search
-   */
-  protected getSearchFields(): string[] {
-    return ['name', 'kind', 'mimeType']
-  }
-
-  // ============= ContentAccessible Mixin Implementation =============
-
-  /**
-   * Get version table name for asset entities
-   */
-  protected getVersionTableName(): any {
-    return schema.MediaAssetVersion
-  }
-
-  /**
-   * Get entity ID field name in version table
-   */
-  protected getEntityIdFieldName(): string {
-    return 'assetId'
-  }
-
-  // ============= Asset-Specific Operations =============
-
-  /**
-   * Soft delete an asset and clean up currentVersionId references
-   */
+  /** @deprecated Use `deleteAsset(tx, ctx, deps, assetId)`. */
   async delete(id: string, db?: DatabaseClient): Promise<void> {
-    if (db) {
-      // Already in transaction, work directly
-      const asset = await this.get(id, db)
-      if (!asset) {
-        throw new Error('Asset not found')
-      }
-
-      // Get all versions to clean up thumbnails
-      const versions = await db.query.MediaAssetVersion.findMany({
-        where: eq(schema.MediaAssetVersion.assetId, id),
-        columns: { id: true },
-      })
-
-      // Clean up thumbnails for each version (soft delete)
-      // Import ThumbnailService if needed
-      const { ThumbnailService } = await import('./thumbnail-service')
-      const thumbnailService = new ThumbnailService(
-        this.organizationId!,
-        this.userId || 'system',
-        db
+    return this.inTransaction(db, async (tx) =>
+      this.unwrap(
+        await deleteAsset(
+          tx,
+          this.filesCtx(tx),
+          { ...this.writeDeps(), thumbnails: this.thumbnails(tx) },
+          id
+        )
       )
-
-      for (const version of versions) {
-        await thumbnailService.deleteThumbnailsForSource(version.id)
-      }
-
-      // First, remove any references to this asset's versions as current versions
-      if (versions.length > 0) {
-        await db
-          .update(schema.MediaAsset)
-          .set({
-            currentVersionId: null,
-          })
-          .where(
-            inArray(
-              schema.MediaAsset.currentVersionId,
-              versions.map((v) => v.id)
-            )
-          )
-      }
-
-      // Then soft delete the asset
-      await db
-        .update(schema.MediaAsset)
-        .set({
-          deletedAt: new Date(),
-        })
-        .where(eq(schema.MediaAsset.id, id))
-    } else {
-      // Not in transaction, create one
-      return this.getTx(async (tx) => {
-        return this.delete(id, tx)
-      })
-    }
+    )
   }
 
-  /**
-   * List assets with filtering by kind
-   */
-  async listByKind(
-    kind?: AssetKind,
-    options: {
-      limit?: number
-      offset?: number
-      sortBy?: string
-      sortOrder?: 'asc' | 'desc'
-      includePrivate?: boolean
-    } = {}
-  ): Promise<{
-    items: MediaAsset[]
-    total: number
-    hasMore: boolean
-  }> {
-    const filters: any = {}
-
-    if (kind) {
-      filters.kind = kind
-    }
-
-    if (options.includePrivate === false) {
-      filters.isPrivate = false
-    }
-
-    return this.list({
-      limit: options.limit,
-      offset: options.offset,
-      sortBy: options.sortBy || 'createdAt',
-      sortOrder: options.sortOrder || 'desc',
-      filters,
-    })
-  }
-
-  /**
-   * Enhanced search with asset-specific relevance scoring
-   */
-  async search(query: string, options?: SearchOptions): Promise<AssetSearchResult[]> {
-    const filters: SQL[] = []
-
-    // Base where clause with organization scoping
-    if (this.organizationId) {
-      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-    filters.push(isNull(schema.MediaAsset.deletedAt))
-
-    // Search conditions (OR logic)
-    const searchConditions: SQL[] = [
-      eq(schema.MediaAsset.name, query), // Exact name match
-      ilike(schema.MediaAsset.name, `%${query}%`), // Name contains query
-      ilike(schema.MediaAsset.mimeType, `%${query}%`), // MIME type match
-    ]
-
-    // Kind match (enum equality only)
-    if (this.isAssetKind(query)) {
-      searchConditions.push(eq(schema.MediaAsset.kind, query.toUpperCase() as AssetKind))
-    }
-
-    const searchClause = or(...searchConditions)
-    if (searchClause) {
-      filters.push(searchClause)
-    }
-
-    // Apply additional filters
-    if (options?.kinds) {
-      filters.push(inArray(schema.MediaAsset.kind, options.kinds))
-    }
-    if (options?.sizeLimits?.min) {
-      filters.push(gte(schema.MediaAsset.size, options.sizeLimits.min))
-    }
-    if (options?.sizeLimits?.max) {
-      filters.push(lte(schema.MediaAsset.size, options.sizeLimits.max))
-    }
-    if (options?.dateLimits?.createdAfter) {
-      filters.push(gte(schema.MediaAsset.createdAt, options.dateLimits.createdAfter))
-    }
-    if (options?.dateLimits?.createdBefore) {
-      filters.push(lte(schema.MediaAsset.createdAt, options.dateLimits.createdBefore))
-    }
-
-    // Support cursor-based pagination for large datasets
-    const queryOptions: any = {
-      where: and(...filters),
-      with: options?.includeContent ? this.getRelationIncludes() : undefined,
-      limit: options?.limit || 50,
-      orderBy: desc(schema.MediaAsset.updatedAt),
-    }
-
-    // Use cursor pagination if provided, otherwise fall back to offset
-    if (options?.cursor) {
-      queryOptions.where = and(...filters, gt(schema.MediaAsset.id, options.cursor))
-    } else if (options?.offset) {
-      queryOptions.offset = options.offset
-    }
-
-    const results = await this.db.query.MediaAsset.findMany(queryOptions)
-
-    // Calculate relevance scores
-    return results
-      .map((asset): AssetSearchResult => {
-        let relevance = 0
-        const matchedFields: string[] = []
-
-        // Exact name match
-        if (asset.name && asset.name.toLowerCase() === query.toLowerCase()) {
-          relevance += 10
-          matchedFields.push('name')
-        }
-        // Name contains query
-        else if (asset.name?.toLowerCase().includes(query.toLowerCase())) {
-          relevance += 5
-          matchedFields.push('name')
-        }
-
-        // Kind match (exact only for enums)
-        if (asset.kind.toLowerCase() === query.toLowerCase()) {
-          relevance += 3
-          matchedFields.push('kind')
-        }
-
-        // MIME type match
-        if (asset.mimeType?.toLowerCase().includes(query.toLowerCase())) {
-          relevance += 2
-          matchedFields.push('mimeType')
-        }
-
-        return {
-          asset,
-          relevance: Math.max(relevance, 1),
-          matchedFields,
-          snippet: this.generateSearchSnippet(asset, query),
-        }
-      })
-      .sort((a, b) => b.relevance - a.relevance)
-  }
-
-  /**
-   * Convert asset to different kind with validation
-   */
-  async convertKind(id: string, newKind: AssetKind): Promise<MediaAsset> {
-    const asset = await this.get(id)
-    if (!asset) {
-      throw new Error('Asset not found')
-    }
-
-    // Validate kind conversion
-    await this.validateKindConversion(asset.kind as AssetKind, newKind)
-
-    return this.update(id, {
-      kind: newKind,
-    })
-  }
-
-  /**
-   * Convert temporary upload to permanent attachment.
-   *
-   * @param tx Optional active tx — when called from inside a transaction
-   *   (e.g. comment creation), pass it through so the read+update share the
-   *   tx connection instead of grabbing fresh ones from the pool.
-   */
+  /** @deprecated Use `convertTempAssetToPermanent(ctx, assetId, kind)`. */
   async convertTempToPermanent(
     mediaAssetId: string,
     newKind: AssetKind,
     organizationId: string,
     tx?: DatabaseClient
   ): Promise<void> {
-    const dbOrTx = tx ?? this.db
-    const mediaAsset = await dbOrTx.query.MediaAsset.findFirst({
-      where: and(
-        eq(schema.MediaAsset.id, mediaAssetId),
-        eq(schema.MediaAsset.organizationId, organizationId)
-      ),
-    })
-
-    if (!mediaAsset || mediaAsset.kind !== 'TEMP_UPLOAD') {
-      return // Already permanent or doesn't exist
-    }
-
-    // Convert temp upload to permanent attachment
-    await dbOrTx
-      .update(schema.MediaAsset)
-      .set({
-        kind: newKind,
-        expiresAt: null, // Clear expiration for permanent files
-      })
-      .where(eq(schema.MediaAsset.id, mediaAssetId))
+    return this.unwrap(
+      await convertTempAssetToPermanent(this.filesCtx(tx, organizationId), mediaAssetId, newKind)
+    )
   }
 
-  // ============= Enhanced Asset Operations =============
-
-  /**
-   * Create asset with initial version (transactional)
-   */
+  /** @deprecated Use `createAssetWithVersion(tx, ctx, deps, input)`. */
   async createWithVersion(
     data: CreateAssetRequest,
     storageLocationId: string
@@ -588,29 +241,24 @@ export class MediaAssetService
     asset: MediaAsset
     version: MediaAssetVersion & { storageLocation: StorageLocation }
   }> {
-    return this.getTx(async (tx) => {
-      // Create the asset record
-      const asset = await this.create(data, tx)
-
-      // Create initial version
-      const version = await this.createVersion(
-        asset.id,
-        storageLocationId,
-        {
-          size: data.size,
+    return this.inTransaction(undefined, async (tx) =>
+      this.unwrap(
+        await createAssetWithVersion(tx, this.filesCtx(tx, data.organizationId), this.writeDeps(), {
+          kind: data.kind,
+          purpose: data.purpose,
+          name: data.name,
           mimeType: data.mimeType,
-        },
-        tx
+          size: data.size,
+          isPrivate: data.isPrivate,
+          createdById: data.createdById ?? this.userId,
+          expiresAt: data.expiresAt,
+          storageLocationId,
+        })
       )
-
-      return { asset, version }
-    })
+    )
   }
 
-  /**
-   * Create MediaAsset from existing FolderFile
-   * Reuses createWithVersion for consistency
-   */
+  /** @deprecated Use `createAssetFromFolderFile(tx, ctx, deps, input)`. */
   async createFromFolderFile(
     fileId: string,
     fileVersionId?: string,
@@ -619,82 +267,19 @@ export class MediaAssetService
       skipIfExists?: boolean
     }
   ): Promise<MediaAsset> {
-    // Get file with version
-    const file = await this.db.query.FolderFile.findFirst({
-      where: eq(schema.FolderFile.id, fileId),
-      with: {
-        currentVersion: {
-          with: { storageLocation: true },
-        },
-        versions: fileVersionId
-          ? {
-              where: eq(schema.FileVersion.id, fileVersionId),
-              limit: 1,
-              with: { storageLocation: true },
-            }
-          : undefined,
-      },
-    })
-
-    if (!file) {
-      throw new Error('File not found')
-    }
-
-    const version = fileVersionId && file.versions?.[0] ? file.versions[0] : file.currentVersion
-
-    if (!version) {
-      throw new Error('File version not found')
-    }
-
-    // Check for existing MediaAsset if requested
-    // Only return existing if it has a version pointing to the same storage location
-    if (options?.skipIfExists) {
-      // A `where` inside `with` only filters the included relation rows, never which asset is
-      // returned, so the storage-location match has to be part of the asset's own where clause.
-      const matchingVersions = await this.db.query.MediaAssetVersion.findMany({
-        where: and(
-          eq(schema.MediaAssetVersion.storageLocationId, version.storageLocationId),
-          isNull(schema.MediaAssetVersion.deletedAt)
-        ),
-        columns: { id: true },
-      })
-
-      if (matchingVersions.length > 0) {
-        const existing = await this.db.query.MediaAsset.findFirst({
-          where: and(
-            eq(schema.MediaAsset.organizationId, file.organizationId),
-            isNull(schema.MediaAsset.deletedAt),
-            inArray(
-              schema.MediaAsset.currentVersionId,
-              matchingVersions.map((v) => v.id)
-            )
-          ),
+    return this.inTransaction(undefined, async (tx) =>
+      this.unwrap(
+        await createAssetFromFolderFile(tx, this.filesCtx(tx), this.writeDeps(), {
+          fileId,
+          fileVersionId,
+          kind: options?.kind,
+          skipIfExists: options?.skipIfExists,
         })
-        if (existing) return existing
-      }
-    }
-
-    // Use existing createWithVersion method
-    const { asset } = await this.createWithVersion(
-      {
-        kind: options?.kind || 'DOCUMENT',
-        purpose: 'ORIGINAL',
-        name: file.name,
-        mimeType: file.mimeType || 'application/octet-stream',
-        size: file.size ?? 0,
-        isPrivate: true,
-        organizationId: file.organizationId,
-        createdById: file.createdById ?? undefined,
-      },
-      version.storageLocationId
+      )
     )
-
-    return asset
   }
 
-  /**
-   * Update asset content (creates new version, transactional)
-   */
+  /** @deprecated Use `updateAssetContent(tx, ctx, deps, input)`. */
   async updateContent(
     id: string,
     storageLocationId: string,
@@ -706,292 +291,107 @@ export class MediaAssetService
     asset: MediaAsset
     version: MediaAssetVersion & { storageLocation: StorageLocation }
   }> {
-    return this.getTx(async (tx) => {
-      const asset = await this.get(id, tx)
-      if (!asset) {
-        throw new Error('Asset not found')
-      }
-
-      // Create new version
-      const version = await this.createVersion(id, storageLocationId, metadata, tx)
-
-      // Update asset metadata if provided
-      const updatedAsset = await this.update(
-        id,
-        {
-          ...(metadata.size && { size: metadata.size }),
-          ...(metadata.mimeType && { mimeType: metadata.mimeType }),
-        },
-        tx
+    return this.inTransaction(undefined, async (tx) =>
+      this.unwrap(
+        await updateAssetContent(tx, this.filesCtx(tx), this.writeDeps(), {
+          assetId: id,
+          storageLocationId,
+          size: metadata.size,
+          mimeType: metadata.mimeType,
+        })
       )
-
-      return { asset: updatedAsset, version }
-    })
-  }
-
-  /**
-   * Get asset download info with metadata
-   */
-  async getDownloadInfo(id: string): Promise<AssetDownloadInfo> {
-    const asset = await this.getWithRelations(id)
-    if (!asset) {
-      throw new Error('Asset not found')
-    }
-
-    const downloadRef = await this.getDownloadRef(id)
-
-    return {
-      url: downloadRef.type === 'url' ? downloadRef.url : undefined,
-      filename: asset.name || undefined,
-      mimeType: asset.mimeType || undefined,
-      size: asset.size || undefined,
-      expiresAt: downloadRef.type === 'url' ? downloadRef.expiresAt : undefined,
-    }
-  }
-
-  // ============= Asset Queries =============
-
-  /**
-   * Find assets by kind
-   */
-  async findByKind(kind: AssetKind): Promise<MediaAsset[]> {
-    const filters: SQL[] = []
-
-    if (this.organizationId) {
-      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-    filters.push(isNull(schema.MediaAsset.deletedAt))
-    filters.push(eq(schema.MediaAsset.kind, kind))
-
-    return this.db.query.MediaAsset.findMany({
-      where: and(...filters),
-      orderBy: desc(schema.MediaAsset.createdAt),
-    })
-  }
-
-  /**
-   * Get assets by MIME type
-   */
-  async findByMimeType(mimeType: string): Promise<MediaAsset[]> {
-    const filters: SQL[] = []
-
-    if (this.organizationId) {
-      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-    filters.push(isNull(schema.MediaAsset.deletedAt))
-    filters.push(ilike(schema.MediaAsset.mimeType, `%${mimeType}%`))
-
-    return this.db.query.MediaAsset.findMany({
-      where: and(...filters),
-      orderBy: desc(schema.MediaAsset.createdAt),
-    })
-  }
-
-  /**
-   * Find temporary/expired assets for cleanup
-   */
-  async findExpired(maxAgeHours = 24): Promise<MediaAsset[]> {
-    const cutoffDate = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000)
-    const filters: SQL[] = []
-
-    if (this.organizationId) {
-      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-    filters.push(isNull(schema.MediaAsset.deletedAt))
-    filters.push(eq(schema.MediaAsset.kind, 'TEMP_UPLOAD'))
-    filters.push(lt(schema.MediaAsset.createdAt, cutoffDate))
-
-    return this.db.query.MediaAsset.findMany({
-      where: and(...filters),
-      orderBy: asc(schema.MediaAsset.createdAt),
-    })
-  }
-
-  /**
-   * Get large assets (for cleanup)
-   */
-  async findLargeAssets(minSizeBytes: number): Promise<MediaAsset[]> {
-    const filters: SQL[] = []
-
-    if (this.organizationId) {
-      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-    filters.push(isNull(schema.MediaAsset.deletedAt))
-    filters.push(gte(schema.MediaAsset.size, minSizeBytes))
-
-    return this.db.query.MediaAsset.findMany({
-      where: and(...filters),
-      orderBy: desc(schema.MediaAsset.size),
-    })
-  }
-
-  /**
-   * Get orphaned assets (assets without a current version)
-   */
-  async findOrphanedAssets(): Promise<MediaAsset[]> {
-    const filters: SQL[] = []
-
-    if (this.organizationId) {
-      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-    filters.push(isNull(schema.MediaAsset.deletedAt))
-    filters.push(isNull(schema.MediaAsset.currentVersionId))
-
-    return this.db.query.MediaAsset.findMany({
-      where: and(...filters),
-    })
-  }
-
-  /**
-   * Get public assets
-   */
-  async findPublicAssets(): Promise<MediaAsset[]> {
-    const filters: SQL[] = []
-
-    if (this.organizationId) {
-      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-    filters.push(isNull(schema.MediaAsset.deletedAt))
-    filters.push(eq(schema.MediaAsset.isPrivate, false))
-
-    return this.db.query.MediaAsset.findMany({
-      where: and(...filters),
-      orderBy: desc(schema.MediaAsset.createdAt),
-    })
-  }
-
-  // ============= Specialized Asset Operations =============
-
-  /**
-   * Process email attachment assets
-   */
-  async processEmailAttachment(assetId: string): Promise<MediaAsset> {
-    const asset = await this.get(assetId)
-    if (!asset || asset.kind !== 'EMAIL_ATTACHMENT') {
-      throw new Error('Invalid email attachment asset')
-    }
-
-    // TODO: Implement virus scanning, content indexing, etc.
-    // This would integrate with external services for security scanning
-
-    // For now, just mark as processed by updating the timestamp
-    return this.update(assetId, {
-      // Could add metadata about processing status
-    })
-  }
-
-  /**
-   * Generate thumbnail for image/video assets
-   */
-  async generateThumbnail(
-    assetId: string,
-    _options: {
-      width?: number
-      height?: number
-      quality?: number
-    } = {}
-  ): Promise<MediaAsset> {
-    const asset = await this.get(assetId)
-    if (!asset) {
-      throw new Error('Asset not found')
-    }
-
-    // TODO: Implement actual thumbnail generation
-    // This would use image processing libraries like Sharp
-    // For now, throw an error since we can't create assets without storage
-    throw new Error(
-      'Thumbnail generation not yet implemented - requires actual file processing and storage upload'
     )
   }
 
-  /**
-   * Extract metadata from asset
-   */
-  async extractMetadata(assetId: string): Promise<Record<string, any>> {
-    const asset = await this.getWithRelations(assetId)
-    if (!asset) {
-      throw new Error('Asset not found')
-    }
+  // ============= Asset queries =============
 
-    const metadata: Record<string, any> = {
-      id: asset.id,
-      kind: asset.kind,
-      name: asset.name,
-      mimeType: asset.mimeType,
-      size: asset.size?.toString(),
-      isPrivate: asset.isPrivate,
-      createdAt: asset.createdAt,
-      updatedAt: asset.updatedAt,
-    }
-
-    // Add version information
-    if (asset.currentVersion) {
-      metadata.currentVersion = {
-        versionNumber: asset.currentVersion.versionNumber,
-        storageLocation: asset.currentVersion.storageLocation,
-      }
-    }
-
-    // TODO: Extract file-specific metadata (EXIF, document properties, etc.)
-    // This would use libraries like exifr for images, pdf-parse for PDFs, etc.
-
-    return metadata
+  /** @deprecated Use `findAssetsByKind(ctx, kind)`. */
+  async findByKind(kind: AssetKind): Promise<MediaAsset[]> {
+    return this.unwrap(await findAssetsByKind(this.filesCtx(), kind))
   }
 
-  // ============= ContentAccessible Implementation =============
+  /**
+   * @deprecated Use `findExpiredAssets(ctx, createdBefore)`.
+   *
+   * The cutoff is computed here rather than inside the query, because the
+   * extracted read takes an instant instead of reading the clock itself.
+   */
+  async findExpired(maxAgeHours = 24): Promise<MediaAsset[]> {
+    const createdBefore = new Date(this.writeDeps().now().getTime() - maxAgeHours * 60 * 60 * 1000)
+    return this.unwrap(await findExpiredAssets(this.filesCtx(), createdBefore))
+  }
 
   /**
-   * Get the binary content of an entity
+   * @deprecated Zero callers, and it never worked: `MediaAsset` has no checksum
+   * column, so the body below ignores its argument and returns whichever live
+   * asset the organization filter happens to yield first. It is kept only
+   * because `ContentAccessible` declares it (`FileService` has a real
+   * implementation — `FolderFile.checksum` exists) and is deleted with this
+   * class. It was deliberately NOT ported to `files/assets/`: porting it would
+   * launder the bug into the new module.
+   */
+  async findByChecksum(_checksum: string): Promise<MediaAsset | null> {
+    const asset = await this.db.query.MediaAsset.findFirst({
+      where: and(
+        eq(schema.MediaAsset.organizationId, this.requireOrganization()),
+        isNull(schema.MediaAsset.deletedAt)
+      ),
+    })
+    return (asset as MediaAsset | undefined) ?? null
+  }
+
+  // ============= Content access =============
+
+  /**
+   * @deprecated Still on `StorageManager` rather than the `StoragePort`.
+   *
+   * `assets/` has no content-read function yet: PR 5a's scope was the CRUD,
+   * version and download surface, and `getContent` / `streamContent` need
+   * `StoragePort.getObject` / `.streamObject` plus the bucket-from-the-row rule
+   * that `download.ts` implements. That is the next extraction, not this one —
+   * which is also why `getStorageManager` survives despite the plan listing it
+   * as deletable.
    */
   async getContent(id: string): Promise<Buffer> {
-    const entity = await this.get(id)
-    if (!entity) {
-      throw new Error(`${this.getEntityName()} not found`)
-    }
-
-    const storageManager = await this.getStorageManager()
     const currentVersion = await this.getCurrentVersion(id)
-
-    if (!currentVersion || !currentVersion.storageLocationId) {
+    if (!currentVersion?.storageLocationId) {
       throw new Error(`No storage location found for ${this.getEntityName()}`)
     }
-
+    const storageManager = await this.getStorageManager()
     return storageManager.getContent(currentVersion.storageLocationId)
   }
 
+  /** @deprecated Same caveat as {@link getContent}. */
+  async streamContent(id: string): Promise<NodeJS.ReadableStream> {
+    const currentVersion = await this.getCurrentVersion(id)
+    if (!currentVersion?.storageLocationId) {
+      throw new Error(`No storage location found for ${this.getEntityName()}`)
+    }
+    const storageManager = await this.getStorageManager()
+    return storageManager.streamContent(currentVersion.storageLocationId)
+  }
+
+  // ============= Download =============
+
   /**
-   * Get a download URL with expiry information.
-   *
-   * @deprecated Facade over
-   * {@link import('../assets/download').getAssetDownloadRef}. Call that
-   * directly with a `FilesCtx` and a `StoragePort`; this wrapper exists only so
-   * the ~15 existing call sites keep working while the function becomes the
-   * real implementation, and is deleted with the rest of `MediaAssetService`
-   * in Phase 5.
-   *
-   * Behaviour is unchanged except for the error type: it now throws an
-   * `AuxxError` subclass (`NotFoundError` for a missing asset/version/location)
-   * instead of a bare `Error`, so `auxxErrorMiddleware` can map it to a real
-   * status instead of a 500.
+   * @deprecated Use `getAssetDownloadRef(ctx, deps, assetId)` and read `.url`
+   * off the ref — it is the single accessor that replaced this method,
+   * `getDownloadRefForVersion`, `getDownloadUrl`, `getDownloadUrls`,
+   * `getDownloadInfo` and the private `downloadUrlFor`.
    */
   async getDownloadRef(id: string): Promise<DownloadRef> {
-    const result = await getAssetDownloadRef(this.filesCtx(), this.filesDownloadDeps(), id)
-    if (result.isErr()) {
-      throw result.error
-    }
-    return result.value
+    return this.unwrap(await getAssetDownloadRef(this.filesCtx(), this.filesDownloadDeps(), id))
   }
 
   /**
-   * Get download reference for a specific version with enhanced metadata
+   * @deprecated Use `getAssetDownloadRef(ctx, deps, assetId, { versionId })`.
    *
-   * Retrieves a download reference for a specific version of an asset with additional
-   * metadata needed for preview functionality. Supports different version specifiers.
-   *
-   * @param entityId - ID of the asset to get download reference for
-   * @param opts - Options including version specifier and disposition
-   * @returns Promise resolving to enhanced download reference with metadata
-   * @throws Error if asset not found, version not found, or no storage location available
+   * Two id spaces meet here and the extracted function only speaks one of them:
+   * this method addresses a version by its **number** (or the words `current` /
+   * `latest`), while `getAssetDownloadRef` takes a version **id**. So the
+   * number is resolved to a row first, and the row's id is what gets passed
+   * down. The extra metadata this returns — filename, size, `versionNumber` —
+   * is read off the rows that resolution already loaded.
    */
   async getDownloadRefForVersion(
     entityId: string,
@@ -999,71 +399,51 @@ export class MediaAssetService
       version?: number | 'latest' | 'current'
       disposition?: 'inline' | 'attachment'
     } = {}
-  ): Promise<
-    DownloadRef & {
-      filename: string
-      mimeType?: string
-      size?: number
-      expiresAt?: Date
-      versionNumber: number
-    }
-  > {
+  ): Promise<AssetVersionDownloadRef> {
     const { version = 'current', disposition = 'inline' } = opts
+    const ctx = this.filesCtx()
 
     const entity = await this.get(entityId)
     if (!entity) {
       throw new Error(`${this.getEntityName()} not found`)
     }
 
-    // Get the appropriate version based on the version parameter
-    let targetVersion: (MediaAssetVersion & { storageLocation: any }) | null = null
+    const targetVersion =
+      version === 'current'
+        ? this.unwrap(await getAssetCurrentVersion(ctx, entityId))
+        : version === 'latest'
+          ? this.unwrap(await getLatestAssetVersion(ctx, entityId))
+          : this.unwrap(await getAssetVersionByNumber(ctx, entityId, version))
 
-    if (version === 'current') {
-      targetVersion = await this.getCurrentVersion(entityId)
-    } else if (version === 'latest') {
-      targetVersion = await this.getLatestVersion(entityId)
-    } else if (typeof version === 'number') {
-      targetVersion = await this.getVersion(entityId, version)
-    }
-
-    if (!targetVersion || !targetVersion.storageLocationId) {
+    if (!targetVersion?.storageLocationId) {
       throw new Error(`Version ${version} not found for ${this.getEntityName()}`)
     }
 
-    const storageManager = await this.getStorageManager()
-    const downloadRef = await storageManager.getDownloadRef({
-      locationId: targetVersion.storageLocationId,
-      disposition,
-      filename: entity.name || undefined,
-      mimeType: entity.mimeType || undefined,
-    })
+    const downloadRef = this.unwrap(
+      await getAssetDownloadRef(ctx, this.filesDownloadDeps(), entityId, {
+        versionId: targetVersion.id,
+        disposition,
+      })
+    )
 
-    // Return enhanced download reference with metadata
+    const fallbackExpiry = new Date(this.writeDeps().now().getTime() + LEGACY_PREVIEW_TTL_MS)
     return {
       ...downloadRef,
       filename: entity.name || `${entity.kind.toLowerCase()}_${entity.id}`,
       mimeType: entity.mimeType || undefined,
       size: entity.size || undefined,
       versionNumber: targetVersion.versionNumber,
-      // Use existing expiresAt if it's a URL type, otherwise set a default expiration
       expiresAt:
-        downloadRef.type === 'url'
-          ? downloadRef.expiresAt || new Date(Date.now() + 10 * 60 * 1000) // 10 minutes default
-          : new Date(Date.now() + 10 * 60 * 1000),
+        downloadRef.type === 'url' ? (downloadRef.expiresAt ?? fallbackExpiry) : fallbackExpiry,
     }
   }
 
   /**
-   * Get download URL as string (convenience method).
+   * @deprecated Use `getAssetDownloadRef(...)` and read `.url`.
    *
-   * @deprecated Facade over
-   * {@link import('../assets/download').getAssetDownloadRef}. Call that
-   * directly and read `.url` off the {@link DownloadRef}; deleted with the rest
-   * of `MediaAssetService` in Phase 5.
-   *
-   * Returns `null` on every failure, exactly as before — this is a
-   * best-effort convenience used to fill avatar/thumbnail URLs into list
-   * payloads, and a throw there would fail a whole page for one broken row.
+   * Returns `null` on every failure, exactly as before — this is a best-effort
+   * convenience used to fill avatar/thumbnail URLs into list payloads, and a
+   * throw there would fail a whole page for one broken row.
    */
   async getDownloadUrl(id: string): Promise<string | null> {
     try {
@@ -1078,11 +458,17 @@ export class MediaAssetService
   }
 
   /**
-   * Batch-resolve download URLs for many asset ids in a fixed number of DB
-   * round-trips (one for assets, up to two for their versions) instead of the
-   * per-id `getDownloadUrl` fan-out. Returns a Map keyed by id; ids that are
-   * missing, deleted, or have no storage location resolve to null. Presigning
-   * stays per-asset but is an in-memory signing op, not a DB call.
+   * @deprecated Use `resolveAssetDownloadRef(deps, asset, version)` over rows
+   * the caller already batched.
+   *
+   * Resolves many asset ids in a fixed number of round-trips (one for the
+   * assets, up to two for their versions) instead of the per-id `getDownloadUrl`
+   * fan-out. The URL policy itself is no longer duplicated here: the private
+   * `downloadUrlFor` this used to call is gone, and each row now goes through
+   * `resolveAssetDownloadRef` — the same tail `getAssetDownloadRef` runs.
+   *
+   * Ids that are missing, deleted, or whose storage location cannot name its
+   * bucket resolve to `null`.
    */
   async getDownloadUrls(ids: string[]): Promise<Map<string, string | null>> {
     const result = new Map<string, string | null>()
@@ -1092,25 +478,25 @@ export class MediaAssetService
     const filters: SQL[] = [
       inArray(schema.MediaAsset.id, unique),
       isNull(schema.MediaAsset.deletedAt),
+      eq(schema.MediaAsset.organizationId, this.requireOrganization()),
     ]
-    if (this.organizationId) {
-      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-    const assets = await this.db.query.MediaAsset.findMany({ where: and(...filters) })
+    const assets = (await this.db.query.MediaAsset.findMany({
+      where: and(...filters),
+    })) as MediaAsset[]
 
     // Resolve every asset's current version in at most two queries: one by
     // explicit currentVersionId, one by assetId (latest) for assets without it.
-    const withCurrent = assets.filter((a) => (a as any).currentVersionId)
-    const withoutCurrent = assets.filter((a) => !(a as any).currentVersionId)
-    const versionById = new Map<string, any>()
-    const latestByAsset = new Map<string, any>()
+    const withCurrent = assets.filter((asset) => asset.currentVersionId)
+    const withoutCurrent = assets.filter((asset) => !asset.currentVersionId)
+    const versionById = new Map<string, VersionWithLocation>()
+    const latestByAsset = new Map<string, VersionWithLocation>()
 
     const [byId, byAsset] = await Promise.all([
       withCurrent.length
         ? this.db.query.MediaAssetVersion.findMany({
             where: inArray(
               schema.MediaAssetVersion.id,
-              withCurrent.map((a) => (a as any).currentVersionId as string)
+              withCurrent.map((asset) => asset.currentVersionId as string)
             ),
             with: { storageLocation: true },
           })
@@ -1119,116 +505,103 @@ export class MediaAssetService
         ? this.db.query.MediaAssetVersion.findMany({
             where: inArray(
               schema.MediaAssetVersion.assetId,
-              withoutCurrent.map((a) => a.id)
+              withoutCurrent.map((asset) => asset.id)
             ),
             orderBy: desc(schema.MediaAssetVersion.versionNumber),
             with: { storageLocation: true },
           })
         : Promise.resolve([]),
     ])
-    for (const v of byId) versionById.set(v.id, v)
-    for (const v of byAsset) {
+    for (const version of byId as VersionWithLocation[]) versionById.set(version.id, version)
+    for (const version of byAsset as VersionWithLocation[]) {
       // ordered by version desc → first seen per asset is the latest
-      if (!latestByAsset.has(v.assetId)) latestByAsset.set(v.assetId, v)
+      if (!latestByAsset.has(version.assetId)) latestByAsset.set(version.assetId, version)
     }
 
+    const deps = this.filesDownloadDeps()
     await Promise.all(
       assets.map(async (entity) => {
-        const version = (entity as any).currentVersionId
-          ? versionById.get((entity as any).currentVersionId)
+        const version = entity.currentVersionId
+          ? versionById.get(entity.currentVersionId)
           : latestByAsset.get(entity.id)
-        result.set(entity.id, await this.downloadUrlFor(entity, version))
+        if (!version) {
+          result.set(entity.id, null)
+          return
+        }
+        try {
+          const ref = await resolveAssetDownloadRef(deps, entity, version)
+          result.set(entity.id, ref.type === 'url' ? ref.url : null)
+        } catch {
+          result.set(entity.id, null)
+        }
       })
     )
     for (const id of unique) if (!result.has(id)) result.set(id, null)
     return result
   }
 
-  /**
-   * Turn an already-loaded asset + its current version into a download URL.
-   * Public assets with a durable external URL return it directly; otherwise a
-   * presigned URL is generated. Shared by `getDownloadUrl`/`getDownloadUrls`
-   * so neither re-fetches the entity or version.
-   */
-  private async downloadUrlFor(entity: MediaAsset, currentVersion: any): Promise<string | null> {
-    if (!currentVersion || !currentVersion.storageLocationId) return null
-    if (!entity.isPrivate && currentVersion.storageLocation?.externalUrl) {
-      return currentVersion.storageLocation.externalUrl
-    }
-    const storageManager = await this.getStorageManager()
-    const downloadRef = await storageManager.getDownloadRef({
-      locationId: currentVersion.storageLocationId,
-      filename: entity.name || undefined,
-      mimeType: entity.mimeType || undefined,
-    })
-    return downloadRef.type === 'url' ? downloadRef.url : null
+  // ============= Versions =============
+
+  /** @deprecated Use `getAssetCurrentVersion(ctx, assetId)`. */
+  async getCurrentVersion(entityId: string): Promise<AssetVersionWithLocation | null> {
+    return this.unwrap(await getAssetCurrentVersion(this.filesCtx(), entityId))
   }
 
-  /**
-   * Resolve the current version for an already-loaded asset without re-fetching
-   * the asset row (unlike `getCurrentVersion`, which re-`get`s by id).
-   */
-  private async resolveCurrentVersion(entity: MediaAsset): Promise<any> {
-    if ((entity as any).currentVersionId) {
-      return this.db.query.MediaAssetVersion.findFirst({
-        where: eq(schema.MediaAssetVersion.id, (entity as any).currentVersionId),
-        with: { storageLocation: true },
-      })
-    }
-    return this.db.query.MediaAssetVersion.findFirst({
-      where: eq(schema.MediaAssetVersion.assetId, entity.id),
-      orderBy: desc(schema.MediaAssetVersion.versionNumber),
-      with: { storageLocation: true },
-    })
+  /** @deprecated Use `createAssetVersion(tx, ctx, input)`. */
+  async createVersion(
+    entityId: string,
+    storageLocationId: string,
+    metadata: { size?: number; mimeType?: string; metadata?: Record<string, unknown> } = {},
+    db?: DatabaseClient
+  ): Promise<MediaAssetVersion & { storageLocation: StorageLocation }> {
+    return this.inTransaction(db, async (tx) =>
+      this.unwrap(
+        await createAssetVersion(tx, this.filesCtx(tx), {
+          assetId: entityId,
+          storageLocationId,
+          size: metadata.size,
+          mimeType: metadata.mimeType,
+          metadata: metadata.metadata,
+        })
+      )
+    )
   }
 
-  /**
-   * Stream the content of an entity
-   */
-  async streamContent(id: string): Promise<NodeJS.ReadableStream> {
-    const entity = await this.get(id)
-    if (!entity) {
-      throw new Error(`${this.getEntityName()} not found`)
-    }
-
-    const storageManager = await this.getStorageManager()
-    const currentVersion = await this.getCurrentVersion(id)
-
-    if (!currentVersion || !currentVersion.storageLocationId) {
-      throw new Error(`No storage location found for ${this.getEntityName()}`)
-    }
-
-    return storageManager.streamContent(currentVersion.storageLocationId)
+  /** @deprecated Use `getAssetVersions(ctx, assetId)`. */
+  async getVersions(entityId: string): Promise<AssetVersionWithLocation[]> {
+    return this.unwrap(await getAssetVersions(this.filesCtx(), entityId))
   }
 
-  /**
-   * Find entity by content checksum
-   */
-  async findByChecksum(checksum: string): Promise<MediaAsset | null> {
-    const filters: SQL[] = []
-
-    if (this.organizationId) {
-      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
-    }
-    filters.push(isNull(schema.MediaAsset.deletedAt))
-    // Note: checksum field might need to be added to MediaAsset table or accessed via relations
-    // For now, keeping the logic but this may need adjustment based on actual schema
-
-    const asset = await this.db.query.MediaAsset.findFirst({
-      where: and(...filters),
-    })
-    return asset ?? null
+  /** @deprecated Use `getAssetVersionByNumber(ctx, assetId, versionNumber)`. */
+  async getVersion(
+    entityId: string,
+    versionNumber: number
+  ): Promise<AssetVersionWithLocation | null> {
+    return this.unwrap(await getAssetVersionByNumber(this.filesCtx(), entityId, versionNumber))
   }
 
-  /**
-   * Get the current version of an entity
-   */
-  async getCurrentVersion(entityId: string): Promise<any> {
-    const entity = await this.get(entityId)
-    if (!entity) {
-      throw new Error(`${this.getEntityName()} not found`)
-    }
-    return this.resolveCurrentVersion(entity)
+  /** @deprecated Use `getLatestAssetVersion(ctx, assetId)`. */
+  async getLatestVersion(entityId: string): Promise<AssetVersionWithLocation | null> {
+    return this.unwrap(await getLatestAssetVersion(this.filesCtx(), entityId))
+  }
+
+  /** @deprecated Use `restoreAssetVersion(ctx, deps, assetId, versionNumber)`. */
+  async restoreVersion(entityId: string, versionNumber: number): Promise<MediaAsset> {
+    return this.unwrap(
+      await restoreAssetVersion(this.filesCtx(), this.writeDeps(), entityId, versionNumber)
+    )
+  }
+
+  /** @deprecated Use `deleteAssetVersion(ctx, deps, assetId, versionNumber)`. */
+  async deleteVersion(entityId: string, versionNumber: number): Promise<void> {
+    return this.unwrap(
+      await deleteAssetVersion(
+        this.filesCtx(),
+        { thumbnails: this.thumbnails(this.db) },
+        entityId,
+        versionNumber
+      )
+    )
   }
 
   // ============= Bridge to the functional `files/` surface =============
@@ -1240,35 +613,56 @@ export class MediaAssetService
    * `FilesCtx` carries no actor, so `this.userId` is deliberately not forwarded
    * — a function that records one takes it in its own `input` instead. That
    * matters here: many production sites construct `new MediaAssetService(orgId)`
-   * with no actor at all (a worker resolving a thumbnail URL, for one), and an
-   * earlier draft of this facade had to fabricate `''` to satisfy the type.
+   * with no actor at all (a worker resolving a thumbnail URL, for one).
    *
    * `organizationId` is the opposite case: it is in the `WHERE` clause, so a
    * missing one must throw rather than silently widen the query to every tenant.
+   *
+   * @param db Override client — a transaction the caller already opened.
+   * @param organizationId Override scope, for the two methods that take one as
+   *   an argument rather than from the constructor.
    */
-  private filesCtx(): FilesCtx {
+  private filesCtx(db?: DatabaseClient, organizationId?: string): FilesCtx {
     return {
-      db: this.db,
-      organizationId: this.requireOrganization(),
+      db: db ?? this.db,
+      organizationId: organizationId ?? this.requireOrganization(),
     }
   }
 
   /**
-   * The storage collaborator for the extracted download read, lazily built and
-   * cached per service instance.
+   * The clock the extracted writes stamp `updatedAt` / `deletedAt` from.
    *
-   * Statically imported. It could not be, until PR 3a-prime: `storage/ports.ts`
-   * reaches `storage-location-service.ts`, which held a module-scope
-   * `import { database as db }` named binding, and pulling that into this
-   * file's static import graph re-armed the collection hazard documented on
-   * `base-service.ts`. #1823 replaced that binding with the same namespace
-   * accessor, and PR 3c deleted the file outright — nothing under
-   * `files/storage/**` reaches the database at module scope any more — so the
-   * edge is safe and the dynamic import, plus the `async` it forced onto every
-   * caller, is gone.
+   * A real `FilesDeps.now` here, so production behaviour is `new Date()` while
+   * the extracted functions stay testable with a frozen clock.
+   */
+  private writeDeps(): AssetWriteDeps {
+    return { now: () => new Date() }
+  }
+
+  /**
+   * The thumbnail sweep the delete paths take as a parameter.
    *
-   * Still lazy, but only to avoid resolving credentials for a service instance
-   * that never downloads anything.
+   * Still constructs a `ThumbnailService` — but *here*, at the composition site,
+   * rather than inside the delete body where it used to live. When PR 5f lands
+   * `files/thumbnails/`, only this method changes.
+   */
+  private thumbnails(db: DatabaseClient): ThumbnailCleanupPort {
+    const organizationId = this.requireOrganization()
+    const userId = this.userId || 'system'
+    return {
+      deleteThumbnailsForSource: async (sourceVersionId: string) => {
+        const { ThumbnailService } = await import('./thumbnail-service')
+        await new ThumbnailService(organizationId, userId, db).deleteThumbnailsForSource(
+          sourceVersionId
+        )
+      },
+    }
+  }
+
+  /**
+   * The storage collaborator for the extracted download reads, lazily built and
+   * cached per service instance, so a service that never downloads anything
+   * never resolves credentials.
    */
   private filesDownloadDeps(): DownloadDeps {
     if (!this._filesDownloadDeps) {
@@ -1278,7 +672,10 @@ export class MediaAssetService
   }
 
   /**
-   * Get storage manager for content operations (lazy singleton)
+   * Get storage manager for content operations (lazy singleton).
+   *
+   * Survives PR 5a because `getContent` / `streamContent` still go through it —
+   * see the note on {@link getContent}.
    */
   protected async getStorageManager(): Promise<any> {
     if (!this._storageManager) {
@@ -1290,302 +687,42 @@ export class MediaAssetService
     return this._storageManager
   }
 
-  // ============= Versioned Implementation =============
-
   /**
-   * Create a new version for an entity
+   * Unwrap a `Result` into the throw-based contract this class has always had.
+   *
+   * The thrown value is an `AuxxError` subclass rather than the bare `Error` the
+   * old bodies threw, which is the one deliberate change to this facade's
+   * behaviour.
    */
-  async createVersion(
-    entityId: string,
-    storageLocationId: string,
-    metadata: any = {},
-    db?: DatabaseClient
-  ): Promise<MediaAssetVersion & { storageLocation: StorageLocation }> {
-    if (db) {
-      // Already in transaction, work directly with it
-      const entity = await this.get(entityId, db)
-      if (!entity) {
-        throw new Error(`${this.getEntityName()} not found`)
-      }
-
-      // Get the next version number within transaction
-      const lastVersion = await db.query.MediaAssetVersion.findFirst({
-        where: eq(schema.MediaAssetVersion.assetId, entityId),
-        orderBy: desc(schema.MediaAssetVersion.versionNumber),
-        columns: { versionNumber: true },
-      })
-
-      const versionNumber = (lastVersion?.versionNumber || 0) + 1
-
-      // Get storage location details
-      const storageLocation = await db.query.StorageLocation.findFirst({
-        where: and(
-          eq(schema.StorageLocation.id, storageLocationId),
-          isNull(schema.StorageLocation.deletedAt)
-        ),
-      })
-
-      if (!storageLocation) {
-        throw new Error('Storage location not found')
-      }
-
-      // Create the new version
-      const version = this.requireRow(
-        await db
-          .insert(schema.MediaAssetVersion)
-          .values({
-            assetId: entityId,
-            versionNumber,
-            storageLocationId,
-            size: storageLocation.size,
-            mimeType: storageLocation.mimeType,
-            ...metadata,
-          })
-          .returning(),
-        'create version'
-      )
-
-      // Update the entity's current version reference
-      await db
-        .update(schema.MediaAsset)
-        .set({
-          currentVersionId: version.id,
-        })
-        .where(eq(schema.MediaAsset.id, entityId))
-
-      return { ...version, storageLocation }
-    } else {
-      // Not in transaction, create one
-      const entity = await this.get(entityId)
-      if (!entity) {
-        throw new Error(`${this.getEntityName()} not found`)
-      }
-
-      return this.getTx(async (tx) => {
-        return this.createVersion(entityId, storageLocationId, metadata, tx)
-      })
-    }
+  private unwrap<T>(result: Result<T, AuxxError>): T {
+    if (result.isErr()) throw result.error
+    return result.value
   }
 
   /**
-   * Get all versions for an entity
+   * Run `fn` inside a transaction, reproducing `BaseService.getTx` exactly.
+   *
+   * This is the one place the deprecated facade casts, and it is unavoidable
+   * here: `BaseService.db` and the legacy `db?` parameters are
+   * `Database | Transaction`, while the extracted writes require a real
+   * `Transaction` — which is the entire point of that parameter, since a pool in
+   * the slot silently stops a multi-statement write from being atomic. Isolating
+   * the cast to this method keeps every new call site honest, and Phase 6 deletes
+   * it along with `getTx`.
+   *
+   * @param client A client the caller says is already transactional; when
+   *   present, `fn` runs on it directly, matching the legacy `if (db) … else
+   *   getTx(…)` branch.
    */
-  async getVersions(entityId: string): Promise<(MediaAssetVersion & { storageLocation: any })[]> {
-    const entity = await this.get(entityId)
-    if (!entity) {
-      throw new Error(`${this.getEntityName()} not found`)
-    }
-
-    return this.db.query.MediaAssetVersion.findMany({
-      where: eq(schema.MediaAssetVersion.assetId, entityId),
-      with: {
-        storageLocation: true,
-      },
-      orderBy: desc(schema.MediaAssetVersion.versionNumber),
-    })
-  }
-
-  /**
-   * Get a specific version by number
-   */
-  async getVersion(
-    entityId: string,
-    versionNumber: number
-  ): Promise<(MediaAssetVersion & { storageLocation: any }) | null> {
-    const entity = await this.get(entityId)
-    if (!entity) {
-      throw new Error(`${this.getEntityName()} not found`)
-    }
-
-    const version = await this.db.query.MediaAssetVersion.findFirst({
-      where: and(
-        eq(schema.MediaAssetVersion.assetId, entityId),
-        eq(schema.MediaAssetVersion.versionNumber, versionNumber)
-      ),
-      with: {
-        storageLocation: true,
-      },
-    })
-    return version ?? null
-  }
-
-  /**
-   * Restore an entity to a specific version
-   */
-  async restoreVersion(entityId: string, versionNumber: number): Promise<MediaAsset> {
-    const version = await this.getVersion(entityId, versionNumber)
-    if (!version) {
-      throw new Error(`Version ${versionNumber} not found for ${this.getEntityName()}`)
-    }
-
-    return this.requireRow(
-      await this.db
-        .update(schema.MediaAsset)
-        .set({
-          currentVersionId: version.id,
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.MediaAsset.id, entityId))
-        .returning(),
-      'restore version'
-    )
-  }
-
-  /**
-   * Delete a specific version (but not the current one)
-   */
-  async deleteVersion(entityId: string, versionNumber: number): Promise<void> {
-    const entity = await this.get(entityId)
-    if (!entity) {
-      throw new Error(`${this.getEntityName()} not found`)
-    }
-
-    const version = await this.getVersion(entityId, versionNumber)
-    if (!version) {
-      throw new Error(`Version ${versionNumber} not found`)
-    }
-
-    // Don't allow deletion of the current version
-    if ((entity as any).currentVersionId === version.id) {
-      throw new Error('Cannot delete the current version')
-    }
-
-    // Clean up thumbnails for this version before deleting
-    const { ThumbnailService } = await import('./thumbnail-service')
-    const thumbnailService = new ThumbnailService(
-      this.requireOrganization(),
-      this.userId || 'system',
-      this.db
-    )
-    await thumbnailService.deleteThumbnailsForSource(version.id)
-
-    // `deleteThumbnailsForSource` drops the S3 objects but only SOFT-deletes the rows,
-    // and a thumbnail is a separate MediaAsset pointing back here through
-    // `derivedFromVersionId` (NO ACTION) — so the version delete below would still be
-    // blocked by them. Purge the derived assets outright.
-    const derived = await this.db
-      .selectDistinct({ assetId: schema.MediaAssetVersion.assetId })
-      .from(schema.MediaAssetVersion)
-      .where(eq(schema.MediaAssetVersion.derivedFromVersionId, version.id))
-    if (derived.length > 0) {
-      await purgeMediaAssets(
-        this.db,
-        derived.map((d) => d.assetId)
-      )
-    }
-
-    await this.db
-      .delete(schema.MediaAssetVersion)
-      .where(eq(schema.MediaAssetVersion.id, version.id))
-  }
-
-  /**
-   * Get the latest version for an entity
-   */
-  async getLatestVersion(
-    entityId: string
-  ): Promise<(MediaAssetVersion & { storageLocation: any }) | null> {
-    const version = await this.db.query.MediaAssetVersion.findFirst({
-      where: eq(schema.MediaAssetVersion.assetId, entityId),
-      with: {
-        storageLocation: true,
-      },
-      orderBy: desc(schema.MediaAssetVersion.versionNumber),
-    })
-    return version ?? null
-  }
-
-  /**
-   * Copy all versions from one entity to another
-   */
-  async copyVersions(sourceEntityId: string, targetEntityId: string): Promise<MediaAssetVersion[]> {
-    const sourceVersions = await this.getVersions(sourceEntityId)
-    const copiedVersions: MediaAssetVersion[] = []
-
-    for (const sourceVersion of sourceVersions) {
-      // Versions without a storage location have no content to copy.
-      if (!sourceVersion.storageLocationId) continue
-
-      const copiedVersion = await this.createVersion(
-        targetEntityId,
-        sourceVersion.storageLocationId,
-        {
-          // Copy metadata but exclude entity-specific fields
-          size: sourceVersion.size,
-          mimeType: sourceVersion.mimeType,
-        }
-      )
-      copiedVersions.push(copiedVersion)
-    }
-
-    return copiedVersions
-  }
-
-  // ============= Helper Methods =============
-
-  /**
-   * Check if query string is a valid asset kind (proper type guard)
-   */
-  private isAssetKind(query: string): query is AssetKind {
-    return VALID_ASSET_KINDS.includes(query.toUpperCase() as AssetKind)
-  }
-
-  /**
-   * Validate asset kind
-   */
-  private async validateAssetKind(kind: AssetKind): Promise<void> {
-    if (!this.isAssetKind(kind)) {
-      throw new Error(`Invalid asset kind: ${kind}`)
-    }
-  }
-
-  /**
-   * Validate kind conversion
-   */
-  private async validateKindConversion(from: AssetKind, to: AssetKind): Promise<void> {
-    const allowedConversions: Record<AssetKind, AssetKind[]> = {
-      TEMP_UPLOAD: ['INLINE_IMAGE', 'EMAIL_ATTACHMENT', 'USER_AVATAR'],
-      EMAIL_ATTACHMENT: ['INLINE_IMAGE'],
-      INLINE_IMAGE: ['THUMBNAIL'],
-      USER_AVATAR: [],
-      THUMBNAIL: [],
-      SYSTEM_BLOB: [],
-      DOCUMENT: [],
-      VIDEO: [],
-      AUDIO: [],
-      STORYBOARD: [],
-    }
-
-    if (!allowedConversions[from]?.includes(to)) {
-      throw new Error(`Cannot convert ${from} to ${to}`)
-    }
-  }
-
-  /**
-   * Generate search snippet for search results
-   */
-  private generateSearchSnippet(asset: MediaAsset, query: string): string {
-    const parts: string[] = []
-
-    if (asset.name?.toLowerCase().includes(query.toLowerCase())) {
-      parts.push(`Name: ${asset.name}`)
-    }
-
-    if (asset.kind.toLowerCase().includes(query.toLowerCase())) {
-      parts.push(`Kind: ${asset.kind}`)
-    }
-
-    if (asset.mimeType?.toLowerCase().includes(query.toLowerCase())) {
-      parts.push(`Type: ${asset.mimeType}`)
-    }
-
-    return parts.join(' | ') || asset.name || `${asset.kind} asset`
+  private async inTransaction<T>(
+    client: DatabaseClient | undefined,
+    fn: (tx: Transaction) => Promise<T>
+  ): Promise<T> {
+    if (client) return fn(client as Transaction)
+    return this.getTx((tx) => fn(tx as Transaction))
   }
 }
 
 // Export factory functions for creating service instances
 export const createMediaAssetService = (organizationId?: string, userId?: string) =>
   new MediaAssetService(organizationId, userId)
-
-// Export singleton instance (with default db, no specific organization)
-// export const mediaAssetService = new MediaAssetService()
