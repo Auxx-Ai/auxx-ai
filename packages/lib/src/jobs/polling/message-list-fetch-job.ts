@@ -15,6 +15,7 @@ import { ProviderRegistryService } from '../../providers/provider-registry-servi
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
 import type { JobContext } from '../types'
+import { stampInitialBackfillCompleted } from './messages-import-job'
 
 const logger = createScopedLogger('job:message-list-fetch')
 
@@ -403,6 +404,12 @@ async function handleImapListFetch(
           updatedAt: now,
         })
         .where(eq(schema.Integration.id, integrationId))
+
+      // A walk with nothing to import (empty mailbox, or all folders already
+      // cursored) never runs an import job, so this is its only completion
+      // point — close the `message:received` suppression window opened at
+      // connect (no-op unless a cutoff is stamped and completion is not).
+      await stampInitialBackfillCompleted(integrationId, now)
 
       logger.info('IMAP list fetch complete, all folders synced, transitioning to IDLE', {
         integrationId,

@@ -4,7 +4,7 @@ import { revealSecrets } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { IdentifierType as IdentifierTypeEnum, IntegrationProviderType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { MessageStorageService } from '../../email/email-storage'
 import { NotFoundError } from '../../errors'
 import type {
@@ -15,6 +15,7 @@ import type {
 } from '../channel-provider.interface'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
+import { resolveImapBackfillCutoff } from './imap-backfill-cutoff'
 import { ImapClientProvider } from './imap-client-provider'
 import { ImapGetAllFoldersService } from './imap-get-all-folders'
 import { ImapGetMessageListService } from './imap-get-message-list'
@@ -133,6 +134,31 @@ export class ImapProvider extends BaseMessageProvider implements ChannelProvider
       this.storageService.setOwnIdentities({ [IdentifierTypeEnum.EMAIL]: [integration.email] })
     }
 
+    // Received-time trigger cutoff (webhook-push-migration plan Phase 2.5,
+    // extended to IMAP): while the initial backfill is incomplete, ingest
+    // suppresses `message:received` for mail received before the cutoff —
+    // regardless of which sync walker ingested it (invariant 25). Resolution
+    // fails CLOSED (#1721): a channel with neither stamp gets a cutoff of
+    // "now", written back durably so the completion stamp in
+    // `messages-import-job.ts` can find the window and close it at the next
+    // full drain — a merely-computed cutoff would drift forward on every
+    // initialize and the window could never close (#1587).
+    const backfillWindow = resolveImapBackfillCutoff(integration.metadata)
+    if (backfillWindow.needsDurableStamp && backfillWindow.cutoff) {
+      await db
+        .update(schema.Integration)
+        .set({
+          metadata: sql`COALESCE(${schema.Integration.metadata}, '{}'::jsonb) || jsonb_build_object('backfillCutoffAt', ${backfillWindow.cutoff.toISOString()}::text)`,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.Integration.id, integrationId))
+      logger.warn('IMAP channel had no backfillCutoffAt — stamping one before syncing', {
+        integrationId,
+        cutoffAt: backfillWindow.cutoff.toISOString(),
+      })
+    }
+    this.storageService.setBackfillCutoff(backfillWindow.cutoff)
+
     logger.info(`ImapProvider initialized for ${integration.email}`)
   }
 
@@ -186,6 +212,23 @@ export class ImapProvider extends BaseMessageProvider implements ChannelProvider
     }
 
     return { imported, failed }
+  }
+
+  /**
+   * Folder-walk import: same contract as `importMessages`, but run inside a
+   * realtime sync batch — per-message `message:created`/`thread:created`
+   * publishes are suppressed and one `inbox:syncCompleted` per touched inbox
+   * (plus a stale-count mark) is emitted at the end, so a 5,000-message walk
+   * does not fan out 5,000 socket frames. Used by `imapImportBatchJob` (the
+   * windowed full sync); the steady-state cache path keeps calling
+   * `importMessages` directly so live mail retains per-message realtime.
+   */
+  async importMessagesInSyncBatch(
+    externalIds: string[]
+  ): Promise<{ imported: number; failed: number }> {
+    return this.storageService.runInSyncBatch(this.organizationId, () =>
+      this.importMessages(externalIds)
+    )
   }
 
   async discoverLabels(): Promise<

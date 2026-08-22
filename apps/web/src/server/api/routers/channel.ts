@@ -923,6 +923,15 @@ export const channelRouter = createTRPCRouter({
           syncMode: 'auto',
           syncStage: 'IDLE',
           syncStatus: 'NOT_SYNCED',
+          // Received-time trigger cutoff (webhook-push-migration plan Phase 2.5,
+          // same stamp `channels/provisioning-hook.ts` writes for Gmail/Outlook):
+          // the first folder walk imports the mailbox's full history, and without
+          // this every historical message would fire `message:received` —
+          // workflows, billed classification, filters, signals. Mail received
+          // before the connect instant is historical; `ImapProvider.initialize`
+          // arms the cutoff while `initialBackfillCompletedAt` is unset, and the
+          // polling jobs stamp completion when the walk drains.
+          metadata: { backfillCutoffAt: new Date().toISOString() },
           updatedAt: new Date(),
         })
         .returning()

@@ -286,6 +286,18 @@ export interface ChannelProvider {
   importMessages?(externalIds: string[]): Promise<{ imported: number; failed: number }>
 
   /**
+   * Same contract as `importMessages`, but run inside a realtime sync batch:
+   * per-message realtime publishes are suppressed and one `inbox:syncCompleted`
+   * per touched inbox is emitted at the end (`ctx.inSyncBatch`). Backfill
+   * walkers that carry their work outside the Redis import cache (IMAP's
+   * windowed folder walk) call this so a first scan does not fan out one
+   * socket frame per historical message. Optional — providers whose
+   * `importMessages` already enters the batch context internally (Gmail /
+   * Outlook via `storeBatchWithIngest`) don't need it.
+   */
+  importMessagesInSyncBatch?(externalIds: string[]): Promise<{ imported: number; failed: number }>
+
+  /**
    * Discover labels/folders from the provider for sync.
    * Returns discovered labels to be upserted against the Label table.
    * Optional — providers that don't implement this skip label sync.
