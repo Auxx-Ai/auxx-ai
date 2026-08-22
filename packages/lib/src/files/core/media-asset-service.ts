@@ -25,6 +25,8 @@ import {
 } from 'drizzle-orm'
 import type { PgColumn } from 'drizzle-orm/pg-core'
 import type { DownloadRef } from '../adapters/base-adapter'
+import { type DownloadDeps, getAssetDownloadRef } from '../assets/download'
+import type { FilesCtx } from '../ctx'
 import { BaseService, type DatabaseClient, defaultDatabase } from './base-service'
 import { purgeMediaAssets } from './media-asset-purge'
 import type { ContentAccessible } from './mixins/content-accessible'
@@ -55,6 +57,8 @@ export class MediaAssetService
   implements ContentAccessible, Versioned
 {
   private _storageManager?: any
+
+  private _filesDownloadDeps?: DownloadDeps
 
   private static _columns?: Record<string, PgColumn>
 
@@ -955,36 +959,26 @@ export class MediaAssetService
   }
 
   /**
-   * Get a download URL with expiry information
+   * Get a download URL with expiry information.
+   *
+   * @deprecated Facade over
+   * {@link import('../assets/download').getAssetDownloadRef}. Call that
+   * directly with a `FilesCtx` and a `StoragePort`; this wrapper exists only so
+   * the ~15 existing call sites keep working while the function becomes the
+   * real implementation, and is deleted with the rest of `MediaAssetService`
+   * in Phase 5.
+   *
+   * Behaviour is unchanged except for the error type: it now throws an
+   * `AuxxError` subclass (`NotFoundError` for a missing asset/version/location)
+   * instead of a bare `Error`, so `auxxErrorMiddleware` can map it to a real
+   * status instead of a 500.
    */
   async getDownloadRef(id: string): Promise<DownloadRef> {
-    const entity = await this.get(id)
-    if (!entity) {
-      throw new Error(`${this.getEntityName()} not found`)
+    const result = await getAssetDownloadRef(this.filesCtx(), await this.filesDownloadDeps(), id)
+    if (result.isErr()) {
+      throw result.error
     }
-
-    const currentVersion = await this.getCurrentVersion(id)
-
-    if (!currentVersion || !currentVersion.storageLocationId) {
-      throw new Error(`No storage location found for ${this.getEntityName()}`)
-    }
-
-    // For public assets with external URLs, return the durable URL directly
-    if (!entity.isPrivate && currentVersion.storageLocation?.externalUrl) {
-      return {
-        type: 'url',
-        url: currentVersion.storageLocation.externalUrl,
-        expiresAt: undefined, // Durable URLs don't expire
-      }
-    }
-
-    // Otherwise, get presigned URL from storage manager
-    const storageManager = await this.getStorageManager()
-    return await storageManager.getDownloadRef({
-      locationId: currentVersion.storageLocationId,
-      filename: entity.name || undefined,
-      mimeType: entity.mimeType || undefined,
-    })
+    return result.value
   }
 
   /**
@@ -1059,15 +1053,25 @@ export class MediaAssetService
   }
 
   /**
-   * Get download URL as string (convenience method)
+   * Get download URL as string (convenience method).
+   *
+   * @deprecated Facade over
+   * {@link import('../assets/download').getAssetDownloadRef}. Call that
+   * directly and read `.url` off the {@link DownloadRef}; deleted with the rest
+   * of `MediaAssetService` in Phase 5.
+   *
+   * Returns `null` on every failure, exactly as before — this is a
+   * best-effort convenience used to fill avatar/thumbnail URLs into list
+   * payloads, and a throw there would fail a whole page for one broken row.
    */
   async getDownloadUrl(id: string): Promise<string | null> {
     try {
-      const entity = await this.get(id)
-      if (!entity) return null
-      const currentVersion = await this.resolveCurrentVersion(entity)
-      return this.downloadUrlFor(entity, currentVersion)
-    } catch (error) {
+      const result = await getAssetDownloadRef(this.filesCtx(), await this.filesDownloadDeps(), id)
+      if (result.isErr()) return null
+      return result.value.type === 'url' ? result.value.url : null
+    } catch {
+      // `filesCtx()` throws when the service has no organization context; the
+      // documented contract of this method is null-on-failure, so swallow it.
       return null
     }
   }
@@ -1224,6 +1228,46 @@ export class MediaAssetService
       throw new Error(`${this.getEntityName()} not found`)
     }
     return this.resolveCurrentVersion(entity)
+  }
+
+  // ============= Bridge to the functional `files/` surface =============
+
+  /**
+   * Build the {@link FilesCtx} the extracted `files/` functions take, from the
+   * scope this service already carries.
+   *
+   * `FilesCtx` carries no actor, so `this.userId` is deliberately not forwarded
+   * — a function that records one takes it in its own `input` instead. That
+   * matters here: many production sites construct `new MediaAssetService(orgId)`
+   * with no actor at all (a worker resolving a thumbnail URL, for one), and an
+   * earlier draft of this facade had to fabricate `''` to satisfy the type.
+   *
+   * `organizationId` is the opposite case: it is in the `WHERE` clause, so a
+   * missing one must throw rather than silently widen the query to every tenant.
+   */
+  private filesCtx(): FilesCtx {
+    return {
+      db: this.db,
+      organizationId: this.requireOrganization(),
+    }
+  }
+
+  /**
+   * The storage collaborator for the extracted download read, lazily built and
+   * cached per service instance.
+   *
+   * Imported dynamically for the same reason {@link getStorageManager} is:
+   * `storage/ports.ts` reaches `storage-location-service.ts`, which holds a
+   * module-scope `import { database as db }` named binding, and pulling that
+   * into this file's static import graph re-arms the collection hazard
+   * documented on `base-service.ts`.
+   */
+  private async filesDownloadDeps(): Promise<DownloadDeps> {
+    if (!this._filesDownloadDeps) {
+      const { createS3StoragePort } = await import('../storage/ports')
+      this._filesDownloadDeps = { storage: createS3StoragePort(this.requireOrganization()) }
+    }
+    return this._filesDownloadDeps
   }
 
   /**

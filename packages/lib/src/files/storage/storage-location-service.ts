@@ -1,5 +1,5 @@
 // packages/lib/src/files/storage/location-service.ts
-import { type Database, database as db, schema } from '@auxx/database'
+import { type Database, database as db, schema, type Transaction } from '@auxx/database'
 import type {
   CreateStorageLocationInput,
   StorageLocationEntity,
@@ -7,6 +7,16 @@ import type {
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, desc, eq, inArray, isNotNull, isNull, lt, sql, sum } from 'drizzle-orm'
+import { BadRequestError } from '../../errors'
+import type { ProviderId } from '../adapters/base-adapter'
+// Aliased because `CreateStorageLocationInput` is already taken in this file by
+// Drizzle's `$inferInsert` type for the same table — two different "create
+// input" names for one row is exactly the rot the lib guide warns about, and it
+// resolves when this legacy file is deleted.
+import {
+  type CreateStorageLocationInput as CreateStorageLocationParams,
+  createStorageLocation,
+} from './locations'
 
 // NOTE: StorageLocationService focuses only on database operations
 const logger = createScopedLogger('storage-location-service')
@@ -250,6 +260,12 @@ export class StorageLocationService {
    *
    * @see {@link validate} for validation rules
    * @see {@link update} for modifying existing locations
+   *
+   * @deprecated Use `createStorageLocation(tx, ctx, input)` from
+   * `files/storage/locations.ts`. This method is a strangler facade kept only
+   * so existing call sites keep compiling; it is deleted in Phase 6 (PR 6a).
+   * The new function requires a `bucket` and takes its organization scope from
+   * `ctx`, which is what this signature cannot express.
    */
   async create(
     data: CreateStorageLocationRequest,
@@ -259,36 +275,59 @@ export class StorageLocationService {
       provider: data.provider,
       hasCredential: !!data.credentialId,
     })
-    // Validate required fields based on provider
-    const validation = StorageLocationService.validate(data)
-    if (!validation.isValid) {
-      throw new Error(`Invalid storage location data: ${validation.errors.join(', ')}`)
+
+    // The legacy request type carries the bucket buried in `metadata` and the
+    // organization as an optional field. Both are required by the function
+    // below, so the facade is where the shapes have to meet.
+    const metadata = (data.metadata ?? {}) as Record<string, unknown>
+    const bucket = typeof metadata.bucket === 'string' ? metadata.bucket : ''
+    if (!data.organizationId) {
+      throw new BadRequestError(
+        `Storage location for ${data.externalId} was created without an organizationId`
+      )
     }
-    try {
-      const dbToUse = dbInstance || db
-      const [location] = await dbToUse
-        .insert(schema.StorageLocation)
-        .values({
-          provider: data.provider,
-          externalId: data.externalId,
-          externalUrl: data.externalUrl,
-          organizationId: data.organizationId || null,
-          credentialId: data.credentialId,
-          size: data.size || null,
-          mimeType: data.mimeType || null,
-          metadata: data.metadata || {},
-          externalRev: data.externalRev,
-        })
-        .returning()
-      if (!location) {
-        throw new Error('Storage location insert returned no row')
-      }
-      logger.info('Storage location created successfully', { id: location.id })
-      return location
-    } catch (error) {
-      logger.error('Failed to create storage location', { error, data })
-      throw error
+
+    const input: CreateStorageLocationParams = {
+      provider: data.provider as ProviderId,
+      externalId: data.externalId,
+      bucket,
+      externalUrl: data.externalUrl,
+      externalRev: data.externalRev,
+      credentialId: data.credentialId,
+      size: data.size,
+      mimeType: data.mimeType,
+      metadata,
     }
+    // `userId` is `''` because this legacy request shape has no actor to give
+    // and the function does not record one. `FilesCtx` requires the field, so
+    // the facade has to invent it — one more reason this shim is temporary.
+    const ctx = { db: dbInstance ?? db, organizationId: data.organizationId, userId: '' }
+
+    // Two branches, because the optional `dbInstance` cannot be reconciled with
+    // a required `Transaction` any other way:
+    //
+    // - Nothing supplied: open a transaction. Honest, no cast, and semantically
+    //   identical to the single implicit transaction a bare INSERT already ran.
+    // - Something supplied: production reaches this through
+    //   `StorageManager.createStorageLocation(params, { tx })`, where `tx` is
+    //   typed `any` and is a real `NodePgTransaction` at runtime — but the
+    //   parameter here is typed `Database`, so the compiler cannot see that.
+    //   The cast is the receipt for that unsoundness, and it is the honest
+    //   answer: the legacy signature IS unsound, and no arrangement of the
+    //   facade makes it sound. The alternative — calling `.transaction()` on it
+    //   — issues a `SAVEPOINT` on the hottest write path in the app, which is
+    //   precisely the noise Phase 6 exists to delete. The cast disappears with
+    //   this method.
+    const result = dbInstance
+      ? await createStorageLocation(dbInstance as unknown as Transaction, ctx, input)
+      : await db.transaction((tx) => createStorageLocation(tx, { ...ctx, db: tx }, input))
+
+    if (result.isErr()) {
+      logger.error('Failed to create storage location', { error: result.error, data })
+      throw result.error
+    }
+    logger.info('Storage location created successfully', { id: result.value.id })
+    return result.value
   }
   /**
    * Get a storage location by ID

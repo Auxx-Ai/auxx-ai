@@ -51,7 +51,7 @@ BROWSER                         apps/web (Node)                    S3           
    │
    │ 1. POST /api/files/upload/sessions
    │──────────────────────────────────▶ auth + files.manage gate
-   │                                    storage quota gate  ────────────────────────▶ (always 0 — §11.1)
+   │                                    storage quota gate  ────────────────────────▶ real bytes (§11.1, fixed)
    │                                    ProcessorRegistry.getForEntityType(entityType)
    │                                    processor.processConfig(init)
    │                                      → storageKey, policy, uploadPlan,
@@ -68,18 +68,19 @@ BROWSER                         apps/web (Node)                    S3           
    │    then N × PUT — serial, one round-trip to us per part)
    │
    │ 3. POST /api/files/upload/{sessionId}/complete
-   │──────────────────────────────────▶ NO AUTH CHECK (§11.4)
+   │──────────────────────────────────▶ authorizeUploadSession (§11.4, fixed)
    │                                    completeMultipartUpload (if multipart)
    │                                    headByKey  ──────────────▶ verify size/mime
    │                                    processor.validateCompletedUpload
    │                                    ┌── db.transaction ──────────────────────┐
-   │                                    │  buildExternalUrl (I/O, §10.2)         │
+   │                                    │  buildExternalUrl (I/O — §10.2, OPEN)  │
    │                                    │  createStorageLocation                 │
-   │                                    │  processor.process → savepoints (§10.1)│
+   │                                    │  processor.process → savepoints (§10.1,│
+   │                                    │                             still OPEN) │
    │                                    │    → MediaAsset + MediaAssetVersion    │
    │                                    │      and/or FolderFile + FileVersion   │
    │                                    │      and/or Attachment                 │
-   │                                    │    → sometimes BullMQ enqueue (§10.3)  │
+   │                                    │    (BullMQ enqueue moved out — §10.3)  │
    │                                    └────────────────────────────────────────┘
    │                                    post-commit: cache busts, thumbnail
    │                                                 enqueue, download URL
@@ -423,6 +424,20 @@ registry factory — but it is a landmine the moment anyone caches a processor.
 `session.credentialId` is set, calls `getProviderAuth` → credential decryption. Whatever latency
 that has is latency the Postgres connection is held open for, on the hottest write path in the
 subsystem. Its result is only a string built from config; it has no reason to be there.
+
+**There is a second credential fetch in the same transaction, and it is worse.** Found during the
+Phase-2 write pilot, not the original survey: `createStorageLocation` →
+`prepareLocationMetadata` (storage-manager.ts:~999) → `resolveS3BucketForLocation` →
+`getProviderAuth` → **`revealSecrets(credentialId, orgId)`** — a database read *plus* a decrypt,
+wrapped in a `try/catch` that swallows failure into a `logger.warn`. It exists solely to **guess a
+bucket** when the caller did not supply one.
+
+So the completion transaction holds its connection open across two independent credential
+resolutions, one of which is a fallback for information the caller already had. Requiring `bucket`
+on the input **deletes** that path rather than moving it — which is what
+`files/storage/locations.ts` does. The pure remainder is: merge caller metadata, write `bucket`
+last (so an inherited `metadata.bucket` cannot beat the bucket actually uploaded to), default `key`
+from `externalId`.
 
 ### 10.3 ~~BullMQ jobs enqueued inside the transaction — and they read stale data~~ — FIXED (#1818)
 

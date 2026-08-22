@@ -802,6 +802,27 @@ export class StorageManager {
 
   /**
    * Create a new storage location record (enhanced to support transactions)
+   *
+   * @deprecated Use `createStorageLocation(tx, ctx, input)` from
+   * `files/storage/locations.ts`, which requires a `bucket` and takes its
+   * organization scope from `ctx`. This method is a strangler facade, deleted
+   * in Phase 6 (PR 6a) together with the route call sites that still pass
+   * `{ tx }`.
+   *
+   * **The delegation is transitive**, not direct: this still calls
+   * `storageLocationService.create`, which is now itself a thin facade over the
+   * new function. That is not a preference — `__tests__/policy-enforcement.test.ts`
+   * replaces the whole `storage-location-service` module with `vi.mock` and
+   * asserts `storageLocationService.create` was called from `uploadContent`, and
+   * `src/test/setup.ts` mocks `@auxx/database` package-wide with
+   * `transaction: vi.fn()`, so a direct call could neither be observed nor even
+   * run there. One implementation, two facades in front of it; the middle hop
+   * goes away with them.
+   *
+   * Everything below the `prepareLocationMetadata` call is now redundant with
+   * the new function's own validation, and is kept only so this method's
+   * throw-shape (`StorageAdapterError` via `handleStorageError`) is unchanged
+   * for its existing callers.
    */
   async createStorageLocation(
     params: {
