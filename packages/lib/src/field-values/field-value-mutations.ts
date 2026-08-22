@@ -51,6 +51,12 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../realtime'
+import {
+  getAmbientTxWriteScope,
+  isTxWriteCreated,
+  recordTxWriteChange,
+  type TxWriteScope,
+} from '../resources/crud/tx-write-scope'
 import { getModelType, isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { applyAiMarker } from './ai-commit'
 import { shortCircuitAiGenerate } from './ai-enqueue'
@@ -61,6 +67,7 @@ import {
   canonicalizeRelationshipRecordId,
   canonicalizeRelationshipValue,
   type FieldValueContext,
+  flattenTypedFieldValue,
   getField,
   getInverseInfoFromField,
   type InverseFieldInfo,
@@ -154,6 +161,33 @@ export function buildPublishEntry(args: {
     return { key, value: values }
   }
   return { key, value: values.length > 0 ? values[0] : null }
+}
+
+/**
+ * Divert one field write into the open transaction write scope instead of
+ * publishing it (plan 04 §6.3). Two things are captured, both plain values:
+ *
+ * - `{ o, n }` under the manifest's output key (`systemAttribute ?? fieldId`),
+ *   because post-commit the pre-write value no longer exists anywhere;
+ * - the `fieldValues:updated` entry the inline lane would have published,
+ *   shaped here where the typed values are in hand, so the flush replays a frame
+ *   that is byte-identical to the inline one.
+ */
+function bufferFieldChange(
+  scope: TxWriteScope,
+  publishRecordId: RecordId,
+  field: CachedField | undefined,
+  fieldId: string,
+  oldValue: TypedFieldValue | TypedFieldValue[] | null,
+  newValue: TypedFieldValue | TypedFieldValue[] | null,
+  entry: FieldValueUpdateEntry
+): void {
+  recordTxWriteChange(scope, {
+    recordId: publishRecordId,
+    outputKey: field?.systemAttribute ?? fieldId,
+    change: { o: flattenTypedFieldValue(oldValue), n: flattenTypedFieldValue(newValue) },
+    entry,
+  })
 }
 
 // =============================================================================
@@ -2255,14 +2289,22 @@ export async function setValueWithBuiltIn(
     })
   }
 
-  const {
-    recordId,
-    fieldId: rawFieldId,
-    value,
-    publishEvents = true,
-    skipInverseSync = false,
-    collectRealtime,
-  } = params
+  const { recordId, fieldId: rawFieldId, value, skipInverseSync = false, collectRealtime } = params
+
+  // Plan 04 §6.2. An explicit `publishEvents: false` is the C3 escape hatch —
+  // "an aggregator one frame up announces this" — and stays absolute: it
+  // suppresses buffering too, or the aggregator's own publish would be doubled.
+  // Otherwise a buffered write session diverts the fan-out into its scope, to be
+  // replayed once the transaction commits.
+  const requestedPublish = params.publishEvents ?? true
+  const bufferedScope = requestedPublish ? getAmbientTxWriteScope(ctx.session) : undefined
+  const publishEvents = requestedPublish && bufferedScope === undefined
+  // T-1: a record being CREATED in this same scope absorbs its own field writes
+  // — they are its initial state, not changes to it — so there is nothing worth
+  // capturing, and skipping here also spares the old-value read per field on
+  // every composed child record.
+  const txScope =
+    bufferedScope && !isTxWriteCreated(bufferedScope, recordId) ? bufferedScope : undefined
 
   // Parse RecordId to get both parts
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
@@ -2393,9 +2435,10 @@ export async function setValueWithBuiltIn(
     publishEvents &&
     ctx.userId !== undefined &&
     (hasEntityFieldChangeHooks(entitySlug) || hasFieldTypeChangeHooks(field.type as FieldType))
-  const oldValue: TypedFieldValue | TypedFieldValue[] | null = willFirePostHook
-    ? await getValue(ctx, { recordId, fieldId })
-    : null
+  // A buffered write needs `o` too, and needs it NOW: post-commit the pre-write
+  // value is gone (plan 04 §6.3).
+  const oldValue: TypedFieldValue | TypedFieldValue[] | null =
+    willFirePostHook || txScope ? await getValue(ctx, { recordId, fieldId }) : null
 
   // Closure so set + clear branches fire the post-hook chain identically.
   // Resolves snapshots once per write so handlers (timeline writer especially)
@@ -2455,7 +2498,7 @@ export async function setValueWithBuiltIn(
     }
     await deleteValue(ctx, { recordId, fieldId })
     await maybeUpdateDisplayValue(ctx, recordId, field, null)
-    if (publishEvents) {
+    if (publishEvents || txScope) {
       // Routed through buildPublishEntry like the set branch below — this
       // publishes `[]` (not `null`) for array-return fields, matching
       // setBulkValues' "cleared" signal (see helper doc).
@@ -2475,7 +2518,9 @@ export async function setValueWithBuiltIn(
         aiStatus: null,
         aiMetadata: null,
       }
-      if (collectRealtime) {
+      if (txScope) {
+        bufferFieldChange(txScope, publishRecordId, field, fieldId, oldValue, null, entry)
+      } else if (collectRealtime) {
         collectRealtime.push(entry)
       } else {
         publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, [entry], {
@@ -2531,7 +2576,7 @@ export async function setValueWithBuiltIn(
   // RELATIONSHIP, multi-ACTOR) always publish arrays so subscribers can write
   // directly to the store without guessing. Single-value fields publish the
   // single value.
-  if (publishEvents && result.length > 0) {
+  if ((publishEvents || txScope) && result.length > 0) {
     const baseEntry = buildPublishEntry({
       publishRecordId,
       fieldId: fieldId as FieldId,
@@ -2545,7 +2590,17 @@ export async function setValueWithBuiltIn(
     const entry: FieldValueUpdateEntry = params.aiGeneration
       ? { ...baseEntry, aiStatus: 'result', aiMetadata: params.aiGeneration }
       : { ...baseEntry, aiStatus: null, aiMetadata: null }
-    if (collectRealtime) {
+    if (txScope) {
+      bufferFieldChange(
+        txScope,
+        publishRecordId,
+        field,
+        fieldId,
+        oldValue,
+        isArrayReturn ? result : (result[0] ?? null),
+        entry
+      )
+    } else if (collectRealtime) {
       collectRealtime.push(entry)
     } else {
       publishFieldValueUpdates(getRealtimeService(), ctx.organizationId, [entry], {
@@ -2696,7 +2751,13 @@ export async function setValuesForEntity(
           value: v.value,
           publishEvents,
           skipInverseSync,
-          collectRealtime: publishEvents ? collected : undefined,
+          // A buffered session captures per field inside `setValueWithBuiltIn`;
+          // handing it a collector as well would batch-publish the same frames
+          // mid-transaction.
+          collectRealtime:
+            publishEvents && getAmbientTxWriteScope(ctx.session) === undefined
+              ? collected
+              : undefined,
         })
 
         results.push({ fieldId: v.fieldId, ...result })

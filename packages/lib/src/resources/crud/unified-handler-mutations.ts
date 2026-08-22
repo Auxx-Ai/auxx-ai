@@ -16,8 +16,6 @@ import {
   updateEntityInstance,
 } from '../../entity-instances'
 import { UnprocessableEntityError } from '../../errors'
-import { publisher } from '../../events/publisher'
-import type { Events } from '../../events/types'
 import { getEntityPostDeleteHooks, getEntityPreDeleteHooks } from '../../field-hooks/registry'
 import type { FieldValueService } from '../../field-values'
 import {
@@ -35,6 +33,13 @@ import type { MergeEntitiesResult } from '../merge'
 import { EntityMergeService } from '../merge'
 import type { ResourceField } from '../registry/field-types'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
+import { publishRecordLifecycleEvent } from './publish-record-event'
+import {
+  getAmbientTxWriteScope,
+  recordTxWriteArchive,
+  recordTxWriteCreate,
+  type TxWriteScope,
+} from './tx-write-scope'
 import type { ResolvedEntityDefinition } from './types'
 import { sessionLane, type WriteSession } from './write-origin'
 
@@ -70,6 +75,19 @@ export interface CrudOptions {
    * hooks there would recompute a parent that is about to be deleted, once per child.
    */
   suppressPostDeleteHooks?: boolean
+  /**
+   * T-1b (plan 04 §4). Declares this create STRUCTURAL to the named parent: the
+   * parent's own `record:created` announces it, so no separate create door opens
+   * for this record.
+   *
+   * Honoured ONLY inside a buffered write scope AND only when that parent is
+   * itself being created in the same scope. Outside one there is no `created`
+   * set to check against, so a stray `absorbInto` is inert and the record
+   * announces itself as normal — deliberately, so this can never silence a
+   * record on the inline path. Nothing is inferred from the def or the
+   * relationship graph; the composing site says so or it does not happen.
+   */
+  absorbInto?: RecordId
 }
 
 /** Inferred type for CustomField select */
@@ -153,101 +171,14 @@ function derivePublishEvents(ctx: MutationContext, options: CrudOptions): boolea
 }
 
 /**
- * Parameters for publishing entity events
+ * The buffered scope this mutation should capture into, or undefined when its
+ * doors fire inline (or are suppressed outright). `'buffered'` differs from
+ * `'silent'` only here: a live collector keeps what `'silent'` throws away, so
+ * `flushTxWriteScope` can replay it once the transaction commits (plan 04 §6.2).
  */
-interface PublishEventParams {
-  recordId: RecordId
-  entityType: string | null
-  entityDefinitionId: string
-  entitySlug: string
-  action: 'created' | 'updated' | 'deleted'
-  organizationId: string
-  userId: string
-  eventData: Record<string, unknown>
-  relatedRecordId?: RecordId
-}
-
-/**
- * The `<entityType>:<action>` event types that actually exist on the bus, split by payload shape.
- *
- * Composing the type from `entityDef.entityType` unchecked is not safe: most built-in resources
- * (`part`, `quote`, `invoice`, `work_order`, `service_request`, …) have no per-type event and no
- * entry in `EventHandlers`, so `publishEventJob` would find zero handlers and drop the event —
- * no timeline entry, no record rules, no dispatch trigger. Anything not listed here falls back to
- * the generic `entity:*` family, which is what the fallback was always documented to do.
- */
-const PERSPECTIVE_EVENT_TYPES = [
-  'ticket:created',
-  'ticket:updated',
-  'ticket:deleted',
-  'contact:created',
-  'contact:updated',
-  'contact:deleted',
-] as const satisfies readonly Events[]
-
-/**
- * The other half of the per-type events. Same trigger, different payload: these carry the
- * definition identity rather than a second perspective.
- */
-const DEFINITION_EVENT_TYPES = [
-  'company:created',
-  'company:deleted',
-  'stock_movement:created',
-  'stock_movement:deleted',
-  'vendor_part:created',
-  'vendor_part:deleted',
-  'subpart:created',
-  'subpart:deleted',
-] as const satisfies readonly Events[]
-
-type PerspectiveEventType = (typeof PERSPECTIVE_EVENT_TYPES)[number]
-type DefinitionEventType = (typeof DEFINITION_EVENT_TYPES)[number]
-
-function isPerspectiveEventType(type: string): type is PerspectiveEventType {
-  return (PERSPECTIVE_EVENT_TYPES as readonly string[]).includes(type)
-}
-
-function isDefinitionEventType(type: string): type is DefinitionEventType {
-  return (DEFINITION_EVENT_TYPES as readonly string[]).includes(type)
-}
-
-/**
- * Publish entity event.
- * Uses entity-type-specific event type when one exists (e.g., 'ticket:created'),
- * falls back to generic 'entity:created' for everything else.
- *
- * @param params - Event parameters including recordId, eventData, etc.
- */
-function publishEvent(params: PublishEventParams): void {
-  const {
-    recordId,
-    entityType,
-    entityDefinitionId,
-    entitySlug,
-    action,
-    organizationId,
-    userId,
-    eventData,
-    relatedRecordId,
-  } = params
-
-  const specific = `${entityType}:${action}`
-  const base = { recordId, organizationId, userId, eventData }
-
-  // The ticket/contact family is the only one whose payload carries a second perspective
-  // (the contact-side timeline row keys off `relatedRecordId`).
-  if (isPerspectiveEventType(specific)) {
-    publisher.publishLater({
-      type: specific,
-      data: { ...base, ...(relatedRecordId && { relatedRecordId }) },
-    })
-    return
-  }
-
-  publisher.publishLater({
-    type: isDefinitionEventType(specific) ? specific : `entity:${action}`,
-    data: { ...base, entityDefinitionId, entitySlug },
-  })
+function deriveTxWriteScope(ctx: MutationContext, options: CrudOptions): TxWriteScope | undefined {
+  if (options.skipEvents === true) return undefined
+  return sessionLane(ctx.session) === 'buffered' ? getAmbientTxWriteScope(ctx.session) : undefined
 }
 
 /**
@@ -370,6 +301,7 @@ export async function createEntity(
 ): Promise<CreateEntityResult> {
   // S3: one derived boolean per call gates the whole per-write fan-out below.
   const publishEvents = derivePublishEvents(ctx, options)
+  const txScope = deriveTxWriteScope(ctx, options)
   const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
 
   // Apply configured defaults for any creatable field the caller omitted.
@@ -416,10 +348,32 @@ export async function createEntity(
   // Build RecordId for field value operations
   const recordId = toRecordId(entityDef.id, instance.id)
 
+  // Buffered lane: register the create BEFORE its own field writes run. The
+  // ordering is load-bearing — a record in the scope's `created` set absorbs its
+  // own field changes (T-1), so the field-value layer can see it is already
+  // there and skip the old-value read and the realtime shaping entirely instead
+  // of buffering ~12 frames per copied line that the flush would only drop.
+  // `eventData` is the write's own values, so it needs no live handle (T-4).
+  if (txScope) {
+    recordTxWriteCreate(txScope, {
+      recordId,
+      entityDefinitionId: entityDef.id,
+      entityType: entityDef.entityType,
+      entitySlug: entityDef.apiSlug,
+      values: extractEventData(entityDef.entityType, entityFields, processedValues),
+      absorbInto: options.absorbInto,
+    })
+  }
+
   // Set field values using RecordId. Silent-lane writes (sync/seed sessions,
   // or the deprecated skipEvents alias) also suppress the field-value
-  // realtime + triggers end-to-end via publishEvents:false.
-  await ctx.setFieldValues(recordId, processedValues, undefined, { publishEvents })
+  // realtime + triggers end-to-end via publishEvents:false. The BUFFERED lane
+  // passes `true` here on purpose: the field-value layer resolves the scope
+  // itself and captures instead of publishing, so a `false` would be read as
+  // the C3 "an aggregator announces this" escape hatch and lose the writes.
+  await ctx.setFieldValues(recordId, processedValues, undefined, {
+    publishEvents: publishEvents || txScope !== undefined,
+  })
 
   // Re-read the instance so displayName / secondaryDisplayValue / avatarUrl
   // reflect what setFieldValues' maybeUpdateDisplayValue just wrote. The
@@ -438,7 +392,7 @@ export async function createEntity(
     const eventData = extractEventData(entityDef.entityType, fields, processedValues)
     const relatedRecordId = findRelatedRecordId(entityDef.entityType, eventData)
 
-    publishEvent({
+    publishRecordLifecycleEvent({
       recordId,
       entityType: entityDef.entityType,
       entityDefinitionId: entityDef.id,
@@ -531,8 +485,12 @@ export async function updateEntity(
 
   // Set field values using resolved RecordId. Per-field modes default to
   // 'set' when missing — today's behavior for every caller that omits modes.
-  // Silent-lane writes suppress the field-value realtime + triggers too.
-  await ctx.setFieldValues(resolvedRecordId, processedValues, modes, { publishEvents })
+  // Silent-lane writes suppress the field-value realtime + triggers too; the
+  // buffered lane passes `true` so the field-value layer captures rather than
+  // reading `false` as the C3 escape hatch (see the same note in createEntity).
+  await ctx.setFieldValues(resolvedRecordId, processedValues, modes, {
+    publishEvents: publishEvents || deriveTxWriteScope(ctx, options) !== undefined,
+  })
 
   // Re-read so displayName / secondaryDisplayValue / avatarUrl / updatedAt
   // reflect what setFieldValues just wrote. The `instance` captured at the
@@ -549,7 +507,7 @@ export async function updateEntity(
     const eventData = extractEventData(entityDef.entityType, fields, processedValues)
     const relatedRecordId = findRelatedRecordId(entityDef.entityType, eventData)
 
-    publishEvent({
+    publishRecordLifecycleEvent({
       recordId,
       entityType: entityDef.entityType,
       entityDefinitionId: entityDef.id,
@@ -635,7 +593,7 @@ export async function archiveEntity(
   unwrapResult(updateResult)
 
   if (publishEvents) {
-    publishEvent({
+    publishRecordLifecycleEvent({
       recordId,
       entityType: entityDef.entityType,
       entityDefinitionId: entityDef.id,
@@ -658,6 +616,19 @@ export async function archiveEntity(
         { excludeSocketId: ctx.socketId }
       )
       .catch(() => {})
+  }
+
+  // Buffered lane: replayed post-commit by `flushTxWriteScope`.
+  const txScope = deriveTxWriteScope(ctx, options)
+  if (txScope && !options.suppressRealtimeFrame) {
+    recordTxWriteArchive(txScope, {
+      recordId,
+      entityDefinitionId: entityDef.id,
+      entityType: entityDef.entityType,
+      entitySlug: entityDef.apiSlug,
+      realtimeEvent: 'record:archived',
+      eventData: { hardDelete: false },
+    })
   }
 
   // Duplicate-suggestion cleanup — deliberately OUTSIDE the `publishEvents`
@@ -712,7 +683,7 @@ export async function restoreEntity(
   unwrapResult(updateResult)
 
   if (publishEvents) {
-    publishEvent({
+    publishRecordLifecycleEvent({
       recordId,
       entityType: entityDef.entityType,
       entityDefinitionId: entityDef.id,
@@ -765,8 +736,9 @@ export async function deleteEntity(
     entityDef.apiSlug && !options.suppressPostDeleteHooks
       ? getEntityPostDeleteHooks(entityDef.apiSlug)
       : []
+  const txScope = deriveTxWriteScope(ctx, options)
   let eventData: Record<string, unknown> = { hardDelete: true }
-  if (publishEvents || preDeleteHooks.length > 0 || postDeleteHooks.length > 0) {
+  if (publishEvents || txScope || preDeleteHooks.length > 0 || postDeleteHooks.length > 0) {
     const fields = await ctx.getFields(entityDef.id)
     const captured = await captureEventData(ctx.fieldValueService, recordId, fields)
     eventData = { hardDelete: true, ...captured }
@@ -823,7 +795,7 @@ export async function deleteEntity(
   }
 
   if (publishEvents) {
-    publishEvent({
+    publishRecordLifecycleEvent({
       recordId,
       entityType: entityDef.entityType,
       entityDefinitionId: entityDef.id,
@@ -843,6 +815,18 @@ export async function deleteEntity(
         { excludeSocketId: ctx.socketId }
       )
       .catch(() => {})
+  }
+
+  // Buffered lane: replayed post-commit by `flushTxWriteScope`.
+  if (txScope) {
+    recordTxWriteArchive(txScope, {
+      recordId,
+      entityDefinitionId: entityDef.id,
+      entityType: entityDef.entityType,
+      entitySlug: entityDef.apiSlug,
+      realtimeEvent: 'record:deleted',
+      eventData,
+    })
   }
 }
 
