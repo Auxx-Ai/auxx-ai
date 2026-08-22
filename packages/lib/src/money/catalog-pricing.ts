@@ -314,8 +314,11 @@ export async function syncCatalogItemPricing(
 
   for (const { catalogInstanceId, partInstanceId } of linkRows) {
     if (!partInstanceId) continue
-    const newCost = partCosts.get(partInstanceId)
-    if (newCost == null) continue
+    // `null` here is a real answer — the part has no cost, either because it never had one
+    // or because `persistCosts` just cleared it (a part that lost its last vendor and has no
+    // BOM). Skipping would leave the catalog item quoting a frozen cost for a part that no
+    // longer has one, which is the same defect one level down.
+    const newCost = partCosts.get(partInstanceId) ?? null
 
     const existing = current.get(catalogInstanceId) ?? { cost: null, markup: null, price: null }
     const recordId = toRecordId(catalogDefId, catalogInstanceId) as RecordId
@@ -329,7 +332,12 @@ export async function syncCatalogItemPricing(
       })
     }
 
-    if (fields.price && existing.markup != null) {
+    // Markup-driven price recomputes only against a real cost. When the cost goes away the
+    // price is LEFT ALONE and the markup KEPT — mirroring the unlink branch of
+    // `syncCatalogCostOnPartChange`: a markup is inert without a cost and resumes on re-link.
+    // Clearing the sell price here would take a product off the shelf because a supplier row
+    // was deleted.
+    if (fields.price && existing.markup != null && newCost != null) {
       const newPrice = computeMarkupPrice(newCost, existing.markup)
       if (existing.price !== newPrice) {
         writes.push({
