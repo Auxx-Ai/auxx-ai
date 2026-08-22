@@ -1,12 +1,15 @@
 // packages/lib/src/files/upload/processors/__tests__/unified-processor-system.test.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { BadRequestError } from '../../../../errors'
 import type { EntityType } from '../../../types/entities'
 import { ENTITY_TYPES } from '../../../types/entities'
 import type { UploadInitConfig } from '../../init-types'
 import { UserProfileProcessor, WorkflowRunProcessor } from '../entity-processors'
 import { FileProcessor } from '../file-processor'
+import { initializeProcessors } from '../index'
 import { ProcessorRegistry } from '../processor-registry'
+import { VisitQcItemProcessor } from '../visit-qc-processor'
 
 // Hoist mock variables to be accessible inside vi.mock factories
 const { ticketSelectRowsRef, workflowRunSelectRowsRef, createSelectBuilder } = vi.hoisted(() => {
@@ -162,22 +165,57 @@ describe('Unified Processor System', () => {
 
     it('should return processor instance for registered EntityType', () => {
       ProcessorRegistry.registerForEntity(ENTITY_TYPES.FILE, (orgId) => new FileProcessor(orgId))
+      ProcessorRegistry.markInitialized()
 
       const processor = ProcessorRegistry.getForEntityType(ENTITY_TYPES.FILE, 'org123')
       expect(processor).toBeInstanceOf(FileProcessor)
     })
 
     it('should throw error for unregistered EntityType with no default', () => {
+      ProcessorRegistry.markInitialized()
+
       expect(() => {
         ProcessorRegistry.getForEntityType('unknown:entity' as EntityType, 'org123')
-      }).toThrow('No processor found for entity type: unknown:entity')
+      }).toThrow('No upload processor registered for entity type: unknown:entity')
     })
 
-    it('should use default processor for unregistered EntityType', () => {
-      ProcessorRegistry.setDefaultProcessor((orgId) => new FileProcessor(orgId))
+    // Regression for §11.3 — an unregistered entity type used to fall through to
+    // `setDefaultProcessor(FileProcessor)`, silently producing a `FolderFile` (and no
+    // `assetId`) for entity types that need a `MediaAsset` + `Attachment`.
+    it('should throw for an unregistered EntityType even after full initialization', () => {
+      initializeProcessors()
 
-      const processor = ProcessorRegistry.getForEntityType('unknown:entity' as EntityType, 'org123')
-      expect(processor).toBeInstanceOf(FileProcessor)
+      expect(() =>
+        ProcessorRegistry.getForEntityType('some-unregistered-type' as EntityType, 'org123')
+      ).toThrow(BadRequestError)
+    })
+
+    it('should throw when the registry was never initialized', () => {
+      // `clear()` (run in beforeEach) leaves the registry uninitialized — a silently
+      // uninitialized registry used to only `logger.warn` and then hand back the default.
+      expect(() => ProcessorRegistry.getForEntityType(ENTITY_TYPES.FILE, 'org123')).toThrow(
+        /not initialized/i
+      )
+    })
+
+    // The guard that stops §11.3 recurring: adding a value to `ENTITY_TYPES` without
+    // registering a processor for it must fail here, not in production.
+    it('registers a processor for every ENTITY_TYPES value', () => {
+      initializeProcessors()
+
+      const missing = Object.values(ENTITY_TYPES).filter(
+        (entityType) => !ProcessorRegistry.hasProcessor(entityType)
+      )
+
+      expect(missing).toEqual([])
+    })
+
+    it('registers an attachment processor for visit_qc_item', () => {
+      initializeProcessors()
+
+      const processor = ProcessorRegistry.getForEntityType(ENTITY_TYPES.VISIT_QC_ITEM, 'org123')
+      expect(processor).toBeInstanceOf(VisitQcItemProcessor)
+      expect(processor.getMetadata().supportsAttachments).toBe(true)
     })
   })
 
