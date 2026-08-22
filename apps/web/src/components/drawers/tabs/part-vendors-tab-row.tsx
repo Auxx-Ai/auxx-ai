@@ -1,6 +1,7 @@
 // apps/web/src/components/drawers/tabs/part-vendors-tab-row.tsx
 'use client'
 
+import { computeLandedBreakdown, type LandedCostBreakdown } from '@auxx/lib/bom/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -13,54 +14,99 @@ import {
 import { TableCell, TableRow } from '@auxx/ui/components/table'
 import { pluralize } from '@auxx/utils'
 import { formatCurrency } from '@auxx/utils/currency'
-import { Edit, MoreHorizontal, Star, Trash2 } from 'lucide-react'
+import { BadgeCheck, Edit, MoreHorizontal, Star, Trash2 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
-import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useAccess } from '~/providers/capabilities-provider'
 
-const VENDOR_PART_ATTRIBUTES = [
-  'vendor_part_vendor_sku',
-  'vendor_part_unit_price',
-  'vendor_part_shipping_cost',
-  'vendor_part_tariff_rate',
-  'vendor_part_other_cost',
-  'vendor_part_lead_time',
-  'vendor_part_is_preferred',
-  'vendor_part_contact',
-] as const
+/**
+ * One supplier offer, already read by the parent tab.
+ *
+ * The row is presentational on purpose. It used to own a `useSystemValues`
+ * subscription, which meant no row could see its siblings — and "which offer
+ * wins" is only answerable across the whole list. The tab now reads every row's
+ * values in one batched subscription and hands them down.
+ */
+export interface VendorPartRowValues {
+  vendorSku?: string
+  unitPrice: number | null
+  shippingCost: number | null
+  tariffRate: number | null
+  otherCost: number | null
+  leadTime: number | null
+  isPreferred: boolean
+  /** Supplier `RecordId` (encodes the company entity def); `RecordBadge` resolves it. */
+  supplierRecordId?: RecordId
+}
 
 interface VendorPartRowProps {
   recordId: RecordId
+  values: VendorPartRowValues
+  /**
+   * Whether this offer is the one the part's Cost actually came from.
+   *
+   * Distinct from `isPreferred`, and both can be true at once: preference is
+   * one input to the rule, not the rule. With nothing preferred the cheapest
+   * landed offer wins, and before this marker existed nothing on screen said so.
+   */
+  isWinner: boolean
   onEdit: () => void
   onDelete: () => void
   onSetPreferred: () => void
 }
 
-/** A single vendor part row that subscribes to its own field values */
-export function VendorPartRow({ recordId, onEdit, onDelete, onSetPreferred }: VendorPartRowProps) {
-  const { values } = useSystemValues(recordId, VENDOR_PART_ATTRIBUTES, { autoFetch: true })
-  // const { resource: contactResource } = useResource('contacts')
+/**
+ * The landed cost, itemized.
+ *
+ * Every line is a whole minor unit and the four components sum to the total
+ * exactly — see `computeLandedBreakdown`, which rounds the one term that can
+ * carry a fraction. The tariff shows both its rate and the money that rate
+ * produced, because "10%" alone does not answer where the tariff went.
+ */
+function LandedBreakdown({ breakdown }: { breakdown: LandedCostBreakdown }) {
+  const rows: { label: string; value: number }[] = [
+    { label: 'Unit price', value: breakdown.unitPrice },
+    { label: 'Shipping', value: breakdown.shipping },
+    { label: `Tariff (${breakdown.tariffRate}%)`, value: breakdown.tariff },
+    { label: 'Other', value: breakdown.other },
+  ]
+
+  return (
+    <div className='min-w-44 space-y-1'>
+      {rows.map((row) => (
+        <div key={row.label} className='flex justify-between gap-4 text-xs'>
+          <span className='text-muted-foreground'>{row.label}</span>
+          <span className='tabular-nums'>{row.value === 0 ? '—' : formatCurrency(row.value)}</span>
+        </div>
+      ))}
+      <div className='flex justify-between gap-4 border-t pt-1 text-xs font-medium'>
+        <span>Landed</span>
+        <span className='tabular-nums'>{formatCurrency(breakdown.landed)}</span>
+      </div>
+    </div>
+  )
+}
+
+/** A single supplier offer for a part. */
+export function VendorPartRow({
+  recordId,
+  values,
+  isWinner,
+  onEdit,
+  onDelete,
+  onSetPreferred,
+}: VendorPartRowProps) {
   // Read-only viewers of the vendor_part definition get the row without its
   // actions menu — every item in it (edit, set preferred, remove) is a write.
   const { canEditEntity } = useAccess()
   const canEdit = canEditEntity(parseRecordId(recordId).entityDefinitionId)
 
-  const vendorSku = values.vendor_part_vendor_sku as string | undefined
-  const unitPrice = values.vendor_part_unit_price as number | null | undefined
-  const shippingCost = values.vendor_part_shipping_cost as number | null | undefined
-  const tariffRate = values.vendor_part_tariff_rate as number | null | undefined
-  const otherCost = values.vendor_part_other_cost as number | null | undefined
-  const leadTime = values.vendor_part_lead_time as number | null | undefined
-  const isPreferred = values.vendor_part_is_preferred as boolean | undefined
-  // Supplier RecordId (encodes the company entity def); RecordBadge resolves it.
-  const supplierRecordId = (values.vendor_part_contact as RecordId[] | undefined)?.[0]
+  const { vendorSku, unitPrice, leadTime, isPreferred, supplierRecordId } = values
 
-  // Compute landed cost inline: unit_price + shipping + (unit_price * tariff / 100) + other
-  const landedCost =
-    unitPrice != null
-      ? unitPrice + (shippingCost ?? 0) + unitPrice * ((tariffRate ?? 0) / 100) + (otherCost ?? 0)
-      : null
+  // One definition of the formula, shared with the cost calculator that
+  // actually persists this number.
+  const breakdown = computeLandedBreakdown({ id: recordId, ...values })
+
   return (
     <TableRow>
       <TableCell className='font-medium'>
@@ -71,21 +117,40 @@ export function VendorPartRow({ recordId, onEdit, onDelete, onSetPreferred }: Ve
             <span className='text-muted-foreground'>—</span>
           )}
           {isPreferred && (
-            <Tooltip content='Preferred Supplier'>
+            <Tooltip content='Preferred supplier'>
               <div className='text-amber-500'>
                 <Star className='size-3 fill-current' />
+              </div>
+            </Tooltip>
+          )}
+          {isWinner && (
+            <Tooltip content="This supplier's landed cost is the part's Cost">
+              <div className='text-emerald-600'>
+                <BadgeCheck className='size-3.5' />
               </div>
             </Tooltip>
           )}
         </div>
       </TableCell>
       <TableCell className='font-mono text-sm'>{vendorSku ?? '—'}</TableCell>
-      <TableCell className='text-right'>
-        {unitPrice ? formatCurrency(unitPrice) : <span className='text-muted-foreground'>—</span>}
+      <TableCell className='text-right tabular-nums'>
+        {unitPrice != null ? (
+          formatCurrency(unitPrice)
+        ) : (
+          <span className='text-muted-foreground'>—</span>
+        )}
       </TableCell>
-      <TableCell className='text-right'>
-        {landedCost != null && landedCost !== unitPrice ? (
-          formatCurrency(landedCost)
+      <TableCell className='text-right tabular-nums'>
+        {breakdown ? (
+          // Always shown when there is a price. It previously rendered a dash
+          // whenever landed equalled the unit price, which is most rows — a
+          // supplier with no shipping, tariff or other costs still HAS a landed
+          // cost, and it is that supplier's unit price.
+          <Tooltip contentComponent={<LandedBreakdown breakdown={breakdown} />}>
+            <span className='underline decoration-dotted underline-offset-4'>
+              {formatCurrency(breakdown.landed)}
+            </span>
+          </Tooltip>
         ) : (
           <span className='text-muted-foreground'>—</span>
         )}

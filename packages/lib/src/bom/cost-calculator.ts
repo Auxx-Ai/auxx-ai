@@ -16,18 +16,21 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../realtime'
+import { computeLandedCost, selectWinningVendor, type VendorCostRow } from './vendor-cost'
 
 const logger = createScopedLogger('bom:cost-calculator')
 
 // ─── Types ───────────────────────────────────────────────────────────
 
-interface VendorPriceRow {
+/**
+ * A `vendor_part` row as the calculator sees it.
+ *
+ * Extends the shared {@link VendorCostRow} — which carries the offer's own
+ * `id` and its four cost components — with the PART the offer is for, which is
+ * the calculator's grouping key and means nothing to the pure winner rule.
+ */
+interface VendorPriceRow extends VendorCostRow {
   partInstanceId: string
-  unitPrice: number | null
-  shippingCost: number | null
-  tariffRate: number | null
-  otherCost: number | null
-  isPreferred: boolean
 }
 
 interface VendorCostMaps {
@@ -234,9 +237,12 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
       }
     }
 
-    for (const entry of byInstance.values()) {
+    for (const [instanceId, entry] of byInstance) {
       if (entry.partInstanceId) {
         vendorPrices.push({
+          // The offer's OWN id, not the part's — it is the deterministic
+          // tiebreak in `selectWinningVendor`.
+          id: instanceId,
           partInstanceId: entry.partInstanceId,
           unitPrice: entry.unitPrice,
           shippingCost: entry.shippingCost,
@@ -336,20 +342,12 @@ async function loadAllPartIds(orgId: string, partDefId: string): Promise<string[
 // ─── Graph Building ──────────────────────────────────────────────────
 
 /**
- * Compute landed cost for a vendor part row.
- * Formula: unit_price + shipping_cost + (unit_price * tariff_rate / 100) + other_cost
- */
-function computeLandedCost(row: VendorPriceRow): number | null {
-  if (row.unitPrice == null) return null
-  const shipping = row.shippingCost ?? 0
-  const tariff = row.unitPrice * ((row.tariffRate ?? 0) / 100)
-  const other = row.otherCost ?? 0
-  return row.unitPrice + shipping + tariff + other
-}
-
-/**
- * Best vendor per part: preferred first, then cheapest landed cost.
- * Returns the winning row's computed landed cost per part.
+ * The winning supplier's landed cost, per part.
+ *
+ * Both halves of the rule — the landed formula and which offer wins — live in
+ * `vendor-cost.ts` so the Suppliers drawer tab can mark the same row this
+ * function silently reduced to a number. See {@link selectWinningVendor} for
+ * the ordering, including why an exact tie now breaks on the offer's id.
  */
 function buildVendorCostMaps(vendorPrices: VendorPriceRow[]): VendorCostMaps {
   const landedCostMap = new Map<string, number>()
@@ -364,17 +362,11 @@ function buildVendorCostMaps(vendorPrices: VendorPriceRow[]): VendorCostMaps {
   }
 
   for (const [partId, rows] of byPart) {
-    // Preferred vendors first, then sort by landed cost ascending
-    const sorted = rows.sort((a, b) => {
-      if (a.isPreferred !== b.isPreferred) return a.isPreferred ? -1 : 1
-      return (computeLandedCost(a) ?? 0) - (computeLandedCost(b) ?? 0)
-    })
-    const best = sorted[0]
-    if (best?.unitPrice != null) {
-      const landed = computeLandedCost(best)
-      if (landed != null) {
-        landedCostMap.set(partId, landed)
-      }
+    const winner = selectWinningVendor(rows)
+    if (!winner) continue
+    const landed = computeLandedCost(winner)
+    if (landed != null) {
+      landedCostMap.set(partId, landed)
     }
   }
 
