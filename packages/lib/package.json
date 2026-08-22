@@ -196,6 +196,12 @@
       "import": "./dist/availability/client.mjs",
       "default": "./src/availability/client.ts"
     },
+    "./bom/client": {
+      "types": "./src/bom/client.ts",
+      "source": "./src/bom/client.ts",
+      "import": "./dist/bom/client.mjs",
+      "default": "./src/bom/client.ts"
+    },
     "./cache": {
       "types": "./src/cache/index.ts",
       "source": "./src/cache/index.ts",

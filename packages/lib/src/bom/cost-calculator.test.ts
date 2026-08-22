@@ -101,6 +101,7 @@ vi.mock('../money/catalog-pricing', () => ({
 
 import {
   calculateAllCosts,
+  loadOrgPricingData,
   recalculateAffectedParts,
   recalculateAllPartCosts,
 } from './cost-calculator'
@@ -504,5 +505,25 @@ describe('calculateAllCosts — the unpriced-components signal', () => {
     // unpriced leaves are not enumerable, so nothing is claimed.
     expect(results.get(A)!.unpricedDescendantIds).toEqual([])
     expect(results.get(B)!.unpricedDescendantIds).toEqual([])
+  })
+})
+
+describe('loadOrgPricingData — the offer id the tiebreak depends on', () => {
+  it("carries each vendor part's OWN instance id, not just the part it prices", async () => {
+    // `selectWinningVendor` breaks an exact tie on `id`. If the loader stopped
+    // populating it the comparison would silently be `undefined < undefined`,
+    // and the winner would go back to depending on Postgres row order — which
+    // is exactly the non-determinism the tiebreak exists to remove. Nothing
+    // else in this suite fails if that happens, so it is asserted directly.
+    h.queryQueue = [
+      [...vendorPartRows('vp_acme', MOTOR, 4000), ...vendorPartRows('vp_bolt', MOTOR, 4000)],
+      [],
+    ]
+
+    const { vendorPrices } = await loadOrgPricingData(ORG)
+
+    expect(vendorPrices.map((row) => row.id).sort()).toEqual(['vp_acme', 'vp_bolt'])
+    // ...and the part id stays a separate field rather than being overwritten.
+    expect(new Set(vendorPrices.map((row) => row.partInstanceId))).toEqual(new Set([MOTOR]))
   })
 })

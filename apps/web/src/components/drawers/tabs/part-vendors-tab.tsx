@@ -1,6 +1,7 @@
 // apps/web/src/components/drawers/tabs/part-vendors-tab.tsx
 'use client'
 
+import { selectWinningVendor } from '@auxx/lib/bom/client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
@@ -15,11 +16,39 @@ import { useCallback, useMemo, useState } from 'react'
 import { VendorPartDialog } from '~/components/manufacturing/parts/vendor-part-dialog'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
+import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
-import { VendorPartRow } from './part-vendors-tab-row'
+import { VendorPartRow, type VendorPartRowValues } from './part-vendors-tab-row'
+
+/** Everything a supplier row renders, and everything the winner rule needs. */
+const VENDOR_PART_ATTRIBUTES = [
+  'vendor_part_vendor_sku',
+  'vendor_part_unit_price',
+  'vendor_part_shipping_cost',
+  'vendor_part_tariff_rate',
+  'vendor_part_other_cost',
+  'vendor_part_lead_time',
+  'vendor_part_is_preferred',
+  'vendor_part_contact',
+] as const
+
+/** Narrow one record's raw system values into the row's shape. */
+function toRowValues(values: Record<string, unknown> | undefined): VendorPartRowValues {
+  const contact = values?.vendor_part_contact as RecordId[] | undefined
+  return {
+    vendorSku: values?.vendor_part_vendor_sku as string | undefined,
+    unitPrice: (values?.vendor_part_unit_price as number | null | undefined) ?? null,
+    shippingCost: (values?.vendor_part_shipping_cost as number | null | undefined) ?? null,
+    tariffRate: (values?.vendor_part_tariff_rate as number | null | undefined) ?? null,
+    otherCost: (values?.vendor_part_other_cost as number | null | undefined) ?? null,
+    leadTime: (values?.vendor_part_lead_time as number | null | undefined) ?? null,
+    isPreferred: (values?.vendor_part_is_preferred as boolean | undefined) ?? false,
+    supplierRecordId: contact?.[0],
+  }
+}
 
 /** Vendors tab content for parts drawer */
 export function PartVendorsTab({ recordId }: DrawerTabProps) {
@@ -61,6 +90,34 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
     filters,
     enabled: !!partId && !!vendorPartDefId,
   })
+
+  const rowRecordIds = useMemo(
+    () => (vendorPartDefId ? records.map((record) => toRecordId(vendorPartDefId, record.id)) : []),
+    [records, vendorPartDefId]
+  )
+
+  // Lifted out of the rows: the winner is a property of the LIST, so no row can
+  // compute it from its own subscription. One batched read serves both.
+  const { valuesById } = useSystemValuesForRecords(rowRecordIds, VENDOR_PART_ATTRIBUTES, {
+    autoFetch: true,
+    enabled: rowRecordIds.length > 0,
+  })
+
+  /**
+   * Which offer the part's Cost came from.
+   *
+   * Computed with the same function the server-side calculator uses, never by
+   * matching rows against the stored `part_purchase_cost`: that value is a
+   * float produced by `unitPrice * (tariffRate / 100)`, and equality on it is
+   * not a safe key.
+   */
+  const winningRecordId = useMemo(() => {
+    const offers = rowRecordIds.map((recordId) => ({
+      id: recordId,
+      ...toRowValues(valuesById[recordId]),
+    }))
+    return selectWinningVendor(offers)?.id ?? null
+  }, [rowRecordIds, valuesById])
 
   // Delete via entity system
   const deleteRecord = api.record.delete.useMutation({
@@ -166,15 +223,20 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {records.map((record) => (
-                  <VendorPartRow
-                    key={record.id}
-                    recordId={toRecordId(vendorPartDefId!, record.id)}
-                    onEdit={() => handleEditVendorPart(record.id)}
-                    onDelete={() => handleDeleteVendorPart(record.id)}
-                    onSetPreferred={() => handleSetPreferred(record.id)}
-                  />
-                ))}
+                {records.map((record, index) => {
+                  const rowRecordId = rowRecordIds[index] as RecordId
+                  return (
+                    <VendorPartRow
+                      key={record.id}
+                      recordId={rowRecordId}
+                      values={toRowValues(valuesById[rowRecordId])}
+                      isWinner={rowRecordId === winningRecordId}
+                      onEdit={() => handleEditVendorPart(record.id)}
+                      onDelete={() => handleDeleteVendorPart(record.id)}
+                      onSetPreferred={() => handleSetPreferred(record.id)}
+                    />
+                  )
+                })}
               </TableBody>
             </Table>
           </div>

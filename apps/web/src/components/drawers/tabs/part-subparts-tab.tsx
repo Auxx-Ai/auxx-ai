@@ -23,17 +23,34 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
+import { pluralize } from '@auxx/utils'
 import { formatCurrency } from '@auxx/utils/currency'
-import { Edit, MoreHorizontal, Package, PlusCircle, Trash2 } from 'lucide-react'
+import { CircleAlert, Edit, MoreHorizontal, Package, PlusCircle, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useMemo, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 import { SubpartDialog } from '~/components/manufacturing/parts/subpart-dialog'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
+
+/** What the assembly-level unpriced check reads off each subpart row. */
+const SUBPART_CHILD_ATTRIBUTES = ['subpart_child_part'] as const
+/** ...and off each child part it points at. */
+const CHILD_COST_ATTRIBUTES = ['part_cost'] as const
+/** The assembly's own cost — a blank one is what the banner explains. */
+const ASSEMBLY_COST_ATTRIBUTES = ['part_cost'] as const
+
+/** Unwrap a RELATIONSHIP value into the related instance id. */
+function relatedInstanceId(raw: unknown): string | undefined {
+  const first = Array.isArray(raw) ? raw[0] : raw
+  if (typeof first !== 'string') return undefined
+  return isRecordId(first) ? getInstanceId(first) : first
+}
 
 /** Subparts tab content for parts drawer */
 export function PartSubpartsTab({ recordId }: DrawerTabProps) {
@@ -110,6 +127,73 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
   })
 
   const isLoading = isLoadingSubparts || isLoadingParents
+
+  const partDefId = useResourceProperty('part', 'id')
+
+  // ── Which direct components have no cost ──────────────────────────────
+  //
+  // Two lifted reads, because the answer spans the list: the subpart rows say
+  // WHICH parts are components, and those parts say whether they are priced.
+  // A row subscribing to its own values can only ever answer for itself.
+  const subpartRecordIds = useMemo(
+    () => (subpartDefId ? subpartRecords.map((record) => toRecordId(subpartDefId, record.id)) : []),
+    [subpartRecords, subpartDefId]
+  )
+
+  const { valuesById: subpartValues } = useSystemValuesForRecords(
+    subpartRecordIds,
+    SUBPART_CHILD_ATTRIBUTES,
+    { autoFetch: true, enabled: subpartRecordIds.length > 0 }
+  )
+
+  const childPartRecordIds = useMemo(() => {
+    if (!partDefId) return []
+    const ids: RecordId[] = []
+    for (const subpartRecordId of subpartRecordIds) {
+      const childId = relatedInstanceId(subpartValues[subpartRecordId]?.subpart_child_part)
+      if (childId) ids.push(toRecordId(partDefId, childId))
+    }
+    return ids
+  }, [subpartRecordIds, subpartValues, partDefId])
+
+  const { valuesById: childCosts, loadedById: childCostsLoaded } = useSystemValuesForRecords(
+    childPartRecordIds,
+    CHILD_COST_ATTRIBUTES,
+    { autoFetch: true, enabled: childPartRecordIds.length > 0 }
+  )
+
+  const { values: assemblyValues } = useSystemValues(recordId, ASSEMBLY_COST_ATTRIBUTES, {
+    autoFetch: true,
+  })
+  const assemblyCost = assemblyValues.part_cost as number | null | undefined
+
+  /**
+   * Direct components with no cost of their own.
+   *
+   * **Direct children only.** The calculator tracks the transitive set of
+   * unpriced leaves, which is the right thing for it — but here the user is
+   * looking at one assembly's component list, and pointing at a part three
+   * levels down that is not on this screen would be worse than saying nothing.
+   * The copy says "component" to match what is listed.
+   *
+   * Only children whose cost has actually been READ are counted. An unfetched
+   * value and a genuinely absent one both surface as `undefined`, so counting
+   * without `loadedById` would report every component as uncosted on first
+   * paint and then correct itself — a wrong number is worse than a late one.
+   */
+  const unpricedChildIds = useMemo(() => {
+    const unpriced = new Set<string>()
+    for (const childRecordId of childPartRecordIds) {
+      if (!childCostsLoaded[childRecordId]?.part_cost) continue
+      if (childCosts[childRecordId]?.part_cost == null) unpriced.add(childRecordId)
+    }
+    return unpriced
+  }, [childPartRecordIds, childCosts, childCostsLoaded])
+
+  // Only explains a blank assembly cost. A costed assembly with an unpriced
+  // component is a real state (a vendor price won), but it is not this
+  // banner's job — nothing is missing from the number on screen.
+  const showUnpricedBanner = assemblyCost == null && unpricedChildIds.size > 0
 
   // Delete via entity system
   const deleteRecord = api.record.delete.useMutation({
@@ -192,30 +276,46 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
             <p className='text-xs text-muted-foreground'>Add components that make up this part</p>
           </div>
         ) : (
-          <div className='rounded-md border'>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Part</TableHead>
-                  <TableHead className='text-right'>Qty</TableHead>
-                  <TableHead className='text-right'>Cost</TableHead>
-                  <TableHead className='w-10'></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {subpartRecords.map((record) => (
-                  <SubpartRow
-                    key={record.id}
-                    recordId={toRecordId(subpartDefId!, record.id)}
-                    relatedPartField='subpart_child_part'
-                    linkTab='subparts'
-                    showActions
-                    onEdit={() => handleEditSubpart(record.id)}
-                    onDelete={() => handleDeleteSubpart(record.id)}
-                  />
-                ))}
-              </TableBody>
-            </Table>
+          <div className='space-y-2'>
+            {showUnpricedBanner && (
+              <div className='flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5'>
+                <CircleAlert className='mt-0.5 size-4 shrink-0 text-amber-600' />
+                <p className='text-xs text-muted-foreground'>
+                  <span className='font-medium text-foreground'>
+                    {unpricedChildIds.size} {pluralize(unpricedChildIds.size, 'component')}{' '}
+                    {unpricedChildIds.size === 1 ? 'has' : 'have'} no cost
+                  </span>
+                  , so this assembly has none either. Add a supplier price or a bill of materials to
+                  each one below.
+                </p>
+              </div>
+            )}
+            <div className='rounded-md border'>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Part</TableHead>
+                    <TableHead className='text-right'>Qty</TableHead>
+                    <TableHead className='text-right'>Cost</TableHead>
+                    <TableHead className='w-10'></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {subpartRecords.map((record) => (
+                    <SubpartRow
+                      key={record.id}
+                      recordId={toRecordId(subpartDefId!, record.id)}
+                      relatedPartField='subpart_child_part'
+                      linkTab='subparts'
+                      showActions
+                      unpricedChildIds={unpricedChildIds}
+                      onEdit={() => handleEditSubpart(record.id)}
+                      onDelete={() => handleDeleteSubpart(record.id)}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         )}
       </Section>
@@ -272,6 +372,12 @@ interface SubpartRowProps {
   relatedPartField: 'subpart_child_part' | 'subpart_parent_part'
   linkTab: string
   showActions?: boolean
+  /**
+   * Component part `RecordId`s the assembly found to have no cost. Computed
+   * once by the tab so every row agrees with the banner above them, rather
+   * than each row deciding for itself.
+   */
+  unpricedChildIds?: ReadonlySet<string>
   onEdit?: () => void
   onDelete?: () => void
 }
@@ -281,6 +387,7 @@ function SubpartRow({
   relatedPartField,
   linkTab,
   showActions,
+  unpricedChildIds,
   onEdit,
   onDelete,
 }: SubpartRowProps) {
@@ -318,7 +425,11 @@ function SubpartRow({
       {showActions && (
         <>
           <TableCell className='text-right'>
-            {relatedPartId ? <PartCostCell partId={relatedPartId} /> : '—'}
+            {relatedPartId ? (
+              <PartCostCell partId={relatedPartId} unpricedChildIds={unpricedChildIds} />
+            ) : (
+              '—'
+            )}
           </TableCell>
           <TableCell>
             {canEdit && (
@@ -368,8 +479,20 @@ function PartNameCell({ partId, linkTab }: { partId: string; linkTab: string }) 
   )
 }
 
-/** Resolves and displays part cost from entity system */
-function PartCostCell({ partId }: { partId: string }) {
+/**
+ * A component's cost, marked when it has none.
+ *
+ * A blank cell already said "no cost"; what it never said is that this blank is
+ * why the assembly above has no cost either. The marker only appears for parts
+ * the tab counted, so a row can never disagree with the banner.
+ */
+function PartCostCell({
+  partId,
+  unpricedChildIds,
+}: {
+  partId: string
+  unpricedChildIds?: ReadonlySet<string>
+}) {
   const partDefId = useResourceProperty('part', 'id')
   const partRecordId = partDefId ? toRecordId(partDefId, partId) : ('' as RecordId)
   const { values } = useSystemValues(partRecordId || undefined, PART_COST_ATTRIBUTES, {
@@ -378,5 +501,18 @@ function PartCostCell({ partId }: { partId: string }) {
   })
   const cost = values.part_cost as number | null | undefined
 
-  return cost ? formatCurrency(cost) : <span className='text-muted-foreground'>—</span>
+  if (cost != null) return <>{formatCurrency(cost)}</>
+
+  if (partRecordId && unpricedChildIds?.has(partRecordId)) {
+    return (
+      <Tooltip content='This component has no cost, so it contributes nothing to the assembly'>
+        <span className='inline-flex items-center gap-1 text-amber-600'>
+          <CircleAlert className='size-3.5' />
+          No cost
+        </span>
+      </Tooltip>
+    )
+  }
+
+  return <span className='text-muted-foreground'>—</span>
 }
