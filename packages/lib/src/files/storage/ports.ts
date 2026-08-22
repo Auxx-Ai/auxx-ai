@@ -24,16 +24,17 @@ import type { OrphanedStorageObjectJobData } from '../../jobs/maintenance/orphan
 import type {
   DownloadRef,
   FileMetadata,
+  MultipartUpload,
   PresignedUpload,
   ProviderId,
   StorageLocationRef,
 } from '../adapters/base-adapter'
-import { S3Adapter } from '../adapters/s3-adapter'
+import type { S3Adapter } from '../adapters/s3-adapter'
 import type { GenerateThumbnailPayload } from '../core/thumbnail-types'
 import type { UploadPreparedConfig } from '../upload/init-types'
 import { resolveProviderAuth } from './auth'
 import { buildExternalUrl } from './buckets'
-import { createStorageManager } from './storage-manager'
+import { getStorageAdapter } from './providers'
 
 // ============= Parameter types =============
 
@@ -161,7 +162,13 @@ export type EnqueueStorageCleanupParams = Omit<OrphanedStorageObjectJobData, 'bu
  * `StorageLocation` row into a bucket and key is the caller's job, on `ctx.db`.
  */
 export interface StoragePort {
+  /**
+   * Signs whatever it is handed — it does **not** enforce the upload policy.
+   * `storage/presign.ts` is the door that does; call that, not this.
+   */
   presignUpload(p: PresignUploadParams): Promise<PresignedUpload>
+  /** Opens a multipart upload. Policy-free for the same reason as {@link presignUpload}. */
+  startMultipart(p: PresignUploadParams): Promise<MultipartUpload>
   presignPart(p: PresignPartParams): Promise<PresignedUpload>
   completeMultipart(p: CompleteMultipartParams): Promise<{ etag: string; size?: number }>
   head(p: HeadParams): Promise<HeadResult>
@@ -210,27 +217,30 @@ export interface CachePort {
 // ============= Production implementation =============
 
 /**
- * The S3 {@link StoragePort}, wired to the existing adapter and
- * `StorageManager`.
+ * The S3 {@link StoragePort}, wired straight to the S3 adapter.
  *
  * This is the proof the interface is implementable against real code rather
- * than a shape invented for tests. It delegates rather than reimplements:
+ * than a shape invented for tests.
  *
- * - Policy-enforcing upload operations go through `StorageManager`, because the
- *   policy check (`enforcePolicy`) lives there and must not be bypassed.
- * - `deleteObject` goes through `StorageManager.deleteByKey`, because that is
- *   where the "no bucket supplied" fallback is logged.
- * - Object reads/writes go straight to the adapter, because every
- *   `StorageManager` equivalent (`getFileMetadata`, `getContent`,
- *   `uploadContent`) is `storageLocationId`-addressed and does its own database
- *   work — exactly what this port must not do.
+ * **Since PR 3d it no longer routes anything through `StorageManager`.** It used
+ * to, for the four policy- or bucket-sensitive operations, on the grounds that
+ * `enforcePolicy` and the "no bucket supplied" warn lived there. Both have since
+ * moved out — the policy to `storage/presign.ts` (which calls *this* port, so
+ * the old arrangement would now be a cycle), the bucket fallback to the facade's
+ * own legacy shim. What is left here is one uniform rule: **every method is a
+ * single adapter call against a bucket the caller named.** Nothing in this file
+ * reads a database row, resolves a bucket, or judges an upload.
+ *
+ * The adapter comes from `storage/providers.ts` rather than `new S3Adapter()`,
+ * so every port instance shares the one cached adapter — and therefore its
+ * `S3Client` cache. A per-port adapter would rebuild a client per request.
  *
  * @param organizationId Required only when a call passes a `credentialId`;
  *   platform storage resolves its auth from config and needs no org.
  */
 export function createS3StoragePort(organizationId?: string): StoragePort {
-  const manager = createStorageManager(organizationId)
-  const adapter = new S3Adapter()
+  /** The one cached S3 adapter. Cast is sound: `providers.ts` only ever loads `S3Adapter` for `'S3'`. */
+  const s3 = async () => (await getStorageAdapter('S3')) as S3Adapter
 
   /**
    * Resolve provider auth with the bucket pinned to the caller's choice.
@@ -254,42 +264,73 @@ export function createS3StoragePort(organizationId?: string): StoragePort {
     }
   }
 
-  return {
-    presignUpload: (p) => manager.generatePresignedUploadUrl(p),
+  /**
+   * The S3 object metadata every presigned upload carries.
+   *
+   * Built here rather than by the caller so the org/uploader/entity trio cannot
+   * be forgotten on a new door; caller-supplied `metadata` is merged last and
+   * may override.
+   */
+  const uploadMetadata = (p: PresignUploadParams): Record<string, string> => ({
+    orgId: p.organizationId,
+    uploader: p.userId,
+    entityType: p.entityType,
+    entityId: p.entityId ?? '',
+    ...p.metadata,
+  })
 
-    presignPart: (p) =>
-      manager.generatePartUploadUrl({
-        provider: p.provider,
+  return {
+    presignUpload: async (p) =>
+      (await s3()).presignUpload({
+        key: p.storageKey,
+        mimeType: p.mimeType,
+        size: p.expectedSize,
+        ttlSec: p.ttlSec,
+        metadata: uploadMetadata(p),
+        // Explicit bucket only. `visibility` is deliberately NOT forwarded: the
+        // adapter would re-derive a bucket from it, giving two resolutions for
+        // one object that can disagree. `UploadPreparedConfig.bucket` is
+        // required, so there is nothing to fall back to.
+        bucket: p.bucket,
+        auth: await resolveAuth(p.bucket, p.credentialId),
+      }),
+
+    startMultipart: async (p) =>
+      (await s3()).startMultipart({
+        key: p.storageKey,
+        mimeType: p.mimeType,
+        metadata: uploadMetadata(p),
+        bucket: p.bucket,
+        auth: await resolveAuth(p.bucket, p.credentialId),
+      }),
+
+    presignPart: async (p) =>
+      (await s3()).presignPart({
         key: p.key,
         uploadId: p.uploadId,
         partNumber: p.partNumber,
         size: p.size,
-        credentialId: p.credentialId,
         bucket: p.bucket,
+        auth: await resolveAuth(p.bucket, p.credentialId),
       }),
 
-    completeMultipart: (p) =>
-      manager.completeMultipartUploadOnly({
-        provider: p.provider,
+    completeMultipart: async (p) =>
+      (await s3()).completeMultipart({
         key: p.key,
         uploadId: p.uploadId,
         parts: p.parts,
-        credentialId: p.credentialId,
         bucket: p.bucket,
+        auth: await resolveAuth(p.bucket, p.credentialId),
       }),
 
-    deleteObject: (p) =>
-      manager.deleteByKey({
-        provider: p.provider,
-        key: p.key,
-        credentialId: p.credentialId,
-        bucket: p.bucket,
-      }),
+    deleteObject: async (p) =>
+      (await s3()).deleteFile(locationRef(p), await resolveAuth(p.bucket, p.credentialId)),
 
-    head: async (p) => adapter.getMeta(locationRef(p), await resolveAuth(p.bucket, p.credentialId)),
+    head: async (p) =>
+      (await s3()).getMeta(locationRef(p), await resolveAuth(p.bucket, p.credentialId)),
 
     putObject: async (p) =>
-      adapter.putObject({
+      (await s3()).putObject({
         key: p.key,
         content: p.content,
         mimeType: p.mimeType,
@@ -300,10 +341,10 @@ export function createS3StoragePort(organizationId?: string): StoragePort {
       }),
 
     streamObject: async (p) =>
-      adapter.openDownloadStream(locationRef(p), await resolveAuth(p.bucket, p.credentialId)),
+      (await s3()).openDownloadStream(locationRef(p), await resolveAuth(p.bucket, p.credentialId)),
 
     getObject: async (p) => {
-      const stream = await adapter.openDownloadStream(
+      const stream = await (await s3()).openDownloadStream(
         locationRef(p),
         await resolveAuth(p.bucket, p.credentialId)
       )
@@ -316,7 +357,7 @@ export function createS3StoragePort(organizationId?: string): StoragePort {
     },
 
     presignDownload: async (p) =>
-      adapter.getDownloadRef(locationRef(p), await resolveAuth(p.bucket, p.credentialId), {
+      (await s3()).getDownloadRef(locationRef(p), await resolveAuth(p.bucket, p.credentialId), {
         ttlSec: p.ttlSec,
         disposition: p.disposition,
         filename: p.filename,
