@@ -9,7 +9,8 @@
 //
 // Doors executed here (per the door matrix in `resources/crud/door-matrix.ts`):
 //   - `lastActivityAt` batch bump, both lanes (D-1)
-//   - collapsed per-record timeline entries, both lanes (D-4 v1)
+//   - timeline entries: per-field `entity:field:updated` rows on the SMALL
+//     lane, collapsed per-record entries on the large lane (D-4)
 //   - per-record workflow/agent dispatch, SMALL lane only (D-2, fixes B-3);
 //     the large lane withholds dispatch pending the Phase 6 guard (D-3)
 //   - tier-2 `records:changed` delta frames, both lanes (plan §7b)
@@ -26,8 +27,11 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { parseRecordId, type RecordId } from '@auxx/types/resource'
-import type { SyncChangeManifest } from '../../record-rules/sync-manifest-types'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
+import type {
+  ManifestFieldChange,
+  SyncChangeManifest,
+} from '../../record-rules/sync-manifest-types'
 import { SYNC_SMALL_RUN_THRESHOLD } from '../../resources/crud/door-matrix'
 import { EntityInstanceEventType, TimelineActorType } from '../../timeline/event-types'
 
@@ -148,11 +152,12 @@ export async function runSyncFinalize(db: Database, input: SyncFinalizeInput): P
     // time (bookkeeping like this touch deliberately does not stamp it).
     await touchActivityDoor(db, organizationId, sets, { source, ref })
 
-    // D-4 v1: one collapsed timeline entry per record per run, both lanes.
-    // NOTE: small-lane per-field fidelity (matrix cell [R] — per-record
-    // `entity:field:updated` replay) is a later upgrade; v1 ships the
-    // collapsed shape for BOTH lanes.
-    await timelineDoor(db, organizationId, manifest, sets, {
+    // D-4: timeline entries. SMALL lane: per-field `entity:field:updated`
+    // replay for changed records (matrix cell [R] — shipped), mirroring the
+    // inline per-field row shape; created/archived stay collapsed. LARGE
+    // lane: one collapsed `entity:updated` entry per record per run — that
+    // IS decision D-4, not a pending upgrade.
+    await timelineDoor(db, organizationId, manifest, sets, lane, {
       source,
       ref,
       actorUserId,
@@ -306,19 +311,42 @@ async function touchActivityDoor(
 }
 
 /**
- * D-4 v1: bulk-insert collapsed per-record timeline entries. Rows match the
- * storage shape `@auxx/services/timeline` `createTimelineEvent` writes (the
- * single-entry helper is one INSERT + `.returning()` per row — looping it for
- * up to 15k manifest records is exactly the fan-out the batch lane exists to
- * avoid, so this is a chunked direct insert instead). No non-obvious
- * denormalizations exist on the table: `entityType`/`entityId` come from the
- * RecordId, everything else is literal columns.
+ * D-4: bulk-insert timeline entries. Rows match the storage shape
+ * `@auxx/services/timeline` `createTimelineEvent` writes (the single-entry
+ * helper is one INSERT + `.returning()` per row — looping it for up to 15k
+ * manifest records is exactly the fan-out the batch lane exists to avoid, so
+ * this is a chunked direct insert instead). No non-obvious denormalizations
+ * exist on the table: `entityType`/`entityId` come from the RecordId,
+ * everything else is literal columns.
+ *
+ * Changed records on the SMALL lane get per-field `entity:field:updated`
+ * rows (one per changed field) instead of the collapsed `entity:updated`
+ * entry — a run of ≤ SYNC_SMALL_RUN_THRESHOLD records × a handful of fields
+ * keeps the bulk insert trivially bounded. The large lane keeps the
+ * collapsed shape (that IS D-4). Created/archived records stay collapsed on
+ * both lanes.
+ *
+ * Honest deltas of the per-field rows vs the inline shape
+ * (`mapFieldUpdated` in `create-timeline-event.ts`), all limited by what the
+ * manifest carries (`ManifestFieldChange` is raw `{o, n}` keyed by
+ * outputKey = systemAttribute ?? fieldId):
+ * - `fieldId` / `relatedEntityId` / `changes[].field` hold the manifest
+ *   outputKey — for system fields that is the attribute key, not the
+ *   CustomField CUID, and never the display name the inline lane resolves.
+ * - `fieldName`, `fieldType`, `entitySlug`, and the resolved
+ *   `oldDisplay`/`newDisplay` snapshots are omitted, not fabricated — the
+ *   manifest does not capture them. `changes[]` carries the raw
+ *   `oldValue`/`newValue` pair instead (`oldValue` only when captured).
+ * - `eventType` is `entity:field:updated` for every def (the inline lane
+ *   maps contact/ticket to their prefixed variants) — consistent with the
+ *   collapsed rows already using the `entity:*` family for all defs.
  */
 async function timelineDoor(
   db: Database,
   organizationId: string,
   manifest: SyncChangeManifest,
   sets: ChangedSets,
+  lane: SyncFinalizeLane,
   ctx: {
     source: string
     ref: string
@@ -351,15 +379,50 @@ async function timelineDoor(
       })
     }
 
+    /** Small-lane per-field replay — see the honest-delta notes in the doc comment. */
+    const fieldRows = async (rid: RecordId, fieldChanges: Record<string, ManifestFieldChange>) => {
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(rid)
+      const canonical = await ctx.canonicalDefId(entityDefinitionId)
+      const recordId = toRecordId(canonical, entityInstanceId)
+      for (const [fieldKey, change] of Object.entries(fieldChanges)) {
+        rows.push({
+          eventType: EntityInstanceEventType.FIELD_UPDATED,
+          startedAt: now,
+          entityType: canonical,
+          entityId: entityInstanceId,
+          // Inline: relatedRecordId = toRecordId('custom_field', fieldId).
+          relatedEntityType: 'custom_field',
+          relatedEntityId: fieldKey,
+          actorType,
+          actorId,
+          eventData: { recordId, entityDefinitionId: canonical, fieldId: fieldKey, ...syncMeta },
+          changes: [
+            {
+              field: fieldKey,
+              ...('o' in change ? { oldValue: change.o } : {}),
+              newValue: change.n,
+            },
+          ],
+          organizationId,
+          updatedAt: now,
+        })
+      }
+    }
+
     for (const rid of sets.createdIds) {
       await baseRow(rid, EntityInstanceEventType.CREATED, {})
     }
     for (const rid of sets.updatedIds) {
-      const changedFieldIds = Object.keys(manifest.changes[rid] ?? {})
-      await baseRow(rid, EntityInstanceEventType.UPDATED, {
-        changedFieldIds,
-        changedFieldCount: changedFieldIds.length,
-      })
+      const fieldChanges = manifest.changes[rid] ?? {}
+      const changedFieldIds = Object.keys(fieldChanges)
+      if (lane === 'small' && changedFieldIds.length > 0) {
+        await fieldRows(rid, fieldChanges)
+      } else {
+        await baseRow(rid, EntityInstanceEventType.UPDATED, {
+          changedFieldIds,
+          changedFieldCount: changedFieldIds.length,
+        })
+      }
     }
     for (const rid of sets.archivedIds) {
       await baseRow(rid, EntityInstanceEventType.ARCHIVED, {})

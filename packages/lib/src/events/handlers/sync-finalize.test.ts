@@ -1,8 +1,9 @@
 // packages/lib/src/events/handlers/sync-finalize.test.ts
 // Phase 4 sync finalize (plan events/03 §8, D-12): count-based lane selection,
-// activity touch, collapsed timeline bulk insert, small-lane dispatch, tier-2
-// frames, and the never-throws contract. Boundaries (activity/cache/dispatch/
-// realtime/drizzle) mocked; the pure lane + count helpers run for real.
+// activity touch, timeline bulk insert (small lane: per-field replay; large
+// lane: collapsed per D-4), small-lane dispatch, tier-2 frames, and the
+// never-throws contract. Boundaries (activity/cache/dispatch/realtime/drizzle)
+// mocked; the pure lane + count helpers run for real.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SyncChangeManifest } from '../../record-rules/sync-manifest-types'
@@ -163,13 +164,14 @@ describe('runSyncFinalize — small lane', () => {
     expect([...ids].sort()).toEqual(['i1', 'i2', 'i3', 'i4'])
   })
 
-  it('bulk-inserts one collapsed timeline entry per record, attributed to the run actor', async () => {
+  it('bulk-inserts per-field rows for changed records + collapsed created/archived, attributed to the run actor', async () => {
     await runSyncFinalize(
       fakeDb({ connectorCreatedById: 'user_1' }),
       connectorInput(smallManifest())
     )
     const rows = insertedRows()
-    expect(rows).toHaveLength(5)
+    // 3 changed fields across i1 + i2, plus created i3/i4 and archived i5.
+    expect(rows).toHaveLength(6)
     const byId = new Map(rows.map((r) => [r.entityId, r]))
     expect(byId.get('i3')).toMatchObject({ eventType: 'entity:created', entityType: 'def_1' })
     // Slug-keyed def canonicalized for the timeline keyspace.
@@ -177,16 +179,43 @@ describe('runSyncFinalize — small lane', () => {
       eventType: 'entity:created',
       entityType: 'def_cuid_part',
     })
-    expect(byId.get('i1')).toMatchObject({
-      eventType: 'entity:updated',
+    expect(byId.get('i5')).toMatchObject({ eventType: 'entity:archived' })
+
+    // Per-field replay for i1: one `entity:field:updated` row per changed
+    // field, mirroring the inline mapFieldUpdated shape (related custom_field
+    // pointer, fieldId in eventData, raw o/n pair in `changes`).
+    const i1Rows = rows.filter((r) => r.entityId === 'i1')
+    expect(i1Rows).toHaveLength(2)
+    const byField = new Map(i1Rows.map((r) => [r.relatedEntityId, r]))
+    expect(byField.get('fld_a')).toMatchObject({
+      eventType: 'entity:field:updated',
+      entityType: 'def_1',
+      relatedEntityType: 'custom_field',
+      relatedEntityId: 'fld_a',
       eventData: expect.objectContaining({
-        changedFieldIds: ['fld_a', 'fld_b'],
-        changedFieldCount: 2,
+        recordId: 'def_1:i1',
+        entityDefinitionId: 'def_1',
+        fieldId: 'fld_a',
         syncSource: 'connector',
         syncRef: 'run_1',
       }),
+      changes: [{ field: 'fld_a', oldValue: 1, newValue: 2 }],
     })
-    expect(byId.get('i5')).toMatchObject({ eventType: 'entity:archived' })
+    // No captured old value → no oldValue key (absence, not null).
+    expect(byField.get('fld_b')).toMatchObject({
+      eventType: 'entity:field:updated',
+      changes: [{ field: 'fld_b', newValue: 'x' }],
+    })
+    expect((byField.get('fld_b')!.changes as Array<Record<string, unknown>>)[0]).not.toHaveProperty(
+      'oldValue'
+    )
+    // A captured null old value IS carried (o: null on i2's fld_a).
+    expect(byId.get('i2')).toMatchObject({
+      eventType: 'entity:field:updated',
+      changes: [{ field: 'fld_a', oldValue: null, newValue: 3 }],
+    })
+    // No collapsed entity:updated rows remain on the small lane.
+    expect(rows.some((r) => r.eventType === 'entity:updated')).toBe(false)
     for (const row of rows) {
       expect(row).toMatchObject({ actorType: 'user', actorId: 'user_1', organizationId: ORG })
     }
@@ -266,7 +295,16 @@ describe('runSyncFinalize — large lane', () => {
     })
     expect((guardInput.updatedIds as string[]).length).toBe(SYNC_SMALL_RUN_THRESHOLD + 1)
     expect(h.touchEntityActivity).toHaveBeenCalled()
-    expect(insertedRows()).toHaveLength(SYNC_SMALL_RUN_THRESHOLD + 1)
+    // The large lane keeps EXACTLY one collapsed entity:updated row per record
+    // (D-4) — the per-field replay is a small-lane upgrade only.
+    const rows = insertedRows()
+    expect(rows).toHaveLength(SYNC_SMALL_RUN_THRESHOLD + 1)
+    for (const row of rows) {
+      expect(row).toMatchObject({
+        eventType: 'entity:updated',
+        eventData: expect.objectContaining({ changedFieldIds: ['fld_a'], changedFieldCount: 1 }),
+      })
+    }
     expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)
   })
 
