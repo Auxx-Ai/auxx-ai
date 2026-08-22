@@ -207,6 +207,11 @@ export {
   type OrgSeedScenario,
   orgSeedJob,
 } from './maintenance/org-seed-job'
+export {
+  enqueueOrphanedStorageObjectCleanup,
+  type OrphanedStorageObjectJobData,
+  orphanedStorageObjectJob,
+} from './maintenance/orphaned-storage-object-job'
 // Outlook Graph subscription health sweep (webhook-push-migration plan §3.2/Phase 4.3-4.4)
 export {
   type OutlookSubscriptionHealthJobData,

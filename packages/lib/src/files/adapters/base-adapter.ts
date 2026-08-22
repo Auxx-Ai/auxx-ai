@@ -237,25 +237,38 @@ export interface StorageAdapter {
     key: string
     mimeType?: string
     metadata?: Record<string, string>
+    /** Explicit bucket override, for providers that are bucket-addressed. */
+    bucket?: string
+    /** Routes the upload to the provider's public or private bucket. */
+    visibility?: 'PUBLIC' | 'PRIVATE'
   }): Promise<MultipartUpload>
 
   /**
-   * Generate presigned URL for uploading a part
+   * Generate presigned URL for uploading a part.
+   *
+   * `bucket` MUST name the same bucket the multipart upload was initiated in.
+   * Presigning a part against a different bucket yields `NoSuchUpload`.
    */
   presignPart?(params: {
     key: string
     uploadId: string
     partNumber: number
     size?: number
+    /** Bucket the multipart upload was initiated in. Required for bucket-addressed providers. */
+    bucket?: string
   }): Promise<PresignedUpload>
 
   /**
-   * Complete multipart upload
+   * Complete multipart upload.
+   *
+   * `bucket` MUST name the same bucket the multipart upload was initiated in.
    */
   completeMultipart?(params: {
     key: string
     uploadId: string
     parts: Array<{ partNumber: number; etag: string }>
+    /** Bucket the multipart upload was initiated in. Required for bucket-addressed providers. */
+    bucket?: string
   }): Promise<{ etag: string; size?: number }>
 
   // ============= File Management (External Providers) =============
@@ -282,7 +295,12 @@ export interface StorageAdapter {
   }): Promise<{ id: string; rev?: string }>
 
   /**
-   * Delete a file from external storage
+   * Delete a file from external storage.
+   *
+   * For bucket-addressed providers the bucket travels on `loc.metadata.bucket`.
+   * Adapters must NOT silently fall back to a configured default bucket: S3
+   * answers 204 for a delete of a key that does not exist, so a wrong-bucket
+   * delete looks like a success while the real object leaks.
    */
   deleteFile?(loc: StorageLocationRef, auth?: ProviderAuth): Promise<void>
 
