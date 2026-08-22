@@ -62,7 +62,13 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       { value: 'vendors', label: 'Suppliers', icon: 'truck', recordResource: 'vendor_part' },
     ],
     tabCards: {
-      overview: [{ value: 'inventory', label: 'Inventory' }],
+      overview: [
+        { value: 'inventory', label: 'Inventory' },
+        // Cost provenance: buy-vs-build comparison + the not-costed signal.
+        // The card renders nothing for a part with a single cost candidate
+        // (the common case), which hides the whole section.
+        { value: 'costing', label: 'Costing' },
+      ],
     },
   },
 
