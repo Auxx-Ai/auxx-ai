@@ -359,7 +359,7 @@ describe('normalizeAddressOnChange', () => {
     expect(mockedPublish).not.toHaveBeenCalled()
   })
 
-  it('writes back quietly via setValueWithBuiltIn with publishEvents: false', async () => {
+  it('writes back under a DECLARED quiet session, not a bare publishEvents flag', async () => {
     mockedGeocode.mockResolvedValue({
       lat: 1,
       lng: 2,
@@ -375,8 +375,13 @@ describe('normalizeAddressOnChange', () => {
     expect(mockedSetValue.mock.calls[0]![1]).toMatchObject({
       recordId,
       fieldId: 'field-address',
-      publishEvents: false,
     })
+    // Plan 04 Phase B: same suppression, but the reason now rides on the
+    // session where it can be checked, instead of a boolean plus a comment.
+    const ctx = mockedSetValue.mock.calls[0]![0]
+    expect(ctx.session?.mode?.kind).toBe('quiet')
+    expect(ctx.session?.mode?.reason ?? '').not.toHaveLength(0)
+    expect(mockedSetValue.mock.calls[0]![1]).not.toHaveProperty('publishEvents')
   })
 
   it('publishes the full composed value via realtime after a successful write-back', async () => {

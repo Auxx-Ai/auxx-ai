@@ -15,11 +15,25 @@ import type {
 } from '../documents/resolve-settings'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
+import { quietSession } from '../resources/crud/write-origin'
 import { getOrganizationSetting } from '../settings/settings-service'
 import { getPaymentAccount } from './payments/account-state'
 import { getInvoiceDepositApplied } from './payments/allocation-reads'
 import { resolvePartialPaymentBounds } from './payments/partial'
 import type { DiscountType } from './types'
+
+/**
+ * C5 (plan 04 §3), and the silence here is LOAD-BEARING, not incidental (O-5).
+ * Tier-1 `fieldValues:updated` carries raw stored values to a room gated only on
+ * org membership plus `canViewEntity(defId)`. A public token is a bearer
+ * capability — the public resolver is org-agnostic by design — so broadcasting
+ * it to every member with def-level view on invoices is a WIDER audience than the
+ * read path grants. Un-suppressing this is a confidentiality regression, not a
+ * fidelity improvement.
+ */
+const QUIET_PUBLIC_TOKEN = quietSession(
+  'a public token is a bearer capability; tier-1 frames carry raw values to a def-room audience wider than the token read path grants (plan 04 O-5)'
+)
 
 /**
  * The public `/pay/{token}` capability-token machinery (money MP1 build spec §H/§I). Kept
@@ -73,11 +87,16 @@ export async function ensureInvoicePublicToken(
   if (existing) return existing
 
   const token = generateId()
-  const fieldValueService = new FieldValueService(organizationId, systemUserId)
+  const fieldValueService = new FieldValueService(
+    organizationId,
+    systemUserId,
+    undefined,
+    undefined,
+    { session: QUIET_PUBLIC_TOKEN }
+  )
   await fieldValueService.setValuesForEntity({
     recordId: invoiceRecordId,
     values: [{ fieldId: field.id, value: token }],
-    publishEvents: false,
   })
 
   return token
