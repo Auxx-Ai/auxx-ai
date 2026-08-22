@@ -59,12 +59,12 @@ export interface CrudOptions {
    * Skip the per-write event fan-out: the bus event, realtime publish, timeline entry,
    * and per-field-change hooks. Used by bulk writers (connector sink, CSV import).
    *
-   * B2 CONTRACT (see plans/events/b2-sync-change-manifest-plan.md, D9): suppression and
-   * delivery are two halves of one contract. Every NON-SEED bulk writer that sets
-   * `skipEvents: true` MUST feed `sync-manifest-collector` (via `capture-field-changes`)
-   * so record rules still see the writes and fire with `source: 'sync'`. Seed writers
-   * are the ONLY documented exemption (they stay silent forever). "Silent skipEvents"
-   * therefore means seed-only — anything else is a bug.
+   * B2 CONTRACT, discharged by the engine (plan 07): suppression and delivery are two
+   * halves of one contract. A `sync`-origin session's collector is fed automatically at
+   * the engine seams — membership unconditionally, `{o,n}` deltas for rule-subscribed
+   * fields — so bulk writers no longer capture anything themselves. Seed writers stay
+   * silent forever (the one documented exemption). "Silent skipEvents" therefore means
+   * seed-only — anything else is a bug.
    *
    * @deprecated Construct the handler with a `session` instead
    * (`UnifiedCrudHandlerOptions.session`, plan 03 §4b S1); this alias maps to
@@ -352,11 +352,25 @@ export async function createEntity(
   // Build RecordId for field value operations
   const recordId = toRecordId(entityDef.id, instance.id)
 
-  // Tier-1 sync capture (plan 07 §4): unconditional lifecycle membership for
-  // sync sessions. NO values — `createdValues` stays producer-side in PR 1.
-  // Producers that also call recordCreated are fine: the collector dedupes on
-  // the entity instance id.
-  syncCollectorOf(ctx.session)?.recordCreated(recordId)
+  // Sync capture (plan 07 §4 / PR 2): unconditional lifecycle membership for
+  // sync sessions, registered BEFORE the field writes below run — the field
+  // seams probe `hasCreated` so a create's own field writes emit `{n}` with no
+  // `o` (the manifest's created-this-run marker). `createdValues` now rides
+  // this seam too: the raw systemAttribute-keyed written values, the exact
+  // shape `extractEventData` produces on the interactive door, gated on a
+  // lifecycle `created` subscription exactly as the producer capture was (no
+  // rules means no handler reads them — zero work). Producers that also call
+  // recordCreated are fine: the collector dedupes on the entity instance id,
+  // first call (this one) wins, values included.
+  const createCollector = syncCollectorOf(ctx.session)
+  if (createCollector) {
+    let createdValues: Record<string, unknown> | undefined
+    if (createCollector.subscriptionsFor(entityDef.id)?.lifecycle.created) {
+      const extracted = extractEventData(entityDef.entityType, entityFields, processedValues)
+      if (Object.keys(extracted).length > 0) createdValues = extracted
+    }
+    createCollector.recordCreated(recordId, createdValues)
+  }
 
   // Buffered lane: register the create BEFORE its own field writes run. The
   // ordering is load-bearing — a record in the scope's `created` set absorbs its

@@ -1,12 +1,19 @@
 // packages/lib/src/field-values/__tests__/sync-capture.test.ts
 //
-// Tier-1 sync capture at the field-value seams (plan 07 §4, PR 1): a write
-// under a sync-session origin records touched membership on the session's
-// manifest collector — but ONLY when the write actually changed something.
-// Guard short-circuits (D-6), delete-of-absent (B-14), and fully-deduped adds
-// record NOTHING (membership honesty, §4 property 1). Interactive, automation
-// and seed sessions never capture, and the inline lane's own doors are
-// untouched by capture.
+// Tier-1 + tier-2 sync capture at the field-value seams (plan 07 §4, PR 1+2):
+// a write under a sync-session origin records touched membership on the
+// session's manifest collector — but ONLY when the write actually changed
+// something. Guard short-circuits (D-6), delete-of-absent (B-14), and
+// fully-deduped adds record NOTHING (membership honesty, §4 property 1).
+// Interactive, automation and seed sessions never capture, and the inline
+// lane's own doors are untouched by capture.
+//
+// Tier-2 (PR 2): rule-subscribed fields additionally capture `{o, n}` deltas
+// at the same seams — `o` from the step-3.55 guard rows (or the targeted AI
+// read / the add-dedupe rows / the widened remove RETURNING), `n` from the
+// values actually stored. Created-this-run records emit `{n}` with NO `o`
+// (the F6 o-absence contract), unsubscribed fields stay membership-only, and
+// the double-capture window with the producer helpers folds to one entry.
 
 import { toRecordId } from '@auxx/types/resource'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -157,6 +164,9 @@ function makeFakeDb(existingRows: any[] = [], deleteReturning: any[] = []) {
   let lastOp: 'insert' | 'delete' | null = null
   const chain: any = {}
   Object.assign(chain, {
+    // SELECT statements issued, observable per test — the "no extra read when
+    // nothing is subscribed" invariants compare counts across runs.
+    __selectCount: 0,
     transaction: async (fn: (tx: any) => Promise<any>) => fn(chain),
     execute: async () => undefined, // pg_advisory_xact_lock
     delete: () => {
@@ -184,7 +194,10 @@ function makeFakeDb(existingRows: any[] = [], deleteReturning: any[] = []) {
               ...row,
             }))
       ),
-    select: () => chain,
+    select: () => {
+      chain.__selectCount += 1
+      return chain
+    },
     from: () => chain,
     orderBy: () => Promise.resolve(existingRows),
     update: () => chain,
@@ -442,5 +455,386 @@ describe('tier-1 capture — addValues / removeValues', () => {
     })
 
     expect(collector.toJson()).toBeNull()
+  })
+})
+
+// =============================================================================
+// Tier-2 delta capture (PR 2) — subscribed fields get {o, n}, others stay tier-1
+// =============================================================================
+
+/** Collector whose rules subscribe to `fieldIds` on the `widget` def. */
+function subscribedCollector(fieldIds: string[], defId = 'widget'): ManifestCollector {
+  return createManifestCollector({
+    [defId]: { fieldIds: new Set(fieldIds), lifecycle: { created: false, deleted: false } },
+  })
+}
+
+describe('tier-2 delta capture — forward set', () => {
+  it('a subscribed set captures {o, n} in the flattened stored value space', async () => {
+    const collector = subscribedCollector(['field-text'])
+    const rows = [existingRow('fv-1', 'field-text', 'a0', { valueText: 'hello' })]
+    const ctx = makeCtx(makeFakeDb(rows), [FIELD_TEXT], syncSession(collector))
+
+    await setValueWithBuiltIn(ctx, {
+      recordId,
+      fieldId: 'field-text',
+      value: 'world',
+      publishEvents: false,
+    })
+
+    const manifest = collector.toJson()
+    expect(manifest?.deltas).toEqual({
+      [recordId]: { 'field-text': { o: 'hello', n: 'world' } },
+    })
+    // A delta implies touched — membership carries the same output key.
+    expect(manifest?.touched).toEqual({ [recordId]: ['field-text'] })
+  })
+
+  it('o is null (present, honest) when the field was empty pre-write', async () => {
+    const collector = subscribedCollector(['field-text'])
+    const ctx = makeCtx(makeFakeDb([]), [FIELD_TEXT], syncSession(collector))
+
+    await setValueWithBuiltIn(ctx, {
+      recordId,
+      fieldId: 'field-text',
+      value: 'world',
+      publishEvents: false,
+    })
+
+    const entry = collector.toJson()?.deltas[recordId]?.['field-text']
+    expect(entry).toEqual({ o: null, n: 'world' })
+    expect(entry && 'o' in entry).toBe(true)
+  })
+
+  it('an UNSUBSCRIBED field gets touched membership but NO delta', async () => {
+    const collector = subscribedCollector(['some-other-field'])
+    const rows = [existingRow('fv-1', 'field-text', 'a0', { valueText: 'hello' })]
+    const ctx = makeCtx(makeFakeDb(rows), [FIELD_TEXT], syncSession(collector))
+
+    await setValueWithBuiltIn(ctx, {
+      recordId,
+      fieldId: 'field-text',
+      value: 'world',
+      publishEvents: false,
+    })
+
+    const manifest = collector.toJson()
+    expect(manifest?.touched).toEqual({ [recordId]: ['field-text'] })
+    expect(manifest?.deltas).toEqual({})
+  })
+
+  it('the delta key is systemAttribute when the field carries one (subscription stays by row id)', async () => {
+    const collector = subscribedCollector(['field-email'])
+    const ctx = makeCtx(makeFakeDb([]), [FIELD_EMAIL], syncSession(collector))
+
+    await setValueWithBuiltIn(ctx, {
+      recordId,
+      fieldId: 'field-email',
+      value: 'a@b.co',
+      publishEvents: false,
+    })
+
+    expect(collector.toJson()?.deltas).toEqual({
+      [recordId]: { primary_email: { o: null, n: 'a@b.co' } },
+    })
+  })
+
+  it('a subscribed REAL clear captures {o, n: null}', async () => {
+    const collector = subscribedCollector(['field-text'])
+    const rows = [existingRow('fv-1', 'field-text', 'a0', { valueText: 'hello' })]
+    const ctx = makeCtx(makeFakeDb(rows), [FIELD_TEXT], syncSession(collector))
+
+    await setValueWithBuiltIn(ctx, {
+      recordId,
+      fieldId: 'field-text',
+      value: null,
+      publishEvents: false,
+    })
+
+    expect(collector.toJson()?.deltas).toEqual({
+      [recordId]: { 'field-text': { o: 'hello', n: null } },
+    })
+  })
+
+  it('a subscribed set costs NO extra query — o rides the step-3.55 guard rows', async () => {
+    const rows = () => [existingRow('fv-1', 'field-text', 'a0', { valueText: 'hello' })]
+    const subDb = makeFakeDb(rows())
+    const unsubDb = makeFakeDb(rows())
+
+    await setValueWithBuiltIn(
+      makeCtx(subDb, [FIELD_TEXT], syncSession(subscribedCollector(['field-text']))),
+      { recordId, fieldId: 'field-text', value: 'world', publishEvents: false }
+    )
+    await setValueWithBuiltIn(
+      makeCtx(unsubDb, [FIELD_TEXT], syncSession(subscribedCollector(['other']))),
+      { recordId, fieldId: 'field-text', value: 'world', publishEvents: false }
+    )
+
+    expect(subDb.__selectCount).toBe(unsubDb.__selectCount)
+  })
+})
+
+// =============================================================================
+// Tier-2 — o-absence for created-this-run records (the F6 contract)
+// =============================================================================
+
+describe('tier-2 delta capture — created-this-run o-absence', () => {
+  it('a field write on a record created this run emits {n} with NO o', async () => {
+    const collector = subscribedCollector(['field-text'])
+    // The lifecycle seam (createEntity) registers the create BEFORE field writes.
+    collector.recordCreated(recordId)
+    const ctx = makeCtx(makeFakeDb([]), [FIELD_TEXT], syncSession(collector))
+
+    await setValueWithBuiltIn(ctx, {
+      recordId,
+      fieldId: 'field-text',
+      value: 'world',
+      publishEvents: false,
+    })
+
+    const entry = collector.toJson()?.deltas[recordId]?.['field-text']
+    expect(entry).toEqual({ n: 'world' })
+    expect(entry && 'o' in entry).toBe(false)
+  })
+
+  it('create-then-update within one run folds to {n: latest} with NO o', async () => {
+    const collector = subscribedCollector(['field-text'])
+    collector.recordCreated(recordId)
+    const ctx = makeCtx(makeFakeDb([]), [FIELD_TEXT], syncSession(collector))
+
+    await setValueWithBuiltIn(ctx, {
+      recordId,
+      fieldId: 'field-text',
+      value: 'first',
+      publishEvents: false,
+    })
+    await setValueWithBuiltIn(ctx, {
+      recordId,
+      fieldId: 'field-text',
+      value: 'latest',
+      publishEvents: false,
+    })
+
+    const entry = collector.toJson()?.deltas[recordId]?.['field-text']
+    expect(entry).toEqual({ n: 'latest' })
+    expect(entry && 'o' in entry).toBe(false)
+  })
+
+  it('the created probe dedupes on the instance id across RecordId forms', async () => {
+    const collector = subscribedCollector(['field-text'])
+    // Created under an alias-form RecordId; the field write uses the def form.
+    collector.recordCreated(toRecordId('contact', 'inst-1'))
+    const ctx = makeCtx(makeFakeDb([]), [FIELD_TEXT], syncSession(collector))
+
+    await setValueWithBuiltIn(ctx, {
+      recordId,
+      fieldId: 'field-text',
+      value: 'world',
+      publishEvents: false,
+    })
+
+    const entry = collector.toJson()?.deltas[recordId]?.['field-text']
+    expect(entry).toEqual({ n: 'world' })
+  })
+})
+
+// =============================================================================
+// Tier-2 — the both-capturing window (engine + producer, PR-1→PR-2)
+// =============================================================================
+
+describe('tier-2 delta capture — double-capture window', () => {
+  // What the retired producer capture (capture-field-changes.ts, deleted in plan 07
+  // PR 2) recorded for the same write: pre-read `o` + input `n` normalized into the
+  // same flattened stored space. Kept as a fold-contract fixture.
+  const producerEntry = { 'field-text': { o: 'hello', n: 'world' } }
+
+  it('engine capture + producer capture fold to ONE entry equal to either alone', async () => {
+    const collector = subscribedCollector(['field-text'])
+    const rows = [existingRow('fv-1', 'field-text', 'a0', { valueText: 'hello' })]
+    const ctx = makeCtx(makeFakeDb(rows), [FIELD_TEXT], syncSession(collector))
+
+    // Engine seam fires inside the write; the producer's recordChange lands after
+    // (entity-sink/import ordering: capture-read → write → recordChange).
+    await setValueWithBuiltIn(ctx, {
+      recordId,
+      fieldId: 'field-text',
+      value: 'world',
+      publishEvents: false,
+    })
+    const engineOnly = collector.toJson()
+    collector.recordChange(recordId, producerEntry)
+    const both = collector.toJson()
+
+    expect(both?.deltas).toEqual({ [recordId]: producerEntry })
+    expect(both).toEqual(engineOnly)
+    expect(both?.touched).toEqual({ [recordId]: ['field-text'] })
+  })
+
+  it('producer-first ordering yields the same fold (first-o-wins is stable when o agrees)', async () => {
+    const collector = subscribedCollector(['field-text'])
+    const rows = [existingRow('fv-1', 'field-text', 'a0', { valueText: 'hello' })]
+    const ctx = makeCtx(makeFakeDb(rows), [FIELD_TEXT], syncSession(collector))
+
+    collector.recordChange(recordId, producerEntry)
+    await setValueWithBuiltIn(ctx, {
+      recordId,
+      fieldId: 'field-text',
+      value: 'world',
+      publishEvents: false,
+    })
+
+    expect(collector.toJson()?.deltas).toEqual({ [recordId]: producerEntry })
+  })
+})
+
+// =============================================================================
+// Tier-2 — aiGeneration (guard bypassed): targeted read for an honest o
+// =============================================================================
+
+describe('tier-2 delta capture — aiGeneration writes', () => {
+  const aiMeta = { model: 'test-model' } as never
+
+  it('a subscribed AI commit captures a REAL o via the targeted read', async () => {
+    const collector = subscribedCollector(['field-text'])
+    const rows = [existingRow('fv-1', 'field-text', 'a0', { valueText: 'hello' })]
+    const ctx = makeCtx(makeFakeDb(rows), [FIELD_TEXT], syncSession(collector))
+
+    await setValueWithBuiltIn(ctx, {
+      recordId,
+      fieldId: 'field-text',
+      value: 'world',
+      publishEvents: false,
+      aiGeneration: aiMeta,
+    })
+
+    expect(collector.toJson()?.deltas).toEqual({
+      [recordId]: { 'field-text': { o: 'hello', n: 'world' } },
+    })
+  })
+
+  it('an unsubscribed AI commit does NOT pay the targeted read (touched only)', async () => {
+    const rows = () => [existingRow('fv-1', 'field-text', 'a0', { valueText: 'hello' })]
+    const subDb = makeFakeDb(rows())
+    const unsubDb = makeFakeDb(rows())
+    const unsubCollector = subscribedCollector(['other'])
+
+    await setValueWithBuiltIn(
+      makeCtx(subDb, [FIELD_TEXT], syncSession(subscribedCollector(['field-text']))),
+      {
+        recordId,
+        fieldId: 'field-text',
+        value: 'world',
+        publishEvents: false,
+        aiGeneration: aiMeta,
+      }
+    )
+    await setValueWithBuiltIn(makeCtx(unsubDb, [FIELD_TEXT], syncSession(unsubCollector)), {
+      recordId,
+      fieldId: 'field-text',
+      value: 'world',
+      publishEvents: false,
+      aiGeneration: aiMeta,
+    })
+
+    // Exactly the one targeted read separates the two runs.
+    expect(subDb.__selectCount).toBe(unsubDb.__selectCount + 1)
+    const manifest = unsubCollector.toJson()
+    expect(manifest?.touched).toEqual({ [recordId]: ['field-text'] })
+    expect(manifest?.deltas).toEqual({})
+  })
+})
+
+// =============================================================================
+// Tier-2 — add / remove deltas from state already in hand
+// =============================================================================
+
+describe('tier-2 delta capture — addValues / removeValues', () => {
+  it('addValues captures o = pre-op list, n = post-op list', async () => {
+    const collector = subscribedCollector(['field-tags'])
+    const rows = [existingRow('fv-a', 'field-tags', 'a0', { optionId: 'opt-a' })]
+    const ctx = makeCtx(makeFakeDb(rows), [FIELD_TAGS], syncSession(collector))
+
+    await addValues(ctx, {
+      recordId,
+      fieldId: 'field-tags',
+      values: ['opt-b'],
+      skipPublishEvents: true,
+    })
+
+    expect(collector.toJson()?.deltas).toEqual({
+      [recordId]: { 'field-tags': { o: ['opt-a'], n: ['opt-a', 'opt-b'] } },
+    })
+  })
+
+  it('addValues on an empty field captures o = null', async () => {
+    const collector = subscribedCollector(['field-tags'])
+    const ctx = makeCtx(makeFakeDb([]), [FIELD_TAGS], syncSession(collector))
+
+    await addValues(ctx, {
+      recordId,
+      fieldId: 'field-tags',
+      values: ['opt-a'],
+      skipPublishEvents: true,
+    })
+
+    expect(collector.toJson()?.deltas).toEqual({
+      [recordId]: { 'field-tags': { o: null, n: ['opt-a'] } },
+    })
+  })
+
+  it('addValues on an unsubscribed field stays tier-1 only', async () => {
+    const collector = subscribedCollector(['other'])
+    const ctx = makeCtx(makeFakeDb([]), [FIELD_TAGS], syncSession(collector))
+
+    await addValues(ctx, {
+      recordId,
+      fieldId: 'field-tags',
+      values: ['opt-a'],
+      skipPublishEvents: true,
+    })
+
+    const manifest = collector.toJson()
+    expect(manifest?.touched).toEqual({ [recordId]: ['field-tags'] })
+    expect(manifest?.deltas).toEqual({})
+  })
+
+  it('removeValues reconstructs o from the widened RETURNING + surviving values', async () => {
+    const collector = subscribedCollector(['field-tags'])
+    // Post-delete read returns the surviving row; the DELETE's RETURNING carries
+    // the full removed row so the pre-op list is reconstructable in order.
+    const surviving = [existingRow('fv-a', 'field-tags', 'a0', { optionId: 'opt-a' })]
+    const removed = [existingRow('fv-b', 'field-tags', 'a1', { optionId: 'opt-b' })]
+    const ctx = makeCtx(makeFakeDb(surviving, removed), [FIELD_TAGS], syncSession(collector))
+
+    await removeValues(ctx, {
+      recordId,
+      fieldId: 'field-tags',
+      values: ['opt-b'],
+      skipPublishEvents: true,
+    })
+
+    expect(collector.toJson()?.deltas).toEqual({
+      [recordId]: { 'field-tags': { o: ['opt-a', 'opt-b'], n: ['opt-a'] } },
+    })
+  })
+
+  it('removeValues on an unsubscribed field stays tier-1 only', async () => {
+    const collector = subscribedCollector(['other'])
+    const ctx = makeCtx(
+      makeFakeDb([], [existingRow('fv-a', 'field-tags', 'a0', { optionId: 'opt-a' })]),
+      [FIELD_TAGS],
+      syncSession(collector)
+    )
+
+    await removeValues(ctx, {
+      recordId,
+      fieldId: 'field-tags',
+      values: ['opt-a'],
+      skipPublishEvents: true,
+    })
+
+    const manifest = collector.toJson()
+    expect(manifest?.touched).toEqual({ [recordId]: ['field-tags'] })
+    expect(manifest?.deltas).toEqual({})
   })
 })

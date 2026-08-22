@@ -7,10 +7,6 @@ export {
   type NativeRuleHandlerEvent,
   registerNativeRuleHandler,
 } from './actions'
-export {
-  captureCreateFieldChanges,
-  captureUpdateFieldChanges,
-} from './capture-field-changes'
 export { fireRecordRules, fireRecordRulesBatch } from './engine'
 export { handleRecordRulesOnFieldChange } from './hook-handler'
 export {

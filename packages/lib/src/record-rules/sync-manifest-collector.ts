@@ -3,7 +3,7 @@
 // tier-1 membership (touched records + lifecycle) is captured UNCONDITIONALLY for every
 // sync session — the collector is always real, there is no no-op stub anymore. Tier-2
 // deltas stay gated on rule subscriptions via `subscriptionsFor` (empty subscriptions ⇒
-// undefined for every def ⇒ producers never capture values, at zero cost).
+// undefined for every def ⇒ the engine seams never capture values, at zero cost).
 // See plans/events/07-two-tier-sync-capture-plan.md.
 
 import { createScopedLogger } from '@auxx/logger'
@@ -57,8 +57,8 @@ const DEFAULT_CAPS: ManifestCollectorCaps = {
  * in a slice) and `mergeManifests` (folding slices into the run row) so the two merge
  * semantics can never diverge.
  *
- * `o`-absence is meaningful: creates capture `{n}` with NO `o` (see
- * `captureCreateFieldChanges`), updates always capture `o` (null when the field was
+ * `o`-absence is meaningful: creates capture `{n}` with NO `o` (the engine's delta
+ * seams probe `hasCreated`), updates always capture `o` (null when the field was
  * empty). So an existing entry without `o` means "this record+field first appeared as a
  * create THIS run" — a later update fragment must NOT graft its pre-read `o` (the
  * values the create just wrote) onto it, or a created-then-updated record would fold to
@@ -74,17 +74,11 @@ function mergeFieldChange(
 
 /**
  * Accumulates tier-1 membership + tier-2 deltas for one run/slice. Always real — every
- * mutator captures. Tier-2 gating lives at the producers via `subscriptionsFor`.
+ * mutator captures. Tier-2 gating lives at the engine seams via `subscriptionsFor`.
  *
  * All mutators are cheap: Map/Set pushes only, no queries.
  */
 export interface ManifestCollector {
-  /**
-   * Always true — the collector is always real now (plan 07). Kept as a literal so
-   * producer fast-path checks (`ctx.manifest?.enabled && ...`) stay truthful; delete
-   * with the next producer sweep.
-   */
-  readonly enabled: true
   /** Subscription buckets for a def, or undefined when nothing is subscribed for it. */
   subscriptionsFor(entityDefinitionId: string): DefSubscriptions | undefined
   /**
@@ -106,6 +100,14 @@ export interface ManifestCollector {
    * sync door — only when the created id is actually accepted (not capped out).
    */
   recordCreated(recordId: RecordId, values?: Record<string, unknown>): void
+  /**
+   * Cheap membership probe (dedupes on the entity instance id like everything else):
+   * was this record already captured as created THIS run? The engine's tier-2 delta
+   * seams consult it so a field write composing a create emits `{n}` with NO `o` —
+   * `o`-absence is the manifest's "created this run" marker (see `mergeFieldChange`),
+   * and even an `o: null` grafted onto a created record's field would break the fold.
+   */
+  hasCreated(recordId: RecordId): boolean
   /** Record an archived id — UNCONDITIONAL membership (no lifecycle-rule gating). */
   recordArchived(recordId: RecordId): void
   /** Serialize; null when literally nothing was captured. */
@@ -241,6 +243,10 @@ class ManifestAccumulator {
     this.archived.set(instanceId, recordId)
   }
 
+  hasCreated(recordId: RecordId): boolean {
+    return this.created.has(parseRecordId(recordId).entityInstanceId)
+  }
+
   /** Fold a v2 manifest in (earlier fragments first — first `o` wins, last `n` wins). */
   ingest(m: SyncChangeManifest): void {
     for (const [rid, keys] of Object.entries(m.touched) as [RecordId, string[] | 1][]) {
@@ -299,7 +305,6 @@ class ManifestAccumulator {
 }
 
 class RealCollector implements ManifestCollector {
-  readonly enabled = true as const
   private readonly acc: ManifestAccumulator
 
   constructor(
@@ -327,6 +332,10 @@ class RealCollector implements ManifestCollector {
 
   recordArchived(recordId: RecordId): void {
     this.acc.recordArchived(recordId)
+  }
+
+  hasCreated(recordId: RecordId): boolean {
+    return this.acc.hasCreated(recordId)
   }
 
   toJson(): SyncChangeManifest | null {
