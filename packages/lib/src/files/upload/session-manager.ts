@@ -15,6 +15,12 @@ const logger = createScopedLogger('session-manager')
 export class SessionManager {
   private static readonly SESSION_PREFIX = 'upload:session:'
   private static readonly DEFAULT_TTL = 10 * 60 // 10 minutes
+  /**
+   * Floor applied when rewriting a session's key. Redis rejects a SETEX of 0, and a
+   * one-second key would evaporate mid-completion, so an update on a session whose
+   * `expiresAt` has already passed buys enough time to finish the flow in progress.
+   */
+  private static readonly MIN_UPDATE_TTL = 60 // 1 minute
 
   /**
    * Resolve the Redis client. Upload sessions have no in-memory fallback, so an unavailable
@@ -105,7 +111,11 @@ export class SessionManager {
   }
 
   /**
-   * Update session with partial data, preserving TTL
+   * Update session with partial data, preserving TTL.
+   *
+   * The key is only rewritten for a session Redis still holds, so a floored TTL can
+   * never resurrect an evicted session — it only keeps a live one alive long enough
+   * for the caller (typically the completion route) to finish.
    */
   static async updateSession(
     sessionId: string,
@@ -116,8 +126,13 @@ export class SessionManager {
 
     const updatedSession = { ...session, ...updates }
 
-    // Preserve TTL: recompute remaining time from expiresAt
-    const remainingTtl = Math.max(0, Math.floor((session.expiresAt.getTime() - Date.now()) / 1000))
+    // Preserve TTL: recompute remaining time from expiresAt, never below the floor.
+    // SETEX rejects a non-positive expiry, which would fail an upload whose bytes are
+    // already stored.
+    const remainingTtl = Math.max(
+      SessionManager.MIN_UPDATE_TTL,
+      Math.floor((session.expiresAt.getTime() - Date.now()) / 1000)
+    )
 
     const redis = await SessionManager.getRedis()
     await redis.setex(
@@ -137,6 +152,10 @@ export class SessionManager {
 
   /**
    * Mark upload as completed and prepare for processing
+   *
+   * @deprecated No production caller. Only `__tests__/unified-upload-integration.test.ts`
+   * still exercises it, and the `storageLocationId` it writes is a storage key, not a
+   * `StorageLocation` id. Delete both together.
    */
   static async completeUpload(sessionId: string, completion: UploadCompletionData): Promise<void> {
     await SessionManager.updateSession(sessionId, {
@@ -146,18 +165,29 @@ export class SessionManager {
   }
 
   /**
-   * Extend session TTL during active upload
+   * Extend session TTL during active upload.
+   *
+   * Extends by the session's own `ttlSec` — the lifetime its processor asked for —
+   * so touching a long-lived session cannot shorten it to the 10-minute default.
+   * The refreshed `expiresAt` is written back with the key: the stored value and the
+   * Redis TTL must never disagree, or `updateSession` recomputes a remaining TTL from
+   * an `expiresAt` that has silently drifted into the past.
    */
   static async touchSession(sessionId: string): Promise<void> {
     const session = await SessionManager.getSession(sessionId)
     if (!session) return
 
-    // Extend TTL while actively uploading
+    const extendSec = session.ttlSec > 0 ? session.ttlSec : SessionManager.DEFAULT_TTL
+    const refreshed: PresignedUploadSession = {
+      ...session,
+      expiresAt: new Date(Date.now() + extendSec * 1000),
+    }
+
     const redis = await SessionManager.getRedis()
     await redis.setex(
       `${SessionManager.SESSION_PREFIX}${sessionId}`,
-      SessionManager.DEFAULT_TTL,
-      JSON.stringify(session)
+      extendSec,
+      JSON.stringify(refreshed)
     )
   }
 
