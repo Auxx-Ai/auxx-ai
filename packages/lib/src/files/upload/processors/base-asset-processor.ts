@@ -113,25 +113,15 @@ export abstract class BaseAssetProcessor extends BaseProcessor {
     }
   }
 
-  /**
-   * Override validation hook for attachment-specific checks
-   */
-  async validateCompletedUpload(
-    session: PresignedUploadSession,
-    head: { size: number; mimeType?: string }
-  ) {
-    await super.validateCompletedUpload(session, head)
-
-    if (head.size > this.maxFileSize) {
-      throw new Error(
-        `File exceeds allowed size of ${Math.round(this.maxFileSize / 1024 / 1024)}MB`
-      )
-    }
-
-    if (head.mimeType && !this.isAllowedMimeType(head.mimeType)) {
-      throw new Error(`Uploaded type '${head.mimeType}' not allowed`)
-    }
-  }
+  // `validateCompletedUpload` is deliberately NOT overridden. It used to
+  // re-check `head.size` against `this.maxFileSize` and `head.mimeType` against
+  // `this.allowedMimeTypes` — a second, hand-written copy of the rules the
+  // session's own `policy` already encodes, and one that judged the processor's
+  // fields rather than the policy that was actually signed. `BaseProcessor` now
+  // delegates to the shared `validateCompletedUpload` in `upload/config.ts`,
+  // which reads `session.policy`, so a `CUSTOM_FIELD` upload's per-field MIME
+  // narrowing survives to the end of the upload instead of applying only to the
+  // presign.
 
   // ============= Presigned Upload Implementation (Legacy) =============
 

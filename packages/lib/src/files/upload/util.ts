@@ -39,6 +39,12 @@ export const normalizeEntityType = (entityType: string): string => {
  *
  * The entity processor determines the folder structure via entityType.
  * No special casing - simple, consistent paths for all entity types.
+ *
+ * `nowMs` exists so a caller that has a clock can stay pure. `buildUploadConfig`
+ * threads `FilesDeps.now` in, which is what lets a test assert on the whole key
+ * — including the timestamp — without `vi.useFakeTimers()` leaking into every
+ * other assertion in the process. Callers that omit it read the wall clock,
+ * exactly as before.
  */
 export const deriveStorageKey = (
   orgId: string,
@@ -47,9 +53,10 @@ export const deriveStorageKey = (
     entityType: string
     entityId: string
     keySeed?: string
+    nowMs?: number
   }
 ): string => {
-  const ts = Date.now()
+  const ts = options.nowMs ?? Date.now()
   const seed = options.keySeed ? `${options.keySeed}_` : ''
   const sanitized = sanitizeFileName(fileName)
   const entityPrefix = normalizeEntityType(options.entityType)
