@@ -59,6 +59,12 @@ export const DRAWER_TAB_COMPONENTS: Record<
     import('./tabs/part-subparts-tab').then((m) => ({ default: m.PartSubpartsTab })),
   'part:vendors': () =>
     import('./tabs/part-vendors-tab').then((m) => ({ default: m.PartVendorsTab })),
+
+  // ─────────────────────────────────────────────────────────────────
+  // PRODUCT TABS
+  // ─────────────────────────────────────────────────────────────────
+  'product:parts': () =>
+    import('./tabs/product-parts-tab').then((m) => ({ default: m.ProductPartsTab })),
 }
 
 /**
@@ -115,6 +121,10 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   // part with a single cost candidate, hiding its whole section.
   'part:costing': () =>
     import('./cards/part-costing-card').then((m) => ({ default: m.PartCostingCard })),
+  // Product-family membership + the finished-good suggestion — renders nothing
+  // for a part with no `product` relation, hiding its whole section.
+  'part:family': () =>
+    import('./cards/part-family-card').then((m) => ({ default: m.PartFamilyCard })),
 
   // ─────────────────────────────────────────────────────────────────
   // QUOTE OVERVIEW CARDS (shared with the quote detail-view sidebar —

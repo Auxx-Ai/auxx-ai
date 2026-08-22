@@ -68,8 +68,22 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         // The card renders nothing for a part with a single cost candidate
         // (the common case), which hides the whole section.
         { value: 'costing', label: 'Costing' },
+        // Product-family membership + the finished-good suggestion
+        // (plans/products/01-product-family.md phase 3). Renders nothing for a
+        // part with no `product` relation (most parts — raw materials), which
+        // hides the whole section.
+        { value: 'family', label: 'Family' },
       ],
     },
+  },
+
+  product: {
+    entityType: 'product',
+    // The family's parts (its variants) as rows — the same `part:product`
+    // edge the detail page's Variants tab lists.
+    additionalTabs: [
+      { value: 'parts', label: 'Variants', icon: 'package', recordResource: 'part' },
+    ],
   },
 
   service_request: {
