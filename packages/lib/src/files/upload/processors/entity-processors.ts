@@ -5,8 +5,6 @@ import { and, desc, eq, isNull } from 'drizzle-orm'
 import { getOrgCache, isAgentUser, onCacheEvent } from '../../../cache'
 import { isMember } from '../../../members'
 import { isAdminOrOwner } from '../../../members/member-queries'
-import { ensureThumbnailPresets } from '../../core/thumbnail-batch'
-import type { ThumbnailSource } from '../../core/thumbnail-types'
 import type { AssetKind } from '../../core/types'
 import { type FileTypeCategory, getMimePatternsForCategories } from '../../file-type-constants'
 import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
@@ -48,17 +46,11 @@ export class UserProfileProcessor extends BaseAssetProcessor {
         storageLocationId,
       }
     })
-    // Generate thumbnails AFTER transaction commits
-    try {
-      await this.generateAvatarThumbnails(session, result.assetId)
-    } catch (error) {
-      // Log error but don't fail the upload
-      this.logger.error('Failed to generate avatar thumbnails', {
-        assetId: result.assetId,
-        userId: session.userId,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      })
-    }
+    // Thumbnails are NOT enqueued here. `executeProcess` runs inside the route's
+    // open `db.transaction` (only a savepoint has been released), and the
+    // enqueue resolves the asset on the global `db` — a different connection
+    // that reads the PRE-transaction `currentVersionId`. The route enqueues the
+    // avatar presets in Phase 3, after COMMIT.
     return result
   }
   /**
@@ -199,34 +191,6 @@ export class UserProfileProcessor extends BaseAssetProcessor {
       userId,
       assetId,
       originalUrl,
-    })
-  }
-  /**
-   * Generate multiple thumbnail sizes for user avatar
-   * All thumbnails are queued for async processing
-   */
-  private async generateAvatarThumbnails(
-    session: PresignedUploadSession,
-    assetId: string
-  ): Promise<void> {
-    this.logger.info('Queueing avatar thumbnails for background processing', {
-      assetId,
-      organizationId: session.organizationId,
-      userId: session.userId,
-    })
-    const source: ThumbnailSource = { type: 'asset', assetId }
-    const results = await ensureThumbnailPresets({
-      organizationId: session.organizationId,
-      userId: session.userId,
-      source,
-      presets: ['avatar-32', 'avatar-64', 'avatar-128', 'avatar-256'],
-      defaultOptions: { queue: true, visibility: 'PUBLIC' },
-      perPreset: { 'avatar-64': { updateUser: true } },
-    })
-    this.logger.info('Avatar thumbnails queued for background processing', {
-      userId: session.userId,
-      assetId,
-      queuedJobs: results.map((r) => (r.status === 'queued' ? r.jobId : 'already-exists')),
     })
   }
 }
@@ -598,7 +562,11 @@ export class KnowledgeBaseProcessor extends BaseAttachmentProcessor {
     }
   }
   /**
-   * Override to ensure thumbnails are enqueued only after DB commit
+   * Create the asset, its attachment and the KB logo pointer in one transaction.
+   *
+   * The `kb-logo-sm`/`kb-logo-lg` presets are NOT enqueued here — see the note
+   * on `UserProfileProcessor.executeProcess`. The route enqueues them in Phase 3,
+   * after COMMIT.
    */
   protected async executeProcess(
     session: PresignedUploadSession,
@@ -625,22 +593,6 @@ export class KnowledgeBaseProcessor extends BaseAttachmentProcessor {
       }
       return { assetId, storageLocationId }
     })
-    // After commit, enqueue KB logo thumbnails
-    try {
-      const source: ThumbnailSource = { type: 'asset', assetId: result.assetId }
-      await ensureThumbnailPresets({
-        organizationId: session.organizationId,
-        userId: session.userId,
-        source,
-        presets: ['kb-logo-sm', 'kb-logo-lg'],
-        defaultOptions: { queue: true, visibility: 'PUBLIC' },
-      })
-    } catch (error) {
-      this.logger.error('Failed to enqueue KB logo thumbnails', {
-        assetId: result.assetId,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      })
-    }
     return result
   }
 }

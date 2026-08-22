@@ -1,9 +1,9 @@
 // apps/web/src/app/api/files/upload/[sessionId]/events/route.ts
 
-import { SessionManager } from '@auxx/lib/files/server'
 import { createScopedLogger } from '@auxx/logger'
 import { createDedicatedClient } from '@auxx/redis'
 import type { NextRequest } from 'next/server'
+import { authorizeUploadSession } from '../authorize-upload-session'
 
 const logger = createScopedLogger('upload-sse')
 
@@ -17,10 +17,11 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const { sessionId } = await params
 
-  const session = await SessionManager.getSession(sessionId)
-  if (!session) {
-    return new Response('Session not found', { status: 404 })
-  }
+  // Authenticate: this stream used to disclose upload status for any known
+  // session id (`docs/files-upload-architecture-guide.md` §11.4).
+  const authorized = await authorizeUploadSession(sessionId)
+  if (authorized instanceof Response) return authorized
+  const { session } = authorized
 
   const stream = new ReadableStream({
     start(controller) {

@@ -1,12 +1,46 @@
 'use client'
 
-import type { BatchUploadResult, EntityType } from '@auxx/lib/files/types'
+import type { BatchUploadResult, EntityType, UploadResult } from '@auxx/lib/files/types'
 import { generateId } from '@auxx/utils/generateId'
 import * as React from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { FileState } from '../stores'
 import { cleanupUploader, useUploadStore } from '../stores'
 import type { EntityUploadConfig } from '../types'
+
+/**
+ * Project one store `FileState` onto the public {@link UploadResult} shape.
+ *
+ * `FileState.serverFileId` is deliberately overloaded: it holds the upload-session nanoid from
+ * session-create time until the completion response replaces it with a `MediaAsset` id or a
+ * `FolderFile` id. `metadata.serverIdKind` (written by the orchestration slice at both sites) is
+ * the only thing that says which. This function is where that distinction becomes visible to
+ * callers: `assetId` is populated ONLY for a real `MediaAsset`, a `FolderFile` id is surfaced
+ * separately as `fileId`, and a session nanoid is surfaced as neither.
+ *
+ * Reporting all three as `assetId` is what let `visit_qc_item` uploads hand
+ * `AttachmentService.create` an id that was not a `MediaAsset` and produce zero attachments —
+ * `docs/files-upload-architecture-guide.md` §11.3.
+ */
+export function toUploadResult(f: FileState): UploadResult {
+  const serverIdKind = f.metadata?.serverIdKind
+  const serverId = f.serverFileId
+
+  return {
+    success: f.status === 'completed',
+    fileId: f.id,
+    filename: f.name,
+    url: f.url,
+    size: f.size ?? undefined,
+    mimeType: f.mimeType ?? undefined,
+    error: f.error,
+    metadata: {
+      serverIdKind,
+      ...(serverIdKind === 'asset' && serverId ? { assetId: serverId } : {}),
+      ...(serverIdKind === 'file' && serverId ? { fileId: serverId } : {}),
+    },
+  }
+}
 
 export interface UseFileUploadOptions {
   entityType: EntityType
@@ -330,16 +364,7 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
   React.useEffect(() => {
     if (!onProgress || !uploadSummary || uploadSummary.totalFiles === 0) return
 
-    const results = filesForSummary.map((f) => ({
-      success: f.status === 'completed',
-      fileId: f.id,
-      filename: f.name,
-      url: f.url,
-      size: f.size ?? undefined,
-      mimeType: f.mimeType ?? undefined,
-      error: f.error,
-      metadata: { assetId: f.serverFileId || f.id },
-    }))
+    const results = filesForSummary.map(toUploadResult)
 
     onProgress({
       totalFiles: uploadSummary.totalFiles,
@@ -377,16 +402,7 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
     const results = (sess.fileIds || [])
       .map((fid) => store.files[fid])
       .filter((f) => f !== undefined)
-      .map((f) => ({
-        success: f.status === 'completed',
-        fileId: f.id,
-        filename: f.name,
-        url: f.url,
-        size: f.size ?? undefined,
-        mimeType: f.mimeType ?? undefined,
-        error: f.error,
-        metadata: { assetId: f.serverFileId || f.id },
-      }))
+      .map(toUploadResult)
 
     onComplete({
       totalFiles: uploadSummary.totalFiles,

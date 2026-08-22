@@ -13,6 +13,24 @@ const logger = createScopedLogger('storage-cleanup-job')
 
 const S3_BATCH_DELETE_LIMIT = 1000
 
+/**
+ * The bucket an object actually lives in, as recorded on its `StorageLocation`.
+ *
+ * `StorageManager.prepareLocationMetadata` stamps `metadata.bucket` on every S3
+ * location it writes, so this is the only trustworthy source for a sweep — the
+ * provider default is the PRIVATE bucket, and a delete aimed there for a PUBLIC
+ * object 204s on the missing key while the real object leaks.
+ *
+ * Returns `undefined` for rows written outside `StorageManager` (see
+ * `users/user-avatar-service.ts`) or before the bucket was persisted. Guessing
+ * one would be worse than the fallback: `deleteByKey` then warns loudly, and the
+ * adapter throws rather than silently deleting nothing.
+ */
+function bucketOf(metadata: unknown): string | undefined {
+  const bucket = (metadata as { bucket?: unknown } | null | undefined)?.bucket
+  return typeof bucket === 'string' && bucket.length > 0 ? bucket : undefined
+}
+
 export interface StorageCleanupJobData {
   type: 'integration' | 'organization'
   organizationId: string
@@ -220,6 +238,7 @@ async function deleteMarkedStorageLocations(
         id: schema.StorageLocation.id,
         provider: schema.StorageLocation.provider,
         externalId: schema.StorageLocation.externalId,
+        metadata: schema.StorageLocation.metadata,
       })
       .from(schema.StorageLocation)
       .where(
@@ -250,6 +269,7 @@ async function deleteMarkedStorageLocations(
           await storageManager.deleteByKey({
             provider: provider as any,
             key: loc.externalId,
+            bucket: bucketOf(loc.metadata),
           })
           result.s3ObjectsDeleted++
         } catch (error) {

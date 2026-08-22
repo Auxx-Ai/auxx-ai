@@ -1,6 +1,5 @@
 // apps/web/src/app/api/files/upload/sessions/route.ts
 
-import { AuxxError } from '@auxx/lib/errors'
 import {
   createStorageManager,
   ensureProcessorsInitialized,
@@ -15,8 +14,24 @@ import { headers } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '~/auth/server'
+import { isAuxxError } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-presigned-upload-sessions')
+
+/**
+ * Stable error codes for the `{ error, message }` body this route returns, keyed
+ * by an `AuxxError`'s status. Keeps the 403 body byte-identical to what the
+ * hand-rolled `files.manage` catch used to produce.
+ */
+const HTTP_ERROR_CODE_BY_STATUS: Record<number, string> = {
+  400: 'BAD_REQUEST',
+  401: 'UNAUTHORIZED',
+  403: 'FORBIDDEN',
+  404: 'NOT_FOUND',
+  409: 'CONFLICT',
+  422: 'UNPROCESSABLE_ENTITY',
+  429: 'RATE_LIMITED',
+}
 
 /**
  * Request schema for creating presigned upload sessions
@@ -57,25 +72,15 @@ export async function POST(request: NextRequest) {
     // Layer-2 gate (doc 10 §0): file-library uploads require `files.manage` (Full).
     // Record attachments, dataset docs, visit-QC photos, avatars, etc. reach this
     // same transport but are gated by their own host surface — leave them on the
-    // plan/quota gate only. Returned explicitly so the AuxxError carries its own 403
-    // instead of being message-string-classified by the outer handler.
+    // plan/quota gate only. The thrown `ForbiddenError` keeps its own 403 via the
+    // `isAuxxError` mapping in the outer catch.
     if (sessionRequest.entityType === ENTITY_TYPES.FILE) {
-      try {
-        const { requirePermission, PermissionKey } = await import('@auxx/lib/permissions')
-        await requirePermission(
-          session.user.id,
-          session.user.defaultOrganizationId,
-          PermissionKey.filesManage
-        )
-      } catch (permissionError) {
-        if (permissionError instanceof AuxxError) {
-          return NextResponse.json(
-            { error: 'FORBIDDEN', message: permissionError.message },
-            { status: permissionError.statusCode }
-          )
-        }
-        throw permissionError
-      }
+      const { requirePermission, PermissionKey } = await import('@auxx/lib/permissions')
+      await requirePermission(
+        session.user.id,
+        session.user.defaultOrganizationId,
+        PermissionKey.filesManage
+      )
     }
 
     // Storage limit check: verify org has capacity for this upload
@@ -109,8 +114,9 @@ export async function POST(request: NextRequest) {
         }
       }
     } catch (storageCheckError) {
-      // Fail open — allow the upload if storage check fails
-      logger.warn('Storage limit check failed (fail-open)', {
+      // Fail open — allow the upload if storage check fails. Logged at `error`
+      // on purpose: a silently failing billing gate has to be alertable.
+      logger.error('Storage limit check failed (fail-open)', {
         error:
           storageCheckError instanceof Error
             ? storageCheckError.message
@@ -198,6 +204,18 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     logger.error('Failed to create upload session', { error })
+
+    // Raw App Router handler — there is no `auxxErrorMiddleware` here, so an
+    // AuxxError's own status has to be applied by hand or `handleUploadError`
+    // flattens it to a message-string-classified 500. `ProcessorRegistry`
+    // (unregistered entity type) and `requirePermission` both throw one.
+    if (isAuxxError(error)) {
+      return NextResponse.json(
+        { error: HTTP_ERROR_CODE_BY_STATUS[error.statusCode] ?? 'ERROR', message: error.message },
+        { status: error.statusCode }
+      )
+    }
+
     // Generate a temporary session ID for error tracking
     const tempSessionId = `temp-${Date.now()}`
     return await UploadErrorHandler.handleUploadError(error, tempSessionId, 'session-creation', {

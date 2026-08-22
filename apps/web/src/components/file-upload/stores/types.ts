@@ -4,6 +4,7 @@ import type {
   BatchUploadResult,
   EntityType,
   ProcessingStage,
+  ServerIdKind,
   SessionStatus,
   UploadProgress,
 } from '@auxx/lib/files/types'
@@ -58,6 +59,14 @@ export interface FileState {
   checksum?: string
   metadata?: {
     targetFolderId?: string | null // Target folder for upload
+    /**
+     * Which kind of server record `serverFileId` currently holds — `'session'` until the
+     * completion response lands, then `'asset'` (a `MediaAsset`) or `'file'` (a `FolderFile`).
+     * Declared rather than left to the index signature below so consumers read it as a union
+     * instead of `any`; `toUploadResult` gates `metadata.assetId` on it
+     * (`docs/files-upload-architecture-guide.md` §11.3).
+     */
+    serverIdKind?: ServerIdKind
     [key: string]: any // Allow additional metadata
   }
   // REMOVED: retryCount, uploadedAt, completedAt (offline-related fields)

@@ -120,7 +120,14 @@ export function useFileSelect(options: UseFileSelectOptions = {}): UseFileSelect
           source: 'upload',
           isUploading: false,
           url: r.url,
-          serverFileId: r.metadata?.assetId || r.fileId,
+          // `r.fileId` is the CLIENT-side temp id, not a server id — it is only a
+          // last resort. `useFileSelect` defaults to `entityType: 'FILE'`, which
+          // `FileProcessor` serves, so the server returns a FolderFile id and no
+          // `assetId`. Reading `assetId || r.fileId` therefore handed downstream
+          // consumers the temp id (and, before the upload store learned
+          // `serverIdKind`, the upload-session nanoid) — the same class of bug as
+          // `docs/files-upload-architecture-guide.md` §11.3.
+          serverFileId: r.metadata?.assetId ?? r.metadata?.fileId ?? r.fileId,
         }))
 
       // Also update selectedItems state for UI consistency

@@ -74,17 +74,50 @@ export interface UploadProgress {
 }
 
 /**
+ * Which kind of server record an upload actually produced.
+ *
+ * - `'asset'` — an attachment/asset processor created a `MediaAsset` (and usually an
+ *   `Attachment`); the reported id is a `MediaAsset` id.
+ * - `'file'` — `FileProcessor` created a `FolderFile`; there is no `MediaAsset`.
+ * - `'session'` — nothing usable came back, so the id still held is the upload-session
+ *   nanoid parked at session-create time. It is not a record id at all.
+ */
+export type ServerIdKind = 'asset' | 'file' | 'session'
+
+/**
+ * Structured metadata carried on an {@link UploadResult}.
+ *
+ * `assetId` and `fileId` are mutually exclusive and BOTH are optional: a `FolderFile`
+ * upload has no asset id, and a completion that returned neither has no record id at all.
+ * Reporting a non-asset id as `assetId` is what silently produced zero `visit_qc_item`
+ * attachments (`docs/files-upload-architecture-guide.md` §11.3), so consumers that need a
+ * real `MediaAsset` must read `assetId` and must handle its absence.
+ */
+export interface UploadResultMetadata {
+  /** `MediaAsset` id. Present ONLY when the server actually created a `MediaAsset`. */
+  assetId?: string
+  /** `FolderFile` id. Present ONLY when the server created a `FolderFile` instead. */
+  fileId?: string
+  /** Which of the two (if either) the completion produced. */
+  serverIdKind?: ServerIdKind
+  [key: string]: unknown
+}
+
+/**
  * Upload result for individual files
  */
 export interface UploadResult {
   success: boolean
+  /** Client-side upload id for this file — NOT a server record id. See `metadata`. */
   fileId?: string
   filename: string
   url?: string
   size?: number
+  /** Resolved MIME type, when the uploader knows it. */
+  mimeType?: string
   checksum?: string
   error?: string
-  metadata?: Record<string, any>
+  metadata?: UploadResultMetadata
 }
 
 /**

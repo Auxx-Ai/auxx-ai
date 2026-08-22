@@ -96,7 +96,13 @@ function signedIn(capabilities: InstanceType<typeof CapabilitySet>) {
   getCapabilities.mockResolvedValue(capabilities)
 }
 
-const request = () => ({ headers: new Headers() }) as never
+// `nextUrl` is required, not decorative: `shouldRenderInline` reads
+// `request.nextUrl.searchParams` to honour `?download=1`. Without it the route
+// threw a TypeError into its outer catch and every happy-path case answered 500
+// instead of 200 — a fixture gap left by the inline-disposition change, not a
+// route bug.
+const request = (url = 'http://localhost/api/files/download/f') =>
+  ({ headers: new Headers(), nextUrl: new URL(url) }) as never
 const params = (fileId: string) => ({ params: Promise.resolve({ fileId }) })
 
 const fileRow = { id: FILE_ID, name: 'contract.pdf', mimeType: 'application/pdf', size: 2048 }
@@ -120,10 +126,17 @@ beforeEach(() => {
       getContent = assetGetContent
     } as never
   )
+  // Mirror what the real `createFileDownloadResponse` builds, or the header
+  // assertions below only ever test this literal. Content-Length is the BUFFER
+  // length (download-response.ts:89), not the row's declared `size`.
   createFileDownloadResponse.mockReset().mockReturnValue({
     buffer: Buffer.from('file-bytes'),
     status: 200,
-    headers: { 'Content-Type': 'application/pdf' },
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Length': String(Buffer.byteLength('file-bytes')),
+      'Content-Disposition': 'attachment; filename="contract.pdf"',
+    },
   })
 })
 
@@ -272,7 +285,10 @@ describe('HEAD /api/files/download/[fileId] — the metadata half of the same ho
     const res = await HEAD(request(), params(FILE_ID))
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toBe('application/pdf')
-    expect(res.headers.get('Content-Length')).toBe('2048')
+    // Content-Length tracks the buffer, not `fileRow.size` — the two agree in
+    // production but not in this fixture. The old '2048' expectation had never
+    // run: every happy path here 500'd on the missing `nextUrl` above.
+    expect(res.headers.get('Content-Length')).toBe(String(Buffer.byteLength('file-bytes')))
     expect(res.headers.get('Content-Disposition')).toBe('attachment; filename="contract.pdf"')
   })
 

@@ -5,16 +5,45 @@ import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
 import { and, asc, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm'
 import type { JobContext } from '../../jobs/types'
+import { FeaturePermissionService } from '../../permissions/feature-permission-service'
+import { FeatureKey } from '../../permissions/types'
 import type { StorageQuota } from './types'
 
 const logger = createScopedLogger('quota-cleanup')
 
-// Default storage quotas by organization type (in bytes)
-const DEFAULT_QUOTAS = {
-  free: 1 * 1024 * 1024 * 1024, // 1 GB
-  starter: 10 * 1024 * 1024 * 1024, // 10 GB
-  professional: 50 * 1024 * 1024 * 1024, // 50 GB
-  enterprise: 500 * 1024 * 1024 * 1024, // 500 GB
+const BYTES_PER_GB = 1024 * 1024 * 1024
+
+/**
+ * Sentinel for "no cap", shared with `OrganizationAiQuota.quotaLimit` and the
+ * seeded plan rows. Kept out of the arithmetic everywhere it appears.
+ */
+const UNLIMITED = -1
+
+/**
+ * The org's real storage limit in bytes, resolved from its plan.
+ *
+ * `featureLimits` is a JSONB **array** of `{ key, limit }` entries, so it can
+ * only be read through the features cache — a `->>'storageGbHard'` returns null.
+ * `FeaturePermissionService.getLimit` is that reader, and it is the same one
+ * `apps/web`'s upload gate uses, which is what keeps the gate and this job from
+ * disagreeing about whether an org is over.
+ *
+ * Every non-numeric answer means **uncapped**, not zero:
+ * - `null` — the plan does not name this key, or names it as `false`/`0`. A plan
+ *   silent about storage is unlimited; reading it as a 0-byte cap would put every
+ *   such org instantly over quota.
+ * - `'+'` / `true` — the explicit unlimited markers. The features provider has
+ *   already folded a seeded `-1` (Enterprise) into `'+'`.
+ */
+async function resolveStorageLimitBytes(
+  organizationId: string,
+  featureKey: FeatureKey
+): Promise<number> {
+  const limit = await new FeaturePermissionService().getLimit(organizationId, featureKey)
+
+  if (typeof limit !== 'number' || limit <= 0) return UNLIMITED
+
+  return Math.round(limit * BYTES_PER_GB)
 }
 
 /** Aggregate of stored bytes and stored objects for one storage lane. */
@@ -112,28 +141,51 @@ async function sumMediaAssetUsage(organizationId: string): Promise<LaneUsage> {
  * file with N versions plus M generated thumbnails occupies N + M objects.
  * That is the figure that lines up with `totalUsed`.
  *
+ * `quotaLimit` is the org's real `storageGbHard` plan limit in bytes, or `-1`
+ * when the plan is uncapped — it is NOT a fixed default. `percentUsed` is `0`
+ * for an uncapped org, since there is no denominator to divide by.
+ *
  * @param organizationId Organization to measure.
  */
 export async function calculateStorageUsage(organizationId: string): Promise<StorageQuota> {
-  const [folderFiles, mediaAssets] = await Promise.all([
+  const [folderFiles, mediaAssets, quotaLimit] = await Promise.all([
     sumFolderFileUsage(organizationId),
     sumMediaAssetUsage(organizationId),
+    resolveStorageLimitBytes(organizationId, FeatureKey.storageGbHard),
   ])
 
   const totalUsed = folderFiles.totalSize + mediaAssets.totalSize
   const fileCount = folderFiles.count + mediaAssets.count
 
-  // Get organization's quota limit (would need to be added to Organization model)
-  // For now, using a default
-  const quotaLimit = DEFAULT_QUOTAS.professional
-
   return {
     organizationId,
     totalUsed,
     quotaLimit,
-    percentUsed: Math.round((totalUsed / quotaLimit) * 100),
+    percentUsed: quotaLimit === UNLIMITED ? 0 : Math.round((totalUsed / quotaLimit) * 100),
     fileCount,
   }
+}
+
+/**
+ * Byte threshold at which an org should be warned it is approaching its cap.
+ *
+ * `storageGbSoft` is defined on every seeded plan (Free 0.8, Starter 8,
+ * Growth 40, Demo 0.08) and, until now, read by nothing — orgs went from no
+ * signal at all straight to a hard 403 at the upload gate. This wires it in as
+ * the warn threshold.
+ *
+ * A plan that names no soft limit falls back to 80% of its hard limit, which is
+ * the heuristic this job used before. `null` means there is nothing to warn
+ * about: an uncapped plan cannot approach a cap.
+ */
+async function resolveWarnThresholdBytes(
+  organizationId: string,
+  hardLimitBytes: number
+): Promise<number | null> {
+  const softLimitBytes = await resolveStorageLimitBytes(organizationId, FeatureKey.storageGbSoft)
+  if (softLimitBytes !== UNLIMITED) return softLimitBytes
+  if (hardLimitBytes === UNLIMITED) return null
+  return Math.round(hardLimitBytes * 0.8)
 }
 
 /**
@@ -167,9 +219,13 @@ export async function storageQuotaCheckJob(
       result.checked++
 
       const usage = await calculateStorageUsage(org.id)
+      const warnAt = await resolveWarnThresholdBytes(org.id, usage.quotaLimit)
 
-      // Check if over quota
-      if (usage.percentUsed >= 100) {
+      // Compared in bytes, not on `percentUsed` — that is rounded, so 99.6% of
+      // the cap reads as 100 and would enforce against an org that is under.
+      const overHardLimit = usage.quotaLimit !== UNLIMITED && usage.totalUsed >= usage.quotaLimit
+
+      if (overHardLimit) {
         logger.warn('Organization over storage quota', {
           organizationId: org.id,
           name: org.name,
@@ -185,16 +241,20 @@ export async function storageQuotaCheckJob(
           // - Create system notification
           result.enforced++
         }
-      } else if (usage.percentUsed >= 80) {
-        // Warning threshold at 80%
+      } else if (warnAt !== null && usage.totalUsed >= warnAt) {
         logger.info('Organization approaching storage quota', {
           organizationId: org.id,
           name: org.name,
           percentUsed: usage.percentUsed,
+          totalUsed: usage.totalUsed,
+          softLimit: warnAt,
+          quotaLimit: usage.quotaLimit,
         })
 
         if (!dryRun) {
-          // TODO: Send warning notification
+          // TODO: Send warning notification. Crossing the soft limit is only
+          // logged today — there is still no user-facing signal between "fine"
+          // and the hard 403 at the upload gate.
           result.warnings++
         }
       }
@@ -214,6 +274,20 @@ export async function storageQuotaCheckJob(
 /**
  * Clean up files for organizations over quota
  * Prioritizes old, large, or unused files
+ *
+ * **Not wired up, and half-blind.** Two things to know before relying on it:
+ *
+ * 1. It is exported but never scheduled or enqueued — `apps/worker/src/workers/index.ts`
+ *    registers `orphanedFileCleanupJob`, `deletedFileCleanupJob` and
+ *    `storageQuotaCheckJob`, not this. `storageQuotaCheckJob`'s enforcement
+ *    branch is a `TODO` that increments a counter, so nothing calls this either.
+ * 2. It only considers `FolderFile` candidates, which is where essentially none
+ *    of the usage lives. `calculateStorageUsage` measures both lanes and
+ *    `MediaAsset` dominates (avatars, mail/comment attachments, custom-field
+ *    files, KB logos, dataset documents). Running it as written would free far
+ *    less than `targetSize` and report success anyway.
+ *
+ * Decide before scheduling it: teach it the `MediaAsset` lane, or delete it.
  */
 export async function quotaEnforcementCleanupJob(
   job: Job<{ organizationId: string; targetSize: number; dryRun?: boolean }>
