@@ -20,20 +20,19 @@
  * anywhere. An optional `bucket` on a port method is a regression.
  */
 
-import { revealSecrets } from '@auxx/credentials/store'
-import { BadRequestError, UnauthorizedError } from '../../errors'
 import type { OrphanedStorageObjectJobData } from '../../jobs/maintenance/orphaned-storage-object-job'
 import type {
   DownloadRef,
   FileMetadata,
   PresignedUpload,
-  ProviderAuth,
   ProviderId,
   StorageLocationRef,
 } from '../adapters/base-adapter'
 import { S3Adapter } from '../adapters/s3-adapter'
 import type { GenerateThumbnailPayload } from '../core/thumbnail-types'
 import type { UploadPreparedConfig } from '../upload/init-types'
+import { resolveProviderAuth } from './auth'
+import { buildExternalUrl } from './buckets'
 import { createStorageManager } from './storage-manager'
 
 // ============= Parameter types =============
@@ -239,33 +238,11 @@ export function createS3StoragePort(organizationId?: string): StoragePort {
    * Pinning is the whole trick: the adapter's `parseS3Location`,
    * `createS3Client` and `buildExternalUrl` all read `auth.bucket`, and leaving
    * it to resolve from config is how objects ended up in — and deletes aimed
-   * at — the wrong bucket.
+   * at — the wrong bucket. The resolution itself lives in `storage/auth.ts`,
+   * which is also what `StorageManager` uses, so the two doors cannot drift.
    */
-  async function resolveAuth(bucket: string, credentialId?: string): Promise<ProviderAuth> {
-    if (credentialId) {
-      if (!organizationId) {
-        throw new BadRequestError(
-          `credentialId '${credentialId}' was supplied but the storage port has no organizationId`
-        )
-      }
-      const revealed = await revealSecrets(credentialId, organizationId)
-      if (revealed.isErr()) {
-        throw new UnauthorizedError(
-          `Failed to load S3 credential '${credentialId}': ${revealed.error.message}`
-        )
-      }
-      const { record, secrets } = revealed.value
-      return { ...record.metadata, ...secrets, bucket } as ProviderAuth
-    }
-
-    const platformAuth = adapter.resolvePlatformAuth()
-    if (!platformAuth) {
-      throw new BadRequestError(
-        'S3 platform storage is not configured (set S3_REGION and S3_PRIVATE_BUCKET) and no credentialId was supplied'
-      )
-    }
-    return { ...platformAuth, bucket }
-  }
+  const resolveAuth = (bucket: string, credentialId?: string) =>
+    resolveProviderAuth({ provider: 'S3', organizationId, credentialId, bucket })
 
   /** Build the adapter's location shape with the bucket on metadata, where the adapter looks for it. */
   function locationRef(p: ObjectRef & { versionId?: string }): StorageLocationRef {
@@ -347,9 +324,6 @@ export function createS3StoragePort(organizationId?: string): StoragePort {
       }),
 
     buildExternalUrl: (p) =>
-      adapter.buildExternalUrl(p.key, {
-        bucket: p.bucket,
-        ...(p.region && { region: p.region }),
-      } as ProviderAuth),
+      buildExternalUrl({ provider: p.provider, key: p.key, bucket: p.bucket, region: p.region }),
   }
 }

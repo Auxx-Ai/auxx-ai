@@ -43,13 +43,7 @@ export interface ProviderAuth {
 export interface StorageCapabilities {
   presignUpload: boolean // Can generate presigned upload URLs
   presignDownload: boolean // Can generate presigned download URLs
-  serverSideDownload: boolean // Must proxy downloads through server
-  versioning: boolean // Supports file versioning
-  webhooks: boolean // Supports real-time change notifications
-  folders: boolean // Supports folder organization
-  search: boolean // Supports file search
-  metadata: boolean // Supports custom metadata
-  multipart: boolean
+  multipart: boolean // Supports multipart upload
 }
 
 /**
@@ -108,17 +102,6 @@ export interface PresignedUpload {
 export interface MultipartUpload {
   uploadId: string
   expiresAt: Date
-}
-
-/**
- * File revision information
- * Used for providers that support versioning
- */
-export interface FileRevision {
-  id: string
-  createdAt: Date
-  size?: number
-  etagOrRev?: string
 }
 
 // ============= Storage Adapter Interface =============
@@ -252,29 +235,6 @@ export interface StorageAdapter {
     bucket?: string
   }): Promise<{ etag: string; size?: number }>
 
-  // ============= File Management (External Providers) =============
-
-  /**
-   * Create a new file in external storage
-   */
-  createFile?(params: {
-    name: string
-    parentFolderId?: string
-    content: NodeJS.ReadableStream | Buffer
-    mimeType?: string
-    auth: ProviderAuth
-  }): Promise<{ id: string; name: string }>
-
-  /**
-   * Update an existing file in external storage
-   */
-  updateFile?(params: {
-    fileId: string
-    content?: NodeJS.ReadableStream | Buffer
-    name?: string
-    auth: ProviderAuth
-  }): Promise<{ id: string; rev?: string }>
-
   /**
    * Delete a file from external storage.
    *
@@ -284,22 +244,6 @@ export interface StorageAdapter {
    * delete looks like a success while the real object leaks.
    */
   deleteFile?(loc: StorageLocationRef, auth?: ProviderAuth): Promise<void>
-
-  // ============= Versioning (Providers with Version Support) =============
-
-  /**
-   * List all revisions of a file
-   */
-  listRevisions?(loc: StorageLocationRef, auth?: ProviderAuth): Promise<FileRevision[]>
-
-  /**
-   * Get a specific revision of a file
-   */
-  getRevision?(
-    loc: StorageLocationRef,
-    revisionId: string,
-    auth?: ProviderAuth
-  ): Promise<NodeJS.ReadableStream>
 
   // ============= Platform Auth Resolution =============
 
@@ -315,18 +259,6 @@ export interface StorageAdapter {
    * Used by StorageManager to enrich StorageLocationRef metadata.
    */
   resolveBucket?(): string | undefined
-
-  // ============= Authentication Management =============
-
-  /**
-   * Refresh expired authentication tokens
-   */
-  refreshAuth?(auth: ProviderAuth): Promise<ProviderAuth>
-
-  /**
-   * Validate authentication credentials
-   */
-  validateAuth?(auth: ProviderAuth): Promise<boolean>
 }
 
 // ============= Base Adapter Class =============
@@ -351,16 +283,6 @@ export abstract class BaseStorageAdapter implements StorageAdapter {
     if (loc.provider !== this.id) {
       throw new Error(`Invalid provider ${loc.provider} for ${this.id} adapter`)
     }
-  }
-
-  /**
-   * Validate authentication for operations that require it
-   */
-  public validateAuth(auth?: ProviderAuth): Promise<boolean> {
-    if (!auth) {
-      throw new Error(`Authentication required for ${this.name}`)
-    }
-    return Promise.resolve(true)
   }
 
   /**

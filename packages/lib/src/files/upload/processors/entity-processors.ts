@@ -7,6 +7,7 @@ import { isMember } from '../../../members'
 import { isAdminOrOwner } from '../../../members/member-queries'
 import type { AssetKind } from '../../core/types'
 import { type FileTypeCategory, getMimePatternsForCategories } from '../../file-type-constants'
+import { bucketForVisibility } from '../../storage/buckets'
 import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
 import type { PresignedUploadSession } from '../session-types'
 import { BaseAssetProcessor } from './base-asset-processor'
@@ -228,12 +229,11 @@ export class ArticleProcessor extends BaseAttachmentProcessor {
       )
     }
     if (init.metadata?.role === 'COVER') {
-      const { getBucketForVisibility } = await import('../util')
       return {
         config: Object.freeze({
           ...base.config,
           visibility: 'PUBLIC',
-          bucket: getBucketForVisibility('PUBLIC'),
+          bucket: bucketForVisibility('PUBLIC'),
         }),
         warnings,
       }

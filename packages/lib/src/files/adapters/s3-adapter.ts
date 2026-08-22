@@ -4,7 +4,6 @@ import { Readable } from 'node:stream'
 import { configService } from '@auxx/credentials'
 import { encodeRFC5987ValueChars } from '@auxx/utils'
 import {
-  AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   DeleteObjectCommand,
@@ -19,11 +18,11 @@ import {
 } from '@aws-sdk/client-s3'
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { assertBucket, bucketForVisibility, buildExternalUrl } from '../storage/buckets'
 import {
   BaseStorageAdapter,
   type DownloadRef,
   type FileMetadata,
-  type FileRevision,
   type MultipartUpload,
   type PresignedUpload,
   type ProviderAuth,
@@ -103,12 +102,6 @@ export class S3Adapter extends BaseStorageAdapter {
     return {
       presignUpload: true,
       presignDownload: true,
-      serverSideDownload: true,
-      versioning: true,
-      webhooks: false, // S3 events require SNS/SQS setup
-      folders: false, // S3 uses prefixes, not true folders
-      search: false, // No native search, requires external indexing
-      metadata: true,
       multipart: true,
     }
   }
@@ -153,21 +146,17 @@ export class S3Adapter extends BaseStorageAdapter {
 
   /**
    * Build external URL for S3 object.
-   * Prefers CDN URL if configured, then falls back to AWS virtual-hosted-style URL.
+   *
+   * Delegates to `storage/buckets.ts` so the adapter, the `StoragePort` and the
+   * `StorageManager` facade all render the same URL from the same rules.
    */
   buildExternalUrl(key: string, auth?: ProviderAuth): string {
-    const cdnUrl = configService.get<string>('CDN_URL')
-    if (cdnUrl) {
-      return `${cdnUrl}/${key}`
-    }
-
-    const bucket = (auth as any)?.bucket || configService.get<string>('S3_PUBLIC_BUCKET')
-    if (bucket) {
-      const region = (auth as any)?.region || configService.get<string>('S3_REGION') || 'us-west-1'
-      return `https://${bucket}.s3.${region}.amazonaws.com/${key}`
-    }
-
-    return key
+    return buildExternalUrl({
+      provider: this.id,
+      key,
+      bucket: (auth as any)?.bucket,
+      region: (auth as any)?.region,
+    })
   }
 
   /**
@@ -333,26 +322,13 @@ export class S3Adapter extends BaseStorageAdapter {
   }): Promise<PresignedUpload> {
     this.requireCapability('presignUpload')
     try {
-      // Determine bucket: explicit > visibility-based > auth > env default
-      let bucket = params.bucket
-
-      if (!bucket && params.visibility) {
-        // Import getBucketForVisibility dynamically
-        const { getBucketForVisibility } = await import('../upload/util')
-        bucket = getBucketForVisibility(params.visibility)
-      }
-
-      if (!bucket) {
-        bucket = (params.auth as any)?.bucket
-      }
-
-      if (!bucket) {
-        throw new StorageAdapterError(
-          'S3 bucket name is required for presigned upload. Please provide a bucket via params, credentials, or set S3_BUCKET environment variable.',
-          this.id,
-          'presignUpload'
-        )
-      }
+      // Determine bucket: explicit > visibility-based > auth. No configured default.
+      const bucket = assertBucket(
+        params.bucket ||
+          (params.visibility ? bucketForVisibility(params.visibility) : '') ||
+          (params.auth as any)?.bucket,
+        'S3 presignUpload'
+      )
 
       const client = this.createS3Client(params.auth)
       const ttlSec = params.ttlSec || 3600
@@ -431,25 +407,14 @@ export class S3Adapter extends BaseStorageAdapter {
     size?: number
   }> {
     try {
-      // Determine bucket: explicit > visibility-based > auth > env default
-      let bucket = params.bucket
-
-      if (!bucket && params.visibility) {
-        const { getBucketForVisibility } = await import('../upload/util')
-        bucket = getBucketForVisibility(params.visibility)
-      }
-
-      if (!bucket) {
-        bucket = (params.auth as any)?.bucket || configService.get<string>('S3_PRIVATE_BUCKET')
-      }
-
-      if (!bucket) {
-        throw new StorageAdapterError(
-          'S3 bucket name is required for direct upload. Please provide a bucket via params, credentials, or configure S3_PRIVATE_BUCKET.',
-          this.id,
-          'putObject'
-        )
-      }
+      // Determine bucket: explicit > visibility-based > auth. No configured default:
+      // a wrong-bucket write is invisible and the object leaks (#1816/#1817/#1818).
+      const bucket = assertBucket(
+        params.bucket ||
+          (params.visibility ? bucketForVisibility(params.visibility) : '') ||
+          (params.auth as any)?.bucket,
+        'S3 putObject'
+      )
 
       const client = this.createS3Client(params.auth)
 
@@ -490,25 +455,15 @@ export class S3Adapter extends BaseStorageAdapter {
     this.requireCapability('presignUpload')
 
     try {
-      // Determine bucket: explicit > visibility-based > auth > env default
-      let bucket = params.bucket
-
-      if (!bucket && params.visibility) {
-        const { getBucketForVisibility } = await import('../upload/util')
-        bucket = getBucketForVisibility(params.visibility)
-      }
-
-      if (!bucket) {
-        bucket = (params.auth as any)?.bucket || configService.get<string>('S3_PRIVATE_BUCKET')
-      }
-
-      if (!bucket) {
-        throw new StorageAdapterError(
-          'S3 bucket name is required for multipart upload. Please provide a bucket via params, credentials, or configure S3_PRIVATE_BUCKET.',
-          this.id,
-          'startMultipart'
-        )
-      }
+      // Determine bucket: explicit > visibility-based > auth. No configured default:
+      // parts and completion are presigned against whatever bucket this picks, and
+      // a mismatch surfaces only as `NoSuchUpload` much later.
+      const bucket = assertBucket(
+        params.bucket ||
+          (params.visibility ? bucketForVisibility(params.visibility) : '') ||
+          (params.auth as any)?.bucket,
+        'S3 startMultipart'
+      )
 
       const client = this.createS3Client(params.auth)
 
@@ -558,14 +513,7 @@ export class S3Adapter extends BaseStorageAdapter {
     this.requireCapability('presignUpload')
 
     try {
-      const bucket = params.bucket
-      if (!bucket) {
-        throw new StorageAdapterError(
-          'S3 bucket name is required for part upload. Pass the bucket the multipart upload was initiated in (upload session `bucket`) — presigning a part against a different bucket fails with NoSuchUpload.',
-          this.id,
-          'presignPart'
-        )
-      }
+      const bucket = assertBucket(params.bucket, 'S3 presignPart')
 
       const client = this.createS3Client(params.auth)
       const ttlSec = params.ttlSec || 3600
@@ -606,14 +554,7 @@ export class S3Adapter extends BaseStorageAdapter {
     this.requireCapability('presignUpload')
 
     try {
-      const bucket = params.bucket
-      if (!bucket) {
-        throw new StorageAdapterError(
-          'S3 bucket name is required to complete multipart upload. Pass the bucket the multipart upload was initiated in (upload session `bucket`) — completing against a different bucket fails with NoSuchUpload.',
-          this.id,
-          'completeMultipart'
-        )
-      }
+      const bucket = assertBucket(params.bucket, 'S3 completeMultipart')
 
       const client = this.createS3Client(params.auth)
 
@@ -640,76 +581,7 @@ export class S3Adapter extends BaseStorageAdapter {
     }
   }
 
-  /**
-   * Abort S3 multipart upload
-   */
-  async abortMultipart(params: {
-    key: string
-    uploadId: string
-    bucket?: string
-    auth?: ProviderAuth
-  }): Promise<void> {
-    try {
-      const bucket =
-        params.bucket ||
-        (params.auth as any)?.bucket ||
-        configService.get<string>('S3_PRIVATE_BUCKET')
-      if (!bucket) {
-        throw new StorageAdapterError(
-          'S3 bucket name is required to abort multipart upload. Please provide a bucket via params, credentials, or configure S3_PRIVATE_BUCKET.',
-          this.id,
-          'abortMultipart'
-        )
-      }
-
-      const client = this.createS3Client(params.auth)
-
-      const command = new AbortMultipartUploadCommand({
-        Bucket: bucket,
-        Key: params.key,
-        UploadId: params.uploadId,
-      })
-
-      await client.send(command)
-    } catch (error) {
-      this.handleS3Error(error, 'abortMultipart')
-    }
-  }
-
   // ============= File Management =============
-
-  /**
-   * Create S3 object
-   */
-  async createFile(params: {
-    name: string
-    parentFolderId?: string
-    content: NodeJS.ReadableStream | Buffer
-    mimeType?: string
-    auth: ProviderAuth
-  }): Promise<{ id: string; name: string }> {
-    await this.validateAuth(params.auth)
-
-    // TODO: Implement S3 PutObjectCommand
-    // Handle parentFolderId as key prefix
-    throw new Error('Not implemented')
-  }
-
-  /**
-   * Update S3 object
-   */
-  async updateFile(params: {
-    fileId: string
-    content?: NodeJS.ReadableStream | Buffer
-    name?: string
-    auth: ProviderAuth
-  }): Promise<{ id: string; rev?: string }> {
-    await this.validateAuth(params.auth)
-
-    // TODO: Implement S3 object update
-    // S3 doesn't have true updates, requires PUT with new content
-    throw new Error('Not implemented')
-  }
 
   /**
    * Delete S3 object.
@@ -738,75 +610,7 @@ export class S3Adapter extends BaseStorageAdapter {
 
   // ============= Versioning =============
 
-  /**
-   * List S3 object versions
-   */
-  async listRevisions(loc: StorageLocationRef, auth?: ProviderAuth): Promise<FileRevision[]> {
-    this.validateLocation(loc)
-    this.requireCapability('versioning')
-
-    // TODO: Implement S3 ListObjectVersionsCommand
-    throw new Error('Not implemented')
-  }
-
-  /**
-   * Get specific S3 object version
-   */
-  async getRevision(
-    loc: StorageLocationRef,
-    revisionId: string,
-    auth?: ProviderAuth
-  ): Promise<NodeJS.ReadableStream> {
-    this.validateLocation(loc)
-    this.requireCapability('versioning')
-
-    // TODO: Implement S3 GetObjectCommand with VersionId
-    throw new Error('Not implemented')
-  }
-
   // ============= Authentication Management =============
-
-  /**
-   * Refresh S3 credentials (if using STS)
-   */
-  async refreshAuth(auth: ProviderAuth): Promise<ProviderAuth> {
-    // For most S3 use cases, credentials don't need refreshing
-    // STS token refresh would be handled by the credential provider
-    // This is more relevant for OAuth-based providers like Google Drive
-    return auth
-  }
-
-  /**
-   * Validate S3 authentication
-   */
-  async validateAuth(auth?: ProviderAuth): Promise<boolean> {
-    try {
-      const client = this.createS3Client(auth)
-
-      // Try a simple operation to test credentials
-      // Use ListBuckets as a lightweight test
-      const { ListBucketsCommand } = await import('@aws-sdk/client-s3')
-      const command = new ListBucketsCommand({})
-
-      await client.send(command)
-      return true
-    } catch (error: any) {
-      // If it's an auth error, return false
-      const errorCode = error.name || error.Code || error.$metadata?.errorCode
-      if (
-        [
-          'AccessDenied',
-          'InvalidAccessKeyId',
-          'SignatureDoesNotMatch',
-          'TokenRefreshRequired',
-        ].includes(errorCode)
-      ) {
-        return false
-      }
-      // Re-throw other errors (network, etc.)
-      throw error
-    }
-  }
 
   // ============= Helper Methods =============
 
@@ -837,24 +641,17 @@ export class S3Adapter extends BaseStorageAdapter {
       }
     }
 
-    // ✅ ALWAYS use configured bucket - don't try to parse bucket from key
-    // The externalId is the storage key, not bucket/key format
-    // Priority: auth.bucket > S3_PRIVATE_BUCKET config
-    const bucket = (auth as any)?.bucket || configService.get<string>('S3_PRIVATE_BUCKET')
+    // Never parse a bucket out of the key — the externalId IS the storage key.
+    // The bucket comes from the pinned auth and nowhere else: falling back to
+    // `S3_PRIVATE_BUCKET` here is what made a PUBLIC object read/head against
+    // the private bucket and report a phantom 404.
+    const bucket = assertBucket((auth as any)?.bucket, `S3 parseLocation for '${externalId}'`)
 
-    if (bucket) {
-      return {
-        bucket,
-        key: externalId, // ✅ Use full externalId as the key
-        ...loc.metadata,
-      }
+    return {
+      bucket,
+      key: externalId,
+      ...loc.metadata,
     }
-
-    throw new StorageAdapterError(
-      `Invalid S3 location format: ${externalId}. Either provide s3://bucket/key format, bucket/key format, or configure S3_PRIVATE_BUCKET.`,
-      this.id,
-      'parseLocation'
-    )
   }
 
   /**

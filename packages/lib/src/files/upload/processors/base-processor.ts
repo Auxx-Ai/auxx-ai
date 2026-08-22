@@ -4,6 +4,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { AttachmentService } from '../../core/attachment-service'
 import { FileService } from '../../core/file-service'
 import { MediaAssetService } from '../../core/media-asset-service'
+import { bucketForVisibility, type StorageVisibility } from '../../storage/buckets'
 import type {
   ProcessorConfigResult,
   UploadInitConfig,
@@ -15,7 +16,6 @@ import type { PresignedUploadSession } from '../session-types'
 import {
   clamp,
   deriveStorageKey,
-  getBucketForVisibility,
   getDefaultKeyPrefix,
   normalizeMimeType,
   shouldUseMultipart,
@@ -110,8 +110,8 @@ export abstract class BaseProcessor implements FileProcessor {
       : { strategy: 'single' }
 
     // Default visibility and bucket (will be overridden by entity processors)
-    const visibility: 'PUBLIC' | 'PRIVATE' = 'PRIVATE'
-    const bucket = getBucketForVisibility(visibility)
+    const visibility: StorageVisibility = 'PRIVATE'
+    const bucket = bucketForVisibility(visibility)
 
     // Create immutable config
     const config: UploadPreparedConfig = Object.freeze({

@@ -1,6 +1,7 @@
 // packages/lib/src/files/upload/processors/base-asset-processor.ts
 
 import type { AssetKind, CreateAssetRequest } from '../../core/types'
+import { bucketForVisibility, type StorageVisibility } from '../../storage/buckets'
 import type { ProcessorConfigResult, UploadInitConfig } from '../init-types'
 import type { PresignedUploadSession } from '../session-types'
 import { BaseProcessor } from './base-processor'
@@ -14,7 +15,18 @@ import type { ProcessorMetadata, ProcessorResult } from './types'
 export abstract class BaseAssetProcessor extends BaseProcessor {
   // Entity-specific configuration (override in subclasses)
   protected abstract entityType: string
-  protected abstract fileVisibility: string
+  /**
+   * Which bucket this entity's uploads belong in.
+   *
+   * A **strict union**, not `string`. It was `string`, and `processConfig` cast
+   * it (`this.fileVisibility as 'PUBLIC' | 'PRIVATE'`) at the one place it
+   * mattered — so `DatasetAssetProcessor` compiled with lowercase `'private'`,
+   * which matched neither branch of `bucketForVisibility` and made
+   * `isAssetPrivate()` (a `=== 'PRIVATE'` comparison) answer `false`. Dataset
+   * documents were routed to the public bucket and recorded as non-private.
+   * The union turns that into a compile error.
+   */
+  protected abstract fileVisibility: StorageVisibility
   protected abstract preferredProvider: string
   protected abstract maxFileSize: number
   protected abstract allowedMimeTypes: string[]
@@ -53,9 +65,6 @@ export abstract class BaseAssetProcessor extends BaseProcessor {
    * Process upload configuration for asset processors
    */
   async processConfig(init: UploadInitConfig): Promise<ProcessorConfigResult> {
-    // Import the utility function
-    const { getBucketForVisibility } = await import('../util')
-
     // Call super first
     const baseResult = await super.processConfig(init)
 
@@ -90,8 +99,8 @@ export abstract class BaseAssetProcessor extends BaseProcessor {
     }
 
     // Determine visibility and bucket
-    const visibility = this.fileVisibility as 'PUBLIC' | 'PRIVATE'
-    const bucket = getBucketForVisibility(visibility)
+    const visibility = this.fileVisibility
+    const bucket = bucketForVisibility(visibility)
 
     return {
       config: Object.freeze({

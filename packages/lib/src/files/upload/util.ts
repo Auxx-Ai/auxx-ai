@@ -1,10 +1,12 @@
-// packages/lib/src/files/upload/util.ts
-import { configService } from '@auxx/credentials'
-import type { FileVisibility } from './types'
-
 /**
  * Utility functions for the unified processor system
  * Pure functions with no side effects for configuration processing
+ *
+ * Bucket routing and public-URL formatting used to live here too
+ * (`getBucketForVisibility`, `getPublicCdnUrl`). They moved to
+ * `files/storage/buckets.ts` in PR 3b, next to `buildExternalUrl` and
+ * `assertBucket`, so there is one place that decides which bucket an object
+ * belongs in.
  */
 
 /**
@@ -55,42 +57,6 @@ export const deriveStorageKey = (
   // Simple, consistent format for all entity types:
   // {orgId}/{entity-type}/{entityId}/{timestamp}_{seed}{filename}
   return `${orgId}/${entityPrefix}/${options.entityId}/${ts}_${seed}${sanitized}`
-}
-
-/**
- * Map the lowercase upload-request visibility onto the uppercase storage bucket selector.
- * The two vocabularies never matched, so passing a raw `FileVisibility` straight through
- * silently routed public uploads into the private bucket.
- */
-export const toStorageVisibility = (
-  visibility: FileVisibility | undefined
-): 'PUBLIC' | 'PRIVATE' | undefined => {
-  if (visibility === undefined) return undefined
-  return visibility === 'public' ? 'PUBLIC' : 'PRIVATE'
-}
-
-/**
- * Get bucket name based on file visibility
- */
-export const getBucketForVisibility = (visibility: 'PUBLIC' | 'PRIVATE'): string => {
-  if (visibility === 'PUBLIC') {
-    return configService.get<string>('S3_PUBLIC_BUCKET') || ''
-  }
-  return configService.get<string>('S3_PRIVATE_BUCKET') || ''
-}
-
-/**
- * Generate public CDN URL for public files
- */
-export const getPublicCdnUrl = (storageKey: string): string => {
-  const cdnBase = configService.get<string>('CDN_URL')
-  if (!cdnBase) {
-    // Fallback to direct S3 URL
-    const bucket = getBucketForVisibility('PUBLIC')
-    const region = configService.get<string>('S3_REGION') || 'us-west-1'
-    return `https://${bucket}.s3.${region}.amazonaws.com/${storageKey}`
-  }
-  return `${cdnBase}/${storageKey}`
 }
 
 /**
