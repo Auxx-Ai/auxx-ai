@@ -12,8 +12,9 @@ export { AttachmentService, createAttachmentService } from './core/attachment-se
 export { BaseService } from './core/base-service'
 // File Service - Core file management operations
 export { createFileService, FileService } from './core/file-service'
-export type { BreadcrumbItem, GetFileSystemOptions } from './core/filesystem-service'
-export { createFilesystemService, FilesystemService } from './core/filesystem-service'
+// `FilesystemService` was deleted in PR 5e; the module is `files/filesystem/`,
+// reached through `@auxx/lib/files/server`. It is deliberately not re-exported
+// from this barrel -- nothing outside `fileRouter` consumed it.
 // Folder Service - Folder hierarchy management
 export { createFolderService, FolderService } from './core/folder-service'
 // Media Asset Service - Media-specific operations

@@ -19,6 +19,27 @@ export type {
 // The ambient contract every `files/` function is written against. Exported so
 // `apps/web`'s single `toFilesCtx` helper can name the type it returns.
 export type { FilesCtx, FilesDeps, FilesDepsSlice } from './ctx'
+// The unified filesystem view over `Folder` + `FolderFile` (PR 5e).
+// `FilesystemService` was deleted outright -- all three call sites were in
+// `fileRouter` and all three were converted.
+export type {
+  BreadcrumbItem,
+  FileItem,
+  FileSystemResult,
+  GetFileSystemOptions,
+  MoveEntryOutcome,
+  MoveItemsResult,
+  PlanMoveItemsInput,
+} from './filesystem'
+export {
+  buildBreadcrumbs,
+  buildMovePlan,
+  executeMoveEntry,
+  getCompleteFileSystem,
+  planMoveItems,
+  renameFilesystemItem,
+  summarizeMoveOutcomes,
+} from './filesystem'
 // FolderFile reads/writes written to the `files/ctx.ts` contract (PR 5c).
 // `fileRouter` calls these directly — there is no `FileService` between them.
 export type {
