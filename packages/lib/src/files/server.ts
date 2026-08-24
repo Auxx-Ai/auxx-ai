@@ -160,12 +160,33 @@ export type {
   ThumbnailSource,
 } from './thumbnails'
 export { deleteThumbnailsForSource, ensureThumbnail, ensureThumbnailPresets } from './thumbnails'
+// The deprecated adapter over `upload/errors.ts`. Kept only until the three
+// upload routes import the functions below directly (PR 4e); it is the reason
+// this PR did not have to touch them.
 export { UploadErrorHandler } from './upload/error-handling'
+// Upload error classification (PR 4c). Pure -- no db, no redis, no clock.
+// Replaces the substring ladder that answered 413 "upgrade your plan" for any
+// message containing `limit` and 401 for any message containing `token`.
+export type {
+  ClassifiedUploadError,
+  UploadErrorBody,
+  UploadErrorMeta,
+  UploadErrorType,
+} from './upload/errors'
+export {
+  classifyUploadError,
+  toUploadErrorResponse,
+  UNEXPECTED_UPLOAD_ERROR_MESSAGE,
+  uploadErrorResponse,
+  uploadUnauthorizedError,
+  uploadValidationError,
+} from './upload/errors'
 export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
 // Upload/session orchestration (no image processing)
 export {
   createUploadSession,
   deleteUploadSession,
+  failUploadSession,
   getUploadSession,
   patchUploadSession,
   touchUploadSession,

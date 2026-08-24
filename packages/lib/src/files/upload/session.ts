@@ -294,6 +294,32 @@ export async function patchUploadSession(
 }
 
 /**
+ * Mark a session dead, best effort.
+ *
+ * The status gate in the `complete` route only accepts `created` or `uploading`,
+ * so this is what stops a client retrying a completion whose first attempt threw
+ * halfway through. It is separated from {@link patchUploadSession} — which
+ * throws — because every caller is already inside a `catch`: a session that
+ * expired, or a Redis that went away, must not replace the error the route is
+ * in the middle of reporting with a different one.
+ *
+ * This used to live inside `UploadErrorHandler.handleUploadError`, where the
+ * only way to observe it was a Redis mock at hoist scope, and where a route
+ * could not opt out of it. It is a session write and belongs here.
+ */
+export async function failUploadSession(
+  redis: UploadSessionRedis,
+  sessionId: string,
+  now: () => Date
+): Promise<void> {
+  try {
+    await patchUploadSession(redis, sessionId, { status: 'failed' }, now)
+  } catch (error) {
+    logger.warn('Failed to mark upload session failed', { sessionId, error })
+  }
+}
+
+/**
  * Extend a session's lifetime during an active upload.
  *
  * Extends by the session's own `ttlSec` — the lifetime its handler asked for —

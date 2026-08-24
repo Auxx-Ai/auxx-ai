@@ -131,7 +131,6 @@ export type { OrphanedFileCleanupJobData, OrphanedFileCleanupResult } from './li
 export { cleanupService } from './cleanup/cleanup-service'
 export type { EntityType } from './types'
 export { ENTITY_TYPES } from './types'
-export { UploadErrorHandler } from './upload/error-handling'
 export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
 // Validators
 export {

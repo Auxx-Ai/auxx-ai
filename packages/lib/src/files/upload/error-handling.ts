@@ -1,298 +1,67 @@
 // packages/lib/src/files/upload/error-handling.ts
 
+/**
+ * @deprecated Adapter kept only so `files/server.ts` and `files/index.ts` keep
+ * compiling while their `UploadErrorHandler` line is swapped for the
+ * `./upload/errors` exports. Delete this file together with those two lines.
+ *
+ * Everything that made a decision here now lives in `upload/errors.ts` and is
+ * pure. What is left is the one side effect the old class hid inside its error
+ * path — marking the Redis session `failed` — which PR 4e moves into the routes
+ * so it is visible at the call site rather than smuggled in by a logger.
+ */
+
 import { createScopedLogger } from '@auxx/logger'
-import { patchUploadSession, uploadSessionRedis } from './session'
-
-type JsonInit = Omit<ResponseInit, 'headers'> & { headers?: HeadersInit }
-
-function json(body: unknown, init: JsonInit = {}): Response {
-  const headers = new Headers(init.headers)
-  if (!headers.has('content-type')) {
-    headers.set('content-type', 'application/json; charset=utf-8')
-  }
-  return new Response(JSON.stringify(body), { ...init, headers })
-}
+import { uploadErrorResponse, uploadUnauthorizedError, uploadValidationError } from './errors'
+import { failUploadSession, uploadSessionRedis } from './session'
 
 const logger = createScopedLogger('upload-error-handler')
 
 /**
- * Categories of upload errors for better handling
+ * Best-effort `status: 'failed'` on the session behind a failed request, so a
+ * retry of `complete` is refused by the status gate rather than half-running.
+ *
+ * `failUploadSession` already swallows a patch that had nothing to land on; this
+ * catch covers the other failure — Redis itself being unreachable, which is what
+ * {@link uploadSessionRedis} throws for.
  */
-export enum UploadErrorType {
-  VALIDATION = 'validation',
-  AUTHENTICATION = 'authentication',
-  STORAGE = 'storage',
-  PROCESSING = 'processing',
-  NETWORK = 'network',
-  QUOTA = 'quota',
-  PERMISSION = 'permission',
-  TIMEOUT = 'timeout',
-  CORRUPTION = 'corruption',
-  UNKNOWN = 'unknown',
+async function markSessionFailed(sessionId: string): Promise<void> {
+  try {
+    await failUploadSession(await uploadSessionRedis(), sessionId, () => new Date())
+  } catch (error) {
+    logger.warn('Could not reach Redis to mark the upload session failed', { sessionId, error })
+  }
 }
 
-/**
- * Structured error information for upload operations
- */
-export interface UploadError {
-  type: UploadErrorType
-  message: string
-  code?: string
-  details?: Record<string, any>
-  retryable: boolean
-  userMessage: string
-}
-
-/**
- * Upload error handling utility
- */
-export class UploadErrorHandler {
+/** @deprecated Import `uploadErrorResponse` / `uploadValidationError` from `./errors`. */
+export const UploadErrorHandler = {
   /**
-   * Categorize and handle errors during upload operations
+   * @deprecated Replaced by `uploadErrorResponse` plus an explicit
+   * `failUploadSession` call in the route.
+   *
+   * `sessionId` is optional because the session-create route has no session yet.
+   * It used to invent `temp-${Date.now()}` purely to satisfy this parameter, and
+   * this function then string-matched that prefix to decide whether to skip the
+   * Redis write.
    */
-  static async handleUploadError(
-    error: any,
-    sessionId: string,
+  async handleUploadError(
+    error: unknown,
+    sessionId: string | undefined,
     operation: string,
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ): Promise<Response> {
-    const uploadError = UploadErrorHandler.categorizeError(error)
+    const response = uploadErrorResponse(error, { operation, sessionId, context })
+    if (sessionId) await markSessionFailed(sessionId)
+    return response
+  },
 
-    // Log the error with context
-    logger.error(`Upload ${operation} failed`, {
-      sessionId,
-      operation,
-      errorType: uploadError.type,
-      message: uploadError.message,
-      retryable: uploadError.retryable,
-      context,
-      stack: error instanceof Error ? error.stack : undefined,
-    })
+  /** @deprecated Import `uploadValidationError` from `./errors`. */
+  validationError(message: string, details?: Record<string, unknown>): Response {
+    return uploadValidationError(message, details)
+  },
 
-    // Only update session status if it's not a temporary session (during creation)
-    // Temp sessions start with 'temp-' and don't exist in Redis yet
-    if (!sessionId.startsWith('temp-')) {
-      try {
-        const redis = await uploadSessionRedis()
-        await patchUploadSession(redis, sessionId, { status: 'failed' }, () => new Date())
-      } catch (updateError) {
-        logger.warn('Failed to update session status', { sessionId, error: updateError })
-      }
-    }
-
-    // Return appropriate HTTP response
-    return json(
-      {
-        error: uploadError.userMessage,
-        errorType: uploadError.type,
-        retryable: uploadError.retryable,
-        code: uploadError.code,
-        details: uploadError.details,
-      },
-      {
-        status: UploadErrorHandler.getHttpStatus(uploadError.type),
-      }
-    )
-  }
-
-  /**
-   * Categorize error based on type and message
-   */
-  private static categorizeError(error: any): UploadError {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    const lowerMessage = errorMessage.toLowerCase()
-
-    // Storage-related errors
-    if (
-      lowerMessage.includes('storage') ||
-      lowerMessage.includes('s3') ||
-      lowerMessage.includes('bucket') ||
-      lowerMessage.includes('key not found')
-    ) {
-      return {
-        type: UploadErrorType.STORAGE,
-        message: errorMessage,
-        code: 'STORAGE_ERROR',
-        retryable: true,
-        userMessage: 'Storage service error. Please try again.',
-      }
-    }
-
-    // Authentication/authorization errors
-    if (
-      lowerMessage.includes('unauthorized') ||
-      lowerMessage.includes('access denied') ||
-      lowerMessage.includes('credentials') ||
-      lowerMessage.includes('token')
-    ) {
-      return {
-        type: UploadErrorType.AUTHENTICATION,
-        message: errorMessage,
-        code: 'AUTH_ERROR',
-        retryable: false,
-        userMessage: 'Authentication failed. Please reconnect your storage account.',
-      }
-    }
-
-    // Validation errors
-    if (
-      lowerMessage.includes('validation') ||
-      lowerMessage.includes('invalid') ||
-      lowerMessage.includes('mime type') ||
-      lowerMessage.includes('file size')
-    ) {
-      return {
-        type: UploadErrorType.VALIDATION,
-        message: errorMessage,
-        code: 'VALIDATION_ERROR',
-        retryable: false,
-        userMessage: 'File validation failed. Please check file type and size.',
-      }
-    }
-
-    // Quota/limit errors
-    if (
-      lowerMessage.includes('quota') ||
-      lowerMessage.includes('limit') ||
-      lowerMessage.includes('space') ||
-      lowerMessage.includes('capacity')
-    ) {
-      return {
-        type: UploadErrorType.QUOTA,
-        message: errorMessage,
-        code: 'QUOTA_ERROR',
-        retryable: false,
-        userMessage: 'Storage quota exceeded. Please free up space or upgrade your plan.',
-      }
-    }
-
-    // Network/timeout errors
-    if (
-      lowerMessage.includes('timeout') ||
-      lowerMessage.includes('network') ||
-      lowerMessage.includes('connection') ||
-      lowerMessage.includes('econnreset')
-    ) {
-      return {
-        type: UploadErrorType.NETWORK,
-        message: errorMessage,
-        code: 'NETWORK_ERROR',
-        retryable: true,
-        userMessage: 'Network error. Please check your connection and try again.',
-      }
-    }
-
-    // File corruption errors
-    if (
-      lowerMessage.includes('checksum') ||
-      lowerMessage.includes('corrupted') ||
-      lowerMessage.includes('integrity') ||
-      lowerMessage.includes('etag')
-    ) {
-      return {
-        type: UploadErrorType.CORRUPTION,
-        message: errorMessage,
-        code: 'CORRUPTION_ERROR',
-        retryable: true,
-        userMessage: 'File corruption detected. Please try uploading again.',
-      }
-    }
-
-    // Permission errors
-    if (
-      lowerMessage.includes('permission') ||
-      lowerMessage.includes('forbidden') ||
-      lowerMessage.includes('not allowed')
-    ) {
-      return {
-        type: UploadErrorType.PERMISSION,
-        message: errorMessage,
-        code: 'PERMISSION_ERROR',
-        retryable: false,
-        userMessage: 'Permission denied. You may not have access to upload to this location.',
-      }
-    }
-
-    // Default to unknown error
-    return {
-      type: UploadErrorType.UNKNOWN,
-      message: errorMessage,
-      code: 'UNKNOWN_ERROR',
-      retryable: true,
-      userMessage: 'An unexpected error occurred. Please try again.',
-    }
-  }
-
-  /**
-   * Get appropriate HTTP status code for error type
-   */
-  private static getHttpStatus(errorType: UploadErrorType): number {
-    switch (errorType) {
-      case UploadErrorType.VALIDATION:
-        return 400
-      case UploadErrorType.AUTHENTICATION:
-        return 401
-      case UploadErrorType.PERMISSION:
-        return 403
-      case UploadErrorType.QUOTA:
-        return 413
-      case UploadErrorType.TIMEOUT:
-        return 408
-      case UploadErrorType.STORAGE:
-      case UploadErrorType.PROCESSING:
-      case UploadErrorType.NETWORK:
-      case UploadErrorType.CORRUPTION:
-      case UploadErrorType.UNKNOWN:
-        return 500
-      default:
-        return 500
-    }
-  }
-
-  /**
-   * Create standardized validation error response
-   */
-  static validationError(message: string, details?: Record<string, any>): Response {
-    return json(
-      {
-        error: message,
-        errorType: UploadErrorType.VALIDATION,
-        retryable: false,
-        code: 'VALIDATION_ERROR',
-        details,
-      },
-      { status: 400 }
-    )
-  }
-
-  /**
-   * Create standardized session not found error
-   */
-  static sessionNotFound(sessionId: string): Response {
-    logger.warn('Session not found', { sessionId })
-    return json(
-      {
-        error: 'Upload session not found or expired',
-        errorType: UploadErrorType.VALIDATION,
-        retryable: false,
-        code: 'SESSION_NOT_FOUND',
-      },
-      { status: 404 }
-    )
-  }
-
-  /**
-   * Create unauthorized error response
-   */
-  static unauthorized(reason?: string): Response {
-    return json(
-      {
-        error: reason || 'Unauthorized access',
-        errorType: UploadErrorType.AUTHENTICATION,
-        retryable: false,
-        code: 'UNAUTHORIZED',
-      },
-      { status: 401 }
-    )
-  }
-}
+  /** @deprecated Import `uploadUnauthorizedError` from `./errors`. */
+  unauthorized(reason?: string): Response {
+    return uploadUnauthorizedError(reason)
+  },
+} as const

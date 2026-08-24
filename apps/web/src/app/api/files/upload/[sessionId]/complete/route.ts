@@ -12,7 +12,6 @@ import {
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { isAuxxError } from '~/server/api/trpc'
 import { authorizeUploadSession } from '../authorize-upload-session'
 
 const logger = createScopedLogger('api-upload-complete')
@@ -352,22 +351,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       url: downloadUrl || undefined,
     })
   } catch (error) {
-    // `handleUploadError` also marks the session failed, so it still runs —
-    // but it classifies status by substring match.
-    // This is a raw App Router handler with no `auxxErrorMiddleware`, so an
-    // AuxxError (e.g. `ProcessorRegistry.getForEntityType`'s `BadRequestError`)
-    // would otherwise land as a generic 500 instead of its own status.
-    const response = await UploadErrorHandler.handleUploadError(
-      error,
-      sessionId,
-      'upload-completion'
-    )
-    if (isAuxxError(error) && response.status !== error.statusCode) {
-      return new Response(response.body, {
-        status: error.statusCode,
-        headers: response.headers,
-      })
-    }
-    return response
+    // This is a raw App Router handler with no `auxxErrorMiddleware`, but the
+    // status now comes off the thrown `AuxxError` itself (PR 4c), so an
+    // AuxxError — e.g. `ProcessorRegistry.getForEntityType`'s `BadRequestError`
+    // — keeps its own status without a second hand-rolled re-wrap here. The
+    // handler also marks the session failed, which is why it still runs.
+    return await UploadErrorHandler.handleUploadError(error, sessionId, 'upload-completion')
   }
 }
