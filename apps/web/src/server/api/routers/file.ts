@@ -1,24 +1,30 @@
 // apps/web/src/server/api/routers/file.ts
 
 import { schema } from '@auxx/database'
-import { createFilesystemService, createMediaAssetService } from '@auxx/lib/files'
+import { createMediaAssetService } from '@auxx/lib/files'
+import type { MoveEntryOutcome } from '@auxx/lib/files/server'
 import {
   copyFolderFile,
   createFileVersion,
   deleteFileVersion,
   deleteFolderFile,
+  executeMoveEntry,
   findFolderFilesByExtension,
   findFolderFilesByMimeType,
+  getCompleteFileSystem,
   getFolderFileCurrentVersion,
   getFolderFileDownloadRef,
   getFolderFileVersions,
   getFolderFileWithRelations,
   listFolderFiles,
   moveFolderFile,
+  planMoveItems,
+  renameFilesystemItem,
   renameFolderFile,
   restoreFileVersion,
   restoreFolderFile,
   searchFolderFiles,
+  summarizeMoveOutcomes,
   updateFolderFile,
 } from '@auxx/lib/files/server'
 import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
@@ -151,8 +157,9 @@ const getFileSystemSchema = z.object({
   fileTypes: z.array(z.string()).optional(),
   includeArchived: z.boolean().default(false),
 
-  // Cache optimization
-  lastSync: z.date().optional(),
+  // `lastSync` is gone with PR 5e. It selected an incremental `changes` payload
+  // that cost six extra queries and that no client has ever asked for — the
+  // Files store re-reads the page instead.
 })
 
 /**
@@ -409,18 +416,18 @@ export const fileRouter = createTRPCRouter({
   getFileSystem: permissionProcedure(PermissionKey.filesView)
     .input(getFileSystemSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const filesystemService = createFilesystemService(organizationId, userId)
-
       try {
-        const result = await filesystemService.getCompleteFileSystem({
-          filesCursor: input.cursor,
-          filesLimit: input.filesLimit,
-          fileTypes: input.fileTypes,
-          includeArchived: input.includeArchived,
-          lastSync: input.lastSync,
-        })
+        // Four statements regardless of folder count. The service this replaces
+        // issued `3 + 2N` — two `COUNT(*)`s per folder, neither of them
+        // organization-scoped. See `files/filesystem/filesystem-queries.ts`.
+        const result = unwrap(
+          await getCompleteFileSystem(toFilesCtx(ctx), {
+            filesCursor: input.cursor,
+            filesLimit: input.filesLimit,
+            fileTypes: input.fileTypes,
+            includeArchived: input.includeArchived,
+          })
+        )
 
         logger.info('Complete filesystem retrieved', {
           itemsCount: result.items.length,
@@ -870,15 +877,59 @@ export const fileRouter = createTRPCRouter({
   moveItems: permissionProcedure(PermissionKey.filesManage)
     .input(moveItemsSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
       try {
-        const fsSvc = createFilesystemService(organizationId, userId)
-        const result = await fsSvc.moveItems(input.items, input.targetFolderId, {
-          mode: 'best-effort',
-          collision: 'rename',
-          dryRun: false,
-        })
+        const filesCtx = toFilesCtx(ctx)
+        const deps = toFilesWriteDeps()
+
+        // Plan first, with no writes: three statements answer every collision,
+        // rename and cycle question that used to cost one query apiece.
+        const plan = unwrap(
+          await planMoveItems(filesCtx, {
+            items: input.items,
+            targetFolderId: input.targetFolderId,
+            collision: 'rename',
+          })
+        )
+
+        // ONE TRANSACTION PER ENTRY, opened here because this is where the
+        // boundary belongs. Best-effort means a failed item must not roll back
+        // the ones already moved; move-plus-rename must still land together.
+        // `FilesystemService` opened these inside lib on a `Database |
+        // Transaction`, so whether they isolated anything or merely issued a
+        // SAVEPOINT depended on who constructed the service.
+        const outcomes: MoveEntryOutcome[] = []
+        for (const entry of plan) {
+          if (entry.reason) {
+            outcomes.push({
+              id: entry.id,
+              type: entry.type,
+              status: 'skipped',
+              reason: entry.reason,
+            })
+            continue
+          }
+          try {
+            const item = await ctx.db.transaction(async (tx) =>
+              unwrap(await executeMoveEntry(tx, { ...filesCtx, db: tx }, entry, deps))
+            )
+            outcomes.push({
+              id: entry.id,
+              type: entry.type,
+              status: 'moved',
+              renamed: entry.willRename === true,
+              item,
+            })
+          } catch (error) {
+            outcomes.push({
+              id: entry.id,
+              type: entry.type,
+              status: 'failed',
+              error: error instanceof Error ? error.message : 'Move failed',
+            })
+          }
+        }
+
+        const result = summarizeMoveOutcomes(outcomes)
 
         logger.info('Bulk move completed', {
           items: input.items.map((i) => ({ id: i.id, type: i.type })),
@@ -902,11 +953,23 @@ export const fileRouter = createTRPCRouter({
   renameItem: permissionProcedure(PermissionKey.filesManage)
     .input(renameItemSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
       try {
-        const fsSvc = createFilesystemService(organizationId, userId)
-        const result = await fsSvc.renameItem(input.id, input.type, input.newName)
+        // A folder rename rewrites the path of every descendant folder and
+        // file, so the whole thing is one transaction — opened here, not
+        // guessed at inside lib.
+        const filesCtx = toFilesCtx(ctx)
+        const result = await ctx.db.transaction(async (tx) =>
+          unwrap(
+            await renameFilesystemItem(
+              tx,
+              { ...filesCtx, db: tx },
+              input.id,
+              input.type,
+              input.newName,
+              toFilesWriteDeps()
+            )
+          )
+        )
 
         logger.info('Item renamed successfully', {
           id: input.id,

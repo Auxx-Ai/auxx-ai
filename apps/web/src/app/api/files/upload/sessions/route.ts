@@ -215,9 +215,12 @@ export async function POST(request: NextRequest) {
     logger.error('Failed to create upload session', { error })
 
     // Raw App Router handler — there is no `auxxErrorMiddleware` here, so an
-    // AuxxError's own status has to be applied by hand or `handleUploadError`
-    // flattens it to a message-string-classified 500. `ProcessorRegistry`
-    // (unregistered entity type) and `requirePermission` both throw one.
+    // AuxxError's own status has to be applied by hand. This branch also owns a
+    // DIFFERENT body shape from the one below (`{ error: <code>, message }`
+    // rather than `{ error: <message>, errorType, retryable, code }`), which is
+    // what `session-error-mapping.test.ts` pins for the `files.manage` 403.
+    // `ProcessorRegistry` (unregistered entity type) and `requirePermission`
+    // both throw an AuxxError.
     if (isAuxxError(error)) {
       return NextResponse.json(
         { error: HTTP_ERROR_CODE_BY_STATUS[error.statusCode] ?? 'ERROR', message: error.message },
@@ -225,9 +228,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate a temporary session ID for error tracking
-    const tempSessionId = `temp-${Date.now()}`
-    return await UploadErrorHandler.handleUploadError(error, tempSessionId, 'session-creation', {
+    // No session exists yet on this route, so there is nothing to mark failed.
+    // This used to pass `temp-${Date.now()}` purely to fill a required parameter,
+    // and the handler string-matched the prefix back off to skip the Redis write.
+    return await UploadErrorHandler.handleUploadError(error, undefined, 'session-creation', {
       hasUser: !!session?.user,
     })
   }

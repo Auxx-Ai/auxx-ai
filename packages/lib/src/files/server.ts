@@ -16,9 +16,84 @@ export type {
   UpdateAttachmentRequest,
   UpdateFileRequest,
 } from './core/types'
+// MediaAsset reads/writes (PR 5a). `mediaAssetRouter` and `attachmentRouter`
+// call these directly.
+export { convertTempAssetToPermanent, getAsset } from './assets'
+// Attachment reads/writes (PR 5b). `attachmentRouter` calls these directly.
+export type { CreateAttachmentInput, UpdateAttachmentInput } from './attachments'
+export {
+  createAttachment,
+  deleteAttachment,
+  getAttachment,
+  getEntityAttachments,
+  updateAttachment,
+} from './attachments'
 // The ambient contract every `files/` function is written against. Exported so
 // `apps/web`'s single `toFilesCtx` helper can name the type it returns.
 export type { FilesCtx, FilesDeps, FilesDepsSlice } from './ctx'
+// The unified filesystem view over `Folder` + `FolderFile` (PR 5e).
+// `FilesystemService` was deleted outright -- all three call sites were in
+// `fileRouter` and all three were converted.
+export type {
+  BreadcrumbItem,
+  FileItem,
+  FileSystemResult,
+  GetFileSystemOptions,
+  MoveEntryOutcome,
+  MoveItemsResult,
+  PlanMoveItemsInput,
+} from './filesystem'
+export {
+  buildBreadcrumbs,
+  buildMovePlan,
+  executeMoveEntry,
+  getCompleteFileSystem,
+  planMoveItems,
+  renameFilesystemItem,
+  summarizeMoveOutcomes,
+} from './filesystem'
+// Folder reads/writes written to the `files/ctx.ts` contract (PR 5d).
+// `folderRouter` calls these directly -- there is no `FolderService` between
+// them. NOTE: `FolderTreeNode` is deliberately NOT re-exported here;
+// `./core/types` already exports that name through this module.
+export type {
+  CopyFolderInput,
+  CreateFolderInput,
+  FileVersionCopyPort,
+  FolderCopyDeps,
+  FolderCounts,
+  FolderDetail,
+  FolderPage,
+  FolderSearchHit,
+  FolderUsage,
+  FolderWriteDeps,
+  ListFoldersOptions,
+  SearchFoldersOptions,
+  UpdateFolderInput,
+} from './folders'
+export {
+  copyFolder,
+  createFolder,
+  deleteFolder,
+  ensureFolderPath,
+  getFolder,
+  getFolderAncestors,
+  getFolderCounts,
+  getFolderDescendants,
+  getFolderTree,
+  getFolderUsage,
+  getFolderWithRelations,
+  getSubfolders,
+  isFolderNameAvailable,
+  listFolders,
+  mergeFolders,
+  moveFolder,
+  permanentlyDeleteFolder,
+  renameFolder,
+  restoreFolder,
+  searchFolders,
+  updateFolder,
+} from './folders'
 // FolderFile reads/writes written to the `files/ctx.ts` contract (PR 5c).
 // `fileRouter` calls these directly — there is no `FileService` between them.
 export type {
@@ -85,12 +160,33 @@ export type {
   ThumbnailSource,
 } from './thumbnails'
 export { deleteThumbnailsForSource, ensureThumbnail, ensureThumbnailPresets } from './thumbnails'
+// The deprecated adapter over `upload/errors.ts`. Kept only until the three
+// upload routes import the functions below directly (PR 4e); it is the reason
+// this PR did not have to touch them.
 export { UploadErrorHandler } from './upload/error-handling'
+// Upload error classification (PR 4c). Pure -- no db, no redis, no clock.
+// Replaces the substring ladder that answered 413 "upgrade your plan" for any
+// message containing `limit` and 401 for any message containing `token`.
+export type {
+  ClassifiedUploadError,
+  UploadErrorBody,
+  UploadErrorMeta,
+  UploadErrorType,
+} from './upload/errors'
+export {
+  classifyUploadError,
+  toUploadErrorResponse,
+  UNEXPECTED_UPLOAD_ERROR_MESSAGE,
+  uploadErrorResponse,
+  uploadUnauthorizedError,
+  uploadValidationError,
+} from './upload/errors'
 export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
 // Upload/session orchestration (no image processing)
 export {
   createUploadSession,
   deleteUploadSession,
+  failUploadSession,
   getUploadSession,
   patchUploadSession,
   touchUploadSession,

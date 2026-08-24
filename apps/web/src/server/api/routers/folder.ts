@@ -1,13 +1,95 @@
 // apps/web/src/server/api/routers/folder.ts
 
-import { createFolderService } from '@auxx/lib/files'
+import type { Transaction } from '@auxx/database'
+import type { FilesCtx } from '@auxx/lib/files/server'
+import {
+  copyFileVersions,
+  copyFolder,
+  createFolder,
+  deleteFolder,
+  ensureFolderPath,
+  type FolderCopyDeps,
+  getFolderAncestors,
+  getFolderCounts,
+  getFolderDescendants,
+  getFolderTree,
+  getFolderUsage,
+  getFolderWithRelations,
+  getSubfolders,
+  isFolderNameAvailable,
+  listFolders,
+  mergeFolders,
+  moveFolder,
+  permanentlyDeleteFolder,
+  renameFolder,
+  restoreFolder,
+  searchFolders,
+  updateFolder,
+} from '@auxx/lib/files/server'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
+import type { Result } from 'neverthrow'
 import { z } from 'zod'
-import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, isAuxxError, permissionProcedure } from '~/server/api/trpc'
+import { toFilesCtx, toFilesWriteDeps } from '~/server/lib/files-ctx'
 
 const logger = createScopedLogger('api/folder')
+
+/**
+ * Unwrap a `files/` `Result` into this router's throw-based flow.
+ *
+ * Every `folders/` function returns `Promise<Result<T, AuxxError>>`. Rethrowing
+ * the error unchanged is what lets {@link rethrow} hand `auxxErrorMiddleware` a
+ * real status: a missing folder is 404, a name collision or an attempted cycle
+ * 409, an illegal name 400. Before PR 5d every one of those was a bare `Error`.
+ */
+function unwrap<V>(result: Result<V, Error>): V {
+  if (result.isErr()) throw result.error
+  return result.value
+}
+
+/**
+ * The one `catch` body this router uses, so the twenty procedures below cannot
+ * drift apart.
+ *
+ * **An `AuxxError` is rethrown as-is.** `apps/web`'s `auxxErrorMiddleware` maps
+ * it to the status its class names; flattening it into `BAD_REQUEST` here — which
+ * is what every procedure did while `FolderService` threw bare `Error`s — is the
+ * exact failure `CLAUDE.md` names ("guard rethrows with `isAuxxError(e)`, not
+ * `e instanceof TRPCError`, or the AuxxError gets flattened into a generic 500").
+ * The message is unchanged either way, so the UI's error toast reads the same;
+ * only the HTTP status improves.
+ */
+function rethrow(error: unknown, fallback: string): never {
+  if (error instanceof TRPCError || isAuxxError(error)) throw error
+  throw new TRPCError({
+    code: 'BAD_REQUEST',
+    message: error instanceof Error ? error.message : fallback,
+  })
+}
+
+/**
+ * The `deps` a folder copy takes: a clock, plus the file-version copier the
+ * subtree walk fans out to.
+ *
+ * `folders/` declares `FileVersionCopyPort` rather than importing
+ * `folder-files/`, so the two modules stay independent — this is where the port
+ * is bound to PR 5c's implementation. Both the port and the copy run on the
+ * caller's transaction, so a failure halfway rolls the whole subtree back; the
+ * legacy body constructed a `FileService` *inside* the per-file loop.
+ */
+function folderCopyDeps(tx: Transaction, ctx: FilesCtx): FolderCopyDeps {
+  const txCtx: FilesCtx = { ...ctx, db: tx }
+  return {
+    ...toFilesWriteDeps(),
+    files: {
+      copyFileVersions: async (sourceFileId: string, targetFileId: string) => {
+        unwrap(await copyFileVersions(tx, txCtx, sourceFileId, targetFileId))
+      },
+    },
+  }
+}
 
 // Input schemas
 const createFolderSchema = z.object({
@@ -67,12 +149,8 @@ export const folderRouter = createTRPCRouter({
 
   /** Get all folders in organization */
   list: permissionProcedure(PermissionKey.filesView).query(async ({ ctx }) => {
-    const { organizationId, userId } = ctx.session
-
-    const folderService = createFolderService(organizationId, userId)
-
     try {
-      const result = await folderService.list()
+      const result = unwrap(await listFolders(toFilesCtx(ctx)))
 
       logger.info('Folders listed successfully', {
         count: result.items.length,
@@ -82,10 +160,7 @@ export const folderRouter = createTRPCRouter({
       return result.items
     } catch (error) {
       logger.error('Failed to list folders', { error })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to list folders',
-      })
+      rethrow(error, 'Failed to list folders')
     }
   }),
 
@@ -93,14 +168,11 @@ export const folderRouter = createTRPCRouter({
   getById: permissionProcedure(PermissionKey.filesView)
     .input(folderIdSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        // `getWithRelations`, not `getById` — the latter has never existed on
-        // `FolderService`, so this procedure threw `TypeError` for every caller.
-        const folder = await folderService.getWithRelations(input.folderId)
+        // `getFolderWithRelations`, not a `getById` — the latter has never
+        // existed, so this procedure threw `TypeError` for every caller until
+        // 2026-07-31.
+        const folder = unwrap(await getFolderWithRelations(toFilesCtx(ctx), input.folderId))
 
         if (!folder) {
           throw new TRPCError({
@@ -113,38 +185,25 @@ export const folderRouter = createTRPCRouter({
         return folder
       } catch (error) {
         logger.error('Failed to get folder', { error, input })
-
-        if (error instanceof TRPCError) {
-          throw error
-        }
-
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to get folder',
-        })
+        rethrow(error, 'Failed to get folder')
       }
     }),
 
   /** Get complete folder tree */
   getTree: permissionProcedure(PermissionKey.filesView).query(async ({ ctx }) => {
-    const { organizationId, userId } = ctx.session
-
-    const folderService = createFolderService(organizationId, userId)
-
     try {
-      const tree = await folderService.getFolderTree()
+      // Two statements for the whole org. The legacy builder eagerly loaded the
+      // `files` and `children` relations of every folder to compute counts it
+      // then read off a Prisma `_count` field Drizzle never produces, so every
+      // `fileCount` and `totalSize` in the tree was `0`.
+      const tree = unwrap(await getFolderTree(toFilesCtx(ctx)))
 
-      logger.info('Folder tree retrieved successfully', {
-        nodeCount: Array.isArray(tree) ? tree.length : 1,
-      })
+      logger.info('Folder tree retrieved successfully', { nodeCount: tree.length })
 
       return tree
     } catch (error) {
       logger.error('Failed to get folder tree', { error })
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Failed to get folder tree',
-      })
+      rethrow(error, 'Failed to get folder tree')
     }
   }),
 
@@ -152,12 +211,8 @@ export const folderRouter = createTRPCRouter({
   getSubfolders: permissionProcedure(PermissionKey.filesView)
     .input(folderIdSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        const subfolders = await folderService.getSubfolders(input.folderId)
+        const subfolders = unwrap(await getSubfolders(toFilesCtx(ctx), input.folderId))
 
         logger.info('Subfolders retrieved successfully', {
           folderId: input.folderId,
@@ -167,10 +222,7 @@ export const folderRouter = createTRPCRouter({
         return subfolders
       } catch (error) {
         logger.error('Failed to get subfolders', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to get subfolders',
-        })
+        rethrow(error, 'Failed to get subfolders')
       }
     }),
 
@@ -178,12 +230,8 @@ export const folderRouter = createTRPCRouter({
   getAncestors: permissionProcedure(PermissionKey.filesView)
     .input(folderIdSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        const ancestors = await folderService.getAncestors(input.folderId)
+        const ancestors = unwrap(await getFolderAncestors(toFilesCtx(ctx), input.folderId))
 
         logger.info('Folder ancestors retrieved successfully', {
           folderId: input.folderId,
@@ -193,10 +241,7 @@ export const folderRouter = createTRPCRouter({
         return ancestors
       } catch (error) {
         logger.error('Failed to get folder ancestors', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to get ancestors',
-        })
+        rethrow(error, 'Failed to get ancestors')
       }
     }),
 
@@ -204,12 +249,8 @@ export const folderRouter = createTRPCRouter({
   getDescendants: permissionProcedure(PermissionKey.filesView)
     .input(folderIdSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        const descendants = await folderService.getDescendants(input.folderId)
+        const descendants = unwrap(await getFolderDescendants(toFilesCtx(ctx), input.folderId))
 
         logger.info('Folder descendants retrieved successfully', {
           folderId: input.folderId,
@@ -219,10 +260,7 @@ export const folderRouter = createTRPCRouter({
         return descendants
       } catch (error) {
         logger.error('Failed to get folder descendants', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to get descendants',
-        })
+        rethrow(error, 'Failed to get descendants')
       }
     }),
 
@@ -230,15 +268,13 @@ export const folderRouter = createTRPCRouter({
   search: permissionProcedure(PermissionKey.filesView)
     .input(searchFoldersSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        // `SearchOptions` has no `parentId` — the service scores across the whole
-        // org — so the parent filter is applied to the results here rather than
-        // being passed in and silently ignored.
-        const matches = await folderService.search(input.query, { limit: input.limit })
+        // `SearchFoldersOptions` has no `parentId` — the query scores across the
+        // whole org — so the parent filter is applied to the results here rather
+        // than being passed in and silently ignored.
+        const matches = unwrap(
+          await searchFolders(toFilesCtx(ctx), input.query, { limit: input.limit })
+        )
         const results =
           input.parentId === undefined
             ? matches
@@ -252,10 +288,7 @@ export const folderRouter = createTRPCRouter({
         return results
       } catch (error) {
         logger.error('Folder search failed', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Search failed',
-        })
+        rethrow(error, 'Search failed')
       }
     }),
 
@@ -263,22 +296,16 @@ export const folderRouter = createTRPCRouter({
   getStats: permissionProcedure(PermissionKey.filesView)
     .input(folderIdSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        // `FolderService.getStats()` takes NO arguments and reports ORG-WIDE
-        // folder totals — the `folderId` passed here was dropped, so this
-        // procedure returned the same numbers for every folder. Per-folder
-        // stats come from the size/count helpers.
-        const [totalSize, deepFileCount, directFileCount, subfolderCount] = await Promise.all([
-          folderService.getFolderSize(input.folderId),
-          folderService.getDeepFileCount(input.folderId),
-          folderService.getDirectFileCount(input.folderId),
-          folderService.getSubfolderCount(input.folderId),
-        ])
-        const stats = { totalSize, deepFileCount, directFileCount, subfolderCount }
+        // ONE call, not four. `FolderService.getStats()` took no arguments and
+        // reported org-wide totals, so this procedure used to fan out to four
+        // per-folder accessors in a `Promise.all` — and once PR 5d put
+        // `getFolderCounts` behind all four, that `Promise.all` ran the same
+        // pair of statements four times over for one panel (5a's
+        // `getDownloadUrls` trap in miniature, named in plan §5.5). The four
+        // numbers ARE `getFolderCounts`' return shape, so the output is
+        // byte-identical.
+        const stats = unwrap(await getFolderCounts(toFilesCtx(ctx), input.folderId))
 
         logger.info('Folder stats retrieved successfully', {
           folderId: input.folderId,
@@ -288,10 +315,7 @@ export const folderRouter = createTRPCRouter({
         return stats
       } catch (error) {
         logger.error('Failed to get folder stats', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to get stats',
-        })
+        rethrow(error, 'Failed to get stats')
       }
     }),
 
@@ -299,12 +323,8 @@ export const folderRouter = createTRPCRouter({
   getUsage: permissionProcedure(PermissionKey.filesView)
     .input(folderIdSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        const usage = await folderService.getUsage(input.folderId)
+        const usage = unwrap(await getFolderUsage(toFilesCtx(ctx), input.folderId))
 
         logger.info('Folder usage retrieved successfully', {
           folderId: input.folderId,
@@ -314,10 +334,7 @@ export const folderRouter = createTRPCRouter({
         return usage
       } catch (error) {
         logger.error('Failed to get folder usage', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to get usage',
-        })
+        rethrow(error, 'Failed to get usage')
       }
     }),
 
@@ -325,15 +342,9 @@ export const folderRouter = createTRPCRouter({
   validateName: permissionProcedure(PermissionKey.filesView)
     .input(validateNameSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        const isValid = await folderService.validateName(
-          input.name,
-          input.parentId,
-          input.excludeId
+        const isValid = unwrap(
+          await isFolderNameAvailable(toFilesCtx(ctx), input.name, input.parentId, input.excludeId)
         )
 
         logger.info('Folder name validation completed', {
@@ -344,10 +355,7 @@ export const folderRouter = createTRPCRouter({
         return { isValid }
       } catch (error) {
         logger.error('Failed to validate folder name', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to validate name',
-        })
+        rethrow(error, 'Failed to validate name')
       }
     }),
 
@@ -357,20 +365,22 @@ export const folderRouter = createTRPCRouter({
   create: permissionProcedure(PermissionKey.filesManage)
     .input(createFolderSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        const folder = await folderService.create({
-          name: input.name,
-          // `CreateFolderRequest.parentId` is `?: string`; a root-level folder is
-          // the absent case, and Drizzle writes NULL for an omitted column either
-          // way, so `null` and `undefined` are the same insert.
-          parentId: input.parentId ?? undefined,
-          organizationId,
-          createdById: userId,
-        })
+        // A single `INSERT`, so no transaction is opened. `organizationId` comes
+        // from `ctx` and is no longer accepted from the caller: the legacy
+        // `processCreateData` read `data.organizationId || this.requireOrganization()`,
+        // so a request could name an organization it was not acting for.
+        const folder = unwrap(
+          await createFolder(
+            toFilesCtx(ctx),
+            {
+              name: input.name,
+              parentId: input.parentId,
+              createdById: ctx.session.userId,
+            },
+            toFilesWriteDeps()
+          )
+        )
 
         logger.info('Folder created successfully', {
           folderId: folder.id,
@@ -381,10 +391,7 @@ export const folderRouter = createTRPCRouter({
         return folder
       } catch (error) {
         logger.error('Failed to create folder', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to create folder',
-        })
+        rethrow(error, 'Failed to create folder')
       }
     }),
 
@@ -392,21 +399,24 @@ export const folderRouter = createTRPCRouter({
   update: permissionProcedure(PermissionKey.filesManage)
     .input(updateFolderSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        // KNOWN TYPE GAP (not silenced on purpose): `UpdateFolderRequest.parentId`
-        // is `?: string` in `packages/lib/src/files/core/types.ts`, but
-        // `FolderService.update` distinguishes `undefined` ("leave the parent
-        // alone") from `null` ("move to root") — coercing `null` to `undefined`
-        // here would silently break move-to-root. The declaration is what is
-        // wrong; it needs to be `parentId?: string | null`.
-        const folder = await folderService.update(input.folderId, {
-          name: input.name,
-          parentId: input.parentId,
-        })
+        // `UpdateFolderInput.parentId` is `?: string | null`, so the distinction
+        // this procedure depends on is now expressible: `undefined` leaves the
+        // parent alone, `null` moves the folder to the root. The legacy
+        // `UpdateFolderRequest` declared `?: string` and the router carried a
+        // note about the gap.
+        const filesCtx = toFilesCtx(ctx)
+        const folder = await ctx.db.transaction(async (tx) =>
+          unwrap(
+            await updateFolder(
+              tx,
+              filesCtx,
+              input.folderId,
+              { name: input.name, parentId: input.parentId },
+              toFilesWriteDeps()
+            )
+          )
+        )
 
         logger.info('Folder updated successfully', {
           folderId: input.folderId,
@@ -416,10 +426,7 @@ export const folderRouter = createTRPCRouter({
         return folder
       } catch (error) {
         logger.error('Failed to update folder', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to update folder',
-        })
+        rethrow(error, 'Failed to update folder')
       }
     }),
 
@@ -427,21 +434,21 @@ export const folderRouter = createTRPCRouter({
   delete: permissionProcedure(PermissionKey.filesManage)
     .input(folderIdSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        await folderService.delete(input.folderId)
+        // The subtree and its files go in two statements, inside one
+        // transaction. Membership is `folderId IN (subtree)`: the legacy
+        // cascade matched `ilike(FolderFile.path, '<path>%')` with no trailing
+        // slash, so deleting `/Doc` soft-deleted everything under `/Documents`.
+        const filesCtx = toFilesCtx(ctx)
+        await ctx.db.transaction(async (tx) =>
+          unwrap(await deleteFolder(tx, filesCtx, input.folderId, toFilesWriteDeps()))
+        )
 
         logger.info('Folder deleted successfully', { folderId: input.folderId })
         return { success: true }
       } catch (error) {
         logger.error('Failed to delete folder', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to delete folder',
-        })
+        rethrow(error, 'Failed to delete folder')
       }
     }),
 
@@ -449,21 +456,17 @@ export const folderRouter = createTRPCRouter({
   restore: permissionProcedure(PermissionKey.filesManage)
     .input(folderIdSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        const folder = await folderService.restore(input.folderId)
+        const filesCtx = toFilesCtx(ctx)
+        const folder = await ctx.db.transaction(async (tx) =>
+          unwrap(await restoreFolder(tx, filesCtx, input.folderId, toFilesWriteDeps()))
+        )
 
         logger.info('Folder restored successfully', { folderId: input.folderId })
         return folder
       } catch (error) {
         logger.error('Failed to restore folder', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to restore folder',
-        })
+        rethrow(error, 'Failed to restore folder')
       }
     }),
 
@@ -471,21 +474,17 @@ export const folderRouter = createTRPCRouter({
   permanentDelete: permissionProcedure(PermissionKey.filesManage)
     .input(folderIdSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        await folderService.permanentDelete(input.folderId)
+        const filesCtx = toFilesCtx(ctx)
+        await ctx.db.transaction(async (tx) =>
+          unwrap(await permanentlyDeleteFolder(tx, filesCtx, input.folderId))
+        )
 
         logger.info('Folder permanently deleted', { folderId: input.folderId })
         return { success: true }
       } catch (error) {
         logger.error('Failed to permanently delete folder', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to permanently delete folder',
-        })
+        rethrow(error, 'Failed to permanently delete folder')
       }
     }),
 
@@ -493,12 +492,13 @@ export const folderRouter = createTRPCRouter({
   move: permissionProcedure(PermissionKey.filesManage)
     .input(moveFolderSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        const folder = await folderService.move(input.folderId, input.targetParentId)
+        const filesCtx = toFilesCtx(ctx)
+        const folder = await ctx.db.transaction(async (tx) =>
+          unwrap(
+            await moveFolder(tx, filesCtx, input.folderId, input.targetParentId, toFilesWriteDeps())
+          )
+        )
 
         logger.info('Folder moved successfully', {
           folderId: input.folderId,
@@ -508,10 +508,7 @@ export const folderRouter = createTRPCRouter({
         return folder
       } catch (error) {
         logger.error('Failed to move folder', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to move folder',
-        })
+        rethrow(error, 'Failed to move folder')
       }
     }),
 
@@ -519,12 +516,13 @@ export const folderRouter = createTRPCRouter({
   rename: permissionProcedure(PermissionKey.filesManage)
     .input(renameFolderSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        const folder = await folderService.rename(input.folderId, input.newName)
+        const filesCtx = toFilesCtx(ctx)
+        const folder = await ctx.db.transaction(async (tx) =>
+          unwrap(
+            await renameFolder(tx, filesCtx, input.folderId, input.newName, toFilesWriteDeps())
+          )
+        )
 
         logger.info('Folder renamed successfully', {
           folderId: input.folderId,
@@ -534,10 +532,7 @@ export const folderRouter = createTRPCRouter({
         return folder
       } catch (error) {
         logger.error('Failed to rename folder', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to rename folder',
-        })
+        rethrow(error, 'Failed to rename folder')
       }
     }),
 
@@ -545,15 +540,22 @@ export const folderRouter = createTRPCRouter({
   copy: permissionProcedure(PermissionKey.filesManage)
     .input(copyFolderSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        const newFolder = await folderService.copy(
-          input.sourceFolderId,
-          input.targetParentId,
-          input.newName
+        const filesCtx = toFilesCtx(ctx)
+        const newFolder = await ctx.db.transaction(async (tx) =>
+          unwrap(
+            await copyFolder(
+              tx,
+              filesCtx,
+              {
+                sourceId: input.sourceFolderId,
+                targetParentId: input.targetParentId,
+                newName: input.newName,
+                createdById: ctx.session.userId,
+              },
+              folderCopyDeps(tx, filesCtx)
+            )
+          )
         )
 
         logger.info('Folder copied successfully', {
@@ -565,36 +567,43 @@ export const folderRouter = createTRPCRouter({
         return newFolder
       } catch (error) {
         logger.error('Failed to copy folder', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to copy folder',
-        })
+        rethrow(error, 'Failed to copy folder')
       }
     }),
 
-  /** Merge two folders */
+  /**
+   * Merge two folders.
+   *
+   * Resolves to `undefined`, which is what it has always done — the legacy
+   * `FolderService.merge` returned `Promise<void>` while this procedure did
+   * `const folder = await …; return folder`. `mergeFolders` returns void too, so
+   * the output shape is unchanged; nothing calls this procedure, and inventing a
+   * return value would be a product decision, not a refactor one.
+   */
   merge: permissionProcedure(PermissionKey.filesManage)
     .input(mergeFolderSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        const folder = await folderService.merge(input.sourceFolderId, input.targetFolderId)
+        const filesCtx = toFilesCtx(ctx)
+        await ctx.db.transaction(async (tx) =>
+          unwrap(
+            await mergeFolders(
+              tx,
+              filesCtx,
+              input.sourceFolderId,
+              input.targetFolderId,
+              toFilesWriteDeps()
+            )
+          )
+        )
 
         logger.info('Folders merged successfully', {
           sourceFolderId: input.sourceFolderId,
           targetFolderId: input.targetFolderId,
         })
-
-        return folder
       } catch (error) {
         logger.error('Failed to merge folders', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to merge folders',
-        })
+        rethrow(error, 'Failed to merge folders')
       }
     }),
 
@@ -602,12 +611,15 @@ export const folderRouter = createTRPCRouter({
   ensurePath: permissionProcedure(PermissionKey.filesManage)
     .input(folderPathSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const folderService = createFolderService(organizationId, userId)
-
       try {
-        const folder = await folderService.ensurePath(input.path)
+        // Deliberately not in a transaction, matching the legacy `ensurePath`:
+        // the creates are independent and a partially-created path is a valid
+        // state that a repeat call completes.
+        const folder = unwrap(
+          await ensureFolderPath(toFilesCtx(ctx), input.path, toFilesWriteDeps(), {
+            createdById: ctx.session.userId,
+          })
+        )
 
         logger.info('Folder path ensured successfully', {
           path: input.path,
@@ -617,10 +629,7 @@ export const folderRouter = createTRPCRouter({
         return folder
       } catch (error) {
         logger.error('Failed to ensure folder path', { error, input })
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Failed to ensure path',
-        })
+        rethrow(error, 'Failed to ensure path')
       }
     }),
 })

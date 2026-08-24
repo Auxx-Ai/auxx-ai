@@ -14,8 +14,10 @@ export interface AuthorizedUploadSession {
 }
 
 /**
- * Body shape matches `UploadErrorHandler`'s so every failure on this surface
- * looks the same to the client, whichever layer produced it.
+ * Body shape matches `upload/errors.ts`'s so every failure on this surface looks
+ * the same to the client, whichever layer produced it. The `code` values are
+ * hand-written rather than derived because this file names a *session*
+ * (`SESSION_NOT_FOUND`), which a status-keyed table cannot know.
  */
 function deny(status: number, code: string, errorType: string, message: string): Response {
   return NextResponse.json({ error: message, errorType, retryable: false, code }, { status })

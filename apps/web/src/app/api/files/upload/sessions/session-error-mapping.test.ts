@@ -6,12 +6,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * `POST /api/files/upload/sessions` is a raw App Router handler, so no
  * `auxxErrorMiddleware` runs on it. `ProcessorRegistry.getForEntityType` now
  * throws `BadRequestError` for an unregistered entity type instead of silently
- * defaulting to `FileProcessor` (plan §1.7), and without an explicit map that
- * lands in `UploadErrorHandler.handleUploadError`, which classifies status by
- * SUBSTRING MATCH on the message — a generic 500.
+ * defaulting to `FileProcessor` (plan §1.7), and the explicit map below is what
+ * gives that its own status.
  *
- * Also covers the fold of the hand-rolled `files.manage` catch into the same
- * mapping: the 403 body must stay `{ error: 'FORBIDDEN', message }`.
+ * PR 4c deleted the substring classifier behind `handleUploadError`, so the
+ * fallback path no longer *needs* this branch to keep an AuxxError's status —
+ * but the branch stays, because it emits a DIFFERENT body:
+ * `{ error: <code>, message }` rather than
+ * `{ error: <message>, errorType, retryable, code }`. The `files.manage` 403
+ * body must stay `{ error: 'FORBIDDEN', message }`, which is what the second
+ * case below pins.
  */
 
 const { getSession, getForEntityType, requirePermission, calculateStorageUsage, getLimit, logger } =

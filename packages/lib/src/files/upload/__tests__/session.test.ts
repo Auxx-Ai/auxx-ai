@@ -20,6 +20,7 @@ import type { UploadPreparedConfig } from '../init-types'
 import {
   createUploadSession,
   deleteUploadSession,
+  failUploadSession,
   getUploadSession,
   patchUploadSession,
   touchUploadSession,
@@ -316,5 +317,32 @@ describe('upload session compare-and-set', () => {
     // number on the way through can round into scientific notation.
     expect(typeof ttlArg).toBe('string')
     expect(ttlArg).toBe(String(15 * MINUTE))
+  })
+})
+
+describe('failUploadSession', () => {
+  it('marks a live session failed', async () => {
+    const { clock, redis } = harness()
+
+    const session = await createUploadSession(redis, makeConfig(15 * 60), clock.now)
+    await failUploadSession(redis, session.id, clock.now)
+
+    expect((await getUploadSession(redis, session.id))?.status).toBe('failed')
+  })
+
+  it('swallows an expired session instead of replacing the caller’s error', async () => {
+    const { clock, redis } = harness()
+
+    const session = await createUploadSession(redis, makeConfig(10 * 60), clock.now)
+    clock.advance(10 * MINUTE + 1)
+
+    // `patchUploadSession` throws NotFoundError here. Every caller is already
+    // inside a `catch` reporting a different failure, so this must not throw.
+    await expect(failUploadSession(redis, session.id, clock.now)).resolves.toBeUndefined()
+  })
+
+  it('swallows a session id that never existed', async () => {
+    const { clock, redis } = harness()
+    await expect(failUploadSession(redis, 'never-created', clock.now)).resolves.toBeUndefined()
   })
 })

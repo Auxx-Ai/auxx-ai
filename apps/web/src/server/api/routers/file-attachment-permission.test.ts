@@ -66,15 +66,17 @@ vi.mock('@auxx/lib/permissions', async () => {
   }
 })
 
+// `createFilesystemService` went with PR 5e — `fileRouter` reaches the
+// filesystem through free functions on the `/server` subpath below, so the only
+// binding still taken from this barrel is the media-asset facade.
 vi.mock('@auxx/lib/files', () => ({
-  createFilesystemService: vi.fn(),
   createMediaAssetService,
 }))
 
-// `fileRouter` imports seventeen `folder-files/` functions from this subpath and
-// `~/server/lib/files-ctx` imports `createS3StoragePort` from it. Vitest
-// validates NAMED bindings at link time, so every one has to be present here
-// even though this suite only drives the download accessor.
+// `fileRouter` imports the `folder-files/` and `filesystem/` functions from this
+// subpath and `~/server/lib/files-ctx` imports `createS3StoragePort` from it.
+// Vitest validates NAMED bindings at link time, so every one has to be present
+// here even though this suite only drives the download accessor.
 vi.mock('@auxx/lib/files/server', () => ({
   getFolderFileDownloadRef,
   createS3StoragePort: vi.fn(() => ({})),
@@ -82,17 +84,22 @@ vi.mock('@auxx/lib/files/server', () => ({
   createFileVersion: vi.fn(),
   deleteFileVersion: vi.fn(),
   deleteFolderFile: vi.fn(),
+  executeMoveEntry: vi.fn(),
   findFolderFilesByExtension: vi.fn(),
   findFolderFilesByMimeType: vi.fn(),
+  getCompleteFileSystem: vi.fn(),
   getFolderFileCurrentVersion: vi.fn(),
   getFolderFileVersions: vi.fn(),
   getFolderFileWithRelations: vi.fn(),
   listFolderFiles: vi.fn(),
   moveFolderFile: vi.fn(),
+  planMoveItems: vi.fn(),
+  renameFilesystemItem: vi.fn(),
   renameFolderFile: vi.fn(),
   restoreFileVersion: vi.fn(),
   restoreFolderFile: vi.fn(),
   searchFolderFiles: vi.fn(),
+  summarizeMoveOutcomes: vi.fn(),
   updateFolderFile: vi.fn(),
 }))
 

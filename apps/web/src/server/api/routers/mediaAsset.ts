@@ -1,8 +1,9 @@
 // apps/web/src/server/api/routers/mediaAsset.ts
 
-import { MediaAssetService } from '@auxx/lib/files'
+import { convertTempAssetToPermanent } from '@auxx/lib/files/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { toFilesCtx } from '~/server/lib/files-ctx'
 
 /**
  * MediaAsset router for managing media assets
@@ -10,6 +11,11 @@ import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 export const mediaAssetRouter = createTRPCRouter({
   /**
    * Convert TEMP_UPLOAD MediaAsset to a permanent kind
+   *
+   * The organization is no longer a third argument: `convertTempAssetToPermanent`
+   * reads it off the `FilesCtx`, so the read and the `UPDATE` cannot be scoped to
+   * different tenants. The legacy `convertTempToPermanent(id, kind, organizationId)`
+   * took one from the caller *and* had one on the service.
    */
   convertTempToPermanent: protectedProcedure
     .input(
@@ -26,14 +32,14 @@ export const mediaAssetRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      const mediaAssetService = new MediaAssetService(organizationId, userId, ctx.db)
-
-      await mediaAssetService.convertTempToPermanent(
+      // A no-op for an asset that is not a `TEMP_UPLOAD`, which is the legacy
+      // behaviour and what a retried upload completion relies on.
+      const result = await convertTempAssetToPermanent(
+        toFilesCtx(ctx),
         input.mediaAssetId,
-        input.newKind,
-        organizationId
+        input.newKind
       )
+      if (result.isErr()) throw result.error
 
       return { success: true }
     }),
