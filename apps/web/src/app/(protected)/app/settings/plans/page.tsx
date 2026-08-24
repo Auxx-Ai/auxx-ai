@@ -18,6 +18,7 @@ import { BillingDetailsSection } from './_components/billing-details-section'
 import { DemoBillingCycleGuard } from './_components/demo-billing-cycle-guard'
 import { PlanViewTracker } from './_components/plan-view-tracker'
 import { ShopifyAdminBillingBannerWrapper } from './_components/shopify-admin-billing-banner-wrapper'
+import { ShopifySyncOnMount } from './_components/shopify-sync-on-mount'
 import { UpgradeConfetti } from './_components/upgrade-confetti'
 
 export default function PlansPage() {
@@ -30,6 +31,7 @@ export default function PlansPage() {
       <div className='p-3 sm:p-6 space-y-6 sm:space-y-10'>
         <CapabilityPageGuard permissionKey='billing.view' />
         <PlanViewTracker />
+        <ShopifySyncOnMount />
         <UpgradeConfetti />
         <DemoBillingCycleGuard>
           <Suspense fallback={<BillingCycleAlertSkeleton />}>

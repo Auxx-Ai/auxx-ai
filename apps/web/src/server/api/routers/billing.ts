@@ -13,6 +13,7 @@ import { getUserOrganizationId } from '@auxx/lib/email'
 import { BadRequestError } from '@auxx/lib/errors'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
+import { getRedisClient } from '@auxx/redis'
 import { TRPCError } from '@trpc/server'
 import { and, desc, eq, isNull, lt } from 'drizzle-orm'
 import { z } from 'zod'
@@ -110,10 +111,10 @@ export const billingRouter = createTRPCRouter({
 
   /**
    * Reconciles the local PlanSubscription row against the Shopify Admin API
-   * (`currentAppInstallation.activeSubscriptions`). App Pricing delivers no billing
-   * webhooks, so this is the read-path for off-redirect changes; the post-approval
-   * landing route also calls the provider's `syncFromAdminApi` directly. No-op for
-   * non-Shopify orgs.
+   * (`currentAppInstallation.activeSubscriptions`). Called on plans-page mount for
+   * Shopify-billed orgs so the UI self-heals even when the `app_subscriptions/update`
+   * webhook or the post-approval redirect is delayed. Per-org 30s Redis cooldown
+   * (shared with the worker poll). No-op for non-Shopify orgs.
    */
   syncShopifyStatus: billingReadProcedure.mutation(async ({ ctx }) => {
     const organizationId = getUserOrganizationId(ctx.session)
@@ -135,10 +136,21 @@ export const billingRouter = createTRPCRouter({
       return { synced: false, status: row?.status ?? null }
     }
 
+    // Shares the worker poll's per-org cooldown key so page-mount syncs and the
+    // 15-min job don't hammer the Admin API for the same org.
+    const redis = await getRedisClient()
+    const cooldownKey = `shopify-billing-sync:cooldown:${organizationId}`
+    if (redis && (await redis.get(cooldownKey))) {
+      return { synced: false, status: row.status }
+    }
+
     try {
       const provider = getProvider('shopify') as ShopifyBillingProvider
       await provider.syncFromAdminApi(organizationId)
       await onCacheEvent('plan.changed', { orgId: organizationId })
+      if (redis) {
+        await redis.setex(cooldownKey, 30, '1')
+      }
       const [updated] = await ctx.db
         .select({ status: schema.PlanSubscription.status })
         .from(schema.PlanSubscription)

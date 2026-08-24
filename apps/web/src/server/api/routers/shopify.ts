@@ -1,4 +1,9 @@
-import { getProvider, type ShopifyBillingProvider, stripeClient } from '@auxx/billing'
+import {
+  ensureBillingWebhooks,
+  getProvider,
+  type ShopifyBillingProvider,
+  stripeClient,
+} from '@auxx/billing'
 import { listCredentials, setDefaultCredential } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { installApp, saveAppConnection } from '@auxx/lib/apps'
@@ -309,6 +314,7 @@ export const shopifyRouter = createTRPCRouter({
         // where to send the merchant based on the existing row. An `incomplete` row means
         // the merchant never approved a plan on Shopify's hosted page — resume plan
         // selection. Any live status (active/trialing/past_due/paused) just opens the workspace.
+        await registerBillingWebhooks(organizationId, claim.shop)
         if (existing.status === 'incomplete') {
           const provider = getProvider('shopify') as ShopifyBillingProvider
           const redirectUrl = await provider.getPlanSelectionUrl(organizationId)
@@ -370,6 +376,11 @@ export const shopifyRouter = createTRPCRouter({
         })
       }
 
+      // Shop-scoped billing webhooks (app_subscriptions/update, app/uninstalled) — the
+      // legacy install flow forbids toml-declared subscriptions, so registration happens
+      // here, per shop, with the token just linked.
+      await registerBillingWebhooks(organizationId, claim.shop)
+
       // Hand back the Shopify hosted pricing-page URL. The merchant picks the plan +
       // interval there, approves, and is redirected to /billing/subscription/activated.
       const provider = getProvider('shopify') as ShopifyBillingProvider
@@ -377,3 +388,20 @@ export const shopifyRouter = createTRPCRouter({
       return { redirectUrl, shop: claim.shop }
     }),
 })
+
+/**
+ * Best-effort shop-scoped billing-webhook registration. Never blocks the install flow —
+ * a missed registration is backstopped by the sync job's daily ensure and the 15-minute
+ * poll itself.
+ */
+async function registerBillingWebhooks(organizationId: string, shop: string): Promise<void> {
+  try {
+    await ensureBillingWebhooks({ shopDomain: shop, organizationId })
+  } catch (error) {
+    logger.warn('Failed to ensure Shopify billing webhooks', {
+      organizationId,
+      shop,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
