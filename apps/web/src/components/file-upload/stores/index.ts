@@ -29,6 +29,7 @@ export type {
   UploadConfig,
   UploadError,
   UploaderRun,
+  UploaderSettledHandler,
   UploadState,
   UploadStore,
 } from './types'

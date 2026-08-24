@@ -135,6 +135,10 @@ export const createUISlice: StateCreator<
       // reset, so an in-flight guard from one test blocked the next one's upload.
       state.sessionRuns = {}
       state.uploaderRuns = {}
+      // `uploaderSettledHandlers` is deliberately NOT cleared, for the same reason
+      // `transport` is not: a reset clears the work, not the wiring. A consumer that
+      // subscribed once must not silently stop being notified because something else
+      // on the page reset the store.
 
       // Keep config but reset error deduplication
       state.recentErrorHashes = {}

@@ -14,18 +14,6 @@ import type { UploadTransport } from '../transport'
  * Core store state types
  */
 
-export interface EntityConfig {
-  entityType: EntityType
-  entityId?: string
-  metadata?: Record<string, any>
-}
-
-export interface CallbackConfig {
-  onComplete?: (results: BatchUploadResult) => void
-  onError?: (error: string) => void
-  onProgress?: (progress: BatchUploadResult) => void
-}
-
 export interface FileState {
   // Core FileItem-compatible fields
   id: string // Use tempFileId as primary id
@@ -147,6 +135,15 @@ export interface UploaderRun {
   abortController: AbortController
 }
 
+/**
+ * Called once each time an uploader's session finishes an upload run.
+ *
+ * The argument is exactly the {@link BatchUploadResult} that the run's
+ * `startUpload` resolves with — the files THAT RUN processed, not every file the
+ * session has ever held. See `onUploaderSettled`.
+ */
+export type UploaderSettledHandler = (result: BatchUploadResult) => void
+
 export interface UploadError {
   id: string
   message: string
@@ -203,6 +200,8 @@ export interface UploadState {
   sessionRuns: Record<string, SessionRun>
   /** In-flight session creations, keyed by uploader id. */
   uploaderRuns: Record<string, UploaderRun>
+  /** At most one settled handler per uploader id. See `onUploaderSettled`. */
+  uploaderSettledHandlers: Record<string, UploaderSettledHandler>
 
   /**
    * How the uploader reaches the network. Defaults to the real HTTP transport;
@@ -217,10 +216,6 @@ export interface UploadState {
 
   // Configuration
   config: UploadConfig
-
-  // Entity Configuration
-  entityConfig: EntityConfig | null
-  callbacks: CallbackConfig
 }
 
 /**
@@ -270,13 +265,17 @@ export interface UploadActions {
   createSessionWithGuard: (uploaderId: string, options: CreateSessionOptions) => Promise<string>
   /** Drop an uploader's in-flight session creation and abort its controller. */
   cleanupUploader: (uploaderId: string) => void
+  /**
+   * Subscribe to this uploader's upload runs settling. Returns an unsubscribe.
+   * At most one handler per uploader: registering again replaces it.
+   */
+  onUploaderSettled: (uploaderId: string, handler: UploaderSettledHandler) => () => void
   /** Cancel one session's upload; defaults to the active session. */
   cancelUpload: (sessionId?: string) => void
   validateAndAddFiles: (
     files: File[],
     sessionId?: string
   ) => Promise<{ validFiles: File[]; errors: string[] }>
-  handleAPIResponse: (response: any, sessionId: string) => void
   calculateOverallProgress: (sessionId: string) => number
   associateFilesWithSession: (fileIds: string[], sessionId: string) => void
   retrySession: (sessionId: string) => Promise<void>
@@ -305,15 +304,6 @@ export interface UploadActions {
   // Utility Actions
   reset: () => void
   cleanup: () => void
-
-  // Entity Configuration Actions
-  setEntityConfig: (config: EntityConfig) => void
-  setCallbacks: (callbacks: CallbackConfig) => void
-  triggerCallback: (type: 'complete' | 'error' | 'progress', data: any) => void
-
-  // Toast Integration Actions
-  showSuccessToast: (title: string, description: string) => void
-  showErrorToast: (title: string, description: string) => void
 }
 
 export interface CreateSessionOptions {

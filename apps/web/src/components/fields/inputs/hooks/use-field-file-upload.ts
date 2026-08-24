@@ -4,12 +4,13 @@
 import type { FileValue } from '@auxx/lib/field-values/client'
 import type { FileTypeCategory } from '@auxx/lib/files/client'
 import { getMimePatternsForCategories } from '@auxx/lib/files/client'
+import type { BatchUploadResult } from '@auxx/lib/files/types'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { FieldReference } from '@auxx/types/field'
 import type { JsonFieldValue, TypedFieldValue } from '@auxx/types/field-value'
 import { type FileRef, getFileRefDownloadUrl } from '@auxx/types/file-ref'
 import { toastError } from '@auxx/ui/components/toast'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { FileOptions } from '~/components/custom-fields/ui/file-options-editor'
 import type { FileState } from '~/components/file-upload/stores'
@@ -26,90 +27,25 @@ import { api } from '~/trpc/react'
 import { vanillaApi } from '~/trpc/vanilla'
 
 // =============================================================================
-// MODULE-LEVEL INFRASTRUCTURE (survives React unmount)
+// COMPLETION CONTEXT
 // =============================================================================
 
-interface CompletionHandler {
+/**
+ * What a settled upload needs to know to write the field value.
+ *
+ * Captured when the handler is registered, so it survives the React unmount that
+ * closing a popover mid-upload causes. The store now owns the registry and the
+ * delivery (`onUploaderSettled`); this used to be a module-level `Map` read by a
+ * hand-rolled store subscription with a re-entrancy `Set`, a `subscriptionActive`
+ * flag, a 30-minute staleness sweep and a `__fieldNotifiedComplete` one-shot latch
+ * on the session — all of it a workaround for the store having no per-uploader
+ * completion callback.
+ */
+interface CompletionContext {
   recordId: string
   fieldRef: string
   storeKey: string
   allowMultiple: boolean
-  registeredAt: number
-}
-
-/** Completion handlers keyed by uploaderId — persist across mount/unmount */
-const completionHandlers = new Map<string, CompletionHandler>()
-
-/** Uploaders currently being processed — prevents re-entrant firing */
-const processingUploaders = new Set<string>()
-
-/** Track whether we've already set up the global subscription */
-let subscriptionActive = false
-
-function initGlobalSubscription() {
-  if (subscriptionActive) return
-  subscriptionActive = true
-
-  useUploadStore.subscribe((state) => {
-    // Clean stale handlers (>30 min)
-    const now = Date.now()
-    for (const [id, handler] of completionHandlers) {
-      if (now - handler.registeredAt > 30 * 60 * 1000) {
-        completionHandlers.delete(id)
-      }
-    }
-
-    if (completionHandlers.size === 0) return
-
-    // Collect completed uploaders — do NOT call setState inside subscribe
-    const completed: {
-      uploaderId: string
-      sessionId: string
-      handler: CompletionHandler
-      files: FileState[]
-    }[] = []
-
-    for (const [uploaderId, handler] of completionHandlers) {
-      if (processingUploaders.has(uploaderId)) continue
-
-      const sessionId = state.uploaderSessions?.[uploaderId]
-      if (!sessionId) continue
-      const session = state.sessions[sessionId]
-      if (!session) continue
-
-      const files = session.fileIds
-        .map((id) => state.files[id])
-        .filter((f): f is FileState => f !== undefined)
-      if (files.length === 0) continue
-      if (session.uploading) continue
-
-      // "Done" is any terminal state, cancelled included — one cancelled file in a
-      // multi-pick must not hold the whole session's completion (and the saved
-      // values of its siblings) hostage forever.
-      const allDone = files.every((f) => !isFileInFlight(f.status))
-      if (!allDone) continue
-      if (session.metadata?.__fieldNotifiedComplete) continue
-
-      completed.push({ uploaderId, sessionId, handler, files })
-    }
-
-    // Process completions outside the subscription callback via microtask
-    for (const { uploaderId, sessionId, handler, files } of completed) {
-      processingUploaders.add(uploaderId)
-
-      queueMicrotask(() => {
-        // Mark notified AFTER exiting subscribe callback to avoid re-entrant setState
-        useUploadStore.setState((s) => {
-          const sess = s.sessions[sessionId]
-          if (sess?.metadata) sess.metadata.__fieldNotifiedComplete = true
-        })
-
-        handleUploadCompletion(uploaderId, handler, files)
-          .catch(console.error)
-          .finally(() => processingUploaders.delete(uploaderId))
-      })
-    }
-  })
 }
 
 // =============================================================================
@@ -224,11 +160,49 @@ async function applyPendingFileRefs(ctx: ApplyContext, refs: string[]): Promise<
   fvStore.setValue(ctx.storeKey, [...currentArr, ...newTyped] as TypedFieldValue[])
 }
 
+/**
+ * Release every file this uploader's session has finished with.
+ *
+ * A session lives for the whole life of its uploader and nothing else empties
+ * `fileIds`, so leaving settled entries there meant the NEXT pick's completion
+ * collected this pick's completed files too — and a single-file field applies
+ * `successFiles[0]`, re-saving the OLD ref instead of the newly picked one. Only
+ * terminal files are released: a pick still in flight keeps its rows.
+ */
+function releaseSettledFiles(uploaderId: string, runFileIds: string[]): void {
+  const state = useUploadStore.getState()
+  const sessionId = state.uploaderSessions?.[uploaderId]
+  const session = sessionId ? state.sessions[sessionId] : undefined
+  const settled = new Set(runFileIds)
+  for (const id of session?.fileIds ?? []) {
+    const f = state.files[id]
+    if (f && !isFileInFlight(f.status)) settled.add(id)
+  }
+  if (settled.size > 0) state.removeFiles([...settled])
+}
+
+/**
+ * Turn one settled upload run into a field value.
+ *
+ * `result` is the run's own {@link BatchUploadResult} — the files that run uploaded,
+ * including any the user added while it was in flight. The `FileState`s are re-read
+ * from the store rather than taken from `result.results`, because the field needs
+ * `serverFileId` and the batch result does not carry it.
+ */
 async function handleUploadCompletion(
   uploaderId: string,
-  handler: CompletionHandler,
-  files: FileState[]
+  handler: CompletionContext,
+  result: BatchUploadResult
 ) {
+  const store = useUploadStore.getState()
+  // `UploadResult.fileId` is optional in the shared type; every result the store
+  // produces carries one, but narrow rather than assert.
+  const runFileIds = result.results
+    .map((r) => r.fileId)
+    .filter((id): id is string => id !== undefined)
+  const files = runFileIds
+    .map((id) => store.files[id])
+    .filter((f): f is FileState => f !== undefined)
   const successFiles = files.filter((f) => f.status === 'completed' && f.serverFileId)
   const pendingAvatar = pendingAvatarByKey.get(uploaderId)
 
@@ -246,8 +220,7 @@ async function handleUploadCompletion(
       if (pendingAvatar.blobUrl) scheduleBlobRevoke(pendingAvatar.blobUrl, 0)
       pendingAvatarByKey.delete(uploaderId)
     }
-    useUploadStore.getState().removeFiles(files.map((f) => f.id))
-    completionHandlers.delete(uploaderId)
+    releaseSettledFiles(uploaderId, runFileIds)
     return
   }
 
@@ -314,16 +287,10 @@ async function handleUploadCompletion(
       description: error instanceof Error ? error.message : 'Unknown error',
     })
   } finally {
-    // Release this pick's settled files from the session. A session lives for
-    // the whole life of its uploader and nothing else empties `fileIds`, so
-    // leaving them meant the NEXT pick's completion collected this pick's
-    // completed files too — and a single-file field applies `successFiles[0]`,
-    // re-saving the OLD ref instead of the newly picked one. The field values
-    // (and the ref-store details backing the badges) are already written by this
-    // point, so nothing still renders from these entries.
-    useUploadStore.getState().removeFiles(files.map((f) => f.id))
+    // The field values (and the ref-store details backing the badges) are already
+    // written by this point, so nothing still renders from these entries.
+    releaseSettledFiles(uploaderId, runFileIds)
     pendingAvatarByKey.delete(uploaderId)
-    completionHandlers.delete(uploaderId)
   }
 }
 
@@ -455,19 +422,53 @@ export function useFieldFileUpload({
     [recordId, fieldRef]
   )
 
-  // Initialize global subscription on first use
+  // The settled context this uploader writes with. Held in a ref so the handler
+  // registered below always reads the CURRENT record/field/multiplicity without
+  // having to re-subscribe on every render.
+  const completionContext = useRef<CompletionContext>({
+    recordId,
+    fieldRef,
+    storeKey,
+    allowMultiple: fileOptions.allowMultiple,
+  })
   useEffect(() => {
-    initGlobalSubscription()
-  }, [])
+    completionContext.current = {
+      recordId,
+      fieldRef,
+      storeKey,
+      allowMultiple: fileOptions.allowMultiple,
+    }
+  }, [recordId, fieldRef, storeKey, fileOptions.allowMultiple])
 
-  // Clean up completion handler on unmount — but NEVER while work is outstanding.
-  // Closing the popover mid-upload must leave the handler registered so the field
-  // value still lands, and so reopening reattaches to the same session and shows the
-  // progress already in flight. `session.uploading` alone is too narrow a test: it
-  // only flips inside `startUploadForSession`, so a pick that has been added but not
-  // yet started reads as idle, and unmounting in that window dropped the handler and
-  // silently lost the upload. Ask the files instead of the flag.
+  /** Unsubscribe for whichever registration is currently ours. */
+  const unsubscribeSettled = useRef<(() => void) | null>(null)
+
+  /**
+   * Register this uploader's settled handler with the store.
+   *
+   * The store keeps at most one per uploader id and replaces on re-registration, so
+   * calling this from both mount and picker-open is idempotent. Picker-open matters
+   * because the same field can be mounted twice (a row and a popover) under the same
+   * deterministic uploader id, and the first of the two to unmount would otherwise
+   * take the shared registration with it.
+   */
+  const subscribeSettled = useCallback(() => {
+    unsubscribeSettled.current = useUploadStore
+      .getState()
+      .onUploaderSettled(uploaderId, (result) =>
+        handleUploadCompletion(uploaderId, completionContext.current, result).catch(console.error)
+      )
+  }, [uploaderId])
+
+  // Unsubscribe on unmount — but NEVER while work is outstanding. Closing the popover
+  // mid-upload must leave the handler registered so the field value still lands, and
+  // so reopening reattaches to the same session and shows the progress already in
+  // flight. `session.uploading` alone is too narrow a test: it only flips inside
+  // `startUpload`, so a pick that has been added but not yet started reads as idle,
+  // and unmounting in that window dropped the handler and silently lost the upload.
+  // Ask the files instead of the flag.
   useEffect(() => {
+    subscribeSettled()
     return () => {
       const state = useUploadStore.getState()
       const sessionId = state.uploaderSessions?.[uploaderId]
@@ -479,10 +480,12 @@ export function useFieldFileUpload({
           return f !== undefined && isFileInFlight(f.status)
         })
       if (!hasOutstandingWork) {
-        completionHandlers.delete(uploaderId)
+        // The store's unsubscribe is identity-checked, so this is a no-op if a
+        // second mount of the same field has registered since.
+        unsubscribeSettled.current?.()
       }
     }
-  }, [uploaderId])
+  }, [uploaderId, subscribeSettled])
 
   // Subscribe to field value store for TypedFieldValue[] (with IDs)
   const typedValues = useFieldValueStore(
@@ -681,17 +684,10 @@ export function useFieldFileUpload({
           metadata: { fieldId: fieldRef },
         })
 
-        // Register or update completion handler (deduplicate)
-        const existing = completionHandlers.get(uploaderId)
-        if (!existing || Date.now() - existing.registeredAt >= 60_000) {
-          completionHandlers.set(uploaderId, {
-            recordId,
-            fieldRef,
-            storeKey,
-            allowMultiple: fileOptions.allowMultiple,
-            registeredAt: Date.now(),
-          })
-        }
+        // Re-register the settled handler. Idempotent — the store keeps one per
+        // uploader id — and it re-arms the registration if a second mount of the same
+        // field unsubscribed on its way out.
+        subscribeSettled()
 
         // Build accept string for file input. Images-only fields use a concrete list
         // (no `image/heic`) instead of the `'image/*'` wildcard — see doc comment above.
@@ -736,8 +732,8 @@ export function useFieldFileUpload({
               return
             }
 
-            // A rejected pick adds nothing, so `startUploadForSession` would be a
-            // silent no-op: nothing throws and the completion sweep never fires.
+            // A rejected pick adds nothing, so `startUpload` would be a silent
+            // no-op: nothing throws and no run ever settles.
             // Fail the pick here instead — same shape as the `catch` below, and the
             // same contract `useFileUpload` already honours.
             if (addResult.addedFileIds.length === 0) {
@@ -753,16 +749,6 @@ export function useFieldFileUpload({
                 description: addResult.validationErrors.join('; '),
               })
             }
-
-            // Re-arm the completion sweep. `__fieldNotifiedComplete` is a one-shot
-            // latch set when a previous pick's completion fired, and the session
-            // lives for the whole life of its uploader — without this reset the
-            // sweep skipped the session forever, so every pick after the first
-            // uploaded fine but never saved its value.
-            useUploadStore.setState((s) => {
-              const sess = s.sessions[sessionId]
-              if (sess?.metadata) sess.metadata.__fieldNotifiedComplete = false
-            })
 
             // Optimistic avatar preview: show the locally-selected image instantly
             // via a blob URL. `handleUploadCompletion` swaps to a stable download
@@ -780,7 +766,7 @@ export function useFieldFileUpload({
               })
             }
 
-            await storeNow.startUploadForSession(sessionId)
+            await storeNow.startUpload(sessionId)
           } catch (err) {
             console.error('[useFieldFileUpload] upload error:', err)
             toastError({
@@ -813,10 +799,10 @@ export function useFieldFileUpload({
       uploaderId,
       fieldRef,
       recordId,
-      storeKey,
       effectiveSlots,
       fileOptions,
       isImagesOnly,
+      subscribeSettled,
     ]
   )
 
