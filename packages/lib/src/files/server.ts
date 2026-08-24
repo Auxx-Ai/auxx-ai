@@ -16,16 +16,83 @@ export type {
   UpdateAttachmentRequest,
   UpdateFileRequest,
 } from './core/types'
-// MediaAsset reads/writes (PR 5a). `mediaAssetRouter` and `attachmentRouter`
-// call these directly.
-export { convertTempAssetToPermanent, getAsset } from './assets'
-// Attachment reads/writes (PR 5b). `attachmentRouter` calls these directly.
-export type { CreateAttachmentInput, UpdateAttachmentInput } from './attachments'
+// MediaAsset reads/writes (PR 5a).
+//
+// This re-exports `assets/index.ts` in full rather than the handful of names a
+// particular router happened to need. Earlier PRs added only their own, which
+// left 2 of 30 functions reachable and made the Phase 10 consumer sweep
+// export-blocked rather than call-site-blocked -- 12 of 13 sites could not move.
+// `assets/index.ts` is already a curated surface (it is explicit-named for
+// exactly this reason), so re-exporting it wholesale adds no unvetted API.
+export type {
+  AssetDeleteDeps,
+  AssetPage,
+  AssetVersionDeleteDeps,
+  AssetVersionSelector,
+  AssetVersionWithLocation,
+  AssetWriteDeps,
+  CreateAssetFromFolderFileInput,
+  CreateAssetInput,
+  CreateAssetVersionInput,
+  CreateAssetWithVersionInput,
+  CreatedAssetVersion,
+  DownloadDeps,
+  GetAssetDownloadRefOptions,
+  ListAssetsOptions,
+  ThumbnailCleanupPort,
+  UpdateAssetContentInput,
+  UpdateAssetInput,
+  VersionWithLocation,
+} from './assets'
+export {
+  convertTempAssetToPermanent,
+  createAsset,
+  createAssetFromFolderFile,
+  createAssetVersion,
+  createAssetWithVersion,
+  deleteAsset,
+  deleteAssetVersion,
+  findAssetsByKind,
+  findExpiredAssets,
+  getAsset,
+  getAssetCurrentVersion,
+  getAssetDownloadRef,
+  getAssetVersionByNumber,
+  getAssetVersions,
+  getAssetWithRelations,
+  getLatestAssetVersion,
+  listAssets,
+  requireAsset,
+  resolveAssetDownloadRef,
+  restoreAssetVersion,
+  updateAsset,
+  updateAssetContent,
+} from './assets'
+// Attachment reads/writes (PR 5b), likewise re-exported in full.
+export type {
+  AttachmentDownloadDeps,
+  AttachmentSide,
+  CreateAttachmentInput,
+  GetAttachmentDownloadRefOptions,
+  GroupedAttachmentInfo,
+  LocationDownloadParams,
+  LocationDownloadPort,
+  ResolvedAttachmentVersion,
+  UpdateAttachmentInput,
+} from './attachments'
 export {
   createAttachment,
+  createStorageManagerLocationPort,
   deleteAttachment,
+  fetchAttachmentsForEntities,
   getAttachment,
+  getAttachmentDownloadInfo,
+  getAttachmentDownloadRef,
   getEntityAttachments,
+  requireAttachment,
+  requireResolvedVersion,
+  resolveAttachmentDownloadRef,
+  resolveAttachmentVersion,
   updateAttachment,
 } from './attachments'
 // The ambient contract every `files/` function is written against. Exported so
@@ -159,11 +226,12 @@ export type {
   ThumbnailResult,
   ThumbnailSource,
 } from './thumbnails'
-export { deleteThumbnailsForSource, ensureThumbnail, ensureThumbnailPresets } from './thumbnails'
-// The deprecated adapter over `upload/errors.ts`. Kept only until the three
-// upload routes import the functions below directly (PR 4e); it is the reason
-// this PR did not have to touch them.
-export { UploadErrorHandler } from './upload/error-handling'
+export {
+  createThumbnailCleanupPort,
+  deleteThumbnailsForSource,
+  ensureThumbnail,
+  ensureThumbnailPresets,
+} from './thumbnails'
 // Upload error classification (PR 4c). Pure -- no db, no redis, no clock.
 // Replaces the substring ladder that answered 413 "upgrade your plan" for any
 // message containing `limit` and 401 for any message containing `token`.
@@ -181,6 +249,8 @@ export {
   uploadUnauthorizedError,
   uploadValidationError,
 } from './upload/errors'
+// The deprecated adapter over `upload/errors.ts`, deleted in PR 4e.
+export { UploadErrorHandler } from './upload/error-handling'
 export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
 // Upload/session orchestration (no image processing)
 export {

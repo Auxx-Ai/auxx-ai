@@ -39,6 +39,7 @@ export {
   requireAsset,
 } from './asset-queries'
 export type {
+  AssetVersionSelector,
   DownloadDeps,
   GetAssetDownloadRefOptions,
   VersionWithLocation,
