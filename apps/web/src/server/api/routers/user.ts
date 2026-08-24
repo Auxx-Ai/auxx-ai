@@ -6,13 +6,18 @@ import {
   isAgentUser,
   onCacheEvent,
 } from '@auxx/lib/cache'
-import { MediaAssetService } from '@auxx/lib/files'
+import {
+  createThumbnailCleanupPort,
+  deleteAsset,
+  getAssetDownloadRef,
+} from '@auxx/lib/files/server'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { toFilesCtx, toFilesDownloadDeps, toFilesWriteDeps } from '~/server/lib/files-ctx'
 
 export const userRouter = createTRPCRouter({
   // getUser: protectedProcedure.input()
@@ -132,11 +137,21 @@ export const userRouter = createTRPCRouter({
     const channels = await getOrgCache().get(organizationId, 'channels')
     const hasIntegrations = channels.length > 0
 
-    // Fetch avatar URL if user has an avatar asset
+    // Fetch avatar URL if user has an avatar asset.
+    //
+    // BEST-EFFORT, deliberately: `MediaAssetService.getDownloadUrl` swallowed
+    // every failure and returned `null`, because one broken avatar must not fail
+    // the whole `me` query that gates the app shell. `getAssetDownloadRef`
+    // returns a `Result`, so the swallow is explicit here rather than hidden in
+    // a service — this is the one place it is correct not to rethrow.
     let avatarUrl: string | null = null
     if (user.avatarAssetId) {
-      const mediaAssetService = new MediaAssetService(organizationId, userId, db)
-      avatarUrl = await mediaAssetService.getDownloadUrl(user.avatarAssetId)
+      const ref = await getAssetDownloadRef(
+        toFilesCtx(ctx),
+        toFilesDownloadDeps(ctx),
+        user.avatarAssetId
+      )
+      avatarUrl = ref.isOk() && ref.value.type === 'url' ? ref.value.url : null
     }
 
     // Return user object with settings property
@@ -203,9 +218,37 @@ export const userRouter = createTRPCRouter({
       if (!user?.avatarAssetId) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'No avatar to remove' })
       }
+      // Bound outside the transaction callback: TypeScript drops the narrowing
+      // from the guard above once the property is read inside a closure.
+      const avatarAssetId = user.avatarAssetId
 
-      const mediaAssetService = new MediaAssetService(organizationId, userId, db)
-      await mediaAssetService.delete(user.avatarAssetId)
+      // The asset soft-delete and its thumbnail sweep are ONE transaction,
+      // opened here. `MediaAssetService.delete` opened it inside lib and built
+      // the thumbnail collaborator with a dynamic import; `deleteAsset` takes
+      // the port as a parameter, so it is constructed at this composition site
+      // and bound to the SAME `tx` — sweeping on the outer pool from inside the
+      // transaction is the stale-read bug the refactor exists to kill.
+      //
+      // The `User.avatarAssetId` clear below stays OUTSIDE this transaction,
+      // exactly where the facade left it. Widening the boundary is a correctness
+      // improvement, but it is not this sweep's change to make.
+      const filesCtx = toFilesCtx(ctx)
+      const deleted = await ctx.db.transaction(async (tx) => {
+        const txCtx = { ...filesCtx, db: tx }
+        return deleteAsset(
+          tx,
+          txCtx,
+          {
+            ...toFilesWriteDeps(),
+            thumbnails: createThumbnailCleanupPort(txCtx, {
+              ...toFilesWriteDeps(),
+              storage: toFilesDownloadDeps(ctx).storage,
+            }),
+          },
+          avatarAssetId
+        )
+      })
+      if (deleted.isErr()) throw deleted.error
 
       await db
         .update(schema.User)

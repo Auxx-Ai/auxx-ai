@@ -33,7 +33,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return new Response('Not found', { status: 404 })
     }
 
-    // Use AttachmentService to get download ref (lazy import to avoid bundling sharp unnecessarily)
+    // STILL ON THE FACADE. `files/attachments/` has no equivalent of
+    // `getDownloadRef`'s pinned/unpinned ladder yet; swap this for
+    // `getAttachmentDownloadRef(ctx, deps, attachmentId)` once it lands.
+    // (Lazy import to avoid bundling sharp unnecessarily.)
     const { AttachmentService } = await import('@auxx/lib/files/server')
     const attachmentService = new AttachmentService(organizationId, session.user.id)
 

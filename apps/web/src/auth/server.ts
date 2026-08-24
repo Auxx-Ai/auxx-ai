@@ -771,17 +771,21 @@ export const auth = betterAuth({
         })
       }
 
-      // Avatar URL — keep the cookie value (the MediaAssetService path remains a TODO).
-      const avatarUrl: string | null = extendedUser.image || null
-      // if (extendedUser.avatarAssetId && extendedUser.defaultOrganizationId) {
-      //   const { MediaAssetService } = await import('@auxx/lib/files')
-      //   const mediaAssetService = new MediaAssetService(
-      //     extendedUser.defaultOrganizationId,
-      //     extendedUser.id,
-      //     database
+      // Avatar URL — keep the cookie value (resolving the asset here remains a TODO).
+      //
+      // The sketch below used to name `MediaAssetService`, which Phase 10 deletes.
+      // When this is picked up it is a `getAssetDownloadRef` call, not a service:
+      //
+      //   const ref = await getAssetDownloadRef(
+      //     { db: database, organizationId: extendedUser.defaultOrganizationId },
+      //     { storage: createS3StoragePort(extendedUser.defaultOrganizationId) },
+      //     extendedUser.avatarAssetId
       //   )
-      //   avatarUrl = await mediaAssetService.getDownloadUrl(extendedUser.avatarAssetId)
-      // }
+      //   avatarUrl = ref.isOk() && ref.value.type === 'url' ? ref.value.url : null
+      //
+      // `getAssetDownloadRef` is not re-exported from `@auxx/lib/files/server`
+      // yet — see the Phase-10 sweep notes.
+      const avatarUrl: string | null = extendedUser.image || null
 
       return {
         ...session,

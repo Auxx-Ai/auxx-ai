@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * `GET /api/files/download/[fileId]` streamed file BYTES and `HEAD` returned
  * name/size/mimeType for any `FolderFile` or `MediaAsset` in the org, after
  * authenticating with `auth.api.getSession` alone and reading NO capabilities —
- * `FileService.get` scopes on organization + soft-delete only. Its tRPC sibling
+ * the file read scopes on organization + soft-delete only. Its tRPC sibling
  * `file.getDownloadInfo` is `permissionProcedure(PermissionKey.filesView)`, as
  * are all eight file reads on that router.
  *
@@ -24,23 +24,23 @@ const {
   getSession,
   getCapabilities,
   planGate,
-  fileGet,
-  fileGetContent,
-  assetGet,
-  assetGetContent,
-  createFileService,
-  MediaAssetService,
+  getFolderFile,
+  getFolderFileCurrentVersion,
+  storageGetContent,
+  createStorageManager,
+  getAsset,
+  getAssetCurrentVersion,
   createFileDownloadResponse,
 } = vi.hoisted(() => ({
   getSession: vi.fn(),
   getCapabilities: vi.fn(),
   planGate: vi.fn(),
-  fileGet: vi.fn(),
-  fileGetContent: vi.fn(),
-  assetGet: vi.fn(),
-  assetGetContent: vi.fn(),
-  createFileService: vi.fn(),
-  MediaAssetService: vi.fn(),
+  getFolderFile: vi.fn(),
+  getFolderFileCurrentVersion: vi.fn(),
+  storageGetContent: vi.fn(),
+  createStorageManager: vi.fn(),
+  getAsset: vi.fn(),
+  getAssetCurrentVersion: vi.fn(),
   createFileDownloadResponse: vi.fn(),
 }))
 
@@ -62,9 +62,14 @@ vi.mock('@auxx/lib/permissions', async () => {
   }
 })
 
+// Both branches are free functions since the Phase-10 apps sweep, so "no file
+// was read" is asserted on functions rather than on service constructors.
 vi.mock('@auxx/lib/files/server', () => ({
-  createFileService,
-  MediaAssetService,
+  getAsset,
+  getAssetCurrentVersion,
+  getFolderFile,
+  getFolderFileCurrentVersion,
+  createStorageManager,
   createFileDownloadResponse,
   parseRangeHeader: vi.fn(() => null),
 }))
@@ -75,6 +80,7 @@ vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 vi.mock('~/auth/server', () => ({ auth: { api: { getSession } } }))
 
 // Deep paths on purpose — the barrel hangs (see above).
+const { ok } = await import('neverthrow')
 const { CapabilitySet } = await import('@auxx/lib/permissions/capabilities/capability-set')
 const { ForbiddenError } = await import('@auxx/lib/errors')
 const { GET, HEAD } = await import('./route')
@@ -83,6 +89,7 @@ const ORG_ID = 'org_cuid000000000000000000000'
 const USER_ID = 'usr_cuid000000000000000000000'
 const FILE_ID = 'fil_cuid000000000000000000000'
 const ASSET_ID = 'ast_cuid000000000000000000000'
+const LOCATION_ID = 'stl_cuid000000000000000000000'
 
 /** A real `CapabilitySet` composing the Files area at `level`. */
 function capabilitiesAt(level: Level) {
@@ -112,20 +119,13 @@ beforeEach(() => {
   getSession.mockReset()
   getCapabilities.mockReset()
   planGate.mockReset().mockResolvedValue(undefined)
-  fileGet.mockReset().mockResolvedValue(fileRow)
-  fileGetContent.mockReset().mockResolvedValue(Buffer.from('file-bytes'))
-  assetGet.mockReset().mockResolvedValue(assetRow)
-  assetGetContent.mockReset().mockResolvedValue(Buffer.from('asset-bytes'))
-  createFileService.mockReset().mockReturnValue({ get: fileGet, getContent: fileGetContent })
-  // A class, not an arrow — the route calls `new MediaAssetService(...)`, and an
-  // arrow implementation is not constructible (biome also rewrites plain function
-  // expressions back to arrows, so the class is what survives `lint:fix`).
-  MediaAssetService.mockReset().mockImplementation(
-    class {
-      get = assetGet
-      getContent = assetGetContent
-    } as never
-  )
+  // Both functions return a neverthrow `Result`; the route unwraps them.
+  getFolderFile.mockReset().mockResolvedValue(ok(fileRow))
+  getFolderFileCurrentVersion.mockReset().mockResolvedValue(ok({ storageLocationId: LOCATION_ID }))
+  storageGetContent.mockReset().mockResolvedValue(Buffer.from('file-bytes'))
+  createStorageManager.mockReset().mockReturnValue({ getContent: storageGetContent })
+  getAsset.mockReset().mockResolvedValue(ok(assetRow))
+  getAssetCurrentVersion.mockReset().mockResolvedValue(ok({ storageLocationId: LOCATION_ID }))
   // Mirror what the real `createFileDownloadResponse` builds, or the header
   // assertions below only ever test this literal. Content-Length is the BUFFER
   // length (download-response.ts:89), not the row's declared `size`.
@@ -142,10 +142,9 @@ beforeEach(() => {
 
 /** Every read the handler could perform — none may run for a denied caller. */
 function expectNoFileReads() {
-  expect(createFileService).not.toHaveBeenCalled()
-  expect(MediaAssetService).not.toHaveBeenCalled()
-  expect(fileGet).not.toHaveBeenCalled()
-  expect(assetGet).not.toHaveBeenCalled()
+  expect(getFolderFile).not.toHaveBeenCalled()
+  expect(getAsset).not.toHaveBeenCalled()
+  expect(storageGetContent).not.toHaveBeenCalled()
 }
 
 describe('GET /api/files/download/[fileId] — the raw-content hole', () => {
@@ -208,8 +207,15 @@ describe('GET /api/files/download/[fileId] — the raw-content hole', () => {
     signedIn(capabilitiesAt(Level.Read))
     const res = await GET(request(), params(FILE_ID))
     expect(res.status).toBe(200)
-    expect(createFileService).toHaveBeenCalledWith(ORG_ID, USER_ID)
-    expect(fileGet).toHaveBeenCalledWith(FILE_ID)
+    // The `FilesCtx` the handler builds carries the SESSION's organization and
+    // is not optional — `createFileService(orgId?, …)` could be built without
+    // one, and `BaseService` then dropped the organization filter entirely.
+    expect(getFolderFile).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: ORG_ID }),
+      FILE_ID
+    )
+    expect(createStorageManager).toHaveBeenCalledWith(ORG_ID)
+    expect(storageGetContent).toHaveBeenCalledWith(LOCATION_ID)
     expect(await res.text()).toBe('file-bytes')
   })
 
@@ -217,26 +223,31 @@ describe('GET /api/files/download/[fileId] — the raw-content hole', () => {
     signedIn(capabilitiesAt(Level.Read))
     const res = await GET(request(), params(`file:${FILE_ID}`))
     expect(res.status).toBe(200)
-    expect(fileGet).toHaveBeenCalledWith(FILE_ID)
-    expect(MediaAssetService).not.toHaveBeenCalled()
+    expect(getFolderFile).toHaveBeenCalledWith(expect.anything(), FILE_ID)
+    expect(getAsset).not.toHaveBeenCalled()
   })
 
-  it('streams the bytes for the `asset:` FileRef form via MediaAssetService', async () => {
+  it('streams the bytes for the `asset:` FileRef form via `getAsset`', async () => {
     signedIn(capabilitiesAt(Level.Read))
     const res = await GET(request(), params(`asset:${ASSET_ID}`))
     expect(res.status).toBe(200)
-    expect(MediaAssetService).toHaveBeenCalledWith(ORG_ID, USER_ID)
-    expect(assetGet).toHaveBeenCalledWith(ASSET_ID)
-    expect(createFileService).not.toHaveBeenCalled()
+    // Same `FilesCtx` rule as the file branch: the scope is the session's org.
+    expect(getAsset).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: ORG_ID }),
+      ASSET_ID
+    )
+    expect(getAssetCurrentVersion).toHaveBeenCalledWith(expect.anything(), ASSET_ID)
+    expect(getFolderFile).not.toHaveBeenCalled()
   })
 
   it('404s an absent file for an authorized member', async () => {
     signedIn(capabilitiesAt(Level.Read))
-    fileGet.mockResolvedValue(null)
+    getFolderFile.mockResolvedValue(ok(null))
     const res = await GET(request(), params(FILE_ID))
     expect(res.status).toBe(404)
     // No content read for a row we could not load.
-    expect(fileGetContent).not.toHaveBeenCalled()
+    expect(getFolderFileCurrentVersion).not.toHaveBeenCalled()
+    expect(storageGetContent).not.toHaveBeenCalled()
   })
 
   it('400s an empty file id before touching the session', async () => {
@@ -294,7 +305,7 @@ describe('HEAD /api/files/download/[fileId] — the metadata half of the same ho
 
   it('404s an absent file for an authorized member', async () => {
     signedIn(capabilitiesAt(Level.Read))
-    fileGet.mockResolvedValue(null)
+    getFolderFile.mockResolvedValue(ok(null))
     const res = await HEAD(request(), params(FILE_ID))
     expect(res.status).toBe(404)
   })
