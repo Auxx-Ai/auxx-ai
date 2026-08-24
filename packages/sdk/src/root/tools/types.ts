@@ -63,6 +63,18 @@ export interface ToolActionContext {
  * app declare a field that silently provisions nothing, since the provisioner
  * warns-and-skips on a kind no org resolves. `quote` / `work_order` /
  * `payment` would qualify under the rule but wait for a consumer.
+ *
+ * ⚠️ `gl_posting` is the one deliberate EXCEPTION to the rule above, and it is
+ * flagged rather than quietly folded in. It IS a ledger line, and it is
+ * `isVisible: false` — a user never opens one. It is admitted because the
+ * QuickBooks app must hang a connection-scoped `qboJournalEntryId` identity
+ * field on it (gap-b §6.2), and that field is what makes double-posting to the
+ * general ledger unrepresentable rather than merely detectable. The rule's
+ * stated HAZARD — an app declaring a field that silently provisions nothing —
+ * does not apply: entity-migration 103 seeds `gl_posting` in every org, so the
+ * kind always resolves. Note this also widens `ref.entity(kind)`, the app TOOL
+ * surface, which is the part of the trade worth revisiting if the rule is ever
+ * tightened.
  */
 export type EntityRefKind =
   | 'contact'
@@ -77,6 +89,7 @@ export type EntityRefKind =
   | 'catalog_item'
   | 'part'
   | 'product'
+  | 'gl_posting'
 
 /**
  * Per-tool configuration. See plans/kopilot/apps/README.md §4.2.
