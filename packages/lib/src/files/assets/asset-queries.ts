@@ -39,7 +39,7 @@ import type { AuxxError } from '../../errors'
 import { NotFoundError } from '../../errors'
 import type { AssetKind, MediaAssetWithRelations } from '../core/types'
 import type { FilesCtx } from '../ctx'
-import { guard } from '../guard'
+import { guard, unwrap } from '../guard'
 
 /**
  * A version row with its `StorageLocation` joined in.
@@ -349,7 +349,111 @@ export async function getLatestAssetVersion(
   }, 'Failed to get latest asset version')
 }
 
+/**
+ * Which version to serve, by the 1-based counter the UI shows or by one of the
+ * two words that follow a pointer.
+ *
+ * `'current'` follows `MediaAsset.currentVersionId` (falling back to the highest
+ * number when the pointer is null); `'latest'` always takes the highest number.
+ * The two differ after a `restoreAssetVersion`, which repoints
+ * `currentVersionId` at an older row.
+ *
+ * Spelled the same way as `FolderFileVersionSelector` on purpose: the two
+ * libraries are twins, and a caller that has to remember which one speaks
+ * `number | 'latest' | 'current'` is a caller that will eventually pass the
+ * wrong thing.
+ */
+export type AssetVersionSelector = number | 'latest' | 'current'
+
+/** How a caller addresses one version of an asset. See {@link resolveAssetVersion}. */
+export interface AssetVersionAddress {
+  /** Defaults to `'current'`, matching every legacy entry point. */
+  version?: AssetVersionSelector
+  /**
+   * Target a specific version **row id** instead of the asset's current one.
+   *
+   * Kept alongside {@link AssetVersionAddress.version} rather than folded into
+   * it because the two address different id spaces — `versionNumber` is the
+   * 1-based UI counter and `MediaAssetVersion.id` is a cuid — and because a
+   * caller holding a row id (a pinned attachment, a thumbnail's source) has no
+   * cheap way to turn it back into a number.
+   *
+   * When both are supplied `versionId` wins: it is the narrower address, and
+   * silently preferring the vaguer one would serve different bytes than asked
+   * for.
+   */
+  versionId?: string
+}
+
 // ============= Internal helpers (throw; the guard converts at the boundary) =============
+
+/**
+ * Turn an {@link AssetVersionAddress} into a version row, locations joined in.
+ *
+ * **The single implementation of "which version did the caller mean" for the
+ * asset library.** It lives here, next to the version reads it composes, rather
+ * than inside `assets/download.ts`, because it now has two consumers —
+ * `getAssetDownloadRef` and `getAssetContent` — and a second copy is precisely
+ * how a download and a content read start disagreeing about which bytes are
+ * current. `folder-files/file-queries.ts` holds the twin for files.
+ *
+ * Every branch is constrained by `asset.id`, so a version belonging to a
+ * different asset — possibly another org's — cannot be served through an asset
+ * the caller can see.
+ *
+ * The `'latest'` and numeric branches delegate to {@link getLatestAssetVersion}
+ * and {@link getAssetVersionByNumber}, each of which re-runs {@link requireAsset}.
+ * Those two selectors therefore cost one extra primary-key read of a row the
+ * caller has already loaded. That is the price of having exactly one
+ * implementation of "which version is version N", and it is the cheap side of
+ * the trade.
+ *
+ * Throws rather than returning `Result`: it is a helper, and every caller is
+ * already inside a {@link guard}.
+ *
+ * @param ctx Scope. `ctx.db` may be a pool or a transaction.
+ * @param asset The asset the caller has already loaded, org-scoped.
+ * @param address Which version. Defaults to `'current'`.
+ * @throws {NotFoundError} when the addressed version does not exist for this asset.
+ */
+export async function resolveAssetVersion(
+  ctx: FilesCtx,
+  asset: MediaAssetEntity,
+  address: AssetVersionAddress = {}
+): Promise<AssetVersionWithLocation> {
+  if (address.versionId) {
+    const version = (await ctx.db.query.MediaAssetVersion.findFirst({
+      where: and(
+        eq(schema.MediaAssetVersion.id, address.versionId),
+        eq(schema.MediaAssetVersion.assetId, asset.id)
+      ),
+      orderBy: desc(schema.MediaAssetVersion.versionNumber),
+      with: { storageLocation: true },
+    })) as AssetVersionWithLocation | undefined
+    if (!version) {
+      throw new NotFoundError(`Version ${address.versionId} not found for asset ${asset.id}`)
+    }
+    return version
+  }
+
+  const selector = address.version ?? 'current'
+
+  if (selector === 'current') {
+    // Takes the already-loaded asset, so the default path still costs exactly
+    // two reads: the asset, then its version.
+    const version = await loadCurrentVersion(ctx, asset)
+    if (!version) throw new NotFoundError(`No version found for asset ${asset.id}`)
+    return version
+  }
+
+  const version =
+    selector === 'latest'
+      ? unwrap(await getLatestAssetVersion(ctx, asset.id))
+      : unwrap(await getAssetVersionByNumber(ctx, asset.id, selector))
+
+  if (!version) throw new NotFoundError(`Version ${selector} not found for asset ${asset.id}`)
+  return version
+}
 
 /**
  * Load an asset or throw `NotFoundError`.

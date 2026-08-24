@@ -59,7 +59,7 @@ import type { AuxxError } from '../../errors'
 import { ConflictError, NotFoundError } from '../../errors'
 import type { FileSearchResult, FolderFileWithRelations } from '../core/types'
 import type { FilesCtx } from '../ctx'
-import { guard } from '../guard'
+import { guard, unwrap } from '../guard'
 
 /**
  * A `FileVersion` row with its `StorageLocation` joined in.
@@ -529,7 +529,70 @@ export async function getLatestFolderFileVersion(
   }, 'Failed to get latest file version')
 }
 
+/**
+ * Which version to serve. `versionNumber` is the 1-based UI counter, never a row id.
+ *
+ * Spelled the same way as `AssetVersionSelector` on purpose — the two libraries
+ * are twins, and a caller that has to remember which one speaks
+ * `number | 'latest' | 'current'` is a caller that will eventually pass the
+ * wrong thing.
+ */
+export type FolderFileVersionSelector = number | 'latest' | 'current'
+
 // ============= Internal helpers (throw; the guard converts at the boundary) =============
+
+/**
+ * Turn a {@link FolderFileVersionSelector} into a version row, location joined in.
+ *
+ * **The single implementation of "which version did the caller mean" for the
+ * file library.** It lives here, next to the version reads it composes, rather
+ * than inside `folder-files/download.ts`, because it now has two consumers —
+ * `getFolderFileDownloadRef` and `getFolderFileContent` — and a second copy is
+ * precisely how a download and a content read start disagreeing about which
+ * bytes are current. `assets/asset-queries.ts` holds the twin for assets.
+ *
+ * `'current'` follows `currentVersionId` (falling back to the highest number),
+ * `'latest'` always takes the highest number — the two differ after a
+ * `restoreFileVersion` — and a number addresses the version by its UI counter.
+ * Every branch constrains on `file.id`, so a version belonging to another file
+ * (and possibly another org) cannot be served through a file the caller can see.
+ *
+ * The `'latest'` branch queries directly rather than calling
+ * {@link getLatestFolderFileVersion}, which would re-run {@link requireFolderFile}
+ * on a row the caller has already loaded. That asymmetry with the numeric branch
+ * is inherited verbatim from `download.ts` and is preserved rather than tidied:
+ * changing the number of statements a download issues is not this move's job.
+ *
+ * Throws rather than returning `Result`: it is a helper, and every caller is
+ * already inside a {@link guard}.
+ *
+ * @param ctx Scope. `ctx.db` may be a pool or a transaction.
+ * @param file The file the caller has already loaded, org-scoped.
+ * @param selector Which version. Callers default this to `'current'`.
+ * @throws {NotFoundError} when the addressed version does not exist for this file.
+ */
+export async function resolveFolderFileVersion(
+  ctx: FilesCtx,
+  file: FolderFileEntity,
+  selector: FolderFileVersionSelector
+): Promise<FileVersionWithLocation> {
+  let version: FileVersionWithLocation | null
+
+  if (selector === 'current') {
+    version = await loadCurrentFileVersion(ctx, file)
+  } else if (selector === 'latest') {
+    version = ((await ctx.db.query.FileVersion.findFirst({
+      where: eq(schema.FileVersion.fileId, file.id),
+      with: { storageLocation: true },
+      orderBy: desc(schema.FileVersion.versionNumber),
+    })) ?? null) as FileVersionWithLocation | null
+  } else {
+    version = unwrap(await getFolderFileVersionByNumber(ctx, file.id, selector))
+  }
+
+  if (!version) throw new NotFoundError(`Version ${selector} not found for file ${file.id}`)
+  return version
+}
 
 /**
  * Load a live file or throw `NotFoundError`.

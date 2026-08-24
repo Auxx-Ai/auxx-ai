@@ -21,9 +21,7 @@
  * import, so the two policies cannot drift.
  */
 
-import { schema } from '@auxx/database'
 import type { FolderFileEntity } from '@auxx/database/types'
-import { desc, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import type { AuxxError } from '../../errors'
 import { NotFoundError } from '../../errors'
@@ -31,12 +29,8 @@ import type { DownloadRef } from '../adapters/base-adapter'
 import type { FilesCtx, FilesDeps } from '../ctx'
 import { guard } from '../guard'
 import { requireLocationBucket } from '../storage/buckets'
-import type { FileVersionWithLocation } from './file-queries'
-import {
-  getFolderFileVersionByNumber,
-  loadCurrentFileVersion,
-  requireFolderFile,
-} from './file-queries'
+import type { FileVersionWithLocation, FolderFileVersionSelector } from './file-queries'
+import { requireFolderFile, resolveFolderFileVersion } from './file-queries'
 
 /**
  * The collaborators this read needs — storage to presign, and the clock for the
@@ -58,8 +52,14 @@ export type FolderFileDownloadDeps = Pick<FilesDeps, 'storage' | 'now'>
  */
 export const DEFAULT_DOWNLOAD_TTL_MS = 10 * 60 * 1000
 
-/** Which version to serve. `versionNumber` is the 1-based UI counter, never a row id. */
-export type FolderFileVersionSelector = number | 'latest' | 'current'
+/**
+ * Which version to serve.
+ *
+ * Re-exported from `file-queries.ts`, which is where the selector and its
+ * resolution now live so that {@link getFolderFileDownloadRef} and
+ * `getFolderFileContent` cannot drift about which bytes are "current".
+ */
+export type { FolderFileVersionSelector } from './file-queries'
 
 /** Knobs for {@link getFolderFileDownloadRef}. */
 export interface GetFolderFileDownloadRefOptions {
@@ -113,7 +113,7 @@ export async function getFolderFileDownloadRef(
   return guard(
     async () => {
       const file = await requireLiveUnarchivedFile(ctx, fileId)
-      const version = await resolveVersion(ctx, file, opts.version ?? 'current')
+      const version = await resolveFolderFileVersion(ctx, file, opts.version ?? 'current')
       return resolveFolderFileDownloadRef(deps, file, version, opts)
     },
     'Failed to resolve file download ref',
@@ -174,45 +174,17 @@ export async function resolveFolderFileDownloadRef(
 
 // ============= Internal helpers (throw; the guard converts at the boundary) =============
 
-/** {@link requireFolderFile} plus the archived check every download path applied. */
+/**
+ * {@link requireFolderFile} plus the archived check every download path applied.
+ *
+ * Deliberately **not** shared with `folder-files/content.ts`: the archived check
+ * is a download-path rule, and `FileService.getContent` never applied it. See
+ * that module's header.
+ */
 async function requireLiveUnarchivedFile(ctx: FilesCtx, fileId: string): Promise<FolderFileEntity> {
   const file = await requireFolderFile(ctx, fileId)
   // Same error as "does not exist": an archived file is not downloadable, and
   // distinguishing the two would let a caller probe for ids it cannot read.
   if (file.isArchived) throw new NotFoundError(`File ${fileId} not found`)
   return file
-}
-
-/**
- * Turn a {@link FolderFileVersionSelector} into a row.
- *
- * `'current'` follows `currentVersionId` (falling back to the highest number),
- * `'latest'` always takes the highest number — the two differ after a
- * `restoreVersion` — and a number addresses the version by its UI counter. Every
- * branch constrains on `fileId`, so a version belonging to another file (and
- * possibly another org) cannot be served through a file the caller can see.
- */
-async function resolveVersion(
-  ctx: FilesCtx,
-  file: FolderFileEntity,
-  selector: FolderFileVersionSelector
-): Promise<FileVersionWithLocation> {
-  let version: FileVersionWithLocation | null
-
-  if (selector === 'current') {
-    version = await loadCurrentFileVersion(ctx, file)
-  } else if (selector === 'latest') {
-    version = ((await ctx.db.query.FileVersion.findFirst({
-      where: eq(schema.FileVersion.fileId, file.id),
-      with: { storageLocation: true },
-      orderBy: desc(schema.FileVersion.versionNumber),
-    })) ?? null) as FileVersionWithLocation | null
-  } else {
-    const found = await getFolderFileVersionByNumber(ctx, file.id, selector)
-    if (found.isErr()) throw found.error
-    version = found.value
-  }
-
-  if (!version) throw new NotFoundError(`Version ${selector} not found for file ${file.id}`)
-  return version
 }

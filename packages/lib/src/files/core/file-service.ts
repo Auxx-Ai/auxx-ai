@@ -22,11 +22,10 @@
  * | --- | --- |
  * | `get` | `api/files/download/[fileId]`, `attachmentRouter`, the document-extractor node |
  * | `getWithRelations` | `messages/message-sender.service.ts` |
- * | `getContent` | the download route, `documents/render.ts`, message-sender, document-extractor |
+ * | `getContent` | `documents/render.ts`, message-sender, the document-extractor node |
  * | `getDownloadRef` | `workflow-engine/services/file-context-service.ts` (×2) |
- * | `getCurrentVersion` | this class, for `getContent` |
+ * | `getCurrentVersion` | `apps/web`'s file download route |
  * | `createWithVersion` | `upload/processors/file-processor.ts` |
- * | `copyVersions` | `core/folder-service.ts` (PR 5d) |
  * | `move` / `rename` | `core/filesystem-service.ts` (PR 5e) |
  * | `findOrphanedFiles` | `lifecycle/cleanup-service.ts` |
  *
@@ -51,7 +50,9 @@
  * (`getFileSelectFields`, `getRelationIncludes`, `buildFilterConditions`,
  * `buildScopedWhere`, `getSearchFields`, `getVersionTableName`,
  * `getEntityIdFieldName`, `generateSearchSnippet`, `generateFilePath`,
- * `getStorageManager`'s cache).
+ * `getStorageManager`'s cache); and in PR X `copyVersions` (its last caller,
+ * `core/folder-service.ts`, moved to `copyFileVersions` in 5d) and
+ * `getStorageManager` itself, now that `getContent` runs on a `StoragePort`.
  *
  * `findByChecksum` is the `MediaAssetService.findAssetByChecksum` precedent in
  * reverse: `FolderFile` really does have a `checksum` column, but nothing has
@@ -74,15 +75,14 @@ import type {
 } from '@auxx/database/types'
 import type { Result } from 'neverthrow'
 import type { AuxxError } from '../../errors'
-import { NotFoundError } from '../../errors'
 import type { DownloadRef } from '../adapters/base-adapter'
 import type { FilesCtx, FilesDeps } from '../ctx'
 import type { FileVersionWithLocation } from '../folder-files'
 import {
-  copyFileVersions,
   createFolderFileWithVersion,
   findOrphanedFolderFiles,
   getFolderFile,
+  getFolderFileContent,
   getFolderFileCurrentVersion,
   getFolderFileDownloadRef,
   getFolderFileWithRelations,
@@ -108,8 +108,6 @@ export class FileService extends BaseService<
   never,
   never
 > {
-  /** Lazily built once per service; see {@link getContent}. */
-  private _storageManager?: { getContent(locationId: string): Promise<Buffer> }
   private _downloadDeps?: Pick<FilesDeps, 'storage' | 'now'>
 
   constructor(organizationId?: string, userId?: string, dbInstance: DatabaseClient = db) {
@@ -205,41 +203,22 @@ export class FileService extends BaseService<
     return this.unwrap(await renameFolderFile(this.filesCtx(), this.writeDeps(), id, newName))
   }
 
-  /**
-   * @deprecated Use `copyFileVersions(tx, ctx, sourceFileId, targetFileId)`.
-   *
-   * **The copies come out oldest-first now.** The legacy body iterated
-   * `getVersions`, which orders `versionNumber DESC`, while each `createVersion`
-   * numbered its row `last + 1` — so a three-version file was copied with its
-   * history inverted. See `folder-files/version-mutations.ts`.
-   */
-  async copyVersions(sourceEntityId: string, targetEntityId: string): Promise<FileVersion[]> {
-    return this.getTx(async (tx) =>
-      this.unwrap(
-        await copyFileVersions(tx as never, this.filesCtx(tx), sourceEntityId, targetEntityId)
-      )
-    )
-  }
-
   // ============= Content & download =============
 
   /**
-   * @deprecated Still on `StorageManager` rather than the `StoragePort`.
+   * @deprecated Use `getFolderFileContent(ctx, deps, fileId)`.
    *
-   * `folder-files/` has no content-read function, for the same reason `assets/`
-   * still has none after PR 5a: `getContent` needs `StoragePort.getObject` plus
-   * a bucket-from-the-row resolution, and `StorageManager.getContent` also
-   * dispatches per provider, which the S3-only port does not. Converting it is a
-   * behaviour change on four production read paths, so it is its own extraction
-   * — tracked with the identical note on `MediaAssetService.getContent`.
+   * **No longer goes through `StorageManager`.** It delegates to
+   * `folder-files/content.ts`, which addresses the object through a
+   * `StoragePort` with the bucket taken off the `StorageLocation` row, so the
+   * unscoped `StorageLocation` lookup `StorageManager.getContent(locationId)`
+   * did behind the caller's back is gone — the row arrives joined onto the
+   * version. The archived-file behaviour is unchanged: content is readable for
+   * an archived file, while `getDownloadRef` refuses one. See that module's
+   * header.
    */
   async getContent(id: string): Promise<Buffer> {
-    const version = await this.getCurrentVersion(id)
-    if (!version?.storageLocationId) {
-      throw new NotFoundError(`No storage location found for file ${id}`)
-    }
-    const storageManager = await this.getStorageManager()
-    return storageManager.getContent(version.storageLocationId)
+    return this.unwrap(await getFolderFileContent(this.filesCtx(), this.downloadDeps(), id))
   }
 
   /**
@@ -282,20 +261,6 @@ export class FileService extends BaseService<
       }
     }
     return this._downloadDeps
-  }
-
-  /**
-   * @deprecated Survives only because {@link getContent} still goes through it.
-   *
-   * Dynamic import, because `storage/storage-manager.ts` imports back into
-   * `core/` and a static edge would close the cycle.
-   */
-  private async getStorageManager(): Promise<{ getContent(locationId: string): Promise<Buffer> }> {
-    if (!this._storageManager) {
-      const { createStorageManager } = await import('../storage/storage-manager')
-      this._storageManager = createStorageManager(this.requireOrganization())
-    }
-    return this._storageManager
   }
 
   /**

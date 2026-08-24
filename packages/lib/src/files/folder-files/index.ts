@@ -6,10 +6,15 @@
  * `core/file-service.ts` reached 1,982 lines for a used surface of eighteen.
  */
 
+export type { FolderFileContentDeps, GetFolderFileContentOptions } from './content'
+export {
+  getFolderFileContent,
+  resolveFolderFileObjectRef,
+  streamFolderFileContent,
+} from './content'
 export type {
   FolderFileDownloadDeps,
   FolderFileDownloadRef,
-  FolderFileVersionSelector,
   GetFolderFileDownloadRefOptions,
 } from './download'
 export {
@@ -36,6 +41,7 @@ export {
 export type {
   FileVersionWithLocation,
   FolderFilePage,
+  FolderFileVersionSelector,
   ListFolderFilesOptions,
   SearchFolderFilesOptions,
 } from './file-queries'
@@ -53,6 +59,7 @@ export {
   loadCurrentFileVersion,
   MAX_PATH_COLLISION_ATTEMPTS,
   requireFolderFile,
+  resolveFolderFileVersion,
   resolveUniqueFilePath,
   searchFolderFiles,
 } from './file-queries'
