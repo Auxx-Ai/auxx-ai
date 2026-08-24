@@ -284,14 +284,14 @@ as `contact:unsubscribed`; dismissal is a status write, never a delete.
 
 ## Files, Uploads & Storage
 
-**Before touching the upload routes, the processor registry, `StorageManager`,
+**Before touching the upload routes, the upload handler records, `StorageManager`,
 the adapters, `MediaAsset`/`FolderFile`/`Attachment`/`StorageLocation`, the
 thumbnail or cleanup jobs, or the front-end uploader, read
 `docs/files-upload-architecture-guide.md`.** It documents the three-round-trip
-presigned browser flow, the `EntityType` → processor dispatch, the five tables a
+presigned browser flow, the `EntityType` → handler dispatch, the five tables a
 file actually occupies, the two parallel upload doors that bypass the main path,
-and the read paths. §10–§12 are a critique, with each finding tagged FIXED or
-OPEN.
+and the read paths. §11 records what was fixed and when; **§12 is what is still
+open** — read that before assuming a sharp edge has been dealt with.
 
 Short version: a file is **`StorageLocation` (the bytes) + `MediaAsset`+version
 or `FolderFile`+version + optionally an `Attachment`** — which combination you
@@ -303,17 +303,23 @@ three separate production bugs); `MediaAsset` and `FolderFile` are different
 tables and the legacy **`File` table is empty and unused** — joining it is a
 silent no-op that once made the storage quota read zero forever; and post-commit
 work (thumbnails, cache busts) must be enqueued **after** `COMMIT`, never from
-inside a processor, because the enqueue resolves its source on a different
+inside the persist step, because the enqueue resolves its source on a different
 connection and cannot see uncommitted rows.
 
 **New code in `packages/lib/src/files/**` uses the functional contract in
 `packages/lib/src/files/ctx.ts`** — `ctx: FilesCtx` first for db-touching
 functions, `tx: Transaction` positional-first for transaction-only ones, a
 narrowed `Pick<FilesDeps, …>` for collaborators, and never a service class.
-`assets/download.ts` and `storage/locations.ts` are the worked examples; the
-test doubles in `files/__tests__/support/` mean a new test needs **zero
-`vi.mock`**. The refactor converting the remaining service classes is planned in
-`plans/attachments/` (untracked).
+`assets/`, `folder-files/`, `folders/`, `filesystem/`, `thumbnails/` and
+`upload/` are all written this way; the test doubles in `files/__tests__/support/`
+mean a new test needs **zero `vi.mock`**. `folders/tree.ts` is the model for pure
+logic — 113 tests, no doubles of any kind. Upload dispatch is a declarative
+record per `EntityType` in `upload/handlers/`, not a class hierarchy: the
+`BaseProcessor` chain, `ProcessorRegistry`, `FilesystemService` and
+`ThumbnailService` were all deleted. The remaining service classes in
+`files/core/` are `@deprecated` facades with a scheduled deletion; do not add
+call sites to them. History and the open items are in `plans/attachments/`
+(untracked).
 
 ## Duplicate Detection
 
