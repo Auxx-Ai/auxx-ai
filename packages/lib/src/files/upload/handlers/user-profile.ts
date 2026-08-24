@@ -6,8 +6,7 @@ import { eq } from 'drizzle-orm'
 import { isAgentUser } from '../../../cache'
 import { BadRequestError, NotFoundError } from '../../../errors'
 import { isMember } from '../../../members'
-import { ENTITY_TYPES } from '../../types/entities'
-import { ASSET_MAX_TTL_SEC, MB } from './shared'
+import { UPLOAD_POLICIES } from '../../types/entities'
 import type { UploadHandler } from './types'
 
 const logger = createScopedLogger('upload-handler-user-profile')
@@ -30,14 +29,11 @@ const logger = createScopedLogger('upload-handler-user-profile')
  * identity half: the target has to be *a* user of this organization.
  */
 export const userProfileHandler: UploadHandler = {
-  entityType: ENTITY_TYPES.USER_PROFILE,
+  ...UPLOAD_POLICIES.USER_PROFILE,
   // The avatar's owner is the entity. A client that omits `entityId` means
   // "mine", and the storage key has to say so before it is derived.
   normalizeInit: (init) => ({ ...init, entityId: init.entityId || init.userId }),
   visibility: 'PUBLIC',
-  maxFileSize: 5 * MB,
-  allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
-  maxTtlSec: ASSET_MAX_TTL_SEC,
   assetKind: 'USER_AVATAR',
   persist: 'versioned-asset',
 

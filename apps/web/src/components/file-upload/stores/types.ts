@@ -7,7 +7,7 @@ import type {
   ServerIdKind,
   SessionStatus,
   UploadProgress,
-} from '@auxx/lib/files/types'
+} from '@auxx/lib/files/client'
 import type { UploadTransport } from '../transport'
 
 /**

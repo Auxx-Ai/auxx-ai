@@ -29,6 +29,8 @@ export interface FakeUploadTransport extends UploadTransport {
   completedSessions(): Array<{ sessionId: string; body: CompletionInput }>
   /** Names of files whose upload handle had `abort()` called. */
   abortedFiles(): string[]
+  /** Session ids the store asked the server to abandon, in call order. */
+  abortedSessions(): string[]
 }
 
 export interface FakeUploadTransportOptions {
@@ -38,6 +40,8 @@ export interface FakeUploadTransportOptions {
   uploadObject?: (params: Parameters<UploadTransport['uploadObject']>[0]) => UploadHandle
   /** Override completion — throw from here to fail after the bytes landed. */
   completeSession?: (sessionId: string, body: CompletionInput) => Promise<CompletionResult>
+  /** Override the abort call — throw from here to prove a failed abort is swallowed. */
+  abortSession?: (sessionId: string) => Promise<void>
 }
 
 /** Default presigned config: a single-part PUT, one session id per file. */
@@ -57,6 +61,7 @@ export function createFakeUploadTransport(
   const created: CreateSessionInput[] = []
   const completed: Array<{ sessionId: string; body: CompletionInput }> = []
   const aborted: string[] = []
+  const abortedSessionIds: string[] = []
 
   return {
     async createSession(input) {
@@ -87,8 +92,14 @@ export function createFakeUploadTransport(
       }
     },
 
+    async abortSession(sessionId) {
+      abortedSessionIds.push(sessionId)
+      if (options.abortSession) return options.abortSession(sessionId)
+    },
+
     createdSessions: () => [...created],
     completedSessions: () => [...completed],
     abortedFiles: () => [...aborted],
+    abortedSessions: () => [...abortedSessionIds],
   }
 }

@@ -40,6 +40,13 @@ export const httpUploadTransport: UploadTransport = {
     return directUpload(params)
   },
 
+  async abortSession(sessionId: string): Promise<void> {
+    // `keepalive` so the request still goes out when the cancel is the user
+    // closing the popover or the tab: a normal fetch is torn down with the page
+    // and the abort never reaches the server.
+    await fetch(`/api/files/upload/${sessionId}/abort`, { method: 'POST', keepalive: true })
+  },
+
   async completeSession(sessionId: string, body: CompletionInput): Promise<CompletionResult> {
     const response = await fetch(`/api/files/upload/${sessionId}/complete`, {
       method: 'POST',

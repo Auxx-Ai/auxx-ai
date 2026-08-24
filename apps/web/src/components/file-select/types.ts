@@ -1,6 +1,6 @@
 // apps/web/src/components/file-select/types.ts
 
-import type { EntityType } from '@auxx/lib/files/types'
+import type { EntityType } from '@auxx/lib/files/client'
 import type { EntityUploadConfig } from '~/components/file-upload/types'
 import type { FileItem } from '~/components/files/files-store'
 

@@ -28,7 +28,7 @@ import type {
   UploadSessionOptions,
   // Upload types
   UploadStatus,
-} from '@auxx/lib/files/types'
+} from '@auxx/lib/files/client'
 
 // Re-export all shared types
 export type {

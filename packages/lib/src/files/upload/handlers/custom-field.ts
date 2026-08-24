@@ -3,9 +3,9 @@
 import { createScopedLogger } from '@auxx/logger'
 import { getOrgCache } from '../../../cache'
 import { type FileTypeCategory, getMimePatternsForCategories } from '../../file-type-constants'
-import { ENTITY_TYPES } from '../../types/entities'
+import { UPLOAD_POLICIES } from '../../types/entities'
 import type { UploadPreparedConfig } from '../init-types'
-import { ASSET_MAX_TTL_SEC, hasTempPrefix, MB, tempExpiry } from './shared'
+import { hasTempPrefix, tempExpiry } from './shared'
 import type { UploadHandler } from './types'
 
 const logger = createScopedLogger('upload-handler-custom-field')
@@ -59,11 +59,8 @@ export function narrowPolicyToFieldOptions(
  * giving it teeth would reject uploads that work today.
  */
 export const customFieldHandler: UploadHandler = {
-  entityType: ENTITY_TYPES.CUSTOM_FIELD,
+  ...UPLOAD_POLICIES.CUSTOM_FIELD,
   visibility: 'PRIVATE',
-  maxFileSize: 25 * MB,
-  allowedMimeTypes: ['*/*'],
-  maxTtlSec: ASSET_MAX_TTL_SEC,
   assetKind: 'TEMP_UPLOAD',
   persist: 'asset+attachment',
 

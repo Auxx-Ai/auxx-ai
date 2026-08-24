@@ -1,8 +1,7 @@
 // apps/web/src/components/file-upload/utils/upload-helpers.ts
 
-import type { EntityUploadConfig, QueueStats, UploadFile } from '@auxx/lib/files/types'
-import { ENTITY_CONFIGS, getEntityConfig } from '@auxx/lib/files/types'
-import { formatBytes, getFileExtension } from '@auxx/utils/file'
+import type { EntityUploadConfig, QueueStats, UploadFile } from '@auxx/lib/files/client'
+import { formatBytes } from '@auxx/utils/file'
 
 /**
  * Utility functions for file upload processing and calculations
@@ -11,13 +10,25 @@ import { formatBytes, getFileExtension } from '@auxx/utils/file'
 // Removed: fileToFileInfo - not used
 
 /**
- * Validate file against upload constraints
+ * Pre-flight a file against an entity's upload policy, in the browser.
+ *
+ * Deliberately the same two rules, in the same order, as `enforceUploadPolicy`
+ * on the server (`packages/lib/src/files/storage/presign.ts`): a size ceiling
+ * and a MIME allow-list where `type/subtype`, `type/*` and `*​/*` all match.
+ * The config it judges comes from `ENTITY_CONFIGS`, which projects the same
+ * `UPLOAD_POLICIES` table the server's handlers spread — so a file this
+ * function refuses is a file the server would also have refused.
+ *
+ * There used to be a third rule here, an extension allow-list, with no server
+ * counterpart at all. It could only ever refuse a file the server would take:
+ * an `.mp4` was rejected for `ARTICLE` client-side while the server had already
+ * dropped `video/*`, and a `.heic` iPhone capture typed as `image/heic` had to
+ * be listed twice to survive. It is gone.
  */
 export function validateFile(
   file: File,
   config: EntityUploadConfig['validation']
 ): { valid: boolean; error?: string } {
-  // Check file size
   if (file.size > config.maxFileSize) {
     return {
       valid: false,
@@ -25,62 +36,14 @@ export function validateFile(
     }
   }
 
-  // Check file extension first (more reliable than MIME type detection)
-  let extensionValid = true
-  let extensionError = ''
-  if (config.allowedExtensions && config.allowedExtensions.length > 0) {
-    const extension = getFileExtension(file.name).toLowerCase()
-    const isAllowedExtension = config.allowedExtensions
-      .map((ext) => ext.toLowerCase())
-      .includes(extension)
+  const isAllowedType = config.allowedMimeTypes.some((type) => {
+    if (type === '*/*') return true
+    if (type.endsWith('/*')) return file.type.startsWith(type.slice(0, -2))
+    return file.type === type
+  })
 
-    if (!isAllowedExtension) {
-      extensionValid = false
-      extensionError = `File extension "${extension}" is not allowed`
-    }
-  }
-
-  // Check file type (MIME type)
-  let mimeTypeValid = true
-  let mimeTypeError = ''
-  if (config.allowedMimeTypes && config.allowedMimeTypes.length > 0) {
-    const isAllowedType = config.allowedMimeTypes.some((type) => {
-      // Handle the special case of '*/*' which means allow all types
-      if (type === '*/*') {
-        return true
-      }
-      if (type.endsWith('/*')) {
-        const category = type.slice(0, -2)
-        return file.type.startsWith(category)
-      }
-      return file.type === type
-    })
-
-    if (!isAllowedType) {
-      mimeTypeValid = false
-      mimeTypeError = `File type "${file.type}" is not allowed`
-    }
-  }
-
-  // If both extension and MIME type are configured, allow if either passes
-  // This handles cases where MIME type detection fails but extension is correct
-  if (
-    config.allowedExtensions &&
-    config.allowedExtensions.length > 0 &&
-    config.allowedMimeTypes &&
-    config.allowedMimeTypes.length > 0
-  ) {
-    if (!extensionValid && !mimeTypeValid) {
-      return { valid: false, error: `${extensionError} and ${mimeTypeError}` }
-    }
-  } else {
-    // If only one validation method is configured, it must pass
-    if (!extensionValid) {
-      return { valid: false, error: extensionError }
-    }
-    if (!mimeTypeValid) {
-      return { valid: false, error: mimeTypeError }
-    }
+  if (!isAllowedType) {
+    return { valid: false, error: `File type "${file.type}" is not allowed` }
   }
 
   return { valid: true }
@@ -145,13 +108,3 @@ export function calculateQueueStats(files: UploadFile[]): QueueStats {
 
   return stats
 }
-
-/**
- * Entity-specific stage configurations
- */
-export const ENTITY_STAGE_CONFIGS = ENTITY_CONFIGS
-
-/**
- * Get stage configuration for entity type
- */
-export const getStageConfig = getEntityConfig

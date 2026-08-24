@@ -2,9 +2,8 @@
 'use client'
 
 import type { FileValue } from '@auxx/lib/field-values/client'
-import type { FileTypeCategory } from '@auxx/lib/files/client'
+import type { BatchUploadResult, FileTypeCategory } from '@auxx/lib/files/client'
 import { getMimePatternsForCategories } from '@auxx/lib/files/client'
-import type { BatchUploadResult } from '@auxx/lib/files/types'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { FieldReference } from '@auxx/types/field'
 import type { JsonFieldValue, TypedFieldValue } from '@auxx/types/field-value'

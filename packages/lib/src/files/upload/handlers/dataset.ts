@@ -6,9 +6,9 @@ import { DocumentService } from '../../../datasets/services/document-service'
 import type { DocumentProcessingOptions } from '../../../datasets/types'
 import { DocumentProcessingQueue } from '../../../datasets/workers/document-processing-queue'
 import { BadRequestError } from '../../../errors'
-import { ENTITY_TYPES } from '../../types/entities'
+import { UPLOAD_POLICIES } from '../../types/entities'
 import type { PresignedUploadSession } from '../session-types'
-import { ASSET_MAX_TTL_SEC, assertRowInOrg, DATASET_MIME_TYPES, MB } from './shared'
+import { assertRowInOrg } from './shared'
 import type { UploadHandler } from './types'
 
 /** The slice of `session.metadata` a dataset upload carries. */
@@ -35,7 +35,7 @@ function titleFromFileName(fileName: string): string {
  * for background parsing only once that transaction has committed.
  */
 export const datasetHandler: UploadHandler = {
-  entityType: ENTITY_TYPES.DATASET,
+  ...UPLOAD_POLICIES.DATASET,
   // `entityId` IS the dataset id for this entity type; the document writer reads
   // it out of metadata, so it is copied across before the config is built.
   normalizeInit: (init) => ({
@@ -43,9 +43,6 @@ export const datasetHandler: UploadHandler = {
     metadata: { ...init.metadata, datasetId: init.entityId },
   }),
   visibility: 'PRIVATE',
-  maxFileSize: 50 * MB,
-  allowedMimeTypes: DATASET_MIME_TYPES,
-  maxTtlSec: ASSET_MAX_TTL_SEC,
   assetKind: 'DOCUMENT',
   persist: 'asset',
 

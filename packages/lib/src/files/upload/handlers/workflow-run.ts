@@ -1,7 +1,7 @@
 // packages/lib/src/files/upload/handlers/workflow-run.ts
 
-import { ENTITY_TYPES } from '../../types/entities'
-import { ASSET_MAX_TTL_SEC, MB, tempExpiry } from './shared'
+import { UPLOAD_POLICIES } from '../../types/entities'
+import { tempExpiry } from './shared'
 import type { UploadHandler } from './types'
 
 /**
@@ -12,12 +12,8 @@ import type { UploadHandler } from './types'
  * a behaviour change dressed as a refactor.
  */
 export const workflowRunHandler: UploadHandler = {
-  entityType: ENTITY_TYPES.WORKFLOW_RUN,
+  ...UPLOAD_POLICIES.WORKFLOW_RUN,
   visibility: 'PRIVATE',
-  maxFileSize: 50 * MB,
-  allowedMimeTypes: ['*/*'],
-  maxTtlSec: ASSET_MAX_TTL_SEC,
-  multipartThresholdBytes: 25 * MB,
   assetKind: 'TEMP_UPLOAD',
   persist: 'asset+attachment',
 

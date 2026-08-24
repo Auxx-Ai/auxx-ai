@@ -16,7 +16,7 @@
 import { describe, expect, it } from 'vitest'
 import { BadRequestError } from '../../../../errors'
 import { VALID_ASSET_KINDS } from '../../../core/types'
-import { ENTITY_TYPES } from '../../../types/entities'
+import { ENTITY_CONFIGS, ENTITY_TYPES } from '../../../types/entities'
 import type { UploadPreparedConfig } from '../../init-types'
 import { narrowPolicyToFieldOptions } from '../custom-field'
 import { getUploadHandler, requiresEntityId, UPLOAD_HANDLERS } from '../index'
@@ -51,6 +51,21 @@ describe('getUploadHandler', () => {
   it('refuses an unknown entity type by name rather than falling back', () => {
     expect(() => getUploadHandler('TICKET')).toThrow(BadRequestError)
     expect(() => getUploadHandler('TICKET')).toThrow('No upload handler for entity type: TICKET')
+  })
+})
+
+describe('the browser pre-flight table cannot drift from the handlers', () => {
+  // `ENTITY_CONFIGS` is read in the browser (`orchestration-slice.ts`) to refuse
+  // a file before it is uploaded. It used to restate the limits by hand and had
+  // drifted: `WORKFLOW_RUN` refused at 15 MB what the server took to 50 MB,
+  // `USER_PROFILE` offered `image/*` against four explicit server types, and
+  // `ARTICLE` admitted video and audio the server rejects. Both sides now read
+  // `UPLOAD_POLICIES`; this is what keeps them reading it.
+  it.each(HANDLERS)('%s agrees with the client config on size and MIME', (key, handler) => {
+    const config = ENTITY_CONFIGS[key as keyof typeof ENTITY_CONFIGS]
+
+    expect(config.validation.maxFileSize).toBe(handler.maxFileSize)
+    expect(config.validation.allowedMimeTypes).toEqual(handler.allowedMimeTypes)
   })
 })
 

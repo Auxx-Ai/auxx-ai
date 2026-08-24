@@ -14,7 +14,13 @@
  *
  * 1. **Declarative** — `visibility`, `maxFileSize`, `allowedMimeTypes`,
  *    `maxTtlSec`, `multipartThresholdBytes`, `assetKind`, `persist`. Read by the
- *    pure {@link buildUploadConfig}. No I/O, ever.
+ *    pure {@link buildUploadConfig}. No I/O, ever. Five of them —
+ *    `entityType`, `maxFileSize`, `allowedMimeTypes`, `maxTtlSec` and
+ *    `multipartThresholdBytes` — are **not written in the handler**: every
+ *    handler spreads its entry from `UPLOAD_POLICIES`
+ *    (`files/types/entities.ts`), which is server-free so the browser's
+ *    pre-flight table can be projected from the same numbers. Restating a limit
+ *    in the handler reintroduces the drift that table exists to prevent.
  * 2. **Prepare-time hooks** — {@link UploadHandler.normalizeInit} (pure),
  *    {@link UploadHandler.validateEntity} and
  *    {@link UploadHandler.refineConfig} (both may read). These run in

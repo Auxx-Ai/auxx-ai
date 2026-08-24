@@ -1,8 +1,8 @@
 // packages/lib/src/files/upload/handlers/message.ts
 
 import { schema } from '@auxx/database'
-import { ENTITY_TYPES } from '../../types/entities'
-import { ASSET_MAX_TTL_SEC, assertRowInOrg, hasTempPrefix, MB, tempExpiry } from './shared'
+import { UPLOAD_POLICIES } from '../../types/entities'
+import { assertRowInOrg, hasTempPrefix, tempExpiry } from './shared'
 import type { UploadHandler } from './types'
 
 /** Uploads aimed at a draft that does not exist yet carry this entity-id prefix. */
@@ -10,11 +10,8 @@ const TEMP_MESSAGE_PREFIX = 'temp-message-'
 
 /** Email attachments. 25 MB is the Gmail ceiling every provider is measured against. */
 export const messageHandler: UploadHandler = {
-  entityType: ENTITY_TYPES.MESSAGE,
+  ...UPLOAD_POLICIES.MESSAGE,
   visibility: 'PRIVATE',
-  maxFileSize: 25 * MB,
-  allowedMimeTypes: ['*/*'],
-  maxTtlSec: ASSET_MAX_TTL_SEC,
   persist: 'asset+attachment',
 
   /**

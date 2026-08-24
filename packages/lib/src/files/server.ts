@@ -261,6 +261,8 @@ export {
 // Upload compensation (PR 6c): delete the object, else enqueue a cleanup.
 // Exported so the public workflow-share completion route can stop leaking bytes
 // on failure -- it currently does no compensation at all.
+export type { AbortDeps, AbortInput, AbortOutcome } from './upload/abort'
+export { abortMultipartUpload } from './upload/abort'
 export type { CompensateDeps, CompensateInput, CompensationOutcome } from './upload/compensate'
 export { compensateUploadObject } from './upload/compensate'
 // The upload orchestration the three API routes used to inline (PR 4e).

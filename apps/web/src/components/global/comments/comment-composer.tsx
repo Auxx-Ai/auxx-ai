@@ -3,7 +3,7 @@
 // apps/web/src/components/global/comments/comment-composer.tsx
 
 import type { RecordId } from '@auxx/lib/field-values/client'
-import { ENTITY_TYPES } from '@auxx/lib/files/types'
+import { ENTITY_TYPES } from '@auxx/lib/files/client'
 import { collectReferenceIds, isNonEmptyDoc, trimTrailingEmptyParagraphs } from '@auxx/lib/tiptap'
 import { Button } from '@auxx/ui/components/button'
 import { EmojiPicker } from '@auxx/ui/components/emoji-picker'

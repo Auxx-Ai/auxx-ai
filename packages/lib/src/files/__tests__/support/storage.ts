@@ -59,6 +59,7 @@ const DEFAULTS: { [K in keyof StoragePort]: () => Awaited<ReturnType<StoragePort
   startMultipart: () => ({ uploadId: 'upload-1', expiresAt: EXPIRES }),
   presignPart: () => ({ url: 'https://s3.test/part', method: 'PUT', expiresAt: EXPIRES }),
   completeMultipart: () => ({ etag: 'etag-complete', size: 1024 }),
+  abortMultipart: () => undefined,
   head: () => ({ name: 'file.bin', size: 1024, mimeType: 'application/octet-stream' }),
   putObject: () => ({ etag: 'etag-put', size: 1024 }),
   getObject: () => Buffer.from('fake-object-body'),
@@ -108,6 +109,10 @@ export function makeStoragePort(options: MakeStoragePortOptions = {}): FakeStora
     completeMultipart: async (p) => {
       record('completeMultipart', p)
       return options.impl?.completeMultipart?.(p) ?? resultFor('completeMultipart')
+    },
+    abortMultipart: async (p) => {
+      record('abortMultipart', p)
+      return options.impl?.abortMultipart?.(p) ?? resultFor('abortMultipart')
     },
     head: async (p) => {
       record('head', p)

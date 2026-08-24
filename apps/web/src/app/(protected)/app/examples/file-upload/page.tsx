@@ -52,8 +52,10 @@ function BasicUploadExample({
         </p>
       </div>
       <FileQueueManager
-        entityType='ARTICLE'
-        // Note: entityId is optional - omitting it will create generic upload session
+        entityType='FILE'
+        // FILE is the only handler with no entity behind it (persist: 'folder-file').
+        // ARTICLE and the other 'asset+attachment' handlers write an Attachment row,
+        // whose entityId is NOT NULL, so they 400 without a real entityId.
         onComplete={onComplete}
         onError={onError}
         onProgress={onProgress}
@@ -78,7 +80,7 @@ function MinimalUploadExample({
 }) {
   return (
     <FileQueueManager
-      entityType='ARTICLE'
+      entityType='FILE'
       onComplete={onComplete}
       onError={onError}
       fileItemComponent={MinimalFileItem}
@@ -137,7 +139,7 @@ function FileSelectExample() {
           maxFiles={5}
           maxFileSize={10 * 1024 * 1024} // 10MB
           fileExtensions={['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx']}
-          entityType='ARTICLE'
+          entityType='FILE'
           onChange={handleFilesChange}
           onUploadComplete={handleUploadComplete}
           onError={handleError}
@@ -303,7 +305,7 @@ function FileSelectExample() {
             maxFiles={3}
             maxFileSize={5 * 1024 * 1024} // 5MB
             fileTypes={['.jpg', '.png', '.pdf']}
-            entityType='ARTICLE'
+            entityType='FILE'
             onSelect={(files) => {
               console.log('FileSelectPicker selected files:', files)
               setMultipleFiles((prev) => [...prev, ...files])

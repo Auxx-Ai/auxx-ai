@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { EntityType } from '@auxx/lib/files/types'
+import type { EntityType } from '@auxx/lib/files/client'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { FileUp, Play, RotateCcw, Square, Trash2, Upload, UploadIcon } from 'lucide-react'
