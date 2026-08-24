@@ -1,15 +1,29 @@
 // packages/lib/src/files/lifecycle/quota-cleanup.ts
 
-import { database as db, schema } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
-import type { Job } from 'bullmq'
-import { and, asc, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm'
-import type { JobContext } from '../../jobs/types'
+/**
+ * How many bytes an organization is storing, and what its plan allows.
+ *
+ * The daily job that acts on the answer lives in
+ * `jobs/maintenance/file-cleanup-jobs.ts`; this file is the measurement, and it
+ * takes its database on a {@link FilesCtx} like every other read under
+ * `files/`. It kept its path because `@auxx/lib/files/lifecycle/quota-cleanup`
+ * is a published package subpath that `apps/web`'s upload gate and admin router
+ * both import.
+ *
+ * `quotaEnforcementCleanupJob` used to live here. It was exported, never
+ * scheduled and never enqueued — `storageQuotaCheckJob`'s enforcement branch is
+ * still a `TODO` that increments a counter — and it only considered `FolderFile`
+ * candidates, which is the lane essentially none of the usage is in. Deleted per
+ * `plans/attachments/07-dead-code-removal.md` §7.4 ("schedule or delete"). If
+ * enforcement is built, it needs the `MediaAsset` lane, which means writing it
+ * against the sums below rather than resurrecting that body.
+ */
+
+import { schema } from '@auxx/database'
+import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import { FeaturePermissionService } from '../../permissions/feature-permission-service'
 import { FeatureKey } from '../../permissions/types'
-import type { StorageQuota } from './types'
-
-const logger = createScopedLogger('quota-cleanup')
+import type { FilesCtx } from '../ctx'
 
 const BYTES_PER_GB = 1024 * 1024 * 1024
 
@@ -17,7 +31,20 @@ const BYTES_PER_GB = 1024 * 1024 * 1024
  * Sentinel for "no cap", shared with `OrganizationAiQuota.quotaLimit` and the
  * seeded plan rows. Kept out of the arithmetic everywhere it appears.
  */
-const UNLIMITED = -1
+export const UNLIMITED = -1
+
+/** Storage quota information for one organization. */
+export interface StorageQuota {
+  organizationId: string
+  /** Total storage used in bytes. */
+  totalUsed: number
+  /** Storage quota limit in bytes, or {@link UNLIMITED}. */
+  quotaLimit: number
+  /** Percentage of quota used. `0` for an uncapped organization. */
+  percentUsed: number
+  /** Number of distinct stored objects. */
+  fileCount: number
+}
 
 /**
  * The org's real storage limit in bytes, resolved from its plan.
@@ -25,8 +52,8 @@ const UNLIMITED = -1
  * `featureLimits` is a JSONB **array** of `{ key, limit }` entries, so it can
  * only be read through the features cache — a `->>'storageGbHard'` returns null.
  * `FeaturePermissionService.getLimit` is that reader, and it is the same one
- * `apps/web`'s upload gate uses, which is what keeps the gate and this job from
- * disagreeing about whether an org is over.
+ * `apps/web`'s upload gate uses, which is what keeps the gate and the daily job
+ * from disagreeing about whether an org is over.
  *
  * Every non-numeric answer means **uncapped**, not zero:
  * - `null` — the plan does not name this key, or names it as `false`/`0`. A plan
@@ -35,7 +62,7 @@ const UNLIMITED = -1
  * - `'+'` / `true` — the explicit unlimited markers. The features provider has
  *   already folded a seeded `-1` (Enterprise) into `'+'`.
  */
-async function resolveStorageLimitBytes(
+export async function resolveStorageLimitBytes(
   organizationId: string,
   featureKey: FeatureKey
 ): Promise<number> {
@@ -63,8 +90,8 @@ function toNumber(value: unknown): number {
  * path shares a location between versions, but neither table constrains it, so
  * the grouping makes the invariant structural rather than assumed.
  */
-async function sumFolderFileUsage(organizationId: string): Promise<LaneUsage> {
-  const locations = db
+async function sumFolderFileUsage(ctx: FilesCtx): Promise<LaneUsage> {
+  const locations = ctx.db
     .select({
       locationId: schema.FileVersion.storageLocationId,
       size: sql<number>`max(${schema.FileVersion.size})`.as('size'),
@@ -72,12 +99,15 @@ async function sumFolderFileUsage(organizationId: string): Promise<LaneUsage> {
     .from(schema.FileVersion)
     .innerJoin(schema.FolderFile, eq(schema.FileVersion.fileId, schema.FolderFile.id))
     .where(
-      and(eq(schema.FolderFile.organizationId, organizationId), isNull(schema.FolderFile.deletedAt))
+      and(
+        eq(schema.FolderFile.organizationId, ctx.organizationId),
+        isNull(schema.FolderFile.deletedAt)
+      )
     )
     .groupBy(schema.FileVersion.storageLocationId)
     .as('folder_file_locations')
 
-  const [row] = await db
+  const [row] = await ctx.db
     .select({
       totalSize: sql<string>`coalesce(sum(${locations.size}), 0)`,
       count: sql<string>`count(*)`,
@@ -100,8 +130,8 @@ async function sumFolderFileUsage(organizationId: string): Promise<LaneUsage> {
  * under-report the quota. Same `storageLocationId` grouping as above, which is
  * what keeps a thumbnail and its source from ever being counted twice.
  */
-async function sumMediaAssetUsage(organizationId: string): Promise<LaneUsage> {
-  const locations = db
+async function sumMediaAssetUsage(ctx: FilesCtx): Promise<LaneUsage> {
+  const locations = ctx.db
     .select({
       locationId: schema.MediaAssetVersion.storageLocationId,
       size: sql<number>`max(${schema.MediaAssetVersion.size})`.as('size'),
@@ -110,7 +140,7 @@ async function sumMediaAssetUsage(organizationId: string): Promise<LaneUsage> {
     .innerJoin(schema.MediaAsset, eq(schema.MediaAssetVersion.assetId, schema.MediaAsset.id))
     .where(
       and(
-        eq(schema.MediaAsset.organizationId, organizationId),
+        eq(schema.MediaAsset.organizationId, ctx.organizationId),
         isNull(schema.MediaAsset.deletedAt),
         isNull(schema.MediaAssetVersion.deletedAt),
         isNotNull(schema.MediaAssetVersion.storageLocationId)
@@ -119,7 +149,7 @@ async function sumMediaAssetUsage(organizationId: string): Promise<LaneUsage> {
     .groupBy(schema.MediaAssetVersion.storageLocationId)
     .as('media_asset_locations')
 
-  const [row] = await db
+  const [row] = await ctx.db
     .select({
       totalSize: sql<string>`coalesce(sum(${locations.size}), 0)`,
       count: sql<string>`count(*)`,
@@ -145,20 +175,20 @@ async function sumMediaAssetUsage(organizationId: string): Promise<LaneUsage> {
  * when the plan is uncapped — it is NOT a fixed default. `percentUsed` is `0`
  * for an uncapped org, since there is no denominator to divide by.
  *
- * @param organizationId Organization to measure.
+ * @param ctx Scope and database. The organization measured is `ctx.organizationId`.
  */
-export async function calculateStorageUsage(organizationId: string): Promise<StorageQuota> {
+export async function calculateStorageUsage(ctx: FilesCtx): Promise<StorageQuota> {
   const [folderFiles, mediaAssets, quotaLimit] = await Promise.all([
-    sumFolderFileUsage(organizationId),
-    sumMediaAssetUsage(organizationId),
-    resolveStorageLimitBytes(organizationId, FeatureKey.storageGbHard),
+    sumFolderFileUsage(ctx),
+    sumMediaAssetUsage(ctx),
+    resolveStorageLimitBytes(ctx.organizationId, FeatureKey.storageGbHard),
   ])
 
   const totalUsed = folderFiles.totalSize + mediaAssets.totalSize
   const fileCount = folderFiles.count + mediaAssets.count
 
   return {
-    organizationId,
+    organizationId: ctx.organizationId,
     totalUsed,
     quotaLimit,
     percentUsed: quotaLimit === UNLIMITED ? 0 : Math.round((totalUsed / quotaLimit) * 100),
@@ -170,15 +200,15 @@ export async function calculateStorageUsage(organizationId: string): Promise<Sto
  * Byte threshold at which an org should be warned it is approaching its cap.
  *
  * `storageGbSoft` is defined on every seeded plan (Free 0.8, Starter 8,
- * Growth 40, Demo 0.08) and, until now, read by nothing — orgs went from no
+ * Growth 40, Demo 0.08) and, until recently, read by nothing — orgs went from no
  * signal at all straight to a hard 403 at the upload gate. This wires it in as
  * the warn threshold.
  *
  * A plan that names no soft limit falls back to 80% of its hard limit, which is
- * the heuristic this job used before. `null` means there is nothing to warn
+ * the heuristic the daily job used before. `null` means there is nothing to warn
  * about: an uncapped plan cannot approach a cap.
  */
-async function resolveWarnThresholdBytes(
+export async function resolveWarnThresholdBytes(
   organizationId: string,
   hardLimitBytes: number
 ): Promise<number | null> {
@@ -186,192 +216,4 @@ async function resolveWarnThresholdBytes(
   if (softLimitBytes !== UNLIMITED) return softLimitBytes
   if (hardLimitBytes === UNLIMITED) return null
   return Math.round(hardLimitBytes * 0.8)
-}
-
-/**
- * Job to check and enforce storage quotas
- * Runs daily to notify organizations approaching their limits
- */
-export async function storageQuotaCheckJob(
-  ctx: JobContext<{ dryRun?: boolean }>
-): Promise<{ checked: number; warnings: number; enforced: number }> {
-  const job = ctx.job
-  const { dryRun = false } = job.data
-  const result = {
-    checked: 0,
-    warnings: 0,
-    enforced: 0,
-  }
-
-  try {
-    logger.info('Starting storage quota check')
-
-    // Get all organizations
-    const organizations = await db
-      .select({
-        id: schema.Organization.id,
-        name: schema.Organization.name,
-        // Add plan/tier field when available
-      })
-      .from(schema.Organization)
-
-    for (const org of organizations) {
-      result.checked++
-
-      const usage = await calculateStorageUsage(org.id)
-      const warnAt = await resolveWarnThresholdBytes(org.id, usage.quotaLimit)
-
-      // Compared in bytes, not on `percentUsed` — that is rounded, so 99.6% of
-      // the cap reads as 100 and would enforce against an org that is under.
-      const overHardLimit = usage.quotaLimit !== UNLIMITED && usage.totalUsed >= usage.quotaLimit
-
-      if (overHardLimit) {
-        logger.warn('Organization over storage quota', {
-          organizationId: org.id,
-          name: org.name,
-          percentUsed: usage.percentUsed,
-          totalUsed: usage.totalUsed,
-          quotaLimit: usage.quotaLimit,
-        })
-
-        if (!dryRun) {
-          // TODO: Implement quota enforcement
-          // - Prevent new uploads
-          // - Send notification email
-          // - Create system notification
-          result.enforced++
-        }
-      } else if (warnAt !== null && usage.totalUsed >= warnAt) {
-        logger.info('Organization approaching storage quota', {
-          organizationId: org.id,
-          name: org.name,
-          percentUsed: usage.percentUsed,
-          totalUsed: usage.totalUsed,
-          softLimit: warnAt,
-          quotaLimit: usage.quotaLimit,
-        })
-
-        if (!dryRun) {
-          // TODO: Send warning notification. Crossing the soft limit is only
-          // logged today — there is still no user-facing signal between "fine"
-          // and the hard 403 at the upload gate.
-          result.warnings++
-        }
-      }
-
-      // Update job progress
-      await job.updateProgress(Math.floor((result.checked / organizations.length) * 100))
-    }
-
-    logger.info('Storage quota check completed', result)
-    return result
-  } catch (error) {
-    logger.error('Storage quota check failed', { error })
-    throw error
-  }
-}
-
-/**
- * Clean up files for organizations over quota
- * Prioritizes old, large, or unused files
- *
- * **Not wired up, and half-blind.** Two things to know before relying on it:
- *
- * 1. It is exported but never scheduled or enqueued — `apps/worker/src/workers/index.ts`
- *    registers `orphanedFileCleanupJob`, `deletedFileCleanupJob` and
- *    `storageQuotaCheckJob`, not this. `storageQuotaCheckJob`'s enforcement
- *    branch is a `TODO` that increments a counter, so nothing calls this either.
- * 2. It only considers `FolderFile` candidates, which is where essentially none
- *    of the usage lives. `calculateStorageUsage` measures both lanes and
- *    `MediaAsset` dominates (avatars, mail/comment attachments, custom-field
- *    files, KB logos, dataset documents). Running it as written would free far
- *    less than `targetSize` and report success anyway.
- *
- * Decide before scheduling it: teach it the `MediaAsset` lane, or delete it.
- */
-export async function quotaEnforcementCleanupJob(
-  job: Job<{ organizationId: string; targetSize: number; dryRun?: boolean }>
-): Promise<{ deleted: number; freedBytes: number }> {
-  const { organizationId, targetSize, dryRun = false } = job.data
-  const result = {
-    deleted: 0,
-    freedBytes: 0,
-  }
-
-  try {
-    logger.info('Starting quota enforcement cleanup', { organizationId, targetSize })
-
-    // Find candidates for deletion (old, orphaned files first)
-    const candidates = await db
-      .select({
-        id: schema.FolderFile.id,
-        name: schema.FolderFile.name,
-        size: schema.FolderFile.size,
-        createdAt: schema.FolderFile.createdAt,
-        currentVersionId: schema.FileVersion.id,
-        currentVersionSize: schema.FileVersion.size,
-        storageLocationId: schema.StorageLocation.id,
-      })
-      .from(schema.FolderFile)
-      .leftJoin(schema.FileVersion, eq(schema.FolderFile.currentVersionId, schema.FileVersion.id))
-      .leftJoin(
-        schema.StorageLocation,
-        and(
-          eq(schema.FileVersion.storageLocationId, schema.StorageLocation.id),
-          isNull(schema.StorageLocation.deletedAt)
-        )
-      )
-      .leftJoin(schema.Attachment, eq(schema.FolderFile.id, schema.Attachment.fileId))
-      .where(
-        and(
-          eq(schema.FolderFile.organizationId, organizationId),
-          isNull(schema.Attachment.id), // No attachment (orphaned)
-          lt(schema.FolderFile.createdAt, new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
-        )
-      )
-      .orderBy(asc(schema.FolderFile.createdAt))
-
-    // Delete files until we reach the target size
-    for (const file of candidates) {
-      if (result.freedBytes >= targetSize) {
-        break
-      }
-
-      if (!dryRun) {
-        try {
-          // Soft delete the file
-          await db
-            .update(schema.FolderFile)
-            .set({
-              deletedAt: new Date(),
-            })
-            .where(eq(schema.FolderFile.id, file.id))
-
-          result.deleted++
-          result.freedBytes += file.currentVersionSize ?? 0
-
-          logger.info('Deleted file for quota enforcement', {
-            fileId: file.id,
-            name: file.name,
-            size: file.size,
-          })
-        } catch (error) {
-          logger.error('Failed to delete file for quota enforcement', {
-            fileId: file.id,
-            error,
-          })
-        }
-      } else {
-        // Dry run - just count
-        result.deleted++
-        result.freedBytes += file.currentVersionSize ?? 0
-      }
-    }
-
-    logger.info('Quota enforcement cleanup completed', result)
-    return result
-  } catch (error) {
-    logger.error('Quota enforcement cleanup failed', { error })
-    throw error
-  }
 }

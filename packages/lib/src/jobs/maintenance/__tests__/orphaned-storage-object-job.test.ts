@@ -7,6 +7,12 @@
  * whose every persistence method was a `// TODO` stub that logged
  * "Would store cleanup task" and returned. Nothing was ever persisted, enqueued
  * or retried, so a failed transaction left the S3 object orphaned forever.
+ *
+ * `files/cleanup/` — the 48-line forwarder that replaced the stub — was deleted
+ * in plan 7c: it had zero runtime callers, and its own docstring named a
+ * `complete/route.ts` call site that no longer existed. The compensation
+ * contract it stood in for is `enqueueOrphanedStorageObjectCleanup`, tested
+ * directly below.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -40,7 +46,6 @@ vi.mock('../../../files/storage/storage-manager', () => ({
   createStorageManager: () => ({ deleteByKey: mockDeleteByKey }),
 }))
 
-import { cleanupService } from '../../../files/cleanup/cleanup-service'
 import type { JobContext } from '../../types'
 import {
   enqueueOrphanedStorageObjectCleanup,
@@ -124,11 +129,11 @@ describe('orphanedStorageObjectJob', () => {
   })
 })
 
-describe('cleanupService.scheduleCleanup (compensation call site)', () => {
+describe('enqueueOrphanedStorageObjectCleanup (compensation call site)', () => {
   it('actually persists work instead of only logging', async () => {
-    await cleanupService.scheduleCleanup({
+    await enqueueOrphanedStorageObjectCleanup({
       provider: 'S3',
-      storageKey: 'org123/avatar.png',
+      key: 'org123/avatar.png',
       bucket: 'test-public-bucket',
       reason: 'DB transaction failed',
       organizationId: 'org123',

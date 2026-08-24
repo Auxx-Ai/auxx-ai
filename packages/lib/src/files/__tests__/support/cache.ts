@@ -30,15 +30,24 @@ export interface FakeCachePort {
   /** Pass this as `FilesDeps.cache`. */
   port: CachePort
   busts: CacheBust[]
+  /** The user ids handed to `invalidateUser`, in order. */
+  invalidatedUsers: string[]
   journal: Journal
   /** The event names that were busted, in order. */
   events(): string[]
 }
 
-/** Build a cache double that records every bust and does nothing else. */
+/**
+ * Build a cache double that records every invalidation and does nothing else.
+ *
+ * Both port methods are recorded on the same journal channel (`'cache'`), which
+ * is what lets `journal.between('begin', 'commit')` answer the ordering question
+ * for either of them without the test knowing which door a handler used.
+ */
 export function makeCachePort(options: MakeCachePortOptions = {}): FakeCachePort {
   const journal = options.journal ?? makeJournal()
   const busts: CacheBust[] = []
+  const invalidatedUsers: string[] = []
 
   const port: CachePort = {
     bust: async (event, payload) => {
@@ -46,11 +55,17 @@ export function makeCachePort(options: MakeCachePortOptions = {}): FakeCachePort
       busts.push({ event, payload })
       await options.impl?.bust?.(event, payload)
     },
+    invalidateUser: async (userId) => {
+      journal.record('cache', 'invalidateUser', { userId })
+      invalidatedUsers.push(userId)
+      await options.impl?.invalidateUser?.(userId)
+    },
   }
 
   return {
     port,
     busts,
+    invalidatedUsers,
     journal,
     events: () => busts.map((b) => b.event),
   }

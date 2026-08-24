@@ -134,7 +134,8 @@ There is also a legacy **`File`** table (`packages/database/src/db/schema/file.t
 which joins it to `WorkflowFile`. It is not `FolderFile`, and the name collision is a live hazard:
 the org storage quota once read zero forever because `calculateStorageUsage` joined `FileVersion`
 to `File` instead of `FolderFile`, matched nothing, and summed `NULL` (§11, #1816).
-`lifecycle/__tests__/quota-cleanup.test.ts:169` now asserts the join does not touch `schema.File`.
+`lifecycle/__tests__/quota-cleanup.test.ts` now asserts the join does not touch `schema.File`, using
+the `joins` recorder on the shared `makeDb` stub.
 
 Measured on the development database, 2026-08-24: `File` **0** rows, `FolderFile` 2,
 `FileVersion` 2, `MediaAsset` 3,750, `Attachment` 3,086, `StorageLocation` 33,297. Essentially all
@@ -327,9 +328,12 @@ for the answer, so the bucket and the `isPrivate` flag cannot disagree. (They di
 `'private'` on the old dataset processor matched neither branch of `bucketForVisibility`, so every
 dataset document went to the **public** bucket *and* was recorded non-private. #1827.)
 
-On any throw, `compensate()` deletes the object with the session's own bucket, and if that fails
-enqueues a durable `orphanedStorageObjectJob`. Both are swallowed — losing the original error is
-strictly worse than leaking one object the orphan sweeper will find.
+On any throw, `compensateUploadObject()` (`upload/compensate.ts`) deletes the object with the
+session's own bucket, and if that fails enqueues a durable `orphanedStorageObjectJob`. Both are
+swallowed — losing the original error is strictly worse than leaking one object the orphan sweeper
+will find — and the function returns `'deleted' | 'enqueued' | 'failed'` rather than `void`, so the
+Phase-6 exit criterion ("the object is deleted **or** a cleanup job is enqueued") is one assertion
+over two ports instead of a whole rigged completion.
 
 **Phase 3 — after `COMMIT`.** `upload/post-commit.ts:80`, and nothing in it may fail the request.
 `handler.afterCommit` (cache busts, dataset processing enqueue) → `ensureThumbnailPresets` (one
@@ -354,6 +358,7 @@ storage/
   locations.ts        createStorageLocation(tx, ctx, …) / deleteStorageLocation(tx, ctx, …)
   location-queries.ts getStorageLocation(ctx, …) / findStorageLocationByExternalId(ctx, …)
   queue-port.ts       createProductionQueuePort  (BullMQ + the thumbnail Redis latch)
+  cache-port.ts       createProductionCachePort  (onCacheEvent + DehydrationService)
   storage-manager.ts  @deprecated facade, 1,179 lines
 adapters/             S3Adapter + the StorageAdapter interface
 ```
@@ -466,10 +471,9 @@ contract, it carries its own reasoning, and this section does not restate it. In
 
 **The test payoff is the observable one.** The doubles in `packages/lib/src/files/__tests__/support/`
 (`db.ts`, `storage.ts`, `queue.ts`, `cache.ts`, `redis.ts`, `clock.ts`, `ctx.ts`, `fixtures.ts`)
-mean a new test in a converted module needs **zero `vi.mock`**. 47 test files live under
-`files/**` now. The only remaining `vi.mock('@auxx/database', …)` under `files/` are
-`lifecycle/__tests__/quota-cleanup.test.ts` and `lifecycle/__tests__/orphaned-cleanup.test.ts` (the
-un-converted lifecycle module), plus two non-test files that mention the pattern in prose.
+mean a new test in a converted module needs **zero `vi.mock`**. As of 7c there is **no
+`vi.mock('@auxx/database', …)` anywhere under `files/`** — the last two were the lifecycle tests, and
+they went when `lifecycle/` stopped binding the pool. Two files mention the pattern in prose only.
 
 The converted modules and their sizes:
 
@@ -685,16 +689,21 @@ copies of the convention and only two of them agreed.
 
 ## 10. Lifecycle, Quota & Cleanup
 
-There are still **two modules named "cleanup service"**, and the distinction still matters:
+Both modules named "cleanup service" are gone as of 7c.
 
-- `files/cleanup/cleanup-service.ts` — now **48 lines**, `@deprecated`, and no longer a stub: it
-  forwards to `enqueueOrphanedStorageObjectCleanup`. Its docstring names
-  `complete/route.ts` as its call site, which is **stale** — the compensation path moved into
-  `completeUpload` and calls `deps.queue.enqueueStorageCleanup` directly. Its only remaining
-  importers are the two barrels. Scheduled for deletion (7c).
-- `files/lifecycle/cleanup-service.ts` — 504 lines, the real reaper functions
-  (`deleteEntityFiles`, `deleteFilesByIds`, `deleteOrganizationFiles`, `deleteOrphanedFiles`,
-  `deleteExpiredFiles`, `cleanupFailedUpload`, …). Not yet converted to the `FilesCtx` contract.
+- `files/cleanup/` — **deleted.** It was a 48-line `@deprecated` forwarder to
+  `enqueueOrphanedStorageObjectCleanup` whose docstring named a `complete/route.ts` call site that
+  no longer existed; its only importers were the two barrels and one lib test.
+- `files/lifecycle/cleanup-service.ts` — **replaced** by `files/lifecycle/file-reaper.ts`. Five of
+  its ten exports (`deleteEntityFiles`, `deleteOrganizationFiles`, `deleteOrphanedFiles`,
+  `cleanupFailedUpload`, `cleanupAssetThumbnails`) had zero callers outside the barrel and went
+  with it; `deleteEntityFiles` had no organization predicate anywhere in it. The survivors are
+  three sweeps taking `(db: Database, deps, options)` — the `thumbnails/cleanup.ts` shape, for the
+  same reason: a cron job with no organization cannot honestly carry a `FilesCtx`.
+
+`files/lifecycle/` now holds **no `@auxx/database` runtime import at all**. The three scheduled
+handlers moved to `jobs/maintenance/file-cleanup-jobs.ts`, which is where every other cron handler
+already binds the pool.
 
 ### 10.1 What actually runs
 
@@ -702,10 +711,10 @@ Scheduled in `apps/worker/src/workers/index.ts`:
 
 | Scheduler | Cron | What it does |
 | --- | --- | --- |
-| `orphanedFileCleanupJob` | hourly | `deleteExpiredFiles(undefined, …)` + orphan sweep |
-| `deletedFileCleanupJob` | daily 02:00 | reaps soft-deleted rows, then `StorageLocation`s deleted >24 h ago, deleting the object with `metadata.bucket` |
+| `orphanedFileCleanupJob` | hourly | `reapExpiredFolderFiles` — unattached `FolderFile`s >24 h old, `LIMIT batchSize` |
+| `deletedFileCleanupJob` | daily 02:00 | `reapSoftDeletedFolderFiles` (>30 d), then `reapMarkedStorageLocations` (>24 h), deleting the object with `metadata.bucket` |
 | `storageQuotaCheckJob` | daily 04:00 | every org, hard + soft threshold |
-| `cleanupExpiredMediaAssetsJob` | hourly | `MediaAsset.expiresAt <= now` — but see below |
+| `cleanupExpiredMediaAssetsJob` | hourly | `MediaAsset.expiresAt <= now`, cross-org, **`dryRun: true`** — see below |
 | `thumbnailCleanupJob` | daily ~03:00 (jittered) | orphaned / failed / expired sweeps |
 | `thumbnailVersionCleanupJob` | weekly Sun ~04:00 | outdated versions, `keepVersions: 3` |
 
@@ -714,11 +723,12 @@ registered in the maintenance worker and enqueued by `QueuePort.enqueueStorageCl
 **refuses a payload with no explicit `bucket`** rather than normalising to a default, and it
 deliberately rethrows so BullMQ's retry/backoff applies.
 
-Not scheduled and not registered: `quotaEnforcementCleanupJob` (§12).
+`quotaEnforcementCleanupJob` was **deleted** in 7c: exported, never scheduled, never registered, and
+only ever measured the `FolderFile` lane, which is where essentially none of the usage lives.
 
 ### 10.2 The storage quota
 
-`calculateStorageUsage(organizationId)` (`lifecycle/quota-cleanup.ts:150`) sums **both lanes** and
+`calculateStorageUsage(ctx: FilesCtx)` (`lifecycle/quota-cleanup.ts`) sums **both lanes** and
 returns the org's real plan limit:
 
 - `sumFolderFileUsage` — `FileVersion INNER JOIN FolderFile ON FileVersion.fileId = FolderFile.id`,
@@ -891,18 +901,22 @@ sweep that has not happened yet.
 
 **Jobs that do not do what they look like they do**
 
-- **`cleanupExpiredMediaAssetsJob` is scheduled hourly with `organizationId: 'global-cleanup'`** and
-  the comment `// Will be overridden per org`. Nothing overrides it, and there is no per-org
-  enqueuer. The job runs `eq(MediaAsset.organizationId, 'global-cleanup')`, matches zero rows, and
-  reports success. So `MediaAsset.expiresAt` — stamped by the `MESSAGE`, `COMMENT`, `CUSTOM_FIELD`
-  and `WORKFLOW_RUN` handlers — **is still not enforced in practice**, though for a much more
-  fixable reason than before. (`orphanedFileCleanupJob` calls `deleteExpiredFiles(undefined, …)`,
-  whose no-org branch walks `FolderFile` only.)
+- ~~**`cleanupExpiredMediaAssetsJob` is scheduled hourly with `organizationId: 'global-cleanup'`**~~
+  — **HALF-CLOSED (7c).** The fake org id and its `// Will be overridden per org` comment are gone;
+  `organizationId` is optional and absent means every organization, so the job's query now matches
+  the rows it was written for. It is scheduled **`dryRun: true`**, deliberately: turning this on is a
+  first-ever deletion pass over `expiresAt` rows that have been accumulating since the column
+  shipped, and the assets it targets are abandoned drafts whose `expiresAt` is cleared on commit by
+  `convertTempAssetToPermanent` — a promotion path that is called from comments, messages and the
+  `mediaAsset` router, but which nothing structurally guarantees runs. **Read the hourly
+  "Would delete expired MediaAsset" logs, then flip `dryRun` to `false`.**
 - Separately, `findExpiredAssets` filters on `createdAt < cutoff` and `kind = 'TEMP_UPLOAD'` and does
-  **not** read `expiresAt` at all. Two notions of "expired" coexist.
-- **`quotaEnforcementCleanupJob` is exported, never scheduled, never registered**, and only
-  considers `FolderFile` candidates — where essentially none of the usage lives. Teach it the
-  `MediaAsset` lane or delete it.
+  **not** read `expiresAt` at all. Two notions of "expired" coexist. Its only caller was
+  `deleteExpiredFiles`' organization branch, which nothing ever invoked with an organization; that
+  branch went in 7c, so `findExpiredAssets` now has no production caller at all.
+- ~~**`quotaEnforcementCleanupJob` is exported, never scheduled, never registered**~~ — **CLOSED
+  (7c), by deletion.** It only considered `FolderFile` candidates, where essentially none of the
+  usage lives. Enforcement, if built, should be written against `calculateStorageUsage`'s two lanes.
 - **There is still no storage warning tier that reaches a user.** `storageGbSoft` is read as a
   threshold now, but both branches of `storageQuotaCheckJob` increment a counter behind a `TODO`. An
   org goes from no signal at all straight to a hard 403 at the upload gate. The job also iterates
@@ -910,18 +924,30 @@ sweep that has not happened yet.
 
 **Shape and dead code**
 
-- **`BaseService`, `getTx` and `withTx` still exist** (`core/base-service.ts:91`, `:102`) with three
-  legacy callers: `core/file-service.ts:171`, `core/folder-service.ts:410`,
-  `core/media-asset-service.ts:548`. Nesting `transaction()` on a client that is already a
-  transaction issues a `SAVEPOINT` in drizzle 0.44, so isolation silently depends on the caller.
-  **The upload path has one `BEGIN…COMMIT` and zero savepoints** — this is what remains elsewhere.
-- **Four `core/` facades survive** — `MediaAssetService` (554), `FolderService` (421, zero
-  construction sites left), `AttachmentService` (304), `FileService` (281) — plus `BaseService` (582).
-  All are `@deprecated` and scheduled for deletion together; that deletion was in flight when this
-  guide was written, so check whether it landed before trusting this bullet or the previous one.
-- **`FilesDeps.cache` has no production implementation.** `CachePort` exists and has a test double;
-  the two cache busts on the upload path are still `await import('../../cache')` inside the handlers
-  that need them, because there is no factory a route could construct.
+- ~~**`BaseService`, `getTx` and `withTx` still exist**~~ — **CLOSED (#1862).** All three, and the
+  four `core/` facades over them, were deleted. There is not one non-comment reference to `getTx` or
+  `withTx` left in the repository, so nothing anywhere decides at runtime whether it is already
+  inside a transaction. (Nesting `transaction()` on a client that is already a transaction issues a
+  `SAVEPOINT` in drizzle 0.44 — that is why it mattered.) The upload path has one `BEGIN…COMMIT` and
+  zero savepoints, asserted in `upload/__tests__/complete.test.ts`.
+- ~~**`FilesDeps.cache` has no production implementation.**~~ — **CLOSED (PR 6c).**
+  `createProductionCachePort()` lives in `files/storage/cache-port.ts`, beside `queue-port.ts` and
+  for the same reason. `CachePort` gained a second method: `bust(event, payload)` is declarative and
+  goes to `onCacheEvent`, `invalidateUser(userId)` is imperative and goes to
+  `DehydrationService` — two different caches through two doors that **no call site in the repo
+  pairs**, so collapsing them into one event would have made the files path mean something different
+  by `user.updated` than the six other producers of it. `USER_PROFILE` and `CHAT_WIDGET` bust through
+  `deps.cache` now instead of `await import('../../../cache')`, which is what put those two calls
+  inside the journal the "nothing but database statements between `BEGIN` and `COMMIT`" assertion
+  reads. They were previously invisible to it — the assertion held, but not over the two calls that
+  had actually broken the rule in production.
+- **The public workflow-share completion route does no compensation at all.**
+  `apps/web/src/app/api/workflows/shared/[shareToken]/files/[sessionId]/complete/route.ts` writes a
+  `StorageLocation`, then a `MediaAsset` in its own transaction, and each failure branch returns a
+  500 having neither deleted the object nor enqueued a cleanup — so every failure there leaks the
+  uploaded bytes. `upload/compensate.ts` is now a standalone
+  `compensateUploadObject(deps, ref)` precisely so the fix is a `catch` that calls it rather than a
+  second copy of the policy. Needs `compensateUploadObject` exported from `files/server.ts`.
 - **`upload/validators.ts` (201 lines) has zero consumers** outside the `files/index.ts` barrel, and
   its `getMimeTypeFromExtension` duplicates `@auxx/utils/file`.
 - **`files/types` is a second, undeclared client entry point.** `CLAUDE.md` says client code imports
@@ -929,8 +955,9 @@ sweep that has not happened yet.
   whole front end imports `@auxx/lib/files/types`, which ships runtime values (`ENTITY_CONFIGS`,
   `getEntityConfig`) into the browser bundle. It happens to be server-dependency-free; nothing
   enforces that.
-- **`files/cleanup/` still exists** as a 48-line deprecated forwarder with no runtime callers, and
-  its docstring names a call site that no longer calls it.
+- ~~**`files/cleanup/` still exists**~~ — **CLOSED (7c), by deletion.** Zero runtime callers; the
+  only reference was one lib test, which now exercises `enqueueOrphanedStorageObjectCleanup`
+  directly.
 - **Two `EntityType` unions.** `files/types/entities.ts` (the upload keyspace: 11 values including
   `FILE` and `CUSTOM_FIELD`) and `files/core/types.ts:17` (the attachment keyspace: includes
   `FIELD_VALUE`, `TASK`, `ORDER`, `PRODUCT`, omits `FILE` and `CUSTOM_FIELD`). `persistUpload` casts
@@ -996,6 +1023,7 @@ objects.ts          put / get / stream / head / delete
 locations.ts        createStorageLocation / deleteStorageLocation   (tx-first)
 location-queries.ts getStorageLocation / findStorageLocationByExternalId
 queue-port.ts       createProductionQueuePort
+cache-port.ts       createProductionCachePort
 storage-manager.ts  @deprecated facade — uploadContent + the locationId-addressed composites
 adapters/s3-adapter.ts
 ```
@@ -1013,10 +1041,10 @@ core/           @deprecated facades + image-processing (sharp) + shared types
 
 **Lifecycle**
 ```
-packages/lib/src/files/lifecycle/cleanup-service.ts   the real reapers
-packages/lib/src/files/lifecycle/orphaned-cleanup.ts  orphanedFileCleanupJob, deletedFileCleanupJob
-packages/lib/src/files/lifecycle/quota-cleanup.ts     calculateStorageUsage + the quota jobs
-packages/lib/src/files/cleanup/cleanup-service.ts     @deprecated forwarder, no runtime callers
+packages/lib/src/files/lifecycle/file-reaper.ts           the three sweeps, (db, deps, options)
+packages/lib/src/files/lifecycle/quota-cleanup.ts        calculateStorageUsage(ctx) + plan limits
+packages/lib/src/files/lifecycle/attachment-maintenance.ts  whole-org Attachment sweeps
+packages/lib/src/jobs/maintenance/file-cleanup-jobs.ts   the three cron handlers; binds the pool
 packages/lib/src/jobs/maintenance/orphaned-storage-object-job.ts
 packages/lib/src/jobs/maintenance/generate-thumbnail-job.ts
 packages/lib/src/jobs/maintenance/media-asset-cleanup-job.ts

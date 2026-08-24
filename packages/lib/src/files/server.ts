@@ -1,8 +1,6 @@
 // packages/lib/src/files/server.ts
 // Server orchestration-only exports for file operations (no image processing / sharp).
 
-// Deleted in PR 7c; present here only so this commit stands alone.
-export { cleanupService } from './cleanup/cleanup-service'
 // MediaAsset reads/writes (PR 5a).
 //
 // This re-exports `assets/index.ts` in full rather than the handful of names a

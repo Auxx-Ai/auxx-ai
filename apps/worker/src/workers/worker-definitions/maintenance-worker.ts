@@ -3,11 +3,6 @@ import { dataConnectorRunRetentionJob, dataConnectorStaleSweepJob } from '@auxx/
 import { isDemoEnabled } from '@auxx/lib/demo'
 import { evalRunWatchdog } from '@auxx/lib/evals/worker'
 import {
-  deletedFileCleanupJob,
-  orphanedFileCleanupJob,
-  storageQuotaCheckJob,
-} from '@auxx/lib/files'
-import {
   agentDraftCleanupJob,
   applyScheduledSubscriptionChangesJob,
   approvalOrphanSweeperJob,
@@ -16,6 +11,7 @@ import {
   type DemoSeedJobData,
   dataDeletionJob,
   dataMigrationsJob,
+  deletedFileCleanupJob,
   demoCleanupJob,
   dispatchDigestJob,
   duplicateScanJob,
@@ -31,6 +27,7 @@ import {
   type OrgSeedJobData,
   oauth2TokenRefreshScannerJob,
   orphanedAppBundleCleanupJob,
+  orphanedFileCleanupJob,
   orphanedStorageObjectJob,
   outlookSubscriptionHealthJob,
   quotaResetJob,
@@ -46,6 +43,7 @@ import {
   shopifySeatUsageJob,
   stalePendingMessageSweeperJob,
   storageCleanupJob,
+  storageQuotaCheckJob,
   stripeSubscriptionSyncJob,
   taskDeadlineScannerJob,
   thumbnailCleanupJob,
