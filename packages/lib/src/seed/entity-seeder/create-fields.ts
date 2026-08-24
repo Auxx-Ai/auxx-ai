@@ -9,6 +9,7 @@ import { CATALOG_GROUP_FIELDS } from '../../resources/registry/resources/catalog
 import { CATALOG_ITEM_FIELDS } from '../../resources/registry/resources/catalog-item-fields'
 import { COMPANY_FIELDS } from '../../resources/registry/resources/company-fields'
 import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-fields'
+import { GL_POSTING_FIELDS } from '../../resources/registry/resources/gl-posting-fields'
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
 import { INVOICE_FIELDS } from '../../resources/registry/resources/invoice-fields'
 import { LINE_ITEM_FIELDS } from '../../resources/registry/resources/line-item-fields'
@@ -60,6 +61,7 @@ const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   invoice: INVOICE_FIELDS,
   payment: PAYMENT_FIELDS,
   product: PRODUCT_FIELDS,
+  gl_posting: GL_POSTING_FIELDS,
 }
 
 /**

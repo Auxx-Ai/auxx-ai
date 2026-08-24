@@ -66,6 +66,7 @@ import { migration075TagTemplateKey } from './migrations/075-tag-template-key'
 import { migration100PartCostProvenance } from './migrations/100-part-cost-provenance'
 import { migration101ProductFamily } from './migrations/101-product-family'
 import { migration102CatalogRelabel } from './migrations/102-catalog-relabel'
+import { migration103GlPosting } from './migrations/103-gl-posting'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -177,6 +178,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration100PartCostProvenance,
   migration101ProductFamily,
   migration102CatalogRelabel,
+  migration103GlPosting,
 ]
 
 /**

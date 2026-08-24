@@ -141,6 +141,7 @@ export const ModelTypeValues = [
   'invoice',
   'payment',
   'product',
+  'gl_posting',
 ] as const
 
 /**
@@ -183,6 +184,7 @@ export const ModelTypes = {
   INVOICE: 'invoice',
   PAYMENT: 'payment',
   PRODUCT: 'product',
+  GL_POSTING: 'gl_posting',
 } as const
 
 /**
@@ -468,6 +470,15 @@ export const ModelTypeMeta: Record<
     apiSlug: 'products',
     dbTable: 'EntityInstance',
     hasDetailPage: true,
+  },
+  gl_posting: {
+    label: 'GL Posting',
+    plural: 'GL Postings',
+    icon: 'book-open',
+    color: 'gray',
+    apiSlug: 'gl-postings',
+    dbTable: 'EntityInstance',
+    hasDetailPage: false,
   },
 }
 

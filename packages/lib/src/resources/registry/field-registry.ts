@@ -10,6 +10,7 @@ import { CATALOG_ITEM_FIELDS } from './resources/catalog-item-fields'
 import { COMPANY_FIELDS } from './resources/company-fields'
 import { CONTACT_FIELDS } from './resources/contact-fields'
 import { DATASET_FIELDS } from './resources/dataset-fields'
+import { GL_POSTING_FIELDS } from './resources/gl-posting-fields'
 import { INBOX_FIELDS } from './resources/inbox-fields'
 import { INVOICE_FIELDS } from './resources/invoice-fields'
 import { KB_FIELDS } from './resources/kb-fields'
@@ -130,6 +131,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   invoice: INVOICE_FIELDS,
   payment: PAYMENT_FIELDS,
   product: PRODUCT_FIELDS,
+  gl_posting: GL_POSTING_FIELDS,
 }
 
 /**
