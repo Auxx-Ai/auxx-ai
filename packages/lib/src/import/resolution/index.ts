@@ -60,6 +60,11 @@ export {
   resolveDisplayFieldKey,
   resolveMatchFieldKey,
 } from './relation-policy'
+// CURRENCY denomination for `currency:*` columns, resolved at RUN time
+export {
+  type ResolveColumnCurrencyCodesInput,
+  resolveColumnCurrencyCodes,
+} from './resolve-currency-code'
 // Relation lookup resolution
 export {
   type PendingRelationLookup,
@@ -77,11 +82,17 @@ export {
 } from './resolver-registry'
 // Re-export resolvers
 export {
+  type CurrencyParseFailure,
+  type CurrencyParseOptions,
+  type CurrencyParseResult,
+  type CurrencyParseSuccess,
   isDirectIdRelationLookup,
   isPendingRelationLookup,
   type PendingRelationLookupValue,
+  parseCurrencyMajorToMinor,
   resolveArraySplit,
   resolveBoolean,
+  resolveCurrencyMajor,
   resolveDateCustom,
   resolveDateIso,
   resolveDatetimeCustom,

@@ -9,6 +9,7 @@ import {
   getColumnValues,
   isPendingRelationLookup,
   processColumnValues,
+  resolveColumnCurrencyCodes,
 } from '../../import'
 import type { ResolutionConfig, ResolutionType } from '../../import/types'
 import type { JobContext } from '../types'
@@ -62,6 +63,21 @@ export async function resolveValuesJob(ctx: JobContext<ResolveValuesJobProps>): 
       (p) => p.targetType !== 'skip' && p.targetFieldKey
     )
 
+    // The minor-unit exponent a `currency:*` column scales by comes from the
+    // TARGET FIELD's denomination (field → org → USD), so it is resolved here,
+    // once for the whole mapping, and handed to each column's config. It is
+    // deliberately not read from the stored `resolutionConfig`: an inheriting
+    // field follows `organization.currency`, and a copy frozen at mapping time
+    // would keep scaling by the old exponent. See `resolve-currency-code.ts`.
+    const currencyColumnKeys = mappedProperties
+      .filter((p) => p.resolutionType?.startsWith('currency:') && p.targetFieldKey)
+      .map((p) => p.targetFieldKey as string)
+    const currencyCodes = await resolveColumnCurrencyCodes(db, {
+      organizationId,
+      entityDefinitionId: importJob.importMapping.entityDefinitionId,
+      targetFieldKeys: currencyColumnKeys,
+    })
+
     const totalColumns = mappedProperties.length
     let columnsProcessed = 0
 
@@ -112,6 +128,13 @@ export async function resolveValuesJob(ctx: JobContext<ResolveValuesJobProps>): 
             columnIndex: mappingProp.sourceColumnIndex,
           })
         }
+      }
+
+      const currencyCode = mappingProp.targetFieldKey
+        ? currencyCodes.get(mappingProp.targetFieldKey)
+        : undefined
+      if (currencyCode) {
+        resolutionConfig = { ...resolutionConfig, currencyCode }
       }
 
       // Process values
