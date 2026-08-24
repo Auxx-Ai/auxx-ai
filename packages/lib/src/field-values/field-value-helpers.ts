@@ -1373,19 +1373,27 @@ async function resolveAvatarThumbnailCdnUrl(
   assetId: string
 ): Promise<string | null> {
   try {
-    const { ensureThumbnailPresets } = await import('../files/core/thumbnail-batch')
-    const [result] = await ensureThumbnailPresets({
-      organizationId,
-      userId: userId ?? 'system',
-      source: { type: 'asset', assetId },
-      presets: ['avatar-128'],
-      defaultOptions: { queue: true, visibility: 'PUBLIC' },
-    })
+    const { ensureThumbnailPresets } = await import('../files/thumbnails')
+    const { createProductionQueuePort } = await import('../files/storage/queue-port')
+    const { database, schema } = await import('@auxx/database')
+
+    const ensured = await ensureThumbnailPresets(
+      { db: database, organizationId },
+      { queue: createProductionQueuePort(), now: () => new Date() },
+      {
+        source: { type: 'asset', assetId },
+        createdById: userId ?? 'system',
+        presets: ['avatar-128'],
+        defaultOptions: { visibility: 'PUBLIC' },
+      }
+    )
+    if (ensured.isErr()) throw ensured.error
+
+    const [result] = ensured.value
 
     // Queued: the job owns the write once it has generated the file.
     if (!result || result.status === 'queued' || !result.storageLocationId) return null
 
-    const { database, schema } = await import('@auxx/database')
     const { eq } = await import('drizzle-orm')
     const [location] = await database
       .select({ externalUrl: schema.StorageLocation.externalUrl })

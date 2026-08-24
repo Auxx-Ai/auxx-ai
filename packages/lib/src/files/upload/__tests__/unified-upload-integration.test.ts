@@ -179,7 +179,7 @@ vi.mock('drizzle-orm', async (importOriginal) => ({
 }))
 
 // Mock thumbnail-related modules
-vi.mock('../../core/thumbnail-batch', () => ({
+vi.mock('../../thumbnails', () => ({
   ensureThumbnailPresets: vi.fn().mockResolvedValue([]),
 }))
 

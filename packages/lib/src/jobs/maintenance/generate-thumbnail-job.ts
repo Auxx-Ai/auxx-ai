@@ -3,7 +3,6 @@
 import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
 import { and, eq, isNull } from 'drizzle-orm'
-import { z } from 'zod'
 import {
   type AvatarResolution,
   applyAvatarThumbnailUrl,
@@ -17,34 +16,25 @@ import {
   UnsupportedImageError,
   validateSource,
 } from '../../files/core/thumbnail-processor.worker'
-import type {
-  GenerateThumbnailPayload,
-  PresetKey,
-  ThumbnailMetadata,
-} from '../../files/core/thumbnail-types'
 import { createStorageManager } from '../../files/storage/storage-manager'
+import type { GenerateThumbnailPayload, PresetKey, ThumbnailMetadata } from '../../files/thumbnails'
+import {
+  assertPresetKey,
+  generateThumbnailSchema,
+  loadThumbnail,
+  releaseThumbnailLatch,
+} from '../../files/thumbnails'
 import { createScopedLogger } from '../../logger'
 import type { JobContext } from '../types'
 
 /**
- * Schema for thumbnail generation job payload
+ * Schema for thumbnail generation job payload.
+ *
+ * Defined in `files/thumbnails/thumbnail-job.ts` — the job contract belongs with
+ * the producer's key derivation, not with one of its two consumers — and
+ * re-exported here because `jobs/index.ts` is where the worker registry looks.
  */
-export const generateThumbnailSchema = z.object({
-  orgId: z.string(),
-  userId: z.string(),
-  versionId: z.string(),
-  preset: z.string(),
-  opts: z.object({
-    preset: z.string().optional(),
-    queue: z.boolean().optional(),
-    format: z.enum(['webp', 'jpeg', 'png']).optional(),
-    quality: z.number().optional(),
-    visibility: z.enum(['PUBLIC', 'PRIVATE']).optional(),
-    updateUser: z.boolean().optional(),
-  }),
-  key: z.string(),
-  visibility: z.enum(['PUBLIC', 'PRIVATE']).optional(),
-})
+export { generateThumbnailSchema }
 
 const logger = createScopedLogger('generate-thumbnail-job')
 
@@ -68,18 +58,14 @@ export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
       jobId: job.id,
     })
 
-    // Check if already generated (race condition protection)
-    const [existing] = await db
-      .select()
-      .from(schema.MediaAssetVersion)
-      .where(
-        and(
-          eq(schema.MediaAssetVersion.derivedFromVersionId, versionId),
-          eq(schema.MediaAssetVersion.preset, preset),
-          isNull(schema.MediaAssetVersion.deletedAt)
-        )
-      )
-      .limit(1)
+    // Check if already generated (race condition protection). Same lookup the
+    // enqueuer runs, imported rather than restated so the two cannot diverge on
+    // which index they probe.
+    const existing = await loadThumbnail(
+      { db, organizationId: orgId },
+      versionId,
+      assertPresetKey(preset)
+    )
 
     if (existing) {
       logger.info('Thumbnail already exists, skipping', {
@@ -259,10 +245,13 @@ export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
       return resolvedAvatar
     })
 
-    // Clear processing cache
-    const redis = await getRedisClient()
+    // Release the enqueue latch the production QueuePort took. The key shape is
+    // derived once in `files/thumbnails/presets.ts`; it used to be spelled out
+    // here and in `ThumbnailService`, and a third producer wrote a differently
+    // shaped one that this delete never matched.
+    const redis = await getRedisClient(false)
     if (redis) {
-      await redis.del(`processing:thumb-${key}`)
+      await releaseThumbnailLatch(redis, key)
     }
 
     // Post-commit: push the resolved avatar CDN URL to any listening clients.
@@ -274,10 +263,11 @@ export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
       })
     }
   } catch (error) {
-    // Clear processing cache regardless of outcome
-    const redis = await getRedisClient()
+    // Release the latch regardless of outcome — holding it for the full TTL
+    // would delay the retry BullMQ has already scheduled.
+    const redis = await getRedisClient(false)
     if (redis) {
-      await redis.del(`processing:thumb-${key}`)
+      await releaseThumbnailLatch(redis, key)
     }
 
     // Unsupported / undetectable source types (e.g. `.ico` favicons captured

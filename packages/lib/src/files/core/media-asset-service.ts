@@ -73,6 +73,7 @@ import {
 } from '../assets/version-mutations'
 import type { FilesCtx } from '../ctx'
 import { createS3StoragePort } from '../storage/ports'
+import { createThumbnailCleanupPort } from '../thumbnails/thumbnail-mutations'
 import { BaseService, type DatabaseClient, defaultDatabase } from './base-service'
 import type { ContentAccessible } from './mixins/content-accessible'
 import type { Versioned } from './mixins/versioned'
@@ -642,21 +643,20 @@ export class MediaAssetService
   /**
    * The thumbnail sweep the delete paths take as a parameter.
    *
-   * Still constructs a `ThumbnailService` — but *here*, at the composition site,
-   * rather than inside the delete body where it used to live. When PR 5f lands
-   * `files/thumbnails/`, only this method changes.
+   * PR 5f landed `files/thumbnails/`, so this is now the real
+   * {@link ThumbnailCleanupPort} rather than a lambda that dynamically imported
+   * a service class — which was the whole reason `assets/ports.ts` exists. The
+   * port is built here, at the composition site, and handed down as a parameter.
+   *
+   * `db` is threaded through so a delete running inside a transaction sweeps on
+   * that transaction. Passing `this.db` while inside one is the Tier-1 §1.3
+   * stale-read bug.
    */
   private thumbnails(db: DatabaseClient): ThumbnailCleanupPort {
-    const organizationId = this.requireOrganization()
-    const userId = this.userId || 'system'
-    return {
-      deleteThumbnailsForSource: async (sourceVersionId: string) => {
-        const { ThumbnailService } = await import('./thumbnail-service')
-        await new ThumbnailService(organizationId, userId, db).deleteThumbnailsForSource(
-          sourceVersionId
-        )
-      },
-    }
+    return createThumbnailCleanupPort(this.filesCtx(db), {
+      storage: createS3StoragePort(this.requireOrganization()),
+      now: () => new Date(),
+    })
   }
 
   /**

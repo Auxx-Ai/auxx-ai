@@ -3,8 +3,8 @@
 import { createRequire } from 'node:module'
 import { fileTypeFromBuffer } from 'file-type'
 import { createScopedLogger } from '../../logger'
-import type { PresetKey, ProcessedThumbnail } from './thumbnail-types'
-import { ALLOWED_IMAGE_TYPES, THUMBNAIL_LIMITS, THUMBNAIL_PRESETS } from './thumbnail-types'
+import type { PresetKey, ProcessedThumbnail } from '../thumbnails/presets'
+import { ALLOWED_IMAGE_TYPES, THUMBNAIL_LIMITS, THUMBNAIL_PRESETS } from '../thumbnails/presets'
 
 const logger = createScopedLogger('image-processing')
 

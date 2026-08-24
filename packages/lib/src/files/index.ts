@@ -18,8 +18,6 @@ export { createFilesystemService, FilesystemService } from './core/filesystem-se
 export { createFolderService, FolderService } from './core/folder-service'
 // Media Asset Service - Media-specific operations
 export { createMediaAssetService, MediaAssetService } from './core/media-asset-service'
-// Thumbnail Service - Thumbnail generation and management
-export { ThumbnailService } from './core/thumbnail-service'
 export type {
   GenerateThumbnailPayload,
   PresetConfig,

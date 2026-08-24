@@ -5,7 +5,6 @@ export { cleanupService } from './cleanup/cleanup-service'
 export { AttachmentService, createAttachmentService } from './core/attachment-service'
 export { createFileService, FileService } from './core/file-service'
 export { createMediaAssetService, MediaAssetService } from './core/media-asset-service'
-export { enqueueEnsureThumbnail } from './core/thumbnail-enqueue'
 export type {
   AssetKind,
   AttachmentRole,
@@ -17,8 +16,22 @@ export type {
   UpdateAttachmentRequest,
   UpdateFileRequest,
 } from './core/types'
+// The production `QueuePort`, and the thumbnail enqueue that takes it.
+// `files/thumbnails/` imports no image-processing code — the sharp pipeline
+// lives behind `core/thumbnail-processor.worker.ts` and is reached only by the
+// worker job — so this subpath keeps its "no sharp" promise.
+export { createProductionQueuePort } from './storage/queue-port'
 export type { StorageDownloadParams } from './storage/storage-manager'
 export { createStorageManager, StorageManager } from './storage/storage-manager'
+export type {
+  EnsureThumbnailInput,
+  EnsureThumbnailPresetsInput,
+  PresetKey,
+  ThumbnailOptions,
+  ThumbnailResult,
+  ThumbnailSource,
+} from './thumbnails'
+export { deleteThumbnailsForSource, ensureThumbnail, ensureThumbnailPresets } from './thumbnails'
 export { UploadErrorHandler } from './upload/error-handling'
 export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
 // Upload/session orchestration (no image processing)

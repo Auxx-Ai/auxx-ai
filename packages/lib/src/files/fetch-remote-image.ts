@@ -3,8 +3,8 @@
 import { createScopedLogger } from '@auxx/logger'
 import { detectImageType } from './core/image-processing'
 import { createMediaAssetService } from './core/media-asset-service'
-import { ALLOWED_IMAGE_TYPES } from './core/thumbnail-types'
 import { createStorageManager } from './storage/storage-manager'
+import { ALLOWED_IMAGE_TYPES } from './thumbnails/presets'
 
 /**
  * Shared "fetch a remote image URL → store it as a MediaAsset" pipeline.

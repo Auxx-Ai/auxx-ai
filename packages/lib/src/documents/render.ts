@@ -6,7 +6,7 @@ import type { ReactElement } from 'react'
 import { createElement } from 'react'
 import { FileService } from '../files/core/file-service'
 import { MediaAssetService } from '../files/core/media-asset-service'
-import { THUMBNAIL_LIMITS } from '../files/core/thumbnail-types'
+import { THUMBNAIL_LIMITS } from '../files/thumbnails/presets'
 import type { DocumentPdfPayload } from './payload'
 import { getDocumentType } from './registry'
 

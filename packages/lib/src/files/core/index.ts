@@ -10,16 +10,9 @@
  * - Folder: Hierarchical folder management
  */
 
-export { AttachmentService } from './attachment-service'
-// Export base service and mixins for advanced usage
-export { BaseService, type Constructor } from './base-service'
-// Export all core services
-export { createFileService, FileService } from './file-service'
-export { createFolderService, FolderService } from './folder-service'
-export { createMediaAssetService, MediaAssetService } from './media-asset-service'
-export type { ContentAccessible, Versioned } from './mixins'
-export { ThumbnailService } from './thumbnail-service'
-// Export thumbnail types
+// Thumbnails moved to `files/thumbnails/` in PR 5f. `ThumbnailService` is gone;
+// the types and presets are re-exported from their new home so this barrel keeps
+// naming one place.
 export type {
   GenerateThumbnailPayload,
   PresetConfig,
@@ -28,15 +21,21 @@ export type {
   ThumbnailMetadata,
   ThumbnailOptions,
   ThumbnailResult,
-  ThumbnailServiceConfig,
-  ThumbnailSet,
   ThumbnailSource,
-} from './thumbnail-types'
+} from '../thumbnails/presets'
 export {
   ALLOWED_IMAGE_TYPES,
   THUMBNAIL_LIMITS,
   THUMBNAIL_PRESETS,
-} from './thumbnail-types'
+} from '../thumbnails/presets'
+export { AttachmentService } from './attachment-service'
+// Export base service and mixins for advanced usage
+export { BaseService, type Constructor } from './base-service'
+// Export all core services
+export { createFileService, FileService } from './file-service'
+export { createFolderService, FolderService } from './folder-service'
+export { createMediaAssetService, MediaAssetService } from './media-asset-service'
+export type { ContentAccessible, Versioned } from './mixins'
 // Export all types
 export type {
   AssetDownloadInfo,

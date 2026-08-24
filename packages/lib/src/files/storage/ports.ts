@@ -30,7 +30,7 @@ import type {
   StorageLocationRef,
 } from '../adapters/base-adapter'
 import type { S3Adapter } from '../adapters/s3-adapter'
-import type { GenerateThumbnailPayload } from '../core/thumbnail-types'
+import type { GenerateThumbnailPayload } from '../thumbnails/presets'
 import type { UploadPreparedConfig } from '../upload/init-types'
 import { resolveProviderAuth } from './auth'
 import { buildExternalUrl } from './buckets'

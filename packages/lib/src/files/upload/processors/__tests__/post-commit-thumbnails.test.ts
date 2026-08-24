@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * `db.transaction`, and only a savepoint has been released by that point
  * (`docs/files-upload-architecture-guide.md` §10.3, plan §1.3).
  *
- * `ensureThumbnailPresets` builds a `ThumbnailService` on the GLOBAL `db`, a
+ * `ensureThumbnailPresets` used to build a `ThumbnailService` on the GLOBAL `db`, a
  * different connection, so it cannot see the uncommitted rows: the first upload
  * throws `Asset not found` (swallowed), and a RE-upload finds the asset with its
  * PRE-transaction `currentVersionId` and returns `ready` against the OLD
@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { ensureThumbnailPresets } = vi.hoisted(() => ({ ensureThumbnailPresets: vi.fn() }))
 
-vi.mock('../../../core/thumbnail-batch', () => ({ ensureThumbnailPresets }))
+vi.mock('../../../thumbnails', () => ({ ensureThumbnailPresets }))
 
 vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({

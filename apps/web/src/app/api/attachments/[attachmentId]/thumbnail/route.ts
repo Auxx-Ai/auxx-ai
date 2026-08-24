@@ -83,18 +83,26 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return new Response('Not found', { status: 404 })
     }
 
-    // Check if thumbnail exists or queue generation
-    const { ThumbnailService } = await import('@auxx/lib/files')
-    const thumbnailService = new ThumbnailService(organizationId, session.user.id)
+    // Check if thumbnail exists or queue generation. PR 5f: a function taking a
+    // `FilesCtx` and a `QueuePort`, not a service that binds the global `db` at
+    // construction. The source stays `attachment` — `resolveThumbnailSource`
+    // walks the four-step asset/file-version ladder.
+    const { database } = await import('@auxx/database')
+    const { createProductionQueuePort, ensureThumbnail } = await import('@auxx/lib/files/server')
 
-    // Generate/ensure thumbnail based on the attachment itself.
-    // The ThumbnailService understands 'attachment' and resolves to the correct asset/file version.
-    const thumbnailResult = await thumbnailService.ensureThumbnail(
-      { type: 'attachment', attachmentId },
-      { preset: 'comment-preview', queue: true } // Use queue for better performance
+    const ensured = await ensureThumbnail(
+      { db: database, organizationId },
+      { queue: createProductionQueuePort(), now: () => new Date() },
+      {
+        source: { type: 'attachment', attachmentId },
+        createdById: session.user.id,
+        opts: { preset: 'comment-preview' },
+      }
     )
+    if (ensured.isErr()) throw ensured.error
+    const thumbnailResult = ensured.value
 
-    if (thumbnailResult.status === 'ready' || thumbnailResult.status === 'generated') {
+    if (thumbnailResult.status === 'ready') {
       // Get download ref for thumbnail using StorageManager
       const { createStorageManager } = await import('@auxx/lib/files/server')
       const storageManager = createStorageManager(organizationId)

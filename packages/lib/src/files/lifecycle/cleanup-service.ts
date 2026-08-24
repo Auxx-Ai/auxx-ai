@@ -6,7 +6,8 @@ import { eq, exists, not, sql } from 'drizzle-orm'
 import { createFileService } from '../core/file-service'
 import { purgeMediaAssets } from '../core/media-asset-purge'
 import { createMediaAssetService } from '../core/media-asset-service'
-import { ThumbnailService } from '../core/thumbnail-service'
+import { createS3StoragePort } from '../storage/ports'
+import { deleteThumbnailsForSource } from '../thumbnails'
 import type { AttachmentIntegrityReport } from './attachment-maintenance'
 import {
   validateAttachmentIntegrity as auditAttachmentIntegrity,
@@ -463,11 +464,18 @@ export async function cleanupAssetThumbnails(
       return { deleted: 0, failed: 0 }
     }
 
-    const thumbnailService = new ThumbnailService(asset.organizationId, 'system', database)
+    // PR 5f: the sweep is a function taking `ctx` + a storage port, not a
+    // service bound to the global `db` at construction.
+    const ctx = { db: database, organizationId: asset.organizationId }
+    const deps = {
+      storage: createS3StoragePort(asset.organizationId),
+      now: () => new Date(),
+    }
 
     if (versionId) {
       // Clean up thumbnails for specific version
-      await thumbnailService.deleteThumbnailsForSource(versionId)
+      const swept = await deleteThumbnailsForSource(ctx, deps, versionId)
+      if (swept.isErr()) throw swept.error
       deletedCount = 1
     } else {
       // Clean up all thumbnails for the asset with organization scoping
@@ -477,7 +485,8 @@ export async function cleanupAssetThumbnails(
       })
 
       for (const version of versions) {
-        await thumbnailService.deleteThumbnailsForSource(version.id)
+        const swept = await deleteThumbnailsForSource(ctx, deps, version.id)
+        if (swept.isErr()) throw swept.error
         deletedCount++
       }
     }
