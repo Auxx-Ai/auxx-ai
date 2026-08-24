@@ -131,6 +131,11 @@ export const createUISlice: StateCreator<
       state.uploading = false
       state.errors = []
 
+      // Orchestration bookkeeping. These were module-level `Map`s that outlived every
+      // reset, so an in-flight guard from one test blocked the next one's upload.
+      state.sessionRuns = {}
+      state.uploaderRuns = {}
+
       // Keep config but reset error deduplication
       state.recentErrorHashes = {}
     })

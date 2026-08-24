@@ -124,6 +124,29 @@ export interface SessionState {
   // REMOVED: organizationId, userId (auth handled server-side)
 }
 
+/**
+ * One session's in-flight upload run.
+ *
+ * Per-session orchestration state used to live in module-level `Map`s that survived
+ * every `reset()`; keeping it here means a reset really resets it and a test can read
+ * it instead of inferring it.
+ */
+export interface SessionRun {
+  /** The run in flight. A second `startUpload` for the same session joins this. */
+  promise: Promise<BatchUploadResult>
+}
+
+/**
+ * One uploader's in-flight session creation. Keyed by uploader rather than session
+ * because the session id is what the promise is still producing.
+ */
+export interface UploaderRun {
+  /** The `createSessionWithGuard` call in flight; concurrent callers join it. */
+  createPromise: Promise<string>
+  /** Aborts that creation when the uploader unmounts. */
+  abortController: AbortController
+}
+
 export interface UploadError {
   id: string
   message: string
@@ -175,6 +198,11 @@ export interface UploadState {
   // Per-file abort tracking for presigned uploads
   inFlight: Record<string, { abort?: () => void }>
   // REMOVED: paused (offline pause/resume functionality)
+
+  /** In-flight upload runs, keyed by session id. */
+  sessionRuns: Record<string, SessionRun>
+  /** In-flight session creations, keyed by uploader id. */
+  uploaderRuns: Record<string, UploaderRun>
 
   /**
    * How the uploader reaches the network. Defaults to the real HTTP transport;
@@ -235,10 +263,15 @@ export interface UploadActions {
      *  not failures; see the orchestration slice. */
     skippedDuplicates: string[]
   }>
-  startUpload: () => Promise<BatchUploadResult>
+  /** Upload one session's pending files; defaults to the active session. */
+  startUpload: (sessionId?: string) => Promise<BatchUploadResult>
+  /** @deprecated Alias for `startUpload(sessionId)`. */
   startUploadForSession: (sessionId: string) => Promise<BatchUploadResult>
   createSessionWithGuard: (uploaderId: string, options: CreateSessionOptions) => Promise<string>
-  cancelUpload: () => void
+  /** Drop an uploader's in-flight session creation and abort its controller. */
+  cleanupUploader: (uploaderId: string) => void
+  /** Cancel one session's upload; defaults to the active session. */
+  cancelUpload: (sessionId?: string) => void
   validateAndAddFiles: (
     files: File[],
     sessionId?: string

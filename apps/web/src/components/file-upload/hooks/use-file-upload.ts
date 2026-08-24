@@ -5,7 +5,7 @@ import { generateId } from '@auxx/utils/generateId'
 import * as React from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { FileState } from '../stores'
-import { cleanupUploader, useUploadStore } from '../stores'
+import { useUploadStore } from '../stores'
 import type { EntityUploadConfig } from '../types'
 
 /**
@@ -390,7 +390,10 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
       uploadSummary.completedFiles + uploadSummary.failedFiles === uploadSummary.totalFiles
 
     if (!done) return
-    const id = useUploadStore.getState().activeSessionId
+    // THIS uploader's session, never the store-wide `activeSessionId`: a second
+    // uploader mounting or uploading moves that global, and reading it here fired
+    // one uploader's `onComplete` against another uploader's files.
+    const id = activeSessionId
     if (!id) return
 
     const store = useUploadStore.getState()
@@ -421,6 +424,7 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
     })
   }, [
     onComplete,
+    activeSessionId,
     uploadSummary?.uploading,
     uploadSummary?.totalFiles,
     uploadSummary?.completedFiles,
@@ -542,6 +546,12 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
     [retryFile, retrySession, activeSessionId]
   )
 
+  const handleCancelUpload = React.useCallback(() => {
+    // Scope the cancel to this uploader's session so it cannot abort a second
+    // uploader's in-flight files.
+    cancelUpload(activeSessionId ?? undefined)
+  }, [cancelUpload, activeSessionId])
+
   const handleCloseSession = React.useCallback(() => {
     if (activeSessionId) closeSession(activeSessionId)
   }, [closeSession, activeSessionId])
@@ -573,8 +583,8 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
         // No need to return anything with Immer
       })
 
-      // Clean up module-level promises and abort controllers
-      cleanupUploader(uploaderId)
+      // Drop this uploader's in-flight session creation (store state since PR 8b)
+      useUploadStore.getState().cleanupUploader(uploaderId)
 
       // If session was exclusive to this uploader, consider marking it for cleanup
       if (sessionId) {
@@ -598,7 +608,7 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
     addFiles: handleAddFiles,
     removeFile,
     startUpload: handleStartUpload,
-    cancelUpload,
+    cancelUpload: handleCancelUpload,
     retry: handleRetry,
     clearErrors,
 

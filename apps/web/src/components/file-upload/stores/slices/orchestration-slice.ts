@@ -7,31 +7,20 @@ import type { UploadTransport } from '../../transport'
 import { httpUploadTransport, isUploadTransportError, resolveServerId } from '../../transport'
 import { validateFile } from '../../utils'
 import { isFileInFlight } from '../file-status'
-import type { CreateSessionOptions, UploadStore } from '../types'
+import type { CreateSessionOptions, SessionRun, UploaderRun, UploadStore } from '../types'
 
 /**
- * Module-level promise maps for concurrency control (outside component lifecycle)
+ * A fresh empty batch result. A function, not a shared constant: the value is handed
+ * to callers and can be assigned into a session (`uploadResult`), where Immer would
+ * freeze it — a shared frozen object would then leak that freeze to every later caller.
  */
-const sessionCreatePromises = new Map<string, Promise<string>>()
-const uploadPromises = new Map<string, Promise<BatchUploadResult>>()
-const activeRequests = new Map<string, AbortController>()
-
-/**
- * Clean up helper for uploader-specific resources
- */
-export const cleanupUploader = (uploaderId: string) => {
-  // Cancel any in-flight requests
-  const controller = activeRequests.get(uploaderId)
-  if (controller) {
-    controller.abort()
-    activeRequests.delete(uploaderId)
-  }
-
-  // Clear promises
-  sessionCreatePromises.delete(uploaderId)
-
-  // Note: uploadPromises are keyed by sessionId, need different cleanup
-}
+const emptyBatchResult = (): BatchUploadResult => ({
+  totalFiles: 0,
+  successCount: 0,
+  failedCount: 0,
+  results: [],
+  overallProgress: 0,
+})
 
 /**
  * Orchestration slice - the system's "brain"
@@ -55,6 +44,27 @@ export interface OrchestrationSlice {
 
   // Per-file abort tracking
   inFlight: Record<string, { abort?: () => void }>
+
+  /**
+   * One entry per session with an upload run in flight, keyed by session id.
+   *
+   * This used to be a module-level `Map`, which outlived every `reset()` — so a test
+   * that started an upload poisoned the next one, and `cleanupUploader` carried a
+   * comment admitting it could not clear the half keyed by session. As store state it
+   * is cleared by `reset()`, inspectable from a test, and impossible to leak across
+   * store instances.
+   */
+  sessionRuns: Record<string, SessionRun>
+
+  /**
+   * One entry per uploader with a session creation in flight, keyed by uploader id
+   * (the session does not exist yet, so it cannot be keyed by session). Replaces the
+   * module-level `sessionCreatePromises` and `activeRequests` maps.
+   */
+  uploaderRuns: Record<string, UploaderRun>
+
+  /** Drop an uploader's in-flight session creation and abort its controller. */
+  cleanupUploader: (uploaderId: string) => void
 
   // Core Orchestration Actions
   initializeUpload: (options: InitializeUploadOptions) => Promise<string>
@@ -80,9 +90,17 @@ export interface OrchestrationSlice {
      */
     skippedDuplicates: string[]
   }>
-  startUpload: () => Promise<BatchUploadResult>
+  /**
+   * Upload the pending files of one session. `sessionId` defaults to
+   * {@link SessionSlice.activeSessionId} for the callers that have only ever had one
+   * session; dispatch never mutates it. Concurrent calls for the same session join the
+   * run already in flight instead of uploading its files twice.
+   */
+  startUpload: (sessionId?: string) => Promise<BatchUploadResult>
+  /** @deprecated Alias for `startUpload(sessionId)`; kept for callers outside this module. */
   startUploadForSession: (sessionId: string) => Promise<BatchUploadResult>
-  cancelUpload: () => void
+  /** Cancel one session's upload. Defaults to the active session. */
+  cancelUpload: (sessionId?: string) => void
 
   // Session creation with concurrency guard
   createSessionWithGuard: (uploaderId: string, options: CreateSessionOptions) => Promise<string>
@@ -121,11 +139,20 @@ export const createEnhancedOrchestrationSlice: StateCreator<
   // State
   uploading: false,
   inFlight: {} as Record<string, { abort?: () => void }>,
+  sessionRuns: {} as Record<string, SessionRun>,
+  uploaderRuns: {} as Record<string, UploaderRun>,
   transport: httpUploadTransport,
 
   setTransport: (transport: UploadTransport) => {
     set((state) => {
       state.transport = transport
+    })
+  },
+
+  cleanupUploader: (uploaderId: string) => {
+    get().uploaderRuns[uploaderId]?.abortController.abort()
+    set((state) => {
+      delete state.uploaderRuns[uploaderId]
     })
   },
 
@@ -139,7 +166,7 @@ export const createEnhancedOrchestrationSlice: StateCreator<
     const state = get()
 
     // Check if session creation is already in progress for this uploader
-    const existingPromise = sessionCreatePromises.get(uploaderId)
+    const existingPromise = state.uploaderRuns[uploaderId]?.createPromise
     if (existingPromise) {
       return existingPromise
     }
@@ -152,7 +179,6 @@ export const createEnhancedOrchestrationSlice: StateCreator<
 
     // Create abort controller for this operation
     const abortController = new AbortController()
-    activeRequests.set(uploaderId, abortController)
 
     // Create new session with guard
     const createPromise = (async () => {
@@ -217,13 +243,18 @@ export const createEnhancedOrchestrationSlice: StateCreator<
         throw error
       } finally {
         // Always clear the promise and controller
-        sessionCreatePromises.delete(uploaderId)
-        activeRequests.delete(uploaderId)
+        set((state) => {
+          delete state.uploaderRuns[uploaderId]
+        })
       }
     })()
 
-    // Store the promise
-    sessionCreatePromises.set(uploaderId, createPromise)
+    // Register the guard. Safe in this order: the IIFE above suspends on its first
+    // `await` before reaching the `finally` that clears the entry, and this `set` runs
+    // in the same synchronous turn.
+    set((state) => {
+      state.uploaderRuns[uploaderId] = { createPromise, abortController }
+    })
 
     return createPromise
   },
@@ -570,21 +601,17 @@ export const createEnhancedOrchestrationSlice: StateCreator<
    * Presigned upload flow - uploads files directly to storage
    * Uses per-file presigned sessions and direct storage uploads
    */
-  startUpload: async (): Promise<BatchUploadResult> => {
-    const { activeSessionId, sessions, files, addError, entityConfig, config } = get()
+  startUpload: async (sessionId?: string): Promise<BatchUploadResult> => {
+    const { activeSessionId, sessions, addError, config } = get()
     const maxConcurrency = Math.max(1, config?.maxConcurrentUploads ?? 3)
 
-    // Get session or lazily create one
-    const sessionId = activeSessionId
-    const session = sessionId ? sessions[sessionId] : null
+    // Dispatch is by argument. `activeSessionId` is only a default for the callers that
+    // have one session, and is never reassigned to route an upload — two uploaders in
+    // one tab used to fight over it, and whichever finished last restored a stale value.
+    const targetSessionId = sessionId ?? activeSessionId
+    const session = targetSessionId ? sessions[targetSessionId] : undefined
 
-    // Gather files eligible to upload (pending or failed) from the store
-    const allFiles = Object.values(files)
-    const fileIdsToAttach = allFiles
-      .filter((f) => f && (f.status === 'pending' || f.status === 'failed'))
-      .map((f) => f.id)
-
-    if (!session) {
+    if (!targetSessionId || !session) {
       // No fallback to global config - require explicit session creation
       addError({
         message:
@@ -593,323 +620,286 @@ export const createEnhancedOrchestrationSlice: StateCreator<
         recoverable: true,
         details: {
           activeSessionId,
-          fileCount: fileIdsToAttach.length,
+          requestedSessionId: sessionId,
           hint: 'This usually happens when session creation failed. Check console for errors.',
         },
       })
       console.error(
-        'startUpload called without active session. Sessions must be created explicitly via createSession().'
+        'startUpload called without a session. Sessions must be created explicitly via createSession().'
       )
-      return { totalFiles: 0, successCount: 0, failedCount: 0, results: [], overallProgress: 0 }
+      return emptyBatchResult()
     }
 
-    // Get files to upload from session
-    const toUpload = session.fileIds
-      .map((id) => get().files[id])
-      .filter((f) => f && (f.status === 'pending' || f.status === 'failed'))
+    // One run per session: a second start joins the run already in flight rather than
+    // uploading the same files twice.
+    const running = get().sessionRuns[targetSessionId]?.promise
+    if (running) return running
 
-    if (toUpload.length === 0) {
-      addError({ message: 'No files to upload', code: 'NO_FILES', recoverable: true })
-      return { totalFiles: 0, successCount: 0, failedCount: 0, results: [], overallProgress: 0 }
-    }
+    const run = async (): Promise<BatchUploadResult> => {
+      // Get files to upload from session
+      const toUpload = session.fileIds
+        .map((id) => get().files[id])
+        .filter((f) => f && (f.status === 'pending' || f.status === 'failed'))
 
-    set((state) => {
-      state.uploading = true
-    })
+      if (toUpload.length === 0) {
+        addError({ message: 'No files to upload', code: 'NO_FILES', recoverable: true })
+        return emptyBatchResult()
+      }
 
-    // Simple concurrency pool
-    let fileIndex = 0
-    const successes: string[] = []
-    const failures: Array<{ id: string; error: string }> = []
+      // The pool's cursor stays a closure local: it is created per run, and there is at
+      // most one run per session, so two sessions cannot interleave through it.
+      let fileIndex = 0
+      const successes: string[] = []
+      const failures: Array<{ id: string; error: string }> = []
 
-    const processNextFile = async (): Promise<void> => {
-      while (true) {
-        const file = toUpload[fileIndex++]
-        if (!file?.file) return
+      const processNextFile = async (): Promise<void> => {
+        while (true) {
+          const file = toUpload[fileIndex++]
+          if (!file?.file) return
 
-        const mimeType = file.mimeType || file.file?.type || 'application/octet-stream'
+          const mimeType = file.mimeType || file.file?.type || 'application/octet-stream'
 
-        try {
-          // 1. Create presigned session (per file)
-          const presignedConfig = await get().transport.createSession({
-            fileName: file.name,
-            mimeType,
-            expectedSize: file.size ?? 0,
-            provider: 'S3',
-            entityType: session.entityType,
-            entityId: session.entityId,
-            // Forward client session metadata to server
-            metadata: session.metadata || {},
-          })
+          try {
+            // 1. Create presigned session (per file)
+            const presignedConfig = await get().transport.createSession({
+              fileName: file.name,
+              mimeType,
+              expectedSize: file.size ?? 0,
+              provider: 'S3',
+              entityType: session.entityType,
+              entityId: session.entityId,
+              // Forward client session metadata to server
+              metadata: session.metadata || {},
+            })
 
-          // Store the server-side session ID. This is an UPLOAD SESSION nanoid, not a
-          // server record id — `serverIdKind` says so, so a consumer that needs a real
-          // `MediaAsset` id can tell it apart (see §11.3).
-          set((state) => {
-            const fs = state.files[file.id]
-            if (fs) {
-              fs.serverFileId = presignedConfig.sessionId
-              fs.metadata = { ...fs.metadata, serverIdKind: 'session' }
-            }
-          })
-
-          // 2. Upload file directly to storage
-          get().updateFileStatus(file.id, 'uploading')
-
-          // Mark first stage as active when upload starts
-          get().updateFileProgress(file.id, {
-            stages: file.stages?.map((s, idx) => ({
-              ...s,
-              status: idx === 0 ? 'active' : 'pending',
-            })),
-          })
-
-          const { abort, promise } = get().transport.uploadObject({
-            file: file.file,
-            config: presignedConfig,
-            onProgress: (progress) => {
-              get().updateFileProgress(file.id, {
-                fileId: file.id,
-                filename: file.name,
-                overallProgress: progress.percentage,
-                uploadProgress: progress.percentage,
-                bytesUploaded: progress.loaded,
-                totalBytes: progress.total,
-                // Don't pass stages: [] to avoid clearing stages
-              })
-            },
-          })
-
-          // Track for cancellation
-          get().setInFlight(file.id, abort)
-
-          const uploadResult = await promise
-          get().clearInFlight(file.id)
-          get().updateFileStatus(file.id, 'processing')
-
-          // Mark first stage as completed and second as active when switching to processing
-          get().updateFileProgress(file.id, {
-            stages: file.stages?.map((s, idx) => ({
-              ...s,
-              status: idx === 0 ? 'completed' : idx === 1 ? 'active' : 'pending',
-              progress: idx === 0 ? 100 : 0,
-            })),
-          })
-
-          // 3. Complete the upload
-          const completionData = await get().transport.completeSession(presignedConfig.sessionId, {
-            storageKey: presignedConfig.storageKey, // Use storage key from session creation
-            size: file.size ?? 0,
-            mimeType,
-            etag: uploadResult.etag,
-            uploadId: uploadResult.uploadId,
-            parts: uploadResult.parts,
-          })
-
-          // Which kind of server record the completion actually produced — see
-          // `transport/server-id.ts` and guide §11.3.
-          const { serverId, kind: serverIdKind } = resolveServerId(completionData)
-
-          // Atomic update: set serverFileId, url, and status together
-          // This prevents race conditions where onComplete reads state before serverFileId is set
-          set((state) => {
-            const f = state.files[file.id]
-            if (f) {
-              // Store the server record id (asset first, file second) as serverFileId
-              if (serverId) {
-                f.serverFileId = serverId
+            // Store the server-side session ID. This is an UPLOAD SESSION nanoid, not a
+            // server record id — `serverIdKind` says so, so a consumer that needs a real
+            // `MediaAsset` id can tell it apart (see §11.3).
+            set((state) => {
+              const fs = state.files[file.id]
+              if (fs) {
+                fs.serverFileId = presignedConfig.sessionId
+                fs.metadata = { ...fs.metadata, serverIdKind: 'session' }
               }
-              f.metadata = { ...f.metadata, serverIdKind }
-              // Store URL for previews
-              if (completionData?.url) {
-                f.url = completionData.url
+            })
+
+            // 2. Upload file directly to storage
+            get().updateFileStatus(file.id, 'uploading')
+
+            // Mark first stage as active when upload starts
+            get().updateFileProgress(file.id, {
+              stages: file.stages?.map((s, idx) => ({
+                ...s,
+                status: idx === 0 ? 'active' : 'pending',
+              })),
+            })
+
+            const { abort, promise } = get().transport.uploadObject({
+              file: file.file,
+              config: presignedConfig,
+              onProgress: (progress) => {
+                get().updateFileProgress(file.id, {
+                  fileId: file.id,
+                  filename: file.name,
+                  overallProgress: progress.percentage,
+                  uploadProgress: progress.percentage,
+                  bytesUploaded: progress.loaded,
+                  totalBytes: progress.total,
+                  // Don't pass stages: [] to avoid clearing stages
+                })
+              },
+            })
+
+            // Track for cancellation
+            get().setInFlight(file.id, abort)
+
+            const uploadResult = await promise
+            get().clearInFlight(file.id)
+            get().updateFileStatus(file.id, 'processing')
+
+            // Mark first stage as completed and second as active when switching to processing
+            get().updateFileProgress(file.id, {
+              stages: file.stages?.map((s, idx) => ({
+                ...s,
+                status: idx === 0 ? 'completed' : idx === 1 ? 'active' : 'pending',
+                progress: idx === 0 ? 100 : 0,
+              })),
+            })
+
+            // 3. Complete the upload
+            const completionData = await get().transport.completeSession(
+              presignedConfig.sessionId,
+              {
+                storageKey: presignedConfig.storageKey, // Use storage key from session creation
+                size: file.size ?? 0,
+                mimeType,
+                etag: uploadResult.etag,
+                uploadId: uploadResult.uploadId,
+                parts: uploadResult.parts,
               }
-              // Set status to completed
-              f.status = 'completed'
-              f.progress = 100
-              // Update stages
-              if (f.stages) {
-                f.stages = f.stages.map((s) => ({ ...s, status: 'completed', progress: 100 }))
+            )
+
+            // Which kind of server record the completion actually produced — see
+            // `transport/server-id.ts` and guide §11.3.
+            const { serverId, kind: serverIdKind } = resolveServerId(completionData)
+
+            // Atomic update: set serverFileId, url, and status together
+            // This prevents race conditions where onComplete reads state before serverFileId is set
+            set((state) => {
+              const f = state.files[file.id]
+              if (f) {
+                // Store the server record id (asset first, file second) as serverFileId
+                if (serverId) {
+                  f.serverFileId = serverId
+                }
+                f.metadata = { ...f.metadata, serverIdKind }
+                // Store URL for previews
+                if (completionData?.url) {
+                  f.url = completionData.url
+                }
+                // Set status to completed
+                f.status = 'completed'
+                f.progress = 100
+                // Update stages
+                if (f.stages) {
+                  f.stages = f.stages.map((s) => ({ ...s, status: 'completed', progress: 100 }))
+                }
               }
-            }
-          })
-          successes.push(file.id)
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Upload failed'
-          // For a transport failure `message` is now the server's own prose — the
-          // storage-quota upgrade prompt, the 422 policy reason — instead of the
-          // `"Session create failed (403)"` placeholder the inline fetch produced.
-          get().addError({
-            message,
-            code: isUploadTransportError(error) ? error.code : undefined,
-            details: isUploadTransportError(error) ? error.details : undefined,
-            fileId: file.id,
-            sessionId: sessionId!,
-            recoverable: true,
-          })
-          // `setFileError`, not `updateFileStatus('failed')`: the latter leaves
-          // `FileState.error` unset (its own comment says "caller should also set
-          // error ... separately" and no caller ever did), so every failed upload
-          // reached `BatchUploadResult.results[].error` and `toUploadResult` as
-          // `undefined` — a second place the real message died.
-          get().setFileError(file.id, message)
-          failures.push({ id: file.id, error: message })
-          get().clearInFlight(file.id)
+            })
+            successes.push(file.id)
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Upload failed'
+            // For a transport failure `message` is now the server's own prose — the
+            // storage-quota upgrade prompt, the 422 policy reason — instead of the
+            // `"Session create failed (403)"` placeholder the inline fetch produced.
+            get().addError({
+              message,
+              code: isUploadTransportError(error) ? error.code : undefined,
+              details: isUploadTransportError(error) ? error.details : undefined,
+              fileId: file.id,
+              sessionId: targetSessionId,
+              recoverable: true,
+            })
+            // `setFileError`, not `updateFileStatus('failed')`: the latter leaves
+            // `FileState.error` unset (its own comment says "caller should also set
+            // error ... separately" and no caller ever did), so every failed upload
+            // reached `BatchUploadResult.results[].error` and `toUploadResult` as
+            // `undefined` — a second place the real message died.
+            get().setFileError(file.id, message)
+            failures.push({ id: file.id, error: message })
+            get().clearInFlight(file.id)
+          }
         }
+      }
+
+      // Start concurrent processing pool
+      const poolSize = Math.min(maxConcurrency, toUpload.length)
+      await Promise.all(new Array(poolSize).fill(0).map(() => processNextFile()))
+
+      const finalFiles = session.fileIds.map((id) => get().files[id]).filter((f) => f !== undefined)
+      return {
+        totalFiles: finalFiles.length,
+        successCount: successes.length,
+        failedCount: failures.length,
+        results: finalFiles.map((f) => ({
+          fileId: f.id,
+          filename: f.name,
+          success: f.status === 'completed',
+          error: f.error,
+          url: f.url,
+          checksum: f.checksum,
+        })),
+        overallProgress: get().calculateOverallProgress(targetSessionId),
       }
     }
 
-    // Start concurrent processing pool
-    const poolSize = Math.min(maxConcurrency, toUpload.length)
-    await Promise.all(new Array(poolSize).fill(0).map(() => processNextFile()))
-
-    // Finalize
+    // Start the run, then publish it. `run()` cannot reach its own bookkeeping before
+    // this `set` — its cleanup lives out here, not inside the promise.
+    const promise = run()
     set((state) => {
-      state.uploading = false
+      state.sessionRuns[targetSessionId] = { promise }
+      state.uploading = true
+      const target = state.sessions[targetSessionId]
+      if (target) {
+        target.uploading = true
+        target.uploadStartTime = Date.now()
+      }
     })
 
-    const finalFiles = session.fileIds.map((id) => get().files[id]).filter((f) => f !== undefined)
-    return {
-      totalFiles: finalFiles.length,
-      successCount: successes.length,
-      failedCount: failures.length,
-      results: finalFiles.map((f) => ({
-        fileId: f.id,
-        filename: f.name,
-        success: f.status === 'completed',
-        error: f.error,
-        url: f.url,
-        checksum: f.checksum,
-      })),
-      overallProgress: get().calculateOverallProgress(sessionId!),
+    let result: BatchUploadResult | undefined
+    let failure: string | undefined
+    try {
+      result = await promise
+      return result
+    } catch (error) {
+      failure = error instanceof Error ? error.message : 'Upload failed'
+      throw error
+    } finally {
+      set((state) => {
+        delete state.sessionRuns[targetSessionId]
+        // The global flag is derived from the runs, not stamped: another session may
+        // still be uploading, and clearing it unconditionally stopped its spinner.
+        state.uploading = Object.keys(state.sessionRuns).length > 0
+        const target = state.sessions[targetSessionId]
+        if (target) {
+          // Always cleared, including on the "nothing pending" early return, which used
+          // to leave the session stuck reading `uploading: true` forever.
+          target.uploading = false
+          if (result) target.uploadResult = result
+          if (failure) target.uploadError = failure
+        }
+      })
     }
   },
 
   /**
-   * Upload with concurrency guard - uploads files for a specific session
+   * @deprecated Use `startUpload(sessionId)`.
+   *
+   * Kept only so callers outside this module keep working. It no longer reassigns
+   * `activeSessionId` around the call: the per-session guard, the session bookkeeping
+   * and the run record all live in `startUpload` now.
    */
-  startUploadForSession: async (sessionId: string): Promise<BatchUploadResult> => {
-    // Check if upload is already in progress for this session
-    const existingPromise = uploadPromises.get(sessionId)
-    if (existingPromise) {
-      console.log('[startUploadForSession] Upload already in progress, returning existing promise')
-      return existingPromise
-    }
-
-    const uploadPromise = (async () => {
-      try {
-        // Mark session as uploading (per-session state)
-        set((state) => {
-          const session = state.sessions[sessionId]
-          if (session) {
-            session.uploading = true
-            session.uploadStartTime = Date.now()
-          }
-        })
-
-        // Get files for this session
-        const freshState = get()
-        const session = freshState.sessions[sessionId]
-        if (!session) {
-          throw new Error('Session not found')
-        }
-
-        const filesToUpload = session.fileIds
-          .map((id) => freshState.files[id])
-          .filter((f) => f && (f.status === 'pending' || f.status === 'failed'))
-
-        if (filesToUpload.length === 0) {
-          return {
-            totalFiles: 0,
-            successCount: 0,
-            failedCount: 0,
-            results: [],
-            overallProgress: 0,
-          }
-        }
-
-        // Use the existing startUpload logic but scoped to this session
-        const currentActiveSession = freshState.activeSessionId
-
-        // Temporarily set this session as active for startUpload
-        set((state) => {
-          state.activeSessionId = sessionId
-        })
-
-        try {
-          const result = await get().startUpload()
-
-          // Store result in session for future reference
-          set((state) => {
-            const session = state.sessions[sessionId]
-            if (session) {
-              session.uploading = false
-              session.uploadResult = result
-            }
-          })
-
-          return result
-        } finally {
-          // Restore previous active session if different
-          if (currentActiveSession !== sessionId) {
-            set((state) => {
-              state.activeSessionId = currentActiveSession
-            })
-          }
-        }
-      } catch (error) {
-        // Handle error
-        set((state) => {
-          const session = state.sessions[sessionId]
-          if (session) {
-            session.uploading = false
-            session.uploadError = error instanceof Error ? error.message : 'Upload failed'
-          }
-        })
-
-        throw error
-      } finally {
-        // Clear the promise
-        uploadPromises.delete(sessionId)
-      }
-    })()
-
-    // Store the promise
-    uploadPromises.set(sessionId, uploadPromise)
-
-    return uploadPromise
-  },
+  startUploadForSession: (sessionId: string): Promise<BatchUploadResult> =>
+    get().startUpload(sessionId),
 
   /**
    * Enhanced upload cancellation with per-file abort tracking
    */
-  cancelUpload: () => {
+  cancelUpload: (sessionId?: string) => {
     const { activeSessionId, sessions, inFlight } = get()
+    const targetSessionId = sessionId ?? activeSessionId
+    const session = targetSessionId ? sessions[targetSessionId] : undefined
 
-    // Abort all in-flight uploads (per-file)
-    Object.values(inFlight).forEach((handle) => handle.abort?.())
+    // Abort only this session's files. Aborting every handle on the page cancelled a
+    // second uploader's in-flight files as collateral. With no session at all there is
+    // nothing to scope to, so fall back to the old blanket abort.
+    const abortIds = session ? session.fileIds : Object.keys(inFlight)
+    abortIds.forEach((fileId) => inFlight[fileId]?.abort?.())
     set((state) => {
-      state.inFlight = {}
+      abortIds.forEach((fileId) => {
+        delete state.inFlight[fileId]
+      })
     })
 
-    if (activeSessionId && sessions[activeSessionId]) {
+    if (session && targetSessionId) {
       // Cancel all files in session
-      sessions[activeSessionId].fileIds.forEach((fileId) => {
+      session.fileIds.forEach((fileId) => {
         get().cancelFile(fileId)
       })
 
       // Update session status
       set((state) => {
-        const session = state.sessions[activeSessionId]
-        if (session) {
-          session.status = 'cancelled'
-          session.updatedAt = new Date()
+        const target = state.sessions[targetSessionId]
+        if (target) {
+          target.status = 'cancelled'
+          target.updatedAt = new Date()
         }
       })
     }
 
     set((state) => {
-      state.uploading = false
+      // Derived, not stamped: a different session may still have a run in flight.
+      state.uploading = Object.keys(state.sessionRuns).length > 0
     })
   },
 
@@ -937,10 +927,9 @@ export const createEnhancedOrchestrationSlice: StateCreator<
       }
     })
 
-    // Restart upload if this is the active session
-    if (sessionId === get().activeSessionId) {
-      await get().startUpload()
-    }
+    // Restart this session's upload. It used to run only when the session happened to
+    // be the active one, so retrying any other session reset the statuses and stopped.
+    await get().startUpload(sessionId)
   },
 
   /**

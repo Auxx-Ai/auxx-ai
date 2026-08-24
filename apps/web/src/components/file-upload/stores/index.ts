@@ -23,12 +23,14 @@ export type { UISlice } from './slices/ui-slice'
 export type {
   CreateSessionOptions,
   FileState,
+  SessionRun,
   SessionState,
   UploadActions,
   UploadConfig,
   UploadError,
+  UploaderRun,
   UploadState,
   UploadStore,
 } from './types'
 // Main store
-export { cleanupUploader, cleanupUploadStore, useUploadStore } from './upload-store'
+export { cleanupUploadStore, useUploadStore } from './upload-store'
