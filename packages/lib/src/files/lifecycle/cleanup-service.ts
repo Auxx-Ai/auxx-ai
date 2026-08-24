@@ -3,11 +3,11 @@
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq, exists, not, sql } from 'drizzle-orm'
-import { createFileService } from '../core/file-service'
+import { deleteAsset, findExpiredAssets } from '../assets'
 import { purgeMediaAssets } from '../core/media-asset-purge'
-import { createMediaAssetService } from '../core/media-asset-service'
+import { findOrphanedFolderFiles } from '../folder-files'
 import { createS3StoragePort } from '../storage/ports'
-import { deleteThumbnailsForSource } from '../thumbnails'
+import { createThumbnailCleanupPort, deleteThumbnailsForSource } from '../thumbnails'
 import type { AttachmentIntegrityReport } from './attachment-maintenance'
 import {
   validateAttachmentIntegrity as auditAttachmentIntegrity,
@@ -237,13 +237,12 @@ export async function deleteOrphanedFiles(
   logger.info('Deleting orphaned files')
 
   if (organizationId) {
-    // Use FileService to find orphaned files
-    const fileService = createFileService(organizationId)
-    const orphanedFiles = await fileService.findOrphanedFiles()
+    const orphaned = await findOrphanedFolderFiles({ db: database, organizationId })
+    if (orphaned.isErr()) throw orphaned.error
 
-    logger.info(`Found ${orphanedFiles.length} orphaned files`)
+    logger.info(`Found ${orphaned.value.length} orphaned files`)
 
-    const fileIds = orphanedFiles.map((f) => f.id)
+    const fileIds = orphaned.value.map((f) => f.id)
     return deleteFilesByIds(fileIds, options)
   } else {
     // Fallback to DB query for cross-organization cleanup
@@ -283,20 +282,43 @@ export async function deleteExpiredFiles(
   const allErrors: Error[] = []
 
   if (organizationId) {
-    // Use services to find expired items
-    const assetService = createMediaAssetService(organizationId)
-    const expiredAssets = await assetService.findExpired(24) // 24 hours
+    const ctx = { db: database, organizationId }
+    // 24 hours. The cutoff is computed here rather than inside the query, so the
+    // read never touches the clock itself.
+    const createdBefore = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const expired = await findExpiredAssets(ctx, createdBefore)
+    if (expired.isErr()) throw expired.error
+    const expiredAssets = expired.value
 
     logger.info(`Found ${expiredAssets.length} expired assets`)
 
     if (expiredAssets.length > 0) {
-      const assetIds = expiredAssets.map((a) => a.id)
+      const storage = createS3StoragePort(organizationId)
       // Note: deleteFilesByIds only handles files, we'd need a similar function for assets
       // For now, delete assets directly
       for (const asset of expiredAssets) {
         try {
           if (!options.markAsDeleted && options.deleteFromDatabase) {
-            await assetService.delete(asset.id)
+            // One transaction per asset, matching the legacy per-asset
+            // `MediaAssetService.delete` — a failure must not roll the whole
+            // sweep back. `deleteAsset` takes a real `Transaction`, and every
+            // nested read inside it runs on `tx`, never on the outer pool.
+            await database.transaction(async (tx) => {
+              const txCtx = { ...ctx, db: tx }
+              const result = await deleteAsset(
+                tx,
+                txCtx,
+                {
+                  now: () => new Date(),
+                  thumbnails: createThumbnailCleanupPort(txCtx, {
+                    storage,
+                    now: () => new Date(),
+                  }),
+                },
+                asset.id
+              )
+              if (result.isErr()) throw result.error
+            })
             totalDeleted++
           }
         } catch (error) {

@@ -1,7 +1,7 @@
 // packages/lib/src/email/inbound/body-ingest.service.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { defaultDatabase } from '../../files/core/base-service'
+import { defaultDatabase } from '../../files/default-database'
 import { findStorageLocationByExternalId } from '../../files/storage/location-queries'
 import { createStorageManager } from '../../files/storage/storage-manager'
 import type { IngestedBodyMeta } from './ingest-types'

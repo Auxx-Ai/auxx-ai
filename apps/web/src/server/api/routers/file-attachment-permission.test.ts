@@ -24,24 +24,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * effect: the gate must land ahead of them.
  *
  * Since PR 5c the file branch is the free function `getFolderFileDownloadRef`
- * rather than `createFileService(...).getDownloadRefForVersion(...)`, so "no
- * file was read" is asserted on the function, not on a constructor.
+ * rather than `createFileService(...).getDownloadRefForVersion(...)`, and since
+ * the facade deletion the asset branch is `getAssetDownloadRefWithMeta` rather
+ * than `createMediaAssetService(...).getDownloadRefForVersion(...)`. So "no file
+ * was read" is asserted on two functions, and on no constructor at all.
  */
 
 const {
   getCapabilities,
   planGate,
   getFolderFileDownloadRef,
-  getAssetDownloadRef,
-  createMediaAssetService,
+  getAssetDownloadRefWithMeta,
   dbSelect,
   dbWhere,
 } = vi.hoisted(() => ({
   getCapabilities: vi.fn(),
   planGate: vi.fn(),
   getFolderFileDownloadRef: vi.fn(),
-  getAssetDownloadRef: vi.fn(),
-  createMediaAssetService: vi.fn(),
+  getAssetDownloadRefWithMeta: vi.fn(),
   dbSelect: vi.fn(),
   dbWhere: vi.fn(),
 }))
@@ -66,19 +66,13 @@ vi.mock('@auxx/lib/permissions', async () => {
   }
 })
 
-// `createFilesystemService` went with PR 5e — `fileRouter` reaches the
-// filesystem through free functions on the `/server` subpath below, so the only
-// binding still taken from this barrel is the media-asset facade.
-vi.mock('@auxx/lib/files', () => ({
-  createMediaAssetService,
-}))
-
 // `fileRouter` imports the `folder-files/` and `filesystem/` functions from this
 // subpath and `~/server/lib/files-ctx` imports `createS3StoragePort` from it.
 // Vitest validates NAMED bindings at link time, so every one has to be present
 // here even though this suite only drives the download accessor.
 vi.mock('@auxx/lib/files/server', () => ({
   getFolderFileDownloadRef,
+  getAssetDownloadRefWithMeta,
   createS3StoragePort: vi.fn(() => ({})),
   copyFolderFile: vi.fn(),
   createFileVersion: vi.fn(),
@@ -230,10 +224,9 @@ beforeEach(() => {
   planGate.mockReset().mockResolvedValue(undefined)
   // The function returns a neverthrow `Result`; the router unwraps it.
   getFolderFileDownloadRef.mockReset().mockResolvedValue(ok(downloadRef))
-  getAssetDownloadRef.mockReset().mockResolvedValue({ ...downloadRef, filename: 'logo.png' })
-  createMediaAssetService.mockReset().mockReturnValue({
-    getDownloadRefForVersion: getAssetDownloadRef,
-  })
+  getAssetDownloadRefWithMeta
+    .mockReset()
+    .mockResolvedValue(ok({ ...downloadRef, filename: 'logo.png' }))
   dbWhere.mockReset().mockResolvedValue([])
   // `where()` is awaited directly by `resolveFileRefs` and `.limit(1)`-chained by
   // `assertDatasetDocumentAssetAccess`, so the fake must be both thenable and
@@ -251,7 +244,7 @@ beforeEach(() => {
 /** Neither download path may run for a denied caller. */
 function expectNoFileReads() {
   expect(getFolderFileDownloadRef).not.toHaveBeenCalled()
-  expect(createMediaAssetService).not.toHaveBeenCalled()
+  expect(getAssetDownloadRefWithMeta).not.toHaveBeenCalled()
 }
 
 describe('file.getAttachmentPreviewRef — the live-download-ref hole', () => {
@@ -310,11 +303,14 @@ describe('file.getAttachmentPreviewRef — the live-download-ref hole', () => {
       disposition: 'attachment',
     })
     expect(result).toMatchObject({ filename: 'logo.png' })
-    expect(createMediaAssetService).toHaveBeenCalledWith(ORG_ID, USER_ID)
-    expect(getAssetDownloadRef).toHaveBeenCalledWith(ASSET_ID, {
-      version: 'current',
-      disposition: 'attachment',
-    })
+    // Same `toFilesCtx(ctx)` guarantee as the file branch: the scope comes from
+    // the session, never from `input`, and no actor is passed at all.
+    expect(getAssetDownloadRefWithMeta).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: ORG_ID }),
+      expect.anything(),
+      ASSET_ID,
+      { version: 'current', disposition: 'attachment' }
+    )
     expect(getFolderFileDownloadRef).not.toHaveBeenCalled()
   })
 
@@ -350,10 +346,12 @@ describe('file.getAttachmentPreviewRef — the `datasetDocument` scope', () => {
       scope: { kind: 'datasetDocument', documentId: DOC_ID },
     })
     expect(result).toMatchObject({ filename: 'logo.png' })
-    expect(getAssetDownloadRef).toHaveBeenCalledWith(ASSET_ID, {
-      version: 'current',
-      disposition: 'inline',
-    })
+    expect(getAssetDownloadRefWithMeta).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: ORG_ID }),
+      expect.anything(),
+      ASSET_ID,
+      { version: 'current', disposition: 'inline' }
+    )
   })
 
   it('does NOT run the files plan gate on the dataset branch', async () => {

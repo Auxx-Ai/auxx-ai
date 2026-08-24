@@ -1,21 +1,6 @@
 // packages/lib/src/files/server.ts
 // Server orchestration-only exports for file operations (no image processing / sharp).
 
-export { cleanupService } from './cleanup/cleanup-service'
-export { AttachmentService, createAttachmentService } from './core/attachment-service'
-export { createFileService, FileService } from './core/file-service'
-export { createMediaAssetService, MediaAssetService } from './core/media-asset-service'
-export type {
-  AssetKind,
-  AttachmentRole,
-  CreateAssetRequest,
-  CreateAttachmentRequest,
-  CreateFileRequest,
-  FolderTreeNode,
-  UpdateAssetRequest,
-  UpdateAttachmentRequest,
-  UpdateFileRequest,
-} from './core/types'
 // MediaAsset reads/writes (PR 5a).
 //
 // This re-exports `assets/index.ts` in full rather than the handful of names a
@@ -25,8 +10,11 @@ export type {
 // `assets/index.ts` is already a curated surface (it is explicit-named for
 // exactly this reason), so re-exporting it wholesale adds no unvetted API.
 export type {
+  AssetContentDeps,
   AssetDeleteDeps,
+  AssetDownloadRefWithMeta,
   AssetPage,
+  AssetVersionAddress,
   AssetVersionDeleteDeps,
   AssetVersionSelector,
   AssetVersionWithLocation,
@@ -37,6 +25,7 @@ export type {
   CreateAssetWithVersionInput,
   CreatedAssetVersion,
   DownloadDeps,
+  GetAssetContentOptions,
   GetAssetDownloadRefOptions,
   ListAssetsOptions,
   ThumbnailCleanupPort,
@@ -50,21 +39,28 @@ export {
   createAssetFromFolderFile,
   createAssetVersion,
   createAssetWithVersion,
+  DEFAULT_ASSET_DOWNLOAD_TTL_MS,
   deleteAsset,
   deleteAssetVersion,
   findAssetsByKind,
   findExpiredAssets,
   getAsset,
+  getAssetContent,
   getAssetCurrentVersion,
   getAssetDownloadRef,
+  getAssetDownloadRefWithMeta,
   getAssetVersionByNumber,
   getAssetVersions,
   getAssetWithRelations,
   getLatestAssetVersion,
   listAssets,
+  loadCurrentVersion,
   requireAsset,
   resolveAssetDownloadRef,
+  resolveAssetObjectRef,
+  resolveAssetVersion,
   restoreAssetVersion,
+  streamAssetContent,
   updateAsset,
   updateAssetContent,
 } from './assets'
@@ -81,6 +77,7 @@ export type {
   UpdateAttachmentInput,
 } from './attachments'
 export {
+  assertExactlyOneTarget,
   createAttachment,
   createStorageManagerLocationPort,
   deleteAttachment,
@@ -95,6 +92,22 @@ export {
   resolveAttachmentVersion,
   updateAttachment,
 } from './attachments'
+export { cleanupService } from './cleanup/cleanup-service'
+// The four service facades (`AttachmentService`, `FileService`,
+// `FolderService`, `MediaAssetService`) and `BaseService` were DELETED in PR Y.
+// Every export below is a function taking a `FilesCtx`; there is no class left
+// to construct. `apps/web` builds its ctx with `~/server/lib/files-ctx`.
+export type {
+  AssetKind,
+  AttachmentRole,
+  CreateAssetRequest,
+  CreateAttachmentRequest,
+  CreateFileRequest,
+  FolderTreeNode,
+  UpdateAssetRequest,
+  UpdateAttachmentRequest,
+  UpdateFileRequest,
+} from './core/types'
 // The ambient contract every `files/` function is written against. Exported so
 // `apps/web`'s single `toFilesCtx` helper can name the type it returns.
 export type { FilesCtx, FilesDeps, FilesDepsSlice } from './ctx'
@@ -119,48 +132,6 @@ export {
   renameFilesystemItem,
   summarizeMoveOutcomes,
 } from './filesystem'
-// Folder reads/writes written to the `files/ctx.ts` contract (PR 5d).
-// `folderRouter` calls these directly -- there is no `FolderService` between
-// them. NOTE: `FolderTreeNode` is deliberately NOT re-exported here;
-// `./core/types` already exports that name through this module.
-export type {
-  CopyFolderInput,
-  CreateFolderInput,
-  FileVersionCopyPort,
-  FolderCopyDeps,
-  FolderCounts,
-  FolderDetail,
-  FolderPage,
-  FolderSearchHit,
-  FolderUsage,
-  FolderWriteDeps,
-  ListFoldersOptions,
-  SearchFoldersOptions,
-  UpdateFolderInput,
-} from './folders'
-export {
-  copyFolder,
-  createFolder,
-  deleteFolder,
-  ensureFolderPath,
-  getFolder,
-  getFolderAncestors,
-  getFolderCounts,
-  getFolderDescendants,
-  getFolderTree,
-  getFolderUsage,
-  getFolderWithRelations,
-  getSubfolders,
-  isFolderNameAvailable,
-  listFolders,
-  mergeFolders,
-  moveFolder,
-  permanentlyDeleteFolder,
-  renameFolder,
-  restoreFolder,
-  searchFolders,
-  updateFolder,
-} from './folders'
 // FolderFile reads/writes written to the `files/ctx.ts` contract (PR 5c).
 // `fileRouter` calls these directly — there is no `FileService` between them.
 export type {
@@ -213,17 +184,59 @@ export {
   streamFolderFileContent,
   updateFolderFile,
 } from './folder-files'
+// Folder reads/writes written to the `files/ctx.ts` contract (PR 5d).
+// `folderRouter` calls these directly -- there is no `FolderService` between
+// them. NOTE: `FolderTreeNode` is deliberately NOT re-exported here;
+// `./core/types` already exports that name through this module.
+export type {
+  CopyFolderInput,
+  CreateFolderInput,
+  FileVersionCopyPort,
+  FolderCopyDeps,
+  FolderCounts,
+  FolderDetail,
+  FolderPage,
+  FolderSearchHit,
+  FolderUsage,
+  FolderWriteDeps,
+  ListFoldersOptions,
+  SearchFoldersOptions,
+  UpdateFolderInput,
+} from './folders'
+export {
+  copyFolder,
+  createFolder,
+  deleteFolder,
+  ensureFolderPath,
+  getFolder,
+  getFolderAncestors,
+  getFolderCounts,
+  getFolderDescendants,
+  getFolderTree,
+  getFolderUsage,
+  getFolderWithRelations,
+  getSubfolders,
+  isFolderNameAvailable,
+  listFolders,
+  mergeFolders,
+  moveFolder,
+  permanentlyDeleteFolder,
+  renameFolder,
+  restoreFolder,
+  searchFolders,
+  updateFolder,
+} from './folders'
 // The production `StoragePort`. Routers need it to build the `deps` slice the
 // download functions take; constructing one per request is cheap because the
 // port shares the single cached S3 adapter.
 export type { StoragePort } from './storage/ports'
 export { createS3StoragePort } from './storage/ports'
+export { presignPart } from './storage/presign'
 // The production `QueuePort`, and the thumbnail enqueue that takes it.
 // `files/thumbnails/` imports no image-processing code — the sharp pipeline
 // lives behind `core/thumbnail-processor.worker.ts` and is reached only by the
 // worker job — so this subpath keeps its "no sharp" promise.
 export { createProductionQueuePort } from './storage/queue-port'
-export { presignPart } from './storage/presign'
 export type { StorageDownloadParams } from './storage/storage-manager'
 export { createStorageManager, StorageManager } from './storage/storage-manager'
 export type {
@@ -240,6 +253,12 @@ export {
   ensureThumbnail,
   ensureThumbnailPresets,
 } from './thumbnails'
+// The upload orchestration the three API routes used to inline (PR 4e).
+// Dispatch is the handler records in `upload/handlers/`, reached through these
+// two -- the `ProcessorRegistry` hierarchy was deleted in PR 4d and had no
+// consumer outside the module it lived in.
+export type { CompletedUpload, CompleteUploadDeps, CompleteUploadInput } from './upload/complete'
+export { completeUpload } from './upload/complete'
 // Upload error classification (PR 4c). Pure -- no db, no redis, no clock.
 // Replaces the substring ladder that answered 413 "upgrade your plan" for any
 // message containing `limit` and 401 for any message containing `token`.
@@ -257,12 +276,6 @@ export {
   uploadUnauthorizedError,
   uploadValidationError,
 } from './upload/errors'
-// The upload orchestration the three API routes used to inline (PR 4e).
-// Dispatch is the handler records in `upload/handlers/`, reached through these
-// two -- the `ProcessorRegistry` hierarchy was deleted in PR 4d and had no
-// consumer outside the module it lived in.
-export type { CompletedUpload, CompleteUploadDeps, CompleteUploadInput } from './upload/complete'
-export { completeUpload } from './upload/complete'
 export type { PreparedUpload, PrepareUploadDeps } from './upload/prepare'
 export { prepareUpload } from './upload/prepare'
 // Upload/session orchestration (no image processing)

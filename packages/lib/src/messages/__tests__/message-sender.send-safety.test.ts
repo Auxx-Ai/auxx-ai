@@ -150,14 +150,6 @@ vi.mock('../message-reconciler.service', () => ({
   },
 }))
 
-vi.mock('../../files/core/file-service', () => ({
-  FileService: class {},
-}))
-
-vi.mock('../../files/core/media-asset-service', () => ({
-  MediaAssetService: class {},
-}))
-
 vi.mock('../../usage/create-usage-guard', () => ({
   createUsageGuard: vi.fn(async () => null),
 }))

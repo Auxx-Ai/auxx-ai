@@ -3,10 +3,11 @@
 /**
  * The ambient contract every `files/` function is written against.
  *
- * This file exists because `files/core/base-service.ts` binds its database at
- * module scope (`constructor(orgId?, userId?, db = defaultDatabase())`), which
- * makes it impossible to hand a function a transaction, a different pool, or a
- * stub. Everything below is the seam that replaces it.
+ * This file exists because `files/core/base-service.ts` bound its database at
+ * construction (`constructor(orgId?, userId?, db = defaultDatabase())`), which
+ * made it impossible to hand a function a transaction, a different pool, or a
+ * stub. Everything below is the seam that replaced it — and as of PR Y that
+ * class, and the four facades over it, are deleted.
  *
  * ## The three signature shapes
  *

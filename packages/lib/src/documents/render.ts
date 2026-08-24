@@ -4,8 +4,10 @@ import type { DocumentProps } from '@react-pdf/renderer'
 import { renderToBuffer } from '@react-pdf/renderer'
 import type { ReactElement } from 'react'
 import { createElement } from 'react'
-import { FileService } from '../files/core/file-service'
-import { MediaAssetService } from '../files/core/media-asset-service'
+import { getAssetContent } from '../files/assets/content'
+import { defaultDatabase } from '../files/default-database'
+import { getFolderFileContent } from '../files/folder-files'
+import { createS3StoragePort } from '../files/storage/ports'
 import { THUMBNAIL_LIMITS } from '../files/thumbnails/presets'
 import type { DocumentPdfPayload } from './payload'
 import { getDocumentType } from './registry'
@@ -42,9 +44,9 @@ async function downscalePhotoForPdf(buffer: Buffer): Promise<Buffer> {
 /**
  * Resolve one payload photo ref (`"asset:<id>"` | `"file:<id>"`) to downscaled JPEG bytes.
  * `asset:` refs are `MediaAsset` rows (uploaded via the FILE field's asset-upload path);
- * `file:` refs are `FolderFile` rows (picked from the file manager) — both services implement
- * the same `ContentAccessible.getContent(id) => Buffer` shape (`files/core/mixins`), so the
- * only branch is which service to construct. Returns `null` on any failure (deleted asset,
+ * `file:` refs are `FolderFile` rows (picked from the file manager) — each library exposes one
+ * content read (`getAssetContent` / `getFolderFileContent`) with the same `(ctx, deps, id)`
+ * shape, so the only branch is which one to call. Returns `null` on any failure (deleted asset,
  * unreadable image, transient storage error) — callers skip the ref silently, same fail-soft
  * contract as the logo above.
  *
@@ -61,16 +63,17 @@ export async function resolvePhotoRef(organizationId: string, ref: string): Prom
     const kind = ref.slice(0, colonIdx)
     const id = ref.slice(colonIdx + 1)
 
-    let raw: Buffer
-    if (kind === 'asset') {
-      raw = await new MediaAssetService(organizationId).getContent(id)
-    } else if (kind === 'file') {
-      raw = await new FileService(organizationId).getContent(id)
-    } else {
-      return null
-    }
+    if (kind !== 'asset' && kind !== 'file') return null
 
-    return await downscalePhotoForPdf(raw)
+    const ctx = { db: defaultDatabase(), organizationId }
+    const deps = { storage: createS3StoragePort(organizationId) }
+    const content =
+      kind === 'asset'
+        ? await getAssetContent(ctx, deps, id)
+        : await getFolderFileContent(ctx, deps, id)
+    if (content.isErr()) return null
+
+    return await downscalePhotoForPdf(content.value)
   } catch {
     return null
   }
@@ -118,7 +121,7 @@ export interface RenderDocumentPdfOptions {
 /**
  * Render a quote/invoice payload to a PDF buffer (money MQ2 build spec §B.2/§C.3; MI1 §H.1
  * adds the invoice branch). Loads the org's logo bytes server-side via
- * `MediaAssetService.getContent` — react-pdf's `<Image>` always receives a Buffer, never a
+ * `getAssetContent` — react-pdf's `<Image>` always receives a Buffer, never a
  * URL (02-document-settings.md renderer contract: signed-URL/public-bucket headaches inside
  * the worker). A missing/deleted logo asset renders the document without a logo rather than
  * failing the whole PDF.
@@ -131,12 +134,12 @@ export async function renderDocumentPdf(
   let logoBytes: Buffer | null = null
 
   if (logoAssetId) {
-    try {
-      const mediaAssetService = new MediaAssetService(payload.organizationId)
-      logoBytes = await mediaAssetService.getContent(logoAssetId)
-    } catch {
-      logoBytes = null
-    }
+    const logo = await getAssetContent(
+      { db: defaultDatabase(), organizationId: payload.organizationId },
+      { storage: createS3StoragePort(payload.organizationId) },
+      logoAssetId
+    )
+    logoBytes = logo.isOk() ? logo.value : null
   }
 
   const photoBytes = await resolvePayloadPhotoBytes(payload)

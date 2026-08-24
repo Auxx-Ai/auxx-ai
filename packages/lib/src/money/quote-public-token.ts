@@ -14,7 +14,9 @@ import type {
   DocumentBusinessSettings,
 } from '../documents/resolve-settings'
 import { FieldValueService } from '../field-values/field-value-service'
-import { MediaAssetService } from '../files/core/media-asset-service'
+import { getAsset } from '../files/assets'
+import { getAssetContent } from '../files/assets/content'
+import { createS3StoragePort } from '../files/storage/ports'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { quietSession } from '../resources/crud/write-origin'
 import { getPaymentAccount } from './payments/account-state'
@@ -372,7 +374,7 @@ export interface PublicQuotePdfResult {
  * reuses the same render-or-reuse engine `prepareDocumentEmail`/the Download PDF button call
  * (`ensureDocumentPdf`, documents MQ2 build spec §C.2) so the public page never renders its own
  * copy, and reads the resulting `MediaAsset`'s bytes straight off storage via
- * `MediaAssetService.getContent` (the `message-sender.service.ts` attachment-read precedent).
+ * `getAssetContent` (the `message-sender.service.ts` attachment-read precedent).
  * Returns `null` on an unknown/stale token — the route's `notFound()` trigger.
  */
 export async function getQuotePdfByToken(token: string): Promise<PublicQuotePdfResult | null> {
@@ -401,14 +403,16 @@ export async function getQuotePdfByToken(token: string): Promise<PublicQuotePdfR
     actorId: systemUserId,
   })
 
-  const mediaAssetService = new MediaAssetService(organizationId, systemUserId)
-  const [asset, buffer] = await Promise.all([
-    mediaAssetService.getWithRelations(assetId),
-    mediaAssetService.getContent(assetId),
+  const ctx = { db: database, organizationId }
+  const [assetResult, contentResult] = await Promise.all([
+    getAsset(ctx, assetId),
+    getAssetContent(ctx, { storage: createS3StoragePort(organizationId) }, assetId),
   ])
+  if (contentResult.isErr()) throw contentResult.error
+  const asset = assetResult.isOk() ? assetResult.value : null
 
   return {
-    buffer,
+    buffer: contentResult.value,
     filename: asset?.name ?? fileName,
     contentType: asset?.mimeType ?? 'application/pdf',
   }

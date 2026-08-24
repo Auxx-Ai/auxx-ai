@@ -1,7 +1,6 @@
 // apps/web/src/server/api/routers/file.ts
 
 import { schema } from '@auxx/database'
-import { createMediaAssetService } from '@auxx/lib/files'
 import type { MoveEntryOutcome } from '@auxx/lib/files/server'
 import {
   copyFolderFile,
@@ -11,6 +10,7 @@ import {
   executeMoveEntry,
   findFolderFilesByExtension,
   findFolderFilesByMimeType,
+  getAssetDownloadRefWithMeta,
   getCompleteFileSystem,
   getFolderFileCurrentVersion,
   getFolderFileDownloadRef,
@@ -471,7 +471,7 @@ export const fileRouter = createTRPCRouter({
   getAttachmentPreviewRef: capabilityProcedure
     .input(getAttachmentPreviewRefSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
+      const { organizationId } = ctx.session
 
       if (input.scope.kind === 'datasetDocument') {
         if (input.type !== 'asset') {
@@ -507,18 +507,12 @@ export const fileRouter = createTRPCRouter({
 
           return result
         } else if (input.type === 'asset') {
-          // STILL ON THE FACADE. `input.version` accepts a version NUMBER, and
-          // `getAssetDownloadRef` currently takes only a `versionId` — unlike
-          // its `folder-files` twin above, which resolves
-          // `'current' | 'latest' | number` itself. Resolving the number here
-          // would put a second copy of that ladder in a router. Swap this for
-          // `getAssetDownloadRef(ctx, deps, id, { version, disposition })` once
-          // the accessor grows the selector.
-          const assetService = createMediaAssetService(organizationId, userId)
-          const result = await assetService.getDownloadRefForVersion(input.id, {
-            version: input.version,
-            disposition: input.disposition,
-          })
+          const result = unwrap(
+            await getAssetDownloadRefWithMeta(toFilesCtx(ctx), toFilesDownloadDeps(ctx), input.id, {
+              version: input.version,
+              disposition: input.disposition,
+            })
+          )
 
           logger.info('Asset preview reference retrieved', {
             assetId: input.id,

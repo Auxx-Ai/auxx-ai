@@ -3,6 +3,7 @@
 import type { NextRequest } from 'next/server'
 export const runtime = 'nodejs'
 
+import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { headers } from 'next/headers'
 import { auth } from '~/auth/server'
@@ -33,15 +34,25 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return new Response('Not found', { status: 404 })
     }
 
-    // STILL ON THE FACADE. `files/attachments/` has no equivalent of
-    // `getDownloadRef`'s pinned/unpinned ladder yet; swap this for
-    // `getAttachmentDownloadRef(ctx, deps, attachmentId)` once it lands.
-    // (Lazy import to avoid bundling sharp unnecessarily.)
-    const { AttachmentService } = await import('@auxx/lib/files/server')
-    const attachmentService = new AttachmentService(organizationId, session.user.id)
+    // Lazy import to keep the server-only files bundle (sharp, bullmq) out of
+    // this route's static graph.
+    const { createS3StoragePort, createStorageManagerLocationPort, getAttachmentDownloadRef } =
+      await import('@auxx/lib/files/server')
 
-    // Get download reference (handles both files and assets)
-    const downloadRef = await attachmentService.getDownloadRef(attachmentId)
+    // No `userId` on the way in: `files/` functions take no actor
+    // (`files/ctx.ts`), and the only reader was the deleted service constructor.
+    // The gate above is what authorizes this read.
+    const ref = await getAttachmentDownloadRef(
+      { db: database, organizationId },
+      {
+        storage: createS3StoragePort(organizationId),
+        now: () => new Date(),
+        locations: createStorageManagerLocationPort(organizationId),
+      },
+      attachmentId
+    )
+    if (ref.isErr()) throw ref.error
+    const downloadRef = ref.value
 
     // Handle based on download ref type
     if (downloadRef.type === 'url') {

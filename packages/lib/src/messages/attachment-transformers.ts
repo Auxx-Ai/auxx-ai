@@ -1,6 +1,6 @@
 // packages/lib/src/messages/attachment-transformers.ts
 
-import type { GroupedAttachmentInfo } from '../files/core/attachment-service'
+import type { GroupedAttachmentInfo } from '../files/attachments'
 
 /**
  * Attachment info structure for frontend compatibility.
