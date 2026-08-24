@@ -52,6 +52,73 @@ function pickSelectOptions(options: unknown): SelectOption[] | undefined {
   return undefined
 }
 
+/** What {@link splitTaxonomyKeys} pulled out of an options patch. */
+interface SplitOptionsPatch {
+  /**
+   * `undefined` — the patch did not address the flag at all.
+   * `true` / `false` — store the user's decision.
+   * `null` — clear the stored decision back to the type default.
+   */
+  allowNewOptions: boolean | null | undefined
+  /** Everything else the patch carried, i.e. the patch minus the taxonomy keys. */
+  rest: unknown
+}
+
+/**
+ * Split the TAXONOMY settings out of an options patch before anything else
+ * reads it.
+ *
+ * `allowNewOptions` lives at the envelope level (a sibling of `options` / `ai` /
+ * `file`), so without this split it would be just another key in an
+ * object-shaped patch — and "object-shaped" is exactly what
+ * {@link patchAddressesAi} used to key off. Removing it first is what makes the
+ * flag ORTHOGONAL: adding it to a patch, or taking it away, cannot change what
+ * that patch does to any other block of the envelope.
+ */
+function splitTaxonomyKeys(options: unknown): SplitOptionsPatch {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) {
+    return { allowNewOptions: undefined, rest: options }
+  }
+  const { allowNewOptions, ...rest } = options as { allowNewOptions?: boolean | null }
+  return { allowNewOptions, rest }
+}
+
+/**
+ * Does this patch ADDRESS `options.ai`? An explicit, enumerated test — not
+ * "it wasn't an array".
+ *
+ * The contract it encodes: an object-shaped patch is the FIELD FORM's envelope,
+ * and the field form is authoritative over `ai` (an absent `ai` means "the user
+ * turned it off", and both the block and the per-value `aiStatus` markers go).
+ * Three shapes are NOT that envelope, and each one is a bug that already
+ * happened or was one refactor away:
+ *
+ * - `undefined` — the call never mentioned options.
+ * - a bare `SelectOption[]` — the record-side tag picker sends exactly this on
+ *   every create / rename / recolor / reorder / delete, and it says nothing
+ *   about AI. Reading it as "the caller omitted `ai`, so clear it" silently
+ *   destroyed a field's entire AI config the first time anyone typed a new tag
+ *   on a record, and cleared `aiStatus` on every one of its values on the way
+ *   out.
+ * - an envelope with nothing left in it — i.e. the patch carried taxonomy
+ *   settings and nothing else (see {@link splitTaxonomyKeys}). A patch that
+ *   only says "imports may grow this taxonomy" says nothing about whether the
+ *   model may write to it; treating it as an `ai` toggle-off is the same outage
+ *   with a different trigger. (`{}` itself lands here too, which is a change:
+ *   it used to clear `ai`. An empty envelope asserting an intent was never
+ *   meant.)
+ *
+ * Note this takes the RESIDUE, not the raw patch, so a combined
+ * `{ options, ai, allowNewOptions }` save from the field editor is judged on
+ * `{ options, ai }` — exactly as it would be without the flag.
+ */
+function patchAddressesAi(rest: unknown): boolean {
+  if (rest === undefined || rest === null) return false
+  if (Array.isArray(rest)) return false
+  if (typeof rest !== 'object') return false
+  return Object.keys(rest).length > 0
+}
+
 /**
  * Field types whose stored value is an option key in `FieldValue.optionId`.
  *
@@ -234,7 +301,9 @@ export interface UpdateCustomFieldInput {
   required?: boolean
   defaultValue?: string
   /** Field options - select options, file config, flat display options
-   *  (incl. CURRENCY), actor/calc bags, or `{ options, ai }` for AI-enabled selects. */
+   *  (incl. CURRENCY), actor/calc bags, or `{ options, ai }` for AI-enabled selects.
+   *  May additionally carry the envelope-level `allowNewOptions` taxonomy flag,
+   *  on its own or alongside any of the above — see {@link splitTaxonomyKeys}. */
   options?: CustomFieldOptionsInput
   addressComponents?: string[]
   /** ADDRESS_STRUCT input variant: single free-text input (default, omitted
@@ -316,6 +385,16 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
   // (see select-input-field.tsx handleOptionsChange). Allow that patch on
   // system TAGS fields; everything else (name, type, …) stays locked, and
   // app-owned fields stay fully locked.
+  //
+  // The envelope-level `allowNewOptions` flag rides this carve-out UNCHANGED,
+  // because it arrives inside `options` and asserts nothing else. That is the
+  // right blast radius and not an accident: `canGrowFieldOptions` already says
+  // a system TAGS field may be grown by an automated writer, so the preference
+  // for one has to be settable on `part.category` or the authority is
+  // unreachable. A system SINGLE_SELECT still fails the `type === TAGS` arm and
+  // stays locked, which matches `canGrowFieldOptions` refusing it too — its
+  // option set IS configuration. Do not widen this to admit the flag on
+  // non-TAGS system fields; there is nothing on the other side to unlock.
   if (isProtectedField(currentField)) {
     const isTagsOptionsOnlyPatch =
       !currentField.appInstallationId &&
@@ -369,19 +448,24 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
     }
   }
 
+  // Pull the taxonomy settings out of the patch FIRST. Everything below reads
+  // `optionsPayload` where it is deciding what the patch asserts, so a patch
+  // that carries `allowNewOptions` asserts exactly what the same patch without
+  // it would have asserted — no more, no less.
+  const { allowNewOptions, rest: optionsPayload } = splitTaxonomyKeys(options)
+
   // Validate options.ai (if the caller is touching it). Uses the caller's
   // new options when present, else falls back to what's already stored —
   // so re-saving a field without touching AI doesn't re-validate it.
   //
-  // 🛑 A bare `SelectOption[]` is an options-ONLY patch. The record-side tag
-  // picker sends exactly that on every create / rename / recolor / reorder /
-  // delete, and it says nothing about AI. Reading it as "the caller omitted
-  // `ai`, so clear it" silently destroyed the field's entire AI config the
-  // first time anyone typed a new tag on a record — and cleared the `aiStatus`
-  // marker on every one of its values on the way out. Only an object-shaped
-  // patch addresses `ai`; there it stays authoritative (absent or
-  // `enabled: false` both strip the marker).
-  const touchesAi = options !== undefined && !Array.isArray(options)
+  // 🛑 "Addresses `ai`" is an explicit test over the RESIDUE — see
+  // `patchAddressesAi`, which carries the history of why each excluded shape is
+  // excluded. It used to be `!Array.isArray(options)`, which meant the first
+  // envelope key added beside the array (this flag) would have read as an AI
+  // toggle-off and destroyed the field's AI config. Where the patch does
+  // address `ai`, `ai` stays authoritative (absent or `enabled: false` both
+  // strip the marker).
+  const touchesAi = patchAddressesAi(optionsPayload)
   const incomingAi = pickAiOptions(options)
   const currentAi = (currentField.options as { ai?: AiOptions } | null | undefined)?.ai
   const effectiveAi = touchesAi ? incomingAi : currentAi
@@ -515,6 +599,25 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
         fieldOptions.ai = incomingAi
       } else {
         delete (fieldOptions as { ai?: unknown }).ai
+      }
+    }
+
+    // Handle the envelope-level `allowNewOptions` taxonomy flag. Applied LAST,
+    // over whatever the rest of the envelope rebuilt, because it is orthogonal
+    // to all of it — it never participates in the `touchesAi` verdict above and
+    // no other branch reads or writes the key.
+    //
+    // 🛑 `null` DELETES the key rather than storing `false`. The reader
+    // (`fieldAllowsNewOptions`) is tri-state: absent inherits the type default,
+    // stored `false` is a decision. Writing `false` for "revert to default"
+    // would silently freeze a TAGS field's taxonomy shut, and there would be no
+    // way back to inheritance ever again — the whole no-backfill design rests
+    // on absence still meaning absence.
+    if (allowNewOptions !== undefined) {
+      if (allowNewOptions === null) {
+        delete (fieldOptions as { allowNewOptions?: unknown }).allowNewOptions
+      } else {
+        fieldOptions.allowNewOptions = allowNewOptions
       }
     }
 

@@ -94,6 +94,24 @@ export interface FieldOptions {
   }>
 
   // ─────────────────────────────────────────────────────────────
+  // TAXONOMY GROWTH (SINGLE_SELECT / MULTI_SELECT / TAGS)
+  // ─────────────────────────────────────────────────────────────
+  /**
+   * May an automated writer (a CSV import, a paste, a bulk action) append new
+   * options to this field's taxonomy?
+   *
+   * Tri-state: absent inherits the type default (TAGS grow, SELECT sets do
+   * not), `true`/`false` is the user's decision. Read through
+   * `fieldAllowsNewOptions` in `./ownership` — the SINGLE reader — never
+   * off this interface directly, or the type default gets re-derived at each
+   * call site and one of them will get it wrong.
+   *
+   * ⚠️ Not `ai.allowNewOptions`. That one asks whether the MODEL may invent
+   * labels; this one asks whether an import may. Independent on purpose.
+   */
+  allowNewOptions?: boolean
+
+  // ─────────────────────────────────────────────────────────────
   // FILE (nested - existing structure)
   // ─────────────────────────────────────────────────────────────
   file?: {

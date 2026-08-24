@@ -67,7 +67,7 @@ export {
 // Relationship helper
 export { type GetRelationshipPairInput, getRelationshipPair } from './get-relationship-pair'
 export { notifyCustomFieldChanged } from './notify'
-export { isProtectedField } from './ownership'
+export { canGrowFieldOptions, fieldAllowsNewOptions, isProtectedField } from './ownership'
 // Note: getCustomFields and getFieldsByIds removed — use org cache via @auxx/lib/cache
 export {
   type CustomFieldOptionsInput,

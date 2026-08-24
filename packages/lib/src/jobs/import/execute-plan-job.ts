@@ -15,6 +15,7 @@ import {
   markJobExecuting,
   markJobFailed,
   materializeRelationCreates,
+  materializeSelectCreates,
   parseResolutionConfig,
   relationFieldWriteMode,
 } from '../../import'
@@ -211,6 +212,26 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
         created: relationCreates.created,
         byEntityDefinition: relationCreates.byEntityDefinition,
         failures: relationCreates.failures.length,
+      })
+    }
+
+    // Select-option auto-create (`select:create`) is the same two-phase design
+    // on the OPTION side: planning only records the intent, so abandoning the
+    // wizard leaves the field's taxonomy untouched. This is phase two — append
+    // what genuinely does not exist and rewrite those resolutions to real option
+    // keys, BEFORE the resolutions are read below. Without it the raw LABEL was
+    // written straight through as an `optionId` no option owns.
+    // Order relative to the relation materializer is irrelevant: the two
+    // partition the `status: 'create'` rows and touch disjoint resolutions.
+    const selectCreates = await runWithWriteSession(session, () =>
+      materializeSelectCreates(db, { organizationId, jobId })
+    )
+    if (selectCreates.created > 0 || selectCreates.failures.length > 0) {
+      logger.info('Materialized select option auto-creates', {
+        jobId,
+        created: selectCreates.created,
+        byField: selectCreates.byField,
+        failures: selectCreates.failures.length,
       })
     }
 

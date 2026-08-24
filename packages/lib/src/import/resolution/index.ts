@@ -15,6 +15,19 @@ export {
   type RelationCreateCounts,
 } from './get-relation-create-counts'
 export { getResolutionProgress, type ResolutionProgress } from './get-resolution-progress'
+// Select-option auto-create (`select:create`)
+export {
+  getSelectCreateCounts,
+  groupSelectCreates,
+  loadPendingSelectCreates,
+  type PendingSelectCreateRow,
+  type RejectedSelectCreates,
+  type SelectCreateColumnCount,
+  type SelectCreateCounts,
+  type SelectCreateFieldCount,
+  type SelectCreateGroup,
+  type SelectCreateGrouping,
+} from './get-select-create-counts'
 // Resolution status utilities
 export {
   type EffectiveStatus,
@@ -33,6 +46,12 @@ export {
   type RelationTargetWriter,
   type RelationTargetWriterOptions,
 } from './materialize-relation-creates'
+export {
+  type MaterializeSelectCreatesOptions,
+  type MaterializeSelectCreatesResult,
+  materializeSelectCreates,
+  type SelectCreateFailure,
+} from './materialize-select-creates'
 export { type ProcessColumnValuesOptions, processColumnValues } from './process-column-values'
 export { relationCreateKey } from './relation-create-key'
 // Relation match-field type gate (03 §5.4), technical limit, NOT the identifier gate
