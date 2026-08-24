@@ -2,7 +2,16 @@
 
 import { database as db, schema } from '@auxx/database'
 import { and, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
-import { type CleanupResult, ThumbnailService } from '../../files/core/thumbnail-service'
+import type { Result } from 'neverthrow'
+import type { AuxxError } from '../../errors'
+import { createS3StoragePort } from '../../files/storage/ports'
+import {
+  type CleanupResult,
+  cleanupExpiredSoftDeletes,
+  cleanupFailedThumbnails,
+  cleanupOrphanedThumbnails,
+  cleanupOutdatedVersionThumbnails,
+} from '../../files/thumbnails'
 import { createScopedLogger } from '../../logger'
 import type { JobContext } from '../types'
 
@@ -31,6 +40,25 @@ interface CleanupStats {
   deleted: number
   failed: number
   storageFreed: number
+}
+
+/** Narrow a sweep's {@link CleanupResult} to the counters this job reports. */
+function toStats(result: CleanupResult): CleanupStats {
+  return {
+    deleted: result.deleted,
+    failed: result.failed,
+    storageFreed: result.storageFreed,
+  }
+}
+
+/**
+ * Unwrap a sweep's `Result`, rethrowing so the per-type `try/catch` below still
+ * records it as an error rather than silently reporting zeroes.
+ */
+async function unwrap(pending: Promise<Result<CleanupResult, AuxxError>>): Promise<CleanupResult> {
+  const result = await pending
+  if (result.isErr()) throw result.error
+  return result.value
 }
 
 /**
@@ -89,8 +117,15 @@ export async function thumbnailCleanupJob(
   }
 
   try {
-    // Create service instance
-    const thumbnailService = new ThumbnailService(organizationId || 'system', 'system', db)
+    // PR 5f: four free functions over a `Database` + a `StoragePort`, not a
+    // service constructed with a fabricated `'system'` organization id. The
+    // organization is what it always was here — an optional *filter* — and it is
+    // now actually applied (three of the four legacy methods destructured it and
+    // ignored it, so a per-org invocation swept every tenant).
+    const deps = {
+      storage: createS3StoragePort(organizationId),
+      now: () => new Date(),
+    }
 
     let progress = 0
     const progressStep = 100 / cleanupTypes.length
@@ -100,21 +135,18 @@ export async function thumbnailCleanupJob(
       logger.info(`Processing ${cleanupType} thumbnails`)
 
       try {
-        let cleanupResult: CleanupResult
-
         switch (cleanupType) {
           case 'orphaned':
-            cleanupResult = await thumbnailService.cleanupOrphanedThumbnails({
-              batchSize,
-              dryRun,
-              organizationId,
-              maxDeletesPerRun,
-            })
-            result.orphaned = {
-              deleted: cleanupResult.deleted,
-              failed: cleanupResult.failed,
-              storageFreed: cleanupResult.storageFreed,
-            }
+            result.orphaned = toStats(
+              await unwrap(
+                cleanupOrphanedThumbnails(db, deps, {
+                  batchSize,
+                  dryRun,
+                  organizationId,
+                  maxDeletesPerRun,
+                })
+              )
+            )
             break
 
           case 'outdated':
@@ -133,10 +165,13 @@ export async function thumbnailCleanupJob(
                 .limit(100)
 
               for (const asset of assets) {
-                const assetResult = await thumbnailService.cleanupOutdatedVersionThumbnails(
-                  asset.id,
-                  keepVersions,
-                  { dryRun, organizationId }
+                const assetResult = await unwrap(
+                  cleanupOutdatedVersionThumbnails(db, deps, asset.id, {
+                    keepVersions,
+                    batchSize,
+                    dryRun,
+                    organizationId,
+                  })
                 )
                 result.outdated.deleted += assetResult.deleted
                 result.outdated.failed += assetResult.failed
@@ -148,31 +183,29 @@ export async function thumbnailCleanupJob(
             break
 
           case 'failed':
-            cleanupResult = await thumbnailService.cleanupFailedThumbnails({
-              maxAgeHours,
-              batchSize,
-              dryRun,
-              organizationId,
-            })
-            result.failed = {
-              deleted: cleanupResult.deleted,
-              failed: cleanupResult.failed,
-              storageFreed: cleanupResult.storageFreed,
-            }
+            result.failed = toStats(
+              await unwrap(
+                cleanupFailedThumbnails(db, deps, {
+                  maxAgeHours,
+                  batchSize,
+                  dryRun,
+                  organizationId,
+                })
+              )
+            )
             break
 
           case 'expired':
-            cleanupResult = await thumbnailService.cleanupExpiredSoftDeletes({
-              retentionDays,
-              batchSize,
-              dryRun,
-              organizationId,
-            })
-            result.expired = {
-              deleted: cleanupResult.deleted,
-              failed: cleanupResult.failed,
-              storageFreed: cleanupResult.storageFreed,
-            }
+            result.expired = toStats(
+              await unwrap(
+                cleanupExpiredSoftDeletes(db, deps, {
+                  retentionDays,
+                  batchSize,
+                  dryRun,
+                  organizationId,
+                })
+              )
+            )
             break
         }
 

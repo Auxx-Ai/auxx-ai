@@ -71,30 +71,48 @@ export async function orphanedStorageObjectJob(
 }
 
 /**
- * Enqueue an orphaned-object delete on the maintenance queue.
+ * Enqueue an orphaned-object delete on the maintenance queue, best-effort.
  *
- * Best-effort at the call site: compensation must never turn a failed upload
- * into a failed request, so an enqueue failure is logged, not thrown.
+ * ## The swallow is the whole reason this wrapper exists
+ *
+ * `QueuePort.enqueueStorageCleanup` returns the job id and **throws**; this
+ * returns `void` and logs. `plans/attachments/05-core-services.md` §5.6.1 flags
+ * the mismatch and says one of the two has to give — PR 5f decided in favour of
+ * the port, and moved the swallow *here*, where it can be justified in one
+ * sentence: compensation must never turn a failed upload into a failed request,
+ * because the bytes are already in the bucket and the caller is on its way to
+ * returning an error to the user either way.
+ *
+ * Putting that `try/catch` inside the port instead would have made every future
+ * caller inherit fail-open behaviour it never asked for and could not opt out
+ * of, and would have thrown away the job id — which is what lets a test assert
+ * *which* job was scheduled without a queue running.
+ *
+ * The enqueue itself now goes through the port, so the job options live in one
+ * place (`files/storage/queue-port.ts`) rather than in two copies that drift.
+ *
+ * `bucket` is optional on {@link OrphanedStorageObjectJobData} and required on
+ * the port, so a call with no bucket is refused here rather than being
+ * normalised to `'default'` and producing a job the worker cannot execute
+ * correctly (#1816: a delete against the wrong bucket 204s and the object
+ * leaks).
  */
 export async function enqueueOrphanedStorageObjectCleanup(
   data: OrphanedStorageObjectJobData
 ): Promise<void> {
   try {
-    const { getQueue } = await import('../queues')
-    const { Queues } = await import('../queues/types')
-    const queue = getQueue(Queues.maintenanceQueue)
+    if (!data.bucket) {
+      throw new Error('orphaned storage object cleanup requires an explicit bucket')
+    }
 
-    await queue.add('orphanedStorageObjectJob', data, {
-      // Same object from a retried completion is the same unit of work.
-      jobId: `orphaned-storage-object:${data.bucket ?? 'default'}:${data.key}`,
-      attempts: 5,
-      backoff: { type: 'exponential', delay: 5000 },
-      removeOnComplete: { count: 100 },
-      removeOnFail: { count: 500 },
-      priority: 10,
+    const { createProductionQueuePort } = await import('../../files/storage/queue-port')
+    const jobId = await createProductionQueuePort().enqueueStorageCleanup({
+      ...data,
+      bucket: data.bucket,
     })
 
     logger.info('Enqueued orphaned storage object cleanup', {
+      jobId,
       provider: data.provider,
       bucket: data.bucket,
       key: data.key,

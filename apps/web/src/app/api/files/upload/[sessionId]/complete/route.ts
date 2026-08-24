@@ -286,21 +286,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const thumbnails = new Map<ThumbnailPreset, { status: string; assetId?: string }>()
     const presets = postCommitPresetsFor(session.entityType)
     if (result.assetId && presets.length > 0) {
-      const { enqueueEnsureThumbnail } = await import('@auxx/lib/files/server')
+      const { createProductionQueuePort, ensureThumbnail } = await import('@auxx/lib/files/server')
+      const thumbCtx = { db, organizationId: session.organizationId }
+      const thumbDeps = { queue: createProductionQueuePort(), now: () => new Date() }
       for (const preset of presets) {
         try {
-          const enq = await enqueueEnsureThumbnail({
-            organizationId: session.organizationId,
-            userId: session.userId,
+          const enq = await ensureThumbnail(thumbCtx, thumbDeps, {
             source: { type: 'asset', assetId: result.assetId },
+            createdById: session.userId,
             opts: {
               preset,
               visibility: 'PUBLIC',
-              queue: true,
               ...(preset === AVATAR_USER_IMAGE_PRESET ? { updateUser: true } : {}),
             },
           })
-          thumbnails.set(preset, enq as { status: string; assetId?: string })
+          if (enq.isErr()) throw enq.error
+          thumbnails.set(preset, enq.value as { status: string; assetId?: string })
         } catch (thumbErr) {
           // A derived image must never fail an upload whose bytes and rows are
           // already durable.

@@ -121,7 +121,7 @@ vi.mock('@auxx/redis', async (importOriginal) => ({
 }))
 
 // Mock thumbnail-related modules
-vi.mock('../../../files/core/thumbnail-batch', () => ({
+vi.mock('../../../files/thumbnails', () => ({
   ensureThumbnailPresets: vi.fn().mockResolvedValue([]),
 }))
 

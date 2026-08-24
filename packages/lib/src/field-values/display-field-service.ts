@@ -348,17 +348,23 @@ export class DisplayFieldService {
    */
   private async resolveAvatarThumbnails(assetIds: string[]): Promise<void> {
     try {
-      const { ensureThumbnailPresets } = await import('../files/core/thumbnail-batch')
+      const { ensureThumbnailPresets } = await import('../files/thumbnails')
+      const { createProductionQueuePort } = await import('../files/storage/queue-port')
       const { applyAvatarThumbnailUrl, publishAvatarResolved } = await import('./avatar-thumbnail')
 
+      const ctx = { db: this.db, organizationId: this.organizationId }
+      const deps = { queue: createProductionQueuePort(), now: () => new Date() }
+
       for (const assetId of assetIds) {
-        const [result] = await ensureThumbnailPresets({
-          organizationId: this.organizationId,
-          userId: 'system',
+        const ensured = await ensureThumbnailPresets(ctx, deps, {
           source: { type: 'asset', assetId },
+          createdById: 'system',
           presets: ['avatar-128'],
-          defaultOptions: { queue: true, visibility: 'PUBLIC' },
+          defaultOptions: { visibility: 'PUBLIC' },
         })
+        if (ensured.isErr()) throw ensured.error
+
+        const [result] = ensured.value
 
         // Queued: the job owns the write once it has generated the file.
         if (!result || result.status === 'queued' || !result.storageLocationId) continue

@@ -44,7 +44,11 @@ vi.mock('@auxx/lib/files/server', () => ({
   },
   cleanupService: { scheduleCleanup: vi.fn() },
   MediaAssetService: vi.fn(),
-  enqueueEnsureThumbnail: vi.fn(),
+  createProductionQueuePort: vi.fn(() => ({
+    enqueueThumbnail: vi.fn(async () => 'job-1'),
+    enqueueStorageCleanup: vi.fn(async () => 'job-2'),
+  })),
+  ensureThumbnail: vi.fn(async () => ({ isErr: () => false, value: { status: 'queued' } })),
 }))
 
 const { POST: completePost } = await import('./complete/route')

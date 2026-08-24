@@ -20,7 +20,7 @@ const {
   getSession,
   getUploadSession,
   patchUploadSession,
-  enqueueEnsureThumbnail,
+  ensureThumbnail,
   getDownloadUrl,
   getWithRelations,
   invalidateUser,
@@ -35,7 +35,7 @@ const {
   getSession: vi.fn(),
   getUploadSession: vi.fn(),
   patchUploadSession: vi.fn(),
-  enqueueEnsureThumbnail: vi.fn(),
+  ensureThumbnail: vi.fn(),
   getDownloadUrl: vi.fn(async () => 'https://cdn.example/avatar.png'),
   getWithRelations: vi.fn(async () => ({ currentVersion: { storageLocation: { id: 'stl_1' } } })),
   invalidateUser: vi.fn(),
@@ -89,7 +89,11 @@ vi.mock('@auxx/lib/files/server', () => ({
     getWithRelations = getWithRelations
     getDownloadUrl = getDownloadUrl
   },
-  enqueueEnsureThumbnail,
+  createProductionQueuePort: () => ({
+    enqueueThumbnail: async () => 'job-unused',
+    enqueueStorageCleanup: async () => 'job-unused',
+  }),
+  ensureThumbnail,
 }))
 
 const { POST } = await import('./route')
@@ -157,9 +161,9 @@ beforeEach(() => {
     return out
   })
 
-  enqueueEnsureThumbnail.mockImplementation(async ({ opts }: any) => {
+  ensureThumbnail.mockImplementation(async (_ctx: any, _deps: any, { opts }: any) => {
     observed.push({ preset: opts.preset, version: versionStore.current, committed, opts })
-    return { status: 'queued', jobId: `job-${opts.preset}` }
+    return { isErr: () => false, value: { status: 'queued', jobId: `job-${opts.preset}` } }
   })
 })
 
