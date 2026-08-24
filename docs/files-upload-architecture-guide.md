@@ -2,27 +2,24 @@
 
 # Files & Upload Architecture Guide
 
-**Last Updated:** 2026-08-21
+**Last Updated:** 2026-08-24 — describes `main` at `36e1f105f`
 **Scope:** *"A user picked a file. What happens?"* The complete path from a browser file picker
 through presigned S3, into `StorageLocation` / `MediaAsset` / `FolderFile` / `Attachment` rows, and
 back out through the download and thumbnail read paths. Plus the parallel doors that bypass this
-path, the cleanup jobs that are supposed to reap it, and an honest inventory of what is
-overbuilt, dead, or wrong.
+path, the cleanup jobs that reap it, and what is still open.
 
-> Code under review: `apps/web/src/app/api/files/**`, `packages/lib/src/files/**`,
-> `apps/web/src/components/file-upload/**`.
-> **Remediation plan:** `plans/attachments/` (not tracked in git) — 11 phase docs covering the
-> Tier-1 fixes and the functional refactor. §13 below is its executive summary.
-> Companions: `lib-module-guide.md` (module shape this subsystem predates and violates),
+> Code described: `apps/web/src/app/api/files/**`, `apps/web/src/app/api/attachments/**`,
+> `packages/lib/src/files/**`, `apps/web/src/components/file-upload/**`.
+> Companions: `lib-module-guide.md` (the module shape this subsystem now follows),
 > `channels-mail-architecture-guide.md` (inbound mail attachments — a different door into the same
 > tables), `ui-design-guide.md`.
-> **Where this guide and the code disagree, the code is the truth.** Sections 10–12 are findings,
-> not descriptions: they say what is broken, not what exists.
+> **Where this guide and the code disagree, the code is the truth.**
 >
-> **Refactor in progress.** The storage layer (§5) has been rewritten across #1823, #1825, #1827 and
-> #1829, and PR 3d is in flight — presigning and multipart move out of `StorageManager` next, so §5
-> will shift again. The `core/` services, the processor hierarchy (§3) and the front end (§6) are
-> **not** started and are described as-built. Struck-through findings carry the PR that closed them.
+> **This is an as-built description, not a plan.** `packages/lib/src/files/**` was rewritten across
+> 27 PRs between 2026-08-21 and 2026-08-24 (#1816 … #1859). §11 is the short version of what
+> changed and when; §12 is the honest list of what is still broken or unfinished. The remaining
+> work — deleting the four `core/` facades and `BaseService`, phase 6's `getTx` removal, the front
+> end's 8b/8c — is tracked in `plans/attachments/10-rollout-checklist.md` (untracked).
 
 ---
 
@@ -30,18 +27,17 @@ overbuilt, dead, or wrong.
 
 1. [Executive Overview](#1-executive-overview)
 2. [The Data Model](#2-the-data-model)
-3. [Entity Types & the Processor Registry](#3-entity-types--the-processor-registry)
+3. [Entity Types & the Handler Table](#3-entity-types--the-handler-table)
 4. [Door 1 — the browser presigned flow (the main path)](#4-door-1--the-browser-presigned-flow-the-main-path)
 5. [The Storage Layer](#5-the-storage-layer)
-6. [The Front End](#6-the-front-end)
-7. [Door 2 & 3 — the parallel upload paths](#7-door-2--3--the-parallel-upload-paths)
-8. [The Read Path](#8-the-read-path)
-9. [Lifecycle, Quota & Cleanup](#9-lifecycle-quota--cleanup)
-10. [Transactions — what is actually happening](#10-transactions--what-is-actually-happening)
-11. [Correctness Findings](#11-correctness-findings)
-12. [Overcomplication & Dead Code](#12-overcomplication--dead-code)
-13. [A Target Design](#13-a-target-design)
-14. [Key Files](#14-key-files)
+6. [The Module Contract — `files/ctx.ts`](#6-the-module-contract--filesctxts)
+7. [The Front End](#7-the-front-end)
+8. [Doors 2 & 3 — the parallel upload paths](#8-doors-2--3--the-parallel-upload-paths)
+9. [The Read Path](#9-the-read-path)
+10. [Lifecycle, Quota & Cleanup](#10-lifecycle-quota--cleanup)
+11. [What we fixed, and when](#11-what-we-fixed-and-when)
+12. [What is still open](#12-what-is-still-open)
+13. [Key Files](#13-key-files)
 
 ---
 
@@ -55,17 +51,17 @@ The intended path is **three HTTP round-trips against our server plus a direct P
 BROWSER                         apps/web (Node)                    S3            POSTGRES
    │
    │ 1. POST /api/files/upload/sessions
-   │──────────────────────────────────▶ auth + files.manage gate
-   │                                    storage quota gate  ────────────────────────▶ real bytes (§11.1, fixed)
-   │                                    ProcessorRegistry.getForEntityType(entityType)
-   │                                    processor.processConfig(init)
-   │                                      → storageKey, policy, uploadPlan,
-   │                                        visibility, bucket, ttl
-   │                                    SessionManager.createSessionFromConfig
-   │                                      → nanoid in Redis, TTL 10m
-   │                                    storageManager.generatePresignedUploadUrl
-   │                                      → presigned POST (or multipart init)
-   │◀───────────────────────────────────  { sessionId, presignedUrl, fields, … }
+   │──────────────────────────────────▶ auth + files.manage gate (FILE only)
+   │                                    agent-avatar admin gate (USER_PROFILE)
+   │                                    storage quota gate (fails open)
+   │                                    prepareUpload(ctx, deps, init)
+   │                                      getUploadHandler(entityType)   ← throws on unknown
+   │                                      handler.normalizeInit / validateEntity
+   │                                      buildUploadConfig  (pure)
+   │                                      handler.refineConfig           ← CUSTOM_FIELD only
+   │                                      createUploadSession → Redis, SETEX ttlSec
+   │                                      presignUpload | startMultipartUpload
+   │◀───────────────────────────────────  { sessionId, uploadMethod, presignedUrl, … }
    │
    │ 2. POST/PUT the bytes straight to S3
    │─────────────────────────────────────────────────────────────▶ object lands
@@ -73,37 +69,42 @@ BROWSER                         apps/web (Node)                    S3           
    │    then N × PUT — serial, one round-trip to us per part)
    │
    │ 3. POST /api/files/upload/{sessionId}/complete
-   │──────────────────────────────────▶ authorizeUploadSession (§11.4, fixed)
-   │                                    completeMultipartUpload (if multipart)
-   │                                    headByKey  ──────────────▶ verify size/mime
-   │                                    processor.validateCompletedUpload
-   │                                    ┌── db.transaction ──────────────────────┐
-   │                                    │  buildExternalUrl (I/O — §10.2, OPEN)  │
-   │                                    │  createStorageLocation                 │
-   │                                    │  processor.process → savepoints (§10.1,│
-   │                                    │                             still OPEN) │
-   │                                    │    → MediaAsset + MediaAssetVersion    │
-   │                                    │      and/or FolderFile + FileVersion   │
-   │                                    │      and/or Attachment                 │
-   │                                    │    (BullMQ enqueue moved out — §10.3)  │
-   │                                    └────────────────────────────────────────┘
-   │                                    post-commit: cache busts, thumbnail
-   │                                                 enqueue, download URL
-   │◀───────────────────────────────────  { assetId | fileId, attachmentId, url }
+   │──────────────────────────────────▶ authorizeUploadSession (session must be the caller's)
+   │                                    completeUpload(ctx, deps, session, body)
+   │                                    ┌ PHASE 1 — storage only ──────────────┐
+   │                                    │ completeMultipart (if multipart)     │
+   │                                    │ headObject      ────────▶ verify     │
+   │                                    │ validateCompletedUpload              │
+   │                                    │ buildPublicUrl  (sync, no I/O)       │
+   │                                    └──────────────────────────────────────┘
+   │                                    ┌ PHASE 2 — one BEGIN…COMMIT ──────────┐
+   │                                    │ createStorageLocation(tx, txCtx, …)  │
+   │                                    │ persistUpload(tx, ctx, …)            │
+   │                                    │   → MediaAsset + MediaAssetVersion   │
+   │                                    │     or FolderFile + FileVersion      │
+   │                                    │     (+ Attachment)                   │
+   │                                    │   → handler.onPersist                │
+   │                                    └──────────────────────────────────────┘
+   │                                    ┌ PHASE 3 — after COMMIT ──────────────┐
+   │                                    │ handler.afterCommit (cache busts)    │
+   │                                    │ ensureThumbnailPresets → BullMQ      │
+   │                                    │ getAssetDownloadRef → preview url    │
+   │                                    └──────────────────────────────────────┘
+   │◀───────────────────────────────────  { assetId | fileId, attachmentId, url, … }
 ```
 
-There is also an SSE channel (`GET /upload/{sessionId}/events`) and a Redis pub/sub progress
-publisher feeding it. **Nothing connects to it.** The client reads its result from the `complete`
-response body. See §12.1.
+The whole SSE/progress stack that used to sit beside this is **gone** (#1841): no
+`GET /upload/{sessionId}/events` route, no Redis progress pub/sub, no client-side SSE. The client
+reads its result from the `complete` response body, which is what it always did.
 
 The two other doors:
 
-- **Public workflow share uploads** — `/api/workflows/shared/[shareToken]/files/**`. A complete,
-  independent re-implementation: its own Redis keyspace, its own presign, no processor, no policy,
-  no transaction. It works.
-- **Server-side ingest** — inbound mail attachments, thumbnails, PDF renders, exports, recordings.
-  These call `StorageManager.uploadContent()` directly and then the services. They never touch
-  sessions or processors.
+- **Public workflow share uploads** — `/api/workflows/shared/[shareToken]/files/**`. A passport-token
+  re-implementation for anonymous end users: its own Redis keyspace, its own storage key format, no
+  handler, no quota gate. It writes the same rows and it works. §8.1.
+- **Server-side ingest** — inbound mail attachments, thumbnails, PDF renders, exports, recordings,
+  chat attachments. These call `StorageManager.uploadContent()` directly and then the lib write
+  functions. They never touch sessions or handlers. §8.2.
 
 ---
 
@@ -114,863 +115,921 @@ most important thing about this subsystem.
 
 | Table | What it is | Written by |
 | --- | --- | --- |
-| `StorageLocation` | The bytes. Provider + bucket + key + etag + size + mime. **Org-scoped, never soft-deleted by the upload path.** | `createStorageLocation(tx, ctx, input)` in `storage/locations.ts` |
-| `MediaAsset` | A logical, versioned media object: `kind` (`USER_AVATAR`, `EMAIL_ATTACHMENT`, `INLINE_IMAGE`, `THUMBNAIL`, `DOCUMENT`, `TEMP_UPLOAD`), `purpose`, `isPrivate`, `currentVersionId`, `expiresAt`. | `MediaAssetService.createWithVersion` / `updateContent` |
-| `MediaAssetVersion` | One version of an asset → one `StorageLocation`. Thumbnails are **separate `MediaAsset`s** whose versions carry `derivedFromVersionId` + `preset`. | same |
-| `FolderFile` + `FileVersion` | The user-facing *file library* (folder tree, rename, move, versions). `FileVersion.fileId` FKs to **`FolderFile`**. | `FileService.createWithVersion` |
-| `Attachment` | The join from an asset to a host entity: `(entityType, entityId, assetId, role, title, caption)`. | `AttachmentService.create` |
+| `StorageLocation` | The bytes. Provider + bucket (in `metadata.bucket`) + key + etag + size + mime. Org-scoped, soft-deletable. | `createStorageLocation(tx, ctx, input)` — `storage/locations.ts:173` |
+| `MediaAsset` | A logical, versioned media object: `kind` (`USER_AVATAR`, `EMAIL_ATTACHMENT`, `INLINE_IMAGE`, `THUMBNAIL`, `DOCUMENT`, `TEMP_UPLOAD`, …), `purpose`, `isPrivate`, `currentVersionId`, `expiresAt`. | `createAssetWithVersion(tx, ctx, deps, input)` — `assets/asset-mutations.ts` |
+| `MediaAssetVersion` | One version of an asset → one `StorageLocation`. Thumbnails are **separate `MediaAsset`s** whose versions carry `derivedFromVersionId` + `preset`. | same, plus `updateAssetContent` — `assets/version-mutations.ts` |
+| `FolderFile` + `FileVersion` | The user-facing *file library* (folder tree, rename, move, versions). `FileVersion.fileId` FKs to **`FolderFile`** (`schema/file-version.ts:29`). | `createFolderFileWithVersion(tx, ctx, deps, input)` — `folder-files/file-mutations.ts` |
+| `Attachment` | The join from an asset (or a file) to a host entity: `(entityType, entityId, assetId \| fileId, role, title, caption)`, optionally *pinned* to a specific `assetVersionId` / `fileVersionId`. | `createAttachment(ctx, input)` — `attachments/attachment-mutations.ts` |
+
+**A file is `StorageLocation` + (`MediaAsset`+version **or** `FolderFile`+version) + optionally an
+`Attachment`.** Which combination you get is decided by `handler.persist`
+(`upload/handlers/types.ts`), and the wrong choice silently produces the wrong record type rather
+than an error. That is not hypothetical: `visit_qc_item` shipped with no registration at all, fell
+through to the default file-library processor, and produced a `FolderFile` with no `assetId` for a
+surface that needed a `MediaAsset` + `Attachment` (fixed in #1816; made unrepresentable in #1859 by
+`satisfies Record<EntityType, UploadHandler>` on `UPLOAD_HANDLERS`).
 
 There is also a legacy **`File`** table (`packages/database/src/db/schema/file.ts`) that is
-**empty and unused** except by the workflow-file route and one broken query (§11.1). It is not
-`FolderFile`. The name collision is a live hazard.
+**empty and unused** except by `apps/web/src/app/api/workflows/[workflowId]/files/[fileId]/route.ts`,
+which joins it to `WorkflowFile`. It is not `FolderFile`, and the name collision is a live hazard:
+the org storage quota once read zero forever because `calculateStorageUsage` joined `FileVersion`
+to `File` instead of `FolderFile`, matched nothing, and summed `NULL` (§11, #1816).
+`lifecycle/__tests__/quota-cleanup.test.ts:169` now asserts the join does not touch `schema.File`.
+
+Measured on the development database, 2026-08-24: `File` **0** rows, `FolderFile` 2,
+`FileVersion` 2, `MediaAsset` 3,750, `Attachment` 3,086, `StorageLocation` 33,297. Essentially all
+file usage in this product is `MediaAsset`, not the file library.
 
 **Buckets.** Two: `S3_PUBLIC_BUCKET` and `S3_PRIVATE_BUCKET`, chosen by
-`getBucketForVisibility(visibility)` in `upload/util.ts`. Public objects get a durable CDN URL
+`bucketForVisibility(visibility)` (`storage/buckets.ts:75`). Public objects get a durable CDN URL
 (`CDN_URL/{key}`) written into `StorageLocation.externalUrl`; private objects are only reachable
-through a presigned GET or our download route.
+through a presigned GET or our download route. `externalUrl` is `NOT NULL`, so a PRIVATE upload
+stores `''`.
 
-**Storage key.** `deriveStorageKey`:
-`{orgId}/{entity-type-kebab}/{entityId ?? 'temp'}/{Date.now()}_{seed?}{sanitizedFileName}`.
-Org id first so `aws s3 rm s3://bucket/{orgId}/ --recursive` is a valid org delete.
+**Storage key.** `deriveStorageKey` (`upload/util.ts:51`):
+`{orgId}/{entity-type-kebab}/{entityId ?? 'temp'}/{Date.now()}_{keySeed?}{sanitizedFileName}`.
+Org id first so `aws s3 rm s3://bucket/{orgId}/ --recursive` is a valid org delete. (The public
+workflow door does **not** honour that shape — §8.1.)
 
 ---
 
-## 3. Entity Types & the Processor Registry
+## 3. Entity Types & the Handler Table
 
-`ENTITY_TYPES` (`files/types/entities.ts`) is the dispatch key for the whole flow. The client sends
-an entity type; the registry maps it to exactly one processor; the processor decides everything
-else.
+`ENTITY_TYPES` (`files/types/entities.ts:12`) is the dispatch key for the whole flow. The client
+sends an entity type; `UPLOAD_HANDLERS` (`upload/handlers/index.ts:39`) maps it to exactly one
+**declarative record**, and that record decides everything else.
 
-| Entity type | Processor | Visibility | Max | Mime allow-list | Produces |
+The four-level `BaseProcessor` → `BaseAssetProcessor` → `BaseAttachmentProcessor` → concrete-class
+`processConfig` super-chain is gone (#1859, 11 files deleted). Answering "which bucket does an
+article cover land in?" is now one file.
+
+| Entity type | Visibility | Max | MIME allow-list | `persist` | `assetKind` |
 | --- | --- | --- | --- | --- | --- |
-| `FILE` | `FileProcessor` | PRIVATE | — (`*/*`) | `*/*` | `FolderFile` + `FileVersion` |
-| `USER_PROFILE` | `UserProfileProcessor` | **PUBLIC** | 5 MB | jpeg/png/webp/gif | `MediaAsset` (versioned in place) + `User.avatarAssetId`/`image` |
-| `ARTICLE` | `ArticleProcessor` | PRIVATE (PUBLIC when `role=COVER`) | 10 MB | images (no SVG), pdf, text | `MediaAsset` + `Attachment` |
-| `KNOWLEDGE_BASE` | `KnowledgeBaseProcessor` | **PUBLIC** | 10 MB | jpeg/png/webp | `MediaAsset` + `Attachment` + `KnowledgeBase.logoLight/Dark` |
-| `CHAT_WIDGET` | `ChatWidgetProcessor` | **PUBLIC** | 10 MB | jpeg/png/webp | `MediaAsset` + `Attachment` + `ChatWidget.logoLight/Dark` |
-| `MESSAGE` | `MessageProcessor` | PRIVATE | 25 MB | `*/*` | `MediaAsset` + `Attachment` |
-| `COMMENT` | `CommentProcessor` | PRIVATE | 25 MB | image/text/pdf/doc | `MediaAsset` + `Attachment` |
-| `CUSTOM_FIELD` | `CustomFieldProcessor` | PRIVATE | 25 MB | `*/*`, narrowed by the field's `options.file` | `MediaAsset` + `Attachment` |
-| `WORKFLOW_RUN` | `WorkflowRunProcessor` | PRIVATE | 50 MB | `*/*` | `MediaAsset` + `Attachment` |
-| `DATASET` | `DatasetAssetProcessor` | `'private'` (lowercase — §11.6) | 50 MB | long explicit list | `MediaAsset` + `Document` + parse/embed queue |
-| `visit_qc_item` | **none — falls back to `FileProcessor`** | PRIVATE | `*/*` | `*/*` | `FolderFile` — **wrong, §11.3** |
+| `FILE` | PRIVATE | none (`MAX_SAFE_INTEGER`) | `*/*` | `folder-file` | — |
+| `USER_PROFILE` | **PUBLIC** | 5 MB | jpeg/png/webp/gif | `versioned-asset` | `USER_AVATAR` |
+| `ARTICLE` | PRIVATE, **PUBLIC when `role=COVER`** | 10 MB | images (no SVG), pdf, text/plain, markdown, html | `asset+attachment` | `THUMBNAIL` for COVER/THUMBNAIL, else `INLINE_IMAGE` |
+| `KNOWLEDGE_BASE` | **PUBLIC** | 10 MB | jpeg/png/webp | `asset+attachment` | `THUMBNAIL` |
+| `CHAT_WIDGET` | **PUBLIC** | 10 MB | jpeg/png/webp | `asset+attachment` | `THUMBNAIL` |
+| `MESSAGE` | PRIVATE | 25 MB | `*/*` | `asset+attachment` | `TEMP_UPLOAD` / `INLINE_IMAGE` / `EMAIL_ATTACHMENT` by session |
+| `COMMENT` | PRIVATE | 25 MB | image/\*, text/\*, pdf, doc, docx | `asset+attachment` | `TEMP_UPLOAD` |
+| `CUSTOM_FIELD` | PRIVATE | 25 MB | `*/*`, narrowed by `refineConfig` from the field's `options.file` | `asset+attachment` | `TEMP_UPLOAD` |
+| `WORKFLOW_RUN` | PRIVATE | 50 MB | `*/*` | `asset+attachment` | `TEMP_UPLOAD` |
+| `DATASET` | PRIVATE | 50 MB | ~40 explicit types (`DATASET_MIME_TYPES`) | `asset` | `DOCUMENT` |
+| `visit_qc_item` | PRIVATE | 25 MB | jpeg/png/webp/gif/heic/heif | `asset+attachment` | `INLINE_IMAGE` |
 
-The class hierarchy is three deep:
+`maxTtlSec` is `ASSET_MAX_TTL_SEC` (600 s) everywhere except `FILE`, which is 3600 s. The multipart
+threshold defaults to 50 MB (`DEFAULT_MULTIPART_THRESHOLD_BYTES`), overridden to 100 MB for `FILE`
+and 25 MB for `WORKFLOW_RUN`.
 
-```
-BaseProcessor              processConfig(), validateCompletedUpload(), process()
-  └─ BaseAssetProcessor    + createAsset(), entity policy clamping, validateEntityAccess()
-       └─ BaseAttachmentProcessor  + createAttachment(), entityId required
-```
+### 3.1 The three halves of a handler
 
-`processConfig` is a **super-call chain**: each level widens or clamps `policy`,
-`uploadPlan`, `visibility`, `bucket`, and re-`Object.freeze`s the config. Tracing what a given
-entity type actually ends up with requires reading up to four `processConfig` overrides.
+`UploadHandler` (`upload/handlers/types.ts:131`) is deliberately split by *when* each field runs:
 
-**Registration** is imperative and lazy: `ensureProcessorsInitialized()` must be called by hand at
-the top of both routes before touching the registry. Miss it and you get a `logger.warn` and a
-still-working default processor — a silent, wrong `FolderFile` instead of a hard error.
+1. **Declarative** — `visibility`, `maxFileSize`, `allowedMimeTypes`, `maxTtlSec`,
+   `multipartThresholdBytes`, `assetKind`, `persist`. Read by the pure `buildUploadConfig`
+   (`upload/config.ts:99`). No I/O, ever.
+2. **Prepare-time hooks** — `normalizeInit` (pure; only `USER_PROFILE` and `DATASET` have one),
+   `validateEntity` (identity only), `refineConfig` (only `CUSTOM_FIELD`). These run in
+   `prepareUpload`, before a byte is written.
+3. **Completion hooks** — `assetExpiresAt` (pure), `onPersist` (**inside** the one transaction),
+   `afterCommit` (**strictly after** `COMMIT`), `thumbnails`.
+
+The `onPersist`/`afterCommit` boundary is the load-bearing one. An enqueue issued before `COMMIT`
+resolves its source on a *different* connection and cannot see the rows the open transaction has
+written — that is the bug that made a re-uploaded avatar serve the previous image forever
+(#1818, §11).
+
+`validateEntity` answers **identity**, never permission: "does this entity exist in this
+organization". `packages/lib` performs zero access checks (`docs/lib-module-guide.md` §6). Who is
+*allowed* to upload is asked in `sessions/route.ts` — the `files.manage` gate for `FILE`, and the
+org-admin gate for uploading an avatar onto someone else's user. `WORKFLOW_RUN` and `CUSTOM_FIELD`
+declare **no** `validateEntity` at all (§12).
+
+### 3.2 The client has a second, disagreeing copy of this table
+
+`ENTITY_CONFIGS` in the same file (`files/types/entities.ts:225`) is a browser-side pre-flight
+table, read by `file-slice.ts:75` and `orchestration-slice.ts:423` to reject files before upload.
+It duplicates `maxFileSize` and `allowedMimeTypes` and **has drifted from the handlers**:
+`WORKFLOW_RUN` is 15 MB client-side vs 50 MB server-side; `USER_PROFILE` allows `image/*`
+client-side (which admits SVG) vs four explicit types server-side; `ARTICLE` allows `video/*` and
+`audio/*` client-side, which the handler refuses. §12.
 
 ---
 
 ## 4. Door 1 — the browser presigned flow (the main path)
 
-### 4.1 `POST /api/files/upload/sessions`
+The three routes are thin (#1857, #1856). They authenticate, run the two gates that must not live
+in lib, and translate `Result` → `Response`. Everything else is `upload/prepare.ts` and
+`upload/complete.ts`.
+
+### 4.1 `POST /api/files/upload/sessions` — 234 lines
 
 `apps/web/src/app/api/files/upload/sessions/route.ts`
 
 1. `auth.api.getSession` → requires `defaultOrganizationId`.
 2. Zod-parse the body (`fileName`, `mimeType`, `expectedSize`, `entityType`, `entityId?`,
-   `provider?`, `metadata?`).
+   `provider?`, `metadata?`). `provider` is constrained to the five `ProviderId` values — there is
+   no `Local` adapter, and accepting one only turned a 400 into a 500.
 3. **Layer-2 permission gate — only for `entityType === 'FILE'`** (`PermissionKey.filesManage`).
-   Every other entity type is deliberately left to its host surface's own gate plus the
-   processor's `validateEntityAccess`.
-4. **Storage quota gate** — `FeaturePermissionService.getLimit(org, 'storageGbHard')` vs
-   `calculateStorageUsage(org)`. Wrapped in a try/catch that **fails open**. It also always
-   measures zero (§11.1).
-5. `ensureProcessorsInitialized()` → `ProcessorRegistry.getForEntityType()` →
-   `processor.processConfig(init)` → frozen `UploadPreparedConfig`.
-6. `createUploadSession(redis, config, now)` (`upload/session.ts`) — writes the whole config as
-   JSON to `upload:session:{nanoid}` in Redis with `SETEX config.ttlSec`. **Redis is mandatory**;
-   there is no fallback.
-7. Single vs multipart, decided by `config.uploadPlan.strategy`:
-   - **single** → `generatePresignedUploadUrl` → S3 **presigned POST** with
-     `content-length-range 0..expectedSize` and an exact `Content-Type` condition. Response carries
-     `presignedUrl` + `presignedFields`.
-   - **multipart** → `startMultipartUploadFromConfig` → `uploadId` +
-     `partPresignEndpoint: /api/files/upload/{sessionId}/parts`.
-8. `patchUploadSession` writes the presign back onto the session (compare-and-set since PR 4b).
+   Every other entity type is deliberately left to its host surface's own gate.
+4. **Agent-avatar gate** — a `USER_PROFILE` upload whose `entityId` is not the caller requires
+   `isAdminOrOwner`. This moved out of `UserProfileProcessor.validateEntityAccess` in #1859: it
+   used to throw a bare `Error`, which the route reported as a 500 rather than a 403.
+5. **Storage quota gate** — `FeaturePermissionService.getLimit(org, 'storageGbHard')` vs
+   `calculateStorageUsage(org)`. Answers a `{ error: 'USAGE_LIMIT', message, details }` body the UI
+   parses, which is why it is in the route and not in lib. Wrapped in a try/catch that **fails
+   open**, logged at `error` so a silently failing billing gate is alertable.
+6. `prepareUpload({ db, organizationId }, { storage, now, redis }, init)`.
+7. Map the result onto the legacy wire names. `uploadMethod` on the wire means the *strategy*
+   (`'single' | 'multipart'`); `uploadType` means the HTTP *verb*. Both names are load-bearing for
+   the browser uploader, so the translation happens here rather than being carried inward.
 
-### 4.2 `POST /api/files/upload/{sessionId}/parts`
+**Error shapes.** This route has two, deliberately: an `isAuxxError` branch emitting
+`{ error: <CODE>, message }` (pinned byte-for-byte by `session-error-mapping.test.ts` for the
+`files.manage` 403), and `uploadErrorResponse` emitting
+`{ error, errorType, retryable, code, details? }`.
 
-Looks up the session, `touchUploadSession`s it (TTL → the session's own `ttlSec`), and mints one
-presigned `UploadPart` URL.
-**No authentication.** No `ttlSec` forwarding (parts always get the adapter's 3600 s default). No
-bucket forwarding (§11.5).
+### 4.2 `prepareUpload` — `packages/lib/src/files/upload/prepare.ts:130`
 
-### 4.3 `POST /api/files/upload/{sessionId}/complete`
+Four named steps, replacing what the super-chain interleaved:
 
-`apps/web/src/app/api/files/upload/[sessionId]/complete/route.ts` — 324 lines, explicitly
-structured as three phases. **No authentication.**
+1. `getUploadHandler(entityType)` — **an unknown entity type is a `BadRequestError`**, never a
+   fallback to the file-library handler.
+2. `requiresEntityId(handler)` — derived, not declared: `Attachment.entityId` is `NOT NULL`, so
+   `asset+attachment` is exactly the set that cannot work without one. Refusing at the front door
+   beats a 500 after the bytes are already in S3.
+3. `handler.validateEntity(ctx, request)` — skipped when the request names no entity.
+4. `buildUploadConfig(handler, request, now)` (pure, total) → `handler.refineConfig` (the one hook
+   allowed to read). Then `createUploadSession`, then presign, then `patchUploadSession` with what
+   the provider answered.
 
-**Phase 1 — S3, outside the transaction**
-- `completeMultipartUploadOnly` if multipart. On failure: mark session `failed`, publish, 500.
-- `headByKey` — the real size/mime verification. This is the *only* enforcement that survives a
-  lying client on the multipart path.
-- `processor.validateCompletedUpload(session, head)` — exact size match, exact mime-family match,
-  entity max size, entity allow-list.
-- `updateSession` with the canonical size/mime.
+`buildUploadConfig` (`upload/config.ts:99`) is worth reading in full — it is the whole policy
+decision as a straight-line function. Three bugs it closes structurally:
 
-**Phase 2 — one `db.transaction`** (see §10 for why this is the problem area)
-- `buildExternalUrl` when `visibility === 'PUBLIC'` (I/O inside the tx).
-- `createStorageLocation(..., { tx })`.
-- `processor.process(session, storageLocationId, { tx })`.
-- On any throw: try `deleteByKey` immediately; if that throws, `cleanupService.scheduleCleanup`
-  (**a no-op stub**, §11.2); mark session failed; 500.
+- the MIME type is normalized **once** and the normalized value is what is judged; the old chain
+  checked the allow-list against the raw `init.mimeType` while emitting the normalized one, so
+  `Image/PNG` was refused at the front door and accepted by the policy behind it;
+- `ttlSec` is clamped to `handler.maxTtlSec`, so a prepared config can never fail its own policy;
+- `enforceUploadPolicy` runs here with the same function the signer will use.
 
-**Phase 3 — post-commit**
-- `updateSession({status:'completed', storageLocationId})`.
-- `USER_PROFILE`: `DehydrationService().invalidateUser`, plus `onCacheEvent('agent.updated')`
-  when the target is an agent's synthetic user.
-- Compute a `downloadUrl` — with a hard-coded `USER_PROFILE` branch that enqueues/awaits an
-  `avatar-32` thumbnail before falling back to the original.
-- `ProgressPublisher.publishCompleted` → Redis pub/sub → nobody.
-- Return `{ assetId, fileId, attachmentId, documentId, url }`.
+`PreparedUpload.warnings` is always empty. It stays on the wire because the uploader's
+`transport/types.ts` still declares it; nothing renders it.
 
-### 4.4 `GET /api/files/upload/{sessionId}/events`
+### 4.3 `POST /api/files/upload/{sessionId}/parts` — 115 lines
 
-SSE. Subscribes a dedicated Redis client to `upload:status:{sessionId}`, heartbeats every 30 s,
-closes 1 s after a terminal frame. **No authentication** — knowing a session id reveals its status.
-No client connects to it (§12.1).
+`authorizeUploadSession` → `touchUploadSession` → `presignPart` with `bucket: session.bucket`.
+
+**Nothing on this route marks the session failed**, deliberately (#1857). It used to: the old error
+handler wrote `status: 'failed'` for every error it saw, so one failed part presign killed the whole
+upload — converting a retryable blip into a forced re-upload plus an orphaned S3 multipart upload.
+A part presign mutates nothing, so there is no half-run state for a `failed` status to protect.
+
+Known gap, flagged in the code: the part presign takes no `ttlSec`, so part URLs use
+`S3Adapter.presignPart`'s 3600 s default rather than `session.ttlSec`.
+
+### 4.4 `POST /api/files/upload/{sessionId}/complete` — 95 lines
+
+`authorizeUploadSession` → Zod-parse → `completeUpload` → on `err`, `failUploadSession` then
+`uploadErrorResponse`. A malformed body is an **early return**, not a throw: nothing was attempted,
+so it must not mark the session failed and force the client to re-upload the bytes.
+
+### 4.5 `completeUpload` — `packages/lib/src/files/upload/complete.ts:132`
+
+Three phases, and the boundaries are the point.
+
+**Phase 1 — storage only, no database.**
+`completeMultipart` (if multipart, against `session.bucket` — any other answers `NoSuchUpload`),
+then `headObject`, then `validateCompletedUpload`. For a multipart upload this is not a second
+opinion, it is the *only* one: `CreateMultipartUpload` takes no policy document, so nothing bounds
+the total size or the real content type until this `HEAD`. The public `externalUrl` is built here
+too, by the **synchronous** `StoragePort.buildExternalUrl`, precisely so nothing has to reach
+storage from inside the transaction.
+
+**Phase 2 — one `BEGIN…COMMIT`, database statements only.**
+`createStorageLocation(tx, txCtx, …)` then `persistUpload(tx, ctx, deps, handler, session,
+location)`. No S3 call, no credential fetch, no queue write, no cache bust.
+
+Two rules hold this together:
+
+- **`ctx.db` must be a pool.** Drizzle 0.44's `NodePgTransaction.transaction()` exists and issues
+  `SAVEPOINT`, so handing this function a transaction would silently nest one and the "one
+  `BEGIN…COMMIT` per request" property would become unobservable rather than false. Verified:
+  `complete.ts:204` is the only `db.transaction(` on the completion path.
+- **Style A — the body throws.** `db.transaction` rolls back on **throw**; returning `err()` does
+  not, because an `err` is an ordinary resolved value, the body completes normally, and the caller
+  commits rows it was just told failed to write. Every `Result`-returning collaborator inside the
+  transaction goes through `unwrap` (`files/guard.ts:24`), and `guard` converts at the exported
+  boundary, *outside* the transaction.
+
+`persistUpload` (`upload/persist.ts:79`) is one function and one `switch` on `handler.persist`. Its
+`isPrivate` comes from `session.visibility`, which `buildUploadConfig` already resolved — one source
+for the answer, so the bucket and the `isPrivate` flag cannot disagree. (They did: a lowercase
+`'private'` on the old dataset processor matched neither branch of `bucketForVisibility`, so every
+dataset document went to the **public** bucket *and* was recorded non-private. #1827.)
+
+On any throw, `compensate()` deletes the object with the session's own bucket, and if that fails
+enqueues a durable `orphanedStorageObjectJob`. Both are swallowed — losing the original error is
+strictly worse than leaking one object the orphan sweeper will find.
+
+**Phase 3 — after `COMMIT`.** `upload/post-commit.ts:80`, and nothing in it may fail the request.
+`handler.afterCommit` (cache busts, dataset processing enqueue) → `ensureThumbnailPresets` (one
+call for the whole preset fan-out, so the source asset is resolved once) → `getAssetDownloadRef`
+for the preview URL, preferring `handler.thumbnails.preview` when the fan-out reports it already
+generated.
 
 ---
 
 ## 5. The Storage Layer
 
-> **Being refactored.** Phase 3 of `plans/attachments/` has landed #1823, #1825, #1827 and #1829.
-> `StorageManager` is now a shrinking facade over `db`-first functions; the shape below is current
-> as of #1829. PR 3d (`storage/presign.ts` + `storage/objects.ts`) is still in flight, so the
-> facade's remaining method list will shrink again.
-
 ```
-storage/  (functions — collaborators arrive as parameters, never constructed)
-  ├── buckets.ts          bucketForVisibility / publicCdnUrl / buildExternalUrl / assertBucket   (pure, sync)
-  ├── auth.ts             resolveProviderAuth                                    → @auxx/credentials
-  ├── providers.ts        the adapter registry + isProviderAvailable / getStorageAdapter
-  ├── ports.ts            StoragePort (the side-effecting seam) + createS3StoragePort
-  ├── locations.ts        createStorageLocation(tx, ctx, …) / deleteStorageLocation(tx, ctx, …)
-  ├── location-queries.ts getStorageLocation(ctx, …) / findStorageLocationByExternalId(ctx, …)
-  └── adapters/           S3Adapter + the StorageAdapter interface  (classes, sanctioned by the lib guide)
-
-StorageManager (1,479 lines and falling, org-scoped) — @deprecated facade, deleted in the phase-10 sweep
-  ├── presign / multipart / head / delete-by-key      → adapter        (moves to presign.ts / objects.ts in 3d)
-  ├── uploadContent / getContent / stream             → adapter
-  ├── StorageLocation CRUD                            → delegates to locations.ts / location-queries.ts
-  └── enforcePolicy(config)                                            (becomes pure enforceUploadPolicy in 3d)
+storage/
+  buckets.ts          bucketForVisibility / publicCdnUrl / buildExternalUrl /
+                      assertBucket / requireLocationBucket          (pure, sync)
+  auth.ts             resolveProviderAuth                           → @auxx/credentials
+  providers.ts        the adapter registry, isProviderAvailable, getStorageAdapter
+  ports.ts            StoragePort / QueuePort / CachePort + createS3StoragePort
+  presign.ts          enforceUploadPolicy + presignUpload / startMultipartUpload /
+                      presignPart / completeMultipart
+  objects.ts          putObject / getObject / streamObject / headObject / deleteObject
+  locations.ts        createStorageLocation(tx, ctx, …) / deleteStorageLocation(tx, ctx, …)
+  location-queries.ts getStorageLocation(ctx, …) / findStorageLocationByExternalId(ctx, …)
+  queue-port.ts       createProductionQueuePort  (BullMQ + the thumbnail Redis latch)
+  storage-manager.ts  @deprecated facade, 1,179 lines
+adapters/             S3Adapter + the StorageAdapter interface
 ```
 
-Gone since this section was written: the 29 zero-caller methods (#1825), the folder / search /
-webhook surface that existed only for the Drive / Dropbox / OneDrive / Box stubs (#1825), and six
-of the nine `StorageCapabilities` flags, which were declared and set but read nowhere (#1827).
+`StorageLocationService` (1,016 lines, a module-level singleton with no org scope) is **deleted**
+(#1829). Every location read and delete now filters `ctx.organizationId` in SQL
+(`location-queries.ts:54`, `:94`).
 
-`enforcePolicy` (storage-manager.ts:1338) checks four things against the **client-declared**
-`expectedSize` and `mimeType` before presigning: key prefix, TTL ceiling, content-length range,
-mime allow-list. For single uploads the size and content-type also become S3 POST-policy
-conditions, so S3 enforces them for real. For **multipart** they are advisory only — the actual
-enforcement is `headByKey` + `validateCompletedUpload` after the bytes are already paid for and
-stored.
+### 5.1 `bucket` is never optional
 
-~~`StorageLocationService` is a **module-level singleton with no organization scope**.~~ **FIXED
-(#1829).** The 1,086-line class is deleted. Only four of its methods had a caller; nine had none.
-Scope is no longer by convention — `getStorageLocation`, `findStorageLocationByExternalId` and
-`deleteStorageLocation` all filter on `ctx.organizationId` in SQL.
+This is the most expensive lesson in the subsystem. **S3 answers `204 No Content` for a delete of a
+key that is not in the bucket you named**, and `NoSuchUpload` for a part presigned against a bucket
+the upload did not start in. So a wrong-bucket call reports success and the real object leaks with
+no error and no log. That produced three separate production bugs (#1816/#1817/#1818), all with the
+same shape: `bucket` was optional, the call site omitted it, and the resolver fell back to
+`S3_PRIVATE_BUCKET` — which is wrong for every PUBLIC upload (avatar, KB logo, widget logo, article
+cover).
 
-One consequence to know: `StorageLocation.organizationId` is **nullable** (declared "for backfill
-compatibility"), and the new reads use `eq(...)`, so a row carrying a NULL organization is invisible
-to `getStorageLocation` and immune to `deleteStorageLocation`. Every construction site that reaches
-these paths supplies a real organization, and `StorageManager` now throws rather than running an
-unscoped query when it has none.
+Three things enforce it now:
+
+- `ObjectRef` (`storage/ports.ts:48`) carries a **required** `bucket`, and every object-addressing
+  parameter type extends it. An optional `bucket` on a port method is a regression.
+- `assertBucket(bucket, op)` (`buckets.ts:131`) throws instead of resolving a configured default.
+- `requireLocationBucket(location, ctx)` (`buckets.ts:164`) reads `metadata.bucket` off a persisted
+  row and **throws rather than inventing one**. It is the single place every download path resolves
+  a bucket from a row, so `assets/download.ts` and `folder-files/download.ts` cannot drift.
+
+All 33,297 `StorageLocation` rows carry `metadata.bucket` (measured 2026-08-24).
+
+### 5.2 There is exactly one adapter, and the port's params are sufficient
+
+`files/adapters/` contains `base-adapter.ts` and `s3-adapter.ts`, and
+`StorageManager.validateStorageParams` rejects every provider without an adapter — which is
+everything except `'S3'`. The per-provider dispatch resolves to S3 in every call that can succeed.
+
+The one real channel by which a `StorageLocation` could influence the client is `metadata`:
+`S3Adapter.parseS3Location` spreads it into the `S3Config` that `createS3Client` reads, whose first
+lines are `config?.region || auth?.region || S3_REGION`. So a row *could* carry `region` or
+`endpoint` that the bucket+key-only `StoragePort` does not model. **Measured: zero rows carry
+either**, across all 33,297, and `count(DISTINCT provider) = 1`. That is why `StoragePort` was left
+alone (#1859). If a future S3-compatible provider needs a per-row endpoint it belongs on `ObjectRef`
+as an explicit field, never as a re-widened `metadata` passthrough.
+
+This measurement matters because "the port is S3-only while `getContent` dispatches per provider"
+was recorded as the blocker in three consecutive PR retros and was false each time.
+
+### 5.3 The policy, and where S3 re-enforces it
+
+`enforceUploadPolicy(policy, candidate)` (`presign.ts:109`) is pure and throws on the first
+violation: key prefix, TTL ceiling, content-length range, MIME allow-list (`type/subtype`,
+`type/*`, `*/*`). The key check is a plain `startsWith`, **not** path containment —
+`org123/../../../etc/passwd` passes it, which is fine because S3 treats a key as an opaque name, but
+it means this must never be described as a traversal guard.
+
+The asymmetry it exists inside:
+
+- **Single** uploads are signed as a presigned POST whose policy document carries
+  `content-length-range 0..size` and an exact `Content-Type` condition. S3 rejects anything wider,
+  so whatever `enforceUploadPolicy` allows is what S3 will accept. (A zero-`size` request signs a
+  plain PUT, which carries no content-length condition.)
+- **Multipart** uploads carry no policy document at all. `presignPart` signs one part number and S3
+  enforces only its 5 GiB per-part ceiling. Nothing constrains the total size or the real content
+  type. For this path the policy is **advisory**, and `headObject` + `validateCompletedUpload` after
+  the bytes land is the only real gate.
+
+`StoragePort.presignUpload` and `.startMultipart` are raw adapter calls that sign whatever they are
+handed. `storage/presign.ts`'s `presignUpload` / `startMultipartUpload` are the sanctioned doors,
+because they enforce the policy first. Reaching for the port directly from a route skips it.
+
+### 5.4 `StorageManager` — what is left
+
+1,179 lines, `@deprecated`, scheduled for deletion. What remains is:
+
+- **`uploadContent`** — a composite (object write + `StorageLocation` row) with 13 call sites, all
+  server-side ingest. It resolves the bucket **once** and uses it for all three of the object write,
+  the external URL and the persisted row; it used to resolve it three times independently, so the
+  object could land in one bucket while the row claimed another.
+- **`getDownloadRef` / `getContent` / `streamFileContent` / `deleteFile`** — the composites
+  addressed by `storageLocationId`. Each reads a row *and* touches storage.
+- Legacy adapters for presign/multipart/head/delete-by-key that forward to `storage/presign.ts` and
+  `storage/objects.ts`.
+
+Its `filesCtx()` accessor is the **only** place the class reaches the process-wide pool, and it
+throws rather than running unscoped when it has no organization.
 
 ---
 
-## 6. The Front End
+## 6. The Module Contract — `files/ctx.ts`
 
-`apps/web/src/components/file-upload/` — 5,832 lines, a Zustand store split into five slices.
+**Read `packages/lib/src/files/ctx.ts` before writing anything new under `files/`.** It is the
+contract, it carries its own reasoning, and this section does not restate it. In short:
 
-```
-useFileUpload(options)                        hooks/use-file-upload.ts   (594)
-   └── useUploadStore                         stores/upload-store.ts
-         ├── session-slice     client-side session containers + SSE (unused)   (442)
-         ├── file-slice        per-file state machine                          (306)
-         ├── orchestration-slice  the actual upload driver                   (1,035)
-         ├── ui-slice                                                          (240)
-         └── entity-slice      deprecated global config                        (117)
-```
+- **Three signature shapes.** Pure (`fn(data)`), database-touching (`fn(ctx: FilesCtx, …)`), and
+  transaction-only (`fn(tx: Transaction, ctx: FilesCtx, …)`) — `tx` positional and **first**,
+  because `FilesCtx.db` is `Database | Transaction` and therefore cannot express "must be inside a
+  transaction": a pool typechecks into it and the multi-row invariant silently stops being atomic.
+- **`FilesCtx` is `{ db, organizationId }` and there is deliberately no `userId`.** A function that
+  records an actor takes it in its own `input`, where it is required and unmissable —
+  `createAssetWithVersion(tx, ctx, deps, { createdById, … })`, never `ctx.userId`.
+- **`FilesDeps` is a separate object** (`storage`, `queue`, `cache`, `now`), and functions take a
+  **narrowed `Pick`** of it. `getAssetDownloadRef` declares `Pick<FilesDeps, 'storage'>`, so its
+  signature says it cannot enqueue a job or bust a cache — and no caller of a pure read has to
+  construct a `QueuePort` (i.e. bind a live Redis connection) just to presign a URL.
+- **The nesting rule.** A caller already inside a transaction passes `{ ...ctx, db: tx }` to every
+  nested `ctx`-taking read. Reusing the outer `ctx` reintroduces exactly the stale-read bug this
+  refactor exists to kill.
+- **`Result` at the boundary, throws inside.** Exported functions return
+  `Promise<Result<T, AuxxError>>` via `files/guard.ts`; internal helpers throw. Only `AuxxError`
+  subclasses — never bare `Error`, never `TRPCError`.
 
-The real work is `orchestration-slice.startUpload()`: build a pool of `maxConcurrentUploads`
-(default 3) workers, and per file do session-create → `directUpload` → complete, updating store
-state at each step.
+**The test payoff is the observable one.** The doubles in `packages/lib/src/files/__tests__/support/`
+(`db.ts`, `storage.ts`, `queue.ts`, `cache.ts`, `redis.ts`, `clock.ts`, `ctx.ts`, `fixtures.ts`)
+mean a new test in a converted module needs **zero `vi.mock`**. 47 test files live under
+`files/**` now. The only remaining `vi.mock('@auxx/database', …)` under `files/` are
+`lifecycle/__tests__/quota-cleanup.test.ts` and `lifecycle/__tests__/orphaned-cleanup.test.ts` (the
+un-converted lifecycle module), plus two non-test files that mention the pattern in prose.
 
-`utils/direct-upload.ts` does the browser-side transfer with `XMLHttpRequest` (for upload progress
-events). Multipart is **strictly serial**: 10 MB chunks, and each chunk costs a round-trip to our
-server for a presigned URL before the PUT.
+The converted modules and their sizes:
 
-Consumers: avatar upload (settings, onboarding, agent hero, resources), record identity header,
-dataset documents, file library, custom-field FILE inputs, QC photo strip, file-select.
+| Module | Files | Replaced |
+| --- | --- | --- |
+| `assets/` | 7 (~1,800 lines) | `MediaAssetService` 1,592 → 554 facade |
+| `attachments/` | 5 (~1,030) | `AttachmentService` 1,386 → 304 facade |
+| `folder-files/` | 7 (~2,000) | `FileService` 1,982 → 281 facade |
+| `folders/` | 6 (~2,320) | `FolderService` 1,945 → 421 facade, zero construction sites left |
+| `filesystem/` | 6 (~1,250) | `FilesystemService` 1,427 → **deleted** |
+| `thumbnails/` | 7 (~1,870) | `ThumbnailService` 1,038 + `thumbnail-batch.ts` + `thumbnail-enqueue.ts` → **deleted** |
+| `upload/handlers/` | 14 (~1,210) | the whole `upload/processors/` hierarchy, 11 files → **deleted** |
+| `storage/` (new files) | 10 (~1,770) | `StorageLocationService` 1,016 → **deleted**; `StorageManager` 2,512 → 1,179 |
 
-Two structural smells on this side:
-
-- `startUploadForSession(sessionId)` works by **temporarily reassigning the global
-  `activeSessionId`**, calling `startUpload()`, then restoring it. Two concurrent uploaders in the
-  same tab race on that global.
-- `use-field-file-upload.ts` maintains a **module-level `Map` of completion handlers and a global
-  `useUploadStore.subscribe`**, with a 30-minute staleness sweep, because the store has no
-  per-uploader completion callback that survives a React unmount.
+The line-count target that used to be an exit criterion is **retired** — the replacement modules are
+larger than the classes they replace because they do more (real org scope on every statement, real
+tree aggregates, ports) and because ~30–55% of each new file is JSDoc. The criteria that replaced it
+are behavioural: no module-scope database access, no `vi.mock('@auxx/database')` in converted
+modules, exactly one transaction on the upload completion path, org scope unconditional on every
+statement including DELETEs, `BaseService`/`getTx`/`withTx` gone.
 
 ---
 
-## 7. Door 2 & 3 — the parallel upload paths
+## 7. The Front End
 
-### 7.1 Public workflow share uploads
+`apps/web/src/components/file-upload/` — 39 files, 6,048 lines.
+
+```
+hooks/use-file-upload.ts               610   the public hook
+stores/upload-store.ts                  47   create()(devtools(immer(…)))
+stores/slices/orchestration-slice.ts   990   the upload driver
+stores/slices/file-slice.ts            306   per-file state machine
+stores/slices/session-slice.ts         157   client-side session containers
+stores/slices/ui-slice.ts              148
+stores/slices/entity-slice.ts          117   @deprecated global config
+transport/http-upload-transport.ts      65   the only file that knows a URL
+transport/direct-upload.ts             182   XHR to S3, single + serial multipart
+transport/upload-error.ts              130   parseUploadErrorResponse
+transport/types.ts                     126   the wire contract
+transport/server-id.ts                  29   resolveServerId: asset → file → 'session'
+ui/{avatar-upload,file-queue-manager,file-item}.tsx
+```
+
+### 7.1 `UploadTransport` — the network seam (#1858)
+
+```ts
+export interface UploadTransport {
+  createSession(input: CreateSessionInput): Promise<PresignedConfig>
+  uploadObject(params: {
+    file: File
+    config: PresignedConfig
+    onProgress?: (progress: UploadProgressEvent) => void
+  }): UploadHandle
+  completeSession(sessionId: string, body: CompletionInput): Promise<CompletionResult>
+}
+```
+
+`transport/types.ts:110`. The production implementation is `httpUploadTransport`
+(`transport/http-upload-transport.ts:22`) and it is **store state, not a constructor argument** —
+`orchestration-slice.ts:124` defaults it, `:126` swaps it. It lives on the store so it cannot leak
+between test files and so it survives `reset()`.
+
+`uploadObject` returns a handle **synchronously** so the caller can register the abort before
+awaiting. That was one of three swallowed failures the extraction surfaced:
+
+1. **The storage-limit 403's upgrade prompt never reached a user.** All three browser call sites did
+   `if (!res.ok) throw new Error(\`… (${res.status})\`)` and never read the body, so
+   *"You have reached your storage limit. Usage: 4.8GB/5GB…"* rendered as **"Session create failed
+   (403)"**. `parseUploadErrorResponse` (`transport/upload-error.ts:100`) reads both envelopes.
+2. **`FileState.error` was `undefined` for every failed upload** — `updateFileStatus('failed')`
+   leaves `error` unset and no caller ever set it separately, so the real message died a second
+   time. `orchestration-slice.ts:755` now calls `setFileError`.
+3. **`abort()` did nothing between multipart parts** — the flag was set inside `currentAbort`, so an
+   abort arriving while a part was being presigned (no XHR live) was silently dropped and the
+   remaining parts uploaded anyway. `direct-upload.ts:172`.
+
+### 7.2 The transfer itself
+
+`transport/direct-upload.ts` uses `XMLHttpRequest` (for upload progress events), single PUT or
+POST-with-policy-fields depending on `config.uploadType`. Multipart is **still strictly serial**:
+`CHUNK_SIZE = 10 MB` (`direct-upload.ts:12`), one `for` loop with an `await` per part, and each part
+costs a round-trip to our server for a presigned URL before the PUT (`:107`). Cross-file concurrency
+exists at the *file* level only — a pool of `maxConcurrentUploads ?? 3` (`orchestration-slice.ts:575`).
+
+### 7.3 The wire format
+
+Declared once, in `transport/types.ts`. Of `PresignedConfig`, the client reads `uploadMethod`
+(single vs multipart), `uploadType` (PUT vs POST), `presignedUrl`, `presignedFields`, `uploadId`,
+`partPresignEndpoint` and `sessionId`; `warnings` is **declared and never read**. Of
+`CompletionResult`, it reads `assetId`/`fileId` (through `resolveServerId`) and `url`;
+`storageLocationId`, `attachmentId`, `documentId`, `success` and `sessionId` are declared and unread.
+
+Consumers: avatar upload (settings, onboarding), file-select, the file library, dataset documents,
+the QC photo strip, and the record custom-field uploader.
+
+---
+
+## 8. Doors 2 & 3 — the parallel upload paths
+
+### 8.1 Public workflow share uploads
 
 `apps/web/src/app/api/workflows/shared/[shareToken]/files/{sessions,[sessionId]/complete}`
 
-A passport-token-authenticated re-implementation of the same flow for anonymous end users:
-Redis key `public-upload:{id}` (different keyspace, different shape), `headByKey`,
-`createStorageLocation`, `MediaAssetService.createWithVersion` with `purpose:
-'PUBLIC_WORKFLOW_INPUT'` and a 24 h `expiresAt`, then a download ref.
+A passport-token-authenticated re-implementation for anonymous end users. Its own Redis keyspace
+(`public-upload:{id}` via `setRedisData`), its own inline `DEFAULT_UPLOAD_POLICY`, no handler, no
+quota gate, no `files.manage`. It presigns through `StorageManager.generatePresignedUploadUrl` — so
+it *does* get `enforceUploadPolicy` — then `headByKey`, `createStorageLocation`, and
+`createAssetWithVersion` inside its own single `database.transaction`, with
+`purpose: 'PUBLIC_WORKFLOW_INPUT'` and a 24 h `expiresAt`.
 
-**It does all of this with no transaction and no processor, and it is correct.** That is the most
-useful single data point about the main path's `db.transaction`.
+Two things to know:
 
-### 7.2 Server-side ingest
+- It writes the same rows with roughly a quarter of the machinery, which remains the most useful
+  single data point about how much of the main path is essential.
+- **Its storage key does not start with the org id.** It is
+  `public-workflow/{orgId}/{shareToken}/{sessionId}/{filename}`
+  (`sessions/route.ts:158`), so `aws s3 rm s3://bucket/{orgId}/ --recursive` — the reason
+  `deriveStorageKey` puts the org first — does not reach these objects.
+
+### 8.2 Server-side ingest
 
 Inbound mail (`email/inbound/attachment-ingest.service.ts`, `body-ingest.service.ts`), thumbnails
-(`thumbnail-service.ts`), PDF render/preview (`documents/`), exports and prints
-(`jobs/export/**`), recordings (`recording/`), remote image fetch (`fetch-remote-image.ts`), chat
-attachments (`apps/api/src/routes/chat/attachments.ts`). All bypass sessions/processors and call
-`StorageManager.uploadContent()` + the services directly.
+(`jobs/maintenance/generate-thumbnail-job.ts`), PDF render/preview (`documents/`), exports and
+prints (`jobs/export/**`), recordings (`recording/`, `apps/worker/src/recording/`), visit reports
+(`dispatch/visit-report/render.ts`), remote image fetch (`files/fetch-remote-image.ts`), chat
+attachments (`apps/api/src/routes/chat/attachments.ts`). Fourteen call sites, all
+`StorageManager.uploadContent()` plus a lib write function.
 
-This is fine and should stay — but it means **the processor system is not the choke point for file
-creation**, only for browser uploads. Any invariant expressed only in a processor (`kind`,
+This is fine and should stay — but it means **the handler table is not the choke point for file
+creation**, only for browser uploads. Any invariant expressed only in a handler (`kind`,
 `expiresAt`, allow-lists, cache busts) is not enforced for these.
+
+There is a third `StorageLocation` write door: `users/user-avatar-service.ts` inserts the row
+directly, bypassing `createStorageLocation` and its bucket normalisation (§12).
 
 ---
 
-## 8. The Read Path
+## 9. The Read Path
 
-Three different answers to "give me the bytes", with three different designs:
+Four routes serve file bytes, with three designs.
 
 | Route | Design | Auth |
 | --- | --- | --- |
-| `GET /api/files/download/[fileId]` | **Buffers the entire object into Node memory**, then slices for `Range`. Handles `asset:`/`file:` FileRefs. | session + `PermissionKey.filesView` |
-| `GET /api/attachments/[id]/content` | **302 to a presigned URL.** Inline only for png/jpeg/gif/webp. | session + `canViewAttachment` (mail-lens aware) |
-| `GET /api/attachments/[id]/{download,thumbnail}` | same redirect shape | same |
+| `GET/HEAD /api/files/download/[fileId]` | **Buffers the entire object into Node memory**, then slices for `Range`. Accepts a plain id or an `asset:` / `file:` FileRef. | session + `PermissionKey.filesView` |
+| `GET /api/attachments/[id]/content` | 302 to a presigned URL. **Fail-closed inline gate**: only png/jpeg/gif/webp, read off the joined `MediaAssetVersion`; everything else redirects to `/download`. | session + `canViewAttachment` (mail-lens aware) |
+| `GET /api/attachments/[id]/download` | 302 to a presigned URL; the `stream` arm buffers. | same |
+| `GET /api/attachments/[id]/thumbnail` | `ensureThumbnail` → 302 when ready, **202 + `Retry-After: 2`** when queued, 302 to `/download` otherwise. | same, plus an in-memory 30/min per-user rate limit (a `Map`, with a `TODO` for Redis) |
 
-The download route's `shouldRenderInline` carefully excludes `image/svg+xml` (stored XSS), which is
-right. What is not right is that it is the only content route that streams through us: a 2 GB video
-in the file library becomes a 2 GB `Buffer` in the web process before a single byte reaches the
-client, and `Range` requests do the full read every time. The attachment routes already show the
-correct pattern.
+The download route's `shouldRenderInline` (`route.ts:187`) allows `image/`, `video/` and `audio/`
+prefixes, honours `?download=1`, and specifically excludes **`image/svg+xml`** — an SVG is XML that
+can carry `<script>`, FILE custom fields accept any MIME by default, and `nosniff` is no help when
+the declared type *is* svg. `HEAD` builds its headers through the same
+`createFileDownloadResponse`, so the two methods agree per RFC 9110.
 
-Thumbnails are generated asynchronously (`Queues.thumbnailQueue` → `thumbnail-worker`) into
-**separate `MediaAsset` rows** linked by `MediaAssetVersion.derivedFromVersionId` + `preset`.
-Presets live in `thumbnail-types.ts` (`avatar-32/64/128/256`, `kb-logo-sm/lg`, …).
+### 9.1 The three download-ref functions, and why they differ
 
----
+- `getAssetDownloadRef(ctx, deps, assetId, opts)` — `assets/download.ts:98`. **Public shortcut:** a
+  non-private asset whose location carries an `externalUrl` returns that durable URL with no expiry,
+  because OG-image and link-preview crawlers cache what they fetch for days and every cached copy of
+  a presigned URL 403s once the signature lapses. Anything else is presigned, with the bucket from
+  `requireLocationBucket`.
+- `getFolderFileDownloadRef(ctx, deps, fileId, opts)` — `folder-files/download.ts:107`. **No public
+  shortcut** — `FolderFile` has no `isPrivate` column, so a file is always presigned. It also
+  refuses an archived file with the same `NotFoundError` as a missing one, so a caller cannot probe.
+- `getAttachmentDownloadRef(ctx, deps, attachmentId, opts)` — `attachments/download.ts:101`. A
+  three-branch ladder: **pinned** (`assetVersionId`/`fileVersionId` set) resolves the pinned
+  `StorageLocation` by id through `LocationDownloadPort`; **unpinned + `fileId`** delegates to
+  `getFolderFileDownloadRef`; **unpinned + `assetId`** delegates to `getAssetDownloadRef`. The two
+  unpinned branches delegate rather than restate precisely because the two libraries do not have the
+  same URL policy, and a second copy drifts. There is deliberately **no version selector**: the row
+  already carries the answer.
 
-## 9. Lifecycle, Quota & Cleanup
+Both the asset and folder-file sides take the same `version: number | 'latest' | 'current'`
+selector; `'current'` follows the `currentVersionId` pointer and falls back to the highest version
+number, `'latest'` always takes the highest. The asset side additionally accepts a `versionId`
+escape hatch.
 
-There are **two unrelated modules both named "cleanup service"**:
+Content reads are the twins: `getAssetContent` / `streamAssetContent` (`assets/content.ts`) and
+`getFolderFileContent` / `streamFolderFileContent` (`folder-files/content.ts`), both landed in
+#1859. They resolve the bucket the same way and share the version selector.
 
-- `files/cleanup/cleanup-service.ts` (256 lines) — the S3 compensation queue for the complete
-  route. Every persistence method is a `// TODO` that logs and returns. **It does nothing.**
-- `files/lifecycle/cleanup-service.ts` (496 lines) — the real reaper functions
-  (`deleteExpiredFiles`, `deleteOrphanedFiles`, `deleteEntityFiles`, `cleanupFailedUpload`, …).
+### 9.2 Thumbnails
 
-Scheduled in `apps/worker/src/workers/index.ts`: `orphanedFileCleanupJob`,
-`deletedFileCleanupJob`, `storageQuotaCheckJob`. **Not** scheduled: `quotaEnforcementCleanupJob`.
+Generated asynchronously into **separate `MediaAsset` rows** — `kind: 'THUMBNAIL'`,
+`purpose: 'DERIVED'` — whose versions carry `derivedFromVersionId` + `preset`. Uniqueness is a
+partial index `(derivedFromVersionId, preset) WHERE deletedAt IS NULL`. Deleting a source asset
+therefore has to expand the closure, which is what `deleteThumbnailsForSource` and the
+`ThumbnailCleanupPort` on `assets/ports.ts` exist for.
 
-`TEMP_UPLOAD` assets get an `expiresAt` stamped by the `MESSAGE` / `COMMENT` / `CUSTOM_FIELD` /
-`WORKFLOW_RUN` processors, and each of those then calls a private `scheduleCleanup()` that only
-logs. The reaping actually depends on `orphanedFileCleanupJob` → `deleteExpiredFiles`, which walks
-`FolderFile` — so **`MediaAsset` temp uploads are stamped with an expiry that nothing enforces.**
+Thirteen presets in `thumbnails/presets.ts`: `avatar-32/64/128/256`, `article-thumb`,
+`article-cover`, `article-inline`, `attachment-preview`, `attachment-thumb`, `comment-preview`,
+`comment-preview-large`, `kb-logo-sm`, `kb-logo-lg`. `DEFAULT_PRESET = 'avatar-64'`.
 
----
+`ensureThumbnail` / `ensureThumbnailPresets` (`thumbnails/thumbnail-mutations.ts`) either find a
+live thumbnail **with a storage location** and answer `ready`, or enqueue and answer `queued`.
+There is no synchronous generation branch any more. The `storageLocationId` guard is a named fix: a
+`PROCESSING` placeholder left by a crashed worker used to answer `ready` with
+`storageLocationId: undefined`, so the preset stayed broken until the 24-hour failed sweep removed
+it, and the attachment route meanwhile presigned `undefined`.
 
-## 10. Transactions — what is actually happening
+`resolveThumbnailSource` can **write**: an attachment pointing at a `FolderFile` has no
+`MediaAssetVersion`, so one is minted with `kind: 'FILE_CONVERSION'` over the same
+`StorageLocation`. Its four-step ladder — pinned asset version, pinned file version (convert),
+unpinned asset (current version), unpinned file (convert current) — is in the function's docstring.
 
-This is the part worth rewriting.
-
-### 10.1 The transaction is three savepoints deep
-
-`BaseService.getTx()` claims to detect an existing transaction:
-
-```ts
-const client = this.db
-if (typeof client.transaction !== 'function') return callback(client)   // "already in a tx"
-return client.transaction((tx) => callback(tx))
-```
-
-In drizzle-orm 0.44, `NodePgTransaction.transaction()` **exists** and issues
-`SAVEPOINT sp{n}` (`node-postgres/session.js:206`). So the first branch is **unreachable dead
-code** and `getTx` always opens a nested savepoint.
-
-For an avatar upload, the actual statement sequence is:
-
-```
-BEGIN                                    ← route: db.transaction
-  INSERT StorageLocation                 ← createStorageLocation({tx})
-  SAVEPOINT sp1                          ← UserProfileProcessor: mediaAssetService.getTx()
-    SELECT MediaAsset …                    findExistingAsset
-    SAVEPOINT sp2                        ← createWithVersion → getTx()
-      INSERT MediaAsset
-      INSERT MediaAssetVersion
-    RELEASE sp2
-    UPDATE "User" SET avatarAssetId …
-  RELEASE sp1
-COMMIT
-```
-
-Nothing needs partial rollback anywhere in that tree. All three levels either succeed together or
-must fail together. Every savepoint is pure overhead and pure confusion.
-
-Compounding it, `BaseProcessor.process()` **mutates the instance** to bind the transaction:
-
-```ts
-this.mediaAssetService = this.mediaAssetService.withTx(opts.tx)   // permanent for this instance
-```
-
-…and then `createAsset` defensively wraps again (`tx ? this.mediaAssetService.withTx(tx) : …`).
-Double-binding is currently harmless because processors are constructed per-request by the
-registry factory — but it is a landmine the moment anyone caches a processor.
-
-### 10.2 Network I/O inside the transaction
-
-`buildExternalUrl` runs **inside** `db.transaction`. It resolves the adapter and, when
-`session.credentialId` is set, calls `getProviderAuth` → credential decryption. Whatever latency
-that has is latency the Postgres connection is held open for, on the hottest write path in the
-subsystem. Its result is only a string built from config; it has no reason to be there.
-
-**There is a second credential fetch in the same transaction, and it is worse.** Found during the
-Phase-2 write pilot, not the original survey: `createStorageLocation` →
-`prepareLocationMetadata` (storage-manager.ts:~999) → `resolveS3BucketForLocation` →
-`getProviderAuth` → **`revealSecrets(credentialId, orgId)`** — a database read *plus* a decrypt,
-wrapped in a `try/catch` that swallows failure into a `logger.warn`. It exists solely to **guess a
-bucket** when the caller did not supply one.
-
-So the completion transaction holds its connection open across two independent credential
-resolutions, one of which is a fallback for information the caller already had. Requiring `bucket`
-on the input **deletes** that path rather than moving it — which is what
-`files/storage/locations.ts` does. The pure remainder is: merge caller metadata, write `bucket`
-last (so an inherited `metadata.bucket` cannot beat the bucket actually uploaded to), default `key`
-from `externalId`.
-
-### 10.3 ~~BullMQ jobs enqueued inside the transaction — and they read stale data~~ — FIXED (#1818)
-
-`UserProfileProcessor.executeProcess` has this comment:
-
-```ts
-// Generate thumbnails AFTER transaction commits
-await this.generateAvatarThumbnails(session, result.assetId)
-```
-
-That is **false**. It runs after `RELEASE sp1`, not after `COMMIT` — the route's transaction is
-still open. `generateAvatarThumbnails` → `ensureThumbnailPresets` → `new ThumbnailService(org,
-user)` with the **global `db`**, i.e. a different connection.
-
-Consequences, both real:
-
-- **First avatar upload:** `resolveVersion` cannot see the uncommitted `MediaAsset` and throws
-  `Asset not found: …`. Swallowed by the processor's try/catch and logged. Every one of the four
-  avatar presets is wasted work that always fails. The route's Phase-3 `avatar-32` enqueue is what
-  actually produces a thumbnail.
-- **Re-uploading an avatar:** the asset row exists but its `currentVersionId` still points at the
-  *previous* version outside the tx, so `findByVersionAndPreset` finds the old thumbnail and
-  returns `status: 'ready'`. **`avatar-64/128/256` silently keep showing the old image.**
-
-`KnowledgeBaseProcessor` has the identical structure and the identical staleness window.
-
-Beyond staleness: enqueueing a job inside an open transaction means a worker can pick it up before
-`COMMIT`, and the job survives a `ROLLBACK`. Jobs must be enqueued post-commit, from the route.
-
-### 10.4 ~~The compensation path does not compensate~~ — FIXED (#1816, #1818)
-
-On `db.transaction` failure the route tries `deleteByKey` and, if that throws,
-`cleanupService.scheduleCleanup` — which logs `"Would store cleanup task"` and returns.
-
-Worse, `deleteByKey` takes **no `bucket`**. `S3Adapter.deleteFile` resolves the target through the
-shared `parseS3Location` helper (s3-adapter.ts:867), whose fallback chain when the location carries
-no `metadata.bucket` and the `externalId` is a bare key is `auth.bucket → S3_PRIVATE_BUCKET` — and
-`auth.bucket` is itself `S3_PRIVATE_BUCKET`, because it comes from `resolvePlatformAuth()`. So for a
-**PUBLIC** upload (avatar, KB logo, chat-widget logo, article cover) the compensation deletes a
-nonexistent key in the *private* bucket, S3 answers 204, and the real object leaks with **no error
-and no log**.
-
-> `parseS3Location` is shared with `getMeta` / `fileExists` / `getDownloadRef`, so the fallback
-> cannot simply be removed — the read paths depend on it. `deleteFile` needs its own strict
-> resolver.
-
-### 10.5 What the transaction is actually protecting
-
-`StorageLocation` + `MediaAssetVersion` + `MediaAsset` (+ `Attachment`) + one host-row update.
-That is a genuine unit — but the *cost* of getting it wrong is one orphan row referencing a real
-S3 object, which the cleanup jobs already exist to sweep. Door 2 (§7.1) writes the same rows with
-no transaction at all and has never been reported as a problem.
-
-**Recommendation:** keep exactly one `BEGIN…COMMIT`, open it in one place, pass `tx` explicitly
-down as a parameter, and delete `getTx` entirely. Nothing below the route should be able to start
-a transaction.
+The worker is `apps/worker/src/workers/worker-definitions/thumbnail-worker.ts` (concurrency 5,
+limiter 100/min) over `packages/lib/src/jobs/maintenance/generate-thumbnail-job.ts`. Enqueue goes
+through `createProductionQueuePort` (`storage/queue-port.ts`), which owns the deterministic
+`jobId = thumb-${key}` plus a Redis latch — one derivation function, where there used to be three
+copies of the convention and only two of them agreed.
 
 ---
 
-## 11. Correctness Findings
+## 10. Lifecycle, Quota & Cleanup
 
-> **Status as of 2026-08-21 — Tier 1 is complete.** 11.1–11.6 are FIXED on `main`
-> (#1816, #1817, #1818), each with a regression test that was confirmed red first.
-> 11.7–11.10 remain open and are folded into the refactor phases rather than
-> patched — see `plans/attachments/`. Findings are kept here rather than deleted
-> because the *reasoning* is the durable part; this section is rewritten to
-> as-built when the refactor lands.
+There are still **two modules named "cleanup service"**, and the distinction still matters:
 
-Ordered by impact. Each was verified against the code and, where noted, the dev database.
+- `files/cleanup/cleanup-service.ts` — now **48 lines**, `@deprecated`, and no longer a stub: it
+  forwards to `enqueueOrphanedStorageObjectCleanup`. Its docstring names
+  `complete/route.ts` as its call site, which is **stale** — the compensation path moved into
+  `completeUpload` and calls `deps.queue.enqueueStorageCleanup` directly. Its only remaining
+  importers are the two barrels. Scheduled for deletion (7c).
+- `files/lifecycle/cleanup-service.ts` — 504 lines, the real reaper functions
+  (`deleteEntityFiles`, `deleteFilesByIds`, `deleteOrganizationFiles`, `deleteOrphanedFiles`,
+  `deleteExpiredFiles`, `cleanupFailedUpload`, …). Not yet converted to the `FilesCtx` contract.
 
-### 11.1 ~~The storage quota is always zero~~ — FIXED (#1816, #1818)
+### 10.1 What actually runs
 
-`files/lifecycle/quota-cleanup.ts:23`:
+Scheduled in `apps/worker/src/workers/index.ts`:
 
-```ts
-.from(schema.FileVersion)
-.leftJoin(schema.File, eq(schema.FileVersion.fileId, schema.File.id))
-.where(and(eq(schema.File.organizationId, organizationId), isNull(schema.File.deletedAt)))
-```
-
-`FileVersion.fileId` FKs to **`FolderFile`**, not `File` (`schema/file-version.ts:29`). They are
-different tables with disjoint id spaces. The `LEFT JOIN` never matches, the `WHERE` on the right
-side then discards every row, `sum()` returns `NULL`, and `totalUsed` is `0`.
-
-Verified on the dev database:
-
-```
-File rows: 0     FolderFile rows: 1     FileVersion rows: 1
-FileVersion ⋈ File: 0        FileVersion ⋈ FolderFile: 1
-MediaAsset rows: 3,737       Σ MediaAssetVersion.size: 1,640,968,278 bytes (1.6 GB)
-```
-
-Two bugs stacked: the wrong table, **and** the query only ever considered `FolderFile` in the first
-place — every avatar, mail attachment, comment attachment, custom-field file, KB logo and dataset
-document is a `MediaAsset` and would be invisible even after fixing the join. The gate in
-`sessions/route.ts` is decorative, and `storageQuotaCheckJob` never warns anyone.
-
-This is a billing-surface bug, not a cosmetic one.
-
-### 11.2 ~~Orphaned S3 objects leak silently on transaction failure~~ — FIXED (#1816, #1817, #1818)
-
-§10.4. `scheduleCleanup` persists nothing, and `deleteByKey` targets the wrong bucket for every
-PUBLIC upload. Both halves of the compensation are non-functional for the public bucket.
-
-### 11.3 ~~`visit_qc_item` uploads produce the wrong record~~ — FIXED (#1816, #1818)
-
-`ENTITY_TYPES.VISIT_QC_ITEM = 'visit_qc_item'` (note: the only lowercase value in the enum) has
-**no processor registered** in `processors/index.ts`, so `ProcessorRegistry.getForEntityType` falls
-through to `setDefaultProcessor(FileProcessor)`. That creates a `FolderFile`, not a
-`MediaAsset` + `Attachment`.
-
-The client then does:
-
-```ts
-// orchestration-slice.ts — set at session create
-f.serverFileId = presignedConfig.sessionId
-// …and only overwritten if the server returned an assetId
-if (completionData?.assetId) f.serverFileId = completionData.assetId
-```
-
-`FileProcessor` returns `{ fileId }`, no `assetId`. So `serverFileId` stays the **upload-session
-nanoid**, and `use-file-upload.ts:388` reports it as `metadata: { assetId: f.serverFileId }`.
-`qc-photo-strip.tsx` passes that to `addVisitQcItemPhoto` → `AttachmentService.create({ assetId })`
-with an id that is not a `MediaAsset`.
-
-Dev database corroborates: `Attachment` has rows for `MESSAGE`, `CUSTOM_FIELD`, `COMMENT`,
-`FIELD_VALUE`, `ARTICLE`, `KNOWLEDGE_BASE`, `CHAT_WIDGET` — and **zero for `visit_qc_item`**.
-
-(Separately: `FIELD_VALUE` appears in `Attachment.entityType` but is not in `ENTITY_TYPES` — a
-fourth writer outside the processor registry.)
-
-### 11.4 ~~`complete`, `parts` and `events` have no authentication~~ — FIXED (#1818)
-
-None of the three call `auth.api.getSession`. The session nanoid is the only credential. The
-`complete` route then performs DB writes attributed to `session.userId` and `session.organizationId`
-read out of Redis.
-
-This is a bearer-capability model, which is defensible — but it is nowhere documented, the token is
-never bound to the caller, and it means:
-
-- authorization is evaluated **only** at session-create time; a permission revoked mid-upload is
-  not re-checked at completion;
-- `parts` will mint presigned `UploadPart` URLs for arbitrary part numbers to anyone holding the id;
-- `events` discloses upload status for any known id;
-- there is no origin/CSRF consideration on a state-changing `POST`.
-
-Fix: re-authenticate on all three and assert `session.userId === caller.id` (and org match).
-
-### 11.5 ~~Multipart parts and completion always target the private bucket~~ — FIXED (#1816, #1818)
-
-`StorageManager.generatePartUploadUrl`, `completeMultipartUploadOnly` and `deleteByKey` do not
-accept or forward a `bucket`. `S3Adapter.presignPart` / `completeMultipart` fall back to
-`S3_PRIVATE_BUCKET`.
-
-`startMultipartUploadFromConfig` *does* pass `config.bucket`. So a multipart upload into the
-**public** bucket initiates in the public bucket and then presigns its parts against the private
-one — `NoSuchUpload`. Latent today only because every PUBLIC entity type caps below its multipart
-threshold (avatar 5 MB, KB/widget/article-cover 10 MB vs a 25–50 MB threshold). Raise any of those
-caps and it breaks.
-
-### 11.6 ~~`SETEX` with a zero TTL on long multipart uploads~~ — FIXED (#1816)
-
-`SessionManager.touchSession` resets the Redis TTL to `DEFAULT_TTL` (600 s) but **does not update
-`session.expiresAt`**. `SessionManager.updateSession` computes:
-
-```ts
-const remainingTtl = Math.max(0, Math.floor((session.expiresAt.getTime() - Date.now()) / 1000))
-await redis.setex(key, remainingTtl, …)
-```
-
-A multipart upload longer than `ttlSec` keeps the key alive via `touchSession` while `expiresAt`
-goes into the past. The next `updateSession` — which `complete` calls in Phase 1 — passes
-`remainingTtl = 0`, and ioredis surfaces `ERR invalid expire time in 'setex' command`. The upload
-completes to a 500 after the bytes are already in S3.
-
-### 11.7 ~~Type-safety leaks in `DatasetAssetProcessor`~~ — FIXED (#1827)
-
-`entityType = 'dataset'`, `fileVisibility = 'private'`, `preferredProvider = 'local'` — all
-lowercase, while `BaseAssetProcessor.processConfig` did `this.fileVisibility as 'PUBLIC' |
-'PRIVATE'` and `getBucketForVisibility` compared against `'PUBLIC'`.
-
-**This survey under-called it.** The original note says it "lands in the private bucket by accident,
-not by intent" — it did not. `bucketForVisibility` matched *neither* branch, so the upload was
-presigned into the **PUBLIC** bucket. Worse, the same field feeds
-`BaseAssetProcessor.isAssetPrivate()`, a `=== 'PRIVATE'` comparison whose result is written to
-`isPrivate` on the created asset — so every dataset document was **recorded as non-private as well
-as stored publicly**. It was a data bug, not just a routing one.
-
-Fixed by typing the field as the named `StorageVisibility` union (`storage/buckets.ts`) instead of
-`string`, which turns both into compile errors; the enabling `as 'PUBLIC' | 'PRIVATE'` cast is gone.
-`dataset.ts` was the only wrong declaration — the other nine were already uppercase.
-
-**Not fixed:** `preferredProvider = 'local'` is still not a `ProviderId`, and is still read nowhere
-(§12.3). Existing dataset rows written before #1827 keep whatever `isPrivate` and bucket they were
-given — the fix stops new ones and says nothing about a backfill.
-
-### 11.8 Empty and commented-out `validateEntityAccess` — OPEN (refactor phase 4)
-
-- `WorkflowRunProcessor.validateEntityAccess` — entire body commented out. Combined with `*/*` and
-  50 MB, any authenticated org member can upload anything against any `entityId`.
-- `CustomFieldProcessor.validateEntityAccess` — returns early for `field-`-prefixed ids and then
-  **falls off the end**, so every other id also passes.
-- `ArticleProcessor` / `CommentProcessor` check org membership of the entity only, with a
-  `// Add user access validation based on your business rules` TODO.
-
-Note these are *entity* checks, not the L2 permission gate — the host surfaces carry that. But the
-processor is the layer that claims to do it.
-
-### 11.9 Errors are classified by substring matching — PARTLY FIXED (#1818 maps AuxxError at the routes; the substring classifier survives until phase 4)
-
-`packages/lib/src/files/**` throws bare `new Error(...)` everywhere — including in
-`processConfig`, where a mime rejection is a 400/415, not a 500. `UploadErrorHandler.categorizeError`
-then greps the message (`includes('storage')`, `includes('s3')`, `includes('bucket')`, …) to pick an
-HTTP status.
-
-This violates the repo rule (`CLAUDE.md` → *Error Handling*): lib throws `AuxxError` subclasses and
-the mapping is mechanical. It also forces `sessions/route.ts` to invent a fake session id
-(`temp-${Date.now()}`) just to satisfy the handler's signature, and to special-case the permission
-error by hand so the 403 survives.
-
-### 11.10 Smaller items — OPEN
-
-- `deriveStorageKey` uses `Date.now()` with no random suffix. Two files with the same name for the
-  same entity in the same millisecond collide, and the second silently overwrites the first.
-- ~~`SessionManager.updateSession` is read-modify-write with no CAS. The `parts` route touches the
-  same key concurrently with `complete`.~~ **FIXED (PR 4b).** `patchUploadSession` and
-  `touchUploadSession` compare-and-set the whole serialized session through a Lua script and retry
-  on a lost race.
-- ~~`SessionManager.completeUpload` stores a **storage key** in the `storageLocationId` field
-  ("Temporary, will be replaced"). Nothing calls it.~~ **FIXED (PR 4b)** — method and its test
-  deleted.
-- `presignUpload` passes upload metadata as raw S3 POST `Fields` rather than `x-amz-meta-*`, so the
-  `sessionId`/`orgId`/`uploader` tags do not land on the object as user metadata. Nothing reads
-  them back, so this is currently invisible — worth confirming before relying on object metadata.
-- The `complete` route hard-codes a `USER_PROFILE` branch (dehydration, agent cache bust, avatar-32
-  thumbnail) that belongs behind a processor hook.
-
----
-
-### 11.11 Found while fixing the above (not in the original survey)
-
-Each was invisible to the survey because it sat behind another bug, and each is
-fixed on `main`:
-
-- **`sum()`/`count()` over `bigint` return strings** from node-postgres, so even a
-  corrected quota query yielded a string `totalUsed` and the gate would have
-  string-concatenated rather than added.
-- **`touchSession` extended by a 600s constant, not the session's own `ttlSec`**, so
-  a `FileProcessor` session with a 1-hour TTL touched five minutes in was cut from
-  55 minutes of remaining life to 10.
-- **`StorageManager.deleteFile` called `buildLocationRef` before `getAdapter`**, so on
-  a cold adapter cache legacy rows resolved no bucket at all — harmless while the
-  adapter silently defaulted, fatal once it throws.
-- **The over-quota branch compared rounded `percentUsed >= 100`**, so 99.6% of the cap
-  read as 100 and would have enforced against an org that is under.
-- **`use-file-select.ts` fell through to the client temp id** once `assetId` became
-  correctly undefined for `FILE` uploads.
-- **`file-download-permission.test.ts` had never run its happy paths** — the `request()`
-  stub lacked `nextUrl`, so all four 500'd, and the mocked response builder returned
-  only `Content-Type`, so its header assertions tested the literal.
-
-Still open, found here but out of Tier-1 scope:
-
-- **`users/user-avatar-service.ts` calls `putObject` with neither `bucket` nor
-  `visibility`**, so it falls back to `S3_PRIVATE_BUCKET` — and `USER_PROFILE` is a
-  PUBLIC entity type. It also inserts `StorageLocation` directly, bypassing
-  `StorageManager`, so its rows carry no `metadata.bucket` and cannot be deleted by
-  key. Needs its own investigation.
-- ~~**`StorageLocationService.create()`/`bulkCreate()`** are a second write door that
-  bypasses bucket normalisation.~~ **CLOSED (#1829)** — the class is deleted and
-  `createStorageLocation` in `storage/locations.ts` is now the only write door.
-  `user-avatar-service.ts` (above) remains a genuine third door: it inserts
-  `StorageLocation` directly.
-- **There is still no storage warning tier.** `storageGbSoft` is now read as a warn
-  threshold, but the branch only increments a counter behind a `TODO` — no email,
-  notification or banner, and no dedup marker for a daily job.
-
----
-
-## 12. Overcomplication & Dead Code
-
-Roughly **3,660 lines** of the subsystem are unreachable or stubbed.
-
-### 12.1 The entire progress/SSE stack is dead (~2,900 lines)
-
-| File | Lines | Status |
+| Scheduler | Cron | What it does |
 | --- | --- | --- |
-| `upload/progress/enhanced-progress-tracker.ts` | 480 | no importer |
-| `upload/progress/sse-publisher.ts` | 425 | imported only by dead code |
-| `upload/progress/progress-tracker.ts` | 374 | " |
-| `upload/progress/event-types.ts` | 322 | " |
-| `upload/progress/event-schemas.ts` | 278 | " |
-| `upload/upload-session-service.ts` (`FileUploadSession`) | 453 | exported from `server.ts`, zero callers |
-| `upload/enhanced-types.ts` | 393 | barrel re-export only |
-| `upload/progress-publisher.ts` | 120 | writes to a channel nobody reads |
-| `apps/web/.../upload/[sessionId]/events/route.ts` | 109 | no client connects |
-| `components/file-upload/utils/sse-connection.ts` | 341 | `connectSSE` only called by `coordinateSSEEvents`, which nothing calls |
+| `orphanedFileCleanupJob` | hourly | `deleteExpiredFiles(undefined, …)` + orphan sweep |
+| `deletedFileCleanupJob` | daily 02:00 | reaps soft-deleted rows, then `StorageLocation`s deleted >24 h ago, deleting the object with `metadata.bucket` |
+| `storageQuotaCheckJob` | daily 04:00 | every org, hard + soft threshold |
+| `cleanupExpiredMediaAssetsJob` | hourly | `MediaAsset.expiresAt <= now` — but see below |
+| `thumbnailCleanupJob` | daily ~03:00 (jittered) | orphaned / failed / expired sweeps |
+| `thumbnailVersionCleanupJob` | weekly Sun ~04:00 | outdated versions, `keepVersions: 3` |
 
-`session-slice.ts:112` documents the reason in a comment: the client-side session id is not the
-server session id, so connecting SSE would 404 — *"If/when SSE is required, connect using the
-server-provided sessionId."* Nobody ever did. The `complete` response already returns everything
-the SSE frame would have carried.
+On-demand only: `orphanedStorageObjectJob` (`jobs/maintenance/orphaned-storage-object-job.ts`),
+registered in the maintenance worker and enqueued by `QueuePort.enqueueStorageCleanup`. It
+**refuses a payload with no explicit `bucket`** rather than normalising to a default, and it
+deliberately rethrows so BullMQ's retry/backoff applies.
 
-**Two competing session abstractions exist**: `SessionManager` (static, Redis, used) and
-`FileUploadSession` (instance, in-memory, with its own status machine, progress tracker and event
-publisher — dead). Both are exported side-by-side from `files/server.ts`.
+Not scheduled and not registered: `quotaEnforcementCleanupJob` (§12).
 
-### 12.2 Two "cleanup services", one of which does nothing
+### 10.2 The storage quota
 
-§9. `files/cleanup/` (all stubs, referenced by the hot path) vs `files/lifecycle/` (real,
-referenced by the worker). Same name, opposite reality.
+`calculateStorageUsage(organizationId)` (`lifecycle/quota-cleanup.ts:150`) sums **both lanes** and
+returns the org's real plan limit:
 
-### 12.3 Ceremony that produces nothing
+- `sumFolderFileUsage` — `FileVersion INNER JOIN FolderFile ON FileVersion.fileId = FolderFile.id`,
+  live files only, grouped by `storageLocationId` so versions sharing a location count once.
+- `sumMediaAssetUsage` — `MediaAssetVersion INNER JOIN MediaAsset`, live on both sides, grouped by
+  `storageLocationId`. **Derived thumbnails are counted deliberately**: they are real objects in a
+  bucket we really pay for.
+- `toNumber()` on every aggregate, because `sum()`/`count()` over `bigint` come back from
+  node-postgres as **strings**.
+- `quotaLimit` from `FeaturePermissionService.getLimit(orgId, FeatureKey.storageGbHard)`;
+  `UNLIMITED = -1` gives `percentUsed: 0`.
 
-- `preferredProvider` — an abstract field every processor must declare. Read nowhere; the provider
-  comes from `init.provider ?? 'S3'`.
-- `ProcessorMetadata` (`getMetadata()`, `supportsAssets/Files/Attachments`) — implemented by every
-  processor, called by nothing.
-- `processors/types.ts` declares `SessionMetadata`, `PreprocessResult`, `UploadPreferences`,
-  `CreateSessionRequest`, `ProcessorMetadata` — a whole parallel type vocabulary next to
-  `init-types.ts`'s `UploadInitConfig` / `UploadPreparedConfig`, which is what the code actually uses.
-- `ProcessorRegistry` has `unregisterProcessor`, `clear`, `getRegisteredTypes`,
-  `getProcessorCount`, `hasProcessor`, `isInitialized`, plus a separate module-level
-  `processorsInitialized` boolean shadowing the class's own `initialized` flag — for a map of ten
-  hard-coded entries built by one function.
-- `BaseService` (582 lines) defines ~15 CRUD methods whose implementation is
-  `throw new Error('… must be implemented by subclass')`, plus `bulkCreate`/`bulkUpdate`/`bulkDelete`
-  that loop over those throwing methods. It is an abstract class that provides `withTx`, `getTx`,
-  `buildBaseWhereClause`, `requireRow` — four useful things wrapped in 500 lines of scaffolding.
-
-### 12.4 God objects
-
-Line counts as of #1829. Only `storage/` has been through the refactor so far; the `core/` services
-are phase 5 and are untouched.
-
-| File | Lines | |
-| --- | --- | --- |
-| `core/file-service.ts` | 1,982 | phase 5 |
-| `core/folder-service.ts` | 1,945 | phase 5 |
-| `core/media-asset-service.ts` | 1,591 | phase 5 |
-| `storage/storage-manager.ts` | **1,479** | was 2,512 — facade, falling; 3d in flight |
-| `core/filesystem-service.ts` | 1,427 | phase 5 |
-| `core/attachment-service.ts` | 1,386 | phase 5 |
-| `components/file-upload/stores/slices/orchestration-slice.ts` | 1,054 | phase 8 |
-| ~~`storage/storage-location-service.ts`~~ | ~~1,016~~ | **deleted (#1829)** |
-
-What replaced the deleted surface is small and testable without mocks: `storage/buckets.ts` (140),
-`storage/locations.ts` (259), `storage/location-queries.ts` (120), `storage/providers.ts` (114),
-`storage/auth.ts` (97), on top of `storage/ports.ts` (329) from #1820.
-
-`StorageManager` used to own presigning, multipart, adapter loading, credential resolution, bucket
-routing, `StorageLocation` persistence, folder listing, provider search, webhook processing, health
-checks and usage statistics. The last five are **gone** (#1825) — folders, search and webhooks
-existed only for the Drive/Dropbox/OneDrive/Box stubs. Adapter loading moved to `storage/providers.ts`,
-credential resolution to `storage/auth.ts`, bucket routing to `storage/buckets.ts` and persistence to
-`storage/locations.ts` + `location-queries.ts`. Presigning and multipart are what 3d takes.
-
-### 12.5 Module-shape violations vs `docs/lib-module-guide.md`
-
-The guide says: exported `async function`s with `db` first, no service classes,
-`Promise<Result<T, Error>>`, `AuxxError` subclasses, reads and writes in separate files, explicit
-named exports.
-
-`packages/lib/src/files/**` was the opposite on every axis: deep class hierarchies with constructor
-state, bare `Error`, `throw`-based control flow, `export *` in `processors/index.ts`, and
-`any`-typed `tx` parameters throughout. It predates the guide, but it is also the largest module in
-`lib`, so it is what people copy.
-
-**Partly addressed.** `files/ctx.ts` (#1820) defines the contract, and everything under
-`files/storage/**` plus `assets/download.ts` now follows it: `db` arrives on a `ctx: FilesCtx`,
-transaction-only functions take `tx: Transaction` positionally first so a pool cannot typecheck into
-the slot, and results are `neverthrow` `Result` with `AuxxError` subclasses. **New code in `files/`
-copies those files, not the `core/` services**, which are still class-shaped until phase 5.
-
-The test-shape payoff is the thing to notice: the doubles in `files/__tests__/support/` mean the
-storage tests use **zero `vi.mock`** — see `storage/__tests__/locations.test.ts` and
-`location-queries.test.ts`. Compare `core/__tests__/thumbnail-service.test.ts`, which still hand-rolls
-~120 lines of Drizzle builder chains before its first assertion.
-
-### 12.6 `files/types` is a second, undeclared client entry point
-
-`CLAUDE.md` says client code imports from `@auxx/lib/<module>/client`. `files/client.ts` exports
-only file-type constants. Meanwhile the whole front end imports `@auxx/lib/files/types`, which is
-its own `exports` subpath and ships **runtime values** — `ENTITY_CONFIGS`, `getEntityConfig`,
-`FileUploadEventType`, `FileUploadEventValidator`, `DataTransforms`, `TypeGuards` — into the
-browser bundle. It happens to be server-dependency-free today; nothing enforces that.
+`storageGbSoft` — defined on every seeded plan (Free 0.8, Starter 8, Growth 40) and previously read
+by nothing — is now the warn threshold, falling back to 80% of the hard limit. Both action branches
+in `storageQuotaCheckJob` are still `TODO` counters (§12).
 
 ---
 
-## 13. A Target Design
+## 11. What we fixed, and when
 
-Not a rewrite — a sequence of independent, shippable changes, most valuable first.
+The subsystem was surveyed on 2026-08-21 and rewritten over the following three days. This is the
+short version; the per-PR retros in `plans/attachments/` carry the detail, including several places
+where the plan was wrong and the PR found out.
 
-**Tier 1 — correctness (do these regardless of any refactor)**
+**Tier 1 — correctness, 2026-08-21 (#1816, #1817, #1818).** Each fix shipped with a regression test
+confirmed red first.
 
-1. Fix `calculateStorageUsage`: join `FileVersion → FolderFile`, and `UNION` in
-   `MediaAssetVersion → MediaAsset`. Decide whether thumbnails count. (§11.1)
-2. Authenticate `complete`, `parts`, `events`; assert caller identity matches `session.userId`
-   and org. (§11.4)
-3. Move `ensureThumbnailPresets` out of every processor and into the route's Phase 3, after
-   `COMMIT`. Delete the misleading "AFTER transaction commits" comments. (§10.3)
-4. Thread `bucket` through `generatePartUploadUrl`, `completeMultipartUploadOnly` and
-   `deleteByKey`. (§11.5, §11.2)
-5. Have `touchSession` update `expiresAt` too, and floor `remainingTtl` at 1. (§11.6)
-6. Either register a `VisitQcItemProcessor` (attachment-producing) or remove the entity type and
-   the uploader. Meanwhile, make `getForEntityType` **throw** on an unregistered type instead of
-   silently defaulting to `FileProcessor`. (§11.3)
-7. Fill in `WorkflowRunProcessor.validateEntityAccess` and `CustomFieldProcessor`'s fall-through.
-   (§11.8)
+- **The storage quota was always zero.** `calculateStorageUsage` joined `FileVersion` to the empty
+  legacy `File` table instead of `FolderFile`, so the `LEFT JOIN` never matched and `sum()` returned
+  `NULL`. It also only ever considered `FolderFile`, which is where almost none of the usage lives.
+  A billing-surface bug, not a cosmetic one. (#1816)
+- **`complete`, `parts` and `events` had no authentication** — the session nanoid was the only
+  credential. `authorizeUploadSession` now re-resolves the caller and asserts the session is theirs,
+  checking authentication *before* touching Redis so the endpoints cannot be used to probe for live
+  sessions. (#1818)
+- **Orphaned S3 objects leaked silently.** The compensation `deleteByKey` took no `bucket` and fell
+  back to `S3_PRIVATE_BUCKET`; S3 answers 204 for a delete in the wrong bucket, so every PUBLIC
+  upload's object leaked with no error. The fallback `scheduleCleanup` persisted nothing. Both
+  halves are real now. (#1816/#1817/#1818)
+- **Multipart parts and completion always targeted the private bucket**, so a PUBLIC multipart
+  upload would have initiated in one bucket and presigned its parts against another
+  (`NoSuchUpload`). (#1816/#1818)
+- **`SETEX` with a zero TTL.** `touchSession` reset the Redis TTL by a 600 s constant without
+  updating `session.expiresAt`, so a long multipart upload eventually made `updateSession` pass
+  `remainingTtl = 0` and 500 after the bytes were already in S3. (#1816)
+- **Thumbnail enqueues ran inside the still-open transaction.** The avatar and KB processors both
+  carried a comment claiming they ran "AFTER transaction commits"; they ran after
+  `RELEASE SAVEPOINT`. The enqueue resolves its source on a different connection, so a first upload
+  wasted four always-failing jobs and a **re-upload kept serving the previous image**. (#1818)
+- **`visit_qc_item` produced the wrong record** — no processor registered, silent fallback to the
+  file-library one, a `FolderFile` with no `assetId` where an `Attachment` was needed. The registry
+  now throws on an unknown type. (#1816)
 
-**Tier 2 — the transaction**
+Found while fixing those, also on `main`: `sum()` returning strings; `touchSession` shortening a
+1-hour session to 10 minutes; `deleteFile` resolving no bucket on a cold adapter cache; the
+over-quota branch comparing a *rounded* `percentUsed >= 100`; and four never-executed happy-path
+cases in `file-download-permission.test.ts`.
 
-8. Delete `BaseService.getTx()`. Every service method that writes takes `tx: Transaction` as an
-   explicit parameter. One `BEGIN…COMMIT`, opened by the route.
-9. Move `buildExternalUrl` out of the transaction — compute it in Phase 1 alongside `headByKey`.
-10. Change `BaseProcessor.process` to build tx-bound services into **locals**, never onto `this`.
-11. Make the compensation real: either implement `scheduleCleanup` on Redis/BullMQ, or delete it
-    and rely on a `deleteOrphanedStorageObjects` sweep job. Do not keep a stub on the hot path.
+**Phase 2 — the contract, 2026-08-21 (#1820).** `files/ctx.ts`, `files/guard.ts`, `storage/ports.ts`
++ `createS3StoragePort`, the `__tests__/support/` kit, and two pilots proving the seam end to end:
+one read (`getAssetDownloadRef`) and one write (`createStorageLocation`).
 
-**Tier 3 — deletion**
+**Phase 3 — the storage layer, 2026-08-21/22 (#1823, #1825, #1827, #1829, #1832).** Injected `db`
+into the location service; deleted 29 zero-caller `StorageManager` methods and the folder / search /
+webhook surface that existed only for the Drive / Dropbox / OneDrive / Box stubs; extracted
+`buckets.ts`, `auth.ts`, `providers.ts`; deleted `StorageLocationService` (1,016 lines) for
+`locations.ts` + `location-queries.ts`; extracted `presign.ts` + `objects.ts` and repaired multipart.
+**#1827 also fixed a data bug the survey under-called**: the lowercase `'private'` on the dataset
+processor matched neither branch of the bucket function, so every dataset document was stored in the
+**public** bucket *and* recorded `isPrivate: false`. Typing the field as a named union turned both
+into compile errors. Rows written before #1827 keep whatever they were given.
 
-12. Delete `upload/progress/**`, `upload/progress-publisher.ts`, `upload/upload-session-service.ts`,
-    `upload/enhanced-types.ts`, the `events` route, and `components/file-upload/utils/sse-connection.ts`
-    with its `session-slice` wiring. (~2,900 lines)
-13. Delete `files/cleanup/` once §11.2 is resolved; rename `files/lifecycle/cleanup-service.ts` to
-    something that says what it reaps.
-14. Delete `preferredProvider`, `getMetadata`/`ProcessorMetadata`, and the unused half of
-    `processors/types.ts`.
+**Phase 7 — deletion, 2026-08-22 (#1841, #1844).** The entire progress/SSE stack (−3,987 lines):
+`upload/progress/**`, `progress-publisher.ts`, `enhanced-types.ts`, the `events` route, and the
+client's `sse-connection.ts`. Nothing had ever connected to it. Also `FileUploadSession`, the second
+session abstraction that sat beside `SessionManager` in the same barrel with zero callers.
 
-**Tier 4 — shape**
+**Phase 4 — the upload pipeline, 2026-08-22/24 (#1838, #1844, #1856, #1857, #1859).**
+`buildUploadConfig` as one pure function; `SessionManager` → functions over an injected Redis with
+compare-and-set patches; the substring error classifier deleted; `prepareUpload` / `completeUpload`
+extracted and the routes thinned from 361 lines to 95; the processor hierarchy replaced by handler
+records.
 
-15. Errors: `AuxxError` subclasses from lib; delete `categorizeError`'s substring ladder and the
-    `temp-${Date.now()}` fake session id.
-16. Split `StorageManager`: `storage/presign.ts`, `storage/objects.ts`, `storage/locations.ts`,
-    `storage/providers.ts`. Drop folder/search/webhook until a non-stub adapter needs them.
-17. Move the `USER_PROFILE` branches out of `complete/route.ts` into a processor
-    `afterCommit(session, result)` hook, so the route stops knowing about avatars.
-18. Make `/api/files/download/[fileId]` redirect to a presigned URL like the attachment routes do,
-    instead of buffering. (§8)
-19. Promote what the front end needs from `files/types` into `files/client.ts` and make
-    `files/types` server-only.
+The error classifier is worth its own note. `UploadErrorHandler.categorizeError` was 124 lines of
+`message.includes(...)` ladders picking an HTTP status. It was already bypassed on two of three
+routes, so the bug was never "AuxxErrors get the wrong status" — it was "an unexpected error gets a
+*confidently* wrong status": `includes('limit')` answered **413 "Storage quota exceeded"** for an S3
+part-count ceiling, and `includes('token')` answered **401 "Please reconnect your storage account"**
+for a malformed multipart token. Both are user-facing lies. `upload/errors.ts` is a table keyed by
+`AuxxError.statusCode`, an unexpected error is always 500, every 5xx message is withheld, and a 4xx
+surfaces its own — so `UnprocessableEntityError('Size mismatch: expected 100, got 200')` went from a
+500 "An unexpected error occurred" to a 422 with the real message.
+
+**Phase 5 — the services, 2026-08-22/24 (#1842, #1843, #1851, #1853, #1854, #1856).** `assets/`,
+`attachments/`, `thumbnails/`, `folder-files/`, `folders/`, `filesystem/`. Bugs closed rather than
+moved, in the ones with the largest blast radius:
+
+- Three of the four thumbnail sweeps **accepted an `organizationId` that never reached the SQL**, so
+  a per-org invocation swept every tenant. `deleteThumbnailsForSource` had no org filter and no
+  `kind`/`purpose` guard at all — while a sibling method in the same class called that same guard a
+  "CRITICAL SAFETY CHECK".
+- Thumbnail objects were deleted **after** their rows, in a batch whose failures were logged and
+  dropped. The row is the only record of the key, so that is an unrecoverable leak. Object first,
+  rows second, per row.
+- The thumbnail orphan sweep was **1 + N** — `batchSize: 500` meant 501 round-trips.
+- `MediaAssetService` had three unscoped paths, including `getLatestVersion` with no org filter in
+  any statement. `BaseService.buildBaseWhereClause` guarded its org filter with
+  `if (this.organizationId)`, which produced real holes in three separate conversions.
+
+**Phase 10 — the consumer sweeps, 2026-08-24 (#1857, #1859).** 58 files outside `files/`. Two real
+bugs, both the same root cause the refactor exists to remove — **a `db` bound at construction rather
+than passed in**:
+
+- **A cross-tenant read** in `workflow-engine/services/file-context-service.ts`: a hand-rolled
+  `select().from(FolderFile).where(eq(FolderFile.id, fileId))` with no organization filter, one line
+  below a correctly-scoped `new FileService(this.organizationId)`.
+- **A write escaping its own transaction** in `jobs/maintenance/generate-thumbnail-job.ts`: the
+  service was constructed on the pool, the transaction opened afterwards, and the asset and version
+  writes were never part of it — they survived a rollback, and the following
+  `tx.update(MediaAssetVersion…)` targeted a row `tx` did not own.
+
+The sweep was also **export-blocked, not call-site-blocked**: each conversion PR had added to
+`files/server.ts` only the export lines its own router needed, so 12 of 13 live call sites could not
+reach the replacement functions at all. The rule that came out of it: **when a module is converted,
+export its whole `index.ts` from `server.ts` in the same PR.**
+
+**Phase 8 — the uploader, 2026-08-24 (#1858).** `UploadTransport` extracted; three swallowed
+failures fixed (§7.1).
 
 ---
 
-## 14. Key Files
+## 12. What is still open
+
+Nothing in this list is scheduled work someone forgot; each is a decision, a measurement, or a
+sweep that has not happened yet.
+
+**Data and correctness**
+
+- **`StorageLocation.organizationId` is nullable, and 5,393 of 33,297 rows (16.2%) are NULL** on the
+  development database. Every location read is now org-scoped (`location-queries.ts:54`), so those
+  rows are invisible to `getStorageLocation` and immune to `deleteStorageLocation`. **A backfill has
+  to come first**, and until it does the affected rows are unreadable by id.
+  - `attachments/ports.ts` and `attachments/download.ts` both justify keeping the pinned-attachment
+    branch on `StorageManager` on the grounds that routing it through the org-scoped
+    `location-queries.ts` would 404 every pre-backfill row. **That justification no longer holds**:
+    `StorageManager.getDownloadRef` itself goes through `requireStorageLocation` →
+    `getStorageLocation(ctx, id)`, the same org-scoped function, since #1829. The carve-out no longer
+    protects anything, and 533 of the 2,995 pinned `Attachment` rows in the development database
+    point at a NULL-org `StorageLocation`. Verify before relying on either statement.
+- **`MediaAssetVersion.deletedAt` is not filtered on any read path.** `resolveAssetVersion`,
+  `loadCurrentVersion`, `getAssetDownloadRef` and `getAssetContent` all filter the *asset*'s
+  `deletedAt` and not the *version*'s, so **a soft-deleted current version is still presigned and
+  served**. `folder-files/` does the same with `FileVersion.deletedAt`. Both are documented in the
+  code as deliberate parity with the legacy path, and both are an open decision, not a settled one.
+- **`deriveStorageKey` uses `Date.now()` with no random suffix.** Two files with the same name for
+  the same entity in the same millisecond collide and the second silently overwrites the first. The
+  `keySeed` parameter that would fix it exists and **no producer sets it** — the session route's
+  Zod schema does not accept one.
+- **`users/user-avatar-service.ts` is a third `StorageLocation` write door.** It inserts the row
+  directly, bypassing `createStorageLocation` and its bucket normalisation, and calls `putObject`
+  with neither `bucket` nor `visibility` — so it falls back to the private bucket, and
+  `USER_PROFILE` is a PUBLIC entity type.
+- **`WORKFLOW_RUN` and `CUSTOM_FIELD` declare no `validateEntity`.** Combined with `*/*` and 50 MB,
+  a workflow-run upload can be aimed at any `entityId`. The old `WorkflowRunProcessor` had the same
+  hole (an entirely commented-out body); the conversion preserved it rather than inventing a rule.
+- **The client's `ENTITY_CONFIGS` pre-flight table disagrees with the handlers** (§3.2).
+- **`UploadPolicy.allowedExtensions` is recorded and never enforced.** `enforceUploadPolicy` has no
+  extension rule, so the narrowing `CUSTOM_FIELD`'s `refineConfig` writes has never been read.
+  Typed rather than deleted so the intent stays visible; enforcing it is a decision.
+
+**Jobs that do not do what they look like they do**
+
+- **`cleanupExpiredMediaAssetsJob` is scheduled hourly with `organizationId: 'global-cleanup'`** and
+  the comment `// Will be overridden per org`. Nothing overrides it, and there is no per-org
+  enqueuer. The job runs `eq(MediaAsset.organizationId, 'global-cleanup')`, matches zero rows, and
+  reports success. So `MediaAsset.expiresAt` — stamped by the `MESSAGE`, `COMMENT`, `CUSTOM_FIELD`
+  and `WORKFLOW_RUN` handlers — **is still not enforced in practice**, though for a much more
+  fixable reason than before. (`orphanedFileCleanupJob` calls `deleteExpiredFiles(undefined, …)`,
+  whose no-org branch walks `FolderFile` only.)
+- Separately, `findExpiredAssets` filters on `createdAt < cutoff` and `kind = 'TEMP_UPLOAD'` and does
+  **not** read `expiresAt` at all. Two notions of "expired" coexist.
+- **`quotaEnforcementCleanupJob` is exported, never scheduled, never registered**, and only
+  considers `FolderFile` candidates — where essentially none of the usage lives. Teach it the
+  `MediaAsset` lane or delete it.
+- **There is still no storage warning tier that reaches a user.** `storageGbSoft` is read as a
+  threshold now, but both branches of `storageQuotaCheckJob` increment a counter behind a `TODO`. An
+  org goes from no signal at all straight to a hard 403 at the upload gate. The job also iterates
+  every `Organization` with no batching and two `FeaturePermissionService` round-trips each.
+
+**Shape and dead code**
+
+- **`BaseService`, `getTx` and `withTx` still exist** (`core/base-service.ts:91`, `:102`) with three
+  legacy callers: `core/file-service.ts:171`, `core/folder-service.ts:410`,
+  `core/media-asset-service.ts:548`. Nesting `transaction()` on a client that is already a
+  transaction issues a `SAVEPOINT` in drizzle 0.44, so isolation silently depends on the caller.
+  **The upload path has one `BEGIN…COMMIT` and zero savepoints** — this is what remains elsewhere.
+- **Four `core/` facades survive** — `MediaAssetService` (554), `FolderService` (421, zero
+  construction sites left), `AttachmentService` (304), `FileService` (281) — plus `BaseService` (582).
+  All are `@deprecated` and scheduled for deletion together; that deletion was in flight when this
+  guide was written, so check whether it landed before trusting this bullet or the previous one.
+- **`FilesDeps.cache` has no production implementation.** `CachePort` exists and has a test double;
+  the two cache busts on the upload path are still `await import('../../cache')` inside the handlers
+  that need them, because there is no factory a route could construct.
+- **`upload/validators.ts` (201 lines) has zero consumers** outside the `files/index.ts` barrel, and
+  its `getMimeTypeFromExtension` duplicates `@auxx/utils/file`.
+- **`files/types` is a second, undeclared client entry point.** `CLAUDE.md` says client code imports
+  from `@auxx/lib/<module>/client`; `files/client.ts` exports only file-type constants, while the
+  whole front end imports `@auxx/lib/files/types`, which ships runtime values (`ENTITY_CONFIGS`,
+  `getEntityConfig`) into the browser bundle. It happens to be server-dependency-free; nothing
+  enforces that.
+- **`files/cleanup/` still exists** as a 48-line deprecated forwarder with no runtime callers, and
+  its docstring names a call site that no longer calls it.
+- **Two `EntityType` unions.** `files/types/entities.ts` (the upload keyspace: 11 values including
+  `FILE` and `CUSTOM_FIELD`) and `files/core/types.ts:17` (the attachment keyspace: includes
+  `FIELD_VALUE`, `TASK`, `ORDER`, `PRODUCT`, omits `FILE` and `CUSTOM_FIELD`). `persistUpload` casts
+  between them. `Attachment.entityType` is a plain `text` column and the database holds
+  `FIELD_VALUE` rows written by a writer outside the handler table.
+- **`/api/files/download/[fileId]` still buffers the whole object into memory** before a single byte
+  reaches the client, and a `Range` request does the full read every time. A 2 GB video in the file
+  library is a 2 GB `Buffer` in the web process. The attachment routes already show the correct
+  pattern. Its own comment explaining why it stays on `StorageManager` ("per-provider dispatch") is
+  stale — §5.2 measured that away, and `getAssetContent` / `getFolderFileContent` now exist.
+- **`api/attachments/[id]/download/route.ts` still constructs `new AttachmentService(...)`** with a
+  comment saying `getAttachmentDownloadRef` does not exist yet. It landed in #1857.
+- The uploader's `startUploadForSession(sessionId)` still works by **temporarily reassigning the
+  global `activeSessionId`** (`orchestration-slice.ts:832`), and three module-level `Map`s survive
+  alongside `use-field-file-upload.ts`'s module-level completion-handler `Map` + global
+  `useUploadStore.subscribe` + 30-minute staleness sweep. That is phase 8b/8c, and it is the one
+  part unit tests cannot sign off — every slice needs a real browser upload before merge.
+- The `attachments/[id]/thumbnail` rate limiter is an in-process `Map`, which means it is per-instance.
+
+---
+
+## 13. Key Files
 
 **Routes**
 ```
-apps/web/src/app/api/files/upload/sessions/route.ts               session create + gates
+apps/web/src/app/api/files/upload/sessions/route.ts               session create + the two gates
 apps/web/src/app/api/files/upload/[sessionId]/parts/route.ts      per-part presign
-apps/web/src/app/api/files/upload/[sessionId]/complete/route.ts   the 3-phase completion
-apps/web/src/app/api/files/upload/[sessionId]/events/route.ts     SSE (dead)
+apps/web/src/app/api/files/upload/[sessionId]/complete/route.ts   completion
+apps/web/src/app/api/files/upload/[sessionId]/authorize-upload-session.ts
 apps/web/src/app/api/files/download/[fileId]/route.ts             buffered download
 apps/web/src/app/api/attachments/[attachmentId]/{content,download,thumbnail}/route.ts
-apps/web/src/app/api/workflows/shared/[shareToken]/files/**       parallel public flow
+apps/web/src/app/api/attachments/attachment-visibility.ts         canViewAttachment (mail lens)
+apps/web/src/app/api/workflows/shared/[shareToken]/files/**       the parallel public flow
+```
+
+**The contract**
+```
+packages/lib/src/files/ctx.ts             FilesCtx / FilesDeps / the three signature shapes
+packages/lib/src/files/guard.ts           guard / unwrap
+packages/lib/src/files/__tests__/support/ db, storage, queue, cache, redis, clock doubles
 ```
 
 **Upload pipeline** (`packages/lib/src/files/upload/`)
 ```
-session-manager.ts          Redis session CRUD (the live one)
-init-types.ts               UploadInitConfig / UploadPreparedConfig / UploadPolicy / UploadPlan
-util.ts                     deriveStorageKey, getBucketForVisibility, getPublicCdnUrl
-error-handling.ts           UploadErrorHandler (substring classification)
-processors/
-  processor-registry.ts     EntityType → factory
-  index.ts                  initializeProcessors() — the registration table
-  base-processor.ts         processConfig / validateCompletedUpload / process
-  base-asset-processor.ts   + createAsset, policy clamping
-  base-attachment-processor.ts + createAttachment
-  entity-processors.ts      the eight concrete entity processors
-  file-processor.ts         FolderFile fallback
-  dataset.ts                DATASET → MediaAsset + Document + parse queue
+prepare.ts        prepareUpload — handler lookup, config, session, presign
+complete.ts       completeUpload — verify / one transaction / after commit
+persist.ts        persistUpload — the one switch on handler.persist
+post-commit.ts    runUploadPostCommit — afterCommit, thumbnails, preview URL
+config.ts         buildUploadConfig (pure) + validateCompletedUpload
+handlers/         types.ts (the UploadHandler record) + index.ts + 11 entity handlers
+session.ts        Redis session functions over an injected client, CAS patches
+errors.ts         classifyUploadError — a table keyed by AuxxError.statusCode
+init-types.ts     UploadInitConfig / UploadPreparedConfig / UploadPolicy / UploadPlan
+util.ts           deriveStorageKey, sanitizeFileName, normalizeMimeType
 ```
 
 **Storage** (`packages/lib/src/files/storage/`, `adapters/`)
 ```
-storage-manager.ts          god object; enforcePolicy at :1338
-storage-location-service.ts unscoped singleton, StorageLocation CRUD
-adapters/s3-adapter.ts      presignUpload / presignPart / completeMultipart / head / delete
-adapters/base-adapter.ts    StorageAdapter contract + ProviderId
+ports.ts            StoragePort / QueuePort / CachePort + createS3StoragePort
+buckets.ts          bucketForVisibility, buildExternalUrl, assertBucket, requireLocationBucket
+presign.ts          enforceUploadPolicy + the four signing functions
+objects.ts          put / get / stream / head / delete
+locations.ts        createStorageLocation / deleteStorageLocation   (tx-first)
+location-queries.ts getStorageLocation / findStorageLocationByExternalId
+queue-port.ts       createProductionQueuePort
+storage-manager.ts  @deprecated facade — uploadContent + the locationId-addressed composites
+adapters/s3-adapter.ts
 ```
 
-**Core services** (`packages/lib/src/files/core/`)
+**Entity modules** (`packages/lib/src/files/`)
 ```
-base-service.ts             withTx / getTx / buildBaseWhereClause (+ 500 lines of throw-stubs)
-media-asset-service.ts      createWithVersion, updateContent, getDownloadRef/Url
-file-service.ts             FolderFile + FileVersion
-attachment-service.ts       Attachment
-folder-service.ts / filesystem-service.ts   the file-library tree
-thumbnail-service.ts / thumbnail-batch.ts / thumbnail-enqueue.ts
+assets/         MediaAsset + versions + download + content
+attachments/    Attachment + the pinned/unpinned download ladder
+folder-files/   FolderFile + FileVersion + download + content
+folders/        the folder tree (queries, mutations, pure tree.ts, maintenance)
+filesystem/     the combined folder+file view, move planning
+thumbnails/     presets, ensure/enqueue, the four sweeps, the job contract
+core/           @deprecated facades + image-processing (sharp) + shared types
 ```
 
 **Lifecycle**
 ```
-packages/lib/src/files/cleanup/cleanup-service.ts     S3 compensation (all stubs)
 packages/lib/src/files/lifecycle/cleanup-service.ts   the real reapers
 packages/lib/src/files/lifecycle/orphaned-cleanup.ts  orphanedFileCleanupJob, deletedFileCleanupJob
-packages/lib/src/files/lifecycle/quota-cleanup.ts     calculateStorageUsage (broken), quota jobs
+packages/lib/src/files/lifecycle/quota-cleanup.ts     calculateStorageUsage + the quota jobs
+packages/lib/src/files/cleanup/cleanup-service.ts     @deprecated forwarder, no runtime callers
+packages/lib/src/jobs/maintenance/orphaned-storage-object-job.ts
+packages/lib/src/jobs/maintenance/generate-thumbnail-job.ts
+packages/lib/src/jobs/maintenance/media-asset-cleanup-job.ts
 apps/worker/src/workers/index.ts                      job scheduling
 ```
 
 **Front end** (`apps/web/src/components/file-upload/`)
 ```
 hooks/use-file-upload.ts               the public hook
-stores/slices/orchestration-slice.ts   startUpload — the real driver
-utils/direct-upload.ts                 XHR to S3, single + serial multipart
-stores/slices/session-slice.ts         client session containers + dead SSE wiring
+transport/types.ts                     UploadTransport + the wire contract
+transport/http-upload-transport.ts     the only file that knows a URL
+transport/direct-upload.ts             XHR to S3, single + serial multipart
+transport/upload-error.ts              parseUploadErrorResponse
+stores/slices/orchestration-slice.ts   startUpload — the driver
 ui/{avatar-upload,file-queue-manager,file-item}.tsx
 ```
