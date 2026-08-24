@@ -45,9 +45,21 @@
  * `mediaAssetService.getTx(...)` from inside this same transaction, which
  * Drizzle answers with a `SAVEPOINT` — so a `ROLLBACK TO SAVEPOINT` could
  * silently undo the asset while the outer transaction went on to commit. The
- * whole `SAVEPOINT` chain under the old `processor.process` is gone with its
- * caller; what remains of `getTx` is the legacy `core/*Service` methods that
- * still call it, which Phase 6a removes.
+ * whole `SAVEPOINT` chain under the old `processor.process` went with its
+ * caller, and `getTx`/`withTx` themselves were deleted with `BaseService` in
+ * Phase 6a (#1862): there is no runtime "am I already in a transaction?" guess
+ * left anywhere in the repository.
+ *
+ * ## Every side effect is a port, including the cache
+ *
+ * PR 6c closed the last hole in the phase-2 assertion. The busts this path
+ * performs used to be `await import('../../cache')` inside
+ * `upload/handlers/{user-profile,chat-widget}.ts`, which the journal the
+ * ordering test reads could not see — so "no cache bust between `BEGIN` and
+ * `COMMIT`" was passing without covering the two calls that had violated it in
+ * production. They go through {@link FilesDeps.cache} now, and compensation went
+ * the same way: it is {@link compensateUploadObject}, over the storage and queue
+ * ports, rather than a `catch` block only reachable through a whole completion.
  */
 
 import type { Database, Transaction } from '@auxx/database'
@@ -59,6 +71,7 @@ import { guard, unwrap } from '../guard'
 import { createStorageLocation } from '../storage/locations'
 import { headObject } from '../storage/objects'
 import { completeMultipart } from '../storage/presign'
+import { compensateUploadObject } from './compensate'
 import { validateCompletedUpload } from './config'
 import { getUploadHandler } from './handlers'
 import type { PersistResult } from './handlers/types'
@@ -101,14 +114,17 @@ export interface CompletedUpload {
 
 /**
  * Storage for the verification and the compensating delete, queue for the
- * durable cleanup fallback and the thumbnail fan-out, clock for the session
- * writes, Redis for the session itself.
+ * durable cleanup fallback and the thumbnail fan-out, cache for the post-commit
+ * invalidations, clock for the session writes, Redis for the session itself.
  *
- * No `cache`: the cache busts this path performs are still lazy imports inside
- * the handlers that need them, because there is no production
- * {@link FilesDeps.cache} factory for a route to construct.
+ * `cache` became required in PR 6c. It used to be absent, and the two busts this
+ * path performs were `await import('../../cache')` inside the handlers — which
+ * meant the "nothing but database statements between `BEGIN` and `COMMIT`"
+ * assertion could not see them, and so passed vacuously for the two calls that
+ * had actually violated it in production. `createProductionCachePort()` is what
+ * a route passes.
  */
-export type CompleteUploadDeps = Pick<FilesDeps, 'storage' | 'queue' | 'now'> & {
+export type CompleteUploadDeps = Pick<FilesDeps, 'storage' | 'queue' | 'cache' | 'now'> & {
   redis: UploadSessionRedis
 }
 
@@ -229,7 +245,18 @@ export async function completeUpload(
           return persistUpload(tx, ctx, { now: deps.now }, handler, session, location)
         })
       } catch (error) {
-        await compensate(deps, session, error)
+        // The rows rolled back; the bytes did not. `compensateUploadObject`
+        // never throws, so the caller still receives the failure it was told
+        // about rather than a storage error raised on the way out.
+        await compensateUploadObject(deps, {
+          provider: session.provider,
+          bucket: session.bucket,
+          key: session.storageKey,
+          credentialId: session.credentialId,
+          organizationId: session.organizationId,
+          reason: `Upload transaction failed: ${String(error)}`,
+          sessionId: session.id,
+        })
         throw error
       }
 
@@ -300,57 +327,5 @@ function buildPublicUrl(
       error,
     })
     return ''
-  }
-}
-
-/**
- * Undo the object when the transaction that was supposed to reference it failed.
- *
- * Best-effort delete first; if that fails, a durable cleanup job. Both are
- * swallowed, because compensation must never replace the error the caller is in
- * the middle of reporting — losing the original failure is strictly worse than
- * leaking one object that the orphan sweeper will find.
- *
- * `bucket` is non-negotiable on the delete: S3 answers **204** for a delete of a
- * key that is not in the bucket you named, so a wrong-bucket compensation
- * reports success and leaks the object with no error anywhere (#1816/#1817/#1818).
- */
-async function compensate(
-  deps: Pick<CompleteUploadDeps, 'storage' | 'queue'>,
-  session: PresignedUploadSession,
-  cause: unknown
-): Promise<void> {
-  try {
-    await deps.storage.deleteObject({
-      provider: session.provider,
-      bucket: session.bucket,
-      key: session.storageKey,
-      credentialId: session.credentialId,
-    })
-    return
-  } catch (deleteError) {
-    logger.warn('Immediate storage cleanup failed; scheduling for background cleanup', {
-      sessionId: session.id,
-      key: session.storageKey,
-      error: deleteError,
-    })
-  }
-
-  try {
-    await deps.queue.enqueueStorageCleanup({
-      provider: session.provider,
-      key: session.storageKey,
-      bucket: session.bucket,
-      credentialId: session.credentialId,
-      reason: `Upload transaction failed: ${String(cause)}`,
-      organizationId: session.organizationId,
-    })
-  } catch (enqueueError) {
-    logger.error('Could not schedule cleanup for an orphaned storage object', {
-      sessionId: session.id,
-      key: session.storageKey,
-      bucket: session.bucket,
-      error: enqueueError,
-    })
   }
 }

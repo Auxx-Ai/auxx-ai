@@ -57,8 +57,17 @@ import type { PresignedUploadSession } from './session-types'
 
 const logger = createScopedLogger('upload-post-commit')
 
-/** Storage to presign a preview URL, queue to enqueue thumbnails, clock for the job payload. */
-export type UploadPostCommitDeps = Pick<FilesDeps, 'storage' | 'queue' | 'now'>
+/**
+ * Storage to presign a preview URL, queue to enqueue thumbnails, cache for the
+ * handlers' invalidations, clock for the job payload.
+ *
+ * `cache` is here rather than only on the handler hook so the pipeline's
+ * ordering guarantee covers it: every bust an upload performs now passes through
+ * a port that shares the journal with the db stub, which is what makes "nothing
+ * but database statements between `BEGIN` and `COMMIT`" an assertion instead of
+ * a convention.
+ */
+export type UploadPostCommitDeps = Pick<FilesDeps, 'storage' | 'queue' | 'cache' | 'now'>
 
 /** What post-commit work has to say for itself. */
 export interface UploadPostCommitResult {

@@ -16,7 +16,7 @@
  * the actual writes against the support kit's db stub and check which tables
  * were touched, in which order, on which side of `COMMIT`.
  *
- * ## The two properties this file exists for
+ * ## The three properties this file exists for
  *
  * 1. **Nothing but database statements between `BEGIN` and `COMMIT`.** A
  *    thumbnail enqueued before `COMMIT` resolves its source asset on its own
@@ -28,6 +28,12 @@
  *    `FolderFile` and no `assetId`; `KNOWLEDGE_BASE` produces a `MediaAsset`, an
  *    `Attachment` and a logo pointer. Picking the wrong one is silent in
  *    production (guide §11.3), so it is loud here.
+ * 3. **Every side effect passes through a port.** Property 1 is only worth as
+ *    much as the journal's coverage: before PR 6c the two cache busts on this
+ *    path were `await import('../../../cache')` inside their handlers, so the
+ *    `between('begin', 'commit')` assertion could not see the exact calls that
+ *    had violated it in production. They are `deps.cache` now, and the
+ *    post-commit describe block below asserts on them directly.
  *
  * `vi.mock` count in this file: **zero**.
  */
@@ -37,6 +43,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   anAsset,
   aStorageLocation,
+  makeCachePort,
   makeClock,
   makeDb,
   makeJournal,
@@ -100,6 +107,7 @@ interface Harness {
   journal: ReturnType<typeof makeJournal>
   queue: ReturnType<typeof makeQueuePort>
   storage: ReturnType<typeof makeStoragePort>
+  cache: ReturnType<typeof makeCachePort>
   db: ReturnType<typeof makeDb>
   redis: ReturnType<typeof makeRedis>
   /** Put a session where `patchUploadSession` can find it. */
@@ -171,16 +179,24 @@ function harness(overrides: Parameters<typeof makeDb>[0] = {}): Harness {
     results: { head: { name: 'logo.png', size: 1024, mimeType: 'image/png', etagOrRev: 'etag-b' } },
   })
   const queue = makeQueuePort({ journal })
+  const cache = makeCachePort({ journal })
   const redis = makeRedis({ now: clock.now })
 
   return {
     journal,
     queue,
     storage,
+    cache,
     db,
     redis,
     ctx: { db: db.db, organizationId: TEST_IDS.organizationId },
-    deps: { storage: storage.port, queue: queue.port, now: clock.now, redis: redis.redis },
+    deps: {
+      storage: storage.port,
+      queue: queue.port,
+      cache: cache.port,
+      now: clock.now,
+      redis: redis.redis,
+    },
     seed: (session) => redis.seed(SESSION_KEY, JSON.stringify(session), 600_000),
   }
 }
@@ -332,6 +348,109 @@ describe('completeUpload — post-commit thumbnails', () => {
     await completeUpload(h.ctx, h.deps, session, COMPLETION)
 
     expect(h.queue.callsTo('enqueueThumbnail')).toHaveLength(0)
+  })
+})
+
+describe('completeUpload — post-commit cache invalidation', () => {
+  /**
+   * The regression this covers is guide §10.3: `ChatWidgetProcessor` busted
+   * `channel.settings_updated` the moment its own savepoint released, which was
+   * still inside the route's open transaction, so a reader that lost the race
+   * repopulated the cache from pre-commit state and kept serving the old logo.
+   *
+   * Before PR 6c the bust was `await import('../../../cache')` inside the
+   * handler, which no double could see — this assertion was unwritable, and the
+   * `journal.between('begin', 'commit')` check above passed without covering the
+   * one call that had ever broken it.
+   */
+  it('CHAT_WIDGET busts the channels cache through the port, after the commit', async () => {
+    const h = harness()
+    const session = aSession({
+      entityType: ENTITY_TYPES.CHAT_WIDGET as EntityType,
+      entityId: 'cw_1',
+    })
+    h.seed(session)
+
+    const result = await completeUpload(h.ctx, h.deps, session, COMPLETION)
+
+    expect(result.isOk()).toBe(true)
+    expect(h.cache.events()).toEqual(['channel.settings_updated'])
+    expect(h.cache.busts[0]?.payload).toEqual({ orgId: TEST_IDS.organizationId })
+
+    const commitAt = h.journal.entries.find((entry) => entry.op === 'commit')?.seq ?? -1
+    const bustAt = h.journal.entries.find((entry) => entry.channel === 'cache')?.seq ?? -1
+    expect(commitAt).toBeGreaterThan(0)
+    expect(bustAt).toBeGreaterThan(commitAt)
+  })
+
+  it('USER_PROFILE drops the dehydrated user, and the agents key only for an agent target', async () => {
+    const agentRows = {
+      insert: [
+        [aStorageLocation({ id: LOCATION_ID, externalUrl: 'https://cdn.test/avatar.png' })],
+        [anAsset({ id: ASSET_ID, isPrivate: false })],
+        [{ id: VERSION_ID, assetId: ASSET_ID, versionNumber: 1 }],
+      ],
+      // `findVersionedAsset` finds nothing, so a fresh avatar asset is minted.
+      select: [[]],
+      query: assetPathRows().query,
+    }
+
+    const agent = harness(agentRows)
+    const agentSession = aSession({
+      entityType: ENTITY_TYPES.USER_PROFILE as EntityType,
+      entityId: 'usr_agent',
+      fileName: 'avatar.png',
+    })
+    agent.seed(agentSession)
+
+    await completeUpload(agent.ctx, agent.deps, agentSession, COMPLETION)
+
+    expect(agent.cache.invalidatedUsers).toEqual(['usr_agent'])
+    expect(agent.cache.events()).toEqual(['agent.updated'])
+
+    // A self-upload touches the same user, and no agent roster.
+    const self = harness(agentRows)
+    const selfSession = aSession({
+      entityType: ENTITY_TYPES.USER_PROFILE as EntityType,
+      entityId: TEST_IDS.userId,
+      fileName: 'avatar.png',
+    })
+    self.seed(selfSession)
+
+    await completeUpload(self.ctx, self.deps, selfSession, COMPLETION)
+
+    expect(self.cache.invalidatedUsers).toEqual([TEST_IDS.userId])
+    expect(self.cache.events()).toEqual([])
+  })
+
+  it('a failing cache bust does not fail an upload whose rows are committed', async () => {
+    const h = harness()
+    const cache = makeCachePort({
+      journal: h.journal,
+      impl: {
+        bust: async () => {
+          throw new Error('Redis unreachable')
+        },
+      },
+    })
+    const session = aSession({
+      entityType: ENTITY_TYPES.CHAT_WIDGET as EntityType,
+      entityId: 'cw_1',
+    })
+    h.seed(session)
+
+    const result = await completeUpload(
+      h.ctx,
+      { ...h.deps, cache: cache.port },
+      session,
+      COMPLETION
+    )
+
+    // The bytes are in storage and the rows are committed by this point; a
+    // dehydration bust that throws must not turn that into a 500 that also marks
+    // the session failed (#1857).
+    expect(result.isOk()).toBe(true)
+    expect(h.journal.ops('db')).toContain('commit')
   })
 })
 

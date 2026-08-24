@@ -1,6 +1,8 @@
 // packages/lib/src/files/server.ts
 // Server orchestration-only exports for file operations (no image processing / sharp).
 
+// Deleted in PR 7c; present here only so this commit stands alone.
+export { cleanupService } from './cleanup/cleanup-service'
 // MediaAsset reads/writes (PR 5a).
 //
 // This re-exports `assets/index.ts` in full rather than the handful of names a
@@ -92,7 +94,6 @@ export {
   resolveAttachmentVersion,
   updateAttachment,
 } from './attachments'
-export { cleanupService } from './cleanup/cleanup-service'
 // The four service facades (`AttachmentService`, `FileService`,
 // `FolderService`, `MediaAssetService`) and `BaseService` were DELETED in PR Y.
 // Every export below is a function taking a `FilesCtx`; there is no class left
@@ -226,6 +227,12 @@ export {
   searchFolders,
   updateFolder,
 } from './folders'
+// The production `CachePort` (PR 6c). Two methods on purpose: no site in the
+// repo pairs `onCacheEvent('user.updated')` with `invalidateUser`, so widening
+// the event would make `files/` mean something different by it than everywhere
+// else. Both production imports are dynamic -- `cache/register-providers` ->
+// `userProfileProvider` -> `files/` closes a cycle.
+export { createProductionCachePort } from './storage/cache-port'
 // The production `StoragePort`. Routers need it to build the `deps` slice the
 // download functions take; constructing one per request is cheap because the
 // port shares the single cached S3 adapter.
@@ -253,6 +260,11 @@ export {
   ensureThumbnail,
   ensureThumbnailPresets,
 } from './thumbnails'
+// Upload compensation (PR 6c): delete the object, else enqueue a cleanup.
+// Exported so the public workflow-share completion route can stop leaking bytes
+// on failure -- it currently does no compensation at all.
+export type { CompensateDeps, CompensateInput, CompensationOutcome } from './upload/compensate'
+export { compensateUploadObject } from './upload/compensate'
 // The upload orchestration the three API routes used to inline (PR 4e).
 // Dispatch is the handler records in `upload/handlers/`, reached through these
 // two -- the `ProcessorRegistry` hierarchy was deleted in PR 4d and had no

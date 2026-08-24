@@ -45,6 +45,7 @@ vi.mock('@auxx/lib/files/server', () => ({
   presignPart,
   createS3StoragePort: vi.fn(() => ({})),
   createProductionQueuePort: vi.fn(() => ({})),
+  createProductionCachePort: vi.fn(() => ({})),
   uploadErrorResponse: vi.fn(() => new Response('{}', { status: 500 })),
   uploadValidationError: vi.fn(() => new Response('{}', { status: 400 })),
 }))
