@@ -1,6 +1,6 @@
 // packages/lib/src/jobs/billing/shopify-billing-sync-job.ts
 
-import { ShopifyBillingProvider } from '@auxx/billing'
+import { ensureBillingWebhooks, ShopifyBillingProvider } from '@auxx/billing'
 import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
 import { and, eq, isNotNull, ne } from 'drizzle-orm'
@@ -28,6 +28,10 @@ export interface ShopifyBillingSyncResult {
  *  redirect-landing sync for the same org. */
 const COOLDOWN_PREFIX = 'shopify-billing-sync:cooldown:'
 const COOLDOWN_SECONDS = 30
+
+/** Daily per-org guard for the webhook-registration ensure (2 extra Admin API calls). */
+const WEBHOOKS_ENSURED_PREFIX = 'shopify-billing-webhooks:ensured:'
+const WEBHOOKS_ENSURED_SECONDS = 24 * 60 * 60
 
 /**
  * Reconciles every Shopify-billed org against the Admin API
@@ -77,6 +81,27 @@ export async function shopifyBillingSyncJob(
 
       if (redis) {
         await redis.setex(`${COOLDOWN_PREFIX}${row.organizationId}`, COOLDOWN_SECONDS, '1')
+      }
+
+      // Once a day, ensure the shop-scoped billing webhooks exist (registration lives
+      // per shop because the legacy install flow forbids toml-declared subscriptions).
+      // Backfills shops installed before registration existed; never fails the tick.
+      const ensuredKey = `${WEBHOOKS_ENSURED_PREFIX}${row.organizationId}`
+      if (row.shopifyShopDomain && (!redis || !(await redis.get(ensuredKey)))) {
+        try {
+          await ensureBillingWebhooks({
+            shopDomain: row.shopifyShopDomain,
+            organizationId: row.organizationId,
+          })
+          if (redis) {
+            await redis.setex(ensuredKey, WEBHOOKS_ENSURED_SECONDS, '1')
+          }
+        } catch (err) {
+          logger.warn('ensureBillingWebhooks failed for org', {
+            orgId: row.organizationId,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
       }
     } catch (err) {
       result.errors++

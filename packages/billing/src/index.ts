@@ -10,6 +10,7 @@ export {
   type AppPricingInterval,
   type AppSubscriptionStatus,
   createShopifyAdminClient,
+  ensureBillingWebhooks,
   getActiveSubscription,
   type LocalStatus as ShopifyLocalStatus,
   mapActiveSubscriptionToStatus,

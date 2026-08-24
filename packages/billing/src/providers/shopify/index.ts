@@ -13,6 +13,7 @@ export {
   type SeatDayEventStatus,
 } from './app-events-client'
 export { createShopifyAdminClient } from './client'
+export { ensureBillingWebhooks } from './ensure-webhooks'
 export { extractStoreHandle, ShopifyBillingProvider } from './provider'
 export { reportOrgSeatDay, type SeatDayReport } from './seat-usage'
 export type { LocalStatus } from './status-mapping'

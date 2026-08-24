@@ -64,10 +64,11 @@ export default async function ShopifyClaimPage({ searchParams }: PageProps) {
   const claim = JSON.parse(raw) as { shop: string }
 
   // Shopify returns the merchant here (via install → OAuth → claim) right after they approve a
-  // plan on the hosted Managed Pricing page. The `app_subscriptions/update` webhook that flips the
-  // row `incomplete → active` may not have arrived yet, so the short-circuit below would read a
-  // stale `incomplete` from cache and re-show the picker. Confirm + sync against the Admin API
-  // first (busts the org cache) so the short-circuit sees the live status on the first return.
+  // plan on the hosted Managed Pricing page — including plan CHANGES on an already-active
+  // subscription, whose post-approval redirect lands on the app URL rather than
+  // /billing/subscription/activated. The `app_subscriptions/update` webhook may not have arrived
+  // yet, so confirm + sync any live Shopify row against the Admin API (busts the org cache) so
+  // both the short-circuit and the app UI see the new plan on the first return.
   const [shopSub] = await database
     .select({
       organizationId: schema.PlanSubscription.organizationId,
@@ -81,7 +82,7 @@ export default async function ShopifyClaimPage({ searchParams }: PageProps) {
       )
     )
     .limit(1)
-  if (shopSub?.status === 'incomplete') {
+  if (shopSub && shopSub.status !== 'canceled') {
     // Short poll: right after approval the Admin API already reflects the contract, so a couple
     // of attempts catch it without making a not-yet-approved merchant wait the full window.
     await confirmAndSyncShopifySubscription({

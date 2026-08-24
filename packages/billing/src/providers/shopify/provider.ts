@@ -153,18 +153,11 @@ export class ShopifyBillingProvider implements BillingProvider {
     switch (input.topic) {
       // Subscription created/approved/changed/cancelled on Shopify. Re-read the Admin API
       // for the authoritative contract + plan resolution (reuses syncFromAdminApi).
+      // A sync failure propagates so the route answers 500 and Shopify redelivers —
+      // swallowing it here left the row stale until the 15-min poll (review rejection 1.2.2).
       case 'app_subscriptions/update':
         if (organizationId) {
-          // Don't 500 the webhook on a transient Admin API failure (e.g. token mid-
-          // rotation) — Shopify would retry noisily and the 15-min worker poll backstops.
-          try {
-            await this.syncFromAdminApi(organizationId)
-          } catch (err) {
-            logger.error('syncFromAdminApi failed handling app_subscriptions/update', {
-              organizationId,
-              error: err instanceof Error ? err.message : String(err),
-            })
-          }
+          await this.syncFromAdminApi(organizationId)
         } else {
           logger.warn('app_subscriptions/update for unknown shop', { shopDomain })
         }
