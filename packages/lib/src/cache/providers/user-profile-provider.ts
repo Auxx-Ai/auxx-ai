@@ -3,7 +3,8 @@
 import { schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import type { DehydratedUser } from '../../dehydration/types'
-import { MediaAssetService } from '../../files/core/media-asset-service'
+import { getAssetDownloadRef } from '../../files/assets/download'
+import { createS3StoragePort } from '../../files/storage/ports'
 import { createScopedLogger } from '../../logger'
 import type { CacheProvider } from '../org-cache-provider'
 
@@ -37,9 +38,16 @@ export const userProfileProvider: CacheProvider<DehydratedUser> = {
     // Fetch avatar URL
     let avatarUrl: string | null = null
     if (user.avatarAssetId && user.defaultOrganizationId) {
-      const mediaAssetService = new MediaAssetService(user.defaultOrganizationId, userId, db)
+      const organizationId = user.defaultOrganizationId
       try {
-        avatarUrl = await mediaAssetService.getDownloadUrl(user.avatarAssetId)
+        const ref = await getAssetDownloadRef(
+          { db, organizationId },
+          { storage: createS3StoragePort(organizationId) },
+          user.avatarAssetId
+        )
+        // Null on any failure, as before: a broken avatar must not fail the
+        // whole profile dehydration.
+        avatarUrl = ref.isOk() && ref.value.type === 'url' ? ref.value.url : null
       } catch (error) {
         logger.warn(`Failed to fetch avatar URL for user ${userId}`, {
           error: error instanceof Error ? error.message : String(error),

@@ -6,13 +6,13 @@
 // a ~1h asset the caller opens via the shared `/api/files/download/asset:<id>` proxy. Reuses the
 // documents module's `resolvePhotoRef` (downscale/transcode) so photo bytes match the PDF path.
 
-import { database as db, schema } from '@auxx/database'
+import { database as db } from '@auxx/database'
 import type { DocumentProps } from '@react-pdf/renderer'
 import { renderToBuffer } from '@react-pdf/renderer'
-import { eq } from 'drizzle-orm'
 import type { ReactElement } from 'react'
 import { createElement } from 'react'
 import { resolvePhotoRef } from '../../documents/render'
+import { createAssetWithVersion } from '../../files/assets'
 import { MediaAssetService } from '../../files/core/media-asset-service'
 import { createStorageManager } from '../../files/storage/storage-manager'
 import { buildVisitReportPayload, type VisitReportPayload } from './payload'
@@ -94,25 +94,28 @@ export async function renderVisitReportToAsset(params: {
     organizationId,
   })
 
-  const mediaAssetService = new MediaAssetService(organizationId, actorId, db)
-  const { asset } = await mediaAssetService.createWithVersion(
-    {
-      kind: 'DOCUMENT',
-      purpose: 'PREVIEW',
-      name: fileName,
-      mimeType: 'application/pdf',
-      size: buffer.length,
-      isPrivate: true,
-      organizationId,
-      createdById: actorId,
-    },
-    storageLocation.id
-  )
+  // `expiresAt` is part of the insert now rather than a follow-up UPDATE, so a
+  // report can never exist for a moment with no cleanup deadline on it.
+  const assetId = await db.transaction(async (tx) => {
+    const created = await createAssetWithVersion(
+      tx,
+      { db: tx, organizationId },
+      { now: () => new Date() },
+      {
+        kind: 'DOCUMENT',
+        purpose: 'PREVIEW',
+        name: fileName,
+        mimeType: 'application/pdf',
+        size: buffer.length,
+        isPrivate: true,
+        createdById: actorId,
+        expiresAt: new Date(Date.now() + REPORT_ASSET_TTL_MS),
+        storageLocationId: storageLocation.id,
+      }
+    )
+    if (created.isErr()) throw created.error
+    return created.value.asset.id
+  })
 
-  await db
-    .update(schema.MediaAsset)
-    .set({ expiresAt: new Date(Date.now() + REPORT_ASSET_TTL_MS) })
-    .where(eq(schema.MediaAsset.id, asset.id))
-
-  return { assetId: asset.id, fileName }
+  return { assetId, fileName }
 }

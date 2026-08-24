@@ -3,8 +3,9 @@
 import { type Database, database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
-import { createAttachmentService } from '../../files/core/attachment-service'
-import { createMediaAssetService } from '../../files/core/media-asset-service'
+import { createAssetWithVersion } from '../../files/assets'
+import { createAttachment } from '../../files/attachments'
+import type { FilesCtx } from '../../files/ctx'
 import { createStorageManager } from '../../files/storage/storage-manager'
 import type {
   AttachmentIngestContext,
@@ -134,32 +135,30 @@ export class InboundAttachmentIngestService {
     })
 
     // 2. Create MediaAsset + MediaAssetVersion
-    const mediaAssetService = createMediaAssetService(
-      context.organizationId,
-      context.createdById ?? undefined
-    )
+    const ctx: FilesCtx = { db: this.dbInstance, organizationId: context.organizationId }
 
-    const { asset, version } = await mediaAssetService.createWithVersion(
-      {
-        kind: 'EMAIL_ATTACHMENT',
-        purpose: input.inline ? 'inline-email-image' : 'email-attachment',
-        name: sanitizeFilename(input.filename),
-        mimeType: input.mimeType,
-        size: input.content.length,
-        isPrivate: true,
-        organizationId: context.organizationId,
-        createdById: context.createdById ?? undefined,
-      },
-      storageLocation.id
-    )
+    const { asset, version } = await this.dbInstance.transaction(async (tx) => {
+      const created = await createAssetWithVersion(
+        tx,
+        { ...ctx, db: tx },
+        { now: () => new Date() },
+        {
+          kind: 'EMAIL_ATTACHMENT',
+          purpose: input.inline ? 'inline-email-image' : 'email-attachment',
+          name: sanitizeFilename(input.filename),
+          mimeType: input.mimeType,
+          size: input.content.length,
+          isPrivate: true,
+          createdById: context.createdById ?? undefined,
+          storageLocationId: storageLocation.id,
+        }
+      )
+      if (created.isErr()) throw created.error
+      return created.value
+    })
 
     // 3. Create canonical Attachment row
-    const attachmentService = createAttachmentService(
-      context.organizationId,
-      context.createdById ?? undefined
-    )
-
-    await attachmentService.create({
+    const attachment = await createAttachment(ctx, {
       id: attachmentId,
       entityType: 'MESSAGE',
       entityId: context.messageId,
@@ -169,9 +168,9 @@ export class InboundAttachmentIngestService {
       contentId: input.contentId ?? null,
       assetId: asset.id,
       assetVersionId: version.id,
-      organizationId: context.organizationId,
       createdById: context.createdById ?? undefined,
     })
+    if (attachment.isErr()) throw attachment.error
 
     logger.debug('Ingested inbound attachment', {
       attachmentId,

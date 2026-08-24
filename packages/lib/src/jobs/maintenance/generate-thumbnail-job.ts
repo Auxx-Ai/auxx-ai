@@ -8,7 +8,7 @@ import {
   applyAvatarThumbnailUrl,
   publishAvatarResolved,
 } from '../../field-values/avatar-thumbnail'
-import { MediaAssetService } from '../../files/core/media-asset-service'
+import { createAssetWithVersion } from '../../files/assets'
 import {
   getMimeTypeForFormat,
   normalizeImageSource,
@@ -152,15 +152,17 @@ export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
       organizationId: orgId,
     })
 
-    // Create asset and version using MediaAssetService
-    const mediaAssetService = new MediaAssetService(orgId, userId, db)
-
     // Returned OUT of the transaction rather than captured in an outer `let`:
     // TypeScript's control-flow analysis does not see assignments made inside a
     // callback, so a mutable capture narrows to `null` at the post-commit check.
     const avatarResolved = await db.transaction(async (tx): Promise<AvatarResolution | null> => {
-      // Create thumbnail asset with version using the service
-      const { asset, version } = await mediaAssetService.createWithVersion(
+      // Create the thumbnail asset + version ON `tx`. The service this replaced
+      // was bound to the pool, so it opened its own nested transaction and the
+      // asset survived a rollback of the enclosing one.
+      const created = await createAssetWithVersion(
+        tx,
+        { db: tx, organizationId: orgId },
+        { now: () => new Date() },
         {
           kind: 'THUMBNAIL',
           purpose: 'DERIVED',
@@ -168,16 +170,12 @@ export const generateThumbnailJob = async (ctx: JobContext): Promise<void> => {
           mimeType: getMimeTypeForFormat(processed.format),
           size: processed.size,
           isPrivate: visibility === 'PRIVATE',
-          // parentAssetId: sourceVersion.assetId,
-          // metadata: {
-          //   sourceAssetId: sourceVersion.assetId,
-          //   preset,
-          // },
-          organizationId: orgId,
           createdById: userId,
-        },
-        storageLocation.id
+          storageLocationId: storageLocation.id,
+        }
       )
+      if (created.isErr()) throw created.error
+      const { asset, version } = created.value
 
       // Add thumbnail-specific metadata to version
       const metadata: ThumbnailMetadata = {

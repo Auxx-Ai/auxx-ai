@@ -3,8 +3,9 @@
 import { type Database, database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, eq } from 'drizzle-orm'
-import { AttachmentService } from '../files/core/attachment-service'
-import { MediaAssetService } from '../files/core/media-asset-service'
+import { convertTempAssetToPermanent } from '../files/assets'
+import { createAttachment, fetchAttachmentsForEntities } from '../files/attachments'
+import type { FilesCtx } from '../files/ctx'
 import {
   type MessageAttachmentInfo,
   transformAttachmentsForMessages,
@@ -26,9 +27,8 @@ export interface FileAttachment {
  * Uses the unified polymorphic Attachment model for all message attachments
  */
 export class MessageAttachmentService {
-  private attachmentService: AttachmentService
-  private mediaAssetService: MediaAssetService
   private db: Database
+  private filesCtx: FilesCtx
 
   constructor(
     private organizationId: string,
@@ -38,8 +38,7 @@ export class MessageAttachmentService {
     // Prefer provided Drizzle instance; fall back to shared singleton if a non-Drizzle client was passed
     const resolvedDb = (dbInstance as any)?.select ? dbInstance : db
     this.db = resolvedDb
-    this.attachmentService = new AttachmentService(organizationId, userId, resolvedDb)
-    this.mediaAssetService = new MediaAssetService(organizationId, userId, resolvedDb)
+    this.filesCtx = { db: resolvedDb, organizationId }
   }
 
   /**
@@ -58,14 +57,14 @@ export class MessageAttachmentService {
 
       if (attachment!.type === 'asset') {
         // Convert temp MediaAsset to permanent if needed
-        await this.mediaAssetService.convertTempToPermanent(
+        const converted = await convertTempAssetToPermanent(
+          this.filesCtx,
           attachment!.id,
-          'EMAIL_ATTACHMENT',
-          this.organizationId
+          'EMAIL_ATTACHMENT'
         )
+        if (converted.isErr()) throw converted.error
 
-        // Create attachment via AttachmentService
-        await this.attachmentService.create({
+        const created = await createAttachment(this.filesCtx, {
           entityType: 'MESSAGE',
           entityId: messageId,
           role: 'ATTACHMENT',
@@ -73,18 +72,20 @@ export class MessageAttachmentService {
           createdById: this.userId,
           title: attachment!.name,
           sort: i + 1,
-          organizationId: this.organizationId,
         })
+        if (created.isErr()) throw created.error
       } else if (attachment!.type === 'file') {
         // Handle FolderFile attachments
-        await this.attachmentService.attachFileToEntity(
-          attachment!.id,
-          'MESSAGE',
-          messageId,
-          this.userId,
-          'ATTACHMENT',
-          { title: attachment!.name, sort: i + 1 }
-        )
+        const created = await createAttachment(this.filesCtx, {
+          entityType: 'MESSAGE',
+          entityId: messageId,
+          role: 'ATTACHMENT',
+          fileId: attachment!.id,
+          createdById: this.userId,
+          title: attachment!.name,
+          sort: i + 1,
+        })
+        if (created.isErr()) throw created.error
       }
     }
 
@@ -170,14 +171,12 @@ export class MessageAttachmentService {
       messageCount: messageIds.length,
     })
 
-    // Use AttachmentService to fetch grouped attachments
-    const attachmentMap = await this.attachmentService.fetchAttachmentsForEntities(
-      'MESSAGE',
-      messageIds
-    )
+    // One query for the whole batch — see `files/attachments/attachment-queries.ts`.
+    const attachmentMap = await fetchAttachmentsForEntities(this.filesCtx, 'MESSAGE', messageIds)
+    if (attachmentMap.isErr()) throw attachmentMap.error
 
     // Transform to backward-compatible format
-    const transformedMap = transformAttachmentsForMessages(attachmentMap)
+    const transformedMap = transformAttachmentsForMessages(attachmentMap.value)
 
     logger.info('Successfully fetched and transformed attachments', {
       messageCount: messageIds.length,
