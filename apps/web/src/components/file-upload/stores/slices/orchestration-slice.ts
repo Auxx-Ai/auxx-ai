@@ -3,8 +3,9 @@
 import type { BatchUploadResult, EntityType } from '@auxx/lib/files/types'
 import { getEntityConfig } from '@auxx/lib/files/types'
 import type { StateCreator } from 'zustand'
+import type { UploadTransport } from '../../transport'
+import { httpUploadTransport, isUploadTransportError, resolveServerId } from '../../transport'
 import { validateFile } from '../../utils'
-import { directUpload } from '../../utils/direct-upload'
 import { isFileInFlight } from '../file-status'
 import type { CreateSessionOptions, UploadStore } from '../types'
 
@@ -39,6 +40,18 @@ export const cleanupUploader = (uploaderId: string) => {
 export interface OrchestrationSlice {
   // State
   uploading: boolean
+
+  /**
+   * The network seam. Defaults to {@link httpUploadTransport}; tests swap in a fake
+   * with {@link OrchestrationSlice.setTransport} so the orchestration logic can be
+   * exercised without stubbing global `fetch` or matching URL strings.
+   *
+   * It lives on the store rather than in a module-level `let` so it cannot leak
+   * between test files, and it survives `reset()` on purpose — a reset clears the
+   * work, not the wiring.
+   */
+  transport: UploadTransport
+  setTransport: (transport: UploadTransport) => void
 
   // Per-file abort tracking
   inFlight: Record<string, { abort?: () => void }>
@@ -108,6 +121,13 @@ export const createEnhancedOrchestrationSlice: StateCreator<
   // State
   uploading: false,
   inFlight: {} as Record<string, { abort?: () => void }>,
+  transport: httpUploadTransport,
+
+  setTransport: (transport: UploadTransport) => {
+    set((state) => {
+      state.transport = transport
+    })
+  },
 
   /**
    * Session creation with concurrency guard
@@ -607,37 +627,20 @@ export const createEnhancedOrchestrationSlice: StateCreator<
         const file = toUpload[fileIndex++]
         if (!file?.file) return
 
+        const mimeType = file.mimeType || file.file?.type || 'application/octet-stream'
+
         try {
           // 1. Create presigned session (per file)
-          const createResponse = await fetch('/api/files/upload/sessions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              fileName: file.name,
-              mimeType: file.mimeType || file.file?.type || 'application/octet-stream',
-              expectedSize: file.size,
-              provider: 'S3', // ✅ Use correct credential provider ID
-              entityType: session.entityType, // ✅ Move to root level for API validation
-              entityId: session.entityId, // ✅ Move to root level for API validation
-              // Forward client session metadata to server
-              metadata: session.metadata || {},
-            }),
+          const presignedConfig = await get().transport.createSession({
+            fileName: file.name,
+            mimeType,
+            expectedSize: file.size ?? 0,
+            provider: 'S3',
+            entityType: session.entityType,
+            entityId: session.entityId,
+            // Forward client session metadata to server
+            metadata: session.metadata || {},
           })
-
-          if (!createResponse.ok) {
-            throw new Error(`Session create failed (${createResponse.status})`)
-          }
-
-          const presignedConfig = (await createResponse.json()) as {
-            sessionId: string
-            uploadMethod: 'single' | 'multipart'
-            uploadType?: 'PUT' | 'POST'
-            presignedUrl?: string
-            presignedFields?: Record<string, string>
-            uploadId?: string
-            partPresignEndpoint?: string
-            storageKey: string
-          }
 
           // Store the server-side session ID. This is an UPLOAD SESSION nanoid, not a
           // server record id — `serverIdKind` says so, so a consumer that needs a real
@@ -661,7 +664,7 @@ export const createEnhancedOrchestrationSlice: StateCreator<
             })),
           })
 
-          const { abort, promise } = directUpload({
+          const { abort, promise } = get().transport.uploadObject({
             file: file.file,
             config: presignedConfig,
             onProgress: (progress) => {
@@ -694,47 +697,18 @@ export const createEnhancedOrchestrationSlice: StateCreator<
           })
 
           // 3. Complete the upload
-          const completeResponse = await fetch(
-            `/api/files/upload/${presignedConfig.sessionId}/complete`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                storageKey: presignedConfig.storageKey, // Use storage key from session creation
-                size: file.size,
-                mimeType: file.mimeType || file.file?.type || 'application/octet-stream',
-                etag: uploadResult.etag,
-                uploadId: uploadResult.uploadId,
-                parts: uploadResult.parts,
-              }),
-            }
-          )
+          const completionData = await get().transport.completeSession(presignedConfig.sessionId, {
+            storageKey: presignedConfig.storageKey, // Use storage key from session creation
+            size: file.size ?? 0,
+            mimeType,
+            etag: uploadResult.etag,
+            uploadId: uploadResult.uploadId,
+            parts: uploadResult.parts,
+          })
 
-          if (!completeResponse.ok) {
-            throw new Error(`Complete failed (${completeResponse.status})`)
-          }
-
-          // Parse completion data to capture assetId/url for downstream consumers
-          let completionData: any = null
-          try {
-            completionData = await completeResponse.json()
-            console.log('[orchestration] Complete response:', completionData)
-          } catch (e) {
-            console.error('[orchestration] Failed to parse complete response:', e)
-          }
-
-          // Which kind of server record the completion actually produced. An attachment/asset
-          // processor returns `assetId` (a `MediaAsset`); `FileProcessor` returns only
-          // `fileId` (a `FolderFile`). Recording the kind is what stops a `FolderFile` id —
-          // or, worse, the upload-session nanoid we parked in `serverFileId` at session-create
-          // time — from being reported downstream as an asset id (§11.3).
-          const serverIdKind: 'asset' | 'file' | 'session' = completionData?.assetId
-            ? 'asset'
-            : completionData?.fileId
-              ? 'file'
-              : 'session'
-          const serverId: string | undefined =
-            completionData?.assetId ?? completionData?.fileId ?? undefined
+          // Which kind of server record the completion actually produced — see
+          // `transport/server-id.ts` and guide §11.3.
+          const { serverId, kind: serverIdKind } = resolveServerId(completionData)
 
           // Atomic update: set serverFileId, url, and status together
           // This prevents race conditions where onComplete reads state before serverFileId is set
@@ -762,13 +736,23 @@ export const createEnhancedOrchestrationSlice: StateCreator<
           successes.push(file.id)
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Upload failed'
+          // For a transport failure `message` is now the server's own prose — the
+          // storage-quota upgrade prompt, the 422 policy reason — instead of the
+          // `"Session create failed (403)"` placeholder the inline fetch produced.
           get().addError({
             message,
+            code: isUploadTransportError(error) ? error.code : undefined,
+            details: isUploadTransportError(error) ? error.details : undefined,
             fileId: file.id,
             sessionId: sessionId!,
             recoverable: true,
           })
-          get().updateFileStatus(file.id, 'failed')
+          // `setFileError`, not `updateFileStatus('failed')`: the latter leaves
+          // `FileState.error` unset (its own comment says "caller should also set
+          // error ... separately" and no caller ever did), so every failed upload
+          // reached `BatchUploadResult.results[].error` and `toUploadResult` as
+          // `undefined` — a second place the real message died.
+          get().setFileError(file.id, message)
           failures.push({ id: file.id, error: message })
           get().clearInFlight(file.id)
         }

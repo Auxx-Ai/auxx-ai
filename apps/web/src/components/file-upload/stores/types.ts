@@ -8,6 +8,7 @@ import type {
   SessionStatus,
   UploadProgress,
 } from '@auxx/lib/files/types'
+import type { UploadTransport } from '../transport'
 
 /**
  * Core store state types
@@ -175,6 +176,12 @@ export interface UploadState {
   inFlight: Record<string, { abort?: () => void }>
   // REMOVED: paused (offline pause/resume functionality)
 
+  /**
+   * How the uploader reaches the network. Defaults to the real HTTP transport;
+   * swapped out with `setTransport` in tests. See `../transport`.
+   */
+  transport: UploadTransport
+
   // Error State
   errors: UploadError[]
   /** Dedupe map: error hash -> last-seen epoch ms. Suppresses repeats within 60s. */
@@ -246,6 +253,9 @@ export interface UploadActions {
   // Presigned upload tracking methods
   setInFlight: (fileId: string, abort?: () => void) => void
   clearInFlight: (fileId: string) => void
+
+  /** Replace the network seam. Production never calls this; tests always do. */
+  setTransport: (transport: UploadTransport) => void
 
   // UI Actions
   setDragActive: (active: boolean) => void
