@@ -24,13 +24,41 @@
 
 import { database } from '@auxx/database'
 import { BadRequestError } from '@auxx/lib/errors'
-import { MediaAssetService } from '@auxx/lib/files'
+import {
+  createS3StoragePort,
+  createThumbnailCleanupPort,
+  deleteAsset,
+} from '@auxx/lib/files/server'
 import { prepareDocumentEmail } from '@auxx/lib/money'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
 
 /** Build a RecordId string without pulling in `@auxx/types` (not a worker dependency). */
 function toRecordId(entityDefinitionId: string, entityInstanceId: string) {
   return `${entityDefinitionId}:${entityInstanceId}` as never
+}
+
+/**
+ * Soft-delete a `MediaAsset` and sweep the thumbnails derived from it.
+ *
+ * `MediaAssetService.delete` built the thumbnail collaborator inside lib with a
+ * dynamic `import('./thumbnail-service')`. `deleteAsset` takes it as a parameter
+ * instead, so the port is constructed here, at the composition site, and bound
+ * to the SAME transaction the delete runs on — sweeping on the outer pool while
+ * inside the transaction is the stale-read bug the refactor exists to kill.
+ */
+async function deleteMediaAsset(organizationId: string, assetId: string): Promise<void> {
+  const result = await database.transaction(async (tx) => {
+    const ctx = { db: tx, organizationId }
+    const deps = {
+      now: () => new Date(),
+      thumbnails: createThumbnailCleanupPort(ctx, {
+        storage: createS3StoragePort(organizationId),
+        now: () => new Date(),
+      }),
+    }
+    return deleteAsset(tx, ctx, deps, assetId)
+  })
+  if (result.isErr()) throw result.error
 }
 
 let pass = 0
@@ -174,8 +202,7 @@ async function main() {
     console.log('Cleanup')
     if (assetId) {
       try {
-        const mediaAssetService = new MediaAssetService(organizationId, userId)
-        await mediaAssetService.delete(assetId)
+        await deleteMediaAsset(organizationId, assetId)
       } catch (err) {
         console.log(
           `  cleanup failed for asset:${assetId}:`,

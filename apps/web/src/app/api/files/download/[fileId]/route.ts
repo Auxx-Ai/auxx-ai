@@ -1,19 +1,38 @@
 // apps/web/src/app/api/files/download/[fileId]/route.ts
 
-import { AuxxError } from '@auxx/lib/errors'
+import { database } from '@auxx/database'
+import { AuxxError, NotFoundError } from '@auxx/lib/errors'
+import type { FilesCtx } from '@auxx/lib/files/server'
 import {
   createFileDownloadResponse,
-  createFileService,
+  createStorageManager,
+  getAsset,
+  getAssetCurrentVersion,
+  getFolderFile,
+  getFolderFileCurrentVersion,
   parseRangeHeader,
 } from '@auxx/lib/files/server'
 import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { isFileRef, parseFileRef } from '@auxx/types/file-ref'
+import type { Result } from 'neverthrow'
 import { headers } from 'next/headers'
 import type { NextRequest } from 'next/server'
 import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('api-files-download')
+
+/**
+ * Unwrap a `files/` `Result` into this handler's throw-based flow.
+ *
+ * The error is always an `AuxxError` subclass, and the outer `catch` in each
+ * handler maps anything it does not recognise to a 500 — same shape the
+ * `FileService` facade produced when it threw.
+ */
+function unwrap<V>(result: Result<V, Error>): V {
+  if (result.isErr()) throw result.error
+  return result.value
+}
 
 interface RouteParams {
   params: Promise<{ fileId: string }>
@@ -25,7 +44,7 @@ interface RouteParams {
  * Returns the resolved caller on success, or the `Response` to send back.
  *
  * Both handlers previously authenticated with `auth.api.getSession` alone and
- * read no capabilities: `FileService.get` scopes on organization + soft-delete
+ * read no capabilities: the file read scopes on organization + soft-delete
  * only, so any authenticated member of the org could stream the CONTENT of any
  * `FolderFile` or `MediaAsset` (GET), or read its name/size/mimeType (HEAD),
  * simply by knowing — or guessing — an id. The eight file reads on the tRPC
@@ -47,7 +66,7 @@ interface RouteParams {
  * caller cannot probe file existence through the 404-vs-200 difference either.
  */
 async function authorize(): Promise<
-  { ok: true; organizationId: string; userId: string } | { ok: false; response: Response }
+  { ok: true; organizationId: string } | { ok: false; response: Response }
 > {
   const session = await auth.api.getSession({ headers: await headers() })
 
@@ -69,7 +88,30 @@ async function authorize(): Promise<
     throw error
   }
 
-  return { ok: true, organizationId, userId: session.user.id }
+  // No `userId` on the way out: `files/` functions take no actor
+  // (`files/ctx.ts`), and the only reader was the service constructor.
+  return { ok: true, organizationId }
+}
+
+/**
+ * Read the current bytes behind a `FolderFile` or a `MediaAsset`.
+ *
+ * Content still goes through `StorageManager` rather than a `StoragePort`:
+ * neither `folder-files/` nor `assets/` has a content-read function, because
+ * `getContent` needs per-provider dispatch that the S3-only port does not do.
+ * That is the same note `FileService.getContent` and
+ * `MediaAssetService.getContent` both carried — this handler just no longer
+ * needs a service instance to reach it.
+ */
+async function readCurrentContent(
+  storageLocationId: string | null | undefined,
+  entityId: string,
+  organizationId: string
+): Promise<Buffer> {
+  if (!storageLocationId) {
+    throw new NotFoundError(`No storage location found for ${entityId}`)
+  }
+  return createStorageManager(organizationId).getContent(storageLocationId)
 }
 
 /**
@@ -78,19 +120,23 @@ async function authorize(): Promise<
  */
 async function resolveFile(
   fileIdOrRef: string,
-  organizationId: string,
-  userId: string
+  organizationId: string
 ): Promise<{ content: Buffer; name: string; mimeType: string | null; size: number | null } | null> {
+  // `organizationId` is REQUIRED on a `FilesCtx`. Both services took an optional
+  // one and `BaseService.buildBaseWhereClause` guarded its organization filter
+  // with `if (this.organizationId)` — a service built without one read across
+  // every tenant. The handler cannot express that now.
+  const ctx: FilesCtx = { db: database, organizationId }
+
   // Check if this is a FileRef (asset:id or file:id)
   if (isFileRef(fileIdOrRef)) {
     const { sourceType, id } = parseFileRef(fileIdOrRef)
 
     if (sourceType === 'asset') {
-      const { MediaAssetService } = await import('@auxx/lib/files/server')
-      const assetService = new MediaAssetService(organizationId, userId)
-      const asset = await assetService.get(id)
+      const asset = unwrap(await getAsset(ctx, id))
       if (!asset) return null
-      const content = await assetService.getContent(id)
+      const version = unwrap(await getAssetCurrentVersion(ctx, id))
+      const content = await readCurrentContent(version?.storageLocationId, id, organizationId)
       return { content, name: asset.name ?? id, mimeType: asset.mimeType, size: asset.size }
     }
 
@@ -98,10 +144,10 @@ async function resolveFile(
     fileIdOrRef = id
   }
 
-  const fileService = createFileService(organizationId, userId)
-  const file = await fileService.get(fileIdOrRef)
+  const file = unwrap(await getFolderFile(ctx, fileIdOrRef))
   if (!file) return null
-  const content = await fileService.getContent(fileIdOrRef)
+  const version = unwrap(await getFolderFileCurrentVersion(ctx, fileIdOrRef))
+  const content = await readCurrentContent(version?.storageLocationId, fileIdOrRef, organizationId)
   return { content, name: file.name, mimeType: file.mimeType, size: file.size }
 }
 
@@ -158,7 +204,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     logger.info(`Downloading file: ${fileId}`)
 
-    const resolved = await resolveFile(fileId, caller.organizationId, caller.userId)
+    const resolved = await resolveFile(fileId, caller.organizationId)
     if (!resolved) {
       return new Response('File not found', { status: 404 })
     }
@@ -199,7 +245,7 @@ export async function HEAD(request: NextRequest, { params }: RouteParams) {
     const caller = await authorize()
     if (!caller.ok) return caller.response
 
-    const resolved = await resolveFile(fileId, caller.organizationId, caller.userId)
+    const resolved = await resolveFile(fileId, caller.organizationId)
     if (!resolved) {
       return new Response('File not found', { status: 404 })
     }

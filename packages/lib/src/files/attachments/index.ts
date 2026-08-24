@@ -30,3 +30,14 @@ export {
   requireResolvedVersion,
   resolveAttachmentVersion,
 } from './attachment-queries'
+export type {
+  AttachmentDownloadDeps,
+  GetAttachmentDownloadRefOptions,
+} from './download'
+export {
+  getAttachmentDownloadInfo,
+  getAttachmentDownloadRef,
+  resolveAttachmentDownloadRef,
+} from './download'
+export type { LocationDownloadParams, LocationDownloadPort } from './ports'
+export { createStorageManagerLocationPort } from './ports'

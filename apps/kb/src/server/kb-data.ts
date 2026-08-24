@@ -6,14 +6,105 @@ import {
   ArticleRevision,
   database,
   KnowledgeBase,
+  MediaAsset,
+  MediaAssetVersion,
   Organization,
 } from '@auxx/database'
-import type { ArticleKind } from '@auxx/database/types'
-import { MediaAssetService } from '@auxx/lib/files/server'
+import type { ArticleKind, MediaAssetEntity } from '@auxx/database/types'
+import type { VersionWithLocation } from '@auxx/lib/files/server'
+import { createS3StoragePort, resolveAssetDownloadRef } from '@auxx/lib/files/server'
 import type { ArticleNodeJSON, KBLayoutKB } from '@auxx/ui/components/kb'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { canViewKB } from './kb-access'
+
+/**
+ * Resolve many cover-image asset ids to download URLs in a FIXED number of
+ * statements: one for the assets, and at most two for their versions.
+ *
+ * This is the shape `MediaAssetService.getDownloadUrls` had, and keeping it is
+ * the point. The obvious swap — `getAssetDownloadRef` per id — re-reads the
+ * asset and its version once per cover, turning three queries into 3N on an SSR
+ * pass that renders every published article in the knowledge base.
+ * `resolveAssetDownloadRef` is exported precisely so a batch caller can share
+ * the URL policy without paying for the reads again.
+ *
+ * Ids that are missing, deleted, in another organization, or whose storage
+ * location cannot name its bucket resolve to `null` — a broken cover must not
+ * fail the whole page.
+ */
+async function resolveCoverUrls(
+  organizationId: string,
+  ids: Array<string | null | undefined>
+): Promise<Map<string, string | null>> {
+  const result = new Map<string, string | null>()
+  const unique = Array.from(new Set(ids.filter((id): id is string => !!id)))
+  if (unique.length === 0) return result
+
+  // 1 — the assets, organization-scoped and live.
+  const assets = (await database.query.MediaAsset.findMany({
+    where: and(
+      inArray(MediaAsset.id, unique),
+      eq(MediaAsset.organizationId, organizationId),
+      isNull(MediaAsset.deletedAt)
+    ),
+  })) as MediaAssetEntity[]
+
+  // 2 and 3 — every asset's current version: one query by explicit
+  // `currentVersionId`, one by `assetId` (latest first) for assets without one.
+  const withCurrent = assets.filter((asset) => asset.currentVersionId)
+  const withoutCurrent = assets.filter((asset) => !asset.currentVersionId)
+  const [byId, byAsset] = await Promise.all([
+    withCurrent.length
+      ? database.query.MediaAssetVersion.findMany({
+          where: inArray(
+            MediaAssetVersion.id,
+            withCurrent.map((asset) => asset.currentVersionId as string)
+          ),
+          with: { storageLocation: true },
+        })
+      : Promise.resolve([]),
+    withoutCurrent.length
+      ? database.query.MediaAssetVersion.findMany({
+          where: inArray(
+            MediaAssetVersion.assetId,
+            withoutCurrent.map((asset) => asset.id)
+          ),
+          orderBy: desc(MediaAssetVersion.versionNumber),
+          with: { storageLocation: true },
+        })
+      : Promise.resolve([]),
+  ])
+
+  const versionById = new Map<string, VersionWithLocation>()
+  for (const version of byId as VersionWithLocation[]) versionById.set(version.id, version)
+  const latestByAsset = new Map<string, VersionWithLocation>()
+  for (const version of byAsset as VersionWithLocation[]) {
+    // Ordered by version desc, so the first seen per asset is the latest.
+    if (!latestByAsset.has(version.assetId)) latestByAsset.set(version.assetId, version)
+  }
+
+  const deps = { storage: createS3StoragePort(organizationId) }
+  await Promise.all(
+    assets.map(async (asset) => {
+      const version = asset.currentVersionId
+        ? versionById.get(asset.currentVersionId)
+        : latestByAsset.get(asset.id)
+      if (!version) {
+        result.set(asset.id, null)
+        return
+      }
+      try {
+        const ref = await resolveAssetDownloadRef(deps, asset, version)
+        result.set(asset.id, ref.type === 'url' ? ref.url : null)
+      } catch {
+        result.set(asset.id, null)
+      }
+    })
+  )
+  for (const id of unique) if (!result.has(id)) result.set(id, null)
+  return result
+}
 
 export interface PublicArticleListItem {
   id: string
@@ -301,21 +392,12 @@ export async function loadKBPayloadWithContent(
     )
 
   // Resolve cover URLs in a single fan-out so the SSR pass makes
-  // O(unique-covers) S3 round-trips instead of O(articles).
-  const assetService = new MediaAssetService(kb.organizationId)
-  const uniqueCoverIds = Array.from(
-    new Set(rows.map((r) => r.pubCoverImageId).filter((id): id is string => !!id))
+  // O(unique-covers) S3 round-trips instead of O(articles) — and, since the
+  // sweep, THREE database statements instead of one pair per unique cover.
+  const coverUrlMap = await resolveCoverUrls(
+    kb.organizationId,
+    rows.map((r) => r.pubCoverImageId)
   )
-  const coverUrlEntries = await Promise.all(
-    uniqueCoverIds.map(async (id) => {
-      try {
-        return [id, await assetService.getDownloadUrl(id)] as const
-      } catch {
-        return [id, null] as const
-      }
-    })
-  )
-  const coverUrlMap = new Map(coverUrlEntries)
 
   const toArticleId = new Map(rows.map((r) => [r.placementId, r.articleId]))
   const fullArticles: PublicArticleFull[] = rows.map((r) => ({

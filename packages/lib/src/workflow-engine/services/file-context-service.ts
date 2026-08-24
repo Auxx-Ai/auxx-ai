@@ -3,6 +3,10 @@
 import type { Database } from '@auxx/database'
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { getAssetDownloadRef } from '../../files/assets/download'
+import type { FilesCtx } from '../../files/ctx'
+import { getFolderFile, getFolderFileDownloadRef } from '../../files/folder-files'
+import { createS3StoragePort } from '../../files/storage/ports'
 import {
   type FileContentOptions,
   type FileReference,
@@ -45,6 +49,16 @@ export class FileContextService {
     this.organizationId = organizationId
   }
 
+  /** The `files/` scope every download below resolves in. */
+  private filesCtx(): FilesCtx {
+    return { db: this.db, organizationId: this.organizationId }
+  }
+
+  /** Storage collaborator for the `files/` download reads. */
+  private downloadDeps() {
+    return { storage: createS3StoragePort(this.organizationId), now: () => new Date() }
+  }
+
   /**
    * Get fresh URL for a file reference
    * Regenerates presigned URL if expired
@@ -80,12 +94,11 @@ export class FileContextService {
    */
   private async refreshMediaAssetUrl(ref: FileReference): Promise<string> {
     try {
-      const { MediaAssetService } = await import('../../files/core/media-asset-service')
-      const mediaAssetService = new MediaAssetService(this.organizationId)
+      const result = await getAssetDownloadRef(this.filesCtx(), this.downloadDeps(), ref.assetId)
+      if (result.isErr()) throw result.error
 
-      const downloadRef = await mediaAssetService.getDownloadRef(ref.assetId)
-      if (downloadRef.type === 'url') {
-        return downloadRef.url
+      if (result.value.type === 'url') {
+        return result.value.url
       }
       throw new Error('Expected URL download reference')
     } catch (err) {
@@ -103,12 +116,15 @@ export class FileContextService {
    */
   private async refreshFolderFileUrl(ref: FileReference): Promise<string> {
     try {
-      const { FileService } = await import('../../files/core/file-service')
-      const fileService = new FileService(this.organizationId)
+      const result = await getFolderFileDownloadRef(
+        this.filesCtx(),
+        this.downloadDeps(),
+        ref.assetId
+      )
+      if (result.isErr()) throw result.error
 
-      const downloadRef = await fileService.getDownloadRef(ref.assetId)
-      if (downloadRef.type === 'url') {
-        return downloadRef.url
+      if (result.value.type === 'url') {
+        return result.value.url
       }
       throw new Error('Expected URL download reference')
     } catch (err) {
@@ -306,11 +322,14 @@ export class FileContextService {
     let url = ''
     try {
       if (attachment.assetId) {
-        const { MediaAssetService } = await import('../../files/core/media-asset-service')
-        const mediaAssetService = new MediaAssetService(this.organizationId)
-        const downloadRef = await mediaAssetService.getDownloadRef(attachment.assetId)
-        if (downloadRef.type === 'url') {
-          url = downloadRef.url
+        const result = await getAssetDownloadRef(
+          this.filesCtx(),
+          this.downloadDeps(),
+          attachment.assetId
+        )
+        if (result.isErr()) throw result.error
+        if (result.value.type === 'url') {
+          url = result.value.url
         }
       }
     } catch (err) {
@@ -343,28 +362,21 @@ export class FileContextService {
     nodeId: string
   ): Promise<FileReference | null> {
     try {
-      const { FileService } = await import('../../files/core/file-service')
-      const fileService = new FileService(this.organizationId)
-
-      // Get file entity for metadata
-      const { schema } = await import('@auxx/database')
-      const { eq } = await import('drizzle-orm')
-      const [entity] = await this.db
-        .select({
-          name: schema.FolderFile.name,
-          mimeType: schema.FolderFile.mimeType,
-          size: schema.FolderFile.size,
-        })
-        .from(schema.FolderFile)
-        .where(eq(schema.FolderFile.id, fileId))
-        .limit(1)
+      // Org-scoped: the hand-rolled `SELECT … WHERE FolderFile.id = ?` this
+      // replaced carried no organization filter, so any workflow holding a file
+      // id could read another tenant's file name, MIME type and size.
+      const found = await getFolderFile(this.filesCtx(), fileId)
+      if (found.isErr()) throw found.error
+      const entity = found.value
 
       if (!entity) {
         logger.warn('Folder file not found', { fileId })
         return null
       }
 
-      const downloadRef = await fileService.getDownloadRef(fileId)
+      const result = await getFolderFileDownloadRef(this.filesCtx(), this.downloadDeps(), fileId)
+      if (result.isErr()) throw result.error
+      const downloadRef = result.value
       const url = downloadRef.type === 'url' ? downloadRef.url : ''
 
       return {

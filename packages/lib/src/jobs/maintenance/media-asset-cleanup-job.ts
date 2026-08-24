@@ -3,8 +3,11 @@
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNotNull, isNull, lte, sql } from 'drizzle-orm'
-import { MediaAssetService } from '../../files/core/media-asset-service'
+import { deleteAsset } from '../../files/assets'
+import type { FilesCtx } from '../../files/ctx'
+import { createS3StoragePort } from '../../files/storage/ports'
 import { StorageManager } from '../../files/storage/storage-manager'
+import { createThumbnailCleanupPort } from '../../files/thumbnails'
 import type { JobContext } from '../types'
 
 const logger = createScopedLogger('media-asset-cleanup-job')
@@ -52,8 +55,8 @@ export const cleanupExpiredMediaAssetsJob = async (ctx: JobContext<MediaAssetCle
   try {
     await job.updateProgress(10)
 
-    // Initialize MediaAsset service
-    const mediaAssetService = new MediaAssetService(organizationId)
+    const now = () => new Date()
+    const storage = createS3StoragePort(organizationId)
 
     // Find expired assets using the new expiresAt field
     const currentTime = new Date()
@@ -122,8 +125,17 @@ export const cleanupExpiredMediaAssetsJob = async (ctx: JobContext<MediaAssetCle
               }
             }
 
-            // Delete the MediaAsset from database (hard delete for expired temporary files)
-            await mediaAssetService.delete(asset.id)
+            // Soft-delete the MediaAsset (and sweep its thumbnails) in one transaction.
+            await db.transaction(async (tx) => {
+              const txCtx: FilesCtx = { db: tx, organizationId }
+              const deleted = await deleteAsset(
+                tx,
+                txCtx,
+                { now, thumbnails: createThumbnailCleanupPort(txCtx, { storage, now }) },
+                asset.id
+              )
+              if (deleted.isErr()) throw deleted.error
+            })
             stats.assetsDeleted++
             stats.storageFreed += storageSize
 

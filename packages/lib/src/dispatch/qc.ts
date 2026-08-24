@@ -11,7 +11,8 @@
 import { database, schema } from '@auxx/database'
 import { and, asc, eq, inArray, max } from 'drizzle-orm'
 import { ForbiddenError, NotFoundError } from '../errors'
-import { AttachmentService } from '../files/core/attachment-service'
+import { createAttachment, deleteAttachment, updateAttachment } from '../files/attachments'
+import type { FilesCtx } from '../files/ctx'
 import { loadOwnVisit } from './my-schedule'
 
 type QcItemTemplateRow = typeof schema.QcItemTemplate.$inferSelect
@@ -447,6 +448,11 @@ export async function addMyAdhocQcItem(
 // (`loadOwnQcItem` vs `loadQcItemInOrg`, 37d §2); everything past the guard is identical, so
 // it lives here once and takes a pre-resolved `itemId`.
 
+/** The `files/` scope every photo mutation below runs in. */
+function filesCtx(organizationId: string): FilesCtx {
+  return { db: database, organizationId }
+}
+
 /** Attach an already-uploaded `MediaAsset` (see `useFileUpload`) to a checklist item. */
 async function attachQcItemPhoto(
   organizationId: string,
@@ -454,11 +460,14 @@ async function attachQcItemPhoto(
   itemId: string,
   assetId: string
 ): Promise<MyVisitQcItemPhoto> {
-  const attachment = await new AttachmentService(organizationId, userId).create({
+  const created = await createAttachment(filesCtx(organizationId), {
     entityType: 'visit_qc_item',
     entityId: itemId,
     assetId,
+    createdById: userId,
   })
+  if (created.isErr()) throw created.error
+  const attachment = created.value
   return { attachmentId: attachment.id, assetId: attachment.assetId, caption: attachment.caption }
 }
 
@@ -482,24 +491,26 @@ async function loadQcItemPhoto(
 /** Detach a photo from a checklist item. */
 async function detachQcItemPhoto(
   organizationId: string,
-  userId: string,
+  _userId: string,
   itemId: string,
   attachmentId: string
 ): Promise<void> {
   await loadQcItemPhoto(organizationId, itemId, attachmentId)
-  await new AttachmentService(organizationId, userId).delete(attachmentId)
+  const deleted = await deleteAttachment(filesCtx(organizationId), attachmentId)
+  if (deleted.isErr()) throw deleted.error
 }
 
 /** Set (or clear, `caption: null`) a photo's caption. */
 async function updateQcItemPhotoCaption(
   organizationId: string,
-  userId: string,
+  _userId: string,
   itemId: string,
   attachmentId: string,
   caption: string | null
 ): Promise<void> {
   await loadQcItemPhoto(organizationId, itemId, attachmentId)
-  await new AttachmentService(organizationId, userId).update(attachmentId, { caption })
+  const updated = await updateAttachment(filesCtx(organizationId), attachmentId, { caption })
+  if (updated.isErr()) throw updated.error
 }
 
 // ─── Worker (assignee-guarded) photo mutations ──────────────────────────────────

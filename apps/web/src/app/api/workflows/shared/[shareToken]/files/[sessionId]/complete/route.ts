@@ -1,6 +1,13 @@
 // apps/web/src/app/api/workflows/shared/[shareToken]/files/[sessionId]/complete/route.ts
 
-import { createStorageManager, MediaAssetService } from '@auxx/lib/files'
+import { database } from '@auxx/database'
+import type { FilesCtx } from '@auxx/lib/files/server'
+import {
+  createAssetWithVersion,
+  createS3StoragePort,
+  createStorageManager,
+  getAssetDownloadRef,
+} from '@auxx/lib/files/server'
 import { SystemUserService } from '@auxx/lib/users'
 import { createScopedLogger } from '@auxx/logger'
 import { deleteRedisData, getRedisData } from '@auxx/redis'
@@ -126,27 +133,36 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to complete upload' }, { status: 500 })
   }
 
-  // 7. Create MediaAsset with version for version locking support
-  let asset: Awaited<ReturnType<typeof mediaAssetService.createWithVersion>>['asset']
-  let version: Awaited<ReturnType<typeof mediaAssetService.createWithVersion>>['version']
-  const mediaAssetService = new MediaAssetService(sessionData.organizationId, systemUserId)
+  // 7. Create MediaAsset with version for version locking support.
+  //
+  // The asset row and its first version land in ONE transaction, opened here.
+  // `MediaAssetService.createWithVersion` opened it inside lib through
+  // `BaseService.getTx`, which guessed whether it was already in one.
+  const filesCtx: FilesCtx = { db: database, organizationId: sessionData.organizationId }
+  let asset: { id: string }
+  let version: { id: string }
   try {
-    const result = await mediaAssetService.createWithVersion(
-      {
-        kind: 'TEMP_UPLOAD',
-        name: sessionData.filename,
-        mimeType: headResult.mimeType || sessionData.mimeType,
-        size: headResult.size,
-        isPrivate: true,
-        organizationId: sessionData.organizationId,
-        createdById: systemUserId,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
-        purpose: 'PUBLIC_WORKFLOW_INPUT',
-      },
-      storageLocation.id
+    const created = await database.transaction(async (tx) =>
+      createAssetWithVersion(
+        tx,
+        { ...filesCtx, db: tx },
+        { now: () => new Date() },
+        {
+          kind: 'TEMP_UPLOAD',
+          name: sessionData.filename,
+          mimeType: headResult.mimeType || sessionData.mimeType,
+          size: headResult.size,
+          isPrivate: true,
+          createdById: systemUserId,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+          purpose: 'PUBLIC_WORKFLOW_INPUT',
+          storageLocationId: storageLocation.id,
+        }
+      )
     )
-    asset = result.asset
-    version = result.version
+    if (created.isErr()) throw created.error
+    asset = created.value.asset
+    version = created.value.version
   } catch (err) {
     logger.error('Failed to create MediaAsset', {
       sessionId,
@@ -159,9 +175,14 @@ export async function POST(
   // 8. Generate download URL using the new version
   let downloadUrl: string | undefined
   try {
-    const downloadRef = await mediaAssetService.getDownloadRef(asset.id)
-    if (downloadRef.type === 'url') {
-      downloadUrl = downloadRef.url
+    const downloadRef = await getAssetDownloadRef(
+      filesCtx,
+      { storage: createS3StoragePort(sessionData.organizationId) },
+      asset.id
+    )
+    if (downloadRef.isErr()) throw downloadRef.error
+    if (downloadRef.value.type === 'url') {
+      downloadUrl = downloadRef.value.url
     }
   } catch (err) {
     // Non-critical - download URL is optional for form submission

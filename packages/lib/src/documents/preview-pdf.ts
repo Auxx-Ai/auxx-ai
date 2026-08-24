@@ -1,8 +1,7 @@
 // packages/lib/src/documents/preview-pdf.ts
 
-import { database as db, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
-import { MediaAssetService } from '../files/core/media-asset-service'
+import { database as db } from '@auxx/database'
+import { createAssetWithVersion } from '../files/assets'
 import { createStorageManager } from '../files/storage/storage-manager'
 import { SAMPLE_QUOTE_PDF_PAYLOAD } from './payload'
 import { renderDocumentPdf } from './render'
@@ -47,25 +46,28 @@ export async function renderPreviewQuotePdf(params: {
     organizationId,
   })
 
-  const mediaAssetService = new MediaAssetService(organizationId, actorId, db)
-  const { asset } = await mediaAssetService.createWithVersion(
-    {
-      kind: 'DOCUMENT',
-      purpose: 'PREVIEW',
-      name: fileName,
-      mimeType: 'application/pdf',
-      size: buffer.length,
-      isPrivate: true,
-      organizationId,
-      createdById: actorId,
-    },
-    storageLocation.id
-  )
+  // `expiresAt` is part of the insert now rather than a follow-up UPDATE, so a
+  // preview can never exist for a moment with no cleanup deadline on it.
+  const assetId = await db.transaction(async (tx) => {
+    const created = await createAssetWithVersion(
+      tx,
+      { db: tx, organizationId },
+      { now: () => new Date() },
+      {
+        kind: 'DOCUMENT',
+        purpose: 'PREVIEW',
+        name: fileName,
+        mimeType: 'application/pdf',
+        size: buffer.length,
+        isPrivate: true,
+        createdById: actorId,
+        expiresAt: new Date(Date.now() + PREVIEW_ASSET_TTL_MS),
+        storageLocationId: storageLocation.id,
+      }
+    )
+    if (created.isErr()) throw created.error
+    return created.value.asset.id
+  })
 
-  await db
-    .update(schema.MediaAsset)
-    .set({ expiresAt: new Date(Date.now() + PREVIEW_ASSET_TTL_MS) })
-    .where(eq(schema.MediaAsset.id, asset.id))
-
-  return { assetId: asset.id, fileName }
+  return { assetId, fileName }
 }

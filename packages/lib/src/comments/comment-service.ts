@@ -18,8 +18,13 @@ import type {
   CommentRepliedEvent,
   CommentUpdatedEvent,
 } from '../events/types'
-import { AttachmentService, type GroupedAttachmentInfo } from '../files/core/attachment-service'
-import { MediaAssetService } from '../files/core/media-asset-service'
+import { convertTempAssetToPermanent } from '../files/assets'
+import {
+  createAttachment,
+  fetchAttachmentsForEntities,
+  type GroupedAttachmentInfo,
+} from '../files/attachments'
+import type { FilesCtx } from '../files/ctx'
 import { NotificationService } from '../notifications/notification-service'
 import type { CapabilityView } from '../permissions/capabilities/capability-view'
 import { PermissionKey } from '../permissions/capabilities/registry'
@@ -103,8 +108,6 @@ export class CommentService {
   private userId: string
   private organizationId: string
   private notificationService: NotificationService
-  private mediaAssetService: MediaAssetService
-  private attachmentService: AttachmentService
   private readonly capabilities: CapabilityView | null
 
   /**
@@ -123,8 +126,16 @@ export class CommentService {
     this.capabilities = capabilities
 
     this.notificationService = new NotificationService(db)
-    this.mediaAssetService = new MediaAssetService(organizationId, userId, db)
-    this.attachmentService = new AttachmentService(organizationId, userId, db)
+  }
+
+  /**
+   * The `files/` scope this service acts in.
+   *
+   * @param client A transaction the caller already opened; nested `files/` reads
+   *   must run on it or they cannot see its uncommitted rows.
+   */
+  private filesCtx(client?: Database | Transaction): FilesCtx {
+    return { db: client ?? this.db, organizationId: this.organizationId }
   }
 
   /** All RecordId definition spellings that resolve to the same canonical host. */
@@ -1030,12 +1041,14 @@ export class CommentService {
     }
   }
   /**
-   * Fetch and group attachments for multiple comments using AttachmentService
+   * Fetch and group attachments for multiple comments in a single query.
    */
   private async fetchAttachmentsForComments(
     commentIds: string[]
   ): Promise<Map<string, CommentAttachmentInfo[]>> {
-    return this.attachmentService.fetchAttachmentsForEntities('COMMENT', commentIds)
+    const grouped = await fetchAttachmentsForEntities(this.filesCtx(), 'COMMENT', commentIds)
+    if (grouped.isErr()) throw grouped.error
+    return grouped.value
   }
   /**
    * Add attachments to comment objects (handles both comments and replies)
@@ -1189,7 +1202,10 @@ export class CommentService {
     }
   }
   /**
-   * Add typed attachments to comment using AttachmentService
+   * Add typed attachments to a comment.
+   *
+   * Every `files/` call runs on `tx` — the comment row itself is uncommitted at
+   * this point, so a collaborator bound to the pool would not see it.
    */
   private async addAttachmentsToComment(
     commentId: string,
@@ -1197,39 +1213,35 @@ export class CommentService {
     tx: Transaction
   ): Promise<void> {
     try {
-      const attachmentService = new AttachmentService(this.organizationId, this.userId, tx)
+      const txCtx = this.filesCtx(tx)
       for (const attachment of fileAttachments) {
+        const target =
+          attachment.type === 'asset'
+            ? { assetId: attachment.id }
+            : attachment.type === 'file'
+              ? { fileId: attachment.id }
+              : null
+        if (!target) continue
+
         if (attachment.type === 'asset') {
           // Handle MediaAsset - convert temp to permanent first.
-          // Pass `tx` so the read+update inside convertTempToPermanent share
-          // this tx's connection instead of reaching into the pool.
-          await this.mediaAssetService.convertTempToPermanent(
+          const converted = await convertTempAssetToPermanent(
+            txCtx,
             attachment.id,
-            'EMAIL_ATTACHMENT',
-            this.organizationId,
-            tx
+            'EMAIL_ATTACHMENT'
           )
-          // Use AttachmentService create method
-          await attachmentService.create({
-            entityType: 'COMMENT',
-            entityId: commentId,
-            role: 'ATTACHMENT',
-            assetId: attachment.id,
-            createdById: this.userId,
-            title: attachment.name,
-            organizationId: this.organizationId,
-          })
-        } else if (attachment.type === 'file') {
-          // Use AttachmentService attachFileToEntity method
-          await attachmentService.attachFileToEntity(
-            attachment.id,
-            'COMMENT',
-            commentId,
-            this.userId,
-            'ATTACHMENT',
-            { title: attachment.name }
-          )
+          if (converted.isErr()) throw converted.error
         }
+
+        const created = await createAttachment(txCtx, {
+          entityType: 'COMMENT',
+          entityId: commentId,
+          role: 'ATTACHMENT',
+          title: attachment.name,
+          createdById: this.userId,
+          ...target,
+        })
+        if (created.isErr()) throw created.error
       }
     } catch (error) {
       logger.error('Error adding attachments to comment', { error, commentId, fileAttachments })

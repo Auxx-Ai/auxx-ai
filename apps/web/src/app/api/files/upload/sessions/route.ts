@@ -1,13 +1,13 @@
 // apps/web/src/app/api/files/upload/sessions/route.ts
 
+import { database as db } from '@auxx/database'
 import {
-  createStorageManager,
-  createUploadSession,
-  ensureProcessorsInitialized,
-  ProcessorRegistry,
-  patchUploadSession,
-  UploadErrorHandler,
+  createS3StoragePort,
+  prepareUpload,
+  uploadErrorResponse,
   uploadSessionRedis,
+  uploadUnauthorizedError,
+  uploadValidationError,
 } from '@auxx/lib/files/server'
 import type { EntityType, UploadInitConfig } from '@auxx/lib/files/types'
 import { ENTITY_TYPES } from '@auxx/lib/files/types'
@@ -54,14 +54,24 @@ const CreateSessionSchema = z.object({
 })
 
 /**
- * Create new presigned upload session
+ * Create new presigned upload session.
+ *
+ * The route owns three things and nothing else (plan §4.7): authentication, the
+ * two gates that must not live in lib, and the `Result` → `Response` translation.
+ * Everything between — processor lookup, config, session creation, presigning —
+ * is `prepareUpload`.
+ *
+ * **Why the two gates stay here.** `files.manage` is authorization, and
+ * `packages/lib` performs zero access checks (`docs/lib-module-guide.md` §6). The
+ * storage quota answers with a `{ error: 'USAGE_LIMIT', details }` body the UI
+ * parses, which is not the generic upload-error shape lib produces.
  */
 export async function POST(request: NextRequest) {
   let session: any = null
   try {
     session = await auth.api.getSession({ headers: await headers() })
     if (!session?.user?.defaultOrganizationId) {
-      return UploadErrorHandler.unauthorized('User session required')
+      return uploadUnauthorizedError('User session required')
     }
 
     const body = await request.json()
@@ -69,7 +79,7 @@ export async function POST(request: NextRequest) {
     try {
       sessionRequest = CreateSessionSchema.parse(body)
     } catch (validationError) {
-      return UploadErrorHandler.validationError('Invalid session request format', {
+      return uploadValidationError('Invalid session request format', {
         validationErrors: validationError,
       })
     }
@@ -129,88 +139,54 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // ============= NEW SIMPLIFIED THREE-STEP FLOW =============
-
-    // Ensure processors are initialized before using the registry
-    ensureProcessorsInitialized()
-
-    // Step 1: EntityType directly determines processor (no complex mapping)
-    const processor = ProcessorRegistry.getForEntityType(
-      sessionRequest.entityType as EntityType,
-      session.user.defaultOrganizationId
-    )
-
-    // Step 2: Processor creates unified config with policy and upload plan
+    const organizationId: string = session.user.defaultOrganizationId
     const init: UploadInitConfig = {
-      organizationId: session.user.defaultOrganizationId,
+      organizationId,
       userId: session.user.id,
       fileName: sessionRequest.fileName,
       mimeType: sessionRequest.mimeType,
       expectedSize: sessionRequest.expectedSize,
-      entityType: sessionRequest.entityType as EntityType, // Direct usage
+      entityType: sessionRequest.entityType as EntityType,
       entityId: sessionRequest.entityId,
       provider: sessionRequest.provider,
       metadata: sessionRequest.metadata,
     }
-    const { config, warnings } = await processor.processConfig(init)
 
-    // Step 3: Create session from config and generate presigned URL with policy enforcement
-    const redis = await uploadSessionRedis()
-    const uploadSession = await createUploadSession(redis, config, now)
-    const storageManager = createStorageManager(session.user.defaultOrganizationId)
+    const prepared = await prepareUpload(
+      { db, organizationId },
+      { storage: createS3StoragePort(organizationId), now, redis: await uploadSessionRedis() },
+      init
+    )
 
-    if (config.uploadPlan.strategy === 'single') {
-      // Single-part presigned upload with policy enforcement
-      const presigned = await storageManager.generatePresignedUploadUrl({
-        ...config,
-        metadata: { sessionId: uploadSession.id },
-      })
+    if (prepared.isErr()) throw prepared.error
 
-      const uploadMethod = presigned.method || 'PUT'
-
-      await patchUploadSession(
-        redis,
-        uploadSession.id,
-        { presignedUrl: presigned.url, presignedFields: presigned.fields, uploadMethod },
-        now
-      )
-
-      return NextResponse.json({
-        sessionId: uploadSession.id,
-        uploadMethod: 'single',
-        uploadType: uploadMethod,
-        presignedUrl: presigned.url,
-        presignedFields: uploadMethod === 'POST' ? presigned.fields : undefined,
-        storageKey: uploadSession.storageKey,
-        expiresAt: uploadSession.expiresAt.toISOString(),
-        warnings,
-      })
-    } else {
-      // Multipart upload with policy enforcement
-      const multipart = await storageManager.startMultipartUploadFromConfig({
-        ...config,
-        metadata: { sessionId: uploadSession.id },
-      })
-
-      // `partPresignEndpoint` is not part of the persisted session — the client
-      // reads it off the response body below, so persisting it was a no-op.
-      await patchUploadSession(
-        redis,
-        uploadSession.id,
-        { uploadId: multipart.uploadId, uploadMethod: 'PUT' },
-        now
-      )
-
-      return NextResponse.json({
-        sessionId: uploadSession.id,
-        uploadMethod: 'multipart',
-        uploadId: multipart.uploadId,
-        partPresignEndpoint: `/api/files/upload/${uploadSession.id}/parts`,
-        storageKey: uploadSession.storageKey,
-        expiresAt: uploadSession.expiresAt.toISOString(),
-        warnings,
-      })
+    const upload = prepared.value
+    const common = {
+      sessionId: upload.sessionId,
+      storageKey: upload.storageKey,
+      expiresAt: upload.expiresAt.toISOString(),
+      warnings: upload.warnings,
     }
+
+    // `uploadMethod` on the wire means the strategy; `uploadType` means the HTTP
+    // verb. Both names are legacy and both are load-bearing for the browser
+    // uploader, so the mapping happens here rather than being carried inward.
+    return NextResponse.json(
+      upload.strategy === 'single'
+        ? {
+            ...common,
+            uploadMethod: 'single',
+            uploadType: upload.httpMethod,
+            presignedUrl: upload.presignedUrl,
+            presignedFields: upload.presignedFields,
+          }
+        : {
+            ...common,
+            uploadMethod: 'multipart',
+            uploadId: upload.uploadId,
+            partPresignEndpoint: `/api/files/upload/${upload.sessionId}/parts`,
+          }
+    )
   } catch (error) {
     logger.error('Failed to create upload session', { error })
 
@@ -219,8 +195,8 @@ export async function POST(request: NextRequest) {
     // DIFFERENT body shape from the one below (`{ error: <code>, message }`
     // rather than `{ error: <message>, errorType, retryable, code }`), which is
     // what `session-error-mapping.test.ts` pins for the `files.manage` 403.
-    // `ProcessorRegistry` (unregistered entity type) and `requirePermission`
-    // both throw an AuxxError.
+    // `prepareUpload` (unregistered entity type) and `requirePermission` both
+    // surface an AuxxError.
     if (isAuxxError(error)) {
       return NextResponse.json(
         { error: HTTP_ERROR_CODE_BY_STATUS[error.statusCode] ?? 'ERROR', message: error.message },
@@ -231,8 +207,9 @@ export async function POST(request: NextRequest) {
     // No session exists yet on this route, so there is nothing to mark failed.
     // This used to pass `temp-${Date.now()}` purely to fill a required parameter,
     // and the handler string-matched the prefix back off to skip the Redis write.
-    return await UploadErrorHandler.handleUploadError(error, undefined, 'session-creation', {
-      hasUser: !!session?.user,
+    return uploadErrorResponse(error, {
+      operation: 'session-creation',
+      context: { hasUser: !!session?.user },
     })
   }
 }

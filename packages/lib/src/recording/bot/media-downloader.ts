@@ -1,9 +1,10 @@
 // packages/lib/src/recording/bot/media-downloader.ts
 
+import { type Database, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../../errors'
-import { createMediaAssetService } from '../../files/core/media-asset-service'
+import { createAssetWithVersion } from '../../files/assets'
 import type { AssetKind } from '../../files/core/types'
 import { createStorageManager } from '../../files/storage/storage-manager'
 import { findRecording, updateRecording } from '../recording-queries'
@@ -19,8 +20,14 @@ const logger = createScopedLogger('recording:media-downloader')
 export async function downloadAndStoreRecordingMedia(params: {
   recordingId: string
   organizationId: string
+  /**
+   * The connection the asset writes run on. Defaults to the app pool because
+   * the only caller is a queue job with no ambient transaction; pass one
+   * explicitly from any caller that has a connection of its own.
+   */
+  db?: Database
 }): Promise<Result<{ videoAssetId?: string; audioAssetId?: string }, Error>> {
-  const { recordingId, organizationId } = params
+  const { recordingId, organizationId, db = database } = params
 
   const recording = await findRecording({ id: recordingId, organizationId })
 
@@ -47,6 +54,7 @@ export async function downloadAndStoreRecordingMedia(params: {
   // Download and store video
   if (videoUrl) {
     const result = await downloadAndStoreFile({
+      db,
       url: videoUrl,
       storageKey: `recordings/${organizationId}/${recordingId}/video.mp4`,
       mimeType: 'video/mp4',
@@ -67,6 +75,7 @@ export async function downloadAndStoreRecordingMedia(params: {
   // Download and store audio
   if (audioUrl) {
     const result = await downloadAndStoreFile({
+      db,
       url: audioUrl,
       storageKey: `recordings/${organizationId}/${recordingId}/audio.mp3`,
       mimeType: 'audio/mpeg',
@@ -111,6 +120,7 @@ export async function downloadAndStoreRecordingMedia(params: {
  * Creates a MediaAsset + MediaAssetVersion and returns the asset ID.
  */
 async function downloadAndStoreFile(params: {
+  db: Database
   url: string
   storageKey: string
   mimeType: string
@@ -119,7 +129,7 @@ async function downloadAndStoreFile(params: {
   organizationId: string
   createdById: string
 }): Promise<Result<string, Error>> {
-  const { url, storageKey, mimeType, name, kind, organizationId, createdById } = params
+  const { db, url, storageKey, mimeType, name, kind, organizationId, createdById } = params
 
   try {
     // Download from provider URL
@@ -143,22 +153,27 @@ async function downloadAndStoreFile(params: {
     })
 
     // Create MediaAsset + MediaAssetVersion
-    const mediaAssetService = createMediaAssetService(organizationId, createdById)
-    const { asset } = await mediaAssetService.createWithVersion(
-      {
-        kind,
-        purpose: `recording-${kind.toLowerCase()}`,
-        name,
-        mimeType,
-        size: buffer.length,
-        isPrivate: true,
-        organizationId,
-        createdById,
-      },
-      storageLocation.id
-    )
+    const assetId = await db.transaction(async (tx) => {
+      const created = await createAssetWithVersion(
+        tx,
+        { db: tx, organizationId },
+        { now: () => new Date() },
+        {
+          kind,
+          purpose: `recording-${kind.toLowerCase()}`,
+          name,
+          mimeType,
+          size: buffer.length,
+          isPrivate: true,
+          createdById,
+          storageLocationId: storageLocation.id,
+        }
+      )
+      if (created.isErr()) throw created.error
+      return created.value.asset.id
+    })
 
-    return ok(asset.id)
+    return ok(assetId)
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)))
   }

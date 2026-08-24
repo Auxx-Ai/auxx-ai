@@ -183,27 +183,29 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
 
         let avatarUrl: string | null = null
         if (avatarAssetId) {
-          // MediaAssetService scopes uploads under the owning user; for User-
-          // owned assets we use `Agent.userId`. For config-only assets (draft)
-          // we currently have no such writer (the v1 builder pool has assetId
-          // null), so this branch is effectively unreachable until curated
-          // illustrations land. Fall back to `row.userId` when set; otherwise
-          // pass the orgId as the owner (the asset is org-scoped).
-          const ownerId = row.userId ?? orgId
           // Imported lazily, and this is load-bearing rather than stylistic.
           // A static import here bridges the org-cache barrel into `files/`,
           // whose modules touch `@auxx/database`'s `database` and `schema` at
           // module scope — so `anything -> @auxx/lib/cache -> agents-provider
-          // -> media-asset-service` put that subtree in the import graph of
-          // most router tests, where a partial `vi.mock('@auxx/database', …)`
-          // then killed the whole file at collection. Deferring it to the
-          // avatar branch (rare, and already behind a DB round-trip) keeps
-          // `files/` out of the graph entirely.
+          // -> files/assets` put that subtree in the import graph of most
+          // router tests, where a partial `vi.mock('@auxx/database', …)` then
+          // killed the whole file at collection. Deferring it to the avatar
+          // branch (rare, and already behind a DB round-trip) keeps `files/`
+          // out of the graph entirely.
           // See `plans/testing/database-mock-collection-hazard.md`.
-          const { MediaAssetService } = await import('../../files/core/media-asset-service')
-          const mediaAssetService = new MediaAssetService(orgId, ownerId, db)
+          const [{ getAssetDownloadRef }, { createS3StoragePort }] = await Promise.all([
+            import('../../files/assets/download'),
+            import('../../files/storage/ports'),
+          ])
           try {
-            avatarUrl = await mediaAssetService.getDownloadUrl(avatarAssetId)
+            const ref = await getAssetDownloadRef(
+              { db, organizationId: orgId },
+              { storage: createS3StoragePort(orgId) },
+              avatarAssetId
+            )
+            // Null on any failure, as before — one broken avatar must not fail
+            // the whole agents cache entry.
+            avatarUrl = ref.isOk() && ref.value.type === 'url' ? ref.value.url : null
           } catch (error) {
             logger.warn(`Failed to fetch avatar URL for agent ${row.id}`, {
               error: error instanceof Error ? error.message : String(error),

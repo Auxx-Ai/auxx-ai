@@ -9,7 +9,7 @@ import { QueueEvents } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { FieldValueService } from '../field-values/field-value-service'
-import { MediaAssetService } from '../files/core/media-asset-service'
+import { createAssetVersion, createAssetWithVersion } from '../files/assets'
 import { createStorageManager } from '../files/storage/storage-manager'
 import { getQueue, Queues } from '../jobs/queues'
 import { UnifiedCrudHandler } from '../resources/crud'
@@ -148,37 +148,55 @@ export async function ensureDocumentPdf(params: {
     organizationId,
   })
 
-  const mediaAssetService = new MediaAssetService(organizationId, actorId, db)
+  const filesCtx = { db, organizationId }
 
   let assetId: string
   if (existingAssetId) {
     // Subsequent content change — new version on the SAME asset (sent-doc snapshot: the
     // version a customer already received is immutable, only `currentVersionId` moves).
-    await mediaAssetService.createVersion(existingAssetId, storageLocation.id, {
-      metadata: { contentHash: hash },
+    const targetAssetId = existingAssetId
+    await db.transaction(async (tx) => {
+      const version = await createAssetVersion(
+        tx,
+        { ...filesCtx, db: tx },
+        {
+          assetId: targetAssetId,
+          storageLocationId: storageLocation.id,
+          metadata: { contentHash: hash },
+        }
+      )
+      if (version.isErr()) throw version.error
     })
     assetId = existingAssetId
   } else {
-    const { asset, version } = await mediaAssetService.createWithVersion(
-      {
-        kind: 'DOCUMENT',
-        purpose: 'ORIGINAL',
-        name: fileName,
-        mimeType: 'application/pdf',
-        size: buffer.length,
-        isPrivate: true,
-        organizationId,
-        createdById: actorId,
-      },
-      storageLocation.id
-    )
-    assetId = asset.id
-    // `createWithVersion` only accepts size/mimeType — stamp the content hash directly
-    // onto the version it created rather than immediately spinning a second version.
-    await db
-      .update(schema.MediaAssetVersion)
-      .set({ metadata: { contentHash: hash } })
-      .where(eq(schema.MediaAssetVersion.id, version.id))
+    assetId = await db.transaction(async (tx) => {
+      const created = await createAssetWithVersion(
+        tx,
+        { ...filesCtx, db: tx },
+        { now: () => new Date() },
+        {
+          kind: 'DOCUMENT',
+          purpose: 'ORIGINAL',
+          name: fileName,
+          mimeType: 'application/pdf',
+          size: buffer.length,
+          isPrivate: true,
+          createdById: actorId,
+          storageLocationId: storageLocation.id,
+        }
+      )
+      if (created.isErr()) throw created.error
+
+      // `createAssetWithVersion` only accepts size/mimeType — stamp the content hash
+      // directly onto the version it created rather than immediately spinning a second
+      // version. On `tx`, so the hash lands with the asset or not at all.
+      await tx
+        .update(schema.MediaAssetVersion)
+        .set({ metadata: { contentHash: hash } })
+        .where(eq(schema.MediaAssetVersion.id, created.value.version.id))
+
+      return created.value.asset.id
+    })
   }
 
   // ─── Step 4: write the pointer (new asset only — unchanged on cache hit/reuse) ──

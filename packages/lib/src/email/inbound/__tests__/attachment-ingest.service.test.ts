@@ -1,5 +1,6 @@
 // packages/lib/src/email/inbound/__tests__/attachment-ingest.service.test.ts
 
+import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AttachmentIngestContext, AttachmentIngestInput } from '../ingest-types'
 import { deriveAttachmentId } from '../object-keys'
@@ -7,8 +8,8 @@ import { deriveAttachmentId } from '../object-keys'
 const mocks = vi.hoisted(() => {
   return {
     uploadContent: vi.fn(),
-    createWithVersion: vi.fn(),
-    attachmentCreate: vi.fn(),
+    createAssetWithVersion: vi.fn(),
+    createAttachment: vi.fn(),
   }
 })
 
@@ -18,16 +19,15 @@ vi.mock('../../../files/storage/storage-manager', () => ({
   }),
 }))
 
-vi.mock('../../../files/core/media-asset-service', () => ({
-  createMediaAssetService: () => ({
-    createWithVersion: mocks.createWithVersion,
-  }),
+// The `files/` functions are stubbed at their own module boundary rather than
+// through a `vi.mock('@auxx/database')` — the service now takes its `db` as a
+// constructor argument, so the fake below is the only database this file needs.
+vi.mock('../../../files/assets', () => ({
+  createAssetWithVersion: mocks.createAssetWithVersion,
 }))
 
-vi.mock('../../../files/core/attachment-service', () => ({
-  createAttachmentService: () => ({
-    create: mocks.attachmentCreate,
-  }),
+vi.mock('../../../files/attachments', () => ({
+  createAttachment: mocks.createAttachment,
 }))
 
 /**
@@ -56,9 +56,18 @@ function buildMockDb(selectResults: unknown[][] = [[]], deleteResults: unknown[]
     return thenable
   }
 
-  return {
+  const db: Record<string, unknown> = {
     select: vi.fn().mockImplementation(() => makeSelectChain(selectResults[selectIdx++] ?? [])),
     delete: vi.fn().mockImplementation(() => makeDeleteChain()),
+  }
+  // The asset+version write now owns its transaction boundary, so the fake db
+  // has to be able to open one. Running the callback on the same object keeps
+  // every select/delete assertion below counting the same calls.
+  db.transaction = vi.fn().mockImplementation((fn: (tx: unknown) => unknown) => fn(db))
+  return db as {
+    select: ReturnType<typeof vi.fn>
+    delete: ReturnType<typeof vi.fn>
+    transaction: ReturnType<typeof vi.fn>
   }
 }
 
@@ -86,16 +95,21 @@ function makeAttachment(overrides: Partial<AttachmentIngestInput> = {}): Attachm
 describe('InboundAttachmentIngestService', () => {
   beforeEach(() => {
     mocks.uploadContent.mockReset()
-    mocks.createWithVersion.mockReset()
-    mocks.attachmentCreate.mockReset()
+    mocks.createAssetWithVersion.mockReset()
+    mocks.createAttachment.mockReset()
 
     mocks.uploadContent.mockResolvedValue({ id: 'sl_att_1' })
-    mocks.createWithVersion.mockResolvedValue({
-      asset: { id: 'ma_1' },
-      version: { id: 'mav_1' },
-    })
-    mocks.attachmentCreate.mockResolvedValue({ id: 'att_1' })
+    mocks.createAssetWithVersion.mockResolvedValue(
+      ok({ asset: { id: 'ma_1' }, version: { id: 'mav_1' } })
+    )
+    mocks.createAttachment.mockResolvedValue(ok({ id: 'att_1' }))
   })
+
+  /** The `input` argument of `createAssetWithVersion(tx, ctx, deps, input)`. */
+  const assetInput = () => mocks.createAssetWithVersion.mock.calls[0]?.[3]
+
+  /** The `ctx` argument of `createAssetWithVersion(tx, ctx, deps, input)`. */
+  const assetCtx = () => mocks.createAssetWithVersion.mock.calls[0]?.[1]
 
   it('returns empty array when no attachments are provided', async () => {
     const mockDb = buildMockDb()
@@ -117,7 +131,8 @@ describe('InboundAttachmentIngestService', () => {
 
     await service.ingestAll([input], baseContext)
 
-    expect(mocks.attachmentCreate).toHaveBeenCalledWith(
+    expect(mocks.createAttachment).toHaveBeenCalledWith(
+      { db: mockDb, organizationId: 'org_abc' },
       expect.objectContaining({
         id: expectedId,
         entityType: 'MESSAGE',
@@ -132,7 +147,10 @@ describe('InboundAttachmentIngestService', () => {
 
     await service.ingestAll([makeAttachment({ inline: true })], baseContext)
 
-    expect(mocks.attachmentCreate).toHaveBeenCalledWith(expect.objectContaining({ role: 'INLINE' }))
+    expect(mocks.createAttachment).toHaveBeenCalledWith(
+      { db: mockDb, organizationId: 'org_abc' },
+      expect.objectContaining({ role: 'INLINE' })
+    )
   })
 
   it('creates Attachment with correct role for non-inline attachments', async () => {
@@ -141,7 +159,8 @@ describe('InboundAttachmentIngestService', () => {
 
     await service.ingestAll([makeAttachment({ inline: false, contentId: null })], baseContext)
 
-    expect(mocks.attachmentCreate).toHaveBeenCalledWith(
+    expect(mocks.createAttachment).toHaveBeenCalledWith(
+      { db: mockDb, organizationId: 'org_abc' },
       expect.objectContaining({ role: 'ATTACHMENT' })
     )
   })
@@ -152,7 +171,8 @@ describe('InboundAttachmentIngestService', () => {
 
     await service.ingestAll([makeAttachment({ contentId: 'img001@mail.example.com' })], baseContext)
 
-    expect(mocks.attachmentCreate).toHaveBeenCalledWith(
+    expect(mocks.createAttachment).toHaveBeenCalledWith(
+      { db: mockDb, organizationId: 'org_abc' },
       expect.objectContaining({ contentId: 'img001@mail.example.com' })
     )
   })
@@ -176,7 +196,7 @@ describe('InboundAttachmentIngestService', () => {
     )
   })
 
-  it('creates MediaAsset + MediaAssetVersion via createWithVersion', async () => {
+  it('creates MediaAsset + MediaAssetVersion via createAssetWithVersion', async () => {
     const mockDb = buildMockDb([[], []])
     const service = new InboundAttachmentIngestService(mockDb as never)
 
@@ -194,7 +214,7 @@ describe('InboundAttachmentIngestService', () => {
       baseContext
     )
 
-    expect(mocks.createWithVersion).toHaveBeenCalledWith(
+    expect(assetInput()).toEqual(
       expect.objectContaining({
         kind: 'EMAIL_ATTACHMENT',
         purpose: 'email-attachment',
@@ -204,10 +224,12 @@ describe('InboundAttachmentIngestService', () => {
         // number here — the old BigInt() assertion encoded the wrong contract.
         size: content.length,
         isPrivate: true,
-        organizationId: 'org_abc',
-      }),
-      'sl_att_1'
+        // `organizationId` is no longer part of the payload: scope travels in
+        // `ctx`, so a caller can no longer name a foreign organization.
+        storageLocationId: 'sl_att_1',
+      })
     )
+    expect(assetCtx()).toEqual({ db: mockDb, organizationId: 'org_abc' })
   })
 
   it('sets purpose to inline-email-image for inline attachments', async () => {
@@ -216,24 +238,23 @@ describe('InboundAttachmentIngestService', () => {
 
     await service.ingestAll([makeAttachment({ inline: true })], baseContext)
 
-    expect(mocks.createWithVersion).toHaveBeenCalledWith(
-      expect.objectContaining({ purpose: 'inline-email-image' }),
-      expect.any(String)
+    expect(assetInput()).toEqual(
+      expect.objectContaining({ purpose: 'inline-email-image', storageLocationId: 'sl_att_1' })
     )
   })
 
   it('pins assetId and assetVersionId on the Attachment record', async () => {
-    mocks.createWithVersion.mockResolvedValue({
-      asset: { id: 'ma_pinned' },
-      version: { id: 'mav_pinned' },
-    })
+    mocks.createAssetWithVersion.mockResolvedValue(
+      ok({ asset: { id: 'ma_pinned' }, version: { id: 'mav_pinned' } })
+    )
 
     const mockDb = buildMockDb([[], []])
     const service = new InboundAttachmentIngestService(mockDb as never)
 
     await service.ingestAll([makeAttachment()], baseContext)
 
-    expect(mocks.attachmentCreate).toHaveBeenCalledWith(
+    expect(mocks.createAttachment).toHaveBeenCalledWith(
+      { db: mockDb, organizationId: 'org_abc' },
       expect.objectContaining({
         assetId: 'ma_pinned',
         assetVersionId: 'mav_pinned',
@@ -242,10 +263,9 @@ describe('InboundAttachmentIngestService', () => {
   })
 
   it('returns correct StoredAttachmentMeta for each ingested attachment', async () => {
-    mocks.createWithVersion.mockResolvedValue({
-      asset: { id: 'ma_result' },
-      version: { id: 'mav_result' },
-    })
+    mocks.createAssetWithVersion.mockResolvedValue(
+      ok({ asset: { id: 'ma_result' }, version: { id: 'mav_result' } })
+    )
 
     const mockDb = buildMockDb([[], []])
     const service = new InboundAttachmentIngestService(mockDb as never)
@@ -293,8 +313,8 @@ describe('InboundAttachmentIngestService', () => {
     const results = await service.ingestAll([makeAttachment()], baseContext)
 
     expect(mocks.uploadContent).not.toHaveBeenCalled()
-    expect(mocks.createWithVersion).not.toHaveBeenCalled()
-    expect(mocks.attachmentCreate).not.toHaveBeenCalled()
+    expect(mocks.createAssetWithVersion).not.toHaveBeenCalled()
+    expect(mocks.createAttachment).not.toHaveBeenCalled()
     expect(results).toHaveLength(1)
     expect(results[0]!.attachmentId).toBe(existingId)
   })
@@ -304,9 +324,9 @@ describe('InboundAttachmentIngestService', () => {
     const mockDb = buildMockDb([[], [], []])
     const service = new InboundAttachmentIngestService(mockDb as never)
 
-    mocks.createWithVersion
-      .mockResolvedValueOnce({ asset: { id: 'ma_0' }, version: { id: 'mav_0' } })
-      .mockResolvedValueOnce({ asset: { id: 'ma_1' }, version: { id: 'mav_1' } })
+    mocks.createAssetWithVersion
+      .mockResolvedValueOnce(ok({ asset: { id: 'ma_0' }, version: { id: 'mav_0' } }))
+      .mockResolvedValueOnce(ok({ asset: { id: 'ma_1' }, version: { id: 'mav_1' } }))
 
     const results = await service.ingestAll(
       [
@@ -328,10 +348,10 @@ describe('InboundAttachmentIngestService', () => {
 
     await service.ingestAll([makeAttachment()], baseContext, { skipReconciliation: true })
 
-    // Upload + createWithVersion + attachmentCreate should still be called
+    // Upload + createAssetWithVersion + createAttachment should still be called
     expect(mocks.uploadContent).toHaveBeenCalledOnce()
-    expect(mocks.createWithVersion).toHaveBeenCalledOnce()
-    expect(mocks.attachmentCreate).toHaveBeenCalledOnce()
+    expect(mocks.createAssetWithVersion).toHaveBeenCalledOnce()
+    expect(mocks.createAttachment).toHaveBeenCalledOnce()
 
     // Only 1 select call (the duplicate check), no reconciliation select
     expect(mockDb.select).toHaveBeenCalledTimes(1)

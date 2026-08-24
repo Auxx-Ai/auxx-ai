@@ -304,6 +304,133 @@ describe('getAssetDownloadRef', () => {
     expect(storage.calls).toEqual([])
   })
 
+  it('resolves the current version through the already-loaded asset, in two reads', async () => {
+    const journal = makeJournal()
+    const db = makeDb({
+      query: { MediaAsset: [anAsset()], MediaAssetVersion: [aVersion()] },
+      tables: TABLES,
+      journal,
+    })
+
+    const result = await getAssetDownloadRef(
+      makeCtx({ db: db.db }),
+      { storage: makeStoragePort({ journal }).port },
+      TEST_IDS.assetId,
+      { version: 'current' }
+    )
+
+    expect(result.isOk()).toBe(true)
+    // `'current'` must NOT cost a second asset read: it goes through
+    // `loadCurrentVersion`, which takes the row this function already has.
+    expect(journal.ops()).toEqual(['query.findFirst', 'query.findFirst', 'presignDownload'])
+  })
+
+  it('serves the highest-numbered version for `latest`', async () => {
+    const db = makeDb({
+      query: {
+        // `getLatestAssetVersion` re-runs `requireAsset`, so the asset is read twice.
+        MediaAsset: [anAsset(), anAsset()],
+        MediaAssetVersion: [
+          aVersion({
+            versionNumber: 9,
+            storageLocation: aStorageLocation({ externalId: 'keys/v9.png' }),
+          }),
+        ],
+      },
+      tables: TABLES,
+    })
+    const storage = makeStoragePort()
+
+    const result = await getAssetDownloadRef(
+      makeCtx({ db: db.db }),
+      { storage: storage.port },
+      TEST_IDS.assetId,
+      { version: 'latest' }
+    )
+
+    expect(result.isOk()).toBe(true)
+    expect(storage.callsTo('presignDownload')[0]?.params.key).toBe('keys/v9.png')
+  })
+
+  it('addresses a version by its 1-based number, not by row id', async () => {
+    const db = makeDb({
+      query: {
+        MediaAsset: [anAsset(), anAsset()],
+        MediaAssetVersion: [
+          aVersion({
+            id: 'ver_three',
+            versionNumber: 3,
+            storageLocation: aStorageLocation({ externalId: 'keys/v3.png' }),
+          }),
+        ],
+      },
+      tables: TABLES,
+    })
+    const storage = makeStoragePort()
+
+    const result = await getAssetDownloadRef(
+      makeCtx({ db: db.db }),
+      { storage: storage.port },
+      TEST_IDS.assetId,
+      { version: 3 }
+    )
+
+    expect(result.isOk()).toBe(true)
+    expect(storage.callsTo('presignDownload')[0]?.params.key).toBe('keys/v3.png')
+    // The number reached the WHERE as a bound value — the two id spaces
+    // (`versionNumber` vs the cuid `id`) must not be confused at a call site.
+    const versionRead = db.journal.entries.filter((e) => e.op === 'query.findFirst')[2]
+    expect(JSON.stringify((versionRead?.detail?.args as { where?: unknown })?.where)).toContain('3')
+  })
+
+  it('prefers versionId over version when a caller supplies both', async () => {
+    const journal = makeJournal()
+    const db = makeDb({
+      query: {
+        MediaAsset: [anAsset()],
+        MediaAssetVersion: [
+          aVersion({ id: 'ver_pinned', storageLocation: aStorageLocation({ externalId: 'k/p' }) }),
+        ],
+      },
+      tables: TABLES,
+      journal,
+    })
+    const storage = makeStoragePort({ journal })
+
+    const result = await getAssetDownloadRef(
+      makeCtx({ db: db.db }),
+      { storage: storage.port },
+      TEST_IDS.assetId,
+      { versionId: 'ver_pinned', version: 'latest' }
+    )
+
+    expect(result.isOk()).toBe(true)
+    expect(storage.callsTo('presignDownload')[0]?.params.key).toBe('k/p')
+    // The by-id branch never re-reads the asset, so `latest` cannot have run.
+    expect(journal.ops()).toEqual(['query.findFirst', 'query.findFirst', 'presignDownload'])
+  })
+
+  it('returns NotFoundError when the requested version number does not exist', async () => {
+    const db = makeDb({
+      query: { MediaAsset: [anAsset(), anAsset()], MediaAssetVersion: [] },
+      tables: TABLES,
+    })
+    const storage = makeStoragePort()
+
+    const result = await getAssetDownloadRef(
+      makeCtx({ db: db.db }),
+      { storage: storage.port },
+      TEST_IDS.assetId,
+      { version: 7 }
+    )
+
+    expect(result._unsafeUnwrapErr().statusCode).toBe(404)
+    expect(result._unsafeUnwrapErr().message).toBe(
+      `Version 7 not found for asset ${TEST_IDS.assetId}`
+    )
+    expect(storage.calls).toEqual([])
+  })
+
   it('fails loudly rather than guessing when the storage location has no bucket', async () => {
     const db = makeDb({
       query: {

@@ -9,7 +9,11 @@ import { addMinutes } from 'date-fns'
 import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../errors'
-import { createMediaAssetService } from '../files/core/media-asset-service'
+import { deleteAsset } from '../files/assets'
+import { getAssetDownloadRef } from '../files/assets/download'
+import type { FilesCtx } from '../files/ctx'
+import { createS3StoragePort } from '../files/storage/ports'
+import { createThumbnailCleanupPort } from '../files/thumbnails'
 import { createGoogleMeetEvent } from '../providers/google/calendar/create-event'
 import { getAllOrganizationSettings } from '../settings/settings-service'
 import { scheduleBotForRecording } from './bot/bot-manager'
@@ -139,33 +143,32 @@ export async function getRecordingVideoUrl(
     }
   }
 
-  const mediaAssetService = createMediaAssetService(organizationId)
+  const ctx: FilesCtx = { db, organizationId }
+  const deps = { storage: createS3StoragePort(organizationId) }
 
-  const [videoRef, storyboardUrl, previewUrl] = await Promise.all([
-    mediaAssetService.getDownloadRefForVersion(recording.videoAssetId, { disposition: 'inline' }),
-    presignAssetUrl(mediaAssetService, recording.videoStoryboardAssetId),
-    presignAssetUrl(mediaAssetService, recording.videoPreviewAssetId),
+  // All three refs are now fail-soft. The storyboard and preview always were;
+  // the main video used to throw when its asset had been deleted out from under
+  // the recording, which surfaced as a 500 rather than the `url: null` this
+  // function already documents for "not yet available".
+  const [url, storyboardUrl, previewUrl] = await Promise.all([
+    presignAssetUrl(ctx, deps, recording.videoAssetId),
+    presignAssetUrl(ctx, deps, recording.videoStoryboardAssetId),
+    presignAssetUrl(ctx, deps, recording.videoPreviewAssetId),
   ])
 
-  return {
-    url: videoRef.type === 'url' ? videoRef.url : null,
-    storyboardUrl,
-    previewUrl,
-  }
+  return { url, storyboardUrl, previewUrl }
 }
 
 async function presignAssetUrl(
-  mediaAssetService: ReturnType<typeof createMediaAssetService>,
+  ctx: FilesCtx,
+  deps: { storage: ReturnType<typeof createS3StoragePort> },
   assetId: string | null
 ): Promise<string | null> {
   if (!assetId) return null
-  try {
-    const ref = await mediaAssetService.getDownloadRefForVersion(assetId, { disposition: 'inline' })
-    return ref.type === 'url' ? ref.url : null
-  } catch {
-    // Asset may have been deleted out from under the recording; treat as missing.
-    return null
-  }
+  // Asset may have been deleted out from under the recording; treat as missing.
+  const ref = await getAssetDownloadRef(ctx, deps, assetId, { disposition: 'inline' })
+  if (ref.isErr()) return null
+  return ref.value.type === 'url' ? ref.value.url : null
 }
 
 // ---------------------------------------------------------------------------
@@ -193,9 +196,21 @@ export async function deleteRecording(
   ].filter((id): id is string => !!id)
 
   if (assetIds.length > 0) {
-    const mediaAssetService = createMediaAssetService(organizationId, userId)
+    const now = () => new Date()
+    const storage = createS3StoragePort(organizationId)
     for (const assetId of assetIds) {
-      await mediaAssetService.delete(assetId)
+      // One transaction per asset, matching the facade's per-call `getTx`. The
+      // thumbnail sweep is built on `tx` so it sees this transaction's rows.
+      await db.transaction(async (tx) => {
+        const txCtx: FilesCtx = { db: tx, organizationId }
+        const deleted = await deleteAsset(
+          tx,
+          txCtx,
+          { now, thumbnails: createThumbnailCleanupPort(txCtx, { storage, now }) },
+          assetId
+        )
+        if (deleted.isErr()) throw deleted.error
+      })
     }
   }
 

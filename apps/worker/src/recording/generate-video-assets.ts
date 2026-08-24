@@ -9,7 +9,14 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { createMediaAssetService, createStorageManager } from '@auxx/lib/files/server'
+import { database } from '@auxx/database'
+import type { AssetWriteDeps, FilesCtx } from '@auxx/lib/files/server'
+import {
+  createAssetWithVersion,
+  createS3StoragePort,
+  createStorageManager,
+  getAssetDownloadRef,
+} from '@auxx/lib/files/server'
 import type { GenerateVideoAssetsJobData, JobContext } from '@auxx/lib/jobs'
 import { findRecording, updateRecording } from '@auxx/lib/recording'
 import { createScopedLogger } from '@auxx/logger'
@@ -30,6 +37,28 @@ const STORYBOARD_QUALITY = 75
 
 const POSTER_WIDTH = 1280
 const POSTER_TIMESTAMP_FRACTION = 0.1 // 10% in — avoids black intro frames
+
+/** `MediaAsset.updatedAt` has no database default, so every write supplies the clock. */
+const writeDeps: AssetWriteDeps = { now: () => new Date() }
+
+/**
+ * Mint a `MediaAsset` plus its first version in ONE transaction.
+ *
+ * `MediaAssetService.createWithVersion` opened this transaction inside lib via
+ * `BaseService.getTx`, which guessed whether it was already in one. The boundary
+ * belongs at the call site, so it is opened here — the asset row and its version
+ * either both land or neither does.
+ */
+async function createAssetForVersion(
+  ctx: FilesCtx,
+  input: Parameters<typeof createAssetWithVersion>[3]
+): Promise<{ id: string }> {
+  const result = await database.transaction(async (tx) =>
+    createAssetWithVersion(tx, { ...ctx, db: tx }, writeDeps, input)
+  )
+  if (result.isErr()) throw result.error
+  return result.value.asset
+}
 
 interface GenerateVideoAssetsParams {
   recordingId: string
@@ -54,12 +83,28 @@ export async function generateVideoAssets(
     return err(new Error(`CallRecording ${recordingId} has no videoAssetId`))
   }
 
-  const mediaAssetService = createMediaAssetService(organizationId, recording.createdById)
+  // `organizationId` is REQUIRED on a `FilesCtx`. The service took an optional
+  // one and `BaseService.buildBaseWhereClause` guarded its organization filter
+  // with `if (this.organizationId)`, so a service built without one read across
+  // every tenant. The job cannot express that any more.
+  const ctx: FilesCtx = { db: database, organizationId }
 
   // Get a presigned URL to stream the video down to a local temp file.
-  const videoRef = await mediaAssetService.getDownloadRefForVersion(recording.videoAssetId, {
-    disposition: 'attachment',
-  })
+  //
+  // `getAssetDownloadRef` already resolves the asset's CURRENT version when no
+  // `versionId` is given, which is what `getDownloadRefForVersion(id, {})`
+  // meant. The extra metadata that method decorated the ref with (filename,
+  // size, `versionNumber`, a synthetic `expiresAt`) had no reader here.
+  const videoRefResult = await getAssetDownloadRef(
+    ctx,
+    { storage: createS3StoragePort(organizationId) },
+    recording.videoAssetId,
+    { disposition: 'attachment' }
+  )
+  if (videoRefResult.isErr()) {
+    return err(videoRefResult.error)
+  }
+  const videoRef = videoRefResult.value
   if (videoRef.type !== 'url' || !videoRef.url) {
     return err(new Error('Could not get presigned download URL for recording video'))
   }
@@ -91,7 +136,7 @@ export async function generateVideoAssets(
         videoPath,
         posterPath,
         duration,
-        mediaAssetService,
+        ctx,
       })
       if (previewAssetId) {
         await updateRecording(
@@ -116,7 +161,7 @@ export async function generateVideoAssets(
         framesDir,
         storyboardPath,
         duration,
-        mediaAssetService,
+        ctx,
       })
       if (storyboardAssetId) {
         await updateRecording(
@@ -159,19 +204,11 @@ interface PosterParams {
   videoPath: string
   posterPath: string
   duration: number
-  mediaAssetService: ReturnType<typeof createMediaAssetService>
+  ctx: FilesCtx
 }
 
 async function generatePoster(params: PosterParams): Promise<string | null> {
-  const {
-    recordingId,
-    createdById,
-    organizationId,
-    videoPath,
-    posterPath,
-    duration,
-    mediaAssetService,
-  } = params
+  const { recordingId, createdById, organizationId, videoPath, posterPath, duration, ctx } = params
 
   const posterJpegPath = posterPath.replace(/\.webp$/, '.jpg')
   const extracted = await extractPosterFrame({
@@ -201,19 +238,16 @@ async function generatePoster(params: PosterParams): Promise<string | null> {
     visibility: 'PRIVATE',
   })
 
-  const { asset } = await mediaAssetService.createWithVersion(
-    {
-      kind: 'THUMBNAIL',
-      purpose: 'recording-preview',
-      name: 'preview.webp',
-      mimeType: 'image/webp',
-      size: buffer.length,
-      isPrivate: true,
-      organizationId,
-      createdById: createdById ?? undefined,
-    },
-    storageLocation.id
-  )
+  const asset = await createAssetForVersion(ctx, {
+    kind: 'THUMBNAIL',
+    purpose: 'recording-preview',
+    name: 'preview.webp',
+    mimeType: 'image/webp',
+    size: buffer.length,
+    isPrivate: true,
+    createdById: createdById ?? undefined,
+    storageLocationId: storageLocation.id,
+  })
 
   return asset.id
 }
@@ -226,7 +260,7 @@ interface StoryboardParams {
   framesDir: string
   storyboardPath: string
   duration: number
-  mediaAssetService: ReturnType<typeof createMediaAssetService>
+  ctx: FilesCtx
 }
 
 async function generateStoryboard(params: StoryboardParams): Promise<string | null> {
@@ -238,7 +272,7 @@ async function generateStoryboard(params: StoryboardParams): Promise<string | nu
     framesDir,
     storyboardPath,
     duration,
-    mediaAssetService,
+    ctx,
   } = params
 
   const extracted = await extractFrames({
@@ -279,19 +313,16 @@ async function generateStoryboard(params: StoryboardParams): Promise<string | nu
     visibility: 'PRIVATE',
   })
 
-  const { asset } = await mediaAssetService.createWithVersion(
-    {
-      kind: 'STORYBOARD',
-      purpose: 'recording-storyboard',
-      name: 'storyboard.webp',
-      mimeType: 'image/webp',
-      size: buffer.length,
-      isPrivate: true,
-      organizationId,
-      createdById: createdById ?? undefined,
-    },
-    storageLocation.id
-  )
+  const asset = await createAssetForVersion(ctx, {
+    kind: 'STORYBOARD',
+    purpose: 'recording-storyboard',
+    name: 'storyboard.webp',
+    mimeType: 'image/webp',
+    size: buffer.length,
+    isPrivate: true,
+    createdById: createdById ?? undefined,
+    storageLocationId: storageLocation.id,
+  })
 
   logger.info('Storyboard composited', {
     rows: composited.value.rows,

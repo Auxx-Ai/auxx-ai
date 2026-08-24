@@ -507,6 +507,13 @@ export const fileRouter = createTRPCRouter({
 
           return result
         } else if (input.type === 'asset') {
+          // STILL ON THE FACADE. `input.version` accepts a version NUMBER, and
+          // `getAssetDownloadRef` currently takes only a `versionId` — unlike
+          // its `folder-files` twin above, which resolves
+          // `'current' | 'latest' | number` itself. Resolving the number here
+          // would put a second copy of that ladder in a router. Swap this for
+          // `getAssetDownloadRef(ctx, deps, id, { version, disposition })` once
+          // the accessor grows the selector.
           const assetService = createMediaAssetService(organizationId, userId)
           const result = await assetService.getDownloadRefForVersion(input.id, {
             version: input.version,

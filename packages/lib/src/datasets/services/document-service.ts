@@ -8,7 +8,10 @@ import type {
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm'
+import { createAssetFromFolderFile } from '../../files/assets'
+import { getAssetDownloadRef } from '../../files/assets/download'
 import { MediaAssetService } from '../../files/core/media-asset-service'
+import { createS3StoragePort } from '../../files/storage/ports'
 import type {
   BatchProcessingRequest,
   CreateDocumentFromFileInput,
@@ -614,8 +617,14 @@ export class DocumentService {
   async getDownloadUrl(documentId: string, organizationId: string): Promise<string | null> {
     const document = await this.getById(documentId, organizationId)
     if (!document?.mediaAssetId) return null
-    const mediaAssetService = new MediaAssetService(organizationId)
-    return await mediaAssetService.getDownloadUrl(document.mediaAssetId)
+    const ref = await getAssetDownloadRef(
+      { db: this.db, organizationId },
+      { storage: createS3StoragePort(organizationId) },
+      document.mediaAssetId
+    )
+    // Null on any failure, as before.
+    if (ref.isErr()) return null
+    return ref.value.type === 'url' ? ref.value.url : null
   }
   /**
    * Get document file content for processing
@@ -754,12 +763,21 @@ export class DocumentService {
           continue
         }
         // Create MediaAsset from FolderFile
-        const mediaAssetService = new MediaAssetService(organizationId)
-        const mediaAsset = await mediaAssetService.createFromFolderFile(
-          selection.fileId,
-          selection.fileVersionId,
-          { kind: 'DOCUMENT', skipIfExists: true }
-        )
+        const mediaAsset = await this.db.transaction(async (tx) => {
+          const created = await createAssetFromFolderFile(
+            tx,
+            { db: tx, organizationId },
+            { now: () => new Date() },
+            {
+              fileId: selection.fileId,
+              fileVersionId: selection.fileVersionId,
+              kind: 'DOCUMENT',
+              skipIfExists: true,
+            }
+          )
+          if (created.isErr()) throw created.error
+          return created.value
+        })
         // Create Document
         // Use file checksum, or version checksum/storageLocationId as content identifier
         const checksum =

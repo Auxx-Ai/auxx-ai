@@ -3,7 +3,9 @@
 import { randomBytes } from 'node:crypto'
 import { database, schema } from '@auxx/database'
 import { buildVisitorThreadOwnership } from '@auxx/lib/chat'
-import { AttachmentService, createStorageManager, MediaAssetService } from '@auxx/lib/files'
+import { AttachmentService } from '@auxx/lib/files'
+import type { FilesCtx } from '@auxx/lib/files/server'
+import { createAssetWithVersion, createStorageManager } from '@auxx/lib/files/server'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -25,7 +27,7 @@ attachmentsRoute.options('/', (c) => {
  * POST /api/chat/attachments  (multipart/form-data)
  *
  * Body fields: `file` (binary). Uploads the blob to S3 via the shared
- * StorageManager + MediaAssetService pipeline (same as email composer
+ * StorageManager + `createAssetWithVersion` pipeline (same as email composer
  * attachments). Returns the `assetId` which the widget then passes to
  * `POST /api/chat/threads/:threadId/messages` as `attachmentIds[]`.
  */
@@ -90,23 +92,38 @@ attachmentsRoute.post('/', async (c) => {
       organizationId: chat.organizationId,
     })
 
-    // Visitor uploads have no User id — leave `createdById` null. The asset is
-    // org-scoped and tied to the chat thread via the Attachment row that
+    // Visitor uploads have no User id, so `createdById` is simply OMITTED —
+    // `CreateAssetInput` makes it optional precisely because several production
+    // writers have no actor, which is also why `FilesCtx` carries no `userId`.
+    // The old call had to write `createdById: null as any` inside an `as any`
+    // payload to get past the service's request type. The asset is org-scoped
+    // and tied to the chat thread via the Attachment row that
     // POST /api/chat/threads/:threadId/messages writes on receive.
-    const mediaAssetService = new MediaAssetService(chat.organizationId, undefined)
-    const { asset } = await mediaAssetService.createWithVersion(
-      {
-        kind: 'EMAIL_ATTACHMENT',
-        purpose: 'ORIGINAL',
-        name: fileName,
-        mimeType,
-        size: BigInt(buffer.byteLength),
-        isPrivate: true,
-        organizationId: chat.organizationId,
-        createdById: null as any,
-      } as any,
-      storageLocation.id
+    //
+    // The asset row and its first version land in ONE transaction, opened here.
+    // `MediaAssetService.createWithVersion` opened it inside lib through
+    // `BaseService.getTx`, which guessed whether it was already in one.
+    const ctx: FilesCtx = { db: database, organizationId: chat.organizationId }
+    const created = await database.transaction(async (tx) =>
+      createAssetWithVersion(
+        tx,
+        { ...ctx, db: tx },
+        { now: () => new Date() },
+        {
+          kind: 'EMAIL_ATTACHMENT',
+          purpose: 'ORIGINAL',
+          name: fileName,
+          mimeType,
+          // `MediaAsset.size` is `bigint({ mode: 'number' })`. The old payload
+          // passed a real `BigInt`, which only compiled because of the `as any`.
+          size: buffer.byteLength,
+          isPrivate: true,
+          storageLocationId: storageLocation.id,
+        }
+      )
     )
+    if (created.isErr()) throw created.error
+    const { asset } = created.value
 
     return c.json({
       success: true,
@@ -192,6 +209,9 @@ attachmentsRoute.get('/:attachmentId/url', async (c) => {
       )
     }
 
+    // STILL ON THE FACADE. `files/attachments/` has no equivalent of
+    // `getDownloadRef`'s pinned/unpinned ladder yet; swap this for
+    // `getAttachmentDownloadRef(ctx, deps, attachmentId)` once it lands.
     // Visitor uploads have no User id — pass `undefined` for userId.
     const attachmentService = new AttachmentService(chat.organizationId, undefined)
     let url: string
