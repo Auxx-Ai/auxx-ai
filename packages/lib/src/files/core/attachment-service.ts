@@ -46,7 +46,10 @@
  * The rest were simply unreachable: `attachFileVersionToEntity`,
  * `moveAttachmentsToEntity`, `getAttachmentsByRole`, `getRecentAttachments`,
  * `getAttachmentsByCreator`, `search`, `getContent`, `streamContent`,
- * `getEntityAttachmentsByRole`.
+ * `getEntityAttachmentsByRole`; and in PR X `getEntityAttachments`,
+ * `attachFileToEntity` and `fetchAttachmentsForEntities`, whose last consumers
+ * (`comments/comment-service.ts`, `messages/message-attachment.service.ts`) had
+ * already moved to the `files/attachments/` functions in an earlier sweep.
  *
  * `cleanupOrphanedAttachments` and `validateAttachmentIntegrity` moved to
  * `files/lifecycle/attachment-maintenance.ts` — whole-organization sweeps, not
@@ -67,21 +70,14 @@ import {
   updateAttachment,
 } from '../attachments/attachment-mutations'
 import type { ResolvedAttachmentVersion } from '../attachments/attachment-queries'
-import {
-  fetchAttachmentsForEntities,
-  getAttachment,
-  getEntityAttachments,
-  resolveAttachmentVersion,
-} from '../attachments/attachment-queries'
+import { getAttachment, resolveAttachmentVersion } from '../attachments/attachment-queries'
 import type { FilesCtx, FilesDeps } from '../ctx'
 import { getFolderFileDownloadRef } from '../folder-files'
 import { createS3StoragePort } from '../storage/ports'
 import { BaseService, type DatabaseClient } from './base-service'
 import type {
-  AttachmentRole,
   AttachmentWithRelations,
   CreateAttachmentRequest,
-  EntityType,
   FileDownloadInfo,
   UpdateAttachmentRequest,
 } from './types'
@@ -172,53 +168,6 @@ export class AttachmentService extends BaseService<
   /** @deprecated Use `deleteAttachment(ctx, attachmentId)`. */
   async delete(id: string, dbClient?: DatabaseClient): Promise<void> {
     this.unwrap(await deleteAttachment(this.filesCtx(dbClient), id))
-  }
-
-  // ============= Entity attachment management =============
-
-  /** @deprecated Use `getEntityAttachments(ctx, entityType, entityId)`. */
-  async getEntityAttachments(entityType: EntityType, entityId: string): Promise<Attachment[]> {
-    return this.unwrap(await getEntityAttachments(this.filesCtx(), entityType, entityId))
-  }
-
-  /**
-   * @deprecated Use `createAttachment(ctx, { fileId, entityType, entityId, … })`.
-   *
-   * A named-argument spelling of {@link create} for the file side, kept because
-   * `comments/comment-service.ts` and `messages/message-attachment.service.ts`
-   * still call it. It has no counterpart in `files/attachments/` on purpose:
-   * an argument shuffle is not worth a second exported name.
-   */
-  async attachFileToEntity(
-    fileId: string,
-    entityType: EntityType,
-    entityId: string,
-    createdById: string,
-    role: AttachmentRole = 'ATTACHMENT',
-    options?: { title?: string; caption?: string; sort?: number }
-  ): Promise<Attachment> {
-    return this.unwrap(
-      await createAttachment(this.filesCtx(), {
-        entityType,
-        entityId,
-        role,
-        title: options?.title,
-        caption: options?.caption,
-        sort: options?.sort,
-        fileId,
-        createdById,
-      })
-    )
-  }
-
-  /**
-   * @deprecated Use `fetchAttachmentsForEntities(ctx, entityType, entityIds)`.
-   *
-   * Still one query for the whole batch — see the note on the extracted
-   * function. This is the mail and comment list read path.
-   */
-  async fetchAttachmentsForEntities(entityType: EntityType, entityIds: string[]) {
-    return this.unwrap(await fetchAttachmentsForEntities(this.filesCtx(), entityType, entityIds))
   }
 
   // ============= Content & access =============

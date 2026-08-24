@@ -1,6 +1,7 @@
 // apps/web/src/app/api/files/upload/sessions/route.ts
 
 import { database as db } from '@auxx/database'
+import { ForbiddenError } from '@auxx/lib/errors'
 import {
   createS3StoragePort,
   prepareUpload,
@@ -96,6 +97,24 @@ export async function POST(request: NextRequest) {
         session.user.defaultOrganizationId,
         PermissionKey.filesManage
       )
+    }
+
+    // Uploading an avatar for someone *else* — in practice the synthetic user
+    // behind an agent — requires org admin. This moved out of
+    // `UserProfileProcessor.validateEntityAccess` in PR 4d: lib performs zero
+    // access checks (`docs/lib-module-guide.md` §6), and the handler's
+    // `validateEntity` now answers only the identity half (is the target a user
+    // of this organization at all). It also used to throw a bare `Error`, which
+    // the route reported as a 500; a refused upload is a 403.
+    if (
+      sessionRequest.entityType === ENTITY_TYPES.USER_PROFILE &&
+      sessionRequest.entityId &&
+      sessionRequest.entityId !== session.user.id
+    ) {
+      const { isAdminOrOwner } = await import('@auxx/lib/members')
+      if (!(await isAdminOrOwner(session.user.defaultOrganizationId, session.user.id))) {
+        throw new ForbiddenError('Admin required to update agent avatars')
+      }
     }
 
     // Storage limit check: verify org has capacity for this upload

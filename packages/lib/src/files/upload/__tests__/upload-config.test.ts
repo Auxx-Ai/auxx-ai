@@ -9,8 +9,8 @@
  * processor — which constructs three services, each binding a database at
  * module scope — and then mocking `@auxx/database`, `drizzle-orm`, `@auxx/redis`,
  * `nanoid`, `@auxx/credentials` and the logger to keep the import graph alive.
- * `unified-upload-integration.test.ts` still does exactly that, in 130 lines of
- * hoisted fakes before its first assertion.
+ * `unified-upload-integration.test.ts` did exactly that, in 130 lines of hoisted
+ * fakes before its first assertion; PR 4d deleted it with its subject.
  *
  * Everything below is data in, data out. The two ambient inputs are the clock,
  * which arrives as a parameter, and `configService`'s bucket names, which
@@ -27,6 +27,7 @@ import { buildUploadConfig, DEFAULT_TTL_SEC, MIN_TTL_SEC, validateCompletedUploa
 import { getUploadHandler, UPLOAD_HANDLERS } from '../handlers'
 import type { PersistStrategy } from '../handlers/types'
 import type { UploadInitConfig, UploadPolicy } from '../init-types'
+import type { PresignedUploadSession } from '../session-types'
 
 const MB = 1024 * 1024
 
@@ -310,7 +311,15 @@ describe.each(CASES)('buildUploadConfig: $entityType', (c) => {
 
   it('declares the persistence strategy and asset kind', () => {
     expect(handler.persist).toBe(c.persist)
-    expect(handler.assetKind).toBe(c.assetKind)
+    // `ARTICLE` and `MESSAGE` resolve their kind from the finished session
+    // (a cover becomes a THUMBNAIL, a draft attachment a TEMP_UPLOAD), so the
+    // matrix records the answer for a plain upload and the function is applied
+    // to one. The session-dependent branches are pinned in `persist.test.ts`.
+    const kind =
+      typeof handler.assetKind === 'function'
+        ? handler.assetKind({ metadata: {} } as PresignedUploadSession)
+        : handler.assetKind
+    expect(kind).toBe(c.assetKind)
   })
 
   if (c.maxFileSize < Number.MAX_SAFE_INTEGER) {

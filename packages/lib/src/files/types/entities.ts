@@ -620,7 +620,7 @@ export const ENTITY_CONFIGS: Record<EntityType, EntityUploadConfig> = {
         estimatedDuration: 2,
       },
     ],
-    // Mirrors `VisitQcItemProcessor` (upload/processors/visit-qc-processor.ts), which is the
+    // Mirrors `visitQcItemHandler` (upload/handlers/visit-qc-item.ts), which is the
     // authority — this config is only the client-side pre-flight. HEIC/HEIF are accepted because
     // the strip captures straight off an iPhone and does not run `convertHeicToJpeg` (which is
     // Safari-only and hands back the original file everywhere else), so a `.heic` capture reaches

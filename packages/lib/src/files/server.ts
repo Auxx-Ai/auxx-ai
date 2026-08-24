@@ -170,11 +170,13 @@ export type {
   CreateFolderFileInput,
   CreateFolderFileWithVersionInput,
   FileVersionWithLocation,
+  FolderFileContentDeps,
   FolderFileDownloadDeps,
   FolderFileDownloadRef,
   FolderFilePage,
   FolderFileVersionSelector,
   FolderFileWriteDeps,
+  GetFolderFileContentOptions,
   GetFolderFileDownloadRefOptions,
   ListFolderFilesOptions,
   SearchFolderFilesOptions,
@@ -192,6 +194,7 @@ export {
   findFolderFilesByMimeType,
   findOrphanedFolderFiles,
   getFolderFile,
+  getFolderFileContent,
   getFolderFileCurrentVersion,
   getFolderFileDownloadRef,
   getFolderFileVersionByNumber,
@@ -202,14 +205,18 @@ export {
   moveFolderFile,
   renameFolderFile,
   resolveFolderFileDownloadRef,
+  resolveFolderFileObjectRef,
+  resolveFolderFileVersion,
   restoreFileVersion,
   restoreFolderFile,
   searchFolderFiles,
+  streamFolderFileContent,
   updateFolderFile,
 } from './folder-files'
 // The production `StoragePort`. Routers need it to build the `deps` slice the
 // download functions take; constructing one per request is cheap because the
 // port shares the single cached S3 adapter.
+export type { StoragePort } from './storage/ports'
 export { createS3StoragePort } from './storage/ports'
 // The production `QueuePort`, and the thumbnail enqueue that takes it.
 // `files/thumbnails/` imports no image-processing code — the sharp pipeline
@@ -250,8 +257,10 @@ export {
   uploadUnauthorizedError,
   uploadValidationError,
 } from './upload/errors'
-export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
 // The upload orchestration the three API routes used to inline (PR 4e).
+// Dispatch is the handler records in `upload/handlers/`, reached through these
+// two -- the `ProcessorRegistry` hierarchy was deleted in PR 4d and had no
+// consumer outside the module it lived in.
 export type { CompletedUpload, CompleteUploadDeps, CompleteUploadInput } from './upload/complete'
 export { completeUpload } from './upload/complete'
 export type { PreparedUpload, PrepareUploadDeps } from './upload/prepare'

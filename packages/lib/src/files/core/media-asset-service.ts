@@ -5,10 +5,14 @@
  *
  * Every method below now delegates to a function in
  * `files/assets/asset-queries.ts`, `asset-mutations.ts`,
- * `version-mutations.ts` or `download.ts`. The class survives only because it
- * has 41 external construction sites; **PR 5h / Phase 10 move those and delete
- * this file.** Do not add a method here — add a function to `files/assets/` and
- * call it directly with a `FilesCtx`.
+ * `version-mutations.ts`, `download.ts` or `content.ts`. The class survives only
+ * because it has external construction sites; **PR Y / Phase 10 move those and
+ * delete this file.** Do not add a method here — add a function to
+ * `files/assets/` and call it directly with a `FilesCtx`.
+ *
+ * **Nothing here reaches `StorageManager` any more.** `getContent` was the last
+ * one, and it now goes through `assets/content.ts` and a `StoragePort`, which
+ * is what let `getStorageManager` and its lazy `_storageManager` field go.
  *
  * What changed for callers of this class, and nothing else did:
  *
@@ -28,31 +32,41 @@
  * `processEmailAttachment`, `generateThumbnail`, `extractMetadata`,
  * `findLargeAssets`, `findOrphanedAssets`, `findPublicAssets`, `convertKind`,
  * `validateKindConversion`, `getDownloadInfo`, `copyVersions`, `search`,
- * `count`, `listByKind`, `findByMimeType`.
+ * `count`, `listByKind`, `findByMimeType`; and in PR X `convertTempToPermanent`,
+ * `createFromFolderFile`, `findByKind`, `findByChecksum`, `streamContent`,
+ * `getDownloadUrl`, `getDownloadUrls`, `getStorageManager`.
+ *
+ * Two of those are worth naming. **`streamContent` never worked**: its body
+ * called `storageManager.streamContent(...)`, a method `StorageManager` does not
+ * have (it is `streamFileContent`), through a `Promise<any>` accessor that hid
+ * the mistake from the compiler; it had no callers, so the throw was never
+ * reached. `streamAssetContent` in `assets/content.ts` is the working
+ * replacement. **`findByChecksum` never worked either** — `MediaAsset` has no
+ * checksum column, so it ignored its argument and returned whichever live asset
+ * the organization filter yielded first. It survived only because
+ * `ContentAccessible` declared it, so the `implements ContentAccessible` clause
+ * went with it (`FileService` dropped the same clause in 5b). `getDownloadUrl` /
+ * `getDownloadUrls` had one consumer between them, `kb/internal/resolve-cover-urls.ts`,
+ * which now batches through `resolveAssetDownloadRef` itself.
  */
 
 import type { Transaction } from '@auxx/database'
-import { schema } from '@auxx/database'
 import type {
   MediaAssetEntity as MediaAsset,
   MediaAssetVersionEntity as MediaAssetVersion,
   StorageLocationEntity as StorageLocation,
 } from '@auxx/database/types'
-import { and, desc, eq, inArray, isNull, type SQL } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import type { AuxxError } from '../../errors'
 import type { DownloadRef } from '../adapters/base-adapter'
 import {
-  convertTempAssetToPermanent,
   createAsset,
-  createAssetFromFolderFile,
   createAssetWithVersion,
   deleteAsset,
   updateAsset,
 } from '../assets/asset-mutations'
 import type { AssetVersionWithLocation } from '../assets/asset-queries'
 import {
-  findAssetsByKind,
   findExpiredAssets,
   getAsset,
   getAssetCurrentVersion,
@@ -62,8 +76,9 @@ import {
   getLatestAssetVersion,
   listAssets,
 } from '../assets/asset-queries'
-import type { DownloadDeps, VersionWithLocation } from '../assets/download'
-import { getAssetDownloadRef, resolveAssetDownloadRef } from '../assets/download'
+import { getAssetContent } from '../assets/content'
+import type { DownloadDeps } from '../assets/download'
+import { getAssetDownloadRef } from '../assets/download'
 import type { AssetWriteDeps, ThumbnailCleanupPort } from '../assets/ports'
 import {
   createAssetVersion,
@@ -75,7 +90,6 @@ import type { FilesCtx } from '../ctx'
 import { createS3StoragePort } from '../storage/ports'
 import { createThumbnailCleanupPort } from '../thumbnails/thumbnail-mutations'
 import { BaseService, type DatabaseClient, defaultDatabase } from './base-service'
-import type { ContentAccessible } from './mixins/content-accessible'
 import type { Versioned } from './mixins/versioned'
 import type {
   AssetKind,
@@ -108,10 +122,8 @@ export class MediaAssetService
     UpdateAssetRequest,
     AssetSearchResult
   >
-  implements ContentAccessible, Versioned
+  implements Versioned
 {
-  private _storageManager?: any
-
   private _filesDownloadDeps?: DownloadDeps
 
   constructor(
@@ -222,18 +234,6 @@ export class MediaAssetService
     )
   }
 
-  /** @deprecated Use `convertTempAssetToPermanent(ctx, assetId, kind)`. */
-  async convertTempToPermanent(
-    mediaAssetId: string,
-    newKind: AssetKind,
-    organizationId: string,
-    tx?: DatabaseClient
-  ): Promise<void> {
-    return this.unwrap(
-      await convertTempAssetToPermanent(this.filesCtx(tx, organizationId), mediaAssetId, newKind)
-    )
-  }
-
   /** @deprecated Use `createAssetWithVersion(tx, ctx, deps, input)`. */
   async createWithVersion(
     data: CreateAssetRequest,
@@ -254,27 +254,6 @@ export class MediaAssetService
           createdById: data.createdById ?? this.userId,
           expiresAt: data.expiresAt,
           storageLocationId,
-        })
-      )
-    )
-  }
-
-  /** @deprecated Use `createAssetFromFolderFile(tx, ctx, deps, input)`. */
-  async createFromFolderFile(
-    fileId: string,
-    fileVersionId?: string,
-    options?: {
-      kind?: AssetKind
-      skipIfExists?: boolean
-    }
-  ): Promise<MediaAsset> {
-    return this.inTransaction(undefined, async (tx) =>
-      this.unwrap(
-        await createAssetFromFolderFile(tx, this.filesCtx(tx), this.writeDeps(), {
-          fileId,
-          fileVersionId,
-          kind: options?.kind,
-          skipIfExists: options?.skipIfExists,
         })
       )
     )
@@ -306,11 +285,6 @@ export class MediaAssetService
 
   // ============= Asset queries =============
 
-  /** @deprecated Use `findAssetsByKind(ctx, kind)`. */
-  async findByKind(kind: AssetKind): Promise<MediaAsset[]> {
-    return this.unwrap(await findAssetsByKind(this.filesCtx(), kind))
-  }
-
   /**
    * @deprecated Use `findExpiredAssets(ctx, createdBefore)`.
    *
@@ -322,54 +296,24 @@ export class MediaAssetService
     return this.unwrap(await findExpiredAssets(this.filesCtx(), createdBefore))
   }
 
-  /**
-   * @deprecated Zero callers, and it never worked: `MediaAsset` has no checksum
-   * column, so the body below ignores its argument and returns whichever live
-   * asset the organization filter happens to yield first. It is kept only
-   * because `ContentAccessible` declares it (`FileService` has a real
-   * implementation — `FolderFile.checksum` exists) and is deleted with this
-   * class. It was deliberately NOT ported to `files/assets/`: porting it would
-   * launder the bug into the new module.
-   */
-  async findByChecksum(_checksum: string): Promise<MediaAsset | null> {
-    const asset = await this.db.query.MediaAsset.findFirst({
-      where: and(
-        eq(schema.MediaAsset.organizationId, this.requireOrganization()),
-        isNull(schema.MediaAsset.deletedAt)
-      ),
-    })
-    return (asset as MediaAsset | undefined) ?? null
-  }
-
   // ============= Content access =============
 
   /**
-   * @deprecated Still on `StorageManager` rather than the `StoragePort`.
+   * @deprecated Use `getAssetContent(ctx, deps, assetId)`.
    *
-   * `assets/` has no content-read function yet: PR 5a's scope was the CRUD,
-   * version and download surface, and `getContent` / `streamContent` need
-   * `StoragePort.getObject` / `.streamObject` plus the bucket-from-the-row rule
-   * that `download.ts` implements. That is the next extraction, not this one —
-   * which is also why `getStorageManager` survives despite the plan listing it
-   * as deletable.
+   * **No longer goes through `StorageManager`.** It delegates to
+   * `assets/content.ts`, which addresses the object through a
+   * {@link StoragePort} with the bucket taken off the `StorageLocation` row.
+   * Two things changed as a result, both improvements:
+   *
+   * - The location read is gone. `StorageManager.getContent(locationId)` did its
+   *   own **unscoped** `StorageLocation` lookup behind the caller's back; the
+   *   row now arrives joined onto the version this facade already resolved.
+   * - A missing storage location is a `NotFoundError` (404) rather than a bare
+   *   `Error`, matching every other method on this class since PR 5a.
    */
   async getContent(id: string): Promise<Buffer> {
-    const currentVersion = await this.getCurrentVersion(id)
-    if (!currentVersion?.storageLocationId) {
-      throw new Error(`No storage location found for ${this.getEntityName()}`)
-    }
-    const storageManager = await this.getStorageManager()
-    return storageManager.getContent(currentVersion.storageLocationId)
-  }
-
-  /** @deprecated Same caveat as {@link getContent}. */
-  async streamContent(id: string): Promise<NodeJS.ReadableStream> {
-    const currentVersion = await this.getCurrentVersion(id)
-    if (!currentVersion?.storageLocationId) {
-      throw new Error(`No storage location found for ${this.getEntityName()}`)
-    }
-    const storageManager = await this.getStorageManager()
-    return storageManager.streamContent(currentVersion.storageLocationId)
+    return this.unwrap(await getAssetContent(this.filesCtx(), this.filesDownloadDeps(), id))
   }
 
   // ============= Download =============
@@ -437,108 +381,6 @@ export class MediaAssetService
       expiresAt:
         downloadRef.type === 'url' ? (downloadRef.expiresAt ?? fallbackExpiry) : fallbackExpiry,
     }
-  }
-
-  /**
-   * @deprecated Use `getAssetDownloadRef(...)` and read `.url`.
-   *
-   * Returns `null` on every failure, exactly as before — this is a best-effort
-   * convenience used to fill avatar/thumbnail URLs into list payloads, and a
-   * throw there would fail a whole page for one broken row.
-   */
-  async getDownloadUrl(id: string): Promise<string | null> {
-    try {
-      const result = await getAssetDownloadRef(this.filesCtx(), this.filesDownloadDeps(), id)
-      if (result.isErr()) return null
-      return result.value.type === 'url' ? result.value.url : null
-    } catch {
-      // `filesCtx()` throws when the service has no organization context; the
-      // documented contract of this method is null-on-failure, so swallow it.
-      return null
-    }
-  }
-
-  /**
-   * @deprecated Use `resolveAssetDownloadRef(deps, asset, version)` over rows
-   * the caller already batched.
-   *
-   * Resolves many asset ids in a fixed number of round-trips (one for the
-   * assets, up to two for their versions) instead of the per-id `getDownloadUrl`
-   * fan-out. The URL policy itself is no longer duplicated here: the private
-   * `downloadUrlFor` this used to call is gone, and each row now goes through
-   * `resolveAssetDownloadRef` — the same tail `getAssetDownloadRef` runs.
-   *
-   * Ids that are missing, deleted, or whose storage location cannot name its
-   * bucket resolve to `null`.
-   */
-  async getDownloadUrls(ids: string[]): Promise<Map<string, string | null>> {
-    const result = new Map<string, string | null>()
-    const unique = Array.from(new Set(ids.filter((id): id is string => !!id)))
-    if (unique.length === 0) return result
-
-    const filters: SQL[] = [
-      inArray(schema.MediaAsset.id, unique),
-      isNull(schema.MediaAsset.deletedAt),
-      eq(schema.MediaAsset.organizationId, this.requireOrganization()),
-    ]
-    const assets = (await this.db.query.MediaAsset.findMany({
-      where: and(...filters),
-    })) as MediaAsset[]
-
-    // Resolve every asset's current version in at most two queries: one by
-    // explicit currentVersionId, one by assetId (latest) for assets without it.
-    const withCurrent = assets.filter((asset) => asset.currentVersionId)
-    const withoutCurrent = assets.filter((asset) => !asset.currentVersionId)
-    const versionById = new Map<string, VersionWithLocation>()
-    const latestByAsset = new Map<string, VersionWithLocation>()
-
-    const [byId, byAsset] = await Promise.all([
-      withCurrent.length
-        ? this.db.query.MediaAssetVersion.findMany({
-            where: inArray(
-              schema.MediaAssetVersion.id,
-              withCurrent.map((asset) => asset.currentVersionId as string)
-            ),
-            with: { storageLocation: true },
-          })
-        : Promise.resolve([]),
-      withoutCurrent.length
-        ? this.db.query.MediaAssetVersion.findMany({
-            where: inArray(
-              schema.MediaAssetVersion.assetId,
-              withoutCurrent.map((asset) => asset.id)
-            ),
-            orderBy: desc(schema.MediaAssetVersion.versionNumber),
-            with: { storageLocation: true },
-          })
-        : Promise.resolve([]),
-    ])
-    for (const version of byId as VersionWithLocation[]) versionById.set(version.id, version)
-    for (const version of byAsset as VersionWithLocation[]) {
-      // ordered by version desc → first seen per asset is the latest
-      if (!latestByAsset.has(version.assetId)) latestByAsset.set(version.assetId, version)
-    }
-
-    const deps = this.filesDownloadDeps()
-    await Promise.all(
-      assets.map(async (entity) => {
-        const version = entity.currentVersionId
-          ? versionById.get(entity.currentVersionId)
-          : latestByAsset.get(entity.id)
-        if (!version) {
-          result.set(entity.id, null)
-          return
-        }
-        try {
-          const ref = await resolveAssetDownloadRef(deps, entity, version)
-          result.set(entity.id, ref.type === 'url' ? ref.url : null)
-        } catch {
-          result.set(entity.id, null)
-        }
-      })
-    )
-    for (const id of unique) if (!result.has(id)) result.set(id, null)
-    return result
   }
 
   // ============= Versions =============
@@ -669,22 +511,6 @@ export class MediaAssetService
       this._filesDownloadDeps = { storage: createS3StoragePort(this.requireOrganization()) }
     }
     return this._filesDownloadDeps
-  }
-
-  /**
-   * Get storage manager for content operations (lazy singleton).
-   *
-   * Survives PR 5a because `getContent` / `streamContent` still go through it —
-   * see the note on {@link getContent}.
-   */
-  protected async getStorageManager(): Promise<any> {
-    if (!this._storageManager) {
-      // Import storage manager dynamically to avoid circular dependencies
-      const { createStorageManager } = await import('../storage/storage-manager')
-      // Use organization-scoped instance for proper credential management
-      this._storageManager = createStorageManager(this.requireOrganization())
-    }
-    return this._storageManager
   }
 
   /**

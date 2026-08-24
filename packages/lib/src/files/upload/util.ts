@@ -76,13 +76,6 @@ export const normalizeMimeType = (mimeType: string): string => {
 }
 
 /**
- * Check if a file size qualifies for multipart upload
- */
-export const shouldUseMultipart = (size: number, threshold = 50 * 1024 * 1024): boolean => {
-  return size >= threshold
-}
-
-/**
  * Generate default key prefix for organization
  */
 export const getDefaultKeyPrefix = (organizationId: string): string => {

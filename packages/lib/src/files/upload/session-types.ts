@@ -44,36 +44,13 @@ export interface PresignedUploadSession {
   // ❌ Remove: processorType, processingMetadata
 }
 
-/**
- * Upload preferences that processors can specify
- */
-export interface UploadPreferences {
-  preferredProvider: string
-  visibility: 'public' | 'private'
-  maxFileSize?: number
-  allowedMimeTypes?: string[]
-  storageConfig?: Record<string, any>
-}
-
-/**
- * Progress update structure for SSE
- */
-export interface ProgressUpdate {
-  sessionId: string
-  status: 'uploading' | 'processing' | 'completed' | 'failed'
-  progress?: number // 0-100 for upload progress
-  message?: string
-  timestamp: string
-  details?: Record<string, any>
-}
-
-/**
- * Result of processing uploaded file
- */
-export interface ProcessingResult {
-  fileId?: string
-  assetId?: string
-  attachmentId?: string
-  success: boolean
-  error?: string
-}
+// Three types lived here and are gone with the processors (PR 4d), all with
+// zero references anywhere in the repo:
+//
+// - `UploadPreferences` — "preferences that processors can specify". Its twin in
+//   `processors/types.ts` was equally unread, and `preferredProvider` was
+//   abstract on every processor while the provider actually came from
+//   `init.provider ?? 'S3'`.
+// - `ProgressUpdate` — "for SSE". There is no SSE endpoint for uploads.
+// - `ProcessingResult` — superseded by `handlers/types.ts`'s `PersistResult`,
+//   which is the shape the persistence step really returns.

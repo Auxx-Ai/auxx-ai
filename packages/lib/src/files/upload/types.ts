@@ -56,27 +56,9 @@ export interface FileValidationOptions {
   allowedExtensions?: string[]
   scanForViruses?: boolean
 }
-/**
- * Entity-specific file processor interface
- */
-export interface EntityFileProcessor {
-  /**
-   * Process file after upload for a specific entity type
-   */
-  processFile(
-    fileRecord: File,
-    entityId: string | undefined,
-    metadata?: Record<string, any>
-  ): Promise<void>
-  /**
-   * Get validation options for this entity type
-   */
-  getValidationOptions(): FileValidationOptions
-  /**
-   * Determine if file should be public or private for this entity
-   */
-  getDefaultVisibility(): FileVisibility
-}
+// `EntityFileProcessor` lived here: a third per-entity vocabulary alongside the
+// processor classes and `UPLOAD_HANDLERS`, with zero implementors and zero
+// callers in the repo's history. Deleted with the processors in PR 4d.
 /**
  * File validation error
  */

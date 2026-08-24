@@ -22,6 +22,8 @@ export {
 } from './asset-mutations'
 export type {
   AssetPage,
+  AssetVersionAddress,
+  AssetVersionSelector,
   AssetVersionWithLocation,
   ListAssetsOptions,
 } from './asset-queries'
@@ -37,9 +39,11 @@ export {
   listAssets,
   loadCurrentVersion,
   requireAsset,
+  resolveAssetVersion,
 } from './asset-queries'
+export type { AssetContentDeps, GetAssetContentOptions } from './content'
+export { getAssetContent, resolveAssetObjectRef, streamAssetContent } from './content'
 export type {
-  AssetVersionSelector,
   DownloadDeps,
   GetAssetDownloadRefOptions,
   VersionWithLocation,

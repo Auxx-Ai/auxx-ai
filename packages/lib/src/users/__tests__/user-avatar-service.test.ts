@@ -1,5 +1,17 @@
 // packages/lib/src/users/__tests__/user-avatar-service.test.ts
 
+/**
+ * **Legacy shape, kept alive across PR 4d's module move.**
+ *
+ * `UserAvatarService` is a static class over the module-scope `database`, a
+ * `new S3Adapter()` it constructs itself, and `uploadSessionRedis()`. Nothing
+ * about it is injectable, so this file is full-replacement `vi.mock` all the way
+ * down. Converting it to `files/__tests__/support` means converting the service
+ * to the `files/ctx.ts` contract first, which is Phase 6's job — the mocks below
+ * were retargeted from `UserProfileProcessor` onto `getUploadHandler` /
+ * `buildUploadConfig` / `persistUpload`, and nothing else changed.
+ */
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { UserAvatarService } from '../user-avatar-service'
 
@@ -19,6 +31,10 @@ vi.mock('@auxx/database', () => ({
     insert: vi.fn(() => ({ values: mockInsertValues })),
     update: vi.fn(),
     delete: vi.fn(),
+    // The service opens the one transaction `persistUpload` runs in. The double
+    // hands the body the same surface, which is all the mocked `persistUpload`
+    // below needs.
+    transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb({}),
   },
   schema: {
     User: {
@@ -54,33 +70,43 @@ vi.mock('../../files/adapters/s3-adapter', () => {
   }
 })
 
-vi.mock('../../files/upload/processors/entity-processors', () => {
-  return {
-    UserProfileProcessor: class {
-      processConfig = vi.fn().mockResolvedValue({
-        config: {
-          storageKey: 'test-org/user-profile/test-user/123_avatar-test.jpg',
-          organizationId: 'test-org',
-          userId: 'test-user',
-          bucket: 'auxx-private-local',
-          visibility: 'PRIVATE',
-          ttlSec: 600,
-          policy: {
-            keyPrefix: 'test-org/',
-            contentLengthRange: [0, Number.MAX_SAFE_INTEGER],
-            maxTtl: 600,
-            allowedMimeTypes: ['image/jpeg'],
-          },
-          uploadPlan: { strategy: 'single' },
-        },
-      })
-      process = vi.fn().mockResolvedValue({
-        assetId: 'test-asset-id',
-        storageLocationId: 'test-location-id',
-      })
+// The three modules `UserProfileProcessor` was replaced by. Mocked rather than
+// exercised for the same reason the processor was: this file has no real
+// database behind it, and `handlers/index.ts` reaches the org cache and the
+// dataset queue at import time.
+vi.mock('../../files/upload/handlers', () => ({
+  getUploadHandler: vi.fn(() => ({
+    entityType: 'USER_PROFILE',
+    persist: 'versioned-asset',
+    assetKind: 'USER_AVATAR',
+  })),
+}))
+
+vi.mock('../../files/upload/config', () => ({
+  buildUploadConfig: vi.fn(() => ({
+    storageKey: 'test-org/user-profile/test-user/123_avatar-test.jpg',
+    organizationId: 'test-org',
+    userId: 'test-user',
+    bucket: 'auxx-private-local',
+    visibility: 'PRIVATE',
+    ttlSec: 600,
+    policy: {
+      keyPrefix: 'test-org/',
+      contentLengthRange: [0, Number.MAX_SAFE_INTEGER],
+      maxTtl: 600,
+      allowedMimeTypes: ['image/jpeg'],
     },
-  }
-})
+    uploadPlan: { strategy: 'single' },
+  })),
+}))
+
+vi.mock('../../files/upload/persist', () => ({
+  persistUpload: vi.fn().mockResolvedValue({
+    assetId: 'test-asset-id',
+    storageLocationId: 'storage-loc-1',
+    externalUrl: '',
+  }),
+}))
 
 vi.mock('../../files/upload/session', () => ({
   uploadSessionRedis: vi.fn(async () => ({})),

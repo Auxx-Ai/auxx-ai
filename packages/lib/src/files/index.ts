@@ -131,7 +131,10 @@ export type { OrphanedFileCleanupJobData, OrphanedFileCleanupResult } from './li
 export { cleanupService } from './cleanup/cleanup-service'
 export type { EntityType } from './types'
 export { ENTITY_TYPES } from './types'
-export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
+// The processor hierarchy was deleted in PR 4d; dispatch is the handler records
+// in `upload/handlers/`, reached through `prepareUpload` / `completeUpload`.
+// `ensureProcessorsInitialized` and `ProcessorRegistry` had no consumers outside
+// the module they lived in.
 // Validators
 export {
   getMimeTypeFromExtension,
