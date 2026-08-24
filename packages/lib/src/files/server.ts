@@ -16,6 +16,59 @@ export type {
   UpdateAttachmentRequest,
   UpdateFileRequest,
 } from './core/types'
+// The ambient contract every `files/` function is written against. Exported so
+// `apps/web`'s single `toFilesCtx` helper can name the type it returns.
+export type { FilesCtx, FilesDeps, FilesDepsSlice } from './ctx'
+// FolderFile reads/writes written to the `files/ctx.ts` contract (PR 5c).
+// `fileRouter` calls these directly — there is no `FileService` between them.
+export type {
+  CopyFolderFileInput,
+  CreatedFileVersion,
+  CreateFileVersionInput,
+  CreateFolderFileInput,
+  CreateFolderFileWithVersionInput,
+  FileVersionWithLocation,
+  FolderFileDownloadDeps,
+  FolderFileDownloadRef,
+  FolderFilePage,
+  FolderFileVersionSelector,
+  FolderFileWriteDeps,
+  GetFolderFileDownloadRefOptions,
+  ListFolderFilesOptions,
+  SearchFolderFilesOptions,
+  UpdateFolderFileInput,
+} from './folder-files'
+export {
+  copyFileVersions,
+  copyFolderFile,
+  createFileVersion,
+  createFolderFile,
+  createFolderFileWithVersion,
+  deleteFileVersion,
+  deleteFolderFile,
+  findFolderFilesByExtension,
+  findFolderFilesByMimeType,
+  findOrphanedFolderFiles,
+  getFolderFile,
+  getFolderFileCurrentVersion,
+  getFolderFileDownloadRef,
+  getFolderFileVersionByNumber,
+  getFolderFileVersions,
+  getFolderFileWithRelations,
+  getLatestFolderFileVersion,
+  listFolderFiles,
+  moveFolderFile,
+  renameFolderFile,
+  resolveFolderFileDownloadRef,
+  restoreFileVersion,
+  restoreFolderFile,
+  searchFolderFiles,
+  updateFolderFile,
+} from './folder-files'
+// The production `StoragePort`. Routers need it to build the `deps` slice the
+// download functions take; constructing one per request is cheap because the
+// port shares the single cached S3 adapter.
+export { createS3StoragePort } from './storage/ports'
 // The production `QueuePort`, and the thumbnail enqueue that takes it.
 // `files/thumbnails/` imports no image-processing code — the sharp pipeline
 // lives behind `core/thumbnail-processor.worker.ts` and is reached only by the

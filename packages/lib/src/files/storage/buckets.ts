@@ -31,7 +31,7 @@
  */
 
 import { configService } from '@auxx/credentials'
-import { BadRequestError } from '../../errors'
+import { AuxxError, BadRequestError } from '../../errors'
 import type { ProviderId } from '../adapters/base-adapter'
 
 /**
@@ -134,6 +134,42 @@ export function assertBucket(bucket: string | undefined, op: string): string {
       `${op} requires an explicit bucket. Pass the bucket the object lives in ` +
         '(the upload session `bucket`). Resolving a configured default instead is how a ' +
         'wrong-bucket delete 204s and a wrong-bucket part presign fails with NoSuchUpload.'
+    )
+  }
+  return bucket
+}
+
+/**
+ * Read the bucket off a `StorageLocation` row, and refuse to invent one.
+ *
+ * The row-shaped sibling of {@link assertBucket}, and the **single** place every
+ * download path resolves a bucket from a persisted location. It lives here
+ * rather than in one of the entity modules because both `assets/download.ts`
+ * and `folder-files/download.ts` need exactly this rule, and a second copy is
+ * how the two libraries' URL policies drift apart (PR 5a's retro named this as
+ * 5c's first trap).
+ *
+ * The failure mode it forecloses: bugs #1816/#1817/#1818 all ended with no
+ * bucket at the call site, a fallback to `S3_PRIVATE_BUCKET`, and S3 answering
+ * `204 No Content` for a delete aimed at a key that was never in the bucket we
+ * named — so objects leaked with no error anywhere. A row with no bucket is a
+ * data defect, and a 500 that names the row is strictly better than a signed URL
+ * for the wrong bucket, which fails later, elsewhere, and looks like an auth
+ * problem.
+ *
+ * @param location The `StorageLocation` row, whose `metadata.bucket` is authoritative.
+ * @param context Ids to attach to the error so the defect is traceable to a row.
+ * @throws {AuxxError} when the row cannot name its bucket.
+ */
+export function requireLocationBucket(
+  location: { id: string; metadata: unknown },
+  context: Record<string, unknown> = {}
+): string {
+  const bucket = (location.metadata as { bucket?: unknown } | null)?.bucket
+  if (typeof bucket !== 'string' || bucket.length === 0) {
+    throw new AuxxError(
+      `StorageLocation ${location.id} has no metadata.bucket; refusing to fall back to a configured default`,
+      { storageLocationId: location.id, ...context }
     )
   }
   return bucket

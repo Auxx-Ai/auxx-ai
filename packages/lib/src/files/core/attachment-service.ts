@@ -59,6 +59,7 @@ import type { Result } from 'neverthrow'
 import type { AuxxError } from '../../errors'
 import { BadRequestError } from '../../errors'
 import type { DownloadRef } from '../adapters/base-adapter'
+import { getAssetDownloadRef } from '../assets/download'
 import type { CreateAttachmentInput } from '../attachments/attachment-mutations'
 import {
   createAttachment,
@@ -72,7 +73,9 @@ import {
   getEntityAttachments,
   resolveAttachmentVersion,
 } from '../attachments/attachment-queries'
-import type { FilesCtx } from '../ctx'
+import type { FilesCtx, FilesDeps } from '../ctx'
+import { getFolderFileDownloadRef } from '../folder-files'
+import { createS3StoragePort } from '../storage/ports'
 import { BaseService, type DatabaseClient } from './base-service'
 import type {
   AttachmentRole,
@@ -95,6 +98,9 @@ export class AttachmentService extends BaseService<
   UpdateAttachmentRequest,
   never
 > {
+  /** Lazily built once per service; see {@link downloadDeps}. */
+  private _downloadDeps?: Pick<FilesDeps, 'storage' | 'now'>
+
   constructor(organizationId?: string, userId?: string, dbInstance: DatabaseClient = db) {
     super(organizationId, userId, dbInstance)
   }
@@ -218,15 +224,24 @@ export class AttachmentService extends BaseService<
   // ============= Content & access =============
 
   /**
-   * @deprecated Awaiting PR 5c (`folder-files/`), which is where the unpinned
-   * branches below belong.
+   * @deprecated Use `getAssetDownloadRef` / `getFolderFileDownloadRef` on the
+   * attachment's own side, or read `.url` off this ref.
    *
-   * A pinned attachment presigns its own `StorageLocation` directly. An unpinned
-   * one has to ask the owning library which version is current *and* how that
-   * library's download policy resolves (public URL vs presign), which is
-   * `FileService` / `MediaAssetService` today. Once `folder-files/` exists this
-   * collapses into one `getAttachmentDownloadRef(ctx, deps, attachmentId)` the
-   * way `assets/download.ts` collapsed six accessors into one.
+   * **PR 5c closed the two `await import('./…-service')` holes here.** A pinned
+   * attachment presigns its own `StorageLocation` directly. An unpinned one has
+   * to ask the owning library which version is current *and* how that library's
+   * download policy resolves (a public asset returns a durable URL; a file is
+   * always presigned) — that used to mean constructing `FileService` or
+   * `MediaAssetService` inside the body, which is the collaborator-by-`new`
+   * pattern `files/ctx.ts` exists to delete. Both branches are now a direct call
+   * to the one download function each library exposes, so there is exactly one
+   * implementation of each policy.
+   *
+   * The pinned branch still goes through `StorageManager`, because it addresses
+   * a `StorageLocation` by id and `storage/location-queries.ts` is
+   * organization-scoped while `StorageLocation.organizationId` is nullable —
+   * routing it through the port would make every pre-backfill row undownloadable.
+   * That is a Phase-6/backfill decision, not this PR's.
    */
   async getDownloadRef(id: string): Promise<DownloadRef> {
     const resolved = await this.resolveVersion(id)
@@ -242,15 +257,15 @@ export class AttachmentService extends BaseService<
       })
     }
 
+    const ctx = this.filesCtx()
     if (attachment.fileId) {
-      const { FileService } = await import('./file-service')
-      const fileService = new FileService(this.requireOrganization(), this.userId, this.db)
-      return await fileService.getDownloadRef(attachment.fileId)
+      return this.unwrap(
+        await getFolderFileDownloadRef(ctx, this.downloadDeps(), attachment.fileId)
+      )
     }
-
-    const { MediaAssetService } = await import('./media-asset-service')
-    const assetService = new MediaAssetService(this.requireOrganization(), this.userId, this.db)
-    return await assetService.getDownloadRef(attachment.assetId as string)
+    return this.unwrap(
+      await getAssetDownloadRef(ctx, this.downloadDeps(), attachment.assetId as string)
+    )
   }
 
   /** @deprecated Read `.url` off {@link getDownloadRef} instead. */
@@ -261,7 +276,7 @@ export class AttachmentService extends BaseService<
   }
 
   /**
-   * @deprecated Awaiting PR 5c, with {@link getDownloadRef}.
+   * @deprecated Compose {@link getDownloadRef} with the row you already hold.
    *
    * **The filename changed shape, not value.** The legacy body computed
    * `attachment.title || version.name || 'attachment'`, but `version` was typed
@@ -303,6 +318,23 @@ export class AttachmentService extends BaseService<
       db: (dbClient ?? this.db) as FilesCtx['db'],
       organizationId: organizationId ?? this.requireOrganization(),
     }
+  }
+
+  /**
+   * Storage + clock, for {@link getDownloadRef}.
+   *
+   * Built once per service because `createS3StoragePort` shares the one cached
+   * S3 adapter — and therefore its `S3Client` cache — so rebuilding it per call
+   * would rebuild a client per request.
+   */
+  private downloadDeps(): Pick<FilesDeps, 'storage' | 'now'> {
+    if (!this._downloadDeps) {
+      this._downloadDeps = {
+        storage: createS3StoragePort(this.requireOrganization()),
+        now: () => new Date(),
+      }
+    }
+    return this._downloadDeps
   }
 
   /**
