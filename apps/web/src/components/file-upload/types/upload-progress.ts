@@ -8,13 +8,10 @@
 // Import all shared types at once for cleaner usage
 import type {
   BatchUploadResult,
-  ConnectionStatus,
   EntityType,
   // Entity types
   EntityUploadConfig,
   FileInfo,
-  // SSE types
-  FileUploadEvent,
   MultiFileProgress,
   ProcessingStage,
   QueueConfig,
@@ -53,24 +50,11 @@ export type {
   FileInfo,
   EntityUploadConfig,
   EntityType,
-  FileUploadEvent,
-  ConnectionStatus,
 }
 
 /**
  * Frontend-specific hook return types
  */
-export interface UseFileUploadSSEReturn {
-  events: FileUploadEvent[]
-  isConnected: boolean
-  connectionStatus: ConnectionStatus
-  error?: string
-  connect: () => void
-  disconnect: () => void
-  clearEvents: () => void
-  reconnect: () => void
-}
-
 export interface UseFileUploadSessionReturn {
   session?: SessionInfo
   createSession: (options: UploadSessionOptions) => Promise<SessionInfo>

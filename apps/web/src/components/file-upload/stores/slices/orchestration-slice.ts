@@ -7,7 +7,14 @@ import type { UploadTransport } from '../../transport'
 import { httpUploadTransport, isUploadTransportError, resolveServerId } from '../../transport'
 import { validateFile } from '../../utils'
 import { isFileInFlight } from '../file-status'
-import type { CreateSessionOptions, SessionRun, UploaderRun, UploadStore } from '../types'
+import type {
+  CreateSessionOptions,
+  FileState,
+  SessionRun,
+  UploaderRun,
+  UploaderSettledHandler,
+  UploadStore,
+} from '../types'
 
 /**
  * A fresh empty batch result. A function, not a shared constant: the value is handed
@@ -63,8 +70,35 @@ export interface OrchestrationSlice {
    */
   uploaderRuns: Record<string, UploaderRun>
 
+  /**
+   * At most one settled handler per uploader id.
+   *
+   * Replaces the module-level `completionHandlers` map, `processingUploaders` set,
+   * `subscriptionActive` flag and 30-minute staleness sweep that
+   * `use-field-file-upload.ts` kept because the store had no per-uploader completion
+   * callback surviving a React unmount. Delivery is owned by `startUpload`, so there
+   * is nothing to sweep: a handler fires when a run settles and at no other time.
+   */
+  uploaderSettledHandlers: Record<string, UploaderSettledHandler>
+
   /** Drop an uploader's in-flight session creation and abort its controller. */
   cleanupUploader: (uploaderId: string) => void
+
+  /**
+   * Subscribe to this uploader's upload runs settling; returns an unsubscribe.
+   *
+   * The handler receives the run's own {@link BatchUploadResult} — the files that run
+   * processed, including any added while it was in flight — and fires once per run,
+   * after the store has been updated and after `startUpload`'s promise has its value.
+   * A run that settles with the uploader still holding no session delivers nothing.
+   *
+   * At most one handler per uploader id: registering again replaces the previous one,
+   * so a consumer with a deterministic uploader id (a record field, an avatar) can
+   * re-register on every interaction without stacking duplicate deliveries. The
+   * returned unsubscribe only removes the handler while it is still the registered
+   * one, so an unmount cannot clobber a newer registration.
+   */
+  onUploaderSettled: (uploaderId: string, handler: UploaderSettledHandler) => () => void
 
   // Core Orchestration Actions
   initializeUpload: (options: InitializeUploadOptions) => Promise<string>
@@ -110,7 +144,6 @@ export interface OrchestrationSlice {
     files: File[],
     sessionId?: string
   ) => Promise<{ validFiles: File[]; errors: string[] }>
-  handleAPIResponse: (response: any, sessionId: string) => void
   calculateOverallProgress: (sessionId: string) => number
   associateFilesWithSession: (fileIds: string[], sessionId: string) => void
 
@@ -141,6 +174,7 @@ export const createEnhancedOrchestrationSlice: StateCreator<
   inFlight: {} as Record<string, { abort?: () => void }>,
   sessionRuns: {} as Record<string, SessionRun>,
   uploaderRuns: {} as Record<string, UploaderRun>,
+  uploaderSettledHandlers: {} as Record<string, UploaderSettledHandler>,
   transport: httpUploadTransport,
 
   setTransport: (transport: UploadTransport) => {
@@ -154,6 +188,19 @@ export const createEnhancedOrchestrationSlice: StateCreator<
     set((state) => {
       delete state.uploaderRuns[uploaderId]
     })
+  },
+
+  onUploaderSettled: (uploaderId: string, handler: UploaderSettledHandler) => {
+    set((state) => {
+      // A function is not draftable, so Immer stores it as-is and never freezes it.
+      state.uploaderSettledHandlers[uploaderId] = handler
+    })
+    return () => {
+      if (get().uploaderSettledHandlers[uploaderId] !== handler) return
+      set((state) => {
+        delete state.uploaderSettledHandlers[uploaderId]
+      })
+    }
   },
 
   /**
@@ -559,45 +606,6 @@ export const createEnhancedOrchestrationSlice: StateCreator<
   },
 
   /**
-   * Handles API response and updates state accordingly
-   */
-  handleAPIResponse: (response: any, sessionId: string) => {
-    if (response.success) {
-      // Update session status to completed if all files succeeded
-      const session = get().sessions[sessionId]
-      if (session) {
-        const allCompleted = session.fileIds.every((fileId) => {
-          const file = get().files[fileId]
-          return file?.status === 'completed'
-        })
-
-        if (allCompleted) {
-          set((state) => {
-            const sess = state.sessions[sessionId]
-            if (sess) {
-              sess.status = 'completed'
-              sess.updatedAt = new Date()
-              sess.overallProgress = 100
-            }
-          })
-        }
-      }
-    } else {
-      // Handle API errors
-      if (response.errors) {
-        response.errors.forEach((error: any) => {
-          get().addError({
-            message: error.message || error.error || 'Upload failed',
-            fileId: error.fileId,
-            sessionId,
-            recoverable: true,
-          })
-        })
-      }
-    }
-  },
-
-  /**
    * Presigned upload flow - uploads files directly to storage
    * Uses per-file presigned sessions and direct storage uploads
    */
@@ -631,30 +639,61 @@ export const createEnhancedOrchestrationSlice: StateCreator<
     }
 
     // One run per session: a second start joins the run already in flight rather than
-    // uploading the same files twice.
+    // uploading the same files twice. The joined run drains in waves, so files added
+    // before it finishes are carried by it — the one remaining window is an add that
+    // lands after the run's last wave came up empty but before the `finally` below
+    // clears the record, which needs another `startUpload` to pick it up.
     const running = get().sessionRuns[targetSessionId]?.promise
     if (running) return running
 
     const run = async (): Promise<BatchUploadResult> => {
-      // Get files to upload from session
-      const toUpload = session.fileIds
-        .map((id) => get().files[id])
-        .filter((f) => f && (f.status === 'pending' || f.status === 'failed'))
+      /**
+       * Every file id this run has claimed, claimed exactly once. A file that failed
+       * in an earlier wave still reads as `failed` — which is precisely what the
+       * pending filter admits — so without this the run would re-upload it forever.
+       */
+      const claimed = new Set<string>()
+      /** Claim order across every wave: this run's own file list. */
+      const processed: string[] = []
+      const successes: string[] = []
+      const failures: Array<{ id: string; error: string }> = []
 
-      if (toUpload.length === 0) {
+      /**
+       * Whatever is pending in the session right now and not yet claimed.
+       *
+       * Read fresh from the store on every wave, never from the snapshot taken on
+       * entry. Files added WHILE a run is in flight used to be stranded: the join
+       * guard hands a second `startUpload` the first run's promise, and that run's
+       * file list had already been fixed, so nobody ever uploaded them. Draining in
+       * waves is what makes joining a run mean joining a run that carries your files.
+       */
+      const nextWave = (): FileState[] => {
+        const current = get().sessions[targetSessionId]
+        if (!current) return []
+        return current.fileIds
+          .map((id) => get().files[id])
+          .filter(
+            (f): f is FileState =>
+              f !== undefined &&
+              !claimed.has(f.id) &&
+              (f.status === 'pending' || f.status === 'failed')
+          )
+      }
+
+      let wave = nextWave()
+
+      if (wave.length === 0) {
         addError({ message: 'No files to upload', code: 'NO_FILES', recoverable: true })
         return emptyBatchResult()
       }
 
-      // The pool's cursor stays a closure local: it is created per run, and there is at
+      // The pool's cursor stays a closure local: it is reset per wave, and there is at
       // most one run per session, so two sessions cannot interleave through it.
       let fileIndex = 0
-      const successes: string[] = []
-      const failures: Array<{ id: string; error: string }> = []
 
       const processNextFile = async (): Promise<void> => {
         while (true) {
-          const file = toUpload[fileIndex++]
+          const file = wave[fileIndex++]
           if (!file?.file) return
 
           const mimeType = file.mimeType || file.file?.type || 'application/octet-stream'
@@ -792,11 +831,24 @@ export const createEnhancedOrchestrationSlice: StateCreator<
         }
       }
 
-      // Start concurrent processing pool
-      const poolSize = Math.min(maxConcurrency, toUpload.length)
-      await Promise.all(new Array(poolSize).fill(0).map(() => processNextFile()))
+      // One concurrent pool per wave. The loop re-reads the session between waves, so
+      // a file added mid-run is uploaded by this run rather than waiting for the next
+      // `startUpload` that may never come.
+      while (wave.length > 0) {
+        for (const f of wave) claimed.add(f.id)
+        processed.push(...wave.map((f) => f.id))
+        fileIndex = 0
+        const poolSize = Math.min(maxConcurrency, wave.length)
+        await Promise.all(new Array(poolSize).fill(0).map(() => processNextFile()))
+        wave = nextWave()
+      }
 
-      const finalFiles = session.fileIds.map((id) => get().files[id]).filter((f) => f !== undefined)
+      // Run-scoped, not session-scoped. `totalFiles` used to count every file the
+      // session had ever held while `successCount` counted only this run's, so the two
+      // halves of one result disagreed for any session that uploads more than once.
+      // The result now describes exactly what this run did — which is also what
+      // `onUploaderSettled` hands its subscribers.
+      const finalFiles = processed.map((id) => get().files[id]).filter((f) => f !== undefined)
       return {
         totalFiles: finalFiles.length,
         successCount: successes.length,
@@ -809,7 +861,11 @@ export const createEnhancedOrchestrationSlice: StateCreator<
           url: f.url,
           checksum: f.checksum,
         })),
-        overallProgress: get().calculateOverallProgress(targetSessionId),
+        overallProgress: finalFiles.length
+          ? Math.round(
+              finalFiles.reduce((sum, f) => sum + (f.progress ?? 0), 0) / finalFiles.length
+            )
+          : 0,
       }
     }
 
@@ -849,6 +905,25 @@ export const createEnhancedOrchestrationSlice: StateCreator<
           if (failure) target.uploadError = failure
         }
       })
+
+      // Deliver to every uploader currently pointed at this session, after the store
+      // is up to date and outside the Immer producer — a handler is free to read fresh
+      // state and to write back. Nothing sweeps and nothing polls: a settled handler
+      // fires here and nowhere else.
+      if (result) {
+        const settled = result
+        const { uploaderSessions, uploaderSettledHandlers } = get()
+        for (const [uploaderId, mappedSessionId] of Object.entries(uploaderSessions ?? {})) {
+          if (mappedSessionId !== targetSessionId) continue
+          const handler = uploaderSettledHandlers[uploaderId]
+          if (!handler) continue
+          try {
+            handler(settled)
+          } catch (error) {
+            console.error('[uploadStore] onUploaderSettled handler threw', error)
+          }
+        }
+      }
     }
   },
 

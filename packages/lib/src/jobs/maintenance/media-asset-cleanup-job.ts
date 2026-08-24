@@ -13,7 +13,18 @@ import type { JobContext } from '../types'
 const logger = createScopedLogger('media-asset-cleanup-job')
 
 interface MediaAssetCleanupJobData {
-  organizationId: string
+  /**
+   * Restrict the sweep to one organization. **Absent sweeps every
+   * organization**, which is what the hourly schedule wants.
+   *
+   * Until plan 7c the scheduler passed the literal string `'global-cleanup'`
+   * with a `// Will be overridden per org` comment, and nothing overrode it.
+   * The field is a real `eq(MediaAsset.organizationId, …)`, so the job matched
+   * zero rows on every run it had ever made while reporting success — the
+   * inverse of the #1851 shape, where an `organizationId` was accepted and then
+   * never reached the SQL.
+   */
+  organizationId?: string
   options?: {
     maxAgeHours?: number
     batchSize?: number
@@ -38,7 +49,7 @@ export const cleanupExpiredMediaAssetsJob = async (ctx: JobContext<MediaAssetCle
   const { maxAgeHours = 24, batchSize = 100, dryRun = false } = options
 
   logger.info('Starting MediaAsset cleanup job', {
-    organizationId,
+    organizationId: organizationId ?? 'all',
     maxAgeHours,
     batchSize,
     dryRun,
@@ -56,17 +67,20 @@ export const cleanupExpiredMediaAssetsJob = async (ctx: JobContext<MediaAssetCle
     await job.updateProgress(10)
 
     const now = () => new Date()
-    const storage = createS3StoragePort(organizationId)
 
     // Find expired assets using the new expiresAt field
     const currentTime = new Date()
 
-    // Query database directly for expired MediaAssets using the expiresAt field
+    // Query database directly for expired MediaAssets using the expiresAt field.
+    // `organizationId` is read per row rather than taken from the job: this sweep
+    // is cross-organization by default, and the owning org is what resolves
+    // customer storage credentials and scopes every write below.
     const expiredAssets = await db.query.MediaAsset.findMany({
       columns: {
         id: true,
         name: true,
         expiresAt: true,
+        organizationId: true,
       },
       with: {
         currentVersion: {
@@ -84,7 +98,7 @@ export const cleanupExpiredMediaAssetsJob = async (ctx: JobContext<MediaAssetCle
         },
       },
       where: and(
-        eq(schema.MediaAsset.organizationId, organizationId),
+        organizationId ? eq(schema.MediaAsset.organizationId, organizationId) : undefined,
         isNull(schema.MediaAsset.deletedAt),
         lte(schema.MediaAsset.expiresAt, currentTime)
       ),
@@ -92,7 +106,7 @@ export const cleanupExpiredMediaAssetsJob = async (ctx: JobContext<MediaAssetCle
 
     logger.info('Found expired MediaAssets', {
       expiredCount: expiredAssets.length,
-      organizationId,
+      organizationId: organizationId ?? 'all',
     })
 
     await job.updateProgress(30)
@@ -105,12 +119,14 @@ export const cleanupExpiredMediaAssetsJob = async (ctx: JobContext<MediaAssetCle
       for (const asset of batch) {
         try {
           const storageSize = asset.currentVersion?.storageLocation?.size || 0
+          const assetOrgId = asset.organizationId
+          const storage = createS3StoragePort(assetOrgId)
 
           if (!dryRun) {
             // Delete from storage first if we have a storage location
             if (asset.currentVersion?.storageLocation) {
               try {
-                const storageManager = new StorageManager(organizationId)
+                const storageManager = new StorageManager(assetOrgId)
                 await storageManager.deleteFile(asset.currentVersion.storageLocation.id)
                 logger.debug('Deleted file from storage', {
                   assetId: asset.id,
@@ -127,7 +143,7 @@ export const cleanupExpiredMediaAssetsJob = async (ctx: JobContext<MediaAssetCle
 
             // Soft-delete the MediaAsset (and sweep its thumbnails) in one transaction.
             await db.transaction(async (tx) => {
-              const txCtx: FilesCtx = { db: tx, organizationId }
+              const txCtx: FilesCtx = { db: tx, organizationId: assetOrgId }
               const deleted = await deleteAsset(
                 tx,
                 txCtx,
@@ -179,7 +195,7 @@ export const cleanupExpiredMediaAssetsJob = async (ctx: JobContext<MediaAssetCle
     await job.updateProgress(100)
 
     logger.info('MediaAsset cleanup job completed', {
-      organizationId,
+      organizationId: organizationId ?? 'all',
       stats,
       dryRun,
       jobId: job.id,
@@ -187,14 +203,14 @@ export const cleanupExpiredMediaAssetsJob = async (ctx: JobContext<MediaAssetCle
 
     return {
       success: true,
-      organizationId,
+      organizationId: organizationId ?? null,
       stats,
       dryRun,
     }
   } catch (error) {
     logger.error('MediaAsset cleanup job failed', {
       error: error instanceof Error ? error.message : String(error),
-      organizationId,
+      organizationId: organizationId ?? 'all',
       stats,
       jobId: job.id,
     })

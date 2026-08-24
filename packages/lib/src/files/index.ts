@@ -86,23 +86,14 @@ export type { FileUploadParams, FileUploadResult } from './upload/types'
 
 // ============= LIFECYCLE MANAGEMENT =============
 
-// Cleanup Services
-export {
-  cleanupFailedUpload,
-  deleteEntityFiles,
-  deleteExpiredFiles,
-  deleteFilesByIds,
-  deleteOrganizationFiles,
-  deleteOrphanedFiles,
-} from './lifecycle/cleanup-service'
-
-export { deletedFileCleanupJob, orphanedFileCleanupJob } from './lifecycle/orphaned-cleanup'
+// Storage measurement. The three scheduled sweeps that act on it moved to
+// `@auxx/lib/jobs` (`jobs/maintenance/file-cleanup-jobs.ts`) in plan 7c, so
+// `files/lifecycle/` no longer binds the process-wide pool at module scope; the
+// reapers it holds take a `Database` and a storage seam as parameters.
 export {
   calculateStorageUsage,
-  quotaEnforcementCleanupJob,
-  storageQuotaCheckJob,
+  type StorageQuota,
 } from './lifecycle/quota-cleanup'
-export type { OrphanedFileCleanupJobData, OrphanedFileCleanupResult } from './lifecycle/types'
 
 // ============= SHARED TYPES & UTILITIES =============
 
@@ -123,7 +114,6 @@ export type { OrphanedFileCleanupJobData, OrphanedFileCleanupResult } from './li
 //   FileUploadChannels,
 // } from './shared-types'
 
-export { cleanupService } from './cleanup/cleanup-service'
 export type { EntityType } from './types'
 export { ENTITY_TYPES } from './types'
 // The processor hierarchy was deleted in PR 4d; dispatch is the handler records

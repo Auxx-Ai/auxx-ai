@@ -152,9 +152,22 @@ export interface FakeDb {
    * relative to its own statement is not in question.
    */
   wheres: Array<{ table: string; predicate: unknown }>
+  /**
+   * Every table joined onto a `select` chain, in call order.
+   *
+   * Registered names come from {@link MakeDbOptions.tables}, so this is one of
+   * the few *structural* facts about a query the stub can answer. It exists for
+   * a real regression: the storage-quota sum joined the empty legacy `File`
+   * table instead of `FolderFile`, which made every organization read zero bytes
+   * forever, and nothing about the returned rows could have caught it.
+   */
+  joins: Array<{ table: string }>
   /** How many `db.transaction(...)` calls were opened, including nested ones. */
   transactions: number
 }
+
+/** Chain methods that attach another table to a `select`. */
+const JOIN_METHODS = new Set(['innerJoin', 'leftJoin', 'rightJoin', 'fullJoin'])
 
 type Chain = PromiseLike<unknown[]> & Record<string, (...args: unknown[]) => unknown>
 
@@ -228,6 +241,7 @@ export function makeDb(options: MakeDbOptions = {}): FakeDb {
     updates: [],
     deletes: [],
     wheres: [],
+    joins: [],
     transactions: 0,
   }
 
@@ -260,6 +274,7 @@ export function makeDb(options: MakeDbOptions = {}): FakeDb {
           () => selectQueue.shift() ?? [],
           (method, arg) => {
             if (method === 'from') from = name(arg)
+            if (JOIN_METHODS.has(method)) fake.joins.push({ table: name(arg) })
             if (method === 'where') fake.wheres.push({ table: from, predicate: arg })
           }
         )
@@ -277,6 +292,7 @@ export function makeDb(options: MakeDbOptions = {}): FakeDb {
           () => selectQueue.shift() ?? [],
           (method, arg) => {
             if (method === 'from') from = name(arg)
+            if (JOIN_METHODS.has(method)) fake.joins.push({ table: name(arg) })
             if (method === 'where') fake.wheres.push({ table: from, predicate: arg })
           }
         )

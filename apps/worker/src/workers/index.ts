@@ -579,17 +579,29 @@ export async function setupSchedules() {
     { data: { dryRun: false }, opts: { attempts: 1, priority: 5 } }
   )
 
-  // Every hour - Clean up expired MediaAssets (workflow files, etc.)
+  // Every hour - Clean up expired MediaAssets (abandoned drafts, workflow temp files).
+  //
+  // `organizationId` is deliberately absent: it is a real
+  // `eq(MediaAsset.organizationId, …)` filter, and this schedule used to pass the
+  // literal `'global-cleanup'` with a "will be overridden per org" comment that
+  // nothing ever honoured — so the job matched zero rows on every run it had ever
+  // made (plan 7c).
+  //
+  // `dryRun` stays true for now. Turning the sweep on for the first time is a
+  // real behaviour change against rows that have been accumulating since
+  // `expiresAt` shipped, and the assets it targets are abandoned drafts whose
+  // `expiresAt` is cleared by `convertTempAssetToPermanent` on commit. The hourly
+  // "Would delete expired MediaAsset" log is the blast radius; flip this to false
+  // once it reads as expected.
   await maintenanceQueue.upsertJobScheduler(
     'cleanupExpiredMediaAssetsJob',
     { pattern: '0 * * * *' }, // Every hour at minute 0
     {
       data: {
-        organizationId: 'global-cleanup', // Will be overridden per org
         options: {
           maxAgeHours: 1, // Clean up files older than 1 hour with expiration metadata
           batchSize: 50,
-          dryRun: false,
+          dryRun: true,
         },
       },
       opts: {

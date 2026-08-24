@@ -16,6 +16,16 @@ export {
   expiredTrialAccountCleanupJob,
   type OrganizationToDelete,
 } from './expired-trial-account-cleanup-job'
+// The three scheduled file-lifecycle sweeps. They moved out of
+// `files/lifecycle/` in plan 7c so that module no longer binds the pool at
+// module scope; the reapers they call take a `Database` as a parameter.
+export {
+  deletedFileCleanupJob,
+  type FileCleanupJobData,
+  type FileCleanupJobResult,
+  orphanedFileCleanupJob,
+  storageQuotaCheckJob,
+} from './file-cleanup-jobs'
 export { generateThumbnailJob } from './generate-thumbnail-job'
 export { type GettingStartedStats, sendGettingStartedEmailsJob } from './getting-started-job'
 export {

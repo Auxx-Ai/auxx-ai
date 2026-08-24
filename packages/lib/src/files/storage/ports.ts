@@ -204,14 +204,44 @@ export interface QueuePort {
 }
 
 /**
- * Post-commit invalidation and realtime notification.
+ * Post-commit invalidation.
  *
- * Intentionally one stringly-typed method rather than a per-event surface: the
- * ports exist to make ordering assertable ("no bust between BEGIN and COMMIT"),
- * not to type the event catalogue, which lives with the events module.
+ * `bust` is intentionally one stringly-typed method rather than a per-event
+ * surface: the ports exist to make ordering assertable ("no bust between BEGIN
+ * and COMMIT"), not to type the event catalogue, which lives with the cache
+ * module.
+ *
+ * ## Why there are two methods and not one
+ *
+ * They address **two different caches, through two doors that no call site in
+ * the repo pairs**, and collapsing them would make this port silently do more
+ * than every other producer of the same event:
+ *
+ * | | `bust` | `invalidateUser` |
+ * | --- | --- | --- |
+ * | shape | declarative — name the event, `INVALIDATION_GRAPH` picks the keys | imperative — name the target, drop it |
+ * | store | `OrgCache` / `UserCache`, key-addressed | the tag-indexed `dehydrated:v2` namespace |
+ * | production door | `cache/invalidate.ts` `onCacheEvent` | `DehydrationService.invalidateUser` |
+ *
+ * The tempting collapse is `bust('user.updated', { orgId, userId })` also
+ * dropping the dehydrated snapshot. It is wrong: six other `user.updated`
+ * producers (`auth/server.ts`, `routers/user.ts` ×3, the demo session route, data
+ * migration 058) invalidate the graph keys and *not* dehydration, and four
+ * `invalidateUser` producers (`permissions/profiles`, `grant-service`,
+ * `organization-service`) do the reverse. Widening the event for this one caller
+ * would give the files path a different meaning for `user.updated` than
+ * everywhere else — two doors that disagree, which is the failure mode this
+ * subsystem keeps rediscovering.
+ *
+ * `invalidateUser` takes no `organizationId` because the dehydration cache is
+ * tag-indexed on `user:${userId}` alone; adding one would imply a scoping that
+ * the store does not have.
  */
 export interface CachePort {
+  /** Declarative invalidation: the event name, and the context the graph reads. */
   bust(event: string, payload: Record<string, unknown>): Promise<void>
+  /** Drop this user's dehydrated snapshot whole. */
+  invalidateUser(userId: string): Promise<void>
 }
 
 // ============= Production implementation =============

@@ -79,14 +79,6 @@ export const createUnifiedSessionSlice: StateCreator<
       set((state) => {
         state.sessions[sessionId] = session
         state.activeSessionId = sessionId
-
-        // DEPRECATED: Still set global config for backward compatibility
-        // Will be removed in future update
-        state.entityConfig = {
-          entityType: options.entityType,
-          entityId: options.entityId,
-          metadata: options.metadata || {},
-        }
         return state
       })
 

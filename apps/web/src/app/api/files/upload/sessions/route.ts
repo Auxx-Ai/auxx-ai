@@ -128,7 +128,10 @@ export async function POST(request: NextRequest) {
       )
       if (storageLimit !== null && storageLimit !== '+' && typeof storageLimit === 'number') {
         const storageLimitBytes = storageLimit * 1024 * 1024 * 1024
-        const quota = await calculateStorageUsage(session.user.defaultOrganizationId)
+        const quota = await calculateStorageUsage({
+          db,
+          organizationId: session.user.defaultOrganizationId,
+        })
         const projectedUsage = quota.totalUsed + sessionRequest.expectedSize
         if (projectedUsage > storageLimitBytes) {
           const currentGb = Math.round((quota.totalUsed / (1024 * 1024 * 1024)) * 100) / 100

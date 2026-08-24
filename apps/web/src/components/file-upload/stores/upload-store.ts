@@ -3,7 +3,6 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { createEntitySlice } from './slices/entity-slice'
 import { createFileSlice } from './slices/file-slice'
 import { createEnhancedOrchestrationSlice } from './slices/orchestration-slice'
 import { createUnifiedSessionSlice } from './slices/session-slice'
@@ -21,7 +20,6 @@ export const useUploadStore = create<UploadStore>()(
       ...createFileSlice(...a),
       ...createUISlice(...a),
       ...createEnhancedOrchestrationSlice(...a),
-      ...createEntitySlice(...a),
     }))
   )
 )

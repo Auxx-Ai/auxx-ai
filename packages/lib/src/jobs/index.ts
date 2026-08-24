@@ -175,6 +175,15 @@ export {
   expiredTrialAccountCleanupJob,
   type OrganizationToDelete,
 } from './maintenance/expired-trial-account-cleanup-job'
+// The three scheduled file-lifecycle sweeps (plan 7c moved them out of
+// `@auxx/lib/files`, which now exports only the measurement).
+export {
+  deletedFileCleanupJob,
+  type FileCleanupJobData,
+  type FileCleanupJobResult,
+  orphanedFileCleanupJob,
+  storageQuotaCheckJob,
+} from './maintenance/file-cleanup-jobs'
 export { generateThumbnailJob, generateThumbnailSchema } from './maintenance/generate-thumbnail-job'
 export {
   type GettingStartedStats,

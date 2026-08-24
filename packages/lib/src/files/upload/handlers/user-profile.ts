@@ -80,17 +80,23 @@ export const userProfileHandler: UploadHandler = {
   /**
    * Bust what renders the avatar.
    *
-   * Both imports are lazy: they are the cold path, and `files/` reaching
-   * `cache/` or `dehydration/` at module scope is an import cycle waiting to
-   * happen. Each is guarded on its own so a failing dehydration bust does not
-   * cost the agents bust — they invalidate different readers.
+   * Two caches, because they are genuinely two: the dehydrated per-user snapshot
+   * (tag-indexed on `user:${id}`) and the org `agents` key. Each is guarded on
+   * its own so a failing dehydration bust does not cost the agents bust — they
+   * invalidate different readers.
+   *
+   * Both go through `deps.cache` rather than the `await import('../../../cache')`
+   * they used before PR 6c. The lazy import was there to avoid a module-scope
+   * cycle (`cache/providers/user-profile-provider.ts` imports `files/`); that
+   * concern now lives once, inside `storage/cache-port.ts`, and the visible cost
+   * of the old arrangement was that neither call appeared in the journal the
+   * "no bust between BEGIN and COMMIT" test reads.
    */
-  async afterCommit(ctx, _deps, _result, session) {
+  async afterCommit(ctx, deps, _result, session) {
     const targetUserId = session.entityId || session.userId
 
     try {
-      const { DehydrationService } = await import('../../../dehydration')
-      await new DehydrationService().invalidateUser(targetUserId)
+      await deps.cache.invalidateUser(targetUserId)
     } catch (error) {
       logger.error('Failed to invalidate the dehydrated user after an avatar upload', {
         sessionId: session.id,
@@ -106,8 +112,7 @@ export const userProfileHandler: UploadHandler = {
     if (!session.entityId || session.entityId === session.userId) return
 
     try {
-      const { onCacheEvent } = await import('../../../cache')
-      await onCacheEvent('agent.updated', { orgId: ctx.organizationId })
+      await deps.cache.bust('agent.updated', { orgId: ctx.organizationId })
     } catch (error) {
       logger.error('Failed to bust the agents cache after an agent avatar upload', {
         sessionId: session.id,

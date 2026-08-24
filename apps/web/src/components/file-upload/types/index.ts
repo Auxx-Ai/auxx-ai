@@ -22,6 +22,5 @@ export type {
   UploadSessionOptions,
   UploadStatus,
   UseFileUploadSessionReturn,
-  UseFileUploadSSEReturn,
   UseUploadQueueReturn,
 } from './upload-progress'

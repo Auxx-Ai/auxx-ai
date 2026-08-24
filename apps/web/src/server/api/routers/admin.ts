@@ -469,7 +469,10 @@ export const adminRouter = createTRPCRouter({
         FeatureKey.storageGbHard
       )
       const { calculateStorageUsage } = await import('@auxx/lib/files/lifecycle/quota-cleanup')
-      const storageQuota = await calculateStorageUsage(input.organizationId)
+      const storageQuota = await calculateStorageUsage({
+        db: ctx.db,
+        organizationId: input.organizationId,
+      })
 
       const limitGb =
         storageLimitRaw === '+'

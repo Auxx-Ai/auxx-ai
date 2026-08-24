@@ -3,6 +3,7 @@
 import { database as db } from '@auxx/database'
 import {
   completeUpload,
+  createProductionCachePort,
   createProductionQueuePort,
   createS3StoragePort,
   failUploadSession,
@@ -74,6 +75,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       {
         storage: createS3StoragePort(session.organizationId),
         queue: createProductionQueuePort(),
+        // Post-commit invalidation only. The `USER_PROFILE` and `CHAT_WIDGET`
+        // handlers used to lazily import `@auxx/lib/cache` themselves, which put
+        // their busts outside every ordering guarantee the ports provide (PR 6c).
+        cache: createProductionCachePort(),
         now,
         redis,
       },

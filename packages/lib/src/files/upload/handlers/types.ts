@@ -95,11 +95,13 @@ export type UploadPersistDeps = Pick<FilesDeps, 'now'>
 /**
  * What {@link UploadHandler.afterCommit} may touch.
  *
- * No `db` beyond `ctx`, and deliberately no `cache`: the two cache busts this
- * path performs are still lazy imports (see `upload/post-commit.ts`), because
- * there is no production {@link FilesDeps.cache} factory to hand a route yet.
+ * No `db` beyond `ctx`. `cache` arrived in PR 6c along with
+ * `createProductionCachePort()`; before it, `USER_PROFILE` and `CHAT_WIDGET`
+ * busted through `await import('../../../cache')`, which is invisible to the
+ * journal the ordering test reads — so the one property the ports exist to prove
+ * was not being proved for the only two calls that had ever broken it.
  */
-export type UploadAfterCommitDeps = Pick<FilesDeps, 'storage' | 'queue' | 'now'>
+export type UploadAfterCommitDeps = Pick<FilesDeps, 'storage' | 'queue' | 'cache' | 'now'>
 
 /**
  * The derived renditions an entity type's uploads produce, enqueued **after**
