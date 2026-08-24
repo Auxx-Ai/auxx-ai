@@ -1,6 +1,6 @@
 // apps/web/src/components/file-upload/transport/types.ts
 
-import type { EntityType } from '@auxx/lib/files/types'
+import type { EntityType } from '@auxx/lib/files/client'
 
 /**
  * The wire contract between the browser uploader and `/api/files/upload/*`.
@@ -123,4 +123,14 @@ export interface UploadTransport {
 
   /** Tell the server the bytes landed, and get back the rows it produced. */
   completeSession(sessionId: string, body: CompletionInput): Promise<CompletionResult>
+
+  /**
+   * Abandon a session so the server releases any multipart upload it opened.
+   *
+   * Best-effort by contract: a rejected promise must never fail the cancel that
+   * called it. S3 holds and bills for the parts of an incomplete multipart
+   * upload indefinitely, so skipping this leaks them until the bucket's
+   * `AbortIncompleteMultipartUpload` lifecycle rule expires them.
+   */
+  abortSession(sessionId: string): Promise<void>
 }

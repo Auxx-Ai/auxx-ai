@@ -1,6 +1,6 @@
 'use client'
 
-import type { BatchUploadResult, EntityType, UploadResult } from '@auxx/lib/files/types'
+import type { BatchUploadResult, EntityType, UploadResult } from '@auxx/lib/files/client'
 import { generateId } from '@auxx/utils/generateId'
 import * as React from 'react'
 import { useShallow } from 'zustand/react/shallow'

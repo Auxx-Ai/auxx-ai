@@ -1,6 +1,6 @@
 // apps/web/src/components/file-upload/stores/__tests__/uploader-settled.test.ts
 
-import type { BatchUploadResult } from '@auxx/lib/files/types'
+import type { BatchUploadResult } from '@auxx/lib/files/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeUploadTransport } from '../../transport/__fixtures__/fake-upload-transport'
 import type { DirectUploadResult } from '../../transport/types'

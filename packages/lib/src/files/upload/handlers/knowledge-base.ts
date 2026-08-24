@@ -2,17 +2,14 @@
 
 import { schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { ENTITY_TYPES } from '../../types/entities'
-import { ASSET_MAX_TTL_SEC, assertRowInOrg, LOGO_MIME_TYPES, logoColumnUpdate, MB } from './shared'
+import { UPLOAD_POLICIES } from '../../types/entities'
+import { assertRowInOrg, logoColumnUpdate } from './shared'
 import type { UploadHandler } from './types'
 
 /** Knowledge-base branding: the light and dark logo variants. */
 export const knowledgeBaseHandler: UploadHandler = {
-  entityType: ENTITY_TYPES.KNOWLEDGE_BASE,
+  ...UPLOAD_POLICIES.KNOWLEDGE_BASE,
   visibility: 'PUBLIC',
-  maxFileSize: 10 * MB,
-  allowedMimeTypes: LOGO_MIME_TYPES,
-  maxTtlSec: ASSET_MAX_TTL_SEC,
   assetKind: 'THUMBNAIL',
   persist: 'asset+attachment',
 

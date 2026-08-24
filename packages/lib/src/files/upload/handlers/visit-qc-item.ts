@@ -1,8 +1,8 @@
 // packages/lib/src/files/upload/handlers/visit-qc-item.ts
 
 import { schema } from '@auxx/database'
-import { ENTITY_TYPES } from '../../types/entities'
-import { ASSET_MAX_TTL_SEC, assertRowInOrg, MB } from './shared'
+import { UPLOAD_POLICIES } from '../../types/entities'
+import { assertRowInOrg } from './shared'
 import type { UploadHandler } from './types'
 
 /**
@@ -19,28 +19,8 @@ import type { UploadHandler } from './types'
  * what makes that unrepresentable now.
  */
 export const visitQcItemHandler: UploadHandler = {
-  entityType: ENTITY_TYPES.VISIT_QC_ITEM,
+  ...UPLOAD_POLICIES.visit_qc_item,
   visibility: 'PRIVATE',
-  maxFileSize: 25 * MB,
-  /**
-   * Images only, and no `image/*` wildcard — that would admit `image/svg+xml`,
-   * an XSS vector when uploaded files are served from our origin.
-   *
-   * HEIC/HEIF are included because the strip's input is `accept='image/*'
-   * capture='environment'` and does **not** run `convertHeicToJpeg`
-   * (`components/files/utils/convert-heic.ts`), which is in any case
-   * best-effort — it only decodes in Safari and otherwise hands back the
-   * original HEIC file. Rejecting HEIC here would drop iPhone captures.
-   */
-  allowedMimeTypes: [
-    'image/jpeg',
-    'image/png',
-    'image/webp',
-    'image/gif',
-    'image/heic',
-    'image/heif',
-  ],
-  maxTtlSec: ASSET_MAX_TTL_SEC,
   assetKind: 'INLINE_IMAGE',
   persist: 'asset+attachment',
 

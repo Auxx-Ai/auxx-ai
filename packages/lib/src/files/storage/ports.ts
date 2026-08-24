@@ -81,6 +81,18 @@ export interface CompleteMultipartParams extends ObjectRef {
   parts: Array<{ partNumber: number; etag: string }>
 }
 
+/**
+ * Releases an unfinished multipart upload. `bucket` must be the bucket the
+ * upload was started in.
+ *
+ * S3 holds the parts of an incomplete multipart upload, and bills for them,
+ * indefinitely — nothing expires them without an explicit abort or an
+ * `AbortIncompleteMultipartUpload` lifecycle rule on the bucket.
+ */
+export interface AbortMultipartParams extends ObjectRef {
+  uploadId: string
+}
+
 /** Metadata probe. `versionId` targets a specific object version where the provider has them. */
 export interface HeadParams extends ObjectRef {
   versionId?: string
@@ -171,6 +183,11 @@ export interface StoragePort {
   startMultipart(p: PresignUploadParams): Promise<MultipartUpload>
   presignPart(p: PresignPartParams): Promise<PresignedUpload>
   completeMultipart(p: CompleteMultipartParams): Promise<{ etag: string; size?: number }>
+  /**
+   * Releases a multipart upload that will never be completed. Best-effort:
+   * callers must not let a failed abort fail the cancel that triggered it.
+   */
+  abortMultipart(p: AbortMultipartParams): Promise<void>
   head(p: HeadParams): Promise<HeadResult>
   putObject(p: PutObjectParams): Promise<PutResult>
   getObject(p: GetObjectParams): Promise<Buffer>
@@ -349,6 +366,14 @@ export function createS3StoragePort(organizationId?: string): StoragePort {
         key: p.key,
         uploadId: p.uploadId,
         parts: p.parts,
+        bucket: p.bucket,
+        auth: await resolveAuth(p.bucket, p.credentialId),
+      }),
+
+    abortMultipart: async (p) =>
+      (await s3()).abortMultipart({
+        key: p.key,
+        uploadId: p.uploadId,
         bucket: p.bucket,
         auth: await resolveAuth(p.bucket, p.credentialId),
       }),

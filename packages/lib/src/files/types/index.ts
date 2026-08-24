@@ -12,9 +12,9 @@ export type {
   BaseEntityMetadata,
   CustomFieldFileMetadata,
   DatasetFileMetadata,
-  EntityCapabilities,
   EntityFileMetadata,
   EntityUploadConfig,
+  EntityUploadPolicy,
   FileStatus,
   FileVisibility,
   KnowledgeBaseFileMetadata,
@@ -28,8 +28,8 @@ export {
   ENTITY_CONFIGS,
   ENTITY_TYPES,
   type EntityType,
-  getEntityCapabilities,
   getEntityConfig,
+  UPLOAD_POLICIES,
 } from './entities'
 // Event types
 export type {

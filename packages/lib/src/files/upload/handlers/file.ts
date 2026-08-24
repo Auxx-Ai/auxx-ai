@@ -1,7 +1,6 @@
 // packages/lib/src/files/upload/handlers/file.ts
 
-import { ENTITY_TYPES } from '../../types/entities'
-import { MB } from './shared'
+import { UPLOAD_POLICIES } from '../../types/entities'
 import type { UploadHandler } from './types'
 
 /**
@@ -12,14 +11,7 @@ import type { UploadHandler } from './types'
  * whose whole prepare path touches no database at all.
  */
 export const fileHandler: UploadHandler = {
-  entityType: ENTITY_TYPES.FILE,
+  ...UPLOAD_POLICIES.FILE,
   visibility: 'PRIVATE',
-  // `FileProcessor` never clamped the base policy's permissive range, so a user
-  // file has no server-side ceiling here. The org's storage quota is the real
-  // limit and the route checks it before this runs.
-  maxFileSize: Number.MAX_SAFE_INTEGER,
-  allowedMimeTypes: ['*/*'],
-  maxTtlSec: 60 * 60,
-  multipartThresholdBytes: 100 * MB,
   persist: 'folder-file',
 }

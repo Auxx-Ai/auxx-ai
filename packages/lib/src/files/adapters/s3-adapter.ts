@@ -4,6 +4,7 @@ import { Readable } from 'node:stream'
 import { configService } from '@auxx/credentials'
 import { encodeRFC5987ValueChars } from '@auxx/utils'
 import {
+  AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   DeleteObjectCommand,
@@ -486,7 +487,11 @@ export class S3Adapter extends BaseStorageAdapter {
 
       return {
         uploadId: response.UploadId,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days (S3 default)
+        // How long the presigned PART URLs stay signable — NOT an expiry on the
+        // upload. S3 has no default expiry for an incomplete multipart upload:
+        // its parts are held, and billed, until `abortMultipart` runs or an
+        // `AbortIncompleteMultipartUpload` lifecycle rule expires them.
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       }
     } catch (error) {
       this.handleS3Error(error, 'startMultipart')
@@ -578,6 +583,49 @@ export class S3Adapter extends BaseStorageAdapter {
       }
     } catch (error) {
       this.handleS3Error(error, 'completeMultipart')
+    }
+  }
+
+  /**
+   * Release an unfinished S3 multipart upload.
+   *
+   * S3 keeps the parts of an incomplete multipart upload, and bills for them,
+   * until something aborts it — there is no expiry. `startMultipart` returning
+   * an `expiresAt` does NOT change that: it describes the presigned part URLs,
+   * not the upload.
+   *
+   * `params.bucket` is required for the same reason as everywhere else in this
+   * adapter, with one extra twist: aborting against the wrong bucket raises
+   * `NoSuchUpload` rather than succeeding silently, so a mistake here is loud
+   * but still leaves the real parts behind.
+   *
+   * Treated as best-effort by callers: an abort that fails must never fail the
+   * cancel it is cleaning up after. The lifecycle rule on the bucket is the
+   * backstop for the case no code can reach — a browser that goes away
+   * mid-upload never calls this at all.
+   */
+  async abortMultipart(params: {
+    key: string
+    uploadId: string
+    bucket?: string
+    auth?: ProviderAuth
+  }): Promise<void> {
+    this.requireCapability('presignUpload')
+
+    try {
+      const bucket = assertBucket(params.bucket, 'S3 abortMultipart')
+
+      const client = this.createS3Client(params.auth)
+
+      await client.send(
+        new AbortMultipartUploadCommand({
+          Bucket: bucket,
+          Key: params.key,
+          UploadId: params.uploadId,
+        })
+      )
+    } catch (error) {
+      this.handleS3Error(error, 'abortMultipart')
     }
   }
 

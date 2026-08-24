@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { EntityType } from '@auxx/lib/files/types'
+import type { EntityType } from '@auxx/lib/files/client'
 import { type FileRef, getFileRefDownloadUrl, toFileRef } from '@auxx/types/file-ref'
 import { Button } from '@auxx/ui/components/button'
 import {

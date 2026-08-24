@@ -1,6 +1,6 @@
 // apps/web/src/components/file-upload/transport/server-id.ts
 
-import type { ServerIdKind } from '@auxx/lib/files/types'
+import type { ServerIdKind } from '@auxx/lib/files/client'
 import type { CompletionResult } from './types'
 
 /** Which server record a completion produced, and its id. */

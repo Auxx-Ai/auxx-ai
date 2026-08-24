@@ -1,6 +1,6 @@
 // apps/web/src/components/file-upload/stores/slices/session-slice.ts
 
-import { ENTITY_TYPES } from '@auxx/lib/files/types'
+import { ENTITY_TYPES } from '@auxx/lib/files/client'
 import { generateId } from '@auxx/utils/generateId'
 import type { StateCreator } from 'zustand'
 import type { CreateSessionOptions, SessionState, UploadStore } from '../types'

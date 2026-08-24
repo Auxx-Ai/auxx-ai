@@ -1,7 +1,7 @@
 // apps/web/src/components/file-upload/stores/slices/file-slice.ts
 
-import type { EntityType, UploadProgress } from '@auxx/lib/files/types'
-import { getEntityConfig } from '@auxx/lib/files/types'
+import type { EntityType, UploadProgress } from '@auxx/lib/files/client'
+import { getEntityConfig } from '@auxx/lib/files/client'
 import { generateId } from '@auxx/utils/generateId'
 import type { StateCreator } from 'zustand'
 import { isFileInFlight } from '../file-status'

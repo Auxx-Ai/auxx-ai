@@ -41,6 +41,13 @@ export const publicBucket = new sst.aws.Bucket('PublicAssets', {
           // Applies to all thumbnails across all orgs
           transitions: [{ days: 90, storageClass: 'INTELLIGENT_TIERING' }],
         },
+        {
+          // PUBLIC uploads go multipart too (a large ARTICLE cover, a workflow
+          // artifact), so the same backstop is required here.
+          id: 'AbortIncompleteMultipartUploads',
+          enabled: true,
+          abortIncompleteMultipartUploadDays: 7,
+        },
       ],
 
       tags: {
@@ -79,10 +86,14 @@ export const privateBucket = new sst.aws.Bucket('PrivateAssets', {
       // Aggressive cleanup for private files
       lifecycleRules: [
         {
-          id: 'DeleteTempFiles',
+          // S3 matches a lifecycle prefix from the START of the key, and every
+          // key here begins with the org id (`{orgId}/file/temp/...`), so the
+          // old `temp/` prefix matched nothing at all — verified against
+          // auxx-dev-private, zero objects. No prefix means every object is
+          // considered, and only the abort below acts on anything.
+          id: 'AbortIncompleteMultipartUploads',
           enabled: true,
-          prefix: 'temp/',
-          expirations: [{ days: 7 }], // Auto-delete temp files
+          abortIncompleteMultipartUploadDays: 7,
         },
         {
           id: 'DeleteOldVersions',

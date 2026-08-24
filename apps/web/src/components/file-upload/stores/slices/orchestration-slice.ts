@@ -1,7 +1,7 @@
 // apps/web/src/components/file-upload/stores/slices/orchestration-slice.ts
 
-import type { BatchUploadResult, EntityType } from '@auxx/lib/files/types'
-import { getEntityConfig } from '@auxx/lib/files/types'
+import type { BatchUploadResult, EntityType } from '@auxx/lib/files/client'
+import { getEntityConfig } from '@auxx/lib/files/client'
 import type { StateCreator } from 'zustand'
 import type { UploadTransport } from '../../transport'
 import { httpUploadTransport, isUploadTransportError, resolveServerId } from '../../transport'
@@ -950,6 +950,30 @@ export const createEnhancedOrchestrationSlice: StateCreator<
     // nothing to scope to, so fall back to the old blanket abort.
     const abortIds = session ? session.fileIds : Object.keys(inFlight)
     abortIds.forEach((fileId) => inFlight[fileId]?.abort?.())
+
+    // Aborting the handle stops the browser sending, but a multipart upload has
+    // server-side state the browser cannot reach: S3 holds and bills for every
+    // part already delivered, with no expiry, until the upload is aborted. Tell
+    // the server before the file records are cleared, since `serverFileId` is
+    // where the upload-session nanoid lives.
+    //
+    // `serverIdKind` is checked because that field is overwritten with a real
+    // record id once a file completes (§11.3), and a completed upload must never
+    // be abandoned — its rows are already written.
+    const { files: filesById, transport } = get()
+    abortIds
+      .map((fileId) => filesById[fileId])
+      .filter(
+        (f): f is NonNullable<typeof f> & { serverFileId: string } =>
+          Boolean(f?.serverFileId) && f?.metadata?.serverIdKind === 'session'
+      )
+      .forEach((f) => {
+        // Deliberately not awaited and never rethrown: cancellation is
+        // synchronous from the user's point of view, and a failed abort costs
+        // storage the bucket's lifecycle rule reclaims, not correctness.
+        void transport.abortSession(f.serverFileId).catch(() => {})
+      })
+
     set((state) => {
       abortIds.forEach((fileId) => {
         delete state.inFlight[fileId]

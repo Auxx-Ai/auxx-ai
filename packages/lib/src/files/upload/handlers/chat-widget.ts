@@ -3,19 +3,16 @@
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
-import { ENTITY_TYPES } from '../../types/entities'
-import { ASSET_MAX_TTL_SEC, assertRowInOrg, LOGO_MIME_TYPES, logoColumnUpdate, MB } from './shared'
+import { UPLOAD_POLICIES } from '../../types/entities'
+import { assertRowInOrg, logoColumnUpdate } from './shared'
 import type { UploadHandler } from './types'
 
 const logger = createScopedLogger('upload-handler-chat-widget')
 
 /** Embedded chat-widget branding. Rendered at one fixed size, so no presets. */
 export const chatWidgetHandler: UploadHandler = {
-  entityType: ENTITY_TYPES.CHAT_WIDGET,
+  ...UPLOAD_POLICIES.CHAT_WIDGET,
   visibility: 'PUBLIC',
-  maxFileSize: 10 * MB,
-  allowedMimeTypes: LOGO_MIME_TYPES,
-  maxTtlSec: ASSET_MAX_TTL_SEC,
   assetKind: 'THUMBNAIL',
   persist: 'asset+attachment',
 
