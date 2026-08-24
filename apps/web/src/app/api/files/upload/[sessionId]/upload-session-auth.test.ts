@@ -14,17 +14,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * caller cannot use the 404-vs-403 split to probe for live session ids.
  */
 
-const { getSession, getUploadSession, touchUploadSession, patchUploadSession } = vi.hoisted(() => ({
+const {
+  getSession,
+  getUploadSession,
+  touchUploadSession,
+  failUploadSession,
+  completeUpload,
+  presignPart,
+} = vi.hoisted(() => ({
   getSession: vi.fn(),
   getUploadSession: vi.fn(),
   touchUploadSession: vi.fn(),
-  patchUploadSession: vi.fn(),
+  failUploadSession: vi.fn(),
+  completeUpload: vi.fn(async () => ({ isErr: () => false, value: {} })),
+  presignPart: vi.fn(async () => ({ isErr: () => false, value: { url: 'https://s3/part' } })),
 }))
 
 vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 vi.mock('~/auth/server', () => ({ auth: { api: { getSession } } }))
-vi.mock('~/server/api/trpc', () => ({ isAuxxError: () => false }))
 vi.mock('@auxx/database', () => ({ database: { transaction: vi.fn() }, schema: {} }))
 // The `@auxx/lib/files/server` barrel drags in the AWS SDK and the processor
 // registry; none of it is reachable before the gate, which is the point.
@@ -32,23 +40,13 @@ vi.mock('@auxx/lib/files/server', () => ({
   uploadSessionRedis: vi.fn(async () => ({})),
   getUploadSession,
   touchUploadSession,
-  patchUploadSession,
-  createStorageManager: vi.fn(),
-  ensureProcessorsInitialized: vi.fn(),
-  ProcessorRegistry: { getForEntityType: vi.fn() },
-  UploadErrorHandler: {
-    handleUploadError: vi.fn(async () => new Response('{}', { status: 500 })),
-    validationError: vi.fn(() => new Response('{}', { status: 400 })),
-    sessionNotFound: vi.fn(() => new Response('{}', { status: 404 })),
-    unauthorized: vi.fn(() => new Response('{}', { status: 401 })),
-  },
-  cleanupService: { scheduleCleanup: vi.fn() },
-  MediaAssetService: vi.fn(),
-  createProductionQueuePort: vi.fn(() => ({
-    enqueueThumbnail: vi.fn(async () => 'job-1'),
-    enqueueStorageCleanup: vi.fn(async () => 'job-2'),
-  })),
-  ensureThumbnail: vi.fn(async () => ({ isErr: () => false, value: { status: 'queued' } })),
+  failUploadSession,
+  completeUpload,
+  presignPart,
+  createS3StoragePort: vi.fn(() => ({})),
+  createProductionQueuePort: vi.fn(() => ({})),
+  uploadErrorResponse: vi.fn(() => new Response('{}', { status: 500 })),
+  uploadValidationError: vi.fn(() => new Response('{}', { status: 400 })),
 }))
 
 const { POST: completePost } = await import('./complete/route')
@@ -160,5 +158,30 @@ describe.each([
     const res = await call(request())
 
     expect(res.status).toBe(404)
+  })
+})
+
+/**
+ * PR 4e's deliberate change, and the follow-up PR 4c's retro asked for.
+ *
+ * `UploadErrorHandler.handleUploadError` wrote `status: 'failed'` for every error
+ * it saw, and the parts route called it on both catch paths — so one failed part
+ * presign killed a multipart upload that was otherwise fine. A part presign
+ * mutates nothing, so there is no half-run state for the `failed` status to
+ * protect a retry from; it only made `complete` refuse the session while leaving
+ * the S3 multipart upload orphaned.
+ */
+describe('parts — a failed presign leaves the session usable', () => {
+  it('returns the error without marking the session failed', async () => {
+    signedInAs(USER_ID)
+    presignPart.mockResolvedValueOnce({
+      isErr: () => true,
+      error: new Error('S3 threw'),
+    } as never)
+
+    const res = await partsPost(partsRequest(), params)
+
+    expect(res.status).toBe(500)
+    expect(failUploadSession).not.toHaveBeenCalled()
   })
 })

@@ -4,10 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * `POST /api/files/upload/sessions` is a raw App Router handler, so no
- * `auxxErrorMiddleware` runs on it. `ProcessorRegistry.getForEntityType` now
- * throws `BadRequestError` for an unregistered entity type instead of silently
- * defaulting to `FileProcessor` (plan §1.7), and the explicit map below is what
- * gives that its own status.
+ * `auxxErrorMiddleware` runs on it. `prepareUpload` surfaces a `BadRequestError`
+ * for an entity type with no processor instead of silently defaulting to
+ * `FileProcessor` (plan §1.7), and the explicit map in the route is what gives
+ * that its own status.
  *
  * PR 4c deleted the substring classifier behind `handleUploadError`, so the
  * fallback path no longer *needs* this branch to keep an AuxxError's status —
@@ -16,12 +16,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * `{ error: <message>, errorType, retryable, code }`. The `files.manage` 403
  * body must stay `{ error: 'FORBIDDEN', message }`, which is what the second
  * case below pins.
+ *
+ * PR 4e moved the orchestration into `prepareUpload`, so the route's failure
+ * surface is now exactly "whatever `Result` came back", which is what these
+ * cases drive.
  */
 
-const { getSession, getForEntityType, requirePermission, calculateStorageUsage, getLimit, logger } =
+const { getSession, prepareUpload, requirePermission, calculateStorageUsage, getLimit, logger } =
   vi.hoisted(() => ({
     getSession: vi.fn(),
-    getForEntityType: vi.fn(),
+    prepareUpload: vi.fn(),
     requirePermission: vi.fn(),
     calculateStorageUsage: vi.fn(),
     getLimit: vi.fn(),
@@ -40,6 +44,7 @@ vi.mock('@auxx/logger', async () =>
 )
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 vi.mock('~/auth/server', () => ({ auth: { api: { getSession } } }))
+vi.mock('@auxx/database', () => ({ database: { transaction: vi.fn() }, schema: {} }))
 
 // Faithful to `~/server/api/trpc`'s exported guard; the `name` + `statusCode`
 // branch there exists only for dual module copies, which the vitest source
@@ -50,20 +55,12 @@ vi.mock('~/server/api/trpc', async () => {
 })
 
 vi.mock('@auxx/lib/files/server', () => ({
-  createStorageManager: () => ({
-    generatePresignedUploadUrl: vi.fn(),
-    startMultipartUploadFromConfig: vi.fn(),
-  }),
-  ensureProcessorsInitialized: vi.fn(),
-  ProcessorRegistry: { getForEntityType },
+  prepareUpload,
+  createS3StoragePort: vi.fn(() => ({})),
   uploadSessionRedis: vi.fn(async () => ({})),
-  createUploadSession: vi.fn(),
-  patchUploadSession: vi.fn(),
-  UploadErrorHandler: {
-    handleUploadError: vi.fn(async () => new Response('{}', { status: 500 })),
-    validationError: vi.fn(() => new Response('{}', { status: 400 })),
-    unauthorized: vi.fn(() => new Response('{}', { status: 401 })),
-  },
+  uploadErrorResponse: vi.fn(() => new Response('{}', { status: 500 })),
+  uploadUnauthorizedError: vi.fn(() => new Response('{}', { status: 401 })),
+  uploadValidationError: vi.fn(() => new Response('{}', { status: 400 })),
 }))
 
 vi.mock('@auxx/lib/permissions', () => ({
@@ -80,6 +77,9 @@ const { POST } = await import('./route')
 
 const ORG_ID = 'org_cuid000000000000000000000'
 const USER_ID = 'usr_cuid000000000000000000000'
+
+/** `prepareUpload` returns a neverthrow `Result`; only these two members are read. */
+const errResult = (error: unknown) => ({ isErr: () => true, error }) as never
 
 const request = (entityType: string) =>
   new Request('http://localhost/api/files/upload/sessions', {
@@ -100,10 +100,10 @@ beforeEach(() => {
 })
 
 describe('POST sessions — AuxxError keeps its own status', () => {
-  it('400s a BadRequestError from the processor registry, not 500', async () => {
-    getForEntityType.mockImplementation(() => {
-      throw new BadRequestError('No upload processor for entity type: visit_qc_item')
-    })
+  it('400s a BadRequestError from the upload preparation, not 500', async () => {
+    prepareUpload.mockResolvedValue(
+      errResult(new BadRequestError('No upload processor for entity type: visit_qc_item'))
+    )
 
     const res = await POST(request('MESSAGE'))
 
@@ -124,15 +124,15 @@ describe('POST sessions — AuxxError keeps its own status', () => {
       error: 'FORBIDDEN',
       message: 'Missing permission: files.manage',
     })
+    // The gate runs before any work is attempted.
+    expect(prepareUpload).not.toHaveBeenCalled()
   })
 })
 
 describe('POST sessions — the storage quota gate', () => {
   it('logs at error, not warn, when the fail-open gate swallows a failure', async () => {
     getLimit.mockRejectedValue(new Error('feature service down'))
-    getForEntityType.mockImplementation(() => {
-      throw new BadRequestError('stop here')
-    })
+    prepareUpload.mockResolvedValue(errResult(new BadRequestError('stop here')))
 
     await POST(request('MESSAGE'))
 
@@ -141,5 +141,74 @@ describe('POST sessions — the storage quota gate', () => {
       expect.objectContaining({ error: 'feature service down' })
     )
     expect(logger.warn).not.toHaveBeenCalled()
+  })
+
+  it('403s with the USAGE_LIMIT body the UI parses, before preparing anything', async () => {
+    getLimit.mockResolvedValue(1)
+    calculateStorageUsage.mockResolvedValue({ totalUsed: 2 * 1024 * 1024 * 1024 })
+
+    const res = await POST(request('MESSAGE'))
+
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({
+      error: 'USAGE_LIMIT',
+      details: { metric: 'storageGb', upgradeRequired: 'true' },
+    })
+    expect(prepareUpload).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST sessions — the success bodies', () => {
+  it('emits the single-shot wire shape', async () => {
+    prepareUpload.mockResolvedValue({
+      isErr: () => false,
+      value: {
+        sessionId: 'sess_1',
+        strategy: 'single',
+        storageKey: 'org/a.png',
+        expiresAt: new Date('2026-01-01T00:00:00.000Z'),
+        warnings: [],
+        httpMethod: 'PUT',
+        presignedUrl: 'https://s3/upload',
+      },
+    } as never)
+
+    const res = await POST(request('MESSAGE'))
+
+    expect(await res.json()).toEqual({
+      sessionId: 'sess_1',
+      storageKey: 'org/a.png',
+      expiresAt: '2026-01-01T00:00:00.000Z',
+      warnings: [],
+      uploadMethod: 'single',
+      uploadType: 'PUT',
+      presignedUrl: 'https://s3/upload',
+    })
+  })
+
+  it('emits the multipart wire shape, including the part endpoint', async () => {
+    prepareUpload.mockResolvedValue({
+      isErr: () => false,
+      value: {
+        sessionId: 'sess_2',
+        strategy: 'multipart',
+        storageKey: 'org/big.zip',
+        expiresAt: new Date('2026-01-01T00:00:00.000Z'),
+        warnings: [],
+        uploadId: 'mpu-1',
+      },
+    } as never)
+
+    const res = await POST(request('MESSAGE'))
+
+    expect(await res.json()).toEqual({
+      sessionId: 'sess_2',
+      storageKey: 'org/big.zip',
+      expiresAt: '2026-01-01T00:00:00.000Z',
+      warnings: [],
+      uploadMethod: 'multipart',
+      uploadId: 'mpu-1',
+      partPresignEndpoint: '/api/files/upload/sess_2/parts',
+    })
   })
 })

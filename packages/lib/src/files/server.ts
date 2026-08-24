@@ -216,6 +216,7 @@ export { createS3StoragePort } from './storage/ports'
 // lives behind `core/thumbnail-processor.worker.ts` and is reached only by the
 // worker job — so this subpath keeps its "no sharp" promise.
 export { createProductionQueuePort } from './storage/queue-port'
+export { presignPart } from './storage/presign'
 export type { StorageDownloadParams } from './storage/storage-manager'
 export { createStorageManager, StorageManager } from './storage/storage-manager'
 export type {
@@ -249,9 +250,12 @@ export {
   uploadUnauthorizedError,
   uploadValidationError,
 } from './upload/errors'
-// The deprecated adapter over `upload/errors.ts`, deleted in PR 4e.
-export { UploadErrorHandler } from './upload/error-handling'
 export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
+// The upload orchestration the three API routes used to inline (PR 4e).
+export type { CompletedUpload, CompleteUploadDeps, CompleteUploadInput } from './upload/complete'
+export { completeUpload } from './upload/complete'
+export type { PreparedUpload, PrepareUploadDeps } from './upload/prepare'
+export { prepareUpload } from './upload/prepare'
 // Upload/session orchestration (no image processing)
 export {
   createUploadSession,
