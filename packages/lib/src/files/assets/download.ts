@@ -17,10 +17,12 @@ import type {
 } from '@auxx/database/types'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { AuxxError, NotFoundError } from '../../errors'
+import type { AuxxError } from '../../errors'
+import { NotFoundError } from '../../errors'
 import type { DownloadRef } from '../adapters/base-adapter'
 import type { FilesCtx, FilesDeps } from '../ctx'
 import { guard } from '../guard'
+import { requireLocationBucket } from '../storage/buckets'
 
 /**
  * The collaborators this read needs — storage, and nothing else.
@@ -117,22 +119,12 @@ async function resolveVersion(
 /**
  * Read the bucket off the `StorageLocation` row, and refuse to invent one.
  *
- * Bugs #1816/#1817/#1818 all ended the same way: no bucket at the call site, a
- * fallback to `S3_PRIVATE_BUCKET`, and S3 answering `204 No Content` for a
- * delete aimed at a key that was never in the bucket we named — so objects
- * leaked with no error anywhere. A row with no bucket is a data defect, and a
- * 500 that names the row is strictly better than a signed URL for the wrong
- * bucket, which fails later, elsewhere, and looks like an auth problem.
+ * Delegates to the shared {@link requireLocationBucket} in `storage/buckets.ts`
+ * so `folder-files/download.ts` cannot grow a second copy of the rule — the
+ * bucket policy is one function, not one per library.
  */
 function requireBucket(location: StorageLocationEntity, assetId: string): string {
-  const bucket = (location.metadata as { bucket?: unknown } | null)?.bucket
-  if (typeof bucket !== 'string' || bucket.length === 0) {
-    throw new AuxxError(
-      `StorageLocation ${location.id} has no metadata.bucket; refusing to fall back to a configured default`,
-      { storageLocationId: location.id, assetId }
-    )
-  }
-  return bucket
+  return requireLocationBucket(location, { assetId })
 }
 
 /**
