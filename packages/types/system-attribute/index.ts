@@ -355,6 +355,19 @@ export const SYSTEM_ATTRIBUTES = [
   'product_status',
   'product_parts', // inverse of part_product
 
+  // ─── GL Posting fields ──────────────────────────────────────────
+  // One summary journal entry pushed to the general ledger
+  // (plans/auxx-lift/gap-b-quickbooks-journal-entry.md §6.2). The external
+  // QuickBooks id is NOT here — it is an app-owned identity field declared in
+  // the QuickBooks app's fields.ts, so it goes away with the connection.
+  'gl_posting_doc_number',
+  'gl_posting_posting_type',
+  'gl_posting_period_key',
+  'gl_posting_status',
+  'gl_posting_total_debit',
+  'gl_posting_posted_at',
+  'gl_posting_failure_reason',
+
   // ─── Catalog Group fields ───────────────────────────────────────
   'catalog_group_name',
   'catalog_group_description',

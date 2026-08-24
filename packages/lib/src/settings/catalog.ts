@@ -809,6 +809,21 @@ export const SETTINGS_CATALOG = {
     defaultValue: null,
     description: 'QBO income account id used when auto-creating service items.',
   },
+
+  // ── QuickBooks general-ledger posting (plans/auxx-lift/gap-b-execution-plan.md) ─────────
+  'quickbooks.postJournalEntries': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    // Off by default, and deliberately a separate switch from `syncInvoices`:
+    // a journal entry hits the financial statements directly, with no invoice or
+    // payment to reconcile it against. Turning on invoice sync must never turn
+    // this on as a side effect.
+    defaultValue: false,
+    description:
+      'When on, accrual summaries are posted to the QuickBooks general ledger as journal entries.',
+  },
 } satisfies Record<string, SettingConfig>
 
 /**

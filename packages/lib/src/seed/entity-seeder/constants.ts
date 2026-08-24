@@ -221,6 +221,18 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'teal',
     isVisible: true,
   },
+  {
+    entityType: 'gl_posting',
+    apiSlug: 'gl-postings',
+    singular: 'GL Posting',
+    plural: 'GL Postings',
+    icon: 'book-open',
+    color: 'gray',
+    // Written only by the QuickBooks poster, mirroring `payment`. Seeded for
+    // every org but meaningful only to one that posts to a general ledger, so
+    // it stays out of the sidebar; Gap G's close console is the read surface.
+    isVisible: false,
+  },
 ]
 
 /**
@@ -325,6 +337,10 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
     primaryDisplayField: 'title',
     secondaryDisplayField: 'vendor',
     avatarField: 'image',
+  },
+  gl_posting: {
+    primaryDisplayField: 'docNumber',
+    secondaryDisplayField: 'periodKey',
   },
 }
 
