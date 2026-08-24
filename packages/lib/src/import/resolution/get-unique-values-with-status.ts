@@ -86,7 +86,10 @@ function buildFieldConfig(mappingProp: {
   // Derive base type from resolution type
   const resolutionType = mappingProp.resolutionType
   let type = 'text'
-  if (resolutionType.startsWith('number:')) type = 'number'
+  // `currency:*` stores an integer in `valueNumber` exactly like NUMBER does,
+  // so the review editor treats it as a number, not as free text.
+  if (resolutionType.startsWith('number:') || resolutionType.startsWith('currency:'))
+    type = 'number'
   else if (resolutionType.startsWith('date')) type = 'date'
   else if (resolutionType.startsWith('boolean:')) type = 'boolean'
   else if (resolutionType.startsWith('select:')) type = 'enum'

@@ -3,6 +3,7 @@
 import type { ResolutionConfig, ResolutionType, ResolvedValue } from '../types/resolution'
 import { resolveArraySplit } from './resolvers/array'
 import { resolveBoolean } from './resolvers/boolean'
+import { resolveCurrencyMajor } from './resolvers/currency'
 import {
   resolveDateCustom,
   resolveDateIso,
@@ -33,6 +34,7 @@ const RESOLVER_REGISTRY: Record<ResolutionType, ResolverFn> = {
   'text:cuid': resolveTextCuid,
   'number:integer': resolveInteger,
   'number:decimal': resolveDecimal,
+  'currency:major': resolveCurrencyMajor,
   'date:iso': resolveDateIso,
   'date:custom': resolveDateCustom,
   'datetime:iso': resolveDatetimeIso,

@@ -49,9 +49,15 @@ export function suggestResolutionType(
     case 'integer':
       return 'number:integer'
 
+    // Money is stored as INTEGER MINOR UNITS, so a decimal resolver is wrong
+    // twice over: `12.34` reaches the write path as `12.34` and is rejected
+    // ("CURRENCY values are integer minor units"), while `12` imports silently
+    // as 12 cents. `currency:major` scales by the field's own exponent.
+    case 'currency':
+      return 'currency:major'
+
     case 'decimal':
     case 'float':
-    case 'currency':
       return 'number:decimal'
 
     case 'date':
@@ -144,9 +150,14 @@ export function getValidResolutionTypes(fieldType: string): ResolutionType[] {
     case 'integer':
       return ['number:integer', 'number:decimal', 'text:value']
 
+    // `number:integer` stays on offer for a file that ALREADY holds minor
+    // units (an accounting export in cents). The labels are what keep the two
+    // apart — see RESOLUTION_TYPE_LABELS.
+    case 'currency':
+      return ['currency:major', 'number:integer', 'text:value']
+
     case 'decimal':
     case 'float':
-    case 'currency':
       return ['number:decimal', 'number:integer', 'text:value']
 
     case 'date':

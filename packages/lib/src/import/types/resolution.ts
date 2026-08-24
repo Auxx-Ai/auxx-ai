@@ -9,6 +9,7 @@ export type ResolutionType =
   | 'text:cuid' // Parse as cuid2 ID (for matching existing records)
   | 'number:integer' // Parse integer
   | 'number:decimal' // Parse decimal
+  | 'currency:major' // Money as humans write it ("12.34") → integer minor units
   | 'date:iso' // ISO date
   | 'date:custom' // Custom date format
   | 'datetime:iso' // ISO datetime
@@ -35,6 +36,21 @@ export interface ResolutionConfig {
   timestampFormat?: string
   numberDecimalSeparator?: string
   arraySeparator?: string
+
+  /**
+   * ISO 4217 code of the TARGET CURRENCY field, resolved through the
+   * `field → org → USD` chain (`resolveCurrencyCode` / `getOrgCurrencyCode`).
+   *
+   * Read by `currency:major` to pick the minor-unit exponent — 2 for USD/EUR,
+   * 0 for JPY, 3 for KWD. Never hardcode 100.
+   *
+   * 🛑 NOT persisted by `saveMappingProperty`, and it must stay that way. A
+   * field with no `options.currencyCode` INHERITS `organization.currency`, so a
+   * copy frozen into the column's stored config at mapping time would keep
+   * scaling by the old exponent after the org changed its setting. It is
+   * resolved fresh each run, in `resolve-values-job`.
+   */
+  currencyCode?: string
   options?: SelectOption[]
 
   /**

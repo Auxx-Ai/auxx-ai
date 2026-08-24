@@ -27,4 +27,9 @@ export {
   sortByIdentifierPreference,
   TIER_2_IDENTIFIER_NOTE,
 } from './identifier-eligibility'
+export {
+  getResolutionTypeLabel,
+  RESOLUTION_TYPE_LABELS,
+  type ResolutionTypeLabel,
+} from './resolution-type-labels'
 export { getValidResolutionTypes, suggestResolutionType } from './suggest-resolution-type'

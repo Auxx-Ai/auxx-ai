@@ -3,6 +3,14 @@
 export { resolveArraySplit } from './array'
 export { resolveBoolean } from './boolean'
 export {
+  type CurrencyParseFailure,
+  type CurrencyParseOptions,
+  type CurrencyParseResult,
+  type CurrencyParseSuccess,
+  parseCurrencyMajorToMinor,
+  resolveCurrencyMajor,
+} from './currency'
+export {
   resolveDateCustom,
   resolveDateIso,
   resolveDatetimeCustom,
