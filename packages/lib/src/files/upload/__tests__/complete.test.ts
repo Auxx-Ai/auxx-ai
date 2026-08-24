@@ -1,28 +1,38 @@
 // packages/lib/src/files/upload/__tests__/complete.test.ts
 
 /**
- * The contract `apps/web/.../complete/post-commit-thumbnails.test.ts` used to
- * hold, moved down to where the behaviour now lives.
+ * `completeUpload` end to end, against the real handler dispatch.
  *
- * That test needed **eleven** `vi.mock` factories — `@auxx/database`,
- * `@auxx/lib/files/server`, `@auxx/lib/cache`, `@auxx/lib/dehydration`,
- * `~/auth/server`, `next/headers`, … — to reach four assertions about which
- * thumbnail presets get enqueued, because the logic was inlined in a Next.js
- * route handler. It also modelled the "global connection" hazard with a
- * hand-rolled `versionStore` that only advanced when the mocked `db.transaction`
- * resolved.
+ * ## What changed in PR 4d
  *
- * Here the same property is a structural one, and the support kit's shared
- * journal states it directly: **nothing but database statements may appear
- * between `begin` and `commit`**. A thumbnail enqueued before `COMMIT` resolves
- * its source asset on its own connection, reads the pre-transaction
- * `currentVersionId`, answers `ready` against the previous version, and a
- * re-uploaded avatar serves the old image forever (Tier-1 §1.3, guide §10.3).
- * `journal.between('begin', 'commit')` is that bug, in one assertion.
+ * This file used to register a **stub processor** through
+ * `ProcessorRegistry.registerForEntity` and assert that `completeUpload` called
+ * it. That proved the orchestration called *something*; it could not prove the
+ * something wrote the right rows, because the real persistence was four levels
+ * of `super` away behind three service constructions.
+ *
+ * `persistUpload` takes `tx` as a parameter and dispatches on
+ * `handler.persist`, so there is nothing left to stub: the assertions below run
+ * the actual writes against the support kit's db stub and check which tables
+ * were touched, in which order, on which side of `COMMIT`.
+ *
+ * ## The two properties this file exists for
+ *
+ * 1. **Nothing but database statements between `BEGIN` and `COMMIT`.** A
+ *    thumbnail enqueued before `COMMIT` resolves its source asset on its own
+ *    connection, reads the pre-transaction `currentVersionId`, answers `ready`
+ *    against the previous version, and a re-uploaded avatar serves the old image
+ *    forever (Tier-1 §1.3, guide §10.3). `journal.between('begin', 'commit')` is
+ *    that bug, in one assertion.
+ * 2. **The `EntityType` decides which rows exist.** `FILE` produces a
+ *    `FolderFile` and no `assetId`; `KNOWLEDGE_BASE` produces a `MediaAsset`, an
+ *    `Attachment` and a logo pointer. Picking the wrong one is silent in
+ *    production (guide §11.3), so it is loud here.
  *
  * `vi.mock` count in this file: **zero**.
  */
 
+import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   anAsset,
@@ -37,18 +47,19 @@ import {
   TEST_IDS,
 } from '../../__tests__/support'
 import type { FilesCtx } from '../../ctx'
-import type { EntityType } from '../../types/entities'
+import { ENTITY_TYPES, type EntityType } from '../../types/entities'
 import { type CompleteUploadDeps, completeUpload } from '../complete'
-import { ensureProcessorsInitialized, ProcessorRegistry } from '../processors'
-import type { BaseProcessor } from '../processors/base-processor'
 import type { PresignedUploadSession } from '../session-types'
 
 const SESSION_ID = 'sess_nanoid_000000000000'
 const SESSION_KEY = `upload:session:${SESSION_ID}`
+const LOCATION_ID = 'loc_completed_upload'
 const ASSET_ID = 'ast_completed_upload'
 const VERSION_ID = 'ver_completed_upload'
+const ATTACHMENT_ID = 'att_completed_upload'
+const FILE_ID = 'fil_completed_upload'
 
-/** A finished, single-shot, PUBLIC upload of a 1 KB PNG. */
+/** A finished, single-shot, PUBLIC upload of a 1 KB PNG against a knowledge base. */
 function aSession(overrides: Partial<PresignedUploadSession> = {}): PresignedUploadSession {
   const clock = makeClock()
   return {
@@ -56,7 +67,7 @@ function aSession(overrides: Partial<PresignedUploadSession> = {}): PresignedUpl
     id: SESSION_ID,
     organizationId: TEST_IDS.organizationId,
     userId: TEST_IDS.userId,
-    entityType: 'KNOWLEDGE_BASE' as EntityType,
+    entityType: ENTITY_TYPES.KNOWLEDGE_BASE as EntityType,
     entityId: 'kb_test',
     fileName: 'logo.png',
     mimeType: 'image/png',
@@ -83,30 +94,6 @@ function aSession(overrides: Partial<PresignedUploadSession> = {}): PresignedUpl
   }
 }
 
-/**
- * A processor stub registered through the registry's own public API.
- *
- * `completeUpload` still dispatches persistence through `ProcessorRegistry` —
- * PR 4d is what replaces that with `persistUpload` + `handler.persist` — so the
- * registry is the seam a test has to use. `registerForEntity` overwrites, and
- * Vitest gives each file its own module graph, so this cannot leak.
- */
-function registerStubProcessor(entityType: EntityType, assetId: string | undefined) {
-  const calls: Array<{ storageLocationId: string; hasTx: boolean }> = []
-
-  ensureProcessorsInitialized()
-  ProcessorRegistry.registerForEntity(entityType, () => {
-    return {
-      async process(_session: unknown, storageLocationId: string, opts?: { tx?: unknown }) {
-        calls.push({ storageLocationId, hasTx: !!opts?.tx })
-        return { assetId, storageLocationId }
-      },
-    } as unknown as BaseProcessor
-  })
-
-  return calls
-}
-
 interface Harness {
   ctx: FilesCtx
   deps: CompleteUploadDeps
@@ -119,20 +106,64 @@ interface Harness {
   seed(session: PresignedUploadSession): void
 }
 
-function harness(): Harness {
+/**
+ * The rows the asset path needs, in the order the writes ask for them.
+ *
+ * The stub is dumb by design (`__tests__/support/db.ts`) — it does not read a
+ * `where` — so a queue entry per call is how a test says "this lookup hits".
+ */
+function assetPathRows() {
+  return {
+    insert: [
+      [aStorageLocation({ id: LOCATION_ID, externalUrl: 'https://cdn.test/logo.png' })],
+      [anAsset({ id: ASSET_ID, isPrivate: false })],
+      [{ id: VERSION_ID, assetId: ASSET_ID, versionNumber: 1 }],
+      [{ id: ATTACHMENT_ID }],
+    ],
+    query: {
+      // 1. `requireAsset` inside `createAssetVersion`.
+      // 2. the post-commit thumbnail fan-out's source lookup.
+      MediaAsset: [
+        anAsset({ id: ASSET_ID, currentVersionId: VERSION_ID, isPrivate: false }),
+        anAsset({ id: ASSET_ID, currentVersionId: VERSION_ID, isPrivate: false }),
+      ],
+      // Empty: the new asset has no prior version, and every preset misses and
+      // therefore enqueues.
+      MediaAssetVersion: [],
+      StorageLocation: [aStorageLocation({ id: LOCATION_ID })],
+    },
+  }
+}
+
+/**
+ * Register the real table references so the journal carries names.
+ *
+ * Under Vitest this package's setup replaces `@auxx/database`'s `schema` with a
+ * memoised proxy handing out bare `{}` objects, so a table cannot name itself
+ * (`__tests__/support/db.ts`). Identity is still stable, which is what this map
+ * relies on — and naming the tables is the whole point of the assertions below.
+ */
+const TABLES = {
+  StorageLocation: schema.StorageLocation,
+  MediaAsset: schema.MediaAsset,
+  MediaAssetVersion: schema.MediaAssetVersion,
+  Attachment: schema.Attachment,
+  FolderFile: schema.FolderFile,
+  FileVersion: schema.FileVersion,
+  KnowledgeBase: schema.KnowledgeBase,
+}
+
+function harness(overrides: Parameters<typeof makeDb>[0] = {}): Harness {
   const journal = makeJournal()
   const clock = makeClock()
+  const rows = assetPathRows()
 
   const db = makeDb({
     journal,
-    // The `StorageLocation` INSERT ... RETURNING, then the thumbnail fan-out's
-    // asset lookup. `MediaAssetVersion` is left empty so every preset misses and
-    // therefore enqueues.
-    insert: [[aStorageLocation({ id: 'loc_completed_upload' })]],
-    query: {
-      MediaAsset: [anAsset({ id: ASSET_ID, currentVersionId: VERSION_ID, isPrivate: false })],
-      MediaAssetVersion: [],
-    },
+    tables: TABLES,
+    insert: overrides.insert ?? rows.insert,
+    query: overrides.query ?? rows.query,
+    select: overrides.select,
   })
 
   const storage = makeStoragePort({
@@ -154,6 +185,8 @@ function harness(): Harness {
   }
 }
 
+const COMPLETION = { size: 1024, mimeType: 'image/png' }
+
 describe('completeUpload — phase boundaries', () => {
   let h: Harness
 
@@ -161,17 +194,11 @@ describe('completeUpload — phase boundaries', () => {
     h = harness()
   })
 
-  const seed = (session: PresignedUploadSession) => h.seed(session)
-
   it('does no non-database work between BEGIN and COMMIT', async () => {
     const session = aSession()
-    seed(session)
-    registerStubProcessor(session.entityType, ASSET_ID)
+    h.seed(session)
 
-    const result = await completeUpload(h.ctx, h.deps, session, {
-      size: 1024,
-      mimeType: 'image/png',
-    })
+    const result = await completeUpload(h.ctx, h.deps, session, COMPLETION)
 
     expect(result.isOk()).toBe(true)
 
@@ -182,58 +209,103 @@ describe('completeUpload — phase boundaries', () => {
 
   it('opens exactly one transaction', async () => {
     const session = aSession()
-    seed(session)
-    registerStubProcessor(session.entityType, ASSET_ID)
+    h.seed(session)
 
-    await completeUpload(h.ctx, h.deps, session, { size: 1024, mimeType: 'image/png' })
+    await completeUpload(h.ctx, h.deps, session, COMPLETION)
 
+    // `persistUpload` never calls `tx.transaction(...)`, which Drizzle answers
+    // with a SAVEPOINT — the trap #1851 hit and what three of the processors did.
     expect(h.db.transactions).toBe(1)
     expect(h.journal.ops('db').filter((op) => op === 'begin')).toHaveLength(1)
   })
+})
 
-  it('hands the persistence step the transaction, not the pool', async () => {
+describe('completeUpload — the entity type decides the rows', () => {
+  it('KNOWLEDGE_BASE writes an asset, a version, an attachment and the logo pointer', async () => {
+    const h = harness()
     const session = aSession()
-    seed(session)
-    const calls = registerStubProcessor(session.entityType, ASSET_ID)
+    h.seed(session)
 
-    await completeUpload(h.ctx, h.deps, session, { size: 1024, mimeType: 'image/png' })
-
-    expect(calls).toEqual([{ storageLocationId: 'loc_completed_upload', hasTx: true }])
-  })
-
-  it('reports the rows the persistence step created', async () => {
-    const session = aSession()
-    seed(session)
-    registerStubProcessor(session.entityType, ASSET_ID)
-
-    const result = await completeUpload(h.ctx, h.deps, session, {
-      size: 1024,
-      mimeType: 'image/png',
-    })
+    const result = await completeUpload(h.ctx, h.deps, session, COMPLETION)
 
     expect(result._unsafeUnwrap()).toMatchObject({
       sessionId: SESSION_ID,
-      storageLocationId: 'loc_completed_upload',
+      storageLocationId: LOCATION_ID,
       assetId: ASSET_ID,
+      attachmentId: ATTACHMENT_ID,
     })
+    expect(result._unsafeUnwrap().fileId).toBeUndefined()
+
+    expect(h.db.inserts.map((row) => row.table)).toEqual([
+      'StorageLocation',
+      'MediaAsset',
+      'MediaAssetVersion',
+      'Attachment',
+    ])
+    // The logo pointer is written inside the same transaction as the asset, so
+    // a failure later in the completion cannot leave a KB pointing at nothing.
+    expect(h.db.updates.map((row) => row.table)).toContain('KnowledgeBase')
+  })
+
+  it('the asset it creates is public, because the session is', async () => {
+    const h = harness()
+    h.seed(aSession())
+
+    await completeUpload(h.ctx, h.deps, aSession(), COMPLETION)
+
+    const asset = h.db.inserts.find((row) => row.table === 'MediaAsset')
+    // `isPrivate` comes from `session.visibility`, not a per-processor field —
+    // which is what made `DatasetAssetProcessor`'s lowercase `'private'` route
+    // dataset documents to the public bucket and record them as non-private.
+    expect(asset?.values).toMatchObject({ isPrivate: false, kind: 'THUMBNAIL' })
+  })
+
+  it('FILE writes a FolderFile and no MediaAsset', async () => {
+    const h = harness({
+      insert: [
+        [aStorageLocation({ id: LOCATION_ID })],
+        [{ id: FILE_ID, name: 'logo.png', path: '/logo.png' }],
+        [{ id: 'fver_1', fileId: FILE_ID, versionNumber: 1 }],
+      ],
+      query: {
+        FileVersion: [],
+        StorageLocation: [aStorageLocation({ id: LOCATION_ID })],
+      },
+      select: [
+        // `resolveUniqueFilePath`'s collision probe: nothing takes the path.
+        [],
+        // `requireFolderFile`, inside `createFileVersion`.
+        [{ id: FILE_ID, name: 'logo.png' }],
+      ],
+    })
+    const session = aSession({
+      entityType: ENTITY_TYPES.FILE as EntityType,
+      entityId: undefined,
+      visibility: 'PRIVATE',
+      bucket: TEST_BUCKETS.private,
+    })
+    h.seed(session)
+
+    const result = await completeUpload(h.ctx, h.deps, session, COMPLETION)
+
+    const completed = result._unsafeUnwrap()
+    expect(completed.fileId).toBe(FILE_ID)
+    expect(completed.assetId).toBeUndefined()
+    expect(completed.attachmentId).toBeUndefined()
+    expect(h.db.inserts.map((row) => row.table)).toEqual([
+      'StorageLocation',
+      'FolderFile',
+      'FileVersion',
+    ])
   })
 })
 
 describe('completeUpload — post-commit thumbnails', () => {
-  let h: Harness
-
-  beforeEach(() => {
-    h = harness()
-  })
-
-  const seed = (session: PresignedUploadSession) => h.seed(session)
-
   it('enqueues both KB logo presets, after the commit', async () => {
-    const session = aSession()
-    seed(session)
-    registerStubProcessor(session.entityType, ASSET_ID)
+    const h = harness()
+    h.seed(aSession())
 
-    await completeUpload(h.ctx, h.deps, session, { size: 1024, mimeType: 'image/png' })
+    await completeUpload(h.ctx, h.deps, aSession(), COMPLETION)
 
     const presets = h.queue
       .callsTo('enqueueThumbnail')
@@ -247,22 +319,17 @@ describe('completeUpload — post-commit thumbnails', () => {
     expect(firstEnqueue).toBeGreaterThan(commitAt)
   })
 
-  it('enqueues nothing for an entity type with no presets', async () => {
-    const session = aSession({ entityType: 'MESSAGE' as EntityType })
-    seed(session)
-    registerStubProcessor(session.entityType, ASSET_ID)
+  it('enqueues nothing for an entity type whose handler declares none', async () => {
+    const h = harness()
+    const session = aSession({
+      entityType: ENTITY_TYPES.MESSAGE as EntityType,
+      entityId: 'msg_test',
+      visibility: 'PRIVATE',
+      bucket: TEST_BUCKETS.private,
+    })
+    h.seed(session)
 
-    await completeUpload(h.ctx, h.deps, session, { size: 1024, mimeType: 'image/png' })
-
-    expect(h.queue.callsTo('enqueueThumbnail')).toHaveLength(0)
-  })
-
-  it('enqueues nothing when the persistence step created no asset', async () => {
-    const session = aSession()
-    seed(session)
-    registerStubProcessor(session.entityType, undefined)
-
-    await completeUpload(h.ctx, h.deps, session, { size: 1024, mimeType: 'image/png' })
+    await completeUpload(h.ctx, h.deps, session, COMPLETION)
 
     expect(h.queue.callsTo('enqueueThumbnail')).toHaveLength(0)
   })
@@ -275,17 +342,11 @@ describe('completeUpload — refusals and compensation', () => {
     h = harness()
   })
 
-  const seed = (session: PresignedUploadSession) => h.seed(session)
-
   it('400s a session that has already failed, without touching storage', async () => {
     const session = aSession({ status: 'failed' })
-    seed(session)
-    registerStubProcessor(session.entityType, ASSET_ID)
+    h.seed(session)
 
-    const result = await completeUpload(h.ctx, h.deps, session, {
-      size: 1024,
-      mimeType: 'image/png',
-    })
+    const result = await completeUpload(h.ctx, h.deps, session, COMPLETION)
 
     expect(result._unsafeUnwrapErr().statusCode).toBe(400)
     expect(h.storage.calls).toHaveLength(0)
@@ -293,21 +354,16 @@ describe('completeUpload — refusals and compensation', () => {
 
   it('400s a multipart completion that names no parts', async () => {
     const session = aSession({ isMultipart: true, uploadId: 'mpu-1' })
-    seed(session)
-    registerStubProcessor(session.entityType, ASSET_ID)
+    h.seed(session)
 
-    const result = await completeUpload(h.ctx, h.deps, session, {
-      size: 1024,
-      mimeType: 'image/png',
-    })
+    const result = await completeUpload(h.ctx, h.deps, session, COMPLETION)
 
     expect(result._unsafeUnwrapErr().statusCode).toBe(400)
   })
 
   it('422s an object whose delivered size contradicts the session', async () => {
     const session = aSession()
-    seed(session)
-    registerStubProcessor(session.entityType, ASSET_ID)
+    h.seed(session)
 
     h.storage = makeStoragePort({
       journal: h.journal,
@@ -315,36 +371,28 @@ describe('completeUpload — refusals and compensation', () => {
     })
     h.deps = { ...h.deps, storage: h.storage.port }
 
-    const result = await completeUpload(h.ctx, h.deps, session, {
-      size: 1024,
-      mimeType: 'image/png',
-    })
+    const result = await completeUpload(h.ctx, h.deps, session, COMPLETION)
 
     expect(result._unsafeUnwrapErr().statusCode).toBe(422)
     expect(h.db.transactions).toBe(0)
   })
 
   it('deletes the object from the bucket it was written to when the transaction fails', async () => {
+    // The `MediaAsset` insert answers no row, which is what a rejected statement
+    // looks like through `RETURNING`.
+    const failing = harness({
+      insert: [[aStorageLocation({ id: LOCATION_ID })], []],
+      query: assetPathRows().query,
+    })
     const session = aSession()
-    seed(session)
+    failing.seed(session)
 
-    ensureProcessorsInitialized()
-    ProcessorRegistry.registerForEntity(session.entityType, () => {
-      return {
-        async process() {
-          throw new Error('persistence blew up')
-        },
-      } as unknown as BaseProcessor
-    })
-
-    const result = await completeUpload(h.ctx, h.deps, session, {
-      size: 1024,
-      mimeType: 'image/png',
-    })
+    const result = await completeUpload(failing.ctx, failing.deps, session, COMPLETION)
 
     expect(result.isErr()).toBe(true)
+    expect(failing.journal.ops('db')).toContain('rollback')
 
-    const deletes = h.storage.callsTo('deleteObject')
+    const deletes = failing.storage.callsTo('deleteObject')
     expect(deletes).toHaveLength(1)
     // A wrong bucket here is invisible: S3 answers 204 for a key that is not in
     // the bucket you named, so the object leaks silently (#1816/#1817/#1818).
@@ -353,11 +401,15 @@ describe('completeUpload — refusals and compensation', () => {
   })
 
   it('falls back to a durable cleanup job when the immediate delete fails', async () => {
+    const failing = harness({
+      insert: [[aStorageLocation({ id: LOCATION_ID })], []],
+      query: assetPathRows().query,
+    })
     const session = aSession()
-    seed(session)
+    failing.seed(session)
 
-    h.storage = makeStoragePort({
-      journal: h.journal,
+    const storage = makeStoragePort({
+      journal: failing.journal,
       results: { head: { size: 1024, mimeType: 'image/png', etagOrRev: 'etag-b' } },
       impl: {
         deleteObject: async () => {
@@ -365,20 +417,15 @@ describe('completeUpload — refusals and compensation', () => {
         },
       },
     })
-    h.deps = { ...h.deps, storage: h.storage.port }
 
-    ensureProcessorsInitialized()
-    ProcessorRegistry.registerForEntity(session.entityType, () => {
-      return {
-        async process() {
-          throw new Error('persistence blew up')
-        },
-      } as unknown as BaseProcessor
-    })
+    await completeUpload(
+      failing.ctx,
+      { ...failing.deps, storage: storage.port },
+      session,
+      COMPLETION
+    )
 
-    await completeUpload(h.ctx, h.deps, session, { size: 1024, mimeType: 'image/png' })
-
-    const cleanups = h.queue.callsTo('enqueueStorageCleanup')
+    const cleanups = failing.queue.callsTo('enqueueStorageCleanup')
     expect(cleanups).toHaveLength(1)
     expect(cleanups[0]?.params.bucket).toBe(TEST_BUCKETS.public)
   })

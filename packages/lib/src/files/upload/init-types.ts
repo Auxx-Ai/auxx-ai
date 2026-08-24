@@ -25,6 +25,16 @@ export type UploadPolicy = {
   contentLengthRange: [number, number]
   maxTtl: number
   allowedMimeTypes: string[]
+  /**
+   * Extensions a `CUSTOM_FIELD` upload's own field narrows to.
+   *
+   * **Recorded, not enforced.** `enforceUploadPolicy` has no extension rule, so
+   * this has never been read by anything — `CustomFieldProcessor` wrote it onto
+   * the policy through an `as any` cast and nothing downstream looked. Typed
+   * here rather than deleted so the intent stays visible and the cast goes away;
+   * enforcing it is a deliberate decision, not a refactor.
+   */
+  allowedExtensions?: string[]
 }
 
 /**

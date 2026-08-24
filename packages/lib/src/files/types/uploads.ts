@@ -76,9 +76,9 @@ export interface UploadProgress {
 /**
  * Which kind of server record an upload actually produced.
  *
- * - `'asset'` — an attachment/asset processor created a `MediaAsset` (and usually an
- *   `Attachment`); the reported id is a `MediaAsset` id.
- * - `'file'` — `FileProcessor` created a `FolderFile`; there is no `MediaAsset`.
+ * - `'asset'` — the upload handler's `persist` strategy created a `MediaAsset`
+ *   (and usually an `Attachment`); the reported id is a `MediaAsset` id.
+ * - `'file'` — a `folder-file` handler created a `FolderFile`; no `MediaAsset`.
  * - `'session'` — nothing usable came back, so the id still held is the upload-session
  *   nanoid parked at session-create time. It is not a record id at all.
  */

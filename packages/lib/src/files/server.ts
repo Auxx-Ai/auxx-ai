@@ -257,8 +257,10 @@ export {
   uploadUnauthorizedError,
   uploadValidationError,
 } from './upload/errors'
-export { ensureProcessorsInitialized, ProcessorRegistry } from './upload/processors'
 // The upload orchestration the three API routes used to inline (PR 4e).
+// Dispatch is the handler records in `upload/handlers/`, reached through these
+// two -- the `ProcessorRegistry` hierarchy was deleted in PR 4d and had no
+// consumer outside the module it lived in.
 export type { CompletedUpload, CompleteUploadDeps, CompleteUploadInput } from './upload/complete'
 export { completeUpload } from './upload/complete'
 export type { PreparedUpload, PrepareUploadDeps } from './upload/prepare'

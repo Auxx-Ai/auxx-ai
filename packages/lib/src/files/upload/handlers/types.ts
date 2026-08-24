@@ -3,44 +3,40 @@
 /**
  * What an entity type declares about its uploads.
  *
- * This is the record that replaces the four-level `processConfig` super-chain
+ * This is the record that replaced the four-level `processConfig` super-chain
  * (`BaseProcessor` → `BaseAssetProcessor` → `BaseAttachmentProcessor` → the ten
- * concrete processors). Today answering "which bucket does an article cover land
- * in?" means reading four `processConfig` implementations across three files,
- * each of which spreads the previous config, mutates a field, and re-freezes it.
- * A handler states the same facts once, as data.
+ * concrete processors). Answering "which bucket does an article cover land in?"
+ * used to mean reading four `processConfig` implementations across three files,
+ * each of which spread the previous config, mutated a field, and re-froze it. A
+ * handler states the same facts once, as data.
  *
- * ## What is here, and what is deliberately not (PR 4a)
+ * ## The three halves, and where each one runs
  *
- * PR 4a ships the **config half** of this contract and the declarative records
- * that fill it, because {@link buildUploadConfig} cannot be tested against
- * anything else — a test that invents its own handler literals only proves that
- * the test agrees with itself.
+ * 1. **Declarative** — `visibility`, `maxFileSize`, `allowedMimeTypes`,
+ *    `maxTtlSec`, `multipartThresholdBytes`, `assetKind`, `persist`. Read by the
+ *    pure {@link buildUploadConfig}. No I/O, ever.
+ * 2. **Prepare-time hooks** — {@link UploadHandler.normalizeInit} (pure),
+ *    {@link UploadHandler.validateEntity} and
+ *    {@link UploadHandler.refineConfig} (both may read). These run in
+ *    `prepareUpload`, before a byte has been written.
+ * 3. **Completion hooks** — {@link UploadHandler.assetExpiresAt} (pure),
+ *    {@link UploadHandler.onPersist} (inside the one transaction) and
+ *    {@link UploadHandler.afterCommit} (strictly after `COMMIT`). The boundary
+ *    between the last two is not stylistic: an enqueue issued before `COMMIT`
+ *    resolves its source on a different connection and cannot see the rows the
+ *    open transaction has written (Tier-1 §1.3).
  *
- * Present:
- * - the fields {@link buildUploadConfig} reads (`normalizeInit`, `visibility`,
- *   `maxFileSize`, `allowedMimeTypes`, `maxTtlSec`, `multipartThresholdBytes`),
- * - the plain data the persistence step will need (`entityType`, `assetKind`,
- *   `persist`),
- * - the two hooks that run at the *prepare* boundary (`refineConfig`,
- *   `validateEntity`).
+ * ## What a handler is NOT allowed to be
  *
- * Absent, on purpose: `onPersist`, `afterCommit`, and the `PersistResult` they
- * carry. Those describe the persistence path that PR 4d actually builds, and
- * writing their signatures now would be guessing at a shape no caller exists
- * for. PR 4d adds them here.
- *
- * ## Nothing dispatches on this yet
- *
- * The processor chain is still the live path. Until PR 4d converts it,
- * {@link UPLOAD_HANDLERS} and the processors are two statements of the same
- * per-entity numbers, and `handlers/__tests__/handler-parity.test.ts` is the
- * guard that keeps them equal.
+ * A permission check. `packages/lib` performs zero access checks
+ * (`docs/lib-module-guide.md` §6) — see {@link UploadHandler.validateEntity}.
  */
 
+import type { Transaction } from '@auxx/database'
 import type { AssetKind } from '../../core/types'
-import type { FilesCtx } from '../../ctx'
+import type { FilesCtx, FilesDeps } from '../../ctx'
 import type { StorageVisibility } from '../../storage/buckets'
+import type { PresetKey, ThumbnailOptions } from '../../thumbnails/presets'
 import type { EntityType } from '../../types/entities'
 import type { UploadInitConfig, UploadPreparedConfig } from '../init-types'
 import type { PresignedUploadSession } from '../session-types'
@@ -64,6 +60,73 @@ export type PersistStrategy =
   /** `FolderFile` + `FileVersion`. No `MediaAsset`, no `AssetKind`. */
   | 'folder-file'
 
+/**
+ * The rows one completed upload produced.
+ *
+ * A superset of the old `ProcessorResult` union, flattened. The union claimed
+ * `fileId` and `assetId` were mutually exclusive — which is true — but every
+ * consumer immediately widened it back out, and the exclusivity is already
+ * guaranteed structurally by {@link PersistStrategy}.
+ */
+export interface PersistResult {
+  /** Always present: the `StorageLocation` row the bytes are recorded at. */
+  storageLocationId: string
+  /** Present for every strategy except `folder-file`. */
+  assetId?: string
+  /** Present only for `folder-file`. */
+  fileId?: string
+  /** Present only for `asset+attachment`. */
+  attachmentId?: string
+  /** Present only where an {@link UploadHandler.onPersist} produced one. */
+  documentId?: string
+  /**
+   * The stored object's durable public URL, or `''` for a PRIVATE upload.
+   *
+   * Read straight off the `StorageLocation` row rather than recomputed, so the
+   * URL an `onPersist` writes into `KnowledgeBase.logoLight` is byte-identical
+   * to the one the location records.
+   */
+  externalUrl: string
+}
+
+/** What {@link UploadHandler.onPersist} may touch: the clock, and the caller's `tx`. */
+export type UploadPersistDeps = Pick<FilesDeps, 'now'>
+
+/**
+ * What {@link UploadHandler.afterCommit} may touch.
+ *
+ * No `db` beyond `ctx`, and deliberately no `cache`: the two cache busts this
+ * path performs are still lazy imports (see `upload/post-commit.ts`), because
+ * there is no production {@link FilesDeps.cache} factory to hand a route yet.
+ */
+export type UploadAfterCommitDeps = Pick<FilesDeps, 'storage' | 'queue' | 'now'>
+
+/**
+ * The derived renditions an entity type's uploads produce, enqueued **after**
+ * the upload transaction commits.
+ *
+ * One record rather than three loose fields, because the three answers only
+ * make sense together: which presets, which of them writes back to `User`, and
+ * which one the response prefers as a preview.
+ */
+export interface UploadThumbnailSpec {
+  /** Presets to ensure. Answered in this order. */
+  presets: readonly PresetKey[]
+  /**
+   * Per-preset overrides, merged over the shared `{ visibility: 'PUBLIC' }`.
+   *
+   * Exactly one preset may carry `updateUser: true` — the worker honours it for
+   * whichever preset asks, and two askers would mean two jobs racing to write
+   * one column.
+   */
+  perPreset?: Partial<Record<PresetKey, Partial<ThumbnailOptions>>>
+  /**
+   * Prefer this preset's asset for the response's preview URL when the fan-out
+   * reports it already generated. Absent means "always preview the original".
+   */
+  preview?: PresetKey
+}
+
 /** Everything one entity type declares about its uploads. */
 export interface UploadHandler {
   /** The `EntityType` this handler is registered under. */
@@ -74,10 +137,13 @@ export interface UploadHandler {
    * {@link buildUploadConfig} — so it is visible to the storage key, the
    * visibility function and the policy.
    *
-   * Only two entity types need it, and both are rewrites the processors do
-   * today: `USER_PROFILE` defaults `entityId` to the uploading user, and
-   * `DATASET` copies `entityId` into `metadata.datasetId`. Anything that needs
-   * I/O belongs in {@link refineConfig}, not here.
+   * Only two entity types need it, and both are rewrites the processors did:
+   * `USER_PROFILE` defaults `entityId` to the uploading user, and `DATASET`
+   * copies `entityId` into `metadata.datasetId`. Anything that needs I/O
+   * belongs in {@link refineConfig}, not here.
+   *
+   * It must be **idempotent**: `prepareUpload` normalizes once to decide what to
+   * validate, and `buildUploadConfig` normalizes again inside its own pipeline.
    */
   normalizeInit?: (init: UploadInitConfig) => UploadInitConfig
 
@@ -120,16 +186,25 @@ export interface UploadHandler {
    * The `MediaAsset.kind` this entity's uploads get.
    *
    * Optional because a `folder-file` handler creates no `MediaAsset` and has no
-   * kind to declare. The function form exists for the two entity types whose
-   * kind depends on the finished session (`ARTICLE` covers become `THUMBNAIL`,
-   * temp `MESSAGE` uploads become `TEMP_UPLOAD`); PR 4a populates only the plain
-   * values, which is what the processors' `assetKind` field states, and PR 4d
-   * moves `getAssetKind`'s logic across.
+   * kind to declare. The function form exists for the entity types whose kind
+   * depends on the finished session — `ARTICLE` covers become `THUMBNAIL`,
+   * temporary and inline `MESSAGE` uploads become `TEMP_UPLOAD` and
+   * `INLINE_IMAGE`.
    */
   assetKind?: AssetKind | ((session: PresignedUploadSession) => AssetKind)
 
   /** Which rows a completed upload turns into. */
   persist: PersistStrategy
+
+  /**
+   * When this upload's asset is temporary, the deadline the cleanup sweep reads.
+   *
+   * Pure, and stamped **at insert time** rather than by a follow-up `UPDATE`.
+   * The processors created the asset and then immediately re-`UPDATE`d it to
+   * `kind: 'TEMP_UPLOAD', expiresAt`; the row they ended up with is the row this
+   * produces in one statement.
+   */
+  assetExpiresAt?(session: PresignedUploadSession, now: () => Date): Date | undefined
 
   /**
    * Escape hatch for configuration that needs I/O.
@@ -151,8 +226,52 @@ export interface UploadHandler {
    *
    * `packages/lib` performs zero access checks (`docs/lib-module-guide.md` §6);
    * this answers "does this entity exist in this organization", so an upload
-   * cannot be aimed at another org's row. Who is allowed to upload is the
-   * calling surface's question.
+   * cannot be aimed at another org's row. Who is *allowed* to upload is the
+   * calling surface's question, and `sessions/route.ts` is where it is asked.
+   *
+   * Takes the whole normalized request rather than a bare `entityId` because
+   * `USER_PROFILE`'s identity question is about the *pair* — is the target the
+   * uploader, or an agent's synthetic user in the same organization.
+   *
+   * Not called when the request carries no `entityId`, mirroring
+   * `BaseAssetProcessor`'s `if (init.entityId)` guard.
    */
-  validateEntity?(ctx: FilesCtx, entityId: string): Promise<void>
+  validateEntity?(ctx: FilesCtx, init: UploadInitConfig): Promise<void>
+
+  /**
+   * Extra writes in the SAME transaction as the asset.
+   *
+   * Runs on `tx`, so everything it writes commits or rolls back with the asset.
+   * **No queue write, no cache bust, no storage call belongs here** — see
+   * {@link afterCommit}.
+   *
+   * Whatever it returns is merged into the {@link PersistResult}, which is how
+   * `DATASET` reports the `Document` it created without the persistence step
+   * knowing datasets exist.
+   */
+  onPersist?(
+    tx: Transaction,
+    ctx: FilesCtx,
+    deps: UploadPersistDeps,
+    result: PersistResult,
+    session: PresignedUploadSession
+  ): Promise<Partial<PersistResult> | undefined>
+
+  /**
+   * Work that must happen only once the rows are durable: queue writes, cache
+   * busts, anything that resolves its own source on another connection.
+   *
+   * Called by `runUploadPostCommit` after `db.transaction` has resolved, inside
+   * a `try/catch` — by then the bytes are in storage and the rows are committed,
+   * so a failure here must never turn a durable upload into a 500.
+   */
+  afterCommit?(
+    ctx: FilesCtx,
+    deps: UploadAfterCommitDeps,
+    result: PersistResult,
+    session: PresignedUploadSession
+  ): Promise<void>
+
+  /** Derived renditions to enqueue after `COMMIT`. Absent means none. */
+  thumbnails?: UploadThumbnailSpec
 }

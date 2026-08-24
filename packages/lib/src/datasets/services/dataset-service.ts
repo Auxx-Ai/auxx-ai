@@ -514,7 +514,7 @@ export class DatasetService {
       })
 
       // Get the uploaded media assets. Uploads land in MediaAsset — `Document.mediaAssetId` is
-      // what links a dataset document back to its bytes (see files/upload/processors/dataset.ts).
+      // what links a dataset document back to its bytes (see files/upload/handlers/dataset.ts).
       const files = fileIds.length
         ? await this.db.query.MediaAsset.findMany({
             where: and(

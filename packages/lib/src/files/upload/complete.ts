@@ -38,12 +38,16 @@
  * silently nest one — the trap #1851 hit — and the "one `BEGIN…COMMIT` per
  * request" exit criterion would become unobservable rather than false.
  *
- * ## What is still the processor's job
+ * ## Exactly one `db.transaction(` on this path, and it is here
  *
- * `processor.process(session, storageLocationId, { tx })` is the persistence
- * step, unchanged. PR 4d replaces it with `persistUpload` dispatching on
- * `handler.persist`, and `handler.onPersist` for the extra writes. That swap is
- * one line here; it is not this PR's, for the reasons in `upload/prepare.ts`.
+ * Persistence is {@link persistUpload}, which takes `tx` as a parameter and
+ * never opens one. Three of the processors it replaced called
+ * `mediaAssetService.getTx(...)` from inside this same transaction, which
+ * Drizzle answers with a `SAVEPOINT` — so a `ROLLBACK TO SAVEPOINT` could
+ * silently undo the asset while the outer transaction went on to commit. The
+ * whole `SAVEPOINT` chain under the old `processor.process` is gone with its
+ * caller; what remains of `getTx` is the legacy `core/*Service` methods that
+ * still call it, which Phase 6a removes.
  */
 
 import type { Database, Transaction } from '@auxx/database'
@@ -56,9 +60,10 @@ import { createStorageLocation } from '../storage/locations'
 import { headObject } from '../storage/objects'
 import { completeMultipart } from '../storage/presign'
 import { validateCompletedUpload } from './config'
+import { getUploadHandler } from './handlers'
+import type { PersistResult } from './handlers/types'
+import { persistUpload } from './persist'
 import { runUploadPostCommit } from './post-commit'
-import { ensureProcessorsInitialized, ProcessorRegistry } from './processors'
-import type { ProcessorResult } from './processors/types'
 import { patchUploadSession, type UploadSessionRedis } from './session'
 import type { PresignedUploadSession } from './session-types'
 
@@ -99,9 +104,9 @@ export interface CompletedUpload {
  * durable cleanup fallback and the thumbnail fan-out, clock for the session
  * writes, Redis for the session itself.
  *
- * No `cache`: the two cache busts this path performs are lazy imports inside
- * `post-commit.ts` today, and PR 4d is what puts them behind {@link FilesDeps}'s
- * `CachePort`.
+ * No `cache`: the cache busts this path performs are still lazy imports inside
+ * the handlers that need them, because there is no production
+ * {@link FilesDeps.cache} factory for a route to construct.
  */
 export type CompleteUploadDeps = Pick<FilesDeps, 'storage' | 'queue' | 'now'> & {
   redis: UploadSessionRedis
@@ -138,8 +143,7 @@ export async function completeUpload(
         )
       }
 
-      ensureProcessorsInitialized()
-      const processor = ProcessorRegistry.getForEntityType(session.entityType, ctx.organizationId)
+      const handler = getUploadHandler(session.entityType)
 
       // ============= PHASE 1: STORAGE ONLY =============
 
@@ -195,7 +199,7 @@ export async function completeUpload(
 
       // `ctx.db` is the pool — see the file header on why it must not be a
       // transaction. This is the only `db.transaction(` on the completion path.
-      let persisted: { storageLocationId: string; result: ProcessorResult }
+      let persisted: PersistResult
       try {
         persisted = await (ctx.db as Database).transaction(async (tx: Transaction) => {
           // Nested reads must see this transaction's uncommitted rows, so they
@@ -222,8 +226,7 @@ export async function completeUpload(
             })
           )
 
-          const result = await processor.process(session, location.id, { tx })
-          return { storageLocationId: location.id, result }
+          return persistUpload(tx, ctx, { now: deps.now }, handler, session, location)
         })
       } catch (error) {
         await compensate(deps, session, error)
@@ -249,21 +252,15 @@ export async function completeUpload(
         })
       }
 
-      const refs = persisted.result
-      const post = await runUploadPostCommit(ctx, deps, session, {
-        assetId: refs.assetId,
-        fileId: refs.fileId,
-        attachmentId: refs.attachmentId,
-        documentId: refs.documentId,
-      })
+      const post = await runUploadPostCommit(ctx, deps, handler, session, persisted)
 
       return {
         sessionId: session.id,
         storageLocationId: persisted.storageLocationId,
-        fileId: refs.fileId,
-        assetId: refs.assetId,
-        attachmentId: refs.attachmentId,
-        documentId: refs.documentId,
+        fileId: persisted.fileId,
+        assetId: persisted.assetId,
+        attachmentId: persisted.attachmentId,
+        documentId: persisted.documentId,
         ...post,
       }
     },

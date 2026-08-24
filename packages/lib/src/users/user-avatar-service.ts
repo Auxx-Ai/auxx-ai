@@ -1,10 +1,12 @@
 // packages/lib/src/users/user-avatar-service.ts
 
-import { database as db, schema } from '@auxx/database'
+import { type Database, database as db, schema, type Transaction } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { S3Adapter } from '../files/adapters/s3-adapter'
+import { buildUploadConfig } from '../files/upload/config'
+import { getUploadHandler } from '../files/upload/handlers'
 import type { UploadInitConfig } from '../files/upload/init-types'
-import { UserProfileProcessor } from '../files/upload/processors/entity-processors'
+import { persistUpload } from '../files/upload/persist'
 import {
   createUploadSession,
   deleteUploadSession,
@@ -14,6 +16,16 @@ import { createScopedLogger } from '../logger'
 
 const logger = createScopedLogger('user-avatar-service')
 
+/**
+ * The OAuth avatar import door.
+ *
+ * One of the two upload paths that bypass the presigned browser flow
+ * (`docs/files-upload-architecture-guide.md` §9): the bytes are already in hand,
+ * so it builds the same `UploadPreparedConfig` the browser flow would, `PUT`s
+ * them itself, and then runs the same {@link persistUpload} the completion route
+ * runs. Sharing the config builder and the persistence step is what stops this
+ * door drifting into producing a different shape of record from the main one.
+ */
 export class UserAvatarService {
   /**
    * Download user profile image from OAuth URL and create MediaAsset using UserProfileProcessor
@@ -44,8 +56,8 @@ export class UserAvatarService {
         return null
       }
 
-      // 2. Use UserProfileProcessor to create config
-      const processor = new UserProfileProcessor(organizationId)
+      // 2. Build the same prepared config the presigned flow would
+      const handler = getUploadHandler('USER_PROFILE')
 
       const init: UploadInitConfig = {
         organizationId,
@@ -62,7 +74,9 @@ export class UserAvatarService {
         },
       }
 
-      const { config } = await processor.processConfig(init)
+      // No `validateEntity` here: this runs during sign-in, for the user's own
+      // avatar, before the caller is a member of anything worth checking.
+      const config = buildUploadConfig(handler, init, () => new Date())
 
       // 3. Create upload session
       const redis = await uploadSessionRedis()
@@ -108,8 +122,20 @@ export class UserAvatarService {
         return null
       }
 
-      // 6. Use processor to complete the process (creates MediaAsset and updates user)
-      const result = await processor.process(uploadSession, storageLocation.id)
+      // 6. Same persistence step the completion route runs: adds a version to
+      //    the user's existing avatar asset, or creates one, and points
+      //    `User.avatarAssetId` at it. One transaction, opened here — the only
+      //    place on this path that opens one.
+      const result = await (db as Database).transaction(async (tx: Transaction) =>
+        persistUpload(
+          tx,
+          { db: tx, organizationId },
+          { now: () => new Date() },
+          handler,
+          uploadSession,
+          storageLocation
+        )
+      )
 
       // Clean up session
       await deleteUploadSession(redis, uploadSession.id)

@@ -15,42 +15,40 @@
  * — including the two gates that must not live in lib, `files.manage` and the
  * storage quota — and **translate `Result` → `Response`**.
  *
- * ## What is deliberately still the processor's job
+ * ## The four steps the processor chain used to interleave
  *
- * {@link prepareUpload} calls `processor.processConfig(init)`, not the pure
- * `buildUploadConfig` that PR 4a shipped. That is not an oversight.
+ * `processConfig` was a four-level `super` chain that mixed pure configuration
+ * with two database reads and one cache read, in an order you could only learn
+ * by reading all four levels. They are four named steps here, in this order:
  *
- * PR 4a landed `UPLOAD_HANDLERS` and `buildUploadConfig` alongside the processor
- * chain and guarded them with `__tests__/handler-processor-parity.test.ts`, which
- * compares **four declarative fields** per entity plus one end-to-end config for
- * `FILE`. The processor chain does more than those four fields: it also runs
- * `validateEntityAccess` (a database read), requires an `entityId` for every
- * attachment-backed type, and lets `CUSTOM_FIELD` narrow its MIME list from the
- * org cache. Swapping the config source is PR 4d's job, and doing it here would
- * smuggle a behaviour change into a PR whose whole point is that the *route*
- * stops orchestrating.
+ * 1. **Resolve the handler.** An unknown entity type is a 400, never a fallback
+ *    to the file-library handler (#1816).
+ * 2. **Require an `entityId` where the strategy needs one.** `Attachment.entityId`
+ *    is `NOT NULL`, so an `asset+attachment` upload without one cannot complete —
+ *    refusing at the front door beats a 500 after the bytes are already in S3.
+ * 3. **Check the entity exists in this organization.** Identity only; who is
+ *    allowed to upload is the route's question (`docs/lib-module-guide.md` §6).
+ * 4. **Build the config, then refine it.** {@link buildUploadConfig} is pure and
+ *    total; `handler.refineConfig` is the one hook allowed to read, and only
+ *    `CUSTOM_FIELD` has one. It runs *before* the presign, so the narrowed
+ *    policy is both the one `enforceUploadPolicy` judges and the one persisted
+ *    on the session.
  *
- * What this PR buys 4d is that the swap is now **one line in one function**
- * rather than a route rewrite: replace the two lines below with
- * `getUploadHandler` + `buildUploadConfig` + `handler.refineConfig` +
- * `handler.validateEntity`, and every caller is already correct.
+ * ## `ctx` is what steps 3 and 4 stand on
  *
- * ## `ctx` is here for 4d, and it is not decoration
- *
- * Nothing in this function reads `ctx.db` today — the processors carry their own
- * database. `handler.refineConfig(ctx, …)` and `handler.validateEntity(ctx, …)`
- * both take a `FilesCtx`, so the parameter is the seam those hooks land on. It
- * also carries the organization scope, which is the one thing a route must never
- * let the request body supply.
+ * `handler.validateEntity(ctx, …)` and `handler.refineConfig(ctx, …)` both read
+ * through it. It also carries the organization scope, which is the one thing a
+ * route must never let the request body supply.
  */
 
 import type { Result } from 'neverthrow'
-import type { AuxxError } from '../../errors'
+import { type AuxxError, BadRequestError } from '../../errors'
 import type { FilesCtx, FilesDeps } from '../ctx'
 import { guard, unwrap } from '../guard'
 import { presignUpload, startMultipartUpload } from '../storage/presign'
+import { buildUploadConfig } from './config'
+import { getUploadHandler, requiresEntityId } from './handlers'
 import type { UploadInitConfig } from './init-types'
-import { ensureProcessorsInitialized, ProcessorRegistry } from './processors'
 import { createUploadSession, patchUploadSession, type UploadSessionRedis } from './session'
 
 /**
@@ -73,7 +71,17 @@ export interface PreparedUpload {
   strategy: 'single' | 'multipart'
   storageKey: string
   expiresAt: Date
-  /** Non-fatal notes from config building. Always empty today; carried through. */
+  /**
+   * Non-fatal notes about the prepared upload.
+   *
+   * Always empty since the handler conversion. The processor chain produced two
+   * strings — "EntityId was automatically set to the authenticated user ID" and
+   * "EntityType suggests attachment processor, but file processor is being
+   * used", the second of which was unreachable once the registry stopped
+   * defaulting. Both restated something the response already shows, and nothing
+   * in `apps/web`, `packages/ui` or `packages/sdk` renders the field. Kept on the
+   * wire because the uploader's `transport/types.ts` still declares it.
+   */
   warnings: string[]
   /** Single only: the verb the presigned URL was signed for. */
   httpMethod?: 'PUT' | 'POST'
@@ -113,8 +121,11 @@ export type PrepareUploadDeps = Pick<FilesDeps, 'storage' | 'now'> & {
  *   created for; the request body never supplies it.
  * @param deps Storage, clock and Redis — see {@link PrepareUploadDeps}.
  * @param init The parsed request, already org- and user-scoped by the route.
- * @returns `err(BadRequestError)` for an entity type with no processor,
- *   `err(AuxxError)` when the provider refuses to sign.
+ * @returns `err(BadRequestError)` for an entity type with no handler or an
+ *   attachment-backed upload with no `entityId`, `err(NotFoundError)` when the
+ *   named entity is not in this organization, `err(UnprocessableEntityError)`
+ *   when the request breaks the handler's policy, `err(AuxxError)` when the
+ *   provider refuses to sign.
  */
 export async function prepareUpload(
   ctx: FilesCtx,
@@ -123,9 +134,28 @@ export async function prepareUpload(
 ): Promise<Result<PreparedUpload, AuxxError>> {
   return guard(
     async () => {
-      ensureProcessorsInitialized()
-      const processor = ProcessorRegistry.getForEntityType(init.entityType, ctx.organizationId)
-      const { config, warnings } = await processor.processConfig(init)
+      const handler = getUploadHandler(init.entityType)
+
+      // The handler's own pure rewrite, applied here as well as inside
+      // `buildUploadConfig` — `normalizeInit` is required to be idempotent, and
+      // the checks below have to see what the config will be built from.
+      // `USER_PROFILE` defaults `entityId` to the uploader, so validating the
+      // raw request would ask about the wrong user (or about nobody).
+      const request = handler.normalizeInit ? handler.normalizeInit(init) : init
+
+      if (requiresEntityId(handler) && !request.entityId) {
+        throw new BadRequestError(`Entity ID is required for ${handler.entityType} attachments`)
+      }
+
+      // Mirrors `BaseAssetProcessor`'s `if (init.entityId)` guard: an upload
+      // that names no entity has nothing to check.
+      if (handler.validateEntity && request.entityId) {
+        await handler.validateEntity(ctx, request)
+      }
+
+      const built = buildUploadConfig(handler, request, deps.now)
+      const config = handler.refineConfig ? await handler.refineConfig(ctx, built, request) : built
+      const warnings: string[] = []
 
       const session = await createUploadSession(deps.redis, config, deps.now)
 

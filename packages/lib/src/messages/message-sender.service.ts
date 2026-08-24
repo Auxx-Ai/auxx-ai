@@ -1458,7 +1458,7 @@ export class MessageSenderService {
    *
    * The composer uploads before a draft exists, so `MessageAttachmentProcessor`
    * keys the link row to a synthetic `temp-message-<ts>-<rand>` entity id
-   * (`files/upload/processors/entity-processors.ts`). The send then writes a
+   * (`files/upload/handlers/message.ts`). The send then writes a
    * second link row against the real message id — and nothing ever removed the
    * first, so every attachment send left a row pointing at a message that does
    * not exist. Seven had accumulated in dev between 2026-03 and 2026-08, one per
