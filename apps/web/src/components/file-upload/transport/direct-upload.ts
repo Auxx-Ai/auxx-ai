@@ -1,31 +1,22 @@
-// apps/web/src/components/file-upload/utils/direct-upload.ts
+// apps/web/src/components/file-upload/transport/direct-upload.ts
 
-interface DirectUploadConfig {
-  uploadMethod: 'single' | 'multipart'
-  uploadType?: 'PUT' | 'POST'
-  presignedUrl?: string
-  presignedFields?: Record<string, string>
-  uploadId?: string
-  partPresignEndpoint?: string
-  storageKey: string
-}
+import type {
+  DirectUploadResult,
+  PresignedConfig,
+  UploadHandle,
+  UploadProgressEvent,
+} from './types'
+import { parseUploadErrorResponse } from './upload-error'
 
-interface DirectUploadResult {
-  etag?: string
-  uploadId?: string
-  parts?: Array<{ partNumber: number; etag: string }>
-  storageKey?: string
-}
-
-interface ProgressEvent {
-  loaded: number
-  total: number
-  percentage: number
-}
+/** Multipart chunk size. Must stay at or above S3's 5MB minimum for non-final parts. */
+const CHUNK_SIZE = 10 * 1024 * 1024
 
 /**
- * Direct upload to storage using presigned URLs
- * Supports both single and multipart uploads
+ * Write one file's bytes straight to storage with the presigned config the session
+ * route handed back. `XMLHttpRequest` rather than `fetch` for one reason: upload
+ * progress events, which `fetch` still does not expose.
+ *
+ * Returns synchronously so the caller can register `abort` before awaiting.
  */
 export function directUpload({
   file,
@@ -33,9 +24,9 @@ export function directUpload({
   onProgress,
 }: {
   file: File
-  config: DirectUploadConfig
-  onProgress?: (progress: ProgressEvent) => void
-}): { abort: () => void; promise: Promise<DirectUploadResult> } {
+  config: PresignedConfig
+  onProgress?: (progress: UploadProgressEvent) => void
+}): UploadHandle {
   let aborted = false
   let currentAbort: (() => void) | undefined
 
@@ -47,7 +38,6 @@ export function directUpload({
 
       const xhr = new XMLHttpRequest()
 
-      // Progress tracking
       xhr.upload.addEventListener('progress', (event) => {
         if (event.lengthComputable && onProgress) {
           onProgress({
@@ -58,7 +48,6 @@ export function directUpload({
         }
       })
 
-      // Success handling
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           const etag = xhr.getResponseHeader('etag')?.replace(/"/g, '')
@@ -74,11 +63,9 @@ export function directUpload({
         }
       })
 
-      // Error handling
       xhr.addEventListener('error', () => reject(new Error('Upload failed')))
       xhr.addEventListener('abort', () => reject(new Error('Upload aborted')))
 
-      // Configure request based on upload type
       if (config.uploadType === 'POST' && config.presignedFields) {
         // POST with form fields (policy-based)
         const formData = new FormData()
@@ -96,11 +83,7 @@ export function directUpload({
         xhr.send(file)
       }
 
-      // Set up abort function
-      currentAbort = () => {
-        aborted = true
-        xhr.abort()
-      }
+      currentAbort = () => xhr.abort()
     })
   }
 
@@ -109,18 +92,18 @@ export function directUpload({
       throw new Error('Missing multipart configuration')
     }
 
-    const chunkSize = 10 * 1024 * 1024 // 10MB chunks
     const totalSize = file.size
     const parts: Array<{ partNumber: number; etag: string }> = []
     let uploadedBytes = 0
 
-    for (let start = 0, partNumber = 1; start < totalSize; start += chunkSize, partNumber++) {
+    for (let start = 0, partNumber = 1; start < totalSize; start += CHUNK_SIZE, partNumber++) {
       if (aborted) throw new Error('Upload aborted')
 
-      const end = Math.min(start + chunkSize, totalSize)
+      const end = Math.min(start + CHUNK_SIZE, totalSize)
       const chunk = file.slice(start, end)
 
-      // Get presigned URL for this part
+      // Presign this part. A failure here leaves the session alive on the server
+      // (PR 4e): part presigning mutates nothing, so it is safe to retry.
       const partResponse = await fetch(config.partPresignEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -128,12 +111,19 @@ export function directUpload({
       })
 
       if (!partResponse.ok) {
-        throw new Error(`Failed to get presigned URL for part ${partNumber}`)
+        throw await parseUploadErrorResponse(
+          partResponse,
+          `Failed to get presigned URL for part ${partNumber}`
+        )
       }
 
-      const { presignedUrl } = await partResponse.json()
+      // The part presign happens between chunks, where no XHR is live and
+      // `currentAbort` therefore does nothing. `abort()` sets the flag itself so a
+      // cancel landing in this window is still honoured on the next iteration.
+      if (aborted) throw new Error('Upload aborted')
 
-      // Upload the part
+      const { presignedUrl } = (await partResponse.json()) as { presignedUrl: string }
+
       const etag = await new Promise<string>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         const partProgressBase = uploadedBytes
@@ -151,8 +141,7 @@ export function directUpload({
 
         xhr.addEventListener('load', () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            const etag = xhr.getResponseHeader('etag')?.replace(/"/g, '') || ''
-            resolve(etag)
+            resolve(xhr.getResponseHeader('etag')?.replace(/"/g, '') || '')
           } else {
             reject(new Error(`Part upload failed with status ${xhr.status}`))
           }
@@ -164,11 +153,7 @@ export function directUpload({
         xhr.open('PUT', presignedUrl)
         xhr.send(chunk)
 
-        // Update current abort function for this part
-        currentAbort = () => {
-          aborted = true
-          xhr.abort()
-        }
+        currentAbort = () => xhr.abort()
       })
 
       parts.push({ partNumber, etag })
@@ -184,7 +169,14 @@ export function directUpload({
   const promise = config.uploadMethod === 'single' ? uploadSingle() : uploadMultipart()
 
   return {
-    abort: () => currentAbort?.(),
+    abort: () => {
+      // The flag is set here, not inside `currentAbort`. Setting it there meant an
+      // abort arriving while a part was being presigned — when no XHR is live and
+      // `currentAbort` is stale or unset — was silently dropped and the remaining
+      // parts uploaded anyway.
+      aborted = true
+      currentAbort?.()
+    },
     promise,
   }
 }
