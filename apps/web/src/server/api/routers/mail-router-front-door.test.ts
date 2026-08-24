@@ -60,7 +60,7 @@ const {
   messageQuery,
   participantService,
   ensureContactForParticipant,
-  attachmentService,
+  filesLib,
   cache,
   onCacheEvent,
   assertCanActOnThreads,
@@ -88,10 +88,14 @@ const {
     entityInstanceId: CONTACT_ID,
     created: true,
   })),
-  attachmentService: {
-    create: vi.fn(async () => ({ id: ATTACHMENT_ID })),
-    delete: vi.fn(async () => undefined),
-    get: vi.fn(async () => null),
+  // PR 5h: `attachment.ts` calls `files/attachments/` functions, so the doubles
+  // are functions taking `(ctx, …)` rather than methods on an `AttachmentService`.
+  filesLib: {
+    createAttachment: vi.fn(async () => ({ id: ATTACHMENT_ID })),
+    deleteAttachment: vi.fn(async () => undefined),
+    getAttachment: vi.fn(async () => null),
+    getAsset: vi.fn(async () => null),
+    getFolderFile: vi.fn(async () => null),
   },
   cache: {
     getCachedUserInstanceGrants: vi.fn(),
@@ -157,19 +161,26 @@ vi.mock('@auxx/lib/participants', () => ({
   },
   ensureContactForParticipant,
 }))
-vi.mock('@auxx/lib/files', () => ({
-  AttachmentService: class {
-    create = attachmentService.create
-    delete = attachmentService.delete
-    get = attachmentService.get
-  },
-  FileService: class {
-    get = vi.fn(async () => null)
-  },
-  MediaAssetService: class {
-    get = vi.fn(async () => null)
-  },
-}))
+/**
+ * `attachment.ts` is the only module in this test's graph that imports
+ * `@auxx/lib/files/server`, so a full replacement is safe here — the doubles are
+ * wrapped in a real `ok()` because every `files/` function returns a
+ * `neverthrow` `Result` and the router unwraps it.
+ */
+vi.mock('@auxx/lib/files/server', async () => {
+  const { ok } = await import('neverthrow')
+  const lift =
+    <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
+    async (...args: A) =>
+      ok(await fn(...args))
+  return {
+    createAttachment: lift(filesLib.createAttachment),
+    deleteAttachment: lift(filesLib.deleteAttachment),
+    getAttachment: lift(filesLib.getAttachment),
+    getAsset: lift(filesLib.getAsset),
+    getFolderFile: lift(filesLib.getFolderFile),
+  }
+})
 vi.mock('@auxx/lib/cache', () => ({ ...cache, onCacheEvent }))
 vi.mock('@auxx/lib/threads', () => ({ assertCanActOnThreads }))
 vi.mock('@auxx/lib/email', () => ({ getUserOrganizationId: () => ORG_ID }))
@@ -362,7 +373,7 @@ beforeEach(() => {
   for (const fn of Object.values(mailViewService)) fn.mockClear()
   for (const fn of Object.values(messageQuery)) fn.mockClear()
   for (const fn of Object.values(participantService)) fn.mockClear()
-  for (const fn of Object.values(attachmentService)) fn.mockClear()
+  for (const fn of Object.values(filesLib)) fn.mockClear()
   ensureContactForParticipant.mockClear()
   onCacheEvent.mockClear()
 
@@ -644,7 +655,7 @@ describe('attachment router — gated by HOST, not by a mail key', () => {
         fileId: 'fil_1',
       })
     ).resolves.toBeDefined()
-    expect(attachmentService.create).toHaveBeenCalled()
+    expect(filesLib.createAttachment).toHaveBeenCalled()
   })
 
   it('…and REFUSED at records: None', async () => {
@@ -655,7 +666,7 @@ describe('attachment router — gated by HOST, not by a mail key', () => {
         fileId: 'fil_1',
       })
     ).rejects.toMatchObject(FORBIDDEN)
-    expect(attachmentService.create).not.toHaveBeenCalled()
+    expect(filesLib.createAttachment).not.toHaveBeenCalled()
   })
 
   /**
@@ -722,7 +733,10 @@ describe('attachment router — gated by HOST, not by a mail key', () => {
         attachmentId: ATTACHMENT_ID,
       })
     ).resolves.toBeUndefined()
-    expect(attachmentService.delete).toHaveBeenCalledWith(ATTACHMENT_ID)
+    expect(filesLib.deleteAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: ORG_ID }),
+      ATTACHMENT_ID
+    )
 
     queueAttachmentThenHost(CONTACT_DEF_ID, CONTACT_ID)
     await expect(
@@ -730,7 +744,7 @@ describe('attachment router — gated by HOST, not by a mail key', () => {
         attachmentId: ATTACHMENT_ID,
       })
     ).rejects.toMatchObject(FORBIDDEN)
-    expect(attachmentService.delete).toHaveBeenCalledTimes(1)
+    expect(filesLib.deleteAttachment).toHaveBeenCalledTimes(1)
   })
 
   /**
@@ -747,7 +761,7 @@ describe('attachment router — gated by HOST, not by a mail key', () => {
         fileId: 'fil_1',
       })
     ).rejects.toMatchObject({ code: 'NOT_FOUND' })
-    expect(attachmentService.create).not.toHaveBeenCalled()
+    expect(filesLib.createAttachment).not.toHaveBeenCalled()
   })
 
   it('removeFromCustomField refuses a non-FIELD_VALUE attachment rather than deleting it', async () => {
@@ -755,7 +769,7 @@ describe('attachment router — gated by HOST, not by a mail key', () => {
     await expect(
       attachments(capabilitiesFor()).removeFromCustomField({ attachmentId: ATTACHMENT_ID })
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' })
-    expect(attachmentService.delete).not.toHaveBeenCalled()
+    expect(filesLib.deleteAttachment).not.toHaveBeenCalled()
   })
 })
 

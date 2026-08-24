@@ -2,15 +2,36 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { AttachmentService, FileService, MediaAssetService } from '@auxx/lib/files'
+import type { AttachmentRole } from '@auxx/lib/files/server'
+import {
+  createAttachment,
+  deleteAttachment,
+  getAsset,
+  getAttachment,
+  getFolderFile,
+} from '@auxx/lib/files/server'
 // Type-only, so it is erased at runtime and never pulls the (vitest-hostile)
 // permissions barrel into this module's import graph.
 import type { CapabilityView } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
+import type { Result } from 'neverthrow'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 import { assertFieldValueHostsWritable } from '~/server/lib/field-value-host-access'
+import { toFilesCtx } from '~/server/lib/files-ctx'
+
+/**
+ * Unwrap a `files/` `Result` into this router's throw-based flow.
+ *
+ * The error is always an `AuxxError` subclass, and no procedure here wraps its
+ * call in a `catch`, so `auxxErrorMiddleware` maps it directly: a missing
+ * attachment is 404, "provide exactly one of fileId/assetId" is 400.
+ */
+function unwrap<V>(result: Result<V, Error>): V {
+  if (result.isErr()) throw result.error
+  return result.value
+}
 
 /**
  * **This is deliberately NOT gated on `PermissionKey.inboxesView`** (plan 40
@@ -108,13 +129,16 @@ export const attachmentRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       if (input.ids.length === 0) return []
 
-      const attachmentService = new AttachmentService(
-        ctx.session.organizationId,
-        ctx.session.user.id,
-        ctx.db
-      )
+      const filesCtx = toFilesCtx(ctx)
 
-      const attachments = await Promise.all(input.ids.map((id) => attachmentService.get(id)))
+      // Still one statement per id, then one per resolved target — `attachments/`
+      // has no by-id batch loader (`fetchAttachmentsForEntities` keys by HOST,
+      // not by attachment id). Left as it was rather than grown a new batch read
+      // for a procedure with no callers; noted so it is not mistaken for a
+      // considered read shape.
+      const attachments = await Promise.all(
+        input.ids.map(async (id) => unwrap(await getAttachment(filesCtx, id)))
+      )
       // Type predicate, not `filter(Boolean)` — the latter keeps `| null` in the
       // element type, so every field read below was `possibly null`.
       const validAttachments = attachments.filter((a): a is NonNullable<typeof a> => a !== null)
@@ -124,23 +148,13 @@ export const attachmentRouter = createTRPCRouter({
         validAttachments.map(async (attachment) => {
           // Handle MediaAsset attachments
           if (attachment.assetId) {
-            const mediaAssetService = new MediaAssetService(
-              ctx.session.organizationId,
-              ctx.session.user.id,
-              ctx.db
-            )
-            const asset = await mediaAssetService.get(attachment.assetId)
+            const asset = unwrap(await getAsset(filesCtx, attachment.assetId))
             return { ...attachment, asset }
           }
 
           // Handle FolderFile attachments
           if (attachment.fileId) {
-            const fileService = new FileService(
-              ctx.session.organizationId,
-              ctx.session.user.id,
-              ctx.db
-            )
-            const file = await fileService.get(attachment.fileId)
+            const file = unwrap(await getFolderFile(filesCtx, attachment.fileId))
             // Map file data to asset-like structure for consistent UI rendering
             return {
               ...attachment,
@@ -190,21 +204,19 @@ export const attachmentRouter = createTRPCRouter({
         fieldValueId: input.fieldValueId,
       })
 
-      const attachmentService = new AttachmentService(
-        ctx.session.organizationId,
-        ctx.session.user.id,
-        ctx.db
+      // `organizationId` is no longer part of the input: it comes from `ctx`,
+      // closing the legacy path where `data.organizationId` could name an
+      // organization the caller was not acting for.
+      return unwrap(
+        await createAttachment(toFilesCtx(ctx), {
+          entityType: 'FIELD_VALUE',
+          entityId: input.fieldValueId,
+          role: input.role as AttachmentRole,
+          fileId: input.fileId,
+          assetId: input.assetId,
+          createdById: ctx.session.user.id,
+        })
       )
-
-      return await attachmentService.create({
-        entityType: 'FIELD_VALUE',
-        entityId: input.fieldValueId,
-        role: input.role as any,
-        fileId: input.fileId,
-        assetId: input.assetId,
-        createdById: ctx.session.user.id,
-        organizationId: ctx.session.organizationId,
-      })
     }),
 
   /**
@@ -256,12 +268,6 @@ export const attachmentRouter = createTRPCRouter({
         fieldValueId: attachment.entityId,
       })
 
-      const attachmentService = new AttachmentService(
-        ctx.session.organizationId,
-        ctx.session.user.id,
-        ctx.db
-      )
-
-      await attachmentService.delete(input.attachmentId)
+      unwrap(await deleteAttachment(toFilesCtx(ctx), input.attachmentId))
     }),
 })

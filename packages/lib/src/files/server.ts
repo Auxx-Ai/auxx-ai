@@ -16,6 +16,18 @@ export type {
   UpdateAttachmentRequest,
   UpdateFileRequest,
 } from './core/types'
+// MediaAsset reads/writes (PR 5a). `mediaAssetRouter` and `attachmentRouter`
+// call these directly.
+export { convertTempAssetToPermanent, getAsset } from './assets'
+// Attachment reads/writes (PR 5b). `attachmentRouter` calls these directly.
+export type { CreateAttachmentInput, UpdateAttachmentInput } from './attachments'
+export {
+  createAttachment,
+  deleteAttachment,
+  getAttachment,
+  getEntityAttachments,
+  updateAttachment,
+} from './attachments'
 // The ambient contract every `files/` function is written against. Exported so
 // `apps/web`'s single `toFilesCtx` helper can name the type it returns.
 export type { FilesCtx, FilesDeps, FilesDepsSlice } from './ctx'
@@ -40,6 +52,48 @@ export {
   renameFilesystemItem,
   summarizeMoveOutcomes,
 } from './filesystem'
+// Folder reads/writes written to the `files/ctx.ts` contract (PR 5d).
+// `folderRouter` calls these directly -- there is no `FolderService` between
+// them. NOTE: `FolderTreeNode` is deliberately NOT re-exported here;
+// `./core/types` already exports that name through this module.
+export type {
+  CopyFolderInput,
+  CreateFolderInput,
+  FileVersionCopyPort,
+  FolderCopyDeps,
+  FolderCounts,
+  FolderDetail,
+  FolderPage,
+  FolderSearchHit,
+  FolderUsage,
+  FolderWriteDeps,
+  ListFoldersOptions,
+  SearchFoldersOptions,
+  UpdateFolderInput,
+} from './folders'
+export {
+  copyFolder,
+  createFolder,
+  deleteFolder,
+  ensureFolderPath,
+  getFolder,
+  getFolderAncestors,
+  getFolderCounts,
+  getFolderDescendants,
+  getFolderTree,
+  getFolderUsage,
+  getFolderWithRelations,
+  getSubfolders,
+  isFolderNameAvailable,
+  listFolders,
+  mergeFolders,
+  moveFolder,
+  permanentlyDeleteFolder,
+  renameFolder,
+  restoreFolder,
+  searchFolders,
+  updateFolder,
+} from './folders'
 // FolderFile reads/writes written to the `files/ctx.ts` contract (PR 5c).
 // `fileRouter` calls these directly — there is no `FileService` between them.
 export type {
