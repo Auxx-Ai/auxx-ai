@@ -5,7 +5,8 @@ import type { ChunkPreprocessingOptions, ChunkSettings } from '@auxx/database/ty
 import { createScopedLogger } from '@auxx/logger'
 import { interpretEscapeSequences } from '@auxx/utils'
 import { eq } from 'drizzle-orm'
-import { MediaAssetService } from '../../files/core/media-asset-service'
+import { getAssetContent } from '../../files/assets/content'
+import { createS3StoragePort } from '../../files/storage/ports'
 import { createDocumentProcessingFlow } from '../../jobs/flows/document-processing-flow'
 import { DocumentEventType, type DocumentExecutionReporter } from '../events'
 import { ExtractorFactory } from '../extractors/extractor-factory'
@@ -423,8 +424,13 @@ export class DocumentProcessor {
       if (!jobData.mediaAssetId) {
         throw new Error('MediaAsset ID not provided')
       }
-      const mediaAssetService = new MediaAssetService(jobData.organizationId)
-      const contentBuffer = await mediaAssetService.getContent(jobData.mediaAssetId)
+      const content = await getAssetContent(
+        { db, organizationId: jobData.organizationId },
+        { storage: createS3StoragePort(jobData.organizationId) },
+        jobData.mediaAssetId
+      )
+      if (content.isErr()) throw content.error
+      const contentBuffer = content.value
       if (!contentBuffer) {
         throw new Error('Failed to retrieve file content from MediaAsset')
       }

@@ -3,9 +3,14 @@
 import { randomBytes } from 'node:crypto'
 import { database, schema } from '@auxx/database'
 import { buildVisitorThreadOwnership } from '@auxx/lib/chat'
-import { AttachmentService } from '@auxx/lib/files'
 import type { FilesCtx } from '@auxx/lib/files/server'
-import { createAssetWithVersion, createStorageManager } from '@auxx/lib/files/server'
+import {
+  createAssetWithVersion,
+  createS3StoragePort,
+  createStorageManager,
+  createStorageManagerLocationPort,
+  getAttachmentDownloadRef,
+} from '@auxx/lib/files/server'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -161,8 +166,8 @@ attachmentsRoute.options('/:attachmentId/url', (c) => {
  *
  * Keyed off `Attachment.id` rather than `MediaAsset.id` because agent-side
  * file-manager picks produce `Attachment.fileId` (→ FolderFile) rows with
- * `assetId = NULL`. Resolution delegates to `AttachmentService.getDownloadUrl`
- * which handles both backings.
+ * `assetId = NULL`. Resolution delegates to `getAttachmentDownloadRef`, whose
+ * pinned/unpinned ladder handles both backings.
  *
  * ACL: passport is org-scoped + visitor-scoped via `visitorParticipantId`. We
  * verify the attachment hangs off a message in a thread the passport owns.
@@ -209,20 +214,24 @@ attachmentsRoute.get('/:attachmentId/url', async (c) => {
       )
     }
 
-    // STILL ON THE FACADE. `files/attachments/` has no equivalent of
-    // `getDownloadRef`'s pinned/unpinned ladder yet; swap this for
-    // `getAttachmentDownloadRef(ctx, deps, attachmentId)` once it lands.
-    // Visitor uploads have no User id — pass `undefined` for userId.
-    const attachmentService = new AttachmentService(chat.organizationId, undefined)
-    let url: string
-    try {
-      url = await attachmentService.getDownloadUrl(attachmentId)
-    } catch {
+    // `FilesCtx` carries no actor, which suits this route: visitor uploads have
+    // no `User` id at all, and the deleted facade only ever fabricated one.
+    const ref = await getAttachmentDownloadRef(
+      { db: database, organizationId: chat.organizationId },
+      {
+        storage: createS3StoragePort(chat.organizationId),
+        now: () => new Date(),
+        locations: createStorageManagerLocationPort(chat.organizationId),
+      },
+      attachmentId
+    )
+    if (ref.isErr() || ref.value.type !== 'url') {
       return c.json(
         { success: false, error: { code: 'NOT_FOUND', message: 'Attachment not found' } },
         404
       )
     }
+    const url = ref.value.url
 
     // 1h TTL — long enough that paint + clicks succeed without a refetch,
     // short enough to limit damage if a URL leaks.

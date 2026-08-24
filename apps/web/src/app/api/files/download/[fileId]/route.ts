@@ -96,12 +96,18 @@ async function authorize(): Promise<
 /**
  * Read the current bytes behind a `FolderFile` or a `MediaAsset`.
  *
- * Content still goes through `StorageManager` rather than a `StoragePort`:
- * neither `folder-files/` nor `assets/` has a content-read function, because
- * `getContent` needs per-provider dispatch that the S3-only port does not do.
- * That is the same note `FileService.getContent` and
- * `MediaAssetService.getContent` both carried — this handler just no longer
- * needs a service instance to reach it.
+ * Content still goes through `StorageManager`, and the old reason recorded here
+ * — "neither library has a content-read function" — is **out of date**:
+ * `getAssetContent` and `getFolderFileContent` both landed in #1859, and both
+ * take an entity id rather than a location id.
+ *
+ * What actually keeps this handler on `StorageManager` is its *shape*. It
+ * resolves the row and its current version first (for `name` / `mimeType` /
+ * `size`, which the response headers need), and then reads the bytes off the
+ * version's `storageLocationId`. Moving to `getAssetContent(ctx, deps, id)`
+ * would re-resolve the asset and the version a second time. Collapsing the two
+ * halves properly belongs with the rest of this handler, not with the facade
+ * deletion — see PR Y's retro.
  */
 async function readCurrentContent(
   storageLocationId: string | null | undefined,

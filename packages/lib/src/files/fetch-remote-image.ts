@@ -1,8 +1,9 @@
 // packages/lib/src/files/fetch-remote-image.ts
 
+import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { createAssetWithVersion } from './assets'
 import { detectImageType } from './core/image-processing'
-import { createMediaAssetService } from './core/media-asset-service'
 import { createStorageManager } from './storage/storage-manager'
 import { ALLOWED_IMAGE_TYPES } from './thumbnails/presets'
 
@@ -26,6 +27,16 @@ const DEFAULT_MAX_BYTES = 5_000_000
 const USER_AGENT = 'AuxxAi-Enrichment/1.0 (+https://auxx.ai/bot)'
 
 export interface FetchRemoteImageInput {
+  /**
+   * The client the `MediaAsset` + version write runs on.
+   *
+   * Required, not defaulted: this used to construct
+   * `createMediaAssetService(organizationId, userId)`, whose `db` defaulted to
+   * the process-wide pool, so a caller already inside a transaction wrote
+   * outside it. Routers pass `ctx.db`; background triggers pass the pool
+   * explicitly.
+   */
+  db: Database | Transaction
   url: string
   organizationId: string
   userId: string
@@ -53,6 +64,7 @@ export async function fetchAndStoreRemoteImage(
   input: FetchRemoteImageInput
 ): Promise<FetchRemoteImageResult> {
   const {
+    db,
     url,
     organizationId,
     userId,
@@ -105,20 +117,26 @@ export async function fetchAndStoreRemoteImage(
     organizationId,
   })
 
-  const mediaAssetService = createMediaAssetService(organizationId, userId)
-  const { asset } = await mediaAssetService.createWithVersion(
-    {
-      kind: 'SYSTEM_BLOB',
-      purpose,
-      name,
-      mimeType,
-      size: buf.byteLength,
-      isPrivate: false,
-      organizationId,
-      createdById: userId,
-    },
-    storageLocation.id
-  )
+  const created = await db.transaction(async (tx) => {
+    const result = await createAssetWithVersion(
+      tx,
+      { db: tx, organizationId },
+      { now: () => new Date() },
+      {
+        kind: 'SYSTEM_BLOB',
+        purpose,
+        name,
+        mimeType,
+        size: buf.byteLength,
+        isPrivate: false,
+        createdById: userId,
+        storageLocationId: storageLocation.id,
+      }
+    )
+    if (result.isErr()) throw result.error
+    return result.value
+  })
+  const { asset } = created
 
   logger.debug('Fetched remote image', {
     organizationId,

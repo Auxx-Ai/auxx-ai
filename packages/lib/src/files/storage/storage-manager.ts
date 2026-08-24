@@ -19,8 +19,8 @@ import {
   StorageAuthError,
   StorageFileNotFoundError,
 } from '../adapters/base-adapter'
-import { defaultDatabase } from '../core/base-service'
 import type { FilesCtx } from '../ctx'
+import { defaultDatabase } from '../default-database'
 import type { UploadPreparedConfig } from '../upload/init-types'
 import { resolveProviderAuth } from './auth'
 import { bucketForVisibility, buildExternalUrl, type StorageVisibility } from './buckets'
@@ -169,8 +169,8 @@ export class StorageManager {
    *
    * This is the whole seam between the class and the functional layer, and it
    * is the **only** place this facade reaches the process-wide pool.
-   * `defaultDatabase()` is imported from `core/base-service.ts` rather than
-   * re-derived here on purpose: that accessor already carries the namespace
+   * `defaultDatabase()` is imported from `files/default-database.ts` rather
+   * than re-derived here on purpose: that accessor already carries the namespace
    * import and the 20-line explanation of the Vitest link-time hazard (a *named*
    * `database` binding kills every downstream file at collection for any test
    * that mocks `@auxx/database` without that key — see PR #1823). Borrowing it

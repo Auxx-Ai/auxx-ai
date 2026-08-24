@@ -4,21 +4,16 @@
  * Exports all public APIs for file management in the new organized structure
  */
 
-// ============= CORE SERVICES =============
+// ============= CORE TYPES =============
 
-// Attachment Service - Entity attachment management
-export { AttachmentService, createAttachmentService } from './core/attachment-service'
-// Base Service - Shared functionality for all services
-export { BaseService } from './core/base-service'
-// File Service - Core file management operations
-export { createFileService, FileService } from './core/file-service'
-// `FilesystemService` was deleted in PR 5e; the module is `files/filesystem/`,
-// reached through `@auxx/lib/files/server`. It is deliberately not re-exported
-// from this barrel -- nothing outside `fileRouter` consumed it.
-// Folder Service - Folder hierarchy management
-export { createFolderService, FolderService } from './core/folder-service'
-// Media Asset Service - Media-specific operations
-export { createMediaAssetService, MediaAssetService } from './core/media-asset-service'
+// The service classes are GONE. `AttachmentService`, `BaseService`,
+// `FileService`, `FilesystemService`, `FolderService`, `MediaAssetService` and
+// `ThumbnailService` were all deleted across PRs 5a-5g -- every one of them is
+// now a set of `db`-first functions under `files/assets/`, `files/attachments/`,
+// `files/folder-files/`, `files/folders/`, `files/filesystem/` and
+// `files/thumbnails/`, reached through `@auxx/lib/files/server`. Nothing is
+// re-exported from this barrel in their place: the functions take a `FilesCtx`
+// and belong on the server subpath, which is where every consumer already looks.
 export type {
   GenerateThumbnailPayload,
   PresetConfig,

@@ -36,7 +36,8 @@ import {
   updateExportJob,
 } from '../../export'
 import { FieldValueService } from '../../field-values/field-value-service'
-import { MediaAssetService } from '../../files/core/media-asset-service'
+import { getAssetContent } from '../../files/assets/content'
+import { createS3StoragePort } from '../../files/storage/ports'
 import { StorageManager } from '../../files/storage/storage-manager'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import type { JobContext } from '../types'
@@ -595,11 +596,12 @@ async function loadLogoBytes(
   if (!showLogo) return null
   const logoAssetId = settings.branding.logo?.assetId
   if (!logoAssetId) return null
-  try {
-    return await new MediaAssetService(organizationId).getContent(logoAssetId)
-  } catch {
-    return null
-  }
+  const logo = await getAssetContent(
+    { db, organizationId },
+    { storage: createS3StoragePort(organizationId) },
+    logoAssetId
+  )
+  return logo.isOk() ? logo.value : null
 }
 
 /**

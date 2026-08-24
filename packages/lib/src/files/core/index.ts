@@ -1,13 +1,19 @@
 // packages/lib/src/files/core/index.ts
 
 /**
- * Core file system services for the enhanced file management system
+ * What is left of `files/core/` after the service classes were deleted.
  *
- * This module exports the main services for handling:
- * - FolderFile: User files with folder organization and versioning
- * - MediaAsset: System files, temporary uploads, and media assets
- * - Attachment: Unified attachment system for both file types
- * - Folder: Hierarchical folder management
+ * `AttachmentService`, `BaseService`, `FileService`, `FilesystemService`,
+ * `FolderService`, `MediaAssetService` and `ThumbnailService` are all gone (PRs
+ * 5a-5g). Their replacements are `db`-first functions under `files/assets/`,
+ * `files/attachments/`, `files/folder-files/`, `files/folders/`,
+ * `files/filesystem/` and `files/thumbnails/`, exported from
+ * `@auxx/lib/files/server`. `core/mixins/` went with them: `ContentAccessible`
+ * and `Versioned` existed only to be `implements`-ed by two of those classes.
+ *
+ * What remains here is the shared request/response **types** and the sharp
+ * image pipeline. This barrel has no importer of its own -- it is kept as the
+ * one place that names what `core/` still holds.
  */
 
 // Thumbnails moved to `files/thumbnails/` in PR 5f. `ThumbnailService` is gone;
@@ -28,14 +34,6 @@ export {
   THUMBNAIL_LIMITS,
   THUMBNAIL_PRESETS,
 } from '../thumbnails/presets'
-export { AttachmentService } from './attachment-service'
-// Export base service and mixins for advanced usage
-export { BaseService, type Constructor } from './base-service'
-// Export all core services
-export { createFileService, FileService } from './file-service'
-export { createFolderService, FolderService } from './folder-service'
-export { createMediaAssetService, MediaAssetService } from './media-asset-service'
-export type { ContentAccessible, Versioned } from './mixins'
 // Export all types
 export type {
   AssetDownloadInfo,

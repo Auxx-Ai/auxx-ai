@@ -48,6 +48,7 @@ export const extensionRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const isCompany = input.entityType === 'company'
       const result = await fetchAndStoreRemoteImage({
+        db: ctx.db,
         url: input.url,
         organizationId: ctx.session.organizationId,
         userId: ctx.session.userId,

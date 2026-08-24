@@ -4,6 +4,8 @@ import type { Database } from '@auxx/database'
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getAssetDownloadRef } from '../../files/assets/download'
+import { getAttachmentDownloadRef } from '../../files/attachments'
+import { createStorageManagerLocationPort } from '../../files/attachments/ports'
 import type { FilesCtx } from '../../files/ctx'
 import { getFolderFile, getFolderFileDownloadRef } from '../../files/folder-files'
 import { createS3StoragePort } from '../../files/storage/ports'
@@ -141,12 +143,18 @@ export class FileContextService {
    */
   private async refreshAttachmentUrl(ref: FileReference): Promise<string> {
     try {
-      const { AttachmentService } = await import('../../files/core/attachment-service')
-      const attachmentService = new AttachmentService(this.organizationId)
+      const result = await getAttachmentDownloadRef(
+        this.filesCtx(),
+        {
+          ...this.downloadDeps(),
+          locations: createStorageManagerLocationPort(this.organizationId),
+        },
+        ref.assetId
+      )
+      if (result.isErr()) throw result.error
 
-      const downloadRef = await attachmentService.getDownloadRef(ref.assetId)
-      if (downloadRef.type === 'url') {
-        return downloadRef.url
+      if (result.value.type === 'url') {
+        return result.value.url
       }
       throw new Error('Expected URL download reference')
     } catch (err) {

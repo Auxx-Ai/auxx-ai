@@ -5,7 +5,9 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { NotFoundError } from '../../errors'
 import type { DownloadRef } from '../../files/adapters/base-adapter'
-import { createAttachmentService } from '../../files/core/attachment-service'
+import { getAttachmentDownloadRef } from '../../files/attachments'
+import { createStorageManagerLocationPort } from '../../files/attachments/ports'
+import { createS3StoragePort } from '../../files/storage/ports'
 import { createStorageManager } from '../../files/storage/storage-manager'
 
 const logger = createScopedLogger('inbound-attachment-access')
@@ -25,8 +27,17 @@ export class InboundAttachmentAccessService {
     const attachment = await this.loadAndVerify(params.attachmentId, params.organizationId)
 
     // Resolve through the standard attachment download chain
-    const attachmentService = createAttachmentService(params.organizationId)
-    const downloadRef = await attachmentService.getDownloadRef(params.attachmentId)
+    const ref = await getAttachmentDownloadRef(
+      { db, organizationId: params.organizationId },
+      {
+        storage: createS3StoragePort(params.organizationId),
+        now: () => new Date(),
+        locations: createStorageManagerLocationPort(params.organizationId),
+      },
+      params.attachmentId
+    )
+    if (ref.isErr()) throw ref.error
+    const downloadRef = ref.value
 
     logger.debug('Generated inline attachment signed URL', {
       attachmentId: params.attachmentId,

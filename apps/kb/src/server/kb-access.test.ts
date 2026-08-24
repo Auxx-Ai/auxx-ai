@@ -66,10 +66,13 @@ vi.mock('@auxx/lib/cache', () => ({
 }))
 vi.mock('@auxx/config/urls', () => ({ WEBAPP_URL: 'https://app.test' }))
 vi.mock('next/navigation', () => ({ redirect }))
+// `kb-data.ts` reaches this subpath for the cover-image batch read. Vitest
+// validates NAMED bindings at link time, so both have to be present even though
+// this suite never resolves a cover. (`MediaAssetService` used to be mocked
+// here; the class was deleted in PR Y.)
 vi.mock('@auxx/lib/files/server', () => ({
-  MediaAssetService: class {
-    getDownloadUrl = async () => null
-  },
+  createS3StoragePort: vi.fn(() => ({})),
+  resolveAssetDownloadRef: vi.fn(async () => null),
 }))
 vi.mock('@auxx/database', () => ({
   database: { select },

@@ -13,7 +13,8 @@ import type { ReactElement } from 'react'
 import { createElement } from 'react'
 import { resolvePhotoRef } from '../../documents/render'
 import { createAssetWithVersion } from '../../files/assets'
-import { MediaAssetService } from '../../files/core/media-asset-service'
+import { getAssetContent } from '../../files/assets/content'
+import { createS3StoragePort } from '../../files/storage/ports'
 import { createStorageManager } from '../../files/storage/storage-manager'
 import { buildVisitReportPayload, type VisitReportPayload } from './payload'
 import { VisitReportPdf } from './visit-report-pdf'
@@ -48,11 +49,12 @@ export async function renderVisitReportPdf(payload: VisitReportPayload): Promise
   const logoAssetId = payload.settings.branding.logo?.assetId
   let logoBytes: Buffer | null = null
   if (logoAssetId) {
-    try {
-      logoBytes = await new MediaAssetService(payload.organizationId).getContent(logoAssetId)
-    } catch {
-      logoBytes = null
-    }
+    const logo = await getAssetContent(
+      { db, organizationId: payload.organizationId },
+      { storage: createS3StoragePort(payload.organizationId) },
+      logoAssetId
+    )
+    logoBytes = logo.isOk() ? logo.value : null
   }
 
   const photoBytes = await resolveReportPhotoBytes(payload)

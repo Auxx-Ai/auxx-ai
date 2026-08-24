@@ -44,11 +44,17 @@ export {
 export type { AssetContentDeps, GetAssetContentOptions } from './content'
 export { getAssetContent, resolveAssetObjectRef, streamAssetContent } from './content'
 export type {
+  AssetDownloadRefWithMeta,
   DownloadDeps,
   GetAssetDownloadRefOptions,
   VersionWithLocation,
 } from './download'
-export { getAssetDownloadRef, resolveAssetDownloadRef } from './download'
+export {
+  DEFAULT_ASSET_DOWNLOAD_TTL_MS,
+  getAssetDownloadRef,
+  getAssetDownloadRefWithMeta,
+  resolveAssetDownloadRef,
+} from './download'
 export type {
   AssetDeleteDeps,
   AssetVersionDeleteDeps,

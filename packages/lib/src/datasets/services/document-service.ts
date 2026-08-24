@@ -9,8 +9,8 @@ import type {
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm'
 import { createAssetFromFolderFile } from '../../files/assets'
+import { getAssetContent } from '../../files/assets/content'
 import { getAssetDownloadRef } from '../../files/assets/download'
-import { MediaAssetService } from '../../files/core/media-asset-service'
 import { createS3StoragePort } from '../../files/storage/ports'
 import type {
   BatchProcessingRequest,
@@ -632,8 +632,13 @@ export class DocumentService {
   async getContent(documentId: string, organizationId: string): Promise<Buffer | null> {
     const document = await this.getById(documentId, organizationId)
     if (!document?.mediaAssetId) return null
-    const mediaAssetService = new MediaAssetService(organizationId)
-    return await mediaAssetService.getContent(document.mediaAssetId)
+    const content = await getAssetContent(
+      { db: this.db, organizationId },
+      { storage: createS3StoragePort(organizationId) },
+      document.mediaAssetId
+    )
+    if (content.isErr()) throw content.error
+    return content.value
   }
   /**
    * Check for duplicate documents in dataset

@@ -29,14 +29,6 @@ vi.mock('../cache/user-cache-helpers', () => ({
 vi.mock('../events', () => ({
   publisher: { publishLater: vi.fn() },
 }))
-vi.mock('../files/core/attachment-service', () => ({
-  AttachmentService: class {
-    fetchAttachmentsForEntities = vi.fn().mockResolvedValue(new Map())
-  },
-}))
-vi.mock('../files/core/media-asset-service', () => ({
-  MediaAssetService: class {},
-}))
 vi.mock('../notifications/notification-service', () => ({
   NotificationService: class {},
 }))

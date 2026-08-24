@@ -3,7 +3,9 @@
 import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
 import { ExtractorFactory } from '../../../datasets/extractors/extractor-factory'
-import { createFileService } from '../../../files/core/file-service'
+import { defaultDatabase } from '../../../files/default-database'
+import { getFolderFile, getFolderFileContent } from '../../../files/folder-files'
+import { createS3StoragePort } from '../../../files/storage/ports'
 import { ErrorStrategy, normalizeErrorStrategy } from '../../catalog/error-handling'
 import {
   type DocumentExtractorNodeData as CatalogDocumentExtractorNodeData,
@@ -351,12 +353,14 @@ export class DocumentExtractorProcessor extends BaseNodeProcessor {
   ): Promise<ExtractionOutput> {
     contextManager.log('DEBUG', node.name, 'Extracting from file', { fileId, organizationId })
 
-    // Get userId from context for FileService
-    const userId = (await contextManager.getVariable('sys.userId')) as string
+    // The pool, exactly as the deleted `createFileService(organizationId, userId)`
+    // resolved it. This node has no caller-supplied client and never writes, so
+    // there is no transaction to stay inside of.
+    const ctx = { db: defaultDatabase(), organizationId }
 
-    // Get file metadata and content via FileService
-    const fileService = createFileService(organizationId, userId)
-    const file = await fileService.get(fileId)
+    const fileResult = await getFolderFile(ctx, fileId)
+    if (fileResult.isErr()) throw fileResult.error
+    const file = fileResult.value
 
     if (!file) {
       throw this.createExecutionError(`File not found: ${fileId}`, node, {
@@ -365,7 +369,13 @@ export class DocumentExtractorProcessor extends BaseNodeProcessor {
       })
     }
 
-    const contentBuffer = await fileService.getContent(fileId)
+    const content = await getFolderFileContent(
+      ctx,
+      { storage: createS3StoragePort(organizationId) },
+      fileId
+    )
+    if (content.isErr()) throw content.error
+    const contentBuffer = content.value
     if (!contentBuffer) {
       throw this.createExecutionError('Failed to retrieve file content', node, {
         fileId,

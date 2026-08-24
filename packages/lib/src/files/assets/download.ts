@@ -118,6 +118,90 @@ export async function getAssetDownloadRef(
 }
 
 /**
+ * A {@link DownloadRef} plus the row metadata the preview pane needs.
+ *
+ * The exact shape `folder-files/download.ts` returns from
+ * {@link ../folder-files/download.getFolderFileDownloadRef}, so
+ * `fileRouter.getAttachmentPreviewRef` returns one contract whichever branch
+ * ran. It was previously produced only by `MediaAssetService`'s
+ * `getDownloadRefForVersion`, which is why that method was the last thing
+ * keeping the facade alive.
+ */
+export type AssetDownloadRefWithMeta = DownloadRef & {
+  filename: string
+  mimeType?: string
+  size?: number
+  versionNumber: number
+  expiresAt: Date
+}
+
+/**
+ * How long a {@link AssetDownloadRefWithMeta} claims to be valid when the
+ * underlying ref carries no expiry of its own.
+ *
+ * Same 10 minutes as `folder-files`' `DEFAULT_DOWNLOAD_TTL_MS` and as the
+ * deleted facade's `LEGACY_PREVIEW_TTL_MS` — the preview pane refetches on this
+ * value, so the two libraries must not disagree about it.
+ */
+export const DEFAULT_ASSET_DOWNLOAD_TTL_MS = 10 * 60 * 1000
+
+/**
+ * Resolve one asset to a {@link AssetDownloadRefWithMeta}.
+ *
+ * The metadata twin of {@link getAssetDownloadRef}: identical resolution, plus
+ * the filename / mime / size / version number a preview surface renders. Prefer
+ * the plain accessor when all you want is a URL — this one exists because the
+ * asset and file branches of one tRPC procedure have to answer with the same
+ * fields.
+ *
+ * **This is not a second copy of the version ladder.** It calls
+ * {@link getAssetDownloadRef}'s own helpers (`requireAsset` +
+ * `resolveAssetVersion`), so "which bytes are current" is still decided in
+ * exactly one place — the mistake the legacy `getDownloadRefForVersion` made was
+ * resolving a version *number* to a row itself and then handing the row id back
+ * down, which read the asset twice.
+ *
+ * @param ctx Scope. `ctx.db` may be a pool or a transaction; this never opens one.
+ * @param deps Storage, plus the clock the `expiresAt` fallback is measured from.
+ * @param assetId Asset to resolve, interpreted within `ctx.organizationId`.
+ * @param opts Which version, and the presign knobs.
+ * @returns `err(NotFoundError)` when the asset, version, or storage location is
+ *   missing in this org; `err(AuxxError)` when the row cannot name its bucket.
+ */
+export async function getAssetDownloadRefWithMeta(
+  ctx: FilesCtx,
+  deps: DownloadDeps & Pick<FilesDeps, 'now'>,
+  assetId: string,
+  opts: GetAssetDownloadRefOptions = {}
+): Promise<Result<AssetDownloadRefWithMeta, AuxxError>> {
+  return guard(
+    async () => {
+      const asset = await requireAsset(ctx, assetId)
+      const version = await resolveAssetVersion(ctx, asset, opts)
+      const ref = await resolveAssetDownloadRef(deps, asset, version, opts)
+
+      const fallbackExpiry = new Date(deps.now().getTime() + DEFAULT_ASSET_DOWNLOAD_TTL_MS)
+      return {
+        ...ref,
+        // The legacy fallback, kept verbatim: an asset row may carry no name.
+        filename: asset.name || `${asset.kind.toLowerCase()}_${asset.id}`,
+        mimeType: asset.mimeType ?? undefined,
+        size: asset.size ?? undefined,
+        versionNumber: version.versionNumber,
+        expiresAt: ref.type === 'url' ? (ref.expiresAt ?? fallbackExpiry) : fallbackExpiry,
+      }
+    },
+    'Failed to resolve asset download ref',
+    {
+      assetId,
+      version: opts.version,
+      versionId: opts.versionId,
+      organizationId: ctx.organizationId,
+    }
+  )
+}
+
+/**
  * The database-free tail of {@link getAssetDownloadRef}: asset + version in,
  * {@link DownloadRef} out.
  *

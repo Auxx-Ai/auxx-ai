@@ -74,16 +74,16 @@ interface MessageOutput {
 
 /**
  * Lazily resolve attachments for `message.attachments` — only queried when
- * `hasAttachments` is true. One row-listing query plus one `getDownloadInfo`
- * call per attachment (bounded by the message's own attachment count).
- * `getDownloadInfo` never throws on an unresolvable URL — it just returns
- * `url: undefined` — so a signing failure degrades to a null URL rather than
- * failing the trigger node.
+ * `hasAttachments` is true. One row-listing query plus one
+ * `getAttachmentDownloadInfo` call per attachment (bounded by the message's own
+ * attachment count). That function returns a `Result` rather than throwing, and
+ * an `err` degrades to a null URL here rather than failing the trigger node —
+ * the same fail-soft contract the deleted `AttachmentService.getDownloadInfo`
+ * had via its `.catch(() => null)`.
  */
 async function loadMessageAttachments(
   messageId: string,
   organizationId: string,
-  userId: string | undefined,
   db: Database
 ): Promise<MessageAttachmentOutput[]> {
   const rows = await db
@@ -101,13 +101,20 @@ async function loadMessageAttachments(
   if (rows.length === 0) return []
 
   // Dynamic import — keeps this trigger node's static import graph free of
-  // the storage-service dependency chain, matching `file-context-service.ts`'s
+  // the storage dependency chain, matching `file-context-service.ts`'s
   // `refreshAttachmentUrl` precedent.
-  const { AttachmentService } = await import('../../../files/core/attachment-service')
-  const attachmentService = new AttachmentService(organizationId, userId, db)
+  const { getAttachmentDownloadInfo, createStorageManagerLocationPort, createS3StoragePort } =
+    await import('../../../files/server')
+  const ctx = { db, organizationId }
+  const deps = {
+    storage: createS3StoragePort(organizationId),
+    now: () => new Date(),
+    locations: createStorageManagerLocationPort(organizationId),
+  }
   return Promise.all(
     rows.map(async (row) => {
-      const info = await attachmentService.getDownloadInfo(row.id).catch(() => null)
+      const result = await getAttachmentDownloadInfo(ctx, deps, row.id)
+      const info = result.isOk() ? result.value : null
       return {
         name: info?.filename ?? 'attachment',
         size: info?.size !== undefined ? Number(info.size) : 0,
@@ -233,7 +240,6 @@ export class MessageReceivedProcessor extends BaseNodeProcessor {
       ? await loadMessageAttachments(
           context.message.id,
           context.organizationId,
-          context.userId,
           context.db ?? defaultDb
         )
       : []

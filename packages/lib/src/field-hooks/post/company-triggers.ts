@@ -1,5 +1,6 @@
 // packages/lib/src/field-hooks/post/company-triggers.ts
 
+import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { load } from 'cheerio'
@@ -202,6 +203,7 @@ async function fetchAndStoreLogo(args: {
   for (const url of candidates) {
     try {
       const result = await fetchAndStoreRemoteImage({
+        db: database,
         url,
         organizationId: args.organizationId,
         userId: args.userId,

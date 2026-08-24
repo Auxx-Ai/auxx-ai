@@ -12,8 +12,11 @@ import {
   touchInteractionForMessage,
 } from '../entity-instances/activity'
 import { ForbiddenError, UsageLimitError } from '../errors'
-import { FileService } from '../files/core/file-service'
-import { MediaAssetService } from '../files/core/media-asset-service'
+import { getAssetWithRelations, updateAsset } from '../files/assets'
+import { getAssetContent } from '../files/assets/content'
+import type { FilesCtx } from '../files/ctx'
+import { getFolderFileContent, getFolderFileWithRelations } from '../files/folder-files'
+import { createS3StoragePort } from '../files/storage/ports'
 import { ensureContactForParticipant } from '../participants/participant-queries'
 import { ParticipantService } from '../participants/participant-service'
 import type { MailViewer } from '../permissions/visibility/context'
@@ -122,8 +125,18 @@ export class MessageSenderService {
   private composer: MessageComposerService
   private reconciler: MessageReconcilerService
   private participantService: ParticipantService
-  private mediaAssetService: MediaAssetService
-  private fileService: FileService
+  /**
+   * Scope + client every `files/` read below runs on.
+   *
+   * Built once from the same `conn` the other collaborators take, so an
+   * attachment read sees exactly what this service's other writes see. This
+   * replaced `new MediaAssetService(organizationId, undefined, conn)` and its
+   * `FileService` twin — two classes whose only remaining use here was four
+   * reads and one update.
+   */
+  private readonly filesCtx: FilesCtx
+  /** Storage collaborator for the two content reads. Built once — it caches an S3 client. */
+  private readonly filesDeps: { storage: ReturnType<typeof createS3StoragePort> }
   /** Originating socket id for self-echo suppression on realtime publishes. */
   private readonly socketId?: string
 
@@ -150,8 +163,8 @@ export class MessageSenderService {
     this.composer = new MessageComposerService(organizationId, conn)
     this.reconciler = new MessageReconcilerService(organizationId, this.threadManager, conn)
     this.participantService = new ParticipantService(organizationId, conn)
-    this.mediaAssetService = new MediaAssetService(organizationId, undefined, conn)
-    this.fileService = new FileService(organizationId, undefined, conn)
+    this.filesCtx = { db: conn, organizationId }
+    this.filesDeps = { storage: createS3StoragePort(organizationId) }
     this.socketId = socketId
   }
   /**
@@ -1304,12 +1317,16 @@ export class MessageSenderService {
           )
           .limit(1)
         if (asset) {
-          const assetWith = await this.mediaAssetService.getWithRelations(id)
+          const assetResult = await getAssetWithRelations(this.filesCtx, id)
+          if (assetResult.isErr()) throw assetResult.error
+          const assetWith = assetResult.value
           if (!assetWith) {
             logger.warn(`MediaAsset ${id} not found (post-lookup), skipping`)
             continue
           }
-          const content = await this.mediaAssetService.getContent(id)
+          const assetContent = await getAssetContent(this.filesCtx, this.filesDeps, id)
+          if (assetContent.isErr()) throw assetContent.error
+          const content = assetContent.value
           attachments.push({
             filename: assetWith.name || 'attachment',
             content,
@@ -1331,12 +1348,16 @@ export class MessageSenderService {
           )
           .limit(1)
         if (file) {
-          const fileWith = await this.fileService.getWithRelations(id)
+          const fileResult = await getFolderFileWithRelations(this.filesCtx, id)
+          if (fileResult.isErr()) throw fileResult.error
+          const fileWith = fileResult.value
           if (!fileWith) {
             logger.warn(`FolderFile ${id} not found (post-lookup), skipping`)
             continue
           }
-          const content = await this.fileService.getContent(id)
+          const fileContent = await getFolderFileContent(this.filesCtx, this.filesDeps, id)
+          if (fileContent.isErr()) throw fileContent.error
+          const content = fileContent.value
           const mimeType =
             (fileWith.currentVersion as any)?.mimeType ||
             fileWith.mimeType ||
@@ -1424,10 +1445,11 @@ export class MessageSenderService {
           .limit(1)
         if (asset) {
           // If already EMAIL_ATTACHMENT, this is a no-op; if temp, set to permanent
-          await this.mediaAssetService.update(id, {
+          const promoted = await updateAsset(this.filesCtx, { now: () => new Date() }, id, {
             kind: 'EMAIL_ATTACHMENT',
             expiresAt: null,
-          } as any)
+          })
+          if (promoted.isErr()) throw promoted.error
           logger.info(`Ensured MediaAsset ${id} is permanent EMAIL_ATTACHMENT`)
           continue
         }
@@ -1716,7 +1738,9 @@ export class MessageSenderService {
       if (!attachment.mediaAssetId || !attachment.mediaAsset) continue
       try {
         const asset = attachment.mediaAsset
-        const content = await this.mediaAssetService.getContent(asset.id)
+        const assetContent = await getAssetContent(this.filesCtx, this.filesDeps, asset.id)
+        if (assetContent.isErr()) throw assetContent.error
+        const content = assetContent.value
         if (!content) {
           logger.warn(`Attachment ${asset.id} has no content, skipping`)
           continue
