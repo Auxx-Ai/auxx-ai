@@ -10,6 +10,7 @@ import {
   isPendingRelationLookup,
   processColumnValues,
   resolveColumnCurrencyCodes,
+  resolveColumnOptions,
 } from '../../import'
 import type { ResolutionConfig, ResolutionType } from '../../import/types'
 import type { JobContext } from '../types'
@@ -78,6 +79,28 @@ export async function resolveValuesJob(ctx: JobContext<ResolveValuesJobProps>): 
       targetFieldKeys: currencyColumnKeys,
     })
 
+    // A select column's option list is the same KIND of value as the currency
+    // code above — a fact about the target field, not a decision the user made
+    // about the column — so it is resolved the same way, and for a sharper
+    // reason: the stored copy is client-asserted. `saveMappingProperty` writes
+    // whatever array the browser sent when the field was picked, the server
+    // never checks it against the field, and nothing refreshes it afterwards.
+    // A category added since mapping would otherwise read as unmatched on every
+    // row. See `resolve-column-options.ts`.
+    const optionColumnKeys = mappedProperties
+      .filter(
+        (p) =>
+          (p.resolutionType?.startsWith('select:') ||
+            p.resolutionType?.startsWith('multiselect:')) &&
+          p.targetFieldKey
+      )
+      .map((p) => p.targetFieldKey as string)
+    const liveOptions = await resolveColumnOptions({
+      organizationId,
+      entityDefinitionId: importJob.importMapping.entityDefinitionId,
+      targetFieldKeys: optionColumnKeys,
+    })
+
     const totalColumns = mappedProperties.length
     let columnsProcessed = 0
 
@@ -117,16 +140,22 @@ export async function resolveValuesJob(ctx: JobContext<ResolveValuesJobProps>): 
         continue
       }
 
-      // Parse resolution config
+      // Parse resolution config.
+      //
+      // A parse failure used to degrade to `{}` behind a warn. For a select
+      // column that silently means "this field has no options", so every row
+      // errors with `No matching option` and nothing anywhere says why. The
+      // column's whole configuration is unreadable; fail the job rather than
+      // import it under a config nobody wrote.
       let resolutionConfig: ResolutionConfig = {}
       if (mappingProp.resolutionConfig) {
         try {
           resolutionConfig = JSON.parse(mappingProp.resolutionConfig)
         } catch {
-          logger.warn('Invalid resolution config JSON', {
-            jobId,
-            columnIndex: mappingProp.sourceColumnIndex,
-          })
+          throw new Error(
+            `Column "${mappingProp.sourceColumnName ?? mappingProp.sourceColumnIndex}" has an ` +
+              'unreadable configuration. Re-map the column and try again.'
+          )
         }
       }
 
@@ -135,6 +164,17 @@ export async function resolveValuesJob(ctx: JobContext<ResolveValuesJobProps>): 
         : undefined
       if (currencyCode) {
         resolutionConfig = { ...resolutionConfig, currencyCode }
+      }
+
+      // The live list WINS over the stored one. Falling back to the stored copy
+      // when a field carries no options is deliberate: it keeps a mapping made
+      // against a since-deleted field resolving as it did, instead of erroring
+      // every row.
+      const fieldOptions = mappingProp.targetFieldKey
+        ? liveOptions.get(mappingProp.targetFieldKey)
+        : undefined
+      if (fieldOptions) {
+        resolutionConfig = { ...resolutionConfig, options: fieldOptions }
       }
 
       // Process values
